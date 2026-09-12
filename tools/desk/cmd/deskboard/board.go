@@ -64,8 +64,12 @@ const securityPassMarker = "Security-Review: pass"
 // the board could not see a pass being withdrawn at the same head (#216).
 const securityFailMarker = "Security-Review: fail"
 
-// verifyGateLabel selects the awaiting-verification issues for the queue view.
-const verifyGateLabel = "verify-gate"
+// verifyGateLabel selects the awaiting-verification issues for the queue view. It is
+// an alias, not a second literal: deskkit owns the label now, because the deskpost
+// trust gate's verify-gate card carve-out is scoped by it (#868), and a card the queue
+// lists under one spelling while the carve-out reads another is a silent divergence
+// between what the desk can see and what it may annotate.
+const verifyGateLabel = deskkit.VerifyGateLabel
 
 // prListLimit caps the open-PR read (the GraphQL `pullRequests(first: …)` page) explicitly.
 // A >prListLimit-PR board would truncate and the desk would sweep an incomplete queue with no

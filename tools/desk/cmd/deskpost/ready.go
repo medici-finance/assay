@@ -35,7 +35,7 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			return refused("ready", repo, pr, "", "repo "+repo+" is not in the fixed desk repo set")
 		}
 
-		client, err := newGHClient(owner, name)
+		client, err := newPostBackend(owner, name)
 		if err != nil {
 			return fromReadErr("ready", repo, pr, "", err)
 		}

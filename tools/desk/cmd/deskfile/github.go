@@ -96,17 +96,22 @@ var forgeForFn = forgeFor
 // unambiguous origin host, else a could-not-check REFUSAL (which retains deskfile's historical
 // refusal on an unresolvable forge). A repo affirmatively resolved to GitLab is now SERVED, not
 // refused (#691 superseded).
-func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+//
+// The resolved ForgeKind is returned WITH the backend rather than re-derived later: the
+// label-missing NOTICE names a forge-specific remedy command (`gh label create` on GitHub,
+// `glab label create` on GitLab — #887 item 2), and a second resolver read could drift from
+// the one that picked the backend (deskkit.ResolveForge's provenance contract).
+func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 	owner, name, _ := strings.Cut(repo, "/")
 	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
 	if ghToken == "" {
 		if merr := mintTokenFn(repo); merr != nil {
-			return nil, fr, merr
+			return nil, fr, "", merr
 		}
 	}
-	fg, err := deskkit.ForgeFor(fr, mintedRole)
+	fg, res, err := deskkit.ResolveForge(fr, mintedRole)
 	if err != nil {
-		return nil, fr, err
+		return nil, fr, "", err
 	}
-	return fg, fr, nil
+	return fg, fr, res.Kind, nil
 }

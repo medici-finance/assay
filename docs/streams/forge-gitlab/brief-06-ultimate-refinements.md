@@ -97,7 +97,7 @@ endpoint surfaces as could-not-check, never as a silent downgrade.
 |---|---------|--------|
 | 1 | `bash tools/create-fleet-gitlab.sh --dry-run --tier ultimate --group example --prefix myorg 2>&1 \| grep -cE -e 'custom role' -e 'status check'` | ≥ 2 |
 | 2 | push attempt to a scratch project branch as the custom-role reviewer token | rejected by GitLab (dereference: live negative-path proof the role cannot push) |
-| 3 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabStatusCheckFallback -v` | exit 0; Premium fixture yields could-not-check, Ultimate fixture posts the check |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabStatusCheckFallback -v` | exit 0; Premium fixture yields could-not-check, Ultimate fixture posts the check |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

@@ -118,3 +118,16 @@ is **not** proof of an at-head verdict. The desk writes the head SHA into the ve
 body, and that pinned SHA — read back and compared to the current head — is what carries the
 at-head property on CE. A reader that trusted the approval flag on CE would treat a verdict
 recorded against an older head as current; the note pin is what closes that gap.
+
+## Consumers of this model
+
+The grammar and the per-forge commit-address form are read by the desk verbs and the preflight
+(`forge-neutral/02`, in `deskkit`) and by `statusgen` (`forge-neutral/07`). `statusgen` and
+`deskkit` are separate modules that share no code, so each mirrors this model in its own reader;
+the roster-grammar mirror is bound by a cross-tree parity test over one shared vector file. The
+two `statusgen` consumers this brief adds:
+
+| Consumer | What it consumes | How it applies the per-forge rule |
+|----------|------------------|-----------------------------------|
+| `statusgen/evidenceactor.go` (Evidence-actor lint) | the accepted verifier's forge, resolved from its roster entry | matches the Evidence committer by that forge's address form — the GitHub noreply regex, id-pinned; the GitLab service-account address **shape** plus the git author username, login-only (the numeric user id is not in a GitLab commit address, so it cannot pin the match — the weaker form recorded above). A verifier bound to a forge the build does not understand is **could-not-check naming the forge**, never backed or unbacked. |
+| `statusgen/verifyrun.go` (execution witness) | the repo's forge and the acting git identity | resolves the witness `Runner` to the bound role identity for the repo's forge — the GitHub `<slug>[bot]`, the GitLab service-account username — ahead of the CI-env and git-config fallbacks, and records **which source** produced it (forge-identity / ci-env / git-config) so a stamped acting identity is distinguishable from a host-derived one (the D-9 disagreement made visible). The no-identity refusal and the forbidden-runner-flag refusal are unchanged: the runner stays derived, never caller-supplied. |

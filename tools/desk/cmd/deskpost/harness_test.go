@@ -109,9 +109,14 @@ type fakeGH struct {
 	// edge). It is the only fixture that exercises the `pull_request` discriminator as a
 	// GUARD rather than as a happy path: without it, deleting that check would let a PR be
 	// commented on AS an issue, unnoticed.
-	phantomPRNums  map[int]bool
-	issueAuthor    string
-	issueAuthorID  int64
+	phantomPRNums map[int]bool
+	issueAuthor   string
+	issueAuthorID int64
+	// issueLabels is the label set GET /issues/{n} serves for a number. It exists for
+	// the verify-gate card carve-out (#868), which is decided on the LABEL: without a
+	// fixture that can put a label on an issue, "the carve-out is label-scoped" is a
+	// claim no test can separate from "the carve-out is author-scoped".
+	issueLabels    map[int][]string
 	issueTrustJSON string
 
 	reviews []reviewInfo
@@ -164,6 +169,13 @@ type fakeGH struct {
 	prLabels      []string
 	surfaceConfig *string
 	createdLabels []string
+
+	// claimRefStatus is the HTTP status GET /repos/{o}/{r}/git/ref/{ref} returns — the
+	// claim-liveness single-reference read behind the model floor's stamp age-out. 0 serves 200
+	// (the ref is present); a test sets 404 (absent → ClaimReleased) or 403/500 (could-not-look
+	// → ClaimLivenessUnknown). Only exercised when claimLiveness reads, which needs a body with a
+	// derivable claim key, so the default never fires for the existing fixtures.
+	claimRefStatus int
 }
 
 var (
@@ -183,6 +195,7 @@ var (
 	reIssueLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
 	reIssueLabelOf = regexp.MustCompile(`/issues/[0-9]+/labels/(.+)$`)
 	reContents     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/(.+)$`)
+	reGitRef1      = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/ref/.+$`)
 )
 
 // ghPaging mimics GitHub's documented paging contract: `per_page` defaults to **30** and
@@ -410,6 +423,13 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out := map[string]any{"number": n, "state": "open"}
+		if names := f.issueLabels[n]; len(names) > 0 {
+			labels := make([]map[string]any, 0, len(names))
+			for _, name := range names {
+				labels = append(labels, map[string]any{"name": name})
+			}
+			out["labels"] = labels
+		}
 		if f.issueNums[n] {
 			login, id := f.issueAuthor, f.issueAuthorID
 			if login == "" {
@@ -606,6 +626,15 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(`{"data":{"repository":{"pullRequest":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviews":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}`))
 
+	case r.Method == http.MethodGet && reGitRef1.MatchString(path):
+		// The claim-liveness single-reference read (RefExists). 0 → present (200); a test drives
+		// absent (404) or could-not-look (403/500) through claimRefStatus.
+		if f.claimRefStatus != 0 {
+			w.WriteHeader(f.claimRefStatus)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ref":"refs/heads/dispatch/x","object":{"sha":"abc123"}}`))
+
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -658,6 +687,7 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 		pullStatus:    map[int]int{},
 		issueStatus:   map[int]int{},
 		phantomPRNums: map[int]bool{},
+		issueLabels:   map[int][]string{},
 		// A default NON-risk changed file. It has to be stated: under the public-repo risk rule, an
 		// EMPTY changed-file list is itself risk-classed (fail closed — "we could not
 		// see the diff" is not "the diff is clean"), so a fixture that says nothing

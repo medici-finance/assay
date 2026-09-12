@@ -15,6 +15,7 @@ unblocks: ["forge-neutral/10"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-09
 issues: []
 schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
@@ -38,7 +39,9 @@ consumers:
   - "tools/cellctl/cellctl: fixed-here"
   - "docs/cellctl.md: fixed-here (the verb table and the custody hand-steps gain their GitLab shape)"
   - "docs/streams/forge-neutral/leak-gate-shape.md: fixed-here (the per-forge gate design and its three-state contract)"
+  - "docs/streams/forge-neutral/gitlab-ci-half.md: fixed-here (the pipeline-side leak-sweep sweep job forge-neutral/08 templates — task 2, verify row 11)"
   - "docs/adopting-assay-gitlab.md: fixed-here (the adopter runbook gains the CI leak-sweep half the pilot found missing)"
+  - "tools/desk/cmd/deskflip: fixed-here (the ready-flip decision reads an ABSENT required leak-gate verdict as could-not-check, never a pass — task 1's three-state contract, verify row 10)"
   - "the private control-based sweep that posts the verdict: out-of-scope (it is house-side publication infrastructure, absent from this tree by design — this brief specifies the VERDICT SURFACE it must post to on a merge request, not the sweep)"
   - "plugins/assay/skills/install/SKILL.md: follow-up forge-neutral/11 (the install prose names the optional CLI per forge; cellctl's own prerequisites are fixed here)"
 version: 1
@@ -170,6 +173,35 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — gate: human, HELD at `implemented`
+
+Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-protocol confirmed; landing commit `39ec71f0`, PR #821). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer. gate: human + sensitive-data — table RUN for Evidence; no model sign-off.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `bash -n tools/cellctl/cellctl` | 0 | script parses | PASS |
+| 2 | `grep -c '^[|] ' docs/streams/forge-neutral/leak-gate-shape.md` | 0 | `8` (verdict-surface + three-state tables both present) | PASS |
+| 3 | `cellctl new --help \| grep -c 'deskd-app-pem'` | — | `2`; help: "`--deskd-app-pem` REQUIRED on the github path ONLY … gitlab: NO App PEM and NO --orgs" | PASS |
+| 4 (neg) | `cellctl new --forge gitlab --repo … --cells-yaml …` | 3 | "on the gitlab path --group is required … the role token store (`gitlab-<role>.token`) is a custody hand step, NOT an App PEM" — names GitLab custody inputs, does NOT demand an App PEM | PASS |
+| 5 (neg) | `cellctl new --forge github … --orgs example-org` (no pem) | 3 | "on the github path --orgs and --deskd-app-pem are required" — requirement survives on GitHub | PASS |
+| 6 | `cellctl check --cell` on a scaffolded GitLab cell (`glcell`, forge=gitlab) | 1 | per-precondition ok/MISS for GitLab (group ok, token store ok, deskd token MISS); GitHub-only preconditions reported `n/a … not applicable on a gitlab cell` — never silently absent | PASS |
+| 7 | `grep -rn 'api.github.com' tools/cellctl/cellctl \| wc -l` | — | `0` — host from the configured forge endpoint | PASS |
+| 8 | `grep -c 'gitlab' docs/cellctl.md` | — | `19` (≥3) | PASS |
+| 9 | `grep -c 'leak' docs/adopting-assay-gitlab.md` | — | `8` (≥1) | PASS |
+| 10 (neg, crux) | `cd tools/desk && go test ./cmd/deskflip/... -run TestMissingLeakGateIsCouldNotCheck -count=1 -v` | 0 | PASS — absent `leak-sweep` required verdict → `deskkit.ExitUnverifiable`, no mutation, required-checks endpoint actually read; "an absent required verdict is could-not-check, never a pass". Companion `TestPresentLeakGateFlips` confirms a present verdict still flips | PASS |
+| 11 | `grep -c 'leaksweep' docs/streams/forge-neutral/gitlab-ci-half.md` | — | `4` (≥1) | PASS |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/09` | — | COULD-NOT-CHECK — `no brief-v1 file` (statusgen v1.0.6 brief-v2 gap). Manual: landing commit `39ec71f0` touches every consumers path (`tools/cellctl/cellctl`+239, `docs/cellctl.md`, `leak-gate-shape.md` new, `docs/adopting-assay-gitlab.md`, `gitlab-ci-half.md`, `tools/desk/cmd/deskflip/{flip.go,deskflip_test.go}`) | COULD-NOT-CHECK |
+
+**Risk-bearing value (sensitive-data: yes — ENUMERATE → RANK → DERIVE):**
+- Leak-gate verdict states: three-state — ran-and-passed (clear) / ran-and-failed (blocked) / could-not-run (absent → could-not-check); could-not-check maps to `deskkit.ExitUnverifiable = 6` (`tools/desk/internal/deskkit/exitcodes.go:31`).
+- Per-forge custody inputs: GitHub → `--deskd-app-pem` + `--orgs` (App mints per-org installation tokens); GitLab → `--group` + role token store `gitlab-<role>.token` (hand-provisioned, never minted).
+- `RISK-VALUE: DERIVED (top-ranked) — absent leak-sweep verdict ⇒ could-not-check ⇒ ExitUnverifiable(6) ⇒ ready-flip refuses (no mutation).` A missing verdict silently rounded to a pass would let withheld content land on a public MR (irreversible disclosure). Derived + proven by row 10 + `flip.go` + `leak-gate-shape.md §three-state`. Custody inputs rank below (mis-provision caught by `check` before first write). No `NAMED, NOT DERIVED` value open.
+
+**Sensitive-data defense (gate: human) — two independent layers:** `deskflip` does not trust the green rollup alone — it reads the branch-protection required-status-check set and cross-checks that every required context (incl. `leak-sweep`) actually reported at the head; an absent required verdict returns `ExitUnverifiable` and blocks the flip, distinct from both pass and fail. Layer 2: the pipeline-side sweep job fails the change's own CI — on GitLab CE, where the blocking external check is tier-gated, the pipeline job IS the merge blocker. Single control (verdict surface) is explicitly not sufficient, hence the mandatory pipeline layer; row 10 proves the flip catches the fault with the external verdict absent.
+
+**Scope-traceability:** all work maps to a Verify row (or review-only pre-mortem lines); `flip.go` +45 = the row-10 could-not-check decision, `deskflip_test.go` +57 = its test. Custody discipline preserved: no token minted on the GitLab path (hand-provisioned store, mode-0600 read; "rotation is a hand step"); no credential acquisition added.
+
+**VERDICT: PASS** on rows 1–11; row 12 COULD-NOT-CHECK (statusgen v1.0.6 brief-v2 gap, consumers hand-corroborated) — **HELD at `implemented` (human sign-off owed via the verify-gate).** The human confirms the per-forge custody shape and that absence reads as could-not-check (both proven above).
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in

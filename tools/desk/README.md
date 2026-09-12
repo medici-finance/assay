@@ -428,6 +428,27 @@ work queue or steer a desk action.
   which tracks content edits only — labels don't re-quarantine). A follow-up
   hash-pinning upgrade (compare a stored hash of the blessed body at act time) is
   tracked as an issue; the timestamp comparison is v1.
+- **One carve-out — annotating a verify-gate sign-off card.** `deskpost comment` may
+  post on an **issue** authored by **`github-actions[bot]`** when that issue carries
+  the **`verify-gate`** label, with no blessing
+  (`deskkit.VerifyGateCardCommentAdmitted`). Nothing else: `review`,
+  `security-review` and `ready` stay refused on such an issue, an Actions-authored
+  issue *without* the label stays refused for `comment` too, and the label admits
+  nothing on an issue anyone else authored — an external user who labels their own
+  issue `verify-gate` gains exactly zero. **Why it is safe:** the gate exists to keep
+  unvetted third-party TEXT out of a desk's writes, and a sign-off card's body is not
+  third-party text — statusgen GENERATES it from the repo's own tree and
+  `verify-gate-open` files it verbatim under `GITHUB_TOKEN`. **Why the LABEL is the
+  scope and not the author:** an Actions workflow can file any issue at all, and those
+  other bodies are not generated from the tree; the label is how the card says which
+  one it is, and putting it there takes write access to the repo's workflows.
+  `github-actions[bot]` stays **untrusted** for every general predicate
+  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedPublicAuthor`, `TrustedHumanAuthor`) —
+  this is a narrower read alongside them, not an addition to the roster. **What it
+  fixes:** before it, no desk could annotate a card at all — not to mark one an inert
+  duplicate, not to warn that closing it will not flip the brief's row — so the human
+  closing the card saw no warning. Inert on non-GitHub forges (nothing there renders a
+  login as `github-actions[bot]`), and fail-closed on an unconfigured roster.
 - **Quarantine visibility:** boards (`deskboard prs/actions/queue`, `issueboard`)
   list untrusted items under **EXTERNAL / UNBLESSED** — counted, visible (so Ada
   sees what awaits blessing), never given an ACTION. All public-origin text in that
@@ -570,6 +591,49 @@ set, and no staged-but-uncommitted changes. The shared secret scan (`deskkit.Bod
 runs over the title, branch name, body, and the diff-vs-default before any push (C-3,
 best-effort). An open PR already on the head branch → idempotent noop printing its URL
 (exit 0), never a duplicate (#140/#148 class).
+
+### The push-transport custody gate (`deskpr create` / `update`, `deskwt add`)
+
+A worker worktree cut from a shared checkout **inherits that checkout's remote**. When the
+remote is an SSH URL — `ssh://git@host/owner/name` or the scp-like `git@host:owner/name` —
+a plain `git push` from it authenticates with whatever key the machine's SSH agent holds,
+in practice a *human's* key, even though every commit on the branch was authored inline as
+the role App. The forge then records the human as the branch creator, and the App's
+permission envelope (the workflows-scope refusal, an App-scoped ruleset, any workflow keyed
+on a bot author) is bypassed. Nothing in the run looks wrong: the push succeeds, the commits
+carry the App's authorship, and only the forge's own record of *who pushed* disagrees. That
+is the ambient-identity lane the forge-side custody ruling retired.
+
+`deskpr create`, `deskpr update` and `deskwt add` therefore **refuse, fail-closed** (exit 5)
+when the resolved **push** URL of `origin` is an SSH one *and* the session presents a bot
+identity — `$DESK_LOOP` resolving to a role App. The refusal names the config key, the URL,
+the acting App, and the one-line remedy (a `remote set-url --push` to the equivalent https
+URL, which it computes for you). Implementation: `internal/deskkit/pushtransport.go`.
+
+Four boundaries are deliberate:
+
+- **Only the push transport.** Fetch over SSH is untouched — a read carries no identity the
+  forge records against a ref. An SSH `remote.origin.url` with an https
+  `remote.origin.pushurl` override is a normal, allowed run, and `remote.origin.pushurl` is
+  what the gate reads whenever it is set, exactly as git resolves a push.
+- **Only a bot session.** With `$DESK_LOOP` unset the gate is inert: a human at a terminal
+  pushes under their own key, which is what the SSH remote is for. A `$DESK_LOOP` this
+  process cannot resolve to a role is a stderr **NOTICE** saying the gate did **not** run —
+  could-not-check, never a silent pass.
+- **Only the verbs that push.** `deskpr edit` rewrites a PR body and pushes nothing, so it
+  is not gated. `deskwt add` is gated because the worktree it cuts inherits the remote, and
+  refusing before the branch exists is cheaper than refusing after an agent has filled it.
+- **https without an App credential helper is a NOTICE, not a refusal.** An https push
+  answered only by a machine keychain is the same ambient-identity shape one layer along,
+  but the evidence is weaker — a helper this code does not recognise may well be the App's —
+  so it says so on stderr and proceeds.
+
+Could-not-check is exit 6, never a pass: a `git config` read that fails, and a remote with
+no URL at all, are both unverifiable rather than "no SSH found, carry on".
+
+The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` — ten
+mutations plus a positive control, run with
+`go run ./cmd/muhar -j 0 -spec internal/deskkit/pushtransport-mutations.json`.
 
 ### The logged scan override (`--force-scan-override`)
 
@@ -1376,7 +1440,8 @@ Constraints in code:
   through the issues endpoint, whose `pull_request` sub-object is the documented
   discriminator). There is no `--issue` / `--pr` flag on purpose: a caller-declared kind is
   a second source of truth that can disagree with the remote, and the remote decides where
-  the comment lands. Both kinds get the same repo gate, body checks, trust gate, write
+  the comment lands. Both kinds get the same repo gate, body checks, trust gate (with
+  the one verify-gate card carve-out documented under **Trust gate** above), write
   budget, audit line and idempotency; the PR idempotency key is unchanged
   (`comment:<digest>` at the head), an issue keys on `comment:issue:<digest>` with no head.
   `--head` is **optional** here (an issue has no head at all) and **enforced when given**:
@@ -1529,7 +1594,27 @@ deskwt add <name> [--branch B] [--base origin/main]   # create tracker-<name> on
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
+deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
+deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
+
+- **`role-init`** is the isolate-first step every desk role takes before `deskboot`: from a
+  FRESHLY FETCHED `origin/main` of the checkout it is pointed at (`--repo-root <checkout>`, else
+  the cwd) it creates the session-scoped worktree `tracker-<loop>-<session>` under the
+  sanctioned prefix on branch `<loop>/<session>` tracking `origin/main`, LOCKS it, stamps the
+  role's App commit identity worktree-scoped (never the shared `user.*`), and prints the
+  worktree's ABSOLUTE path as its last stdout line — the launcher contract,
+  `cd "$(deskwt role-init <role> --repo-root <checkout>)"`. `<role>` is EVERY role `desktoken`
+  mints (`desk`, `worker`, `reviewer`, `verifier`, `issue-loop`, `intake-loop`), spelled as that
+  token role OR as the loop name `deskboot` boots (`the-desk`, `worker-desk`, `pr-review-desk`,
+  `verify-desk`, `intake-desk`), positionally or as `--role`; a spelling in neither vocabulary
+  refuses (exit 5) naming both. An existing valid worktree is reused (idempotent); a stray or
+  foreign-repo path is refused, never clobbered; a fetch that cannot run is could-not-check
+  (exit 6) — `--no-fetch` is the explicit opt-out, never the default. The shared checkout's index
+  and `user.*` config are untouched; its only writes are enabling `extensions.worktreeConfig`
+  (once) and the new branch's own tracking section. `deskboot`'s shared-checkout refusal prints
+  this command verbatim (with the loop name it was given and the absolute `--repo-root`), plus
+  `cellctl desk <cell> <role>` when `cellctl` is on PATH.
 
 - **`add`** creates `tracker-<name>` on a new tracking branch, under the sanctioned prefix
   that is PORTABLE on the host OS: `/private/tmp/tracker-<name>` on POSIX, and
@@ -3601,6 +3686,37 @@ catches a push. It does not catch a `Security-Review: fail`, because a retractio
 review event posted at the *same* head — so a head-only re-read reports "still current" and
 flips over a live withdrawal. Both gates re-run against a freshly read review list
 immediately before the mutation.
+
+**A standing `CHANGES_REQUESTED` at head blocks — with ONE exemption, the check-only CR.**
+An APPROVE posted at an *unchanged* head cannot be a re-verification: there is nothing new to
+verify, and the forge's self-approval block only keys on the PR *author*, so it has nothing to
+say about a third-party App re-posting at the same head. That default stands. It had no path,
+though, for the one legitimate case: a CR whose *only* stated blocker was a required check
+being red, where the check then went green **at the same head with no code push** — a human
+applying `changelog:skip`, a flaked job re-run. The alternatives were a no-op push, which games
+the very head-move rule the block enforces, or a human dismissing the review by hand every
+time. The exemption clears such a CR only when **all** of:
+
+- the CR body **declares** itself check-only on one line — `Blocked-On-Check: <check name>` —
+  naming the check and nothing else. Detection is by that *shape*: no prose is ever read, because
+  inferring "this CR names no other finding" from English would let a CR carrying three findings
+  and the word `changelog` read as check-only;
+- a later APPROVE from the same reviewer at the same head **cites the run** —
+  `Cleared-Check-Run: <id>` — a per-execution id, so a re-run is a different citation and an
+  older green run of the same check cannot satisfy it;
+- that run is in the rollup **at that head** (structural: the rollup is read at the head both
+  reviews are pinned to, so a run belonging to another head is simply absent);
+- the run carries **the check the CR named**, and
+- it **finished green** — the same accepted set `checks-green` uses (`success` / `neutral` /
+  `skipped`, so a check a skip label turned green counts) — **after** the CR was submitted. A
+  run the reviewer already had in front of them when they blocked re-verifies nothing.
+
+Anything short of all five refuses in the wording it always had; a CR that never made the claim
+refuses in exactly that wording, unadorned. Clearing the block is **not** an approval — the
+reduction below it still has to find an APPROVED governing at head, so a later ordinary CR still
+refuses. Both marker lines are read by the canonical verdict-marker reduction (whole-line,
+emphasis-tolerant, and skipped inside a fenced code block, since both reads grant); a body
+carrying two lines that disagree has established nothing and reads as no claim.
 
 **An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
 Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that

@@ -57,7 +57,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
 
-		client, err := newGHClient(owner, name)
+		client, err := newPostBackend(owner, name)
 		if err != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
@@ -115,7 +115,17 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		// by reviewer-bot login + review state). No consumer scans comment BODIES for
 		// verdict lines, so a comment's text is never interpreted as a verdict no matter
 		// what it contains.
-		if tgt.kind == kindIssue {
+		//
+		// ONE carve-out, and only on this path: a verify-gate sign-off CARD
+		// (deskkit.VerifyGateCardCommentAdmitted — the reasoning lives there, next to the
+		// predicate, so the audit is one read). Its author is `github-actions[bot]`,
+		// because the repo's own verify-gate-open workflow files it under GITHUB_TOKEN,
+		// and the gate refused every desk annotation on it — so nobody could mark a card
+		// an inert duplicate, or warn that closing it will not flip the brief's row, and
+		// the human closing it saw nothing. The carve-out is not reachable from `review`,
+		// `security-review` or `ready`: those are PR-only verbs that refuse an issue
+		// number outright (requirePRErr), and none of them calls the predicate.
+		if tgt.kind == kindIssue && !deskkit.VerifyGateCardCommentAdmitted(tgt.authorLogin, tgt.labels) {
 			if terr := trustGate(client, tgt.kind, num, tgt.authorLogin, tgt.authorID); terr != nil {
 				return withDigest(fromReadErr(verb, repo, num, tgt.head, terr), dig)
 			}

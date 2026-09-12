@@ -32,8 +32,9 @@ reviewable artifact, not a run.
   is inert: the running workflow is still the old file.
 - `truth-suite.yml` — the standing truth suite (`docs/test-policy.md` § "Standing truth
   suite"): the test corpus plus the release mutation gate, on push to the default branch and
-  on a daily schedule, reporting three-state. Promote it to `.github/workflows/truth-suite.yml`
-  to activate.
+  on a daily schedule, reporting three-state. **Already live** — promoted to
+  `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
+  so a change to it is authored here first and re-promoted by a maintainer commit.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set
@@ -50,18 +51,27 @@ reviewable artifact, not a run.
   POSIX shell-out). It runs NO mutating/forge verb. The native windows/arm64 smoke is held
   BLOCKED (`arm64-native-smoke`, `if: false`) pending a `windows-11-arm` runner and is never
   inferred from the amd64 result. A `workflow_dispatch` input `failfirst=true` runs the
-  fail-first demonstration (the leg must redden on a bogus verb). Promote it to
-  `.github/workflows/windows-ci-leg.yml` to activate.
+  fail-first demonstration (the leg must redden on a bogus verb).
 
-### Activating `windows-ci-leg.yml`
+  **Already live, like `evidence-automerge.yml` above** — this copy is kept as the reviewable
+  edit surface for `.github/workflows/windows-ci-leg.yml`, no App may push a workflow-file
+  change. `windows-port/06` simplified the `windows-bootstrap-smoke` job's first step (the
+  bootstrap script now resolves its own tag+sha from `plugins/assay/paired-versions.yaml`, so
+  the step passes only the tag) and added a second step exercising the PATH write + bare-name
+  `statusgen --version` invocation. **Pending promotion** — a maintainer re-promotes by copying
+  this file over the live one:
+  ```
+  cp ci/staged-workflows/windows-ci-leg.yml .github/workflows/windows-ci-leg.yml
+  git commit -m "ci: promote windows-ci-leg.yml (windows-port/06)"
+  git push
+  ```
 
-```
-git mv ci/staged-workflows/windows-ci-leg.yml .github/workflows/windows-ci-leg.yml
-git commit -m "ci: activate windows-ci-leg workflow"
-git push
-```
+### `windows-ci-leg.yml` status
 
-Once promoted, the leg runs on `push`/`pull_request`; a green `windows-smoke` job is the
+Already activated (`windows-port/04`) — see "Already live" above for how a later change to
+this file is promoted now that it exists at `.github/workflows/windows-ci-leg.yml`.
+
+The leg runs on `push`/`pull_request`; a green `windows-smoke` job is the
 authoritative evidence for the brief's rows 2-3 (record its run URL, the `--lint` exit, and the
 `--version` smoke result on the brief). The `failfirst` fail-first demo is run on demand via
 `workflow_dispatch`. The `arm64-native-smoke` row stays held until a `windows-11-arm` runner is
@@ -79,4 +89,6 @@ downloads a release asset (`Invoke-WebRequest` to the GitHub release CDN), so th
 deliberately kept SEPARATE from `windows-smoke` — the download is decision #508's sanctioned
 live-forge exception and does not weaken the offline invariant of the `windows-smoke` job. It is
 promoted with the rest of this file; a green `windows-bootstrap-smoke` run is the evidence for
-the brief's row 8 (record its run URL).
+the brief's row 8 (record its run URL). Since `windows-port/06`, the job's second step also
+proves rows 6 and 14: the real bootstrap run (no operator-supplied sha) writes the user PATH,
+and a fresh process invokes the installed binary by its bare `statusgen` name.

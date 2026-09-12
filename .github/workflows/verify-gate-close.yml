@@ -205,6 +205,16 @@ jobs:
             echo "::error::no verify-gate marker found in issue #$ISSUE"
             exit 1
           fi
+          # The marker may carry either grammar: the legacy <stream>/<NN>[a]
+          # form (statusgen's brief name regexp), or the brief-v2 key
+          # <org>:<alias>:<stream>:<NN>[a] that statusgen --verify-issues now
+          # emits. Normalise the v2 form to the legacy one BEFORE the grammar
+          # check below, so every use past this point sees exactly one shape
+          # and the existing validation still runs against whatever ends up in
+          # $brief, normalised or not.
+          if printf '%s' "$brief" | grep -qE '^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+:[0-9]+[a-z]?$'; then
+            brief=$(printf '%s' "$brief" | awk -F: '{print $3 "/" $4}')
+          fi
           # Defense-in-depth: $brief is derived from the untrusted issue body.
           # Every current use is double-quoted and shell values are not
           # re-parsed, so there is no command injection today — but validate it
@@ -215,7 +225,7 @@ jobs:
           # name regexp: <stream>/<NN>[a] (numeric + optional a-z).
           if ! printf '%s' "$brief" | grep -qE '^[a-zA-Z0-9_-]+/[0-9]+[a-z]?$'; then
             gh issue comment "$ISSUE" --repo "$REPO" \
-              --body "Extracted brief id is not a valid \`<stream>/<NN>\` id; no brief advanced."
+              --body "Extracted brief id is not a valid \`<stream>/<NN>\` id (nor the \`<org>:<alias>:<stream>:<NN>\` brief-v2 form); no brief advanced."
             echo "::error::invalid brief id extracted from issue body"
             exit 1
           fi

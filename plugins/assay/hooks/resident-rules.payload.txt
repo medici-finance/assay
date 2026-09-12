@@ -1,4 +1,4 @@
-RESIDENT OPERATING RULES (assay plugin v1.0.0). These are the project-agnostic rules the desk skills rely on. Violate none without the human driver's explicit say-so.
+RESIDENT OPERATING RULES (assay plugin v1.0.7). These are the project-agnostic rules the desk skills rely on. Violate none without the human driver's explicit say-so.
 
 1. EVIDENCE-NOT-CLAIMS: every assertion needs a verifiable artifact (command output, file hash, log line) — never a bare text claim. Your own self-report is untrustworthy. Verify before asserting.
 

@@ -63,13 +63,19 @@ type glServer struct {
 	jobs         []map[string]any
 	awards       []map[string]any
 	users        map[string]map[string]any
-	createMR     map[string]any
-	createIssue  map[string]any
-	updateMR     map[string]any
-	labelEvents  []map[string]any
+	// userSearch is the users LIST payload (`GET /users?search=<term>`), keyed by the search
+	// term; a term with no entry answers an empty list (the instance found nobody).
+	userSearch map[string][]map[string]any
+	// gql is the canned `POST /api/graphql` response body (PRTrustEvents / IssueTrustEvents).
+	// nil answers 404 — a case that never set one must not see a phantom empty payload.
+	gql         map[string]any
+	createMR    map[string]any
+	createIssue map[string]any
+	updateMR    map[string]any
+	labelEvents []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
-	issueList []map[string]any
+	issueList  []map[string]any
 	projLabels []map[string]any
 	// repoFile is the Repository-Files GET payload (ReadFile / WriteFile idempotency read),
 	// keyed by the ESCAPED file path segment. Absent → 404.
@@ -77,6 +83,9 @@ type glServer struct {
 	// createFileResp / updateFileResp are the Repository-Files write responses (FileInfo).
 	createFileResp map[string]any
 	updateFileResp map[string]any
+	// branch is the Branches-API GET payload (RefExists); branchMissing → 404 (ref absent).
+	branch        map[string]any
+	branchMissing bool
 	// labelCreateStatus, when set, is the status the project-label create route returns
 	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
 	// both of which mean the ensure's post-condition already holds.
@@ -116,6 +125,8 @@ var (
 	lIssueNotes   = regexp.MustCompile(`/issues/[0-9]+/notes$`)
 	lAwards       = regexp.MustCompile(`/issues/[0-9]+/award_emoji$`)
 	lUser         = regexp.MustCompile(`^/api/v4/users/[0-9]+$`)
+	lUserList     = regexp.MustCompile(`^/api/v4/users$`)
+	lGraphQL      = regexp.MustCompile(`^/api/graphql$`)
 	lCommit       = regexp.MustCompile(`/repository/commits/[^/]+$`)
 	lCommitList   = regexp.MustCompile(`/repository/commits$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
@@ -222,6 +233,18 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createMR)
 	case r.Method == http.MethodGet && lAwards.MatchString(path):
 		enc(s.awards)
+	case r.Method == http.MethodPost && lGraphQL.MatchString(path):
+		if s.gql == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		enc(s.gql)
+	case r.Method == http.MethodGet && lUserList.MatchString(path):
+		hits := s.userSearch[r.URL.Query().Get("search")]
+		if hits == nil {
+			hits = []map[string]any{}
+		}
+		enc(hits)
 	case r.Method == http.MethodGet && lUser.MatchString(path):
 		id := path[strings.LastIndex(path, "/")+1:]
 		u, ok := s.users[id]
@@ -262,6 +285,15 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.projApproval)
 	case r.Method == http.MethodDelete && lBranch.MatchString(path):
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && lBranch.MatchString(path):
+		// Branches API GET (RefExists). Absent → 404, the ANSWER "the ref is gone", which the
+		// backend maps to (false, nil); present → the branch payload → (true, nil).
+		if s.branchMissing {
+			w.WriteHeader(http.StatusNotFound)
+			enc(map[string]any{"message": "404 Branch Not Found"})
+			return
+		}
+		enc(s.branch)
 	case r.Method == http.MethodGet && lProject.MatchString(path):
 		enc(s.project)
 	default:
@@ -287,9 +319,42 @@ func glNotes(startID, n int) []map[string]any {
 	return out
 }
 
+// glGQLTrust builds the `POST /api/graphql` response body gitlabTrustQuery expects for one
+// noteable ("mergeRequest" | "issue"): the comments connection (non-system notes) and the
+// activity connection (system notes), each with its completeness flag. An `updatedAt` is
+// planted on the noteable so a backend that read it would show up in the golden.
+func glGQLTrust(noteable string, comments, activity []map[string]any, moreComments, moreActivity bool) map[string]any {
+	return map[string]any{"data": map[string]any{"project": map[string]any{
+		noteable: map[string]any{
+			"updatedAt": "2026-09-09T09:00:00Z",
+			"comments":  map[string]any{"pageInfo": map[string]any{"hasNextPage": moreComments}, "nodes": comments},
+			"activity":  map[string]any{"pageInfo": map[string]any{"hasPreviousPage": moreActivity}, "nodes": activity},
+		},
+	}}}
+}
+
+// glGQLNoteNode is one non-system note node: the author's GraphQL global id, username and bot
+// flag, plus creation and content-edit times ("" = never edited, rendered null).
+func glGQLNoteNode(username string, id int64, bot bool, created, edited string) map[string]any {
+	var e any
+	if edited != "" {
+		e = edited
+	}
+	return map[string]any{
+		"createdAt": created, "lastEditedAt": e,
+		"author": map[string]any{"id": fmt.Sprintf("gid://gitlab/User/%d", id), "username": username, "bot": bot},
+	}
+}
+
+// glGQLActivityNode is one system-note node (the activity connection reads body + createdAt only).
+func glGQLActivityNode(body, created string) map[string]any {
+	return map[string]any{"body": body, "createdAt": created}
+}
+
 func newGLServer(t *testing.T) *glServer {
 	t.Helper()
-	s := &glServer{forceStatus: map[string]int{}, users: map[string]map[string]any{}}
+	s := &glServer{forceStatus: map[string]int{}, users: map[string]map[string]any{},
+		userSearch: map[string][]map[string]any{}}
 	s.srv = httptest.NewServer(http.HandlerFunc(s.handler))
 	t.Cleanup(s.srv.Close)
 	return s
@@ -516,9 +581,12 @@ func glCases() []glCase {
 					{"name": "leak-sweep", "status": "success"},
 					{"name": "external/policy", "status": "canceled"},
 				}
+				// The JOB id is GitLab's per-execution identifier and maps to the same
+				// interface ID GitHub's check-run id does; `deploy` carries none, pinning
+				// that an absent id maps to "" rather than "0".
 				s.jobs = []map[string]any{
-					{"name": "go-test", "status": "success"},
-					{"name": "lint", "status": "failed"},
+					{"id": 9001, "name": "go-test", "status": "success"},
+					{"id": 9002, "name": "lint", "status": "failed"},
 					{"name": "deploy", "status": "manual"},
 				}
 			},
@@ -789,6 +857,32 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return nil, f.DeleteRef(glRepo, "dispatch/item--01") },
 		},
 		{
+			// RefExists is DeleteRef's read twin, and reaches exactly as far: the Branches API is
+			// GitLab CE's only ref-existence read. A present branch (the dispatch claim ref lives
+			// INSIDE refs/heads, so it round-trips here) reads as (true, nil). The golden pins the
+			// project coordinate travels URL-encoded and the branch occupies its own segment.
+			name: "ref_exists_present", method: "RefExists",
+			setup: func(s *glServer) {
+				s.branch = map[string]any{"name": "dispatch/item--01", "commit": map[string]any{"id": "abc123"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// A 404 from the Branches API is the ANSWER "the ref is absent" — (false, nil), never
+			// a read failure. Only this positive-absent ages a dispatch stamp out.
+			name: "ref_exists_absent", method: "RefExists",
+			setup: func(s *glServer) { s.branchMissing = true },
+			run:   func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// The half GitLab CE cannot serve: a ref OUTSIDE refs/heads has no ref-existence
+			// endpoint, so it is a could-not-check REFUSAL with zero requests emitted — never a
+			// guessed "absent" that would tell the floor a held claim was released.
+			name: "ref_exists_non_branch_namespace_refused", method: "RefExists",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "tags/v1.2.3") },
+		},
+		{
 			// The resource-label-events endpoint is GitLab's exact analog of the GitHub
 			// timeline read: add/remove per label WITH the acting user. `remove` events are
 			// dropped (a removal is not an attestation), and an event whose label GitLab has
@@ -1023,19 +1117,85 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.ListOpenIssues(glRepo) },
 		},
 		{
-			// forge-neutral/06. The trust gate reads GitHub GraphQL lastEditedAt content-edit
-			// tracking + numeric databaseId with Bot/User discrimination; GitLab's note model
-			// and id space do not map 1:1, so this is a could-not-check refusal — a guessed
-			// blessing is fail-open.
-			name: "pr_trust_events_gap", method: "PRTrustEvents",
-			setup: func(s *glServer) {},
+			// GitLab trust-events brief. PRTrustEvents is a REAL read: one bounded GraphQL query over the
+			// MR's notes — non-system notes become content events (username, numeric id parsed
+			// from the global id, created/edited times), the LATEST `changed the description`
+			// system note is the body-edit time, and the label system note is NOT (it would be
+			// the spurious re-quarantine `updatedAt` gives). The bot flag is read, and the bot's
+			// login stays the BARE username (no GitHub `[bot]` decoration on GitLab).
+			name: "pr_trust_events", method: "PRTrustEvents",
+			setup: func(s *glServer) {
+				s.gql = glGQLTrust("mergeRequest",
+					[]map[string]any{
+						glGQLNoteNode("external-user", 501, false, "2026-09-01T10:00:00Z", ""),
+						glGQLNoteNode("ada", 2001, false, "2026-09-02T10:00:00Z", ""),
+						glGQLNoteNode("assay-reviewer-bot", 41987965, true, "2026-09-03T10:00:00Z", "2026-09-03T11:00:00Z"),
+					},
+					[]map[string]any{
+						glGQLActivityNode("changed the description", "2026-08-31T09:00:00Z"),
+						glGQLActivityNode("added ~bug label", "2026-09-04T09:00:00Z"),
+						glGQLActivityNode("changed the description", "2026-09-01T09:00:00Z"),
+					}, false, false)
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
+		},
+		{
+			// GitLab trust-events brief. The issue twin — same query over the issue noteable. A deleted
+			// author (null) is carried as an EMPTY login (untrusted, the GitHub ghost handling).
+			name: "issue_trust_events", method: "IssueTrustEvents",
+			setup: func(s *glServer) {
+				s.gql = glGQLTrust("issue",
+					[]map[string]any{
+						glGQLNoteNode("ada", 2001, false, "2026-09-02T10:00:00Z", ""),
+						{"createdAt": "2026-09-02T12:00:00Z", "lastEditedAt": nil, "author": nil},
+					},
+					[]map[string]any{}, false, false)
+			},
+			run: func(f *GitLabForge) (any, error) { return f.IssueTrustEvents(glRepo, 12) },
+		},
+		{
+			// GitLab trust-events brief. A change with NO notes at all is a REAL, EMPTY payload — zero
+			// events, no body edit, Complete — distinct from a read that failed.
+			name: "pr_trust_events_empty", method: "PRTrustEvents",
+			setup: func(s *glServer) {
+				s.gql = glGQLTrust("mergeRequest", []map[string]any{}, []map[string]any{}, false, false)
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
+		},
+		{
+			// GitLab trust-events brief. An overflowed comment page is INCOMPLETE (Complete=false, the
+			// caller quarantines); so is an overflowed activity page when no description-change
+			// note was in the newest 100 — the latest edit might be older than the page.
+			name: "pr_trust_events_overflow", method: "PRTrustEvents",
+			setup: func(s *glServer) {
+				s.gql = glGQLTrust("mergeRequest",
+					[]map[string]any{glGQLNoteNode("ada", 2001, false, "2026-09-02T10:00:00Z", "")},
+					[]map[string]any{glGQLActivityNode("added ~bug label", "2026-09-04T09:00:00Z")}, false, true)
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
+		},
+		{
+			// GitLab trust-events brief. A GraphQL-level error (a 200 with `errors`) is could-not-check,
+			// never an empty trust set.
+			name: "pr_trust_events_graphql_errors", method: "PRTrustEvents",
+			setup: func(s *glServer) {
+				s.gql = map[string]any{"errors": []map[string]any{{"message": "Field 'notes' doesn't accept argument 'filter'"}}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
+		},
+		{
+			// GitLab trust-events brief. A project the token cannot see answers a null project: could-not-
+			// check classified as NOT VISIBLE, never a blank payload.
+			name: "pr_trust_events_not_visible", method: "PRTrustEvents",
+			setup: func(s *glServer) { s.gql = map[string]any{"data": map[string]any{"project": nil}} },
 			run:   func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
 		},
 		{
-			// forge-neutral/06. The issue twin of the trust-events gap — same could-not-check.
-			name: "issue_trust_events_gap", method: "IssueTrustEvents",
-			setup: func(s *glServer) {},
-			run:   func(f *GitLabForge) (any, error) { return f.IssueTrustEvents(glRepo, 7) },
+			// GitLab trust-events brief. A permission/tier failure on the GraphQL route is could-not-check
+			// with the status classified (403 → tier/permission), like every REST read.
+			name: "pr_trust_events_forbidden", method: "PRTrustEvents",
+			setup: func(s *glServer) { s.forceStatus["/api/graphql"] = http.StatusForbidden },
+			run:   func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
 		},
 		{
 			// forge-neutral/12. Commit-history listing maps 1:1: GitLab's ListCommits returns
@@ -1050,16 +1210,54 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListRecentCommits(glRepo, 5) },
 		},
 		{
-			// forge-neutral/12. Single-commit read: committed_date is 1:1; the resolved-account
-			// login fields stay EMPTY (per-field could-not-check) because a GitLab commit carries
-			// only raw git author/committer name+email, not a resolved instance account.
+			// GitLab trust-events brief. GetCommit resolves the author/committer login from the commit's
+			// git address: the users search yields CANDIDATES, and only an EXACT public/primary
+			// email match attributes. The author resolves off the list shape (public_email
+			// present); the committer's list entry carries no email (the non-admin rendering),
+			// so the detail read supplies it. A fuzzy name hit on the same search never counts.
 			name: "get_commit", method: "GetCommit",
 			setup: func(s *glServer) {
 				s.commit = map[string]any{
 					"id": "abc123", "committed_date": "2026-09-01T10:00:00Z",
 					"author_name": "A Dev", "author_email": "a@example.com",
-					"committer_name": "A Dev", "committer_email": "a@example.com",
+					"committer_name": "C Dev", "committer_email": "c@example.com",
 				}
+				s.userSearch["a@example.com"] = []map[string]any{
+					{"id": 11, "username": "a-dev", "name": "A Dev", "public_email": "a@example.com"},
+					{"id": 12, "username": "a-dev-fan", "name": "a@example.com fan", "public_email": "fan@example.com"},
+				}
+				s.userSearch["c@example.com"] = []map[string]any{{"id": 13, "username": "c-dev", "name": "C Dev"}}
+				s.users["13"] = map[string]any{"id": 13, "username": "c-dev", "public_email": "c@example.com", "bot": false}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetCommit(glRepo, "abc123") },
+		},
+		{
+			// GitLab trust-events brief. An address that resolves to no account — the instance found
+			// nobody for the author, and the committer's only candidate is a fuzzy hit whose
+			// email differs — leaves the field EMPTY: per-field could-not-check, never a login
+			// built from the address.
+			name: "get_commit_unresolved_email", method: "GetCommit",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{
+					"id": "abc123", "committed_date": "2026-09-01T10:00:00Z",
+					"author_email":    "service_account_group_9619193_abc@noreply.gitlab.example",
+					"committer_email": "c@example.com",
+				}
+				s.userSearch["c@example.com"] = []map[string]any{{"id": 13, "username": "c-dev", "public_email": "other@example.com"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetCommit(glRepo, "abc123") },
+		},
+		{
+			// GitLab trust-events brief. A users-route failure (403) leaves the logins EMPTY — UNKNOWN
+			// attribution — but does NOT fail the commit read: the committed date the stall
+			// clock needs is still served (the gitlabActorType posture).
+			name: "get_commit_user_lookup_forbidden", method: "GetCommit",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{
+					"id": "abc123", "committed_date": "2026-09-01T10:00:00Z",
+					"author_email": "a@example.com", "committer_email": "a@example.com",
+				}
+				s.forceStatus["/users"] = http.StatusForbidden
 			},
 			run: func(f *GitLabForge) (any, error) { return f.GetCommit(glRepo, "abc123") },
 		},

@@ -37,6 +37,11 @@ operator's config home and are reached by symlink.
   shim/                generated — every desk verb wrapped to run with HOME=<cell>/home
 ```
 
+That is the **k8s** kind — a full cell with its own `deskd`, roster and App keys. A **house** cell
+(`--kind house`, below) is the same shape minus what it does not need: `home/.config/assay` is one
+symlink to the operator's real config home, there is no `cells-<cell>.yaml`, `bin/` or `index/`
+unless `DESKD=1`, and `cell.env` carries the stream-root map (`CELL_ROOTS`).
+
 The **cells root** defaults to `${CELLS_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/assay/cells}`.
 The **desk-tools bindir** the shims wrap defaults to `${DESK_TOOLS_BIN:-/opt/desk-tools/bin}` — the
 path the pinned desk-tools tarball installs to (`docs/adopting-assay.md`, PRIMITIVE:
@@ -99,15 +104,37 @@ each one. It does not need a Go toolchain.
 
 ## `cellctl new` — scaffold, then four hand steps
 
+`new` takes the cell's **forge** explicitly with `--forge github|gitlab` (default `github`). The
+custody flags are forge-specific — a GitHub cell mints installation tokens from an App PEM, a
+GitLab cell reads a hand-provisioned role token store — so `--deskd-app-pem` and `--orgs` are
+required on the **github** path only, and a **gitlab** cell requires its group instead:
+
 ```bash
-cellctl new <cell> \
+# GitHub cell
+cellctl new <cell> --forge github \
   --repo /path/to/checkout \
   --cells-yaml /path/to/cells-<cell>.yaml \
   --orgs org-a,org-b \
   --deskd-app-pem "$HOME/.config/assay/<cell>-desk-app.pem" \
   [--deskd-app-id-var DESK_APP_ID] \
   [--port 8787]
+
+# GitLab cell — NO App PEM, NO --orgs; the group and a role token store instead
+cellctl new <cell> --forge gitlab \
+  --repo /path/to/checkout \
+  --cells-yaml /path/to/cells-<cell>.yaml \
+  --group my-gitlab-group \
+  [--gitlab-api-base https://gitlab.example.com/api/v4] \
+  [--gitlab-token-store /path/to/store] \
+  [--port 8787]
 ```
+
+On the **gitlab** path `cellctl new` mints nothing and requires no App PEM: GitLab role tokens
+rotate by hand (forge-neutral/01), so the scaffold leaves a **role token store** to fill —
+`gitlab-<role>.token` files at mode `0600`, one per role — and the per-cell README names it as a
+hand step. A GitLab cell's roster entries are **forge-qualified** (`role=gitlab:<slug>:<id>`, per
+forge-neutral/02) and its `ASSAY_REPO_FORGES` binds the cell's repos to `gitlab`, so the verbs do
+not refuse a cell stood up for GitLab.
 
 `--deskd-app-id-var` names the variable in the **cell home's** `apps.env` holding the `deskd` App's
 id, and defaults to `DESK_APP_ID`. That default is right for most cells: `cellctl deskd` sources the
@@ -145,6 +172,52 @@ Then `cellctl check <cell>`.
 
 ---
 
+## House cells — `--kind house`
+
+Everything above is the cell that runs *someone else's* repos on this laptop: its own `deskd`, its
+own roster, its own Apps. The other case is the operator's **own** desks — the five role windows for
+the repos whose roster and App keys already live in `~/.config/assay`. Before `--kind house` those
+were booted by hand, and a hand boot has three ways to go wrong that a cell boot does not: the
+window starts inside a shared checkout (and the write guard then refuses every mutation), the
+stream-root map is not exported (and every desk verb silently falls back to its compiled
+placeholder topology), and the model is whatever the CLI default is that week.
+
+```bash
+cellctl new house --kind house \
+  --repo /path/to/checkout \
+  --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
+  [--roles "the-desk worker-desk"] [--port 8787]
+cellctl check house
+cellctl desk house worker-desk          # one window
+cellctl up house                        # every role, in tmux
+```
+
+`new --kind house` needs `--repo` (the checkout the role worktrees are created from — it must be a
+git checkout) and `--roots` (the `DESK_ROOTS` map: `<owner>/<repo>=<absolute path>`, comma-
+separated; every path must exist). It writes `cell.env` with `CELL_KIND=house` and
+`CELL_ROOTS=<the map>`, links `home/.config/assay` to `${ASSAY_CONFIG_HOME:-$HOME/.config/assay}`
+— one directory symlink, so the desk verbs read the roster, `apps.env` and the `<role>-app.pem`
+files exactly as a hand boot would; **nothing is copied** — and links `.config/gh` and
+`.gitconfig` as a github cell does. There are no custody hand steps: the custody is the
+operator's own. It refuses to overwrite an existing cell of the same name.
+
+`check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
+checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
+scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
+formed, exists and carries `docs/streams/`; the desk verbs a role needs are installed under the
+desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
+`deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
+and torn down exactly as a k8s cell's is.
+
+`desk` and `up` on a house cell differ from a k8s cell in three ways and no others: no `deskd`
+window or "deskd is not up" notice unless `DESKD=1`; `DESK_ROOTS` is exported from `CELL_ROOTS`
+(on a k8s cell too, when `cell.env` carries one); and `DESK_SESSION` — also the `claude --name` —
+is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because house windows are
+re-booted by hand across days and the roster beacon should tell one boot from the next. The
+worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same code path.
+
+---
+
 ## `cellctl check` — the preconditions
 
 ```bash
@@ -152,12 +225,20 @@ cellctl check <cell>
 ```
 
 One `ok` / `MISS` line per precondition, exit 1 if any row missed: the checkout named by
-`CELL_REPO`, the cells slice, the operator config home, `roster.env`, `apps.env`, that every App-key
-symlink under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the
-linked `gh` config, `bin/deskd` and `bin/deskcli`, the `deskd` App key being readable, the desk-tools
-bindir, `tmux`, and whether this cell's `deskd` answers on its address.
+`CELL_REPO`, the cells slice, the operator config home, `roster.env`, that every App-key symlink
+under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the configured
+forge endpoint, `bin/deskd` and `bin/deskcli`, the desk-tools bindir, `tmux`, and whether this
+cell's `deskd` answers on its address.
 
-Run it after `new`, and again after any key rotation.
+The forge-specific preconditions are keyed on the cell's `CELL_FORGE`. A **github** cell also
+checks `apps.env`, the linked `gh` config, the readable `deskd` App key, and `ORGS`. A **gitlab**
+cell instead checks the `GITLAB_GROUP`, the role token store directory, and the readable
+`gitlab-deskd.token`. A precondition that belongs to the **other** forge is reported explicitly —
+`n/a` where it does not apply, or `MISS` for a stray artifact of the wrong forge (a GitHub App PEM
+on a gitlab cell) — never silently skipped, so a half-provisioned or mis-forged cell reads as such
+rather than clean.
+
+Run it after `new`, and again after any key or token rotation.
 
 ---
 
@@ -219,8 +300,18 @@ config dir defaults to `$CLAUDE_CONFIG_DIR`, then `~/.claude`, and is resolved a
 and touches nothing.
 
 Each window gets: the `assay@assay` plugin enabled in that config dir; its own worktree under
-`worktrees/<role>` fast-forwarded to `origin/main`; the real `HOME` with `shim/` first on `PATH`;
-`DESK_LOOP` and `DESK_SESSION` set; its pinned model; and `/assay:<role>` as its first prompt.
+`worktrees/<role>` fast-forwarded to `origin/main` and **locked** (`git worktree lock`, so a
+worktree prune never takes a live window's tree); the real `HOME` with `shim/` first on `PATH`;
+`DESK_LOOP` and `DESK_SESSION` set, and `DESK_ROOTS` when `cell.env` carries `CELL_ROOTS` (a
+cell without one boots with a notice that the desk verbs are on their compiled placeholder
+topology); its pinned model; and `/assay:<role>` as its first prompt.
+
+When the installed desk-tools ship a `deskwt role-init` that supports the role (probe: `deskwt
+role-init --help` exits 0), `cellctl desk` lets **it** create the role worktree on first boot — its
+last output line is the path — and links `worktrees/<role>` to that tree, so cellctl and the desk
+skills agree on the worktree's name and the next boot fast-forwards the same tree. A `deskwt` that
+is absent or refuses the probe leaves cellctl's own worktree path in charge; `CELLCTL_DESKWT=0`
+forces that path.
 
 Each window is named **`<cell>-<short role>`** — the role without its `-desk` suffix, except
 `the-desk`, which keeps its full name (`<cell>-the-desk`, `<cell>-pr-review`, `<cell>-verify`,
@@ -276,20 +367,27 @@ cell saying so, which is the kind of drift a cell exists to keep out.
 
 ```
 DESK_MODEL_DEFAULT=sonnet     # every role that has no override
-DESK_MODEL_the_desk=opus      # per-role override: the role name with `-` replaced by `_`
+DESK_MODEL_the_desk=fable     # per-role override: the role name with `-` replaced by `_`
 ```
 
 An override is `DESK_MODEL_<role>` with hyphens replaced by underscores — `DESK_MODEL_the_desk`,
 `DESK_MODEL_pr_review_desk`, `DESK_MODEL_verify_desk`, and so on. Values are whatever
-`claude --model` accepts: an alias (`opus`, `sonnet`, `haiku`) or a full model id, including a
-long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
+`claude --model` accepts: an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full model id, including
+a long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
 `cellctl new` scaffolds both lines above so a fresh cell is pinned from the start.
 
 **Why the defaults are shaped that way.** The four loop roles are mechanical dispatchers: they read a
 board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
 coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
-and `the-desk` gets the stronger one — and either can be moved per cell, which is the point of
-putting it in `cell.env` rather than in the script.
+and `the-desk` gets the top tier available — and the loops' pin can be moved per cell, which is the
+point of putting it in `cell.env` rather than in the script.
+
+**The coordinator's pin cannot be moved down to Opus.** `opus` is no longer the top tier, and the
+coordinator role is defined to run on whichever model is. `cellctl desk <cell> the-desk` (including
+its `DRY_RUN=1` plan) and `cellctl check` both refuse a resolved `DESK_MODEL_the_desk` that is the
+`opus` alias or a `claude-opus-*` id — whether that value came from `DESK_MODEL_the_desk` itself or
+fell through to `DESK_MODEL_DEFAULT` — and print the value plus the variable to change. Every other
+role's pin, including `opus`, is untouched.
 
 `cellctl desk` prints the resolved model on its launch line and in `DRY_RUN=1` output, so which model
 a window is on is visible without reading the config.
@@ -303,14 +401,23 @@ a window is on is visible without reading the config.
 | Variable | What it is |
 |---|---|
 | `CELL` | the cell name (also the tmux session prefix) |
+| `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none) or `house` (the operator's own desks; see *House cells*) |
+| `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s (unset = the verbs' compiled placeholder topology, and `desk` says so) |
+| `DESKD` | **house** — `1` to require and stand a `deskd` as a k8s cell does (default `0`: no deskd, and `check` reports it `n/a`) |
+| `CELL_FORGE` | the cell's forge, `github` or `gitlab` (default `github` — a cell scaffolded before forge support carries none and is a GitHub cell by construction) |
 | `CELL_REPO` | the checkout the role worktrees are created from |
 | `CELLS_CONFIG` | this cell's `cells.yaml` slice (default `<cell-dir>/cells-<cell>.yaml`) |
+| `FORGE_API_BASE` | the forge API endpoint, derived from the forge (github: `https://api.<GITHUB_HOST>`; gitlab: the GitLab API base) — the single home of the host, so no verb spells a literal |
 | `DESKD_ADDR` | the address `deskd` serves on (default `127.0.0.1:8787` — give a second cell its own port) |
 | `DESKD_INDEX` | the persistent `deskd` index path |
-| `DESKD_APP_PEM` | the `deskd` read App's private key, in the operator's config home |
-| `DESKD_APP_ID_VAR` | the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
-| `ORGS` | comma-separated orgs to mint one installation token each for |
+| `DESKD_APP_PEM` | **github** — the `deskd` read App's private key, in the operator's config home |
+| `DESKD_APP_ID_VAR` | **github** — the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
+| `ORGS` | **github** — comma-separated orgs to mint one installation token each for |
+| `GITLAB_GROUP` | **gitlab** — the GitLab group this cell reads |
+| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`) |
+| `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
+| `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
 | `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
-| `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=opus` |
+| `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=fable`; an Opus pin here (or via `DESK_MODEL_DEFAULT`) is refused for `the-desk` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |

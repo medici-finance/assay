@@ -99,6 +99,7 @@ var (
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
+	gGitRef1   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/ref/.+$`)
 	gTimeline  = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
 	gPRLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
 	gPRLabel1  = regexp.MustCompile(`/issues/[0-9]+/labels/[^/]+$`)
@@ -238,6 +239,10 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.issue)
 	case r.Method == http.MethodDelete && gGitRef.MatchString(path):
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && gGitRef1.MatchString(path):
+		// Single-reference read (RefExists). Present → 200 with the ref object; an absent ref is
+		// driven via forceStatus (404), handled at the top of this handler.
+		enc(map[string]any{"ref": "refs/heads/dispatch/item--01", "object": map[string]any{"sha": "abc123"}})
 	case r.Method == http.MethodGet && gRepo.MatchString(path):
 		enc(s.repo)
 	default:
@@ -397,9 +402,18 @@ func TestForgeGithubGolden(t *testing.T) {
 			setup: func(s *goldenServer) {
 				s.status = map[string]any{"state": "success", "total_count": 1,
 					"statuses": []map[string]any{{"state": "success", "context": "ci/legacy", "created_at": "2026-08-24T00:00:00Z"}}}
-				s.checks = map[string]any{"total_count": 1,
-					"check_runs": []map[string]any{{"name": "go-test", "status": "completed", "conclusion": "success",
-						"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"}}}
+				// Two runs, and the second carries NO id. The mapping of the forge's numeric
+				// check-run id to the interface's string ID is what deskflip's check-only-CR
+				// exemption matches a reviewer's citation against, and the id-less run pins
+				// the fail-closed half: an absent id maps to "", never to "0", so a body
+				// citing `0` can never match a run the forge never identified.
+				s.checks = map[string]any{"total_count": 2,
+					"check_runs": []map[string]any{
+						{"id": 41234567890, "name": "go-test", "status": "completed", "conclusion": "success",
+							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"},
+						{"name": "lint", "status": "completed", "conclusion": "success",
+							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:04:00Z"},
+					}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ChecksAtHead(forgeTestRepo, "abc123") },
 		},
@@ -599,6 +613,31 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 		},
 		{
+			// RefExists is the single-reference read (SINGULAR git/ref, distinct from the plural
+			// git/refs DeleteRef targets). This is the logic that was deskpost's hand-rolled
+			// refExists, moved onto the seam. A present ref reads (true, nil); the golden pins the
+			// backend builds the one path from the caller's REF.
+			name:  "ref_exists_present",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return f.RefExists(forgeTestRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// A 404 is the ANSWER "absent" — (false, nil), not a read failure. Only this positive
+			// absent ages a dispatch stamp out; every other non-2xx stays could-not-check.
+			name:  "ref_exists_absent",
+			setup: func(s *goldenServer) { s.forceStatus["/git/ref/heads/dispatch/item--01"] = http.StatusNotFound },
+			run:   func(f *GitHubForge) (any, error) { return f.RefExists(forgeTestRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// The same namespace-escape refusal DeleteRef carries: a traversing ref is refused
+			// BEFORE a request exists. The golden's value is the empty request list.
+			name:  "ref_exists_refuses_namespace_escape",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RefExists(forgeTestRepo, "heads/../../branches/main/protection")
+			},
+		},
+		{
 			// The branch→change lookup (deskpr's existing-PR check). The head filter is
 			// owner:branch and the state is open; the single-match maps to a PullRequest.
 			name: "open_change_for_branch",
@@ -606,15 +645,15 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.pullsList = []map[string]any{
 					{"number": 21, "state": "open", "draft": true, "node_id": "PR_21",
 						"html_url": "https://example/pull/21",
-						"head": map[string]any{"sha": "abc123", "ref": "feat/x"},
-						"base": map[string]any{"ref": "main"}},
+						"head":     map[string]any{"sha": "abc123", "ref": "feat/x"},
+						"base":     map[string]any{"ref": "main"}},
 				}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/x") },
 		},
 		{
 			// No open change on the branch: (nil, nil) — the result is empty, no error.
-			name: "open_change_for_branch_none",
+			name:  "open_change_for_branch_none",
 			setup: func(s *goldenServer) { s.pullsList = []map[string]any{} },
 			run:   func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/gone") },
 		},
@@ -645,7 +684,7 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.searchIssues = map[string]any{"items": []map[string]any{
 					{"number": 5, "title": "flip races on relabel", "state": "open",
 						"html_url": "https://example/issues/5",
-						"labels": []map[string]any{{"name": "bug"}}},
+						"labels":   []map[string]any{{"name": "bug"}}},
 				}}
 			},
 			run: func(f *GitHubForge) (any, error) {

@@ -1264,6 +1264,76 @@ func TestPGPFingerprintExemption(t *testing.T) {
 	}
 }
 
+// TestQuantifierGluedPathExemption pins Rule 4, the leading-'+' arm, in BOTH directions.
+//
+// The false positive it clears: '+' is in the base64 alphabet and therefore in
+// reBase64ish's character class, so a regex quantifier written immediately in front of a
+// path is read as the FIRST CHARACTER of that path's run. The Verify-row idiom
+// `grep -cE -e '^FRESH +<path>'` — where ` +` means "one or more spaces" — is exactly that
+// shape. The path on its own is 31 characters, one under the run threshold, and never
+// reached the scan at all; with the quantifier glued on it is 32, and isPathLike refuses
+// any run containing '+' outright, so the row refused.
+//
+// The cost was total rather than cosmetic: deskevidence scans the WHOLE merged brief before
+// appending its Evidence row, so a brief carrying such a row could never receive an Evidence
+// append through the sanctioned tool, at any time, by anyone (#879).
+//
+// The bound is that the exemption is earned by the REMAINDER, never by the '+': the run
+// minus one leading '+' must itself satisfy isPathLike. A '+' contributes no payload, so
+// this cannot admit content the path rule would not already admit without it.
+func TestQuantifierGluedPathExemption(t *testing.T) {
+	// Split for the same reason TestPGPFingerprintExemption splits its fingerprints: the
+	// scanner in force while THIS PR is open scans the branch diff, and pre-fix it refuses
+	// the contiguous run on an added line.
+	path := "plugins/assay/" + "references/claude-code.md"
+
+	// PASS: a '+' that is syntax — a regex quantifier, a unified-diff add marker — in front
+	// of a path that is itself already exempt under Rule 1.
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"verify-row grep quantifier",
+			"| 3 | `grep -cE -e '^FRESH +" + path + "' /tmp/r3.out` | `2` |\n"},
+		{"quantifier inside a force-aged control row",
+			"| 3a | `grep -cE -e '^STALE +" + path + "' /tmp/r3a.out` | `2` |\n"},
+		{"unified-diff add marker glued to a path",
+			"@@ -1,2 +1,3 @@\n+" + path + "\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("a %s was refused as withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	// REFUSE: the '+' is not itself the exemption and cannot launder anything.
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// A bare credential-length blob behind a '+' has no '/' at all, so the remainder
+		// fails Rule 1 on its first gate.
+		{"leading + on a bare secret", "note: +" + scanSecret40 + "\n"},
+		// The #410 slash-layout draws: one lucky word-shaped segment rescuing an opaque
+		// run. isPathLike already refuses these, and the '+' does not change that.
+		{"leading + on a slash-layout draw",
+			"note: +" + "Xq7bPmT2kVn9d/Rambler/" + "Zk4hQw8sLpXt3vNb2G" + "\n"},
+		// Exactly ONE '+' is stripped. A second one is left in the remainder, where
+		// isPathLike's own '+'/'=' gate refuses it — so the arm cannot be walked forward
+		// one character at a time into a general base64 exemption.
+		{"two leading + on a real path", "note: ++" + path + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 4 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
 // TestLongIdentifiersAndOneLetterWords pins the two moves that unblocked verify-desk's
 // Evidence writes:
 //

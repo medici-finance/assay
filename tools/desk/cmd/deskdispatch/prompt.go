@@ -144,6 +144,30 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 // place the assignment differs by class turns on this.
 func reviewKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "review") }
 
+// worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create
+// step, SELECTED BY KIT (#851). The two lanes fail for different reasons and the wrong hint
+// misleads:
+//
+//   - The BRIEF lane (worker/verifier) fails most often because the brief's own `feat/<id>`
+//     branch already exists — the brief is already delivered or in progress, so the fix is
+//     to look for a merged/open PR, not to repair a tree.
+//   - The REVIEW lane has no brief and no `feat/<id>` branch, so that hint points a reviewer
+//     at a PR that explains nothing. A review kit checks the PR head out as a DETACHED HEAD,
+//     so the commonest cause here is the EARLIER reviewer worktree for this PR still present
+//     on the lane key; it must be reclaimed (`deskwt remove <path>`, which now allows a
+//     detached HEAD whose commit is proven on the remote — #851) before a re-dispatch can
+//     create its own worktree.
+func worktreeCreateHint(kit, branch string) string {
+	if reviewKit(kit) {
+		return "For a review re-dispatch this is most often the EARLIER reviewer worktree for this PR " +
+			"still present on the same lane key — a review kit checks the PR head out as a detached HEAD, " +
+			"so reclaim that worktree (`deskwt remove <path>`) before re-dispatching, not a transient tree fault."
+	}
+	return "For a fresh dispatch this is most often the brief's branch " + branch + " already existing " +
+		"— i.e. the brief is already delivered or in progress (look for a merged or open PR before " +
+		"re-dispatching), not a transient tree fault."
+}
+
 // writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
 // repo, self-register the instant it opens, and release the dispatch claim once the branch is
 // pushed so branch-as-claim takes over. This is the scaffold an agent that PRODUCES a change

@@ -184,6 +184,14 @@ func cmdCreate(args []string) (err error) {
 	}
 	ac.repo, ac.head = facts.repo, facts.head
 
+	// PUSH-transport custody gate (#861). An SSH push from a bot session goes out under
+	// whatever key this machine's agent holds — a human's — so the forge records the human
+	// as the branch creator and the App's permission envelope is bypassed while every
+	// commit still reads as the App's. Refuse before the mint and before any network call.
+	if terr := pushTransportGate(facts.dir, "create"); terr != nil {
+		return terr
+	}
+
 	// seatbelt: scan title, branch, and the diff-vs-default before any push.
 	if scanErr := scanWrite(facts, *title, "create", *scanOverride); scanErr != nil {
 		return scanErr
@@ -394,6 +402,11 @@ func cmdUpdate(args []string) (err error) {
 		return perr
 	}
 	ac.repo, ac.head = facts.repo, facts.head
+
+	// PUSH-transport custody gate (#861) — same reason as create: this verb pushes.
+	if terr := pushTransportGate(facts.dir, "update"); terr != nil {
+		return terr
+	}
 
 	if scanErr := scanWrite(facts, "", "update", *scanOverride); scanErr != nil {
 		return scanErr

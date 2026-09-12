@@ -144,6 +144,71 @@ func TrustedHumanAuthor(login string) bool {
 	return false
 }
 
+// VerifyGateLabel is the label the verify-gate sign-off card carries — the issue the
+// verify-gate-open workflow files for a `gate: human` brief that has become eligible.
+// It is the selector the queue views read (cmd/deskboard) and the scope of the
+// carve-out below.
+const VerifyGateLabel = "verify-gate"
+
+// forgeActionsBot is the rendered login of GitHub's OWN Actions identity — the author
+// of everything a workflow files under the built-in GITHUB_TOKEN. It is deliberately
+// NOT in the roster and never becomes trusted by TrustedAuthor: an Actions workflow is
+// not a desk identity, and the roster is the only thing that confers general trust.
+// GitHub reserves this login, so — unlike a bare App slug — it cannot be registered by
+// a user; that is why the match below is on the login alone. Only the exact `[bot]`
+// rendering GitHub itself produces counts, for the same username-squatting reason
+// expectedID rejects bare slugs.
+const forgeActionsBot = "github-actions[bot]"
+
+// VerifyGateCardCommentAdmitted is the ONE carve-out in the trust gate, and it is
+// deliberately shaped so that reading its signature tells you its whole extent: it
+// answers for the `comment` verb, on an issue, from its author and its labels. It
+// grants nothing to a verdict, a flip, or any other verb, because no other verb can
+// call it — there is no widening to make, only a second call site to notice in review.
+//
+// WHAT IT ADMITS. A `comment` on an issue authored by the forge's own Actions
+// identity, when that issue carries VerifyGateLabel.
+//
+// WHY. Every verify-gate sign-off card is filed by the repo's own verify-gate-open
+// workflow under GITHUB_TOKEN, so the card's author is `github-actions[bot]` — which
+// the trust gate refuses, correctly, for everything else. The consequence was that a
+// desk could not annotate a card at all: not to mark one an inert duplicate, not to
+// warn that closing it will not flip the brief's row. The human closing the card saw
+// nothing, because nothing could write anything.
+//
+// WHY IT IS SAFE, and why the LABEL and not the author is the scope. The trust gate
+// exists to keep unvetted third-party TEXT out of a desk's queue and out of its
+// writes. A sign-off card's body is not third-party text: statusgen GENERATES it from
+// the repo's own tree on a push to main, and the workflow files it verbatim. But an
+// Actions workflow can file any issue at all — a failure report, a scheduled digest,
+// something a future workflow adds — and those bodies are not generated from the tree
+// and may quote anything. The label is what the card uses to say which one it is, and
+// filing a card with it requires write access to the repo's workflows. So the author
+// alone is not enough and the label alone is not enough: an external user who labels
+// their own issue `verify-gate` gains nothing here, because the author check fails.
+//
+// Fail closed in the same direction as every sibling: an unconfigured roster admits
+// nothing. The carve-out is not roster-derived, but a deployment that has configured
+// nothing has not asked for it either, and a trust read that widens itself on missing
+// configuration is the one shape this file does not have anywhere else.
+//
+// On a non-GitHub forge this is inert: nothing renders a login as
+// `github-actions[bot]`, so it answers false and the general gate decides, unchanged.
+func VerifyGateCardCommentAdmitted(authorLogin string, labels []string) bool {
+	if !EffectiveConfig().Configured() {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(authorLogin), forgeActionsBot) {
+		return false
+	}
+	for _, l := range labels {
+		if strings.EqualFold(strings.TrimSpace(l), VerifyGateLabel) {
+			return true
+		}
+	}
+	return false
+}
+
 // expectedID resolves a trusted login (any accepted rendered form) to its pinned
 // numeric id. ok is false for logins outside the trusted set.
 func expectedID(login string) (id int64, ok bool) {
@@ -154,6 +219,14 @@ func expectedID(login string) (id int64, ok bool) {
 	l := strings.ToLower(login)
 	if id, ok := c.Humans[l]; ok {
 		return id, true
+	}
+	// A GitLab service account renders as its BARE username (BotIdentity.AcceptedLogins —
+	// there is no [bot]/app/ decoration on that forge to key the flat Bots view on), so its
+	// pinned USER id is read from the forge-qualified identity table. Only a GitLab entry
+	// resolves here: a GitHub App's bare slug is in the same table and stays untrusted (the
+	// username-squatting fail-close below), because its accepted renderings are decorated.
+	if b, ok := c.BotIdents[l]; ok && b.Forge == ForgeGitLab {
+		return b.ID, true
 	}
 	slug := l
 	switch {

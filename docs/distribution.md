@@ -35,6 +35,16 @@ the paired release tag, and every per-platform `sha256` refreshed from that rele
 (`tools/pairedversions`) asserts all three and fails closed; it is intended as a required check, so
 a bump that skips the re-pin is red before it lands.
 
+**The plugin version is the umbrella tag.** Since #789 the release workflow stamps
+`plugins/assay/.claude-plugin/plugin.json` — and with it the marketplace entry, `paired-versions.yaml`'s
+`plugin:`, and the generated Codex / Cursor / hook artifacts — to `X.Y.Z` in the tree that tag `vX.Y.Z` is
+cut from (`plugins/assay/scripts/stamp-plugin-version.sh`), and its gate refuses a tag whose
+`plugins/assay/**` changed since the previous tag without that version moving: Claude Code keys its
+plugin cache on the string, so an unchanged version is an update adopters never receive. Between
+releases the default branch carries the next patch version, so a dispatch of exactly that version finds
+the tree already stamped. The pairing above is unchanged by the stamp: `plugin:` moves with the
+manifest, the paired `tag`/`sha256` lines move only with a re-pin.
+
 ## The `.assay-versions` pin file
 
 The pin file lives at the consumer repo root and is the single record of which release a consumer

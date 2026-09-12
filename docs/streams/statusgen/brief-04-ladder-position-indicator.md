@@ -73,8 +73,8 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/ -run Ladder -v` | exit 0; covers step mapping, missing-axis range render, constraint naming |
-| 2 | `go test ./statusgen/ && go vet ./statusgen/` | exit 0 |
+| 1 | `cd statusgen && GOWORK=off go test . -run Ladder -v` | exit 0; covers step mapping, missing-axis range render, constraint naming |
+| 2 | `cd statusgen && GOWORK=off go test . && go vet .` | exit 0 |
 | 3 | `statusgen --root . --ladder` | exit 0; output contains `step` and a named constraint axis or `unmeasured` |
 | 4 | `statusgen --root . --lint; echo $?` | 0 |
 

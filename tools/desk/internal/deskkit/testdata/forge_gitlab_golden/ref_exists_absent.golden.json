@@ -1,0 +1,9 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/branches/dispatch%2Fitem--01"
+    }
+  ],
+  "result": false
+}

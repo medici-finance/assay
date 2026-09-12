@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,11 @@ type GitLabForge struct {
 	// cl caches the client built from Token/BaseURL. Lazily constructed by client() so a
 	// bare struct literal (the golden test's construction shape) still works.
 	cl *gitlab.Client
+	// emailLogin memoises GetCommit's email→username resolution (gitlabLoginForEmail) for the
+	// life of this backend value, so a board sweep that reads many commits by the same few
+	// authors pays the users lookup once per address. "" is cached too: an address that
+	// resolved to no account stays UNKNOWN for the sweep rather than being re-asked.
+	emailLogin map[string]string
 }
 
 var _ Forge = (*GitLabForge)(nil)
@@ -781,29 +787,240 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 		repo.Slug()), nil)
 }
 
-// PRTrustEvents is a could-not-check REFUSAL on GitLab, naming the gap. The trust gate reads
-// GitHub GraphQL `lastEditedAt` CONTENT-edit tracking on the body and every comment/review,
-// plus the numeric `databaseId` with GitHub's Bot/User actor discrimination — the recycled-
-// login defense. GitLab's note model exposes edit state and actor identity differently (system
-// notes intermixed, a distinct id space, no 1:1 content-edit-time on every surface), so the
-// blessing verdict cannot be reproduced 1:1; it is deferred to the forge-gitlab trust-events
-// brief rather than approximated, which on a trust gate is the fail-open direction.
+// --- Trust events (the GitLab trust-events brief) ---
+
+// gitlabTrustQuery is the ONE bounded GraphQL read behind PRTrustEvents / IssueTrustEvents —
+// the GitLab twin of PRTrustQuery / IssueTrustQuery (trustfetch.go). The `%s` is the noteable
+// field (`mergeRequest` | `issue`); everything else is identical for the two, because GitLab
+// has ONE content surface (notes) where GitHub has three (comments, reviews, review comments).
+// It reproduces the three facts deskkit.Blessed reduces, to GitHub parity:
+//
+//   - CONTENT EVENTS — every non-system note (`filter: ONLY_COMMENTS`) with its author's
+//     global id (`gid://gitlab/User/<n>`, parsed to the numeric <n> a recycled username
+//     cannot fake), username, bot flag, creation time and CONTENT-edit time. GitLab's Note
+//     type carries `lastEditedAt` exactly as GitHub's comment types do — it moves on a body
+//     edit and on nothing else — so the per-event edit signal maps 1:1.
+//   - THE ITEM BODY's content-edit time. Neither MergeRequest nor Issue carries a
+//     `lastEditedAt` in GitLab's schema, and their `updatedAt` moves on labels, assignees
+//     and every other unrelated event — the spurious-re-quarantine hole deskkit.Blessed's
+//     note names — so `updatedAt` is NEVER read. GitLab records every description edit as
+//     a SYSTEM note whose body is exactly `changed the description`
+//     (SystemNotes::IssuablesService#change_description; Free tier, both noteables), so the
+//     body-edit time is the creation time of the LATEST such note among the activity notes
+//     (`filter: ONLY_ACTIVITY`, newest 100). A label, assignee or approval event is a
+//     different system note and does not move it — the behaviour lastEditedAt gives.
+//   - COMPLETENESS — first:100 on the comments, last:100 on the activity, and NO cursor
+//     walking (the GitHub read's own bound). An overflowed comment page is incomplete. An
+//     overflowed activity page is incomplete ONLY when no description-change note was seen
+//     in the newest 100: when one was, the LATEST edit is in hand by construction (an older
+//     edit cannot be the latest), and only the latest edit is what the gate compares.
+//     Incomplete → the caller quarantines (fail closed), never admits.
+const gitlabTrustQuery = `query($path:ID!,$iid:String!){project(fullPath:$path){%s(iid:$iid){comments:notes(filter:ONLY_COMMENTS,first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{id username bot}}} activity:notes(filter:ONLY_ACTIVITY,last:100){pageInfo{hasPreviousPage} nodes{body createdAt}}}}}`
+
+// gitlabDescriptionChangeNoteBody is the system-note body GitLab writes on a description
+// edit. Matched exactly (trimmed, case-folded) like gitlabIsApprovalSystemNote: a comment
+// that merely quotes the phrase is a non-system note and never reaches this check, and a
+// system note with any other body (a label, a title change, an approval) is not an edit.
+const gitlabDescriptionChangeNoteBody = "changed the description"
+
+func gitlabIsDescriptionChangeNote(body string) bool {
+	return strings.TrimSpace(strings.ToLower(body)) == gitlabDescriptionChangeNoteBody
+}
+
+// gitlabActorTypeUser / gitlabActorTypeBot are the Typename values a GitLab actor carries
+// into the shared reader. They are deliberately NOT GitHub's "Bot": renderedLogin decorates
+// a "Bot" actor as `<login>[bot]`, which is the GitHub-only rendering — a GitLab service
+// account is recognised by its BARE username (BotIdentity.AcceptedLogins: "a GitLab username
+// dressed in GitHub bot clothing is not accepted"). The bot flag is still read from the
+// same query (never defaulted) and carried here so the discrimination is in the payload; it
+// does not change the rendering, because on GitLab there is only one.
+const (
+	gitlabActorTypeUser = "GitLabUser"
+	gitlabActorTypeBot  = "GitLabBot"
+)
+
+// glGQL* are the wire shapes of gitlabTrustQuery's response (only what the gate consumes).
+type glGQLPageInfo struct {
+	HasNextPage     bool `json:"hasNextPage"`
+	HasPreviousPage bool `json:"hasPreviousPage"`
+}
+
+type glGQLActor struct {
+	ID       string `json:"id"` // global id: gid://gitlab/User/<n>
+	Username string `json:"username"`
+	Bot      bool   `json:"bot"`
+}
+
+type glGQLNote struct {
+	Body         string      `json:"body"`
+	CreatedAt    string      `json:"createdAt"`
+	LastEditedAt string      `json:"lastEditedAt"`
+	Author       *glGQLActor `json:"author"`
+}
+
+type glGQLNoteConn struct {
+	PageInfo glGQLPageInfo `json:"pageInfo"`
+	Nodes    []glGQLNote   `json:"nodes"`
+}
+
+type glGQLNoteable struct {
+	Comments glGQLNoteConn `json:"comments"`
+	Activity glGQLNoteConn `json:"activity"`
+}
+
+type glGQLTrustEnvelope struct {
+	Data struct {
+		Project *struct {
+			MergeRequest *glGQLNoteable `json:"mergeRequest"`
+			Issue        *glGQLNoteable `json:"issue"`
+		} `json:"project"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// gitlabGlobalIDRe matches GitLab's GraphQL global id for a user. A bare number is accepted
+// too (some fixtures and older schemas render the numeric id directly); anything else is an
+// error, never a defaulted 0 — an id-less human event fails closed in trustedContentAuthor,
+// but silently manufacturing that state from a schema surprise would hide the surprise.
+var gitlabGlobalIDRe = regexp.MustCompile(`^gid://gitlab/[A-Za-z]+/([0-9]+)$`)
+
+func gitlabGlobalUserID(gid string) (int64, error) {
+	gid = strings.TrimSpace(gid)
+	if m := gitlabGlobalIDRe.FindStringSubmatch(gid); m != nil {
+		gid = m[1]
+	}
+	id, err := strconv.ParseInt(gid, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("GitLab actor id %q is not a global user id", gid)
+	}
+	return id, nil
+}
+
+// PRTrustEvents reads a merge request's trust-gate content events (see gitlabTrustQuery).
 func (g *GitLabForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
-	return nil, g.trustEventsGap(repo, number, "PRTrustEvents")
+	return g.trustEvents(repo, number, "mergeRequest", "PRTrustEvents")
 }
 
-// IssueTrustEvents is PRTrustEvents' issue twin — the same could-not-check gap.
+// IssueTrustEvents is PRTrustEvents' issue twin: the same query over the issue noteable.
 func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
-	return nil, g.trustEventsGap(repo, number, "IssueTrustEvents")
+	return g.trustEvents(repo, number, "issue", "IssueTrustEvents")
 }
 
-func (g *GitLabForge) trustEventsGap(repo ForgeRepo, number int, op string) error {
-	return Unverifiable(fmt.Sprintf(
-		"could-not-check: the GitLab backend does not serve %s for %s#%d — the trust gate reads GitHub "+
-			"GraphQL lastEditedAt content-edit tracking and the numeric databaseId with Bot/User actor "+
-			"discrimination, which GitLab's note/system-note model and id space do not map 1:1. It is deferred "+
-			"to the forge-gitlab trust-events brief, never approximated (a guessed blessing is fail-open).",
-		op, repo.Slug(), number), nil)
+// trustEvents runs gitlabTrustQuery through the library's GraphQL transport (the fixed
+// `/api/graphql` endpoint — no `glab` shell, no caller-supplied endpoint; the GitHub backend
+// posts to its `/graphql` the same way) and reduces the response through the SAME reader
+// (collectEvents) the GitHub backend and the CLI surfaces use, so no two consumers can draw
+// different blessings from equivalent content.
+//
+// Three-state: a transport / permission / tier failure, a GraphQL-level error, and a
+// missing noteable (wrong number, or a project the token cannot see) are each could-not-check
+// naming what failed; a change with no notes is a REAL, EMPTY payload (zero events,
+// Complete=true, nil error); a read that overflowed a page is a real payload with
+// Complete=false, which the caller quarantines.
+func (g *GitLabForge) trustEvents(repo ForgeRepo, number int, noteable, op string) (*TrustPayload, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	var env glGQLTrustEnvelope
+	_, qerr := cl.GraphQL.Do(gitlab.GraphQLQuery{
+		Query:     fmt.Sprintf(gitlabTrustQuery, noteable),
+		Variables: map[string]any{"path": repo.Slug(), "iid": strconv.Itoa(number)},
+	}, &env)
+	if qerr != nil {
+		return nil, g.mapErr(http.MethodPost, gitlab.GraphQLAPIEndpoint, gitlabUnwrapGraphQLErr(qerr))
+	}
+	if len(env.Errors) > 0 {
+		msgs := make([]string, 0, len(env.Errors))
+		for _, e := range env.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: %s for %s#%d — the GitLab GraphQL trust query returned errors: %s",
+			op, repo.Slug(), number, strings.Join(msgs, "; ")), nil)
+	}
+	var item *glGQLNoteable
+	if env.Data.Project != nil {
+		if noteable == "issue" {
+			item = env.Data.Project.Issue
+		} else {
+			item = env.Data.Project.MergeRequest
+		}
+	}
+	if item == nil {
+		return nil, Unverifiable(
+			fmt.Sprintf("could-not-check: %s for %s#%d — the GitLab GraphQL trust query returned no %s (wrong number, or the token cannot see the project)",
+				op, repo.Slug(), number, noteable),
+			&ForgeAPIError{Status: http.StatusNotFound, Method: http.MethodPost, Path: gitlab.GraphQLAPIEndpoint})
+	}
+	gi, activityComplete, cerr := gitlabTrustItem(item)
+	if cerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), cerr)
+	}
+	// pr=false: GitLab's one notes surface is the `comments` connection; there are no review
+	// or review-thread connections to fold in (a GitLab approval carries no content, and a
+	// review body IS a note, already in the comments).
+	bodyEdited, events, complete, rerr := collectEvents(gi, false)
+	if rerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), rerr)
+	}
+	return &TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete && activityComplete}, nil
+}
+
+// gitlabTrustItem translates the GitLab wire shape into the reader's item shape and derives
+// the body-edit time from the activity notes (see gitlabTrustQuery). activityComplete is
+// false only when the activity page overflowed AND no description-change note was seen.
+func gitlabTrustItem(item *glGQLNoteable) (gi *gqlItem, activityComplete bool, err error) {
+	gi = &gqlItem{}
+	gi.Comments.PageInfo.HasNextPage = item.Comments.PageInfo.HasNextPage
+	for i := range item.Comments.Nodes {
+		n := &item.Comments.Nodes[i]
+		c := gqlComment{CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt}
+		if n.Author != nil {
+			id, perr := gitlabGlobalUserID(n.Author.ID)
+			if perr != nil {
+				return nil, false, perr
+			}
+			typename := gitlabActorTypeUser
+			if n.Author.Bot {
+				typename = gitlabActorTypeBot
+			}
+			c.Author = &gqlActor{Login: n.Author.Username, Typename: typename, DatabaseID: id}
+		}
+		// A nil author (a deleted account) stays nil: renderedLogin renders it "", untrusted —
+		// the same ghost handling as GitHub.
+		gi.Comments.Nodes = append(gi.Comments.Nodes, c)
+	}
+	var latest time.Time
+	latestRaw := ""
+	for i := range item.Activity.Nodes {
+		n := &item.Activity.Nodes[i]
+		if !gitlabIsDescriptionChangeNote(n.Body) {
+			continue
+		}
+		t, perr := parseTrustTime(n.CreatedAt)
+		if perr != nil {
+			return nil, false, fmt.Errorf("bad description-change createdAt: %w", perr)
+		}
+		if t.After(latest) {
+			latest, latestRaw = t, n.CreatedAt
+		}
+	}
+	gi.LastEditedAt = latestRaw
+	return gi, latestRaw != "" || !item.Activity.PageInfo.HasPreviousPage, nil
+}
+
+// gitlabUnwrapGraphQLErr surfaces the HTTP-level *gitlab.ErrorResponse a GraphQL transport
+// failure carries: the library wraps it in a GraphQLResponseError whose Err field does not
+// unwrap, so mapErr's status classification (401 re-mint / 403 tier / 404 visibility) would
+// otherwise read every GraphQL failure as statusless.
+func gitlabUnwrapGraphQLErr(err error) error {
+	var gre *gitlab.GraphQLResponseError
+	if errors.As(err, &gre) && gre.Err != nil {
+		return gre.Err
+	}
+	return err
 }
 
 // ReviewsAtHead returns the verdicts on a merge request, WITH the head each is provably
@@ -829,7 +1046,13 @@ func (g *GitLabForge) trustEventsGap(repo ForgeRepo, number int, op string) erro
 //     sha when they were created at or after the current diff VERSION arrived — the
 //     versions endpoint records exactly when each head landed, so this is a comparison of
 //     recorded timestamps, not an inference. Older notes are reported with an empty
-//     CommitID.
+//     CommitID. A note's STATE is its correctness verdict when its body carries one
+//     (`Verdict: approve|request-changes` → APPROVED / CHANGES_REQUESTED, via
+//     CorrectnessNoteState), else COMMENTED. This is the load-bearing half of the #798 fix:
+//     `deskpost review` writes a correctness verdict ONLY as this note (approve also POSTs
+//     an approval; request-changes has no native GitLab object at all), so unless the read
+//     reduces the note to a State the reviewer-approved gate can see, the write and the read
+//     disagree on the object and a real verdict is invisible.
 //
 // System notes are excluded from the returned verdicts (they are GitLab's own timeline
 // entries, not a reviewer's) but ARE read: the "approved this merge request" system note is
@@ -949,10 +1172,20 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		if n == nil || n.System {
 			continue
 		}
+		// A correctness verdict has no native GitLab review object — PostReview writes it as
+		// this note's body (a `Verdict: approve|request-changes` line). Reduce that line to
+		// the review STATE a GitHub review of the same verdict reports, so the note is the
+		// ONE object both the write and the read agree on (#798). A note that carries no
+		// correctness verdict line stays COMMENTED — including a `Security-Review:` note,
+		// whose lane is read from the body markers, not from this State.
+		state := "COMMENTED"
+		if s := CorrectnessNoteState(n.Body); s != "" {
+			state = s
+		}
 		r := Review{
 			ID:          n.ID,
 			Author:      gitlabAccount(n.Author.ID, n.Author.Username),
-			State:       "COMMENTED",
+			State:       state,
 			Body:        n.Body,
 			SubmittedAt: gitlabTime(n.CreatedAt),
 		}
@@ -1133,6 +1366,11 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			}
 			status, conclusion := gitlabJobStatus(j.Status)
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
+				// The JOB id is GitLab's per-execution identifier, the same kind of fact
+				// GitHub's check-run id carries: a retried job gets a new one, so a
+				// citation of "the run that turned green" cannot be satisfied by an
+				// earlier execution of the same job name.
+				ID:   checkRunID(j.ID),
 				Name: j.Name, Status: status, Conclusion: conclusion,
 				// GitLab's finished_at is the job's true end — the same fact GitHub's
 				// completed_at carries — so the latest-run-per-name reduction orders both
@@ -1187,6 +1425,88 @@ func (g *GitLabForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 		return []string{"pipeline"}, nil
 	}
 	return nil, nil
+}
+
+// gitlabStatusCheckPassed / gitlabStatusCheckFailed are the two `status` values GitLab's
+// status-check-response endpoint accepts for an external status check.
+const (
+	gitlabStatusCheckPassed = "passed"
+	gitlabStatusCheckFailed = "failed"
+)
+
+// postExternalStatusCheckVerdict posts the desk's verdict-lane result to a GitLab MR as an
+// EXTERNAL STATUS CHECK response against the MR's head SHA — the Ultimate-tier verdict-lane
+// surface (spec §6; the forge-gitlab ultimate-refinements brief). It is the write half of the mapping ChecksAtHead's
+// header documents as deliberately deferred: a lane verdict becomes a required MR check with
+// ZERO repo write access, which is structurally stronger than a reviewer that can also push.
+//
+// TIER DETECTION IS THE SINGLE POINT OF FAILURE, by design (the brief's SPOF note). The
+// external-status-checks endpoints are Ultimate-only, so the resolve step (LIST) is what
+// distinguishes tiers: on Premium or Free the instance answers 403 there, and mapErr turns
+// that into a could-not-check refusal — NEVER a silent downgrade to a note, and never a clean
+// return that would mark a merge gate satisfied on a tier that has no such gate. This is the
+// three-state fallback: checked-clean (Ultimate posts), checked-failed (a real failing
+// verdict), could-not-check (the 403, or a check the project has not registered).
+//
+// It is UNEXPORTED on purpose. The exported Forge surface is frozen and enforced equal across
+// both backends (forge_surface_test.go, the forge-gitlab surface-freeze brief); an external status check is a GitLab
+// concept with no GitHub twin on that interface, so exporting a GitLab-only verdict method
+// would re-open the surface the freeze closes. The Ultimate lane consumes it from inside
+// deskkit; a cross-forge verdict surface, if one is ever wanted, is an interface change with a
+// GitHub implementation alongside — not this method exported.
+func (g *GitLabForge) postExternalStatusCheckVerdict(repo ForgeRepo, number int, checkName, headSHA string, passed bool) error {
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(checkName) == "" {
+		return Refused("cannot post an external-status-check verdict without the name of the check to respond to")
+	}
+	if strings.TrimSpace(headSHA) == "" {
+		return Refused("cannot post an external-status-check verdict without the MR head SHA it pins to")
+	}
+	proj := g.projectPath(repo)
+
+	// 1. Resolve the registered check id by name. This LIST is the Ultimate-only endpoint that
+	//    the tier gate trips on: a Premium/Free instance returns 403 here, which mapErr surfaces
+	//    as could-not-check.
+	listPath := fmt.Sprintf("/projects/%s/external_status_checks", proj)
+	checks, _, lerr := cl.ExternalStatusChecks.ListProjectStatusChecks(repo.Slug(),
+		&gitlab.ListOptions{PerPage: gitlabPerPage})
+	if lerr != nil {
+		return g.mapErr(http.MethodGet, listPath, lerr)
+	}
+	var id int64
+	for _, c := range checks {
+		if c != nil && c.Name == checkName {
+			id = c.ID
+			break
+		}
+	}
+	if id == 0 {
+		// The named check is not registered on this project. That is could-not-check, not a
+		// pass: the lane has no surface to post to, and returning success would report a merge
+		// gate satisfied that does not exist. Register it first (create-fleet-gitlab.sh
+		// --tier ultimate).
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: no external status check named %q is registered on %s — register it "+
+				"(create-fleet-gitlab.sh --tier ultimate) before the verdict lane can post to it",
+			StripControl(checkName), repo.Slug()), nil)
+	}
+
+	status := gitlabStatusCheckFailed
+	if passed {
+		status = gitlabStatusCheckPassed
+	}
+	respPath := fmt.Sprintf("/projects/%s/merge_requests/%d/status_check_responses", proj, number)
+	_, perr := cl.ExternalStatusChecks.SetProjectMergeRequestExternalStatusCheckStatus(
+		repo.Slug(), int64(number),
+		&gitlab.SetProjectMergeRequestExternalStatusCheckStatusOptions{
+			SHA:                   gitlab.Ptr(headSHA),
+			ExternalStatusCheckID: gitlab.Ptr(id),
+			Status:                gitlab.Ptr(status),
+		})
+	return g.mapErr(http.MethodPost, respPath, perr)
 }
 
 // gitlabBuildState maps a GitLab build state to GitHub's combined-status vocabulary
@@ -1395,11 +1715,13 @@ func (g *GitLabForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit
 }
 
 // GetCommit reads one commit's committed date (GitLab `GET /projects/:id/repository/commits/
-// :sha`). CommittedDate maps 1:1; the account-login fields are a per-field could-not-check on
-// GitLab (left EMPTY) because a GitLab commit payload carries the raw git author/committer
-// name+email but does NOT resolve them to an instance account — the same honest posture
-// ReviewsAtHead takes on a CommitID it cannot pin. A caller reads the empty login as UNKNOWN
-// attribution, never as "not the author".
+// :sha`) and resolves its attributed accounts. CommittedDate maps 1:1. A GitLab commit
+// payload carries the raw git author/committer name+email and does NOT resolve them to an
+// instance account, so the logins are resolved HERE (the GitLab trust-events brief) by looking each address
+// up to the account whose email is exactly that address (gitlabLoginForEmail — Free-tier
+// users read). A field is filled only when an account resolves and left EMPTY otherwise —
+// per-field could-not-check, which a caller reads as UNKNOWN attribution, never as "not the
+// author". A commit-read failure is could-not-check for the whole read.
 func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -1413,7 +1735,84 @@ func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	if cerr != nil {
 		return nil, g.mapErr(http.MethodGet, path, cerr)
 	}
-	return &RepoCommit{SHA: c.ID, CommittedDate: gitlabTime(c.CommittedDate)}, nil
+	return &RepoCommit{
+		SHA:            c.ID,
+		CommittedDate:  gitlabTime(c.CommittedDate),
+		AuthorLogin:    g.gitlabLoginForEmail(cl, c.AuthorEmail),
+		CommitterLogin: g.gitlabLoginForEmail(cl, c.CommitterEmail),
+	}, nil
+}
+
+// gitlabEmailCandidates bounds the users search behind gitlabLoginForEmail to one page. The
+// search is the instance's own fuzzy name/username/public-email match; the exact-address
+// check below is what turns a candidate into an attribution, so a page is plenty.
+const gitlabEmailCandidates = 20
+
+// gitlabLoginForEmail resolves a commit's git author/committer address to the USERNAME of the
+// instance account whose email is EXACTLY that address, memoised per backend value.
+//
+// The rules are fail-closed in every direction, because the login is the identity the stall
+// clock and the trust path read and a wrong resolution mis-attributes a commit:
+//
+//   - the users search (`GET /users?search=<addr>`, Free tier; for a non-admin token it
+//     matches PUBLIC email, name and username) yields CANDIDATES only. A candidate counts
+//     when its public or primary email equals the address case-insensitively — never on a
+//     fuzzy name/username hit. When the list shape carries no email field (the non-admin
+//     rendering) the detail read (`GET /users/:id`) supplies it.
+//   - no exact match, an address that resolves to no account (a service account's noreply
+//     address is not a public email), a lookup or detail-read failure, or MORE THAN ONE
+//     exact match all yield "" — UNKNOWN attribution. A failure is deliberately NOT
+//     propagated as an error: one unreadable users route must not blank the committed date
+//     the stall clock needs (the gitlabActorType posture), and "" already means
+//     could-not-check on this field by RepoCommit's contract.
+//   - a login is never constructed from the address (no local-part, no roster-derived
+//     shape — forgeidentity.go: the GitLab commit address is validated, never built).
+func (g *GitLabForge) gitlabLoginForEmail(cl *gitlab.Client, email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return ""
+	}
+	if login, seen := g.emailLogin[email]; seen {
+		return login
+	}
+	login := g.lookupLoginForEmail(cl, email)
+	if g.emailLogin == nil {
+		g.emailLogin = map[string]string{}
+	}
+	g.emailLogin[email] = login
+	return login
+}
+
+func (g *GitLabForge) lookupLoginForEmail(cl *gitlab.Client, email string) string {
+	users, _, err := cl.Users.ListUsers(&gitlab.ListUsersOptions{
+		ListOptions: gitlab.ListOptions{PerPage: gitlabEmailCandidates, Page: 1},
+		Search:      gitlab.Ptr(email),
+	})
+	if err != nil {
+		return ""
+	}
+	match := ""
+	for _, u := range users {
+		if u == nil {
+			continue
+		}
+		pub, prim := u.PublicEmail, u.Email
+		if pub == "" && prim == "" {
+			d, _, derr := cl.Users.GetUser(u.ID, gitlab.GetUsersOptions{})
+			if derr != nil || d == nil {
+				return "" // a candidate this read could not qualify leaves the whole answer UNKNOWN
+			}
+			pub, prim = d.PublicEmail, d.Email
+		}
+		if !strings.EqualFold(pub, email) && !strings.EqualFold(prim, email) {
+			continue
+		}
+		if match != "" && !strings.EqualFold(match, u.Username) {
+			return "" // two accounts claim one address: ambiguous, never a coin flip
+		}
+		match = u.Username
+	}
+	return match
 }
 
 // CompareRefs is a could-not-check REFUSAL on GitLab, naming the gap. GitLab's compare
@@ -1818,6 +2217,84 @@ func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	_, derr := cl.Branches.DeleteBranch(repo.Slug(), branch)
 	return g.mapErr(http.MethodDelete, path, derr)
 }
+
+// RefExists reports whether one git ref is present. It is DeleteRef's read twin, and it reaches
+// exactly as far: GitLab CE exposes no general ref API, so the Branches API
+// (`GET /projects/:id/repository/branches/:branch`, Tier: Free/Premium/Ultimate) is the only
+// ref-existence read there is, and it answers only for the `heads/<branch>` namespace. A ref
+// OUTSIDE refs/heads is a could-not-check REFUSAL naming the gap — never a guessed "absent",
+// because a backend that reported an unreadable namespace as absent would tell the
+// model-capability floor a HELD dispatch claim was released and age its stamp out on no
+// evidence. The dispatch claim the one caller reads lives at ClaimRefsPrefix
+// ("refs/heads/dispatch/<key>"), INSIDE that namespace, so the live read round-trips here on
+// the same Free-tier endpoint GitHub's single-reference read maps to.
+//
+// A 404 from the Branches API is the ANSWER "the branch/ref is absent" (false, nil) — that is
+// the read's whole point; every other non-2xx stays a could-not-check error, so a 403 from a
+// token that cannot see branches is never mistaken for a release.
+func (g *GitLabForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
+	clean, err := ValidateRefPath(ref)
+	if err != nil {
+		return false, err
+	}
+	branch, ok := strings.CutPrefix(clean, "heads/")
+	if !ok {
+		return false, Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab exposes no general ref-existence endpoint, so RefExists cannot serve %q — "+
+				"only the \"heads/<branch>\" namespace maps (the Branches API); a ref held outside refs/heads "+
+				"has no CE equivalent and is NOT reported absent. A dispatch claim belongs at %s<key> "+
+				"(deskkit.ClaimRefPath), which IS inside that namespace", ref, ClaimRefsPrefix), nil)
+	}
+	cl, cerr := g.client()
+	if cerr != nil {
+		return false, cerr
+	}
+	path := fmt.Sprintf("/projects/%s/repository/branches/%s", g.projectPath(repo), url.PathEscape(branch))
+	_, _, gerr := cl.Branches.GetBranch(repo.Slug(), branch)
+	if gerr != nil {
+		mapped := g.mapErr(http.MethodGet, path, gerr)
+		if IsForgeNotFound(mapped) {
+			return false, nil
+		}
+		return false, mapped
+	}
+	return true, nil
+}
+
+// GitLabRepoInfoFetcher adapts a *GitLabForge to the string-signature RepoInfoFetcher the
+// public-repo security gate (repovis.go's PublicRepoGate) consumes. The gate is written against
+// (owner, repo string) coordinates and the GitHub side hands it HTTPRepoInfoFetcher; the GitLab
+// backend already serves both reads the gate needs — RepoVisibility and IssueReactions — but
+// under the ForgeRepo-signature the Forge interface uses, so PublicRepoGate cannot take it
+// directly. This shim bridges the two signatures WITHOUT reimplementing either read: it
+// delegates to the existing, golden-pinned GitLab backend methods, so the gate runs on a
+// GitLab-resolved repo with the SAME visibility read (`GET /projects/:id` `.visibility`,
+// `internal` passing through unfolded) and the SAME award-emoji→reaction mapping
+// (`thumbsup`→`+1`, human/bot resolved from the users API, never defaulted) it is tested
+// against. It is a SEPARATE type rather than extra methods on GitLabForge precisely because the
+// backend's exported method set must equal the frozen Forge interface exactly (a Go type cannot
+// carry two RepoVisibility signatures anyway).
+//
+// The gate is a SECURITY control and this adapter does not weaken it: it adds no fall-open path
+// — a read error propagates unchanged, so the gate still fails closed on an unreadable
+// visibility or reactions surface.
+type GitLabRepoInfoFetcher struct {
+	Forge *GitLabForge
+}
+
+// RepoVisibility delegates to the GitLab backend's ForgeRepo-signature read.
+func (a GitLabRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error) {
+	return a.Forge.RepoVisibility(ForgeRepo{Owner: owner, Name: repo})
+}
+
+// IssueReactions delegates to the GitLab backend's ForgeRepo-signature read (award emoji mapped
+// to GitHub's reaction vocabulary, so the gate's `+1` check works unchanged).
+func (a GitLabRepoInfoFetcher) IssueReactions(owner, repo string, issueNumber int) ([]Reaction, error) {
+	return a.Forge.IssueReactions(ForgeRepo{Owner: owner, Name: repo}, issueNumber)
+}
+
+// GitLabRepoInfoFetcher satisfies the public-repo gate's fetcher contract.
+var _ RepoInfoFetcher = GitLabRepoInfoFetcher{}
 
 // ListLabelEvents returns the merge request's label-application events with the user that
 // applied each one.

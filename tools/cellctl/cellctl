@@ -2,34 +2,61 @@
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
 #   cellctl ls                                   cells under $CELLS_ROOT
-#   cellctl new   <cell> --repo <checkout> --cells-yaml <file> --orgs a,b --deskd-app-pem <pem> \
-#                        [--deskd-app-id-var VAR] [--port N]
-#                                                scaffold <cell>/ (cell.env, home/, README) — then YOU fill
-#                                                home/.config/assay/{roster.env,apps.env} + the key symlinks
-#                                                VAR defaults to DESK_APP_ID, the generic role name a
-#                                                CELL apps.env uses
-#   cellctl check <cell>                         preconditions: cell.env, roster, keys, binaries, plugin, repo
+#   cellctl new   <cell> [--kind k8s|house] [--forge github|gitlab] --repo <checkout> ...
+#                        --kind k8s   (default) a full cell: its own deskd, roster and App keys under home/
+#                                     --cells-yaml <file> [forge custody flags]
+#                                     scaffold <cell>/ (cell.env, home/, README) — then YOU fill
+#                                     home/.config/assay/{roster.env,apps.env} + the custody material
+#                                     --forge defaults to github. The custody flags are FORGE-SPECIFIC:
+#                                       github: --orgs a,b --deskd-app-pem <pem> [--deskd-app-id-var VAR]
+#                                               --deskd-app-pem is REQUIRED on the github path ONLY (the App mints
+#                                               per-org installation tokens); VAR defaults to DESK_APP_ID, the generic
+#                                               role name a CELL apps.env uses.
+#                                       gitlab: --group <group> [--gitlab-api-base URL] [--gitlab-token-store DIR]
+#                                               NO App PEM and NO --orgs — GitLab custody is a role token store
+#                                               (gitlab-<role>.token files), provisioned by hand, never minted.
+#                        --kind house a LOCAL cell on the operator's own laptop: the desks reuse the
+#                                     operator's config home (roster, App keys) by SYMLINK, no deskd is
+#                                     required, and every role still boots in its own LOCKED worktree.
+#                                     --roots '<owner>/<repo>=<abs path>,...'   (the DESK_ROOTS map)
+#                                     [--roles "<role> ..."] [--port N]
+#   cellctl check <cell>                         preconditions per the cell's kind and forge (cell.env, roster,
+#                                                keys or token store, binaries, repo, roots, plugin) — a
+#                                                precondition for the OTHER kind/forge is reported n/a or MISS,
+#                                                never silently skipped
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
 #   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
 #                                                tmux session "<cell>-cell": deskd + the-desk + one window per role
+#                                                (a house cell opens no deskd window unless DESKD=1)
 #   cellctl down  <cell> [--keep-deskd]          tear the session (and this cell's deskd) down
 #
 # Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role)
-# and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=opus). Values are what
-# `claude --model` accepts (opus | sonnet | haiku | a full model id).
+# and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are what
+# `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
+# role `cellctl desk`/`cellctl check` refuse to pin to Opus — see refuse_opus_for_the_desk below.
 #
 # A cell directory holds:
 #   cell.env            the per-cell variables (written by `cellctl new`)
-#   cells-<cell>.yaml   the cell's slice of the desk console's cells.yaml (must validate on its own)
+#   cells-<cell>.yaml   the cell's slice of the desk console's cells.yaml (must validate on its own; k8s kind)
 #   home/               the CELL config-home: .config/assay/roster.env (this cell's role→App bindings),
 #                       .config/assay/apps.env + <role>-app.pem symlinks into the operator's real
 #                       config home (key material is symlinked, never copied), and .config/gh +
-#                       .gitconfig symlinked to the operator's real ones
-#   bin/                deskd + deskcli for this cell
+#                       .gitconfig symlinked to the operator's real ones.
+#                       A HOUSE cell symlinks the whole .config/assay to the operator's real config
+#                       home instead — the desks ARE the operator's desks; nothing is copied.
+#   bin/                deskd + deskcli for this cell (k8s kind, or a house cell with DESKD=1)
 #   index/              the persistent deskd index
 #   worktrees/<role>/   one worktree per role, fast-forwarded to origin/main at every boot
 #   shim/               generated: every desk verb wrapped to run with HOME=<cell>/home
+#
+# cell.env keys that decide the KIND:
+#   CELL_KIND=k8s|house   default k8s (a cell scaffolded before kinds existed carries none)
+#   CELL_ROOTS=<owner>/<repo>=<abs path>,...   exported to every role window as DESK_ROOTS — the stream-root
+#                         map the desk verbs (deskboard / verifyloop / deskdispatch) read. REQUIRED on a house
+#                         cell; optional on k8s, where a boot without it leaves the verbs on their compiled
+#                         placeholder topology.
+#   DESKD=1               on a house cell: require and stand a deskd as a k8s cell does (default: no deskd)
 #
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
@@ -47,15 +74,22 @@ DESK_TOOLS_BIN="${DESK_TOOLS_BIN:-/opt/desk-tools/bin}"
 # The operator's REAL config home — the one holding the App private keys the cell symlinks to.
 REAL_CONFIG_HOME="${ASSAY_CONFIG_HOME:-$HOME/.config/assay}"
 ROLES_DEFAULT="the-desk pr-review-desk verify-desk intake-desk worker-desk"
+# The desk verbs a house cell's `check` proves are installed: the boot/roster pair every role
+# needs, the board/dispatch/worktree verbs the loops call, and the write verbs the roles post with.
+HOUSE_VERBS="deskboot deskroster deskwt deskboard deskdispatch deskpr deskfile deskpost desktoken"
 
 die(){ echo "cellctl: $*" >&2; exit 3; }
-usage(){ sed -n '2,36p' "$0"; exit "${1:-0}"; }
+# The usage text is the header comment above, up to the `set -euo` line — so the header can grow
+# without a hand-maintained line range going stale.
+usage(){ awk 'NR>1 && /^set -euo/ {exit} NR>1 {print}' "$SELF"; exit "${1:-0}"; }
 
 cell_dir(){ local c="$1" d="$CELLS_ROOT/$1"; [[ -f "$d/cell.env" ]] || die "no cell '$c' under $CELLS_ROOT (cell.env missing)"; echo "$d"; }
 load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   CELL_DIR="$(cell_dir "$1")"; CELL_DIR="$(cd "$CELL_DIR" && pwd)"
-  # shellcheck disable=SC1091
-  set -a; source "$CELL_DIR/cell.env"; set +a
+  set -a
+  # shellcheck source=/dev/null
+  source "$CELL_DIR/cell.env"
+  set +a
   CELL="${CELL:-$1}"
   CELL_HOME="$CELL_DIR/home"
   # The cell config-home is a FIXED relative path: the desk binaries resolve their config as
@@ -64,6 +98,38 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   CELLS_CONFIG="${CELLS_CONFIG:-$CELL_DIR/cells-$CELL.yaml}"
   DESKD_ADDR="${DESKD_ADDR:-127.0.0.1:8787}"
   DESKD_INDEX="${DESKD_INDEX:-$CELL_DIR/index/index.db}"
+  # Kind awareness. A cell provisioned before kinds existed carries no CELL_KIND; it is a k8s cell
+  # by construction (its own deskd, roster and keys), so default there and keep every legacy cell
+  # working. A house cell is the operator's own desks: no deskd unless asked for (DESKD=1), and the
+  # stream-root map (CELL_ROOTS) is REQUIRED because it is the whole reason the desks boot at all.
+  CELL_KIND="${CELL_KIND:-k8s}"
+  case "$CELL_KIND" in
+    k8s) DESKD="${DESKD:-1}" ;;
+    house)
+      DESKD="${DESKD:-0}"
+      [[ -n "${CELL_ROOTS:-}" ]] || die "cell.env: CELL_ROOTS (the <owner>/<repo>=<abs path>,... stream-root map) is not set — a house cell needs it"
+      ;;
+    *) die "cell.env: CELL_KIND=$CELL_KIND is not a known kind (k8s|house)" ;;
+  esac
+  # Forge awareness. A cell provisioned before forge support carries no CELL_FORGE; it is a
+  # GitHub cell by construction, so default there and keep every legacy cell working. The
+  # forge API endpoint is DERIVED from the forge, never a hardcoded host: GITHUB_HOST lets a
+  # GitHub Enterprise cell point elsewhere, and a GitLab cell carries its own base. This is
+  # the single home of the endpoint, so no verb below spells a host literal.
+  CELL_FORGE="${CELL_FORGE:-github}"
+  GITHUB_HOST="${GITHUB_HOST:-github.com}"
+  case "$CELL_FORGE" in
+    github)
+      FORGE_API_BASE="${FORGE_API_BASE:-https://api.$GITHUB_HOST}"
+      ;;
+    gitlab)
+      FORGE_API_BASE="${FORGE_API_BASE:-${GITLAB_API_BASE:-https://gitlab.com/api/v4}}"
+      GITLAB_API_BASE="${GITLAB_API_BASE:-$FORGE_API_BASE}"
+      GITLAB_TOKEN_STORE="${GITLAB_TOKEN_STORE:-$CELL_CONFIG}"
+      DESKD_GITLAB_TOKEN_FILE="${DESKD_GITLAB_TOKEN_FILE:-$GITLAB_TOKEN_STORE/gitlab-deskd.token}"
+      ;;
+    *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
+  esac
   ROLES="${ROLES:-$ROLES_DEFAULT}"
   DESK_MODEL_DEFAULT="${DESK_MODEL_DEFAULT:-sonnet}"
   SESSION="${TMUX_SESSION:-${CELL}-cell}"
@@ -71,6 +137,33 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
 }
 resolve_cfg(){ local in="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; [[ -d "$in" ]] || die "CLAUDE_CONFIG_DIR not a directory: $in"; (cd "$in" && pwd); }
 deskd_up(){ curl -fsS --max-time 3 "http://${DESKD_ADDR}/healthz" >/dev/null 2>&1; }
+
+# roots_valid checks the SHAPE of a CELL_ROOTS value — every entry `<owner>/<repo>=<abs path>` —
+# and prints the first malformed entry on stderr. Existence of the paths is `check`'s job.
+roots_valid(){
+  local e; for e in ${1//,/ }; do
+    [[ "$e" =~ ^[^/=[:space:]]+/[^/=[:space:]]+=/[^,]*$ ]] || { echo "malformed CELL_ROOTS entry '$e' (want <owner>/<repo>=<abs path>)" >&2; return 1; }
+  done
+}
+
+# is_opus_pin: true when a resolved model value is the `opus` alias or a `claude-opus…` id,
+# case-insensitive (an operator could type Opus, OPUS, or a full id in any case). Any other
+# value — including another full id or a different alias — is not an Opus pin.
+is_opus_pin(){
+  local m; m="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  [[ "$m" == "opus" || "$m" == claude-opus* ]]
+}
+
+# refuse_opus_for_the_desk: the-desk is the one window that spends its tier on judgment,
+# synthesis and arbitration across streams, so the methodology's model-tier rule pins it to the
+# top tier available — a downgrade there is a stop condition, not an operator preference. `opus`
+# is no longer the top tier, so `cmd_desk` calls this for the-desk ONLY (every other role may pin
+# whatever it likes) before it launches, including on the DRY_RUN path — a dry run is a plan of
+# exactly that launch, so it refuses on the same input.
+refuse_opus_for_the_desk(){
+  is_opus_pin "$1" || return 0
+  die "the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$1 (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env"
+}
 
 gen_shims(){
   mkdir -p "$CELL_DIR/shim"
@@ -88,41 +181,151 @@ gen_shims(){
   fi
 }
 
+# plugin_enabled: is the assay@assay plugin enabled for the checkout, as `claude plugin list`
+# reports it? Run from CELL_REPO because a project-scoped enable is keyed to the project path.
+plugin_enabled(){
+  command -v claude >/dev/null && command -v python3 >/dev/null || return 1
+  (cd "$CELL_REPO" && CLAUDE_CONFIG_DIR="$1" claude plugin list --json 2>/dev/null) | python3 -c '
+import sys, json
+try: ps = json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(0 if any(p.get("id") == "assay@assay" and p.get("enabled") for p in ps) else 1)'
+}
+
 # ---------------------------------------------------------------- verbs
 # No cells yet is a legitimate state, not a failure: an unmatched glob and an empty root both
 # print nothing and exit 0.
 cmd_ls(){ local d; for d in "$CELLS_ROOT"/*/; do [[ -f "$d/cell.env" ]] && basename "$d"; done; return 0; }
 
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
 cmd_check(){
   load_cell "$1"; local ok=1
   chk(){ if eval "$2"; then echo "  ok    $1"; else echo "  MISS  $1"; ok=0; fi; }
-  echo "[check] cell=$CELL dir=$CELL_DIR"
-  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" '[[ -d "$CELL_REPO/.git" ]]'
-  chk "cells config: $CELLS_CONFIG" '[[ -f "$CELLS_CONFIG" ]]'
+  # A precondition that belongs to the OTHER kind or forge is reported n/a — it is stated, not
+  # silently skipped, so a half-provisioned or mis-kinded cell reads as such rather than clean.
+  na(){ echo "  n/a   $1"; }
+  echo "[check] cell=$CELL dir=$CELL_DIR kind=$CELL_KIND forge=$CELL_FORGE"
   chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
   chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
-  chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
   chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
-  chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
-  chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
-  chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
-  chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
-  chk "desk-tools: $DESK_TOOLS_BIN/deskboot" '[[ -x "$DESK_TOOLS_BIN/deskboot" ]]'
+  chk "forge endpoint ($CELL_FORGE): $FORGE_API_BASE" '[[ -n "$FORGE_API_BASE" ]]'
+  # the-desk's resolved model, same precedence cmd_desk uses (DESK_MODEL_the_desk, else
+  # DESK_MODEL_DEFAULT). An Opus pin is a MISS with the same refusal `cellctl desk` would print.
+  local the_desk_model="${DESK_MODEL_the_desk:-$DESK_MODEL_DEFAULT}"
+  if is_opus_pin "$the_desk_model"; then
+    chk "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$the_desk_model (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
+  else
+    chk "the-desk model: $the_desk_model" 'true'
+  fi
+  case "$CELL_KIND" in
+    house) check_house "${2:-}" ;;
+    *) check_k8s ;;
+  esac
   chk "tmux" 'command -v tmux >/dev/null'
-  chk "deskd up on $DESKD_ADDR" 'deskd_up'
+  if [[ "$DESKD" == "1" ]]; then
+    chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
+    chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
+    chk "deskd up on $DESKD_ADDR" 'deskd_up'
+  else
+    na "deskd — not required on a house cell (set DESKD=1 in cell.env to require one)"
+  fi
   if [[ "$ok" == "1" ]]; then echo "[check] all preconditions met"; else echo "[check] fix the MISS rows first"; return 1; fi
+}
+
+# check_k8s: today's cell — its own deskd, its own roster and keys, a cells.yaml slice.
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+check_k8s(){
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" '[[ -d "$CELL_REPO/.git" ]]'
+  chk "cells config: $CELLS_CONFIG" '[[ -f "$CELLS_CONFIG" ]]'
+  if [[ -n "${CELL_ROOTS:-}" ]]; then
+    chk "CELL_ROOTS well-formed (exported as DESK_ROOTS at boot)" 'roots_valid "$CELL_ROOTS"'
+  else
+    na "CELL_ROOTS unset — role windows boot WITHOUT DESK_ROOTS (the verbs fall back to their compiled placeholder topology)"
+  fi
+  case "$CELL_FORGE" in
+    github)
+      chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
+      chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+      chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
+      chk "orgs to mint tokens for: ${ORGS:-unset}" '[[ -n "${ORGS:-}" ]]'
+      na  "GitLab role token store — not applicable on a github cell"
+      ;;
+    gitlab)
+      chk "GitLab group: ${GITLAB_GROUP:-unset}" '[[ -n "${GITLAB_GROUP:-}" ]]'
+      chk "GitLab role token store: ${GITLAB_TOKEN_STORE:-unset}" '[[ -d "${GITLAB_TOKEN_STORE:-/nonexistent}" ]]'
+      chk "deskd GitLab read token (0600, hand-provisioned): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
+      # GitHub-only preconditions on a GitLab cell are reported explicitly, never dropped: a
+      # stray App PEM is a MISS (a github artifact on a gitlab cell is a misconfiguration to
+      # surface), and the gh-config link is n/a (GitLab reads through the role token store).
+      if [[ -n "${DESKD_APP_PEM:-}" ]]; then
+        chk "stray GitHub App PEM on a gitlab cell (DESKD_APP_PEM should be unset): ${DESKD_APP_PEM:-}" 'false'
+      else
+        na "GitHub App PEM — not applicable on a gitlab cell"
+      fi
+      na "gh config link — not applicable on a gitlab cell (GitLab custody is the role token store)"
+      ;;
+    *) chk "known forge (github|gitlab): $CELL_FORGE" 'false' ;;
+  esac
+  chk "desk-tools: $DESK_TOOLS_BIN/deskboot" '[[ -x "$DESK_TOOLS_BIN/deskboot" ]]'
+}
+
+# check_house: the operator's own desks. What must hold is what a hand boot gets wrong: the
+# checkout is a real git checkout, the roster the desk verbs will read PARSES (not merely exists),
+# every stream root in the map is a checkout carrying docs/streams/, the desk verbs are installed,
+# and the assay plugin is enabled for the checkout the windows will open in.
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+check_house(){
+  local cfg; cfg="$(resolve_cfg "${1:-}")"
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" 'git -C "$CELL_REPO" rev-parse --git-dir >/dev/null 2>&1'
+  chk "config home linked to the operator's: $CELL_CONFIG -> $REAL_CONFIG_HOME" '[[ "$(readlink "$CELL_CONFIG" 2>/dev/null)" == "$REAL_CONFIG_HOME" ]]'
+  chk "gitconfig linked: $CELL_HOME/.gitconfig" '[[ -e "$CELL_HOME/.gitconfig" ]]'
+  chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+  chk "roster parses under the cell home: deskroster repos --scope scan" 'env HOME="$CELL_HOME" "$DESK_TOOLS_BIN/deskroster" repos --scope scan >/dev/null 2>&1'
+  chk "CELL_ROOTS well-formed: $CELL_ROOTS" 'roots_valid "$CELL_ROOTS"'
+  local e p
+  for e in ${CELL_ROOTS//,/ }; do
+    p="${e#*=}"
+    chk "root ${e%%=*} exists: $p" '[[ -d "$p" ]]'
+    chk "root ${e%%=*} carries docs/streams/" '[[ -d "$p/docs/streams" ]]'
+  done
+  local v; for v in $HOUSE_VERBS; do chk "desk verb: $DESK_TOOLS_BIN/$v" '[[ -x "$DESK_TOOLS_BIN/$v" ]]'; done
+  chk "claude on PATH" 'command -v claude >/dev/null'
+  chk "plugin assay@assay enabled for $CELL_REPO (config $cfg)" 'plugin_enabled "$cfg"'
+  na "cells config / apps.env / deskd App key — not applicable on a house cell (the operator's own config home is used as is)"
 }
 
 cmd_deskd(){
   load_cell "$1"
-  # deskd stands live cross-org reads on freshly minted installation tokens. It is ATTENDED-ONLY:
-  # the operator starts it from their own shell, so a token mint is never an unattended act.
+  # deskd stands live cross-org reads on freshly minted (GitHub) or hand-provisioned (GitLab)
+  # tokens. It is ATTENDED-ONLY: the operator starts it from their own shell, so a token act is
+  # never unattended.
   [[ "${CELL_ATTENDED:-0}" == "1" ]] || die "deskd stands live cross-org reads — run from YOUR shell with CELL_ATTENDED=1"
   [[ -x "$CELL_DIR/bin/deskd" ]] || die "no deskd at $CELL_DIR/bin/deskd"
+  # The per-forge credential step: GitHub MINTS installation tokens from the App PEM; GitLab
+  # does NOT mint — role tokens rotate by hand (forge-neutral/01), so its path VERIFIES the
+  # provisioned role token store and points deskd at the cell's configured GitLab endpoint.
+  case "$CELL_FORGE" in
+    github) deskd_mint_github ;;
+    gitlab) deskd_provision_gitlab ;;
+    *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
+  esac
+  mkdir -p "$(dirname "$DESKD_INDEX")"
+  # Go/no-go BEFORE the persistent run: --once walks every slice once and exits non-zero on a bad
+  # config or a missing installation/token, so a broken cell fails here rather than serving stale reads.
+  echo "[deskd] go/no-go: --once across the cell repos (expect: all slices checked, no owner/group 404s)"
+  "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --once
+  echo "[deskd] standing on $DESKD_ADDR (index $DESKD_INDEX)"
+  exec "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --addr "$DESKD_ADDR"
+}
+
+# deskd_mint_github signs an App JWT and exchanges it for one installation token PER ORG. The
+# forge host is the cell's configured endpoint ($FORGE_API_BASE), never a literal, so a GitHub
+# Enterprise cell reaches its own host.
+deskd_mint_github(){
   [[ -n "${DESKD_APP_PEM:-}" && -r "${DESKD_APP_PEM:-}" ]] || die "DESKD_APP_PEM not readable: ${DESKD_APP_PEM:-unset}"
   [[ -n "${DESKD_APP_ID_VAR:-}" ]] || die "cell.env: DESKD_APP_ID_VAR is not set"
   [[ -n "${ORGS:-}" ]] || die "cell.env: ORGS is not set"
-  # shellcheck disable=SC1091
+  # shellcheck source=/dev/null
   source "$CELL_CONFIG/apps.env"
   # The variable is looked up in the CELL home's apps.env, not the operator's — cell homes name
   # their Apps by generic ROLE (DESK_APP_ID, REVIEWER_APP_ID, …), so the operator's own naming does
@@ -137,31 +340,52 @@ cmd_deskd(){
   sig=$(printf '%s.%s' "$hdr" "$pl" | openssl dgst -sha256 -sign "$DESKD_APP_PEM" | b64url)
   jwt="$hdr.$pl.$sig"
   api(){ curl -fsS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$@"; }
-  local slug; slug=$(api https://api.github.com/app | python3 -c 'import sys,json;print(json.load(sys.stdin)["slug"])')
-  echo "[deskd] signing as App $app_id ($slug)"
+  local slug; slug=$(api "$FORGE_API_BASE/app" | python3 -c 'import sys,json;print(json.load(sys.stdin)["slug"])')
+  echo "[deskd] signing as App $app_id ($slug) against $FORGE_API_BASE"
   # ONE installation token PER ORG. An installation token is scoped to its own installation, so a
   # single org's token returns 404 for every other org's slice — which reads as "repo missing", not
   # as "wrong token", and is the failure this loop exists to prevent.
   local org iid tok var
   for org in ${ORGS//,/ }; do
-    iid=$(api https://api.github.com/app/installations | python3 -c '
+    iid=$(api "$FORGE_API_BASE/app/installations" | python3 -c '
 import sys,json; o=sys.argv[1]
 for i in json.load(sys.stdin):
     if i["account"]["login"].lower()==o.lower(): print(i["id"]); break' "$org")
     [[ -n "$iid" ]] || die "App $slug has NO installation on $org — install it there first"
-    tok=$(api -X POST "https://api.github.com/app/installations/${iid}/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+    tok=$(api -X POST "$FORGE_API_BASE/app/installations/${iid}/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
     var="DESKD_GITHUB_TOKEN_$(echo "$org" | tr '[:lower:]-' '[:upper:]_')"
     export "$var=$tok"
   done
   unset jwt
   echo "[deskd] per-org tokens minted (${ORGS}) — 1h TTL, not echoed"
-  mkdir -p "$(dirname "$DESKD_INDEX")"
-  # Go/no-go BEFORE the persistent run: --once walks every slice once and exits non-zero on a bad
-  # config or a missing installation, so a broken cell fails here rather than serving stale reads.
-  echo "[deskd] go/no-go: --once across the cell repos (expect: all slices checked, no owner 404s)"
-  "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --once
-  echo "[deskd] standing on $DESKD_ADDR (index $DESKD_INDEX)"
-  exec "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --addr "$DESKD_ADDR"
+}
+
+# deskd_provision_gitlab verifies the hand-provisioned role token store and points deskd at the
+# cell's GitLab endpoint. It MINTS NOTHING: GitLab role tokens rotate deliberately and by hand,
+# so this path only asserts the store is present and readable, and exports the endpoint deskkit's
+# GitLab custody reads (GITLAB_API_BASE). No JWT, no installation token, no PEM.
+deskd_provision_gitlab(){
+  [[ -n "${GITLAB_GROUP:-}" ]] || die "cell.env: GITLAB_GROUP is not set (the GitLab group this cell reads)"
+  [[ -n "${GITLAB_TOKEN_STORE:-}" && -d "${GITLAB_TOKEN_STORE:-}" ]] || die "cell.env: GITLAB_TOKEN_STORE is not a directory: ${GITLAB_TOKEN_STORE:-unset} — provision the role token store first"
+  [[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]] || die "deskd GitLab read token not readable: ${DESKD_GITLAB_TOKEN_FILE:-unset} — place gitlab-deskd.token in the role token store (mode 0600); it is not minted for you"
+  export GITLAB_API_BASE="$FORGE_API_BASE"
+  echo "[deskd] GitLab cell: reading group $GITLAB_GROUP via $FORGE_API_BASE from role token store $GITLAB_TOKEN_STORE (no token minted — rotation is a hand step)"
+}
+
+# worktree_via_deskwt: when the installed desk-tools ship a `deskwt role-init` that supports the
+# role (probe: `deskwt role-init --help` exits 0), let IT create the role worktree so cellctl and
+# the desk skills agree on the worktree's name — its last output line is the path. cellctl's own
+# worktree path below stays the fallback, and CELLCTL_DESKWT=0 forces it. Prints the path, or
+# nothing when deskwt is absent, refuses the probe, or did not produce a worktree.
+worktree_via_deskwt(){
+  local role="$1" out
+  [[ "${CELLCTL_DESKWT:-1}" == "1" ]] || return 1
+  command -v deskwt >/dev/null 2>&1 || return 1
+  deskwt role-init --help >/dev/null 2>&1 || return 1
+  out="$(cd "$CELL_REPO" && deskwt role-init "$role" 2>/dev/null)" || return 1
+  out="${out##*$'\n'}"
+  [[ -n "$out" && -e "$out/.git" ]] || return 1
+  printf '%s\n' "$out"
 }
 
 cmd_desk(){
@@ -171,21 +395,37 @@ cmd_desk(){
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
   # roster alike. `${role%-desk}` would leave "the" for the-desk, hence the explicit case.
+  # A house cell stamps the boot time on: its windows are re-booted by hand across days, and the
+  # roster / claims should tell one boot from the next.
   local short="${role%-desk}"; [[ "$role" == "the-desk" ]] && short="the-desk"
   local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${short}"
+  [[ "$CELL_KIND" == "house" ]] && session="${CELL}-${role}-$(date -u +%Y%m%dT%H%M%SZ)"
   [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
   # The model is PINNED per role, never left to the CLI default. Two `local` lines: in a single
   # `local a=… b="${!a}"` the indirect expansion reads the name before it is assigned.
   local mvar="DESK_MODEL_${role//-/_}"
   local model="${!mvar:-$DESK_MODEL_DEFAULT}"
+  [[ "$role" == "the-desk" ]] && refuse_opus_for_the_desk "$model"
+  # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
+  # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
+  # because the verbs then fall back to their compiled placeholder topology and the failure
+  # presents as "this repo is not configured" rather than as a missing export.
+  local desk_roots="${CELL_ROOTS:-}"
+  if [[ -n "$desk_roots" ]]; then
+    roots_valid "$desk_roots" || die "cell.env: CELL_ROOTS is malformed"
+  else
+    echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
+  fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL role=$role model=$model cfg=$cfg wt=$wt session=$session shims→HOME=$CELL_HOME"; return 0
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"; return 0
   fi
   CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
     || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
   # Serialise the shared fetch: several windows boot at once against ONE .git, and concurrent
-  # fetches race on the same ref lock.
-  local lock="$CELL_REPO/.git/cellctl-fetch.lock"
+  # fetches race on the same ref lock. The lock lives in the COMMON git dir, so a CELL_REPO that
+  # is itself a linked worktree (where .git is a file) still gets a lock rather than a 60s wait.
+  local gitdir; gitdir="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$CELL_REPO/.git")"
+  local lock="$gitdir/cellctl-fetch.lock"
   local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
   # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
   # below — so a non-zero exit here is a notice, not a stop.
@@ -196,14 +436,28 @@ cmd_desk(){
   if [[ -e "$wt/.git" ]]; then
     git -C "$wt" merge --ff-only "$sha" >/dev/null 2>&1 || echo "NOTICE: $wt did not fast-forward (local commits?) — left as is" >&2
   else
-    git -C "$CELL_REPO" worktree add "$wt" -b "${CELL}-cell/${role}-$(date +%Y%m%d-%H%M%S)" "$sha"
+    local dwt
+    if dwt="$(worktree_via_deskwt "$role")"; then
+      # deskwt named and created the tree; the cell's fixed path points at it so the next boot
+      # finds it and fast-forwards it as usual.
+      ln -sfn "$dwt" "$wt"
+      echo "[worktree] created by deskwt role-init: $dwt (linked from $wt)"
+    else
+      git -C "$CELL_REPO" worktree add "$wt" -b "${CELL}-cell/${role}-$(date +%Y%m%d-%H%M%S)" "$sha"
+    fi
   fi
-  echo "[worktree] $wt @ ${sha:0:8}"
-  deskd_up || echo "NOTICE: cell deskd is NOT up on $DESKD_ADDR — in your shell: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+  # A live role window's tree is LOCKED, so a worktree prune never takes it from under the session.
+  # Re-locking an already-locked tree is a no-op here, not a failure.
+  git -C "$CELL_REPO" worktree lock --reason "cellctl $CELL/$role live session" "$wt" 2>/dev/null || true
+  echo "[worktree] $wt @ ${sha:0:8} (locked)"
+  if [[ "$DESKD" == "1" ]]; then
+    deskd_up || echo "NOTICE: cell deskd is NOT up on $DESKD_ADDR — in your shell: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+  fi
   gen_shims
   cd "$wt"
-  echo "[launch] $CELL/$role model=$model session=$session config=$cfg cwd=$wt (desk verbs → HOME=$CELL_HOME)"
+  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
   exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    ${desk_roots:+DESK_ROOTS="$desk_roots"} \
     claude --name "$session" --model "$model" "/assay:$role"
 }
 
@@ -232,19 +486,28 @@ cmd_up(){
   # CELL_ATTENDED=1 already set in the environment (the explicit form, for a wrapper that has its
   # own affirmation). A cron or CI invocation has neither, and there `up` stands the role windows
   # but NOT deskd, and says so. It is never silent in either direction.
-  local deskd_cmd
-  if deskd_up; then
-    deskd_cmd="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
+  #
+  # A house cell has no deskd unless DESKD=1: its first window is a plain shell in the cell
+  # directory that says so, and the role windows follow.
+  local first_name first_cmd
+  if [[ "$DESKD" != "1" ]]; then
+    first_name=cell
+    first_cmd="echo '[cell] $CELL is a $CELL_KIND cell with no deskd (DESKD=1 in cell.env to stand one)'"
+  elif deskd_up; then
+    first_name=deskd
+    first_cmd="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
   elif [[ -t 0 || "${CELL_ATTENDED:-0}" == "1" ]]; then
     echo "[cell] deskd is not up — standing it in-session, carrying YOUR attended affirmation (cellctl up ran attended)"
-    deskd_cmd="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
+    first_name=deskd
+    first_cmd="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
   else
     echo "[cell] deskd is not up, and this 'cellctl up' is UNATTENDED (no terminal on stdin, CELL_ATTENDED unset)." >&2
     echo "[cell] role windows will open; deskd will NOT be stood, because minting tokens needs an affirmation this invocation cannot make." >&2
     echo "[cell] stand it yourself: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
-    deskd_cmd="echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd $CELL'"
+    first_name=deskd
+    first_cmd="echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd $CELL'"
   fi
-  tmux new-session -d -s "$SESSION" -n deskd -c "$CELL_DIR" "$deskd_cmd; echo '[deskd] exited'; exec \$SHELL"
+  tmux new-session -d -s "$SESSION" -n "$first_name" -c "$CELL_DIR" "$first_cmd; echo '[$first_name] exited'; exec \$SHELL"
   local roles="$ROLES"
   case " $roles " in *" the-desk "*) ;; *) roles="the-desk $roles";; esac
   [[ "$no_the_desk" == "1" ]] && roles="${roles//the-desk/}"
@@ -257,7 +520,7 @@ cmd_up(){
     sleep 2
   done
   tmux select-window -t "$SESSION:the-desk" 2>/dev/null || true
-  echo "[cell] $SESSION up: deskd +$roles (config=$cfg)"
+  echo "[cell] $SESSION up: $first_name +$roles (config=$cfg)"
   echo "[cell] attach: tmux attach -t $SESSION   ·   down: cellctl down $CELL"
   [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
   return 0
@@ -270,55 +533,101 @@ cmd_down(){
   else
     echo "[cell] no session $SESSION"
   fi
-  if [[ "$keep" == "0" ]]; then
+  if [[ "$keep" == "0" && "$DESKD" == "1" ]]; then
     if pkill -f "deskd --config $CELLS_CONFIG" 2>/dev/null; then echo "[cell] deskd stopped"; else echo "[cell] no deskd for this cell running"; fi
   fi
 }
 
 cmd_new(){
-  local cell="${1:?cellctl new <cell> --repo … --cells-yaml … --orgs … --deskd-app-pem … [--deskd-app-id-var VAR]}"; shift
+  # --help before anything else, so `cellctl new --help` prints the kind- and forge-aware usage
+  # (which marks --deskd-app-pem as github-only) rather than dying on a missing cell name or flag.
+  local a
+  for a in "$@"; do [[ "$a" == "-h" || "$a" == "--help" ]] && usage 0; done
   # DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and cell
   # homes name their Apps by generic role. Override only if this cell's apps.env names it otherwise.
-  local repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
+  #
+  # The cell name is a POSITIONAL that may appear anywhere among the flags (`new <cell> --forge …`
+  # is the common form, but the flags parse in any order). It is captured as the one bare token so
+  # that a missing CUSTODY input is diagnosed before a missing cell name — the forge-custody
+  # validation is the property the negative-path Verify rows assert, and it must fire whether or
+  # not a cell name was given.
+  local kind="k8s" forge="github" cell="" repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
+  local group="" gitlab_api_base="" token_store="" roots="" roles="$ROLES_DEFAULT"
   while [[ $# -gt 0 ]]; do case "$1" in
+    --kind) kind="$2"; shift 2;;
+    --forge) forge="$2"; shift 2;;
     --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
     --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
-    *) die "new: unknown flag $1";; esac; done
-  [[ -n "$repo" && -n "$yaml" && -n "$orgs" && -n "$pem" ]] \
-    || die "new: --repo --cells-yaml --orgs --deskd-app-pem are required"
+    --group) group="$2"; shift 2;; --gitlab-api-base) gitlab_api_base="$2"; shift 2;;
+    --gitlab-token-store) token_store="$2"; shift 2;;
+    --roots) roots="$2"; shift 2;; --roles) roles="$2"; shift 2;;
+    --*) die "new: unknown flag $1";;
+    *) [[ -z "$cell" ]] || die "new: unexpected extra argument '$1' (the cell name is '$cell')"; cell="$1"; shift;;
+  esac; done
+  case "$kind" in k8s) ;; house) new_house "$cell" "$repo" "$roots" "$roles" "$port"; return;; *) die "new: --kind must be k8s or house, got '$kind'";; esac
+  case "$forge" in github|gitlab) ;; *) die "new: --forge must be github or gitlab, got '$forge'";; esac
+  # Common requirements on BOTH forges.
+  [[ -n "$repo" && -n "$yaml" ]] || die "new: --repo and --cells-yaml are required (both forges)"
+  # Forge-specific custody inputs, asserted BEFORE the cell-name / yaml-is-a-file tests, so a
+  # missing custody input names ITSELF — and so the GitHub App requirement never fires on a GitLab
+  # cell, and the GitLab custody requirement never fires on a GitHub one.
+  if [[ "$forge" == "github" ]]; then
+    [[ -n "$orgs" && -n "$pem" ]] \
+      || die "new: on the github path --orgs and --deskd-app-pem are required (the App mints per-org installation tokens)"
+  else
+    [[ -n "$group" ]] \
+      || die "new: on the gitlab path --group is required (the GitLab group this cell reads); the role token store (gitlab-<role>.token) is a custody hand step, NOT an App PEM"
+  fi
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> …)"
   [[ -f "$yaml" ]] || die "new: --cells-yaml is not a file: $yaml"
+  [[ -z "$roots" ]] || roots_valid "$roots" || die "new: --roots is malformed"
   local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists"
   mkdir -p "$d/home/.config/assay" "$d/bin" "$d/index" "$d/worktrees"
   cp "$yaml" "$d/cells-$cell.yaml"
-  [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
   [[ -e "$HOME/.gitconfig" ]] && ln -s "$HOME/.gitconfig" "$d/home/.gitconfig"
   chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay"
-  cat > "$d/cell.env" <<EOF
-# cellctl cell.env — $cell (scaffolded $(date -u +%F))
+  local github_host="${GITHUB_HOST:-github.com}"
+  # CELL_ROOTS is optional on a k8s cell; when given it is written so every role window boots
+  # with DESK_ROOTS exported rather than on the verbs' compiled placeholder topology.
+  local roots_line="# CELL_ROOTS=<owner>/<repo>=<abs path>,...   (exported as DESK_ROOTS at boot; unset = placeholder topology)"
+  [[ -z "$roots" ]] || roots_line="CELL_ROOTS=$roots"
+  if [[ "$forge" == "github" ]]; then
+    # The gh CLI config is a GitHub custody artifact; link it only on a github cell.
+    [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
+    # The endpoint is derived from the host, never spelled as a literal in this script (so the
+    # host-literal grep stays at zero); it expands INTO the generated cell.env below.
+    local forge_api_base="https://api.$github_host"
+    cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (k8s, github, scaffolded $(date -u +%F))
 CELL=$cell
+CELL_KIND=k8s
+CELL_FORGE=github
 CELL_REPO=$repo
+$roots_line
 CELLS_CONFIG=$d/cells-$cell.yaml
+FORGE_API_BASE=$forge_api_base
 DESKD_ADDR=127.0.0.1:$port
 DESKD_INDEX=$d/index/index.db
 DESKD_APP_PEM=$pem
 DESKD_APP_ID_VAR=$idvar
 ORGS=$orgs
-ROLES="$ROLES_DEFAULT"
+ROLES="$roles"
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
-DESK_MODEL_the_desk=opus
+DESK_MODEL_the_desk=fable
 EOF
-  cat > "$d/README.md" <<EOF
-# $cell cell — scaffolded by cellctl
+    cat > "$d/README.md" <<EOF
+# $cell cell (github) — scaffolded by cellctl
 
 Four steps remain. Each is a custody act — it moves key material or states who this cell trusts —
 so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
 
 1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
-   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with \`role=\` bindings to THIS cell's Apps,
-   and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's repos ONLY. Start from
-   another cell's file as a template and replace every App — a copied binding points this cell's
-   writes at another cell's identity.
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=github:<slug>:<id>\`
+   bindings to THIS cell's Apps (per forge-neutral/02's grammar), \`ASSAY_REPO_FORGES\` binding
+   the cell's repos to \`github\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the
+   cell's repos ONLY. Start from another cell's file as a template and replace every App — a
+   copied binding points this cell's writes at another cell's identity.
 2. \`home/.config/assay/apps.env\` — the cell's App ids under the generic role names
    (\`$idvar\`, \`REVIEWER_APP_ID\`, …), plus one \`<role>-app.pem\` SYMLINK per role into your real
    config home (\`$REAL_CONFIG_HOME\`). Symlink, never copy: one custody location for the private
@@ -331,12 +640,119 @@ so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
 
 Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and \`cellctl up $cell\` for the cockpit.
 EOF
-  echo "[new] scaffolded $d — see $d/README.md for the four hand steps"
+  else
+    local forge_api_base="${gitlab_api_base:-https://gitlab.com/api/v4}"
+    local store="${token_store:-$d/home/.config/assay}"
+    cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (k8s, gitlab, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=k8s
+CELL_FORGE=gitlab
+CELL_REPO=$repo
+$roots_line
+CELLS_CONFIG=$d/cells-$cell.yaml
+FORGE_API_BASE=$forge_api_base
+GITLAB_API_BASE=$forge_api_base
+GITLAB_GROUP=$group
+GITLAB_TOKEN_STORE=$store
+DESKD_GITLAB_TOKEN_FILE=$store/gitlab-deskd.token
+DESKD_ADDR=127.0.0.1:$port
+DESKD_INDEX=$d/index/index.db
+ROLES="$roles"
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+EOF
+    cat > "$d/README.md" <<EOF
+# $cell cell (gitlab) — scaffolded by cellctl
+
+Four steps remain. Each is a custody act — it moves credential material or states who this cell
+trusts — so \`cellctl new\` does not do them for you, and it MINTS NOTHING: GitLab role tokens
+rotate by hand. Then run \`cellctl check $cell\`.
+
+1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=gitlab:<slug>:<id>\`
+   bindings to THIS cell's bot accounts (per forge-neutral/02's grammar — a bare slug is refused,
+   and a \`gitlab:\` entry against a github repo is refused), \`ASSAY_REPO_FORGES\` binding the
+   cell's repos to \`gitlab\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's
+   repos ONLY. A cell stood up for GitLab MUST write forge-qualified entries or the verbs refuse.
+2. The role token store — \`$store\` — holds one \`gitlab-<role>.token\` file per role (0600),
+   provisioned BY HAND: \`gitlab-deskd.token\` for the read daemon, plus one per write role
+   (\`gitlab-worker.token\`, \`gitlab-reviewer.token\`, …) per forge-neutral/01's custody binding.
+   These are GitLab group/project access tokens you mint in GitLab and place here yourself;
+   cellctl never mints or rotates them. Lock each to 0600.
+3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
+   \`cmd/deskcli\`), or from the release tarball if your channel ships them.
+4. \`cells-$cell.yaml\` — the cell's slice of \`cells.yaml\` and nothing else; it must validate on
+   its own, and no other cell's repos may appear in it.
+
+The GitLab endpoint is \`$forge_api_base\` (\`cell.env\`: \`FORGE_API_BASE\` / \`GITLAB_API_BASE\`);
+the group this cell reads is \`$group\`. Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and
+\`cellctl up $cell\` for the cockpit.
+EOF
+  fi
+  echo "[new] scaffolded $d ($forge cell) — see $d/README.md for the hand steps"
+}
+
+# new_house scaffolds a HOUSE cell: the operator's own desks on the operator's own laptop. There
+# is no custody act to leave for a hand step — the cell home's .config/assay IS the operator's
+# config home, reached by ONE directory symlink (roster, apps.env and the <role>-app.pem files
+# resolve exactly as they do for a hand boot), gh config and gitconfig are linked as on a k8s cell,
+# and nothing is copied. What the scaffold fixes is what a hand boot gets wrong: the stream-root
+# map (CELL_ROOTS → DESK_ROOTS), the per-role worktree, and the pinned model.
+new_house(){
+  local cell="$1" repo="$2" roots="$3" roles="$4" port="$5"
+  [[ -n "$repo" && -n "$roots" ]] || die "new: --kind house needs --repo <checkout> and --roots '<owner>/<repo>=<abs path>,...'"
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> --kind house …)"
+  roots_valid "$roots" || die "new: --roots is malformed"
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || die "new: --repo is not a git checkout: $repo"
+  local e p; for e in ${roots//,/ }; do p="${e#*=}"; [[ -d "$p" ]] || die "new: --roots path does not exist: $p (${e%%=*})"; done
+  [[ -d "$REAL_CONFIG_HOME" ]] || die "new: operator config home not found: $REAL_CONFIG_HOME (ASSAY_CONFIG_HOME to point elsewhere)"
+  local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)"
+  mkdir -p "$d/home/.config" "$d/worktrees" "$d/shim"
+  ln -s "$REAL_CONFIG_HOME" "$d/home/.config/assay"
+  [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
+  [[ -e "$HOME/.gitconfig" ]] && ln -s "$HOME/.gitconfig" "$d/home/.gitconfig"
+  chmod 700 "$d/home" "$d/home/.config"
+  local github_host="${GITHUB_HOST:-github.com}"
+  cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (house, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=house
+CELL_FORGE=github
+CELL_REPO=$repo
+# The stream-root map, exported to every role window as DESK_ROOTS.
+CELL_ROOTS=$roots
+FORGE_API_BASE=https://api.$github_host
+ROLES="$roles"
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+# No deskd on a house cell. DESKD=1 requires one, as on a k8s cell (then fill bin/deskd,
+# bin/deskcli and a cells-$cell.yaml slice, and stand it with CELL_ATTENDED=1 cellctl deskd $cell).
+DESKD=0
+DESKD_ADDR=127.0.0.1:$port
+EOF
+  cat > "$d/README.md" <<EOF
+# $cell cell (house) — scaffolded by cellctl
+
+A house cell is your own desks, on this laptop, booted the way a cell boots: one LOCKED
+worktree per role off a fresh \`origin/main\` of \`$repo\`, the stream-root map exported as
+\`DESK_ROOTS\`, the model pinned per role, and the roster beacon (\`DESK_SESSION\`) stamped with
+the boot time. Nothing was copied: \`home/.config/assay\` is a symlink to \`$REAL_CONFIG_HOME\`,
+so the desk verbs read the roster and App keys you already have.
+
+- \`cellctl check $cell\` — prove the preconditions (git checkout, roster parses, every root
+  carries \`docs/streams/\`, desk verbs installed, assay plugin enabled).
+- \`cellctl desk $cell <role>\` — one role window; \`cellctl up $cell\` — every role in tmux.
+- Edit \`cell.env\` to change \`CELL_ROOTS\`, \`ROLES\` or a pinned model.
+EOF
+  echo "[new] scaffolded $d (house cell) — cellctl check $cell, then cellctl desk $cell <role>"
 }
 
 case "${1:-}" in
   ls) cmd_ls ;;
-  check) cmd_check "${2:?cell}" ;;
+  check) cmd_check "${2:?cell}" "${3:-}" ;;
   deskd) cmd_deskd "${2:?cell}" ;;
   desk) cmd_desk "${2:?cell}" "${3:-}" "${4:-}" ;;
   up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
