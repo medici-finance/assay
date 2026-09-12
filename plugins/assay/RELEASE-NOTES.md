@@ -14,9 +14,15 @@ in CI (HP/06). What ships in this bump:
   carry the **ruled degradation posture per skill** (Decision C,
   `docs/harness-portability-ruling.md`). Both are now freshness-registered (45-day leash)
   so they rot on a clock against vendor behaviour rather than by incident.
-- **Codex adoption path** — `docs/adopting-assay.md` gains the Codex install/fragment/
-  `multi_agent` config runbook plus the degradation-expectations table (reproduced from
-  `references/codex.md`, the canonical source).
+- **Codex adoption path** — `docs/adopting-assay.md` gains "Running Assay on Codex": the
+  install (marketplace arm + the `.agents/skills/` file-placement arm), the `AGENTS.md`
+  resident-rules fragment, the `[features] multi_agent` config step, the sandbox posture
+  that decides which skills refuse, and the degradation expectations. The **per-skill
+  degradation table is POINTED AT, not reproduced** — `references/codex.md` stays its one
+  home (brief 07 task 2: copied, generated or referenced, never re-typed), and the runbook
+  carries the rule the table applies: three guarantees that never degrade, convenience that
+  degrades only by saying so. *(Written up as issue #763; the first draft of this bullet
+  overstated the doc, which carried no Codex section at v0.3.0-prepared time.)*
 - **Live smoke protocol** — `docs/codex-smoke-protocol.md`, the scripted live-harness
   acceptance checklist (seven minimum steps, each with an `Expect:` observable) whose run
   log is the artifact the human gate signs.

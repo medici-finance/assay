@@ -8,11 +8,16 @@ There are two ways to install Assay, easiest first **when the shape matches**:
    scenarios that same skill wraps. Reach for it directly for a carve-out, a multi-repo suite, or
    any non-standard boot — and it is the ground truth the turnkey path delegates to.
 
-This runbook is GitHub-shaped throughout (Apps, rulesets, `gh`). Running the fleet on GitLab
+This runbook is GitHub-shaped throughout for the identity and merge machinery (Apps, rulesets,
+`gh`) — though `statusgen init` now scaffolds the CI half matching the target's forge (a GitHub
+workflow or a GitLab pipeline, and neither by default when the forge cannot be resolved), and the
+board's model-path auto-flip reads the reviewer's verdict per forge. Running the fleet on GitLab
 instead — service accounts in place of Apps, protected-branch push-access lists in place of
 ruleset bypass — is a separate profile: see
 [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md). **Cursor has no `/plugin` path**;
-use [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Native
+use [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Codex has
+no Claude `/plugin` path either**, and its resident rules travel in `AGENTS.md` rather than a
+session hook; use [Running Assay on Codex](#running-assay-on-codex). **Native
 Windows** follows [Windows adopters](#windows-adopters) at the install step (release assets, or
 a from-source pin).
 
@@ -24,7 +29,7 @@ a from-source pin).
 | GitHub | Claude Code | native Windows | Turnkey skill **plus** [Windows adopters](#windows-adopters) (channel E release, or channel D source) |
 | GitLab (any edition you will actually run) | any | any | [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) **first**, then this file for CORE (`statusgen init`, pins, instruction-file bindings). Do not run `/plugin` + `gh` as if the forge were GitHub. |
 | GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): copy skills + `references/`, no marketplace install |
-| GitHub or GitLab | Codex | any | Codex / `AGENTS.md` path in this runbook; not the Claude `/plugin` commands |
+| GitHub or GitLab | Codex (CLI) | any | [Codex section](#running-assay-on-codex): skills into `.agents/skills/`, the `AGENTS.md` fragment, the `multi_agent` flag; not the Claude `/plugin` commands |
 
 A Windows + GitLab + Cursor boot is a **real combination**. It is three documented arms, not
 "unsupported." What it is *not* is the three-line Claude marketplace install.
@@ -40,7 +45,7 @@ true shape on this page and not at step four:
 | **Accounts** | **2** — one human, one machine | The human merges and rules on gates; the machine account is what the fleet runs *as*. They must be distinct (the two-accounts prerequisite). |
 | **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
 | **Supported platform** | **GitHub** (primary runbook); **GitLab** via [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) | This page is GitHub-shaped (`gh`, Apps). GitLab substitutes service accounts for Apps. Self-managed Community Edition is not the same as gitlab.com Free — read the GitLab doc's edition + read-back rules before claiming controls. |
-| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex** (`AGENTS.md`) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only. Cursor does not get a marketplace install. |
+| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex CLI** (copy-skills + `AGENTS.md` fragment + the `multi_agent` flag) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only — Cursor has no marketplace install, and Codex's is its own `codex plugin marketplace` surface. Codex CLI's default `workspace-write` sandbox makes the implementer skills **refuse**; see the [Codex section](#running-assay-on-codex). |
 
 **Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
 `pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
@@ -1106,6 +1111,188 @@ not just a single skill invocation. That step and its Verify rows are specified 
 log is the acceptance evidence; until a live Cursor environment exists the step is **blocked,
 not skipped**. **Copying skills and running desk CLIs in the IDE is still the documented
 install**; blocked smoke is not "Cursor unsupported."
+
+#### Running Assay on Codex
+
+Same method, a different set of mechanisms. Assay's method text names **capabilities**
+(`capability:dispatch-worker`, `capability:isolate-workspace`, …) and never a harness's tool
+names, so the `SKILL.md` bodies, the desk CLIs and the `AGENTS.md` bindings all run unchanged on
+Codex. What changes is the container the bundle arrives in and the sandbox it runs under.
+Capability bindings: [`plugins/assay/references/codex.md`](../plugins/assay/references/codex.md) —
+the canonical, per-skill posture table. Measured capability ground truth (with its probe URLs and
+retrieval dates): [`research/codex-harness-capabilities.md`](./research/codex-harness-capabilities.md).
+
+**Target scope is Codex CLI.** The open-source `codex` terminal tool is the ruled v1 target; the
+hosted Codex app is a later, separately-ruled surface and nothing below is written for it. Where a
+step says "sandbox", it means the CLI's `sandbox_mode`.
+
+**Do not run the Claude `/plugin marketplace add` / `/plugin install` commands here** — they are
+Claude Code's. Codex has its own plugin surface, spelled `codex plugin marketplace …`.
+
+##### 1. Install — two arms, and which one is actually proven
+
+*Arm A — plugin/marketplace (documented, not yet exercised end to end).* Codex reads a local
+marketplace manifest from `$REPO_ROOT/.agents/plugins/marketplace.json` or
+`~/.agents/plugins/marketplace.json`, and — per OpenAI's current plugin docs — still recognises
+`$REPO_ROOT/.claude-plugin/marketplace.json` as a **legacy** path. This repository ships exactly
+that legacy file, with one entry named `assay` sourcing `./plugins/assay`, whose Codex manifest is
+[`plugins/assay/.codex-plugin/plugin.json`](../plugins/assay/.codex-plugin/plugin.json) (generated
+by `harnessgen codex`, byte-checked in CI, version-bound to the Claude manifest so the two can
+never skew). So `codex plugin marketplace add medici-finance/assay` has a manifest to find.
+**Read this as documented-not-demonstrated**: no live Codex session has run it (see *Acceptance*
+below), and OpenAI's current docs describe `.codex-plugin/plugin.json` as the legacy fallback to a
+portable root `plugin.json` — which this repo does not ship. If the marketplace arm does not
+resolve for you, that is a finding worth filing, not a reason to call the harness unsupported: use
+arm B.
+
+*Arm B — file placement (the arm that depends on nothing but `SKILL.md` discovery).* Codex scans
+for `SKILL.md` skills in `$CWD/.agents/skills`, then parent folders up to the repo root, then
+`$REPO_ROOT/.agents/skills`, then `$HOME/.agents/skills`, then `/etc/codex/skills`. So:
+
+1. Copy the skill directories from this repository's `plugins/assay/skills/` into the **adopter
+   repo** at `.agents/skills/`. The skills tree is shared, not per-harness — the same directories
+   Claude Code and Cursor load.
+2. Copy `plugins/assay/references/*.md` alongside them, into a sibling of `skills/`, so each
+   body's `../../references/*.md` includes still resolve. Copying **only** `skills/` leaves those
+   includes dead — the same failure the Cursor arm warns about.
+3. Frontmatter is the open `SKILL.md` contract Codex requires anyway: `name` (must match the
+   directory name) and `description`. Every bundled skill already satisfies it.
+4. Optional, per skill: `agents/openai.yaml` with `allow_implicit_invocation` (default `true`).
+   Leave the default for description-driven auto-trigger; set it `false` and the skill becomes
+   explicit-invocation-only. **Invoke-by-name is the availability floor** — every skill must load
+   when named, whatever the trigger ergonomics.
+
+Either arm, put the desk binaries on `PATH` the same way every other harness does; nothing in
+`statusgen` / `desk-tools` is harness-specific. On GitLab, use `glab` and `--forge gitlab`; skill
+text that says `gh` is GitHub-shaped leftover, not a Codex requirement.
+
+##### 2. Resident rules — the `AGENTS.md` fragment
+
+Codex has no Claude `SessionStart` hook to carry the method's resident rules, so on Codex they
+travel in `AGENTS.md`. The bundle ships the fragment pre-generated at
+[`plugins/assay/codex/AGENTS-assay.md`](../plugins/assay/codex/AGENTS-assay.md) — produced from
+the single source `plugins/assay/resident-rules.md` by `harnessgen resident` and byte-compared in
+CI. **Do not hand-edit it, and do not retype the rules into your own file**: the generator is
+their one home, exactly as the hook is on Claude.
+
+1. Append the fragment's contents to the adopter repo's root `AGENTS.md` (or drop it in as an
+   `@`-included file — Codex resolves `@path/to/file.md` includes up to five levels deep).
+2. Codex composes `~/.codex/AGENTS.md` → repo-root `AGENTS.md` → cwd `AGENTS.md`, concatenated
+   root-to-leaf. Put the fragment at the level you want it to bind: repo root for "every session
+   in this repo".
+3. **Watch the cap.** The combined `AGENTS.md` total is truncated at `project_doc_max_bytes`
+   (32 KiB by default, per OpenAI's config reference). The fragment is small, but an adopter with
+   a long existing `AGENTS.md` can silently push the method's rules past the cut. Budget for it;
+   do not discover it.
+4. Verify the same way the Claude side does — start a session, and ask it to state resident rule 3
+   (neutral-dispatch wording) without pasting any rule text. Getting the substance back is the
+   check; "no such rule", or a request to be handed the rules, means the fragment is not landing.
+
+##### 3. The `multi_agent` config step
+
+Desk fan-out — `worker-desk`'s pool, `the-desk`'s dispatch, `pr-shepherd`'s discovery mode — binds
+`capability:dispatch-worker`, which on Codex CLI is the subagent tool set (`spawn_agent`,
+`wait_agent`, `send_input`, `resume_agent`, `close_agent`). Those tools sit behind a feature flag
+in `~/.codex/config.toml`:
+
+```toml
+[features]
+multi_agent = true
+
+[agents]
+max_concurrent_threads_per_session = 4   # cap parallel children; tune to your budget
+```
+
+- Set `multi_agent` **explicitly** even though OpenAI's current config reference lists it as
+  *stable, on by default*. The flag's default has moved (the capability measurement this bundle
+  was built against, 2026-08-08, recorded it as off-by-default and opt-in); writing it down makes
+  the adopter's posture legible instead of inherited, and setting a key to its own default is
+  harmless.
+- `max_concurrent_threads_per_session` (under `[agents]`; `max_threads` is its legacy alias) is
+  what actually caps parallelism. Assay does not require a particular value — but a desk pool
+  width larger than this cap will queue, not fan out, and the difference will look like the desk
+  hanging.
+- **With `multi_agent` off, dispatch is unavailable, and that is a *stated* degradation, never a
+  silent one.** The skill runs the fan-out **serially, one item at a time, and says so in
+  session.** A silent serial run is a defect in the skill body, not an acceptable posture.
+- **A `multi_agent` that does not enable parallelism never weakens a gate.** Review still needs
+  its reviewer, evidence still needs its command output, isolation still refuses. Serial fan-out
+  is a convenience degradation; the three guarantees below are not degradable at all.
+
+*Could-not-check:* this bundle's binding file also describes a V2 tool set
+(`send_message` / `followup_task` / `interrupt_agent`) behind `multi_agent_v2.enabled`. OpenAI's
+config reference as fetched for this runbook does **not** list that key, and no live Codex session
+has been run to settle it. Treat V1 (`[features] multi_agent`) as the configuration this runbook
+prescribes; if your Codex exposes the V2 set, it is beyond what has been checked here.
+
+##### 4. Sandbox posture — the one setting that changes which skills run
+
+Codex CLI's default `workspace-write` sandbox permits `git add` / `git commit` but blocks
+`git checkout -b` (a `.git/refs/heads/` write) and all network, which takes `git push`, `gh pr
+create` and every other forge write with it. The CLI also has **no built-in worktree management**
+— it detects a linked worktree but never creates one — so a skill that must isolate has to run
+`git worktree add` itself, and under `workspace-write` that is precisely what is blocked.
+
+The consequence is the isolation floor, and it is a **refusal, not a degradation**:
+
+- Under **`workspace-write`**, `worker-desk` and `pr-shepherd` **refuse** rather than implement in
+  the shared checkout. That is correct behaviour. Do not work around it.
+- Under **`--sandbox danger-full-access`**, worktrees are creatable and both run normally. This is
+  also the posture the `gh`-writing skills (`intake-desk`, `pr-review-desk`'s posting and flip,
+  `verify-desk`'s writes, `ask-decision`'s filing) need.
+- On macOS, `network_access = true` inside `workspace-write` is reported broken at the Seatbelt
+  level upstream, so "turn on network but keep the sandbox" is not a working middle ground today;
+  `danger-full-access` is the documented workaround.
+
+Pick the posture deliberately, per session, for the work in front of you — a desk window that
+implements needs full access; a review or authoring window does not.
+
+##### 5. Degradation expectations
+
+The **per-skill** posture table is [`plugins/assay/references/codex.md`](../plugins/assay/references/codex.md)
+and that file is canonical. It is deliberately **not** reproduced here: a second copy is a second
+thing to keep true, and this one would rot against the binding file that CI and the smoke protocol
+both judge against. Read it there. What this runbook fixes is the *rule* the table is an
+application of:
+
+- **Three guarantees never degrade on any harness** — **isolation**, **evidence-not-claims**, and
+  **the review gates**. Where Codex cannot provide the underlying capability, the affected skill
+  **refuses**; it never drops the guarantee quietly.
+- **Only convenience may degrade** — parallel dispatch (§3) and a durable cross-turn wake signal
+  are the two. Each degrades **explicitly and in session**: serial fan-out states itself; the
+  missing durable monitor falls back to the event-driven plus fixed-cadence board sweep and says
+  so.
+- Everything else in the table is a **sandbox precondition**, not a degradation: a skill that
+  needs a forge write under `workspace-write` states the write is blocked rather than half-running
+  (§4).
+
+So the table has exactly three kinds of cell — `runs`, `degrades` (with the degradation stated),
+`refuses` — and if you ever see a fourth, "ran anyway, quietly, with less", that is the bug.
+
+##### 6. Acceptance — what is proven, and what is still blocked
+
+The split is deliberate, and stating it is part of the runbook:
+
+- **Structural truth is proven in CI** — the neutrality lint over the skill bodies, the
+  resident-rules byte-compare, and the Codex packaging coverage rule (every skill packaged or
+  excluded-with-a-reason; an unaccounted skill is a hard error). These run on every PR and need no
+  Codex. See [brief 06](./streams/harness-portability/brief-06-codex-packaging.md) and
+  [`plugins/assay/codex/packaging.md`](../plugins/assay/codex/packaging.md).
+- **Behavioural truth is proven only on a live Codex session** — that the rules arrive without
+  pasting, that each body loads, and that each skill runs/degrades/refuses exactly as ruled. No
+  in-repo command can corroborate that, and **no such run has happened yet.**
+
+The scripted checklist for that run is [`codex-smoke-protocol.md`](./codex-smoke-protocol.md) —
+seven minimum steps, each with an `Expect:` observable, each evidenced by a transcript excerpt
+pasted into a run log under `docs/codex-smoke-runs/`. Its Step 1 is *this install path, executed
+literally*: a documented command that fails there is a finding against this section, not a licence
+to improvise around it. The signed run log is the acceptance evidence for
+[brief 07](./streams/harness-portability/brief-07-adoption-live-smoke.md), and until a Codex
+environment exists that step is **blocked, not skipped**.
+
+**Copying the skills, placing the fragment, setting the flag and running the desk CLIs is still
+the documented install.** Blocked smoke is not "Codex unsupported" — it is the one claim this
+project will not make without evidence.
 
 **You start with a stub, not a blank page.** `scaffold-streams` (`statusgen init`) writes a
 starting `CLAUDE.md` plus an `AGENTS.md` that points at it. The stub carries the **ten invariants**

@@ -526,7 +526,11 @@ func prFilePaths(files []prFile) []string {
 // resolves a bare number to an object kind: the `pull_request` sub-object is present iff
 // the number is a pull request (the documented discriminator) and absent for a plain
 // issue. Only the fields the comment path consumes are decoded — the author identity the
-// trust gate needs, and that discriminator.
+// trust gate needs, that discriminator, and the labels the verify-gate card carve-out
+// (deskkit.VerifyGateCardCommentAdmitted) is scoped by. The labels come from THIS read
+// rather than a second call: they are already in the payload the kind resolution has to
+// make, so the carve-out costs no extra request and cannot observe a different state
+// than the author it is paired with.
 type issueInfo struct {
 	Number int    `json:"number"`
 	State  string `json:"state"`
@@ -534,10 +538,30 @@ type issueInfo struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 	} `json:"user"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
 }
+
+// labelNames flattens the decoded label objects to their names. Empty names are dropped:
+// a label with no name is not a label, and letting "" through would make an empty
+// carve-out label match an unlabelled issue.
+func (i *issueInfo) labelNames() []string {
+	out := make([]string, 0, len(i.Labels))
+	for _, l := range i.Labels {
+		if l.Name != "" {
+			out = append(out, l.Name)
+		}
+	}
+	return out
+}
+
+// slug returns the owner/name this client is bound to — the postBackend accessor the
+// object-kind resolution error messages need without reaching into unexported fields.
+func (c *ghClient) slug() (string, string) { return c.owner, c.repo }
 
 // getPR fetches the pull request (head SHA, state, draft, node id).
 func (c *ghClient) getPR(pr int) (*prInfo, error) {
@@ -918,13 +942,43 @@ func (c *ghClient) fetchIssueTrustPayload(n int) ([]byte, error) {
 	return raw, nil
 }
 
+// prTrustPayload / issueTrustPayload are the STRUCTURED trust seam trustGate reads through,
+// so the gate runs identically over a GitHub GraphQL read (fetch + parse, here) and a typed
+// Forge read (forge_gitlab's PRTrustEvents, forgeBackend). deskkit.TrustPayload carries the
+// same three fields the parser returns — the body-edit time, the content events, and whether
+// the read was COMPLETE — so a caller reduces them with deskkit.Blessed without knowing which
+// forge produced them.
+func (c *ghClient) prTrustPayload(n int) (*deskkit.TrustPayload, error) {
+	raw, err := c.fetchPRTrustPayload(n)
+	if err != nil {
+		return nil, err
+	}
+	be, ev, complete, perr := deskkit.ParsePRTrustPayload(raw)
+	if perr != nil {
+		return nil, perr
+	}
+	return &deskkit.TrustPayload{BodyEdited: be, Events: ev, Complete: complete}, nil
+}
+
+func (c *ghClient) issueTrustPayload(n int) (*deskkit.TrustPayload, error) {
+	raw, err := c.fetchIssueTrustPayload(n)
+	if err != nil {
+		return nil, err
+	}
+	be, ev, complete, perr := deskkit.ParseIssueTrustPayload(raw)
+	if perr != nil {
+		return nil, perr
+	}
+	return &deskkit.TrustPayload{BodyEdited: be, Events: ev, Complete: complete}, nil
+}
+
 // prTrustGate enforces the desk trust gate (deskkit/trust.go) on a mutating verb's
 // target PR: a PR authored outside the compiled-in trusted set (login AND numeric id
-// checked — REST has both) with no CURRENT blessing is REFUSED (exit 5,
+// checked — both forges carry them) with no CURRENT blessing is REFUSED (exit 5,
 // audited) — deskpost must never post a verdict, comment, or ready-flip on unvetted
 // third-party work. Blessing is bless-then-edit aware (deskkit.Blessed);
 // an unverifiable trust read is exit 6, never a guess.
-func prTrustGate(c *ghClient, pr int, authorLogin string, authorID int64) error {
+func prTrustGate(c postBackend, pr int, authorLogin string, authorID int64) error {
 	return trustGate(c, kindPR, pr, authorLogin, authorID)
 }
 
@@ -941,24 +995,20 @@ func prTrustGate(c *ghClient, pr int, authorLogin string, authorID int64) error 
 // PR query. It fails closed today (the PR query returns no blessing, so the gate refuses),
 // but "fails closed by luck" is not a property worth keeping when the compiler can remove
 // the possibility.
-func trustGate(c *ghClient, k targetKind, n int, authorLogin string, authorID int64) error {
+func trustGate(c postBackend, k targetKind, n int, authorLogin string, authorID int64) error {
 	if deskkit.TrustedAuthorID(authorLogin, authorID) {
 		return nil
 	}
 	kind := k.String()
-	fetch, parse := c.fetchPRTrustPayload, deskkit.ParsePRTrustPayload
+	get := c.prTrustPayload
 	if k == kindIssue {
-		fetch, parse = c.fetchIssueTrustPayload, deskkit.ParseIssueTrustPayload
+		get = c.issueTrustPayload
 	}
-	raw, err := fetch(n)
+	tp, err := get(n)
 	if err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("cannot read trust events for %s #%d (trust gate)", kind, n), err)
 	}
-	bodyEdited, events, complete, perr := parse(raw)
-	if perr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("cannot parse trust events for %s #%d (trust gate)", kind, n), perr)
-	}
-	if !complete || !deskkit.Blessed(bodyEdited, events) {
+	if !tp.Complete || !deskkit.Blessed(tp.BodyEdited, tp.Events) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: %s #%d author %q is not a trusted desk identity and carries no current blessing "+
 				"(trust gate) — a comment from the configured blessing authority on the %s admits it; edits after a blessing re-quarantine",

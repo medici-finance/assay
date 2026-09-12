@@ -9,7 +9,7 @@ why: >-
   mechanism, which is exactly what the profile promises.
 wave: 2
 depends: ["forge-gitlab/01"]
-unblocks: ["forge-gitlab/04"]
+unblocks: ["forge-gitlab/04", "forge-gitlab/11"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -86,9 +86,9 @@ is Ultimate-only. See edition-matrix.md row C3.
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./tools/desk/cmd/desktoken/... -v` | exit 0; output contains `PASS` |
-| 2 | `! (go run ./tools/desk/cmd/desktoken --forge gitlab worker 2>&1 \| grep -qE -e 'glpat-' -e '^[A-Za-z0-9_-]{30,}$')` | exit 0 — no token-shaped value in any output path (dereference: run against the fixture env from the test README) |
-| 3 | `go test ./tools/desk/cmd/desktoken/... -run TestRotateInvalidatesOld -v` | exit 0; fixture asserts old token rejected after mint |
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/desktoken/... -v` | exit 0; output contains `PASS` |
+| 2 | `! (cd tools/desk && GOWORK=off go run ./cmd/desktoken --forge gitlab worker 2>&1 \| grep -qE -e 'glpat-' -e '^[A-Za-z0-9_-]{30,}$')` | exit 0 — no token-shaped value in any output path (dereference: run against the fixture env from the test README) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/desktoken/... -run TestRotateInvalidatesOld -v` | exit 0; fixture asserts old token rejected after mint |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

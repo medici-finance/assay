@@ -173,6 +173,26 @@ Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFI
 
 **VERIFY: FAIL** — rows 1 and 7 checked-failed: the Task-1 mapping page `docs/streams/statusgen/metric-map-11.md` (planned) and the Task-4 DevLake spec+runbook `docs/streams/statusgen/devlake/` (planned) are unfulfilled in this repo. The code half (rows 2/2b/3/4/5/6) is sound. **Status stays `implemented`** — the two doc deliverables must land, then re-verify rows 1 and 7. Fix owner: the brief's implementer/worker.
 
+### RE-VERIFY 2026-09-11 — non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: PASS → verified (SUPERSEDES the 2026-09-01 FAIL above)
+
+The FAIL above (rows 1 & 7, docs deliverables absent) ran against `3287ec1`, BEFORE the docs landed. Both docs deliverables merged in `#574` (merge `d8dd0648`, "docs(statusgen/11): metric map + staged DevLake spec/runbook"), an ancestor of the re-verify head. Re-verified against current merged main `553dc2ae5` (two-protocol confirmed), offline, isolated worktree; statusgen built from source.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `test -f docs/streams/statusgen/metric-map-11.md && grep -c -e DevLake -e ours -e dropped …` | 0 | count `43` (≥10); DevLake 33 / ours 12 / dropped 12 | PASS |
+| 2 | `ls statusgen/{dora,codeefficiency,trend}.go` / retained set | 1 / 0 | all three removed; `roadmap.go` + `roadmap_streampage.go` retained | PASS |
+| 2b | `grep computeDoraGrouped` + `go run . --root .. --roadmap` | 0 | `computeDoraGrouped` in retained `roadmapdora.go:308`; `--roadmap` builds+runs | PASS |
+| 3 | `ls statusgen/bottleneck.go` + `grep 'awaiting-verification backlog'` | 0 | `bottleneck.go` present; backlog curve retained in `main.go` (`--verif-backlog`/`--trend` alias) | PASS |
+| 4 | `cd statusgen && GOFLAGS=-buildvcs=false go test ./...` | 0 | `ok …/statusgen 29.2s` | PASS |
+| 5 | `go run . --root .. --lint \| tail -1` | 0 | `LINT: PASS` | PASS |
+| 6 | `go run . --root .. --bottleneck` | 0 | per-stage WIP×dwell table renders | PASS |
+| 7 | `ls docs/streams/statusgen/devlake/ && grep -rln k8s …` | 0 | 4 files (README.md, runbook.md, values.yaml, github-connection.yaml) naming the platform k8s cluster; cross-linked from the mapping page | PASS |
+| 8 | `go run . --root .. --consumers --brief statusgen/11` | 2 | COULD-NOT-CHECK — `no brief-v1 file` (statusgen/11 is `schema: brief-v2`; `--consumers` corroborates v1 only). Not a FAIL; a corroboration nicety, not a deliverable | COULD-NOT-CHECK |
+
+**Rehoming (the derived correctness property):** the grouped-DORA core (`computeDoraGrouped`) survived deletion of `dora.go` by moving to retained `roadmapdora.go` (row 2b), and the awaiting-verification backlog curve survived deletion of `trend.go` (retained in `main.go`; row 3) — nothing methodology-owned was dropped with the removed commodity files. `RISK-VALUE: N/A — commodity-metrics split + docs map; all risk axes no, no guard carries a risk-bearing literal.`
+
+**VERDICT: PASS** — rows 1/2/2b/3/4/5/6/7 PASS on merged main `553dc2ae5`; row 8 expected COULD-NOT-CHECK (brief-v2). Rows 1 & 7 (the prior FAIL) now genuinely pass — the docs landed via #574. The 2026-09-01 FAIL is superseded. gate: model, risk all=no → row flips **implemented → verified**; tracker `#855` closes citing #574.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table, checking specifically:
 the mapping page covers every removed computation (nothing vanished unmapped), the rehomed backlog

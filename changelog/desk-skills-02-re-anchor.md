@@ -1,0 +1,3 @@
+### Added
+- `pr-review-desk` gains `references/re-anchor.md`: the five states a moved PR head puts a reviewed PR in — head moved under a standing verdict, a standing CHANGES_REQUESTED at the same head, a racy CONFLICTING while a gate is pending, a red check, and a non-commit fix at an unchanged head — each as one SIGNAL / PROBE / ACT / STOP row, so a re-anchor is a mechanical response instead of a fresh diagnosis each time.
+- The same reference states the full-length-SHA posting rule in one place: a shortened SHA is accepted by the shell and silently fails to register a verdict, which the flip gate then reads as no verdict at head.

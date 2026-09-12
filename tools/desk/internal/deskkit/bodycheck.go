@@ -255,6 +255,12 @@ const SurfaceBody = "body"
 //     paths (#209) while still refusing opaque token material carried
 //     between slashes — including an AWS secret access key, whose `/` characters
 //     defeat a purely length-based segment gate.
+//   - that same path-shaped run behind ONE leading `+` (see isQuantifierGluedPath). `+`
+//     is in the base64 alphabet and so in the run's character class, which means a regex
+//     quantifier (`grep -E '^FRESH +plugins/…'`, the Verify-row idiom) or a unified-diff
+//     add marker is read as the path's first character — and isPathLike refuses any run
+//     containing `+` outright. The exemption is earned by the REMAINDER being path-like,
+//     never by the `+`, which carries no payload (#879).
 //   - a run that is itself a single bare identifier built entirely out of words (see
 //     isIdentifierLike). This exempts long CamelCase Go identifiers — test names like
 //     `HonoredFilterLeavesTripwireSilent` routinely clear the 32-char run threshold
@@ -511,10 +517,19 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isPGPFingerprint(raw, loc[0], loc[1]) {
 			continue
 		}
+		// Rule 4 (quantifier-glued-path arm). NARROWER than the class it clears and bounded
+		// by the paired positive pos-token-wearing-a-leading-plus: isQuantifierGluedPath
+		// strips ONE leading '+' — a regex quantifier or a unified-diff add marker, neither
+		// of which carries payload — and admits the run only if the REMAINDER is already
+		// exempt under Rule 1. A '+' on opaque material, and a second '+', both stay refused.
+		if isQuantifierGluedPath(run) {
+			continue
+		}
 		return RefusedFinding(fmt.Sprintf(
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
-				"word-shaped segments, bare word-shaped identifiers, key=<path> shell "+
+				"word-shaped segments (optionally behind one leading '+' quantifier or "+
+				"diff marker), bare word-shaped identifiers, key=<path> shell "+
 				"assignments, all-'=' banner separators, a PGP recipient fingerprint (40 "+
 				"uppercase hex after a pgp:/fp: field), and the marker-anchored digest "+
 				"fields of a recognised structured format (go.sum h1:, SRI integrity, a "+
@@ -556,6 +571,50 @@ func isPGPFingerprint(raw string, start, end int) bool {
 		return false
 	}
 	return rePGPFingerprintAnchor.MatchString(raw[:start])
+}
+
+// isQuantifierGluedPath is Rule 4, the quantifier-glued-path arm. It admits a run that is
+// ONE leading '+' followed by content that is ITSELF already exempt under Rule 1
+// (isPathLike) — and nothing else.
+//
+// The false positive it clears: '+' is in the base64 alphabet, so it is in reBase64ish's
+// character class, so a '+' written immediately in front of a path is read as the first
+// character of that path's run. Two everyday shapes do exactly that and neither is base64:
+//
+//   - a REGEX QUANTIFIER. The Verify-row idiom `grep -cE -e '^FRESH +<path>'` — where ` +`
+//     is "one or more spaces" — glues the quantifier onto the path behind it.
+//   - a UNIFIED-DIFF add marker on a line whose content is a bare path. deskpr strips these
+//     before scanning (#812), but deskevidence scans a whole merged BRIEF, where a quoted
+//     diff is content, not transport syntax, and nothing strips it.
+//
+// Both then hit isPathLike's outright refusal of any run containing '+', so a path one
+// character under the run threshold refused as soon as a '+' preceded it. The measured cost
+// (#879) was that deskevidence scans the whole merged brief before appending its Evidence
+// row, so a brief carrying such a Verify row could not receive an Evidence append through
+// the sanctioned tool at all — the verifier correctly held rather than routing around the
+// scan, and the brief's PR stalled behind it.
+//
+// It is bounded the same way Rules 1-3 are, and the bound is that the '+' is never itself
+// the exemption:
+//
+//   - EXACTLY ONE '+' is stripped. A second one stays in the remainder, where isPathLike's
+//     own '+'/'=' gate refuses it — so the arm cannot be walked forward one character at a
+//     time into a general base64 exemption.
+//   - the REMAINDER must satisfy isPathLike in full: it must contain '/', carry no '=', and
+//     have its word-shaped segments outnumber its opaque ones. A '+' on a bare blob
+//     (no '/') or on a #410 slash-layout draw (opaque segments dominate) stays refused.
+//
+// Because '+' carries no payload, this cannot admit any CONTENT that Rule 1 would not
+// already admit with the '+' absent — it removes a one-character syntax artefact from the
+// front of a run, and re-asks the existing question. TestQuantifierGluedPathExemption and
+// the paired corpus artifacts (neg-regex-quantifier-glued-path,
+// pos-token-wearing-a-leading-plus) pin both directions.
+func isQuantifierGluedPath(run string) bool {
+	rest, ok := strings.CutPrefix(run, "+")
+	if !ok {
+		return false
+	}
+	return isPathLike(rest)
 }
 
 // regexFinding builds the explain ScanFinding for a literal-marker arm: the rule id, the

@@ -50,7 +50,31 @@ leg proves `statusgen --lint` exits 0 and a desk-verb smoke passes on Windows** 
 cannot be made native on Windows (a `bash`+`jq` SessionStart hook, say), the gap is
 **stated and triaged with a documented workaround**, never silently shipped broken.
 
-## Scope — the six units, and what each owns
+**The end state also has a USABILITY half, added by the driver's 2026-09-11 ask** (briefs 06-09).
+"Installable" is not the same claim as "installed in three commands", and the first was reached
+while the second was not: today an adopter on Windows, using Cursor as the harness and GitLab as
+the forge, follows roughly fifteen steps spread across PowerShell, Git-Bash/WSL and manual file
+copies. The target shape is the Claude Code marketplace path's equal:
+
+```
+1.  powershell -File scripts/bootstrap-windows.ps1 -Tag vX.Y.Z
+2.  deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo
+3.  invoke `assay:install` inside Cursor
+```
+
+No operator-supplied sha256 in (1) — it is resolved from the committed manifest, and the
+verify-or-refuse control is unchanged. No manual copy in (2) — Cursor's install mechanism IS file
+placement, so the tool does it. No Git-Bash prerequisite anywhere on the GitLab arm. The
+fifteen-step path survives as a complete manual appendix; it stops being the only route.
+
+## Scope — the ten units, and what each owns
+
+**Units 0-5 delivered the RUNNABLE end state** (a pinned, verified Windows binary, installed, with
+a CI leg proving it). **Units 6-9 deliver the USABLE one** — the same install in three commands
+rather than fifteen steps across PowerShell, Git-Bash/WSL and manual file copies. The second half
+is the driver's 2026-09-11 ask, and it changes no claim units 0-5 made: it removes the manual
+surfaces between an adopter and those claims.
+
 
 0. **Source build-tag split (brief 00).** `_unix.go` / `_windows.go` pairs for the eight
    unix-only `syscall` sites in `statusgen/` and `tools/desk/`, each Windows variant degrading
@@ -74,11 +98,42 @@ cannot be made native on Windows (a `bash`+`jq` SessionStart hook, say), the gap
 5. **Adoption-doc delta (brief 05).** The Windows adopter walkthrough in
    `docs/adopting-assay.md`, mirroring the existing per-scenario runbook pattern, replacing
    the "not yet in scope" stub with a real path.
+6. **Manifest-driven bootstrap (brief 06).** `scripts/bootstrap-windows.ps1` stops demanding an
+   operator-transcribed sha256 (`-Tag` and `-Sha256` are both `Mandatory=$true` today) and resolves
+   tag + digest from the committed `plugins/assay/paired-versions.yaml` instead — the same value CI
+   already extracts for itself. The verify-or-refuse is unchanged; the human transcription step is
+   what goes. It also writes the user PATH entry the script currently leaves to the adopter.
+   **Command 1 of three.**
+7. **`deskinstall --harness cursor` (brief 07).** Cursor's install mechanism IS file placement, so
+   the five-step manual copy (skills tree, references as a sibling so the `../../references/*.md`
+   includes resolve, the `AGENTS.md` bindings) becomes one idempotent command with a `--check` that
+   reports drift. **Command 2 of three.** Command 3 is invoking `assay:install` inside Cursor,
+   which needs no new work — it is what the first two commands make possible.
+8. **Go-native GitLab fleet provisioning (brief 08).** The 1167-line `tools/create-fleet-gitlab.sh`
+   is bash + curl + jq, and the adoption docs tell a Windows adopter to run it from Git-Bash or WSL
+   because "Native PowerShell cannot run it." A Go desk verb removes that prerequisite: the seven
+   role service accounts and their PATs, `gitlab-<role>.token` files under the owner-only Windows
+   ACL custody the toolchain already enforces on read, the `GITLAB_API_BASE` export, and a
+   forge-neutral `create-labels` path (the GitHub one is nine hand-run `gh label create` lines; the
+   GitLab one exists only inside that script). **`gate: human`** — it mints and persists live
+   credentials.
+9. **Docs and scope delta (brief 09).** The install skill's Windows scope widened from
+   acquisition-only to the whole install; the adopter walkthrough collapsed to the three commands
+   with the fifteen-step path kept complete as a manual appendix; and the docs/board skew on the
+   Windows CI leg corrected — `docs/adopting-assay.md` still calls it "staged, pending promotion"
+   while the workflow is live and brief 04 is `done` on this board.
 
 **Out of scope:** rewriting the Go tools (already portable); a Windows container image; a
 WSL-only path presented as "Windows support" (WSL is Linux — the claim is *native* Windows,
 with WSL noted only as a fallback); publishing to any Windows package manager
 (winget/Chocolatey) — that is a downstream distribution decision, not this stream.
+
+**Also out of scope: the cockpit.** A cockpit (Herdr, Orca, or any other multi-agent supervisor
+surface) is an OPTIONAL COMPOSITION layered AFTER install, not a step within it. The three commands
+above leave an adopter with a working install and a working desk; what they choose to drive it with
+is a separate decision with its own dependencies, and nothing in this stream's end state depends on
+one existing. A brief here that reached for a cockpit would be widening the stream, not completing
+it.
 
 ## Briefs
 
@@ -91,6 +146,10 @@ with WSL noted only as a fallback); publishing to any Windows package manager
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](brief-03-install-path.md) | 2 | L | implemented | — | — |
 | 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](brief-04-windows-ci-leg.md) | 2 | M | done | 2026-09-06 host (apply-gated) | 2026-09-08 human:reviewer |
 | 05 | [Adoption-doc delta — the Windows adopter walkthrough](brief-05-adoption-doc-delta.md) | 3 | M | done | 2026-09-07 assay-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #593 @ 57ac2401e4a807da14aef81d3a288431b7a5f148) |
+| 06 | [Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH](brief-06-manifest-driven-bootstrap.md) | 3 | M | implemented | — | — |
+| 07 | [deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings](brief-07-deskinstall-harness-cursor.md) | 3 | M | implemented | — | — |
+| 08 | [Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency](brief-08-go-native-gitlab-fleet-provisioning.md) | 1 | L | todo | — | — |
+| 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and
@@ -112,9 +171,32 @@ d684440 on the LF checkout the repo `.gitattributes` provides (#584/#585). The s
    00 build-tag split ──►── 01 release matrix ──┬──► 03 install path (Ian rules the fork) ──┐
                                                 │                                           ├──► 05 adoption doc
    02 portability audit ────────────────────────┴──► 04 windows CI leg ────────────────────►┘
+
+   ── second half: the three-command install (driver's ask, 2026-09-11) ──
+
+                                       ┌──► 06 manifest-driven bootstrap ──┐
+   03 install path ────────────────────┤                                   │
+                                       └──► 07 deskinstall --harness cursor ┤──► 09 docs + scope
+   00 build-tag split ──┐                                                  │     + CI skew
+                        ├──► 08 go-native GitLab fleet (gate: human) ──────┘
+   02 portability audit ┘
 ```
 
-**In-stream head: 00 (build-tag split).** Longest chain is `00 → 01 → 03 → 05`. 00 is at the
+**In-stream head of the second half: 08 (GitLab fleet provisioning).** Not 06 and not 07 — and
+this is the head that is easy to get wrong. 06 and 07 are each one artifact with an offline test
+suite and a `depends:` on work that has already landed (`03`, `implemented`); either could start
+today. 08 is `gate: human` with `decision-trigger: creation`, so its decision issue is filed as the
+brief lands and **nothing is implementable until a human rules the PAT-custody fork** — and its
+dependency chain reaches all the way back to wave 0 (`00`, `02`). It is also the largest unit (L)
+and the only one that mints credentials. A plan that sequenced 06 → 07 → 08 → 09 would put the
+longest-lead, human-gated item last and discover the wait at the end; 08 starts its human gate
+FIRST, in parallel with 06 and 07, and 09 gathers all three.
+
+**Longest chain of the whole stream: `00 → 01 → 03 → 06|07 → 09`.** 08's own chain
+(`00 → 08 → 09`) is shorter in hops but longer in wall-clock, because a human ruling is not a hop.
+Track both.
+
+**In-stream head of the first half: 00 (build-tag split).** Longest chain is `00 → 01 → 03 → 05`. 00 is at the
 head because **nothing cross-compiles until it lands** — `statusgen` and `tools/desk` both fail
 `GOOS=windows go build` on today's `main`, so 01 can add every Windows target it likes and the
 release build will only break. 01 follows because **nothing installs, smoke-tests, or is
@@ -156,6 +238,19 @@ and neither blocks the other, so they still run in parallel.
   Windows and prove `--lint` runs, but the stream's claim is that the *pinned release
   binary* works on Windows; smoking a from-source build proves a weaker thing. 04 smokes the
   released asset, so it follows 01.
+- **Starting the second half at 09 (fix the docs now).** Tempting because two documented claims
+  are already wrong today — the install skill's acquisition-only scope and the "staged, pending
+  promotion" CI-leg paragraph — so a docs pass looks like free value. It is not: 09's whole job is
+  to describe the three commands, and two of the three do not exist until 06 and 07 land. Writing
+  the walkthrough first produces a document that describes a plan, which is exactly how
+  `docs/adopting-assay.md:978` came to be stale in the first place. The two standing errors are
+  small enough to ride along with 09 rather than to justify inverting its dependency.
+- **Treating 08 as "just a rewrite of a shell script".** It is a rewrite of a shell script that
+  mints seven live access tokens and writes them to disk. The custody question on Windows has no
+  settled answer (NTFS has no equivalent of the `chmod 0600` the script runs — the repo's own
+  `custodyacl.go` says a normal file reads `0666` there), which is why the brief carries a
+  `## Human decision` and `sensitive-data: yes`. Sizing it from its line count rather than from
+  what it handles is how it gets dispatched to the wrong tier.
 - **Assuming `.exe` handling is free.** The current `statusgen-<platform>` assets are raw
   binaries with no suffix; Windows executables need `.exe`, and the checksum + pin lines
   must carry the suffixed names. This is the one concrete wrinkle in the delivery layer
@@ -165,15 +260,25 @@ and neither blocks the other, so they still run in parallel.
 
 ```
 Wave 0: [00, 02]                 (independent; 00 = Go source split, 02 = shell-surface triage)
-Wave 1: [01]←{00}
+Wave 1: [01]←{00}, [08]←{00,02}
 Wave 2: [03]←{01,02}, [04]←{01,02}
-Wave 3: [05]←{02,03,04}
+Wave 3: [05]←{02,03,04}, [06]←{03}, [07]←{03}
+Wave 4: [09]←{06,07,08}
 ```
 
-Critical path: `00 → 01 → 03 → 05`. 02 runs parallel to 00 in wave 0 and feeds 03, 04, and 05.
-04 runs parallel to 03 in wave 2 (both need the Windows binary from 01 and the triage from
+Critical path (first half): `00 → 01 → 03 → 05`. 02 runs parallel to 00 in wave 0 and feeds 03, 04,
+and 05. 04 runs parallel to 03 in wave 2 (both need the Windows binary from 01 and the triage from
 02); 05 is the end-state doc and gathers the install path (03), the CI proof (04), and the
 triage (02).
+
+Critical path (second half): `00 → 01 → 03 → 06|07 → 09`, with `00 → 08 → 09` running alongside.
+06 and 07 are peers in wave 3 — each edits a different artifact (`scripts/bootstrap-windows.ps1`
+and `tools/desk/cmd/deskinstall/`), so they carry no edge between them and can be dispatched
+together. 08 sits at wave 1 by dependency but is dispatched EARLY for wall-clock reasons, not wave
+reasons: its human gate is the stream's longest lead. 09 is the gathering doc brief and is the only
+wave-4 item; it cannot start until all three of its dependencies have landed their artifacts,
+because its Verify table dereferences those artifacts' real flag surfaces rather than the briefs'
+prose.
 
 ## Gate distribution — derived, not spread
 
@@ -183,8 +288,20 @@ the adoption doc (05) both bind to whichever is chosen — the maintainer commit
 the same way `harness-portability/03` reserved the target-set/channel ruling to Ian. Its four
 risk answers are all `no` (nothing here touches funds, customers, regulators, or an
 irreversible surface — everything is git-revertible tooling and docs); the `human` gate is a
-**design-commitment** gate, and the `gate-why` says so. All other briefs answer the four risk
-questions `no` and gate `model`.
+**design-commitment** gate, and the `gate-why` says so.
+
+**08 is `gate: human` for a different reason — a risk answer, not a design commitment.** It is the
+only brief in the stream that answers a risk question `yes`: `sensitive-data`, because it mints
+seven live GitLab personal access tokens and persists each to a file every desk verb then reads.
+The gate is derived there, not chosen. What the human confirms is enumerated in its `gate-why` and
+decided in its `## Human decision` (`decision-trigger: creation`, so the decision issue is filed as
+the brief lands): the PAT custody model on native Windows — NTFS has no equivalent of the
+`chmod 0600` the existing shell script runs, and the repo's own `custodyacl.go` records that a
+normal file reads `0666` there — and what a partially-completed provisioning run does about
+credentials it has already minted.
+
+All other briefs — 00, 01, 02, 04, 05, 06, 07, 09 — answer the four risk questions `no` and gate
+`model`.
 
 The one **security-relevant** surface lives inside 03 and is *not* a gate question but a
 design requirement: the Windows install path MUST sha256-verify the pinned binary before it
@@ -219,3 +336,16 @@ binary.
   the reason — never run vacuously, never greened from the amd64 result.
 - **Every absence-assertion grep pairs a positive control**: a zero with no control is not
   evidence.
+- **A Windows-runtime Verify row is could-not-check for an offline POSIX verifier, never a pass.**
+  Observed twice on 03's row 8 (2026-09-07 and 2026-09-10). Briefs in this stream therefore split
+  their tables deliberately: logic a POSIX verifier CAN exercise (Go tests, static assertions over
+  the script text) separated from rows only `windows-latest` can discharge, each labelled so the
+  verifier records the second group as could-not-check with its reason rather than greening it from
+  the first.
+- **`chmod` is not the Windows answer for credential files.** `os.FileMode`'s permission bits are
+  synthetic on NTFS — a normal file reads `0666` — so a `chmod 600` that reports `0600` without
+  tightening the DACL is a fake green. The toolchain's owner-only ACL evaluation
+  (`tools/desk/internal/deskkit/custodyacl.go`, `custodyowner_windows.go`) is the one home for that
+  decision; a brief here CALLS it and never re-derives an ACL opinion of its own.
+- **The cockpit is a composition, not a step.** Any supervisor/cockpit surface layered over a
+  working install is out of this stream's scope and out of its end state — see **Out of scope**.

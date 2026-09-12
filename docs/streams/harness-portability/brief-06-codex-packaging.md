@@ -93,13 +93,13 @@ facts:
 | 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp06r1.out 2>&1; echo $?` | `0` — includes the skew/coverage red tests (task 1) |
 | 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json; echo $?` | `0` — the manifest exists, parses, and carries the required fields (adjust path/fields to 01's measured schema in the same commit as the ruling, never silently) |
 | 3 | Version skew impossible: `test "$(jq -r .version plugins/assay/.claude-plugin/plugin.json)" = "$(jq -r .version plugins/assay/.codex-plugin/plugin.json)"; echo $?` | `0` |
-| 3a | **Mutation — skew detected**: `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && go run ./tools/harnessgen codex --check > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | non-zero naming the manifest; after checkout, `--check` passes again |
-| 4 | `go run ./tools/harnessgen codex --check; echo $?` | `0` |
-| 5 | **Mutation — coverage closed**: `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && go build -o /tmp/hp06gen ./tools/harnessgen && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | exit `2`, output names `probe-skill` — an unaccounted skill is a hard error, the coverage discipline held (built binary so the three-state exit `2` is observable; `go run` collapses non-zero to `1`) |
-| 6 | **Mutation — binding consistency**: `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && go build -o /tmp/hp06gen ./tools/harnessgen && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | exit `2` naming `worker-desk` — packaging-vs-binding skew is a build error |
+| 3a | **Mutation — skew detected**: `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..) > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | non-zero naming the manifest; after checkout, `--check` passes again |
+| 4 | `(cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | `0` |
+| 5 | **Mutation — coverage closed**: `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | exit `2`, output names `probe-skill` — an unaccounted skill is a hard error, the coverage discipline held (built binary so the three-state exit `2` is observable; `go run` collapses non-zero to `1`) |
+| 6 | **Mutation — binding consistency**: `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | exit `2` naming `worker-desk` — packaging-vs-binding skew is a build error |
 | 7 | Adopt path present: `grep -qiF 'codex' plugins/assay/skills/adopt/SKILL.md && grep -qF 'AGENTS-assay' plugins/assay/skills/adopt/SKILL.md; echo $?` | `0` — two independent greps ANDed (install scenario + fragment step both present) |
 | 7a | **Positive control for row 7** — `grep -qF 'AGENTS-assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | `1` — the probe reports absence for an absent token |
-| 8 | **Neighbour row** — `go run ./tools/harnessgen resident --check; echo $?` | `0` — the 05 verb still passes beside the new one (shared generator plumbing) |
+| 8 | **Neighbour row** — `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | `0` — the 05 verb still passes beside the new one (shared generator plumbing) |
 
 ## Evidence
 
@@ -129,6 +129,26 @@ three-state gate; a wrong value would let unaccounted skills ship silently, and 
 mutation rows prove it fires. Manifest version is derived-and-equality-bound to the single
 metadata source, not independently set; the exclusion list is empty (no exclusion to
 justify).
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: FAIL (held at `implemented`)
+
+Ran the Verify table against public medici-finance/assay merged main `553dc2ae530f00e861a14536af7cc884ab77ccf5` (two-protocol head confirmed), offline in an isolated worktree; all mutation controls restored, worktree left clean. Non-implementer. tools/harnessgen is its own Go module (no repo-root go.mod), so the literal `go run ./tools/harnessgen …` rows fail go.mod-not-found; the real properties were run module-aware via a built binary (non-blocking command-string note).
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | go test in tools/harnessgen | 0 | ok tools/harnessgen | PASS |
+| 2 | jq name+version+skills on plugins/assay/.codex-plugin/plugin.json | 0 | true (all present) | PASS |
+| 3 | version equality vs plugins/assay/.claude-plugin/plugin.json | 0 | both 1.0.7 — equal | PASS |
+| 3a | mutate manifest version to 9.9.9 → codex --check → revert | 1 | DRIFT (committed manifest differs); recheck after revert clean; tree clean | PASS |
+| 4 | harnessgen codex --check (module-aware) | 0 | clean — the manifest matches the metadata source | PASS |
+| 5 | built binary + planted undeclared skill | 2 | coverage rule failed — skill "probe-skill" on disk but in neither the packaged roster nor the excluded list | PASS |
+| 6 | built binary + removed a degradation cell | 2 | packaging↔binding skew — packaged skill "worker-desk" has no degradation cell in references/codex.md | PASS |
+| 7 | grep codex AND AGENTS-assay in plugins/assay/skills/adopt/SKILL.md | 1 | both greps 0 hits — the file is a 58-line thin pointer to docs/adopting-assay.md and carries neither token | FAIL |
+| 7a | positive control — grep an absent token | 1 | absent token reports absence | PASS |
+| 8 | harnessgen resident --check (module-aware) | 0 | clean — committed artifacts match the source | PASS |
+
+**Why FAIL — split-delivery gap.** The Codex packaging backend all landed and passes (rows 1–6, 8): the generated `.codex-plugin/plugin.json` with version bound equal to the `.claude-plugin` manifest, the coverage rule failing closed at exit 2, the binding-skew check at exit 2, and the resident verb intact. But Verify row 7's deliverable — the Codex install scenario + the AGENTS-assay fragment step in `plugins/assay/skills/adopt/SKILL.md`, which this brief's own `consumers` frontmatter marks `fixed-here` (distinct from `docs/adopting-assay.md`, scoped as `follow-up harness-portability/07`) — did not land in the public tree. `plugins/assay/skills/adopt/SKILL.md`'s git history carries only the open-core drop and a guardrails consolidation; the task-3 amendment is absent. `docs/adopting-assay.md` carries a Codex row but not the AGENTS-assay token, and the adopt SKILL the row targets has neither. Filed as #872 (bug, →worker). Brief stays at `implemented`; re-run row 7 after the adopt-skill amendment lands (or after Verify row 7 + the consumers frontmatter are retargeted, if the pointer-only design is intended — a spec call).
+
+**Risk-bearing value:** `RISK-VALUE: DERIVED — the three-state exit gate exitCouldNotCheck=2 / exitDrift=1 / exitClean=0 (tools/harnessgen/main.go) is the top risk-bearing literal; a wrong value would let an unaccounted or binding-skewed skill ship silently. Observed live at all three: clean=0 (rows 4/8), drift=1 (row 3a), could-not-check=2 (rows 5 & 6, built binary). Manifest version equality (1.0.7==1.0.7) is equality-bound to the single metadata source, not independently set.`
 
 ## Review
 

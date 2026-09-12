@@ -123,7 +123,7 @@ facts:
 | 1 | `statusgen --root . --roadmap --cadence weekly && command ls docs/reports/weekly/` | a week-labelled (`%G-W%V`) directory exists (literal window label per implementer's naming, recorded in Evidence) |
 | 2 | `statusgen --root . --roadmap --cadence monthly && command ls docs/reports/monthly/` | a month-labelled (`%Y-%m`) artifact directory exists |
 | 3 | `statusgen --root . --roadmap` (no `-cadence`) still writes `docs/reports/roadmap/index.html` | exit 0 — point-in-time mode unchanged |
-| 4 | `go test ./statusgen/ -count=1 -run Cadence -v > /tmp/cad.log 2>&1 && grep -q -- '--- PASS' /tmp/cad.log && go test ./statusgen/ -count=1 -run Theme -v > /tmp/thm.log 2>&1 && grep -q -- '--- PASS' /tmp/thm.log` | exit 0 — both the cadence-window and unmapped-theme test groups EXIST (a `--- PASS` line) and pass. No raw pipe: redirect to a file + `grep FILE`, chained with `&&`, so a group that runs nothing (no `--- PASS`) goes red |
+| 4 | `cd statusgen && GOWORK=off go test . -count=1 -run Cadence -v > /tmp/cad.log 2>&1 && grep -q -- '--- PASS' /tmp/cad.log && go test . -count=1 -run Theme -v > /tmp/thm.log 2>&1 && grep -q -- '--- PASS' /tmp/thm.log` | exit 0 — both the cadence-window and unmapped-theme test groups EXIST (a `--- PASS` line) and pass. No raw pipe: redirect to a file + `grep FILE`, chained with `&&`, so a group that runs nothing (no `--- PASS`) goes red |
 | 5 | `statusgen --root . --lint` | exit 0 |
 
 ## Evidence
