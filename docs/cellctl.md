@@ -622,13 +622,13 @@ this arm and is not passed; the model comes from the same `DESK_MODEL_DEFAULT`/`
 resolution `cellctl desk` always uses.
 
 **`--sandbox danger-full-access` is required, honestly.** Per the ruled capability matrix (the
-`assay#937` live smoke run is the evidence codex CLI's default `workspace-write` sandbox blocks the
+`#937` live smoke run is the evidence codex CLI's default `workspace-write` sandbox blocks the
 `.git/refs/heads/` write a fresh worktree needs — codex has no built-in worktree management, so a
 skill that must isolate has to run `git worktree add` itself, and that is exactly what
 `workspace-write` blocks), the worktree this window runs in could not have been **created** under
 a lesser sandbox in the first place. This is not a weakening introduced here — it is the existing
 precondition `cellctl desk`'s own worktree-creation step depends on, stated rather than glossed
-over. `assay#939` tracks where the capability matrix itself has drifted against newer codex
+over. `#939` tracks where the capability matrix itself has drifted against newer codex
 releases; that staleness does not change what this flag is *for* on this exec line.
 
 **The-desk's Opus refusal binds the claude arm only.** `opus` / `claude-opus-*` is a Claude-family
