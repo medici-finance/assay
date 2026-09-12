@@ -5,8 +5,8 @@
 #   bare `cellctl down <cell>` (no flags) does NOT die on a phantom empty positional — the
 #   dispatcher used to always pass a 3rd arg to cmd_down even when the caller gave none
 #   (`down) cmd_down "${2:?cell}" "${3:-}" ;;`), and cmd_down's flag loop rejected that empty
-#   string as `down: unexpected argument ''` (assay-toolkit#916 / driver report, reproduced here
-#   against the pre-fix binary before this suite existed)
+#   string as `down: unexpected argument ''` (assay#916, reproduced here against the pre-fix
+#   binary before this suite existed)
 #   `--keep-deskd` alone still works (the single-flag case the old code accidentally allowed)
 #   `--cockpit tmux` alone still works
 #   `--keep-deskd --cockpit tmux` TOGETHER both take effect — the old dispatcher line
