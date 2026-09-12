@@ -459,8 +459,9 @@ func parseIntakeLegacy(path string) ([]intakeEntry, error) {
 		if cur == nil {
 			continue
 		}
-		if v, ok := strings.CutPrefix(line, "Disposition:"); ok {
-			cur.Disposition = strings.TrimSpace(v)
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) >= len("Disposition:") && strings.EqualFold(trimmed[:len("Disposition:")], "Disposition:") {
+			cur.Disposition = strings.TrimSpace(trimmed[len("Disposition:"):])
 		}
 	}
 	flush()
