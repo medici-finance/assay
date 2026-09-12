@@ -972,7 +972,7 @@ func TestSymbolicRefTargetMatchesGit(t *testing.T) {
 // deskpushguard's foreign-commit / merge-masquerade detector needs a commit's subject line
 // and parent hashes — two plain object.Commit field reads no earlier brief's caller needed.
 
-func TestCommitSubjectMatchesGitLogFormatS(t *testing.T) {
+func TestCommitSubject_MatchesGitLogFormatS(t *testing.T) {
 	f := gittest.NewFixture(t)
 	f.CommitFile(t, "second.txt", "second\n",
 		"feat: a subject line\n\nA body paragraph that must not leak into the subject.")
@@ -995,7 +995,7 @@ func TestCommitSubjectMatchesGitLogFormatS(t *testing.T) {
 	}
 }
 
-func TestParentHashesMatchesGitLogFormatP(t *testing.T) {
+func TestParentHashes_MatchesGitLogFormatP(t *testing.T) {
 	f := gittest.NewFixture(t)
 	root, err := f.Git("rev-parse", "HEAD")
 	if err != nil {
@@ -1032,7 +1032,7 @@ func TestParentHashesMatchesGitLogFormatP(t *testing.T) {
 	}
 }
 
-func TestDiffNameStatusMatchesGitAdd(t *testing.T) {
+func TestDiffNameStatus_MatchesGitAdd(t *testing.T) {
 	f := gittest.NewFixture(t)
 	f.CommitFile(t, "added.txt", "new\n", "add a file")
 	base, err := f.Git("rev-parse", "HEAD~1")
@@ -1053,11 +1053,11 @@ func TestDiffNameStatusMatchesGitAdd(t *testing.T) {
 	}
 }
 
-// TestDiffNameStatusDetectsRenameModifyDelete pins the classification DiffNameStatus adds
+// TestDiffNameStatus_DetectsRenameModifyDelete pins the classification DiffNameStatus adds
 // on top of DiffNames' plain path set: registerid.go's collision scan (checkRegisterIDCollisions)
 // needs to tell an ADD/MODIFY (a fresh or changed claim) apart from a DELETE or RENAME (neither
 // of which stakes a new id claim), matching git's own `--diff-filter=AM` restriction.
-func TestDiffNameStatusDetectsRenameModifyDelete(t *testing.T) {
+func TestDiffNameStatus_DetectsRenameModifyDelete(t *testing.T) {
 	f := gittest.NewFixture(t)
 	body := "alpha\nbravo\ncharlie\ndelta\necho\nfoxtrot\ngolf\nhotel\n"
 	f.CommitFile(t, "rename_me.txt", body, "add the file that will be renamed")
