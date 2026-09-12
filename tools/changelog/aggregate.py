@@ -25,6 +25,30 @@ highlights <fragment-dir> <changelog>
     empty-fragments refusal, consistent with the retired empty-``## Unreleased``
     refusal.
 
+credits <fragment-dir>
+    Print, one line per fragment, ``<fragment><TAB><pull-request-number>`` — the
+    pull request each fragment arrived on, resolved from GIT ALONE (the adding
+    commit, the merge commit that brought it to this history, and the number in
+    that commit's subject). A fragment that cannot be resolved CONFIDENTLY
+    prints ``<fragment><TAB>unresolved`` rather than being omitted, so a reader
+    can tell "no pull request found" from "not looked at". Always exits 0: a
+    credit must never be able to fail a release.
+
+    This is the GIT half of external-contributor credit. The FORGE half — the
+    pull request's author login, whether that identity is external to the
+    operator's roster, and whether the body carries the opt-out marker — needs
+    the forge and lives in the release workflow step, which turns this output
+    into a credits MAP file. This module never makes a network call.
+
+highlights/roll ... --credits <map-file>
+    Optional. <map-file> carries ``<fragment><TAB>@<login>`` lines (``#``
+    comments and blank lines ignored). Every bullet of a credited fragment gains
+    the credit suffix (default ``— thanks @<login>``) on its bullet line;
+    continuation lines of a multi-line highlight are untouched. A fragment with
+    no line, a line whose value is not an ``@login`` (``unresolved``,
+    ``opt-out``), or a missing map file credits nobody — and then the output is
+    BYTE-IDENTICAL to the same run without ``--credits``.
+
 roll <fragment-dir> <changelog> <tag> <date>
     Rewrite <changelog> in place: replace the ``## Unreleased`` section body
     with the standing pointer note, and insert a fresh ``## <tag> — <date>``
@@ -60,6 +84,26 @@ DEFAULT_BUCKET = "Changed"
 _BULLET_RE = re.compile(r"^\s*-\s+\S")
 _HEADING_RE = re.compile(r"^\s*###\s+(.+?)\s*$")
 _SECTION_RE = re.compile(r"^##\s+")
+
+# The credit suffix appended to each bullet of a credited fragment. A CONFIGURED
+# form, deliberately a module constant an adopter edits in one place: the wording
+# of a thank-you is a house's own voice, not this engine's business.
+CREDIT_SUFFIX = " \u2014 thanks %s"
+
+# An explicit per-fragment marker, never an omission — "no pull request found"
+# must be distinguishable from "not looked at".
+UNRESOLVED = "unresolved"
+
+# The merge-commit subject GitHub writes for a merge-commit landing, and the
+# trailing `(#N)` of a squash landing. Both are anchored and require the number
+# to be the WHOLE token: a loose parse is how a credit lands on the wrong person.
+_MERGE_PR_RE = re.compile(r"^Merge pull request #(\d+) ")
+_SQUASH_PR_RE = re.compile(r"\(#(\d+)\)\s*$")
+
+# A credit value is honoured only in the `@login` form. GitHub logins are
+# alphanumeric with single internal hyphens; anything else is not a login and is
+# treated as "credit nobody".
+_LOGIN_RE = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 
 # The standing note left in the (now always-empty) ## Unreleased section after a
 # roll. Prose, never a bullet — so neither the aggregator nor the deprecation
@@ -145,22 +189,178 @@ def unreleased_bullets(changelog_path):
     return [entry for _bucket, entry in _parse_bullets(sl)]
 
 
-def _collect(fragment_dir, changelog_path):
+def _shq(value):
+    """POSIX single-quote one argument for the shell git is run through.
+
+    The module reaches git via os.popen (no new dependency — os is already the
+    filesystem surface this engine stands on, and the offline unit tests stay
+    offline because git is local). Every interpolated value goes through here:
+    a fragment filename is attacker-influenced on a fork path, and an unquoted
+    one would be a command-injection seam in a release job.
+    """
+    return "'" + str(value).replace("'", "'\\''") + "'"
+
+
+def _git(repo, args):
+    """Run `git -C <repo> <args>` and return stdout, or None when git failed.
+
+    Failure is never fatal here: an unresolvable credit is a missing name, never
+    a refused release.
+    """
+    cmd = "git -C %s %s 2>/dev/null" % (_shq(repo), args)
+    try:
+        with os.popen(cmd) as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def _pr_from_subject(subject):
+    """The pull-request number in a landing commit's subject, or None.
+
+    Two landing shapes, both anchored: a merge commit's `Merge pull request #N
+    from ...`, and a squash commit's trailing `(#N)`. Anything else resolves to
+    nothing — a number found loosely somewhere in a subject is exactly how a
+    credit lands on the wrong person.
+    """
+    if not subject:
+        return None
+    m = _MERGE_PR_RE.match(subject)
+    if m:
+        return m.group(1)
+    m = _SQUASH_PR_RE.search(subject)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _resolve_fragment_pr(repo, relpath):
+    """fragment path -> the pull-request number it arrived on, or None.
+
+    The chain: the commit that ADDED the path, then the first merge commit on
+    the ancestry path from there to HEAD (the commit that brought it to this
+    branch), then the number in that commit's subject. With no such merge commit
+    the landing was a squash, so the adding commit IS the landing commit and its
+    own subject is read.
+
+    A path with MORE THAN ONE adding commit (added, deleted, re-added) is
+    ambiguous and resolves to None: this returns a name only when the answer is
+    confident.
+
+    NOTE the depth requirement. On a shallow clone `git log` cannot reach the
+    adding commit, so every fragment resolves to None and nobody is credited.
+    The release workflow's checkout sets `fetch-depth: 0` for exactly this
+    reason; see tools/changelog/README.md.
+    """
+    adds = _git(repo, "log --diff-filter=A --format=%%H -- %s" % _shq(relpath))
+    if adds is None:
+        return None
+    shas = [ln.strip() for ln in adds.splitlines() if ln.strip()]
+    if len(shas) != 1:
+        return None
+    adding = shas[0]
+    merges = _git(
+        repo,
+        "log --merges --ancestry-path --format=%%s %s..HEAD" % _shq(adding),
+    )
+    if merges:
+        lines = [ln for ln in merges.splitlines() if ln.strip()]
+        if lines:
+            # The LAST line is the oldest merge on the path — the one that
+            # brought the commit in, not a later merge that carried it along.
+            pr = _pr_from_subject(lines[-1].strip())
+            if pr:
+                return pr
+    own = _git(repo, "log -1 --format=%%s %s" % _shq(adding))
+    if own:
+        return _pr_from_subject(own.strip())
+    return None
+
+
+def _fragment_names(fragment_dir):
+    """The fragment filenames in <fragment-dir>, in the same sorted, README-
+    excluding order _collect reads them."""
+    if not os.path.isdir(fragment_dir):
+        return []
+    return sorted(
+        n for n in os.listdir(fragment_dir)
+        if n.endswith(".md") and n != "README.md"
+    )
+
+
+def load_credits(path):
+    """Read a credits MAP file into {fragment-filename: credit-suffix}.
+
+    Lines are `<fragment><TAB>@<login>`; `#` comments and blank lines are
+    ignored, and so is any value that is not an `@login` (`unresolved`,
+    `opt-out`, an empty field). A missing or unreadable file is an EMPTY map,
+    not an error — a credit must never be able to fail a release.
+    """
+    out = {}
+    if not path:
+        return out
+    try:
+        lines = _read_lines(path)
+    except (OSError, UnicodeDecodeError):
+        return out
+    for ln in lines:
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        parts = ln.rstrip("\n").split("\t")
+        if len(parts) < 2:
+            continue
+        name = parts[0].strip()
+        value = parts[1].strip()
+        if not name or not _LOGIN_RE.match(value):
+            continue
+        out[name] = CREDIT_SUFFIX % value
+    return out
+
+
+def _credit_entry(entry, suffix):
+    """Append the credit suffix to the BULLET LINE of a (possibly multi-line)
+    entry. Continuation lines of a multi-line highlight are untouched, and the
+    suffix is never written into the middle of the bullet's own text."""
+    head, sep, tail = entry.partition("\n")
+    return head + suffix + sep + tail
+
+
+def cmd_credits(fragment_dir):
+    """Print `<fragment><TAB><pr|unresolved>` for every fragment. Always 0."""
+    names = _fragment_names(fragment_dir)
+    if not names:
+        # A fragment directory that is missing, empty, or unreadable is itself an
+        # explicit unresolved line rather than silence: "nothing to credit" and
+        # "never looked" must not print the same thing.
+        sys.stdout.write("%s\t%s\n" % (fragment_dir, UNRESOLVED))
+        return 0
+    root = _git(fragment_dir, "rev-parse --show-toplevel")
+    root = root.strip() if root else ""
+    for name in names:
+        pr = None
+        if root:
+            abspath = os.path.abspath(os.path.join(fragment_dir, name))
+            relpath = os.path.relpath(abspath, root)
+            pr = _resolve_fragment_pr(root, relpath)
+        sys.stdout.write("%s\t%s\n" % (name, pr if pr else UNRESOLVED))
+    return 0
+
+
+def _collect(fragment_dir, changelog_path, credits=None):
     """Gather (bucket -> sorted unique entries) from every fragment plus the
     residual ## Unreleased fold. Returns an ordered dict-like {bucket: [entries]}
     restricted to non-empty buckets, and a flat count."""
     buckets = {b: [] for b in BUCKETS}
 
     # 1) Fragment files, in filename-sorted order for determinism.
-    if os.path.isdir(fragment_dir):
-        names = sorted(
-            n for n in os.listdir(fragment_dir)
-            if n.endswith(".md") and n != "README.md"
-        )
-        for name in names:
-            path = os.path.join(fragment_dir, name)
-            for bucket, entry in _parse_bullets(_read_lines(path)):
-                buckets[bucket].append(entry)
+    credits = credits or {}
+    for name in _fragment_names(fragment_dir):
+        path = os.path.join(fragment_dir, name)
+        suffix = credits.get(name)
+        for bucket, entry in _parse_bullets(_read_lines(path)):
+            if suffix:
+                entry = _credit_entry(entry, suffix)
+            buckets[bucket].append(entry)
 
     # 2) The cutover fold — residual ## Unreleased bullets, keeping their bucket.
     if os.path.exists(changelog_path):
@@ -211,16 +411,18 @@ def cmd_unreleased_bullets(changelog_path):
     return 0
 
 
-def cmd_highlights(fragment_dir, changelog_path):
-    collected, total = _collect(fragment_dir, changelog_path)
+def cmd_highlights(fragment_dir, changelog_path, credits_path=None):
+    collected, total = _collect(
+        fragment_dir, changelog_path, load_credits(credits_path))
     if total == 0:
         return _refuse_empty()
     sys.stdout.write(_render(collected) + "\n")
     return 0
 
 
-def cmd_roll(fragment_dir, changelog_path, tag, date):
-    collected, total = _collect(fragment_dir, changelog_path)
+def cmd_roll(fragment_dir, changelog_path, tag, date, credits_path=None):
+    collected, total = _collect(
+        fragment_dir, changelog_path, load_credits(credits_path))
     if total == 0:
         return _refuse_empty()
     highlights = _render(collected)
@@ -259,26 +461,63 @@ def cmd_roll(fragment_dir, changelog_path, tag, date):
     return 0
 
 
+def _take_credits(args):
+    """Strip an optional `--credits <file>` from a positional argument list.
+
+    Returns (remaining-positionals, credits-path-or-None), or (None, None) when
+    the flag is malformed — the caller then prints its usage.
+    """
+    rest = []
+    credits_path = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--credits":
+            if i + 1 >= len(args):
+                return None, None
+            credits_path = args[i + 1]
+            i += 2
+            continue
+        if a.startswith("--credits="):
+            credits_path = a.split("=", 1)[1]
+            i += 1
+            continue
+        rest.append(a)
+        i += 1
+    return rest, credits_path
+
+
 def main(argv):
     if len(argv) < 2:
-        sys.stderr.write("usage: aggregate.py <unreleased-bullets|highlights|roll> ...\n")
+        sys.stderr.write(
+            "usage: aggregate.py <unreleased-bullets|highlights|roll|credits> ...\n")
         return 2
     cmd = argv[1]
+    args, credits_path = _take_credits(argv[2:])
     if cmd == "unreleased-bullets":
-        if len(argv) != 3:
+        if args is None or len(args) != 1:
             sys.stderr.write("usage: aggregate.py unreleased-bullets <changelog>\n")
             return 2
-        return cmd_unreleased_bullets(argv[2])
+        return cmd_unreleased_bullets(args[0])
+    if cmd == "credits":
+        if args is None or len(args) != 1:
+            sys.stderr.write("usage: aggregate.py credits <fragment-dir>\n")
+            return 2
+        return cmd_credits(args[0])
     if cmd == "highlights":
-        if len(argv) != 4:
-            sys.stderr.write("usage: aggregate.py highlights <fragment-dir> <changelog>\n")
+        if args is None or len(args) != 2:
+            sys.stderr.write(
+                "usage: aggregate.py highlights <fragment-dir> <changelog> "
+                "[--credits <map-file>]\n")
             return 2
-        return cmd_highlights(argv[2], argv[3])
+        return cmd_highlights(args[0], args[1], credits_path)
     if cmd == "roll":
-        if len(argv) != 6:
-            sys.stderr.write("usage: aggregate.py roll <fragment-dir> <changelog> <tag> <date>\n")
+        if args is None or len(args) != 4:
+            sys.stderr.write(
+                "usage: aggregate.py roll <fragment-dir> <changelog> <tag> <date> "
+                "[--credits <map-file>]\n")
             return 2
-        return cmd_roll(argv[2], argv[3], argv[4], argv[5])
+        return cmd_roll(args[0], args[1], args[2], args[3], credits_path)
     sys.stderr.write("aggregate.py: unknown subcommand %r\n" % cmd)
     return 2
 
