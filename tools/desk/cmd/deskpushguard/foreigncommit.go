@@ -109,13 +109,13 @@ func (f *baseFindings) cannotCheck(format string, a ...any) {
 // unwrapped; every caller treats it as "cannot determine — skip", matching this tool's
 // stated Fail-OPEN contract (see main.go's package doc: brief-10).
 //
-// desktools-go-git/04: every OTHER git read in this file and in registerid.go now goes
+// assay#951: every OTHER git read in this file and in registerid.go now goes
 // through gitcore (in-process, no git-binary spawn) — see openRepo below. This seam
 // survives for exactly one remaining caller: registerid.go's remoteHeadLiveness, which
 // probes origin DIRECTLY via `git ls-remote` (a network transport call). That is a
-// transport verb, not a plumbing read, and this brief's own Context deliberately does not
-// name it — transport (fetch/push/ls-remote-against-a-remote) migrates in brief 05/06,
-// under that stream's human-gated security review, not here.
+// transport verb, not a plumbing read, and this PR's own scope deliberately does not
+// name it — transport (fetch/push/ls-remote-against-a-remote) migrates under a later
+// PR's human-gated security review, not here.
 func gitOut(dir string, args ...string) (string, error) {
 	cmd := execCommand("git", args...)
 	if dir != "" {
@@ -272,9 +272,17 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	if mergeBase != strayTip {
 		return
 	}
+	// behind is diagnostic-only (never gates fire/no-fire): "how many commits has main
+	// gained that this stray-based branch doesn't have". A stray-base cut is by definition
+	// divergent history, so this cannot use gitcore.Repo.AheadCount — its own doc comment
+	// says it is only exact for the fast-forward-descendant case (an early-stop walk from
+	// head that never visits a merge's second parent once it finds an ancestor of base
+	// along the walk it took). logRangeHashes does the real ancestry-set difference
+	// (all of trueBase's ancestors minus all of localSHA's), which is correct across
+	// merge-commit-bearing history too.
 	behind := -1
-	if n, cerr := repo.AheadCount(localSHA, trueBase); cerr == nil {
-		behind = n
+	if hashes, cerr := logRangeHashes(repo, localSHA, trueBase); cerr == nil {
+		behind = len(hashes)
 	}
 	out.strayBases = append(out.strayBases, strayBase{strayTip: strayTip, trueBase: trueBase, behind: behind})
 }
