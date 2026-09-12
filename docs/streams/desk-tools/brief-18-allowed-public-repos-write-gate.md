@@ -28,6 +28,7 @@ gate-why: >-
   repo still refuses (Verify row 4), that a live-public repo whose roster entry claims private
   refuses rather than passing on the stale claim (row 5), and that nothing on the private path
   changed (row 6).
+design: DR-desk-tools-18
 issues: []
 schema: brief-v2
 authored: 2026-09-06 by an authoring session, from a maintainer ruling recorded 2026-09-06
@@ -44,7 +45,7 @@ exec-tier-why: >-
   and a third's live read (the forge's visibility), which must be made to disagree on purpose
   before the design can be believed.
 consumers:
-  - "tools/desk/cmd/deskpost/{comment,review,ready}.go, tools/desk/cmd/deskpr/{deskpr,edit}.go, tools/desk/cmd/deskreply/exec.go, tools/desk/cmd/deskevidence/deskevidence.go, tools/desk/cmd/deskrelease/cut.go: call sites of the changed signature — each drops the now-removed issue-number argument and is otherwise unchanged. Behaviour reaches them through the single choke point, not through per-site edits."
+  - "tools/desk/cmd/deskpost/{comment,review,ready}.go, tools/desk/cmd/deskpr/{deskpr,edit}.go, tools/desk/cmd/deskreply/exec.go, tools/desk/cmd/deskevidence/deskevidence.go, tools/desk/cmd/deskrelease/cut.go: call sites of the changed signature — each drops the now-removed issue-number argument and is otherwise unchanged. Behaviour reaches them through the single choke point, not through per-site edits: fixed-here."
   - "~/.config/assay/public-app-ok (the standing-bless sentinel): retired by this brief — the reader is removed, so the file stops having any effect. Operators move each listed repo into the allowed-repos set with the `:public` token. The file itself is the operator's and is never written or deleted by any tool. (Non-conforming routing token, deliberately: this is neither `fixed-here` nor a follow-up brief — it is a retirement, and saying so truthfully outranks fitting the grammar.)"
   - "tools/desk/README.md § allowed repos, § standing per-repo authorization: follow-up in this brief's own Task step 5."
 version: 1

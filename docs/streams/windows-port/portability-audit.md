@@ -79,7 +79,8 @@ claim).
 - The desk verbs' git/gh shell-outs (argv-based, no shell interpolation).
 - `filepath.Separator`/`filepath.Join` usage for real filesystem paths.
 - The config-home resolver's core behavior (`~/.config/assay` resolves via
-  `os.UserHomeDir()` on Windows too) and both existing XDG branches.
+  `os.UserHomeDir()` on Windows too) and the existing XDG branch (one, as of desk-tools/18 —
+  see the Config-home XDG branches row above).
 
 ## Config-home recommendation
 
@@ -92,9 +93,9 @@ Two options, decided here so `windows-port/03` and `/05` don't each re-litigate 
   Node/Python CLIs, and WSL-adjacent tooling already use on Windows, so it will not read as
   foreign to the audience most likely to be running a CLI-first Windows install of this
   toolkit.
-- **Add a `%APPDATA%` branch** (mirroring the two existing `XDG_CONFIG_HOME` branches, adding
-  a Windows-only `os.Getenv("APPDATA")` check ahead of the `~/.config` fallback in both
-  `expandHome`/`ConfigHomePath` and the two XDG call sites). Consequence: matches native
+- **Add a `%APPDATA%` branch** (mirroring the existing `XDG_CONFIG_HOME` branch — one, as of
+  desk-tools/18 — with a Windows-only `os.Getenv("APPDATA")` check ahead of the `~/.config`
+  fallback in `expandHome`/`ConfigHomePath` and the remaining XDG call site). Consequence: matches native
   Windows convention, but adds a second config-home location that windows-port/05's adopter
   doc, every future support/debug instruction, and any human manually inspecting
   `~/.config/assay` on a Windows box must all know to check — a real ongoing cost, not a
