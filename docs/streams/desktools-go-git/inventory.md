@@ -56,7 +56,7 @@ body and must only decrease.
 | deskgit | `tools/desk/cmd/deskgit/exec.go` | `runGit` + env allowlist (issue #1555) |
 | deskmerge | `tools/desk/cmd/deskmerge/exec.go` | `execCommand` seam |
 | deskwt | `tools/desk/cmd/deskwt/exec.go` | `execCommand` seam |
-| deskscanbody | `tools/desk/cmd/deskscanbody/exec.go` | `gitOut` |
+| deskscanbody | retired by desktools-go-git/03 (was tools/desk/cmd/deskscanbody/exec.go, deleted; callers now call `internal/gitcore` directly from `tools/desk/cmd/deskscanbody/main.go`) | `gitOut` (retired) |
 | deskpr | `tools/desk/cmd/deskpr/exec.go` | `execCommand` seam |
 | deskreply | `tools/desk/cmd/deskreply/exec.go` | `runCmd`/`git` wrapper — READ-ONLY by design (no push path exists) |
 | deskadvisory | `tools/desk/cmd/deskadvisory/advisory.go` | direct `exec.Command("git"` + fork-fetch hardening |
@@ -95,7 +95,70 @@ Not yet covered by this brief (left for the briefs that need them): `init`/`add`
 families #1-5, #17-18, #23-24) — none of Fetch/Push/List/the read helpers above
 requires them, and adding them here would be scope creep past this brief's own Task.
 
+## Brief 03 — read-heavy tools migrated; rows ticked/emptied vs. still-owed
+
+Brief 03 migrated every seam site named in its own Context section — the READ-ONLY
+call sites of `writeguard`, `desksourceguard`, `deskboard`, `deskscanbody`, `deskwt`,
+`deskgit`, `deskpr`, `deskreply`, plus `deskkit` preflight's non-probe reads — onto the
+brief-02 `gitcore` helpers above (extended with the read families the table below
+names). Per the migration checklist contract, a family row is **ticked (emptied)**
+only when EVERY seam site the frozen table lists for it now routes through
+`internal/gitcore`; a family with a remaining site elsewhere (deskpushguard's brief-04
+sites, deskmerge's brief-06/07 sites, the transport/worktree/config-write exceptions)
+stays **un-ticked**, its owning brief named.
+
+| # | Family | Ticked? | Note |
+|---|---|---|---|
+| 5 | `status` | partial | deskwt's `status --porcelain --untracked-files=no` migrated (`Repo.DirtyTrackedPorcelain`); deskboard's `status` seam site is untouched (not named in brief 03's Context) |
+| 6 | `rev-parse` | partial | writeguard, desksourceguard, deskboard, deskwt, deskgit, deskpr, deskreply migrated; deskpushguard's sites are brief 04 |
+| 7 | `symbolic-ref` | **ticked** | deskpr and deskkit preflight are brief 03's whole seam-site set for this family (`Repo.SymbolicRefTarget` / `Repo.SymbolicRefShortHEAD`) |
+| 8 | `for-each-ref` | **ticked** | deskgit's only site migrated (`Repo.LocalBranchNames`); NOTE: deskwt's `for-each-ref --contains=` (`detachedHeadOnRemote`) and `ambiguousbase.go`'s ref-candidate enumeration are a DIFFERENT family-8 shape this brief also touched/deliberately left — see the two bullets below the table |
+| 9 | `ls-remote` (+ `remote get-url`) | partial | deskgit's `ls-remote --get-url` and deskkit preflight's plain `remote get-url` reads migrated (`Repo.RemoteURL`); the write-transport dry-run PROBE (`git push --dry-run`, preflight.go) is brief 06, untouched |
+| 14 | `diff` | partial | deskscanbody (repo-wide, rename-aware) and deskpr (three-dot symmetric) migrated via the new `Repo.Diff`/`Repo.DiffSymmetric`; deskmerge's and deskboard's `diff` sites are untouched (deskboard's isn't named in brief 03's Context; deskmerge's is brief 06/07) |
+| 15 | `merge-base` / `is-ancestor` | partial | deskscanbody (merge-base) and deskwt's `mergedToOriginMain` (is-ancestor) migrated; deskmerge's and deskpushguard's sites are untouched |
+| 16 | `rev-list` | partial | deskwt's and deskpr's ahead-count sites migrated (`Repo.AheadCount`); deskmerge's and deskpushguard's sites are untouched |
+| 17 | `config` | partial | ONLY `remote.<name>.url` reads migrated (`Repo.RemoteURL`) — deliberately, see below; every other `config --get`/`--list` read/write across deskwt, deskpr, deskreply, deskkit preflight stays on the git binary |
+
+New `gitcore` read helpers this brief added (golden-verified against real git on
+deterministic fixtures, `tools/desk/internal/gitcore/gitcore_test.go`): `Toplevel`,
+`CommonDir`, `InsideWorkTree`, `AbbrevRefHEAD`, `SymbolicRefShortHEAD`,
+`SymbolicRefTarget`, `UpstreamRef`, `AheadCount`, `RemoteURL`, `CommitVerifyQuiet`,
+`HasStagedChanges`, `DirtyTrackedPorcelain`, `Diff`/`DiffSymmetric`, `TreeishID`,
+`LocalBranchNames`, `RefsContaining`.
+
+**Deliberately NOT migrated, with the reason (do not re-attempt without addressing
+the reason):**
+
+- **`tools/desk/cmd/deskwt/ambiguousbase.go`'s `refCandidates`** (the case-collision/ambiguous-`--base`
+  security guard, family 8/9-adjacent) — `gitcore.Repo.Refs` (and everything built on
+  it, including the new `RefsContaining`) does not surface a SYMBOLIC reference such as
+  `refs/remotes/<name>/HEAD` the way real `git for-each-ref` does (verified empirically:
+  go-git's reference iteration silently omits it). This guard exists specifically to
+  catch every ref a short name could resolve to, so under-counting candidates would
+  silently weaken it — exactly the failure mode it was written to close. Left on the git
+  binary until `gitcore` can enumerate symbolic refs faithfully.
+- **`config --get user.email` / `config --list -z`** (preflight's `commitEmailProbe`,
+  deskpr/deskwt's `pushTransportGate` `ConfigZ` callback) — `go-git`'s
+  `Repository.Config()` reads only the repository's OWN local `.git/config`; it does not
+  merge a `extensions.worktreeConfig`-scoped `config.worktree` file the way real git
+  does. This house's own tooling (`roleinit.go`, `workpad.go`) sets `user.name` /
+  `user.email` AT THE WORKTREE SCOPE specifically so a linked worktree carries its own
+  bot identity without touching the shared config — migrating these reads would have
+  silently returned the wrong (or empty) value in exactly that case.
+
+**Bug found and fixed in `gitcore` itself while wiring these callers in** (both pinned
+by fail-first tests in `gitcore_test.go`): (1) go-git v5.19.2's `verifyExtensions`
+lowercases an extension's name before checking its own mixed-case allowlist, so it
+refused to open ANY repository carrying `extensions.worktreeConfig = true` — i.e.
+almost every real worktree in this house; `gitcore.Open` now routes through a storer
+wrapper scoped to exactly that one extension. (2) `gitcore.Open` on a LINKED worktree
+must route config/refs/object reads through the shared common `.git`, not just the
+per-worktree admin directory — without it, `RemoteURL`/`LocalBranchNames`/etc. failed
+with "not found" on every linked worktree even though the shared checkout plainly has
+the remote/branch.
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
-baseline N. The gate stays advisory (exit 0) until brief 08.
+baseline N (117). Brief 03 leaves it at **108** (149 immediately before brief 03,
+mid-stream after brief 02). The gate stays advisory (exit 0) until brief 08.

@@ -26,10 +26,22 @@
 #                                                never silently skipped
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
 #   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
-#   cellctl up    <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
-#                                                tmux session "<cell>-cell": deskd + the-desk + one window per role
-#                                                (a house cell opens no deskd window unless DESKD=1)
-#   cellctl down  <cell> [--keep-deskd]          tear the session (and this cell's deskd) down
+#   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
+#                        [--automate '<cron>'] [CLAUDE_CONFIG_DIR]
+#                                                one window per role in the resolved COCKPIT: a tmux session
+#                                                "<cell>-cell", a labelled herdr tab per role, or an orca
+#                                                terminal per role (deskd + the-desk + the loop roles; a house
+#                                                cell opens no deskd window unless DESKD=1).
+#                                                --cockpit overrides cell.env CELL_COCKPIT for this run.
+#                                                --automate '<cron>' is an ORCA-only shape: one scheduled
+#                                                automation per role, fronted by an exit-code precheck, instead
+#                                                of a live terminal.
+#                                                DRY_RUN=1 prints the resolved cockpit and the per-role commands
+#                                                and launches nothing.
+#   cellctl down  <cell> [--keep-deskd] [--cockpit auto|tmux|herdr|orca]
+#                                                tear the session (and this cell's deskd) down; what `up` opened
+#                                                in a non-tmux cockpit is closed where that cockpit offers a verb
+#                                                for it, and named for you to close by hand where it does not
 #
 # Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role)
 # and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are what
@@ -57,6 +69,10 @@
 #                         cell; optional on k8s, where a boot without it leaves the verbs on their compiled
 #                         placeholder topology.
 #   DESKD=1               on a house cell: require and stand a deskd as a k8s cell does (default: no deskd)
+#   CELL_COCKPIT=auto|tmux|herdr|orca   the surface `up` opens the role windows in (default auto: herdr if on
+#                         PATH, else orca if on PATH AND its desktop app answers, else tmux). Only the surface
+#                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
+#                         PATH are identical in every cockpit.
 #
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
@@ -137,6 +153,115 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
 }
 resolve_cfg(){ local in="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; [[ -d "$in" ]] || die "CLAUDE_CONFIG_DIR not a directory: $in"; (cd "$in" && pwd); }
 deskd_up(){ curl -fsS --max-time 3 "http://${DESKD_ADDR}/healthz" >/dev/null 2>&1; }
+
+# ---------------------------------------------------------------- cockpits
+# A COCKPIT is only the SURFACE the role windows appear in. Nothing about the per-role worktree,
+# the roster beacon, the pinned model or the shim PATH changes with it, and no cockpit is ever
+# required: tmux is the always-works arm every other arm falls back to.
+#
+# Selection is by PRESENCE ON PATH, never a flag someone has to remember. `auto` prefers herdr
+# (labelled tabs and a semantic agent state that drives its sidebar), then orca (scheduled
+# automations), then tmux. Orca's CLI is a THIN CLIENT of its desktop app, so an `orca` binary
+# whose app is not answering falls THROUGH to tmux under `auto` rather than failing. An EXPLICIT
+# cockpit that is not available is a refusal naming exactly what is missing — never a silent
+# fall-through.
+COCKPIT=""; COCKPIT_WHY=""; COCKPIT_ERR=""
+
+# run_bounded <secs> <cmd...> — a probe that cannot hang the launcher, with NO dependency on an
+# external timeout binary (macOS ships neither `timeout` nor `gtimeout` by default; requiring one
+# would make the bound only as reliable as the operator's coreutils install). The bound is native:
+# run the command in the background, race it against a `sleep <secs>` watchdog in a subshell, and
+# whichever finishes first wins — if the watchdog wins, the command is killed and this returns 124
+# (the same convention `timeout`/`gtimeout` use), so callers never have to distinguish the two
+# bound implementations. `timeout`/`gtimeout` are used first when present only because they are a
+# well-worn primitive that saves a fork; the native path below is what guarantees the bound holds
+# even when neither is installed.
+run_bounded(){
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@" >/dev/null 2>&1; return $?; fi
+  if command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@" >/dev/null 2>&1; return $?; fi
+  local cmd_pid watchdog_pid rc
+  "$@" >/dev/null 2>&1 &
+  cmd_pid=$!
+  ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null ) &
+  watchdog_pid=$!
+  if wait "$cmd_pid" 2>/dev/null; then
+    rc=0
+  else
+    rc=$?
+  fi
+  # The command finished (or was killed) — stop the watchdog whether it already fired or not.
+  kill "$watchdog_pid" 2>/dev/null; wait "$watchdog_pid" 2>/dev/null
+  # A killed command exits >128 (128+SIGTERM) under bash's wait; normalize that to 124, the
+  # standard "timed out" rc `timeout`/`gtimeout` use, so callers see one bound-timeout signal
+  # regardless of which arm enforced it.
+  if [[ $rc -gt 128 ]]; then rc=124; fi
+  return "$rc"
+}
+
+# orca_reachable: `orca` on PATH is not enough to pick it — with the desktop app closed every repo,
+# worktree, terminal and automation verb fails. One cheap read verb is the reachability probe.
+orca_reachable(){
+  command -v orca >/dev/null 2>&1 || return 1
+  local secs="${CELLCTL_ORCA_TIMEOUT:-5}"
+  echo "[cockpit] probing orca reachability (orca repo list, bound ${secs}s)" >&2
+  run_bounded "$secs" orca repo list
+}
+
+# help_has <token> <cmd...> — does `<cmd...> --help` advertise this subcommand or flag? These
+# cockpit CLIs move fast (one ships a patch every few days), so every verb and flag whose exact
+# spelling this script cannot see is PROBED at run time and skipped with a NOTICE when the
+# installed build does not carry it, rather than hard-coded as a truth that may have drifted.
+help_has(){ local tok="$1"; shift; "$@" --help 2>&1 | grep -qE -- "(^|[[:space:]])${tok}([[:space:],=]|$)"; }
+
+# first_flag <help text> <candidate flags...> — print the first candidate the help advertises.
+first_flag(){ local h="$1"; shift; local f; for f in "$@"; do
+  grep -qE -- "(^|[[:space:]])${f}([[:space:],=]|$)" <<<"$h" && { printf '%s\n' "$f"; return 0; }
+done; return 1; }
+
+# resolve_cockpit <want> <source> — sets COCKPIT and COCKPIT_WHY, or returns 1 with COCKPIT_ERR
+# holding the refusal text. Callers decide whether an unavailable cockpit is a `die` (up) or a
+# MISS row (check).
+resolve_cockpit(){
+  local want="$1" src="$2"
+  COCKPIT=""; COCKPIT_WHY=""; COCKPIT_ERR=""
+  case "$want" in
+    auto|tmux|herdr|orca) ;;
+    *) COCKPIT_ERR="$src: '$want' is not a known cockpit (auto|tmux|herdr|orca)"; return 1 ;;
+  esac
+  case "$want" in
+    tmux)
+      command -v tmux >/dev/null || { COCKPIT_ERR="cockpit tmux ($src) but tmux is not on PATH"; return 1; }
+      COCKPIT=tmux; COCKPIT_WHY="explicit: $src" ;;
+    herdr)
+      command -v herdr >/dev/null || { COCKPIT_ERR="cockpit herdr ($src) but herdr is not on PATH"; return 1; }
+      COCKPIT=herdr; COCKPIT_WHY="explicit: $src" ;;
+    orca)
+      command -v orca >/dev/null || { COCKPIT_ERR="cockpit orca ($src) but orca is not on PATH"; return 1; }
+      orca_reachable || { COCKPIT_ERR="cockpit orca ($src): orca is on PATH but its desktop app is not reachable — the CLI is a thin client, so start the app (or 'orca serve') and retry"; return 1; }
+      COCKPIT=orca; COCKPIT_WHY="explicit: $src" ;;
+    auto)
+      if command -v herdr >/dev/null; then COCKPIT=herdr; COCKPIT_WHY="auto: on PATH"
+      elif command -v orca >/dev/null && orca_reachable; then COCKPIT=orca; COCKPIT_WHY="auto: on PATH"
+      elif command -v orca >/dev/null; then COCKPIT=tmux; COCKPIT_WHY="orca on PATH but app unreachable"
+      else COCKPIT=tmux; COCKPIT_WHY="fallback: no herdr/orca on PATH"
+      fi ;;
+  esac
+  return 0
+}
+
+# cockpit_want: which cockpit was ASKED for, and by whom — the flag beats cell.env beats the
+# default. Sets COCKPIT_WANT / COCKPIT_SRC.
+cockpit_want(){
+  local flag="${1:-}"
+  if [[ -n "$flag" ]]; then COCKPIT_WANT="$flag"; COCKPIT_SRC="--cockpit"
+  elif [[ -n "${CELL_COCKPIT:-}" ]]; then COCKPIT_WANT="$CELL_COCKPIT"; COCKPIT_SRC="cell.env CELL_COCKPIT"
+  else COCKPIT_WANT="auto"; COCKPIT_SRC="default"
+  fi
+}
+
+# role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit.
+role_cmd(){ printf "'%s' desk '%s' '%s' '%s'" "$SELF" "$CELL" "$1" "$2"; }
 
 # roots_valid checks the SHAPE of a CELL_ROOTS value — every entry `<owner>/<repo>=<abs path>` —
 # and prints the first malformed entry on stderr. Existence of the paths is `check`'s job.
@@ -221,7 +346,25 @@ cmd_check(){
     house) check_house "${2:-}" ;;
     *) check_k8s ;;
   esac
-  chk "tmux" 'command -v tmux >/dev/null'
+  chk "tmux (the always-works cockpit, and every other cockpit's fallback)" 'command -v tmux >/dev/null'
+  # The COCKPIT row resolves exactly as `up` will and says why, so "which surface will my role
+  # windows appear in" is answerable before booting. An explicit CELL_COCKPIT that is not
+  # available is a MISS (it is what `up` would refuse on); `auto` can never MISS — it falls
+  # through to tmux — so its row records the choice and the reason.
+  cockpit_want ""
+  if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
+    echo "  ok    cockpit: $COCKPIT ($COCKPIT_WHY)"
+  else
+    echo "  MISS  cockpit: $COCKPIT_ERR"; ok=0
+  fi
+  # Orca reachability is stated whenever orca is installed, whichever cockpit won: its CLI is a
+  # thin client of the desktop app, and an unreachable app is why `auto` passed orca over.
+  if command -v orca >/dev/null 2>&1; then
+    if orca_reachable; then echo "  ok    orca desktop app reachable (its CLI is a thin client)"
+    else echo "  n/a   orca on PATH but its desktop app is not reachable — auto passes it over; start the app (or 'orca serve') to use it"; fi
+  else
+    na "orca — not installed (auto uses herdr if present, else tmux)"
+  fi
   if [[ "$DESKD" == "1" ]]; then
     chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
     chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
@@ -461,80 +604,294 @@ cmd_desk(){
     claude --name "$session" --model "$model" "/assay:$role"
 }
 
+# first_window sets FIRST_NAME / FIRST_CMD — the window that is NOT a role: the deskd watcher, the
+# deskd itself, or (on a cell with no deskd) a line saying so.
+#
+# STANDING deskd FROM `up` — the attended affirmation, and how far it carries.
+#
+# `cellctl deskd` mints installation tokens and so refuses without CELL_ATTENDED=1: the
+# affirmation is the operator saying "I am here, at my own shell". `up` is the one-command
+# cockpit, so it passes that affirmation to the deskd window it spawns — but it may only do so
+# when `up` is ITSELF attended, or the flag would be widened from "an operator ran this" to
+# "anything that ran cellctl at all", which is the opposite of what it is for.
+#
+# Attended means one of two positive signals: a terminal on stdin (an operator at a shell), or
+# CELL_ATTENDED=1 already set in the environment (the explicit form, for a wrapper that has its
+# own affirmation). A cron or CI invocation has neither, and there `up` stands the role windows
+# but NOT deskd, and says so. It is never silent in either direction.
+#
+# A house cell has no deskd unless DESKD=1: its first window is a plain shell in the cell
+# directory that says so, and the role windows follow.
+first_window(){
+  if [[ "$DESKD" != "1" ]]; then
+    FIRST_NAME=cell
+    FIRST_CMD="echo '[cell] $CELL is a $CELL_KIND cell with no deskd (DESKD=1 in cell.env to stand one)'"
+  elif deskd_up; then
+    FIRST_NAME=deskd
+    FIRST_CMD="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
+  elif [[ -t 0 || "${CELL_ATTENDED:-0}" == "1" ]]; then
+    echo "[cell] deskd is not up — standing it in-session, carrying YOUR attended affirmation (cellctl up ran attended)"
+    FIRST_NAME=deskd
+    FIRST_CMD="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
+  else
+    echo "[cell] deskd is not up, and this 'cellctl up' is UNATTENDED (no terminal on stdin, CELL_ATTENDED unset)." >&2
+    echo "[cell] role windows will open; deskd will NOT be stood, because minting tokens needs an affirmation this invocation cannot make." >&2
+    echo "[cell] stand it yourself: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+    FIRST_NAME=deskd
+    FIRST_CMD="echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd $CELL'"
+  fi
+}
+
+# up_roles prints the role list `up` opens: ROLES, with the-desk prepended when a hand-edited
+# cell.env dropped it, or removed when --no-the-desk asked for the four loop roles alone.
+up_roles(){
+  local roles="$ROLES"
+  case " $roles " in *" the-desk "*) ;; *) roles="the-desk $roles";; esac
+  [[ "${1:-0}" == "1" ]] && roles="${roles//the-desk/}"
+  printf '%s\n' "$roles"
+}
+
 cmd_up(){
   load_cell "$1"; shift
-  local no_the_desk=0 attach=1 cfg_in="" a
-  for a in "$@"; do case "$a" in
-    --no-the-desk) no_the_desk=1;; --with-the-desk) ;; --no-attach) attach=0;; *) cfg_in="$a";;
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --no-the-desk) no_the_desk=1; shift;;
+    --with-the-desk) shift;;
+    --no-attach) attach=0; shift;;
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
+    --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
+    --*) die "up: unknown flag $1";;
+    *) cfg_in="$1"; shift;;
   esac; done
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
+  cockpit_want "$cockpit_flag"
+  resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
+  echo "[cockpit] $COCKPIT ($COCKPIT_WHY)"
+  [[ -z "$automate" || "$COCKPIT" == "orca" ]] \
+    || die "up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is $COCKPIT"
+  local roles; roles="$(up_roles "$no_the_desk")"
+  first_window
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND cockpit=$COCKPIT session=$SESSION config=$cfg"
+    echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
+    local r
+    for r in $roles; do
+      if [[ -n "$automate" ]]; then
+        echo "[dry-run] $r: orca automations create --name ${CELL}-${r} --repo path:$CELL_REPO --trigger '$automate' --precheck '$SELF check $CELL' --provider claude --prompt /assay:$r"
+      else
+        echo "[dry-run] $r: $(role_cmd "$r" "$cfg")"
+      fi
+    done
+    return 0
+  fi
+  case "$COCKPIT" in
+    tmux)  up_tmux  "$cfg" "$roles" "$attach" ;;
+    herdr) up_herdr "$cfg" "$roles" ;;
+    orca)  up_orca  "$cfg" "$roles" "$automate" ;;
+  esac
+}
+
+# ---------------------------------------------------------------- tmux arm (the always-works one)
+up_tmux(){
+  local cfg="$1" roles="$2" attach="$3"
   command -v tmux >/dev/null || die "tmux not installed"
   if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "[cell] $SESSION already running — attaching"
     [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
     return 0
   fi
-  # STANDING deskd FROM `up` — the attended affirmation, and how far it carries.
-  #
-  # `cellctl deskd` mints installation tokens and so refuses without CELL_ATTENDED=1: the
-  # affirmation is the operator saying "I am here, at my own shell". `up` is the one-command
-  # cockpit, so it passes that affirmation to the deskd window it spawns — but it may only do so
-  # when `up` is ITSELF attended, or the flag would be widened from "an operator ran this" to
-  # "anything that ran cellctl at all", which is the opposite of what it is for.
-  #
-  # Attended means one of two positive signals: a terminal on stdin (an operator at a shell), or
-  # CELL_ATTENDED=1 already set in the environment (the explicit form, for a wrapper that has its
-  # own affirmation). A cron or CI invocation has neither, and there `up` stands the role windows
-  # but NOT deskd, and says so. It is never silent in either direction.
-  #
-  # A house cell has no deskd unless DESKD=1: its first window is a plain shell in the cell
-  # directory that says so, and the role windows follow.
-  local first_name first_cmd
-  if [[ "$DESKD" != "1" ]]; then
-    first_name=cell
-    first_cmd="echo '[cell] $CELL is a $CELL_KIND cell with no deskd (DESKD=1 in cell.env to stand one)'"
-  elif deskd_up; then
-    first_name=deskd
-    first_cmd="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
-  elif [[ -t 0 || "${CELL_ATTENDED:-0}" == "1" ]]; then
-    echo "[cell] deskd is not up — standing it in-session, carrying YOUR attended affirmation (cellctl up ran attended)"
-    first_name=deskd
-    first_cmd="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
-  else
-    echo "[cell] deskd is not up, and this 'cellctl up' is UNATTENDED (no terminal on stdin, CELL_ATTENDED unset)." >&2
-    echo "[cell] role windows will open; deskd will NOT be stood, because minting tokens needs an affirmation this invocation cannot make." >&2
-    echo "[cell] stand it yourself: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
-    first_name=deskd
-    first_cmd="echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd $CELL'"
-  fi
-  tmux new-session -d -s "$SESSION" -n "$first_name" -c "$CELL_DIR" "$first_cmd; echo '[$first_name] exited'; exec \$SHELL"
-  local roles="$ROLES"
-  case " $roles " in *" the-desk "*) ;; *) roles="the-desk $roles";; esac
-  [[ "$no_the_desk" == "1" ]] && roles="${roles//the-desk/}"
+  tmux new-session -d -s "$SESSION" -n "$FIRST_NAME" -c "$CELL_DIR" "$FIRST_CMD; echo '[$FIRST_NAME] exited'; exec \$SHELL"
   local role name
   for role in $roles; do
     case "$role" in pr-review-desk) name=review;; the-desk) name=the-desk;; *) name="${role%-desk}";; esac
-    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "'$SELF' desk '$CELL' '$role' '$cfg'; echo '[$role] exited'; exec \$SHELL"
+    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "$(role_cmd "$role" "$cfg"); echo '[$role] exited'; exec \$SHELL"
     # Stagger the windows: each one fetches the shared .git, and starting them at once puts every
     # window into the fetch lock's retry loop at the same moment.
     sleep 2
   done
   tmux select-window -t "$SESSION:the-desk" 2>/dev/null || true
-  echo "[cell] $SESSION up: $first_name +$roles (config=$cfg)"
+  echo "[cell] $SESSION up: $FIRST_NAME +$roles (config=$cfg)"
   echo "[cell] attach: tmux attach -t $SESSION   ·   down: cellctl down $CELL"
   [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
   return 0
 }
 
+# ---------------------------------------------------------------- herdr arm
+# One LABELLED tab per window, the command started as a claude-kind agent under that label — so
+# the cockpit's semantic agent state (idle | working | blocked | done) is what its sidebar shows
+# for each desk, rather than an anonymous pane. `tab create` is probed: a build without it still
+# gets labelled windows from `agent start --label`, with a notice.
+herdr_window(){
+  local label="$1" tabs="$2" cmd="$3"
+  if [[ "$tabs" == "1" ]]; then
+    herdr tab create --label "$label" >/dev/null 2>&1 \
+      || echo "NOTICE: 'herdr tab create --label $label' returned non-zero — continuing; the agent's own --label still names the window" >&2
+  fi
+  herdr agent start --kind claude --label "$label" -- bash -lc "$cmd" \
+    || echo "NOTICE: 'herdr agent start' failed for $label — start it by hand: $cmd" >&2
+}
+
+up_herdr(){
+  local cfg="$1" roles="$2"
+  help_has start herdr agent \
+    || die "herdr is the resolved cockpit but this build's 'herdr agent --help' advertises no 'start' — nothing can host a role window; re-run with --cockpit tmux"
+  local tabs=1
+  help_has create herdr tab || { echo "NOTICE: this herdr build advertises no 'tab create' — windows are labelled by 'agent start --label' alone" >&2; tabs=0; }
+  herdr_window "${CELL}-${FIRST_NAME}" "$tabs" "$FIRST_CMD"
+  local role
+  for role in $roles; do
+    herdr_window "${CELL}-${role}" "$tabs" "$(role_cmd "$role" "$cfg")"
+    # Same stagger as the tmux arm: the role windows share one .git and one fetch lock.
+    sleep 2
+  done
+  echo "[cell] $CELL up in herdr: ${CELL}-${FIRST_NAME} +$roles (config=$cfg)"
+  echo "[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down $CELL"
+}
+
+# ---------------------------------------------------------------- orca arm
+# Two shapes. Live: one terminal per role under the cell directory, running the same
+# `cellctl desk` command every other cockpit runs. Scheduled (--automate): one automation per
+# role on the given trigger, fronted by an exit-code precheck — `cellctl check <cell>`, which is
+# exit-code honest (0 when every precondition holds, 1 when one does not), so a tick on a cell
+# that is not fit to boot launches no model at all.
+#
+# Orca's CLI moves fast and its create-a-terminal surface is not the same on every build, so the
+# verb and its flags are probed from `--help` and an absent one is reported with the exact
+# command to run by hand — never guessed at.
+orca_by_hand(){
+  local why="$1" cfg="$2" roles="$3" role
+  echo "NOTICE: $why" >&2
+  echo "NOTICE: open these by hand (one terminal each, in $CELL_DIR):" >&2
+  for role in $roles; do echo "  $(role_cmd "$role" "$cfg")" >&2; done
+  die "orca is the resolved cockpit but this build cannot be driven to open the windows — the commands above are the whole of what a cockpit runs, and --cockpit tmux opens them for you"
+}
+
+orca_terminal_verb(){
+  local v; for v in create new open start run; do
+    help_has "$v" orca terminal && { printf '%s\n' "$v"; return 0; }
+  done
+  return 1
+}
+
+up_orca(){
+  local cfg="$1" roles="$2" automate="$3"
+  [[ -n "$automate" ]] && { orca_automate "$roles" "$automate"; return 0; }
+  local verb; verb="$(orca_terminal_verb)" \
+    || orca_by_hand "'orca terminal --help' advertises no create-like subcommand on this build" "$cfg" "$roles"
+  local h; h="$(orca terminal "$verb" --help 2>&1 || true)"
+  local cmdflag cwdflag nameflag
+  cmdflag="$(first_flag "$h" --command --cmd --exec --run)" \
+    || orca_by_hand "'orca terminal $verb --help' advertises no flag that carries a command" "$cfg" "$roles"
+  cwdflag="$(first_flag "$h" --cwd --path --directory)" || cwdflag=""
+  nameflag="$(first_flag "$h" --name --title --label)" || nameflag=""
+  [[ -n "$cwdflag" ]] || echo "NOTICE: 'orca terminal $verb' advertises no working-directory flag — the terminals open wherever orca puts them; the command itself is absolute either way" >&2
+  local role
+  for role in $roles; do
+    local -a args=(terminal "$verb")
+    [[ -n "$cwdflag" ]] && args+=("$cwdflag" "$CELL_DIR")
+    [[ -n "$nameflag" ]] && args+=("$nameflag" "${CELL}-${role}")
+    args+=("$cmdflag" "$(role_cmd "$role" "$cfg")")
+    orca "${args[@]}" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca ${args[*]}' failed — run it by hand: $(role_cmd "$role" "$cfg")" >&2
+    sleep 2
+  done
+  echo "[cell] $CELL up in orca: one terminal per role ($roles), config=$cfg"
+  echo "[cell] the first window's command is not opened in orca — run it yourself if you want it: $FIRST_CMD"
+  echo "[cell] down: cellctl down $CELL"
+}
+
+orca_automate(){
+  local roles="$1" trigger="$2"
+  local h; h="$(orca automations create --help 2>&1 || true)"
+  local f
+  for f in --name --repo --trigger --precheck --prompt; do
+    first_flag "$h" "$f" >/dev/null \
+      || die "orca --automate needs '$f' on 'orca automations create', and this build's help does not advertise it — the precheck-fronted schedule is the whole point of the shape, so it is not approximated"
+  done
+  local provider=""; provider="$(first_flag "$h" --provider --agent)" || provider=""
+  echo "NOTICE: a scheduled run is launched by orca, not by this script — it runs the role skill in a worktree orca cuts, so it does NOT carry the cell's shim PATH, DESK_ROOTS or pinned model. Use the live-terminal shape (drop --automate) where those matter." >&2
+  local role
+  for role in $roles; do
+    local -a args=(automations create --name "${CELL}-${role}" --repo "path:$CELL_REPO"
+                   --trigger "$trigger" --precheck "$SELF check $CELL" --prompt "/assay:$role")
+    [[ -n "$provider" ]] && args+=("$provider" claude)
+    orca "${args[@]}" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca ${args[*]}' failed — create that automation by hand" >&2
+  done
+  echo "[cell] $CELL scheduled in orca: one automation per role ($roles) on '$trigger', precheck '$SELF check $CELL'"
+  echo "[cell] a precheck that exits non-zero records a skipped run and launches no model"
+}
+
+# ---------------------------------------------------------------- down
 cmd_down(){
-  load_cell "$1"; local keep=0; [[ "${2:-}" == "--keep-deskd" ]] && keep=1
+  load_cell "$1"; shift
+  local keep=0 cockpit_flag=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --keep-deskd) keep=1; shift;;
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
+    --*) die "down: unknown flag $1";;
+    *) die "down: unexpected argument '$1'";;
+  esac; done
+  cockpit_want "$cockpit_flag"
+  if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
+    echo "[cockpit] $COCKPIT ($COCKPIT_WHY)"
+  else
+    echo "[cockpit] unresolved: $COCKPIT_ERR — tearing down the tmux session and this cell's deskd only" >&2
+    COCKPIT=tmux
+  fi
+  # The tmux session is torn down whichever cockpit is resolved now: a cell brought up in tmux and
+  # taken down after another cockpit was installed must still stop, and a `kill-session` on a name
+  # that does not exist is a no-op, not an error.
   if tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux kill-session -t "$SESSION"; echo "[cell] $SESSION killed"
   else
     echo "[cell] no session $SESSION"
   fi
+  case "$COCKPIT" in
+    herdr) down_herdr ;;
+    orca)  down_orca ;;
+  esac
   if [[ "$keep" == "0" && "$DESKD" == "1" ]]; then
     if pkill -f "deskd --config $CELLS_CONFIG" 2>/dev/null; then echo "[cell] deskd stopped"; else echo "[cell] no deskd for this cell running"; fi
+  fi
+}
+
+# A cockpit closes what it opened only where it offers a verb for it. Where it does not, the
+# windows are NAMED so they can be closed by hand — never left unsaid.
+down_herdr(){
+  local roles; roles="$(up_roles 0)"
+  local verb=""; local v
+  for v in close kill stop; do help_has "$v" herdr tab && { verb="$v"; break; }; done
+  local label
+  if [[ -n "$verb" ]]; then
+    for label in "${CELL}-${FIRST_NAME:-cell}" $(for r in $roles; do echo "${CELL}-${r}"; done); do
+      herdr tab "$verb" --label "$label" >/dev/null 2>&1 || true
+    done
+    echo "[cell] herdr tabs closed ('herdr tab $verb --label <cell>-<role>')"
+  else
+    echo "[cell] this herdr build advertises no tab close/kill verb — close these tabs by hand:"
+    for r in cell $roles; do echo "  ${CELL}-${r}"; done
+  fi
+}
+
+down_orca(){
+  local roles; roles="$(up_roles 0)" r
+  local verb=""; local v
+  for v in close kill stop delete; do help_has "$v" orca terminal && { verb="$v"; break; }; done
+  if [[ -n "$verb" ]]; then
+    echo "[cell] close this cell's orca terminals with: orca terminal $verb --terminal <handle>"
+    echo "[cell] their handles: orca terminal list"
+  else
+    echo "[cell] this orca build advertises no terminal close verb — close the ${CELL}-<role> terminals by hand:"
+    for r in $roles; do echo "  ${CELL}-${r}"; done
+  fi
+  # Scheduled automations OUTLIVE a `down` on purpose: `up --automate` is the run-while-away
+  # shape, and taking the windows down is not the same act as cancelling the schedule. They are
+  # named here so cancelling is one command away.
+  if help_has delete orca automations; then
+    echo "[cell] scheduled automations are NOT removed by down — cancel with: orca automations delete --name ${CELL}-<role>"
+  else
+    echo "[cell] scheduled automations are NOT removed by down — cancel the ${CELL}-<role> automations in orca"
   fi
 }
 
@@ -612,6 +969,9 @@ DESKD_APP_PEM=$pem
 DESKD_APP_ID_VAR=$idvar
 ORGS=$orgs
 ROLES="$roles"
+# The cockpit \`cellctl up\` opens the role windows in: auto (herdr if on PATH, else orca if on
+# PATH and its desktop app answers, else tmux) | tmux | herdr | orca. Only the SURFACE changes.
+CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
@@ -659,6 +1019,9 @@ DESKD_GITLAB_TOKEN_FILE=$store/gitlab-deskd.token
 DESKD_ADDR=127.0.0.1:$port
 DESKD_INDEX=$d/index/index.db
 ROLES="$roles"
+# The cockpit \`cellctl up\` opens the role windows in: auto (herdr if on PATH, else orca if on
+# PATH and its desktop app answers, else tmux) | tmux | herdr | orca. Only the SURFACE changes.
+CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
@@ -725,6 +1088,9 @@ CELL_REPO=$repo
 CELL_ROOTS=$roots
 FORGE_API_BASE=https://api.$github_host
 ROLES="$roles"
+# The cockpit \`cellctl up\` opens the role windows in: auto (herdr if on PATH, else orca if on
+# PATH and its desktop app answers, else tmux) | tmux | herdr | orca. Only the SURFACE changes.
+CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
@@ -744,7 +1110,8 @@ so the desk verbs read the roster and App keys you already have.
 
 - \`cellctl check $cell\` — prove the preconditions (git checkout, roster parses, every root
   carries \`docs/streams/\`, desk verbs installed, assay plugin enabled).
-- \`cellctl desk $cell <role>\` — one role window; \`cellctl up $cell\` — every role in tmux.
+- \`cellctl desk $cell <role>\` — one role window; \`cellctl up $cell\` — every role, in the
+  cockpit \`CELL_COCKPIT\` resolves to (auto: herdr, else a reachable orca, else tmux).
 - Edit \`cell.env\` to change \`CELL_ROOTS\`, \`ROLES\` or a pinned model.
 EOF
   echo "[new] scaffolded $d (house cell) — cellctl check $cell, then cellctl desk $cell <role>"

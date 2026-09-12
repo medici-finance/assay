@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // getwd is the seam for the tool's working directory (the worktree it runs in).
@@ -314,17 +315,18 @@ func alreadyReplied(entries []deskkit.Entry, repo string, pr int, head, digest s
 // origin repo (owner/name). A detached HEAD or an unreadable origin is unverifiable
 // (exit 6); an origin outside the deskkit set is refused (exit 5).
 func preflight(dir string) (*gitFacts, error) {
-	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
-		return nil, deskkit.Unverifiable("not inside a git worktree", err)
+	gitRepo, gerr := gitcore.Open(dir)
+	if gerr != nil || !gitRepo.InsideWorkTree() {
+		return nil, deskkit.Unverifiable("not inside a git worktree", gerr)
 	}
-	branch, err := git(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	branch, err := gitRepo.AbbrevRefHEAD()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve current branch", err)
 	}
 	if branch == "HEAD" || branch == "" {
 		return nil, deskkit.Unverifiable("detached HEAD — check out your PR's feature branch first", nil)
 	}
-	originURL, oerr := git(dir, "config", "--get", "remote.origin.url")
+	originURL, oerr := gitRepo.RemoteURL("origin")
 	if oerr != nil {
 		return nil, deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}

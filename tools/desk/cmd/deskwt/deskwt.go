@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // getwd is the seam for the tool's working directory (the worktree it runs in).
@@ -99,7 +100,7 @@ type pathGuard struct {
 // outside a git repo (git-common-dir unresolvable) is unverifiable (exit 6), never a
 // silent "assume anywhere is fine".
 func newPathGuard(dir string) (*pathGuard, error) {
-	commonDir, err := runGit(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	commonDir, err := gitcore.CommonDir(dir)
 	if err != nil || commonDir == "" {
 		return nil, deskkit.Unverifiable("cannot resolve the shared git-common-dir (are we in a git repo?)", err)
 	}
@@ -237,7 +238,11 @@ func (g *pathGuard) lockedWorktrees(dir string) (map[string]string, error) {
 // would kill the verb. This is the SINGLE implementation of the tracked-clean gate, shared
 // by `remove` and `prune` so neither can drift from the other.
 func dirtyTracked(rt string) (string, error) {
-	out, err := runGit(rt, "status", "--porcelain", "--untracked-files=no")
+	repo, err := gitcore.Open(rt)
+	if err != nil {
+		return "", deskkit.Unverifiable("cannot check the worktree's tracked status", err)
+	}
+	out, err := repo.DirtyTrackedPorcelain()
 	if err != nil {
 		return "", deskkit.Unverifiable("cannot check the worktree's tracked status", err)
 	}
@@ -346,7 +351,11 @@ func cmdAdd(args []string) (err error) {
 		return aerr
 	}
 	// --base must resolve to a commit, else exit 6.
-	if _, verr := runGit(dir, "rev-parse", "--verify", "--quiet", *base+"^{commit}"); verr != nil {
+	baseRepo, berr := gitcore.Open(dir)
+	if berr != nil {
+		return deskkit.Unverifiable("refused: --base "+*base+" does not resolve to a commit", berr)
+	}
+	if ok, verr := baseRepo.CommitVerifyQuiet(*base); verr != nil || !ok {
 		return deskkit.Unverifiable("refused: --base "+*base+" does not resolve to a commit", verr)
 	}
 
@@ -508,7 +517,11 @@ func cmdRemove(args []string) (err error) {
 	//     the worktree loses nothing. A detached HEAD whose commit is on NO remote is
 	//     genuinely-unpushed work and is STILL refused — the invariant is unchanged; only the
 	//     provably-pushed reviewer case becomes removable, which unwedges the lane.
-	branch, berr := runGit(rt, "rev-parse", "--abbrev-ref", "HEAD")
+	wtRepo, wterr := gitcore.Open(rt)
+	if wterr != nil {
+		return deskkit.Unverifiable("cannot resolve the worktree's branch", wterr)
+	}
+	branch, berr := wtRepo.AbbrevRefHEAD()
 	if berr != nil {
 		return deskkit.Unverifiable("cannot resolve the worktree's branch", berr)
 	}
@@ -524,15 +537,16 @@ func cmdRemove(args []string) (err error) {
 		// Provably pushed → past the guard. The upstream / ahead-count checks below are
 		// branch-only (a detached HEAD has no @{u}), so they are skipped for this shape.
 	} else {
-		if _, uerr := runGit(rt, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); uerr != nil {
+		upstream, uerr := wtRepo.UpstreamRef()
+		if uerr != nil {
 			return deskkit.Refused("refused: branch " + branch + " has no upstream (cannot prove its commits are pushed) — refusing to remove")
 		}
-		ahead, aerr := runGit(rt, "rev-list", "--count", "@{u}..HEAD")
+		aheadN, aerr := wtRepo.AheadCount(upstream, "HEAD")
 		if aerr != nil {
 			return deskkit.Unverifiable("cannot count unpushed commits", aerr)
 		}
-		if ahead != "0" {
-			return deskkit.Refused("refused: branch " + branch + " has " + ahead + " unpushed commit(s) ahead of its upstream — refusing to remove")
+		if aheadN != 0 {
+			return deskkit.Refused(fmt.Sprintf("refused: branch %s has %d unpushed commit(s) ahead of its upstream — refusing to remove", branch, aheadN))
 		}
 	}
 
@@ -572,20 +586,25 @@ func cmdRemove(args []string) (err error) {
 // never-remove-unpushed-work invariant. A git read that cannot be performed is Unverifiable
 // so the caller fails CLOSED (leaves the worktree), never a silent "assume pushed".
 func detachedHeadOnRemote(rt string) (bool, error) {
-	head, err := runGit(rt, "rev-parse", "HEAD")
+	repo, err := gitcore.Open(rt)
 	if err != nil {
 		return false, deskkit.Unverifiable("cannot resolve the detached HEAD commit", err)
 	}
-	// `for-each-ref --contains=<commit> refs/remotes/` lists every remote-tracking ref that
-	// has <commit> as an ancestor; a non-empty result means the commit is on the remote. The
-	// commit is a resolved 40-hex sha (no leading dash), and it is spelled `--contains=<sha>`
-	// as a single token so the constructed argv can never be read as a bare option or a
-	// second pathspec — "constructed argv only", the same discipline `add` applies to its refs.
-	out, err := runGit(rt, "for-each-ref", "--contains="+head, "--format=%(refname)", "refs/remotes/")
+	head, err := repo.Resolve("HEAD")
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot resolve the detached HEAD commit", err)
+	}
+	// Every remote-tracking ref that has <commit> as an ancestor; a non-empty result
+	// means the commit is on the remote. Built on gitcore.Repo.Refs, which (unlike real
+	// `for-each-ref`) does not surface the SYMBOLIC ref refs/remotes/<name>/HEAD — that
+	// alias always mirrors another hash ref this DOES see (e.g. refs/remotes/origin/main),
+	// so a commit reachable via the alias is always also reachable via the ref it mirrors;
+	// see RefsContaining's doc comment.
+	names, err := repo.RefsContaining(head.String(), "refs/remotes/")
 	if err != nil {
 		return false, deskkit.Unverifiable("cannot check whether the detached HEAD commit is present on any remote", err)
 	}
-	return strings.TrimSpace(out) != "", nil
+	return len(names) != 0, nil
 }
 
 // parseInterspersed parses fs allowing flags to appear before OR after positional
@@ -638,10 +657,11 @@ func resolvePath(p string) string {
 // currentRepo verifies dir is inside a git worktree and returns its origin repo in
 // owner/name form. Any state it cannot positively verify is unverifiable (exit 6).
 func currentRepo(dir string) (string, error) {
-	if out, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
+	gitRepo, err := gitcore.Open(dir)
+	if err != nil || !gitRepo.InsideWorkTree() {
 		return "", deskkit.Unverifiable("not inside a git worktree", err)
 	}
-	originURL, oerr := runGit(dir, "config", "--get", "remote.origin.url")
+	originURL, oerr := gitRepo.RemoteURL("origin")
 	if oerr != nil {
 		return "", deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}
