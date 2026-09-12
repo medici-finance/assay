@@ -128,7 +128,7 @@ Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git
 | 6 | PASS — `BLIND(pr)` present, `rc=6`, neither `INELIGIBLE` nor `STOP` appear |
 | 7 | PASS — `ALIVE` present, `INELIGIBLE` absent |
 | 8 | PASS — grep count 3; substantive mention describing the mechanical backstop |
-| 9 | COULD-NOT-CHECK — same tool-wide gap as apps-installer/01 (`assay#822`): the `<stream>/<NN>` id form errors `no brief-v1 file`; the colon form runs but reports could-not-check on a fully-merged main with no open diff. Not an implementation defect. |
+| 9 | COULD-NOT-CHECK — same tool-wide gap as apps-installer/01 (`#822`): the `<stream>/<NN>` id form errors `no brief-v1 file`; the colon form runs but reports could-not-check on a fully-merged main with no open diff. Not an implementation defect. |
 
 **Substance checks (traced code, not just names):**
 1. Read order genuinely cheapest-first with short-circuit (claim → board row → PR), confirmed in `reconcile.go` and by `TestReconcile_ClaimCheckedFirst`/`TestReconcile_BoardCheckedBeforePR`.
