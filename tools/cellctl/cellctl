@@ -503,7 +503,7 @@ cmd_check(){
     local pv_base pv_tokvar pv_base_val pv_tokvar_val
     pv_base="$(provider_var "$CELL_PROVIDER" BASE_URL)"; pv_tokvar="$(provider_var "$CELL_PROVIDER" TOKEN_ENV)"
     pv_base_val="${!pv_base:-}"; pv_tokvar_val="${!pv_tokvar:-}"
-    chk "provider $CELL_PROVIDER: $pv_base" '[[ -n "$pv_base_val" ]]'
+    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>}" '[[ -n "$pv_base_val" ]]'
     chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)" '[[ -n "$pv_tokvar_val" ]]'
     if [[ -n "$pv_tokvar_val" ]]; then
       chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
@@ -971,8 +971,7 @@ except Exception:
 
 herdr_window(){
   local label="$1" cmd="$2" out pane_id=""
-  out="$(herdr tab create --label "$label" 2>&1)"
-  if [[ $? -eq 0 ]]; then
+  if out="$(herdr tab create --label "$label" 2>&1)"; then
     pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
   fi
   if [[ -z "$pane_id" ]]; then
@@ -1158,7 +1157,7 @@ down_herdr(){
 }
 
 down_orca(){
-  local roles; roles="$(up_roles 0)" r
+  local roles r; roles="$(up_roles 0)"
   # `orca terminal close --worktree <selector> --all` stops every terminal orca owns for that
   # worktree in one call — verified live against real orca that `--worktree path:<dir>` is a valid
   # selector (the `up_orca` arm registers `$CELL_DIR` via `orca repo add` before ever creating a

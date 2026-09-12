@@ -291,14 +291,16 @@ unattended path announces that it is not.
 **One window:**
 
 ```bash
-cellctl desk <cell> <role> [--model <m>] [--set] [CLAUDE_CONFIG_DIR]
+cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [CLAUDE_CONFIG_DIR]
 ```
 
 `<role>` is one of `the-desk`, `intake-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`. The
 config dir defaults to `$CLAUDE_CONFIG_DIR`, then `~/.claude`, and is resolved against the real
-`HOME`. `DRY_RUN=1` prints the plan — cell, role, config dir, worktree, session name, shim target —
-and touches nothing. `--model` and `--set` are the per-run override and the sugar that persists it —
-see *Pinned models* below for the full shape.
+`HOME`. `DRY_RUN=1` prints the plan — cell, role, config dir, worktree, session name, shim target,
+provider — and touches nothing. `--model` and `--set` are the per-run override and the sugar that
+persists it — see *Pinned models* below for the full shape. `--provider` switches the model
+**endpoint and credential** (`--model` alone only changes the model *name*, and still talks to
+Anthropic) — see *Providers* below.
 
 Each window gets: the `assay@assay` plugin enabled in that config dir; its own worktree under
 `worktrees/<role>` fast-forwarded to `origin/main` and **locked** (`git worktree lock`, so a
@@ -329,7 +331,7 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 
 ```bash
 cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
-                  [--automate '<cron>'] [--model <m>] [CLAUDE_CONFIG_DIR]
+                  [--automate '<cron>'] [--model <m>] [--provider <name>] [CLAUDE_CONFIG_DIR]
 ```
 
 One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
@@ -343,7 +345,8 @@ arrive at the fetch lock together.
 run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
 already `cellctl desk <cell> <role> --model <m>` on the one window that needs it. It is a live
 cockpit's `cellctl desk <cell> <role>` invocation itself that carries `--model`, so the window that
-actually boots resolves the same override the plan named.
+actually boots resolves the same override the plan named. `--provider <name>` threads onto every
+role window the same way, for the same reason — see *Providers* below.
 
 `DRY_RUN=1 cellctl up <cell>` prints the resolved cockpit and the per-role commands and launches
 nothing.
@@ -429,8 +432,8 @@ answerable before booting rather than after.
 | Cockpit | What `up` opens |
 |---|---|
 | **tmux** | a session `<cell>-cell`: the `deskd`/`cell` window plus one window per role. Unchanged |
-| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each started as a `claude`-kind agent under that label — so the cockpit's agent state drives its sidebar per desk. The first (`deskd`/`cell`) window is a tab too |
-| **orca** | one **terminal per role** under the cell directory, running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
+| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too |
+| **orca** | one **terminal per role** under the cell directory (registered with Orca via `orca repo add` first — Orca 404s an unregistered path), running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
 
 ### The `--automate` recipe (orca only)
 
@@ -454,11 +457,18 @@ than deleting them.
 These cockpit CLIs move fast, so every verb and flag whose spelling `cellctl` cannot see is
 **probed from `--help` at run time**, never hard-coded as a truth that may have drifted:
 
-- a herdr build with no `tab create` still gets labelled windows from `agent start --label`, with a
-  notice; a build whose `agent` has no `start` is a refusal, because nothing could host a window;
-- orca's create-a-terminal verb and its command / working-directory / name flags are read from its
-  own help. Where the verb or the command flag is absent, `cellctl` **prints the exact per-role
-  commands to run by hand** and refuses, rather than guessing a spelling;
+- herdr hosts the composite `cellctl desk` command via `herdr pane run <pane_id> <cmd>`, on a pane
+  from `herdr tab create` — **not** `herdr agent start`, whose `-- AGENT_ARG...` list is appended
+  directly to the KIND's canonical executable rather than run as a wrapping shell command (verified
+  live against herdr 0.8.2), so it cannot host cellctl's fetch-worktree-shim-then-exec sequence. A
+  build with no `tab create` or no `pane run` is a refusal naming `--cockpit tmux`, because nothing
+  could host a window; `herdr down` looks up each window's tab by label (`herdr tab list`) and
+  closes it by `tab_id` (`herdr tab close <tab_id>` — real herdr has no `--label` on `close`);
+- orca's create-a-terminal verb and its command / worktree-selector / name flags are read from its
+  own help (`--worktree path:<dir>`, not `--cwd` — orca advertises no such flag on this verb). Where
+  the verb or the command flag is absent, `cellctl` **prints the exact per-role commands to run by
+  hand** and refuses, rather than guessing a spelling; `orca down` closes everything for the cell in
+  one call (`orca terminal close --worktree path:<cell-dir> --all`) when the build advertises it;
 - `--automate` refuses unless `orca automations create` advertises the flags the shape depends on —
   above all `--precheck`, which is the whole point of it;
 - anything a cockpit cannot close on `down` is **named**, never left unsaid.
@@ -567,6 +577,45 @@ it *would* persist and writes nothing — a dry run touches nothing, `--set` inc
 
 ---
 
+## Providers
+
+**`--model` only changes the model *name*.** `claude --model glm-5.3` still talks to Anthropic and
+fails, because the endpoint and the credential are separate settings `--model` never touches. A
+**provider** is the missing piece: a named endpoint + credential pair, declared in `cell.env` and
+switched with `--provider <name>` or `CELL_PROVIDER`.
+
+```bash
+# cell.env
+CELL_PROVIDER=zai                                              # optional default (unset = Anthropic)
+CELL_PROVIDER_ZAI_BASE_URL=https://api.z.ai/api/anthropic
+CELL_PROVIDER_ZAI_TOKEN_ENV=ZAI_API_KEY                        # the NAME of an env var, never a token
+
+cellctl desk <cell> worker-desk --provider zai                 # override for one run
+cellctl up   <cell> --provider zai                              # every role window this run opens
+```
+
+A provider name (`zai`, `kimi`, anything) resolves to two `cell.env` variables,
+`CELL_PROVIDER_<NAME>_BASE_URL` and `CELL_PROVIDER_<NAME>_TOKEN_ENV` (the name upper-cased, `-` as
+`_`). The launched `claude` process gets `ANTHROPIC_BASE_URL` from the first and
+`ANTHROPIC_AUTH_TOKEN` from `${!CELL_PROVIDER_<NAME>_TOKEN_ENV}` — the **value** of whichever
+environment variable `_TOKEN_ENV` names, read from the shell that ran `cellctl`. **The token itself
+is never written to `cell.env`** — only the name of the variable that carries it — so a leaked or
+mistakenly public `cell.env` leaks no credential. Missing any piece (the provider unnamed, its
+`_BASE_URL` unset, its `_TOKEN_ENV` unset, or the named variable itself unset in this shell) is a
+refusal naming exactly what is missing, before anything launches.
+
+`--provider` on `cellctl desk`/`up` overrides `cell.env`'s `CELL_PROVIDER` for one run, the same way
+`--model` overrides a pin — it never edits `cell.env`. `cellctl set <cell> CELL_PROVIDER=zai` (and
+the `CELL_PROVIDER_<NAME>_*` keys) persist a default the way any other `cellctl set` key does.
+
+Both `cellctl desk`'s launch line and `DRY_RUN=1` plan print `provider=<name>` (or `provider=anthropic`
+when none is set), so which endpoint a window is on is visible without reading `cell.env`.
+`cellctl check` carries three rows for a cell's default `CELL_PROVIDER` (base URL declared, token-env
+variable named, and that variable actually set in *this* shell) — unset `CELL_PROVIDER` is `n/a`, not
+a `MISS`, because a provider is opt-in.
+
+---
+
 ## `cell.env`
 
 `cellctl new` writes it; edit it directly afterwards.
@@ -594,4 +643,7 @@ it *would* persist and writes nothing — a dry run touches nothing, `--set` inc
 | `ROLES` | the role windows `up` opens (default: all five) |
 | `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
 | `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=fable`; an Opus pin here (or via `DESK_MODEL_DEFAULT`) is refused for `the-desk` |
+| `CELL_PROVIDER` | the default provider name for `cellctl desk`/`up` (unset = Anthropic); `--provider` overrides it per run — see *Providers* |
+| `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
+| `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
