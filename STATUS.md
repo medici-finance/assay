@@ -43,7 +43,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (49 desk-actionable of 57 total — 56 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (49 desk-actionable of 57 total — 55 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -78,7 +78,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-supervision | 03 [exec:strong] | verified | 1000 | 0 | — | 2026-09-11 sonnet-5-verifier | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -184,7 +184,7 @@ _None._
 
 ### desk-supervision (4 open)
 
-- 03 Eligibility reconciliation — stop a run whose item became ineligible — implemented (wave 2)
+- 03 Eligibility reconciliation — stop a run whose item became ineligible — verified (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
