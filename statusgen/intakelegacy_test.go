@@ -161,6 +161,30 @@ func TestParseIntakeLegacyDispositionCaseInsensitive(t *testing.T) {
 			wantUntriaged: 1,
 		},
 		{
+			name:          "leading whitespace before key",
+			keyLine:       "  disposition: accepted",
+			wantDisp:      "accepted",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "tab separator after colon",
+			keyLine:       "Disposition:\taccepted",
+			wantDisp:      "accepted",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "no colon does not match and defaults to new",
+			keyLine:       "Disposition accepted",
+			wantDisp:      "new",
+			wantUntriaged: 1,
+		},
+		{
+			name:          "longer key prefix does not match and defaults to new",
+			keyLine:       "DispositionX: accepted",
+			wantDisp:      "new",
+			wantUntriaged: 1,
+		},
+		{
 			name:          "missing disposition key defaults to new",
 			keyLine:       "",
 			wantDisp:      "new",
