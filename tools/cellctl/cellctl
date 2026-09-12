@@ -32,8 +32,9 @@
 #   cellctl down  <cell> [--keep-deskd]          tear the session (and this cell's deskd) down
 #
 # Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role)
-# and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=opus). Values are what
-# `claude --model` accepts (opus | sonnet | haiku | a full model id).
+# and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are what
+# `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
+# role `cellctl desk`/`cellctl check` refuse to pin to Opus — see refuse_opus_for_the_desk below.
 #
 # A cell directory holds:
 #   cell.env            the per-cell variables (written by `cellctl new`)
@@ -145,6 +146,25 @@ roots_valid(){
   done
 }
 
+# is_opus_pin: true when a resolved model value is the `opus` alias or a `claude-opus…` id,
+# case-insensitive (an operator could type Opus, OPUS, or a full id in any case). Any other
+# value — including another full id or a different alias — is not an Opus pin.
+is_opus_pin(){
+  local m; m="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  [[ "$m" == "opus" || "$m" == claude-opus* ]]
+}
+
+# refuse_opus_for_the_desk: the-desk is the one window that spends its tier on judgment,
+# synthesis and arbitration across streams, so the methodology's model-tier rule pins it to the
+# top tier available — a downgrade there is a stop condition, not an operator preference. `opus`
+# is no longer the top tier, so `cmd_desk` calls this for the-desk ONLY (every other role may pin
+# whatever it likes) before it launches, including on the DRY_RUN path — a dry run is a plan of
+# exactly that launch, so it refuses on the same input.
+refuse_opus_for_the_desk(){
+  is_opus_pin "$1" || return 0
+  die "the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$1 (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env"
+}
+
 gen_shims(){
   mkdir -p "$CELL_DIR/shim"
   local b n
@@ -189,6 +209,14 @@ cmd_check(){
   chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
   chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
   chk "forge endpoint ($CELL_FORGE): $FORGE_API_BASE" '[[ -n "$FORGE_API_BASE" ]]'
+  # the-desk's resolved model, same precedence cmd_desk uses (DESK_MODEL_the_desk, else
+  # DESK_MODEL_DEFAULT). An Opus pin is a MISS with the same refusal `cellctl desk` would print.
+  local the_desk_model="${DESK_MODEL_the_desk:-$DESK_MODEL_DEFAULT}"
+  if is_opus_pin "$the_desk_model"; then
+    chk "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$the_desk_model (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
+  else
+    chk "the-desk model: $the_desk_model" 'true'
+  fi
   case "$CELL_KIND" in
     house) check_house "${2:-}" ;;
     *) check_k8s ;;
@@ -377,6 +405,7 @@ cmd_desk(){
   # `local a=… b="${!a}"` the indirect expansion reads the name before it is assigned.
   local mvar="DESK_MODEL_${role//-/_}"
   local model="${!mvar:-$DESK_MODEL_DEFAULT}"
+  [[ "$role" == "the-desk" ]] && refuse_opus_for_the_desk "$model"
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
   # because the verbs then fall back to their compiled placeholder topology and the failure
@@ -585,7 +614,7 @@ ORGS=$orgs
 ROLES="$roles"
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
-DESK_MODEL_the_desk=opus
+DESK_MODEL_the_desk=fable
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (github) — scaffolded by cellctl
@@ -632,7 +661,7 @@ DESKD_INDEX=$d/index/index.db
 ROLES="$roles"
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
-DESK_MODEL_the_desk=opus
+DESK_MODEL_the_desk=fable
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (gitlab) — scaffolded by cellctl
@@ -698,7 +727,7 @@ FORGE_API_BASE=https://api.$github_host
 ROLES="$roles"
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
-DESK_MODEL_the_desk=opus
+DESK_MODEL_the_desk=fable
 # No deskd on a house cell. DESKD=1 requires one, as on a k8s cell (then fill bin/deskd,
 # bin/deskcli and a cells-$cell.yaml slice, and stand it with CELL_ATTENDED=1 cellctl deskd $cell).
 DESKD=0

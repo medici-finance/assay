@@ -367,20 +367,27 @@ cell saying so, which is the kind of drift a cell exists to keep out.
 
 ```
 DESK_MODEL_DEFAULT=sonnet     # every role that has no override
-DESK_MODEL_the_desk=opus      # per-role override: the role name with `-` replaced by `_`
+DESK_MODEL_the_desk=fable     # per-role override: the role name with `-` replaced by `_`
 ```
 
 An override is `DESK_MODEL_<role>` with hyphens replaced by underscores — `DESK_MODEL_the_desk`,
 `DESK_MODEL_pr_review_desk`, `DESK_MODEL_verify_desk`, and so on. Values are whatever
-`claude --model` accepts: an alias (`opus`, `sonnet`, `haiku`) or a full model id, including a
-long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
+`claude --model` accepts: an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full model id, including
+a long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
 `cellctl new` scaffolds both lines above so a fresh cell is pinned from the start.
 
 **Why the defaults are shaped that way.** The four loop roles are mechanical dispatchers: they read a
 board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
 coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
-and `the-desk` gets the stronger one — and either can be moved per cell, which is the point of
-putting it in `cell.env` rather than in the script.
+and `the-desk` gets the top tier available — and the loops' pin can be moved per cell, which is the
+point of putting it in `cell.env` rather than in the script.
+
+**The coordinator's pin cannot be moved down to Opus.** `opus` is no longer the top tier, and the
+coordinator role is defined to run on whichever model is. `cellctl desk <cell> the-desk` (including
+its `DRY_RUN=1` plan) and `cellctl check` both refuse a resolved `DESK_MODEL_the_desk` that is the
+`opus` alias or a `claude-opus-*` id — whether that value came from `DESK_MODEL_the_desk` itself or
+fell through to `DESK_MODEL_DEFAULT` — and print the value plus the variable to change. Every other
+role's pin, including `opus`, is untouched.
 
 `cellctl desk` prints the resolved model on its launch line and in `DRY_RUN=1` output, so which model
 a window is on is visible without reading the config.
@@ -412,5 +419,5 @@ a window is on is visible without reading the config.
 | `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
 | `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
-| `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=opus` |
+| `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=fable`; an Opus pin here (or via `DESK_MODEL_DEFAULT`) is refused for `the-desk` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |

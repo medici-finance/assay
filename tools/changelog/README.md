@@ -37,10 +37,28 @@ whole activation.
    under `## Unreleased` in `CHANGELOG.md` (the deprecation guard). An empty,
    whitespace-only, or bullet-less fragment is rejected — the gate is not
    satisfiable by `touch changelog/x.md`. The whole decision is
-   `tools/changelog/check.sh`; the workflow only feeds it the PR base/head SHAs
-   and the label boolean. The
+   `tools/changelog/check.sh`; the workflow only feeds it the PR base/head SHAs,
+   the label boolean, and the PR number. The
    `changelog:skip` label already exists from the prior activation; no new label
    is needed.
+
+   **The `PR_NUMBER` input and the proxy outcome.** `check.sh` takes one more
+   optional input, `PR_NUMBER`, and with it one more PASS outcome: a fragment
+   named `changelog/pr-<PR_NUMBER>-<slug>.md` already present on the **base**
+   commit and carrying a real highlight bullet greens the PR, even though the PR
+   adds no fragment of its own. That is the path for a pull request from a fork,
+   whose branch maintainers cannot commit to — a maintainer lands the fragment on
+   the base branch instead and re-runs this leg by adding or removing any label
+   (which is why `labeled`/`unlabeled` are in the trigger list). See
+   `changelog/README.md`, "Fragment by proxy (fork PRs)".
+
+   `PR_NUMBER` is fed by `PR_NUMBER: ${{ github.event.pull_request.number }}` in
+   the check step's `env:`. Any value that is not a positive integer — including
+   an unset one — is treated as absent and every other outcome is unchanged, so
+   the script half may merge before the workflow half that supplies it; the
+   `check_test.sh` row P3 is the assertion that it degrades that way. The proxy
+   is read from the BASE commit only, never from the PR head, so a fork's tree
+   cannot manufacture one.
 
 2. **`release.yml` change — aggregate + refuse + clear.** Apply
    `tools/changelog/release.yml.patch` to the live

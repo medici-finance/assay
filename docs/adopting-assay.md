@@ -1021,8 +1021,8 @@ line into `.assay-versions` (see the note below).
 1. Clone this repository at the SHA the adopter named, and pin **that full 40-hex commit SHA** in
    your CI config as the ref CI checks out — an immutable commit, never a moving branch name.
 2. `go build` `statusgen` and the desk-tool cmds into `%LOCALAPPDATA%\Assay\bin` (same dest as
-   channel E). `statusgen --version` will print a `dev-<shortsha>` string, not a `v*` tag — that
-   is expected.
+   channel E). `statusgen --version` will print the bare string `dev` (no `-ldflags` version
+   stamp on this lane, so no shortsha and no `v*` tag) — that is expected.
 3. Scaffold with `statusgen init --forge <github|gitlab> --root <adopter>`. Your CI should
    **clone that SHA and `go build`**, not `gh release download` a tag the SHA never published.
 4. Do **not** fill `.assay-versions` with `v0.26.0` (or any other release) sha256s for this lane;
@@ -1035,6 +1035,29 @@ line into `.assay-versions` (see the note below).
 > `tools/desk/README.md`). An unpublished `main` SHA has no such tag, so it cannot be recorded as a
 > `-source` line, and the literal string `channel-D` is never a field in that grammar. Pin the
 > commit in CI (step 1) instead.
+
+**How the board tools prove the binary on a source lane — and the stale-pin trap.** Because a
+channel D `.assay-versions` carries **no** statusgen / desk-tools pin line at all (the `-source`
+grammar above is release-only), there is nothing in `.assay-versions` for a board/dispatch tool
+to resolve a pin from — a live channel D install that (wrongly) wrote `statusgen-source <sha>
+channel-D` lines and then ran `deskboard dispatch` failed with **no statusgen pin**, because
+those lines are not the release pin the tool reads. That is expected on this lane, not a
+misconfiguration: **the running binary IS the provenance, and you prove it from the binary, not
+from `.assay-versions`.** `statusgen --version` on this lane prints only the bare string `dev`
+(no `-ldflags` stamp, so no sha at all) — there is nothing in that output to match against the
+CI-pinned commit, and statusgen cannot be sha-pinned on a source lane this way. The desk-tools'
+`--version` prints `sourceSHA=<shortsha>` — a **short** git SHA (`git rev-parse --short HEAD` at
+build time) — which prefix-matches the 40-hex commit your CI clones and rebuilds (step 1); that
+comparison is what establishes what ran, for desk-tools. Delete any `-source` / `channel-D`
+lines you find in a source-lane `.assay-versions`; they satisfy no check and mislead the next
+operator. (Whether the board tools should additionally *accept* a source pin, rather than only a
+release pin, is an open follow-up — #896; do not fabricate a release pin line to work around it.)
+
+> **Never treat a `deskboard` pin-drift as an all-clear board.** A source-lane install can print
+> `sourceSHA=<newer>` from a binary built more recently than the commit a role worktree was
+> built or pinned at — the board tool and the worktree are then out of step. That is a
+> **could-not-trust** state, not a pass: **rebuild the worktree's tools from the pinned commit,
+> or re-pin in a dedicated PR** — never read a stale-pin `deskboard` as an authoritative board.
 
 ## 3a. What the bundle delivers by itself — and what you still have to write
 

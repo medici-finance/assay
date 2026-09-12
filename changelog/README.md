@@ -38,9 +38,55 @@ Put one — or a few — human-legible highlight bullets in it, the same
 ## Not notable?
 
 A genuinely non-notable PR (a typo, a comment-only diff, a pure refactor) carries
-the **`changelog:skip`** label instead of a fragment. The `changelog-check` CI
+the **`changelog:skip`** label instead of a fragment. The label is for changes
+that are not worth recording — **not** for a notable change whose PR simply
+cannot carry a fragment; that case has its own path, "Fragment by proxy" below. The `changelog-check` CI
 leg greens on *either* a fragment *or* that label, and prints the skip in its log
 so it is never silent.
+
+## Fragment by proxy (fork PRs)
+
+A pull request from a **fork** cannot always receive a fragment: maintainers
+often cannot commit to the contributor's branch, and the contributor may be gone
+by the time the omission is noticed. Labelling such a PR `changelog:skip` would
+green it by dropping a notable change out of the release notes — the wrong
+trade. Land the fragment on the **base branch** instead, under a name reserved
+for that one PR:
+
+```
+changelog/pr-<N>-<slug>.md   e.g. changelog/pr-1234-widget-frame-drop.md
+```
+
+`<N>` is the fork PR's number. `changelog-check` reads the base branch for a
+fragment matching that PR's number and greens the PR on its strength — the same
+content bar applies, so the proxy must carry at least one real `- …` highlight
+bullet.
+
+**Credit the contributor in the bullet**, since the fragment is no longer written
+by them:
+
+```markdown
+### Fixed
+- `widget` no longer drops the last frame. (#1234, thanks @contributor)
+```
+
+The steps:
+
+1. A maintainer or the review desk opens a **fragment-only PR** on the base
+   branch adding `changelog/pr-<N>-<slug>.md` with the credited bullet, and
+   merges it. (That PR records itself: the fragment it adds is its own.)
+2. On the fork PR, **add or remove any label**. `changelog-check` re-runs on
+   `labeled`/`unlabeled`, re-reads the base branch, finds the proxy, and greens.
+   There is nothing to push to the fork branch.
+
+**If the fork PR closes unmerged, remove the proxy** by a follow-up PR before the
+next release cut — otherwise the notes advertise a change that never landed. The
+proxy is an ordinary fragment in every other respect: it aggregates, and the
+release clears it like any other.
+
+A proxy is bound to exactly one PR by its `<N>`; it never greens a different PR,
+and a `pr-<N>-…` file added by the PR itself is just an ordinary fragment
+satisfying the ordinary rule.
 
 ## Do NOT edit `CHANGELOG.md`'s `## Unreleased` section
 
