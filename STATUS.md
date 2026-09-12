@@ -12,7 +12,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-12 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 0/6 | 2026-09-11 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 1/6 | 2026-09-12 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-12 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-12 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-12 |  |
@@ -44,14 +44,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (52 desk-actionable of 60 total — 58 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 59 total — 58 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (52)
+### Desk-actionable (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -60,7 +60,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | windows-port | 00 | implemented | 4000 | 6 | — | — | — |
-| composability | 00 | verified | 3500 | 5 | — | 2026-09-11 sonnet-5-verifier | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
@@ -163,9 +162,8 @@ _None._
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
 - 08 Solo identity mode — spec and decision for running the desk verbs on the operator's own token — implemented (wave 0)
 
-### composability (6 open)
+### composability (5 open)
 
-- 00 Component manifests, key catalogue, and the resolve/cycle lint — verified (wave 0)
 - 01 Reactive activation — a missing extension key downs one component, not the fleet — todo (wave 1)
 - 02 Install ledger, paired inverses, and the `disable` verb — todo (wave 1)
 - 03 Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay — todo (wave 2)
@@ -295,6 +293,10 @@ _`done*` = unbacked (I-08 point quality): the row's Evidence section is empty an
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
+### composability (1 done)
+
+- 00 Component manifests, key catalogue, and the resolve/cycle lint — done (wave 0)
+
 ### derived-board (3 done)
 
 - 01 brief-v2 spec — derived lifecycle cells, generated table, reserved graph keys; public re-stage of brief-rules + template — done (wave 0)
@@ -385,4 +387,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **55/150** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **56/150** briefs done · completed initiatives: see `docs/archive/`
