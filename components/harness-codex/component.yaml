@@ -1,0 +1,32 @@
+component: assay/harness-codex
+version: 0.28.0
+# The Codex harness adapter (§9): owns the .codex-plugin manifest and the
+# generated AGENTS.md fragment (plugins/assay/codex/AGENTS-assay.md,
+# `tools/harnessgen codex`) that an adopting repo installs at its own root
+# AGENTS.md — Codex reads AGENTS.md natively
+# (docs/streams/harness-portability/README.md). Files stay where they are;
+# this manifest just names the ownership.
+#
+# `evidence` is the adopting repo's own root AGENTS.md: this adapter is ACTIVE
+# only in a tree that has actually installed the fragment there. This repo
+# ships the fragment as packaging for adopters but has no root AGENTS.md of
+# its own (repo-local by ruling, harness-portability/README.md), so this
+# adapter is INACTIVE here — exactly one adapter (claude-code) is ACTIVE.
+provides:
+  - key: assay.harness
+    flavour: codex
+    evidence: AGENTS.md
+inject:
+  required: []
+  optional: []
+apply:
+  - id: plugin-manifest
+    effect: install plugins/assay/.codex-plugin/plugin.json (tools/harnessgen codex)
+    boundary: inside
+    inverse: remove the plugin manifest (TODO composability/02 makes the reverse real)
+  - id: agents-fragment
+    effect: install the generated plugins/assay/codex/AGENTS-assay.md fragment at the adopter's root AGENTS.md
+    boundary: inside
+    inverse: remove the installed AGENTS.md fragment (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

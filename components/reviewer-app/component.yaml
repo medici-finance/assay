@@ -15,6 +15,6 @@ apply:
     effect: bind the reviewer App to the repo with its duty permission set
     boundary: outside
     ledger: app-installation
-    compensation: gate:human — removing an App is human work; TODO composability/02 lists the installation
+    compensation: list-for-human — gate:human, removing an App installation is human work; the ledger lists the installation to remove
 intercept: []
 config: {}
