@@ -157,8 +157,54 @@ per-worktree admin directory — without it, `RemoteURL`/`LocalBranchNames`/etc.
 with "not found" on every linked worktree even though the shared checkout plainly has
 the remote/branch.
 
+## Brief 04 — deskpushguard detection reads migrated; rows ticked/emptied vs. still-owed
+
+Brief 04 migrated every seam site named in its own Context section — `foreigncommit.go`'s
+foreign-commit/merge-masquerade detection reads and `registerid.go`'s register-id
+collision-scan reads, plus `main.go`'s local `remote get-url` fallback — onto `gitcore`,
+extended with two new per-commit field readers (`Repo.CommitSubject`, `Repo.ParentHashes`)
+and a name-status diff reader (`Repo.DiffNameStatus`). One site is DELIBERATELY left on the
+git binary: `registerid.go`'s `remoteHeadLiveness` probes origin's `refs/heads/<name>`
+DIRECTLY via `git ls-remote` — a network transport call, not a plumbing read, and this
+brief's own Context does not name it; it migrates with the other transport verbs in
+brief 05/06, under that stream's human-gated security review (this brief's `foreigncommit.go`
+carries zero `exec.Command` sites; `registerid.go` keeps exactly this one).
+
+| # | Family | Ticked? | Note |
+|---|---|---|---|
+| 6 | `rev-parse` | **ticked** | deskpushguard's sites (`foreigncommit.go`, `registerid.go`, `main.go`'s `remote get-url` fallback) were the last owed site for this family — every `rev-parse` seam site the frozen table lists now routes through `gitcore` |
+| 9 | `ls-remote` (+ `remote get-url`) | partial | `main.go`'s local `remote get-url` fallback (a config read, no network) migrated (`Repo.RemoteURL`), joining deskgit's/deskkit preflight's brief-03 sites; `registerid.go`'s `remoteHeadLiveness` (`git ls-remote --heads origin ...`, a NETWORK transport probe) is deliberately untouched — brief 05/06, per this brief's own Context |
+| 10 | `log` | **ticked** | deskpushguard was this family's only seam site in the frozen table (`log --format=%H` range enumeration, `log -1 --format=%s`/`--format=%P` per-commit reads) — migrated onto `Repo.Log` (the two-dot range recomputed as a set difference — see `logRangeHashes`) plus the new `Repo.CommitSubject`/`Repo.ParentHashes` |
+| 11 | `show` | **ticked** | deskpushguard was this family's only seam site — `show <rev>:<path>` migrated onto `Repo.FileAt` across `registerid.go`'s three call sites |
+| 12 | `cat-file` | **ticked** | deskpushguard was this family's only seam site — `cat-file -e <sha>` existence checks migrated onto `Repo.CommitVerifyQuiet` |
+| 13 | `ls-tree` | **ticked** | deskpushguard was this family's only seam site — `ls-tree -r --name-only <rev>` migrated onto `Repo.Files` |
+| 14 | `diff` | partial | `registerid.go`'s `diff --name-status --diff-filter=AM` (a seam site the frozen table did not separately enumerate for deskpushguard) migrated onto the new `Repo.DiffNameStatus`; deskmerge's and deskboard's `diff` sites remain untouched (brief 06/07; deskboard's isn't named in any brief's Context yet) |
+| 15 | `merge-base` / `is-ancestor` | partial | deskpushguard's sites (`checkStrayBase`'s merge-base, `branchIsAncestorOfMain`'s is-ancestor) migrated onto `Repo.MergeBase`/`Repo.IsAncestor`; deskmerge's sites remain untouched (brief 06/07) |
+| 16 | `rev-list` | partial | deskpushguard's sites (the stray-base `--count` behind-computation, the origin/main..localSHA range enumeration) migrated onto `Repo.AheadCount` and the new `logRangeHashes` set-difference helper; deskmerge's sites remain untouched (brief 06/07) |
+
+Family 8 (`for-each-ref`, already **ticked** as of brief 03): deskpushguard's `branch -r` /
+`branch -r --contains <sha>` sites are a family-8-adjacent shape (the same shape brief 03's
+own note already calls out for deskwt's `for-each-ref --contains=`) — migrated onto the new
+`remoteBranchNames` helper (`Repo.Refs` filtered to `refs/remotes/`) and `Repo.RefsContaining`
+respectively. Both inherit `RefsContaining`'s documented gap (does not surface the symbolic
+`origin/HEAD` alias ref) harmlessly, for the same reason brief 03 recorded for its own
+callers: the alias always mirrors a concrete ref (`origin/main`) that IS returned, and every
+caller here already excludes that concrete ref by name.
+
+New `gitcore` read helpers this brief added (parity-verified against real git,
+`tools/desk/internal/gitcore/gitcore_test.go`): `Repo.CommitSubject`, `Repo.ParentHashes`,
+`Repo.DiffNameStatus` (+ the `ChangeStatus` type).
+
+Mandatory mutation test (brief-rules rule 16 — a DETECTION control's seam swap must prove
+detection still fires, not just that the happy path is unchanged): `TestForeignCommitFlagged`
+(`tools/desk/cmd/deskpushguard/foreigncommit_test.go`) constructs a fixture that injects a
+genuine foreign/laundered commit and asserts the migrated gitcore-backed reader still flags
+it RED. Verified fail-first by hand (temporarily gutting the foreign-commit append made this
+test fail before restoring it for this brief's PR).
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
 baseline N (117). Brief 03 leaves it at **108** (149 immediately before brief 03,
-mid-stream after brief 02). The gate stays advisory (exit 0) until brief 08.
+mid-stream after brief 02). Brief 04 leaves it at **89**. The gate stays advisory (exit 0)
+until brief 08.

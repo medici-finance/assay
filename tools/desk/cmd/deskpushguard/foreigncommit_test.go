@@ -920,3 +920,39 @@ func TestRun_AnnouncesCouldNotCheck(t *testing.T) {
 		t.Errorf("the could-not-check line must state it is not an all-clear, got:\n%s", stderr.String())
 	}
 }
+
+// --- Mandatory mutation test (desktools-go-git/04, brief-rules rule 16) -------------------
+//
+// A behaviour-preserving seam swap of a DETECTION control has to prove the detection still
+// FIRES, not merely that the happy path is unchanged — a green run on a CLEAN fixture alone
+// cannot distinguish "the migrated reader still detects foreign commits" from "the migrated
+// reader silently detects nothing and every test just happens to feed it clean input". This
+// test constructs a fixture that DOES introduce a foreign/unregistered commit (the same #22
+// laundering shape TestCheckForeignCommits_DetectsLaunderedSiblingCommits exercises — a
+// worktree cut off a sibling PR's tip instead of origin/main) and asserts the gitcore-backed
+// detector still flags it RED.
+//
+// FAIL-FIRST: this is the brief's own mutation-test Verify row (`go test ./cmd/deskpushguard/
+// -run ForeignCommitFlagged`) — gut checkForeignCommits's branch-attribution loop (e.g. make
+// the `if !isAnc` foreign-commit append unreachable) and this test goes red with 0 foreign
+// commits found while a merely-happy-path suite would stay green.
+func TestForeignCommitFlagged(t *testing.T) {
+	victimDir, ownBranch, ownSHA := newForeignCommitFixture(t)
+
+	found, err := checkForeignCommits(victimDir, ownBranch, ownSHA)
+	if err != nil {
+		t.Fatalf("checkForeignCommits error: %v", err)
+	}
+	if len(found.indeterminate) != 0 {
+		t.Fatalf("base was determinable in this fixture; unexpected could-not-check: %v", found.indeterminate)
+	}
+	if len(found.foreign) == 0 {
+		t.Fatal("MUTATION TEST FAILED: the migrated gitcore-backed reader did not flag the " +
+			"injected foreign commit — the detector no longer detects")
+	}
+	for _, f := range found.foreign {
+		if f.sourceBranch != "origin/sibling" {
+			t.Errorf("foreign commit %s: sourceBranch = %q, want origin/sibling", shortSHA(f.sha), f.sourceBranch)
+		}
+	}
+}
