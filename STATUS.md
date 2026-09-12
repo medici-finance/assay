@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [composability](docs/streams/composability/README.md) | P2 | active | 1/6 | 2026-09-12 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-12 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-12 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 5/9 | 2026-09-12 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-12 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-12 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-12 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 6/12 | 2026-09-12 |  |
@@ -43,14 +43,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (49 desk-actionable of 57 total — 55 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (48 desk-actionable of 56 total — 55 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (49)
+### Desk-actionable (48)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -78,7 +78,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desk-supervision | 03 [exec:strong] | verified | 1000 | 0 | — | 2026-09-11 sonnet-5-verifier | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -182,9 +181,8 @@ _None._
 - 06 Kubernetes manifests for the five desks — todo (wave 3)
 - 07 multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config — todo (wave 4)
 
-### desk-supervision (4 open)
+### desk-supervision (3 open)
 
-- 03 Eligibility reconciliation — stop a run whose item became ineligible — verified (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
@@ -302,10 +300,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 02 `Brief:` trailer — the PR→brief link, required by deskpr create, linted on main — done (wave 0)
 - 05 desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies) — done (wave 1)
 
-### desk-supervision (5 done)
+### desk-supervision (6 done)
 
 - 01 Observable probes + the `desksupervise` observer — liveness that bites — done (wave 0)
 - 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — done (wave 1)
+- 03 Eligibility reconciliation — stop a run whose item became ineligible — done (wave 2)
 - 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — done (wave 0)
 - 06 Workpad — one upserted progress comment per PR — done (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — done (wave 1)
@@ -387,4 +386,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **59/150** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **60/150** briefs done · completed initiatives: see `docs/archive/`
