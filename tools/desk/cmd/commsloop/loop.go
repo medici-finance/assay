@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,12 +23,15 @@ import (
 // FROZEN CONTRACT (arch doc §8): Name/SelectQueue/TierPolicy/Dispatch/Land/
 // OnIdle, implemented exactly — see the compile-time assertion below.
 //
-// NO DETERMINISTIC ROUTING (#1767 ruling 3). commsloop answers exactly one
-// question per message — is this a pure REPORT it can land immediately with
-// no session fired, or does it need the not-yet-built prose router's
-// judgment — and never invents a routing decision the router owns. Until the
-// router lands, every non-report message quarantines: inert either way,
-// fail-closed by construction.
+// NO DETERMINISTIC ROUTING (#1767 ruling 3). EVERY accepted message that
+// clears the routing-boundary ACL re-check (routing.go) is routed by the
+// contained prose consult (decide.go) — there is no deterministic routing
+// table and no fast path (a report-verb mechanical shortcut lived here until
+// the router landed; it is retired). The consult returns one action from a
+// closed set; assign.go's compiled table then resolves (action, class, risk)
+// to a dispatch Tier. An invalid/timed-out/budget-exhausted/valve-disabled
+// consult resolves to the default action (quarantine), so this loop is
+// fail-closed by construction whether or not a decider is even configured.
 type Loop struct {
 	// Root is the gateway's queue directory (ASSAY_COMMS_QUEUE_DIR).
 	Root string
@@ -45,6 +49,13 @@ type Loop struct {
 	// still never a drop, just missing the second half of the silent-desk
 	// rule (a real Loop always supplies one; see main.go's construction).
 	Filer commsqueue.IssueFiler
+	// Router is the inbound prose router (decide.go) consulted for the
+	// routing decision on every message that clears the ACL re-check. A nil
+	// Router is a valid, fail-closed state: TierPolicy falls back to an
+	// ephemeral default (the package Question + shared Budget, no Advisor),
+	// which reads as the valve being off — every message quarantines.
+	// Production wiring (main.go) always supplies a real one via NewRouter.
+	Router *Router
 	// Now is a test seam; nil means time.Now (UTC).
 	Now func() time.Time
 
@@ -82,7 +93,7 @@ type Loop struct {
 	MakeWorktree func(loopengine.Item) (dir string, cleanup func(), err error)
 
 	mu      sync.Mutex
-	reasons map[string]string // item ID -> quarantine reason, set by TierPolicy, consumed by Land.
+	reasons map[string]string // item ID -> routing rationale, set by TierPolicy, consumed by Land.
 }
 
 // var _ loopengine.Loop = (*Loop)(nil) pins the frozen contract at compile
@@ -181,10 +192,38 @@ func (l *Loop) takeReason(itemID string) string {
 	return r
 }
 
-// TierPolicy implements loopengine.Loop. It answers exactly one mechanical
-// question (see the file doc); everything JUDGMENT-shaped is never computed
-// here — see routing.go's isReportClass doc for the exact boundary this
-// brief draws and why.
+// router returns l.Router, or an ephemeral fail-closed default when none is
+// wired: the package Question and the shared package Budget, no Advisor.
+// That default reads exactly like the valve being off (no advisor -> every
+// consult resolves to the default action, quarantine) — a Loop built without
+// an explicit Router (e.g. an older test fixture) stays fail-closed rather
+// than panicking or silently allow-listing.
+func (l *Loop) router() *Router {
+	if l.Router != nil {
+		return l.Router
+	}
+	return &Router{Question: routerQuestion, Budget: routerBudget}
+}
+
+// normalizeClass defaults an absent envelope class to "routine" — the
+// least-severe of the two known classes. ParseEnvelope already refuses any
+// OTHER unrecognised class at parse time (comms.KnownClass), so an accepted
+// message's Class is either "", "routine", or "sensitive"; only the empty
+// case needs a default here so Assign() always receives a class it accepts.
+func normalizeClass(class string) string {
+	if class == "" {
+		return "routine"
+	}
+	return class
+}
+
+// TierPolicy implements loopengine.Loop. EVERY accepted message that clears
+// the routing-boundary ACL re-check is routed by the contained prose consult
+// (decide.go) — #1767 ruling 3, no deterministic routing table, no fast path.
+// The consult's action, plus the envelope's class, resolves through
+// assign.go's compiled table to a dispatch Tier; a routing rationale is
+// recorded either way (setReason) so Land can explain a quarantine or narrate
+// a landed message without re-deriving the decision.
 func (l *Loop) TierPolicy(item loopengine.Item) (loopengine.Tier, error) {
 	env, err := envelopeFromItem(item)
 	if err != nil {
@@ -193,18 +232,32 @@ func (l *Loop) TierPolicy(item loopengine.Item) (loopengine.Tier, error) {
 	}
 
 	// DEFENSE IN DEPTH — see routing.go. A message that somehow bypassed
-	// commsgw's own ACL stage is still caught HERE, independently.
+	// commsgw's own ACL stage is still caught HERE, independently, BEFORE it
+	// ever reaches the prose consult.
 	if err := checkLaneAtRoutingBoundary(env, l.ACL); err != nil {
 		l.setReason(item.ID, fmt.Sprintf("ACL bypass caught at the routing boundary (defense in depth, independent of commsgw's own check): %v", err))
 		return loopengine.TierHuman, nil
 	}
 
-	if isReportClass(env) {
-		return loopengine.TierLocal, nil
+	action := l.router().Route(context.Background(), env)
+	class := normalizeClass(env.Class)
+	// risk: no per-message mechanical risk signal is carried on the envelope
+	// yet (assign.yaml documents risk as "carried on the envelope as an INPUT
+	// to model resolution", a follow-up wiring gap distinct from this
+	// brief's contract — NEEDS_CONTEXT if that gap needs closing here).
+	// Passing false is the conservative, in-scope default: it never grants
+	// MORE autonomy than a risk-flagged message would (assign.yaml's own
+	// risk:yes-forces-human rule only ever narrows), and the router's own
+	// action choice is expected to carry anything risk-shaped to
+	// escalate-human-issue/quarantine until a mechanical risk field lands.
+	const risk = false
+	tier, err := Assign(action, class, risk)
+	if err != nil {
+		l.setReason(item.ID, fmt.Sprintf("router chose action %q (class=%s) but assignment refused: %v — quarantined (fail closed)", action, class, err))
+		return loopengine.TierHuman, nil
 	}
-
-	l.setReason(item.ID, "no deterministic routing (#1767 ruling 3) — awaiting the prose router (not yet landed); quarantined until it lands")
-	return loopengine.TierHuman, nil
+	l.setReason(item.ID, fmt.Sprintf("router action=%s class=%s tier=%s", action, class, tierName(tier)))
+	return tier, nil
 }
 
 // staticHandle is an already-resolved loopengine.Handle: Dispatch never fires
@@ -220,32 +273,29 @@ func (h staticHandle) Done() <-chan loopengine.Result { return h.done }
 func (h staticHandle) Item() loopengine.Item          { return h.item }
 
 // Dispatch implements loopengine.Loop. TierHuman is never dispatched by the engine
-// itself (its contract routes straight to Land via VerdictRouteHuman).
+// itself (its contract routes straight to Land via VerdictRouteHuman); every OTHER tier
+// the router's action can resolve to (TierLocal/TierCheap/TierSession) reaches here.
 //
-// TierLocal (report-class) items need no agent at all: the message needs no agent at
-// all — it is answered by construction (the class of message IS the answer), so
-// Dispatch synthesizes the PASS result directly, unconditionally, whether or not the
-// executor leg below is enabled. "report-class messages land with NO session fired" is
-// true here in the most literal sense: nothing is ever spawned for them.
+// Firing a real worker session is the executor dispatch leg's job (brief 08, inert
+// until its own cutover — #1767 ruling 2): with Native enabled, EVERY dispatchable tier
+// fires a real, role-fenced ACP session (dispatchNative) — TierLocal included, matching
+// the engine's own runner-table vocabulary, where "local" names a cheaper/local runner
+// entry, not "no agent" (internal/runnertable's dispatchableTierNames covers exactly
+// local/cheap/session).
 //
-// Any OTHER (dispatchable, non-local) tier reaching here is the executor dispatch leg
-// (brief 08): with Native enabled it fires a real ACP child process
-// (dispatchNative); with Native at its zero value — the interim/rollback position, and
-// what every production call site leaves it at today — it refuses rather than fire a
-// session or fabricate a result. Once the (not-yet-landed) prose router and its assign
-// table start emitting a session tier, THIS is the one place that swap reaches.
+// With Native at its zero value — the interim/rollback position, and what every
+// production call site leaves it at today — Dispatch stays exactly as it was before
+// this brief: it synthesizes the PASS result directly for every tier, spawning nothing.
+// "No session fired" stays true for every message landing this way, whether the router
+// even ran or not.
 func (l *Loop) Dispatch(item loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
-	if tier == loopengine.TierLocal {
-		ch := make(chan loopengine.Result, 1)
-		ch <- loopengine.Result{Item: item, Verdict: loopengine.VerdictPass, RunnerID: "commsloop"}
-		close(ch)
-		return staticHandle{item: item, done: ch}, nil
-	}
 	if l.Native {
 		return l.dispatchNative(item, tier)
 	}
-	return nil, fmt.Errorf(
-		"commsloop: dispatch for tier %s needs the executor dispatch leg (Native flag), which is at its zero value (interim/rollback position) — refusing rather than fire a session or fabricate a result", tier)
+	ch := make(chan loopengine.Result, 1)
+	ch <- loopengine.Result{Item: item, Verdict: loopengine.VerdictPass, RunnerID: "commsloop"}
+	close(ch)
+	return staticHandle{item: item, done: ch}, nil
 }
 
 // Land implements loopengine.Loop: exactly ONE tracked exit per accepted
@@ -272,9 +322,13 @@ func (l *Loop) Land(result loopengine.Result) error {
 		return commsqueue.RemoveAccepted(l.Root, env.ID)
 
 	case loopengine.VerdictPass:
+		reason := l.takeReason(result.Item.ID)
+		if reason == "" {
+			reason = "no routing rationale recorded — see TierPolicy"
+		}
 		if err := commsqueue.AppendJournal(l.Root,
-			fmt.Sprintf("%s landed id=%s from=%s/%s to=%s/%s verb=%s (report-class, no session fired)",
-				now.Format(time.RFC3339), env.ID, env.From.Cell, env.From.Role, env.To.Cell, env.To.Role, env.Verb)); err != nil {
+			fmt.Sprintf("%s landed id=%s from=%s/%s to=%s/%s verb=%s (%s, no session fired)",
+				now.Format(time.RFC3339), env.ID, env.From.Cell, env.From.Role, env.To.Cell, env.To.Role, env.Verb, reason)); err != nil {
 			return err
 		}
 		return commsqueue.RemoveAccepted(l.Root, env.ID)
