@@ -13,6 +13,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|---|---|
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-12 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 1/6 | 2026-09-12 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-12 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-12 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-12 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-12 |  |
@@ -30,6 +31,9 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| contributor-trust | 02 — Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets [exec:strong] | 0 | 5000 |
+| contributor-trust | 01 — Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card [exec:strong] | 0 | 2500 |
+| contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
@@ -162,6 +166,18 @@ _None._
 - 03 Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay — todo (wave 2)
 - 04 Harness as an exclusively-bound key — adapters as components — todo (wave 1)
 - 05 Promote the draft to spec/component-v1.md + adopter doc delta — todo (wave 3)
+
+### contributor-trust (9 open)
+
+- 01 Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card — todo (wave 0)
+- 02 Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets — todo (wave 0)
+- 03 `deskbless` — a structured blessing act with a machine marker, a scope, a reason and an audit row — todo (wave 1)
+- 04 Review depth by tier — an unknown author's pull request gets a claims-versus-diff fact check and a fail-first reproduction — todo (wave 1)
+- 05 Fork-safe continuous-integration posture — audited workflows, tier-keyed approve-and-run, and never-build-unblessed enforced by a check — todo (wave 2)
+- 06 Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion — todo (wave 0)
+- 07 Agent contributors — disclosure of automated authorship, and tiering the operating human rather than the tool — todo (wave 1)
+- 08 External-contribution metrics — inbound pull requests by tier and outcome, on the board — todo (wave 1)
+- 09 External-contributor credit in release notes — the aggregator names the author a fork change came from — todo (wave 1)
 
 ### derived-board (4 open)
 
@@ -385,4 +401,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **61/150** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **61/159** briefs done · completed initiatives: see `docs/archive/`
