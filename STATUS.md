@@ -33,7 +33,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|
 | contributor-trust | 02 — Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets [exec:strong] | 0 | 5000 |
 | contributor-trust | 01 — Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card [exec:strong] | 0 | 2500 |
-| contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
+| composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 
@@ -41,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (47 desk-actionable of 55 total — 55 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (48 desk-actionable of 56 total — 56 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (47)
+### Desk-actionable (48)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -71,6 +71,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| composability | 04 | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -157,7 +158,7 @@ _None._
 - 01 Reactive activation — a missing extension key downs one component, not the fleet — todo (wave 1)
 - 02 Install ledger, paired inverses, and the `disable` verb — todo (wave 1)
 - 03 Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay — todo (wave 2)
-- 04 Harness as an exclusively-bound key — adapters as components — todo (wave 1)
+- 04 Harness as an exclusively-bound key — adapters as components — implemented (wave 1)
 - 05 Promote the draft to spec/component-v1.md + adopter doc delta — todo (wave 3)
 
 ### contributor-trust (9 open)
