@@ -770,6 +770,10 @@ jobs:
     environment: release
     permissions:
       contents: write
+      # READ-ONLY, and only so the credit step can ask the forge who authored the
+      # pull request a fragment arrived on (contributor-trust/09). It grants no
+      # write of any kind and authorizes nothing.
+      pull-requests: read
     steps:
       # persist-credentials:false (H2) — do NOT leave the contents:write token in
       # .git/config while `go build` compiles arbitrary repo code below. The tag
@@ -777,6 +781,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+        # CHANGELOG discipline — external-contributor credit (contributor-trust/09)
+        # resolves a fragment back to the pull request it arrived on by walking
+        # git history: the commit that ADDED the fragment, then the merge commit
+        # that brought it here. A shallow clone cannot reach either, so on the
+        # default depth the resolver finds nothing, NOBODY is ever credited, and
+        # the feature is silently inert. Full history is what makes it work.
+        fetch-depth: 0
 
       # PREFLIGHT — the publish step parses the REST API's JSON with a small
       # python3 helper, and that step runs AFTER the tag is pushed. A runner
@@ -793,6 +804,79 @@ jobs:
           fi
           echo "python3 present: $(python3 --version 2>&1)"
 
+      # CHANGELOG discipline — EXTERNAL-CONTRIBUTOR CREDIT (contributor-trust/09).
+      # A change that arrived from a fork is credited nowhere unless somebody
+      # remembered to write the handle into the bullet — and on the proxy path
+      # the fragment is written by a maintainer, so they often cannot. The
+      # authorship is already in git and on the pull request; this step stops
+      # throwing it away at aggregate time.
+      #
+      # THE SPLIT. aggregate.py makes no network call — that is what keeps its
+      # unit suite offline and testable. So the GIT half (fragment -> adding
+      # commit -> merge commit -> pull-request number) is `aggregate.py credits`,
+      # and the FORGE half (number -> author login, is that identity external,
+      # did the body opt out) is HERE, writing a map file the aggregate steps
+      # only ever READ.
+      #
+      # FAIL-OPEN, ALWAYS. No `set -e`, and the step ends `exit 0`: a fragment
+      # whose pull request cannot be resolved, whose author cannot be read, or
+      # whose identity cannot be classified is written to the map with an
+      # explicit non-credit value and a named `could not credit` line in this
+      # log. A wrong name in a published release is worse than a missing one,
+      # and no release is ever refused for want of a credit.
+      - name: CHANGELOG discipline — resolve external-contributor credits
+        id: credits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # The operator's EXISTING roster, by its existing variable names — the
+          # same three surfaces the desk tools resolve identity through. Never a
+          # second roster invented for this one feature. Unset means "no answer"
+          # (credit-identity.sh returns skip:unknown), never "everybody is
+          # external".
+          ASSAY_TRUSTED_LOGINS: ${{ vars.ASSAY_TRUSTED_LOGINS }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+        run: |
+          set -uo pipefail
+          map="${RUNNER_TEMP}/credits.map"
+          : > "$map"
+          echo "credits_path=${map}" >> "$GITHUB_OUTPUT"
+
+          while IFS="$(printf '\t')" read -r frag pr; do
+            [ -n "${frag:-}" ] || continue
+            case "${pr:-}" in
+              ''|unresolved)
+                printf '%s\tunresolved\n' "$frag" >> "$map"
+                echo "could not credit ${frag}: no pull request resolved from git history"
+                continue
+                ;;
+            esac
+            body="${RUNNER_TEMP}/pr-${pr}.body"
+            login="$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login' 2>/dev/null || true)"
+            gh pr view "$pr" --repo "$REPO" --json body --jq '.body' > "$body" 2>/dev/null || : > "$body"
+            if [ -z "$login" ]; then
+              printf '%s\tunresolved\n' "$frag" >> "$map"
+              echo "could not credit ${frag}: the author of #${pr} could not be read"
+              continue
+            fi
+            verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body" 2>/dev/null || echo skip:unknown)"
+            case "$verdict" in
+              credit)
+                printf '%s\t@%s\n' "$frag" "$login" >> "$map"
+                echo "crediting ${frag} to an external contributor (#${pr})"
+                ;;
+              *)
+                printf '%s\t%s\n' "$frag" "$verdict" >> "$map"
+                echo "not crediting ${frag} (#${pr}): ${verdict}"
+                ;;
+            esac
+          done < <(python3 tools/changelog/aggregate.py credits changelog 2>/dev/null)
+
+          echo "credits map (fragment -> credit value):"
+          cat "$map"
+          exit 0
+
       # CHANGELOG discipline (driver direction 2026-08-31: releases lead with
       # DESCRIPTIVE highlights, not a commit list). AGGREGATE the per-PR fragment
       # files under `changelog/` (sorted, deduped, bucketed) into the highlights
@@ -808,6 +892,8 @@ jobs:
       # Preflight step so python3 is already proven present.
       - name: CHANGELOG discipline — aggregate fragments and require highlights
         id: changelog
+        env:
+          CREDITS_MAP: ${{ steps.credits.outputs.credits_path }}
         run: |
           set -euo pipefail
           if [ ! -f CHANGELOG.md ]; then
@@ -817,7 +903,11 @@ jobs:
           notes="${RUNNER_TEMP}/highlights.md"
           # aggregate.py exits 2 with a clear message when there is nothing to
           # aggregate — surface that as the release refusal.
-          if ! python3 tools/changelog/aggregate.py highlights changelog CHANGELOG.md > "$notes"; then
+          # --credits is a READ of the map the credit step wrote. With no map, an
+          # empty map, or a map crediting nobody, the output is byte-identical
+          # to the same call without it.
+          if ! python3 tools/changelog/aggregate.py highlights changelog CHANGELOG.md \
+                --credits "${CREDITS_MAP}" > "$notes"; then
             echo "::error::no changelog fragments to aggregate — refusing to cut a release with no descriptive highlights. Add a fragment (changelog/<slug>.md) first (driver direction 2026-08-31; see changelog/README.md)."
             exit 1
           fi
@@ -1294,12 +1384,19 @@ jobs:
     # the same split assay-statusgen.yml's regen and model-autoflip jobs use.
     permissions:
       contents: read
+      # READ-ONLY — see the release job. The roll resolves the same credits map
+      # so the CHANGELOG.md section and the release body agree.
+      pull-requests: read
     steps:
       # persist-credentials:false — the push wires its credential explicitly,
       # for that one command only, exactly as the tag push does.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # CHANGELOG discipline — the credit resolver walks git history for the
+          # commit that ADDED each fragment; a shallow clone cannot reach it.
+          # Same requirement, same reason as the release job's checkout.
+          fetch-depth: 0
 
       # The roll commit lands on the PR-only default branch, which the default
       # GITHUB_TOKEN cannot do (GH013: PR-required + leak-sweep-required). It
@@ -1313,6 +1410,60 @@ jobs:
         with:
           app-id: ${{ secrets.BOARD_APP_ID }}
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+
+      # CHANGELOG discipline — the SAME credit resolution as the release job, so
+      # the CHANGELOG.md section and the already-published release body carry the
+      # same credits. Resolved here rather than passed between jobs because the
+      # retry loop below re-syncs to a moving default branch and re-derives
+      # against it; a map pinned in another job would go stale with the tree.
+      # Fail-open exactly as in the release job: this step cannot fail the roll.
+      - name: CHANGELOG discipline — resolve external-contributor credits
+        id: credits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ASSAY_TRUSTED_LOGINS: ${{ vars.ASSAY_TRUSTED_LOGINS }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+        run: |
+          set -uo pipefail
+          map="${RUNNER_TEMP}/credits-roll.map"
+          : > "$map"
+          echo "credits_path=${map}" >> "$GITHUB_OUTPUT"
+
+          while IFS="$(printf '\t')" read -r frag pr; do
+            [ -n "${frag:-}" ] || continue
+            case "${pr:-}" in
+              ''|unresolved)
+                printf '%s\tunresolved\n' "$frag" >> "$map"
+                echo "could not credit ${frag}: no pull request resolved from git history"
+                continue
+                ;;
+            esac
+            body="${RUNNER_TEMP}/roll-pr-${pr}.body"
+            login="$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login' 2>/dev/null || true)"
+            gh pr view "$pr" --repo "$REPO" --json body --jq '.body' > "$body" 2>/dev/null || : > "$body"
+            if [ -z "$login" ]; then
+              printf '%s\tunresolved\n' "$frag" >> "$map"
+              echo "could not credit ${frag}: the author of #${pr} could not be read"
+              continue
+            fi
+            verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body" 2>/dev/null || echo skip:unknown)"
+            case "$verdict" in
+              credit)
+                printf '%s\t@%s\n' "$frag" "$login" >> "$map"
+                echo "crediting ${frag} to an external contributor (#${pr})"
+                ;;
+              *)
+                printf '%s\t%s\n' "$frag" "$verdict" >> "$map"
+                echo "not crediting ${frag} (#${pr}): ${verdict}"
+                ;;
+            esac
+          done < <(python3 tools/changelog/aggregate.py credits changelog 2>/dev/null)
+
+          echo "credits map (fragment -> credit value):"
+          cat "$map"
+          exit 0
 
       # CHANGELOG discipline — WRITE the aggregated fragment highlights under a
       # dated `## vX.Y.Z — <date>` heading in CHANGELOG.md, empty the
@@ -1363,6 +1514,7 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           GH_TOKEN: ${{ steps.roll-token.outputs.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CREDITS_MAP: ${{ steps.credits.outputs.credits_path }}
         run: |
           set -euo pipefail
           day=$(date -u +%Y-%m-%d)
@@ -1384,7 +1536,8 @@ jobs:
             # this job) may already have landed the section and cleared the
             # fragments. Treat that as done, not as a failure.
             roll_rc=0
-            python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day" || roll_rc=$?
+            python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day" \
+              --credits "${CREDITS_MAP}" || roll_rc=$?
             if [ "$roll_rc" -eq 2 ] && [ "$attempt" -gt 1 ]; then
               echo "nothing left to aggregate at the new head — a concurrent roll already landed ${RELEASE_TAG}. Done."
               exit 0
