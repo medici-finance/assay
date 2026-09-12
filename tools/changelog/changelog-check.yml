@@ -21,7 +21,10 @@ name: changelog-check
 # `tools/changelog/check_test.sh`); this workflow only feeds it the PR's base/head
 # SHAs and the skip-label boolean, so the leg stays fast and its verdict legible:
 # the fix for a red run is always one of two obvious acts — add a fragment, or
-# label the PR.
+# label the PR. One third act exists for a PR whose branch the maintainers
+# cannot commit to (a fork): land changelog/pr-<N>-<slug>.md on the base branch
+# and re-run this leg by adding or removing any label. That is why PR_NUMBER is
+# fed to the check below, and why `labeled`/`unlabeled` are in the trigger list.
 #
 # WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, matching
 # ci.yml and the other control legs. It needs no Go toolchain and no network: a
@@ -58,4 +61,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          # Enables the PROXY path: a fragment named changelog/pr-<N>-<slug>.md
+          # already on the base branch greens PR <N> (see changelog/README.md).
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash tools/changelog/check.sh
