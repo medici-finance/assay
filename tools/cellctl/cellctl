@@ -166,21 +166,45 @@ deskd_up(){ curl -fsS --max-time 3 "http://${DESKD_ADDR}/healthz" >/dev/null 2>&
 # fall-through.
 COCKPIT=""; COCKPIT_WHY=""; COCKPIT_ERR=""
 
-# run_bounded <secs> <cmd...> — a probe that cannot hang the launcher. `timeout` is not on every
-# laptop (macOS ships none), so this degrades to running the command unbounded rather than
-# refusing: the orca probe below fails fast on its own when the app is closed.
+# run_bounded <secs> <cmd...> — a probe that cannot hang the launcher, with NO dependency on an
+# external timeout binary (macOS ships neither `timeout` nor `gtimeout` by default; requiring one
+# would make the bound only as reliable as the operator's coreutils install). The bound is native:
+# run the command in the background, race it against a `sleep <secs>` watchdog in a subshell, and
+# whichever finishes first wins — if the watchdog wins, the command is killed and this returns 124
+# (the same convention `timeout`/`gtimeout` use), so callers never have to distinguish the two
+# bound implementations. `timeout`/`gtimeout` are used first when present only because they are a
+# well-worn primitive that saves a fork; the native path below is what guarantees the bound holds
+# even when neither is installed.
 run_bounded(){
   local secs="$1"; shift
   if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@" >/dev/null 2>&1; return $?; fi
   if command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@" >/dev/null 2>&1; return $?; fi
-  "$@" >/dev/null 2>&1
+  local cmd_pid watchdog_pid rc
+  "$@" >/dev/null 2>&1 &
+  cmd_pid=$!
+  ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null ) &
+  watchdog_pid=$!
+  if wait "$cmd_pid" 2>/dev/null; then
+    rc=0
+  else
+    rc=$?
+  fi
+  # The command finished (or was killed) — stop the watchdog whether it already fired or not.
+  kill "$watchdog_pid" 2>/dev/null; wait "$watchdog_pid" 2>/dev/null
+  # A killed command exits >128 (128+SIGTERM) under bash's wait; normalize that to 124, the
+  # standard "timed out" rc `timeout`/`gtimeout` use, so callers see one bound-timeout signal
+  # regardless of which arm enforced it.
+  if [[ $rc -gt 128 ]]; then rc=124; fi
+  return "$rc"
 }
 
 # orca_reachable: `orca` on PATH is not enough to pick it — with the desktop app closed every repo,
 # worktree, terminal and automation verb fails. One cheap read verb is the reachability probe.
 orca_reachable(){
   command -v orca >/dev/null 2>&1 || return 1
-  run_bounded "${CELLCTL_ORCA_TIMEOUT:-5}" orca repo list
+  local secs="${CELLCTL_ORCA_TIMEOUT:-5}"
+  echo "[cockpit] probing orca reachability (orca repo list, bound ${secs}s)" >&2
+  run_bounded "$secs" orca repo list
 }
 
 # help_has <token> <cmd...> — does `<cmd...> --help` advertise this subcommand or flag? These

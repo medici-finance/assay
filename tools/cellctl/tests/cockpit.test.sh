@@ -12,6 +12,9 @@
 #           --cockpit orca, app unreachable → non-zero, the refusal names the unreachable app
 #           --cockpit <nonsense>            → non-zero
 #           cell.env CELL_COCKPIT=tmux      → tmux even with herdr on PATH
+#   bound   a HANGING orca (stub sleeps 10s), no timeout/gtimeout on PATH, CELLCTL_ORCA_TIMEOUT=1:
+#           auto            → resolves to tmux with the unreachable reason, wall clock ~3s
+#           --cockpit orca  → non-zero naming orca unreachable, wall clock ~3s
 #   plan    DRY_RUN=1 prints the resolved cockpit AND one command per role, and launches nothing
 #   guard   --automate is refused unless the resolved cockpit is orca
 #   check   carries a cockpit row, and states orca reachability whenever orca is installed
@@ -95,6 +98,17 @@ exit 0
 EOF
 chmod +x "$T/bin/orca"; }
 orca_off(){ rm -f "$T/bin/orca"; }
+# orca_hang: never answers — `repo list` sleeps well past any reasonable bound. Proves the
+# run_bounded fallback (no external timeout/gtimeout on this test's PATH) actually bounds the
+# probe natively rather than blocking on the stub.
+orca_hang(){ cat > "$T/bin/orca" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  "repo list") sleep 10; exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$T/bin/orca"; }
 
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 "$CELLCTL" new example-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
@@ -160,12 +174,35 @@ assert "cell.env CELL_COCKPIT=tmux → tmux even with herdr on PATH" 'grep -qF "
 out="$(plan --cockpit herdr)"
 assert "--cockpit overrides cell.env for the run" 'grep -qF "[cockpit] herdr (explicit: --cockpit)" <<<"$out"'
 
+# ---------------------------------------------------------------- bound (native, no timeout/gtimeout)
+# This test's own PATH ($T/bin:/usr/bin:/bin:/usr/sbin:/sbin) already carries neither `timeout`
+# nor `gtimeout` (both live under /opt/homebrew/bin on a dev box, or GNU coreutils elsewhere —
+# never under /usr/bin or /bin on stock macOS), so the probe below exercises run_bounded's native
+# fallback exactly as a stock-macOS laptop with no coreutils installed would.
+echo "[bound]"
+herdr_off; orca_hang
+# The [explicit] section above pinned cell.env to CELL_COCKPIT=tmux; put it back to auto so this
+# section's plain `plan` (no --cockpit) exercises the auto arm, not the pinned-tmux short-circuit.
+sed -i.bak 's/^CELL_COCKPIT=tmux$/CELL_COCKPIT=auto/' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+start=$SECONDS
+out="$(CELLCTL_ORCA_TIMEOUT=1 plan)"
+elapsed=$((SECONDS-start))
+assert "hanging orca, no timeout/gtimeout on PATH → auto still resolves to tmux" 'grep -qF "[cockpit] tmux (orca on PATH but app unreachable)" <<<"$out"'
+assert "... and cellctl up returns within the bound, not after the 10s sleep" '[[ $elapsed -le 3 ]]'
+
+start=$SECONDS
+out="$(CELLCTL_ORCA_TIMEOUT=1 plan --cockpit orca)" && rc=0 || rc=$?
+elapsed=$((SECONDS-start))
+assert "--cockpit orca against a hanging stub → non-zero, names orca unreachable" '[[ $rc -ne 0 ]] && grep -q "not reachable" <<<"$out"'
+assert "... and it also returns within the bound" '[[ $elapsed -le 3 ]]'
+orca_off
+
 # ---------------------------------------------------------------- --automate guard
 echo "[automate]"
 out="$(plan --automate '*/30 * * * *')" && rc=0 || rc=$?
 assert "--automate on a non-orca cockpit → non-zero, says it is orca-only" '[[ $rc -ne 0 ]] && grep -q "orca-only" <<<"$out"'
 herdr_off; orca_on; export ORCA_UP=0
-sed -i.bak 's/^CELL_COCKPIT=tmux$/CELL_COCKPIT=orca/' "$CELL/cell.env"
+sed -i.bak 's/^CELL_COCKPIT=auto$/CELL_COCKPIT=orca/' "$CELL/cell.env"
 out="$(plan --automate '*/30 * * * *')"
 assert "--automate on orca plans one automation per role, precheck = cellctl check" '[[ "$(grep -c "automations create --name example-cell-" <<<"$out")" -eq 5 ]] && grep -q -- "--precheck .*check example-cell" <<<"$out"'
 sed -i.bak 's/^CELL_COCKPIT=orca$/CELL_COCKPIT=auto/' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"

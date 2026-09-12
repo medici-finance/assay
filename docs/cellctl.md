@@ -387,8 +387,11 @@ the per-item worktree arm takes:
    (`idle | working | blocked | done`), so the five desks show what they are each doing in its
    sidebar rather than as five anonymous panes, and its background server keeps them alive.
 2. **else `orca` on PATH *and reachable*** → orca. Its CLI is a thin client of its desktop app, so
-   an `orca` binary alone is not enough: `cellctl` runs a cheap, time-bounded read verb first, and
-   an app that does not answer **falls through** rather than failing.
+   an `orca` binary alone is not enough: `cellctl` runs a cheap read verb first, bounded natively —
+   `timeout`/`gtimeout` when either is on PATH, else a background-and-watchdog fallback that needs
+   no external binary — so the probe returns within the bound regardless of how the CLI itself
+   behaves when its app is closed, and an app that does not answer **falls through** rather than
+   failing.
 3. **else** → tmux, the always-works arm.
 
 An **explicit** cockpit — `--cockpit <v>` or `CELL_COCKPIT` — that is not available is a refusal
