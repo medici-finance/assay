@@ -18,6 +18,7 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 | adopt | `assay:adopt` | Install/adopt runbook — scenario routing + PRIMITIVEs the turnkey installer wraps |
 | author-brief | `assay:author-brief` | Brief authoring methodology (portable core) |
 | ask-decision | `assay:ask-decision` | Puts the pending human decisions to the driver one at a time — context, options with a recommended default, reply shape, verification — and relays each ruling back onto its issue |
+| human-runsheet | `assay:human-runsheet` | Writes the acts owed to the driver — not decisions, acts only the driver can perform — as exact `! <command>` lines with why, what was done instead, and the resume step |
 
 These are the portable, domain-neutral methodology skills every Assay bundle ships. A project
 authoring its own project-local skills follows the same naming convention above and keeps them in
@@ -29,6 +30,12 @@ presentation and relay contract only — the escalation-label vocabulary and the
 where they already live, in `intake-desk` and `the-desk`. It shares its rendering with the
 [`assay:inbox`](../commands/inbox.md) command's `--walk` and `--html` modes, so the skill, the
 terminal and the page cannot state the queue differently.
+
+The row above is the companion for the opposite shape: not a decision the driver chooses among,
+but an act only the driver can perform (a guard refusal, a scope the role's token lacks, a
+permission its App must not hold, a human-only gate override). Each of the five desk roles below
+points at that skill from its own escalation step; it accompanies the filed escalation issue and
+never replaces it.
 
 ## The desk-role skills
 

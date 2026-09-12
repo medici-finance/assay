@@ -294,13 +294,15 @@ unattended path announces that it is not.
 **One window:**
 
 ```bash
-cellctl desk <cell> <role> [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
+cellctl desk <cell> <role> [--model <m>] [--set] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 ```
 
 `<role>` is one of `the-desk`, `intake-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`. The
 config dir defaults to `$CLAUDE_CONFIG_DIR`, then `~/.claude`, and is resolved against the real
 `HOME`. `DRY_RUN=1` prints the plan — cell, role, config dir, worktree, session name, shim target,
-model and harness — and touches nothing.
+model and harness — and touches nothing. `--model` and `--set` are the per-run override and the
+sugar that persists it — see *Pinned models* below for the full shape; `--harness` is the same
+per-run-override shape for the harness — see *Harnesses* below.
 
 Each window gets: its own worktree under `worktrees/<role>` fast-forwarded to `origin/main` and
 **locked** (`git worktree lock`, so a worktree prune never takes a live window's tree); the real
@@ -337,7 +339,7 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 
 ```bash
 cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
-                  [--automate '<cron>'] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
+                  [--automate '<cron>'] [--model <m>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 ```
 
 One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
@@ -346,6 +348,12 @@ otherwise standing it — see *How far the attended affirmation carries* above),
 session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
 `tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
 arrive at the fetch lock together.
+
+`--model <m>` applies the per-run override (see *Pinned models* below) to **every** role window this
+run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
+already `cellctl desk <cell> <role> --model <m>` on the one window that needs it. It is a live
+cockpit's `cellctl desk <cell> <role>` invocation itself that carries `--model`, so the window that
+actually boots resolves the same override the plan named.
 
 `DRY_RUN=1 cellctl up <cell>` prints the resolved cockpit and the per-role commands and launches
 nothing. `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
@@ -375,6 +383,9 @@ torn down whichever cockpit resolves, and what a non-tmux cockpit opened is clos
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
 **List:** `cellctl ls` prints the cells under the cells root. No cells is not an error.
+
+**Persisting a `cell.env` change:** `cellctl set <cell> KEY=VALUE [...]` — see *Pinned models* below
+for the common case (a model pin) and *`cell.env`* below for the full key list.
 
 ---
 
@@ -501,6 +512,71 @@ role's pin, including `opus`, is untouched.
 
 `cellctl desk` prints the resolved model on its launch line and in `DRY_RUN=1` output, so which model
 a window is on is visible without reading the config.
+
+### `--model` — a per-run override
+
+Running one role (or a whole cell) on another model for a while does not have to mean hand-editing
+`cell.env` first:
+
+```bash
+cellctl desk <cell> <role> --model <m>     # this ONE window, this run only
+cellctl up   <cell>        --model <m>     # every role window this run opens
+DESK_MODEL_OVERRIDE=<m> cellctl desk <cell> <role>   # the equivalent env form, for wrappers
+```
+
+`--model <m>` **wins over** `DESK_MODEL_<role>` and `DESK_MODEL_DEFAULT` for that invocation only —
+it never touches `cell.env`. `DESK_MODEL_OVERRIDE` in the environment does the same thing for a
+wrapper that cannot pass a flag; an explicit `--model` wins when both are given. `cellctl up
+--model <m>` threads the override onto **every** role window it opens (the-desk included) by
+passing it on to each role's own `cellctl desk <cell> <role> --model <m>` invocation — there is no
+per-role `--model-<role>` form, since a single role's override is already `cellctl desk <cell>
+<role> --model <m>`.
+
+The source of the value is never left implicit: the `[launch]` line and every `DRY_RUN=1` plan print
+`model=<m> (override)` rather than just `model=<m>`, so the transcript shows whether a window is on
+its `cell.env` pin or on a for-this-run override.
+
+**The Opus refusal is not an escape hatch via `--model`.** `cellctl desk <cell> the-desk --model
+opus` (or a `claude-opus-*` id, or `DESK_MODEL_OVERRIDE=opus`) is refused with exactly the same
+message as an Opus **pin** — the rule binds the resolved model, whichever source produced it.
+
+**`cellctl check` is never affected by `--model` or `DESK_MODEL_OVERRIDE`.** It has no `--model`
+flag and does not read the env form, so its the-desk-model row always reports what a plain boot —
+no override — would resolve to.
+
+**`--model` changes the model *name* only.** A non-Anthropic model still needs
+`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` set in the shell that runs `cellctl` — `cellctl`
+**inherits** them (they reach the `claude` process it execs, same as any other environment
+variable) but does **not** set, validate or manage them itself. Exporting the right pair for the
+model you are overriding to is on you.
+
+### `cellctl set` — persisting a change
+
+```bash
+cellctl set <cell> DESK_MODEL_the_desk=glm-5.3
+cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]
+```
+
+Rewrites an existing `KEY=` line **in place** (comment lines and every other line's ordering
+untouched) or **appends** a key that has no active line yet. Writes exactly **one backup**,
+`cell.env.bak-<ts>`, before the first edit of a call — a multi-key `set` is one backup for the
+whole call, not one per key. Refuses a key that is not a known `cell.env` key (see the table below;
+the `DESK_MODEL_<role>` family counts as known for each of the five roles) unless `--force`, and a
+refusal — unknown key **or** the Opus rule below — touches nothing: no backup, no edit. Prints each
+key's before/after value. Applies the **same** the-desk/Opus refusal to `DESK_MODEL_the_desk` as a
+live boot and `check` do, and `--force` does not bypass it — `--force` widens which *keys* `set`
+will touch, not which *values* the Opus rule allows.
+
+**Sugar: override now and persist it in one call.**
+
+```bash
+cellctl desk <cell> <role> --model <m> --set
+```
+
+`--set` applies `--model <m>` for this run **and** persists it — equivalent to `--model <m>`
+followed by `cellctl set <cell> DESK_MODEL_<role>=<m>`. It needs a value to persist, so it is
+refused without `--model` (or `DESK_MODEL_OVERRIDE`) alongside it. Under `DRY_RUN=1` it prints what
+it *would* persist and writes nothing — a dry run touches nothing, `--set` included.
 
 ---
 

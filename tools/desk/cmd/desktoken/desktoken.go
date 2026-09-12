@@ -24,6 +24,8 @@ import (
 
 // validRoles is the fixed set of desk roles. A role's config is parameterised
 // by the role name: ~/.config/assay/<role>-app.pem, <ROLE>_APP_ID, etc.
+// cell-issues is the write-issues App identity — selectable only by name, never a loop's
+// default.
 var validRoles = map[string]bool{
 	"reviewer":    true,
 	"verifier":    true,
@@ -31,6 +33,7 @@ var validRoles = map[string]bool{
 	"desk":        true,
 	"issue-loop":  true,
 	"intake-loop": true,
+	"cell-issues": true,
 }
 
 const (
