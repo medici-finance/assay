@@ -69,13 +69,44 @@ Actions sets by default on every `pull_request` run, so this requires **no
 workflow change** to start working (an explicit `BASE_REF` in the workflow
 overrides it, but is not required).
 
-**Credit the contributor in the bullet**, since the fragment is no longer written
-by them:
+**You need not credit the contributor by hand.** At release time the aggregator
+resolves each fragment back to the pull request it arrived on and appends
+` — thanks @<login>` to that fragment's bullets when the author is somebody the
+operator's roster does not already list — so a proxy fragment carries the credit
+whether or not whoever wrote it remembered to. Writing the credit into the
+bullet as well is harmless but redundant:
 
 ```markdown
 ### Fixed
-- `widget` no longer drops the last frame. (#1234, thanks @contributor)
+- `widget` no longer drops the last frame. (#1234)
 ```
+
+## Credit in the release notes
+
+A change that arrived from outside is thanked in the changelog section and the
+release body, by the login on its pull request. The name comes from git and the
+pull request, never from the fragment's text, so nobody has to remember to write
+it. Three rules bound it:
+
+- **Only somebody the project does not already list.** A maintainer, a mapped
+  human or a role automation account is never thanked — the credit exists to
+  name an outside contributor. The identity question is the operator's existing
+  roster, asked once.
+- **Opt-out.** A contributor who would rather not be named puts this marker on a
+  line of its own in the **pull-request body**:
+
+  ```
+  <!-- changelog-credit: no -->
+  ```
+
+  The fragment then aggregates exactly as before, credited to nobody. Anyone who
+  can edit the body — the contributor or a maintainer acting on their request —
+  can set it, and it takes effect at the next cut.
+- **A missing credit never fails a cut, and a published section is never
+  rewritten.** If the pull request, the author or the identity cannot be
+  resolved, the release proceeds uncredited and says so in its log. Credit is
+  forward-only: a `## vX.Y.Z` section already in `CHANGELOG.md`, and a release
+  already published, are left exactly as they are.
 
 The steps:
 

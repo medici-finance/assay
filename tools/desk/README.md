@@ -1319,10 +1319,11 @@ reviewer App** (`assay-reviewer-app[bot]`) — the review-gate identity a plain
 worker session cannot post as (the stronger "unforgeable"
 framing is retired — `docs/adopting-assay.md` §1a, `docs/messaging-guide.md`. The
 same retired phrase still sits in `deskpost`'s own source comments; that residue is
-tracked in #395, not fixed here). The reviewer App is one of the six-App **assay** desk-App family
-(reviewer / worker / verifier / desk / issue-loop / intake-loop); the canonical provisioning
-record — App IDs and installation IDs — lives in operator-private deployment config,
-not in this tree. The App ID is never baked into source: it comes from per-deployment
+tracked in #395, not fixed here). The reviewer App is one of the seven-App **assay** desk-App
+family (reviewer / worker / verifier / desk / issue-loop / intake-loop / cell-issues — the last
+is the write-issues App, mintable only by explicit name, never a loop's default); the canonical
+provisioning record — App IDs and installation IDs — lives in operator-private deployment
+config, not in this tree. The App ID is never baked into source: it comes from per-deployment
 config (`REVIEWER_APP_ID`, exported by the config home's `apps.env`) and `deskpost` fails loud
 if it is unset. It absorbs the App-token mint from
 `~/.claude/skills/pr-review-desk/mint-reviewer-token.go` (same env: `REVIEWER_APP_ID`,
@@ -1921,6 +1922,15 @@ unconfigured deployment resolves exactly the files it always did.
 install ID it parameterises; `<PREFIX>_PEM` / `<PREFIX>_TOKEN` still override an individual file.
 `desktoken --version` prints the effective bindings on one `bindings=` line, `role=app-name` per
 role, so the resolution is visible without minting.
+
+**The seventh role: `cell-issues`.** `desktoken` mints one App identity outside the six desk
+roles above: `cell-issues`, the house's write-issues App (`issues:write` + `metadata:read`
+only). It resolves through the exact same role→App machinery as every other role — unbound,
+`cell-issues-app.pem` / `CELL_ISSUES_APP_ID` / `CELL_ISSUES_INSTALL_ID_<ORG>`; bound via
+`CELL_ISSUES_APP=<app-name>`, `<APP_NAME>_APP_ID` / `<APP_NAME>_INSTALL_ID` — but it is never a
+loop's default: no entry in the loop→role table resolves to it (`deskkit.LoopTokenRoles`), so a
+desk window acts as it only on an explicit by-name selection, never because of which window it
+is running in.
 
 **A two-App deployment is two keys and six bindings, never six keys.** The binding decides which
 key a role mints with; it is one of two independent layers. The other is the roster's `role=slug`

@@ -228,7 +228,10 @@ One `ok` / `MISS` line per precondition, exit 1 if any row missed: the checkout 
 `CELL_REPO`, the cells slice, the operator config home, `roster.env`, that every App-key symlink
 under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the configured
 forge endpoint, `bin/deskd` and `bin/deskcli`, the desk-tools bindir, `tmux`, the resolved
-cockpit and its reason (see *Cockpits*), and whether this cell's `deskd` answers on its address.
+cockpit and its reason (see *Cockpits*), whether this cell's `deskd` answers on its address, and —
+when `CELL_HARNESS=codex` — the codex harness block (see *Harnesses*): `codex` on `PATH`, a
+working `--version`, authentication, `multi_agent`, the resident-rules fragment, and skills
+discoverability. A claude cell (the default) reports that block `n/a`, never silently skipped.
 
 The forge-specific preconditions are keyed on the cell's `CELL_FORGE`. A **github** cell also
 checks `apps.env`, the linked `gh` config, the readable `deskd` App key, and `ORGS`. A **gitlab**
@@ -291,20 +294,25 @@ unattended path announces that it is not.
 **One window:**
 
 ```bash
-cellctl desk <cell> <role> [CLAUDE_CONFIG_DIR]
+cellctl desk <cell> <role> [--model <m>] [--set] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 ```
 
 `<role>` is one of `the-desk`, `intake-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`. The
 config dir defaults to `$CLAUDE_CONFIG_DIR`, then `~/.claude`, and is resolved against the real
-`HOME`. `DRY_RUN=1` prints the plan — cell, role, config dir, worktree, session name, shim target —
-and touches nothing.
+`HOME`. `DRY_RUN=1` prints the plan — cell, role, config dir, worktree, session name, shim target,
+model and harness — and touches nothing. `--model` and `--set` are the per-run override and the
+sugar that persists it — see *Pinned models* below for the full shape; `--harness` is the same
+per-run-override shape for the harness — see *Harnesses* below.
 
-Each window gets: the `assay@assay` plugin enabled in that config dir; its own worktree under
-`worktrees/<role>` fast-forwarded to `origin/main` and **locked** (`git worktree lock`, so a
-worktree prune never takes a live window's tree); the real `HOME` with `shim/` first on `PATH`;
-`DESK_LOOP` and `DESK_SESSION` set, and `DESK_ROOTS` when `cell.env` carries `CELL_ROOTS` (a
-cell without one boots with a notice that the desk verbs are on their compiled placeholder
-topology); its pinned model; and `/assay:<role>` as its first prompt.
+Each window gets: its own worktree under `worktrees/<role>` fast-forwarded to `origin/main` and
+**locked** (`git worktree lock`, so a worktree prune never takes a live window's tree); the real
+`HOME` with `shim/` first on `PATH`; `DESK_LOOP` and `DESK_SESSION` set, and `DESK_ROOTS` when
+`cell.env` carries `CELL_ROOTS` (a cell without one boots with a notice that the desk verbs are on
+their compiled placeholder topology); and its pinned model. What runs on top of that depends on
+the **harness** (`CELL_HARNESS` in `cell.env`, default `claude`; `--harness` overrides it for this
+run only) — see *Harnesses* below for the full shape. The claude arm is unchanged: the
+`assay@assay` plugin is enabled in the config dir and the window opens on `/assay:<role>` as its
+first prompt.
 
 When the installed desk-tools ship a `deskwt role-init` that supports the role (probe: `deskwt
 role-init --help` exits 0), `cellctl desk` lets **it** create the role worktree on first boot — its
@@ -317,7 +325,10 @@ Each window is named **`<cell>-<short role>`** — the role without its `-desk` 
 `the-desk`, which keeps its full name (`<cell>-the-desk`, `<cell>-pr-review`, `<cell>-verify`,
 `<cell>-intake`, `<cell>-worker`). That one string is used for **both** surfaces: `DESK_SESSION`, the
 roster beacon, and `claude --name`, the session's display name — so the cell's coordinator sees the
-same identity in the roster and in its agent listing rather than two names for one window.
+same identity in the roster and in its agent listing rather than two names for one window. A
+non-claude harness gets a **`-codex`** suffix on that name (`<cell>-<short role>-codex`, or
+`<cell>-<role>-<UTC stamp>-codex` on a house cell), so which harness a window is on is visible from
+the roster the same way the model is.
 
 Two details in the boot are there for a reason. The shared `fetch` is **serialised with a lock
 directory**, because several windows starting at once fetch the same `.git` and race on the ref lock.
@@ -328,7 +339,7 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 
 ```bash
 cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
-                  [--automate '<cron>'] [CLAUDE_CONFIG_DIR]
+                  [--automate '<cron>'] [--model <m>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 ```
 
 One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
@@ -338,8 +349,17 @@ session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re
 `tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
 arrive at the fetch lock together.
 
+`--model <m>` applies the per-run override (see *Pinned models* below) to **every** role window this
+run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
+already `cellctl desk <cell> <role> --model <m>` on the one window that needs it. It is a live
+cockpit's `cellctl desk <cell> <role>` invocation itself that carries `--model`, so the window that
+actually boots resolves the same override the plan named.
+
 `DRY_RUN=1 cellctl up <cell>` prints the resolved cockpit and the per-role commands and launches
-nothing.
+nothing. `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
+included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
+role's own `cellctl desk <cell> <role>` invocation; `[dry-run] harness=<h> — applied to every role
+window below` announces it once. See *Harnesses* below.
 
 **`the-desk` is a default window, not an opt-in.** It is first in `ROLES_DEFAULT`; if a hand-edited
 `cell.env` `ROLES` omits it, `up` prepends it anyway, and the `the-desk` window is the one selected
@@ -363,6 +383,9 @@ torn down whichever cockpit resolves, and what a non-tmux cockpit opened is clos
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
 **List:** `cellctl ls` prints the cells under the cells root. No cells is not an error.
+
+**Persisting a `cell.env` change:** `cellctl set <cell> KEY=VALUE [...]` — see *Pinned models* below
+for the common case (a model pin) and *`cell.env`* below for the full key list.
 
 ---
 
@@ -490,6 +513,156 @@ role's pin, including `opus`, is untouched.
 `cellctl desk` prints the resolved model on its launch line and in `DRY_RUN=1` output, so which model
 a window is on is visible without reading the config.
 
+### `--model` — a per-run override
+
+Running one role (or a whole cell) on another model for a while does not have to mean hand-editing
+`cell.env` first:
+
+```bash
+cellctl desk <cell> <role> --model <m>     # this ONE window, this run only
+cellctl up   <cell>        --model <m>     # every role window this run opens
+DESK_MODEL_OVERRIDE=<m> cellctl desk <cell> <role>   # the equivalent env form, for wrappers
+```
+
+`--model <m>` **wins over** `DESK_MODEL_<role>` and `DESK_MODEL_DEFAULT` for that invocation only —
+it never touches `cell.env`. `DESK_MODEL_OVERRIDE` in the environment does the same thing for a
+wrapper that cannot pass a flag; an explicit `--model` wins when both are given. `cellctl up
+--model <m>` threads the override onto **every** role window it opens (the-desk included) by
+passing it on to each role's own `cellctl desk <cell> <role> --model <m>` invocation — there is no
+per-role `--model-<role>` form, since a single role's override is already `cellctl desk <cell>
+<role> --model <m>`.
+
+The source of the value is never left implicit: the `[launch]` line and every `DRY_RUN=1` plan print
+`model=<m> (override)` rather than just `model=<m>`, so the transcript shows whether a window is on
+its `cell.env` pin or on a for-this-run override.
+
+**The Opus refusal is not an escape hatch via `--model`.** `cellctl desk <cell> the-desk --model
+opus` (or a `claude-opus-*` id, or `DESK_MODEL_OVERRIDE=opus`) is refused with exactly the same
+message as an Opus **pin** — the rule binds the resolved model, whichever source produced it.
+
+**`cellctl check` is never affected by `--model` or `DESK_MODEL_OVERRIDE`.** It has no `--model`
+flag and does not read the env form, so its the-desk-model row always reports what a plain boot —
+no override — would resolve to.
+
+**`--model` changes the model *name* only.** A non-Anthropic model still needs
+`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` set in the shell that runs `cellctl` — `cellctl`
+**inherits** them (they reach the `claude` process it execs, same as any other environment
+variable) but does **not** set, validate or manage them itself. Exporting the right pair for the
+model you are overriding to is on you.
+
+### `cellctl set` — persisting a change
+
+```bash
+cellctl set <cell> DESK_MODEL_the_desk=glm-5.3
+cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]
+```
+
+Rewrites an existing `KEY=` line **in place** (comment lines and every other line's ordering
+untouched) or **appends** a key that has no active line yet. Writes exactly **one backup**,
+`cell.env.bak-<ts>`, before the first edit of a call — a multi-key `set` is one backup for the
+whole call, not one per key. Refuses a key that is not a known `cell.env` key (see the table below;
+the `DESK_MODEL_<role>` family counts as known for each of the five roles) unless `--force`, and a
+refusal — unknown key **or** the Opus rule below — touches nothing: no backup, no edit. Prints each
+key's before/after value. Applies the **same** the-desk/Opus refusal to `DESK_MODEL_the_desk` as a
+live boot and `check` do, and `--force` does not bypass it — `--force` widens which *keys* `set`
+will touch, not which *values* the Opus rule allows.
+
+**Sugar: override now and persist it in one call.**
+
+```bash
+cellctl desk <cell> <role> --model <m> --set
+```
+
+`--set` applies `--model <m>` for this run **and** persists it — equivalent to `--model <m>`
+followed by `cellctl set <cell> DESK_MODEL_<role>=<m>`. It needs a value to persist, so it is
+refused without `--model` (or `DESK_MODEL_OVERRIDE`) alongside it. Under `DRY_RUN=1` it prints what
+it *would* persist and writes nothing — a dry run touches nothing, `--set` included.
+
+**`CELL_HARNESS` is a known key too** — `cellctl set <cell> CELL_HARNESS=codex` persists the harness
+pin the same way, with the same value check as the harness flag itself: only `claude` or `codex` is
+accepted (not bypassable by `--force`, which only widens which *keys* `set` will touch). There is no
+`--harness ... --set` sugar — `cellctl desk`/`up --harness` is a per-run override only; persist it
+with `cellctl set` directly.
+
+---
+
+## Harnesses
+
+**Every role window boots on a harness pinned in `cell.env`, the same way its model is.** Default
+`claude`. `CELL_HARNESS=claude|codex`; `--harness <h>` on `cellctl desk`/`cellctl up` overrides it
+for that run only, without touching `cell.env`.
+
+```
+CELL_HARNESS=claude          # cell.env: claude (default) | codex
+cellctl desk <cell> the-desk --harness codex     # this ONE window, this run only
+cellctl up   <cell>          --harness codex     # every role window this run opens
+```
+
+`cellctl up --harness <h>` threads the override onto **every** role window it opens (the-desk
+included) by passing `--harness <h>` on to each role's own `cellctl desk <cell> <role> --harness
+<h>` invocation — there is no per-role `--harness-<role>` form, the same shape the model override
+uses. The source is visible without reading the config: `[dry-run]`/`[launch]` print `harness=<h>`,
+and a non-claude window's `DESK_SESSION` carries a `-codex` suffix (see *`cellctl desk`, `up`,
+`down`* above).
+
+### The claude arm — unchanged
+
+Exactly what this document already describes above: `claude --name <session> --model <model>
+"/assay:<role>"`, with the `assay@assay` plugin enabled in the config dir first.
+
+### The codex arm
+
+```bash
+codex --sandbox danger-full-access -C <worktree> -m <model> "Invoke the \"assay:<role>\" skill now."
+```
+
+The same exported env the claude arm gets — `DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS` (when
+`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `CLAUDE_CONFIG_DIR` is irrelevant on
+this arm and is not passed; the model comes from the same `DESK_MODEL_DEFAULT`/`DESK_MODEL_<role>`
+resolution `cellctl desk` always uses.
+
+**`--sandbox danger-full-access` is required, honestly.** Per the ruled capability matrix (the
+`#937` live smoke run is the evidence codex CLI's default `workspace-write` sandbox blocks the
+`.git/refs/heads/` write a fresh worktree needs — codex has no built-in worktree management, so a
+skill that must isolate has to run `git worktree add` itself, and that is exactly what
+`workspace-write` blocks), the worktree this window runs in could not have been **created** under
+a lesser sandbox in the first place. This is not a weakening introduced here — it is the existing
+precondition `cellctl desk`'s own worktree-creation step depends on, stated rather than glossed
+over. `#939` tracks where the capability matrix itself has drifted against newer codex
+releases; that staleness does not change what this flag is *for* on this exec line.
+
+**The-desk's Opus refusal binds the claude arm only.** `opus` / `claude-opus-*` is a Claude-family
+alias with no meaning to codex, so on `--harness codex` the refusal never fires — the resolved
+model prints as is, whatever it is. Pin the-desk to a sane default on a codex cell the same way you
+would for claude; nothing stops a codex the-desk from being pointed at a nonsense model name, the
+same as any other role.
+
+**The resident-rules fragment.** Codex has no Claude-style `SessionStart` hook to carry the
+methodology's resident operating rules, so on this arm they travel in `AGENTS.md` instead
+(`plugins/assay/codex/AGENTS-assay.md`, generated from `resident-rules.md` — see
+`docs/adopting-assay.md`'s *Running Assay on Codex*). `cellctl desk --harness codex` appends that
+fragment to the **worktree's own** `AGENTS.md` at boot, idempotently (a marker-string check skips
+the append when it is already present) — belt-and-suspenders alongside a checkout whose root
+`AGENTS.md` already carries it, which `cellctl check` verifies separately (below).
+
+### `cellctl check` — the codex harness block
+
+Only asked for when `CELL_HARNESS=codex` (a claude cell reports the whole block `n/a`, never
+silently skipped):
+
+| Row | What it proves |
+|---|---|
+| `codex on PATH` | `command -v codex` |
+| `codex --version` | the binary actually runs |
+| `codex authenticated` | `codex login status` (or its `--json` form), whichever the installed build answers |
+| `[features] multi_agent = true` | read via a `codex config get`-style verb when the build advertises one, else a literal read of `~/.codex/config.toml` (`CODEX_HOME` respected); a `-c` override on the invocation itself is not visible to this row, which the row's own text says |
+| resident-rules fragment present | the checkout's own root `AGENTS.md` (`$CELL_REPO/AGENTS.md`) carries the fragment's marker text |
+| skills discoverable | **either** the marketplace plugin arm (`codex plugin list` reports `assay`) **or** the file-placement arm (`.agents/skills/` holds at least one skill directory) — see `docs/adopting-assay.md`'s two Codex install arms |
+
+Every codex CLI verb this block probes has moved across releases (per the codex-smoke-run
+findings), so the probe is defensive: it tries the documented spelling first and never hard-codes
+a single one as the only truth.
+
 ---
 
 ## `cell.env`
@@ -519,4 +692,5 @@ a window is on is visible without reading the config.
 | `ROLES` | the role windows `up` opens (default: all five) |
 | `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
 | `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=fable`; an Opus pin here (or via `DESK_MODEL_DEFAULT`) is refused for `the-desk` |
+| `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*) |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
