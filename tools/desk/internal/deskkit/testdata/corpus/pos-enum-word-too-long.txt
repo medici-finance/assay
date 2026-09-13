@@ -1,0 +1,7 @@
+# corpus: an ALL-CAPS slash-list whose groups are opaque token material, which must STILL refuse
+# expect: refused
+# refs:   the paired positive that bounds the enum-slash-list rule (#966)
+# shape:  an ALL-CAPS group past maxEnumWordLen, and a group carrying digits
+# why:    the enum-slash-list exemption admits only short (2-20 letter) letters-only groups; a longer or digit-bearing group is a token wearing slashes, not an enum list
+A too-long group: AAAAAAAAAAAAAAAAAAAAA{{+}}AAAAAAAAAAA/DONE must not be admitted.
+A digit-bearing group: PEND1NG/RUNN1NGSTATE2026{{+}}072233445 stays opaque payload, not structure.

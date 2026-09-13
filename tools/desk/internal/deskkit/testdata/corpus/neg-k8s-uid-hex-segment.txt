@@ -1,0 +1,6 @@
+# corpus: a Kubernetes PersistentVolumeClaim's generated PersistentVolume name
+# expect: clean
+# refs:   #966 — a PVC UID quoted in a Verify/Evidence row false-positived a clean Evidence append
+# shape:  a recognised Kubernetes object-kind prefix, a hyphen, and an exactly-32-lowercase-hex UID
+# why:    a generated k8s object name carries no payload; the UID is the dashes-stripped rendering of an already-issued resource identity
+The claim bound to volume pvc-38d9b7efea064f53{{+}}acd5843296326c99 mounted read-only for the restore job.
