@@ -211,6 +211,42 @@ func Verify(a Assertion, now time.Time, trust TrustStore, skew time.Duration, re
 	return nil
 }
 
+// VerifyIdentityOnly re-verifies that an assertion's signature genuinely comes
+// from a cell the CURRENT trust store still trusts — WITHOUT re-enforcing the
+// original single-use receipt window (IssuedAt/ExpiresAt/skew) or replay
+// protection.
+//
+// Verify answers "is this assertion valid to admit RIGHT NOW, at message
+// time" — the receipt window and nonce are properties of that one admission
+// decision. VerifyIdentityOnly answers a different, narrower question an
+// out-of-band, later-in-time reconciler needs: "was this signature genuinely
+// produced by a cell this trust store still recognises". A message's
+// ExpiresAt window necessarily closes long before any daily/periodic sweep
+// re-examines it, so re-running Verify's window check against a historical
+// assertion would flag essentially every record it looks at — indistinguishable
+// from a genuinely revoked cell or forged signature. Checking cell-knownness
+// and signature validity alone catches the real fault (a revoked cell, a
+// rotated key, a signature forged past a defect in the inline gate) without
+// mistaking mere age for a violation.
+//
+// A caller performing the ORIGINAL message-time admission decision must call
+// Verify, never this — VerifyIdentityOnly deliberately does not check
+// ExpiresAt/IssuedAt/skew or consume a replay guard, so it must never
+// substitute for Verify at accept time.
+func VerifyIdentityOnly(a Assertion, trust TrustStore) error {
+	if trust == nil {
+		return fmt.Errorf("%w: nil trust store", ErrUnknownCell)
+	}
+	pub, ok := trust.PublicKey(a.Cell)
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownCell, a.Cell)
+	}
+	if !ed25519.Verify(pub, canonicalAssertionBytes(a), a.Sig) {
+		return ErrBadSignature
+	}
+	return nil
+}
+
 // canonicalAssertionBytes is the deterministic byte string the signature covers.
 // It is length-prefixed, not delimiter-joined: a role of "a\x00b" and a cell of
 // "b" must never canonicalise to the same bytes as a cell of "a" and a role of

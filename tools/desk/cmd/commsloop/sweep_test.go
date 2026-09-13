@@ -85,7 +85,7 @@ func TestSweepCleanRun(t *testing.T) {
 	}
 	writeJournalLines(t, root, mustJSON(t, landed), mustJSON(t, spawn))
 
-	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: trust, Now: sweepTestNow.Add(30 * time.Second)})
+	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: trust})
 
 	if report.State != SweepCheckedClean {
 		t.Fatalf("state = %s, want %s — findings=%v couldNotCheck=%v", report.State, SweepCheckedClean, report.Findings, report.CouldNotCheckReasons)
@@ -98,6 +98,48 @@ func TestSweepCleanRun(t *testing.T) {
 	}
 	if report.Checked == 0 {
 		t.Fatalf("Checked = 0, want at least the landed record + the spawn reconciliation counted")
+	}
+}
+
+// TestSweepDoesNotFlagAgedAssertion proves the sweep's peer-auth re-check
+// does not re-enforce the ORIGINAL single-use receipt window: a message
+// minted with the default (2-minute) TTL for a cell that stays in the trust
+// store, unrevoked and unrotated, is swept hours after that window closed —
+// by definition true of every record a DAILY sweep reaches — and still
+// reports checked-clean. Before this test, the same fixture reported a false
+// FindingInvalidAssertion purely because the sweep ran later than the
+// assertion's TTL, which is every time a daily sweep runs.
+func TestSweepDoesNotFlagAgedAssertion(t *testing.T) {
+	root := t.TempDir()
+	pub, signer := newSweepKeypair(t)
+	trust := comms.Ed25519TrustStore{"cell-a": pub}
+
+	// ttl=0 -> comms.DefaultTTL (2 minutes), the same default the one
+	// production mint call site (cmd/deskcomms/send.go) uses.
+	assertion, err := comms.Mint("cell-a", "worker-desk", "msg-aged", "nonce-aged", sweepTestNow, 0, signer)
+	if err != nil {
+		t.Fatalf("Mint: %v", err)
+	}
+	landed := SweepRecord{
+		Time: sweepTestNow, Kind: SweepKindLanded, ID: "msg-aged",
+		From:      comms.SenderID{Cell: "cell-a", Role: "worker-desk"},
+		To:        comms.Lane{Cell: "cell-a", Role: "the-desk"},
+		Verb:      "notify",
+		Assertion: &assertion,
+	}
+	writeJournalLines(t, root, mustJSON(t, landed))
+
+	// The sweep is out-of-band and runs on its own schedule; a real daily run
+	// looks at this record long after its 2-minute mint-to-delivery window
+	// closed. 4 hours mirrors the reviewer's own repro window.
+	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: trust})
+
+	if report.State != SweepCheckedClean {
+		t.Fatalf("state = %s, want %s — an aged-but-otherwise-valid assertion must never read as a violation; findings=%v couldNotCheck=%v",
+			report.State, SweepCheckedClean, report.Findings, report.CouldNotCheckReasons)
+	}
+	if hasFinding(report.Findings, FindingInvalidAssertion, "msg-aged") {
+		t.Fatalf("findings = %v, want no %s finding for msg-aged purely because its receipt window closed", report.Findings, FindingInvalidAssertion)
 	}
 }
 
@@ -119,7 +161,7 @@ func TestSweepSeededViolation(t *testing.T) {
 		}
 		writeJournalLines(t, root, mustJSON(t, landed))
 
-		report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Now: sweepTestNow})
+		report := Sweep(root, "cell-a", time.Time{}, SweepDeps{})
 
 		if report.State != SweepCheckedFailed {
 			t.Fatalf("state = %s, want %s — findings=%v couldNotCheck=%v", report.State, SweepCheckedFailed, report.Findings, report.CouldNotCheckReasons)
@@ -150,7 +192,7 @@ func TestSweepSeededViolation(t *testing.T) {
 		}
 		writeJournalLines(t, root, mustJSON(t, landed))
 
-		report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: emptyTrust, Now: sweepTestNow.Add(time.Second)})
+		report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: emptyTrust})
 
 		if report.State != SweepCheckedFailed {
 			t.Fatalf("state = %s, want %s — findings=%v couldNotCheck=%v", report.State, SweepCheckedFailed, report.Findings, report.CouldNotCheckReasons)
@@ -173,7 +215,7 @@ func TestSweepSeededViolation(t *testing.T) {
 		}
 		writeJournalLines(t, root, mustJSON(t, spawn))
 
-		report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Now: sweepTestNow})
+		report := Sweep(root, "cell-a", time.Time{}, SweepDeps{})
 
 		if report.State != SweepCheckedFailed {
 			t.Fatalf("state = %s, want %s — findings=%v couldNotCheck=%v", report.State, SweepCheckedFailed, report.Findings, report.CouldNotCheckReasons)
@@ -206,7 +248,7 @@ func TestSweepCorruptJournal(t *testing.T) {
 	writeJournalLines(t, root, `{"time":"2026-09-12T12:00:00Z","kind":"landed","id":"msg-1"`+
 		`,"from":{"cell":"cell-a"`)
 
-	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Now: sweepTestNow})
+	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{})
 
 	if report.State != SweepCouldNotCheck {
 		t.Fatalf("state = %s, want %s — a corrupt journal line must never read as clean", report.State, SweepCouldNotCheck)
@@ -230,7 +272,7 @@ func TestSweepCorruptJournalOutranksClean(t *testing.T) {
 	}
 	writeJournalLines(t, root, mustJSON(t, legal), "not json, not the legacy shape either")
 
-	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Now: sweepTestNow})
+	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{})
 
 	if report.State != SweepCouldNotCheck {
 		t.Fatalf("state = %s, want %s", report.State, SweepCouldNotCheck)
@@ -259,7 +301,7 @@ func TestSweepHeldMailboxIsReconciled(t *testing.T) {
 	}
 
 	// Empty trust store: the held message's assertion cannot be re-verified.
-	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: comms.Ed25519TrustStore{}, Now: sweepTestNow.Add(time.Second)})
+	report := Sweep(root, "cell-a", time.Time{}, SweepDeps{Trust: comms.Ed25519TrustStore{}})
 
 	if !hasFinding(report.Findings, FindingInvalidAssertion, "msg-held") {
 		t.Fatalf("findings = %v, want a %s finding for the held msg-held", report.Findings, FindingInvalidAssertion)

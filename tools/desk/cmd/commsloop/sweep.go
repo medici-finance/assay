@@ -12,10 +12,11 @@ package main
 //     silence — this sweep never trusts a cached "it was fine when it
 //     landed" verdict.
 //   - peer-auth validity: does the message's recorded signed assertion still
-//     verify (comms.Verify) against the CURRENT trust store. A revoked cell,
-//     a rotated key, or a signature that was simply forged past a defect in
-//     the inline gate all surface here even though the inline gate itself
-//     cannot see its own blind spot.
+//     come from a cell the CURRENT trust store trusts
+//     (comms.VerifyIdentityOnly). A revoked cell, a rotated key, or a
+//     signature that was simply forged past a defect in the inline gate all
+//     surface here even though the inline gate itself cannot see its own
+//     blind spot.
 //   - firing-record integrity: does every spawned session trace to BOTH a
 //     landed/quarantined message it claims to answer AND a legal
 //     (action, class, risk) row in the compiled assign table. A session with
@@ -269,12 +270,13 @@ type SweepDeps struct {
 	// nil is a valid, fail-closed state: any assertion actually encountered
 	// then reports could-not-check (never a silent skip) rather than a
 	// panic or an assumed-valid read.
+	//
+	// The re-check (comms.VerifyIdentityOnly) deliberately takes no current
+	// time or skew: it asks only "does this signature still come from a cell
+	// this trust store trusts", never "is this assertion still inside its
+	// original receipt window" — that window has necessarily closed by the
+	// time a periodic sweep reaches the record.
 	Trust comms.TrustStore
-	// Skew is the clock-skew tolerance Verify applies. <=0 defaults to
-	// comms.DefaultSkew.
-	Skew time.Duration
-	// Now is a test seam; the zero value means time.Now().UTC().
-	Now time.Time
 }
 
 func inScope(cell, a, b string) bool {
@@ -292,15 +294,6 @@ func Sweep(root, cell string, since time.Time, deps SweepDeps) SweepReport {
 		c := comms.Compiled()
 		acl = &c
 	}
-	now := deps.Now
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	skew := deps.Skew
-	if skew <= 0 {
-		skew = comms.DefaultSkew
-	}
-
 	report := SweepReport{Cell: cell}
 	knownMsgIDs := map[string]bool{}
 	var spawns []SweepRecord
@@ -319,13 +312,13 @@ func Sweep(root, cell string, since time.Time, deps SweepDeps) SweepReport {
 			if deps.Trust == nil {
 				report.CouldNotCheckReasons = append(report.CouldNotCheckReasons, fmt.Sprintf(
 					"message %s: cannot re-verify its recorded assertion — no trust store configured (%s)", id, EnvTrustStore))
-			} else if verr := comms.Verify(*assertion, now, deps.Trust, skew, nil); verr != nil {
-				// nil ReplayGuard is deliberate: this is a re-check of a
-				// HISTORICAL assertion, already de-duplicated at accept
-				// time (identity.go: "a caller that has already
-				// de-duplicated upstream passes nil") — the sweep is
-				// asking "does this signature/window/cell still hold
-				// today", never re-litigating single-use.
+			} else if verr := comms.VerifyIdentityOnly(*assertion, deps.Trust); verr != nil {
+				// VerifyIdentityOnly, not Verify: this is a re-check of a
+				// HISTORICAL assertion, well outside its original
+				// receipt window by the time a daily sweep reaches it.
+				// The sweep asks "does this signature still come from a
+				// cell the CURRENT trust store trusts", never
+				// re-litigating the original window or single-use.
 				report.Findings = append(report.Findings, Finding{
 					Kind:   FindingInvalidAssertion,
 					ID:     id,
@@ -538,7 +531,7 @@ func cmdSweep(args []string, getenv func(string) string, stdout io.Writer) error
 		sinceTime = now.Add(-*since)
 	}
 
-	report := Sweep(root, *cell, sinceTime, SweepDeps{Trust: trust, Now: now})
+	report := Sweep(root, *cell, sinceTime, SweepDeps{Trust: trust})
 	printSweepReport(stdout, report)
 
 	var filer sweepIssueFiler = deskfileSweepFiler{Repo: repo}
