@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // merge.go — the write path. Everything in this file exists to keep ONE sentence true:
@@ -259,14 +260,18 @@ deskmerge-parent2: %s
 `, p.BaseRefName, p.HeadRefName, p.BaseRefName, rulingID, disposition,
 		rulingID, g.SignOffURL, t.rep.HeadSHA, t.rep.BaseSHA)
 
-	if _, err := runGit(t.wt.dir, "commit", "--no-verify", "-m", msg); err != nil {
-		return "", deskkit.Unverifiable(
-			"could-not-check: the merge commit could not be written; nothing was pushed", err)
-	}
-	sha, err := runGit(t.wt.dir, "rev-parse", "HEAD")
+	sha, err := gitcoreCommit(t.wt.dir, gitcore.CommitOpts{
+		Message: msg,
+		// Explicit parents — head, then base — are the construction property that
+		// makes verifyTwoParent's read-back a defense-in-depth confirmation rather
+		// than the only thing standing between a masqueraded merge and the remote:
+		// no hooks ever run (go-git spawns none, matching --no-verify's own effect),
+		// and there is no separate rev-parse HEAD needed to learn the sha.
+		Parents: []string{t.rep.HeadSHA, t.rep.BaseSHA},
+	})
 	if err != nil {
 		return "", deskkit.Unverifiable(
-			"could-not-check: the merge commit was written but could not be read back", err)
+			"could-not-check: the merge commit could not be written; nothing was pushed", err)
 	}
 	return sha, nil
 }
@@ -283,30 +288,34 @@ deskmerge-parent2: %s
 // It runs after the commit and before the push, so a failure costs nothing: no ref
 // outside the scratch worktree ever pointed at the commit.
 func verifyTwoParent(t *trial, sha string, p prInfo) error {
-	line, err := runGit(t.wt.dir, "rev-list", "--parents", "-n", "1", sha)
+	repo, err := gitcore.Open(t.wt.dir)
+	if err != nil {
+		return deskkit.Unverifiable(
+			"could-not-check: cannot reopen the scratch worktree to verify the commit just written", err)
+	}
+	parents, err := repo.CommitParents(sha)
 	if err != nil {
 		return deskkit.Unverifiable(
 			"could-not-check: cannot read the parents of the commit just written — deskmerge will "+
 				"not push a commit whose shape it could not verify", err)
 	}
-	f := strings.Fields(line)
-	if len(f) != 3 {
+	if len(parents) != 2 {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: the resulting commit has %d parent(s), not 2 — this is not a merge. A "+
 				"single-parent result is the #72 masquerade: a head that reads as "+
 				"current with %s while carrying none of its history. Rolled back; nothing pushed.",
-			len(f)-1, deskkit.StripControl(p.BaseRefName)))
+			len(parents), deskkit.StripControl(p.BaseRefName)))
 	}
-	if !strings.EqualFold(f[1], t.rep.HeadSHA) {
+	if !strings.EqualFold(parents[0], t.rep.HeadSHA) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: parent 1 is %s but the PR head was %s — the first parent must be the PR's own "+
-				"history, unchanged. Rolled back; nothing pushed.", short(f[1]), short(t.rep.HeadSHA)))
+				"history, unchanged. Rolled back; nothing pushed.", short(parents[0]), short(t.rep.HeadSHA)))
 	}
-	if !strings.EqualFold(f[2], t.rep.BaseSHA) {
+	if !strings.EqualFold(parents[1], t.rep.BaseSHA) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: parent 2 is %s but the fetched %s head was %s — the second parent must be the "+
 				"exact base commit this run measured against. Rolled back; nothing pushed.",
-			short(f[2]), deskkit.StripControl(p.BaseRefName), short(t.rep.BaseSHA)))
+			short(parents[1]), deskkit.StripControl(p.BaseRefName), short(t.rep.BaseSHA)))
 	}
 	return nil
 }

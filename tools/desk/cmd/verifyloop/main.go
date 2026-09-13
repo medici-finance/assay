@@ -43,6 +43,9 @@ func main() {
 	// visible, and a NARROWING has to be as visible as a widening. Logins and paths
 	// only; never a token or a credential path.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 
