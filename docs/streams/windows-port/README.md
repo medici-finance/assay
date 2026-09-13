@@ -144,7 +144,7 @@ it.
 | 01 | [Release build matrix — windows/amd64 + windows/arm64 + sha256s](brief-01-release-build-matrix.md) | 1 | M | implemented | — | — |
 | 02 | [Portability audit — enumerate + triage the shell-assuming surfaces](brief-02-portability-audit.md) | 0 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #413 @ ae22e4fc5f1aac543f4e160cef027f2353a2260f) |
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](brief-03-install-path.md) | 2 | L | implemented | — | — |
-| 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](brief-04-windows-ci-leg.md) | 2 | M | done | 2026-09-06 host (apply-gated) | 2026-09-08 human:reviewer |
+| 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](brief-04-windows-ci-leg.md) | 2 | M | implemented | 2026-09-06 host (apply-gated) | — |
 | 05 | [Adoption-doc delta — the Windows adopter walkthrough](brief-05-adoption-doc-delta.md) | 3 | M | done | 2026-09-07 assay-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #593 @ 57ac2401e4a807da14aef81d3a288431b7a5f148) |
 | 06 | [Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH](brief-06-manifest-driven-bootstrap.md) | 3 | M | implemented | — | — |
 | 07 | [deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings](brief-07-deskinstall-harness-cursor.md) | 3 | M | implemented | — | — |
