@@ -77,7 +77,7 @@ func TestAssignRefusesAbsentTriple(t *testing.T) {
 	if _, err := Assign("", "routine", false); err == nil || !deskkit.IsRefused(err) {
 		t.Fatalf("an absent action must refuse (exit 5), got: %v", err)
 	}
-	if _, err := Assign("route-work-ready", "", false); err == nil || !deskkit.IsRefused(err) {
+	if _, err := Assign("route-work-dispatch", "", false); err == nil || !deskkit.IsRefused(err) {
 		t.Fatalf("an absent class must refuse (exit 5), got: %v", err)
 	}
 }
@@ -97,7 +97,7 @@ func TestAssignRefusesUnknownAction(t *testing.T) {
 // TestAssignRefusesUnknownClass: a class outside {routine, sensitive}
 // refuses, naming it as an unknown class.
 func TestAssignRefusesUnknownClass(t *testing.T) {
-	_, err := Assign("route-work-ready", "urgent", false)
+	_, err := Assign("route-work-dispatch", "urgent", false)
 	if err == nil || !strings.Contains(err.Error(), "unknown class") {
 		t.Fatalf("an unknown class must refuse naming the class, got: %v", err)
 	}
@@ -115,8 +115,8 @@ func TestAssignResolvesKnownTriples(t *testing.T) {
 		risk          bool
 		want          loopengine.Tier
 	}{
-		{"route-work-ready", "routine", false, loopengine.TierSession},
-		{"route-work-ready", "sensitive", true, loopengine.TierHuman}, // risk overrides dispatch-class
+		{"route-work-dispatch", "routine", false, loopengine.TierSession},
+		{"route-work-dispatch", "sensitive", true, loopengine.TierHuman}, // risk overrides dispatch-class
 		{"land-report", "routine", false, loopengine.TierLocal},
 		{"land-report", "sensitive", false, loopengine.TierCheap},
 		{"land-report", "routine", true, loopengine.TierHuman}, // risk overrides bookkeeping too
@@ -165,7 +165,7 @@ func TestAssignRiskYesForcesHuman(t *testing.T) {
 }
 
 // TestAssignDispatchClassNonRiskIsSession pins the inverse the design relies
-// on: the three dispatch-class actions (route-work-ready / route-review /
+// on: the three dispatch-class actions (route-work-dispatch / route-review /
 // route-verify) resolve tier: session on the NON-risk path. A silent
 // downgrade there (e.g. to local/cheap) would quietly weaken dispatched work
 // and is caught here, again by iterating the compiled table rather than
@@ -173,9 +173,9 @@ func TestAssignRiskYesForcesHuman(t *testing.T) {
 // a vacuous pass.
 func TestAssignDispatchClassNonRiskIsSession(t *testing.T) {
 	dispatchClass := map[string]bool{
-		"route-work-ready": true,
-		"route-review":     true,
-		"route-verify":     true,
+		"route-work-dispatch": true,
+		"route-review":        true,
+		"route-verify":        true,
 	}
 	seen := 0
 	for k, tier := range compiledAssign {
@@ -231,12 +231,12 @@ func TestAssignHumanTierNeverDispatches(t *testing.T) {
 // class -> tier (Assign) -> pinned runner (internal/runnertable), in one
 // test, for a dispatch-class action on the non-risk path.
 func TestFlowActionToRunner(t *testing.T) {
-	tier, err := Assign("route-work-ready", "routine", false)
+	tier, err := Assign("route-work-dispatch", "routine", false)
 	if err != nil {
 		t.Fatalf("Assign: %v", err)
 	}
 	if tier != loopengine.TierSession {
-		t.Fatalf("route-work-ready/routine/no-risk must assign TierSession, got %s", tierName(tier))
+		t.Fatalf("route-work-dispatch/routine/no-risk must assign TierSession, got %s", tierName(tier))
 	}
 
 	tbl, err := runnertable.LoadRunnerTable(func(k string) string {

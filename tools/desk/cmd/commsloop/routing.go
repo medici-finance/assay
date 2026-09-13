@@ -70,22 +70,12 @@ func checkLaneAtRoutingBoundary(env *comms.Envelope, acl *comms.ACL) error {
 	return nil
 }
 
-// isReportClass is the (documented, reviewable) JUDGMENT CALL commsloop makes
-// mechanically until the prose router lands: which verbs are pure REPORTS —
-// read-only, answered once, no further action or disposition tracking needed
-// — versus which need the not-yet-built router's routing decision.
-// status/metrics/help-offered are exactly the three ruled cross-cell verbs
-// (#1896) that are answered and done; focus-on is deliberately EXCLUDED
-// because it carries an ongoing disposition field
-// (taken-up/declined/no-answer-yet) a human tracks, and every within-cell verb
-// (handoff/notify/ask) is excluded because routing a work item or a question
-// to the right role is exactly the judgment the prose router exists to make
-// — a report-class shortcut must never quietly stand in for that decision.
-func isReportClass(env *comms.Envelope) bool {
-	switch env.Verb {
-	case "status", "metrics", "help-offered":
-		return true
-	default:
-		return false
-	}
-}
+// isReportClass USED TO BE the mechanical judgment call this loop made in
+// place of a router — "status"/"metrics"/"help-offered" landed done with no
+// consult at all. It is retired now that the prose router (decide.go) has
+// landed: #1767 ruling 3 is "there is no deterministic routing table and no
+// fast path," so a report-shaped message reaches the SAME consult as
+// everything else and lands done only when the router itself answers
+// land-report (assign.go's action set + table) — never on a verb-name
+// shortcut. This comment is left as the historical pointer TestBypass's own
+// doc references; there is no function here to call.

@@ -114,6 +114,28 @@ facts:
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
 
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: FAIL**
+
+Runner ≠ implementer. Own temp worktree off origin/main (includes merged PR medici-finance/assay#937), `KUBECONFIG=/dev/null`. This brief's Evidence table was completely empty before this pass.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | `test -f docs/codex-smoke-protocol.md; echo $?` | `0` | exit 0 | 2026-09-12 sonnet-5-verifier |
+| 2 | step/Expect count-match grep | `0` | printed `7 7`, exit 0 | 2026-09-12 sonnet-5-verifier |
+| 3 | freshness registration + FRESH-line grep | `2` | printed 2 (tool's own overall exit status 1 is from an unrelated pre-existing stale artifact elsewhere in the repo, not load-bearing per the row's own text) | 2026-09-12 sonnet-5-verifier |
+| 3a | mutation control, force-aged STALE-line grep | `2` | printed 2 — both binding files flip to STALE when force-aged, proving row 3 is a real check | 2026-09-12 sonnet-5-verifier |
+| 4 | codex+multi_agent grep in adopting-assay.md | `0` | exit 0 | 2026-09-12 sonnet-5-verifier |
+| 4a | positive control, nonsense flag grep | `1` | exit 1 | 2026-09-12 sonnet-5-verifier |
+| 5 | bundle-version >= 0.3.0 from SOURCES.yaml | `0` | cur=0.3.0, exit 0 | 2026-09-12 sonnet-5-verifier |
+| 6 | RELEASE-NOTES section (keyed by plugin.json's .version) names codex | `0` | **FAIL — exit 1.** plugin.json .version = 1.0.7 (umbrella stamp); RELEASE-NOTES headings use the bundle-content version scheme (## v0.3.0 etc, matching SOURCES.yaml). The awk never finds a matching heading. Real, previously-undetected defect — same class row 5 was already re-baselined for, left unfixed on row 6. Filed as `medici-finance/assay#964` | 2026-09-12 sonnet-5-verifier |
+| 7 | run-log completeness in docs/codex-smoke-runs/ | count = protocol step count, every step has Result, FAIL cites issue | ls -> one file (2026-09-12-codex-0.154.0.md); grep -c -> 7, matching the protocol's 7 steps. Full read confirms: steps 1,2,3,4,6,7 PASS, step 5 BLOCKED (not FAIL) citing filed issue #939; no step is FAIL so the "FAIL cites issue" clause is vacuously satisfied. Findings referenced (#938, #939) independently confirmed OPEN via gh api. PR #937 confirmed merged by human:<name> at 2026-09-12T22:04:43Z via gh api. Row 7 is now structurally satisfied (was previously BLOCKED, needs live Codex + Ian) | 2026-09-12 sonnet-5-verifier |
+
+`RISK-VALUE: NAMED, NOT DERIVED` — max-age-days = 45 @ freshness.yaml:44 and :49 — matches the pre-existing 45-day leash already used for sibling harness-capability docs in the same file, so it is consistency-with-precedent rather than a first-principles derivation; reversible documentation-staleness alarm, ranks last, no further derivation attempted. The live smoke run (row 7, finding #939) found the codex.md binding file already materially stale well inside this 45-day window — evidence the threshold's looseness is a real, if reversible, gap worth a human glance, not that the number itself needs re-derivation.
+
+**VERIFY: FAIL** — rows 1, 2, 3, 3a, 4, 4a, 5, 7 all pass exactly as written. Row 6 fails as literally written on merged main — a genuine defect, not an evasion or misreading. This needs a re-baseline (read SOURCES.yaml's bundle-version the same way row 5 does), not a status flip. Row 7 (the stream's acceptance row) is now structurally satisfied by the merged run log, but the brief cannot advance past `implemented` while row 6 is red.
+
+Per frontmatter `gate: human`: this verifier does not sign off and status does not change. Evidence-only.
+
 ## Review
 
 Gate: **human** (from frontmatter). The human signs the run log: a real Codex, the
