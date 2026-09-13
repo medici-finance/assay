@@ -161,13 +161,25 @@ ident_bot="$(ASSAY_TRUSTED_LOGINS='maintainer-example:11' \
 out="$(python3 "$AGG" highlights "$D/changelog" "$D/CHANGELOG.md" --credits "$D/credits.map" 2>/dev/null)"; rc=$?
 roster_line="$(grep -- '- roster-authored change\.' <<<"$out" || true)"
 if [ "$rc" = 0 ] \
-   && [ "$ident" = "skip:roster" ] && [ "$ident_bot" = "skip:roster" ] \
+   && [ "$ident" = "skip:roster" ] && [ "$ident_bot" = "skip:bot" ] \
    && [ -n "$roster_line" ] \
    && ! grep -q 'thanks' <<<"$roster_line" \
    && grep -q 'outside change\..*thanks @octocat-example' <<<"$out"; then
   ok "C2 roster-authored fragment is NOT credited (negative control)"
 else
   bad "C2 roster-authored not credited (rc: $rc ident=$ident ident_bot=$ident_bot)"; printf '%s\n' "$out"
+fi
+
+# C2b: a `[bot]` login is skipped even when the bot roster does NOT list it —
+#      the dry-run of the v1.0.7 release ran against a repo variable carrying
+#      only one of six house Apps and credited the other five as external.
+ident_unlisted="$(ASSAY_TRUSTED_LOGINS='maintainer-example:11' \
+                  ASSAY_TRUSTED_BOT_SLUGS='reviewer=reviewer-app-example:33' \
+                  bash "$IDENT" classify 'worker-app-example[bot]' /dev/null 2>/dev/null)"
+if [ "$ident_unlisted" = "skip:bot" ]; then
+  ok "C2b an unlisted [bot] login is never credited"
+else
+  bad "C2b unlisted [bot] login classified as '$ident_unlisted', expected skip:bot"
 fi
 
 # C3: the documented opt-out marker in the PR body suppresses the credit. The

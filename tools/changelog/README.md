@@ -281,7 +281,10 @@ entries; a multi-line highlight's continuation lines are untouched.
 ### Who counts as external, and the opt-out
 
 `credit-identity.sh classify <login> [<body-file>]` prints one word — `credit`,
-`skip:roster`, `skip:opt-out` or `skip:unknown` — and always exits 0. It reads
+`skip:bot`, `skip:roster`, `skip:opt-out` or `skip:unknown` — and always exits 0.
+Any `<slug>[bot]` or `app/<slug>` login is `skip:bot` before the roster is even
+consulted: credits thank people, and a GitHub App is never an external
+contributor, however incomplete the bot roster variable happens to be. It reads
 the operator's EXISTING roster by its existing variable names, never a second
 roster invented for this feature: `ASSAY_TRUSTED_LOGINS` (`login[:id]`),
 `ASSAY_TRUSTED_BOT_SLUGS` (`[role=]slug[:id]`, matched against both the

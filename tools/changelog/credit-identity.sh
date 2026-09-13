@@ -105,10 +105,16 @@ classify() {
   # ASSAY_TRUSTED_BOT_SLUGS — `[role=]slug[:id]`. An App authors under
   # `<slug>[bot]` (REST) or `app/<slug>`, so compare against the bare slug with
   # either rendering stripped.
+  # A GitHub App is never an external contributor: credits thank PEOPLE. Any
+  # `<slug>[bot]` / `app/<slug>` login is skipped whether or not the roster
+  # variable happens to list it — the v1.0.7 dry-run (run 34762678347) ran
+  # against a repo whose ASSAY_TRUSTED_BOT_SLUGS carried only the reviewer, and
+  # every other house App came out `credit`. The roster still decides for
+  # human logins; this rule only closes the bot half fail-safe.
   local bare="$l"
   case "$bare" in
-    *'[bot]') bare="${bare%'[bot]'}" ;;
-    app/*)    bare="${bare#app/}" ;;
+    *'[bot]') echo "skip:bot"; return 0 ;;
+    app/*)    echo "skip:bot"; return 0 ;;
   esac
   while IFS= read -r e; do
     e="${e#*=}"           # drop any `role=` prefix
