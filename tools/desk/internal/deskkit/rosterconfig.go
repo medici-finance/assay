@@ -556,17 +556,16 @@ type Config struct {
 	ScanRepos []string
 
 	// UnknownKeys are keys present in the source that this version does not
-	// recognise, sorted. They are ECHOED, never applied — including a key IN the
-	// ASSAY_ namespace (this brief): before, that case was a REFUSAL of the
-	// whole configuration (see the removed comment this replaced), which is
-	// exactly the fleet-wide outage class the component-manifest spec §6.2 exists to
-	// close — a repo-alias typo, or any other unrecognised ASSAY_ name, must not
-	// take every trust-gated verb down with it. The residual is real and
-	// recorded, not hidden: a typo'd key's OWN intended surface still loads
-	// empty (unset), silently from this echo's point of view — but "silently"
-	// only in the sense that it is a NOTICE line rather than a refusal; it is
-	// never applied under the typo'd name, and the correctly-spelled surface's
-	// own unset-vs-invalid distinction (Ext, below) still fires normally.
+	// recognise, sorted. They are ECHOED, never applied — but only for a key
+	// OUTSIDE the ASSAY_ namespace (a legitimate co-tenant in the same file, per
+	// knownRosterKeys' doc comment). A key INSIDE the ASSAY_ namespace that this
+	// version does not recognise is NOT added here: it still refuses the whole
+	// configuration exactly as before this brief (see the `bad(...)` call this
+	// loop makes for that case) — that is the one facts bullet this brief left
+	// unimplemented (BLOCKED-ON-HUMAN, security-gate removal; see the PR body's
+	// "Known deviation"), not a change this brief made. Only the six named
+	// EXTENSION keys' own bad VALUES (as opposed to an unrecognised key NAME)
+	// get the new per-key, non-aborting treatment — see Ext, below.
 	UnknownKeys []string
 
 	// Ext carries the per-key OUTCOME of every extension key this loader

@@ -68,7 +68,7 @@ func main() {
 	// that has been silently unconfigured is exactly the change this makes visible.
 	deskkit.EchoEffectiveConfig(os.Stderr)
 	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(2)
+		os.Exit(deskkit.ExitUnverifiable)
 	}
 
 	v, err := run(os.Stdin)

@@ -86,7 +86,7 @@ func main() {
 	// rather than in a diff is only visible at RUN time.
 	deskkit.EchoEffectiveConfig(os.Stderr)
 	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(2)
+		os.Exit(deskkit.ExitUnverifiable)
 	}
 	os.Exit(run(os.Args[1:]))
 }

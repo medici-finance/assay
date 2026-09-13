@@ -90,7 +90,7 @@ func main() {
 	// P3: echo the effective roster once per run.
 	deskkit.EchoEffectiveConfig(os.Stderr)
 	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(2)
+		os.Exit(deskkit.ExitUnverifiable)
 	}
 	os.Exit(run(os.Args[1:]))
 }

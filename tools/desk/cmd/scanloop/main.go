@@ -17,7 +17,7 @@ func main() {
 	// place a change to them becomes visible — and a NARROWING has to be as visible as a widening.
 	deskkit.EchoEffectiveConfig(os.Stderr)
 	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(2)
+		os.Exit(deskkit.ExitUnverifiable)
 	}
 	os.Exit(run(os.Args[1:]))
 }
