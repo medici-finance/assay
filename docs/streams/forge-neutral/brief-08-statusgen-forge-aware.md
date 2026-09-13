@@ -166,6 +166,30 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: PARTIAL**
+
+Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null`. Confirmed this brief's fix commit is a single-parent (squash-merged) ancestor of origin/main.
+
+| # | Command | Expect | Observed | Date / Runner |
+|---|---------|--------|----------|---------------|
+| 1 | build + test the statusgen package | exit 0 | exit 0, ok | 2026-09-12 sonnet-5-verifier |
+| 2 | GitLab CI-half scaffold test | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 3 | GitHub CI-half unchanged test | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 4 | negative control: unresolved forge writes no CI half | exit 0, no default-to-GitHub | PASS | 2026-09-12 sonnet-5-verifier |
+| 5 | next-steps names the written file | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 6 | GitLab auto-flip corroboration test | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 7 | negative control: uncorroborated stays verified | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 8 | reviewer login sourced from roster, no literal bot suffix | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 9 | negative control: claim decay three distinct states | exit 0, 3 distinct messages | PASS | 2026-09-12 sonnet-5-verifier |
+| 10 | GitLab pipeline is two halves test | exit 0 | PASS | 2026-09-12 sonnet-5-verifier |
+| 11 | statusgen --root . --lint | LINT: PASS, exit 0 | LINT: PASS, exit 0, no PROBLEM lines | 2026-09-12 sonnet-5-verifier |
+| 12 | grep 'gitlab' in the adopting doc | >=2 | 8 | 2026-09-12 sonnet-5-verifier |
+| 13 | statusgen --consumers --brief forge-neutral/08 | exit 0 | **Could not corroborate as specified — a genuine, pre-existing, repo-wide tool defect, not a fn/08 defect.** Traced root cause in statusgen/consumers.go and brieffile.go: --brief matches by exact string equality against the frontmatter's brief: field, but EVERY real brief file in this repo carries the fully-qualified assay:assay:<stream>:<NN> form while --brief's own help text and test fixtures use the plain <stream>/<NN> form — the two never match for any real brief, confirmed by re-running against the brief's actual pre-merge base (not just a no-diff worktree) with an identical result. This is the exact same root cause as public assay#954 (opened on a different brief's row 9) — attached this diagnosis there rather than filing a duplicate | 2026-09-12 sonnet-5-verifier |
+
+`RISK-VALUE: N/A` — enumeration over the full diff (init.go, autoflip.go, claimdecay.go, forge.go, main.go) found no literal risk-bearing value; the change is routing/control-flow (which CI template to write, which read path/identity to corroborate against) plus one cosmetic template-placeholder string constant, not risk-bearing. The operative act is a corroboration-routing decision governed by an already-derived rule (forge-neutral/02), not a new constant.
+
+**VERIFY: PARTIAL.** Rows 1-12 pass cleanly and mechanically, including all three negative-path rows (4, 7, 9). Row 13 could not be corroborated for a reason demonstrably unrelated to this brief's own diff — a pre-existing, repo-wide brief-ID format mismatch (public assay#954), not evidence against this brief. Given `gate: model` and all four risk answers `no`, rows 1-12 clean with RISK-VALUE: N/A, this is close to a normal auto-flip candidate, but row 13's unresolved anomaly means this verifier does not consider it a fully clean pass without that row being resolved (assay#954) or explicitly waived.
+
 ## Review
 Gate: **model** (from frontmatter; all four risk answers are `no` — see the note in
 `## Context`). Reviewer records verdict + date in the stream README table, and confirms that
