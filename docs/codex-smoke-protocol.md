@@ -113,7 +113,7 @@ holds — a disabled auto-trigger is a config posture, not a FAIL, but MUST be s
 
 #### Step 5 — Dispatch probe → runs / degrades / refuses per the matrix
 
-Action: Exercise a dispatch-bearing skill (`the-desk`, `worker-desk`, or a `dailies`
+Action: Exercise a dispatch-bearing skill (`the-desk`, `worker-desk`, or a `pr-review-desk`
 fan-out) with `[features] multi_agent` **off** in `~/.codex/config.toml`. Observe
 whether the fan-out runs in parallel, runs serially, or refuses.
 
