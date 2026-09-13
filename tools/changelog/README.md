@@ -238,14 +238,25 @@ pr-1234-widget-frame-drop.md	1234
 some-other-change.md	unresolved
 ```
 
-The resolution is the adding commit (`git log --diff-filter=A`), then the first
-merge commit on the ancestry path to `HEAD`, then the number in that commit's
-subject — `Merge pull request #N …` for a merge landing, a trailing `(#N)` for a
-squash landing. Both patterns are anchored, and a path with more than one adding
-commit is ambiguous: the resolver prints a number only when it is confident,
-because a loose parse is how a credit lands on the wrong person. Every fragment
-gets a line, so `unresolved` ("no pull request found") is never confused with an
-omission ("not looked at").
+The resolution starts at the adding commit (`git log --diff-filter=A`, oldest
+when a path was added, deleted and re-added) and reads the landing in the order
+one actually happens:
+
+1. the adding commit's OWN subject, when it carries the number — a trailing
+   `(#N)` for a squash landing, `Merge pull request #N …` for a merge landing.
+   A squash lands directly on the trunk, so the adding commit IS the landing
+   commit;
+2. otherwise the FIRST merge on the first-parent line from there to `HEAD` whose
+   SECOND parent actually contains the adding commit — the merge that brought
+   the fragment in;
+3. otherwise `unresolved`.
+
+Both patterns are anchored, and both the step order and the second-parent test
+are load-bearing: reading the merges first credits a squash-landed fragment to
+whatever unrelated pull request merged next, and a merge that merely sits above
+the adding commit on the ancestry path did not carry it. A loose parse is how a
+credit lands on the wrong person. Every fragment gets a line, so `unresolved`
+("no pull request found") is never confused with an omission ("not looked at").
 
 The MAP the workflow writes back is the same first column with a credit value:
 

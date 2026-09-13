@@ -234,18 +234,40 @@ def _pr_from_subject(subject):
     return None
 
 
+def _git_ok(repo, args):
+    """True when `git -C <repo> <args>` exited 0. Used for predicate commands
+    (`merge-base --is-ancestor`) where the ANSWER is the exit status, not the
+    output — `_git` deliberately hides the status, so it cannot answer this."""
+    cmd = "git -C %s %s >/dev/null 2>&1" % (_shq(repo), args)
+    try:
+        with os.popen(cmd) as fh:
+            fh.read()
+            return fh.close() is None
+    except OSError:
+        return False
+
+
 def _resolve_fragment_pr(repo, relpath):
     """fragment path -> the pull-request number it arrived on, or None.
 
-    The chain: the commit that ADDED the path, then the first merge commit on
-    the ancestry path from there to HEAD (the commit that brought it to this
-    branch), then the number in that commit's subject. With no such merge commit
-    the landing was a squash, so the adding commit IS the landing commit and its
-    own subject is read.
+    The chain, in the order a landing actually happens:
 
-    A path with MORE THAN ONE adding commit (added, deleted, re-added) is
-    ambiguous and resolves to None: this returns a name only when the answer is
-    confident.
+    1. The commit that ADDED the path (the OLDEST such commit, so an
+       added/deleted/re-added path still names the landing it arrived on).
+    2. If that commit's OWN subject carries the number — a squash landing's
+       trailing ``(#N)``, or a merge commit's ``Merge pull request #N`` — the
+       adding commit IS the landing commit and that is the answer.
+    3. Otherwise the fragment arrived on a side branch, so walk the FIRST-PARENT
+       line from there to HEAD and take the FIRST merge whose SECOND parent
+       actually contains the adding commit — the merge that brought it in.
+    4. Otherwise None.
+
+    Step 2 before step 3, and the second-parent containment test in step 3, are
+    both load-bearing. Reading the merges first credited a squash-landed
+    fragment to whatever unrelated pull request merged next, and a merge that
+    merely SITS above the adding commit on the ancestry path did not bring it in
+    — that is how unrelated fragments all collapsed onto the same few recent
+    pull-request numbers.
 
     NOTE the depth requirement. On a shallow clone `git log` cannot reach the
     adding commit, so every fragment resolves to None and nobody is credited.
@@ -256,24 +278,38 @@ def _resolve_fragment_pr(repo, relpath):
     if adds is None:
         return None
     shas = [ln.strip() for ln in adds.splitlines() if ln.strip()]
-    if len(shas) != 1:
+    if not shas:
         return None
-    adding = shas[0]
-    merges = _git(
-        repo,
-        "log --merges --ancestry-path --format=%%s %s..HEAD" % _shq(adding),
-    )
-    if merges:
-        lines = [ln for ln in merges.splitlines() if ln.strip()]
-        if lines:
-            # The LAST line is the oldest merge on the path — the one that
-            # brought the commit in, not a later merge that carried it along.
-            pr = _pr_from_subject(lines[-1].strip())
-            if pr:
-                return pr
+    # `git log` prints newest-first, so the LAST line is the oldest adding
+    # commit — the one the fragment first arrived on.
+    adding = shas[-1]
+
     own = _git(repo, "log -1 --format=%%s %s" % _shq(adding))
     if own:
-        return _pr_from_subject(own.strip())
+        pr = _pr_from_subject(own.strip())
+        if pr:
+            return pr
+
+    merges = _git(
+        repo,
+        "log --first-parent --ancestry-path --merges --reverse "
+        "--format=%%H%%x09%%s %s..HEAD" % _shq(adding),
+    )
+    for ln in (merges or "").splitlines():
+        if not ln.strip():
+            continue
+        sha, _tab, subject = ln.partition("\t")
+        sha = sha.strip()
+        if not sha:
+            continue
+        if not _git_ok(
+            repo,
+            "merge-base --is-ancestor %s %s" % (_shq(adding), _shq(sha + "^2")),
+        ):
+            continue
+        pr = _pr_from_subject(subject.strip())
+        if pr:
+            return pr
     return None
 
 
