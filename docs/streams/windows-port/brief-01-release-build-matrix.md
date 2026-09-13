@@ -172,6 +172,28 @@ stops here, because nothing downstream exists until the downloads do.
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
 
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: FAIL**
+
+Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null`.
+
+| # | Command | Expect | Observed | Date / Runner |
+|---|---------|--------|----------|---------------|
+| 1 | grep for GOOS=windows GOARCH={amd64,arm64} go build in release.yml | >=2 | exit 0, count=4 | 2026-09-12 sonnet-5-verifier |
+| 2 | grep -c 'statusgen-windows-(amd64|arm64)[.]exe' release.yml | each >=1 | exit 0, 3 and 3 | 2026-09-12 sonnet-5-verifier |
+| 3 | grep -oE windows-(amd64|arm64) release.yml, unique count | 2 | exit 0, 2 | 2026-09-12 sonnet-5-verifier |
+| 4 | loop over 4 asset names, grep -qF each | OK | exit 0, OK | 2026-09-12 sonnet-5-verifier |
+| 4a | positive control, bogus statusgen-windows-mips.exe | 1 | exit 1 (absent, as expected) | 2026-09-12 sonnet-5-verifier |
+| 5 | cd statusgen && GOOS=windows GOARCH=amd64/arm64 go build | exit 0, PE32/MS Windows | exit 0, PE32+ executable (console) x86-64, for MS Windows | 2026-09-12 sonnet-5-verifier |
+| 6 | cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskpost | exit 0, PE32/MS Windows | exit 0, PE32+ executable (console) x86-64, for MS Windows | 2026-09-12 sonnet-5-verifier |
+| 7 | grep -cE for statusgen-windows-(amd64,arm64) in examples/adopter-scaffold/.assay-versions | 2 | **exit 0, count = 0 — FAIL.** Case-insensitive grep for windows on the whole file also returns nothing; the file has zero mention of Windows | 2026-09-12 sonnet-5-verifier |
+| 8 | statusgen --root . --consumers windows-port/01 | exit 0 | exit 0, but message is "no brief files in the diff — nothing to corroborate" (expected on a post-merge worktree with no local diff; meaningful only on the implementer's own branch) | 2026-09-12 sonnet-5-verifier |
+
+**Root cause of the row-7 failure — a real regression, not an unimplemented task.** This brief's own diff correctly added exactly the two illustrative pin lines row 7 checks for (statusgen-windows-amd64/-arm64, placeholder all-zero sha256, marked as harvested-from-release placeholders), and every other part of this brief's own diff is intact (rows 1-6, 4a all pass). A later, unrelated commit wholesale-rewrote examples/adopter-scaffold/.assay-versions to bump every pin to a newer umbrella version, and that rewrite silently dropped the two windows-port lines instead of carrying them forward — confirmed via git log -p, that commit is the last one to touch the file. The fix is a follow-up commit re-adding the two lines at the current pin version; a worker fix is already in flight for this (per the-desk relay).
+
+`RISK-VALUE: DERIVED` — placeholder-sha256 = 64 zero-hex-digits @ examples/adopter-scaffold/.assay-versions (as merged in this brief's own PR, currently absent from main — see row 7 FAIL) — correct by construction: an all-zero digest cannot collide with any real release hash, and the brief's own ground rules require a clearly-marked placeholder here, never a real hash. This is illustrative documentation only (never read by an install/verify path), so it carries no operational risk on its own; the actual irreversible act this brief's `gate: human`/`irreversible: yes` answers is the human-only publish of the two new release assets under the existing pinned-hash contract, which this diff does not itself perform.
+
+**VERIFY: FAIL — row 7.** Rows 1-6, 4a all PASS. Row 8 is only meaningful run on the implementer's own branch (recording as could-not-meaningfully-check on a post-merge worktree, not a real pass or fail). Per frontmatter `gate: human`, `irreversible: yes`: this verifier does not sign off and status does not change regardless of the FAIL. Status stays `implemented`; re-run row 7 once the pin-restoration fix lands.
+
 ## Review
 Gate: **human** (from frontmatter, risk-derived: `irreversible: yes`) — this edits
 `.github/workflows/release.yml`, a security-classified path, and a published release asset

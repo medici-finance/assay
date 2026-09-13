@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"gopkg.in/yaml.v3"
 )
 
@@ -180,6 +181,14 @@ func Install(opts Options) error {
 		// Success line — brief 04's CI smoke and brief 05's doc assert on this shape.
 		fmt.Fprintf(out, "installed %s %s sha256:%s\n", v.pin.component, v.pin.tag, v.pin.sha256)
 	}
+	// The binaries this mode places are INSIDE the boundary
+	// (component-model.md §5 lists "the installed binaries" inside), so this
+	// install writes no ledger line of its own — but the ledger path is still
+	// worth naming: it is where a LATER outside step (a label, a ruleset
+	// entry, an App installation — none of which this binary-only installer
+	// performs) would be recorded, and it is what `deskdisable` reads when
+	// reversing a component that does.
+	fmt.Fprintf(out, "ledger: %s (this install has only inside-boundary effects; nothing to record)\n", deskkit.LedgerRelPath)
 	return nil
 }
 

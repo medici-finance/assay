@@ -13,6 +13,6 @@ apply:
     effect: create the review-request / raised-by:* label set on the forge
     boundary: outside
     ledger: label
-    compensation: delete a label if no issue carries it, else list for a human; TODO composability/02 makes the ledger real
+    compensation: list-for-human — never delete unattended (a label may still be carried by an open issue); a human checks and deletes
 intercept: []
 config: {}

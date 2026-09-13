@@ -517,7 +517,7 @@ func runConsumers(root, base, briefFilter string) int {
 	briefs := selectConsumerBriefs(root, streams, changedSet, briefFilter)
 	if len(briefs) == 0 {
 		if briefFilter != "" {
-			fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: no brief-v1 file for %q\n", briefFilter)
+			fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: no brief file for %q (matched neither a brief-v1 <stream>/<NN> nor a brief-v2 <cell>:<repo>:<stream>:<NN> brief)\n", briefFilter)
 			return 2
 		}
 		fmt.Printf("consumers: no brief files in the diff against %s — nothing to corroborate\n", base)
@@ -608,9 +608,18 @@ func runConsumers(root, base, briefFilter string) int {
 }
 
 // selectConsumerBriefs picks the briefs to corroborate: the one named by
-// --brief, else every brief-v1 file the diff touches. Scoping to touched briefs
+// --brief, else every brief file the diff touches. Scoping to touched briefs
 // keeps the run small — an untouched brief's `fixed-here` refers to ITS branch's
 // diff, not this one's.
+//
+// --brief matches on the canonical <stream>/<NN> identity, not the raw string:
+// a brief-v2 file's own `brief:` field is the fully-qualified
+// <cell>:<repo>:<stream>:<NN> form, but a caller may pass either that form or
+// the short <stream>/<NN> form (verify-desk's row keys are short-form). Both
+// sides are reduced through normalizeBriefKey (the same helper verifyMarker /
+// loadExistingMarkers / closeVerify use post flag-day, #840) before comparing,
+// so a brief-v2 file resolves under either spelling instead of only an exact
+// string match against its own fully-qualified id (issue #954).
 //
 // It is only HALF the protection, and the review measured the other
 // half's absence: a brief the branch touches is not the same as a claim the
@@ -618,6 +627,7 @@ func runConsumers(root, base, briefFilter string) int {
 // a diff that never mentioned them. consumerEntriesAtBase supplies the rest.
 func selectConsumerBriefs(root string, streams []*Stream, changed map[string]bool, filter string) []*BriefFile {
 	var out []*BriefFile
+	normFilter := normalizeBriefKey(filter)
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
 			rel, err := filepath.Rel(root, path)
@@ -629,7 +639,7 @@ func selectConsumerBriefs(root string, streams []*Stream, changed map[string]boo
 				continue
 			}
 			if filter != "" {
-				if bf.Brief == filter {
+				if normalizeBriefKey(bf.Brief) == normFilter {
 					out = append(out, bf)
 				}
 				continue

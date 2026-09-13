@@ -87,23 +87,55 @@ facts:
 
 ## Verify
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `ls components/harness-*/component.yaml \| wc -l` | 3 |
-| 2 | `grep -l 'assay.harness' plugins/assay/skills/*/component.yaml \| wc -l` | equals the number of skill directories |
-| 3 | `grep -n 'exclusive: true' components/KEYS.md` | one line, for `assay.harness` |
-| 4 | `deskmanifest lint --root .` | exit 0 |
-| 5 | mutation: mark a second adapter installed in the fixture; `deskmanifest lint --root <fixture>` | exit 1; `assay.harness has 2 ACTIVE providers`; restore |
-| 6 | fixture with the codex adapter only: `deskmanifest lint --root <fixture> --activation` | exit 0; hooks component listed `INACTIVE — assay.harness flavour codex ≠ claude-code` |
-| 7 | `git diff --stat origin/main -- plugins/assay/.claude-plugin plugins/assay/.codex-plugin plugins/assay/cursor plugins/assay/hooks/hooks.json` | empty (delivery shapes' bytes unchanged) |
-| 8 | `cd tools/desk && go test ./cmd/deskmanifest/...` | exit 0 |
-| 9 | neighbour: `tools/harnessgen` invoked as the cursor adapter's apply step vs. invoked directly | identical output |
-| 10 | `statusgen --lint` | exit 0 |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `ls components/harness-*/component.yaml \| wc -l` | 3 |
+| 2 | check | `grep -l 'assay.harness' plugins/assay/skills/*/component.yaml \| wc -l` | equals the number of skill directories |
+| 3 | check | `grep -n 'exclusive: true' components/KEYS.md` | one line, for `assay.harness` |
+| 4 | check | `deskmanifest lint --root .` | exit 0 |
+| 5 | check +mutation | mutation: mark a second adapter installed in the fixture; `deskmanifest lint --root <fixture>` | exit 1; `assay.harness has 2 ACTIVE providers`; restore |
+| 6 | check +flow | fixture with the codex adapter only: `deskmanifest lint --root <fixture> --activation` | exit 0; hooks component listed `INACTIVE — assay.harness flavour codex ≠ claude-code` |
+| 7 | check | `git diff --stat origin/main -- plugins/assay/.claude-plugin plugins/assay/.codex-plugin plugins/assay/cursor plugins/assay/hooks/hooks.json` | empty (delivery shapes' bytes unchanged) |
+| 8 | check | `cd tools/desk && go test ./cmd/deskmanifest/...` | exit 0 |
+| 9 | check +dereference | neighbour: `tools/harnessgen` invoked as the cursor adapter's apply step vs. invoked directly | identical output |
+| 10 | check | `statusgen --lint` | exit 0 |
 
 ## Evidence
 
-Pending — the implementer records its run here on reaching `implemented`; an independent
-runner records a second run on merged main before `verified`.
+Implemented on branch `feat/composability-04`. All ten Verify rows run locally (offline,
+`KUBECONFIG=/dev/null`); `deskmanifest`, `harnessgen`, and `statusgen` built from the
+in-tree source.
+
+| # | Result |
+|---|--------|
+| 1 | PASS — `ls components/harness-*/component.yaml \| wc -l` = 3 |
+| 2 | PASS — `grep -l 'assay.harness' plugins/assay/skills/*/component.yaml \| wc -l` = 12; `ls plugins/assay/skills/*/component.yaml \| wc -l` = 12 |
+| 3 | PASS — `grep -n 'exclusive: true' components/KEYS.md` — one line, for `assay.harness` |
+| 4 | PASS — `deskmanifest lint --root .` exit 0; last line `checked-clean` (26 manifests) |
+| 5 | PASS — mutation: `touch AGENTS.md` (marks the codex adapter's evidence marker installed, a second ACTIVE `assay.harness` provider) → `deskmanifest lint --root .` exit 1, `PROBLEM: assay.harness has 2 ACTIVE providers: assay/harness-claude-code, assay/harness-codex`; `rm AGENTS.md` restores exit 0 |
+| 6 | PASS (as a synthetic fixture, `TestLint_ActivationFlavourMismatchReportsInactive`, `go test`): a codex-only-adapter fixture + hooks requiring `flavour: claude-code` → `deskmanifest lint --activation` exit 0, report contains `assay/hooks: INACTIVE — assay.harness flavour codex ≠ claude-code`. (This repo's own tree cannot exercise the row directly — it has no codex-only state, by design: exactly one adapter, claude-code, is ACTIVE here per row 4/5.) |
+| 7 | PASS — `git diff --stat origin/main -- plugins/assay/.claude-plugin plugins/assay/.codex-plugin plugins/assay/cursor plugins/assay/hooks/hooks.json` empty |
+| 8 | PASS — `cd tools/desk && go test ./cmd/deskmanifest/...` exit 0 |
+| 9 | PASS — `harnessgen cursor --check --root .` invoked twice (once standing in for "as the cursor adapter's apply step", once "directly") produced byte-identical stdout and exit 0 both times — the apply step names no wrapper, it is the same command |
+| 10 | PASS — `statusgen --lint` → `LINT: PASS`, exit 0 (pre-existing NOTICEs only, unrelated to this brief) |
+
+**Design note for review:** `component-model.md` §9 says "the presence of exactly one
+adapter's installed shape selects the binding," ahead of the desired-state record (§7,
+still planned). This repo itself ships all three harnesses' packaging simultaneously
+(`.claude-plugin/`, `.codex-plugin/`, `cursor/assay.mdc` all committed, for adopters to
+consume), so "a provider's `component.yaml` exists" cannot be the activation signal for
+`assay.harness` without every tree having 3 simultaneous ACTIVE providers — an immediate,
+permanent exclusivity PROBLEM in this very repo. To resolve that, this brief adds one
+schema attribute beyond the two the brief text names (`flavour`, and the exclusivity
+lookup in `components/KEYS.md`): a `provides` entry MAY also carry `evidence`, a
+repo-root-relative marker path. A provider is ACTIVE only while its marker exists —
+`.claude-plugin/marketplace.json` for claude-code (present here), root `AGENTS.md` for
+codex, root `.cursor/rules` for cursor (neither present here, matching
+harness-portability/README.md's own naming of those exact paths as each harness's native
+install location). This gives exactly one ACTIVE provider in this repo today and a
+literal, file-presence answer to "mark a second adapter installed" for the mutation row.
+Flagging this explicitly since it is a modeling choice beyond the brief's literal text,
+for the reviewer to confirm or redirect.
 
 ## Review
 

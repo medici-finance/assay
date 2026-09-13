@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskmerge_test.go — the Verify table, executed.
@@ -111,6 +112,33 @@ func TestConflictRefusal(t *testing.T) {
 	})
 }
 
+// TestConflictEnumeratedAndAborted — brief 07's own golden. The trial
+// merge's conflict machinery (`merge --no-ff --no-commit`, the `--diff-filter=U`
+// conflict enumeration, and the `merge --abort` rollback) now routes through
+// internal/gitexec under a narrow deskmerge-only allowlist entry instead of deskmerge's
+// own ad hoc exec seam; this proves the posture the brief says must not move: a
+// conflicting trial merge still names every conflicted path AND still rolls back with
+// nothing left mid-merge anywhere the scratch worktree touched.
+func TestConflictEnumeratedAndAborted(t *testing.T) {
+	withScratchTemp(t)
+	w := newWorld(t,
+		map[string]string{"README.md": "pr side\n"},
+		map[string]string{"README.md": "main side\n"})
+	w.install(t, defaultPR(), false)
+
+	code, out := cli(verbCheck, "-R", testRepo, "7", "--repo-root", w.root)
+	if code != deskkit.ExitRefused {
+		t.Fatalf("want exit 5 from a conflicted trial merge, got %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "conflicted") || !strings.Contains(out, "README.md") {
+		t.Fatalf("the conflicted path must be enumerated:\n%s", out)
+	}
+	w.assertNoPush(t)
+	if leaked := leakedWorktrees(t, w.root); len(leaked) != 0 {
+		t.Fatalf("the trial merge's scratch worktree must be gone after the abort: %v", leaked)
+	}
+}
+
 // ---------------------------------------------------------------- Verify row 2
 
 // TestTwoParentOnly — the pushed commit is verified to have exactly two parents with
@@ -160,16 +188,18 @@ func TestTwoParentOnly(t *testing.T) {
 
 		// Inject the #72 shape: the commit step abandons the merge and
 		// writes a single-parent commit instead. This is what a rebase, a squash or an
-		// amend would leave behind, and it must never reach the remote.
-		inner := runGit
-		runGit = func(dir string, args ...string) (string, error) {
-			if len(args) > 0 && args[0] == "commit" {
-				_, _ = inner(dir, "merge", "--abort")
-				return inner(dir, "commit", "--allow-empty", "--no-verify", "-m", "not a merge")
+		// amend would leave behind, and it must never reach the remote. Injected at
+		// gitcoreCommit — the seam commitMerge now calls — using the SAME real git
+		// tooling runGit already routes to for the (still git-binary) merge/abort verbs.
+		inner := gitcoreCommit
+		gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+			_, _ = runGit(dir, "merge", "--abort")
+			if _, err := runGit(dir, "commit", "--allow-empty", "--no-verify", "-m", "not a merge"); err != nil {
+				return "", err
 			}
-			return inner(dir, args...)
+			return runGit(dir, "rev-parse", "HEAD")
 		}
-		t.Cleanup(func() { runGit = inner })
+		t.Cleanup(func() { gitcoreCommit = inner })
 
 		code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 		if code != deskkit.ExitRefused {
@@ -191,16 +221,17 @@ func TestTwoParentOnly(t *testing.T) {
 
 		// The sibling commit is an ancestor of NEITHER side, so merging it yields a
 		// well-formed TWO-parent commit — one that a parent-count check accepts. That
-		// is exactly why parent 2 is checked by SHA.
-		inner := runGit
-		runGit = func(dir string, args ...string) (string, error) {
-			if len(args) > 0 && args[0] == "commit" {
-				_, _ = inner(dir, "merge", "--abort")
-				return inner(dir, "merge", "--no-ff", "--no-verify", "-m", "wrong base", w.siblingSHA)
+		// is exactly why parent 2 is checked by SHA. Injected at gitcoreCommit — see
+		// the single-parent case above for why.
+		inner := gitcoreCommit
+		gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+			_, _ = runGit(dir, "merge", "--abort")
+			if _, err := runGit(dir, "merge", "--no-ff", "--no-verify", "-m", "wrong base", w.siblingSHA); err != nil {
+				return "", err
 			}
-			return inner(dir, args...)
+			return runGit(dir, "rev-parse", "HEAD")
 		}
-		t.Cleanup(func() { runGit = inner })
+		t.Cleanup(func() { gitcoreCommit = inner })
 
 		code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 		if code != deskkit.ExitRefused {
@@ -345,14 +376,11 @@ func TestWorktreeHygiene(t *testing.T) {
 			pr:   map[string]string{"pr.txt": "a\n"},
 			main: map[string]string{"main.txt": "b\n"},
 			inject: func(t *testing.T) {
-				inner := runGit
-				runGit = func(dir string, args ...string) (string, error) {
-					if len(args) > 0 && args[0] == "commit" {
-						return "", errInjected{}
-					}
-					return inner(dir, args...)
+				inner := gitcoreCommit
+				gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+					return "", errInjected{}
 				}
-				t.Cleanup(func() { runGit = inner })
+				t.Cleanup(func() { gitcoreCommit = inner })
 			}},
 	}
 	for _, tc := range cases {
@@ -1024,16 +1052,17 @@ func TestParentOneMustBeThePRsOwnHistory(t *testing.T) {
 	// Swap the parents: merge the PR head INTO main. The commit has two parents and
 	// parent 2 IS the fetched base — but its first-parent history is main's, not the
 	// PR's, so the PR's own line of development stops being the trunk of its branch.
-	inner := runGit
-	runGit = func(dir string, args ...string) (string, error) {
-		if len(args) > 0 && args[0] == "commit" {
-			_, _ = inner(dir, "merge", "--abort")
-			_, _ = inner(dir, "checkout", "--detach", w.baseSHA)
-			return inner(dir, "merge", "--no-ff", "--no-verify", "-m", "swapped", w.headSHA)
+	// Injected at gitcoreCommit — see TestTwoParentOnly's single-parent case for why.
+	inner := gitcoreCommit
+	gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+		_, _ = runGit(dir, "merge", "--abort")
+		_, _ = runGit(dir, "checkout", "--detach", w.baseSHA)
+		if _, err := runGit(dir, "merge", "--no-ff", "--no-verify", "-m", "swapped", w.headSHA); err != nil {
+			return "", err
 		}
-		return inner(dir, args...)
+		return runGit(dir, "rev-parse", "HEAD")
 	}
-	t.Cleanup(func() { runGit = inner })
+	t.Cleanup(func() { gitcoreCommit = inner })
 
 	code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 	if code != deskkit.ExitRefused {

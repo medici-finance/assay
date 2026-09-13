@@ -12,6 +12,6 @@ apply:
     effect: confirm the configured GitHub forge is reachable with the roster's identities
     boundary: outside
     ledger: forge-binding
-    compensation: none — the forge is not created by Assay; TODO composability/02 records the binding for listing
+    compensation: none — the forge is not created by Assay and there is nothing to reverse; the binding stays ledgered for reference only
 intercept: []
 config: {}

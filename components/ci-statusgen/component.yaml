@@ -14,6 +14,6 @@ apply:
   - id: statusgen-workflow
     effect: install the .github/workflows statusgen board workflow (lint on PR, regen on main)
     boundary: inside
-    inverse: remove the workflow file (TODO composability/02 makes the reverse real)
+    inverse: remove the .github/workflows statusgen board workflow file
 intercept: []
 config: {}

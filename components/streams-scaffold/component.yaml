@@ -11,6 +11,6 @@ apply:
   - id: streams-tree
     effect: create docs/streams/ with a README and the per-stream layout
     boundary: inside
-    inverse: remove docs/streams/ (TODO composability/02 makes the reverse real)
+    inverse: remove docs/streams/ (the README and the per-stream layout it created)
 intercept: []
 config: {}

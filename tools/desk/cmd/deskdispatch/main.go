@@ -150,6 +150,9 @@ func main() {
 	// ciEligible=false — it reads the config-home file and never the environment.
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

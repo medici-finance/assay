@@ -125,6 +125,12 @@ func TestWindowsInstallVerifiesCorrectHash(t *testing.T) {
 	if !strings.Contains(got, "installed statusgen "+tag+" sha256:") {
 		t.Errorf("missing/short success line, got: %q", got)
 	}
+	// the installer now names the ledger path
+	// even though this mode's own effects are all inside the boundary and
+	// write no line there themselves.
+	if !strings.Contains(got, "ledger: .assay/ledger.jsonl") {
+		t.Errorf("success output must name the ledger path, got: %q", got)
+	}
 }
 
 // TestWindowsInstallRefusesOnHashMismatch — NEGATIVE PATH / SECURITY ROW

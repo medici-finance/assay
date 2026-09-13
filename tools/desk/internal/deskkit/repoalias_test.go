@@ -80,11 +80,16 @@ func TestRepoAliasConfiguredOverride(t *testing.T) {
 	check("other-org/console", "WRONG", "WRONG")
 }
 
-// TestRepoAliasMalformedRefuses is the fail-closed property (brief-05 row-shape / brief-07
-// row 6): a malformed ASSAY_REPO_ALIASES value collapses the WHOLE configuration to
-// unconfigured with a loud reason, rather than silently dropping the bad entry and
-// grouping by the generic default while broken config is present.
-func TestRepoAliasMalformedRefuses(t *testing.T) {
+// TestRepoAliasMalformedDeactivatesOnlyItsDependents is the property that replaced the
+// old fail-closed-the-whole-roster behaviour (component-model §6.2 — this is the exact
+// "a repo-alias typo must not [take every desk verb down]" case this brief's `why`
+// names): a malformed ASSAY_REPO_ALIASES value no longer collapses the WHOLE
+// configuration. It resets the alias map to the generic-default-equivalent empty state
+// (never a PARTIAL map of only the entries that happened to parse) and records the
+// rejection on cfg.Ext, so only a component that requires
+// assay.roster.ext.repo-aliases goes INACTIVE — every trust-gated verb this key knows
+// nothing about keeps running.
+func TestRepoAliasMalformedDeactivatesOnlyItsDependents(t *testing.T) {
 	for _, bad := range []struct{ name, value string }{
 		{"no equals", "example-k8s:ledger"},     // missing '=' between repo and spec
 		{"no colon", "example-k8s=ledger"},      // missing ':' between short and product
@@ -97,13 +102,20 @@ func TestRepoAliasMalformedRefuses(t *testing.T) {
 			r[EnvRepoAliases] = bad.value
 			withRoster(t, r)
 			cfg := EffectiveConfig()
-			if cfg.Configured() {
-				t.Fatalf("a malformed ASSAY_REPO_ALIASES (%q) did NOT refuse — a broken grouping "+
-					"config must fail closed, never fall back to generic derivation", bad.value)
+			if !cfg.Configured() {
+				t.Fatalf("a malformed ASSAY_REPO_ALIASES (%q) refused the WHOLE configuration — "+
+					"an extension key's bad value must deactivate only its dependents, never the "+
+					"trust surface", bad.value)
 			}
-			joined := strings.Join(cfg.Problems, "\n")
-			if !strings.Contains(joined, EnvRepoAliases) {
-				t.Errorf("refusal did not name %s; problems: %s", EnvRepoAliases, joined)
+			if len(cfg.RepoAliases) != 0 {
+				t.Fatalf("a rejected ASSAY_REPO_ALIASES (%q) still carries entries: %v", bad.value, cfg.RepoAliases)
+			}
+			ext, ok := cfg.Ext["repo-aliases"]
+			if !ok || ext.Status != ExtInvalid {
+				t.Fatalf("cfg.Ext[%q] = %+v, want Status ExtInvalid for %q", "repo-aliases", ext, bad.value)
+			}
+			if !strings.Contains(ext.Reason, EnvRepoAliases) {
+				t.Errorf("the recorded reason does not name %s: %q", EnvRepoAliases, ext.Reason)
 			}
 		})
 	}

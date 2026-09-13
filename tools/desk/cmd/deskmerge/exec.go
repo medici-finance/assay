@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/gitexec"
 )
 
 // exec.go — the single seam every subprocess flows through.
@@ -41,14 +44,69 @@ func runCmdIn(dir, name string, args ...string) (string, error) {
 	return stdout, nil
 }
 
+// gitexecVerbs is deskmerge's fenced set — every verb below is a git argv[0] runGit
+// still routes to the git BINARY, via the one audited fallback seam
+// (internal/gitexec), rather than to gitcore. Each is here for a proven reason, not a
+// deferral; see internal/gitexec.allowlist's doc for the full explanation of each:
+//
+//   - "merge"    — the trial merge itself (--no-ff --no-commit) and its --abort rollback.
+//   - "diff"     — ONLY the --diff-filter=U conflict-path reads (enumeration after a
+//     failed trial merge, and the residual-hunks check after regenerable resolution),
+//     which read the same mid-merge conflict-stage index the trial merge produces.
+//     Every other deskmerge `diff` (CI-contract drift, the semantic-probe's
+//     changed-path scoping) is on gitcore.DiffNames and never reaches runGit.
+//   - "add"      — ONLY the regenerable-conflict resolution stage: verified empirically
+//     that go-git cannot clear a path's conflict-stage index entries (see
+//     internal/gitcore/write.go's doc), so this one add stays beside the merge it
+//     resolves.
+//   - "worktree" — the scratch-worktree family (add/remove/prune); linked worktrees are
+//     a separate, larger go-git gap, explicitly out of scope for this brief and left to
+//     the named follow-on stream.
+//   - "fetch", "push" — the transport verbs; not yet migrated (briefs 05 and 06 own them).
+var gitexecVerbs = map[string]bool{
+	"merge": true, "diff": true, "add": true, "worktree": true,
+	"fetch": true, "push": true,
+}
+
 // runGit runs git with cwd=dir. It is a variable so tests can record argv; production
-// binds it to the exec seam above.
+// dispatches each call by verb: the fenced set above goes through internal/gitexec —
+// the ONE audited git-binary fallback, allowlist-checked before anything spawns; any
+// other verb reaching here would be a bug (every migrated verb now calls gitcore
+// directly, in assess.go / currency.go / merge.go, and never reaches this seam at
+// all), so it falls through to the plain exec seam rather than refusing outright,
+// matching this function's pre-migration behaviour for whatever such a caller intended.
 //
 // Note it does NOT use `git -C`: the working directory is set on the process. A tool
 // that threads -C through every call eventually forgets one and silently operates on
 // the desk's own tree, which is the single outcome the temp-worktree rule exists to
 // prevent.
-var runGit = func(dir string, args ...string) (string, error) { return runCmdIn(dir, "git", args...) }
+var runGit = func(dir string, args ...string) (string, error) {
+	if len(args) > 0 && gitexecVerbs[args[0]] {
+		out, err := gitexec.Run(toolName, dir, args...)
+		if err != nil {
+			// gitexec's own error does not scrub stderr (it is a low-level, tool-agnostic
+			// seam); deskmerge's stderr is remote-influenced (see runCmdIn's own doc), so
+			// the same scrub applies here, at the point deskmerge re-enters its own error
+			// handling.
+			return out, errors.New(deskkit.StripControl(err.Error()))
+		}
+		return out, nil
+	}
+	return runCmdIn(dir, "git", args...)
+}
+
+// gitcoreCommit is the seam through which commitMerge writes the merge commit — the
+// gitcore analogue of runGit, kept as a var for the same reason: a test can replace it
+// to prove the surrounding checks (verifyTwoParent above all) catch a differently-shaped
+// result, driven through the SAME real git tooling the fixture already uses elsewhere
+// rather than a mock of the decision.
+var gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	return repo.Commit(opts)
+}
 
 // runGH runs a gh subcommand under the AMBIENT gh identity, for READS only. deskmerge
 // makes no mutating gh call on any path — its only write is a `git push` of the PR's

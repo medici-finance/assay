@@ -69,6 +69,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskcomms":         {},
 	"deskdigest":        {},
 	"deskdispatch":      {},
+	"deskdisable":       {},
 	"deskdisposition":   {},
 	"deskevidence":      {},
 	"deskfile":          {},

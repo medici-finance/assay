@@ -460,9 +460,16 @@ func TestRosterKnownKeySet(t *testing.T) {
 	}
 }
 
+// TestRepoForgesRejectsBareBasenameAndBadForge — ASSAY_REPO_FORGES is an EXTENSION
+// key: a malformed or ambiguous entry no longer refuses the whole roster (the
+// TRUST/EXTENSION split this brief adds). It is recorded on cfg.Ext as ExtInvalid
+// instead, cfg.RepoForges resets to empty (ForgeFor's remote-host fallback, or its
+// own Unverifiable refusal, is exactly the "unset" behaviour — never a silent
+// widening of which forge a write targets), and only a component that requires
+// assay.roster.ext.repo-forges goes INACTIVE.
 func TestRepoForgesRejectsBareBasenameAndBadForge(t *testing.T) {
 	cases := []string{
-		"tracker=github",          // bare basename, unlike ASSAY_REPO_ALIASES this must refuse
+		"tracker=github",          // bare basename, unlike ASSAY_REPO_ALIASES this must reject
 		"example-org/tracker=svn", // unrecognised forge
 		"example-org/tracker",     // no '='
 		"example-org/tracker=",    // empty forge
@@ -485,8 +492,15 @@ func TestRepoForgesRejectsBareBasenameAndBadForge(t *testing.T) {
 		t.Setenv("HOME", home)
 		ReloadConfig()
 		cfg := EffectiveConfig()
-		if cfg.Configured() {
-			t.Errorf("entry %q was accepted — want the whole roster refused", entry)
+		if !cfg.Configured() {
+			t.Errorf("entry %q refused the WHOLE roster — an extension key's bad value must "+
+				"deactivate only its dependents", entry)
+		}
+		if len(cfg.RepoForges) != 0 {
+			t.Errorf("entry %q: cfg.RepoForges still carries entries: %v", entry, cfg.RepoForges)
+		}
+		if ext := cfg.Ext["repo-forges"]; ext.Status != ExtInvalid {
+			t.Errorf("entry %q: cfg.Ext[%q].Status = %q, want %q", entry, "repo-forges", ext.Status, ExtInvalid)
 		}
 	}
 	ReloadConfig()

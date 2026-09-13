@@ -24,6 +24,13 @@ func statRoot(root string) (os.FileInfo, error) {
 
 func readFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
+// fileExists reports whether path exists (file or directory) — used for a
+// provider's `evidence` marker (§9's activation gate).
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func relOr(root, path string) string {
 	if rel, err := filepath.Rel(root, path); err == nil {
 		return rel

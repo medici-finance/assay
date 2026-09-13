@@ -59,6 +59,9 @@ func main() {
 	// control surface echoes it — a value that lives in settings rather than in a diff
 	// is only visible at RUN time, and a NARROWING must be as visible as a widening.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

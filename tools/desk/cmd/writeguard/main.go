@@ -67,6 +67,9 @@ func main() {
 	// for anyone diagnosing a refusal, without narrating every tool call. A callout
 	// that has been silently unconfigured is exactly the change this makes visible.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 
 	v, err := run(os.Stdin)
 	if err != nil {
