@@ -199,8 +199,9 @@ operator config directory (`operation not permitted`) — with **zero**
 present and available, not by tool absence — outcome (a), PASS.
 
 The durable evidence for this run is the committed run-log artifact in `#1003`
-(`docs/codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md`, authored under the
-desk session's own posting identity) — the same shape as the merged 2026-09-12 run-log
+(`docs/codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md` (planned) — that PR is
+separate and not yet merged into this branch's own tree, authored under the desk
+session's own posting identity) — the same shape as the merged 2026-09-12 run-log
 this brief already treats as its evidentiary standard. That file carries the full
 verbatim final-message text for both probes, the tool-call census, and the raw event
 logs' sha256 (`step-5b-presence.jsonl`
