@@ -201,11 +201,11 @@ Implemented on branch `feat/contributor-trust-01`. Deliverables: `tools/desk/int
 or a live gather-and-upsert against a real pull request), four fixtures under
 `tools/desk/cmd/deskprovenance/testdata/`, `docs/contributor-provenance.md` (new, the published
 description), and a changelog fragment. **Known scope boundary**, stated in the docs and in
-`cmd/deskprovenance/main.go`'s package comment: today's Forge interface exposes only a pull
+`tools/desk/cmd/deskprovenance/main.go`'s package comment: today's Forge interface exposes only a pull
 request's own body and changed-file paths, so a *live* (non-fixture) run reports the other five
 signals as could-not-check rather than approximating them — extending the Forge interface to
 carry them is a follow-up, not part of this brief's declared file list. Fail-first: with
-`internal/deskkit/provenance.go` moved aside, `go test ./internal/deskkit/ -run 'Provenance'`
+`tools/desk/internal/deskkit/provenance.go` moved aside, `go test ./internal/deskkit/ -run 'Provenance'`
 fails to build (`undefined: signalRegistry`, `undefined: ProvenanceInput`, `undefined: Gather`,
 `undefined: Card`, …); restoring the file and re-running is green (see row 1). Verify table run
 locally against the branch tree (`go build`/`go test` from this repo's `tools/desk/`, not an
