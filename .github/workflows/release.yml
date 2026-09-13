@@ -854,18 +854,30 @@ jobs:
             esac
             body="${RUNNER_TEMP}/pr-${pr}.body"
             err="${RUNNER_TEMP}/credits.err"
-            # REST, not `gh pr view`. `gh pr view` goes through GraphQL, which
-            # needs scopes the job's GITHUB_TOKEN does not carry, and with its
-            # stderr sent to /dev/null it failed SILENTLY for every pull request
-            # in the v1.0.7 dry-run (run 34729832126): an empty login, so every
-            # fragment printed "the author of #N could not be read" and no
-            # reason. `repos/:owner/:repo/pulls/:number` is exactly what this
-            # job's `pull-requests: read` permission covers, and the failure
-            # reason is now captured and PRINTED rather than swallowed — a
+            # curl + python3, not gh: the self-hosted runner ships no gh CLI
+            # (dry-run 34731871537 printed "gh: command not found" for every
+            # fragment), and before that `gh pr view` went through GraphQL,
+            # which needs scopes the job's GITHUB_TOKEN does not carry (dry-run
+            # 34729832126). REST `repos/:owner/:repo/pulls/:number` is exactly
+            # what this job's `pull-requests: read` permission covers, and the
+            # failure reason is captured and PRINTED rather than swallowed — a
             # credit still never fails a release, but it never fails invisibly.
             : > "$err"
-            login="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.login' 2>>"$err" || true)"
-            gh api "repos/${REPO}/pulls/${pr}" --jq '.body // ""' > "$body" 2>>"$err" || : > "$body"
+            resp="${RUNNER_TEMP}/pr-${pr}.json"
+            status=$(curl -sS --retry 3 --retry-connrefused \
+              -o "$resp" -w '%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/pulls/${pr}" 2>>"$err") || status=curl-failed
+            login=""
+            if [ "$status" = "200" ]; then
+              login="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print((d.get("user") or {}).get("login") or "")' "$resp" 2>>"$err" || true)"
+              python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(d.get("body") or "")' "$resp" > "$body" 2>>"$err" || : > "$body"
+            else
+              echo "HTTP ${status} from pulls/${pr}: $(head -c 200 "$resp" 2>/dev/null | tr '\n' ' ')" >> "$err"
+              : > "$body"
+            fi
             if [ -z "$login" ]; then
               printf '%s\tunresolved\n' "$frag" >> "$map"
               echo "could not credit ${frag}: the author of #${pr} could not be read: $(tr '\n' ' ' < "$err" | head -c 300)"
@@ -1456,18 +1468,30 @@ jobs:
             esac
             body="${RUNNER_TEMP}/roll-pr-${pr}.body"
             err="${RUNNER_TEMP}/roll-credits.err"
-            # REST, not `gh pr view`. `gh pr view` goes through GraphQL, which
-            # needs scopes the job's GITHUB_TOKEN does not carry, and with its
-            # stderr sent to /dev/null it failed SILENTLY for every pull request
-            # in the v1.0.7 dry-run (run 34729832126): an empty login, so every
-            # fragment printed "the author of #N could not be read" and no
-            # reason. `repos/:owner/:repo/pulls/:number` is exactly what this
-            # job's `pull-requests: read` permission covers, and the failure
-            # reason is now captured and PRINTED rather than swallowed — a
+            # curl + python3, not gh: the self-hosted runner ships no gh CLI
+            # (dry-run 34731871537 printed "gh: command not found" for every
+            # fragment), and before that `gh pr view` went through GraphQL,
+            # which needs scopes the job's GITHUB_TOKEN does not carry (dry-run
+            # 34729832126). REST `repos/:owner/:repo/pulls/:number` is exactly
+            # what this job's `pull-requests: read` permission covers, and the
+            # failure reason is captured and PRINTED rather than swallowed — a
             # credit still never fails a release, but it never fails invisibly.
             : > "$err"
-            login="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.login' 2>>"$err" || true)"
-            gh api "repos/${REPO}/pulls/${pr}" --jq '.body // ""' > "$body" 2>>"$err" || : > "$body"
+            resp="${RUNNER_TEMP}/pr-${pr}.json"
+            status=$(curl -sS --retry 3 --retry-connrefused \
+              -o "$resp" -w '%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/pulls/${pr}" 2>>"$err") || status=curl-failed
+            login=""
+            if [ "$status" = "200" ]; then
+              login="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print((d.get("user") or {}).get("login") or "")' "$resp" 2>>"$err" || true)"
+              python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(d.get("body") or "")' "$resp" > "$body" 2>>"$err" || : > "$body"
+            else
+              echo "HTTP ${status} from pulls/${pr}: $(head -c 200 "$resp" 2>/dev/null | tr '\n' ' ')" >> "$err"
+              : > "$body"
+            fi
             if [ -z "$login" ]; then
               printf '%s\tunresolved\n' "$frag" >> "$map"
               echo "could not credit ${frag}: the author of #${pr} could not be read: $(tr '\n' ' ' < "$err" | head -c 300)"
