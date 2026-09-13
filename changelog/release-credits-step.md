@@ -1,0 +1,2 @@
+### Added
+- Release notes credit the author a fork change came from: `release.yml` now resolves each changelog fragment to its pull request, decides roster-vs-external with the same roster variables the desk tools use, honours the documented opt-out marker, and passes the credits map to the aggregator so external contributions read `… — thanks @<login>` (contributor-trust/09). The release checkout is deepened so the resolver can see history.
