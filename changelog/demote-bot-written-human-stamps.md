@@ -1,0 +1,1 @@
+- Two stream README rows (desktools-go-git/02, windows-port/04) return to `implemented`: their `human:reviewer` Reviewed cells had been written by the board-writer bot and the brief-v2 migration rather than by `verify-gate-close`, which `statusgen --lint` refuses; re-closing the two gate cards lets the gate write the stamps itself.
