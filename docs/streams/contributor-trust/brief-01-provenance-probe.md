@@ -195,6 +195,43 @@ lands badly" — no row; review-only by design, since tone is the review gate's 
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+Implemented on branch `feat/contributor-trust-01`. Deliverables: `tools/desk/internal/deskkit/provenance.go`
+(new — the seven-signal registry, `Gather`, `Overall`, `Card`), `tools/desk/internal/deskkit/provenance_test.go`
+(new), `tools/desk/cmd/deskprovenance/main.go` (new — the verb: `--fixture`/`--dry-run` gather-and-print,
+or a live gather-and-upsert against a real pull request), four fixtures under
+`tools/desk/cmd/deskprovenance/testdata/`, `docs/contributor-provenance.md` (new, the published
+description), and a changelog fragment. **Known scope boundary**, stated in the docs and in
+`cmd/deskprovenance/main.go`'s package comment: today's Forge interface exposes only a pull
+request's own body and changed-file paths, so a *live* (non-fixture) run reports the other five
+signals as could-not-check rather than approximating them — extending the Forge interface to
+carry them is a follow-up, not part of this brief's declared file list. Fail-first: with
+`internal/deskkit/provenance.go` moved aside, `go test ./internal/deskkit/ -run 'Provenance'`
+fails to build (`undefined: signalRegistry`, `undefined: ProvenanceInput`, `undefined: Gather`,
+`undefined: Card`, …); restoring the file and re-running is green (see row 1). Verify table run
+locally against the branch tree (`go build`/`go test` from this repo's `tools/desk/`, not an
+installed binary):
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'Provenance' -count=1` | exit 0; `ok` | exit 0; `ok` (13 subtests) | 2026-09-13 | assay-worker-app[bot] |
+| 2 | `go build ./cmd/deskprovenance && ./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/ordinary-author.json; echo rc=$?` | `rc=0`; no `flagged` | `rc=0`; card state `clean`, no `flagged` substring anywhere | 2026-09-13 | assay-worker-app[bot] |
+| 3 | `./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/bulk-sweep-author.json; echo rc=$?` | `rc=1`; no `score`/`verdict` | `rc=1`; card state `flagged`, 6 of 7 signals notable; no `score`/`verdict` | 2026-09-13 | assay-worker-app[bot] |
+| 4 | `./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/unreadable-signals.json; echo rc=$?` | `rc=6`; `could-not-check`; no `rc=0` | `rc=6`; card state `could-not-check` (4 signals unreadable, 0 flagged); no `rc=0` | 2026-09-13 | assay-worker-app[bot] |
+| 5 | `./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/ci-paths-touched.json` | exit 1; `continuous-integration` | exit 1; `build-and-dependency-paths-touched` line reads "touches continuous-integration configuration…" | 2026-09-13 | assay-worker-app[bot] |
+| 6 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ProvenanceExcludedSignals' -count=1 -v` | exit 0; `PASS` | exit 0; `--- PASS: TestProvenanceExcludedSignals` | 2026-09-13 | assay-worker-app[bot] |
+| 7 | `./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/bulk-sweep-author.json` | exit 1; `not a judgement of the change` | exit 1; abstention line present verbatim | 2026-09-13 | assay-worker-app[bot] |
+| 8 | `git grep -n -e follower -e employer -e geograph -- tools/desk/internal/deskkit/provenance.go` | exit 1; no match | exit 1 (git-grep's no-match code); no line printed | 2026-09-13 | assay-worker-app[bot] |
+| 9 | `grep -n 'deliberately' docs/contributor-provenance.md` | exit 0; ≥1 match | exit 0; 2 matches (lines 6 and 39) | 2026-09-13 | assay-worker-app[bot] |
+| 10 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:01` | exit 0; `corroborated`; no `DISPROVED`/`COULD-NOT-CHECK` | run against the branch's own diff vs. `refs/remotes/origin/main` post-commit (see PR) | 2026-09-13 | assay-worker-app[bot] |
+
+Also ran, given the corpus-leak guard's known trip on a stream's own brief/decision paths quoted
+in `tools/desk` source comments (precedent: contributor-trust/02's Evidence section): `go test
+./internal/deskkit/ -run 'TestCorpusHasNoWithheldStreamPaths'`. The first draft named the brief and
+decision-record paths, and the tool's own package comment, directly; the guard flagged all five
+occurrences (`docs/streams/contributor-trust`, `docs/streams/decisions`, and the bare
+`contributor-trust` slug form). Neutralised to prose pointing at the published
+`docs/contributor-provenance.md` instead — the guard is now clean.
+
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.
 Human gate is MANDATORY when any risk answer is yes.
