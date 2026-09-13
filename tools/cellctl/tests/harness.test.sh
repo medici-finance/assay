@@ -187,7 +187,9 @@ out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk 2>&1)" && rc=0 || rc=$?
 assert "claude arm still refuses an Opus pin" '[[ $rc -ne 0 ]] && grep -q "resolved DESK_MODEL_the_desk=opus" <<<"$out"'
 out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk --harness codex 2>&1)" && rc=0 || rc=$?
 assert "codex arm does NOT refuse the same Opus pin" '[[ $rc -eq 0 ]]'
-assert "codex arm prints the resolved model as is" 'grep -q "model=opus harness=codex" <<<"$out"'
+# model=... is immediately followed by provider=... (this branch's --provider merge) before
+# harness=... — assert the two substrings independently rather than requiring them adjacent.
+assert "codex arm prints the resolved model as is" 'grep -q "model=opus" <<<"$out" && grep -q "harness=codex" <<<"$out"'
 # restore a non-opus pin for the remaining tests
 grep -v '^DESK_MODEL_the_desk=' "$CELL/cell.env" > "$CELL/cell.env.tmp" && mv "$CELL/cell.env.tmp" "$CELL/cell.env"
 

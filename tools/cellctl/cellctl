@@ -265,7 +265,7 @@ orca_reachable(){
 # cockpit CLIs move fast (one ships a patch every few days), so every verb and flag whose exact
 # spelling this script cannot see is PROBED at run time and skipped with a NOTICE when the
 # installed build does not carry it, rather than hard-coded as a truth that may have drifted.
-help_has(){ local tok="$1"; shift; "$@" --help 2>&1 | grep -qE -- "(^|[[:space:]])${tok}([[:space:],=]|$)"; }
+help_has(){ local tok="$1" out; shift; out="$("$@" --help 2>&1)"; grep -qE -- "(^|[[:space:]])${tok}([[:space:],=]|$)" <<<"$out"; }
 
 # first_flag <help text> <candidate flags...> — print the first candidate the help advertises.
 first_flag(){ local h="$1"; shift; local f; for f in "$@"; do
@@ -313,21 +313,21 @@ cockpit_want(){
   fi
 }
 
-# role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit. When
-# $MODEL_OVERRIDE and/or $HARNESS_OVERRIDE are set (cmd_up's own --model/--harness, applied to
-# every role window it opens), they are threaded onto the desk invocation as --model/--harness, so
-# the window that actually boots resolves the same overrides this plan named — not just this
-# process's own copy of them. Order is fixed (--model before --harness when both are given) so a
-# printed command is stable to grep against.
+# role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit.
+# $MODEL_OVERRIDE, $HARNESS_OVERRIDE (cmd_up's own --model/--harness) and $up_provider (cmd_up's
+# own --provider) are GLOBALS `cmd_up` sets (never `local`) rather than extra positionals — every
+# cockpit arm below builds this string through several layers of function calls, and threading
+# three more positionals through all of them for values that are the SAME for every role in one
+# `up` run would be pure plumbing. All three are unset outside a `cmd_up` run, so a call to
+# `role_cmd` from elsewhere sees them unset too. Order is fixed (--model, then --harness, then
+# --provider) so a printed command is stable to grep against.
 role_cmd(){
-  local extra=""
-  [[ -n "${MODEL_OVERRIDE:-}" ]] && extra="$extra --model '$MODEL_OVERRIDE'"
-  [[ -n "${HARNESS_OVERRIDE:-}" ]] && extra="$extra --harness '$HARNESS_OVERRIDE'"
-  if [[ -n "$extra" ]]; then
-    printf "'%s' desk '%s' '%s'%s '%s'" "$SELF" "$CELL" "$1" "$extra" "$2"
-  else
-    printf "'%s' desk '%s' '%s' '%s'" "$SELF" "$CELL" "$1" "$2"
-  fi
+  local out; out="$(printf "'%s' desk '%s' '%s'" "$SELF" "$CELL" "$1")"
+  [[ -n "${MODEL_OVERRIDE:-}" ]] && out="$out --model '$MODEL_OVERRIDE'"
+  [[ -n "${HARNESS_OVERRIDE:-}" ]] && out="$out --harness '$HARNESS_OVERRIDE'"
+  [[ -n "${up_provider:-}" ]] && out="$out --provider '$up_provider'"
+  out="$out '$2'"
+  printf '%s' "$out"
 }
 
 # roots_valid checks the SHAPE of a CELL_ROOTS value — every entry `<owner>/<repo>=<abs path>` —
@@ -357,17 +357,43 @@ refuse_opus_for_the_desk(){
   die "the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$1 (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env"
 }
 
+# provider_var <name> <suffix> — the cell.env variable name for a provider's BASE_URL/TOKEN_ENV,
+# e.g. `provider_var zai BASE_URL` → CELL_PROVIDER_ZAI_BASE_URL. The name is upper-cased and its
+# `-`s become `_`s so `--provider z.ai`-style typos are refused by a MISSING variable rather than
+# silently reading someone else's.
+provider_var(){ printf 'CELL_PROVIDER_%s_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')" "$2"; }
+
+# resolve_provider <name> — sets PROVIDER_BASE_URL / PROVIDER_TOKEN_ENV / PROVIDER_TOKEN_VAL, or
+# dies naming exactly what cell.env or the shell is missing. `--model` (cellctl's existing pin)
+# only changes the model NAME; a non-Anthropic model additionally needs the API endpoint and
+# credential switched, which is what this does. The TOKEN VALUE is never stored in cell.env — only
+# the name of an env var the OPERATOR's shell is expected to already carry (CELL_PROVIDER_<NAME>_TOKEN_ENV),
+# so a leaked cell.env (or a public-repo mistake committing one) never leaks a credential itself.
+resolve_provider(){
+  local name="$1" base_var token_var
+  base_var="$(provider_var "$name" BASE_URL)"; token_var="$(provider_var "$name" TOKEN_ENV)"
+  PROVIDER_BASE_URL="${!base_var:-}"
+  PROVIDER_TOKEN_ENV="${!token_var:-}"
+  [[ -n "$PROVIDER_BASE_URL" ]] || die "cell.env: $base_var is not set — declare it for provider '$name' (e.g. $base_var=https://api.$name.example)"
+  local upname; upname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
+  [[ -n "$PROVIDER_TOKEN_ENV" ]] || die "cell.env: $token_var is not set — declare it for provider '$name' as the NAME of an env var carrying the token (never the token itself), e.g. $token_var=${upname}_API_KEY"
+  PROVIDER_TOKEN_VAL="${!PROVIDER_TOKEN_ENV:-}"
+  [[ -n "$PROVIDER_TOKEN_VAL" ]] || die "provider '$name': \$$PROVIDER_TOKEN_ENV (named by $token_var) is not set in this shell — export it before running cellctl, cellctl does not manage credential values"
+}
+
 # ---------------------------------------------------------------- cellctl set
 # The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>
-# family (ROLES_DEFAULT with `-` as `_`, and the always-present DEFAULT), so a typo'd role name is
-# refused rather than silently scaffolding a variable no role ever reads.
+# and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV} families (a typo'd role or provider name is
+# refused rather than silently scaffolding a variable no role/provider ever reads).
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CELL_HARNESS \
-TMUX_SESSION"
+TMUX_SESSION CELL_PROVIDER"
 
-# known_cell_env_key <key>: the fixed list above, or DESK_MODEL_<role> for one of the five roles
-# (role name with `-` as `_`) — the same family `cmd_desk` resolves DESK_MODEL_<role> from.
+# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role> for one of the five roles
+# (role name with `-` as `_` — the same family `cmd_desk` resolves DESK_MODEL_<role> from), or
+# CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name (the family
+# `resolve_provider` reads — the name itself is operator-chosen, so any shape is accepted here).
 known_cell_env_key(){
   local k="$1" w r
   for w in $CELL_ENV_KNOWN_KEYS; do [[ "$k" == "$w" ]] && return 0; done
@@ -376,6 +402,7 @@ known_cell_env_key(){
       r="${k#DESK_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV) return 0 ;;
   esac
   return 1
 }
@@ -506,6 +533,21 @@ cmd_check(){
     chk "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$the_desk_model (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
   else
     chk "the-desk model: $the_desk_model" 'true'
+  fi
+  # The cell's DEFAULT provider (CELL_PROVIDER), same resolution `cellctl desk` uses absent an
+  # explicit --provider for the run. Unset is a legitimate n/a (Anthropic, cellctl's long-standing
+  # default) rather than a MISS — a provider is opt-in per cell.
+  if [[ -n "${CELL_PROVIDER:-}" ]]; then
+    local pv_base pv_tokvar pv_base_val pv_tokvar_val
+    pv_base="$(provider_var "$CELL_PROVIDER" BASE_URL)"; pv_tokvar="$(provider_var "$CELL_PROVIDER" TOKEN_ENV)"
+    pv_base_val="${!pv_base:-}"; pv_tokvar_val="${!pv_tokvar:-}"
+    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>}" '[[ -n "$pv_base_val" ]]'
+    chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)" '[[ -n "$pv_tokvar_val" ]]'
+    if [[ -n "$pv_tokvar_val" ]]; then
+      chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
+    fi
+  else
+    na "provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)"
   fi
   check_codex_harness
   case "$CELL_KIND" in
@@ -775,7 +817,7 @@ check_codex_harness(){
 }
 
 cmd_desk(){
-  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]"
+  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]"
   local cell="${1:?$usage_msg}"; shift || true
   local role="${1:?$usage_msg}"; shift || true
   load_cell "$cell"
@@ -784,13 +826,16 @@ cmd_desk(){
   # DESK_MODEL_DEFAULT below, but never touches cell.env. DESK_MODEL_OVERRIDE is the equivalent
   # env form for a wrapper that cannot pass a flag; an explicit --model wins when both are given.
   # --set is the sugar that ALSO persists it (`cellctl set <cell> DESK_MODEL_<role>=<m>`) — it
-  # needs a value to persist, so it is refused without --model/DESK_MODEL_OVERRIDE.
-  # --harness overrides cell.env CELL_HARNESS for THIS run only — it never touches cell.env. No env
-  # form (unlike --model's DESK_MODEL_OVERRIDE): the issue's ask is the flag plus the cell.env pin.
-  local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 harness="$CELL_HARNESS" cfg_in=""
+  # needs a value to persist, so it is refused without --model/DESK_MODEL_OVERRIDE. --provider
+  # switches the ENDPOINT and CREDENTIAL a non-Anthropic model needs (--model only changes the
+  # model NAME) — see resolve_provider. --harness overrides cell.env CELL_HARNESS for THIS run
+  # only — it never touches cell.env. No env form (unlike --model's DESK_MODEL_OVERRIDE): the
+  # issue's ask is the flag plus the cell.env pin.
+  local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 cfg_in="" provider="" harness="$CELL_HARNESS"
   while [[ $# -gt 0 ]]; do case "$1" in
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --set) persist=1; shift;;
+    --provider) provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --*) die "desk: unknown flag $1";;
     *) cfg_in="$1"; shift;;
@@ -799,6 +844,11 @@ cmd_desk(){
     || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment) — nothing to persist otherwise"
   case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
+  # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
+  # (unset = Anthropic, cellctl's own long-standing default).
+  provider="${provider:-${CELL_PROVIDER:-}}"
+  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL=""
+  [[ -n "$provider" ]] && resolve_provider "$provider"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
   # roster alike. `${role%-desk}` would leave "the" for the-desk, hence the explicit case.
@@ -837,7 +887,7 @@ cmd_desk(){
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model_disp harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model_disp provider=${provider:-anthropic} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
     [[ "$persist" == "1" ]] && echo "[dry-run] --set: would persist $mvar=$model_override into $CELL_DIR/cell.env (not written — dry run)"
     return 0
   fi
@@ -888,17 +938,24 @@ cmd_desk(){
   # in the worktree's AGENTS.md instead, appended idempotently at boot.
   [[ "$harness" == "codex" ]] && ensure_codex_resident_rules "$wt"
   cd "$wt"
-  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
+  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp provider=${provider:-anthropic} harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
   if [[ "$harness" == "codex" ]]; then
     # The same exported env the claude arm gets (DESK_LOOP, DESK_SESSION, DESK_ROOTS, shim PATH);
     # CLAUDE_CONFIG_DIR is irrelevant on this arm, so it is not passed. `-C "$wt"` is redundant with
     # the `cd` above (codex sets its own cwd from the flag) but kept explicit per the issue's spec.
+    # --provider is a claude/Anthropic-endpoint switch (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN)
+    # and has no codex equivalent here, so it is not threaded onto this arm.
     exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
   else
+    # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
+    # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
+    # Anthropic and fails, which is exactly the gap this closes. Unset provider → neither var is
+    # exported, and `claude` behaves exactly as it always has.
     exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       claude --name "$session" --model "$model" "/assay:$role"
   fi
 }
@@ -952,7 +1009,7 @@ up_roles(){
 
 cmd_up(){
   load_cell "$1"; shift
-  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" harness_flag=""
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --no-the-desk) no_the_desk=1; shift;;
     --with-the-desk) shift;;
@@ -960,18 +1017,21 @@ cmd_up(){
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
     --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --*) die "up: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
   case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
-  # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads them to thread
-  # --model/--harness onto each role's own `cellctl desk` invocation. Applies to EVERY role window
-  # this run opens, the-desk included — there is deliberately no per-role `--model-<role>` or
-  # `--harness-<role>` form; that case is already `cellctl desk <cell> <role> --model <m> --harness
-  # <h>` on the one window that needs it.
+  # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads these to
+  # thread --model / --harness / --provider onto each role's own `cellctl desk` invocation.
+  # Applies to EVERY role window this run opens, the-desk included — there is deliberately no
+  # per-role `--model-<role>`/`--harness-<role>`/`--provider-<role>` form; that case is already
+  # `cellctl desk <cell> <role> --model <m> --harness <h> --provider <p>` on the one window that
+  # needs it.
   MODEL_OVERRIDE="$model_override"
   HARNESS_OVERRIDE="$harness_flag"
+  up_provider="$provider_flag"
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
   cockpit_want "$cockpit_flag"
   resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
@@ -984,6 +1044,7 @@ cmd_up(){
     echo "[dry-run] cell=$CELL kind=$CELL_KIND cockpit=$COCKPIT session=$SESSION config=$cfg"
     [[ -n "$MODEL_OVERRIDE" ]] && echo "[dry-run] model=$MODEL_OVERRIDE (override) — applied to every role window below"
     [[ -n "$HARNESS_OVERRIDE" ]] && echo "[dry-run] harness=$HARNESS_OVERRIDE — applied to every role window below"
+    [[ -n "$up_provider" ]] && echo "[dry-run] provider=$up_provider (override) — applied to every role window below"
     echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
     local r
     for r in $roles; do
@@ -1028,30 +1089,58 @@ up_tmux(){
 }
 
 # ---------------------------------------------------------------- herdr arm
-# One LABELLED tab per window, the command started as a claude-kind agent under that label — so
-# the cockpit's semantic agent state (idle | working | blocked | done) is what its sidebar shows
-# for each desk, rather than an anonymous pane. `tab create` is probed: a build without it still
-# gets labelled windows from `agent start --label`, with a notice.
+# One LABELLED tab per window, running the role's full command line — the same string the tmux
+# arm hands `tmux new-window` — so every cockpit runs identically, and herdr's own agent detection
+# on the pane's foreground process is what drives its sidebar per desk once `claude` is running.
+#
+# `herdr agent start <name> --kind <k> --pane <id> [-- AGENT_ARG...]` is NOT a "run this shell
+# command" verb, confirmed live against a real herdr 0.8.2: its AGENT_ARG list is appended
+# directly to the KIND's canonical executable (a bare `agent start foo --kind claude --pane <id>`
+# with no AGENT_ARG launches literally `claude` in the pane — visible via `pane read` as the
+# Claude Code startup banner), so `-- bash -lc "<cmd>"` does not run <cmd> as a wrapping shell; it
+# is appended as trailing arguments to `claude` itself. That cannot host cellctl's composite
+# command (fetch the shared repo, cut/fast-forward the worktree, generate shims, cd, THEN exec
+# claude with role-specific flags) — only the final `claude ...` step is a bare executable
+# invocation, and everything before it has to run first, in that pane, in order.
+# `herdr pane run <PANE_ID> <COMMAND>...` (verified live: sends the text, presses Enter, and the
+# command's real output reads back via `pane read`) is what actually hosts it, on the same
+# `tab create` → capture a pane id → drive it shape the design comment above described, just
+# through `pane run` instead of `agent start`.
+herdr_pane_id_from_tab_create(){
+  # stdin: the JSON `herdr tab create` printed. Prints result.root_pane.pane_id, or nothing.
+  python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["root_pane"]["pane_id"])
+except Exception:
+    pass
+' 2>/dev/null
+}
+
 herdr_window(){
-  local label="$1" tabs="$2" cmd="$3"
-  if [[ "$tabs" == "1" ]]; then
-    herdr tab create --label "$label" >/dev/null 2>&1 \
-      || echo "NOTICE: 'herdr tab create --label $label' returned non-zero — continuing; the agent's own --label still names the window" >&2
+  local label="$1" cmd="$2" out pane_id=""
+  if out="$(herdr tab create --label "$label" 2>&1)"; then
+    pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
   fi
-  herdr agent start --kind claude --label "$label" -- bash -lc "$cmd" \
-    || echo "NOTICE: 'herdr agent start' failed for $label — start it by hand: $cmd" >&2
+  if [[ -z "$pane_id" ]]; then
+    echo "NOTICE: 'herdr tab create --label $label' did not return a pane id — start it by hand: $cmd" >&2
+    return
+  fi
+  herdr pane run "$pane_id" "$cmd" >/dev/null 2>&1 \
+    || echo "NOTICE: 'herdr pane run' failed for $label (pane $pane_id) — start it by hand: $cmd" >&2
 }
 
 up_herdr(){
   local cfg="$1" roles="$2"
-  help_has start herdr agent \
-    || die "herdr is the resolved cockpit but this build's 'herdr agent --help' advertises no 'start' — nothing can host a role window; re-run with --cockpit tmux"
-  local tabs=1
-  help_has create herdr tab || { echo "NOTICE: this herdr build advertises no 'tab create' — windows are labelled by 'agent start --label' alone" >&2; tabs=0; }
-  herdr_window "${CELL}-${FIRST_NAME}" "$tabs" "$FIRST_CMD"
+  help_has create herdr tab \
+    || die "herdr is the resolved cockpit but this build's 'herdr tab --help' advertises no 'create' — nothing can host a role window; re-run with --cockpit tmux"
+  help_has run herdr pane \
+    || die "herdr is the resolved cockpit but this build's 'herdr pane --help' advertises no 'run' — nothing can execute the role command in a tab; re-run with --cockpit tmux"
+  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD"
   local role
   for role in $roles; do
-    herdr_window "${CELL}-${role}" "$tabs" "$(role_cmd "$role" "$cfg")"
+    herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")"
     # Same stagger as the tmux arm: the role windows share one .git and one fetch lock.
     sleep 2
   done
@@ -1090,16 +1179,31 @@ up_orca(){
   local verb; verb="$(orca_terminal_verb)" \
     || orca_by_hand "'orca terminal --help' advertises no create-like subcommand on this build" "$cfg" "$roles"
   local h; h="$(orca terminal "$verb" --help 2>&1 || true)"
-  local cmdflag cwdflag nameflag
+  local cmdflag cwdflag nameflag wtflag=""
   cmdflag="$(first_flag "$h" --command --cmd --exec --run)" \
     || orca_by_hand "'orca terminal $verb --help' advertises no flag that carries a command" "$cfg" "$roles"
-  cwdflag="$(first_flag "$h" --cwd --path --directory)" || cwdflag=""
+  # A real orca's create-a-terminal flag for "where" is `--worktree <selector>`, not a bare path —
+  # confirmed live it takes `path:<abs path>` (its documented selector form: `--worktree
+  # path:/projects/myapp`), and that selector 404s (`selector_not_found`) until the path has been
+  # registered with `orca repo add --path <dir>` at least once (also confirmed live; `repo add` is
+  # idempotent — a second call on the same path is a harmless `ok`). `--cwd`/`--path`/`--directory`
+  # are kept as a fallback for a future/alternate orca build that takes a bare directory instead.
+  wtflag="$(first_flag "$h" --worktree)" || wtflag=""
+  if [[ -n "$wtflag" ]]; then
+    help_has add orca repo && { orca repo add --path "$CELL_DIR" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca repo add --path $CELL_DIR' failed — terminal create below may 404 with selector_not_found until $CELL_DIR is registered by hand ('orca repo add --path $CELL_DIR')" >&2; }
+  else
+    cwdflag="$(first_flag "$h" --cwd --path --directory)" || cwdflag=""
+  fi
   nameflag="$(first_flag "$h" --name --title --label)" || nameflag=""
-  [[ -n "$cwdflag" ]] || echo "NOTICE: 'orca terminal $verb' advertises no working-directory flag — the terminals open wherever orca puts them; the command itself is absolute either way" >&2
+  [[ -n "$wtflag" || -n "${cwdflag:-}" ]] \
+    || echo "NOTICE: 'orca terminal $verb' advertises no working-directory flag — the terminals open wherever orca puts them; the command itself is absolute either way" >&2
   local role
   for role in $roles; do
     local -a args=(terminal "$verb")
-    [[ -n "$cwdflag" ]] && args+=("$cwdflag" "$CELL_DIR")
+    if [[ -n "$wtflag" ]]; then args+=("$wtflag" "path:$CELL_DIR")
+    elif [[ -n "${cwdflag:-}" ]]; then args+=("$cwdflag" "$CELL_DIR")
+    fi
     [[ -n "$nameflag" ]] && args+=("$nameflag" "${CELL}-${role}")
     args+=("$cmdflag" "$(role_cmd "$role" "$cfg")")
     orca "${args[@]}" >/dev/null 2>&1 \
@@ -1169,32 +1273,58 @@ cmd_down(){
 
 # A cockpit closes what it opened only where it offers a verb for it. Where it does not, the
 # windows are NAMED so they can be closed by hand — never left unsaid.
+# herdr_tab_id_for_label <label> — the tab_id `herdr tab list` reports for this label, or nothing.
+# `herdr tab close` takes a positional <tab_id> — verified live it advertises no `--label` at
+# all — so closing "the tab labelled <cell>-<role>" is a list-then-match, not a one-shot flag.
+herdr_tab_id_for_label(){
+  local label="$1"
+  herdr tab list 2>/dev/null | python3 -c '
+import sys, json
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+label = sys.argv[1]
+for t in d.get("result", {}).get("tabs", []):
+    if t.get("label") == label:
+        print(t.get("tab_id")); break
+' "$label" 2>/dev/null
+}
+
 down_herdr(){
   local roles; roles="$(up_roles 0)"
-  local verb=""; local v
-  for v in close kill stop; do help_has "$v" herdr tab && { verb="$v"; break; }; done
-  local label
-  if [[ -n "$verb" ]]; then
-    for label in "${CELL}-${FIRST_NAME:-cell}" $(for r in $roles; do echo "${CELL}-${r}"; done); do
-      herdr tab "$verb" --label "$label" >/dev/null 2>&1 || true
-    done
-    echo "[cell] herdr tabs closed ('herdr tab $verb --label <cell>-<role>')"
-  else
-    echo "[cell] this herdr build advertises no tab close/kill verb — close these tabs by hand:"
-    for r in cell $roles; do echo "  ${CELL}-${r}"; done
-  fi
+  help_has close herdr tab || {
+    echo "[cell] this herdr build advertises no 'tab close' — close these tabs by hand:"
+    local r; for r in cell $roles; do echo "  ${CELL}-${r}"; done
+    return
+  }
+  local label tid total=0 closed=0
+  for label in "${CELL}-${FIRST_NAME:-cell}" $(for r in $roles; do echo "${CELL}-${r}"; done); do
+    total=$((total+1))
+    tid="$(herdr_tab_id_for_label "$label")"
+    [[ -n "$tid" ]] && herdr tab close "$tid" >/dev/null 2>&1 && closed=$((closed+1))
+  done
+  echo "[cell] herdr: closed $closed/$total tabs ('herdr tab list' → tab_id by label → 'herdr tab close <tab_id>')"
 }
 
 down_orca(){
-  local roles; roles="$(up_roles 0)" r
-  local verb=""; local v
-  for v in close kill stop delete; do help_has "$v" orca terminal && { verb="$v"; break; }; done
-  if [[ -n "$verb" ]]; then
-    echo "[cell] close this cell's orca terminals with: orca terminal $verb --terminal <handle>"
-    echo "[cell] their handles: orca terminal list"
+  local roles r; roles="$(up_roles 0)"
+  # `orca terminal close --worktree <selector> --all` stops every terminal orca owns for that
+  # worktree in one call — verified live against real orca that `--worktree path:<dir>` is a valid
+  # selector (the `up_orca` arm registers `$CELL_DIR` via `orca repo add` before ever creating a
+  # terminal there), so this is a real close, not a by-hand notice, whenever the build advertises it.
+  local h; h="$(orca terminal close --help 2>&1 || true)"
+  local wtflag allflag
+  wtflag="$(first_flag "$h" --worktree)" || wtflag=""
+  allflag="$(first_flag "$h" --all)" || allflag=""
+  if [[ -n "$wtflag" && -n "$allflag" ]]; then
+    if orca terminal close "$wtflag" "path:$CELL_DIR" "$allflag" >/dev/null 2>&1; then
+      echo "[cell] orca: closed every terminal for $CELL_DIR ('orca terminal close $wtflag path:$CELL_DIR $allflag')"
+    else
+      echo "[cell] 'orca terminal close $wtflag path:$CELL_DIR $allflag' failed — close the ${CELL}-<role> terminals by hand:" >&2
+      for r in cell $roles; do echo "  ${CELL}-${r}"; done
+    fi
   else
-    echo "[cell] this orca build advertises no terminal close verb — close the ${CELL}-<role> terminals by hand:"
-    for r in $roles; do echo "  ${CELL}-${r}"; done
+    echo "[cell] this orca build advertises no worktree-scoped terminal close — close the ${CELL}-<role> terminals by hand ('orca terminal list --worktree path:$CELL_DIR'):"
+    for r in cell $roles; do echo "  ${CELL}-${r}"; done
   fi
   # Scheduled automations OUTLIVE a `down` on purpose: `up --automate` is the run-while-away
   # shape, and taking the windows down is not the same act as cancelling the schedule. They are
@@ -1414,6 +1544,14 @@ DESK_MODEL_the_desk=fable
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
+# Provider (optional; unset = Anthropic). \`--model\` alone only changes the model NAME — a
+# non-Anthropic model additionally needs its endpoint and credential switched, which a provider
+# does: uncomment and name a provider (any short slug), then declare its endpoint and the NAME of
+# an env var THIS SHELL will carry the token in (never the token value itself):
+# CELL_PROVIDER=zai
+# CELL_PROVIDER_ZAI_BASE_URL=https://api.z.ai/api/anthropic
+# CELL_PROVIDER_ZAI_TOKEN_ENV=ZAI_API_KEY
+# --provider <name> on \`cellctl desk\`/\`up\` overrides this for one run without editing cell.env.
 # No deskd on a house cell. DESKD=1 requires one, as on a k8s cell (then fill bin/deskd,
 # bin/deskcli and a cells-$cell.yaml slice, and stand it with CELL_ATTENDED=1 cellctl deskd $cell).
 DESKD=0
@@ -1437,13 +1575,21 @@ EOF
   echo "[new] scaffolded $d (house cell) — cellctl check $cell, then cellctl desk $cell <role>"
 }
 
+# Every verb below that can take more than one trailing token forwards with the `shift; ... "${@:2}"`
+# shape `up` originated: it hands the callee exactly the arguments given, never a phantom empty
+# positional. `desk` and `down` used to pass a fixed `"${3:-}"` (`down` also `"${4:-}"`) instead —
+# an empty string IS an argument once quoted, so a bare `cellctl down <cell>` handed cmd_down one
+# ("") it could not tell from a real stray token, and `cmd_down "${2:?cell}" "${3:-}"` silently
+# dropped a `--cockpit <value>` pair's value beyond position 3 besides. `check` is left alone: its
+# second parameter really is a single optional positional (a config dir), not a flag set, so the
+# fixed-arity form does not have this failure mode.
 case "${1:-}" in
   ls) cmd_ls ;;
   check) cmd_check "${2:?cell}" "${3:-}" ;;
   deskd) cmd_deskd "${2:?cell}" ;;
   desk) shift; cmd_desk "${1:?cell}" "${@:2}" ;;
   up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
-  down) cmd_down "${2:?cell}" "${3:-}" ;;
+  down) shift; cmd_down "${1:?cell}" "${@:2}" ;;
   new) shift; cmd_new "$@" ;;
   set) shift; cmd_set "${1:?cell}" "${@:2}" ;;
   -h|--help|"") usage 0 ;;
