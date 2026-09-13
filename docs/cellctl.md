@@ -446,7 +446,7 @@ answerable before booting rather than after.
 | Cockpit | What `up` opens |
 |---|---|
 | **tmux** | a session `<cell>-cell`: the `deskd`/`cell` window plus one window per role. Unchanged |
-| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too |
+| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
 | **orca** | one **terminal per role** under the cell directory (registered with Orca via `orca repo add` first — Orca 404s an unregistered path), running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
 
 ### The `--automate` recipe (orca only)
@@ -478,6 +478,13 @@ These cockpit CLIs move fast, so every verb and flag whose spelling `cellctl` ca
   build with no `tab create` or no `pane run` is a refusal naming `--cockpit tmux`, because nothing
   could host a window; `herdr down` looks up each window's tab by label (`herdr tab list`) and
   closes it by `tab_id` (`herdr tab close <tab_id>` — real herdr has no `--label` on `close`);
+  before any of that, `up` checks `herdr workspace list` (herdr's own noun for what this file calls
+  a "window") and, finding none open, brings one up itself with
+  `herdr workspace create --label <cell>-<the first window>` — mirroring the tmux arm's
+  `tmux has-session || tmux new-session` — before creating a single tab, dropping the workspace's
+  own auto-seeded default tab once the cell's real tabs exist in it. A build that cannot list or
+  create workspaces, or whose `workspace create` fails, is a refusal naming herdr and the exact
+  command tried, never a silently-opened nothing (#985);
 - orca's create-a-terminal verb and its command / worktree-selector / name flags are read from its
   own help (`--worktree path:<dir>`, not `--cwd` — orca advertises no such flag on this verb). Where
   the verb or the command flag is absent, `cellctl` **prints the exact per-role commands to run by

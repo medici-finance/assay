@@ -1119,10 +1119,13 @@ except Exception:
 }
 
 herdr_window(){
-  local label="$1" cmd="$2" out pane_id=""
-  if out="$(herdr tab create --label "$label" 2>&1)"; then
-    pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
+  local label="$1" cmd="$2" wsid="${3:-}" out pane_id="" rc=0
+  if [[ -n "$wsid" ]]; then
+    out="$(herdr tab create --workspace "$wsid" --label "$label" 2>&1)" || rc=$?
+  else
+    out="$(herdr tab create --label "$label" 2>&1)" || rc=$?
   fi
+  [[ "$rc" == "0" ]] && pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
   if [[ -z "$pane_id" ]]; then
     echo "NOTICE: 'herdr tab create --label $label' did not return a pane id — start it by hand: $cmd" >&2
     return
@@ -1131,19 +1134,95 @@ herdr_window(){
     || echo "NOTICE: 'herdr pane run' failed for $label (pane $pane_id) — start it by hand: $cmd" >&2
 }
 
+# herdr_window_id — the workspace_id `herdr workspace list` reports for the frontmost workspace it
+# already has open, or empty when herdr has no workspace open at all (server not running, or
+# running with zero workspaces — both mean "nowhere for a tab to land" to this cockpit). herdr's
+# own noun for what this file and #985's issue call a "herdr window" is "workspace" (verified live
+# against herdr 0.8.2: `herdr tab list`'s tab_id/workspace_id pairs, and `herdr workspace list`
+# itself) — the top-level container tabs live in, one level above the tab/pane nesting the rest of
+# this arm already drives. This is the herdr analogue of the tmux arm's `tmux has-session`.
+herdr_window_id(){
+  herdr workspace list 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+ws = d.get("result", {}).get("workspaces", [])
+if ws:
+    print(ws[0].get("workspace_id", ""))
+'
+}
+
+# herdr_start_window <label> — brings up a herdr window (a "workspace") when herdr_window_id found
+# none, the same trigger point and create-if-absent shape as the tmux arm's
+# `tmux has-session || tmux new-session`. Prints "<workspace_id>|<default_tab_id>" on success — one
+# line, split by the caller with `${started%%|*}` / `${started#*|}`, because this function is
+# called inside a `$(...)` command substitution (its own subshell): any plain variable it sets does
+# not survive back to up_herdr, so both results have to travel out via stdout, not a global.
+#
+# `herdr workspace create` always seeds the new workspace with one default, unlabelled tab of its
+# own (verified live: its JSON carries a "tab" alongside the "workspace") — the default_tab_id half
+# of the printed line is that tab's tab_id, so up_herdr can close it once the cell's own labelled
+# tabs exist in the same workspace. Closing it any earlier — before the workspace holds a second
+# tab — closes the whole workspace along with it (verified live), so it must never be closed up
+# front; a build/response that carries no tab_id just prints an empty second field, which leaves
+# that one default tab behind rather than risk closing the workspace.
+#
+# Fails closed (die), naming herdr and the exact command tried, when this build cannot create a
+# workspace at all or the command itself fails — never silently leaves the tabs nowhere to land.
+herdr_start_window(){
+  local label="$1" out wsid tab_id
+  help_has create herdr workspace \
+    || die "herdr is the resolved cockpit but no herdr window is open and this build's 'herdr workspace --help' advertises no 'create' — nothing can bring one up to host the role tabs (tried: herdr workspace create --label $label); re-run with --cockpit tmux"
+  out="$(herdr workspace create --label "$label" 2>&1)" \
+    || die "herdr is the resolved cockpit but no herdr window is open and 'herdr workspace create --label $label' failed to bring one up: $out; re-run with --cockpit tmux"
+  wsid="$(python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["workspace"]["workspace_id"])
+except Exception:
+    pass
+' <<<"$out")"
+  [[ -n "$wsid" ]] \
+    || die "herdr is the resolved cockpit but 'herdr workspace create --label $label' did not return a workspace_id — nothing can host the role tabs: $out; re-run with --cockpit tmux"
+  tab_id="$(python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["tab"]["tab_id"])
+except Exception:
+    pass
+' <<<"$out")"
+  printf '%s|%s\n' "$wsid" "$tab_id"
+}
+
 up_herdr(){
   local cfg="$1" roles="$2"
   help_has create herdr tab \
     || die "herdr is the resolved cockpit but this build's 'herdr tab --help' advertises no 'create' — nothing can host a role window; re-run with --cockpit tmux"
   help_has run herdr pane \
     || die "herdr is the resolved cockpit but this build's 'herdr pane --help' advertises no 'run' — nothing can execute the role command in a tab; re-run with --cockpit tmux"
-  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD"
+  help_has list herdr workspace \
+    || die "herdr is the resolved cockpit but this build's 'herdr workspace --help' advertises no 'list' — cannot tell whether a herdr window is already open to host the role tabs; re-run with --cockpit tmux"
+  local new_wsid="" new_default_tab="" started=""
+  if [[ -z "$(herdr_window_id)" ]]; then
+    started="$(herdr_start_window "${CELL}-${FIRST_NAME}")"
+    new_wsid="${started%%|*}"
+    new_default_tab="${started#*|}"
+    echo "[cell] no herdr window was open — started one"
+  fi
+  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD" "$new_wsid"
   local role
   for role in $roles; do
-    herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")"
+    herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")" "$new_wsid"
     # Same stagger as the tmux arm: the role windows share one .git and one fetch lock.
     sleep 2
   done
+  # The freshly-created workspace's own default tab is never wanted — drop it now that the
+  # workspace holds the cell's own labelled tabs too (safe: see herdr_start_window above).
+  [[ -n "$new_default_tab" ]] && { herdr tab close "$new_default_tab" >/dev/null 2>&1 || true; }
   echo "[cell] $CELL up in herdr: ${CELL}-${FIRST_NAME} +$roles (config=$cfg)"
   echo "[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down $CELL"
 }
