@@ -455,6 +455,9 @@ func TestIntakeViewRebaseRoot(t *testing.T) {
 
 // TestParseIntakeFileDispositionCaseInsensitive verifies that parseIntakeFile
 // matches the frontmatter disposition key case-insensitively (issue #931).
+// On unfixed code, gopkg.in/yaml.v3 struct-tag unmarshaling silently ignores
+// case-variant keys (e.g. "Disposition:", "DISPOSITION:"), causing the entry
+// to fall back to the "new" default.
 func TestParseIntakeFileDispositionCaseInsensitive(t *testing.T) {
 	t.Parallel()
 
