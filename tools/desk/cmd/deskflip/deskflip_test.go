@@ -832,6 +832,47 @@ func TestDeclaredButUnresolvableBriefRefusesTheFlip(t *testing.T) {
 	}
 }
 
+// #988 — the reviewer's finding on this PR. securityVerdictStanding and
+// lastSecurityVerdictCommit must reduce to the SAME decisive review, not merely walk the
+// same review list. A standing `Security-Review: fail` is posted at commit A. A LATER
+// `Security-Review: pass` from the same App arrives pinned at an off-head commit B (GitHub
+// allows a review's commit_id to lag a fast push — the pass never re-reviewed the current
+// head). securityVerdictStanding correctly says FAIL, driven by A, because a fail stands
+// whatever commit it names. Before this fix, lastSecurityVerdictCommit tracked the last
+// review carrying EITHER marker with no head-equality filter on the pass case, so the later
+// off-head pass silently overwrote the tracked commit and the function reported B — naming a
+// review that never actually governed the verdict — instead of A, the commit the standing
+// fail (the real reason to refuse) is pinned at.
+func TestLastSecurityVerdictCommitNamesTheStandingFailNotALaterOffHeadPass(t *testing.T) {
+	const commitA = "1111111122222222333333334444444455555555" // where the standing fail was posted
+	const commitB = "2222222233333333444444445555555566666666" // a LATER pass, but off-head
+	bot := reviewerBot(t)
+
+	fail := reviewInfo{State: "COMMENTED", CommitID: commitA, Body: "Security-Review: fail",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	fail.User.Login = bot
+	// Submitted AFTER the fail, but pinned at an off-head commit: it never satisfies
+	// securityVerdictStanding's r.CommitID == head requirement for a pass to govern.
+	pass := reviewInfo{State: "COMMENTED", CommitID: commitB, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:02:00Z"}
+	pass.User.Login = bot
+	reviews := []reviewInfo{fail, pass}
+
+	if v := securityVerdictStanding(reviews, bot, headSHA); v != secFail {
+		t.Fatalf("securityVerdictStanding = %v, want secFail — the standing fail must govern "+
+			"regardless of the later off-head pass", v)
+	}
+	last, ok := lastSecurityVerdictCommit(reviews, bot, headSHA)
+	if !ok {
+		t.Fatal("lastSecurityVerdictCommit reported not-found, but a standing fail governs")
+	}
+	if last != commitA {
+		t.Fatalf("lastSecurityVerdictCommit = %s, want %s (the standing fail's commit) — naming "+
+			"%s (the later off-head pass that never governed anything) defeats the precision the "+
+			"stale-verdict refusal is built to add", last, commitA, commitB)
+	}
+}
+
 // A pass RETRACTED by a later fail at the same head is not green. The reduction is
 // order-sensitive on purpose.
 func TestLaterFailRetractsAnEarlierPassAtTheSameHead(t *testing.T) {

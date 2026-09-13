@@ -928,7 +928,7 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		// head. A PR that has never carried a security-marked review at all still gets the
 		// plain absence message, since there is no stale commit to name.
 		detail := fmt.Sprintf("no App review at head %s carries a `Security-Review: pass` line", short(head))
-		if last, ok := lastSecurityVerdictCommit(reviews, reviewerLogin); ok && last != head {
+		if last, ok := lastSecurityVerdictCommit(reviews, reviewerLogin, head); ok && last != head {
 			detail = fmt.Sprintf(
 				"the last `Security-Review` verdict from %s is pinned at %s, which is behind the PR's "+
 					"current head %s — the PR advanced past the reviewed code and nobody re-ran the security "+
@@ -941,24 +941,26 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 	return nil
 }
 
-// lastSecurityVerdictCommit returns the commit the reviewer App's LAST security-marked
-// review (pass or fail, whichever came later) was submitted at, so a stale-verdict refusal
-// can name it. It walks reviews in the same ascending order securityVerdictStanding reduces,
-// so "last" means the same review in both places; it is read-only diagnostic detail and
-// never feeds the pass/fail decision itself.
-func lastSecurityVerdictCommit(reviews []reviewInfo, reviewerLogin string) (string, bool) {
-	commit := ""
-	found := false
-	for _, r := range reviews {
-		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
-			continue
-		}
-		if deskkit.HasSecurityReviewPass(r.Body) || deskkit.HasSecurityReviewFail(r.Body) {
-			commit = r.CommitID
-			found = true
-		}
+// lastSecurityVerdictCommit returns the commit to name in a stale-verdict refusal. It shares
+// reduceSecurityVerdict with securityVerdictStanding, so the two can never disagree about
+// which review is decisive: when the reduction reached a verdict (secFail or secPass — a fail
+// at any commit, or a pass pinned at the current head), the commit returned is THAT decisive
+// review's commit — never a later, non-decisive review's. Only when the reduction never
+// became decisive at all (secNone: no fail was ever posted, and no pass ever landed at head)
+// does it fall back to the last review carrying either marker, purely so a stale-verdict
+// message still has SOME commit to point at ("the only verdict anyone posted is stale").
+//
+// Before this shared reduction, this function separately tracked "the last review carrying
+// EITHER marker" with no head filter on the pass case, so a LATER off-head pass could
+// silently overwrite the commit a standing fail had already set — reporting a plain staleness
+// framing ("pinned at B, behind head") when the real reason to refuse was a retraction pinned
+// at an earlier commit A that securityVerdictStanding was actually keying off of (#988).
+func lastSecurityVerdictCommit(reviews []reviewInfo, reviewerLogin, head string) (string, bool) {
+	red := reduceSecurityVerdict(reviews, reviewerLogin, head)
+	if red.verdict != secNone {
+		return red.commit, true
 	}
-	return commit, found
+	return red.lastMarked, red.lastMarkedFound
 }
 
 // secVerdict is the security lane's reduction.
@@ -1023,8 +1025,48 @@ func hasSecurityMarker(body string) bool {
 // Returning the verdict rather than a bool keeps "nobody spoke" and "the verdict is fail"
 // distinguishable — collapsing both to false is what made an explicit retraction
 // indistinguishable from silence.
+//
+// This is a thin wrapper over reduceSecurityVerdict, the single walk shared with
+// lastSecurityVerdictCommit — see that function's doc for why the verdict and its diagnostic
+// commit are computed together rather than by two independently-maintained loops.
 func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) secVerdict {
-	out := secNone
+	return reduceSecurityVerdict(reviews, reviewerLogin, head).verdict
+}
+
+// securityVerdictReduction is one reduction's result: the governing verdict and the commit
+// the DECISIVE review — the one that produced that verdict — was pinned at, plus a weaker
+// fallback commit for when no review was decisive at all (see lastMarked below).
+type securityVerdictReduction struct {
+	verdict secVerdict
+	// commit is the decisive review's commit — set on exactly the same case that moves
+	// verdict away from secNone (a fail, unconditionally; a pass, only at head) — so it is
+	// meaningful only when verdict != secNone.
+	commit string
+	// lastMarked/lastMarkedFound track the commit of the LAST review carrying either marker
+	// at all, decisive or not — the one fallback case this reduction still needs: a history
+	// with an off-head pass and NO fail ever posted has no decisive review (verdict stays
+	// secNone, since an off-head pass never governs), yet a stale-verdict refusal still needs
+	// a commit to name for "the only verdict anyone posted, and it's stale." That off-head
+	// pass never governs anything, so it must never be allowed to eclipse a standing fail's
+	// commit (#988) — which is exactly why it is tracked separately from `commit` rather than
+	// folded into the same field.
+	lastMarked      string
+	lastMarkedFound bool
+}
+
+// reduceSecurityVerdict is the ONE walk over a reviewer App's security-marked reviews that
+// both securityVerdictStanding and lastSecurityVerdictCommit read from. Splitting the verdict
+// and its diagnostic commit into two separately-maintained loops is exactly what let them
+// diverge (#988): a loop tracking "the last review carrying either marker" with no head
+// filter on the pass case let a later off-head pass overwrite a commit that a standing fail
+// had set, even though the fail — not that pass — is what governs. Folding both into one
+// switch, updating `commit` on the SAME case that moves `verdict`, makes that divergence
+// unrepresentable: whichever branch decides the verdict is the only branch allowed to move the
+// decisive commit. `lastMarked` is tracked alongside, unconditionally, purely as a fallback
+// for callers that still want SOME commit to point at when the reduction never became
+// decisive (secNone) — it never feeds `verdict` or the decisive `commit`.
+func reduceSecurityVerdict(reviews []reviewInfo, reviewerLogin, head string) securityVerdictReduction {
+	out := securityVerdictReduction{verdict: secNone}
 	for _, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
 			continue
@@ -1033,14 +1075,20 @@ func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) s
 		case deskkit.HasSecurityReviewFail(r.Body):
 			// A fail STANDS whatever commit it names: a head move that did not touch the
 			// reviewed code cannot clear a retraction. Every reason to doubt a fail is a
-			// reason to keep blocking.
-			out = secFail
+			// reason to keep blocking — and the commit it names is the one worth reporting.
+			out.verdict = secFail
+			out.commit = r.CommitID
+			out.lastMarked, out.lastMarkedFound = r.CommitID, true
 		case deskkit.HasSecurityReviewPass(r.Body):
 			// A pass GRANTS only at the current head; an empty head is not a commit, and a
-			// pass at an earlier head neither grants nor clears a standing fail.
+			// pass at an earlier head neither grants nor clears a standing fail — so it must
+			// not overwrite the DECISIVE commit either. It still updates the fallback: an
+			// off-head pass is real diagnostic evidence when nothing else ever governed.
 			if head != "" && r.CommitID == head {
-				out = secPass
+				out.verdict = secPass
+				out.commit = r.CommitID
 			}
+			out.lastMarked, out.lastMarkedFound = r.CommitID, true
 		}
 	}
 	return out
