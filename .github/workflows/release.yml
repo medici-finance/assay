@@ -853,14 +853,28 @@ jobs:
                 ;;
             esac
             body="${RUNNER_TEMP}/pr-${pr}.body"
-            login="$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login' 2>/dev/null || true)"
-            gh pr view "$pr" --repo "$REPO" --json body --jq '.body' > "$body" 2>/dev/null || : > "$body"
+            err="${RUNNER_TEMP}/credits.err"
+            # REST, not `gh pr view`. `gh pr view` goes through GraphQL, which
+            # needs scopes the job's GITHUB_TOKEN does not carry, and with its
+            # stderr sent to /dev/null it failed SILENTLY for every pull request
+            # in the v1.0.7 dry-run (run 34729832126): an empty login, so every
+            # fragment printed "the author of #N could not be read" and no
+            # reason. `repos/:owner/:repo/pulls/:number` is exactly what this
+            # job's `pull-requests: read` permission covers, and the failure
+            # reason is now captured and PRINTED rather than swallowed — a
+            # credit still never fails a release, but it never fails invisibly.
+            : > "$err"
+            login="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.login' 2>>"$err" || true)"
+            gh api "repos/${REPO}/pulls/${pr}" --jq '.body // ""' > "$body" 2>>"$err" || : > "$body"
             if [ -z "$login" ]; then
               printf '%s\tunresolved\n' "$frag" >> "$map"
-              echo "could not credit ${frag}: the author of #${pr} could not be read"
+              echo "could not credit ${frag}: the author of #${pr} could not be read: $(tr '\n' ' ' < "$err" | head -c 300)"
               continue
             fi
             verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body" 2>/dev/null || echo skip:unknown)"
+            # One legible line per fragment, so a dry run says WHO was read and
+            # WHAT was decided, not only the outcome.
+            echo "resolved ${frag} (#${pr}): login=${login} verdict=${verdict}"
             case "$verdict" in
               credit)
                 printf '%s\t@%s\n' "$frag" "$login" >> "$map"
@@ -1441,14 +1455,28 @@ jobs:
                 ;;
             esac
             body="${RUNNER_TEMP}/roll-pr-${pr}.body"
-            login="$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login' 2>/dev/null || true)"
-            gh pr view "$pr" --repo "$REPO" --json body --jq '.body' > "$body" 2>/dev/null || : > "$body"
+            err="${RUNNER_TEMP}/roll-credits.err"
+            # REST, not `gh pr view`. `gh pr view` goes through GraphQL, which
+            # needs scopes the job's GITHUB_TOKEN does not carry, and with its
+            # stderr sent to /dev/null it failed SILENTLY for every pull request
+            # in the v1.0.7 dry-run (run 34729832126): an empty login, so every
+            # fragment printed "the author of #N could not be read" and no
+            # reason. `repos/:owner/:repo/pulls/:number` is exactly what this
+            # job's `pull-requests: read` permission covers, and the failure
+            # reason is now captured and PRINTED rather than swallowed — a
+            # credit still never fails a release, but it never fails invisibly.
+            : > "$err"
+            login="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.login' 2>>"$err" || true)"
+            gh api "repos/${REPO}/pulls/${pr}" --jq '.body // ""' > "$body" 2>>"$err" || : > "$body"
             if [ -z "$login" ]; then
               printf '%s\tunresolved\n' "$frag" >> "$map"
-              echo "could not credit ${frag}: the author of #${pr} could not be read"
+              echo "could not credit ${frag}: the author of #${pr} could not be read: $(tr '\n' ' ' < "$err" | head -c 300)"
               continue
             fi
             verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body" 2>/dev/null || echo skip:unknown)"
+            # One legible line per fragment, so a dry run says WHO was read and
+            # WHAT was decided, not only the outcome.
+            echo "resolved ${frag} (#${pr}): login=${login} verdict=${verdict}"
             case "$verdict" in
               credit)
                 printf '%s\t@%s\n' "$frag" "$login" >> "$map"
