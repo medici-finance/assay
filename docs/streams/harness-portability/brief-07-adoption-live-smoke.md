@@ -57,11 +57,23 @@ facts:
   minimum coverage: (1) fresh install per the adopt path; (2) session start → resident
   rules present WITHOUT manual pasting (probe: ask the session to state rule 3's
   neutral-dispatch wording); (3) invoke each of the seven skills by name → body loads;
-  (4) auto-trigger probe per 01's `auto-trigger` verdict; (5) dispatch probe →
-  `runs`/`degrades`/`refuses` observed per the ruled matrix, degradation STATED by the
-  session, not silent; (6) isolation probe → refusal fires where ruled; (7) evidence
-  discipline probe → a Verify row executed and recorded. Each step's evidence is a
-  transcript excerpt pasted into the protocol's run log.
+  (4) auto-trigger probe per 01's `auto-trigger` verdict; (5) dispatch-claim probe →
+  spawn tools confirmed PRESENT under `multi_agent=true` (positive-presence check),
+  with fan-out gated by the desk's own claim-before-dispatch ceremony, not by tool
+  absence — **re-baselined per `#939` (ratified)**, see the established-fact note below;
+  (6) isolation probe → refusal fires where ruled; (7) evidence discipline probe → a
+  Verify row executed and recorded. Each step's evidence is a transcript excerpt pasted
+  into the protocol's run log.
+- **Established fact (`#939`, ratified — not a live finding, so it is stated once here
+  rather than re-measured on every run):** on `codex-cli 0.154.0`,
+  `features.multi_agent=false` no longer removes the spawn tools from the session's tool
+  list — `codex features list` reports `multi_agent  stable  true`, and both a
+  presence-check and an actual `spawn_agent` call succeeded with the flag set `false`.
+  Step 5's original precondition ("dispatch unavailable, so the ruled serial-degradation
+  must be observed") is therefore unfalsifiable on this CLI version; the run log merged
+  via `#937` recorded it `BLOCKED` for exactly this reason. The step is re-baselined
+  (see `docs/codex-smoke-protocol.md` Step 5) to assert what 0.154.0 actually exposes:
+  tool presence plus claim-gated (not absence-gated) fan-out.
 - The first executed run log is committed under
   `docs/codex-smoke-runs/<date>-<codex-version>.md` — the run log is the artifact the
   human gate signs.
@@ -137,6 +149,31 @@ Runner ≠ implementer. Own temp worktree off origin/main (includes merged PR me
 **VERIFY: FAIL** — rows 1, 2, 3, 3a, 4, 4a, 5, 7 all pass exactly as written. Row 6 fails as literally written on merged main — a genuine defect, not an evasion or misreading. This needs a re-baseline (read SOURCES.yaml's bundle-version the same way row 5 does), not a status flip. Row 7 (the stream's acceptance row) is now structurally satisfied by the merged run log, but the brief cannot advance past `implemented` while row 6 is red.
 
 Per frontmatter `gate: human`: this verifier does not sign off and status does not change. Evidence-only.
+
+### Step 5 re-baseline — 2026-09-13 (worker-desk, per `#939` ratified)
+
+`docs/codex-smoke-protocol.md` Step 5 amended: the old `multi_agent=false` /
+dispatch-unavailable precondition is replaced with the two assertions described in this
+brief's Context section above (spawn-tool presence under `multi_agent=true`; fan-out
+gated by the claim-before-dispatch ceremony, not tool absence). The run-log skeleton's
+Step 5 block was updated to match.
+
+**Live re-run of the new Step 5: not executed by this session — genuinely BLOCKED, and
+the block is reported rather than routed around.** This dispatch called for building an
+isolated `CODEX_HOME` (fresh config + copied credentials) to run `codex exec --sandbox
+danger-full-access` for this one sanctioned step, mirroring the precedent already in the
+run log merged via `#937`. This session's own tool-permission layer refused that
+construction outright (denial reason: "Create Unsafe Agents") on the very actions
+needed to stand the environment up — before any live Codex session was started and
+before any credential material was written to disk. No workaround was attempted, per
+this house's own rule that a guard refusal is a STOP, not a routing problem, and per the
+brief's own `gate-why`: the live-run environment is one "only Ian provides or
+sanctions," so a session that cannot self-procure it safely should not force the issue.
+The protocol amendment above is ready for the live run; the live run itself still needs
+an environment/session where this specific action is sanctioned — i.e., Ian directly, or
+a session with different tooling permissions than this one. Filed on `#937` (comment) and
+`#939` for visibility; not filed as a new issue since the blocker is this session's own
+tooling posture, not a bundle/protocol defect.
 
 ## Review
 
