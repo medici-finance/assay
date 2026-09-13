@@ -424,14 +424,18 @@ func confirm(c common, n int, target string, who caller, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	tRepo, tN, err := resolveRef(c.repo, target)
+	// Resolve and record against the PROPOSAL's target, not the caller's raw --by
+	// string: standingProposal has already proven the two agree once normalized, and
+	// the marker's form is always fully qualified (`owner/repo#N`), so it resolves
+	// cleanly even when the caller's own spelling was a bare number.
+	tRepo, tN, err := resolveRef(c.repo, p.Target)
 	if err != nil {
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
 	return applyClose(closeReq{
 		repo: c.repo, number: n, mode: modeSuperseded,
-		target: strings.TrimSpace(target), dryRun: c.dryRun, g: g,
+		target: strings.TrimSpace(p.Target), dryRun: c.dryRun, g: g,
 		verdict:  &supersedeVerdict{kind: verdictConfirmed, proposal: p, by: who.login},
 		crossRef: &crossRef{repo: tRepo, number: tN, body: crossRefBody(c.repo, n, p, who)},
 	}, out)
@@ -533,12 +537,33 @@ func standingProposal(repo string, n int, target string, who caller, half string
 				"is the single-actor close this lane exists to prevent.",
 			repo, n, deskkit.StripControl(p.Author), half))
 	}
-	if !refsAgree(p.Target, target) {
+	// Compare NORMALIZED forms, not the raw strings: the marker always records
+	// `owner/repo#N` (fully qualified), but a caller's `--by` may be a bare `N` — a
+	// format difference, not a target disagreement. A bare number on the caller's side
+	// defaults to repo (this item's own repo, i.e. `-R`). Only after normalizing both
+	// sides does a real mismatch get reported, and then it names BOTH forms explicitly
+	// rather than just "disagree" (#984).
+	normRecorded, recOk := normalizeItemRef(repo, p.Target)
+	normCaller, callerOk := normalizeItemRef(repo, target)
+	if !recOk {
 		return proposal{}, deskkit.Refused(fmt.Sprintf(
-			"refused: the standing proposal on %s#%d names %s as the superseding item, but this %s declares "+
-				"%s. The record and the caller disagree about what settled it; deskclose does not pick a "+
-				"winner — re-propose against the right target, or %s the proposal as it stands.",
-			repo, n, deskkit.StripControl(p.Target), half, deskkit.StripControl(target), "dispute"))
+			"refused: the standing proposal on %s#%d names %s as the superseding item, which does not parse "+
+				"as an item reference (want N, #N, owner/repo#N, or a github.com permalink)",
+			repo, n, deskkit.StripControl(p.Target)))
+	}
+	if !callerOk {
+		return proposal{}, deskkit.Refused(fmt.Sprintf(
+			"refused: %s does not parse as an item reference (want N, #N, owner/repo#N, or a github.com "+
+				"permalink)", deskkit.StripControl(target)))
+	}
+	if !strings.EqualFold(normRecorded, normCaller) {
+		return proposal{}, deskkit.Refused(fmt.Sprintf(
+			"refused: the standing proposal on %s#%d names %s as the superseding item (recorded form: %s), "+
+				"but this %s declares %s (expected form: %s). The record and the caller disagree about what "+
+				"settled it; deskclose does not pick a winner — re-propose against the right target, or %s "+
+				"the proposal as it stands.",
+			repo, n, deskkit.StripControl(p.Target), deskkit.StripControl(normRecorded), half,
+			deskkit.StripControl(target), deskkit.StripControl(normCaller), "dispute"))
 	}
 	return p, nil
 }
