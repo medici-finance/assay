@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,30 @@ const EnvCell = "ASSAY_COMMS_CELL"
 const idlePollCadence = time.Minute
 
 func main() {
-	os.Exit(run(os.Getenv))
+	os.Exit(dispatch(os.Args[1:], os.Getenv, os.Stdout))
+}
+
+// dispatch is main's testable body ahead of the drain-loop/sweep split: with
+// no args (production wiring) it is byte-identical to calling run(getenv)
+// directly — the standing drain loop. "sweep" routes to the daily
+// lane-violation sweep (sweep.go) instead; every other
+// first argument is refused rather than silently falling back to the drain
+// loop, so a typo'd subcommand cannot be mistaken for "start the loop".
+func dispatch(args []string, getenv func(string) string, stdout io.Writer) int {
+	if len(args) == 0 {
+		return run(getenv)
+	}
+	switch args[0] {
+	case "sweep":
+		err := cmdSweep(args[1:], getenv, stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		return exitCodeOf(err)
+	default:
+		fmt.Fprintf(os.Stderr, "commsloop: unknown subcommand %q (want: sweep, or no args for the drain loop)\n", args[0])
+		return deskkit.ExitRefused
+	}
 }
 
 // run is main's testable body: it never calls os.Exit itself.

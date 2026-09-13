@@ -122,3 +122,54 @@ func TestRefuseMintEmptyInput(t *testing.T) {
 		t.Fatalf("want ErrMintInput for an empty role, got %v", err)
 	}
 }
+
+// TestVerifyIdentityOnlyAcceptsAgedAssertion is VerifyIdentityOnly's own
+// positive control, and the direct regression test for the bug it fixes: an
+// assertion long past its original receipt window (ExpiresAt), for a cell
+// that is still trusted, must verify — the window is a property of the
+// original message-time admission decision, not of whether the signing cell
+// is still legitimate. Verify itself would refuse this with ErrExpired;
+// VerifyIdentityOnly must not.
+func TestVerifyIdentityOnlyAcceptsAgedAssertion(t *testing.T) {
+	pub, signer := newKeypair(t)
+	a, err := Mint("cell-a", "worker-desk", "msg-1", "nonce-1", testNow, 30*time.Second, signer)
+	if err != nil {
+		t.Fatalf("Mint: %v", err)
+	}
+	trust := Ed25519TrustStore{"cell-a": pub}
+	// Far past the 30s window and DefaultSkew both — Verify would refuse this.
+	if err := VerifyIdentityOnly(a, trust); err != nil {
+		t.Fatalf("VerifyIdentityOnly refused a merely-aged, otherwise-valid assertion: %v", err)
+	}
+}
+
+// TestVerifyIdentityOnlyRefusesUnknownCell: an unrecognised cell is still
+// refused — VerifyIdentityOnly narrows WHICH checks run, it does not weaken
+// the ones it keeps.
+func TestVerifyIdentityOnlyRefusesUnknownCell(t *testing.T) {
+	_, signer := newKeypair(t)
+	a, err := Mint("cell-x", "the-desk", "msg-1", "nonce-1", testNow, time.Minute, signer)
+	if err != nil {
+		t.Fatalf("Mint: %v", err)
+	}
+	pub, _ := newKeypair(t)
+	trust := Ed25519TrustStore{"cell-a": pub}
+	if err := VerifyIdentityOnly(a, trust); !isErr(err, ErrUnknownCell) {
+		t.Fatalf("want ErrUnknownCell, got %v", err)
+	}
+}
+
+// TestVerifyIdentityOnlyRefusesBadSignature: a tampered signature is still
+// refused.
+func TestVerifyIdentityOnlyRefusesBadSignature(t *testing.T) {
+	pub, signer := newKeypair(t)
+	a, err := Mint("cell-a", "worker-desk", "msg-1", "nonce-1", testNow, time.Minute, signer)
+	if err != nil {
+		t.Fatalf("Mint: %v", err)
+	}
+	a.Sig[0] ^= 0xff
+	trust := Ed25519TrustStore{"cell-a": pub}
+	if err := VerifyIdentityOnly(a, trust); !isErr(err, ErrBadSignature) {
+		t.Fatalf("want ErrBadSignature, got %v", err)
+	}
+}
