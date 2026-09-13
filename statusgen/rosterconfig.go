@@ -305,6 +305,19 @@ const (
 	// integer; ABSENT is neither an error nor a refusal (the rule is inert). KEEP IN
 	// SYNC with deskkit/rosterconfig.go's EnvStreamCap.
 	scanEnvStreamCap = "ASSAY_STREAM_CAP"
+
+	// scanEnvContributorLedger (ASSAY_CONTRIBUTOR_LEDGER) is a DESK-only roster
+	// value: the operator-configured path of the contributor-trust ledger,
+	// CONSUMED by deskkit's trusttier.go (ResolveTier) through
+	// deskkit.ContributorLedgerPath(). statusgen resolves no contributor
+	// trust tier and never consumes it — but the two readers share one
+	// roster.env, and an unknown key in the ASSAY_ namespace REFUSES the whole
+	// configuration (parseConfig). So it must be RECOGNISED here, or a
+	// roster.env that configures the ledger for the desk tools would collapse
+	// statusgen's whole trust configuration on the unknown-ASSAY_-key refusal.
+	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvContributorLedger.
+	scanEnvContributorLedger = "ASSAY_CONTRIBUTOR_LEDGER"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -347,6 +360,7 @@ func scanKnownRosterKeys() []string {
 		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
 		scanEnvGitLabSessionEmails,
 		scanEnvStreamCap,
+		scanEnvContributorLedger,
 	}
 }
 
