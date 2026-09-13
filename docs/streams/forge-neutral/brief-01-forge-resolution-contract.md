@@ -10,7 +10,7 @@ why: >-
   configured forge cannot serve an operation.
 wave: 1
 depends: []
-unblocks: ["forge-neutral/02", "forge-neutral/03", "forge-neutral/04", "forge-neutral/05", "forge-neutral/06", "forge-neutral/07", "forge-neutral/08", "forge-neutral/09", "forge-neutral/11"]
+unblocks: ["forge-neutral/02", "forge-neutral/03", "forge-neutral/04", "forge-neutral/05", "forge-neutral/06", "forge-neutral/07", "forge-neutral/08", "forge-neutral/09", "forge-neutral/11", "forge-neutral/17"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
