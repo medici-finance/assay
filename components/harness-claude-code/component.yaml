@@ -1,0 +1,30 @@
+component: assay/harness-claude-code
+version: 0.28.0
+# The Claude Code harness adapter (§9): owns the plugin manifest, the
+# marketplace listing, and the SessionStart/PreToolUse hook wiring the hooks
+# component injects assay.harness (flavour claude-code) to depend on. Files
+# stay where they are; this manifest just names the ownership.
+#
+# `evidence` names the repo-root marketplace listing that makes this adapter
+# genuinely bound in a given tree — until the desired-state record (§7,
+# planned) exists, "presence of exactly one adapter's installed shape selects
+# the binding" (§9) is decided this way: for this repo, only
+# .claude-plugin/marketplace.json is present, so only this adapter is ACTIVE.
+provides:
+  - key: assay.harness
+    flavour: claude-code
+    evidence: .claude-plugin/marketplace.json
+inject:
+  required: []
+  optional: []
+apply:
+  - id: plugin-manifest
+    effect: install plugins/assay/.claude-plugin/plugin.json and the root .claude-plugin/marketplace.json listing
+    boundary: inside
+    inverse: remove the plugin manifest and marketplace listing (TODO composability/02 makes the reverse real)
+  - id: hook-wiring
+    effect: wire plugins/assay/hooks/hooks.json (SessionStart) into the Claude Code plugin cache
+    boundary: inside
+    inverse: remove the hook wiring (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

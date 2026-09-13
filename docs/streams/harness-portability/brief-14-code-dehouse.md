@@ -274,6 +274,41 @@ both live outside this repository and are named, not embedded, on purpose.
      PR, or in any comment. "verified" requires this section filled by someone
      who did NOT implement. -->
 
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: PARTIAL**
+
+Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null`. This brief's Evidence table was completely empty before this pass. Deliverable (the code-dehouse PR) is merged; human gate ratified per its own decision record. Tooling used: tools/leaksweep built fresh from a sibling methodology checkout; token map from that same checkout's docs/leak-sweep-tokens.yaml. Never quoted the map's contents.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---|---|---|---|
+| 1 | path-existence loop (14 paths) | missing=0, 0 | missing=0, 0 — PASS | 2026-09-12 sonnet-5-verifier |
+| 1a | git ls-files count over 6 dirs | 36 | **38** — checked-failed. tools/harnesslint now has 15 tracked files, not 13: a later-merged PR (harness-portability/15) added 2 files to that module. Stale literal, not a defect in 14's own landing | 2026-09-12 sonnet-5-verifier |
+| 2 | leaksweep over a git archive export | sweep-exit=0, checked-failed=0 | exit=0, checked-failed=0 (73 checked-clean, 0 could-not-check) — PASS | 2026-09-12 sonnet-5-verifier |
+| 2a | canary (planted known token) | canary-exit=2 | exit=2 — PASS | 2026-09-12 sonnet-5-verifier |
+| 3 | leak-sweep status at the merge-PR head | SUCCESS | SUCCESS — PASS | 2026-09-12 sonnet-5-verifier |
+| 3a | gitleaks clean then planted a fake AWS-shaped key | clean-exit=0, planted-exit=9 | clean-exit=0, **planted-exit=0** — checked-failed. Root cause isolated: the pinned gitleaks version ships a built-in global allowlist regex that suppresses this exact vendor-example-shaped literal regardless of the repo's own config. Confirmed the repo's own config plus this exact pinned version correctly fires (exit 9) on a different, non-example-suffixed fake. This is a defect in the brief's chosen canary literal, not in the repo's leak-sweep wiring | 2026-09-12 sonnet-5-verifier |
+| 4 | build+vet 3 modules | build-vet=0 | 0 — PASS | 2026-09-12 sonnet-5-verifier |
+| 5 | test 3 modules | tests=0 | **tests=1** — checked-failed. harnessgen and plugindrift suites fail: a skill (human-runsheet) added by a later-merged PR (desk-skills/04, post-dates this brief) is not accounted for in the packaging coverage roster / SOURCES.yaml — real drift on current main, not a defect at landing time | 2026-09-12 sonnet-5-verifier |
+| 6 | 3 generator --check verbs | 0 | **1** — checked-failed. codex --check and cursor --check both could-not-check (exit 2) on the same human-runsheet coverage gap; resident --check alone is clean | 2026-09-12 sonnet-5-verifier |
+| 6a | mutation control | bent-exit=1, restored-exit=0 | bent-exit=2, restored-exit=2 — could-not-check. The coverage-gap precondition failure masks the mutation signal entirely; the intended drift signal can't be observed until the coverage gap above is fixed | 2026-09-12 sonnet-5-verifier |
+| 7 | harnesslint bodies+bindings | 0 | **1** — checked-failed. bodies: clean. bindings: 3 violations — same human-runsheet skill missing its degradation-cell row in all three reference matrices | 2026-09-12 sonnet-5-verifier |
+| 8 | freshness registration + FRESH count | registered=0, 5 | registered=0, 5 — PASS | 2026-09-12 sonnet-5-verifier |
+| 8a | freshness force-age mutation | 5 | 5 — PASS | 2026-09-12 sonnet-5-verifier |
+| 9 | statusgen --lint (built locally) | 0 | 0, LINT: PASS, only NOTICE-level lines (no PROBLEM) — PASS | 2026-09-12 sonnet-5-verifier |
+| 10 | acceptance row — 5 held briefs' paths resolve | unresolved=0 | **unresolved=5** — checked-failed as literally run, but all 5 are false positives of the row's own extraction regex: 3 are truncated duplicates (the regex charset stops mid-match on an escaped dot inside two other briefs' own Verify-row commands — the correctly-spelled paths ARE present and separately captured); 2 are a scratch canary that another brief's own row creates-then-removes within one command line, never a real deliverable path. Manual check: every genuine path the five briefs' Verify tables name does resolve here | 2026-09-12 sonnet-5-verifier |
+| 11 | a sibling brief's rows still discriminate | count>=2, actual-pins=0 | count=2, actual-pins=0 — PASS | 2026-09-12 sonnet-5-verifier |
+| 12 | conflict markers + diffstat scope | 0 markers | conflict-marker search = 13 repo-wide, not brief-scoped — all 13 are legitimate: conflict-marker-detection test fixtures and prose in two briefs and a shepherd skill quoting the literal marker as documentation; none are real unresolved conflicts. Diffstat half is moot: this worktree's HEAD equals origin/main post-merge — that half of the row is designed for a live PR branch | 2026-09-12 sonnet-5-verifier |
+
+`RISK-VALUE: DERIVED` — max-age-days = 45 @ freshness.yaml (5 new occurrences) — every max-age-days entry in this file (6 of 6, including the pre-existing entry) uses exactly 45; this brief reuses the house's one existing convention for untracked-upstream docs rather than inventing a value. Ranks last: a documentation staleness leash is a reversible operational knob, fully undoable by edit+redeploy — not the irreversible act this brief's gate concerns. The brief's actual irreversible surface (44 files crossing the private-to-public boundary) is not governed by any single literal; its correctness is instead what rows 2/2a/3/3a exist to prove (see row 3a finding above — that proof is currently incomplete for the pattern-layer control).
+
+**Brief's own three Review questions, answered:**
+1. Single control between fault and damage, and is it acceptable? At this head: the local-sweep layer ran and passed (rows 2/2a, both genuinely proven); the control-based status layer ran and passed (row 3); the pattern-layer scanner technically ran clean but its own positive control (row 3a) does not fire as specified — so that layer's ability to catch something is unproven by this table, even though it is wired and executing on every commit. Acceptable for the merge that already happened (the two layers that actually gated it both proved themselves), but the defense-in-depth claim is currently only two of three layers independently proven.
+2. Does any row prove a lower layer catches the fault with the upper layer bypassed? Row 2a: yes, cleanly. Row 3a: no — it does not actually exercise the failure mode it claims to, for the reason above.
+3. Did the neutralisation rewrite the provenance narrative or delete it? Rewrote it. Spot-checked the porting-history doc: the porting history, dates, and rationale for each skill's canonical/ported status all read intact and coherent under the neutral vocabulary, consistent with the substitution ruleset the file itself documents.
+
+**VERIFY: PARTIAL.** Core deliverable landed, builds, and the security-critical sweep/control-status rows (2, 2a, 3) genuinely pass. Two distinct problem classes surfaced, neither a defect in this brief's own diff: (a) real drift since landing (rows 5, 6, 6a, 7) from a later-merged PR adding a skill without regenerating packaging/lint coverage — blocks the acceptance claim that the held briefs become runnable/green here until packaging is regenerated and reference-matrix cells updated; (b) Verify-table mechanics defects, not repo defects (rows 1a stale count, 3a wrong canary literal, 10 regex false positives, 12 unscoped grep) — worth a follow-up correction to the brief's own commands, but they don't indicate anything wrong with what was published.
+
+Per frontmatter `gate: human`: this verifier does not sign off and status does not change. Evidence-only.
+
 ## Review
 
 Gate: **human** (from frontmatter; `irreversible: yes`, `sensitive-data: yes`). Reviewer records
