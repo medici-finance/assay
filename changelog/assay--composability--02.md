@@ -1,0 +1,7 @@
+### Added
+- Component-model ledger + `disable` verb (composability/02): `deskkit/ledger.go` is the append-only writer/reader for `.assay/ledger.jsonl`, recording what an outside apply step created so it can later be found and compensated. `deskdisable <component> [--dry-run] [--yes] [--cascade a,b,c]` replays a component's own apply steps in LIFO order — inside steps are reversed for real by a registered executor (assay/streams-scaffold, assay/main-guard, assay/registers-scaffold so far); outside steps are never auto-compensated in this build and print a human checklist line instead, enriched from the ledger. Refuses (touching nothing) when the component is unknown, when disabling it would strand an active dependent not listed in `--cascade`, or when an inside step has no registered automatic reverse.
+- `deskmanifest lint` gained one more check: an outside `apply` step with no `ledger:` value is now a PROBLEM (component-model.md §5).
+
+### Changed
+- Every `component.yaml` in the tree carries a real `inverse:` (inside boundary) or `ledger:` + `compensation:` (outside boundary) for each apply step, replacing the brief-00 `TODO composability/02` placeholders. Every outside compensation in this tree defaults to `list-for-human` — none is marked `unattended: true`.
+- `deskinstall`'s acquire→verify→place mode now names the `.assay/ledger.jsonl` path on a successful run (its own effects are inside the boundary, so it writes no line there, but the path is where a later outside-effect component would, and it is what `deskdisable` reads).

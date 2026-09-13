@@ -13,6 +13,6 @@ apply:
   - id: board-binary
     effect: install the pinned statusgen binary on PATH and pin it in .assay-versions
     boundary: inside
-    inverse: remove the binary and the pin (TODO composability/02 makes the reverse real)
+    inverse: remove the pinned statusgen binary and its entry from .assay-versions
 intercept: []
 config: {}

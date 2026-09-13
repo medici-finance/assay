@@ -63,6 +63,11 @@ Windows assets (from the release build matrix):
   --dest       PATH-resolvable directory the verified binaries are placed in. Required.
   --platform   override auto-detection (e.g. windows-amd64). Default: this host.
 
+A successful run prints the .assay/ledger.jsonl path (component-model.md §5):
+this mode's own effects are inside the boundary and record no line there, but
+the path is where a later outside-effect component would, and it is what
+` + "`deskdisable`" + ` reads when reversing one.
+
 MODE 2 — harness placement (Cursor's install mechanism IS file placement: no
 marketplace, no per-harness plugin manifest). Places the packaging roster's
 skills into --repo/.cursor/skills, plugins/assay/references/*.md as a SIBLING
