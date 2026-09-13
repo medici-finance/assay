@@ -18,25 +18,35 @@
 #     grained (github_pat_).
 #   * Model API-key shapes: Anthropic (sk-ant-) and the generic sk- family.
 #
-# Precision (#908): the pattern set above matches key-SHAPED text wherever it
-# appears, including toolchain material this project never wrote — Go's own
-# stdlib test fixtures, npm's own bundled docs, and PEM format strings compiled
-# into distro crypto binaries (gpgv, libssh2, libgnutls). Two narrow mechanisms
-# keep those out without weakening detection of a REAL secret:
-#   * PATH_ALLOWLIST (below) excludes specific, verified-safe path prefixes
-#     that are wholly populated by a pinned upstream download this Dockerfile
-#     performs (the Go SDK tree, the bundled npm CLI) or by apt-get installing
-#     a well-known distro package (gpgv, libssh2, libgnutls) — never a path
-#     this project's own build steps write into. It applies only to the layer
-#     filesystem surface: a hit in build history or the image config is never
-#     allowlisted, since those are exactly where an accidental credential
-#     default would show up.
-#   * The generic `sk-[A-Za-z0-9]{20,}` alternative is gated to text-shaped
-#     content only (see LOOSE below) — it is too unanchored to check safely
-#     against arbitrary compiled binaries (proven false positive: the `gh` CLI
-#     binary matches it against an unrelated identifier string).
-# Both are precision fixes, not recall weakening: nothing here narrows what a
-# hit LOOKS like, only which already-verified-safe locations are exempt.
+# Precision (#908, corrected — see review on PR #1011): the pattern set above
+# matches key-SHAPED text wherever it appears, including toolchain material
+# this project never wrote — Go's own stdlib test fixtures, npm's own bundled
+# docs, and PEM format strings compiled into distro crypto binaries (gpgv,
+# libssh2, libgnutls), plus one unrelated identifier string inside the `gh`
+# CLI binary. The single mechanism that keeps those out without weakening
+# detection of a REAL secret is PATH_ALLOWLIST (below): specific, verified-safe
+# path prefixes/paths that are wholly populated by a pinned upstream download
+# this Dockerfile performs (the Go SDK tree, the bundled npm CLI), by apt-get
+# installing a well-known distro package (gpgv, libssh2, libgnutls), or — for
+# the `gh` CLI false positive specifically — the exact installed path of that
+# one binary. It applies only to the layer filesystem surface: a hit in build
+# history or the image config is never allowlisted, since those are exactly
+# where an accidental credential default would show up.
+#
+# An earlier version of this fix instead gated the whole generic `sk-`
+# pattern class to text-shaped content (grep -I, which skips every binary
+# file image-wide) to dodge the one `gh`-binary hit. Review on PR #1011 caught
+# that this was a real regression, not a narrow exemption: it made a genuine
+# `sk-`-shaped secret compiled into ANY OTHER binary in the image permanently
+# invisible, not just the one proven false positive. That blanket gating has
+# been reverted — the generic `sk-` pattern is checked against every surface,
+# including binaries, exactly like the anchored patterns, with only the `gh`
+# binary's specific path exempted via PATH_ALLOWLIST (see the entry below and
+# the /opt/app/vendored-tool fixture in layer-secret-scan.test.sh's FALSEPOS
+# image, which proves a real `sk-`-shaped secret in a binary at an ordinary,
+# non-`gh` path is still caught).
+# This is a precision fix, not recall weakening: nothing here narrows what a
+# hit LOOKS like, only which already-verified-safe *paths* are exempt.
 #
 # Fail-closed: any hit exits 1; a surface that cannot be read (no image, no
 # docker) exits 2 — "could not scan" is never reported as clean.
@@ -66,15 +76,18 @@ fi
 #     but a real planted token does.
 #
 # Split into two classes (#908 defect 3): STRICT is anchored enough (a GitHub
-# token/App-key prefix, or the Anthropic sk-ant- prefix) to check safely even
-# against compiled binaries. The bare `sk-` shape is not — it matches arbitrary
-# base64-ish identifier runs inside a binary's string table (proven false
-# positive: the `gh` CLI binary). LOOSE is therefore gated to text-shaped
-# content only at scan time (grep -I), never checked against binaries. Neither
-# class is weakened for the surfaces a real secret actually lands in (an ENV
-# default, a config file, build history) — only the LOOSE alternative loses
-# reach into raw compiled binaries, which is not where a project credential
-# would legitimately end up anyway.
+# token/App-key prefix, or the Anthropic sk-ant- prefix) that it has never
+# produced a binary false positive. The bare `sk-` shape (LOOSE) is looser —
+# it matched one unrelated base64-ish identifier run inside the `gh` CLI
+# binary's string table (proven false positive, see PATH_ALLOWLIST below).
+# BOTH classes are checked against every surface, including compiled binaries
+# (grep -a) — an earlier revision of this fix instead skipped binaries
+# entirely for the whole LOOSE class (grep -I), which review on PR #1011
+# correctly flagged as a real coverage regression (a genuine `sk-`-shaped
+# secret compiled into any OTHER binary would have gone undetected, forever,
+# image-wide). The fix for the one proven `gh` false positive is the same
+# path-scoped allowlist used for the PEM-in-binary cases, not a pattern-wide
+# exemption — see the `gh` entry in PATH_ALLOWLIST.
 PEM='BEGIN[A-Z0-9 _-]*PRIVATE KEY'
 GHTOK='gh[ps]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
 MODELKEY_ANT='sk-ant-[A-Za-z0-9_-]{10,}'
@@ -124,6 +137,15 @@ allow_path() {
     "$WORK"/rootfs/usr/bin/gpgv) return 0 ;;
     "$WORK"/rootfs/usr/lib/*/libssh2.so*) return 0 ;;
     "$WORK"/rootfs/usr/lib/*/libgnutls.so*) return 0 ;;
+    # The `gh` CLI binary (installed by this Dockerfile's install-agent-cli
+    # step), matched by the generic `sk-[A-Za-z0-9]{20,}` alternative against
+    # one unrelated identifier string in its compiled string table
+    # (`sk-fieldnamestringpprint` — verified: an internal Go struct-field/
+    # pprint-label identifier baked in by the `gh` build, not a key; no
+    # plausible secret body follows it). Exempting only this exact path
+    # (never a glob) restores full `sk-` coverage for every other binary in
+    # the image, including any other toolchain binary at any other path.
+    "$WORK"/rootfs/usr/local/bin/gh) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -173,10 +195,13 @@ done
 # -l: just the file names; the masked sample is pulled separately so a real
 # secret value is never echoed to the scanner's own output.
 #
-# Two passes, one per pattern class (see STRICT/LOOSE above):
-#   -a (treat binary as text) for STRICT — anchored enough to check binaries.
-#   -I (skip files grep's own heuristic calls binary) for LOOSE — the bare
-#      `sk-` shape is only trustworthy against text-shaped content.
+# Both pattern classes (see STRICT/LOOSE above) run with -a (treat binary as
+# text) — full coverage on every surface, including compiled binaries, for
+# both the anchored patterns and the generic `sk-` shape. Precision for the
+# one proven `gh`-binary false positive comes from PATH_ALLOWLIST, not from
+# skipping binary scanning for a whole pattern class (see the corrected
+# comments above and the PR #1011 review that caught the prior blanket -I
+# gating as a coverage regression).
 # history.txt/inspect.json/rootfs are searched recursively (-r); nontar-blobs
 # has no directory to recurse (see the extraction step above), so each listed
 # blob is checked individually.
@@ -193,7 +218,7 @@ collect() { # <grep binary-handling flag: a|I> <pattern>
   fi
 }
 collect a "$STRICT"
-collect I "$LOOSE"
+collect a "$LOOSE"
 sort -u "$WORK/hitfiles" -o "$WORK/hitfiles" 2>/dev/null || true
 
 mask() {
