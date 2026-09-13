@@ -226,6 +226,33 @@ else
   bad "C5 credits resolution (rc: $rc)"; printf '%s\n' "$out"
 fi
 
+# C6: a SQUASH-landed fragment is credited to the pull request named in its own
+#     adding commit's subject — NOT to an unrelated pull request that merged
+#     above it afterwards. This is the v1.0.7 dry-run defect
+#     (medici-finance/assay run 34729832126): reading the ancestry-path merges
+#     before the adding commit's own subject collapsed unrelated fragments onto
+#     whatever recent merge happened to sit above them.
+if [ "$rc" = 0 ] \
+   && grep -q '^squash-then-unrelated-merge\.md	5151$' <<<"$out" \
+   && ! grep -q '^squash-then-unrelated-merge\.md	9999$' <<<"$out"; then
+  ok "C6 squash landing credits its own (#N), never the unrelated later merge"
+else
+  bad "C6 squash landing vs later unrelated merge (rc: $rc)"; printf '%s\n' "$out"
+fi
+
+# C7: the unrelated later merge does not launder a credit onto a fragment it
+#     never carried. `never-merged.md` now has a merge commit above it on the
+#     ancestry path; its SECOND parent does not contain the adding commit, so
+#     the fragment stays explicitly unresolved.
+if [ "$rc" = 0 ] \
+   && grep -q '^never-merged\.md	unresolved$' <<<"$out" \
+   && ! grep -q '^never-merged\.md	9999$' <<<"$out" \
+   && grep -q '^merged-via-merge-commit\.md	4242$' <<<"$out"; then
+  ok "C7 a later unrelated merge credits nobody; the true merge landing still resolves"
+else
+  bad "C7 later-merge containment test (rc: $rc)"; printf '%s\n' "$out"
+fi
+
 echo "---"
 echo "aggregate_test: $pass passed, $fail failed (impl: $AGG)"
 [ "$fail" = 0 ]

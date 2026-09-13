@@ -240,7 +240,12 @@ func (w *world) install(t *testing.T, pr prStub, signed bool) {
 		if len(args) > 0 && args[0] == "push" {
 			pushCalls = append(pushCalls, append([]string{dir}, args...))
 		}
-		return runCmdIn(dir, "git", args...)
+		// Delegate to the PRODUCTION dispatcher (prevGit, captured above) rather than
+		// calling runCmdIn directly: the fenced verbs (merge/diff/add/worktree) must
+		// keep routing through internal/gitexec's allowlist during a test run exactly
+		// as they do in production, so a test exercises the real fence rather than a
+		// shortcut around it.
+		return prevGit(dir, args...)
 	}
 	head := pr.HeadRefOid
 	if head == "" {

@@ -151,6 +151,13 @@ unported:
       carries no upstream source block, so there is no drift baseline to hold —
       declared here so coverage accounts for it rather than reporting it
       unaccounted.
+  - path: skills/human-runsheet/SKILL.md
+    reason: >-
+      Authored in this repo (desk-skills/04) as the runsheet-writing utility
+      skill — it renders the acts owed to the driver as exact runnable commands
+      in a session-local file. It carries no upstream source block, so there is
+      no drift baseline to hold — declared here so coverage accounts for it
+      rather than reporting it unaccounted.
   - path: skills/install/SKILL.md
     reason: >-
       Authored in this repo (assay-dogfood/06) as the turnkey install verb that

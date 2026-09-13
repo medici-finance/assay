@@ -966,3 +966,229 @@ func TestSymbolicRefTargetMatchesGit(t *testing.T) {
 		t.Fatal("SymbolicRefTarget on a non-symbolic ref = nil error, want an error matching git's own refusal")
 	}
 }
+
+// --- Commit / CommitParents / DeleteLocalRef goldens (brief 07) --------
+//
+// These are NEW write primitives (deskmerge is the first migrated caller to write a
+// commit), so there is no pre-existing git-binary golden to diff against the way the
+// read helpers above do. Each test instead asserts the outcome directly against the
+// SAME real git binary reading the result back — the same "outcome, not argv" bar.
+
+// TestCommitWritesExplicitTwoParentMerge is deskmerge's own shape: a trial merge left
+// clean in the index (real `git merge --no-ff --no-commit`, no conflicts), committed
+// via Commit with two EXPLICIT parents. It must produce a real, fsck-clean two-parent
+// commit whose parents are exactly — and in order — what was passed, never inferred
+// from HEAD or a MERGE_HEAD file.
+func TestCommitWritesExplicitTwoParentMerge(t *testing.T) {
+	f := gittest.NewFixture(t)
+	mainSHA := f.CommitFile(t, "main.txt", "main work\n", "main work")
+	if _, err := f.Git("checkout", "-q", "-b", "pr", "HEAD~1"); err != nil {
+		t.Fatal(err)
+	}
+	prSHA := f.CommitFile(t, "pr.txt", "pr work\n", "pr work")
+	// The scratch worktree deskmerge merges IN: detached at the PR head, main merged
+	// into it — matching newWorktree + `merge --no-ff --no-commit baseSHA` exactly.
+	if _, err := f.Git("checkout", "-q", "--detach", prSHA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("merge", "--no-ff", "--no-commit", mainSHA); err != nil {
+		t.Fatalf("expected a clean merge, got: %v", err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha, err := repo.Commit(CommitOpts{
+		Message: "Merge main into pr (merge-currency)",
+		Parents: []string{prSHA, mainSHA},
+	})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	if out, err := f.Git("fsck", "--full"); err != nil || strings.Contains(out, "error") {
+		t.Fatalf("fsck reported a problem after Commit: err=%v out=%q", err, out)
+	}
+	parents := strings.Fields(mustGitOutput(t, f, "rev-list", "--parents", "-n", "1", sha))
+	if len(parents) != 3 {
+		t.Fatalf("commit has %d parent(s), want 2: %v", len(parents)-1, parents)
+	}
+	if parents[1] != prSHA || parents[2] != mainSHA {
+		t.Fatalf("parents = [%s %s], want [%s %s] (PR head first, base second, exactly as passed)",
+			parents[1], parents[2], prSHA, mainSHA)
+	}
+	if got := mustGitOutput(t, f, "show", sha+":pr.txt"); got != "pr work" {
+		t.Fatalf("committed tree lost the PR side: pr.txt = %q", got)
+	}
+	if got := mustGitOutput(t, f, "show", sha+":main.txt"); got != "main work" {
+		t.Fatalf("committed tree lost the base side: main.txt = %q", got)
+	}
+}
+
+// TestCommitAfterGitBinaryResolvesConflictStages is the finding this brief's Commit
+// helper exists to route around correctly: go-git's own Worktree.Add cannot clear a
+// path's merge-conflict index stages (verified separately; see write.go's doc), so
+// deskmerge stages a regenerable-conflict resolution with the git BINARY first. This
+// proves Commit produces a clean, uncorrupted tree when it reads an index the binary
+// already resolved — the actual sequence deskmerge's resolveRegenerable + commitMerge
+// run today.
+func TestCommitAfterGitBinaryResolvesConflictStages(t *testing.T) {
+	f := gittest.NewFixture(t)
+	if err := os.WriteFile(filepath.Join(f.Dir, "STATUS.md"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit2(t, f, "add", "STATUS.md")
+	mustGit2(t, f, "commit", "-q", "-m", "seed STATUS.md")
+	if _, err := f.Git("checkout", "-q", "-b", "pr"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.Dir, "STATUS.md"), []byte("pr side\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit2(t, f, "commit", "-aq", "-m", "pr side")
+	prSHA := mustGitOutput(t, f, "rev-parse", "HEAD")
+	if _, err := f.Git("checkout", "-q", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.Dir, "STATUS.md"), []byte("main side\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit2(t, f, "commit", "-aq", "-m", "main side")
+	mainSHA := mustGitOutput(t, f, "rev-parse", "HEAD")
+
+	if _, err := f.Git("checkout", "-q", "--detach", prSHA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("merge", "--no-ff", "--no-commit", mainSHA); err == nil {
+		t.Fatal("expected a conflict")
+	}
+	if err := os.WriteFile(filepath.Join(f.Dir, "STATUS.md"), []byte("regenerated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The git BINARY clears the conflict stages — this is the step that must not move
+	// to go-git; see write.go's doc.
+	mustGit2(t, f, "add", "--", "STATUS.md")
+	if left := mustGitOutput(t, f, "diff", "--name-only", "--diff-filter=U"); left != "" {
+		t.Fatalf("conflict stages were not cleared before Commit: %q", left)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha, err := repo.Commit(CommitOpts{
+		Message: "Merge main into pr (merge-currency)",
+		Parents: []string{prSHA, mainSHA},
+	})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if out, err := f.Git("fsck", "--full"); err != nil || strings.Contains(out, "error") {
+		t.Fatalf("fsck reported a problem after Commit on a regenerated conflict: err=%v out=%q", err, out)
+	}
+	if got := mustGitOutput(t, f, "show", sha+":STATUS.md"); got != "regenerated" {
+		t.Fatalf("STATUS.md = %q, want the regenerated content", got)
+	}
+}
+
+func TestCommitFallsBackToConfiguredIdentityLikeGitCommit(t *testing.T) {
+	f := gittest.NewFixture(t)
+	f.CommitFile(t, "a.txt", "a\n", "a")
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.Dir, "a.txt"), []byte("a2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit2(t, f, "add", "a.txt")
+	sha, err := repo.Commit(CommitOpts{Message: "second"})
+	if err != nil {
+		t.Fatalf("Commit with no explicit Author: %v", err)
+	}
+	got := mustGitOutput(t, f, "show", "-s", "--format=%an <%ae>", sha)
+	if got != "test <test@example.invalid>" {
+		t.Fatalf("author = %q, want the fixture's configured identity (matching `git commit`'s own "+
+			"fallback when invoked with no identity flags)", got)
+	}
+}
+
+func TestCommitParentsMatchesRevListParents(t *testing.T) {
+	f := gittest.NewFixture(t)
+	base := f.CommitFile(t, "b.txt", "b\n", "b")
+	if _, err := f.Git("checkout", "-q", "-b", "side", base); err != nil {
+		t.Fatal(err)
+	}
+	sideSHA := f.CommitFile(t, "s.txt", "s\n", "s")
+	if _, err := f.Git("checkout", "-q", "main"); err != nil {
+		t.Fatal(err)
+	}
+	mergeSHA := mustGitOutput(t, f, "commit-tree", mustGitOutput(t, f, "rev-parse", "HEAD^{tree}"),
+		"-p", base, "-p", sideSHA, "-m", "merge")
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.CommitParents(mergeSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != base || got[1] != sideSHA {
+		t.Fatalf("CommitParents = %v, want [%s %s]", got, base, sideSHA)
+	}
+
+	// A root commit (no parents) matches too — `rev-list --parents -n1` on it prints
+	// only its own hash, i.e. zero parent fields.
+	root := mustGitOutput(t, f, "rev-list", "--max-parents=0", "HEAD")
+	got, err = repo.CommitParents(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("CommitParents(root commit) = %v, want none", got)
+	}
+}
+
+func TestDeleteLocalRefRemovesAndIsNoopOnAbsent(t *testing.T) {
+	f := gittest.NewFixture(t)
+	sha := mustGitOutput(t, f, "rev-parse", "HEAD")
+	mustGit2(t, f, "update-ref", "refs/deskmerge/pr-7", sha)
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteLocalRef("refs/deskmerge/pr-7"); err != nil {
+		t.Fatalf("DeleteLocalRef: %v", err)
+	}
+	if out, err := f.Git("show-ref", "--verify", "--quiet", "refs/deskmerge/pr-7"); err == nil {
+		t.Fatalf("ref still resolves after DeleteLocalRef: %q", out)
+	}
+	// matching `git update-ref -d` on an absent ref: a no-op success, not an error.
+	if err := repo.DeleteLocalRef("refs/deskmerge/pr-7"); err != nil {
+		t.Fatalf("DeleteLocalRef on an already-absent ref must be a no-op success, got: %v", err)
+	}
+}
+
+// mustGitOutput is mustGit's expression form: run and return trimmed stdout, failing
+// the test on error.
+func mustGitOutput(t *testing.T, f *gittest.Fixture, args ...string) string {
+	t.Helper()
+	out, err := f.Git(args...)
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return out
+}
+
+// mustGit2 runs a fixture git command that must succeed, discarding output. Named
+// distinctly from gittest's own unexported mustGit (same package boundary, different
+// package instance).
+func mustGit2(t *testing.T, f *gittest.Fixture, args ...string) {
+	t.Helper()
+	if _, err := f.Git(args...); err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+}

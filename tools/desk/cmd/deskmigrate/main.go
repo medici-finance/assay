@@ -59,6 +59,9 @@ Exit codes:
 func main() {
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 

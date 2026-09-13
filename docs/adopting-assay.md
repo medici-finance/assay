@@ -579,6 +579,20 @@ Two consequences worth stating before you debug them:
   in the same change that adds the roster, or an adopter's CI turns
   red on briefs the roster change never touched.
 
+**A bad TRUST value still refuses everything; a bad EXTENSION value now refuses only its own
+dependents.** The five fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,
+`ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP` — are unchanged: unset or
+malformed, every acting command refuses exactly as described above. The adopter-extension
+surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
+whole roster when one of them is malformed: the loader records the rejection against that ONE
+key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
+only the desk unit that actually declares a dependency on that key deactivates and reports why —
+every unrelated acting command keeps running. This is the fix for the outage class the previous
+paragraph's typo bullet still describes for an **unrecognised** key name: a stray unrecognised
+`ASSAY_*` key still collapses the whole roster today (that bullet is unchanged), but a
+**recognised** extension key's own bad VALUE no longer does.
+
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 
 An absent roster fails loudly: a `REFUSED` line in the echo, and repo-scoped *acting* commands
