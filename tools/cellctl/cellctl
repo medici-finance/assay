@@ -238,7 +238,7 @@ orca_reachable(){
 # cockpit CLIs move fast (one ships a patch every few days), so every verb and flag whose exact
 # spelling this script cannot see is PROBED at run time and skipped with a NOTICE when the
 # installed build does not carry it, rather than hard-coded as a truth that may have drifted.
-help_has(){ local tok="$1"; shift; "$@" --help 2>&1 | grep -qE -- "(^|[[:space:]])${tok}([[:space:],=]|$)"; }
+help_has(){ local tok="$1" out; shift; out="$("$@" --help 2>&1)"; grep -qE -- "(^|[[:space:]])${tok}([[:space:],=]|$)" <<<"$out"; }
 
 # first_flag <help text> <candidate flags...> — print the first candidate the help advertises.
 first_flag(){ local h="$1"; shift; local f; for f in "$@"; do
