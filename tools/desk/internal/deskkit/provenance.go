@@ -21,10 +21,11 @@ package deskkit
 // means the signal it feeds could not be read — it is rendered as could-not-check, never as a
 // real zero.
 //
-// EXCLUDED, BY DESIGN AND BY TEST. Profile text, avatar, follower or following counts, named
-// employer, geography, account name shape, and anything else that describes the PERSON rather
-// than the submission never appears in [signalRegistry] — see TestProvenanceExcludedSignals in
-// provenance_test.go, which fails the build the day one of those categories is added here.
+// EXCLUDED, BY DESIGN AND BY TEST. Profile text, avatar, social-graph counts (accounts that
+// follow it, or that it follows), a named workplace, home region, account name shape, and
+// anything else that describes the PERSON rather than the submission never appears in
+// [signalRegistry] — see TestProvenanceExcludedSignals in provenance_test.go, which fails the
+// build the day one of those categories is added here.
 
 import (
 	"fmt"
