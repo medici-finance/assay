@@ -19,7 +19,7 @@
 #          wrapping shell command, so it cannot host this composite command)
 #          a build with no `pane run` (`herdr pane --help` advertises no `run`) refuses up-front,
 #          naming --cockpit tmux, rather than silently trying agent start
-#     up (assay#985) when `herdr workspace list` (herdr's own noun for what this cockpit and
+#     up (#985) when `herdr workspace list` (herdr's own noun for what this cockpit and
 #          #985's issue call a "herdr window" — verified live against herdr 0.8.2) reports no
 #          workspace open at all, `herdr workspace create --label <cell>-<the first window>` is
 #          called BEFORE any tab create — the same trigger point and create-if-absent shape as the
@@ -98,7 +98,7 @@ sed -i.bak 's/^ROLES=.*/ROLES="worker-desk"/' "$CELL/cell.env"; rm -f "$CELL/cel
 HERDR_CALLS="$T/herdr-calls.log"
 ORCA_CALLS="$T/orca-calls.log"
 
-# herdr stub: shaped like a real herdr 0.8.2 for the calls these arms make, extended (assay#985)
+# herdr stub: shaped like a real herdr 0.8.2 for the calls these arms make, extended (#985)
 # for the workspace verbs — herdr's own noun for what this cockpit calls a "window".
 #   tab create [--workspace <id>] --label <l> → JSON with result.root_pane.pane_id (real shape,
 #                                                 captured live)
@@ -112,7 +112,7 @@ ORCA_CALLS="$T/orca-calls.log"
 #
 # herdr_stub [seeded]: with no argument, no workspace is open yet (the "no herdr window" fixture);
 # "seeded" pre-opens one workspace before cellctl ever runs (the "herdr already has a window"
-# fixture, for the assay#985 regression check that behaviour there is unchanged).
+# fixture, for the #985 regression check that behaviour there is unchanged).
 herdr_stub(){
 local seeded="${1:-}"
 rm -f "$T"/tab-seq "$T"/tab-label-* "$T"/ws-seq "$T"/ws-label-*
@@ -234,7 +234,7 @@ EOF
 chmod +x "$T/bin/orca"; }
 
 # ---------------------------------------------------------------- herdr
-echo "[herdr up: no window open (assay#985)]"
+echo "[herdr up: no window open (#985)]"
 herdr_stub
 # --no-the-desk keeps this to exactly two windows (the FIRST/"cell" window plus one role), so the
 # call counts and pane-id sequence below are unambiguous. No workspace is seeded, so
@@ -253,7 +253,7 @@ assert "'pane run' is called (not 'agent start')" 'grep -q "^pane run" "$HERDR_C
 assert "'agent start' is NEVER called (it cannot host this composite command)" '! grep -q "agent start" "$HERDR_CALLS"'
 assert "pane run's command is the exact role_cmd every cockpit runs" "grep -q \"pane run w1:p3 .*desk 'example-cell' 'worker-desk'\" \"\$HERDR_CALLS\""
 
-echo "[herdr up: window already open — unchanged (assay#985 regression check)]"
+echo "[herdr up: window already open — unchanged (#985 regression check)]"
 herdr_stub seeded
 : > "$HERDR_CALLS"
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr --no-the-desk 2>&1)" && rc=0 || rc=$?
@@ -262,7 +262,7 @@ assert "'workspace create' is NEVER called — a window is already open" '! grep
 assert "one 'tab create --label' per window (cell + worker-desk)" '[[ "$(grep -c "^tab create" "$HERDR_CALLS")" -eq 2 ]]'
 assert "the FIRST window is labelled <cell>-cell" 'grep -q "^tab create --label example-cell-cell" "$HERDR_CALLS"'
 assert "the role window is labelled <cell>-worker-desk" 'grep -q "^tab create --label example-cell-worker-desk" "$HERDR_CALLS"'
-assert "no tab create carries --workspace — identical invocation to before assay#985" '! grep -q -- "--workspace" "$HERDR_CALLS"'
+assert "no tab create carries --workspace — identical invocation to before #985" '! grep -q -- "--workspace" "$HERDR_CALLS"'
 assert "'pane run' is called (not 'agent start')" 'grep -q "^pane run" "$HERDR_CALLS"'
 assert "'agent start' is NEVER called (it cannot host this composite command)" '! grep -q "agent start" "$HERDR_CALLS"'
 assert "pane run's command is the exact role_cmd every cockpit runs" "grep -q \"pane run w1:p2 .*desk 'example-cell' 'worker-desk'\" \"\$HERDR_CALLS\""
@@ -289,7 +289,7 @@ chmod +x "$T/bin/herdr"
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr 2>&1)" && rc=0 || rc=$?
 assert "a herdr build with no 'pane run' refuses up-front" '[[ $rc -ne 0 ]] && grep -q "advertises no .run.\|cockpit tmux" <<<"$out"'
 
-echo "[herdr: no 'workspace list' on this build (assay#985)]"
+echo "[herdr: no 'workspace list' on this build (#985)]"
 cat > "$T/bin/herdr" <<'EOF'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -303,7 +303,7 @@ chmod +x "$T/bin/herdr"
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr 2>&1)" && rc=0 || rc=$?
 assert "a herdr build with no 'workspace list' refuses up-front, naming herdr" '[[ $rc -ne 0 ]] && grep -q "herdr" <<<"$out" && grep -q "advertises no .list.\|cockpit tmux" <<<"$out"'
 
-echo "[herdr: 'workspace create' fails when no window is open (assay#985)]"
+echo "[herdr: 'workspace create' fails when no window is open (#985)]"
 cat > "$T/bin/herdr" <<'EOF'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -322,7 +322,7 @@ out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr 2>&1)" && rc=0 || rc
 assert "a herdr build whose 'workspace create' fails refuses up-front, naming herdr and the command tried" \
   '[[ $rc -ne 0 ]] && grep -q "herdr" <<<"$out" && grep -q "herdr workspace create --label" <<<"$out"'
 
-echo "[herdr: not installed (assay#985)]"
+echo "[herdr: not installed (#985)]"
 rm -f "$T/bin/herdr"
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr 2>&1)" && rc=0 || rc=$?
 assert "--cockpit herdr with no herdr on PATH → non-zero, naming herdr" '[[ $rc -ne 0 ]] && grep -q "herdr" <<<"$out" && grep -q "not on PATH" <<<"$out"'
