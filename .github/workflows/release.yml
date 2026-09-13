@@ -781,13 +781,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-        # CHANGELOG discipline — external-contributor credit (contributor-trust/09)
-        # resolves a fragment back to the pull request it arrived on by walking
-        # git history: the commit that ADDED the fragment, then the merge commit
-        # that brought it here. A shallow clone cannot reach either, so on the
-        # default depth the resolver finds nothing, NOBODY is ever credited, and
-        # the feature is silently inert. Full history is what makes it work.
-        fetch-depth: 0
+          # CHANGELOG discipline — external-contributor credit (contributor-trust/09)
+          # resolves a fragment back to the pull request it arrived on by walking
+          # git history: the commit that ADDED the fragment, then the merge commit
+          # that brought it here. A shallow clone cannot reach either, so on the
+          # default depth the resolver finds nothing, NOBODY is ever credited, and
+          # the feature is silently inert. Full history is what makes it work.
+          fetch-depth: 0
 
       # PREFLIGHT — the publish step parses the REST API's JSON with a small
       # python3 helper, and that step runs AFTER the tag is pushed. A runner
