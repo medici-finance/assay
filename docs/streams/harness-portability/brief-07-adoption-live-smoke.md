@@ -175,7 +175,14 @@ a session with different tooling permissions than this one. Filed on `#937` (com
 `#939` for visibility; not filed as a new issue since the blocker is this session's own
 tooling posture, not a bundle/protocol defect.
 
-**Live re-run of the new Step 5 — 2026-09-13 (the-desk session, driver-directed), PASS/PASS.**
+**Live re-run of the new Step 5 — 2026-09-13, PASS/PASS.** Runner attribution, stated
+plainly since two different sessions touched this step: the paragraph immediately above
+this one records THIS authoring session's own attempt, which was blocked by its own
+tool-permission layer before any live session started — that record stands unedited.
+This entry records a SEPARATE, later run actually executed by the-desk session, at the
+driver's direction, in an environment where that action is sanctioned; the two are not
+the same event and neither supersedes the other's own honest report of what it did.
+
 Run from the same isolated `CODEX_HOME` as the 2026-09-12 smoke, `codex-cli 0.154.0`,
 against the `adopter/` tree from that run. `codex features list` confirms
 `multi_agent  stable  true`. **(i) Presence check** (`--sandbox read-only`,
@@ -186,17 +193,21 @@ against the `adopter/` tree from that run. `codex features list` confirms
 governing rule (`deskboot` preflight → isolated worktree → `deskack` → claim) and
 stopped — `deskack` could not write its roster beacon because the sandbox denies the
 operator config directory (`operation not permitted`) — with **zero**
-`collaboration.*` tool calls in the transcript. Fan-out was held by the house rule with
-the spawn tool present and available, not by tool absence — outcome (a), PASS. Full
-verbatim transcripts posted on `#1002` (comment) and retained on the runner
-(`transcripts/step-5b-presence.jsonl`, `step-5b-presence-last.md`,
-`step-5b-dispatch.jsonl`, `step-5b-dispatch-last.md`, 2026-09-12 smoke directory). Note
-on scope: the refusal fired at the preflight/beacon stage, before a `dispatch-claim`
-acquire was attempted (the sandbox blocks the roster path) — the step's intent (no
-spawn without the ceremony) is demonstrated; a sandbox permitting the roster write
-would additionally exercise the claim-acquire branch (b), a natural follow-up, not a
-blocker. **Step 5 now reads PASS/PASS; hp/07 is 7/7, pending the driver's sign-off on
-this PR.**
+`collaboration.*` tool calls in the transcript (independently confirmed:
+`grep -c '"collaboration\.'` = 0 across both transcripts; 10 `command_execution` + 3
+`agent_message` events total). Fan-out was held by the house rule with the spawn tool
+present and available, not by tool absence — outcome (a), PASS.
+
+Full verbatim transcripts posted on `#1002` (comment, fenced blocks) with the raw event
+logs' sha256 for corroboration (`step-5b-presence.jsonl`
+`7aff2fcafa67969bb59dcfbf0311f6ea5ebf30c90423c3dccbb43bd0aba5c7c4`, `step-5b-dispatch.jsonl`
+`ef48610c57e91a4f56a774be8412e497a44bc293818e16d52aa7786adba0eda8`) and retained in full on
+the runner's own transcript directory. Note on scope: the refusal fired at the
+preflight/beacon stage, before a `dispatch-claim` acquire was attempted (the sandbox
+blocks the roster path) — the step's intent (no spawn without the ceremony) is
+demonstrated; a sandbox permitting the roster write would additionally exercise the
+claim-acquire branch (b), a natural follow-up, not a blocker. **Step 5 now reads
+PASS/PASS; hp/07 is 7/7, pending the driver's sign-off on this PR.**
 
 ## Review
 
