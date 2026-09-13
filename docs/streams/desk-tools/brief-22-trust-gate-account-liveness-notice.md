@@ -219,7 +219,7 @@ facts (read at `b35225c6`, 2026-09-12):
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go vet ./...` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCheckRosterLivenessClassifiesEveryCase$' -count=1` | exit 0 — a stub fetcher table drives Alive/Renamed/Reclaimed/Deleted/Unpinned/CouldNotCheck, INCLUDING a mixed batch where one identity errors and the others still get their own findings |
-| 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCheckRosterLivenessNeverReportsAliveOnIDMismatch$' -count=1` | exit 0 — the NEGATIVE control: an id mismatch is never classified `LivenessAlive` |
+| 3 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCheckRosterLivenessNeverReportsAliveOnIDMismatch$' -count=1` | exit 0 — the NEGATIVE control: an id mismatch is never classified `LivenessAlive`. Mutation: with the `acct.ID != id.PinnedID` branch in `classifyLiveness` disabled, this test REDDENS (proving the guard is what the row exercises), and passes again once restored |
 | 4 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGetAccountDeletedIs404$' -count=1 && go test ./internal/deskkit/ -run '^TestGetAccountRenameKeepsIDMatchesDifferentLogin$' -count=1 && go test ./internal/deskkit/ -run '^TestGetAccountReclaimDifferentID$' -count=1` | exit 0 — the three live-wire shapes, hermetic httptest per `repovis_http_test.go`'s pattern |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGetAccountTransportFailureIsNotDeleted$' -count=1` | exit 0 — a 500/timeout is NOT `ErrAccountNotFound`, so it is never misclassified `LivenessDeleted` |
 | 6 | check:ci | `cd tools/desk && go test ./cmd/deskroster/ -run '^TestLivenessCmdUnconfiguredRosterRefuses$' -count=1` | exit 0 — an unconfigured roster exits refused, printing zero findings for a reason NAMED as "unconfigured", never the same shape as a clean, fully-configured run |
@@ -257,7 +257,7 @@ Implementer evidence, NOT a verification: rows 1–13 run in the implementation 
 |---|------|---------------------|
 | 1 | 0 / 0 | `go build ./...` and `go vet ./...` both silent across the whole module |
 | 2 | 0 | `TestCheckRosterLivenessClassifiesEveryCase` PASS — one mixed batch drives Alive/Renamed/Reclaimed/Deleted/Unpinned/CouldNotCheck together; the transport-error identity does not suppress the other 5 findings |
-| 3 | 0 | `TestCheckRosterLivenessNeverReportsAliveOnIDMismatch` PASS — an id mismatch (pinned 42, live 99999) classifies `LivenessReclaimed`, never `LivenessAlive` |
+| 3 | 0 | `TestCheckRosterLivenessNeverReportsAliveOnIDMismatch` PASS — an id mismatch (pinned 42, live 99999) classifies `LivenessReclaimed`, never `LivenessAlive`. **Mutation demonstrated**: with `classifyLiveness`'s `acct.ID != id.PinnedID` branch short-circuited to `false`, the SAME test FAILs (`an id mismatch (pinned 42, live 99999) classified Alive — the negative control this test exists for`), confirmed by re-running with the mutation applied, then the file was restored byte-identical (`diff` confirmed) and the test re-passes |
 | 4 | 0 / 0 / 0 | `TestGetAccountDeletedIs404`, `TestGetAccountRenameKeepsIDMatchesDifferentLogin`, `TestGetAccountReclaimDifferentID` all PASS against the hermetic httptest server |
 | 5 | 0 | `TestGetAccountTransportFailureIsNotDeleted` PASS across 500/403/401 subtests — none classified `ErrAccountNotFound` |
 | 6 | 0 | `TestLivenessCmdUnconfiguredRosterRefuses` PASS — refusal text contains "unconfigured", zero lines to stdout |
@@ -273,7 +273,7 @@ Implementer evidence, NOT a verification: rows 1–13 run in the implementation 
 
 The brief specifies `GetAccount` as a plain, exported method directly on `*GitHubForge`
 (forge_github.go), modeled on `RepoInfoFetcher`/`HTTPRepoInfoFetcher`. That placement does
-not compile clean against this tree: `internal/deskkit/forge_surface_test.go`'s
+not compile clean against this tree: `tools/desk/internal/deskkit/forge_surface_test.go`'s
 `TestForgeNoPassthrough/neither_backend_exports_a_method_outside_the_interface` — a
 pre-existing invariant already present at the brief's own cited freshness-check commit
 `b35225c6`, not something this change introduces — asserts by reflection that `*GitHubForge`'s
@@ -286,11 +286,11 @@ The brief's own cited precedent is actually the correct fix, just mis-attributed
 wrong type: `RepoVisibility` is not a method on `*GitHubForge` either — it lives on
 `HTTPRepoInfoFetcher`, a standalone fetcher struct that never implements `Forge` at all, so
 the closed-surface test never sees it. This change places `GetAccount` the same way —
-`HTTPAccountFetcher` (`internal/deskkit/trustliveness.go`), a standalone struct, not a
+`HTTPAccountFetcher` (`tools/desk/internal/deskkit/trustliveness.go`), a standalone struct, not a
 `GitHubForge` method — which satisfies every stated intent of the brief (no Forge interface
 change, no GitLab implementation obligation, `AccountFetcher` still takes any fetcher a
 caller hands it) while compiling clean against the pre-existing invariant. The consumer
-(`cmd/deskroster/liveness.go`) still resolves the repo's `Forge` through the existing
+(`tools/desk/cmd/deskroster/liveness.go`) still resolves the repo's `Forge` through the existing
 `forgeFor` seam to decide GitHub-vs-not and to read the already-minted
 `Token`/`BaseURL`/`Client` off the resolved `*deskkit.GitHubForge` value (plain exported
 FIELD reads, not a method call), then hands those to `HTTPAccountFetcher` — the same
