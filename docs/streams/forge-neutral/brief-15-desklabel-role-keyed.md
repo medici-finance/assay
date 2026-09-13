@@ -88,14 +88,18 @@ exec-tier-why: "the vocabulary table this verb enforces is a security boundary d
   happy-path test still passes, because the happy path never exercises the refusal (question a)."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/desklabel: fixed-here (new verb — `add`/`rm`, the vocabulary table, the
-    session-role caller resolution, the GitHub/GitLab target-kind dispatch)"
-  - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go: fixed-here (one op
-    added — `ApplyIssueLabels` — both backends, consumed by desklabel in this same change;
-    `ApplyLabels` itself is UNCHANGED, no signature edit, no existing caller touched)"
-  - "docs/streams/forge-gitlab/inventory.md: fixed-here (row 38)"
-  - "tools/desk/README.md: fixed-here (desklabel's row in the Tool reference table — this
-    repo's desk-verbs index)"
+  - "tools/desk/cmd/desklabel: follow-up forge-neutral/15 (new verb — `add`/`rm`, the
+    vocabulary table, the session-role caller resolution, the GitHub/GitLab target-kind
+    dispatch — this PR is doc-only and does not add this path)"
+  - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go: follow-up
+    forge-neutral/15 (one op to add — `ApplyIssueLabels` — both backends, consumed by
+    desklabel in the implementation change; `ApplyLabels` itself stays UNCHANGED, no
+    signature edit, no existing caller touched — this PR is doc-only and does not edit these
+    files)"
+  - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/15 (row 38 — this PR is
+    doc-only and does not edit this file)"
+  - "tools/desk/README.md: follow-up forge-neutral/15 (desklabel's row in the Tool reference
+    table — this repo's desk-verbs index — this PR is doc-only and does not edit this file)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (no permit row exists for a
     verb that did not exist before this brief; the ratchet does not move)"
   - "tools/desk/cmd/deskclose, deskdisposition, deskflip, deskdispatch: out-of-scope (each
