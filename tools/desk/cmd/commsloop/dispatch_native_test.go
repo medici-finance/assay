@@ -386,6 +386,42 @@ func TestBudgetNoFireOnExhaustedBudget(t *testing.T) {
 	assertExecutorAuditHas(t, "firing budget exhausted")
 }
 
+// --- Verify row 5: InertByDefault ----------------------------------------------
+
+// TestDispatchZeroValueNativeStaysInertForSessionTier pins the property a
+// "role-fenced but inert" brief needs proven directly, for the exact tier this brief
+// concerns — not inferred from a different tier's pre-existing coverage. Every other
+// test in this file builds &Loop{Native: true, ...} and exercises the native path
+// itself; this one is the off switch's own test: a Loop left at its ZERO VALUE (Native
+// false — the production default, and what every real call site in main.go leaves it
+// at today) must resolve loopengine.TierSession (the route-work-dispatch tier) to the
+// same interim PASS/no-fire result Dispatch has always synthesized, never reaching
+// dispatchNative. RunnerCmd/RunnerTable/MakeWorktree are all deliberately left unset —
+// if the `if l.Native` branch in Dispatch were ever accidentally inverted or dropped,
+// dispatchNative's resolveRunner would refuse loudly ("no runner configured") rather
+// than this test silently accepting whatever it does.
+func TestDispatchZeroValueNativeStaysInertForSessionTier(t *testing.T) {
+	l := &Loop{}
+	item := loopengine.Item{ID: "commsmsg/inert-check"}
+
+	handle, err := l.Dispatch(item, loopengine.TierSession)
+	if err != nil {
+		t.Fatalf("zero-value Dispatch(TierSession) must not error, got: %v", err)
+	}
+
+	select {
+	case r := <-handle.Done():
+		if r.Verdict != loopengine.VerdictPass {
+			t.Fatalf("verdict = %q, want PASS (interim no-fire result)", r.Verdict)
+		}
+		if r.RunnerID != "commsloop" {
+			t.Fatalf("RunnerID = %q, want the static commsloop identity — a real runner must never be resolved on the inert path", r.RunnerID)
+		}
+	default:
+		t.Fatal("zero-value Dispatch must return an already-closed Done channel (the result is synthesized inline, not delivered by an async spawn)")
+	}
+}
+
 // --- pure-function unit tests --------------------------------------------------
 
 func TestRoleAllows(t *testing.T) {
