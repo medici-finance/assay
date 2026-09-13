@@ -139,7 +139,7 @@ func TestTrustTierRosterWins(t *testing.T) {
 	fakeLedger(t, []LedgerRow{
 		{
 			Repo: "medici-finance/example", Login: "ada", ID: 2001,
-			Tier: "blessed-once", Date: "2026-09-01", Recorder: "kryton",
+			Tier: "blessed-once", Date: "2026-09-01", Recorder: "human:example",
 			Reason: "negative control — must never be consulted for a roster identity",
 		},
 	})
@@ -167,7 +167,7 @@ func TestTrustTierUnpinnedHuman(t *testing.T) {
 	fakeLedger(t, []LedgerRow{
 		{
 			Repo: "medici-finance/example", Login: "newcomer", ID: 0,
-			Tier: "contributor", Date: "2026-09-01", Recorder: "kryton",
+			Tier: "contributor", Date: "2026-09-01", Recorder: "human:example",
 			Reason: "negative control — an unpinned row must grant nothing",
 		},
 	})
@@ -189,7 +189,7 @@ func TestTrustTierUnpinnedHuman(t *testing.T) {
 	fakeLedger(t, []LedgerRow{
 		{
 			Repo: "medici-finance/example", Login: "newcomer", ID: 9009,
-			Tier: "contributor", Date: "2026-09-01", Recorder: "kryton",
+			Tier: "contributor", Date: "2026-09-01", Recorder: "human:example",
 			Reason: "negative control — a supplied id of 0 has nothing to compare against",
 		},
 	})
@@ -212,7 +212,7 @@ func TestTrustTierLedgerRowGrants(t *testing.T) {
 	fakeLedger(t, []LedgerRow{
 		{
 			Repo: "medici-finance/example", Login: "regular", ID: 4004,
-			Tier: "contributor", Date: "2026-09-01", Recorder: "kryton",
+			Tier: "contributor", Date: "2026-09-01", Recorder: "human:example",
 			Reason: "positive control",
 		},
 	})
