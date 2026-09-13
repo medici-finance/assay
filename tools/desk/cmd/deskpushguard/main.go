@@ -341,7 +341,7 @@ func deriveRepo(remoteURL string) (string, error) {
 	// The URL normally comes from git's hook invocation (args[1]). If empty, fall back to
 	// the configured origin remote — an in-process, local config read (no network touch),
 	// matching `git remote get-url origin` / `git config --get remote.origin.url`, migrated
-	// onto gitcore (assay#951) exactly as deskgit's and deskkit preflight's own
+	// onto gitcore (#951) exactly as deskgit's and deskkit preflight's own
 	// `remote get-url` reads were migrated in an earlier PR (Repo.RemoteURL).
 	if remoteURL == "" {
 		repo, err := openRepo("")

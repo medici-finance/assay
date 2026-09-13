@@ -1034,7 +1034,7 @@ func TestRun_AnnouncesCouldNotCheck(t *testing.T) {
 	}
 }
 
-// --- Mandatory mutation test (assay#951, brief-rules rule 16) -----------------------------
+// --- Mandatory mutation test (#951, brief-rules rule 16) -----------------------------
 //
 // A behaviour-preserving seam swap of a DETECTION control has to prove the detection still
 // FIRES, not merely that the happy path is unchanged — a green run on a CLEAN fixture alone

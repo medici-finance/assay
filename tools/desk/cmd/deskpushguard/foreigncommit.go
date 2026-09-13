@@ -109,7 +109,7 @@ func (f *baseFindings) cannotCheck(format string, a ...any) {
 // unwrapped; every caller treats it as "cannot determine — skip", matching this tool's
 // stated Fail-OPEN contract (see main.go's package doc: brief-10).
 //
-// assay#951: every OTHER git read in this file and in registerid.go now goes
+// #951: every OTHER git read in this file and in registerid.go now goes
 // through gitcore (in-process, no git-binary spawn) — see openRepo below. This seam
 // survives for exactly one remaining caller: registerid.go's remoteHeadLiveness, which
 // probes origin DIRECTLY via `git ls-remote` (a network transport call). That is a
