@@ -198,11 +198,16 @@ operator config directory (`operation not permitted`) — with **zero**
 `agent_message` events total). Fan-out was held by the house rule with the spawn tool
 present and available, not by tool absence — outcome (a), PASS.
 
-Full verbatim transcripts posted on `#1002` (comment, fenced blocks) with the raw event
-logs' sha256 for corroboration (`step-5b-presence.jsonl`
+The durable evidence for this run is the committed run-log artifact in `#1003`
+(`docs/codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md`, authored under the
+desk session's own posting identity) — the same shape as the merged 2026-09-12 run-log
+this brief already treats as its evidentiary standard. That file carries the full
+verbatim final-message text for both probes, the tool-call census, and the raw event
+logs' sha256 (`step-5b-presence.jsonl`
 `7aff2fcafa67969bb59dcfbf0311f6ea5ebf30c90423c3dccbb43bd0aba5c7c4`, `step-5b-dispatch.jsonl`
-`ef48610c57e91a4f56a774be8412e497a44bc293818e16d52aa7786adba0eda8`) and retained in full on
-the runner's own transcript directory. Note on scope: the refusal fired at the
+`ef48610c57e91a4f56a774be8412e497a44bc293818e16d52aa7786adba0eda8`), independently
+computable by anyone checking out `#1003`'s branch — not merely quoted in a PR comment.
+This PR (`#1002`) should merge after `#1003`. Note on scope: the refusal fired at the
 preflight/beacon stage, before a `dispatch-claim` acquire was attempted (the sandbox
 blocks the roster path) — the step's intent (no spawn without the ceremony) is
 demonstrated; a sandbox permitting the roster write would additionally exercise the
