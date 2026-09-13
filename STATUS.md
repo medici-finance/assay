@@ -35,6 +35,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
+| desktools-go-git | 07 — deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest | 3 | 1500 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 | desk-tools | 22 — Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict [exec:strong] | 1 | 1000 |
 
