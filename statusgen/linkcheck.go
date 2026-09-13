@@ -469,6 +469,14 @@ type consumedFragmentIndex struct {
 func (ix *consumedFragmentIndex) build() {
 	ix.built = true
 	ix.tracked = map[string]bool{}
+	// A shallow clone (CI's default `actions/checkout` depth) makes the `git log`
+	// below SUCCEED while returning truncated history — no error to catch, just a
+	// silently wrong answer (#999). Detect it the same way evidenceactor.go does
+	// and treat it exactly like the git-log-errored case: could-not-check, never
+	// a false "this fragment was never tracked".
+	if shallow, err := exec.Command("git", "-C", ix.root, "rev-parse", "--is-shallow-repository").Output(); err != nil || strings.TrimSpace(string(shallow)) != "false" {
+		return // ok stays false — could-not-check: shallow or undetermined
+	}
 	out, err := exec.Command("git", "-C", ix.root, "log", "--pretty=format:", "--name-only", "--", changelogDir+"/").Output()
 	if err != nil {
 		return // ok stays false — could-not-check, not "no fragment was ever tracked"

@@ -25,7 +25,11 @@
 #                                                precondition for the OTHER kind/forge is reported n/a or MISS,
 #                                                never silently skipped. When CELL_HARNESS=codex, also checks
 #                                                the codex harness block (binary, auth, multi_agent, resident
-#                                                rules, skills discovery) — n/a on a claude cell.
+#                                                rules, skills discovery) — n/a on a claude cell. Also prints one
+#                                                "model pin" row per role naming that role's HARNESS and its
+#                                                RESOLVED model (namespace pin, else harness default, else the
+#                                                tier-map fallback) — a role with no per-harness pin and no tier
+#                                                match is a MISS here, before boot, not a startup failure (#986).
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
 #   cellctl desk  <cell> <role> [--model <m>] [--set] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 #                                                one role window (own worktree, real HOME, shims).
@@ -40,7 +44,12 @@
 #                                                not an escape hatch from that rule, and binds the claude arm
 #                                                only (see --harness below). --harness overrides cell.env
 #                                                CELL_HARNESS for this run only (default claude); see
-#                                                Harnesses in docs/cellctl.md.
+#                                                Harnesses in docs/cellctl.md. --set persists into whichever
+#                                                harness's own pin namespace is ACTIVE for this run
+#                                                (DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on codex) —
+#                                                see Pinned models / Per-harness namespaces below. An explicit
+#                                                --model always passes through verbatim to the selected harness,
+#                                                bypassing the namespace/tier resolution entirely.
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
 #                        [--automate '<cron>'] [--model <m>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 #                                                one window per role in the resolved COCKPIT: a tmux session
@@ -64,24 +73,43 @@
 #                                                in a non-tmux cockpit is closed where that cockpit offers a verb
 #                                                for it, and named for you to close by hand where it does not
 #   cellctl set   <cell> KEY=VALUE [KEY=VALUE...] [--force]
+#                        <cell> <role> [--harness claude|codex] --model <m>
 #                                                persist a change into <cell>/cell.env in place — rewrites an
 #                                                existing KEY= line or appends a new one, comment lines and
 #                                                ordering otherwise untouched. Writes one backup
 #                                                (cell.env.bak-<ts>) before the first edit, refuses a KEY that
 #                                                is not a known cell.env key unless --force, prints each
 #                                                key's before/after value, and applies the same the-desk/Opus
-#                                                refusal to DESK_MODEL_the_desk.
+#                                                refusal to DESK_MODEL_the_desk. The second form is role-sugar
+#                                                for the model pin specifically: it computes the KEY itself from
+#                                                the ACTIVE harness (--harness given, else the cell's own
+#                                                CELL_HARNESS) — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
+#                                                on codex — so `cellctl set <cell> <role> --harness codex --model
+#                                                X` writes CODEX_MODEL_<role>=X, never DESK_MODEL_<role>.
 #
-# Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role)
-# and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are what
-# `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
+# Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role, on the
+# claude harness) and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are
+# what `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
 # role `cellctl desk`/`cellctl check` refuse to pin to Opus — see refuse_opus_for_the_desk below.
+#
+# PER-HARNESS NAMESPACES (#986). A claude pin names a Claude model; Codex does not understand it (and
+# vice versa), so each harness keeps its OWN namespace: DESK_MODEL_<role>/DESK_MODEL_DEFAULT for claude,
+# CODEX_MODEL_<role>/CODEX_MODEL_default for codex — set independently, never cross-read. A role/harness
+# with NEITHER its own per-role pin NOR that harness's default falls back to the TIER MAP (see
+# resolve_role_model / role_tier below, and the table in docs/cellctl.md's Pinned models section):
+# the-desk resolves at the TOP tier, every other role at MID — so a cell pinned Claude-only (the common
+# case today) still resolves a sane model on a first `--harness codex` boot with no manual re-pin. The
+# tier map's compiled defaults are themselves overridable per entry via cell.env
+# (TIER_MODEL_<TIER>_<HARNESS>, e.g. TIER_MODEL_TOP_CODEX) — the same one-key-one-value override shape
+# DESK_MODEL_<role> and CELL_PROVIDER_<NAME>_* already use elsewhere in this file.
+#
 # `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
-# pin for one run without touching cell.env; `cellctl set` (or `desk ... --model <m> --set`) is the
-# form that edits cell.env. `cellctl check` is never affected by an override — it reports what a
-# plain boot with no --model would resolve to. `--model` changes the model NAME only: a
-# non-Anthropic model still needs ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN set in the launching
-# shell, which cellctl inherits and does not manage.
+# pin for one run without touching cell.env, PASSED THROUGH VERBATIM to the selected harness — it is
+# never remapped through the namespace/tier resolution above, whichever harness is active. `cellctl set`
+# (or `desk ... --model <m> --set`) is the form that edits cell.env. `cellctl check` is never affected by
+# an override — it reports what a plain boot with no --model would resolve to, per role. `--model`
+# changes the model NAME only: a non-Anthropic model still needs ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN
+# set in the launching shell, which cellctl inherits and does not manage.
 #
 # The HARNESS a role window runs on is pinned the same way: cell.env CELL_HARNESS (claude, the
 # default, or codex), `--harness` on `desk`/`up` overrides it for one run without touching cell.env.
@@ -201,6 +229,23 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
     claude|codex) ;;
     *) die "cell.env: CELL_HARNESS=$CELL_HARNESS is not a known harness (claude|codex)" ;;
   esac
+  # Model TIER map compiled defaults (#986) — the fallback `resolve_role_model` uses when a role has
+  # neither its own per-harness pin (DESK_MODEL_<role>/CODEX_MODEL_<role>) nor that harness's default
+  # (DESK_MODEL_DEFAULT/CODEX_MODEL_default). One column per harness, top/mid/fast tiers; role_tier
+  # below says which tier a role resolves at. `-` (not `:-`) on purpose: cell.env can set one of
+  # these to the EMPTY string to deliberately remove an entry (rather than merely "not touching" it,
+  # which `:-` cannot distinguish from unset) — the shape a fixture uses to reproduce the
+  # no-pin-no-tier-match case `cellctl check` must surface as a MISS.
+  TIER_MODEL_TOP_CLAUDE="${TIER_MODEL_TOP_CLAUDE-fable}"
+  TIER_MODEL_MID_CLAUDE="${TIER_MODEL_MID_CLAUDE-sonnet}"
+  TIER_MODEL_FAST_CLAUDE="${TIER_MODEL_FAST_CLAUDE-haiku}"
+  # codex's model catalog has no per-tier naming confirmed live yet (only one id is proven working —
+  # `gpt-5.6-terra`, docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md) — every tier compiles to that
+  # one proven id until a cheaper/faster id is confirmed, rather than fabricating names that might not
+  # exist. Override any of the three independently in cell.env once one is.
+  TIER_MODEL_TOP_CODEX="${TIER_MODEL_TOP_CODEX-gpt-5.6-terra}"
+  TIER_MODEL_MID_CODEX="${TIER_MODEL_MID_CODEX-gpt-5.6-terra}"
+  TIER_MODEL_FAST_CODEX="${TIER_MODEL_FAST_CODEX-gpt-5.6-terra}"
   SESSION="${TMUX_SESSION:-${CELL}-cell}"
   [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout roles worktree from) is not set"
 }
@@ -357,6 +402,47 @@ refuse_opus_for_the_desk(){
   die "the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$1 (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env"
 }
 
+# role_tier <role> — which TIER (top|mid|fast) a role resolves at when it falls all the way through
+# to the tier map (#986): the-desk spends its window on judgment/synthesis/arbitration across
+# streams (the same rationale refuse_opus_for_the_desk's header comment gives), so it is the one
+# role pinned to the TOP tier by default; the four mechanical loop roles get MID — the cheaper tier,
+# matching DESK_MODEL_DEFAULT's own compiled default (sonnet) today. FAST is not assigned to any
+# role automatically; it exists in the tier map for an operator to pin a role at directly.
+role_tier(){
+  case "$1" in
+    the-desk) echo top ;;
+    *) echo mid ;;
+  esac
+}
+
+# resolve_role_model <role> <harness> — the per-harness NAMESPACE + TIER-MAP fallback resolution
+# (#986). Sets RESOLVED_MODEL (the model name) and RESOLVED_MODEL_SRC (the cell.env key, or tier
+# entry, that produced it) and returns 0; on total failure (nothing resolves) sets RESOLVED_MODEL to
+# the empty string, RESOLVED_MODEL_SRC to a message naming every place looked, and returns 1. NEVER
+# consulted for an explicit --model (see cmd_desk) — that value passes through verbatim, bypassing
+# this whole chain, on either harness.
+#
+# Order: (1) that harness's own per-role pin — DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on
+# codex — (2) that harness's own default — DESK_MODEL_DEFAULT / CODEX_MODEL_default — (3) the tier
+# map, by this role's tier (role_tier) and the ACTIVE harness's column (TIER_MODEL_<TIER>_<HARNESS>,
+# compiled defaults in load_cell, overridable per entry in cell.env). Claude always resolves at step
+# 2 today, because DESK_MODEL_DEFAULT carries a compiled default (`sonnet`) — which is exactly what
+# keeps `--harness claude` unaffected by any of this (#986's own backward-compat requirement).
+resolve_role_model(){
+  local role="$1" harness="$2" rvar dvar tier tvar
+  if [[ "$harness" == "codex" ]]; then rvar="CODEX_MODEL_${role//-/_}"; dvar="CODEX_MODEL_default"
+  else rvar="DESK_MODEL_${role//-/_}"; dvar="DESK_MODEL_DEFAULT"
+  fi
+  if [[ -n "${!rvar-}" ]]; then RESOLVED_MODEL="${!rvar}"; RESOLVED_MODEL_SRC="$rvar"; return 0; fi
+  if [[ -n "${!dvar-}" ]]; then RESOLVED_MODEL="${!dvar}"; RESOLVED_MODEL_SRC="$dvar"; return 0; fi
+  tier="$(role_tier "$role")"
+  tvar="TIER_MODEL_$(printf '%s' "$tier" | tr '[:lower:]' '[:upper:]')_$(printf '%s' "$harness" | tr '[:lower:]' '[:upper:]')"
+  if [[ -n "${!tvar-}" ]]; then RESOLVED_MODEL="${!tvar}"; RESOLVED_MODEL_SRC="tier:$tier ($tvar)"; return 0; fi
+  RESOLVED_MODEL=""
+  RESOLVED_MODEL_SRC="no model resolves for role '$role' harness '$harness' — checked $rvar, $dvar, and the '$tier' tier ($tvar), all unset"
+  return 1
+}
+
 # provider_var <name> <suffix> — the cell.env variable name for a provider's BASE_URL/TOKEN_ENV,
 # e.g. `provider_var zai BASE_URL` → CELL_PROVIDER_ZAI_BASE_URL. The name is upper-cased and its
 # `-`s become `_`s so `--provider z.ai`-style typos are refused by a MISSING variable rather than
@@ -382,24 +468,32 @@ resolve_provider(){
 }
 
 # ---------------------------------------------------------------- cellctl set
-# The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>
-# and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV} families (a typo'd role or provider name is
-# refused rather than silently scaffolding a variable no role/provider ever reads).
+# The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>,
+# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV}
+# families (a typo'd role/tier/provider name is refused rather than silently scaffolding a variable
+# nothing ever reads).
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
-GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CELL_HARNESS \
-TMUX_SESSION CELL_PROVIDER"
+GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER \
+TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
+TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX"
 
-# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role> for one of the five roles
-# (role name with `-` as `_` — the same family `cmd_desk` resolves DESK_MODEL_<role> from), or
-# CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name (the family
-# `resolve_provider` reads — the name itself is operator-chosen, so any shape is accepted here).
+# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role>/CODEX_MODEL_<role> for one of
+# the five roles (role name with `-` as `_` — the same family `resolve_role_model` reads per
+# harness), or CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name
+# (the family `resolve_provider` reads — the name itself is operator-chosen, so any shape is
+# accepted here).
 known_cell_env_key(){
   local k="$1" w r
   for w in $CELL_ENV_KNOWN_KEYS; do [[ "$k" == "$w" ]] && return 0; done
   case "$k" in
     DESK_MODEL_*)
       r="${k#DESK_MODEL_}"
+      for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
+      ;;
+    CODEX_MODEL_*)
+      r="${k#CODEX_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
     CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV) return 0 ;;
@@ -449,18 +543,47 @@ set_env_key(){
   echo "[set] $key: ${before:-<unset>} -> $value"
 }
 
+# active_harness_of <envfile>: the LAST `CELL_HARNESS=` line in a cell.env, or `claude` when the
+# file carries none (a cell scaffolded before harness support, or with the line never written —
+# `load_cell`'s own compiled default). File-level, not `load_cell`, on purpose: `cmd_set` edits the
+# file directly and never sources it (sourcing an operator-writable cell.env as part of `set` would
+# execute arbitrary shell in it), so this reads the one line it needs by hand.
+active_harness_of(){
+  local envfile="$1" v
+  v="$(grep -E '^CELL_HARNESS=' "$envfile" | tail -n1)"; v="${v#*=}"
+  printf '%s\n' "${v:-claude}"
+}
+
 cmd_set(){
-  local cell="${1:?cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]}"; shift || true
+  local usage_msg="cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex] --model <m>"
+  local cell="${1:?$usage_msg}"; shift || true
   local d; d="$(cell_dir "$cell")"; d="$(cd "$d" && pwd)"
   local envfile="$d/cell.env"
-  local force=0
+  local force=0 role="" harness="" model=""
   local -a kvs=()
   while [[ $# -gt 0 ]]; do case "$1" in
     --force) force=1; shift;;
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --model) model="${2:?--model needs a value}"; shift 2;;
     --*) die "set: unknown flag $1";;
     *=*) kvs+=("$1"); shift;;
-    *) die "set: '$1' is not KEY=VALUE";;
+    the-desk|worker-desk|pr-review-desk|verify-desk|intake-desk)
+      [[ -z "$role" ]] || die "set: '$1' — a role was already given ('$role'); only one role-sugar call at a time"
+      role="$1"; shift;;
+    *) die "set: '$1' is not KEY=VALUE (or a role name, with --model and optionally --harness)";;
   esac; done
+  if [[ -n "$role" ]]; then
+    # Role-sugar form: `cellctl set <cell> <role> [--harness claude|codex] --model <m>` — computes
+    # the model-pin KEY itself from the ACTIVE harness (the flag given here, else the cell's own
+    # CELL_HARNESS) so a codex-harness call writes CODEX_MODEL_<role>, never DESK_MODEL_<role>
+    # (#986) — the same namespace `cmd_desk --set` persists into for a live boot.
+    [[ -n "$model" ]] || die "set: '$role' needs --model <m> (role-sugar form: cellctl set <cell> <role> [--harness claude|codex] --model <m>)"
+    [[ ${#kvs[@]} -eq 0 ]] || die "set: the role-sugar form and KEY=VALUE pairs cannot be combined in one call"
+    case "${harness:-claude}" in claude|codex) ;; *) die "set: --harness must be claude or codex, got '$harness'";; esac
+    local active="${harness:-$(active_harness_of "$envfile")}"
+    local mvar; if [[ "$active" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+    kvs=("$mvar=$model")
+  fi
   [[ ${#kvs[@]} -gt 0 ]] || die "set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])"
   local kv key value
   # Pass 1: validate every KEY=VALUE — a refusal here touches nothing.
@@ -534,6 +657,25 @@ cmd_check(){
   else
     chk "the-desk model: $the_desk_model" 'true'
   fi
+  # Per-role harness + resolved-model rows (#986): what `cellctl desk <cell> <role>` (no --model)
+  # would resolve to on THIS cell's harness, for every role the cell runs — not the-desk alone —
+  # via the same namespace/tier chain `cmd_desk` itself uses (resolve_role_model). Uses the cell's
+  # pinned CELL_HARNESS, mirroring the the-desk-model row above: `check` has no --harness flag, so
+  # this reports what a plain boot resolves to, not a would-be `--harness` override. A role with no
+  # per-harness pin and no tier match is a MISS naming exactly what was checked, surfaced HERE
+  # rather than discovered as a startup failure.
+  local mp_role
+  for mp_role in $ROLES; do
+    if resolve_role_model "$mp_role" "$CELL_HARNESS"; then
+      if [[ "$mp_role" == "the-desk" && "$CELL_HARNESS" == "claude" ]] && is_opus_pin "$RESOLVED_MODEL"; then
+        chk "model pin: role=$mp_role harness=$CELL_HARNESS — the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved $RESOLVED_MODEL_SRC=$RESOLVED_MODEL; set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
+      else
+        chk "model pin: role=$mp_role harness=$CELL_HARNESS model=$RESOLVED_MODEL (from $RESOLVED_MODEL_SRC)" 'true'
+      fi
+    else
+      chk "model pin: role=$mp_role harness=$CELL_HARNESS — $RESOLVED_MODEL_SRC" 'false'
+    fi
+  done
   # The cell's DEFAULT provider (CELL_PROVIDER), same resolution `cellctl desk` uses absent an
   # explicit --provider for the run. Unset is a legitimate n/a (Anthropic, cellctl's long-standing
   # default) rather than a MISS — a provider is opt-in per cell.
@@ -861,21 +1003,34 @@ cmd_desk(){
   # "which harness is this window on" is answerable from the roster the same way the model is.
   [[ "$harness" == "codex" ]] && session="${session}-codex"
   [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
-  # The model is PINNED per role, never left to the CLI default. Two `local` lines: in a single
-  # `local a=… b="${!a}"` the indirect expansion reads the name before it is assigned.
-  local mvar="DESK_MODEL_${role//-/_}"
-  local pinned="${!mvar:-$DESK_MODEL_DEFAULT}"
-  local model="$pinned"
-  [[ -n "$model_override" ]] && model="$model_override"
+  # The model is PINNED per role, never left to the CLI default, and PER HARNESS (#986): mvar is
+  # also what `--set` persists into below, so it must name the ACTIVE harness's own namespace —
+  # CODEX_MODEL_<role> on codex, DESK_MODEL_<role> on claude — never the other one, whichever
+  # harness this run resolves to.
+  local mvar; if [[ "$harness" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+  local model
+  if [[ -n "$model_override" ]]; then
+    # An explicit --model (or DESK_MODEL_OVERRIDE) passes through VERBATIM to the selected harness
+    # — it is never run through the namespace/tier resolution below, on either harness.
+    model="$model_override"
+  else
+    resolve_role_model "$role" "$harness" \
+      || die "desk: $RESOLVED_MODEL_SRC — set $mvar in cell.env, or the harness default, or a tier fallback (docs/cellctl.md Pinned models), or pass --model explicitly"
+    model="$RESOLVED_MODEL"
+  fi
   # The Opus refusal binds the RESOLVED model, override or pin alike, on the CLAUDE arm ONLY —
   # an override is not an escape hatch from it, but Opus is a Claude-family alias/id with no
   # meaning to codex (issue-946 Part 2): on codex this refuses nothing, it prints the resolved
   # model as is.
   [[ "$role" == "the-desk" && "$harness" == "claude" ]] && refuse_opus_for_the_desk "$model"
   # model_disp is what every line below PRINTS: the resolved model, plus "(override)" when
-  # --model/DESK_MODEL_OVERRIDE is the reason, so the source of the value is visible in the
-  # transcript and not just the name — `claude --model` itself always gets the bare $model.
-  local model_disp="$model"; [[ -n "$model_override" ]] && model_disp="$model (override)"
+  # --model/DESK_MODEL_OVERRIDE is the reason, or the tier-map source when the namespace pin fell
+  # all the way through to it, so the source of the value is visible in the transcript and not just
+  # the name — `claude --model`/`codex -m` themselves always get the bare $model.
+  local model_disp="$model"
+  if [[ -n "$model_override" ]]; then model_disp="$model (override)"
+  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
+  fi
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
   # because the verbs then fall back to their compiled placeholder topology and the failure
@@ -1119,10 +1274,13 @@ except Exception:
 }
 
 herdr_window(){
-  local label="$1" cmd="$2" out pane_id=""
-  if out="$(herdr tab create --label "$label" 2>&1)"; then
-    pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
+  local label="$1" cmd="$2" wsid="${3:-}" out pane_id="" rc=0
+  if [[ -n "$wsid" ]]; then
+    out="$(herdr tab create --workspace "$wsid" --label "$label" 2>&1)" || rc=$?
+  else
+    out="$(herdr tab create --label "$label" 2>&1)" || rc=$?
   fi
+  [[ "$rc" == "0" ]] && pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
   if [[ -z "$pane_id" ]]; then
     echo "NOTICE: 'herdr tab create --label $label' did not return a pane id — start it by hand: $cmd" >&2
     return
@@ -1131,19 +1289,95 @@ herdr_window(){
     || echo "NOTICE: 'herdr pane run' failed for $label (pane $pane_id) — start it by hand: $cmd" >&2
 }
 
+# herdr_window_id — the workspace_id `herdr workspace list` reports for the frontmost workspace it
+# already has open, or empty when herdr has no workspace open at all (server not running, or
+# running with zero workspaces — both mean "nowhere for a tab to land" to this cockpit). herdr's
+# own noun for what this file and #985's issue call a "herdr window" is "workspace" (verified live
+# against herdr 0.8.2: `herdr tab list`'s tab_id/workspace_id pairs, and `herdr workspace list`
+# itself) — the top-level container tabs live in, one level above the tab/pane nesting the rest of
+# this arm already drives. This is the herdr analogue of the tmux arm's `tmux has-session`.
+herdr_window_id(){
+  herdr workspace list 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+ws = d.get("result", {}).get("workspaces", [])
+if ws:
+    print(ws[0].get("workspace_id", ""))
+'
+}
+
+# herdr_start_window <label> — brings up a herdr window (a "workspace") when herdr_window_id found
+# none, the same trigger point and create-if-absent shape as the tmux arm's
+# `tmux has-session || tmux new-session`. Prints "<workspace_id>|<default_tab_id>" on success — one
+# line, split by the caller with `${started%%|*}` / `${started#*|}`, because this function is
+# called inside a `$(...)` command substitution (its own subshell): any plain variable it sets does
+# not survive back to up_herdr, so both results have to travel out via stdout, not a global.
+#
+# `herdr workspace create` always seeds the new workspace with one default, unlabelled tab of its
+# own (verified live: its JSON carries a "tab" alongside the "workspace") — the default_tab_id half
+# of the printed line is that tab's tab_id, so up_herdr can close it once the cell's own labelled
+# tabs exist in the same workspace. Closing it any earlier — before the workspace holds a second
+# tab — closes the whole workspace along with it (verified live), so it must never be closed up
+# front; a build/response that carries no tab_id just prints an empty second field, which leaves
+# that one default tab behind rather than risk closing the workspace.
+#
+# Fails closed (die), naming herdr and the exact command tried, when this build cannot create a
+# workspace at all or the command itself fails — never silently leaves the tabs nowhere to land.
+herdr_start_window(){
+  local label="$1" out wsid tab_id
+  help_has create herdr workspace \
+    || die "herdr is the resolved cockpit but no herdr window is open and this build's 'herdr workspace --help' advertises no 'create' — nothing can bring one up to host the role tabs (tried: herdr workspace create --label $label); re-run with --cockpit tmux"
+  out="$(herdr workspace create --label "$label" 2>&1)" \
+    || die "herdr is the resolved cockpit but no herdr window is open and 'herdr workspace create --label $label' failed to bring one up: $out; re-run with --cockpit tmux"
+  wsid="$(python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["workspace"]["workspace_id"])
+except Exception:
+    pass
+' <<<"$out")"
+  [[ -n "$wsid" ]] \
+    || die "herdr is the resolved cockpit but 'herdr workspace create --label $label' did not return a workspace_id — nothing can host the role tabs: $out; re-run with --cockpit tmux"
+  tab_id="$(python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["tab"]["tab_id"])
+except Exception:
+    pass
+' <<<"$out")"
+  printf '%s|%s\n' "$wsid" "$tab_id"
+}
+
 up_herdr(){
   local cfg="$1" roles="$2"
   help_has create herdr tab \
     || die "herdr is the resolved cockpit but this build's 'herdr tab --help' advertises no 'create' — nothing can host a role window; re-run with --cockpit tmux"
   help_has run herdr pane \
     || die "herdr is the resolved cockpit but this build's 'herdr pane --help' advertises no 'run' — nothing can execute the role command in a tab; re-run with --cockpit tmux"
-  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD"
+  help_has list herdr workspace \
+    || die "herdr is the resolved cockpit but this build's 'herdr workspace --help' advertises no 'list' — cannot tell whether a herdr window is already open to host the role tabs; re-run with --cockpit tmux"
+  local new_wsid="" new_default_tab="" started=""
+  if [[ -z "$(herdr_window_id)" ]]; then
+    started="$(herdr_start_window "${CELL}-${FIRST_NAME}")"
+    new_wsid="${started%%|*}"
+    new_default_tab="${started#*|}"
+    echo "[cell] no herdr window was open — started one"
+  fi
+  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD" "$new_wsid"
   local role
   for role in $roles; do
-    herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")"
+    herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")" "$new_wsid"
     # Same stagger as the tmux arm: the role windows share one .git and one fetch lock.
     sleep 2
   done
+  # The freshly-created workspace's own default tab is never wanted — drop it now that the
+  # workspace holds the cell's own labelled tabs too (safe: see herdr_start_window above).
+  [[ -n "$new_default_tab" ]] && { herdr tab close "$new_default_tab" >/dev/null 2>&1 || true; }
   echo "[cell] $CELL up in herdr: ${CELL}-${FIRST_NAME} +$roles (config=$cfg)"
   echo "[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down $CELL"
 }
@@ -1419,6 +1653,11 @@ DESK_MODEL_the_desk=fable
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
+# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (github) — scaffolded by cellctl
@@ -1472,6 +1711,11 @@ DESK_MODEL_the_desk=fable
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
+# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (gitlab) — scaffolded by cellctl
@@ -1544,6 +1788,11 @@ DESK_MODEL_the_desk=fable
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
+# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
 # Provider (optional; unset = Anthropic). \`--model\` alone only changes the model NAME — a
 # non-Anthropic model additionally needs its endpoint and credential switched, which a provider
 # does: uncomment and name a provider (any short slug), then declare its endpoint and the NAME of

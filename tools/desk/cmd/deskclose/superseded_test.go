@@ -306,6 +306,31 @@ func TestSupersededReviewerConfirms(t *testing.T) {
 		}
 	})
 
+	t.Run("a bare --by number normalizes against -R's repo, matching the fully-qualified marker", func(t *testing.T) {
+		s, rul := prWorld(t)
+		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#40")
+		code, out := execCLI(modeSuperseded, "-R", testRepo, "90", "--by", "40", "--rulings", rul)
+		if code != deskkit.ExitOK {
+			t.Fatalf("want exit 0, got %d\n%s", code, out)
+		}
+		assertConfirmedClose(t, s, reasonNotPlanned)
+	})
+
+	t.Run("a genuine target disagreement names both the recorded and expected forms", func(t *testing.T) {
+		s, rul := prWorld(t)
+		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#999")
+		err := execErr(modeSuperseded, "-R", testRepo, "90", "--by", "40", "--rulings", rul)
+		if err == nil || !deskkit.IsRefused(err) {
+			t.Fatalf("want a refusal, got %v", err)
+		}
+		for _, want := range []string{testRepo + "#999", testRepo + "#40"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("the refusal must name both the recorded form (%s) and the expected form (%s): %v",
+					testRepo+"#999", testRepo+"#40", err)
+			}
+		}
+	})
+
 	t.Run("the last proposal wins: a re-proposal against the right target confirms", func(t *testing.T) {
 		s, rul := prWorld(t)
 		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#999")
