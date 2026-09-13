@@ -16,8 +16,8 @@
 // target (--repo/--pr) never by itself writes anything: a live run without --post gathers and
 // prints the card exactly like --dry-run, so the flags that merely say WHERE to look never
 // double as the flag that says WRITE. Passing --post is necessary but not sufficient — see
-// liveCardRefusalReason: the write path additionally refuses unconditionally until
-// docs/streams/decisions/DR-provenance-card.md's ruling is recorded (it is still
+// liveCardRefusalReason: the write path additionally refuses unconditionally until the
+// design record DR-provenance-card's ruling is recorded (it is still
 // "PROPOSED — no ruling is recorded" as of this writing). Both gates are independent single
 // points that either one alone would already close; keeping both is deliberate depth, not
 // redundancy — one is a flag the caller can get right in isolation, the other holds even if a
@@ -51,14 +51,14 @@ import (
 const provenanceCardMarker = "<!-- assay:provenance-card -->"
 
 // liveCardRefusalReason is why every live-write attempt is refused today, regardless of flags.
-// docs/streams/decisions/DR-provenance-card.md's `decided-by:` field is still the
+// The design record DR-provenance-card's `decided-by:` field is still the
 // "human:<name>" placeholder and the record itself says "PROPOSED — no ruling is recorded" —
 // so nothing in the repo yet authorizes posting this card to a real, public pull request.
 // A doc-only gate on a live-capable write path is not a control (the finding this refusal
 // closes); refusing unconditionally in code is. Delete this constant and its one call site in
 // run(), re-enabling the upsertLiveCard call it currently guards, in the SAME change that
 // records the ruling on the DR — never before, and never by loosening this message instead.
-const liveCardRefusalReason = "refusing to post: docs/streams/decisions/DR-provenance-card.md " +
+const liveCardRefusalReason = "refusing to post: the design record DR-provenance-card " +
 	"is still PROPOSED — no human ruling is recorded yet on whether this card may be posted " +
 	"to a real pull request. Use --dry-run (or --fixture) to gather and print the card without " +
 	"posting; this refusal holds even with --post until the DR is ratified."
