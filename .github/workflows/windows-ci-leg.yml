@@ -78,6 +78,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # this job runs `statusgen --lint`, whose consumedFragmentIndex needs changelog/ history — a shallow clone reads a consumed fragment as a false PROBLEM (#999)
 
       - name: Install Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0

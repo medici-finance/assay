@@ -171,6 +171,31 @@ func ensureLabel(repo string, v deskkit.DispositionVerdict) error {
 
 // ---------------------------------------------------------------- read
 
+// readDispositionViaForge is the data source `read` acts on: the session-role App token,
+// via the resolved deskkit.Forge (GetIssue for labels, ListComments for the marker
+// comment), never `gh`. See forge.go's doc comment for why — `read` is the one verb this
+// tool serves to ANOTHER TOOL'S child process (deskclose superseded's confirm path), and
+// that child does not carry a usable ambient `gh` identity (#984).
+func readDispositionViaForge(repo string, pr int) (deskkit.DispositionRead, error) {
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return deskkit.ReadDisposition(nil, nil, ferr), ferr
+	}
+	iss, err := fg.GetIssue(fr, pr)
+	if err != nil {
+		return deskkit.ReadDisposition(nil, nil, err), err
+	}
+	comments, err := fg.ListComments(fr, pr)
+	if err != nil {
+		return deskkit.ReadDisposition(nil, nil, err), err
+	}
+	bodies := make([]string, 0, len(comments))
+	for _, c := range comments {
+		bodies = append(bodies, c.Body)
+	}
+	return deskkit.ReadDisposition(iss.Labels, bodies, nil), nil
+}
+
 func cmdRead(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("read", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -187,13 +212,7 @@ func cmdRead(args []string, out io.Writer) error {
 		return deskkit.Refused("read: --pr <N> is required")
 	}
 
-	view, readErr := viewPR(*repo, *pr)
-	var r deskkit.DispositionRead
-	if readErr != nil {
-		r = deskkit.ReadDisposition(nil, nil, readErr)
-	} else {
-		r = deskkit.ReadDisposition(labelNames(view.Labels), commentBodies(view), nil)
-	}
+	r, readErr := readDispositionViaForge(*repo, *pr)
 
 	if *asJSON {
 		enc := json.NewEncoder(out)

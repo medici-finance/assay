@@ -233,6 +233,15 @@ when `CELL_HARNESS=codex` — the codex harness block (see *Harnesses*): `codex`
 working `--version`, authentication, `multi_agent`, the resident-rules fragment, and skills
 discoverability. A claude cell (the default) reports that block `n/a`, never silently skipped.
 
+**One `model pin: role=<role> harness=<harness> model=<m> (from <source>)` row per role the cell
+runs (`ROLES`)** (`#986`) — what `cellctl desk <cell> <role>` (no `--model`) would resolve to on
+this cell's pinned `CELL_HARNESS`, via the same namespace/tier chain a live boot uses (see *Per-harness
+namespaces and the tier-map fallback*). `<source>` names exactly which key produced the value —
+`DESK_MODEL_the_desk`, `CODEX_MODEL_default`, or `tier:top (TIER_MODEL_TOP_CODEX)` — so a namespace
+mismatch (a role with no per-harness pin and no tier match) is a `MISS` naming what was checked,
+surfaced HERE before boot rather than discovered as a startup failure. This is in addition to, not a
+replacement for, the dedicated `the-desk model: …` row the Opus refusal has always printed.
+
 The forge-specific preconditions are keyed on the cell's `CELL_FORGE`. A **github** cell also
 checks `apps.env`, the linked `gh` config, the readable `deskd` App key, and `ORGS`. A **gitlab**
 cell instead checks the `GITLAB_GROUP`, the role token store directory, and the readable
@@ -446,7 +455,7 @@ answerable before booting rather than after.
 | Cockpit | What `up` opens |
 |---|---|
 | **tmux** | a session `<cell>-cell`: the `deskd`/`cell` window plus one window per role. Unchanged |
-| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too |
+| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
 | **orca** | one **terminal per role** under the cell directory (registered with Orca via `orca repo add` first — Orca 404s an unregistered path), running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
 
 ### The `--automate` recipe (orca only)
@@ -478,6 +487,13 @@ These cockpit CLIs move fast, so every verb and flag whose spelling `cellctl` ca
   build with no `tab create` or no `pane run` is a refusal naming `--cockpit tmux`, because nothing
   could host a window; `herdr down` looks up each window's tab by label (`herdr tab list`) and
   closes it by `tab_id` (`herdr tab close <tab_id>` — real herdr has no `--label` on `close`);
+  before any of that, `up` checks `herdr workspace list` (herdr's own noun for what this file calls
+  a "window") and, finding none open, brings one up itself with
+  `herdr workspace create --label <cell>-<the first window>` — mirroring the tmux arm's
+  `tmux has-session || tmux new-session` — before creating a single tab, dropping the workspace's
+  own auto-seeded default tab once the cell's real tabs exist in it. A build that cannot list or
+  create workspaces, or whose `workspace create` fails, is a refusal naming herdr and the exact
+  command tried, never a silently-opened nothing (#985);
 - orca's create-a-terminal verb and its command / worktree-selector / name flags are read from its
   own help (`--worktree path:<dir>`, not `--cwd` — orca advertises no such flag on this verb). Where
   the verb or the command flag is absent, `cellctl` **prints the exact per-role commands to run by
@@ -524,6 +540,77 @@ role's pin, including `opus`, is untouched.
 `cellctl desk` prints the resolved model on its launch line and in `DRY_RUN=1` output, so which model
 a window is on is visible without reading the config.
 
+### Per-harness namespaces and the tier-map fallback (`#986`)
+
+**Every harness keeps its own pin namespace — a Claude model name means nothing to Codex, and vice
+versa.** `DESK_MODEL_<role>` / `DESK_MODEL_DEFAULT` are the **claude** namespace, unchanged from
+above. Codex gets its own: `CODEX_MODEL_<role>` (per-role override) and `CODEX_MODEL_default` (the
+harness-wide fallback, no compiled default — see the tier map below). The two namespaces are never
+cross-read: pinning `DESK_MODEL_the_desk=fable` says nothing about what `--harness codex` resolves
+to, and pinning `CODEX_MODEL_the_desk` says nothing about the claude arm.
+
+```
+DESK_MODEL_DEFAULT=sonnet        # claude namespace — every role, absent a per-role override
+DESK_MODEL_the_desk=fable        # claude namespace — per-role
+CODEX_MODEL_default=gpt-5.6-terra  # codex namespace — every role, absent a per-role override
+CODEX_MODEL_the_desk=gpt-5.6-terra # codex namespace — per-role
+```
+
+**The tier-map fallback.** A role with *neither* its harness's per-role pin *nor* that harness's
+`_DEFAULT`/`_default` falls back to a TIER: `the-desk` resolves at **top**, every other role at
+**mid** (the same "coordinator gets the top tier, loops get the cheaper one" split the Why section
+above already documents — `fast` exists in the table but is not assigned to any role automatically;
+pin a role there directly if you want it). This is what lets a cell pinned Claude-only today (the
+common case — every cell `cellctl new` scaffolds is claude-only until an operator adds Codex pins)
+boot `--harness codex` with a real, working model name and no manual re-pin:
+
+| Tier | claude | codex |
+|---|---|---|
+| top (`the-desk`) | `fable` | `gpt-5.6-terra` |
+| mid (every other role) | `sonnet` | `gpt-5.6-terra` |
+| fast (not auto-assigned) | `haiku` | `gpt-5.6-terra` |
+
+These are the **compiled defaults** (`gpt-5.6-terra` is the one codex model id proven live against
+a real build — `docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md` — used for all three codex tiers
+until a confirmed cheaper/faster id replaces one of them). Every entry is overridable in `cell.env`
+by its own key, the same one-key-one-value override shape `DESK_MODEL_<role>` and
+`CELL_PROVIDER_<NAME>_*` already use elsewhere in this file:
+
+```
+TIER_MODEL_TOP_CLAUDE=fable
+TIER_MODEL_MID_CLAUDE=sonnet
+TIER_MODEL_FAST_CLAUDE=haiku
+TIER_MODEL_TOP_CODEX=gpt-5.6-terra
+TIER_MODEL_MID_CODEX=gpt-5.6-terra
+TIER_MODEL_FAST_CODEX=gpt-5.6-terra
+```
+
+Resolution order, per role and per the ACTIVE harness (`resolve_role_model` in the script): (1) that
+harness's own per-role pin, (2) that harness's own default, (3) the tier map, by this role's tier
+and the harness's own column. Claude always resolves at step 2 today — `DESK_MODEL_DEFAULT` carries
+a compiled default (`sonnet`) — which is exactly what keeps `--harness claude` unaffected by any of
+this. A role/harness with nothing at any of the three steps (an operator has, deliberately or by
+typo, blanked a `TIER_MODEL_<TIER>_<HARNESS>` entry to the empty string, and set neither the
+per-role nor the default pin either) is a clean refusal — `cellctl desk` dies naming every place it
+checked, rather than launching a harness on an empty or bogus model name; `cellctl check` surfaces
+the same gap as a MISS before boot (see *`cellctl check` — the codex harness block* is a different
+row — the per-role rows are covered right below it in *`cell.env`*'s table and by the *`cellctl
+check`* section above).
+
+**`--model <m>` is never routed through any of this.** An explicit override — flag or
+`DESK_MODEL_OVERRIDE` — passes straight to the selected harness verbatim, on either harness,
+exactly as *`--model` — a per-run override* below describes; it is not a namespace or a tier, and
+bypasses both.
+
+**`cellctl set` writes to whichever namespace is ACTIVE.** The role-sugar form
+`cellctl set <cell> <role> [--harness claude|codex] --model <m>` computes the KEY itself from the
+harness given (or, absent `--harness`, the cell's own `CELL_HARNESS`) — `CODEX_MODEL_<role>` on
+codex, `DESK_MODEL_<role>` on claude — so `cellctl set <cell> the-desk --harness codex --model X`
+writes `CODEX_MODEL_the_desk=X`, never `DESK_MODEL_the_desk`. The plain `KEY=VALUE` form (`cellctl
+set <cell> CODEX_MODEL_the_desk=X`) still works too — the role-sugar form is convenience, not the
+only path. See *`cellctl set` — persisting a change* below for the shared mechanics (backup,
+before/after, `--force`).
+
 ### `--model` — a per-run override
 
 Running one role (or a whole cell) on another model for a while does not have to mean hand-editing
@@ -566,17 +653,28 @@ model you are overriding to is on you.
 ```bash
 cellctl set <cell> DESK_MODEL_the_desk=glm-5.3
 cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]
+cellctl set <cell> <role> [--harness claude|codex] --model <m>   # role-sugar, harness-aware (#986)
 ```
 
 Rewrites an existing `KEY=` line **in place** (comment lines and every other line's ordering
 untouched) or **appends** a key that has no active line yet. Writes exactly **one backup**,
 `cell.env.bak-<ts>`, before the first edit of a call — a multi-key `set` is one backup for the
 whole call, not one per key. Refuses a key that is not a known `cell.env` key (see the table below;
-the `DESK_MODEL_<role>` family counts as known for each of the five roles) unless `--force`, and a
+the `DESK_MODEL_<role>`, `CODEX_MODEL_<role>`, `TIER_MODEL_<TIER>_<HARNESS>` families count as
+known for each of the five roles / three tiers / two harnesses) unless `--force`, and a
 refusal — unknown key **or** the Opus rule below — touches nothing: no backup, no edit. Prints each
 key's before/after value. Applies the **same** the-desk/Opus refusal to `DESK_MODEL_the_desk` as a
-live boot and `check` do, and `--force` does not bypass it — `--force` widens which *keys* `set`
-will touch, not which *values* the Opus rule allows.
+live boot and `check` do (codex's `CODEX_MODEL_the_desk` is never subject to it — see *Harnesses*),
+and `--force` does not bypass it — `--force` widens which *keys* `set` will touch, not which
+*values* the Opus rule allows.
+
+**The third form is role-sugar for the model pin specifically.** It computes the KEY itself from
+the ACTIVE harness — `--harness` on this call if given, else the cell's own `CELL_HARNESS` — so
+`cellctl set <cell> <role> --harness codex --model X` writes `CODEX_MODEL_<role>=X`, and the same
+call with `--harness claude` (or no `--harness` on a claude-pinned cell) writes `DESK_MODEL_<role>=X`
+— never the other namespace's key. It needs `--model`; a role name with no `--model` is refused, and
+it cannot be combined with a `KEY=VALUE` pair in the same call. See *Per-harness namespaces and the
+tier-map fallback* above for why the namespace choice matters.
 
 **Sugar: override now and persist it in one call.**
 
@@ -629,8 +727,11 @@ codex --sandbox danger-full-access -C <worktree> -m <model> "Invoke the \"assay:
 
 The same exported env the claude arm gets — `DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS` (when
 `cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `CLAUDE_CONFIG_DIR` is irrelevant on
-this arm and is not passed; the model comes from the same `DESK_MODEL_DEFAULT`/`DESK_MODEL_<role>`
-resolution `cellctl desk` always uses.
+this arm and is not passed; the model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
+`CODEX_MODEL_default`, falling back to the tier map — never the claude arm's `DESK_MODEL_<role>` /
+`DESK_MODEL_DEFAULT` (`#986`: the two were conflated before this, which is why a Claude-only pin
+used to reach `codex -m` unchanged and fail there). See *Per-harness namespaces and the tier-map
+fallback* above for the full resolution order.
 
 **`--sandbox danger-full-access` is required, honestly.** Per the ruled capability matrix (the
 `#937` live smoke run is the evidence codex CLI's default `workspace-write` sandbox blocks the
@@ -740,8 +841,12 @@ a `MISS`, because a provider is opt-in.
 | `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
 | `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
-| `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
-| `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=fable`; an Opus pin here (or via `DESK_MODEL_DEFAULT`) is refused for `the-desk` |
+| `DESK_MODEL_DEFAULT` | the **claude**-namespace model every role window launches on absent a per-role pin (default `sonnet`) |
+| `DESK_MODEL_<role>` | **claude**-namespace per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=fable`; an Opus pin here (or via `DESK_MODEL_DEFAULT`) is refused for `the-desk` |
+| `CODEX_MODEL_default` | the **codex**-namespace equivalent of `DESK_MODEL_DEFAULT` — no compiled default; absent, a role falls to the tier map (see *Per-harness namespaces and the tier-map fallback*) |
+| `CODEX_MODEL_<role>` | **codex**-namespace per-role model override, same `-`-as-`_` role naming; the Opus refusal does NOT apply here (Opus is a Claude-only concept) |
+| `TIER_MODEL_TOP_CLAUDE` / `_MID_CLAUDE` / `_FAST_CLAUDE` | overrides one entry of the claude column of the tier-map fallback (compiled defaults `fable`/`sonnet`/`haiku`) |
+| `TIER_MODEL_TOP_CODEX` / `_MID_CODEX` / `_FAST_CODEX` | overrides one entry of the codex column of the tier-map fallback (compiled default `gpt-5.6-terra` for all three today) |
 | `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*) |
 | `CELL_PROVIDER` | the default provider name for `cellctl desk`/`up` (unset = Anthropic); `--provider` overrides it per run — see *Providers* |
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
