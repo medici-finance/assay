@@ -156,6 +156,18 @@ const createSentMarker = "create-sent | "
 //     remote, and counting RateLimited/Refused re-creates the livelock deskkit's design
 //     exists to avoid (a budget refusal must not inflate the budget).
 //   - Anything unclassified charges (fail closed).
+//
+// assay#955 asked whether a REFUSED `new` — the pre-write gates (BodyCheck's secret scan,
+// the dedupe search finding a likely duplicate, or a self-containment-style refusal) —
+// still consumes this budget. It does not: every one of those gates returns a
+// *deskkit.DeskError with Code == ExitRefused, cmdNew's finalize maps that to
+// ResultRefused (never reaching the createSent-marking line, since all of them run BEFORE
+// checkSessionBudget in cmdNew's flow), and the ResultRefused case above excludes it from
+// the count. The refusal is still logged — chargedNewEntry only decides what COUNTS, not
+// what gets audited — so it is audited but free, per the ruling. See
+// TestBudgetBodyCheckRefusalDoesNotConsumeSlot and TestBudgetDedupeRefusalDoesNotConsumeSlot
+// for the end-to-end regression proof (three consecutive refusals, then a clean `new` that
+// must still succeed).
 func chargedNewEntry(e deskkit.Entry) bool {
 	switch e.Result {
 	case deskkit.ResultRefused, deskkit.ResultNoop,

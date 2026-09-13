@@ -1661,3 +1661,97 @@ func TestBudgetStillCapsOneAgentAtThree(t *testing.T) {
 	}
 	assertNoIssueCreate(t, *calls)
 }
+
+// --- assay#955: a REFUSED `new` must not consume the session budget slot ----------
+
+// TestBudgetBodyCheckRefusalDoesNotConsumeSlot is the assay#955 repro: BodyCheck refuses
+// three consecutive `new` attempts (a secret-shaped token in the body), none of which ever
+// reached `gh issue create`. Before the fix these three ResultRefused lines were
+// nonetheless charged against the 3-per-24h session budget, so the FOURTH attempt — a
+// genuinely clean filing — was itself refused with exit 4 (rate-limited) having filed
+// nothing at all: the session burned its whole budget on refusals and had no slot left to
+// file the legitimate finding the refusals were about.
+//
+// After the fix a refusal is audited (the ResultRefused lines are still on the log) but
+// FREE: only a write that actually reaches `gh issue create` may charge the budget, so the
+// clean filing right after three refusals must still succeed.
+func TestBudgetBodyCheckRefusalDoesNotConsumeSlot(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // no dupes — isolate the BodyCheck refusal path
+	secretBody := bodyFileWith(t, "token ghp_"+strings.Repeat("a", 36))
+
+	for i := 1; i <= defaultNewBudgetPerSession; i++ {
+		rc, out := runCapture([]string{"new", "-R", allowedRepo,
+			"--title", fmt.Sprintf("secret-tripping filing attempt %d", i), "--body-file", secretBody})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("BodyCheck refusal attempt %d rc = %d, want %d (refused); out=%s",
+				i, rc, deskkit.ExitRefused, out)
+		}
+	}
+	// None of the three refused attempts ever reached the remote.
+	assertNoIssueCreate(t, *calls)
+
+	// The refusals must be on the audit log (audited, not silent) but marked as NOT
+	// charging the session budget.
+	for _, e := range auditEntriesFor(t, "new") {
+		if e.Result != deskkit.ResultRefused {
+			continue
+		}
+		if chargedNewEntry(e) {
+			t.Fatalf("a BodyCheck refusal charged the session budget: %+v", e)
+		}
+	}
+
+	// The budget slot must still be available: a clean, non-duplicate filing right after
+	// the three refusals must succeed and actually create the issue.
+	cleanBody := bodyFileWith(t, "a clean, unique observation with no secrets in it")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a genuinely new, clean filing after three refusals", "--body-file", cleanBody})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("clean filing after 3 BodyCheck refusals rc = %d, want 0 — a REFUSED new must not "+
+			"consume the budget a legitimate filing needs (assay#955); out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestBudgetDedupeRefusalDoesNotConsumeSlot is the same assay#955 repro through the OTHER
+// named refusal path: a dedupe match (not BodyCheck). Three attempts against a
+// near-duplicate title are refused, then a clean, unrelated filing must still be admitted.
+func TestBudgetDedupeRefusalDoesNotConsumeSlot(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", searchHitsJSON(t, "oracle price feed goes stale"))
+	dupeBody := bodyFileWith(t, "the oracle price feed is going stale under load")
+
+	for i := 1; i <= defaultNewBudgetPerSession; i++ {
+		rc, out := runCapture([]string{"new", "-R", allowedRepo,
+			"--title", "oracle price feed goes stale", "--body-file", dupeBody})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("dedupe refusal attempt %d rc = %d, want %d (refused); out=%s",
+				i, rc, deskkit.ExitRefused, out)
+		}
+	}
+	assertNoIssueCreate(t, *calls)
+
+	for _, e := range auditEntriesFor(t, "new") {
+		if e.Result != deskkit.ResultRefused {
+			continue
+		}
+		if chargedNewEntry(e) {
+			t.Fatalf("a dedupe refusal charged the session budget: %+v", e)
+		}
+	}
+
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // the clean filing has no near-duplicate
+	cleanBody := bodyFileWith(t, "a fresh unrelated observation")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a brand new unrelated topic", "--body-file", cleanBody})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("clean filing after 3 dedupe refusals rc = %d, want 0 — a REFUSED new must not "+
+			"consume the budget a legitimate filing needs (assay#955); out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
+	}
+}
