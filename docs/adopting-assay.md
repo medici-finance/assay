@@ -377,6 +377,9 @@ works but loses the guards. The mechanism is **channel-E, identical to `install-
 - `shasum -a 256` the tarball → compare to the pinned digest → **refuse on mismatch**;
 - extract and install the binaries to a `bindir` on `PATH`.
 
+`cellctl` comes with desk-tools (#850) — it is one of the extracted files, so nothing extra is
+needed to obtain it; see `docs/cellctl.md` for what it does and its own `--version` check.
+
 Configuration is at the **config-home only** (`~/.config/assay/`) — the same roster file the acting
 tools read everywhere (§3 `configure-roster`, failure mode 1); the environment is never a transport
 for a desk binary.
