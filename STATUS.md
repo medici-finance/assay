@@ -44,17 +44,18 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (47 desk-actionable of 56 total — 56 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (48 desk-actionable of 57 total — 57 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (47)
+### Desk-actionable (48)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | windows-port | 00 | implemented | 4000 | 6 | — | — | — |
@@ -131,6 +132,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | Stream | Oldest at gate | Brief |
 |---|---|---|
 | apps-installer | — | — |
+| contributor-trust | — | — |
 | derived-board | — | — |
 | desk-containers | — | — |
 | desk-supervision | — | — |
@@ -167,7 +169,7 @@ _None._
 ### contributor-trust (9 open)
 
 - 01 Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card — todo (wave 0)
-- 02 Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets — todo (wave 0)
+- 02 Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets — implemented (wave 0)
 - 03 `deskbless` — a structured blessing act with a machine marker, a scope, a reason and an audit row — todo (wave 1)
 - 04 Review depth by tier — an unknown author's pull request gets a claims-versus-diff fact check and a fail-first reproduction — todo (wave 1)
 - 05 Fork-safe continuous-integration posture — audited workflows, tier-keyed approve-and-run, and never-build-unblessed enforced by a check — todo (wave 2)
