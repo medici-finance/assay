@@ -12,6 +12,6 @@ apply:
   - id: hooks-path
     effect: install .githooks/pre-commit and set core.hooksPath
     boundary: inside
-    inverse: unset core.hooksPath and remove the hook (TODO composability/02 makes the reverse real)
+    inverse: unset core.hooksPath and remove .githooks/pre-commit
 intercept: []
 config: {}
