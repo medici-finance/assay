@@ -45,12 +45,12 @@ sources:
   - "freshness-checked 2026-09-13 @ cc4f9e22 (origin/main) — `grep -rn 'gh workflow run' tools/ docs/` finds the askassay probe's ban-test fixture and the apps-installer brief's own rule; no verb dispatches a workflow or approves a deployment gate anywhere in the tree; `tools/desk/internal/deskkit/forge.go`'s `Forge` interface carries 30 methods, none of them a run-dispatch or gate-approval op; `git ls-files | grep -c gitlab-ci` returns 0 — no `.gitlab-ci.yml` exists in this repo's own CI, so no CI-reachable GitLab fixture exists for a live dry-run row"
 domain: complicated
 consumers:
-  - "tools/desk/internal/deskkit/forge.go: fixed-here (three ops added to the frozen seam — RunWorkflow, ApproveGate, RunStatus — both backends, each consumed by deskrun in this same change)"
-  - "tools/desk/cmd/deskrun: fixed-here (new verb: `deskrun <repo> <workflow> --ref <r> -f k=v` dispatches; `deskrun approve <run>` approves a gate; both refuse exit 5 on a human-bound run-credential)"
-  - "tools/desk/internal/deskkit/rosterconfig.go: fixed-here (the new per-repo run-credential binding registers in the known-set; a `release-runner` role joins the role-bindings vocabulary)"
+  - "tools/desk/internal/deskkit/forge.go: follow-up forge-neutral/14 (three ops added to the frozen seam — RunWorkflow, ApproveGate, RunStatus — both backends, each consumed by deskrun in this same change)"
+  - "tools/desk/cmd/deskrun: follow-up forge-neutral/14 (new verb: `deskrun <repo> <workflow> --ref <r> -f k=v` dispatches; `deskrun approve <run>` approves a gate; both refuse exit 5 on a human-bound run-credential)"
+  - "tools/desk/internal/deskkit/rosterconfig.go: follow-up forge-neutral/14 (the new per-repo run-credential binding registers in the known-set; a `release-runner` role joins the role-bindings vocabulary)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (this brief retires no permit row — deskrun is a NEW verb with no prior `gh workflow run` call site to retire; it exists today only as a human-run command, never a tracked forgeban row)"
-  - "docs/streams/forge-gitlab/inventory.md: fixed-here (rows 38-40)"
-  - "tools/desk/README.md: fixed-here (deskrun's row in the Tool reference table)"
+  - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/14 (rows 38-40)"
+  - "tools/desk/README.md: follow-up forge-neutral/14 (deskrun's row in the Tool reference table)"
 version: 1
 id: a91ce800-824a-4f84-9604-094f5d3674fa
 ---
