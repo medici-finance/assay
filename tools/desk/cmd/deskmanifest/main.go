@@ -18,9 +18,15 @@
 //	                                Never rounded up to clean, never down to a problem
 //	                                it did not observe.
 //
+// Providers MAY carry attributes (a `flavour`, an `evidence` marker path) and
+// inject entries MAY constrain a required key's flavour; a key the catalogue
+// (components/KEYS.md) marks `exclusive: true` MUST have at most one ACTIVE
+// provider — a second is a lint PROBLEM (component-model.md §9). `--activation`
+// additionally reports every component's computed ACTIVE/INACTIVE state.
+//
 // USAGE:
 //
-//	deskmanifest lint [--root <dir>]
+//	deskmanifest lint [--root <dir>] [--activation]
 //	deskmanifest --version
 package main
 
@@ -37,11 +43,15 @@ func main() {
 const usage = `deskmanifest — the component-manifest lint.
 
 USAGE:
-  deskmanifest lint [--root <dir>]
+  deskmanifest lint [--root <dir>] [--activation]
   deskmanifest --version
 
 lint discovers every component.yaml under --root (default "."), resolves every
-inject key to a provides, checks version ranges, and reports cycles.
+inject key to a provides, checks version ranges (and flavour constraints), and
+reports cycles and exclusive-key violations (a key components/KEYS.md marks
+exclusive: true with more than one ACTIVE provider). --activation additionally
+prints every component's computed ACTIVE/INACTIVE state and, when INACTIVE,
+why.
 
 Exit codes:
   0  checked-clean    — every required inject resolves, in range, acyclic

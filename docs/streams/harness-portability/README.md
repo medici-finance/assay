@@ -96,6 +96,20 @@ drift tooling:
    are *generated* from single sources by a Go tool, byte-compared in CI. Derived
    artifacts are never hand-ported.
 
+**The three hand-kept manifests are now one exclusively-bound key.** The composability
+stream's component model (`docs/streams/composability/component-model.md` §9) gives this
+seam its formal shape: `assay.harness` is a key with exactly one ACTIVE provider at a
+time, and the Claude Code, Codex, and Cursor adapters (`components/harness-claude-code/`,
+`components/harness-codex/`, `components/harness-cursor/`, landed by composability/04) are
+components whose `provides` names their `flavour` and whose `apply` step owns exactly the
+delivery shape this section describes — the plugin manifest and SessionStart wiring, the
+Codex `.codex-plugin`/AGENTS.md fragment, the generated Cursor rule. `deskmanifest lint`
+refuses a tree with more than one ACTIVE adapter; skills and the hooks component inject
+`assay.harness` (hooks additionally constrained to `flavour: claude-code`, since the
+SessionStart/PreToolUse mechanism is Claude Code's alone). "Switch harness" becomes a
+reconcile-engine operation once the desired-state record (§7) lands, rather than a hand
+edit across three files.
+
 **Ruled out, with reasons:**
 
 - **Per-harness skill forks / parallel bundles.** Doubles the exact drift surface that is

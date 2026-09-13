@@ -84,7 +84,7 @@ components (the paper itself lists it as open — we use namespaced keys plus ve
 | 01 | [Reactive activation — a missing extension key downs one component, not the fleet](brief-01-reactive-activation.md) | 1 | M | todo | — | — |
 | 02 | [Install ledger, paired inverses, and the `disable` verb](brief-02-ledger-and-inverses.md) | 1 | L | todo | — | — |
 | 03 | [Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay](brief-03-desired-state-reconcile.md) | 2 | L | todo | — | — |
-| 04 | [Harness as an exclusively-bound key — adapters as components](brief-04-harness-as-key.md) | 1 | M | todo | — | — |
+| 04 | [Harness as an exclusively-bound key — adapters as components](brief-04-harness-as-key.md) | 1 | M | implemented | — | — |
 | 05 | [Promote the draft to spec/component-v1.md + adopter doc delta](brief-05-promote-spec.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
