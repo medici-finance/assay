@@ -735,9 +735,9 @@ fallback* above for the full resolution order.
 
 **`--sandbox danger-full-access` is required, honestly.** Per the ruled capability matrix (the
 `#937` live smoke run is the evidence codex CLI's default `workspace-write` sandbox blocks the
-`.git/refs/heads/` write a fresh worktree needs — codex has no built-in worktree management, so a
-skill that must isolate has to run `git worktree add` itself, and that is exactly what
-`workspace-write` blocks), the worktree this window runs in could not have been **created** under
+`.git/refs/heads/` write a fresh worktree needs — codex-cli 0.154.0 gained its own `--worktree`
+flag, but a skill isolating via its own `git worktree add` call still hits the same
+`workspace-write` refusal), the worktree this window runs in could not have been **created** under
 a lesser sandbox in the first place. This is not a weakening introduced here — it is the existing
 precondition `cellctl desk`'s own worktree-creation step depends on, stated rather than glossed
 over. `#939` tracks where the capability matrix itself has drifted against newer codex

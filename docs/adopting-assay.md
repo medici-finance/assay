@@ -1287,9 +1287,12 @@ tool set with the flag turned on, so the V2 tool-name behaviour itself remains u
 
 Codex CLI's default `workspace-write` sandbox permits `git add` / `git commit` but blocks
 `git checkout -b` (a `.git/refs/heads/` write) and all network, which takes `git push`, `gh pr
-create` and every other forge write with it. The CLI also has **no built-in worktree management**
-— it detects a linked worktree but never creates one — so a skill that must isolate has to run
-`git worktree add` itself, and under `workspace-write` that is precisely what is blocked.
+create` and every other forge write with it. On codex-cli 0.154.0, `codex exec --help` gained a
+`--worktree` flag ("Run the session in a new managed Git worktree") — the CLI now has a managed
+worktree-creation path of its own — but that path is a separate, explicit invocation shape, not
+something a skill's own `git worktree add` under `workspace-write` gets for free: the sandbox still
+blocks a plain `.git/refs/heads/` write, so a skill that must isolate via its own `git worktree add`
+call still hits precisely the same refusal.
 
 The consequence is the isolation floor, and it is a **refusal, not a degradation**:
 
