@@ -157,8 +157,50 @@ per-worktree admin directory — without it, `RemoteURL`/`LocalBranchNames`/etc.
 with "not found" on every linked worktree even though the shared checkout plainly has
 the remote/branch.
 
+## Brief 07 — deskmerge exception fenced; its non-merge verbs migrated
+
+Brief 07 fenced deskmerge's trial merge as the SOLE sanctioned `internal/gitexec`
+caller and migrated everything else on its own seam to `gitcore`. Per the migration
+checklist contract, a family row is ticked once EVERY seam site the frozen table
+lists for it routes through `gitcore` or is re-keyed to `gitexec` with a cited reason.
+
+| # | Family | Ticked? | Note |
+|---|---|---|---|
+| 2 | `add` | **re-keyed (exception)** | deskmerge's ONE `add` (regenerable-conflict resolution, `merge.go`) is NOT migrated — verified empirically that go-git's `Worktree.Add` cannot clear a path's conflict-stage (1/2/3) index entries; a `gitcore.Commit` built from that index writes a tree with DUPLICATE ENTRIES (`git fsck`: `duplicateEntries`). Fenced through `internal/gitexec` beside the merge it resolves — see `tools/desk/internal/gitcore/write.go`'s doc for the full experiment. verifyloop's `add` (durable.go) is untouched (not this brief's Context) |
+| 3 | `commit` | partial | deskmerge's ONE `commit` (`merge.go`'s `commitMerge`) migrated — `gitcore.Commit` with explicit `Parents`, no separate `rev-parse HEAD` read-back needed. verifyloop's `commit` (durable.go) is untouched, brief unassigned |
+| 6 | `rev-parse` | partial | deskmerge's 3 sites (`resolveRepoRoot`'s checkout-validity check — now `gitcore.Open`; `fetchState`'s post-fetch base/head resolution — now `Repo.Resolve`) migrated. NOTE: this family's frozen tool list (above) never named deskmerge as a seam site for it — a gap in the brief-01 freeze, not a re-scoping; recorded here so a later audit does not read deskmerge as never having had rev-parse sites. deskpushguard's sites remain brief 04's |
+| 14 | `diff` | partial (deskmerge side ticked+exception) | deskmerge's CI-contract-drift diff and the semantic-probe's changed-path diff (both plain two-tree reads, `assess.go`) migrated to `Repo.DiffNames`, filtered client-side (`underAny`) where the git-binary call carried a pathspec — `gitcore.DiffNames` takes none. deskmerge's OTHER `diff` — the `--diff-filter=U` conflict-path enumeration/residual-check, `currency.go`'s `conflictedPaths` and `merge.go`'s post-regeneration check — reads the SAME mid-merge conflict-stage index the trial merge produces and is re-keyed to `gitexec` beside it, for the same reason as `add` above. deskboard's site remains untouched (not named in any brief's Context yet) |
+| 15 | `merge-base` | partial | deskmerge's site (`assess.go`) migrated — `Repo.MergeBase`. deskpushguard's site remains brief 04's |
+| 16 | `rev-list` | partial | deskmerge's two uses migrated: the `--left-right --count` ahead/behind measurement is now two `Repo.AheadCount(mergeBase, X)` calls (both sides counted from the already-computed merge base, which is exactly what the two-dot count means when — as here — the merge base truly is a common ancestor); the `--parents -n1` post-commit parent check is now `Repo.CommitParents`, a new read added in this brief. deskpushguard's sites remain brief 04's |
+| 18 | `remote` | partial | deskmerge's ONE site (`resolveRepoRoot`'s `remote get-url origin`) migrated — `Repo.RemoteURL` (already existed, brief 03). deskpushguard's site (`foreigncommit.go`) remains untouched, brief unassigned |
+| 21 | `worktree` (linked worktrees) | **untouched, unticked** | deskmerge's 3 scratch-worktree sites (`newWorktree`/`remove`) are explicitly OUT OF SCOPE for brief 07 (the brief's own Context: "scratch/linked worktree ops" excluded) — still the named follow-on stream's gap, not re-justified here |
+| 22 | `merge` (three-way trial) | **ticked as fenced** | the trial merge itself now runs through `internal/gitexec` (`gitexec.Run("deskmerge", …)`) under a narrow allowlist entry, rather than deskmerge's own ad hoc exec seam — same git-binary op, now the audited one. Still THE decided exception; see brief 07 and the spec's decision 5 |
+| 23 | `update-ref` | **ticked** | deskmerge's ONE site (`dropPRHeadRef`) migrated — `Repo.DeleteLocalRef`, a new write added in this brief (matches `git update-ref -d`'s own no-op-on-absent behaviour) |
+
+New `gitcore` write helpers this brief added, in `tools/desk/internal/gitcore/write.go` (golden-
+verified in `gitcore_test.go` against the real git binary reading the result back —
+there is no pre-existing git-binary golden for a write helper to diff against, since
+deskmerge is the stream's first migrated WRITE caller): `Commit` (explicit `Parents`,
+identity falls back to go-git's own config resolution exactly as `git commit` does
+with no identity flags — untouched by the worktree-scoped-config gap below, since no
+deskmerge checkout in this stream's fixtures uses it), `CommitParents`, `DeleteLocalRef`.
+
+**Bug found and NOT worked around in `gitcore`, by design (fenced instead) — same
+class as the two `gitcore` bugs brief 03 found and fixed:** go-git's `Worktree.Add`
+does not clear a path's conflict-stage (1/2/3) index entries left by a real
+`git merge` conflict; `tools/desk/internal/gitcore/write.go`'s doc carries the full reproduction.
+Unlike brief 03's two bugs (a storer wrapper and a linked-worktree path fix), this one
+is not a `gitcore`-side workaround to build: it is the SAME class of gap as the trial
+merge's own (no three-way merge, no conflict-stage awareness), so the fix is fencing
+the one call site that touches it, not extending `gitcore`.
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
-baseline N (117). Brief 03 leaves it at **108** (149 immediately before brief 03,
-mid-stream after brief 02). The gate stays advisory (exit 0) until brief 08.
+baseline N (117). Brief 03 left it at **108** (149 immediately before brief 03,
+mid-stream after brief 02). Brief 07 leaves it at **96** (12 deskmerge seam-call sites
+retired: the 3 `rev-parse`, `merge-base`, the `--left-right --count` `rev-list`, the
+2 non-conflict `diff` reads, `remote get-url`, `commit`, the post-commit `rev-list
+--parents`, and `update-ref` — all now `gitcore` calls with no `runGit(`/`gitOut(`/
+`execCommand(`/`execGit(` text at the call site at all). The gate stays advisory
+(exit 0) until brief 08.

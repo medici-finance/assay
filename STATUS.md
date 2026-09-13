@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-13 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-13 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-13 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-13 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/22 | 2026-09-13 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 2/8 | 2026-09-13 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 7/12 | 2026-09-13 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/13 | 2026-09-13 |  |
@@ -35,7 +35,10 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
+| desktools-go-git | 07 — deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest | 3 | 1500 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
+| desk-tools | 22 — Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
@@ -196,7 +199,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (16 open)
+### desk-tools (17 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -214,6 +217,7 @@ _None._
 - 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — implemented (wave 1)
 - 19 `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so — implemented (wave 1)
 - 21 `DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read — implemented (wave 1)
+- 22 Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict — todo (wave 1)
 
 ### desktools-go-git (6 open)
 
@@ -395,4 +399,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **62/159** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **62/160** briefs done · completed initiatives: see `docs/archive/`
