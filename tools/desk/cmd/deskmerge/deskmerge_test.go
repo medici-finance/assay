@@ -1101,6 +1101,56 @@ func TestNeverFastForwards(t *testing.T) {
 	}
 }
 
+// TestAssessTrialMergeNeverFastForwards catches: "fast-forward instead of forcing a
+// merge commit (--no-ff dropped)" — directly, at the trial-merge step in assess.go,
+// unit-level.
+//
+// TestNeverFastForwards above drives the SAME fast-forward-candidate world through the
+// full `merge` verb and asserts the PUSHED commit has two parents — and it still does
+// even under this mutation, because commitMerge (merge.go) writes the final commit with
+// an EXPLICIT parent list (t.rep.HeadSHA, t.rep.BaseSHA), never inferred from whatever
+// git actually did during the trial. In the fast-forward-candidate case the resulting
+// tree is identical either way (the PR side contributes nothing beyond the merge base),
+// so the full-pipeline test cannot tell a genuine forced merge apart from a silent
+// fast-forward — that is exactly why this mutation survived shard 1/3 with the existing
+// suite green (assay#979).
+//
+// What --no-ff governs IS observable one layer down, before commitMerge ever runs: a
+// fast-forward MOVES the trial worktree's HEAD straight to the base commit (no merge is
+// ever staged, nothing for commitMerge's explicit-parent commit to be built on top of in
+// spirit even though it is forced regardless); a forced merge leaves HEAD unchanged at
+// the PR's own head with the merge result staged in the index, uncommitted, exactly as
+// --no-commit promises. This test asserts that directly against the trial's own
+// worktree, so it fails the moment --no-ff is dropped from assess.go regardless of
+// whatever independent protection merge.go's write path also carries.
+func TestAssessTrialMergeNeverFastForwards(t *testing.T) {
+	withScratchTemp(t)
+	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
+	mergeBase := git(t, w.root, "rev-parse", w.headSHA+"^")
+	git(t, w.root, "push", "-q", "--force", "origin", mergeBase+":refs/heads/pr-branch")
+	git(t, w.dir, "-C", w.remote, "update-ref", "refs/pull/7/head", mergeBase)
+	w.headSHA = mergeBase
+	w.install(t, defaultPR(), true)
+
+	p := prInfo{
+		Number: testPR, State: "OPEN", IsDraft: true,
+		HeadRefName: "pr-branch", HeadRefOid: w.headSHA, BaseRefName: "main",
+	}
+	tr, err := assess(w.root, testRepo, p, false)
+	t.Cleanup(tr.close)
+	if err != nil {
+		t.Fatalf("assess failed: %v", err)
+	}
+	if tr.rep.Mergeability != mergeClean {
+		t.Fatalf("want mergeClean, got %v", tr.rep.Mergeability)
+	}
+	if got := git(t, tr.wt.dir, "rev-parse", "HEAD"); got != w.headSHA {
+		t.Fatalf("trial worktree HEAD moved from the PR's own head (%s) to %s — the trial "+
+			"fast-forwarded past the head instead of staging a real merge for later commit",
+			w.headSHA, got)
+	}
+}
+
 // TestFetchFailureIsNotAnsweredFromStaleRefs catches: "answer from stale local refs
 // when the fetch fails".
 //
