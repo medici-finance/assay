@@ -2,7 +2,7 @@ package main
 
 // sweep.go — `commsloop sweep`: the daily lane-violation sweep (#1767's
 // standing-guard ruling names a daily audit sweep for full autonomous
-// firing), an OUT-OF-BAND reconciler that re-derives, on its own timescale
+// firing), an OUT-OF-BAND re-verification pass that re-derives, on its own timescale
 // and in its own process, three properties every inline guard in this
 // package family already enforces IN-BAND at message time:
 //

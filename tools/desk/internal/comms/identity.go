@@ -219,7 +219,7 @@ func Verify(a Assertion, now time.Time, trust TrustStore, skew time.Duration, re
 // Verify answers "is this assertion valid to admit RIGHT NOW, at message
 // time" — the receipt window and nonce are properties of that one admission
 // decision. VerifyIdentityOnly answers a different, narrower question an
-// out-of-band, later-in-time reconciler needs: "was this signature genuinely
+// out-of-band, later-in-time re-check needs: "was this signature genuinely
 // produced by a cell this trust store still recognises". A message's
 // ExpiresAt window necessarily closes long before any daily/periodic sweep
 // re-examines it, so re-running Verify's window check against a historical
