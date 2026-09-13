@@ -87,18 +87,21 @@ exec-tier-why: "each lane adds a NEW way something may be closed, and the whole 
   check matched case-sensitively against a forge that lowercases labels — reads as a working
   feature in every happy-path test and widens who may close what."
 consumers:
-  - "tools/desk/internal/deskkit/forge.go: fixed-here (`ReopenIssue` added to the frozen seam, both
-    backends, consumed by lane (b) in this same change per the freeze rule)"
-  - "tools/desk/cmd/deskclose: fixed-here (two new modes — `self-withdraw`, `verify-gate-refire` —
-    plus the manifest documentation; the existing `duplicate`/`superseded`/`review-request`
-    behavior is UNCHANGED)"
-  - "docs/streams/forge-gitlab/inventory.md: fixed-here (row 38)"
+  - "tools/desk/internal/deskkit/forge.go: follow-up forge-neutral/16 (`ReopenIssue` is added to the
+    frozen seam, both backends, consumed by lane (b) — this is a docs-only authoring PR; the code
+    lands in this brief's own implementation phase)"
+  - "tools/desk/cmd/deskclose: follow-up forge-neutral/16 (two new modes — `self-withdraw`,
+    `verify-gate-refire` — plus the manifest documentation; the existing
+    `duplicate`/`superseded`/`review-request` behavior stays UNCHANGED when that implementation
+    lands; this authoring PR carries no code)"
+  - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/16 (row 38, appended when
+    `ReopenIssue` ships, not by this authoring PR)"
   - ".github/workflows/verify-gate-close.yml: out-of-scope (MUST NOT CHANGE — it is the independent
     server-side layer lane (b)'s safety argument depends on; a Ground Rule below forbids touching
     any `.github/workflows/*` file)"
-  - "docs/streams/forge-neutral/brief-13-write-verbs-c-deskpr-deskfile-deskclose.md: out-of-scope
-    (the `unblocks:` edge `newbrief` wrote there is graph housekeeping for this brief's `depends:`;
-    no content in brief 13 itself changes)"
+  - "docs/streams/forge-neutral/brief-13-write-verbs-c-deskpr-deskfile-deskclose.md: fixed-here
+    (the `unblocks:` edge `newbrief` wrote there is graph housekeeping for this brief's `depends:`,
+    and IS part of this authoring PR's diff; no other content in brief 13 changes)"
 version: 1
 id: 9abfee7a-f0af-48d7-89aa-e36cf5d67ddb
 ---
