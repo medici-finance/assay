@@ -1113,7 +1113,7 @@ func TestNeverFastForwards(t *testing.T) {
 // tree is identical either way (the PR side contributes nothing beyond the merge base),
 // so the full-pipeline test cannot tell a genuine forced merge apart from a silent
 // fast-forward — that is exactly why this mutation survived shard 1/3 with the existing
-// suite green (assay#979).
+// suite green (#979).
 //
 // What --no-ff governs IS observable one layer down, before commitMerge ever runs: a
 // fast-forward MOVES the trial worktree's HEAD straight to the base commit (no merge is
