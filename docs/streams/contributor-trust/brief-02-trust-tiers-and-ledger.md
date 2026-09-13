@@ -43,10 +43,10 @@ exec-tier-why: >-
   passes either way; and (b) the reader is a documented duplicate across two modules that a
   coupling test must hold together.
 consumers:
-  - "tools/desk/internal/deskkit/trusttier.go: follow-up contributor-trust/02 (this brief; flips to fixed-here when the implementation lands the reader)"
-  - "tools/desk/internal/deskkit/rosterconfig.go: follow-up contributor-trust/02 (this brief; the new roster key is added by this brief's implementation)"
-  - "statusgen/rosterconfig.go: follow-up contributor-trust/02 (this brief; the documented-duplicate twin must gain the same key in the same change or the two readers disagree)"
-  - "docs/contributor-trust.md: follow-up contributor-trust/02 (this brief; the published tier model)"
+  - "tools/desk/internal/deskkit/trusttier.go: fixed-here (the Tier type, LedgerRow, the injected LedgerLoader, ResolveTier and the capabilityTable land in this file)"
+  - "tools/desk/internal/deskkit/rosterconfig.go: fixed-here (the ASSAY_CONTRIBUTOR_LEDGER roster key is added by this brief's implementation)"
+  - "statusgen/rosterconfig.go: fixed-here (the documented-duplicate twin gains the identical key, recognised-not-applied, in the same change)"
+  - "docs/contributor-trust.md: fixed-here (the published tier model)"
   - "the identity predicate contributor-trust/09 asks 'is this author external?' through: follow-up contributor-trust/09 (the release-note credit resolver reuses this reader rather than re-deriving the answer from the raw roster)"
   - "tools/desk/internal/deskkit/trust.go (the existing binary bar): out-of-scope (this brief ADDS a tier resolver beside it and changes no existing predicate; every current caller keeps its current answer, which is what makes the change inert until a row is written)"
 version: 1
@@ -195,6 +195,41 @@ a code-shape judgement the reviewer makes from the diff.
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+
+Implemented on branch `feat/contributor-trust-02`. Deliverables: `tools/desk/internal/deskkit/trusttier.go`
+(new — the `Tier` type, `LedgerRow`, the injected `LedgerLoader`, `ResolveTier`, and the
+`capabilityTable`), `tools/desk/internal/deskkit/trusttier_test.go` (new), the
+`ASSAY_CONTRIBUTOR_LEDGER` roster key added to both `tools/desk/internal/deskkit/rosterconfig.go`
+(fully consumed) and `statusgen/rosterconfig.go` (recognised, not applied — statusgen resolves no
+tier), the shared `statusgen/testdata/roster_coupling.json` vector extended with the new key,
+`docs/contributor-trust.md` (new, the published model), and a changelog fragment. Verify table run
+locally against the branch tree (`go build`/`go test` from this repo's `tools/desk/` and `statusgen/`
+sources, not an installed binary):
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTier' -count=1` | exit 0; `ok` | exit 0; `ok` | 2026-09-12 | assay-worker-app[bot] |
+| 2 | `-run 'TrustTierAbsentLedger' -v` | `default-absent`; `unknown` | `tier=unknown provenance=default-absent` | 2026-09-12 | assay-worker-app[bot] |
+| 3 | `-run 'TrustTierUnreadableLedger' -v` | `default-unreadable`; `unknown`; no `contributor` | `tier=unknown provenance=default-unreadable`; no `contributor` substring in output | 2026-09-12 | assay-worker-app[bot] |
+| 4 | `-run 'TrustTierRosterWins' -v` | `maintainer` | `tier=maintainer provenance=roster` (the fixture ledger row named the same roster identity at `blessed-once` and was never consulted) | 2026-09-12 | assay-worker-app[bot] |
+| 5 | `-run 'TrustTierUnpinnedHuman' -v` | `unknown` | `tier=unknown provenance=default-absent` (both the unpinned-row and the zero-supplied-id shapes) | 2026-09-12 | assay-worker-app[bot] |
+| 6 | `-run 'RosterCoupling' -count=1` | exit 0; `ok` | exit 0; `ok` (new `TestContributorLedgerRosterCoupling`; also re-ran statusgen's own `TestRosterKeySchemaCoupling` / `TestRosterCouplingVectors` — both green) | 2026-09-12 | assay-worker-app[bot] |
+| 7 | `grep -n 'never published' docs/contributor-trust.md` | ≥1 match | line 69 | 2026-09-12 | assay-worker-app[bot] |
+| 8 | `git grep -n -E 'unknown.*blessed-once.*contributor.*maintainer' -- docs/contributor-trust.md` | ≥1 match | line 11 (only matches once the file is staged — `git grep` does not search untracked files) | 2026-09-12 | assay-worker-app[bot] |
+| 9 | `go build ./... && go vet ./internal/deskkit/` | exit 0 | exit 0 | 2026-09-12 | assay-worker-app[bot] |
+| 10 | `-run 'TrustTierPublishedModelMatchesTable' -v` | `PASS` | `PASS` | 2026-09-12 | assay-worker-app[bot] |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:02` | exit 0; `corroborated`; no `DISPROVED`/`COULD-NOT-CHECK` | run against the branch's own diff vs. `refs/remotes/origin/main` post-commit (see PR) | 2026-09-12 | assay-worker-app[bot] |
+
+Full package suite also run: `go test ./internal/deskkit/...` — clean (46s), no regressions from the
+new roster key or the two-Config-struct-field addition.
+
+Also ran, out of caution given the corpus-leak guard's scope: `go test ./internal/deskkit/ -run
+'TestCorpusHasNoWithheldStreamPaths'` — the first draft of the new comments named the stream's own
+briefs by bare `contributor-trust/NN` form and the design record by its `docs/streams/decisions/`
+path, both of which the guard correctly flagged (this repo's whole `docs/streams/` tree is
+`do-not-copy` for the `tools/desk` copy set, regardless of whether the referenced stream is itself
+withheld). Neutralised to prose with no bare slug/number or `docs/streams/` path; the guard is now
+clean.
 
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.

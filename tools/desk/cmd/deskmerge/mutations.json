@@ -3,27 +3,27 @@
   "control": {
     "name": "CONTROL \u2014 invert the parent-COUNT check (a single-parent result is accepted as a merge)",
     "file": "cmd/deskmerge/merge.go",
-    "old": "\tif len(f) != 3 {",
-    "new": "\tif len(f) == 3 {"
+    "old": "\tif len(parents) != 2 {",
+    "new": "\tif len(parents) == 2 {"
   },
   "mutations": [
     {
       "name": "disarm the parent-COUNT check (the #72 single-parent masquerade ships)",
       "file": "cmd/deskmerge/merge.go",
-      "old": "\tif len(f) != 3 {",
-      "new": "\tif false && len(f) != 3 {"
+      "old": "\tif len(parents) != 2 {",
+      "new": "\tif false && len(parents) != 2 {"
     },
     {
       "name": "disarm the parent-2 SHA check (a merge of ANY commit passes as merge-currency)",
       "file": "cmd/deskmerge/merge.go",
-      "old": "\tif !strings.EqualFold(f[2], t.rep.BaseSHA) {",
-      "new": "\tif false && !strings.EqualFold(f[2], t.rep.BaseSHA) {"
+      "old": "\tif !strings.EqualFold(parents[1], t.rep.BaseSHA) {",
+      "new": "\tif false && !strings.EqualFold(parents[1], t.rep.BaseSHA) {"
     },
     {
       "name": "disarm the parent-1 check (the PR's own history stops being load-bearing)",
       "file": "cmd/deskmerge/merge.go",
-      "old": "\tif !strings.EqualFold(f[1], t.rep.HeadSHA) {",
-      "new": "\tif false && !strings.EqualFold(f[1], t.rep.HeadSHA) {"
+      "old": "\tif !strings.EqualFold(parents[0], t.rep.HeadSHA) {",
+      "new": "\tif false && !strings.EqualFold(parents[0], t.rep.HeadSHA) {"
     },
     {
       "name": "let a MIXED conflict be resolved (the desk becomes the author of half a merge)",

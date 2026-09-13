@@ -35,6 +35,7 @@ c() { git -C "$fixture" commit -q --no-verify "$@"; }
 printf 'fixture\n' > "$fixture/README.md"
 git -C "$fixture" add README.md
 c -m 'base'
+base="$(git -C "$fixture" rev-parse HEAD)"
 
 # 1) MERGE-COMMIT landing: a fragment added on a side branch, brought to main by
 #    a merge commit whose subject carries the pull-request number.
@@ -57,5 +58,26 @@ c -m 'feat: the squash landing (#4343)'
 printf '### Changed\n- no landing commit names a pull request.\n' > "$fixture/changelog/never-merged.md"
 git -C "$fixture" add changelog/never-merged.md
 c -m 'chore: landed with no pull request reference'
+
+# 4) SQUASH landing FOLLOWED BY AN UNRELATED MERGE — the defect
+#    contributor-trust/09's v1.0.7 dry-run exposed. The fragment's own adding
+#    commit carries `(#5151)`, and an entirely unrelated pull request merges
+#    above it afterwards. A resolver that reads the merges before the adding
+#    commit's own subject credits this fragment to the unrelated #9999.
+printf '### Fixed\n- the squash landing that an unrelated merge follows.\n' \
+  > "$fixture/changelog/squash-then-unrelated-merge.md"
+git -C "$fixture" add changelog/squash-then-unrelated-merge.md
+c -m 'fix: the squash before an unrelated merge (#5151)'
+
+# The unrelated pull request. It forks from BEFORE the commit above, so its
+# second parent does NOT contain any of the adding commits on main — which is
+# exactly what the second-parent containment test is for.
+git -C "$fixture" checkout -q -b unrelated "$base"
+printf 'unrelated\n' > "$fixture/unrelated.txt"
+git -C "$fixture" add unrelated.txt
+c -m 'chore: an unrelated change'
+git -C "$fixture" checkout -q main
+git -C "$fixture" merge -q --no-ff \
+  -m 'Merge pull request #9999 from example/unrelated' unrelated
 
 echo "$fixture"
