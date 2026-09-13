@@ -1005,25 +1005,89 @@ func TestHeadMovedDuringChecksRefuses(t *testing.T) {
 	}
 }
 
-// An already-ready PR whose label is ALREADY correct is a pure no-op: exit 0 and not a single
-// write. This is the common re-run case — a loop re-running its Land step over a landed item —
-// and it must stay cheap and non-failing.
-func TestAlreadyReadyWithCorrectLabelWritesNothing(t *testing.T) {
+// An already-ready PR whose label is ALREADY correct AND whose verdicts are all still current
+// at head is a no-op: exit 0 and not a single write. This is the common re-run case — a loop
+// re-running its Land step over a landed item — and it must stay non-failing.
+//
+// #987: it is NO LONGER cheap in the sense of skipping the re-read. Before the fix, an
+// already-ready PR with a correct label returned "nothing to do" on the change read alone,
+// never re-checking whether a lane's last-seen verdict was still current with the PR's actual
+// head. That let a PR sit ready-for-human-merge indefinitely while new, unreviewed commits
+// landed on it. So this case now proves the OPPOSITE of the old assertion: the full gate,
+// including the reviewer and check reads, runs even though the label needed no write — and
+// still lands on a true no-op (no mutation) when every lane's verdict is genuinely current.
+func TestAlreadyReadyWithCorrectLabelAndCurrentVerdictsWritesNothing(t *testing.T) {
 	s := newStub()
 	s.pr.IsDraft = false
 	s.pr.Labels = []string{labelAfterFlip}
 	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
-		t.Fatalf("already-ready, label correct: rc = %d, want 0 (idempotent no-op)", rc)
+		t.Fatalf("already-ready, label correct, verdicts current: rc = %d, want 0 (idempotent no-op)", rc)
 	}
 	if m := s.mutated(); len(m) != 0 {
 		t.Fatalf("a no-op re-run wrote: %v", m)
 	}
-	// It is also CHEAP: the no-op returns on the change read alone, without reading the
-	// verdicts, the diff or the rollups.
-	if s.saw(http.MethodGet, "/reviews") || s.saw(http.MethodGet, "/files") {
-		t.Errorf("the no-op path read past the change document: %v", s.requests)
+	// The re-gate REALLY ran: it read the reviews (and the diff, since the security lane always
+	// reads the changed-file list) before deciding there was nothing to do.
+	if !s.saw(http.MethodGet, "/reviews") {
+		t.Error("the already-ready fast path decided 'nothing to do' without ever reading the review " +
+			"lanes — that is the bug #987 reports")
+	}
+}
+
+// THE GAP #987 CLOSES. An already-ready PR whose queue label is ALREADY correct used to
+// short-circuit to "nothing to do" without ever re-reading the review lanes, so a lane's
+// verdict could sit pinned at a stale commit — behind the PR's actual head — indefinitely,
+// with the queue reading "ready to merge" the whole time.
+//
+// This reproduces that shape (the pattern reported against a real PR: a security pass pinned
+// to an old commit, with a later, unrelated correctness re-review landing at a new head that
+// the security lane never saw): a risk-classed repo, a correctness APPROVED at the CURRENT
+// head (a re-review genuinely happened), but the only `Security-Review: pass` pinned at an
+// OLDER commit the PR has since moved past. The already-ready fast path must re-run the full
+// gate and refuse — naming the stale lane and both commits — rather than reading
+// "isDraft=false + label correct" as proof the verdicts are current.
+func TestAlreadyReadyStaleSecurityVerdictBehindHeadRefuses(t *testing.T) {
+	const staleSecurityHead = "1111111122222222333333334444444455555555"
+	s := newStub()
+	s.pr.IsDraft = false
+	s.pr.Labels = []string{labelAfterFlip} // already ready AND the queue label is already correct
+	s.install(t)
+	bot := reviewerBot(t)
+	// Correctness lane re-reviewed at the CURRENT head — this lane alone is current.
+	approve := approvalAtHead(t, headSHA)
+	// Security lane's only pass is pinned at an OLDER commit the PR has since moved past.
+	stalePass := reviewInfo{State: "COMMENTED", CommitID: staleSecurityHead, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:00:00Z"}
+	stalePass.User.Login = bot
+	s.reviews = append(approve, stalePass)
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", publicRepo}) })
+
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("already-ready with a stale security verdict behind head: rc = %d, want %d (refused) — "+
+			"the fast path must not read 'already ready' as 'verdicts current'", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a stale-verdict PR was mutated (label swap or ready flip): %v", m)
+	}
+	// The re-gate really ran: it had to read the reviews to discover the staleness.
+	if !s.saw(http.MethodGet, "/reviews") {
+		t.Error("the already-ready fast path exited without ever reading the review lanes — " +
+			"that is the bug #987 reports")
+	}
+	// The refusal names the stale lane and BOTH commits, unambiguously.
+	if !strings.Contains(out, condSecurityVerdict) {
+		t.Errorf("the refusal does not name the security-verdict condition: %q", out)
+	}
+	if !strings.Contains(out, short(staleSecurityHead)) {
+		t.Errorf("the refusal does not name the stale verdict's commit %s: %q", short(staleSecurityHead), out)
+	}
+	if !strings.Contains(out, short(headSHA)) {
+		t.Errorf("the refusal does not name the PR's current head %s: %q", short(headSHA), out)
 	}
 }
 
