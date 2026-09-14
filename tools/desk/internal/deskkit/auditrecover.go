@@ -79,44 +79,58 @@ func RecoverCorruptAudit() (AuditRecovery, error) {
 	}
 	defer unlock()
 
-	path := filepath.Join(dir, "audit.jsonl")
-	f, err := os.Open(path)
+	// EVERY SEGMENT, not just the live file. Since the ledger rotates daily
+	// (audit.go § rotateIfNeeded), a malformed line can sit in a rotated segment, and a
+	// recovery that only ever looked at audit.jsonl would leave it there permanently —
+	// every LoadEntries still refusing, with the printed remedy already run.
+	paths, err := segmentPaths()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return AuditRecovery{}, nil // no file → nothing to recover
-		}
-		return AuditRecovery{}, Unverifiable("cannot read audit file for recovery", err)
+		return AuditRecovery{}, err
 	}
 
-	var good []string // raw lines kept byte-for-byte (no reserialisation → no schema drift)
-	var bad []string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		raw := sc.Text()
-		if strings.TrimSpace(raw) == "" {
-			continue // blank lines are not corruption; LoadEntries skips them too
+	// good[i]/bad[i] are the raw lines of paths[i], kept byte-for-byte (no
+	// reserialisation → no schema drift).
+	good := make([][]string, len(paths))
+	bad := make([][]string, len(paths))
+	carried, quarantined := 0, 0
+	for i, path := range paths {
+		f, oerr := os.Open(path)
+		if oerr != nil {
+			if os.IsNotExist(oerr) {
+				continue // a segment that is not there is not corruption
+			}
+			return AuditRecovery{}, Unverifiable("cannot read audit file for recovery: "+filepath.Base(path), oerr)
 		}
-		var e Entry
-		if json.Unmarshal([]byte(strings.TrimSpace(raw)), &e) != nil {
-			bad = append(bad, raw)
-			continue
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for sc.Scan() {
+			raw := sc.Text()
+			if strings.TrimSpace(raw) == "" {
+				continue // blank lines are not corruption; LoadEntries skips them too
+			}
+			var e Entry
+			if json.Unmarshal([]byte(strings.TrimSpace(raw)), &e) != nil {
+				bad[i] = append(bad[i], raw)
+				continue
+			}
+			good[i] = append(good[i], raw)
 		}
-		good = append(good, raw)
-	}
-	if scErr := sc.Err(); scErr != nil {
+		if scErr := sc.Err(); scErr != nil {
+			f.Close()
+			return AuditRecovery{}, Unverifiable("error scanning audit file for recovery: "+filepath.Base(path), scErr)
+		}
 		f.Close()
-		return AuditRecovery{}, Unverifiable("error scanning audit file for recovery", scErr)
-	}
-	f.Close()
-
-	if len(bad) == 0 {
-		// Already clean: do NOT rewrite — the append-only file stays untouched.
-		return AuditRecovery{Carried: len(good), Quarantined: 0, Rewrote: false}, nil
+		carried += len(good[i])
+		quarantined += len(bad[i])
 	}
 
-	// Move the bad lines into a corrupt-<ts> sidecar, then atomically replace audit.jsonl
-	// with only the carried lines.
+	if quarantined == 0 {
+		// Already clean: do NOT rewrite — every append-only file stays untouched.
+		return AuditRecovery{Carried: carried, Quarantined: 0, Rewrote: false}, nil
+	}
+
+	// Move the bad lines into ONE corrupt-<ts> sidecar, then atomically replace only the
+	// files that carried one.
 	stamp := time.Now().UTC().Format("20060102T150405Z")
 	quarantine := filepath.Join(dir, "audit.jsonl.corrupt-"+stamp)
 	// A second recovery in the same second must not clobber the first sidecar.
@@ -126,29 +140,55 @@ func RecoverCorruptAudit() (AuditRecovery, error) {
 		}
 		quarantine = filepath.Join(dir, fmt.Sprintf("audit.jsonl.corrupt-%s.%d", stamp, i))
 	}
-	if err := os.WriteFile(quarantine, []byte(strings.Join(bad, "\n")+"\n"), 0o600); err != nil {
+	var allBad []string
+	for i := range paths {
+		allBad = append(allBad, bad[i]...)
+	}
+	if err := os.WriteFile(quarantine, []byte(strings.Join(allBad, "\n")+"\n"), 0o600); err != nil {
 		return AuditRecovery{}, Unverifiable("cannot write quarantine sidecar", err)
 	}
 
-	tmp := filepath.Join(dir, fmt.Sprintf(".audit.jsonl.recover-%s", stamp))
-	var body string
-	if len(good) > 0 {
-		body = strings.Join(good, "\n") + "\n"
-	}
-	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
-		return AuditRecovery{}, Unverifiable("cannot write recovered audit file", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return AuditRecovery{}, Unverifiable("cannot replace audit file with recovered copy", err)
+	for i, path := range paths {
+		if len(bad[i]) == 0 {
+			continue // this segment was clean — leave it exactly as it is
+		}
+		tmp := filepath.Join(dir, fmt.Sprintf(".%s.recover-%s", filepath.Base(path), stamp))
+		var body string
+		if len(good[i]) > 0 {
+			body = strings.Join(good[i], "\n") + "\n"
+		}
+		if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
+			return AuditRecovery{}, Unverifiable("cannot write recovered audit file: "+filepath.Base(path), err)
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			_ = os.Remove(tmp)
+			return AuditRecovery{}, Unverifiable("cannot replace audit file with recovered copy: "+filepath.Base(path), err)
+		}
 	}
 
 	return AuditRecovery{
-		Carried:        len(good),
-		Quarantined:    len(bad),
+		Carried:        carried,
+		Quarantined:    quarantined,
 		QuarantinePath: quarantine,
 		Rewrote:        true,
 	}, nil
+}
+
+// tryLockAudit takes the same audit.lock as lockAudit with ONE non-blocking attempt, for
+// the caller whose work is optional. Rotation is that caller: it is due at most once a day
+// and must never make a writer wait, so a busy lock is simply "someone else is writing"
+// and the next invocation checks again. ok=false is never permission to proceed without the
+// lock — it is permission to do nothing.
+func tryLockAudit(dir string) (unlock func(), ok bool) {
+	lf, err := os.OpenFile(filepath.Join(dir, "audit.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, false
+	}
+	if lerr := TryLockExclusive(lf); lerr != nil {
+		lf.Close()
+		return nil, false
+	}
+	return func() { _ = UnlockFile(lf); _ = lf.Close() }, true
 }
 
 // lockAudit takes the shared audit.lock exclusive advisory lock, the same lock the

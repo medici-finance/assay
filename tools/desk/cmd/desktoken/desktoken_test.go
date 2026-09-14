@@ -463,14 +463,14 @@ func TestCacheReuseFresh(t *testing.T) {
 		t.Fatalf("access_tokens POST should not have been called; got %v", *recordedPaths)
 	}
 
-	// Audit should mention cache reuse, not a mint.
-	entries := auditEntries(t)
-	if len(entries) == 0 {
-		t.Fatal("expected at least one audit entry")
-	}
-	last := entries[len(entries)-1]
-	if !strings.Contains(last.Detail, "reused cached") {
-		t.Fatalf("expected cache reuse in audit; got: %s", last.Detail)
+	// A cache REUSE writes NO audit row (#1035). It contacted nothing, minted nothing and
+	// changed nothing; its row was the ledger's single largest contributor and recorded a
+	// no-op. This assertion is the inverse of the one it replaces — the row used to be
+	// required here.
+	for _, e := range auditEntries(t) {
+		if strings.Contains(e.Detail, "reused cached") {
+			t.Fatalf("a cache reuse must write no audit row; found: %+v", e)
+		}
 	}
 }
 
