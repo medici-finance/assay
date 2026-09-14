@@ -39,19 +39,21 @@ import (
 	"time"
 )
 
-const (
-	// boundedReadMaxLines / boundedReadMaxBytes are the FAIL-CLOSED cap, not a horizon: a
-	// bounded read that has not reached determinacy by here discards what it has and the
-	// caller re-reads the whole ledger. They are generous on purpose — reaching them means
-	// the ledger has no progress entry in 200k lines, which is a diagnosis, not a budget.
+// boundedReadMaxLines / boundedReadMaxBytes are the FAIL-CLOSED cap, not a horizon: a
+// bounded read that has not reached determinacy by here discards what it has and the caller
+// re-reads the whole ledger. They are generous on purpose — reaching them means the ledger
+// has no progress entry in 200k lines, which is a diagnosis, not a budget. They are vars
+// only so a test can lower them to exercise the fallback; nothing wires them to an env var
+// or a flag, for the same reason dirOverride is not wired to one.
+var (
 	boundedReadMaxLines = 200_000
-	boundedReadMaxBytes = 200 << 20
-
-	// boundedSkewMargin is how far PAST each cutoff the reader keeps going before it calls
-	// that cutoff settled, so a second-resolution timestamp or a small clock step cannot
-	// strand an in-window entry on the far side of the cursor.
-	boundedSkewMargin = 15 * time.Minute
+	boundedReadMaxBytes = int64(200 << 20)
 )
+
+// boundedSkewMargin is how far PAST each cutoff the reader keeps going before it calls that
+// cutoff settled, so a second-resolution timestamp or a small clock step cannot strand an
+// in-window entry on the far side of the cursor.
+const boundedSkewMargin = 15 * time.Minute
 
 // breakerWalk is one scope's consecutive-non-progress walk, evaluated INCREMENTALLY as the
 // reverse reader hands it entries newest-first. It mirrors breakerRun's rules exactly:
