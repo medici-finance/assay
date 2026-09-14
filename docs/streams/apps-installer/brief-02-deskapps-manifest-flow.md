@@ -59,13 +59,23 @@ facts:
 - Manifest fields used: `name`, `url`, `redirect_url` (`http://127.0.0.1:<port>/callback`),
   `public: false`, `default_permissions`, `default_events: []`, `hook_attributes: {active: false}`.
 - Tier manifests (this brief's data; permissions are the desk preflight's required set plus
-  CI-read for the roles that read CI):
+  CI-read for the roles that read CI, plus `administration:read` for the roles that read branch
+  protection):
   - `team`: `<prefix>-read` = metadata, contents:read, issues:read, pull_requests:read,
-    checks:read, statuses:read, actions:read. `<prefix>-act` = contents:write, issues:write,
-    pull_requests:write, checks:read, statuses:read, actions:read.
+    checks:read, statuses:read, actions:read, administration:read. `<prefix>-act` = contents:write,
+    issues:write, pull_requests:write, checks:read, statuses:read, actions:read,
+    administration:read.
   - `family`: six manifests named `<prefix>-<role>-app`; every one carries contents:write,
     issues:write, pull_requests:write (the `requiredDuties` set); reviewer, worker and desk add
-    checks:read, statuses:read, actions:read.
+    checks:read, statuses:read, actions:read; reviewer and desk additionally carry
+    administration:read.
+  - `administration:read` is what lets `deskflip` read a branch's required status checks through the
+    legacy branch-protection endpoint — the ONLY endpoint that can see CLASSIC branch protection
+    (the rules API surfaces rulesets only). A reviewer App born without it flips nothing on a
+    classically-protected repo: the gate fails closed to could-not-check forever (#1020). Read-only
+    is the whole grant — never `administration:write`, which can rewrite protection itself. Because
+    these manifests are what every future install is born with, the permission belongs in the
+    manifest data, not in a post-install fix-up.
 - Bindings written by tier (`<ROLE>_APP` lines, brief 01): `team` → all six roles → `<prefix>-act`
   except reads: `deskboard`/index paths use `<prefix>-read` via a `READ_APP=<prefix>-read` line
   (consumer: brief 03 decides which verbs mint the read App; this brief only writes the line).

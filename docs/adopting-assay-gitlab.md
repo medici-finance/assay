@@ -108,6 +108,20 @@ Attribution separation holds exactly as on GitHub: notes/approvals/commits carry
 service-account identity, which the PR/MR author's own token cannot produce — the same
 honest limit as the GitHub profile (separation of attribution, not proof of diligence).
 
+**The ready-flip's protected-branch read — `could-not-check` on this profile.** On GitHub the
+reviewer App needs `Administration: Read-only` before `deskflip` can read the required status
+checks of a branch under classic protection (`docs/adopting-assay.md` §3 `setup-reviewer-app`).
+GitLab has **no permission toggle of that shape**: the equivalent reads are
+`GET api/v4/projects/:id/protected_branches/:name` and, for the merge-gating checks themselves,
+`GET api/v4/projects/:id/external_status_checks`, both under the role's plain `api` scope, so the
+grant is expressed as an **access level**, not a scope. **Whether Developer (30) — the reviewer
+service account's level in the table above — can read either endpoint on your edition is
+`could-not-check` here: it has not been measured on a live project, and GitLab has historically
+gated protected-branch reads at Maintainer.** Read it back on your own instance before you claim
+the flip gate works (the edition + read-back rule in §0 *Tier ladder* applies unchanged);
+a 403 there is a **level** decision for a human, and raising the reviewer to Maintainer is not a free swap — it
+carries push rights the Developer level deliberately withholds.
+
 **Three credential classes — do not collapse them.**
 
 | Class | Who | Lives in config-home as | Used for |
