@@ -540,24 +540,65 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 				"use the typed operation for the kind you mean",
 			repo.Slug(), number, number), nil)
 	case iss != nil:
-		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false,
-			URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...)}
-		if iss.Author != nil {
-			out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
-		}
-		return out, nil
+		return gitlabIssueAsIssue(iss), nil
 	case mr != nil:
-		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true,
-			URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...)}
-		if mr.Author != nil {
-			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
-		}
-		return out, nil
+		return gitlabMRAsIssue(mr), nil
 	default:
 		// Neither kind exists (or is visible). Surface the issue-side 404 so
 		// IsForgeNotFound holds.
 		return nil, g.mapErr(http.MethodGet, issuePath, issErr)
 	}
+}
+
+// gitlabIssueAsIssue maps a GitLab issue onto the forge-neutral Issue (IsPullRequest false).
+func gitlabIssueAsIssue(iss *gitlab.Issue) *Issue {
+	out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false,
+		URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...)}
+	if iss.Author != nil {
+		out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
+	}
+	return out
+}
+
+// gitlabMRAsIssue maps a GitLab merge request onto the forge-neutral Issue (IsPullRequest true).
+func gitlabMRAsIssue(mr *gitlab.MergeRequest) *Issue {
+	out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true,
+		URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...)}
+	if mr.Author != nil {
+		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
+	}
+	return out
+}
+
+// GetIssueTyped is the typed read GetIssue's both-kinds refusal points at. The caller has
+// STATED the kind, so exactly ONE endpoint is probed — the issue for TargetIssue, the
+// merge request for TargetChange — and the other kind's existence at the same number is
+// irrelevant: `#4` and `!4` both existing is the ordinary GitLab case, not an ambiguity,
+// once the caller has said which it means. A 404 from the one probe is returned as-is
+// (IsForgeNotFound holds); any other error is returned as-is for the same reason GetIssue
+// does. An unknown kind is refused rather than defaulted.
+func (g *GitLabForge) GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	switch kind {
+	case TargetIssue:
+		path := fmt.Sprintf("/projects/%s/issues/%d", g.projectPath(repo), number)
+		iss, _, ierr := cl.Issues.GetIssue(repo.Slug(), int64(number))
+		if ierr != nil {
+			return nil, g.mapErr(http.MethodGet, path, ierr)
+		}
+		return gitlabIssueAsIssue(iss), nil
+	case TargetChange:
+		path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), number)
+		mr, _, merr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
+		if merr != nil {
+			return nil, g.mapErr(http.MethodGet, path, merr)
+		}
+		return gitlabMRAsIssue(mr), nil
+	}
+	return nil, Refused(fmt.Sprintf("refused: GetIssueTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
 }
 
 // OpenChangeForBranch resolves the single OPEN merge request whose SOURCE branch is `branch`
@@ -2053,6 +2094,39 @@ func (g *GitLabForge) PostComment(repo ForgeRepo, number int, body string) (*Com
 	// edit at the wrong endpoint is worse than handing back none. The numeric id is reported
 	// so the write is still answerable.
 	return &CommentRef{DatabaseID: note.ID}, nil
+}
+
+// PostCommentTyped posts a note on the object of the STATED kind — issue notes for
+// TargetIssue, merge-request notes for TargetChange — with no resolving read. It is the
+// write half of GetIssueTyped: PostComment resolves the kind through GetIssue and so
+// cannot post at a number that carries both an issue and a merge request; this one takes
+// the kind from the caller and routes on it alone. The returned reference follows
+// PostComment's rule per kind (a merge-request note carries the opaque editable id, an
+// issue note only its numeric id). An unknown kind is refused rather than defaulted.
+func (g *GitLabForge) PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	switch kind {
+	case TargetIssue:
+		path := fmt.Sprintf("/projects/%s/issues/%d/notes", g.projectPath(repo), number)
+		note, _, perr := cl.Notes.CreateIssueNote(repo.Slug(), int64(number),
+			&gitlab.CreateIssueNoteOptions{Body: gitlab.Ptr(body)})
+		if perr != nil {
+			return nil, g.mapErr(http.MethodPost, path, perr)
+		}
+		return &CommentRef{DatabaseID: note.ID}, nil
+	case TargetChange:
+		path := fmt.Sprintf("/projects/%s/merge_requests/%d/notes", g.projectPath(repo), number)
+		note, _, perr := cl.Notes.CreateMergeRequestNote(repo.Slug(), int64(number),
+			&gitlab.CreateMergeRequestNoteOptions{Body: gitlab.Ptr(body)})
+		if perr != nil {
+			return nil, g.mapErr(http.MethodPost, path, perr)
+		}
+		return &CommentRef{ID: gitlabNoteID(repo, number, note.ID), DatabaseID: note.ID}, nil
+	}
+	return nil, Refused(fmt.Sprintf("refused: PostCommentTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
 }
 
 // PostReview submits a head-pinned verdict on a merge request.

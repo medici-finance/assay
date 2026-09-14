@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/9"
+    }
+  ],
+  "result": {
+    "Number": 9,
+    "State": "open",
+    "Author": {
+      "Login": "someone",
+      "ID": 5
+    },
+    "IsPullRequest": false,
+    "URL": "https://gitlab.example/medici-finance/assay/-/issues/12"
+  }
+}

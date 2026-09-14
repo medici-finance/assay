@@ -176,6 +176,8 @@ exists. The golden `delete_ref_refuses_namespace_escape` pins that a ref aimed a
 | # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
 |---|--------|--------------------|-------------|----------------|-------------|
 | 37 | `RefExists(repo, ref)` | ref-existence read (model-capability-floor stamp age-out) | `GET /repos/{o}/{r}/git/ref/{ref}` (SINGULAR single-reference read, distinct from the plural `git/refs/` `DeleteRef` targets) — the logic extracted from `deskpost`'s hand-rolled `refExists`; a 404 is the ANSWER "absent" (false, nil), every other non-2xx is could-not-check | `GET /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**) — `DeleteRef`'s read twin, reaching exactly as far: GitLab CE exposes NO general ref-existence endpoint, so only the `heads/<branch>` namespace maps and every other namespace is a could-not-check REFUSAL naming the gap. The dispatch claim ref (`refs/heads/dispatch/<key>`) is INSIDE that namespace, so the live read round-trips here. A 404 → absent (false, nil); a 403 → could-not-check, never a guessed release | implemented |
+| 38 | `GetIssueTyped(repo, number, kind)` | typed read of ONE stated kind (issue ↔ change) at a number | `GET /repos/{o}/{r}/issues/{n}` — the same single read as op 2, with the stated kind VALIDATED against the `pull_request` discriminator: a mismatch is could-not-check naming both kinds, never the other object handed back | `GET /projects/:id/issues/:iid` OR `…/merge_requests/:iid` — exactly the ONE endpoint the stated kind names; the other sequence's object at the same number is irrelevant once the kind is stated (the case op 2 refuses). A 404 from that one probe is the answer for THAT kind | implemented |
+| 39 | `PostCommentTyped(repo, number, kind, body)` | comment on the object of ONE stated kind | `POST /repos/{o}/{r}/issues/{n}/comments` — issues and PRs share the endpoint, so the kind selects nothing (it is not re-validated: op 38 precedes it in every consumer) | `POST /projects/:id/issues/:iid/notes` OR `…/merge_requests/:iid/notes`, routed by the caller's kind alone with NO resolving read — op 9 routes through op 2 and so inherits its both-kinds refusal | implemented |
 
 **Op 37 (`RefExists`) was added by brief `forge-gitlab/09` under the same freeze rule**, with its one
 consuming call site converted in the same change: `deskpost`'s `claimLiveness` — the model-capability
@@ -191,6 +193,17 @@ ages a stamp out; every uncertain path is could-not-check, which changes nothing
 `GitLabRepoInfoFetcher` adapter (below, delta note) landed in the same brief so the public-repo gate can
 run on a GitLab-resolved repo; it is not a `Forge` method (the gate takes the string-signature
 `RepoInfoFetcher`), so it is not a row here.
+
+**Ops 38–39 (`GetIssueTyped`, `PostCommentTyped`) were added for `deskfile attach --kind` under the same
+freeze rule** (medici-finance/assay#1087). They are the typed pair op 2's both-kinds refusal points at: a
+GitLab adopter cell found every low number its project carried in BOTH sequences un-attachable, because
+`attach` read the target through op 2 (refused) and had no way to state which kind it meant. `attach`
+now takes `--kind issue|mr` (default `issue`), and the kind drives both the state read (op 38) and the
+note's endpoint (op 39). The goldens `get_issue_typed_issue_both_kinds` / `get_issue_typed_change_both_kinds`
+/ `get_issue_typed_issue_missing` and `post_comment_typed_issue_both_kinds` /
+`post_comment_typed_change_both_kinds` pin that each typed op emits exactly ONE request, at the stated
+kind's endpoint, with the other kind present at the same number. Ops 2 and 9 keep their behaviour for
+every caller not yet converted.
 
 ## Per-tool call-site inventory (current state)
 
