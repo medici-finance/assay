@@ -409,7 +409,9 @@ usage:
 
 the two verdict verbs (a risk-classed PR needs BOTH at the same head):
   review           the CORRECTNESS verdict. Body carries 'Verdict: approve|request-changes'.
-                   Submitted as APPROVE / REQUEST_CHANGES.
+                   Submitted as APPROVE / REQUEST_CHANGES. Refuses a body carrying a
+                   'Security-Review:' line — that verdict goes through security-review,
+                   so a security pass can never land as APPROVED.
   security-review  the SECURITY verdict. Body carries
                    'Security-Review: pass|fail'. A PASS is submitted as a COMMENT-event
                    review — state COMMENTED, so `+"`ready`"+`'s gate (e) can read it while the

@@ -231,7 +231,11 @@ func TestReviewBothVerdictKindsLandAtSameHead(t *testing.T) {
 	secFile := writeBody(t, "sec.md", okSecurityBody)
 	corFile := writeBody(t, "cor.md", okReviewBody)
 
-	if code := run(reviewArgs("example-org/tracker", "1", "approve", testHead, secFile)); code != 0 {
+	// Each kind goes through its own verb: `review` refuses a security body (the
+	// one-directional guard that let a security pass post as APPROVED is closed), so the
+	// security lane's all-clear is `security-review --verdict pass` — still a distinct
+	// required artifact at the same head, which is what this test pins.
+	if code := run(secReviewArgs("example-org/tracker", "1", "pass", testHead, secFile)); code != 0 {
 		t.Fatalf("security verdict exit = %d, want 0", code)
 	}
 	secAudit := lastAudit(t)
@@ -255,8 +259,8 @@ func TestReviewBothVerdictKindsLandAtSameHead(t *testing.T) {
 		t.Fatalf("both verdicts audited under the same verb %q — the idempotency key does not "+
 			"carry the verdict kind (#220)", secAudit.Verb)
 	}
-	if secAudit.Verb != "review:security:approve" || corAudit.Verb != "review:correctness:approve" {
-		t.Fatalf("verbs = %q / %q, want review:security:approve / review:correctness:approve",
+	if secAudit.Verb != "review:security:pass" || corAudit.Verb != "review:correctness:approve" {
+		t.Fatalf("verbs = %q / %q, want review:security:pass / review:correctness:approve",
 			secAudit.Verb, corAudit.Verb)
 	}
 }
@@ -269,7 +273,7 @@ func TestReviewSecurityKindRepeatStillNoops(t *testing.T) {
 	f, _ := setupFake(t)
 	f.pullHeads = []string{testHead}
 	bf := writeBody(t, "sec.md", okSecurityBody)
-	args := reviewArgs("example-org/tracker", "1", "approve", testHead, bf)
+	args := secReviewArgs("example-org/tracker", "1", "pass", testHead, bf)
 
 	if code := run(args); code != 0 {
 		t.Fatalf("first security verdict exit = %d, want 0", code)
@@ -322,10 +326,11 @@ func TestReviewOtherKindPostsAcrossSessions(t *testing.T) {
 func TestReviewSameKindNoopAcrossSessions(t *testing.T) {
 	f, _ := setupFake(t)
 	f.pullHeads = []string{testHead}
-	f.reviews = []reviewInfo{appReviewAt("APPROVED", testHead, okSecurityBody)}
+	// A security PASS at head is a COMMENTED review — the shape `security-review` posts.
+	f.reviews = []reviewInfo{appReviewAt("COMMENTED", testHead, okSecurityBody)}
 	bf := writeBody(t, "sec.md", okSecurityBody)
 
-	code := run(reviewArgs("example-org/tracker", "1", "approve", testHead, bf))
+	code := run(secReviewArgs("example-org/tracker", "1", "pass", testHead, bf))
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (noop)", code)
 	}

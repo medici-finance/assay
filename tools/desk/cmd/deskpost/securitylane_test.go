@@ -371,6 +371,50 @@ func TestSecurityReviewKindGuardIsTheSoleDefenceOnAMixedBody(t *testing.T) {
 	}
 }
 
+// TestReviewRefusesASecurityBody — the mirror of TestSecurityReviewRefusesACorrectnessBody:
+// the correctness verb declares ITS kind too, so a security-lane body handed to
+// `review --verdict approve|request-changes` is refused with no network call.
+//
+// This guard was one-directional until a real incident: two reviewer lanes dispatched to
+// one PR shared a scratchpad, one lane's default body filename was read by the other's
+// `review --verdict approve`, and a `Security-Review: pass` body was submitted as an
+// APPROVED review — precisely the same-head APPROVE the security verb's COMMENTED shape
+// exists to avoid. The stray review had to be dismissed by hand. Both flags are covered
+// because `--verdict request-changes` with a security body would likewise post a
+// security FAIL under the correctness lane's audit key, invisible to gate (e0).
+//
+// The stderr assertion pins the KIND guard by its message: a security body carries no
+// `Verdict:` line, so nothing else in the write path would refuse it — without this
+// guard the body posts, which is the incident.
+func TestReviewRefusesASecurityBody(t *testing.T) {
+	secPassBody := "## Security review\n\nNo findings at the stated trust boundary.\n\nSecurity-Review: pass\n"
+	for _, tc := range []struct{ flag, body, name string }{
+		{"approve", secPassBody, "pass-body-as-approve"},
+		{"request-changes", secFailBody, "fail-body-as-request-changes"},
+		{"approve", secFailBody, "fail-body-as-approve"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			bf := writeBody(t, "sec-"+tc.name+".md", tc.body)
+
+			if code := run(reviewArgs(exampleRepo, "1", tc.flag, testHead, bf)); code != deskkit.ExitRefused {
+				t.Fatalf("exit = %d, want %d — `review --verdict %s` must refuse a security body",
+					code, deskkit.ExitRefused, tc.flag)
+			}
+			if f.postedReview != 0 {
+				t.Fatalf("postedReview = %d, want 0 — a refusal must make no write", f.postedReview)
+			}
+			if !strings.Contains(errBuf.String(), "posts the CORRECTNESS verdict") {
+				t.Fatalf("the KIND guard must be the one that refused. stderr: %s", errBuf.String())
+			}
+			if e := lastAudit(t); e.Verb != "review:approve" && e.Verb != "review:request-changes" {
+				t.Fatalf("audit verb = %q, want the pre-kind label review:<flag> (a refusal before the "+
+					"kind is accepted must not carry a kinded key)", e.Verb)
+			}
+		})
+	}
+}
+
 // TestSecurityReviewRefusesFlagBodyMismatch — `--verdict pass` with a `fail` body. Gate (e0)
 // would still read the fail and block, so nothing fails open; the refusal is about the
 // artifact not misstating its own verdict to the humans reading the thread, and a submitted
