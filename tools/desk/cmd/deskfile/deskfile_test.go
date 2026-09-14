@@ -1755,3 +1755,79 @@ func TestBudgetDedupeRefusalDoesNotConsumeSlot(t *testing.T) {
 		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
 	}
 }
+
+// --- attach --kind (a GitLab adopter cell: #N and !N both exist) ---------------------------
+
+// TestAttachKindDefaultsToIssue: without --kind, both the target read and the note write are
+// typed ISSUE — attach is an observation on an issue — so a GitLab number that also names a
+// merge request resolves to the issue instead of the bare-number refusal.
+func TestAttachKindDefaultsToIssue(t *testing.T) {
+	calls := withEnv(t)
+	body := bodyFileWith(t, "observation as the worker")
+
+	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--body-file", body})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("attach rc = %d, want 0", rc)
+	}
+	if got := curForge.getKinds; len(got) != 1 || got[0] != deskkit.TargetIssue {
+		t.Fatalf("target read kinds = %v, want [issue]", got)
+	}
+	if got := curForge.commentKinds; len(got) != 1 || got[0] != deskkit.TargetIssue {
+		t.Fatalf("comment kinds = %v, want [issue]", got)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "comment") {
+		t.Fatalf("expected the comment write; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestAttachKindMRTypesBothReadAndWrite: --kind mr (and its alias pr) types the read AND the
+// write as CHANGE, so the state check and the note address the same object.
+func TestAttachKindMRTypesBothReadAndWrite(t *testing.T) {
+	for _, kind := range []string{"mr", "pr", "MR"} {
+		withEnv(t)
+		body := bodyFileWith(t, "observation on the change")
+		rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--kind", kind, "--body-file", body})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("attach --kind %s rc = %d, want 0", kind, rc)
+		}
+		if got := curForge.getKinds; len(got) != 1 || got[0] != deskkit.TargetChange {
+			t.Fatalf("--kind %s: target read kinds = %v, want [change]", kind, got)
+		}
+		if got := curForge.commentKinds; len(got) != 1 || got[0] != deskkit.TargetChange {
+			t.Fatalf("--kind %s: comment kinds = %v, want [change]", kind, got)
+		}
+	}
+}
+
+// TestAttachKindUnknownRefusedBeforeAnyForgeCall: an unparseable kind is exit 5 with nothing
+// read or written — the kind was meant to be STATED, so a typo must not become "issue".
+func TestAttachKindUnknownRefusedBeforeAnyForgeCall(t *testing.T) {
+	withEnv(t)
+	body := bodyFileWith(t, "x")
+	rc, out := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--kind", "merge", "--body-file", body})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("attach --kind merge rc = %d, want 5; out=%s", rc, out)
+	}
+	if len(curForge.getKinds) != 0 || len(curForge.comments) != 0 {
+		t.Fatalf("unknown kind must reach no forge call; reads=%v comments=%v", curForge.getKinds, curForge.comments)
+	}
+	if !strings.Contains(out, "issue, mr") {
+		t.Fatalf("refusal must name the accepted kinds; out=%s", out)
+	}
+}
+
+// TestAttachKindMismatchIsUnverifiable: on a one-sequence forge the typed read reports a kind
+// mismatch (asked for an issue, the number is a pull request); attach fails CLOSED (exit 6)
+// and writes nothing rather than commenting on the other kind.
+func TestAttachKindMismatchIsUnverifiable(t *testing.T) {
+	withEnv(t)
+	t.Setenv("FAKEGH_ISSUE_IS_PR", "1")
+	body := bodyFileWith(t, "x")
+	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--body-file", body})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("attach on a kind mismatch rc = %d, want 6", rc)
+	}
+	if len(curForge.comments) != 0 {
+		t.Fatalf("a kind mismatch must write nothing; comments=%v", curForge.comments)
+	}
+}
