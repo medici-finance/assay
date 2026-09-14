@@ -8,6 +8,30 @@
   },
   "mutations": [
     {
+      "name": "grant the per-role rotation lock unconditionally (concurrent mints for one role stop being serialised and race for the credential again)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\t\tlerr := deskkit.TryLockExclusive(f)\n\t\tif lerr == nil {",
+      "new": "\t\tlerr := deskkit.TryLockExclusive(f)\n\t\tif true {"
+    },
+    {
+      "name": "drop the lock acquisition from the rotate path entirely (read-rotate-write runs unserialised)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tlock, lerr := acquireGitLabRotateLock(role, path)\n\tif lerr != nil {\n\t\treturn lerr\n\t}\n\tdefer lock.release()",
+      "new": "\t_ = acquireGitLabRotateLock"
+    },
+    {
+      "name": "ignore --no-rotate and rotate anyway (a read-only/dry-run lookup resumes spending a destructive rotation)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif !rotate {\n\t\t// The custody VALUE is read only to assert",
+      "new": "\tif false {\n\t\t// The custody VALUE is read only to assert"
+    },
+    {
+      "name": "log a --no-rotate lookup as a rotation (the audit trail records rotations that never happened)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tac.verb = \"rotate\"\n\tif !rotate {\n\t\tac.verb = \"custody-read\"\n\t}",
+      "new": "\tac.verb = \"rotate\""
+    },
+    {
       "name": "print the rotated token beside the path on the success route (the leak assertion must fire, with --forge still wired)",
       "file": "cmd/desktoken/gitlab.go",
       "old": "\tfmt.Println(path)\n\texp := result.ExpiresAt",

@@ -437,7 +437,7 @@ func cmdNew(args []string) (err error) {
 	// entry and an absent/unmapped origin), and now SERVES GitLab through the backend — the #691
 	// interim named-refusal is superseded. Minting the token here is the identity change the #781
 	// ruling confirmed; --raised-by stays a body/label attribution below.
-	fg, fr, kind, ferr := forgeForFn(*repo)
+	fg, fr, kind, ferr := forgeForFn(*repo, false)
 	if ferr != nil {
 		return ferr
 	}
@@ -636,8 +636,8 @@ func cmdAttach(args []string) (err error) {
 
 	// Resolve the forge under the session-role App's custody (write-verbs-C). Retains the
 	// could-not-check refusal on an unresolvable forge; serves GitLab (the #691 refusal is
-	// superseded).
-	fg, fr, _, ferr := forgeForFn(*repo)
+	// superseded). attach WRITES a comment, so it takes the ordinary (rotating) mint.
+	fg, fr, _, ferr := forgeForFn(*repo, false)
 	if ferr != nil {
 		return ferr
 	}
@@ -714,10 +714,15 @@ func cmdCheck(args []string) (err error) {
 	ac.repo = *repo
 	ac.title = *title
 
-	// Resolve the forge under the session-role App's custody (write-verbs-C). check is a READ,
-	// but it reaches the forge, so it mints the session token like the other verbs; the
+	// Resolve the forge under the session-role App's custody (write-verbs-C). check is a READ:
+	// it reaches the forge to run the dedupe search, but it files nothing. So it asks for
+	// READ-ONLY custody (--no-rotate) rather than the ordinary mint. On the GitLab custody
+	// path the ordinary mint is a destructive self-rotation, and a window running several
+	// checks in parallel raced its own rotations — the loser got 401 invalid_token and the
+	// custody file could be left holding a dead value only a group owner can replace. A verb
+	// that writes nothing has no business spending a credential rotation. The
 	// unresolvable-forge could-not-check refusal is retained, GitLab is served (#691 superseded).
-	fg, fr, _, ferr := forgeForFn(*repo)
+	fg, fr, _, ferr := forgeForFn(*repo, true)
 	if ferr != nil {
 		return ferr
 	}
