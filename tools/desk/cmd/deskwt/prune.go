@@ -767,6 +767,17 @@ func unmergedReason(sc *sweepCtx, rt string) string {
 // `refs/heads/origin/main` would otherwise shadow the real remote-tracking ref and this
 // guard would compare HEAD against a stale decoy tip. A resolution failure surfaces as
 // Unverifiable (could-not-check → the worktree is LEFT), never a silent decoy comparison.
+//
+// DO NOT hoist this resolve onto the sweep's ancestor walk. It looks like free saving — the
+// tip cannot change inside a sweep, so N ref reads become one — and it was tried and
+// reverted. This guard and the merge gate are deliberately INDEPENDENT layers over the same
+// worktree: the merge gate asks an ancestry question answered from the walked set, and this
+// one asks a ref-identity question answered from the worktree's own refs. Feeding both from
+// one walk makes a single failure disable both, and it is measurable: with the tip taken
+// from the walk, a mutation that removes the merge gate's fail-closed guard SURVIVES the
+// suite, because this guard is already holding everything for the same reason. Two layers
+// that fail on the same signal are one layer. The reads are two ref lookups per candidate,
+// which is not where the time goes — the walks were.
 func headAtOriginMainTip(sc *sweepCtx, rt string) (bool, error) {
 	repo, err := sc.open(rt)
 	if err != nil {
