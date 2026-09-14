@@ -12,7 +12,7 @@ why: >-
   on GitLab with zero hand-built API calls.
 wave: 3
 depends: ["forge-neutral/04"]
-unblocks: ["forge-neutral/10"]
+unblocks: ["forge-neutral/10", "forge-neutral/16"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
