@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/osfs"
@@ -56,6 +57,11 @@ const transientRemoteName = "origin"
 type Repo struct {
 	repo *git.Repository
 	dir  string
+
+	// reachIdx is the lazily built, Repo-lifetime commit-reachability cache behind
+	// RefsContaining (see contains.go); reachMu guards its construction.
+	reachMu  sync.Mutex
+	reachIdx *reachIndex
 }
 
 // Open opens the repository rooted at dir (an exact repo/worktree root — like
@@ -919,26 +925,42 @@ func (r *Repo) LocalBranchNames() ([]string, error) {
 // is always ALSO reachable via the ref it mirrors. This helper must not be reused for a
 // check that needs to see the alias ref itself (see ambiguousbase.go's refCandidates,
 // deliberately NOT migrated in this brief for exactly that reason).
+//
+// Like for-each-ref, commit is peeled through annotated tags to the commit underneath,
+// and so is every ref tip (an annotated tag under refs/tags/ is listed when the commit it
+// tags contains the target); a ref whose tip is not a commit — a tag of a tree or blob, a
+// dangling ref — is dropped from the answer. An error is returned only when the question
+// itself cannot be answered: commit does not resolve to a readable commit, or a commit
+// INSIDE some tip's history cannot be read (a broken object store). A caller using this
+// as a guard must treat that error as could-not-check, never as "no ref contains it".
+//
+// Cost is bounded by the size of the commit graph reachable from the tips, not by
+// refs x history: all tips share ONE walk (memoised across calls on this Repo) and, when
+// the repository carries a commit-graph file, that walk is cut off exactly by generation
+// numbers — see contains.go for the mechanism and why it is exact rather than heuristic.
 func (r *Repo) RefsContaining(commit, refsPrefix string) ([]string, error) {
+	resolved, err := r.Resolve(commit)
+	if err != nil {
+		return nil, err
+	}
 	refs, err := r.Refs()
 	if err != nil {
 		return nil, err
 	}
-	var out []string
+	tips := make(map[string]plumbing.Hash)
 	for name, hash := range refs {
-		if !strings.HasPrefix(name, refsPrefix) {
-			continue
-		}
-		ok, err := r.IsAncestor(commit, hash)
-		if err != nil {
-			continue // an unresolvable tip is skipped, matching for-each-ref's own behaviour
-		}
-		if ok {
-			out = append(out, name)
+		if strings.HasPrefix(name, refsPrefix) {
+			tips[name] = plumbing.NewHash(hash)
 		}
 	}
-	sort.Strings(out)
-	return out, nil
+	ri := r.reach()
+	ri.mu.Lock()
+	defer ri.mu.Unlock()
+	target, ok := ri.peelToCommit(resolved)
+	if !ok {
+		return nil, fmt.Errorf("gitcore: refs-containing %q: %s is not a commit", commit, resolved)
+	}
+	return ri.refsContaining(target, tips)
 }
 
 // --- Read helpers added for brief 04 (migrate deskpushguard detection reads) -----------
