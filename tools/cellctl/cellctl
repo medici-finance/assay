@@ -1104,8 +1104,15 @@ cmd_desk(){
   # enable`) — skipped on the codex arm, where skills are discovered per Part 3's check block
   # (marketplace plugin or .agents/skills/) rather than a Claude Code plugin enable.
   if [[ "$harness" == "claude" ]]; then
-    CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
-      || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+    # A non-zero exit here is not always a real failure: `claude plugin enable` also exits 1
+    # when the plugin is already enabled (issue-1080's misleading-NOTICE bug), printing
+    # `Failed to enable plugin "assay@assay": Plugin "assay@assay" is already enabled` — so the
+    # NOTICE below fires only when the captured output does NOT match that already-enabled shape.
+    local plugin_out
+    plugin_out="$(CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay 2>&1)" || {
+      [[ "$plugin_out" == *"already enabled"* ]] \
+        || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+    }
   fi
   # Serialise the shared fetch: several windows boot at once against ONE .git, and concurrent
   # fetches race on the same ref lock. The lock lives in the COMMON git dir, so a CELL_REPO that

@@ -170,10 +170,34 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 			"a separate binary whose loader is not importable from this one",
 	}
 
+	// ---- the ONE root resolution ----
+	//
+	// The dispatch and verify depths both come from the configured stream roots, and each
+	// used to resolve, pin and version-probe them independently — so a single throughput run
+	// did that work twice and spawned 2N statusgen subprocesses in a serial chain. It is
+	// performed once here and handed to both depth readers (roots.go).
+	//
+	// BLIND IS NEVER GREEN, AND ONE SHARED FAILURE BLINDS BOTH STAGES IT FED. When the
+	// shared resolution fails there is no root set for either reader, so BOTH the dispatch
+	// and verify stages are reported could-not-check — each naming the shared resolution as
+	// the thing that failed, so a reader is never left thinking one stage's depth is real
+	// because the other's was. Neither is counted as a zero, and both are excluded from
+	// bottleneck selection by the existing Blind contract.
+	rs, rootsErr := resolveRootsOnce()
+	rootsBlind := ""
+	if rootsErr != nil {
+		rootsBlind = "depth: the shared stream-root resolution failed, so this stage's queue " +
+			"was never read: " + rootsErr.Error()
+		dispatchStage.Blind = appendBlind(dispatchStage.Blind, rootsBlind)
+		verifyStage.Blind = appendBlind(verifyStage.Blind, rootsBlind)
+	}
+
 	// ---- dispatch depth ----
-	if drep, err := cmdDispatch(hdr, "dispatch"); err != nil {
+	if rootsErr != nil {
+		// already blinded above; no read to attempt
+	} else if dv, err := dispatchFromRoots(hdr, "dispatch", rs); err != nil {
 		dispatchStage.Blind = appendBlind(dispatchStage.Blind, "depth: "+err.Error())
-	} else if dv, ok := drep.value.(dispatchReport); ok {
+	} else if dv != nil {
 		// Eligible, not Shown: the caps that hold a brief back are a throughput fact about
 		// the BOARD, not about the pool. Sizing a pool against `shown` would make the pool
 		// look adequate precisely when the queue is deepest.
@@ -205,9 +229,11 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	}
 
 	// ---- verify depth ----
-	if nrep, err := cmdAwaiting(hdr, "awaiting"); err != nil {
+	if rootsErr != nil {
+		// already blinded above; no read to attempt
+	} else if nv, err := awaitingFromRoots(hdr, "awaiting", rs); err != nil {
 		verifyStage.Blind = appendBlind(verifyStage.Blind, "depth: "+err.Error())
-	} else if nv, ok := nrep.value.(nextupReport); ok {
+	} else if nv != nil {
 		n := 0
 		for _, row := range nv.Rows {
 			// `awaiting` carries implemented AND verified; only the first is work a

@@ -52,6 +52,14 @@ func sizeAndScan(body []byte) error {
 	return deskkit.BodyCheck(body)
 }
 
+// schemaTool and schemaCheckFlag name the verb these body checks belong to and its offline
+// rehearsal, for the hint every schema refusal carries. Both are compiled-in constants: the
+// hint never interpolates caller-supplied text (deskkit/offlinecheck.go).
+const (
+	schemaTool      = "deskpost"
+	schemaCheckFlag = "--dry-run"
+)
+
 // Comment validates a plain PR comment body: size cap + secret scan only (no structure).
 func Comment(body []byte) error {
 	return sizeAndScan(body)
@@ -65,15 +73,21 @@ func Review(body []byte) error {
 		return err
 	}
 	s := string(body)
+	// Both refusals below are SHAPE refusals — decidable with no network at all — and both
+	// are routed through deskkit.SchemaRefusal so each names the offline check that would
+	// have caught it. Measured on one operating desk host over 32 days, these two classes
+	// were 1,065 of deskpost's 1,611 refusals (66.1%) while the verb's own `--dry-run` was
+	// used 261 times: the rehearsal existed, and the refusal an operator was actually
+	// reading never mentioned it.
 	if !h2Heading.MatchString(s) {
-		return deskkit.Refused(
-			"refused: review body has no '## ' heading — the verdict schema requires at least " +
+		return deskkit.SchemaRefusal(schemaTool, schemaCheckFlag,
+			"refused: review body has no '## ' heading — the verdict schema requires at least "+
 				"one Markdown H2 section (see tools/desk/README.md verdict-format)")
 	}
 	if !verdictLine.MatchString(s) {
-		return deskkit.Refused(
-			"refused: review body has no verdict line — it must carry a line " +
-				"'Verdict: approve|request-changes' or 'Security-Review: pass|fail' " +
+		return deskkit.SchemaRefusal(schemaTool, schemaCheckFlag,
+			"refused: review body has no verdict line — it must carry a line "+
+				"'Verdict: approve|request-changes' or 'Security-Review: pass|fail' "+
 				"(see tools/desk/README.md verdict-format)")
 	}
 	return nil
