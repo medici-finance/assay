@@ -22,6 +22,8 @@ hand-edits a board cell, and the board follows the witness.
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+
 **House rules live in the repo's own house-rules doc (`CLAUDE.md`)** — git/PR discipline, identity and
 posting, trust gate, filing and escalation, refresh-don't-remember, board hygiene, the console
 noise-floor pointer, and worktree-sprawl ownership (the `deskwt` prune supervisor). This skill points at
