@@ -66,9 +66,9 @@ exec-tier-why: >-
   wedges the boot step of every desk window on the machine. Each needs a row whose failure
   is a deletion the fixture can observe, not a timing number.
 consumers:
-  - "`tools/desk/cmd/deskwt/prune.go`: fixed-here (the sweep body — the ancestor set, the gate reorder, the batched removal, the read-only dry-run arm, and the singleton call site)."
-  - "`tools/desk/cmd/deskwt/deskwt.go`: fixed-here (`removeWorktreeDir` is SPLIT so prune can batch the deregistration step; `remove`'s own call keeps the per-path prune-and-verify it has today, byte-identical in behaviour — Verify row 8 is the assertion)."
-  - "`tools/desk/internal/gitcore/gitcore.go`: fixed-here (ONE added exported function, `OpenWith(dir, cache)`; `Open` becomes a one-line call to it with a fresh cache, so every existing caller is unchanged — Verify row 9)."
+  - "tools/desk/cmd/deskwt/prune.go: fixed-here (the sweep body — the ancestor set, the gate reorder, the batched removal, the read-only dry-run arm, and the singleton call site)."
+  - "tools/desk/cmd/deskwt/deskwt.go: fixed-here (`removeWorktreeDir` is SPLIT so prune can batch the deregistration step; `remove`'s own call keeps the per-path prune-and-verify it has today, byte-identical in behaviour — Verify row 8 is the assertion)."
+  - "tools/desk/internal/gitcore/gitcore.go: fixed-here (ONE added exported function, `OpenWith(dir, cache)`; `Open` becomes a one-line call to it with a fresh cache, so every existing caller is unchanged — Verify row 9)."
   - "`deskwt remove` (the human-named single-path verb): out-of-scope (it removes ONE operator-named path; it has no loop to hoist a walk out of, no second candidate to share a cache with, and no singleton to take. Its gates, its order and its per-path verification are untouched, and Verify row 8 asserts it)."
   - "`gitcore.AheadCount`: out-of-scope (the FUNCTION stays — `deskpreflight` and the push guard read a real count that a human reads. This brief removes prune's CALL to it, which is the only caller that discards the number into a string; the function's own tests are unchanged)."
   - "`gitcore.IsAncestor`: out-of-scope (unchanged and still correct; prune stops calling it per candidate, and every other caller keeps it. Making `IsAncestor` itself memoized is a `gitcore`-wide change with a cache-lifetime question this brief does not answer — it is named as follow-up, not attempted)."
