@@ -41,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 66 total — 66 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 67 total — 67 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -76,6 +76,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desktools-go-git | 04 | implemented | 1500 | 1 | — | — | — |
 | desktools-go-git | 07 | implemented | 1500 | 1 | — | — | — |
+| forge-gitlab | 15 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -250,7 +251,7 @@ _None._
 - 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — todo (wave 5)
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
 - 14 The public-repo gate reads the forge that serves the repo — every verb, not one — todo (wave 3)
-- 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — todo (wave 4)
+- 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — implemented (wave 4)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 
 ### forge-neutral (14 open)
