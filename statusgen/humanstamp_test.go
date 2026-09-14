@@ -448,6 +448,41 @@ priority: P1
 	}
 }
 
+// TestRelPath_HandlesBothSeparatorStyles pins the fix for the Windows-only
+// false positive reported in #1007: relPath is the boundary where a
+// filesystem path (built upstream by filepath.Dir, which uses the OS-native
+// separator) becomes a git pathspec (always "/"-separated, per git's own
+// documentation, regardless of OS). Before the fix, relPath's
+// "docs/streams/" literal never matched a backslash-separated Windows dir,
+// so it fell through to returning the native path UNCHANGED — a Windows
+// caller then fed a bogus, absolute, backslash pathspec to `git show
+// <base>:<path>`, the lookup errored, the stream read as brand-new, and
+// every stamp already at the merge-base (including ones legitimately
+// written by verify-gate-close.yml) was reported as a gain.
+//
+// This runs relPath's core logic directly against both separator styles so
+// the regression is caught on ANY OS in CI, not only rediscovered on the
+// windows-smoke leg.
+func TestRelPath_HandlesBothSeparatorStyles(t *testing.T) {
+	cases := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"posix", "/repo/docs/streams/test-stream", "docs/streams/test-stream"},
+		{"windows", `C:\repo\docs\streams\test-stream`, "docs/streams/test-stream"},
+		{"windows-mixed-sep", `C:\repo\docs/streams\test-stream`, "docs/streams/test-stream"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := relPath(c.dir)
+			if got != c.want {
+				t.Errorf("relPath(%q) = %q, want %q", c.dir, got, c.want)
+			}
+		})
+	}
+}
+
 // TestHumanStamp_ProseStreamWordDoesNotFire: a README whose prose contains a
 // line beginning "stream:" must NOT produce false positives. This is reviewer
 // Cause 2 — the original parser read the stream name from ANY line starting
