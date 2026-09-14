@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-14 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/8 | 2026-09-14 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-14 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/25 | 2026-09-14 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/26 | 2026-09-14 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 2/8 | 2026-09-14 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 7/16 | 2026-09-14 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/18 | 2026-09-14 |  |
@@ -210,7 +210,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (20 open)
+### desk-tools (21 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -232,6 +232,7 @@ _None._
 - 23 Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it — todo (wave 2)
 - 24 Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb — implemented (wave 2)
 - 26 `deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton — implemented (wave 2)
+- 27 `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check — todo (wave 2)
 
 ### desktools-go-git (6 open)
 
@@ -422,4 +423,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **62/173** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **62/174** briefs done · completed initiatives: see `docs/archive/`
