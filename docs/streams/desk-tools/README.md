@@ -101,6 +101,22 @@ than drops: only two of the three full parses on a write path are last-entry rea
 the idempotency predicates, which are whole-ledger by contract, so it keeps its full parse and
 bounding it is named as separate follow-up.
 
+Brief 25 comes from the same 2026-09-14 performance review, filed as #1036: the path that turns
+a role and an account into an App installation token has no memo at any layer, so a board read
+that touches ten repositories forks the `desktoken` binary 140 times a tick for a credential
+that has not changed — and underneath it the minter resolves the installation id, signing a JWT
+and calling the installations endpoint, BEFORE it consults the token cache, because the cache
+path is keyed by that id. So every "reuse cached token" is still a round trip. The brief fixes
+both ends of one path: a per-process memo keyed (role, owner) in front of the minter, bounded
+under the minter's own 50-minute reuse window; and a cache-first resolution order in
+`desktoken`, with an owner sidecar that proves which App and which account a cached file belongs
+to and a 24-hour install-id cache behind it. Every fast path is gated on a positive identity
+match and falls through to authoritative resolution on absence, ambiguity or a malformed name;
+no custody check is moved or relaxed, and the environment override stays first. It is
+independent of every other brief in the stream, including the separately filed brief on the
+shared substrate's per-invocation audit parse (#1035) — that one makes each invocation cheaper,
+this one makes there be fewer of them.
+
 Brief 26 comes from issue #1037, a measurement rather than a request: five desk windows booting
 inside one minute each ran the `deskwt prune` boot step against one checkout carrying ~657
 registered worktrees over a 5,779-commit `origin/main`, and all five sat at ~100 % CPU for 8–12
@@ -174,8 +190,9 @@ refuse — that needs its own brief and its own reset rule.
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | implemented | — | — |
 | 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
 | 24 | [Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb](brief-24-audit-ledger-tail-read-and-rotation.md) | 2 | M | implemented | — | — |
+| 25 | [One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id](brief-25-token-memo-and-cache-before-install-id.md) | 2 | M | implemented | — | — |
 | 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
-| 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | todo | — | — |
+| 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | in-progress | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -199,12 +216,14 @@ stream — see each brief's Dependencies note.
 - **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
   present in the tree; the brief is dispatchable now), desk-tools/24 (no typed dependency —
   it is wave 2 because it reshapes the same ledger brief 23 reads the growth figures from, and
-  the two are cleaner landed in sequence than in parallel), desk-tools/26 (no typed
+  the two are cleaner landed in sequence than in parallel), desk-tools/25 (no `depends:` edge
+  at all — it is wave 2 because it is a performance change to an existing credential path
+  rather than an independent feature), desk-tools/26 (no typed
   dependency — wave 2 by sequencing, not by blocking: it rewrites the gate ORDER of a
   destructive verb in `cmd/deskwt`, so it is kept out of the first wave's parallel band rather
   than made to wait on anything), and desk-tools/27 (no typed prerequisite — every deliverable
   and every Verify row in 27 is implementable and provable with the shell's own timer, which is
-  how its baselines were taken). All four are dispatchable now.
+  how its baselines were taken). All five are dispatchable now.
   <!-- graph: not-a-gate -->
 
 ## Design notes

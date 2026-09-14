@@ -70,6 +70,16 @@ func run(argv []string) int {
 		return 0
 	}
 
+	// TIER ONE of the help retrofit (deskkit/helprequest.go). A SUBCOMMAND help request —
+	// `deskpost <verb> --help` — is a request for a help screen, not an invocation of the
+	// verb, and it returns HERE, before Guard, writing no audit row. HelpOnly matches only
+	// the unambiguous single-token shape, so a `--help` that is another flag's VALUE cannot
+	// be mistaken for one; every wider spelling falls through to the verb's own parse.
+	if deskkit.HelpOnly(argv) {
+		usage()
+		return 0
+	}
+
 	// Kill switch FIRST — before parsing args or touching the network. A disabled
 	// suite exits 3 after Guard audits result=disabled.
 	if err := deskkit.Guard(); err != nil {

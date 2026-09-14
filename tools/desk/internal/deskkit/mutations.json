@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestGitLabRepoInfoFetcher|TestForgeGithubGolden|TestForgeGitlabGolden'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestGitLabRepoInfoFetcher|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -168,6 +168,42 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "if !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {",
       "new": "if !IsForgeNotFound(mapped) {"
+    },
+    {
+      "name": "key the role-token memo on the role alone (one account's installation token is handed to another account's read)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tkey := roleOwnerKey{role: role, owner: owner}",
+      "new": "\tkey := roleOwnerKey{role: role}"
+    },
+    {
+      "name": "key the role-token memo on the account alone (one role's App token is handed to another role)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tkey := roleOwnerKey{role: role, owner: owner}",
+      "new": "\tkey := roleOwnerKey{owner: owner}"
+    },
+    {
+      "name": "widen the memo's age guard past desktoken's own 50-minute reuse window",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "const roleTokenMemoMaxAge = 45 * time.Minute",
+      "new": "const roleTokenMemoMaxAge = 55 * time.Minute"
+    },
+    {
+      "name": "drop the memo's age guard entirely (a token is reused past its own lifetime)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tif roleTokenNow().Sub(e.at) >= roleTokenMemoMaxAge {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "memoise before the token file is read and validated (a transient failure is pinned for the life of the process)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tb, rerr := os.ReadFile(path)\n\tif rerr != nil {",
+      "new": "\tstoreRoleTokenMemo(key, roleTokenMemoEntry{path: path, at: roleTokenNow()})\n\tb, rerr := os.ReadFile(path)\n\tif rerr != nil {"
+    },
+    {
+      "name": "stop counting real minter forks (the fork-count assertions stop measuring anything)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\troleTokenMints++",
+      "new": "\troleTokenMints += 0"
     }
   ],
   "_not_mutated": {

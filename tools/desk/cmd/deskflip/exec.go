@@ -40,9 +40,20 @@ var forgeAPIBase string
 // WHY A HOOK RATHER THAN THE DEFAULT PATH. Two reasons, and only the second is about tests.
 // First, the app-token CONDITION has to refuse BEFORE the first forge call, with a message
 // naming the role and the token path — so this verb has to perform the lookup itself in any
-// case, and letting ForgeFor repeat it would mint twice per run. Second, `mintTokenFn` is
-// the seam the identity tests drive; routing custody through it keeps those tests exercising
-// the same lookup the production path uses rather than a parallel one.
+// case. Second, `mintTokenFn` is the seam the identity tests drive; routing custody through
+// it keeps those tests exercising the same lookup the production path uses rather than a
+// parallel one.
+//
+// ONE FORK PER RUN, AND WHY THE SECOND LOOKUP IS FREE. This comment used to claim that
+// letting ForgeFor repeat the lookup "would mint twice per run" — and that is exactly what
+// the code did: checkAppToken called mintTokenFn, then ResolveForge's GitHub custody called
+// this hook, which called it again, forking the `desktoken` binary a second time for a
+// credential the run already held. The structure never delivered the intent the comment
+// described. It does now, from the other side: deskkit.RoleTokenForOwner memoises per
+// (role, owner) for the life of the process (#1036), so the repeat lookup is a memo hit and
+// forks nothing. The explicit call in checkAppToken stays because it is the only thing that
+// carries the token PATH into that condition's refusal and its OK line — the resolver's
+// ForgeResolution has no path field to replace it with.
 //
 // The base URL is read HERE, at call time, so a per-test override still reaches the Forge
 // this produces. (See forgeresolve.go's header for the resolver contract this plugs into.)
