@@ -387,6 +387,128 @@ func TestCmdWidth_ReserveFlagWritesThenPlainReadReflectsIt(t *testing.T) {
 	}
 }
 
+// TestCmdWidth_PlainReadAfterSetWidthShowsLiveSource pins the defect a coordinator hit in the
+// field: right after a confirmed `deskroster set --role <loop> --width N` (which stores NO
+// reserve), the plain read printed `(source=default, expires=n/a)` while `--verbose` said
+// `source="set by ... at ..."` — the trailer was keyed on the reserve field, not on the
+// entry's liveness, and a live width was read as lapsed. The plain line must carry the same
+// verdict the verbose line does: set-by + a real expiry.
+func TestCmdWidth_PlainReadAfterSetWidthShowsLiveSource(t *testing.T) {
+	rosterSetup(t)
+	set := time.Now().Add(-deskkit.WidthTTL / 2)
+	if _, err := setWidth("worker-desk", 12, "coordinator", set); err != nil {
+		t.Fatalf("setWidth: %v", err)
+	}
+	var verbose string
+	out := captureStdout(t, func() {
+		verbose = captureStderr(t, func() {
+			if err := cmdWidth([]string{"--role", "worker-desk", "--verbose"}); err != nil {
+				t.Fatalf("cmdWidth: %v", err)
+			}
+		})
+	})
+	wantExpiry := set.UTC().Add(deskkit.WidthTTL).Format(time.RFC3339)
+	wantTrailer := "(source=set-by:coordinator, expires=" + wantExpiry + ")"
+	if !strings.Contains(out, "width=12 reserve=resume:2,rework:0 "+wantTrailer) {
+		t.Errorf("cmdWidth plain read after set --width = %q, want it to carry %q — a live override "+
+			"must never read as the default on the plain line", out, wantTrailer)
+	}
+	if strings.Contains(out, "source=default") || strings.Contains(out, "expires=n/a") {
+		t.Errorf("cmdWidth plain read after set --width = %q still claims the default", out)
+	}
+	// The verbose line is unchanged by the fix: same shape, same quoted source, same ttl.
+	if !strings.Contains(verbose, `loop=worker-desk width=12 source="set by coordinator at `+set.UTC().Format(time.RFC3339)+`"`) ||
+		!strings.Contains(verbose, " ttl="+deskkit.WidthTTL.String()) {
+		t.Errorf("cmdWidth --verbose stderr = %q, want the unchanged `loop=... width=... source=\"set by <session> at <time>\" ... ttl=` line", verbose)
+	}
+}
+
+// TestCmdWidth_PlainReadAfterDecayShowsDefault is the other half: once the entry has lapsed,
+// the plain line MUST say default/n/a — otherwise the fix above could pass on a printer that
+// always claims a live override.
+func TestCmdWidth_PlainReadAfterDecayShowsDefault(t *testing.T) {
+	rosterSetup(t)
+	if _, err := setWidth("worker-desk", 12, "dead-session", time.Now().Add(-2*deskkit.WidthTTL)); err != nil {
+		t.Fatalf("setWidth: %v", err)
+	}
+	out := captureStdout(t, func() {
+		if err := cmdWidth([]string{"--role", "worker-desk"}); err != nil {
+			t.Fatalf("cmdWidth: %v", err)
+		}
+	})
+	wantWidth, _ := deskkit.DefaultWidth("worker-desk")
+	wantLine := fmt.Sprintf("width=%d reserve=resume:2,rework:0 (source=default, expires=n/a)", wantWidth)
+	if !strings.Contains(out, wantLine) {
+		t.Errorf("cmdWidth plain read after decay = %q, want %q", out, wantLine)
+	}
+	if strings.Contains(out, "set-by:") {
+		t.Errorf("cmdWidth plain read after decay = %q still names a setter", out)
+	}
+}
+
+// TestEntryDisplay_BothStates drives the printer's helper directly through every state it
+// distinguishes, so the trailer's contract is pinned independently of the store.
+func TestEntryDisplay_BothStates(t *testing.T) {
+	rosterSetup(t)
+	defReserve, _ := deskkit.DefaultReserve("worker-desk")
+	updated := time.Date(2026, 9, 14, 22, 5, 13, 0, time.UTC)
+	wantExpiry := updated.Add(deskkit.WidthTTL).Format(time.RFC3339)
+	live := &deskkit.WidthEntry{Loop: "worker-desk", Width: 3, SetBy: "coordinator", Updated: updated.Format(time.RFC3339)}
+	liveWithReserve := &deskkit.WidthEntry{Loop: "worker-desk", Width: 3, Reserve: map[string]int{"resume": 1, "rework": 1},
+		SetBy: "coordinator", Updated: updated.Format(time.RFC3339)}
+	cases := []struct {
+		name        string
+		entry       *deskkit.WidthEntry
+		fresh       bool
+		wantReserve map[string]int
+		wantSource  string
+		wantExpires string
+	}{
+		{"nothing stored", nil, false, defReserve, "default", "n/a"},
+		{"stored but decayed", live, false, defReserve, "default", "n/a"},
+		{"fresh width-only entry (the defect)", live, true, defReserve, "set-by:coordinator", wantExpiry},
+		{"fresh entry with a reserve", liveWithReserve, true, liveWithReserve.Reserve, "set-by:coordinator", wantExpiry},
+		{"fresh legacy entry with no setter", &deskkit.WidthEntry{Loop: "worker-desk", Width: 3, Updated: updated.Format(time.RFC3339)},
+			true, defReserve, "set", wantExpiry},
+	}
+	for _, c := range cases {
+		gotReserve, gotSource, gotExpires := entryDisplay("worker-desk", c.entry, c.fresh)
+		if deskkit.FormatReserve(gotReserve) != deskkit.FormatReserve(c.wantReserve) || gotSource != c.wantSource || gotExpires != c.wantExpires {
+			t.Errorf("%s: entryDisplay = (%s, %q, %q), want (%s, %q, %q)", c.name,
+				deskkit.FormatReserve(gotReserve), gotSource, gotExpires,
+				deskkit.FormatReserve(c.wantReserve), c.wantSource, c.wantExpires)
+		}
+	}
+}
+
+// captureStderr is captureStdout's twin for the --verbose line, which goes to stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing pipe writer: %v", err)
+	}
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 4096)
+	for {
+		n, rerr := r.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if rerr != nil {
+			break
+		}
+	}
+	return string(buf)
+}
+
 // captureStdout redirects os.Stdout for the duration of fn and returns what was written. Used
 // only by the small set of tests that assert on cmdWidth's printed line rather than on the
 // store it reads.
