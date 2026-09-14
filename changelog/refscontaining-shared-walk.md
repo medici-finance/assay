@@ -9,4 +9,6 @@
   from ~194s to ~1.4s, and the call itself to well under a second. The answer is unchanged and
   still checked against real git's, now including annotated-tag peeling; an unanswerable question
   (target is not a readable commit, broken object store) is reported as an error rather than an
-  empty list, so the guard hears could-not-check instead of "no ref contains it".
+  empty list, so the guard hears could-not-check instead of "no ref contains it". A shallow
+  clone's boundary commits are treated as parentless, exactly as git treats `.git/shallow`, so a
+  push from a `--depth` checkout still gets a real answer rather than a could-not-check.

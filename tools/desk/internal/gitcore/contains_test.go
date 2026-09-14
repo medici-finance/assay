@@ -3,12 +3,15 @@ package gitcore
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	commitgraph "github.com/go-git/go-git/v5/plumbing/format/commitgraph/v2"
 	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
@@ -238,6 +241,87 @@ func TestRefsContainingMatchesGitAcrossGraphStates(t *testing.T) {
 		repo := cf.assertMatchesGit(t, "graph-disabled")
 		if st := repo.reachStats(); st.graph {
 			t.Fatal("core.commitGraph=false must leave the commit-graph unopened, as git does")
+		}
+	})
+	t.Run("shallow-clone", func(t *testing.T) {
+		// A shallow repository's boundary commits have parents that are absent BY
+		// DESIGN (.git/shallow), not a broken object store. git's --contains treats
+		// each one as parentless and answers from the history it has; so must this,
+		// including for the push-time shape — a fresh local commit contained by no
+		// ref, where the walk explores every tip's whole (truncated) history and
+		// there is no commit-graph to cut it short.
+		cf := newContainsFixture(t)
+		dir := t.TempDir()
+		gitIn := func(args ...string) string {
+			t.Helper()
+			cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("git -C <clone> %v: %v\n%s", args, err, out)
+			}
+			return strings.TrimSpace(string(out))
+		}
+		// --no-single-branch: every fixture branch tip arrives; --depth 1: every tip IS
+		// a boundary. That covers both shapes of the bug: a boundary whose parent is
+		// absent (feature's f2 -> f1, lonely's l1 -> c1: an eager parent load errors),
+		// and a boundary whose parents happen to be present as other tips (merged's
+		// m -> c2, f2) — git still treats m as parentless, so origin/merged must NOT be
+		// listed as containing c2, even though the objects to walk there exist.
+		clone := exec.Command("git", "clone", "-q", "--depth", "1", "--no-single-branch", "file://"+cf.f.Dir, dir)
+		if out, err := clone.CombinedOutput(); err != nil {
+			t.Skipf("git clone --depth unavailable: %v\n%s", err, out)
+		}
+		shallowFile, err := os.ReadFile(dir + "/.git/shallow")
+		if err != nil || len(strings.TrimSpace(string(shallowFile))) == 0 {
+			t.Skipf("clone produced no shallow boundary: %v", err)
+		}
+		boundary := strings.Fields(string(shallowFile))[0]
+		newTip := ""
+		{
+			cmd := exec.Command("git", "-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+				"commit", "-q", "--allow-empty", "-m", "local tip")
+			if out, cerr := cmd.CombinedOutput(); cerr != nil {
+				t.Fatalf("local commit: %v\n%s", cerr, out)
+			}
+			newTip = gitIn("rev-parse", "HEAD")
+		}
+		targets := map[string]string{
+			"local tip (on no ref)": newTip,
+			"origin/main tip":       gitIn("rev-parse", "refs/remotes/origin/main"),
+			"shallow boundary":      boundary,
+		}
+		repo, err := Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, target := range targets {
+			for _, prefix := range []string{"refs/remotes/", "refs/heads/", "refs/"} {
+				var want []string
+				for _, ln := range strings.Split(gitIn("for-each-ref", "--contains="+target, "--format=%(refname)", prefix), "\n") {
+					if ln == "" {
+						continue
+					}
+					if err := exec.Command("git", "-C", dir, "symbolic-ref", "-q", ln).Run(); err == nil {
+						continue // origin/HEAD: symbolic, not surfaced by gitcore.Refs
+					}
+					want = append(want, ln)
+				}
+				sort.Strings(want)
+				got, gerr := repo.RefsContaining(target, prefix)
+				if gerr != nil {
+					t.Fatalf("shallow clone: RefsContaining(%s, %s) errored: %v — git answers %v; a shallow "+
+						"boundary is not a broken object store", name, prefix, gerr, want)
+				}
+				if len(got) == 0 && len(want) == 0 {
+					continue
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("shallow clone: RefsContaining(%s, %s) = %v, want %v (git)", name, prefix, got, want)
+				}
+			}
+		}
+		if st := repo.reachStats(); st.shallowCuts == 0 {
+			t.Fatalf("the walk never reached the shallow boundary — the fixture no longer exercises it: %+v", st)
 		}
 	})
 }
@@ -471,5 +555,89 @@ func TestRefsContainingRealRepoTiming(t *testing.T) {
 	}
 	if elapsed > 10*time.Second {
 		t.Fatalf("RefsContaining took %v — the shared-walk fix has regressed (budget: well under the 45s preflight probe)", elapsed)
+	}
+}
+
+// zeroLevelIndex wraps a real commit-graph index and reports every commit's level as 0
+// ("not available"), the shape of a graph written by git before 2.19 stored generation
+// numbers. Parents and lookups are the real file's.
+type zeroLevelIndex struct{ commitgraph.Index }
+
+func (z zeroLevelIndex) GetCommitDataByIndex(i uint32) (*commitgraph.CommitData, error) {
+	cd, err := z.Index.GetCommitDataByIndex(i)
+	if err != nil {
+		return nil, err
+	}
+	c := *cd
+	c.Generation = 0
+	return &c, nil
+}
+
+// TestRefsContainingZeroLevelGraphDerivesEachNodeOnce pins generation()'s work bound on
+// a graph whose stored levels are all zero, the case where every level must be derived
+// from parents: derivation resolves from the roots (a root is level 1), so every node is
+// derived exactly once and never re-entered from a second child. A chain of nested merge
+// diamonds is the shape where any re-derivation would compound exponentially; the bound
+// holds it to one push per commit, and the answer stays git's.
+func TestRefsContainingZeroLevelGraphDerivesEachNodeOnce(t *testing.T) {
+	const diamonds = 10
+	f := gittest.NewFixture(t)
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := f.Git(args...)
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return out
+	}
+	for i := 0; i < diamonds; i++ {
+		side := fmt.Sprintf("side-%d", i)
+		git("checkout", "-q", "-b", side)
+		f.CommitFile(t, "side.txt", fmt.Sprintf("%d\n", i), side)
+		git("checkout", "-q", "main")
+		f.CommitFile(t, "main.txt", fmt.Sprintf("%d\n", i), fmt.Sprintf("main-%d", i))
+		git("merge", "-q", "--no-ff", "-m", fmt.Sprintf("merge-%d", i), side)
+	}
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	if _, err := f.Git("commit-graph", "write", "--reachable"); err != nil {
+		t.Skipf("git commit-graph write unavailable: %v", err)
+	}
+	// A commit outside the graph, so its level is derived from parents at call time.
+	newTip := f.CommitFile(t, "new.txt", "new\n", "new tip")
+	commits, err := strconv.Atoi(strings.TrimSpace(git("rev-list", "--count", "--all")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ri := repo.reach()
+	ri.mu.Lock()
+	if ri.graph == nil {
+		ri.mu.Unlock()
+		t.Fatal("commit-graph not opened")
+	}
+	ri.graph = zeroLevelIndex{ri.graph}
+	ri.mu.Unlock()
+
+	got, err := repo.RefsContaining(newTip, "refs/remotes/")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("RefsContaining(newTip) = %v, %v; want empty, nil", got, err)
+	}
+	st := repo.reachStats()
+	t.Logf("all-zero-level graph: %d commits, %d derivation pushes", commits, st.genPushes)
+	if st.genPushes > commits {
+		t.Fatalf("generation() pushed %d frames over %d commits — a node is being re-derived on "+
+			"every path that reaches it (%d nested diamonds)", st.genPushes, commits, diamonds)
+	}
+	// Exactness is unaffected by the missing levels: git's answer for the root.
+	root := strings.TrimSpace(git("rev-list", "--max-parents=0", "HEAD"))
+	want := strings.Split(strings.TrimSpace(git("for-each-ref", "--contains="+root, "--format=%(refname)", "refs/remotes/")), "\n")
+	sort.Strings(want)
+	got, err = repo.RefsContaining(root, "refs/remotes/")
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("RefsContaining(root) = %v, %v; want %v", got, err, want)
 	}
 }

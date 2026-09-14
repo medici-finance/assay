@@ -41,8 +41,12 @@ package gitcore
 // A self-check backs mechanism 2 with mechanism 1: while walking, every expanded edge
 // child->parent asserts level(parent) < level(child) whenever both are known. A
 // commit-graph that violates it (a corrupt or hand-edited file) disables the cut-off for
-// that call and the walk is redone without it, so even a broken graph file can only cost
-// time, never a match.
+// that call and the walk is redone without it. The check sees only edges the walk
+// expands, so it catches a graph whose levels contradict each other along a path it
+// walks; a tip whose recorded level is merely understated is cut off before any of its
+// edges are expanded and is never examined. The commit-graph is therefore trusted to the
+// same degree git itself trusts it: it lives inside the local .git alongside the refs
+// and objects the walk already relies on, and is never transported by fetch or clone.
 
 import (
 	"errors"
@@ -84,6 +88,10 @@ type reachIndex struct {
 	repo  *Repo
 	graph commitgraph.Index // nil when the repository has no usable commit-graph
 	nodes map[plumbing.Hash]*reachNode
+	// shallow is the repository's shallow boundary (.git/shallow): commits whose parents
+	// are absent BY DESIGN. git's --contains treats each one as parentless and answers
+	// from the history it has; so does this walk. Read once, when the index is built.
+	shallow map[plumbing.Hash]bool
 
 	// Work counters, read by the package's regression test: how many commits were decoded
 	// from the object database (the expensive path) and how many were served from the
@@ -91,6 +99,15 @@ type reachIndex struct {
 	// back" that a wall-clock assertion could never be.
 	odbLoads   int
 	graphLoads int
+	// genPushes counts every frame generation() pushes onto its derivation stack. It is
+	// bounded by the number of distinct commits derived: a derived level always resolves
+	// (a root is level 1, every child one above its highest parent), so a node is never
+	// re-entered. The package's regression test pins that bound on a graph whose stored
+	// levels are all zero, the case where every level has to be derived.
+	genPushes int
+	// shallowCuts counts commits recorded parentless because they sit on the shallow
+	// boundary; the oracle test's shallow-clone state asserts the boundary was honoured.
+	shallowCuts int
 }
 
 // errReachViolation is raised when an expanded edge contradicts the commit-graph's level
@@ -105,9 +122,10 @@ func (r *Repo) reach() *reachIndex {
 	defer r.reachMu.Unlock()
 	if r.reachIdx == nil {
 		r.reachIdx = &reachIndex{
-			repo:  r,
-			graph: r.openCommitGraph(),
-			nodes: map[plumbing.Hash]*reachNode{},
+			repo:    r,
+			graph:   r.openCommitGraph(),
+			nodes:   map[plumbing.Hash]*reachNode{},
+			shallow: r.shallowSet(),
 		}
 	}
 	return r.reachIdx
@@ -140,6 +158,36 @@ func (r *Repo) openCommitGraph() commitgraph.Index {
 	return idx
 }
 
+// shallowSet reads the repository's shallow boundary, matching what git reads from
+// .git/shallow. Empty for a complete repository; an unreadable file is treated as empty,
+// which only means a boundary commit's missing parent then surfaces as an error (the
+// pre-existing "broken object store" path) instead of being cut cleanly.
+func (r *Repo) shallowSet() map[plumbing.Hash]bool {
+	hashes, err := r.repo.Storer.Shallow()
+	if err != nil || len(hashes) == 0 {
+		return nil
+	}
+	out := make(map[plumbing.Hash]bool, len(hashes))
+	for _, h := range hashes {
+		out[h] = true
+	}
+	return out
+}
+
+// newNode records commit h with the parents and level it was read with, unless h sits
+// on the shallow boundary: then its parents are absent by design and it is recorded
+// parentless with an unknown level, exactly as git's --contains treats a .git/shallow
+// entry. (A shallow repository carries no commit-graph, so the unknown level costs
+// nothing; if one is ever present, an unknown level only disables the cut-off above
+// this commit — never a wrong answer.)
+func (ri *reachIndex) newNode(h plumbing.Hash, parents []plumbing.Hash, gen uint64) *reachNode {
+	if ri.shallow[h] {
+		ri.shallowCuts++
+		return &reachNode{parents: nil, gen: genUnknown}
+	}
+	return &reachNode{parents: parents, gen: gen}
+}
+
 // node returns the decoded commit h, from the cache, the commit-graph, or the object
 // database, in that order. plumbing.ErrObjectNotFound (wrapped) when h is not a commit
 // this repository can read.
@@ -151,7 +199,7 @@ func (ri *reachIndex) node(h plumbing.Hash) (*reachNode, error) {
 		if i, err := ri.graph.GetIndexByHash(h); err == nil {
 			cd, err := ri.graph.GetCommitDataByIndex(i)
 			if err == nil {
-				n := &reachNode{parents: cd.ParentHashes, gen: cd.Generation}
+				n := ri.newNode(h, cd.ParentHashes, cd.Generation)
 				ri.graphLoads++
 				ri.nodes[h] = n
 				return n, nil
@@ -163,7 +211,7 @@ func (ri *reachIndex) node(h plumbing.Hash) (*reachNode, error) {
 		return nil, err
 	}
 	ri.odbLoads++
-	n := &reachNode{parents: c.ParentHashes, gen: genUnknown}
+	n := ri.newNode(h, c.ParentHashes, genUnknown)
 	ri.nodes[h] = n
 	return n, nil
 }
@@ -189,7 +237,7 @@ func (ri *reachIndex) peelToCommit(h plumbing.Hash) (plumbing.Hash, bool) {
 		switch o := obj.(type) {
 		case *object.Commit:
 			ri.odbLoads++
-			ri.nodes[h] = &reachNode{parents: o.ParentHashes, gen: genUnknown}
+			ri.nodes[h] = ri.newNode(h, o.ParentHashes, genUnknown)
 			return h, true
 		case *object.Tag:
 			h = o.Target
@@ -219,6 +267,7 @@ func (ri *reachIndex) generation(h plumbing.Hash) (uint64, error) {
 		return start.gen, nil
 	}
 	stack := []frame{{h: h, n: start}}
+	ri.genPushes++
 	inProgress := map[plumbing.Hash]bool{h: true}
 	for len(stack) > 0 {
 		f := &stack[len(stack)-1]
@@ -232,6 +281,7 @@ func (ri *reachIndex) generation(h plumbing.Hash) (uint64, error) {
 			if pn.gen == genUnknown && !inProgress[p] {
 				inProgress[p] = true
 				stack = append(stack, frame{h: p, n: pn})
+				ri.genPushes++
 			}
 			continue
 		}
@@ -375,13 +425,13 @@ func (ri *reachIndex) descendants(target plumbing.Hash, targetGen uint64, tipCom
 
 // reachStats is the regression test's window onto the index's work counters.
 type reachStats struct {
-	odbLoads, graphLoads int
-	graph                bool
+	odbLoads, graphLoads, genPushes, shallowCuts int
+	graph                                        bool
 }
 
 func (r *Repo) reachStats() reachStats {
 	ri := r.reach()
 	ri.mu.Lock()
 	defer ri.mu.Unlock()
-	return reachStats{odbLoads: ri.odbLoads, graphLoads: ri.graphLoads, graph: ri.graph != nil}
+	return reachStats{odbLoads: ri.odbLoads, graphLoads: ri.graphLoads, genPushes: ri.genPushes, shallowCuts: ri.shallowCuts, graph: ri.graph != nil}
 }
