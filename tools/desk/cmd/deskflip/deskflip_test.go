@@ -1326,9 +1326,17 @@ func TestForeignRepoRefused(t *testing.T) {
 	}
 }
 
+// The condition list is PINNED so a reorder is a deliberate, reviewed edit of this test and
+// not a silent drift. This expectation was edited once, for the cost-ordering pass: `mergeable`
+// moved from seventh to fourth because it costs NO forge read at all (it reads pr.Mergeable,
+// a field the pr-open-draft read already populated), and `model-floor` moved from fourth to
+// seventh because it buys a PAGINATED label-event timeline. Nothing else moved — in particular
+// checks-green still sits BEHIND reviewer-approved, because checkonlycr_test.go records the
+// rule that the check-only-CR exemption must decide first, so an operator rejected for a
+// non-CI reason is not sent to the CI gate.
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
-	want := []string{"caller-role", "app-token", "pr-open-draft", "model-floor", "reviewer-approved",
-		"checks-green", "mergeable", "security-verdict", "head-stable"}
+	want := []string{"caller-role", "app-token", "pr-open-draft", "mergeable", "reviewer-approved",
+		"checks-green", "model-floor", "security-verdict", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}
