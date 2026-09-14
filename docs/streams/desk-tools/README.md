@@ -84,6 +84,26 @@ sink is explicitly NOT in it: nothing here opens a socket, and only the on-disk 
 so a later sender reads it unchanged. It is the stream's first wave-2 brief — the child timings
 attach to brief 21's one subprocess runner rather than to a second measurement.
 
+Brief 26 comes from issue #1037, a measurement rather than a request: five desk windows booting
+inside one minute each ran the `deskwt prune` boot step against one checkout carrying ~657
+registered worktrees over a 5,779-commit `origin/main`, and all five sat at ~100 % CPU for 8–12
+minutes. Enumeration is not the cost (~1.2 ms per worktree); ~97 % of it is three in-process
+go-git walks repeated PER CANDIDATE, and most of that is work no gate reads — a full history
+walk to render a commit COUNT inside a skip string nothing parses, an unmemoized ancestor walk
+that runs to exhaustion for the 19-in-20 candidates that are genuinely unmerged, and a full
+`Status()` over ~4,100 files run BEFORE the merge gate that would have held the worktree anyway.
+This is the same defect the stream's own `tools/desk/internal/gitcore/contains.go` header
+already diagnoses and fixes for a different caller, so the brief takes the same shape: ONE walk
+per sweep into an
+ancestor-hash set, the merge gate ahead of `Status()`, one shared object cache, and the count
+dropped from the skip string. It closes three structural defects found alongside — prune takes
+no lock of any kind, each removal runs its own prune plus a full worktree listing (a quadratic
+term the measured sweep never paid only because it removed nothing), and `--dry-run` is not
+read-only — and adds a prune singleton whose lock fails CLOSED while its TTL debounce fails
+OPEN, so the stale-lock class it exists to avoid cannot be recreated. Every gate is preserved:
+the brief changes the ORDER and the SHARING of the work, never which worktrees are eligible for
+removal, and its Verify table compares removal SETS rather than timings for exactly that reason.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -112,6 +132,7 @@ attach to brief 21's one subprocess runner rather than to a second measurement.
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | implemented | — | — |
 | 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
+| 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -129,7 +150,10 @@ stream — see each brief's Dependencies note.
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
-  present in the tree; the brief is dispatchable now).
+  present in the tree; the brief is dispatchable now), desk-tools/26 (no typed dependency —
+  wave 2 by sequencing, not by blocking: it rewrites the gate ORDER of a destructive verb in
+  `cmd/deskwt`, so it is kept out of the first wave's parallel band rather than made to wait on
+  anything. Dispatchable now).
 
 ## Design notes
 - [superseded-confirmation.md](superseded-confirmation.md) — the two-role `deskclose superseded`
