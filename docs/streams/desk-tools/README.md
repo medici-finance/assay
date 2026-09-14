@@ -70,6 +70,20 @@ it stays outside the frozen `Forge` interface (a plain method on `*GitHubForge` 
 out of scope) precisely so it adds a sibling monitoring surface rather than touching the gate
 it watches. Auto-revocation is named as separate, explicitly human-gated follow-up.
 
+Brief 23 comes from an operator request recorded 2026-09-14: when telemetry is on, log non-PII
+tool usage and execution times, and keep a short history a later run can read performance
+information from. The tools already record WHAT they did — one audit row per invocation — but
+that ledger carries no duration, no exit code and no child-process count, and it cannot grow
+one: it is load-bearing state for the write budget and the idempotency store, so it is
+append-only and never rotated (measured on one operating desk host: 108 MB across 204,252 rows
+in 32 days). So the brief adds a SEPARATE, opt-in, local-only perf record written by the shared
+substrate at one place, kept for 7 UTC days and pruned on write, with a closed field set and no
+free-text field at all — and one read verb, `deskperf`, for per-tool percentiles and boot-step
+cost. It inherits `docs/telemetry.md`'s promise and its exact `ASSAY_TELEMETRY` switch. A remote
+sink is explicitly NOT in it: nothing here opens a socket, and only the on-disk shape is fixed,
+so a later sender reads it unchanged. It is the stream's first wave-2 brief — the child timings
+attach to brief 21's one subprocess runner rather than to a second measurement.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -97,10 +111,13 @@ it watches. Auto-revocation is named as separate, explicitly human-gated follow-
 | 20 | [Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is](brief-20-cross-repo-remote-verify.md) | 1 | S | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #556 @ b3294437716536ad815cf13b2b80490e7bf4a4df) |
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | implemented | — | — |
+| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
-None. Each brief is independent and self-contained. The soft ordering their source streams
+desk-tools/21 → desk-tools/23. That is the stream's only typed edge: brief 23's per-child
+timing attaches to the ONE subprocess runner brief 21 delivers, so a second measurement is
+never written. Every other brief is independent and self-contained. The soft ordering their source streams
 carried (a version-scheme brief ahead of 01, the drain engine ahead of 02, a set of
 risk-path briefs ahead of 03, the verdict payload/row-classes ahead of 04) is satisfied by
 work already landed outside this stream, so no typed `depends:` edge remains — see each
@@ -111,6 +128,8 @@ brief's Dependencies note.
   /15, /16, /17, /18, /19, /20, /21, /22 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
+- **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
+  present in the tree; the brief is dispatchable now).
 
 ## Design notes
 - [superseded-confirmation.md](superseded-confirmation.md) — the two-role `deskclose superseded`
