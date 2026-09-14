@@ -513,12 +513,19 @@ func writeDisabledAudit(tool, reason string) {
 // lastResultWas reports whether the most recent audit line has the given result.
 // Transition detection is best-effort: a corrupt/unreadable file returns false here
 // (the outward-write flow surfaces corruption via LoadEntries/AllowWrite as exit 6).
+//
+// It reads the LAST LINE by a bounded tail read (LastEntry), not by parsing the ledger
+// (#1035). The question is one field of one line, and paying a whole-file parse for it cost
+// every desk verb — read-only verbs included — ~0.6 s against a 105 MB ledger, on the one
+// call path every desk tool is required to run first. LastEntry's three-state contract is
+// exactly the best-effort one this function already documented: a missing, empty or
+// unparseable-final-line ledger is false, never a refusal raised here.
 func lastResultWas(result string) bool {
-	entries, err := LoadEntries()
-	if err != nil || len(entries) == 0 {
+	e, ok := LastEntry()
+	if !ok {
 		return false
 	}
-	return entries[len(entries)-1].Result == result
+	return e.Result == result
 }
 
 // toolName derives the tool name for audit lines from the running binary

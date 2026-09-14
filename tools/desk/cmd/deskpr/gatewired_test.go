@@ -82,6 +82,108 @@ func TestPublicRepoGateWired(t *testing.T) {
 	})
 }
 
+// TestPublicRepoGateFetcherRoutesThroughResolvedForge — assay#1054.
+//
+// create/update/edit must ask the public-repo gate's visibility read through the SAME forge
+// backend already resolved for every OTHER operation on this repo (forgeForFn's fg), never a
+// second, independently-constructed, GitHub-only client. Before the fix, all three call sites
+// built `&deskkit.HTTPRepoInfoFetcher{Token: ghToken}` for the gate regardless of which forge
+// the resolver had actually picked, so a GitLab-resolved repo's visibility read went out over
+// GitHub's REST API — which cannot answer for a project that lives on GitLab, and the gate
+// failed closed (could-not-check, exit 6) naming a GitHub HTTP error for a repo GitHub never
+// heard of, rather than reading GitLab's own visibility. GitLabForge.RepoVisibility
+// (forge_gitlab.go) was already correct; nothing downstream of the resolver was broken — the
+// gate simply never asked it.
+//
+// FAIL-FIRST: restore `fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}` at any of the
+// three deskpr call sites (deskpr.go's create/update, edit.go's edit) and the matching subtest
+// below goes red at the type assertion — a raw *HTTPRepoInfoFetcher is not a
+// deskkit.ForgeRepoInfoFetcher, so the mismatch is caught BEFORE this test ever touches
+// RepoVisibility. That ordering is deliberate: calling RepoVisibility on the pre-fix fetcher
+// would issue a real HTTP GET to api.github.com with the fixture's fake token, which this test
+// must never do (offline, deterministic, no flaky network dependency).
+func TestPublicRepoGateFetcherRoutesThroughResolvedForge(t *testing.T) {
+	assertRoutedThroughFake := func(t *testing.T, fake *envForge, captured deskkit.RepoInfoFetcher, wantOwner, wantRepo string) {
+		t.Helper()
+		if captured == nil {
+			t.Fatal("the gate seam was never reached")
+		}
+		routed, ok := captured.(deskkit.ForgeRepoInfoFetcher)
+		if !ok {
+			t.Fatalf("fetcher handed to the public-repo gate is %T, want deskkit.ForgeRepoInfoFetcher "+
+				"wrapping the forge already resolved for this repo — a hardcoded GitHub-only client "+
+				"cannot answer for a GitLab-resolved repo (assay#1054)", captured)
+		}
+		if routed.Forge != fake {
+			t.Fatal("the fetcher wraps a different forge than the one forgeForFn resolved for this repo")
+		}
+		// Safe to exercise now: routed.Forge is the in-memory fake, so this makes no network
+		// call. The pre-fix path never reaches here — its type assertion above already failed.
+		vis, err := routed.RepoVisibility(wantOwner, wantRepo)
+		if err != nil {
+			t.Fatalf("RepoVisibility via the resolved forge: %v", err)
+		}
+		if vis != "private" {
+			t.Fatalf("RepoVisibility = %q, want %q (the fake's default)", vis, "private")
+		}
+		if fake.visibilityCalls != 1 {
+			t.Fatalf("fake.visibilityCalls = %d, want 1 — the gate's read must reach the resolved "+
+				"forge exactly once", fake.visibilityCalls)
+		}
+		if fake.visibilityRepo != (deskkit.ForgeRepo{Owner: wantOwner, Name: wantRepo}) {
+			t.Fatalf("fake asked about %+v, want %s/%s", fake.visibilityRepo, wantOwner, wantRepo)
+		}
+	}
+
+	t.Run("create", func(t *testing.T) {
+		work := newBaseFixture(t)
+		withEnv(t, work)
+		fake := curForge
+
+		var captured deskkit.RepoInfoFetcher
+		publicRepoGateFn = func(fetcher deskkit.RepoInfoFetcher, owner, repo string) error {
+			captured = fetcher
+			return nil
+		}
+
+		run([]string{"create", "--title", "Test PR", "--body-min", "Brief: fixture/01\nbody"})
+		assertRoutedThroughFake(t, fake, captured, "example-org", "tracker")
+	})
+
+	t.Run("update", func(t *testing.T) {
+		work := newBaseFixture(t)
+		withEnv(t, work)
+		t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+		fake := curForge
+
+		var captured deskkit.RepoInfoFetcher
+		publicRepoGateFn = func(fetcher deskkit.RepoInfoFetcher, owner, repo string) error {
+			captured = fetcher
+			return nil
+		}
+
+		run([]string{"update"})
+		assertRoutedThroughFake(t, fake, captured, "example-org", "tracker")
+	})
+
+	t.Run("edit", func(t *testing.T) {
+		work := newBaseFixture(t)
+		withEnv(t, work)
+		t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+		fake := curForge
+
+		var captured deskkit.RepoInfoFetcher
+		publicRepoGateFn = func(fetcher deskkit.RepoInfoFetcher, owner, repo string) error {
+			captured = fetcher
+			return nil
+		}
+
+		bodyPath := writeTempFile(t, "the corrected body\nBrief: fixture/01\n")
+		run([]string{"edit", "--body-file", bodyPath})
+		assertRoutedThroughFake(t, fake, captured, "example-org", "tracker")
+	})
+}
+
 // TestBriefCarryingCreateOnListedPublicRepoPassesGate — the defect this brief closes.
 //
 // A brief-carrying create has NO issue/PR number (the trailer resolves to a file, not an

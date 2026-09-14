@@ -382,6 +382,12 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 	idents := map[string]bool{}
 	gitReadable := false // at least one brief yielded readable commit identity
 
+	// ONE history walk per root, built lazily on the first root that needs it, replacing the
+	// per-brief `git log` PAIR this loop used to run. A root whose walk fails simply has no
+	// index and every brief under it falls back to the per-path reads — the answer is the same
+	// either way, which is the property that lets this be a cost change and not a behaviour one.
+	authorIdx := map[string]map[string]pathAuthors{}
+
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
 			bf, ok, err := parseBriefFile(path)
@@ -434,9 +440,13 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			if relErr != nil {
 				rel = path
 			}
-			authoringID, aok := gitPathFirstAuthorIdentity(s.Root, rel)
-			evidenceID, eok := gitPathLastAuthorIdentity(s.Root, rel)
-			if !aok || !eok {
+			idx, built := authorIdx[s.Root]
+			if !built {
+				idx, _ = buildPathAuthorIndex(s.Root, filepath.FromSlash("docs/streams"))
+				authorIdx[s.Root] = idx // nil on failure: cached so the walk is attempted once
+			}
+			authoringID, evidenceID, idok := lookupPathAuthors(idx, s.Root, rel)
+			if !idok {
 				// .git EXISTS but this brief's own history is unreadable — an
 				// untracked / just-added file, or a shallow clone that truncated
 				// it. Degrade LOUDLY so a reader knows the identity layer did not
