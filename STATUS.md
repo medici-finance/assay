@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [composability](docs/streams/composability/README.md) | P2 | active | 1/6 | 2026-09-14 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-14 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-14 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-14 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/8 | 2026-09-14 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-14 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/25 | 2026-09-14 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 2/8 | 2026-09-14 |  |
@@ -41,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (55 desk-actionable of 65 total — 65 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (56 desk-actionable of 66 total — 66 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (55)
+### Desk-actionable (56)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -79,6 +79,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -191,7 +192,7 @@ _None._
 - 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — implemented (wave 3)
 - 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — in-progress (wave 4)
 
-### desk-containers (7 open)
+### desk-containers (8 open)
 
 - 01 base image — toolchains, desk-tools, assay skills, persistent-volume layout — implemented (wave 1)
 - 02 runtime credential contract (PEM + model env) + image layer-secret scan — implemented (wave 1)
@@ -200,6 +201,7 @@ _None._
 - 05 docker-compose definition for the five desks — todo (wave 3)
 - 06 Kubernetes manifests for the five desks — todo (wave 3)
 - 07 multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config — todo (wave 4)
+- 08 A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish — implemented (wave 3)
 
 ### desk-supervision (3 open)
 
@@ -419,4 +421,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **62/172** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **62/173** briefs done · completed initiatives: see `docs/archive/`
