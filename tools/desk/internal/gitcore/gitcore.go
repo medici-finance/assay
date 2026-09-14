@@ -58,6 +58,13 @@ type Repo struct {
 	repo *git.Repository
 	dir  string
 
+	// alternates is what this repository's objects/info/alternates resolved to at Open
+	// time: the filesystem go-git resolves borrowed object directories through, plus the
+	// diagnosis of any entry that could not be resolved (see alternates.go). The
+	// diagnosis is carried so a read that finds an object missing can SAY why instead of
+	// reporting a confidently wrong answer.
+	alternates alternates
+
 	// reachIdx is the lazily built, Repo-lifetime commit-reachability cache behind
 	// RefsContaining (see contains.go); reachMu guards its construction.
 	reachMu  sync.Mutex
@@ -122,15 +129,26 @@ func OpenWith(dir string, objects ObjectCache) (*Repo, error) {
 	// `git.PlainOpenWithOptions(..., EnableDotGitCommonDir: true)` does internally
 	// (unexported there, so reproduced here rather than reused).
 	var repoFS billy.Filesystem = osfs.New(gitDir)
+	objectsDir := filepath.Join(gitDir, "objects")
 	if commonDir, cerr := commonDirOf(gitDir); cerr == nil && commonDir != "" && commonDir != gitDir {
 		repoFS = dotgit.NewRepositoryFilesystem(osfs.New(gitDir), osfs.New(commonDir))
+		// objects/ (and so objects/info/alternates) lives in the COMMON .git, never in
+		// the per-worktree admin dir.
+		objectsDir = filepath.Join(commonDir, "objects")
 	}
-	st := filesystem.NewStorage(repoFS, objects)
+	// A `git clone --shared`/`--reference` checkout stores no objects of its own: it
+	// borrows them from the directory its objects/info/alternates names. go-git resolves
+	// that file only through the filesystem it is handed, and the chroot above cannot see
+	// outside this repository — so without AlternatesFS every borrowed object reads as
+	// "not found" and callers silently get answers computed from half a repository. See
+	// readAlternates for the resolution rules and the boundary this keeps.
+	alt := readAlternates(objectsDir)
+	st := filesystem.NewStorageWithOptions(repoFS, objects, filesystem.Options{AlternatesFS: alt.fs})
 	r, err := git.Open(extensionTolerantStorer{st}, osfs.New(worktreeDir))
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
 	}
-	return &Repo{repo: r, dir: dir}, nil
+	return &Repo{repo: r, dir: dir, alternates: alt}, nil
 }
 
 // commonDirOf reads gitDir's own "commondir" pointer file (present only for a linked
@@ -818,7 +836,15 @@ func (r *Repo) CommitVerifyQuiet(rev string) (bool, error) {
 
 // HasStagedChanges reports whether the index holds content not yet committed, matching
 // `git diff --cached --quiet`'s exit code (1 = staged changes exist, 0 = none).
+//
+// It returns an error wrapping ErrObjectStoreIncomplete rather than a boolean when the
+// HEAD commit's tree cannot be read in full — see headTreeComplete for why a missing
+// object makes go-git's answer WRONG rather than absent, in both directions. A caller
+// must surface that as could-not-check; it is never a clean tree and never a dirty one.
 func (r *Repo) HasStagedChanges() (bool, error) {
+	if err := r.headTreeComplete(); err != nil {
+		return false, fmt.Errorf("gitcore: staged-changes: %w", err)
+	}
 	wt, err := r.repo.Worktree()
 	if err != nil {
 		return false, fmt.Errorf("gitcore: staged-changes: %w", err)

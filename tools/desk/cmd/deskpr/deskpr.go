@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -550,6 +551,17 @@ func preflight(dir, base string) (*gitFacts, error) {
 	// No staged-but-uncommitted changes: exits 1 (Refused) when the index has content
 	// not yet committed, matching `git diff --cached --quiet`'s exit code.
 	if staged, serr := gitRepo.HasStagedChanges(); serr != nil {
+		// An object this checkout's own history references could not be read — most often
+		// a `git clone --shared`/`--reference` checkout whose borrowed object store has
+		// moved, gone, or is declared in a form that cannot be resolved. That is
+		// COULD-NOT-CHECK, and it is reported as itself: the index may or may not be
+		// clean, and neither answer may be guessed from a partially readable repository.
+		if errors.Is(serr, gitcore.ErrObjectStoreIncomplete) {
+			return nil, deskkit.Unverifiable(
+				"cannot check staged changes: part of this checkout's object store is unreadable — "+
+					"if it borrows objects from another repository (`git clone --shared`/`--reference`), "+
+					"materialise them with `git repack -a` in this checkout, or use a full clone", serr)
+		}
 		return nil, deskkit.Unverifiable("cannot check staged changes", serr)
 	} else if staged {
 		return nil, deskkit.Refused("refused: staged-but-uncommitted changes — commit them first")
