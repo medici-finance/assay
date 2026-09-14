@@ -25,7 +25,7 @@ const usage = `deskfile — filing gate: mandatory dedupe, class-issue attach, p
 USAGE:
   deskfile new    -R <owner/repo> --title <t> --body-file <f> [--label ...] [--raised-by <role>]
                   [--to <role>] [--force-new --reason <r>]
-  deskfile attach -R <owner/repo> --to <N> --body-file <f>
+  deskfile attach -R <owner/repo> --to <N> --body-file <f> [--kind issue|mr]
   deskfile check  -R <owner/repo> --title <t>
   deskfile --version
 
@@ -65,6 +65,13 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
 
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
          Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
+         --kind states WHICH object N names: issue (the default — attach is an observation
+         on an issue) or mr (pr is accepted as an alias). It matters on GitLab, where
+         issues and merge requests are numbered in SEPARATE sequences and #N and !N
+         routinely both exist: the kind selects the object the state check reads and the
+         note is posted to. On GitHub (one number sequence) the kind is only validated
+         against what N is — asking for an issue at a pull request's number is refused
+         (exit 6), never posted to the other kind. An unknown kind is refused (exit 5).
 
 check  — dry-run dedupe: prints candidates and exits 0/5 the same as ` + "`new`" + ` would, but
          writes nothing. The verb skills embed in authoring loops.

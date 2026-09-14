@@ -421,6 +421,35 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	}, nil
 }
 
+// GetIssueTyped is GetIssue with the caller's stated kind VALIDATED against what the number
+// is. GitHub numbers issues and pull requests in ONE sequence, so there is nothing to route
+// on — the one read answers both — but a caller that said "issue" and is handed a pull
+// request (or the reverse) would go on to act on the wrong kind of object under the right
+// number, so the mismatch is a could-not-check error naming both, never a silent hand-back.
+// A 404 is returned as-is (IsForgeNotFound holds). An unknown kind is refused.
+func (g *GitHubForge) GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: GetIssueTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+	}
+	iss, err := g.GetIssue(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if iss.IsPullRequest && kind == TargetIssue {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)",
+			repo.Slug(), number), nil)
+	}
+	if !iss.IsPullRequest && kind == TargetChange {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is an issue, not a pull request — state the kind you mean (--kind issue)",
+			repo.Slug(), number), nil)
+	}
+	return iss, nil
+}
+
 // OpenChangeForBranch resolves the single OPEN pull request whose HEAD branch is `branch`
 // (`GET /repos/{o}/{r}/pulls?head={owner}:{branch}&state=open`). The head filter is spelled
 // `owner:branch` — GitHub's own `user:ref` form — so it matches only same-repo branches, which
@@ -1538,6 +1567,20 @@ func (g *GitHubForge) PostComment(repo ForgeRepo, number int, body string) (*Com
 		return nil, err
 	}
 	return &CommentRef{ID: w.NodeID, DatabaseID: w.ID, URL: w.HTMLURL}, nil
+}
+
+// PostCommentTyped is PostComment on GitHub: issues and pull requests share ONE comments
+// endpoint (`/issues/{n}/comments` serves both), so the stated kind selects nothing here.
+// It is not re-validated against the object either — the caller's preceding GetIssueTyped
+// is where a kind mismatch is caught, and a second read per comment would double the
+// footprint of every attach for no new information. An unknown kind is still refused.
+func (g *GitHubForge) PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: PostCommentTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+	}
+	return g.PostComment(repo, number, body)
 }
 
 func (g *GitHubForge) PostReview(repo ForgeRepo, number int, in ReviewInput) error {
