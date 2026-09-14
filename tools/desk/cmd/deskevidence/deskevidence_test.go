@@ -443,6 +443,104 @@ func TestSecretScanStillRefusesNewSecretInBriefMerge(t *testing.T) {
 	}
 }
 
+// --- #966: the SAME added-bytes-only scoping, without --brief-path ---
+//
+// Without --brief-path, --evidence-file IS the whole target file: the caller merged the new
+// row into a local working copy itself before calling this tool, so localContent can
+// legitimately be almost entirely content that was ALREADY on the branch. Before the fix,
+// BodyCheck scanned that whole file — indistinguishable, at the scan, from the --brief-path
+// case #901 already fixed — and a brief carrying a secret-shaped run ANYWHERE in its
+// pre-existing body could never receive another Evidence append through this tool, by
+// anyone, ever. The fix diffs localContent against the remote content fetched up front and
+// scans only the lines addedLines reports as new.
+
+// TestSecretScanIgnoresPreexistingSecretWithoutBriefPath isolates the SCOPING half of the
+// fix from the two new allowlist rules below: a plain ghp_ token (not covered by ANY
+// allowlist rule) already on the branch must not block a clean append made via the
+// direct-write flow. Before the fix this scanned commitContent (== localContent in this
+// flow, the WHOLE target file) and refused on the pre-existing token; after the fix it
+// scans only addedLines(remoteContent, localContent) and lands.
+func TestSecretScanIgnoresPreexistingSecretWithoutBriefPath(t *testing.T) {
+	f, _ := setupFake(t)
+	preexistingSecret := "ghp_" + strings.Repeat("f", 36)
+	remote := "# Brief\n\ntoken: " + preexistingSecret + "\n\n## Evidence\n| 1 | a | b |\n"
+	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"| 2 | c | d |\n")
+	f.setFile(evidencePath, remote)
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("exit = %d, want 0 (pre-existing secret-shaped text on the branch must not block a clean append)", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", f.putCalls)
+	}
+	if !strings.Contains(f.putContent, "| 2 | c | d |") {
+		t.Fatalf("committed content missing the new row:\n%s", f.putContent)
+	}
+}
+
+// TestSecretScanIgnoresPreexistingEnumListWithoutBriefPath: a pre-existing ALL-CAPS
+// stream-status enum slash-list (#966's own repro shape) already on the branch must not
+// block a clean append made via the direct-write flow (no --brief-path).
+func TestSecretScanIgnoresPreexistingEnumListWithoutBriefPath(t *testing.T) {
+	f, _ := setupFake(t)
+	remote := "# Brief\n\nprior states: PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE\n\n## Evidence\n| 1 | a | b |\n"
+	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"| 2 | c | d |\n")
+	f.setFile(evidencePath, remote)
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("exit = %d, want 0 (a pre-existing enum slash-list must not block a clean append)", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", f.putCalls)
+	}
+	if !strings.Contains(f.putContent, "| 2 | c | d |") {
+		t.Fatalf("committed content missing the new row:\n%s", f.putContent)
+	}
+}
+
+// TestSecretScanIgnoresPreexistingKubernetesUIDWithoutBriefPath: a pre-existing Kubernetes
+// generated PersistentVolume name (#966's other repro shape) already on the branch must not
+// block a clean append made via the direct-write flow.
+func TestSecretScanIgnoresPreexistingKubernetesUIDWithoutBriefPath(t *testing.T) {
+	f, _ := setupFake(t)
+	remote := "# Brief\n\nbound volume: pvc-38d9b7efea064f53" + "acd5843296326c99\n\n## Evidence\n| 1 | a | b |\n"
+	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"| 2 | c | d |\n")
+	f.setFile(evidencePath, remote)
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("exit = %d, want 0 (a pre-existing k8s generated UID must not block a clean append)", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", f.putCalls)
+	}
+	if !strings.Contains(f.putContent, "| 2 | c | d |") {
+		t.Fatalf("committed content missing the new row:\n%s", f.putContent)
+	}
+}
+
+// TestSecretScanStillRefusesNewSecretWithoutBriefPath: the companion negative-path row for
+// the direct-write flow — a secret in the bytes this commit ACTUALLY adds must still refuse.
+// Proves #966's fix narrowed the scan's scope, not its sensitivity: addedLines still hands
+// the scanner the newly-added line, and BodyCheck still refuses it.
+func TestSecretScanStillRefusesNewSecretWithoutBriefPath(t *testing.T) {
+	f, _ := setupFake(t)
+	remote := "# Brief\n\n## Evidence\n| 1 | a | b |\n"
+	newSecret := "ghp_" + strings.Repeat("e", 36)
+	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"token: "+newSecret+"\n")
+	f.setFile(evidencePath, remote)
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("exit = %d, want %d (a secret in the NEWLY ADDED bytes must still refuse)", code, deskkit.ExitRefused)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("a secret-scanned refusal still wrote %d time(s)", f.putCalls)
+	}
+}
+
 func TestMergeEvidenceIntoBrief(t *testing.T) {
 	f, _ := setupFake(t)
 	briefPath := "docs/streams/x/brief.md"

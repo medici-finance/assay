@@ -377,6 +377,9 @@ works but loses the guards. The mechanism is **channel-E, identical to `install-
 - `shasum -a 256` the tarball → compare to the pinned digest → **refuse on mismatch**;
 - extract and install the binaries to a `bindir` on `PATH`.
 
+`cellctl` comes with desk-tools (#850) — it is one of the extracted files, so nothing extra is
+needed to obtain it; see `docs/cellctl.md` for what it does and its own `--version` check.
+
 Configuration is at the **config-home only** (`~/.config/assay/`) — the same roster file the acting
 tools read everywhere (§3 `configure-roster`, failure mode 1); the environment is never a transport
 for a desk binary.
@@ -1168,7 +1171,7 @@ Claude Code's. Codex has its own plugin surface, spelled `codex plugin marketpla
 
 ##### 1. Install — two arms, and which one is actually proven
 
-*Arm A — plugin/marketplace (documented, not yet exercised end to end).* Codex reads a local
+*Arm A — plugin/marketplace (demonstrated end to end on codex-cli 0.154.0).* Codex reads a local
 marketplace manifest from `$REPO_ROOT/.agents/plugins/marketplace.json` or
 `~/.agents/plugins/marketplace.json`, and — per OpenAI's current plugin docs — still recognises
 `$REPO_ROOT/.claude-plugin/marketplace.json` as a **legacy** path. This repository ships exactly
@@ -1176,11 +1179,24 @@ that legacy file, with one entry named `assay` sourcing `./plugins/assay`, whose
 [`plugins/assay/.codex-plugin/plugin.json`](../plugins/assay/.codex-plugin/plugin.json) (generated
 by `harnessgen codex`, byte-checked in CI, version-bound to the Claude manifest so the two can
 never skew). So `codex plugin marketplace add medici-finance/assay` has a manifest to find.
-**Read this as documented-not-demonstrated**: no live Codex session has run it (see *Acceptance*
-below), and OpenAI's current docs describe `.codex-plugin/plugin.json` as the legacy fallback to a
-portable root `plugin.json` — which this repo does not ship. If the marketplace arm does not
-resolve for you, that is a finding worth filing, not a reason to call the harness unsupported: use
-arm B.
+**Read this as demonstrated**: on codex-cli 0.154.0, a clean Codex home ran the full arm against
+this repository's legacy manifest end to end —
+
+```
+$ codex plugin marketplace add medici-finance/assay
+Added marketplace `assay` from https://github.com/medici-finance/assay.git.
+$ codex plugin add assay@assay
+Added plugin `assay` from marketplace `assay`.
+$ codex plugin list
+PLUGIN       STATUS              VERSION
+assay@assay  installed, enabled  1.0.7
+```
+
+with all twelve skills then discoverable, namespaced `assay:<name>`. OpenAI's current docs still
+describe `.codex-plugin/plugin.json` as the legacy fallback to a portable root `plugin.json` —
+which this repo does not ship — so a future Codex release could retire the legacy path; if the
+marketplace arm stops resolving for you, that is a finding worth filing, not a reason to call the
+harness unsupported: use arm B.
 
 *Arm B — file placement (the arm that depends on nothing but `SKILL.md` discovery).* Codex scans
 for `SKILL.md` skills in `$CWD/.agents/skills`, then parent folders up to the repo root, then
@@ -1256,19 +1272,30 @@ max_concurrent_threads_per_session = 4   # cap parallel children; tune to your b
   its reviewer, evidence still needs its command output, isolation still refuses. Serial fan-out
   is a convenience degradation; the three guarantees below are not degradable at all.
 
-*Could-not-check:* this bundle's binding file also describes a V2 tool set
-(`send_message` / `followup_task` / `interrupt_agent`) behind `multi_agent_v2.enabled`. OpenAI's
-config reference as fetched for this runbook does **not** list that key, and no live Codex session
-has been run to settle it. Treat V1 (`[features] multi_agent`) as the configuration this runbook
-prescribes; if your Codex exposes the V2 set, it is beyond what has been checked here.
+*Resolved, in part, on codex-cli 0.154.0:* this bundle's binding file also describes a V2 tool set
+(`send_message` / `followup_task` / `interrupt_agent`) behind `multi_agent_v2.enabled`. `codex
+features list` on 0.154.0 shows the key exists:
+
+```
+multi_agent_v2                           stable             false
+```
+
+So the "does OpenAI's config surface even carry this key" question is settled — it does, it is
+`stable`, and it defaults **off**. *Still could-not-check:* no live session has exercised the V2
+tool set with the flag turned on, so the V2 tool-name behaviour itself remains unverified. Treat V1
+(`[features] multi_agent`) as the configuration this runbook prescribes; if you turn on
+`multi_agent_v2` and exercise the V2 tools, that is beyond what has been checked here.
 
 ##### 4. Sandbox posture — the one setting that changes which skills run
 
 Codex CLI's default `workspace-write` sandbox permits `git add` / `git commit` but blocks
 `git checkout -b` (a `.git/refs/heads/` write) and all network, which takes `git push`, `gh pr
-create` and every other forge write with it. The CLI also has **no built-in worktree management**
-— it detects a linked worktree but never creates one — so a skill that must isolate has to run
-`git worktree add` itself, and under `workspace-write` that is precisely what is blocked.
+create` and every other forge write with it. On codex-cli 0.154.0, `codex exec --help` gained a
+`--worktree` flag ("Run the session in a new managed Git worktree") — the CLI now has a managed
+worktree-creation path of its own — but that path is a separate, explicit invocation shape, not
+something a skill's own `git worktree add` under `workspace-write` gets for free: the sandbox still
+blocks a plain `.git/refs/heads/` write, so a skill that must isolate via its own `git worktree add`
+call still hits precisely the same refusal.
 
 The consequence is the isolation floor, and it is a **refusal, not a degradation**:
 

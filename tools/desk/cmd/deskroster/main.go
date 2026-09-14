@@ -33,6 +33,7 @@ USAGE:
   deskroster repos [--scope write|scan|topology|all]
   deskroster apps
   deskroster preflight --role R [--root DIR] [--repo OWNER/NAME] [--remote NAME] [--branch NAME]
+  deskroster liveness --repo OWNER/NAME
   deskroster --version
 
 "width" is the agent-pool size of one desk LOOP — how many subagents that window
@@ -60,6 +61,13 @@ five three-state checks (cold token mint, App scopes vs the role's duties, a
 read-only write-transport probe, commit identity, declared sibling checkouts),
 each with a named remediation. Red = could-not-run for the whole pass: one line,
 exit 6, nothing claimed. "deskroster preflight --help" exits 0.
+
+"liveness" is a read-only NOTICE surface: it asks GitHub what it CURRENTLY says about
+every trusted login the roster configures (Humans, Bless, Bots) and prints a NOTICE for
+each one that is not exactly what the roster expects (deleted, renamed, reclaimed,
+unpinned). It never gates and never changes TrustedAuthor/TrustedHumanAuthor/Blessed's
+verdict — see tools/desk/README.md's "Roster liveness" section. GitHub-only in this
+version; a non-GitHub-backed --repo prints one explicit line rather than skipping silently.
 
 Session resolution: $DESK_SESSION → $CLAUDE_SESSION_ID → --session flag.
 Unresolvable → exit 6 (never guess a session identity).
@@ -128,6 +136,8 @@ func run(args []string) int {
 		err = cmdWidth(rest)
 	case "preflight":
 		err = cmdPreflight(rest)
+	case "liveness":
+		err = cmdLiveness(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "deskroster: unknown subcommand %q\n\n%s\n", sub, usage)
 		return deskkit.ExitRefused

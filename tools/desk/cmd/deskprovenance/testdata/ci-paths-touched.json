@@ -1,0 +1,13 @@
+{
+  "account_created_at": "2019-03-01T00:00:00Z",
+  "first_activity_at": "2020-05-05T00:00:00Z",
+  "fork_created_at": "2026-09-01T09:00:00Z",
+  "pr_opened_at": "2026-09-04T09:00:00Z",
+  "cross_repo_pr_count_24h": 1,
+  "prior_merged_count": 9,
+  "prior_closed_count": 1,
+  "this_body": "Adds a caching step to the release workflow.",
+  "recent_bodies": ["Adds a missing test for the widget loader."],
+  "commits_signed": true,
+  "changed_paths": [".github/workflows/ci.yml", "go.sum"]
+}

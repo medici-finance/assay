@@ -1334,6 +1334,109 @@ func TestQuantifierGluedPathExemption(t *testing.T) {
 	}
 }
 
+// TestEnumSlashListExemption pins Rule 5, the ALL-CAPS enum/status slash-list arm (#966),
+// in BOTH directions.
+//
+// The false positive it clears: a Verify/Evidence row citing a set of stream states —
+// `PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE` — carries no lowercase letters and no
+// digits, so none of isPathLike, isIdentifierLike or isAssignmentLike can reach it (an
+// ALL-CAPS stretch is deliberately opaque everywhere else in this file, since it is
+// exactly a webhook token's tail shape), and it fell straight through to the high-entropy
+// refusal.
+func TestEnumSlashListExemption(t *testing.T) {
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"a stream-status enum list", "prior states: PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE\n"},
+		{"groups at the minEnumWordLen floor", "seen: " + strings.Repeat("OK/", 12) + "NO\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("an ALL-CAPS enum slash-list (%s) was refused as withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// A single ALL-CAPS group is not a LIST — it is already, correctly, refused by
+		// every other rule (a lone acronym-shaped token in prose is credential-tail shaped).
+		{"a single ALL-CAPS group, no list", "state: " + strings.Repeat("A", 40) + "\n"},
+		// A group past maxEnumWordLen is opaque material wearing slashes, not an enum word.
+		// (Padded with extra groups so the whole run still clears the 32-char scan
+		// threshold once the oversized first group is excluded from consideration.)
+		{"a group over the length bound",
+			"note: " + strings.Repeat("A", maxEnumWordLen+1) + strings.Repeat("/DONE", 3) + "\n"},
+		// A group carrying a digit denies the exemption entirely, even joined by slashes.
+		{"a digit-bearing group", "note: PEND1NGSTATE2026" + "072233445/RUNNING\n"},
+		// A real secret does not decompose into ALL-CAPS letters-only groups — mixed case
+		// and digits are exactly what the group-content gate exists to keep out.
+		{"a real secret glued into a slash shape", "note: " + scanSecret40[:20] + "/" + scanSecret40[20:] + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 5 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
+// TestK8sUIDHexSegmentExemption pins Rule 6, the Kubernetes generated-name hex arm (#966),
+// in BOTH directions.
+//
+// The false positive it clears: a PersistentVolumeClaim's bound PersistentVolume name
+// (`pvc-<uid>`, the UID rendered with its dashes stripped, exactly how Kubernetes itself
+// emits it) quoted in an already-reviewed-and-merged Verify/Evidence row reads as a bare
+// 32-hex high-entropy run with no other exemption able to reach it, and a brief carrying
+// one could never receive another Evidence append through the sanctioned tool.
+func TestK8sUIDHexSegmentExemption(t *testing.T) {
+	uid := "38d9b7ef" + "ea064f53" + "acd58432" + "96326c99" // 32 lowercase hex, split for readability
+
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"a pvc-prefixed generated name", "bound volume: pvc-" + uid + " mounted read-only\n"},
+		{"a pv-prefixed generated name", "backing pv-" + uid + " provisioned by the CSI driver\n"},
+		{"a job-prefixed generated name", "retry against job-" + uid + " once the node drains\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("a Kubernetes generated-name UID (%s) was refused as withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// The anchor is a CLOSED list, not "any word before a hyphen" — a real secret
+		// pasted as token-<32hex> or key-<32hex> must not be laundered by this rule.
+		{"an unlisted prefix", "leaked: token-" + uid + "\n"},
+		{"another unlisted prefix", "rotate: key-" + uid + "\n"},
+		// The run must be EXACTLY 32 hex — a longer or shorter run behind a listed prefix
+		// is not the UID shape and stays refused.
+		{"wrong-length run behind a listed prefix", "bound volume: pvc-" + uid + "ff\n"},
+		// A bare 32-hex run with no listed prefix in front of it is unrelated prose/token
+		// material and stays refused exactly as it always has.
+		{"bare 32-hex run, no prefix", "note: " + uid + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 6 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
 // TestLongIdentifiersAndOneLetterWords pins the two moves that unblocked verify-desk's
 // Evidence writes:
 //
