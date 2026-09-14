@@ -128,8 +128,35 @@ func humanStampProblems(root string, streams []*Stream) (problems, notices []str
 	return problems, notices
 }
 
-// relPath returns the repo-relative path for a stream directory.
+// relPath returns the repo-relative path for a stream directory, in the
+// forward-slash form git pathspecs require regardless of OS (git plumbing
+// pathspecs — "git show <rev>:<path>", "git diff -- <path>" — are always
+// "/"-separated per git's own documentation, never the host's native
+// separator).
+//
+// dir is built upstream by filepath.Dir (parseStreamREADME in parse.go),
+// which uses the OS-native separator: on Windows that is "\", so dir arrives
+// here as e.g. `C:\repo\docs\streams\name`. The "docs/streams/" literal below
+// is "/"-separated, so on Windows it never matched — idx was always -1, and
+// this function fell through to returning dir UNCHANGED: a native, absolute,
+// backslash-separated path. Every caller then fed that string to git as a
+// pathspec (or concatenated a "/README.md" suffix onto it), which git could
+// not resolve, so the base-side lookup errored, the code treated the stream
+// as brand-new, and every stamp already at the merge-base was flagged as a
+// gain — a false positive from a resolution failure, not from the actual
+// provenance rule.
+//
+// Deliberately strings.ReplaceAll, not filepath.ToSlash: ToSlash only
+// replaces the CURRENT process's os.PathSeparator, so on a POSIX build it is
+// a no-op and leaves an incoming backslash-style path untouched — which
+// would make this exact bug untestable on Linux/macOS CI (it would need a
+// real Windows runner to exercise the branch at all, which is how it went
+// undetected the first time). An explicit backslash-to-slash replacement
+// normalizes deterministically regardless of which OS is running the
+// binary, so TestRelPath_HandlesBothSeparatorStyles proves the fix on every
+// CI leg, not only windows-smoke.
 func relPath(dir string) string {
+	dir = strings.ReplaceAll(dir, `\`, "/")
 	// The dir is typically an absolute path like /repo/docs/streams/name.
 	// Extract the docs/streams/name portion.
 	if idx := strings.Index(dir, "docs/streams/"); idx >= 0 {
