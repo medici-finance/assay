@@ -150,7 +150,7 @@ removal, and its Verify table compares removal SETS rather than timings for exac
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | implemented | — | — |
 | 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
 | 24 | [Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb](brief-24-audit-ledger-tail-read-and-rotation.md) | 2 | M | implemented | — | — |
-| 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | todo | — | — |
+| 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
