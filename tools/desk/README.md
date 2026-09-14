@@ -325,6 +325,20 @@ At runtime the tools read/write, under `~/.config/assay/`:
 - `audit.jsonl` — append-only audit log (dir 0700, file 0600 on first use). On
   corruption a tool refuses (exit 6) and prints the recovery: a **human** moves the
   file to `audit.jsonl.corrupt-<ts>` (tools never truncate/rewrite it).
+- `audit.jsonl.<YYYY-MM-DD>` — a ROTATED ledger segment. On the first append of a new
+  UTC day the live file is renamed to the day it covers and a fresh `audit.jsonl` is
+  started, so the file every append and every tail read touches stays one day long
+  (#1035). **Nothing is deleted and nothing is reset.** Every reader spans the segments
+  — `LoadEntries`, the rate-limit counter, the circuit breaker, the idempotency store,
+  and `deskaudit recover` — so the history they see is identical, row for row and in
+  order, to the history they saw before rotation existed. That is what distinguishes it
+  from a plain file move, which resets the counter and empties the idempotency store.
+  Retention is deliberately NOT a policy here: no tool removes a segment.
+- `deskaudit tail [N]` prints the newest N entries (default 10) across the segments, as
+  the raw lines they are on disk. It reads only, locks nothing, and costs a bounded read
+  whatever the ledger's size. An absent ledger says so and exits 0; an unreadable one is
+  exit 6; a malformed line is printed with a note naming `deskaudit recover`, never
+  dropped.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.
@@ -1756,6 +1770,38 @@ also runs a one-shot `deskwt prune` at boot so a session starts on a pruned work
 `--interval` supervisor is the steady-state timer. For a manual sweep across all sibling
 repos, `scripts/deskwt-prune-all.sh` invokes `deskwt prune --repo <path>` per existing repo
 (one-shot; safe with no session active).
+
+### The prune singleton — N windows booting together run ONE sweep
+
+Because every desk loop runs a one-shot prune at boot, N windows starting inside a minute
+used to run N identical full sweeps over the same repository at once. The singleton makes
+that one sweep. It is two mechanisms over one stamp file under `~/.config/assay/prune/`
+(never inside the target repository, so `--dry-run` can promise it writes nothing there):
+
+- **A non-blocking exclusive advisory lock.** A sweep that cannot take it prints
+  `deskwt prune: held by pid <pid>, running <age> — skipping this sweep`, exits **0** (a
+  held sweep is a clean no-op, not a failure), and removes nothing. The kernel releases an
+  advisory lock when its holder exits — however it exits — so there is no liveness question
+  to answer and nothing to time out. The lock cannot be disabled; there is no `--force`.
+- **A recency debounce, `--singleton-ttl` (default `10m`).** A sweep that takes the lock and
+  finds one COMPLETED less than the TTL ago skips with `swept <age> ago`. `--singleton-ttl 0`
+  or `--no-singleton` disables the debounce only — both still take the lock. A sweep started
+  by the SAME process as the recorded one is never debounced (an operator re-running after a
+  change, or the `--interval` supervisor's next tick, whose cadence the operator already set).
+
+The lock fails **closed** and the TTL fails **open**, deliberately. A stamp that is missing,
+truncated, not JSON, of an unknown schema, or carrying a future timestamp is treated as no
+stamp and the sweep PROCEEDS — so a corrupt or abandoned stamp can delay one sweep by at
+most the TTL and can never wedge prune. The `--interval` supervisor takes and releases the
+singleton **per tick**, never for its lifetime, so it cannot lock out a boot-time or manual
+sweep.
+
+### `--dry-run` is read-only
+
+`deskwt prune --dry-run` writes nothing, anywhere: it uses git's own `worktree prune
+--dry-run` for the bookkeeping count, reports the locks `--reclaim-stale-locks` would
+retire without unlocking any of them, deletes no worktree, and writes no singleton stamp.
+It still REPORTS everything a real sweep would do.
 
 ## clusterguard — the cluster-CLI exec boundary
 

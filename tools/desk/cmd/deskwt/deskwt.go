@@ -248,11 +248,28 @@ func dirtyTracked(rt string) (string, error) {
 	if err != nil {
 		return "", deskkit.Unverifiable("cannot check the worktree's tracked status", err)
 	}
+	return dirtyTrackedFrom(repo)
+}
+
+// dirtyTrackedFrom is the same gate over an ALREADY-OPEN repository handle. `prune` sweeps
+// many worktrees in one pass and opens each exactly once (sweepCtx), so it reaches the gate
+// through this form rather than opening the worktree a second time; `remove` opens one
+// worktree and reaches it through dirtyTracked. Both run the identical check — the single
+// implementation the two verbs must not drift apart on is here.
+func dirtyTrackedFrom(repo *gitcore.Repo) (string, error) {
 	out, err := repo.DirtyTrackedPorcelain()
 	if err != nil {
 		return "", deskkit.Unverifiable("cannot check the worktree's tracked status", err)
 	}
 	return out, nil
+}
+
+// worktreePathsFn is the seam for the registration listing the deregistration check reads.
+// Production calls the guard's own method; a test replaces it to simulate the one state the
+// batched form must still catch — a tree deleted from disk whose admin entry survives the
+// prune — which cannot be produced with real git inside a fixture.
+var worktreePathsFn = func(g *pathGuard, dir string) (map[string]bool, error) {
+	return g.worktreePaths(dir)
 }
 
 // removeWorktreeDir deletes a proven-safe worktree directory and drops its now-dangling
@@ -262,20 +279,75 @@ func dirtyTracked(rt string) (string, error) {
 // performs the destructive step only, and is the SINGLE implementation shared by `remove`
 // and `prune`.
 func removeWorktreeDir(guard *pathGuard, dir, rt string) error {
+	if rerr := removeWorktreeTree(rt); rerr != nil {
+		return rerr
+	}
+	return deregisterWorktrees(guard, dir, []string{rt})
+}
+
+// removeWorktreeTree performs ONLY the destructive step of a removal: the plain recursive
+// delete of a path a caller has already proven safe. It drops no admin entry and verifies
+// nothing — deregisterWorktrees is the other half, and every caller must run it.
+//
+// The split exists because the deregistration half is REPO-WIDE, not per-path: `git
+// worktree prune` drops every dangling admin entry in one call, and `git worktree list
+// --porcelain` reports every registration in one read. Running both per removal is an
+// O(N^2) term in the worktree count (measured at ~1 s per listing on a repo with ~675
+// worktrees), so `prune`, which removes many paths in one sweep, deletes inside its loop
+// and deregisters ONCE afterwards. `remove` removes exactly one operator-named path and
+// keeps both halves back to back, via removeWorktreeDir, exactly as it always has.
+func removeWorktreeTree(rt string) error {
 	if rerr := os.RemoveAll(rt); rerr != nil {
 		return deskkit.Unverifiable("failed to remove the worktree directory "+rt, rerr)
 	}
-	if _, prErr := runGit(dir, "worktree", "prune"); prErr != nil {
-		return deskkit.Unverifiable("git worktree prune failed after removing "+rt, prErr)
+	return nil
+}
+
+// deregisterWorktrees drops the now-dangling admin entries of already-deleted worktree
+// directories and POSITIVELY verifies that each named path is gone from the registration
+// list. It runs `git worktree prune` once and `git worktree list --porcelain` once,
+// however many paths it is given — the verification is BATCHED, never dropped.
+//
+// A path still registered after the prune is reported by name. Callers treat that as the
+// removal having failed for that path (it is not counted as removed), which is the same
+// verdict the per-path form reached; only the number of git invocations differs.
+func deregisterWorktrees(guard *pathGuard, dir string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
 	}
-	set, lerr := guard.worktreePaths(dir)
-	if lerr != nil {
-		return lerr
+	stranded, err := strandedAfterDeregister(guard, dir, paths)
+	if err != nil {
+		return err
 	}
-	if set[rt] {
-		return deskkit.Unverifiable("worktree removed from disk but "+rt+" is still registered after prune", nil)
+	if len(stranded) != 0 {
+		return deskkit.Unverifiable("worktree removed from disk but "+strings.Join(stranded, ", ")+" is still registered after prune", nil)
 	}
 	return nil
+}
+
+// strandedAfterDeregister runs the same single prune + single listing as
+// deregisterWorktrees and returns the SUBSET of paths that are still registered, rather
+// than one error for the batch. prune needs the subset: a sweep that deleted 20 trees and
+// could not deregister 1 must still count the other 19 as removed and report that one by
+// name, so the batching cannot turn a per-path verdict into an all-or-nothing one.
+func strandedAfterDeregister(guard *pathGuard, dir string, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if _, prErr := runGit(dir, "worktree", "prune"); prErr != nil {
+		return nil, deskkit.Unverifiable("git worktree prune failed after removing "+strings.Join(paths, ", "), prErr)
+	}
+	set, lerr := worktreePathsFn(guard, dir)
+	if lerr != nil {
+		return nil, lerr
+	}
+	var stranded []string
+	for _, rt := range paths {
+		if set[rt] {
+			stranded = append(stranded, rt)
+		}
+	}
+	return stranded, nil
 }
 
 // cmdAdd implements `deskwt add <name> [--branch B] [--base origin/main]`: create a

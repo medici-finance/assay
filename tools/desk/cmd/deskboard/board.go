@@ -700,6 +700,40 @@ func sameHead(reviewSHA, head string) bool {
 	return reviewSHA != "" && head != "" && reviewSHA == head
 }
 
+// shasComparable reports whether BOTH endpoints of the benign-merge compare were actually
+// established, which is that compare's precondition.
+//
+// It is sameHead's other half, and separating them is the whole point: sameHead answers
+// "are these the same commit", and answers NO both for two different known shas and for a
+// sha nobody could read. Those two noes want opposite handling downstream — one is a real
+// interval to compare, the other has no interval at all — so the caller needs a second
+// question, and asking it inline is what let the distinction go missing.
+//
+// Pure and named rather than a condition inside the classify loop for the reason
+// ownFilesChanged is: a predicate a test cannot reach is a predicate that silently stops
+// holding.
+func shasComparable(reviewedSHA, head string) bool {
+	return reviewedSHA != "" && head != ""
+}
+
+// unreadableSHAFields names which endpoints of the benign-merge compare could not be
+// established, for the row's diagnostic. A degrade that does not say WHICH field is
+// missing sends its reader to the wrong forge surface — the reported symptom was a bare
+// `compare needs both base and head` with no way to tell a missing review sha from a
+// missing head. Returns "" when both are present, so the string is only ever built for a
+// row that is actually degrading.
+func unreadableSHAFields(reviewedSHA, head string) string {
+	switch {
+	case reviewedSHA == "" && head == "":
+		return "either (no reviewed sha, no head sha)"
+	case reviewedSHA == "":
+		return "the reviewed sha (the forge did not pin the verdict to a commit)"
+	case head == "":
+		return "the head sha"
+	}
+	return ""
+}
+
 func reduceReviews(reviews []review, head string) reviewState {
 	var st reviewState
 	var decisive []review
@@ -1992,17 +2026,55 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// MERGE-CURR needs the PR's own files vs the changes since the reviewed
 	// sha; both are fetched only when actually needed (head advanced).
 	if rs.ever && !rs.atHead {
-		own, complete, err := fetchChangedFiles(repo, p.Number)
-		if err != nil {
-			return prOutcome{}, err
+		// `!atHead` is TWO different facts wearing one bool, and the compare below is
+		// only defined for one of them. sameHead reports not-at-head when the reviewed
+		// sha is KNOWN and DIFFERENT from head — the head genuinely advanced, and the
+		// compare answers a real question — AND when either sha was never established,
+		// which sameHead deliberately folds in ("either side empty is could-not-check,
+		// and could-not-check is NOT at head"). In the second case there is no interval
+		// to compare, and asking for one used to return Unverifiable from
+		// changedFilesBetween, which this loop propagates — so ONE row that could not be
+		// pinned exited the WHOLE sweep 6 with an empty stdout and the message `compare
+		// needs both base and head`. That is the board-scope fail-close the row-scope
+		// degrade next to it exists to avoid (fetchChangedFiles: "complete=false is not
+		// an error — the caller degrades CLOSED per-PR … so one enormous PR cannot brick
+		// the desk's sweep").
+		//
+		// It is reachable on any forge and routine on GitLab, which cannot always pin a
+		// verdict to a head and says so by leaving CommitID EMPTY rather than stamping
+		// the current sha (forge_gitlab.ReviewsAtHead: an approval carries no sha and
+		// survives a push unless the project resets approvals, so stamping it would
+		// manufacture the at-head evidence the flip gate exists to require). The empty
+		// sha is therefore the CORRECT reading, not a gap to fill in the backend — it is
+		// this consumer that had no arm for it. GitLab reviewer verdicts only became
+		// visible to this reduction once the role's expected login resolved per-forge
+		// (#1058), which is what first made this branch reachable there at all: before
+		// that, no GitLab verdict matched isReviewerBot, `ever` stayed false, and the
+		// rows classified NEEDS-REVIEW instead.
+		//
+		// So an unpinnable sha degrades the ROW the same way a truncated diff does —
+		// RE-REVIEW, never the benign MERGE-CURR, because "the PR's own files are
+		// unchanged since last review" is a claim no one can make without both endpoints
+		// — and the sweep carries on.
+		if !shasComparable(rs.lastSHA, p.HeadRefOid) {
+			in.ownFilesChanged = true
+			fmt.Fprintf(os.Stderr, "deskboard: WARNING %s#%d — the benign-merge compare needs the "+
+				"reviewed sha and the PR head sha; could not establish %s, so this row degrades to "+
+				"RE-REVIEW rather than MERGE-CURR (on GitLab a verdict the forge cannot pin to a head "+
+				"reports no sha by design)\n", repo, p.Number, unreadableSHAFields(rs.lastSHA, p.HeadRefOid))
+		} else {
+			own, complete, err := fetchChangedFiles(repo, p.Number)
+			if err != nil {
+				return prOutcome{}, err
+			}
+			changed, err := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
+			if err != nil {
+				return prOutcome{}, err
+			}
+			// A truncated own-files set cannot prove the intersection is empty, so it
+			// degrades to RE-REVIEW (the safe side) rather than the benign MERGE-CURR.
+			in.ownFilesChanged = ownFilesChanged(own, complete, changed)
 		}
-		changed, err := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
-		if err != nil {
-			return prOutcome{}, err
-		}
-		// A truncated own-files set cannot prove the intersection is empty, so it
-		// degrades to RE-REVIEW (the safe side) rather than the benign MERGE-CURR.
-		in.ownFilesChanged = !complete || intersects(own, changed)
 	}
 
 	// Risk classification (#216) only matters at the FLIP decision: bot
