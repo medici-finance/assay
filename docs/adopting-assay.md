@@ -51,6 +51,11 @@ true shape on this page and not at step four:
 `pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
 set* in §3 `setup-reviewer-app`). GitHub offers no narrower toggle, so "a reviewer that can only
 comment" is not a provisionable thing; the boot preflight refuses a role missing any of the three.
+On top of those three the **reviewer** App carries *role-scoped reads*: the CI-read trio, and
+**`Administration: Read-only`**, without which `deskflip` cannot read the required status checks of
+a protected branch whose required set is **not expressed in a ruleset** (classic protection, or a
+ruleset carrying no `required_status_checks` rule) — and no PR on such a repo is ever flipped ready.
+See *Required checks a ruleset does not express* in §3 `setup-reviewer-app`.
 
 **Is there a smaller — "minimal" — supported path?** The larger fleet splits the machine identity
 into per-role Apps (worker / verifier / desk / loop) for a per-role **audit trail**; that split is a
@@ -192,8 +197,10 @@ finished `assay:install` run hands you a checklist rather than the impression th
    the **reviewer App** (`pull_requests: write`, `issues: write`, `contents: write` — the three
    write duties the desk tools' boot preflight requires of **every** role, see
    `setup-reviewer-app` in §3 — plus `checks`/`statuses`/`actions: read` so it can read CI to gate
-   on it; if you run the full desk pipeline, grant those same three read scopes to the worker + desk
-   Apps, never to a verifier / inbound-lane App); the **board-writer App** *only if you turn on branch protection* (`contents: write`
+   on it, plus **`administration: read`** so `deskflip` can read the required checks of a protected
+   branch whose required set is not expressed in a ruleset; if you run the full desk pipeline, grant those same three
+   read scopes to the worker + desk Apps, never to a verifier / inbound-lane App, and grant
+   `administration: read` to the desk App too); the **board-writer App** *only if you turn on branch protection* (`contents: write`
    only, added to the ruleset bypass — §3 `add-statusgen-ci`); and the **automation identity** the
    fleet runs as. For **each** App: generate the private key (PEM), store it at the config-home
    (`~/.config/assay/`, mode `0600`) — **never in the repo tree or a committed env file** — install
@@ -310,7 +317,7 @@ of these is done. Until they are, the honest sentence above is the whole of the 
 | **mistake-proofing discipline** | Normative rules for the *devices* — how a check/gate/guard/scaffold is classified and kept honest (D1-D7), plus the brief-authoring rules (B1-B10) | `docs/mistake-proofing.md` — adopt it incrementally in the value-per-cost order of its **§5 adoption ladder**, which is the on-ramp | reference only — no file lands; the rules bind the checks you write |
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
 | **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
-| **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write`, `issues: write`, `contents: write` (the desk tools' required duty set — a reviewer without all three fails the boot preflight) plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
+| **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write`, `issues: write`, `contents: write` (the desk tools' required duty set — a reviewer without all three fails the boot preflight) plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it, plus **`administration: read`** so `deskflip` can read required checks a ruleset does not express — classic protection, or a ruleset with no `required_status_checks` rule (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
 | **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
@@ -798,7 +805,8 @@ roll-up, Next-up, awaiting-verification, unresolved-findings should reflect your
 Prepare the exact App name + permission toggles (`pull_requests: write`, `issues: write`,
 `contents: write` — the three duties the desk tools require of every role — plus
 **`checks: read`, `statuses: read`, `actions: read`** so
-the reviewer can read CI to gate on it), then **escalate**: App creation,
+the reviewer can read CI to gate on it, plus **`administration: read`** so it can read required
+checks a ruleset does not express), then **escalate**: App creation,
 key generation, and installation are the GitHub-admin's. The App's bot login is what makes a verdict
 **attributable to an identity the PR author cannot post as** — a placeholder or self-minted stand-in
 defeats the entire point. Wait for the recorded App ID / install IDs before wiring anything that
@@ -864,10 +872,69 @@ Do **not** grant them to a verifier / inbound-lane App: those roles do not read 
 creation, the grant is the **GitHub-admin's** act — set the toggles in the App's *Permissions &
 events* and re-consent the install; a tool cannot self-grant.
 
+**Required checks a ruleset does not express need `Administration: Read-only` — the reviewer App's
+fourth read.** `deskflip`'s checks-green gate has to know **which** checks the branch actually
+requires before it can call a PR green. It reads that set through
+[`GitHubForge.RequiredStatusChecks`](../tools/desk/internal/deskkit/forge_github.go)
+(`forge_github.go:823`), which tries the **legacy** branch-protection endpoint FIRST —
+`GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks` — and falls back to
+the rulesets rules API (`GET /repos/{o}/{r}/rules/branches/{b}`) only when that legacy read answers
+**403** (`forge_github.go:839-842`, `requiredChecksAdminFree` at `forge_github.go:868`).
+
+The legacy endpoint requires the **`Administration` repository permission (Read-only is enough)**,
+and it is the only one that can read a required-check set the **rules API cannot express**. The
+rules API — the admin-free fallback — surfaces **rulesets only**, and within a ruleset only a
+`required_status_checks` rule carries contexts. So the gate lands in the same place from **two**
+different configurations, and they look identical to it (`protected: true`, no contexts named):
+
+- the branch is under **classic** branch protection, which the rules API cannot see at all; or
+- the branch is under a **ruleset that carries no `required_status_checks` rule** — a ruleset whose
+  rules are, say, only `deletion` and `non_fast_forward`. The branch is genuinely protected, the
+  repo's checks are genuinely required at merge time, and the rules API still names **no** contexts.
+
+The second is the easier one to have by accident, and it is the more common one in practice. In
+both, the gate fails **closed** by design — reading "no contexts named" as "nothing required" would
+flip un-green PRs ready off an absent rollup — so the outcome is a permanent **could-not-check**:
+the flip never happens and every PR on that repo waits for a human forever (`forge_github.go:920-930`
+— the refusal names the permission; see `#1020`, message fixed in `#1021`). The code comment there
+calls this the tell of classic protection; read the *condition*, not that one cause.
+
+**Two remedies, both a human act — nothing in the tree can make either.**
+
+1. **Grant the reviewer App `Administration: Read-only`** (the durable fix, and the only one that
+   works for a branch genuinely under classic protection or for anything else a ruleset cannot
+   express). GitHub → the App → *Permissions & events* → *Repository permissions* →
+   **Administration: Read-only** → *Save*; then **accept the permission update on each
+   installation** (the org's and the account's — an added permission stays *pending* until the
+   installation owner accepts it). `Read-only` is the whole grant: `Administration: write` is a far
+   larger power — it can rewrite branch protection itself — and this read does not call for it.
+   Finally, **re-mint**: an already-issued installation token keeps the scopes it was minted under,
+   and `desktoken` reuses a cached token for **50 minutes**
+   ([`desktoken.go:42`](../tools/desk/cmd/desktoken/desktoken.go), `cacheMaxAge = 50 * time.Minute`),
+   so a correct grant can look like it did nothing until the cache turns over — force it with
+   `desktoken <role> --fresh`.
+2. **Add a `required_status_checks` rule to the branch's ruleset**, naming the checks the repo
+   actually requires. The admin-free fallback then reads the set with no permission change at all.
+   This fixes only the ruleset case — it cannot help a branch under classic protection — and it
+   changes what the forge enforces at merge time, so it is a protection decision, not a docs one.
+
+Prefer (1) as the standing configuration and treat (2) as the per-repo fix where the ruleset should
+have named its required checks anyway; they are not exclusive.
+
+**Which roles.** The **reviewer** App — the identity that runs `deskflip` — **REQUIRES** the grant;
+without it, no PR is ever flipped ready on a repo whose required checks the rules API cannot read.
+**Every** reviewer-App instance needs it, including a per-cell twin running on its own installation:
+the permission is held per App installation, so granting it to one App does nothing for another. The
+**desk** App **SHOULD** have it (board reads of the required set, `deskboard` policy-drift). The
+**worker**, **verifier** and **inbound-lane** Apps do **NOT** need it — they never read branch
+protection.
+
 **Verify:** the App appears in the repo's installed-Apps list; a probe PR receives a review authored
 by the reviewer-App **bot**, not a user account; the install's granted permissions include all three
 of `pull_requests: write`, `issues: write`, `contents: write` (read them back — an added permission
-stays *pending* until the account owner accepts it, so a toggle set is not yet a grant held); and
+stays *pending* until the account owner accepts it, so a toggle set is not yet a grant held); for the
+reviewer App the same read-back also shows `administration: read` in the install's `.permissions`
+(a toggle saved but not yet accepted on the installation reads as absent, not as granted); and
 the desk tools' boot preflight reports `app-scopes-vs-duties` **checked-clean** for the role. Re-mint
 the role's token **fresh** before you trust that reading: a cached token carries the grant it was
 minted under for the rest of its reuse window, so a preflight run against a stale token re-reads the
@@ -1578,7 +1645,7 @@ tooling — one methodology source, one review identity, each repo contributing 
 1. **Prove the single-repo loop on the highest-traffic repo first.** Run Scenario 1's primitives there end-to-end; confirm one brief goes `todo → … → done` with a real reviewer-App verdict **before** touching another repo. **Verify:** the primary repo has a `STATUS.md` on `main` with a populated Next-up; one brief reached `verified`/`done` with a bot review. **ESCALATE** if the board never appears on `main` — that's the bootstrap-guard bug; fix it before fanning out.
 2. **Scaffold streams in each additional repo** (core primitives, per repo, in that repo's **own owned worktree** — isolation is per-repo). Run `scaffold-streams`, `install-main-guard`, `install-desk-plugin`. Do **not** run `install-statusgen` here (step 3 does it suite-wide), and do **not** re-run `configure-roster` per repo — the roster is **one file per operator**, not a per-repo artifact; adding a repo to the suite means adding it to `ASSAY_ALLOWED_REPOS`, and a repo missing from that value is refused by every desk tool. Write **each** repo's own local bindings (**§3a**): the method is shared suite-wide via one bundle and one hook, but streams, risk paths, single-writer artifacts and isolation mechanics are per-repo, and a session working in repo B cannot read repo A's instruction file. **Verify:** each repo has `docs/streams/` with a valid `brief-v1` stream README; `core.hooksPath` resolves; each repo's instruction file answers the §3a checklist.
 3. **Install the pinned statusgen release into each repo (do not vendor N copies).** The tool comes from **one place — `assay/statusgen`** — so copies can't drift. Run `install-statusgen` per repo: **channel E**, a `.assay-versions` pin plus a sha256-verified release binary. Every repo in the suite should pin the **same tag**, and a suite-wide upgrade is then N one-line pin bumps you can see in a diff. Prior revisions of this doc recommended **D — CI fetch-and-run at a pinned ref**; that is now the fallback for a runner that cannot download release assets, because a pinned ref pins *source* and rebuilds it per run, so nothing is ever hash-checked. For any repo whose host is **native Windows**, run the install through the **[Windows adopters](#windows-adopters)** section (the pinned `.exe` + `deskinstall`), pinning `statusgen-windows-<arch>.exe` in that repo's `.assay-versions`.  Then run `add-statusgen-ci` per repo. **Verify:** `statusgen --root <adopter>` writes `<adopter>/STATUS.md`; every repo's `.assay-versions` names the same `statusgen` tag (`grep -h '^statusgen ' */.assay-versions | sort -u | wc -l` → 1); no repo carries a `statusgen/` source tree; after first merge, `STATUS.md` appears on `main`. **ESCALATE** private-repo CI auth (the release-download token) to the admin.
-4. **Install ONE reviewer GitHub App across ALL repos** (`setup-reviewer-app`) — dual-installed on the account and the org with `repository_selection: all` so new repos are auto-covered; the token minter picks the install by the `owner/repo` slug. **Verify:** `gh api /app/installations` shows both installs with `all`; the App can post a review in a spot-checked repo per account; and each install's `.permissions` holds all three required duties — `pull_requests: write`, `issues: write`, `contents: write` (§3 `setup-reviewer-app`). **ESCALATE** — App creation is the admin's alone.
+4. **Install ONE reviewer GitHub App across ALL repos** (`setup-reviewer-app`) — dual-installed on the account and the org with `repository_selection: all` so new repos are auto-covered; the token minter picks the install by the `owner/repo` slug. **Verify:** `gh api /app/installations` shows both installs with `all`; the App can post a review in a spot-checked repo per account; and each install's `.permissions` holds all three required duties — `pull_requests: write`, `issues: write`, `contents: write` — plus `administration: read`, without which `deskflip` cannot flip a PR ready on any repo in the suite whose required checks are not expressed in a ruleset (§3 `setup-reviewer-app`). **ESCALATE** — App creation is the admin's alone.
 5. **Enable multi-repo dispatch in `batch-fanout`**: define the board-bearing **repo set in ONE place** in the skill; loop it, regenerating each repo's board to scratch with **that repo's** statusgen command and extracting its Next-up (skip a non-dispatchable repo **with a logged note**); merge into one **repo-tagged** batch preserving each board's per-stream cap + ordering; make every worker-dispatch carry the target repo + "isolate in an owned worktree of that repo, open the draft PR in that repo"; reconcile the PR-scan set with the board set. **Verify:** the skill names the repo set + both statusgen forms; a dry-run surfaces a pick whose repo is **not** the primary; worker-dispatch carries per-repo isolation.
 6. **Aggregate / roll-up view (direction).** End state = a master board across the suite. Today the aggregate is the merged dispatch batch (step 5); the standalone master aggregator is a later direction. Keep the board-bearing repo set canonical in one place so a future aggregator has a single source. Don't block adoption on it.
 7. **Fan out to the rest of the suite** — repeat steps 2–4 per repo, adding each to the board-bearing set (one line) **as it becomes dispatchable**. **Verify:** every intended repo has a `STATUS.md` on `main`; the App is an available reviewer in each; a full dispatch surfaces picks from more than one repo.
