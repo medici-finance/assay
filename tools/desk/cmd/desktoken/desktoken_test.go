@@ -1482,7 +1482,7 @@ func TestCacheReuseWritesNoAuditRowAndMintWritesOne(t *testing.T) {
 			Login string `json:"login"`
 		}{Login: "example-org"}},
 	}
-	srv, _ := makeInstallTokenServer(t, installs, "ghs_minted_once", "2124-01-01T01:00:00Z")
+	srv, _ := makeInstallTokenServer(t, installs, "fixture-minted-once", "2124-01-01T01:00:00Z")
 	defer srv.Close()
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
