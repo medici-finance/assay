@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -492,17 +493,17 @@ func staleState() (state string, stale bool, detail string) {
 	// PRIMARY (#185): the running binary's release tag vs the desk-tools tag this
 	// checkout pins in its own `.assay-versions`. This is the check that resolves in
 	// a consumer, where the desk tools no longer live in the tree.
-	if pinRoot, pinTag, found := deskToolsPin(); found {
+	if pinRoot, pinTag, pinArtifact, found := deskToolsPin(); found {
 		running := deskkit.ReleaseTag
 		if running != "" {
 			pinFile := filepath.Join(pinRoot, deskkit.AssayVersionsFile)
 			if normalizeTag(running) == normalizeTag(pinTag) {
 				return staleStateInSync, false,
-					"in sync with " + pinFile + " (desk-tools " + pinTag + ")"
+					"in sync with " + pinFile + " (" + pinArtifact + " " + pinTag + ")"
 			}
 			return staleStateDrift, true,
-				"installed desk-tools releaseTag " + running + " differs from the pinned " + pinTag +
-					" in " + pinFile + " — reinstall the pinned release (sudo make desk-install)"
+				"installed desk-tools releaseTag " + running + " differs from the " + pinArtifact +
+					" pin " + pinTag + " in " + pinFile + " — reinstall the pinned release (sudo make desk-install)"
 		}
 		// Pinned by sourceSHA/builtAt but carrying no releaseTag stamp (an older
 		// stamped binary): the tag comparison cannot run. Fall through to the
@@ -581,15 +582,61 @@ func normalizeTag(tag string) string {
 // than being reported as a failure here, per #185's stated fallback order (fall back to
 // the in-tree ref "when it exists", could-not-check only when neither source resolves).
 // Malformed-pin detection is `deskpins --check`'s job, not the drift banner's.
-func deskToolsPinReal() (root, tag string, found bool) {
+//
+// TWO ARTIFACT NAMES, TRIED IN ORDER, NEITHER MATCHED LOOSELY. The pin contract admits two
+// legitimate spellings of the same pin: the bare `desk-tools` line, and the per-platform
+// `desk-tools-<os>-<arch>` line `docs/distribution.md` tells an adopter to write and that
+// `deskinstall` resolves by `runtime.GOOS + "-" + runtime.GOARCH`. Only the bare one was ever
+// looked up, so a consumer whose pin file carries ONLY the per-platform line fell through
+// here (found=false), through the channel-D arm, through the in-tree fallback its checkout
+// does not have, and landed on staleState's could-not-check arm — which reports stale=true by
+// design, because an unverifiable drift check is not evidence of freshness. The verdict was
+// right about what it observed; the observation was the defect.
+//
+// The fix is a SECOND LOOKUP WITH AN EXACT NAME, never a looser match. ArtifactPin selects by
+// a trailing-space prefix, and pins.go states plainly that this is why `desk-tools ` must
+// never match `desk-tools-linux-amd64 ` — that disambiguation is a control, not an
+// inconvenience, and relaxing it would collapse the two lines into one match everywhere in
+// the suite. So this asks for each name in full, and the BARE line still wins when both are
+// present: an existing consumer's verdict cannot change under it.
+//
+// The matched artifact name is returned so the banner can say which line the verdict came
+// from — two sources that can disagree must be distinguishable in the message that reports
+// one of them.
+func deskToolsPinReal() (root, tag, artifact string, found bool) {
 	dir := nearestPinRoot()
 	if dir == "" {
-		return "", "", false
+		return "", "", "", false
 	}
-	if t, _, perr := deskkit.ArtifactPin(dir, "desk-tools"); perr == nil {
-		return dir, t, true
+	for _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {
+		if name == "" {
+			continue
+		}
+		if t, _, perr := deskkit.ArtifactPin(dir, name); perr == nil {
+			return dir, t, name, true
+		}
 	}
-	return "", "", false // pin file present but no usable desk-tools line
+	return "", "", "", false // pin file present but no usable desk-tools line of either shape
+}
+
+// deskToolsArtifact is the bare artifact name, tried first so a consumer that already
+// carries it keeps exactly today's verdict.
+const deskToolsArtifact = "desk-tools"
+
+// deskPlatform is the host's `<os>-<arch>` token. It is a var for the same reason isPinned
+// and gitTree are: the per-platform fallback has to be exercisable for a platform the test
+// host is not, or the only arm anyone ever runs is the one that happens to match.
+// Production reads runtime.
+var deskPlatform = runtime.GOOS + "-" + runtime.GOARCH
+
+// deskToolsPlatformArtifact spells the per-platform pin line's artifact name. It returns ""
+// when the platform token is empty, so the caller skips the lookup rather than asking for
+// `desk-tools-` and matching a line that merely starts that way.
+func deskToolsPlatformArtifact() string {
+	if strings.TrimSpace(deskPlatform) == "" {
+		return ""
+	}
+	return deskToolsArtifact + "-" + deskPlatform
 }
 
 // deskToolsSourcePinReal is the channel-D sibling of deskToolsPinReal (#776): it
