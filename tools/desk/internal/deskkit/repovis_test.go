@@ -199,6 +199,77 @@ func TestFetchRepoVisibility(t *testing.T) {
 	})
 }
 
+// stubVisibilityForge is a minimal Forge test double for ForgeRepoInfoFetcher: it embeds a
+// nil Forge (every unoverridden method panics loudly rather than silently) and overrides only
+// RepoVisibility, recording the coordinate it was asked about.
+type stubVisibilityForge struct {
+	Forge         // nil — ForgeRepoInfoFetcher must call nothing else
+	visibility    string
+	visibilityErr error
+	gotRepo       ForgeRepo
+	calls         int
+}
+
+func (s *stubVisibilityForge) RepoVisibility(repo ForgeRepo) (string, error) {
+	s.calls++
+	s.gotRepo = repo
+	return s.visibility, s.visibilityErr
+}
+
+// TestForgeRepoInfoFetcherDelegatesToResolvedForge — assay#1054's regression coverage at
+// the deskkit level (cmd/deskpr's gatewired_test.go pins the same property end to end
+// through a real command invocation). ForgeRepoInfoFetcher must be a THIN adapter: it asks
+// the (owner, repo) coordinate it was given, translated into a ForgeRepo, of whichever Forge
+// it wraps — never a second, hardcoded client of its own — and it must not swallow or
+// reshape an error the wrapped Forge returns (the gate's fail-closed posture depends on the
+// error reaching PublicRepoGate unchanged).
+func TestForgeRepoInfoFetcherDelegatesToResolvedForge(t *testing.T) {
+	t.Run("delegates the coordinate and the answer", func(t *testing.T) {
+		fake := &stubVisibilityForge{visibility: "private"}
+		fetcher := ForgeRepoInfoFetcher{Forge: fake}
+
+		got, err := fetcher.RepoVisibility("acme", "widgets")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "private" {
+			t.Fatalf("got %q, want %q", got, "private")
+		}
+		if fake.calls != 1 {
+			t.Fatalf("wrapped Forge.RepoVisibility called %d times, want 1", fake.calls)
+		}
+		if fake.gotRepo != (ForgeRepo{Owner: "acme", Name: "widgets"}) {
+			t.Fatalf("wrapped Forge asked about %+v, want acme/widgets", fake.gotRepo)
+		}
+	})
+
+	t.Run("propagates a read error unchanged (fail-closed)", func(t *testing.T) {
+		wantErr := errors.New("boom: forge unreachable")
+		fake := &stubVisibilityForge{visibilityErr: wantErr}
+		fetcher := ForgeRepoInfoFetcher{Forge: fake}
+
+		_, err := fetcher.RepoVisibility("acme", "widgets")
+		if err == nil {
+			t.Fatal("expected the wrapped Forge's error to propagate, got nil")
+		}
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("error = %v, want it to wrap %v", err, wantErr)
+		}
+	})
+
+	// The whole point of this type (assay#1054): it must satisfy PublicRepoGate's fetcher
+	// contract so a caller can hand the gate whichever Forge it already resolved, instead of
+	// constructing a separate GitHub-only HTTPRepoInfoFetcher regardless of the actual forge.
+	t.Run("satisfies PublicRepoGate end to end", func(t *testing.T) {
+		installRoster(t, gateRoster)
+		fake := &stubVisibilityForge{visibility: "public"}
+		fetcher := ForgeRepoInfoFetcher{Forge: fake}
+		if err := PublicRepoGate(fetcher, "example-org", "pubrepo"); err != nil {
+			t.Fatalf("PublicRepoGate via ForgeRepoInfoFetcher: %v", err)
+		}
+	})
+}
+
 // TestIsBlessAuthorityIDStrictRejectsZero — the helper is still used by the item-level
 // author-trust surfaces (deskclose/deskmerge/deskdigest), which this brief does NOT touch;
 // this pins the strict/lenient distinction so the two variants cannot be quietly collapsed.

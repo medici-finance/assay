@@ -209,3 +209,78 @@ func firstLine(s string) string {
 	}
 	return ""
 }
+
+// --- the one-walk authorship index ----------------------------------------------------------
+
+// pathAuthors is the first and last author identity of one path, both already lowercased.
+type pathAuthors struct {
+	first string // the identity of the commit that INTRODUCED the path
+	last  string // the identity of the most recent commit that touched it
+}
+
+// buildPathAuthorIndex answers, in ONE git invocation, what
+// gitPathFirstAuthorIdentity + gitPathLastAuthorIdentity answer in TWO per path.
+//
+// WHY THIS EXISTS. The attribution cross-check ran that pair for every verified/done brief,
+// serially: on a tree of 165 briefs one --lint made 144 `git log` and 62 `git blame`
+// invocations, and the subprocess overhead — not the work — dominated the wall clock. The same
+// history read as one `git log --name-only` over the streams directory takes 0.03 s and answers
+// every path at once.
+//
+// SEMANTICS, deliberately identical to the pair it replaces. `git log` walks newest-first, so a
+// path's FIRST sighting in the output is its most recent commit (last) and its LAST sighting is
+// its introducing commit (first) — the same two commits `-1` and `--reverse` select. The same
+// default history simplification applies, because the pathspec is a directory containing the
+// same files rather than a different query. Identity is the author email lowercased, exactly as
+// the pair returns it.
+//
+// ok is false when git is unavailable or the walk fails. A path ABSENT from a successfully-built
+// index is NOT an error here: the caller falls back to the per-path read for it, so a path this
+// walk cannot account for costs two subprocesses rather than a lost signal. That fallback is the
+// reason this optimisation cannot change a check's ANSWER, only its cost.
+func buildPathAuthorIndex(root, subdir string) (map[string]pathAuthors, bool) {
+	// core.quotePath=false keeps a non-ASCII path spelled as itself rather than C-quoted, so an
+	// index key always compares equal to the caller's own relative path.
+	out, err := exec.Command("git", "-C", root, "-c", "core.quotePath=false",
+		"log", "--format=%x01%ae", "--name-only", "--", subdir).Output()
+	if err != nil {
+		return nil, false
+	}
+	idx := make(map[string]pathAuthors, 512)
+	cur := ""
+	for _, ln := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(ln, "\x01") {
+			cur = strings.ToLower(strings.TrimSpace(ln[1:]))
+			continue
+		}
+		p := strings.TrimSpace(ln)
+		if p == "" || cur == "" {
+			continue
+		}
+		e, seen := idx[p]
+		if !seen {
+			e.last = cur // newest-first: the first sighting is the most recent commit
+		}
+		e.first = cur // overwritten on every sighting; the final one is the oldest
+		idx[p] = e
+	}
+	return idx, true
+}
+
+// lookupPathAuthors resolves one path through the index, falling back to the per-path reads when
+// the index is absent or does not account for it. Returning the two values TOGETHER is what lets
+// the caller keep its existing all-or-nothing degradation: a path for which either half is
+// unavailable degrades LOUDLY, exactly as before.
+func lookupPathAuthors(idx map[string]pathAuthors, root, relPath string) (first, last string, ok bool) {
+	if idx != nil {
+		if e, hit := idx[relPath]; hit && e.first != "" && e.last != "" {
+			return e.first, e.last, true
+		}
+	}
+	f, fok := gitPathFirstAuthorIdentity(root, relPath)
+	l, lok := gitPathLastAuthorIdentity(root, relPath)
+	if !fok || !lok {
+		return "", "", false
+	}
+	return f, l, true
+}

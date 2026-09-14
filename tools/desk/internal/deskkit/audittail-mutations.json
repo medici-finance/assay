@@ -1,0 +1,71 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/desktoken/ ./cmd/deskaudit/ -count=1 -run 'TestLastEntry|TestBoundedPointsFor|TestRotation|TestRecoverAcrossSegments|TestSegmentPaths|TestLogStillAppends|TestCacheReuse|TestTailAcrossSegments'",
+  "control": {
+    "name": "CONTROL — make the reverse reader hand back nothing (every bounded read goes blind)",
+    "file": "internal/deskkit/audittail.go",
+    "old": "\t\t\tif len(bytes.TrimSpace(line)) > 0 && !fn(line) {\n\t\t\t\treturn nil\n\t\t\t}",
+    "new": "\t\t\tif len(bytes.TrimSpace(line)) > 0 && false {\n\t\t\t\treturn nil\n\t\t\t}"
+  },
+  "mutations": [
+    {
+      "name": "reduce the determinacy stop to the time window alone (a breaker run older than one hour is truncated into a closed breaker — the fail-OPEN a horizon-based bounded read produces)",
+      "file": "internal/deskkit/ratelimitread.go",
+      "old": "\tdone := func() bool {\n\t\tif !windowSettled {\n\t\t\treturn false\n\t\t}\n\t\tfor _, w := range walks {\n\t\t\tif w.needed && !w.terminated {\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t\treturn true\n\t}",
+      "new": "\tdone := func() bool {\n\t\treturn windowSettled\n\t}"
+    },
+    {
+      "name": "return the partial read instead of falling back (an answer that was never determined is handed to the meters as if it were)",
+      "file": "internal/deskkit/ratelimitread.go",
+      "old": "\tif undetermined {\n\t\treturn nil, false\n\t}",
+      "new": "\tif false {\n\t\treturn nil, false\n\t}"
+    },
+    {
+      "name": "skip a malformed line in the bounded read instead of declining (a corrupt ledger reads as clean, and the exit-6 refusal never fires)",
+      "file": "internal/deskkit/ratelimitread.go",
+      "old": "\t\t\tif json.Unmarshal(line, &e) != nil {\n\t\t\t\t// Do NOT diagnose here: fall back, and let LoadEntries raise the\n\t\t\t\t// refusal it has always raised, naming the file and the line number.\n\t\t\t\tundetermined = true\n\t\t\t\treturn false\n\t\t\t}",
+      "new": "\t\t\tif json.Unmarshal(line, &e) != nil {\n\t\t\t\treturn !done()\n\t\t\t}"
+    },
+    {
+      "name": "treat an unparseable timestamp as absent instead of fail-closed (a row the meters cannot place silently stops being counted)",
+      "file": "internal/deskkit/ratelimitread.go",
+      "old": "\t\t\tif perr != nil {\n\t\t\t\t// An unparseable timestamp on THIS tool's line is fail-closed in\n\t\t\t\t// pointsFrom; fall back so that refusal is raised there, once.\n\t\t\t\tundetermined = true\n\t\t\t\treturn false\n\t\t\t}",
+      "new": "\t\t\tif perr != nil {\n\t\t\t\treturn !done()\n\t\t\t}"
+    },
+    {
+      "name": "relax the segment-name match to a prefix (the corrupt sidecar and anything else beginning audit.jsonl. is swept in as ledger history)",
+      "file": "internal/deskkit/audit.go",
+      "old": "var segmentPattern = regexp.MustCompile(`^audit\\.jsonl\\.\\d{4}-\\d{2}-\\d{2}(\\.\\d+)?$`)",
+      "new": "var segmentPattern = regexp.MustCompile(`^audit\\.jsonl\\.`)"
+    },
+    {
+      "name": "make segmentPaths return only the live file (rotation becomes the full state RESET auditrecover.go exists to prevent — budgets back to full, the idempotency store emptied, once a day)",
+      "file": "internal/deskkit/audit.go",
+      "old": "\treturn append(out, live), nil",
+      "new": "\treturn []string{live}, nil"
+    },
+    {
+      "name": "let an empty live file end the LastEntry search (on the first invocation of each new UTC day the guard's disarm-transition check goes blind)",
+      "file": "internal/deskkit/audit.go",
+      "old": "\t\tif found {\n\t\t\treturn out, true\n\t\t}\n\t}\n\treturn Entry{}, false\n}",
+      "new": "\t\treturn out, found\n\t}\n\treturn Entry{}, false\n}"
+    },
+    {
+      "name": "let a malformed final line fall through to the line before it (the guard answers from a row that is not the newest)",
+      "file": "internal/deskkit/audit.go",
+      "old": "\t\tif malformed {\n\t\t\treturn Entry{}, false\n\t\t}",
+      "new": "\t\tif false {\n\t\t\treturn Entry{}, false\n\t\t}"
+    },
+    {
+      "name": "restore the desktoken cache-reuse audit row (the ledger goes back to recording one row per no-op, 74% of its own volume)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\t\t\tac.suppress = true // no network call, no mint, nothing changed — no audit row",
+      "new": "\t\t\tac.suppress = false // no network call, no mint, nothing changed — no audit row"
+    },
+    {
+      "name": "recover only the live file again (a malformed line in a rotated segment is permanent: every read refuses, and the printed remedy has already been run)",
+      "file": "internal/deskkit/auditrecover.go",
+      "old": "\tfor i, path := range paths {\n\t\tf, oerr := os.Open(path)",
+      "new": "\tfor i, path := range paths[len(paths)-1:] {\n\t\tf, oerr := os.Open(path)"
+    }
+  ]
+}
