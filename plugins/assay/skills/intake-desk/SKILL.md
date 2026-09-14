@@ -121,6 +121,32 @@ a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a q
 corrected on your next turn. To hand work to another desk, address it — `deskfile new --to <role> …`
 files a durable message that desk's own sweep leads with — never a typed relay through the human.
 
+## Tick mode
+
+A run is a TICK when the harness passes the literal argument `--tick`, or the environment
+carries `ASSAY_TICK` compared EXACTLY to `1`. Absent both, the run is a standing WINDOW and
+every rule in this body holds unchanged — so the contract is inert until a caller asks for it,
+and a loose truthiness test on that variable is what would silently convert a live window into
+a one-pass run.
+
+A tick is ONE bounded pass: boot, ONE fresh sweep of this desk's own queue with the instrument
+this body already names, act on what that sweep made actionable up to this role's declared
+width, wait bounded for what it dispatched, print the summary line, exit. In tick mode this
+desk arms no `capability:durable-monitor`, schedules no wake-up, sleeps for no cadence, runs no
+second sweep, and never waits in line for an answer — an escalation is a FILED issue and the
+pass continues. It never claims idle or caught up: one fresh sweep supports a verdict about the
+pass that ran, never a standing claim about the queue. **A tick narrows the LOOP, never a
+GATE** — gates, budgets, stop flags, identity rules and escalation obligations are unchanged,
+and a tick short of budget drops WORK, never a CHECK. Its last line of output is the summary
+line, in which a pass that could not read its queue says so and is never reported as an empty
+one.
+
+The trigger predicate, the bounded pass, the budget arithmetic (`ASSAY_TICK_DEADLINE` and the
+exit reserve) and the summary-line grammar are stated once in
+[`../../references/tick-contract.md`](../../references/tick-contract.md), whose grammar has one
+executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
+not own.
+
 ## The board
 
 `issueboard` — read-only, one ACTION per open issue plus the intake lane's untriaged entries,
