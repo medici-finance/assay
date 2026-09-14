@@ -769,6 +769,10 @@ check_k8s(){
       chk "GitLab group: ${GITLAB_GROUP:-unset}" '[[ -n "${GITLAB_GROUP:-}" ]]'
       chk "GitLab role token store: ${GITLAB_TOKEN_STORE:-unset}" '[[ -d "${GITLAB_TOKEN_STORE:-/nonexistent}" ]]'
       chk "deskd GitLab read token (0600, hand-provisioned): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
+      # CELL_REPO's own fetch transport, not just the API token: probes the SAME credential helper
+      # the boot fetch in cmd_desk uses, so a broken/missing token is a MISS here rather than a
+      # boot-time hang at an interactive Username prompt (issue-1080 sibling defect).
+      chk "GitLab fetch transport reachable (ls-remote, prompts disabled): $CELL_REPO" 'gitlab_fetch_reachable'
       # GitHub-only preconditions on a GitLab cell are reported explicitly, never dropped: a
       # stray App PEM is a MISS (a github artifact on a gitlab cell is a misconfiguration to
       # surface), and the gh-config link is n/a (GitLab reads through the role token store).
@@ -885,6 +889,31 @@ deskd_provision_gitlab(){
   [[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]] || die "deskd GitLab read token not readable: ${DESKD_GITLAB_TOKEN_FILE:-unset} — place gitlab-deskd.token in the role token store (mode 0600); it is not minted for you"
   export GITLAB_API_BASE="$FORGE_API_BASE"
   echo "[deskd] GitLab cell: reading group $GITLAB_GROUP via $FORGE_API_BASE from role token store $GITLAB_TOKEN_STORE (no token minted — rotation is a hand step)"
+}
+
+# gitlab_cred_args: populates the global array GITLAB_CRED_ARGS with the `-c credential.helper=…`
+# flags that answer git's HTTPS auth for CELL_REPO's own fetch transport on a gitlab cell (issue
+# 1080's sibling defect — GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
+# nothing wired a git credential for CELL_REPO's own fetch, so a private GitLab project stopped at
+# an interactive `Username for 'https://gitlab.com':` prompt, or `fatal: could not read Username`
+# with prompts disabled). The first `credential.helper=` clears any OS keychain helper that would
+# otherwise shadow this one; the inline function reads the hand-provisioned deskd read token from
+# its FILE and never a token in the URL, never persisted into the operator's git config. Shared
+# verbatim between the boot fetch below and the check-time ls-remote probe (gitlab_fetch_reachable)
+# so the two never drift apart.
+# shellcheck disable=SC2016  # the inline credential-helper function expands at git-invocation
+# time (inside git's own shell), not here — this string is a literal on purpose.
+gitlab_cred_args(){
+  GITLAB_CRED_ARGS=(-c credential.helper= -c credential.helper='!f(){ echo username=oauth2; printf "password=%s\n" "$(cat "$DESKD_GITLAB_TOKEN_FILE")"; }; f')
+}
+
+# gitlab_fetch_reachable: the check-time probe for the gitlab arm's fetch transport, proving a
+# broken/missing token is caught at `cellctl check` rather than as a boot hang. `ls-remote` never
+# mutates CELL_REPO; it only proves the same credential helper the boot fetch uses actually
+# authenticates.
+gitlab_fetch_reachable(){
+  gitlab_cred_args
+  GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" ls-remote --exit-code origin main >/dev/null 2>&1
 }
 
 # worktree_via_deskwt: when the installed desk-tools ship a `deskwt role-init` that supports the
@@ -1086,7 +1115,19 @@ cmd_desk(){
   local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
   # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
   # below — so a non-zero exit here is a notice, not a stop.
-  git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  # On the gitlab arm, GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
+  # nothing else wires a git credential for CELL_REPO's own fetch transport — on a private GitLab
+  # project over HTTPS this fetch otherwise stops at an interactive `Username for
+  # 'https://gitlab.com':` prompt (or `fatal: could not read Username` with prompts disabled). The
+  # github arm never hits this: the operator's `gh` credential helper already answers for it, so it
+  # keeps the plain fetch unchanged.
+  if [[ "$CELL_FORGE" == "gitlab" ]]; then
+    gitlab_cred_args
+    GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" fetch --no-tags origin main \
+      || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  else
+    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  fi
   local sha; sha="$(git -C "$CELL_REPO" rev-parse FETCH_HEAD)"
   rmdir "$lock" 2>/dev/null || true
   mkdir -p "$CELL_DIR/worktrees"
