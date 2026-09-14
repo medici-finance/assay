@@ -197,6 +197,67 @@ and it MUST document the boundary it chose.
 implementation MUST report the gate as `could-not-check` (an unverified dereference),
 never as a clean pass and never as a blanket failure of every citing brief.
 
+### 4.5 The decision-gate transition block
+
+Section 2.3/2.4 already require a NON-implementer to fill Evidence at `verified`, and
+section 4.3's `gate: human` derivation already says a risk-gated brief needs a human. Both
+are advisory prose until something actually stops the status-cell edit: three confirmed
+instances of a `gate: human` brief reaching `implemented` or `verified` while its decision
+issue sat open and unruled landed anyway, one of them (~3,200 lines of skill prose deleted
+across five PRs) ten days before the gate was even answered. All three were ratified
+retrospectively; none could have been stopped by anything section 2 or 4.3 alone provided.
+This section adds the missing mechanical control, at the STATUS TRANSITION itself.
+
+**Scope.** This gate binds a `gate: human` brief only. A `gate: model` brief is NOT
+subject to it, even when its four `risk` answers happen to include a `yes` that section
+4.3's OWN derivation would have made `gate: human` — the two are the SAME test in the
+reference implementation (`gate` is derived from `risk`, never chosen independently), but
+a conforming implementation that lets the two drift MUST still scope this gate to the
+literal `gate: human` value, since that is the field this refusal exists to make binding.
+
+**The guarded transition.** A conforming implementation MUST refuse to move a `gate:
+human` brief's status to `implemented` or `verified` while EITHER of the following holds:
+
+- no decision issue exists for the brief at all ("silence" — an absent decision issue
+  MUST NOT be read as permission to proceed); or
+- a decision issue exists but is open and carries no RECORDED RULING (defined below).
+
+The refusal MUST name the decision issue (or its absence) and state what is missing. A
+`todo`, `in-progress`, `done`, or `blocked` status is NOT guarded by this section:
+`in-progress` is the design-approval gate's territory (section 4.4), not this one's, and
+`done` already carries its own, stricter human-review requirement (sections 2.5 and 4.3).
+
+**What counts as a recorded ruling.** A conforming implementation MUST define, and apply,
+a test for "ruled" that recognises a comment or action AUTHORED BY THE DRIVER — the human
+whose decision the gate exists to capture — and MUST NOT be satisfied by a relay of that
+decision authored by a desk, bot, or App account speaking on the driver's behalf. Every
+confirmed instance of this defect had exactly such a relay standing in for a ruling; a
+"ruled" test that cannot tell the two apart reproduces the defect it exists to close.
+Closing the decision issue is NOT itself required for it to count as ruled: the driver may
+leave the issue open as a paper trail while downstream work proceeds, provided a ruling
+comment exists.
+
+**Three-state, fail-closed.** Where the decision issue's live state cannot be read (a
+network failure, an unreachable host), a conforming implementation MUST report
+could-not-check and MUST refuse the transition rather than treat the unread state as a
+pass — the same three-state discipline section 6 and `brief-v1.md` §8 already require
+elsewhere. A could-not-check read is never rounded up to "ruled".
+
+**Boundary — deliberately NOT the ready-flip.** This gate binds the STATUS TRANSITION
+only. A conforming implementation MUST NOT additionally block a PR's ready-for-human flip
+on the same decision-issue state: decision-issue latency is typically a queue's dominant
+bottleneck, and a flip-block compounds it in exactly the place a fleet can least absorb
+new latency. A later implementation that "improves" on this boundary by widening the
+refusal into the ready-flip has moved the gate to a place this specification deliberately
+did not put it.
+
+**No spurious gates.** The complementary defect inflates the same queue from the other
+side: filing a decision-gate issue for a brief whose human review is ALREADY recorded (a
+board status of `done` with a dated, human-named Reviewed entry, section 2.6) trains
+readers of the decision queue to skim it — which is the mechanism by which a real unruled
+gate goes unnoticed. A conforming decision-issue emitter MUST NOT file a new decision
+issue for a brief whose human review is already recorded.
+
 ## 5. Next-up semantics
 
 ### 5.1 Generation
@@ -306,6 +367,11 @@ A conforming implementation:
    to sit at `in-progress` or later without citing an approved design-decision record,
    and MUST grandfather briefs outside the gate's scope so a pin bump reds nothing
    already in flight.
+7. MUST refuse to move a `gate: human` brief to `implemented` or `verified` while its
+   decision issue is open with no recorded DRIVER ruling, or absent altogether (section
+   4.5), MUST NOT accept a desk/bot relay of a ruling as the ruling itself, MUST NOT
+   round a could-not-check read of the issue's live state up to a pass, and MUST NOT
+   extend this refusal to a PR's ready-for-human flip.
 
 ### 7.2 Board generator conformance
 

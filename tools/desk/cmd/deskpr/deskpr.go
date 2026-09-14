@@ -177,6 +177,13 @@ func cmdCreate(args []string) (err error) {
 	if terr != nil {
 		return terr
 	}
+	// brief-18 Task 3: a PR delivering a gate:human brief must carry the fixed banner
+	// naming its decision issue and state. Local-only (the brief's own frontmatter, the
+	// body already in hand) — same placement rationale as requireTrailer just above,
+	// before any network call.
+	if berr := checkHumanGateBannerFromBody(body, *root, dir); berr != nil {
+		return berr
+	}
 	facts, perr := preflight(dir, *base)
 	if perr != nil {
 		return perr

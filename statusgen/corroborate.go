@@ -1191,6 +1191,7 @@ func runCorroborate(prsArg string) int {
 	prStrs := strings.Split(prsArg, ",")
 	var allResults []corroborateResult
 	var allCitationResults []citationResult
+	var allTransitionProblems []string
 	anyMissing := false
 
 	for _, prStr := range prStrs {
@@ -1259,6 +1260,29 @@ func runCorroborate(prsArg string) int {
 			allCitationResults = append(allCitationResults, r)
 			if r.Verdict == verdictMissing {
 				anyMissing = true
+			}
+		}
+
+		// --- decision-gate TRANSITION corroboration (brief-18: the human gate BINDING) ---
+		// Refuses when this diff moves a gate:human brief's status-table row to
+		// implemented/verified while its decision issue is open with no recorded driver
+		// ruling, or absent altogether. Scoped to transitions THIS diff introduces
+		// (transitionsInDiff) rather than every gate:human brief currently sitting at
+		// implemented/verified — see decisiontransitiongate.go's header for why an
+		// unscoped version would wedge the queue the ruling explicitly warns against.
+		// Deliberately does NOT touch deskflip's ready-flip (brief-18 Verify row 8).
+		if moved := transitionsInDiff(diff); len(moved) > 0 {
+			dtStreams, _, serr := loadStreams(".")
+			if serr != nil {
+				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: decision-gate transition check: cannot load streams: %v\n", pr, serr)
+			} else {
+				fetch := func(bf *BriefFile) (*decisionIssueState, bool) {
+					return fetchDecisionIssueState(repo, bf.DecisionIssue)
+				}
+				for _, msg := range decisionTransitionGateProblems(dtStreams, moved, fetch) {
+					allTransitionProblems = append(allTransitionProblems, msg)
+					anyMissing = true
+				}
 			}
 		}
 	}
@@ -1331,6 +1355,19 @@ func runCorroborate(prsArg string) int {
 				fmt.Printf("citation of %s in %s COULD-NOT-CHECK — %s\n",
 					r.Citation.Name, r.Citation.Source, r.Evidence)
 			}
+		}
+	}
+
+	// --- decision-gate TRANSITION report (brief-18) ---
+	if len(allTransitionProblems) > 0 {
+		fmt.Println()
+		fmt.Println("# decision-gate transition block (brief-18)")
+		fmt.Println("# Scope: a gate:human brief's status-table row may not move to implemented")
+		fmt.Println("# or verified while its decision issue is open with no recorded DRIVER")
+		fmt.Println("# ruling (a desk/bot relay does not count), or absent altogether.")
+		fmt.Println()
+		for _, msg := range allTransitionProblems {
+			fmt.Printf("REFUSED — %s\n", msg)
 		}
 	}
 
