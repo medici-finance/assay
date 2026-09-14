@@ -239,17 +239,24 @@ measurement claim and an unfinished sweep has not made one.
 
 `outcome` is decided as:
 
-| Outcome | When |
-|---|---|
-| `ok` | the sweep completed and at least one act landed (`acted` ≥ 1) |
-| `noop` | the sweep completed and found nothing actionable (`acted` = 0) |
-| `refused` | the pass declined to run at all — a stop flag, a kill switch, a tripped budget breaker, an unmet precondition the role refuses on. `swept=0` |
-| `could-not-check` | the sweep did not complete, or completed blind — an instrument exited non-zero, a board could not be read, a token could not be minted, or the reserve cut the pass short before the sweep finished |
+| Outcome | When | Then, necessarily |
+|---|---|---|
+| `ok` | the sweep completed and at least one act landed | `swept` numeric, `acted` numeric and ≥ 1 |
+| `noop` | the sweep completed and found nothing actionable | `swept` numeric, `acted` = 0 |
+| `refused` | the pass declined to run at all — a stop flag, a kill switch, a tripped budget breaker, an unmet precondition the role refuses on | `swept` = 0, `acted` = 0 |
+| `could-not-check` | the sweep did not complete, or completed blind — an instrument exited non-zero, a board could not be read, a token could not be minted, or the reserve cut the pass short mid-sweep | `swept` = `-` |
 
 **`could-not-check` is never rounded to `noop`.** They are the two outcomes a reader will most
 want to confuse, and they mean opposite things: `noop` says the queue is empty, `could-not-check`
 says the instrument did not look. Rounding one to the other turns a blind loop into a health
 report, which is the C4 three-state rule applied to this line.
+
+**The right-hand column is what makes that mechanical rather than aspirational.** A shape-only
+grammar accepts `outcome=noop swept=-` — a blind pass wearing a healthy pass's clothes — and any
+parser written against such a grammar will eventually report health nobody observed. Because
+`could-not-check` REQUIRES `swept=-` and `noop` FORBIDS it, a pass that could not read its queue
+cannot produce a well-formed `noop` line at all. The distinction stops being a rule a producer
+has to remember and becomes one the grammar will not let it break.
 
 **Why a line and not structured output.** The one-shot text mode emits one blob at completion; a
 single grep-able last line survives a truncated or interleaved pod log, is parseable by `awk`
@@ -373,7 +380,7 @@ here would be a larger piece of work than the contract they check, and is not in
 | 2 | check +mutation | the same command, reading the `GUARDRAILS:` verdict specifically | exit 0 — `checked-clean`, with the `tick-mode` block compared at all FIVE sites (a run that compared zero pairs proved nothing and is reported as a failure, not a pass). Mutation: change one word in ONE body's copy → `GUARDRAILS: FAIL`; delete one copy → `could-not-check: anchor line is not present`. This is the parity row, and it is mechanical because the block is DERIVED from the declared source, not hand-copied |
 | 3 | check:ci | `cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bodies ../../plugins/assay/skills` | exit 0 — `checked-clean`. The added section introduces no banned harness token and no `capability:` outside the closed seven. Mutation: naming a harness's own wake TOOL in a body instead of `capability:durable-monitor` REDDENS it |
 | 4 | check | `cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bindings ../../plugins/assay/references` | the run prints `skipped (declared non-matrix-reference): …/tick-contract.md`, and the new file contributes ZERO violations. **Expect the mode's overall exit to remain 1**, unchanged from the base commit, because `standing-note.md` is already red there for a pre-existing missing declaration; the assertion is the DELTA (violation count and file list identical to the base run apart from the new skip line), not a green mode. Fixing `standing-note.md` is out of scope and is named, not silently absorbed |
-| 5 | check +mutation | a citation check over the five bodies: exactly one link to `../../references/tick-contract.md` each, the path resolving from that body's directory, and the literal summary-line field tokens absent from every body | exit 0 — five citations, five resolving paths, zero restatements. This row exists because **nothing in `tools/` checks that a reference is cited at all** — an orphaned reference file is currently invisible to every lint. Mutation: inlining the grammar into one body, or citing a path that does not resolve, REDDENS it |
+| 5 | check +mutation | a citation check over the five bodies: exactly one link to `../../references/tick-contract.md` each, the path resolving from that body's directory, and the summary-line GRAMMAR LINE itself absent from every body (a body may name an outcome in prose; it may not carry a second copy of the line shape) | exit 0 — five citations, five resolving paths, zero restatements. This row exists because **nothing in `tools/` checks that a reference is cited at all** — an orphaned reference file is currently invisible to every lint. Mutation: inlining the grammar into one body, or citing a path that does not resolve, REDDENS it |
 | 6 | check:ci | `bash plugins/assay/scripts/tick-summary.test.sh` | exit 0 — every named case passes, hermetically (no network, no token). Picked up by the existing `plugin-shell-suites` CI job through its `*.test.sh` glob, so the grammar is gated on every future PR without new CI wiring |
 | 7 | check +mutation | `bash plugins/assay/scripts/tick-summary.test.sh --case rejects-zero-for-unknown && bash plugins/assay/scripts/tick-summary.test.sh --case rejects-unknown-outcome` | exit 0 — a line carrying `0` where the case marks the count unknown is REJECTED, and an `outcome` outside the closed four is REJECTED. Mutation: widening the checker to accept any non-negative integer in an unknown field, or to accept an arbitrary outcome word, REDDENS it. The grammar's whole job is to make `could-not-check` un-spellable as `noop` |
 | 8 | check:ci | `git diff refs/remotes/origin/main -- plugins/assay/skills/` restricted to the `## Liveness contract (binding)` blocks, the loop sections and the boot sections of all five bodies | exit 0 / empty — the window path is untouched. The regression row: it is what makes "purely additive" checkable rather than asserted, and it is the one row a reviewer can run without reading the whole diff |
