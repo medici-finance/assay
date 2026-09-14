@@ -1,6 +1,9 @@
 name: docker-publish
-# Build ONE combined Linux image (desk-tools suite + statusgen) and publish it
-# to GHCR. See ../../Dockerfile for what's inside.
+# Build the assay container images and publish them to GHCR:
+#   * ONE combined desk-tools image (the binary suite + statusgen) — see
+#     ../../Dockerfile.
+#   * the shared desk-base image and the FIVE per-desk images built FROM it —
+#     see ../../containers/ (brief desk-containers/01 + /03).
 #
 # WHERE THIS RUNS — release-only, on the self-hosted runner labelled
 #   `medici-builder-public-release`, which provides a Docker daemon (DOCKER_HOST
@@ -15,6 +18,13 @@ name: docker-publish
 # TWO WAYS IN
 #   push a tag        desk-tools/v* — the tag's version becomes the image tag.
 #   workflow_dispatch name a version; set dry_run to build WITHOUT pushing.
+#
+# NO BUILD-TIME SECRETS beyond the GHCR registry login. No credential is passed
+# as a build-arg or baked into any layer; every image's credentials arrive at
+# RUNTIME only (containers/secrets.md). The desk-images job runs
+# containers/scripts/layer-secret-scan.sh against the base AND all five desk
+# images and FAILS the publish on any hit — the mechanical enforcer of the
+# "no secret in any image layer" rule.
 
 on:
   push:
@@ -151,3 +161,163 @@ jobs:
           if [ "$code" != "204" ] && [ "$code" != "200" ]; then
             echo "::warning::could not set desk-tools package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
           fi
+
+  # ---------------------------------------------------------------------------
+  # desk-images — the shared desk-base + the five per-desk images.
+  #
+  # Ordering: `needs: build` serialises this AFTER the desk-tools image job on
+  # the single build runner. The base image reuses the already-published
+  # desk-tools binaries via a PINNED `COPY --from` tag inside containers/base/
+  # Dockerfile, so it does not depend on THIS run's desk-tools — the ordering is
+  # for runner-serialisation and to keep "base first, then desks" literal.
+  #
+  # Build order WITHIN the job is strict: build desk-base FIRST, then each desk
+  # FROM the just-built base (passed via --build-arg BASE_IMAGE) so every desk
+  # image is version-locked to the SAME base tag — never a floating `latest`.
+  # All six share the version / latest / sha- tag scheme.
+  #
+  # The build context is the REPOSITORY ROOT for every image (the base bakes
+  # plugins/assay/, the desks bake containers/entrypoint.sh — both live outside
+  # the per-image directory), so each build passes `-f <dockerfile> .`.
+  #
+  # SCAN GATE: after building all six, run containers/scripts/layer-secret-scan.sh
+  # against each. Any hit fails the whole job BEFORE any push — no image carrying
+  # key-shaped material is ever published.
+  desk-images:
+    runs-on: medici-builder-public-release
+    needs: build
+    env:
+      REGISTRY_BASE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same version/push resolution as the desk-tools job.
+      - name: Resolve version and publish mode
+        id: cfg
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            v="$INPUT_VERSION"
+            case "$v" in v*) ;; *) v="v$v" ;; esac
+            if [ "$DRY_RUN" = "true" ]; then push=false; else push=true; fi
+          else
+            v="${REF_NAME#desk-tools/}"
+            push=true
+          fi
+          if ! printf '%s' "$v" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::could not resolve a vMAJOR.MINOR.PATCH version (got '$v')"
+            exit 1
+          fi
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "version=$v"
+            echo "push=$push"
+            echo "sha=sha-${short_sha}"
+            echo "built_at=$(date -u +%FT%TZ)"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$v push=$push (event=$EVENT)"
+
+      - name: Log in to GHCR
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # 1. Build the shared base FIRST. Its three tags (version / latest / sha-)
+      #    are what every desk image is version-locked to.
+      - name: Build desk-base
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          SHA: ${{ steps.cfg.outputs.sha }}
+          BUILT_AT: ${{ steps.cfg.outputs.built_at }}
+        run: |
+          set -euo pipefail
+          base="${REGISTRY_BASE}/desk-base"
+          docker build \
+            --build-arg "VERSION=${VERSION}" \
+            --build-arg "SOURCE_SHA=${GITHUB_SHA}" \
+            --build-arg "BUILT_AT=${BUILT_AT}" \
+            -t "${base}:${VERSION}" \
+            -t "${base}:latest" \
+            -t "${base}:${SHA}" \
+            -f containers/base/Dockerfile \
+            .
+
+      # 2. Build the five desk images FROM the just-built base, version-locked
+      #    to the SAME version tag via --build-arg BASE_IMAGE. No floating latest.
+      - name: Build desk images
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          SHA: ${{ steps.cfg.outputs.sha }}
+        run: |
+          set -euo pipefail
+          base_version_tag="${REGISTRY_BASE}/desk-base:${VERSION}"
+          for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            img="${REGISTRY_BASE}/${d}"
+            echo "== building ${img} FROM ${base_version_tag} =="
+            docker build \
+              --build-arg "BASE_IMAGE=${base_version_tag}" \
+              -t "${img}:${VERSION}" \
+              -t "${img}:latest" \
+              -t "${img}:${SHA}" \
+              -f "containers/${d}/Dockerfile" \
+              .
+          done
+
+      # 3. SCAN GATE — the mechanical floor for "no secret in any image layer".
+      #    Runs against the base AND all five desk images; any hit fails the job
+      #    BEFORE any push. This gate cannot be skipped on the publish path: it
+      #    is an unconditional step and the Push steps below need it to pass.
+      - name: Layer-secret scan (base + 5 desks)
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+        run: |
+          set -euo pipefail
+          for img in desk-base intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            ref="${REGISTRY_BASE}/${img}:${VERSION}"
+            echo "== layer-secret-scan ${ref} =="
+            sh containers/scripts/layer-secret-scan.sh "${ref}"
+          done
+
+      # 4. Push all six (base first, then desks) only after the scan passed.
+      - name: Push desk-base + desk images
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          SHA: ${{ steps.cfg.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for img in desk-base intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            ref="${REGISTRY_BASE}/${img}"
+            docker push "${ref}:${VERSION}"
+            docker push "${ref}:latest"
+            docker push "${ref}:${SHA}"
+          done
+
+      # 5. Best-effort visibility flip for each of the six packages (same caveat
+      #    as the desk-tools job: the default token usually lacks org package
+      #    admin, so a non-204 is a warning, not a failure).
+      - name: Make packages public (best-effort)
+        if: steps.cfg.outputs.push == 'true'
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for img in desk-base intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GHCR_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/medici-finance/packages/container/assay%2F${img}" \
+              -d '{"visibility":"public"}')"
+            echo "visibility PATCH ${img} -> HTTP $code"
+            if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+              echo "::warning::could not set ${img} package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+            fi
+          done
