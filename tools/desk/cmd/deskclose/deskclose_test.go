@@ -48,7 +48,8 @@ const (
 // ---------------------------------------------------------------- stub remote
 
 type stubRemote struct {
-	t *testing.T
+	deskkit.Forge // nil — only the methods deskclose uses are overridden (see deskclose_forgestub_test.go)
+	t             *testing.T
 	// items/pulls/dispositions are keyed "repo#N".
 	items   map[string]string
 	pulls   map[string]string
@@ -59,6 +60,8 @@ type stubRemote struct {
 	// how could-not-check is exercised without a network.
 	failComment map[string]bool
 	failItem    map[string]bool
+	failThread  map[string]bool // keyed "repo#N": ListComments on that item fails (could-not-check)
+	failApply   bool            // ApplyLabels fails (the label write is could-not-check)
 	dispMissing bool
 
 	// viewer is the login the forge reports for the token in use (`viewer { login }`);
@@ -79,7 +82,8 @@ func newStub(t *testing.T) *stubRemote {
 		t: t, items: map[string]string{}, pulls: map[string]string{},
 		disps: map[string]string{}, comment: map[string]string{},
 		failComment: map[string]bool{}, failItem: map[string]bool{},
-		threads: map[string][]string{},
+		failThread: map[string]bool{},
+		threads:    map[string][]string{},
 	}
 }
 
@@ -149,59 +153,34 @@ func dispJSON(state, verdict, evidence string) string {
 		state, verdict, evidence)
 }
 
-// install wires the stub into the two exec seams and resets the per-process gate cache.
+// install wires the stub into the forge resolver and the disposition seam, and resets the
+// per-process gate cache. Since the write-verbs-C migration deskclose reaches the forge through
+// forgeForFn (not `gh`), so the stub IS the Forge (see deskclose_forgestub_test.go) and its
+// session role comes from mintedRole rather than a `viewer{login}` read.
 func (s *stubRemote) install() {
 	cachedGrant = nil
-	runGH = func(args ...string) (string, error) {
-		s.calls = append(s.calls, args)
-		if args[0] == "api" {
-			if len(args) >= 2 && args[1] == "graphql" {
-				if s.failViewer {
-					return "", errors.New("HTTP 502: bad gateway")
-				}
-				return fmt.Sprintf(`{"data":{"viewer":{"login":%q}}}`, s.viewer), nil
-			}
-			path := args[len(args)-1]
-			switch {
-			case strings.Contains(path, "/comments?"):
-				// The thread listing: repos/<owner>/<name>/issues/<N>/comments?per_page=100
-				key := pathKey(strings.TrimSuffix(path[:strings.Index(path, "/comments?")], "/"), "/issues/")
-				return "[" + strings.Join(s.threads[key], ",") + "]", nil
-			case strings.Contains(path, "/issues/comments/"):
-				cid := path[strings.LastIndex(path, "/")+1:]
-				if s.failComment[cid] {
-					return "", errors.New("HTTP 403: rate limited by the API")
-				}
-				if j, ok := s.comment[cid]; ok {
-					return j, nil
-				}
-				return "", errors.New("HTTP 404: no such comment")
-			case strings.Contains(path, "/pulls/"):
-				key := pathKey(path, "/pulls/")
-				if j, ok := s.pulls[key]; ok {
-					return j, nil
-				}
-				return "", errors.New("HTTP 404: not a pull request")
-			default:
-				key := pathKey(path, "/issues/")
-				if s.failItem[key] {
-					return "", errors.New("HTTP 502: bad gateway")
-				}
-				if j, ok := s.items[key]; ok {
-					return j, nil
-				}
-				return "", errors.New("HTTP 404: no such issue")
-			}
+	ghToken = "stub-token" // bypass the real mint; the custody minter is never reached
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, _ := strings.Cut(repo, "/")
+		fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+		// The caller's role now comes from the SESSION (mintedRole), not a viewer read. Map the
+		// old s.viewer login onto the session role the test intends, at CALL time so a test that
+		// sets s.viewer after install() still takes effect: the worker or reviewer App, else a
+		// non-lane role (modelled as "desk") which resolveCaller refuses. failViewer models the
+		// mint/role-resolve failing.
+		switch {
+		case s.failViewer, s.viewer == "":
+			mintedRole = ""
+			return nil, fr, deskkit.Unverifiable(
+				"could-not-check: the identity of the session could not be resolved", nil)
+		case deskkit.SameActor(s.viewer, workerLogin):
+			mintedRole = roleWorker
+		case deskkit.SameActor(s.viewer, reviewerLogin):
+			mintedRole = roleReviewer
+		default:
+			mintedRole = "desk"
 		}
-		if len(args) >= 2 && args[1] == "close" {
-			// Reflect the close so a resumed run sees the item as already closed.
-			for k, v := range s.items {
-				if strings.HasSuffix(k, "#"+args[2]) {
-					s.items[k] = strings.Replace(v, `"state":"open"`, `"state":"closed"`, 1)
-				}
-			}
-		}
-		return "", nil
+		return s, fr, nil
 	}
 	runDisposition = func(args ...string) (string, error) {
 		s.dispCalls = append(s.dispCalls, args)

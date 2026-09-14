@@ -1,5 +1,5 @@
 ---
-brief: quality/16
+brief: assay:assay:quality:16
 title: code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report
 why: >-
   History mining (the rest of this stream) says whether the code is getting better
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-30 by assay-worker session
 sources:
   - "Brokk, 'SlopCop: Forensics for your codebase' — https://blog.brokk.ai/slopcop-forensics-for-your-codebase/ — static analysis finds leads across defect categories (dead code, duplication, swallowed errors, complexity hotspots); agents verify each lead against the surrounding code; synthesis emits an evidenced report; humans decide what is worth fixing"
@@ -30,6 +30,8 @@ exec-tier-why: >-
   (b) correctness is cross-component by construction — ONE suspect schema must flow
   through three legs (linter-output normalization → agent verdicts → report
   synthesis), and drift between any two silently misattributes evidence.
+version: 1
+id: 5692cc1a-d83b-4e36-8194-bd603acc348b
 ---
 
 # Brief 16 — code-slop forensic sweep lane: deterministic suspects → agent verification → evidenced report

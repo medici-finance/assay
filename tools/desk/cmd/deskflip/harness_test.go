@@ -464,10 +464,22 @@ func (s *stub) servedCheckRuns() map[string]any {
 		if e.Name == "" {
 			continue
 		}
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"name": e.Name, "status": e.Status, "conclusion": e.Conclusion,
 			"started_at": e.StartedAt, "completed_at": e.CompletedAt,
-		})
+		}
+		// An entry with no ID is served WITHOUT an id key at all, not with id 0 — a forge
+		// that reports no identifier is a real case, and the check-only-CR exemption's
+		// fail-closed handling of it ("" is unmatchable) is only exercised if the stub can
+		// reproduce it.
+		if e.ID != "" {
+			id, err := strconv.ParseInt(e.ID, 10, 64)
+			if err != nil {
+				panic("rollupEntry.ID must be numeric for the GitHub stub: " + e.ID)
+			}
+			item["id"] = id
+		}
+		items = append(items, item)
 	}
 	total := len(items)
 	if s.checkTotalOverride != 0 {

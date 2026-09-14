@@ -108,6 +108,9 @@ func main() {
 	// outranks every other classification input is a control surface that lives in
 	// settings rather than in a diff, so it is visible only at RUN time.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 

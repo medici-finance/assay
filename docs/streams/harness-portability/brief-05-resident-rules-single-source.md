@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/05
+brief: assay:assay:harness-portability:05
 title: Resident rules — one source, per-harness delivery generated
 why: >-
   The SessionStart hook is how the method arrives in every Claude session; a harness
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07): the SessionStart hook is the load-bearing delivery mechanism, not a convenience", "the inject-resident-rules.sh hook + hooks.json: SessionStart is the ONLY hook Assay ships; the ten rules live as a heredoc inside the shell script", "an open finding: shared guardrails restated 4-5 times across desk/loop skills — the single-source cut this brief makes is the same medicine", "harness-portability/01's resident-rules-channel matrix row (which AGENTS.md paths Codex reads, composition, size limits)", "the harness-target ruling (HP/03): ruled target set — which fragments to generate", "the maintainer ruling 2026-08-03 (AGENTS.md is repo-local; adopters get the method through the bundle): the fragment ships IN the bundle for adopters, and never edits this repo's root AGENTS.md", "freshness-checked 2026-08-07 (the rules exist nowhere outside the heredoc)"]
 consumers: ["plugins/assay/hooks/inject-resident-rules.sh: fixed-here (becomes a thin emitter of the generated payload; hooks.json untouched)", "Claude sessions of every adopter + this house: fixed-here (byte-identical payload is the acceptance bar — regression row below)", "adopt skill / docs/adopting-assay.md (Codex fragment install step): follow-up harness-portability/06 and harness-portability/07", "root AGENTS.md (this repo): out-of-scope (repo-local by ruling; never a generation target)"]
@@ -24,6 +24,8 @@ exec-tier-why: >-
   (c): safety plumbing — the rules ARE the guardrails, and a generation bug that drops
   or reorders a rule ships a weakened method to every session while every simple test
   still passes; byte-equality discipline and the fixture design need care.
+version: 1
+id: 9d723eff-d406-457a-9846-994c0d606902
 ---
 
 # Brief 05 — Resident rules: single source, generated delivery
@@ -88,8 +90,8 @@ facts:
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp05r1.out 2>&1; echo $?` | `0` |
-| 2 | `go run ./tools/harnessgen resident --check; echo $?` | `0` — committed artifacts match the source |
-| 2a | **Mutation — the check can fail**: `printf '\nDRIFT-PROBE\n' >> plugins/assay/codex/AGENTS-assay.md && go run ./tools/harnessgen resident --check > /tmp/hp05r2a.out 2>&1; echo $?; git checkout -- plugins/assay/codex/AGENTS-assay.md` | non-zero, output names `AGENTS-assay.md`; after the checkout, row 2 passes again — the red was the plant |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | `0` — committed artifacts match the source |
+| 2a | **Mutation — the check can fail**: `printf '\nDRIFT-PROBE\n' >> plugins/assay/codex/AGENTS-assay.md && (cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) > /tmp/hp05r2a.out 2>&1; echo $?; git checkout -- plugins/assay/codex/AGENTS-assay.md` | non-zero, output names `AGENTS-assay.md`; after the checkout, row 2 passes again — the red was the plant |
 | 3 | Hook contract intact: `bash plugins/assay/hooks/inject-resident-rules.sh \| jq -er '.systemMessage' > /tmp/hp05r3.out; echo $?; grep -c '^[0-9]\+\.' /tmp/hp05r3.out` | exit `0`; rule count `10` — valid JSON systemMessage carrying all ten numbered rules |
 | 3a | Payload equals source: `for n in 1 2 3 4 5 6 7 8 9 10; do line="$(awk "/^## R$n /{f=1;next} /^## R/{f=0} f" plugins/assay/resident-rules.md 2>/dev/null \| head -1)"; if [ -z "$line" ]; then echo "MISSING R$n (source line empty/unreadable)"; elif ! grep -qF "$line" /tmp/hp05r3.out; then echo "MISSING R$n"; fi; done > /tmp/hp05r3a.out; test ! -s /tmp/hp05r3a.out; echo $?` | `0` — each source rule's first line appears in the emitted payload. **Guarded against a vacuous pass**: an unguarded `grep -qF "$(awk ...)"` silently exits `0` when the source is missing or unparseable — `awk`'s fatal error goes to stderr, the `$(...)` substitution captures an empty string, and `grep -qF ""` trivially matches every line, so all ten MISSING checks are skipped and the row reports a false pass. Reproduced pre-implementation: with the source absent, the unguarded form exits `0`; this guarded form correctly reports all ten `MISSING ... (source line empty/unreadable)` and exits `1` (control: append `R99` probe to the loop → MISSING prints) |
 | 4 | Fragment framing: `test -f plugins/assay/codex/AGENTS-assay.md && grep -c '^## ' plugins/assay/codex/AGENTS-assay.md` | `>= 1` and file exists — the fragment is section-framed for AGENTS.md composition (exact heading shape per 01's row; update Expect with the ruling if 03 moves the path, in the same commit) |

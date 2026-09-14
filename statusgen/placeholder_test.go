@@ -308,7 +308,7 @@ func TestPlaceholderExemptFromBriefLint(t *testing.T) {
 	if hasProblem(verifySectionProblems(streams), "issue-77") {
 		t.Error("placeholder tripped the Verify-table structure lint (it has no Verify by design)")
 	}
-	if hasProblem(attributionProblems(streams), "issue-77") {
+	if ap, _ := attributionProblems(streams); hasProblem(ap, "issue-77") {
 		t.Error("placeholder tripped the attribution/Evidence lint")
 	}
 	if p, _ := checkPlaceholderFiles(streams); len(p) != 0 {

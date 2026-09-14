@@ -10,14 +10,22 @@ import (
 
 // RepoInfoFetcher is the minimal GitHub API surface the public-repo gate needs.
 // Commands provide the real (token-authenticated) implementation; tests provide a stub.
+//
+// It is deliberately just the live-visibility read: the gate no longer consults a
+// per-item reaction surface (see PublicRepoGate), so an issue/PR number and a
+// reactions probe are no longer part of this interface.
 type RepoInfoFetcher interface {
 	// RepoVisibility returns the .visibility field from GET /repos/{owner}/{repo}.
 	RepoVisibility(owner, repo string) (string, error)
-	// IssueReactions returns reactions on an issue/PR.
-	IssueReactions(owner, repo string, issueNumber int) ([]Reaction, error)
 }
 
-// Reaction is one reaction on a GitHub issue or PR comment.
+// Reaction is one reaction (GitHub) or award emoji (GitLab) on an issue or PR.
+//
+// These types are NOT used by PublicRepoGate any more — the public-repo write gate
+// stopped reading reactions when the per-item +1 was replaced by the repository-scoped
+// :public authorization (PublicRepoGate below). They remain because the Forge
+// abstraction's reaction/award admission surface (forge.go, with the GitHub and GitLab
+// backends) consumes them; that surface is a separate control and out of scope here.
 type Reaction struct {
 	User    ReactionUser `json:"user"`
 	Content string       `json:"content"`
@@ -53,26 +61,41 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 	return v, nil
 }
 
-// PublicRepoGate enforces the public-repo trust gate.
+// PublicRepoGate enforces the public-repo write gate.
 //
-// It is called before ANY write-capable desk tool acts on a repo. The gate:
-//  1. Reads the LIVE visibility (fetcher.RepoVisibility, never the compiled-in census)
-//     — if it fails, exit 6 (fail closed).
+// It is called before ANY write-capable desk tool acts on a repo. The authorization
+// unit is the REPOSITORY, not the item: a public/internal repo listed in the
+// allowed-repos configuration with the `:public` visibility token is a place the desk
+// may write, decided once by a human out-of-band, and every write verb on it passes.
+// This replaces the former per-item `+1` reaction check, which was unsatisfiable for the
+// write that matters most — opening the first pull request, which has no issue/PR number
+// yet — and expressed the human decision in the wrong unit. A draft PR is inert until a
+// human merges it, so the repository-level decision plus the merge gate buy everything
+// the per-item ceremony did.
+//
+// The gate:
+//  1. Reads the LIVE visibility (fetcher.RepoVisibility, never the configured census) —
+//     if it fails, exit 6 (fail closed). The live read is load-bearing: a repo flipped
+//     to public AFTER the set was written is still gated, and a stale roster claiming
+//     `:public` for a repo the forge reports otherwise never authorizes on the stale
+//     claim (row 5 of the brief's Verify table).
 //  2. Allowlist, not a denylist: ONLY "private" (case-insensitively, trimmed) returns
-//     nil (gate does not apply). "public" and "internal" both require the +1 below;
-//     anything else — empty, unrecognised, a future value — exit 6 (fail closed).
-//     2b. If the repo carries a standing per-repo bless (publicbless.go — a human-only
-//     sentinel file naming exact owner/name repos), return nil with a stderr NOTICE:
-//     the named repo is opted out of both the no-issue-number fail and the +1
-//     requirement. Any sentinel anomaly means "not blessed" and the gate continues.
-//  3. If the repo is public/internal AND issueNumber <= 0, exit 6 (no reactions surface
-//     — commands without an issue/PR number cannot act on such repos).
-//  4. If the repo is public/internal AND issueNumber > 0, fetches reactions and requires
-//     a +1 from the CONFIGURED blessing authority — login AND permanent numeric id, via
-//     IsBlessAuthorityIDStrict, which (unlike IsBlessAuthorityID) refuses a missing id.
-//  5. If the reactions lookup fails, exit 6.
-//  6. If no qualifying reaction is found, exit 5 (refused by constraint).
-func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string, issueNumber int) error {
+//     nil (gate does not apply). "public" and "internal" require an explicit `:public`
+//     allowed-repos entry (step 3); anything else — empty, unrecognised, a future value
+//     — exit 6 (fail closed).
+//  3. For "public"/"internal", the repo MUST carry an EXPLICIT allowed-repos entry whose
+//     CONFIGURED visibility is public (RepoVisibility(owner/repo) == VisibilityPublic).
+//     If it does, return nil. If it does not — absent, matched only by an `owner/*`
+//     pattern (patterns carry no policy), tagged `:private`, or carrying no visibility
+//     token — return Refused (exit 5) naming the repo, what was read live, what the set
+//     says, and the exact remedy. This is why BOTH reads are load-bearing at once: the
+//     live read AND the configured claim must AGREE.
+//
+// `internal` is org-visible, not private — the gate's premise is untrusted eyes, so it is
+// gated exactly like `public`, not treated as a pass. This mirrors config.go's
+// ParseVisibility, which fails closed on the identical set of unrecognised inputs (#310);
+// the two visibility readers in this package must agree, not diverge.
+func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
 	visibility, err := fetcher.RepoVisibility(owner, repo)
 	if err != nil {
 		return Unverifiable(fmt.Sprintf("public-repo gate: cannot determine repo visibility for %s/%s — refusing rather than guessing", owner, repo), err)
@@ -80,74 +103,35 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string, issueNumber int
 
 	// Allowlist, not a denylist: ONLY "private" (case-insensitively, trimmed) skips the
 	// gate. Everything else — "public", "internal", a re-cased or padded read, or a value
-	// this code has never seen — either requires the +1 below or fails closed outright.
-	// A denylist here ("gate only when == public") is a bypass by spelling: security
-	// review on #310 drove the live gate over every visibility string GitHub's API can
-	// return and found "PUBLIC", "public " (whitespace), and "internal" all fell through
-	// ungated under `visibility != "public"`. `internal` is org-visible, not private — the
-	// gate's stated premise is untrusted eyes, so it is gated exactly like `public` here,
-	// not treated as a pass. This mirrors config.go's ParseVisibility, which fails closed
-	// (VisibilityUnknown, risk-classed) on the identical set of unrecognised inputs; the
-	// two visibility readers in this package must agree, not diverge.
+	// this code has never seen — either requires the `:public` allowed-repos entry below or
+	// fails closed outright. A denylist here ("gate only when == public") is a bypass by
+	// spelling: security review on #310 drove the live gate over every visibility string
+	// GitHub's API can return and found "PUBLIC", "public " (whitespace), and "internal"
+	// all fell through ungated under `visibility != "public"`.
 	switch strings.ToLower(strings.TrimSpace(visibility)) {
 	case "private":
 		return nil
 	case "public", "internal":
-		// fall through to the +1 requirement below
+		// The single control standing between a desk tool and an outward write to a
+		// public/internal repo: an EXPLICIT allowed-repos entry tagged `:public`. The
+		// configured value is read here (RepoVisibility, no network) AND compared against
+		// the LIVE read above — a repo absent from the set, matched only by an `owner/*`
+		// pattern (patterns widen IsAllowedRepo alone; they carry no visibility policy),
+		// tagged `:private`, or carrying no visibility token all answer something other
+		// than VisibilityPublic and refuse. The set is configured out-of-band, so no pull
+		// request can add its own repository to it.
+		if RepoVisibility(owner+"/"+repo) == VisibilityPublic {
+			return nil
+		}
+		return Refused(fmt.Sprintf(
+			"public-repo gate: %s/%s reads live-%s but the allowed-repos set does not authorize outward writes to it "+
+				"(configured visibility: %s, not :public). Add %s/%s:public to the allowed-repos configuration (%s) — "+
+				"the authorization is repository-scoped and covers every write verb; merge remains the human's.",
+			owner, repo, strings.ToLower(strings.TrimSpace(visibility)),
+			RepoVisibility(owner+"/"+repo).String(), owner, repo, EnvAllowedRepos))
 	default:
 		return Unverifiable(fmt.Sprintf("public-repo gate: repo %s/%s returned unrecognised visibility %q — refusing rather than treating it as private", owner, repo, visibility), nil)
 	}
-
-	// Standing per-repo bless (publicbless.go): a human-maintained sentinel file
-	// can opt NAMED public/internal repos out of the per-write +1. Consulted
-	// AFTER the visibility read (so a private repo never depends on it and an
-	// unrecognised visibility still fails closed above) and BEFORE the
-	// issue-number and reactions checks, so a blessed repo passes both the
-	// create path (issueNumber 0, no reactions surface yet) and the review
-	// path without a fresh reaction. The skip is announced on stderr — never
-	// silent — and any sentinel read anomaly answers "not blessed", falling
-	// through to the gate below.
-	if blessed, sentinel := publicRepoBlessed(owner, repo); blessed {
-		fmt.Fprintf(publicBlessNoticeW,
-			"NOTICE: public-repo gate: %s/%s carries a standing authorization (%s) — skipping the per-write +1 requirement; the bless covers every desk write verb on this repo\n",
-			owner, repo, sentinel)
-		return nil
-	}
-
-	// Public repo: must have an issue/PR number to consult the reactions surface.
-	if issueNumber <= 0 {
-		return Unverifiable("public-repo gate: no issue/PR number — a repo-level action on a public repo has no reactions surface to check", nil)
-	}
-
-	reactions, err := fetcher.IssueReactions(owner, repo, issueNumber)
-	if err != nil {
-		return Unverifiable(fmt.Sprintf("public-repo gate: cannot fetch reactions for %s/%s#%d", owner, repo, issueNumber), err)
-	}
-
-	for _, r := range reactions {
-		// IsBlessAuthorityIDStrict, not IsBlessAuthorityID: login and id come from the
-		// SAME reactions object, so a zero id is a failed read, never "this surface has
-		// no ids". Admitting it would degrade the pin back to a login-only check
-		// and let a recycled blessing-authority login satisfy the gate.
-		if r.Content == "+1" && r.User.Type == "User" && IsBlessAuthorityIDStrict(r.User.Login, r.User.ID) {
-			return nil // gate satisfied
-		}
-	}
-
-	return Refused(fmt.Sprintf(
-		"public-repo gate: %s/%s is public and issue #%d carries no qualifying +1 from an authorized human (%s)",
-		owner, repo, issueNumber, humanList()))
-}
-
-// humanList returns the authorized human login(s) as a readable string, for the
-// refusal message only. With the roster unconfigured this is "(unconfigured)" rather
-// than an empty string, so the refusal never reads as if a blank identity would
-// satisfy the gate.
-func humanList() string {
-	if login := BlessAuthorityLogin(); login != "" {
-		return login
-	}
-	return "(unconfigured — see " + EnvBlessLogin + ")"
 }
 
 // --- Default HTTP implementation ---
@@ -212,62 +196,14 @@ func (f *HTTPRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error)
 	return repoInfo.Visibility, nil
 }
 
-// IssueReactions calls GET /repos/{owner}/{repo}/issues/{number}/reactions and returns
-// the reaction list.
-//
-// SINGLE PAGE, by decision: per_page=100 with no Link-header follow.
-// A genuine ada +1 past the hundredth reaction on the SAME issue is therefore
-// invisible to the gate and reads as a mystery refusal. The direction is safe (fail
-// closed, never a false pass) and the shape is bounded — 100 reactions on one issue is
-// far outside anything this desk has seen — so pagination is deliberately not
-// implemented. If it ever bites, the symptom is a refusal that a visible ada +1
-// does not clear; the fix is a Link-header walk, not a per_page bump.
-func (f *HTTPRepoInfoFetcher) IssueReactions(owner, repo string, issueNumber int) ([]Reaction, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/reactions?per_page=100", f.baseURL(), owner, repo, issueNumber)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "token "+f.Token)
-	req.Header.Set("Accept", "application/vnd.github.squirrel-girl-preview+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := f.client().Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("GET %s returned HTTP %d", url, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var reactions []Reaction
-	if err := json.Unmarshal(body, &reactions); err != nil {
-		return nil, fmt.Errorf("cannot parse reactions response: %w", err)
-	}
-	return reactions, nil
-}
-
 // stubRepoInfoFetcher is a test-only implementation of RepoInfoFetcher.
 type stubRepoInfoFetcher struct {
 	visibility    string
 	visibilityErr error
-	reactions     []Reaction
-	reactionsErr  error
 }
 
 func (s *stubRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error) {
 	return s.visibility, s.visibilityErr
-}
-
-func (s *stubRepoInfoFetcher) IssueReactions(owner, repo string, issueNumber int) ([]Reaction, error) {
-	return s.reactions, s.reactionsErr
 }
 
 // Ensure the stub type is referenced (package-level check).

@@ -471,6 +471,114 @@ func TestConsumersBriefFilterWithoutDiffIsCouldNotCheck(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// --brief resolves brief-v2 ids (issue #954)
+// ---------------------------------------------------------------------------
+
+// consumersV2Fixture writes a one-brief brief-v2 stream whose brief carries the
+// given consumers list. The brief's own `brief:` field is the fully-qualified
+// <cell>:<repo>:<stream>:<NN> form brief-v2 requires; num is the file's <NN>
+// component (e.g. "12").
+func consumersV2Fixture(t *testing.T, cell, repoAlias, stream, num string, consumers []string, extra map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", stream)
+	readme := fmt.Sprintf(`---
+stream: %s
+status: active
+priority: P1
+track: platform
+---
+
+# %s
+
+| # | Brief | Wave | Effort | Status | Verified | Reviewed |
+|---|-------|------|--------|--------|----------|----------|
+| %s | [Consumer claims](./brief-%s-claims.md) | 0 | M | in-progress | — | — |
+`, stream, stream, num, num)
+	mustWrite(t, filepath.Join(dir, "README.md"), readme)
+
+	var list strings.Builder
+	for _, c := range consumers {
+		list.WriteString("  - " + quoteYAML(c) + "\n")
+	}
+	briefID := fmt.Sprintf("%s:%s:%s:%s", cell, repoAlias, stream, num)
+	brief := `---
+brief: ` + briefID + `
+title: A brief-v2 fixture carrying routed consumer claims
+wave: 0
+depends: []
+unblocks: []
+effort: M
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v2
+authored: 2026-09-12 by fixture
+sources: ["fixture"]
+consumers:
+` + list.String() + `---
+
+# Brief ` + num + `
+
+## Verify
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | ` + "`statusgen --consumers --brief " + stream + "/" + num + "`" + ` | 0 |
+`
+	mustWrite(t, filepath.Join(dir, fmt.Sprintf("brief-%s-claims.md", num)), brief)
+	for rel, content := range extra {
+		mustWrite(t, filepath.Join(root, rel), content)
+	}
+	return root
+}
+
+// TestConsumersBriefFilter_ResolvesBriefV2 is the fail-first case for issue
+// #954: verify-desk's row keys a brief by its SHORT <stream>/<NN> form, but a
+// brief-v2 file's own `brief:` field is the fully-qualified
+// <cell>:<repo>:<stream>:<NN> form. Pre-fix, selectConsumerBriefs compared the
+// two strings for exact equality and never matched, so `--consumers --brief
+// <stream>/<NN>` against a brief-v2 tree exited 2 with "no brief-v1 file for
+// ..." — reproducing medici-finance/assay#954 exactly (a consumer repo's
+// openbao-resilience/12 row 9). The fix routes both sides through
+// normalizeBriefKey (the same helper verifyMarker/loadExistingMarkers/
+// closeVerify use post flag-day, #840), so either spelling resolves to the one
+// brief-v2 file.
+func TestConsumersBriefFilter_ResolvesBriefV2(t *testing.T) {
+	root := consumersV2Fixture(t, "cell", "repo", "openbao-resilience", "12",
+		[]string{"web/one.go: fixed-here"}, map[string]string{"web/one.go": "package web"})
+	withDiff(t, "docs/streams/openbao-resilience/brief-12-claims.md", "web/one.go")
+
+	t.Run("short stream/NN form", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			if code := runConsumers(root, "origin/main", "openbao-resilience/12"); code != 0 {
+				t.Fatalf("--brief with the short form must resolve the brief-v2 file and corroborate; got %d", code)
+			}
+		})
+		if strings.Contains(out, "no brief-v1 file") {
+			t.Errorf("must not fall back to the pre-fix could-not-check message:\n%s", out)
+		}
+	})
+
+	t.Run("fully-qualified cell:repo:stream:NN form", func(t *testing.T) {
+		if code := runConsumers(root, "origin/main", "cell:repo:openbao-resilience:12"); code != 0 {
+			t.Fatalf("--brief with the fully-qualified form must resolve the brief-v2 file and corroborate; got %d", code)
+		}
+	})
+}
+
+// TestConsumersBriefFilter_BriefV2UnknownIsCouldNotCheck: normalization must not
+// widen the match into a false positive — an id that resolves to no brief
+// under either form still reports could-not-check, never a silent 0.
+func TestConsumersBriefFilter_BriefV2UnknownIsCouldNotCheck(t *testing.T) {
+	root := consumersV2Fixture(t, "cell", "repo", "openbao-resilience", "12",
+		[]string{"web/one.go: fixed-here"}, map[string]string{"web/one.go": "package web"})
+	withDiff(t, "docs/streams/openbao-resilience/brief-12-claims.md", "web/one.go")
+	if code := runConsumers(root, "origin/main", "cell:repo:openbao-resilience:99"); code != 2 {
+		t.Fatalf("an unknown brief-v2 id is could-not-check (2), not clean (0); got %d", code)
+	}
+}
+
 // withBaseEntries substitutes the merge-base entry set for the duration of a
 // test, standing in for `git show <merge-base>:<brief>`.
 func withBaseEntries(t *testing.T, entries ...string) {

@@ -22,7 +22,7 @@
 # tier: local | cheap | session | human — the closed set
 # internal/runnertable.LoadRunnerTable accepts (human is NEVER dispatchable;
 # a human-tier row routes to Land/escalation, mirroring loopengine.TierHuman).
-# Dispatch-class actions (route-work-ready / route-review / route-verify) use
+# Dispatch-class actions (route-work-dispatch / route-review / route-verify) use
 # tier: session on the non-risk path, per the standing fan-out convention
 # (dispatched work runs at the strong/session tier by default). The two
 # bookkeeping actions (land-report / file-question-issue) scale with class
@@ -32,11 +32,11 @@
 schema: assign-v1
 
 rows:
-  # --- route-work-ready ----------------------------------------------------
-  - {action: route-work-ready, class: routine,   risk: "no",  tier: session}
-  - {action: route-work-ready, class: sensitive, risk: "no",  tier: session}
-  - {action: route-work-ready, class: routine,   risk: "yes", tier: human}
-  - {action: route-work-ready, class: sensitive, risk: "yes", tier: human}
+  # --- route-work-dispatch ----------------------------------------------------
+  - {action: route-work-dispatch, class: routine,   risk: "no",  tier: session}
+  - {action: route-work-dispatch, class: sensitive, risk: "no",  tier: session}
+  - {action: route-work-dispatch, class: routine,   risk: "yes", tier: human}
+  - {action: route-work-dispatch, class: sensitive, risk: "yes", tier: human}
 
   # --- route-review ----------------------------------------------------------
   - {action: route-review, class: routine,   risk: "no",  tier: session}

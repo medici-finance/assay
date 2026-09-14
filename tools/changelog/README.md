@@ -37,10 +37,28 @@ whole activation.
    under `## Unreleased` in `CHANGELOG.md` (the deprecation guard). An empty,
    whitespace-only, or bullet-less fragment is rejected — the gate is not
    satisfiable by `touch changelog/x.md`. The whole decision is
-   `tools/changelog/check.sh`; the workflow only feeds it the PR base/head SHAs
-   and the label boolean. The
+   `tools/changelog/check.sh`; the workflow only feeds it the PR base/head SHAs,
+   the label boolean, and the PR number. The
    `changelog:skip` label already exists from the prior activation; no new label
    is needed.
+
+   **The `PR_NUMBER` input and the proxy outcome.** `check.sh` takes one more
+   optional input, `PR_NUMBER`, and with it one more PASS outcome: a fragment
+   named `changelog/pr-<PR_NUMBER>-<slug>.md` already present on the **base**
+   commit and carrying a real highlight bullet greens the PR, even though the PR
+   adds no fragment of its own. That is the path for a pull request from a fork,
+   whose branch maintainers cannot commit to — a maintainer lands the fragment on
+   the base branch instead and re-runs this leg by adding or removing any label
+   (which is why `labeled`/`unlabeled` are in the trigger list). See
+   `changelog/README.md`, "Fragment by proxy (fork PRs)".
+
+   `PR_NUMBER` is fed by `PR_NUMBER: ${{ github.event.pull_request.number }}` in
+   the check step's `env:`. Any value that is not a positive integer — including
+   an unset one — is treated as absent and every other outcome is unchanged, so
+   the script half may merge before the workflow half that supplies it; the
+   `check_test.sh` row P3 is the assertion that it degrades that way. The proxy
+   is read from the BASE commit only, never from the PR head, so a fork's tree
+   cannot manufacture one.
 
 2. **`release.yml` change — aggregate + refuse + clear.** Apply
    `tools/changelog/release.yml.patch` to the live
@@ -174,7 +192,124 @@ whole activation.
    and the aggregated fragments under `changelog/` were left uncleared until this
    PR hand-rolled them.
 
+5. **`release.yml` change — external-contributor credit
+   (contributor-trust/09).** Apply
+   `tools/changelog/release-credit.yml.patch` to the live
+   `.github/workflows/release.yml`:
+
+   ```
+   git apply tools/changelog/release-credit.yml.patch
+   ```
+
+   Three edits, all inside the two changelog steps and their jobs' checkouts:
+
+   - **`fetch-depth: 0`** on the `release` and `changelog-roll` checkouts. This
+     is the load-bearing one. On the default shallow clone `git log` over a
+     fragment path cannot reach the commit that ADDED it, so the git half of the
+     resolution finds nothing, nobody is credited, and the feature is silently
+     inert. Deepening the checkout is what makes it work at all.
+   - **a credit-resolution step** before each aggregate call, which runs
+     `aggregate.py credits changelog`, looks each pull request's author and body
+     up with `gh`, asks `credit-identity.sh` whether that identity is external
+     and whether the body opts out, and writes the credits map.
+   - **`--credits "$map"`** on the `highlights` and `roll` calls.
+
+   Nothing else in the workflow changes: no trigger, no permission, no artifact.
+   The credit steps never fail the job — every unresolved fragment is a named
+   `could not credit` line in the log and the cut proceeds uncredited.
+
 No other files change under `.github/workflows/`.
+
+## The credits map
+
+`aggregate.py` never talks to a forge. Credit is split so that it does not have
+to, and so the offline unit suite stays offline:
+
+| half | who runs it | what it answers |
+|---|---|---|
+| **git** | `aggregate.py credits <fragment-dir>` | which pull request did this fragment arrive on? |
+| **forge** | the `release.yml` step, via `gh` + `credit-identity.sh` | who authored it, are they external, did they opt out? |
+| **read** | `aggregate.py highlights/roll --credits <map>` | append the suffix; nothing else |
+
+`credits` prints one TAB-separated line per fragment and **always exits 0**:
+
+```
+pr-1234-widget-frame-drop.md	1234
+some-other-change.md	unresolved
+```
+
+The resolution starts at the adding commit (`git log --diff-filter=A`, oldest
+when a path was added, deleted and re-added) and reads the landing in the order
+one actually happens:
+
+1. the adding commit's OWN subject, when it carries the number — a trailing
+   `(#N)` for a squash landing, `Merge pull request #N …` for a merge landing.
+   A squash lands directly on the trunk, so the adding commit IS the landing
+   commit;
+2. otherwise the FIRST merge on the first-parent line from there to `HEAD` whose
+   SECOND parent actually contains the adding commit — the merge that brought
+   the fragment in;
+3. otherwise `unresolved`.
+
+Both patterns are anchored, and both the step order and the second-parent test
+are load-bearing: reading the merges first credits a squash-landed fragment to
+whatever unrelated pull request merged next, and a merge that merely sits above
+the adding commit on the ancestry path did not carry it. A loose parse is how a
+credit lands on the wrong person. Every fragment gets a line, so `unresolved`
+("no pull request found") is never confused with an omission ("not looked at").
+
+The MAP the workflow writes back is the same first column with a credit value:
+
+```
+pr-1234-widget-frame-drop.md	@octocat-example
+maintainer-change.md	skip:roster
+opted-out-change.md	opt-out
+some-other-change.md	unresolved
+```
+
+**Three states, and the third is the safe one.** A value in the `@login` form is
+credited. Any other value — `unresolved`, `opt-out`, `skip:roster`, an empty
+field — and any fragment with no line at all is credited to nobody. A missing
+map file is the same thing for every fragment, and then the output is
+byte-identical to the same run with no `--credits` at all (`aggregate_test.sh`
+case C4 asserts exactly that). A credit can never fail a release.
+
+The suffix is `CREDIT_SUFFIX` in `aggregate.py`, defaulting to
+` — thanks @<login>`, appended to the BULLET LINE of each of that fragment's
+entries; a multi-line highlight's continuation lines are untouched.
+
+### Who counts as external, and the opt-out
+
+`credit-identity.sh classify <login> [<body-file>]` prints one word — `credit`,
+`skip:bot`, `skip:roster`, `skip:opt-out` or `skip:unknown` — and always exits 0.
+Any `<slug>[bot]` or `app/<slug>` login is `skip:bot` before the roster is even
+consulted: credits thank people, and a GitHub App is never an external
+contributor, however incomplete the bot roster variable happens to be. It reads
+the operator's EXISTING roster by its existing variable names, never a second
+roster invented for this feature: `ASSAY_TRUSTED_LOGINS` (`login[:id]`),
+`ASSAY_TRUSTED_BOT_SLUGS` (`[role=]slug[:id]`, matched against both the
+`<slug>[bot]` and `app/<slug>` renderings) and `ASSAY_HUMAN_LOGIN_MAP`
+(`name:login`). An identity any of them lists is `skip:roster`. An UNCONFIGURED
+roster is `skip:unknown`, not "everybody is external" — with no roster there is
+no answer, and silence is the fail-closed direction.
+
+The **opt-out marker** is this line, on a line of its own in the pull-request
+body:
+
+```
+<!-- changelog-credit: no -->
+```
+
+It is read before the roster, so an author who asked not to be named is not
+named whatever the roster says. It is documented for contributors in
+`changelog/README.md`, "Credit in the release notes".
+
+> **Interim.** `credit-identity.sh` is a small local reader of those three
+> variables, not an identity resolver of its own. `contributor-trust/02`
+> introduces the single resolver this question should be asked through; when it
+> lands, this script is replaced by a call into it and deleted. The questions,
+> the output vocabulary and the callers do not change.
+
 
 ## Cutover — the pending entries are not lost
 

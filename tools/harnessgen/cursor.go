@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // cursorPackagingMarker opens the machine-readable coverage roster in the Cursor
@@ -123,8 +124,25 @@ func cursorCmd(args []string) int {
 		return exitCouldNotCheck
 	}
 
+	// The Header's {{VERSION}} token derives from the plugin manifest, same
+	// rule the `resident` verb applies (#730) — read it only when the
+	// Header actually carries the placeholder.
+	var version string
+	if strings.Contains(s.Header, versionPlaceholder) {
+		meta, err := readClaudeManifest(filepath.Join(bundleDir, ".claude-plugin", "plugin.json"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "harnessgen cursor: could-not-check: %v\n", err)
+			return exitCouldNotCheck
+		}
+		version = meta.Version
+	}
+
 	// Generate the rule bytes from the resident source.
-	want := cursorRules(s)
+	want, err := cursorRules(s, version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "harnessgen cursor: could-not-check: %v\n", err)
+		return exitCouldNotCheck
+	}
 
 	if *check {
 		got, err := os.ReadFile(p.outRule)

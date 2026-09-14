@@ -1,5 +1,5 @@
 ---
-brief: statusgen/09
+brief: assay:assay:statusgen:09
 title: Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default)
 wave: 1
 depends: []
@@ -14,7 +14,7 @@ gate-why: >
   off-by-default/opt-in wording, retention, and the endpoint before any release carries it.
 issues: []
 decision-issue: 217
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 (re-authored clean for the statusgen board)
 sources:
   - "A free-tier feedback-flywheel candidate: feature ideas arriving as GitHub issues are visible to every competitor, but an opt-in anonymized ping accumulates a proprietary corpus of how agent fleets actually drift"
@@ -24,6 +24,8 @@ why: >
   visible to every competitor, but an opt-in, anonymized telemetry ping (lint-failure categories,
   lifecycle-transition stats) accumulates a proprietary corpus of how agent fleets actually drift —
   feeding future features and, eventually, risk-gate defaults.
+version: 1
+id: ff2ec63d-f6f6-4cfa-a37e-c5f7aaba1caa
 ---
 
 # Brief 09 — Opt-in statusgen telemetry — anonymized fleet-drift corpus

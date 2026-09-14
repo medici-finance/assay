@@ -144,10 +144,12 @@ ASSAY_ALLOWED_REPOS=example-org/one:ci:private
 // unconfigured deployment resolve exactly the files it does today.
 func TestAppEnvPrefixAndBindingDefaults(t *testing.T) {
 	cases := []struct{ appName, wantPrefix string }{
-		{"reviewer-app", "REVIEWER"},     // default → historical key
-		{"issue-loop-app", "ISSUE_LOOP"}, // dashed role default
-		{"x-act", "X_ACT"},               // bound App-name
-		{"x-act-app", "X_ACT"},           // a bound name that itself ends -app
+		{"reviewer-app", "REVIEWER"},               // default → historical key
+		{"issue-loop-app", "ISSUE_LOOP"},           // dashed role default
+		{"x-act", "X_ACT"},                         // bound App-name
+		{"x-act-app", "X_ACT"},                     // a bound name that itself ends -app
+		{"cell-issues-app", "CELL_ISSUES"},         // cell-issues role default (desk-console/31)
+		{"assay-cell-issues", "ASSAY_CELL_ISSUES"}, // the real App name, once CELL_ISSUES_APP binds it
 	}
 	for _, c := range cases {
 		if got := AppEnvPrefix(c.appName); got != c.wantPrefix {
@@ -161,6 +163,12 @@ func TestAppEnvPrefixAndBindingDefaults(t *testing.T) {
 	t.Setenv("REVIEWER_APP", "")
 	if got := AppBinding("reviewer"); got != "reviewer-app" {
 		t.Fatalf("AppBinding(reviewer) unbound = %q, want reviewer-app", got)
+	}
+	// cell-issues (desk-console/31) resolves through the same generic machinery: unbound,
+	// its default is cell-issues-app, byte-identical to every other role's pattern.
+	t.Setenv("CELL_ISSUES_APP", "")
+	if got := AppBinding("cell-issues"); got != "cell-issues-app" {
+		t.Fatalf("AppBinding(cell-issues) unbound = %q, want cell-issues-app", got)
 	}
 	// An env <ROLE>_APP wins.
 	t.Setenv("REVIEWER_APP", "x-act")

@@ -144,3 +144,75 @@ func TestMigrate_UnknownTargetIsUsageError(t *testing.T) {
 		t.Fatalf("exit=%d, want %d", code, migrateExitUsage)
 	}
 }
+
+// TestMigrate_SkipsRegisterDirectories pins the boundary the rest of statusgen
+// already holds: a REGISTER directory under docs/streams is not a stream, so the
+// brief-v1→v2 migration must skip it rather than demand a Briefs table of it.
+//
+// Two shapes are covered, matching the two rules loadStreams applies (load.go):
+// a register the spec fixes BY NAME (`decisions`, in reservedRegisterNames), and
+// a register whose directory name is not in that set but whose README
+// self-declares "a register, not a stream" (issue #616). Both legitimately carry
+// no `---` frontmatter and no `| # | Brief |` table.
+//
+// Before the fix, migrateStreamReadmes enumerated every subdirectory of
+// docs/streams that had a README.md, so either shape aborted the WHOLE migration
+// with exit 5 ("stream README has no recognisable Briefs table") — no brief in
+// any real stream was rewritten. That is the flag day failing closed on a tree
+// that is correctly formed.
+func TestMigrate_SkipsRegisterDirectories(t *testing.T) {
+	root := migrateFixtureTree(t, true)
+	streams := filepath.Join(root, "docs", "streams")
+
+	// A register fixed by name in reservedRegisterNames.
+	decisions := filepath.Join(streams, "decisions")
+	if err := os.MkdirAll(decisions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	decREADME := "# DECISIONS register — design-decision records\n\nIt is a register, not a stream — stream discovery skips it.\n"
+	if err := os.WriteFile(filepath.Join(decisions, "README.md"), []byte(decREADME), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A register whose directory name is NOT reserved, recognised only by the
+	// self-declaration marker.
+	house := filepath.Join(streams, "house-register")
+	if err := os.MkdirAll(house, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	houseREADME := "# House register\n\nThis directory is a register, not a stream — stream discovery skips it.\n"
+	if err := os.WriteFile(filepath.Join(house, "README.md"), []byte(houseREADME), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errb bytes.Buffer
+	if code := runMigrate([]string{"brief-v1-to-v2", "--root", root}, &out, &errb); code != 0 {
+		t.Fatalf("migrate exit=%d, want 0 (a register directory must be skipped, not refused); stderr=%s", code, errb.String())
+	}
+
+	// The real stream still migrated.
+	brief, err := os.ReadFile(filepath.Join(streams, "svc", "brief-01-a.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(brief), "schema: brief-v2") {
+		t.Errorf("the real stream's brief was not migrated:\n%s", brief)
+	}
+
+	// Both register READMEs are byte-for-byte untouched.
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{filepath.Join(decisions, "README.md"), decREADME},
+		{filepath.Join(house, "README.md"), houseREADME},
+	} {
+		got, err := os.ReadFile(tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != tc.want {
+			t.Errorf("%s was rewritten by the migration; a register README must be left alone.\n got: %q\nwant: %q", tc.path, got, tc.want)
+		}
+	}
+}

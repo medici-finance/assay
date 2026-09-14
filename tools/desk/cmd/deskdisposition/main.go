@@ -19,10 +19,19 @@
 // the previous "fix" for this class was workers stating close intent and nobody executing,
 // which is how #1439 sat stated-but-unclosed from 2026-08-09.
 //
-// IDENTITY: gh runs under the caller's AMBIENT credential — the worker App token a
-// worker-desk session has already minted, or the human's gh login. This tool gates
-// WHETHER and WHERE (allowed repos, closed vocabulary, evidence required), never WHO; it
-// mints no token. Same discipline as deskfile.
+// IDENTITY: `set` and `sweep` shell to `gh` under the caller's AMBIENT credential — the
+// worker App token a worker-desk session has already minted, or the human's gh login.
+// This tool gates WHETHER and WHERE (allowed repos, closed vocabulary, evidence
+// required), never WHO on those two verbs; it mints no token for them.
+//
+// `read` is the one exception (#984): it is the verb deskclose's superseded lane shells
+// out TO, as a child process of an already-minted desk session whose environment carries
+// no usable ambient `gh` identity — shelling to `gh` there produced a bare `HTTP 401:
+// Requires authentication` that read as a target disagreement rather than an identity
+// gap. `read` mints its OWN session-role App installation token (DESK_LOOP-selected,
+// worker by default) via desktoken and reaches the forge through the resolved
+// deskkit.Forge under that App's custody, via REST — never `gh`, and with no ambient
+// fallback (see forge.go).
 //
 // Exit codes (deskkit contract): 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused ·
 // 6 unverifiable.
@@ -76,6 +85,9 @@ func main() {
 	// Echo the effective roster once per run: a control surface that lives in
 	// settings rather than in a diff is visible only at RUN time.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

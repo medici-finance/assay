@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/04
+brief: assay:assay:desk-tools:04
 title: "Deterministic runner: execute rows, batch ~5 min, sign, file verdict issues"
 why: >-
   With verify rows deterministic, the loop needs no model in its hot path — but the verify loop
@@ -13,7 +13,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-17 by a re-scope session (pr-shepherd); re-homed to the desk-tools board 2026-08-26
 sources:
   - "The issue-flow ruling that the verdict issue is authored by the verifier App and that the lane transcribes nothing for FAIL rows beyond including FAIL in the verdict."
@@ -21,6 +21,8 @@ sources:
   - "Direction that ~5 minutes of rows batch into ONE issue and that verifier authorship is the load-bearing fact."
 exec-tier: strong
 exec-tier-why: "cross-component: consumes the verdict payload + row classes and produces what the transcriber verifies — a drift here fails silently at the lane."
+version: 1
+id: a7808e4c-15c9-475a-a2c7-e6e794b9bc2d
 ---
 
 # Brief 04 — Deterministic runner: execute rows, batch ~5 min, sign, file verdict issues

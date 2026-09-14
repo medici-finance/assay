@@ -1,5 +1,5 @@
 ---
-brief: quality/02
+brief: assay:assay:quality:02
 title: M1 line-operation taxonomy + churn / rework rate (GitClear-aligned)
 why: >-
   The industry's headline AI-code-quality finding is that churn (code revised or deleted
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §4 — M1 aggregation grains (per commit / file / package / PR / stream / author-identity / window) and the honest-claims discipline"
@@ -26,6 +26,8 @@ exec-tier-why: >-
   (c) taxonomy correctness is a class of subtle implementation error that survives naive
   tests — moved-vs-copied and the block-match threshold pass a happy-path test while being
   quietly wrong, so it needs a strong tier and adversarial fixtures.
+version: 1
+id: 87880ebd-a91c-42b6-9752-c4cbd3dc47ea
 ---
 
 # Brief 02 — M1 line-operation taxonomy + churn / rework rate

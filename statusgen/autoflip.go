@@ -82,6 +82,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -100,6 +101,22 @@ type prReviewState struct {
 	Merged  bool
 	HeadSHA string
 	Reviews []ghReview
+	// GitLab-only (forge-neutral/02's corroboration rule). On GitLab CE approvals
+	// do NOT reset on push, so the approval flag alone is not proof of an at-head
+	// verdict — the desk writes the head SHA into a verdict NOTE, and that pinned
+	// SHA read back is what carries the at-head property (identity.md §corroboration;
+	// pilot steps A9/B4). Approvals lists the logins that approved the MR; Notes
+	// carries the MR discussion notes scanned for a reviewer-authored head-pin. Both
+	// are empty on the GitHub path, where CommitOID on a review carries the head tie.
+	Approvals []string
+	Notes     []glNote
+}
+
+// glNote is one GitLab merge-request note reduced to what corroboration reads: who
+// authored it and its body (scanned for the pinned head SHA).
+type glNote struct {
+	Author string
+	Body   string
 }
 
 // modelFlipSource supplies those facts. The live implementation shells out to
@@ -172,16 +189,85 @@ func modelReviewedStamp(now time.Time, reviewer string, pr int, sha string) stri
 	return fmt.Sprintf("%s %s (approved PR #%d @ %s)", now.Format("2006-01-02"), reviewer, pr, sha)
 }
 
-// modelReviewerLogin resolves the reviewer App's GitHub login from the trust
-// roster's `reviewer=` role binding (ASSAY_TRUSTED_BOT_SLUGS). It returns ""
-// when no role is bound — which is the fail-closed direction: with no identity
-// to check, nothing corroborates and nothing flips.
-func modelReviewerLogin() string {
-	slug := scanEffectiveConfig().RoleBots["reviewer"]
+// reviewerIdentity is the accepted reviewer, resolved forge-aware from the trust
+// roster's `reviewer=` role binding (forge-neutral/02, /07). Logins is the set of
+// login renderings the reviewer is recognised under ON ITS FORGE — the GitHub
+// `<slug>[bot]` / `app/<slug>` pair, or the bare GitLab service-account username —
+// derived from the forge-qualified roster entry rather than by appending a literal
+// `[bot]` regardless of forge. That literal was the #349 defect: on GitLab no
+// `<slug>[bot]` account exists, so the flip could never match and silently never
+// fired. Forge selects which corroboration rule decideModelFlip applies.
+type reviewerIdentity struct {
+	Logins  []string
+	Forge   forgeKind
+	Display string // the primary accepted login — the Reviewed stamp and report header
+	// Unresolved, when non-empty, is a could-not-check reason: the reviewer role is
+	// bound but to a forge this build does not understand, so no approval can be
+	// matched. It is a MISCONFIGURATION (a human fixes the roster), distinct from
+	// "no reviewer bound at all" (Logins empty AND Unresolved "").
+	Unresolved string
+}
+
+// configured reports whether an accepted reviewer identity was resolved. A false
+// return with Unresolved set is the unrecognised-forge could-not-check; with
+// Unresolved empty it is "no reviewer= App bound".
+func (r reviewerIdentity) configured() bool { return len(r.Logins) > 0 }
+
+// modelReviewer resolves the accepted reviewer identity from the effective roster,
+// forge-aware. It mirrors evidenceactor.go's verifier resolution: the reviewer's
+// forge comes from ITS roster entry (BotIdents), the accepted login renderings from
+// that entry's acceptedLogins(). A legacy roster with no forge-qualified ident for
+// the slug defaults to a GitHub entry (the backward-compatibility rule). A reviewer
+// bound to a forge this build does not understand is could-not-check naming the
+// forge, never a pass (forge-neutral/07) — nothing flips.
+func modelReviewer() reviewerIdentity {
+	cfg := scanEffectiveConfig()
+	slug := strings.TrimSpace(cfg.RoleBots["reviewer"])
 	if slug == "" {
-		return ""
+		return reviewerIdentity{}
 	}
-	return slug + "[bot]"
+	// Default to a GitHub entry when the roster carries no forge-qualified ident for
+	// the slug (a legacy roster), mirroring evidenceActorPolicyFromRoster.
+	ident := scanBotIdentity{Forge: forgeGitHub, Slug: strings.ToLower(slug)}
+	if got, ok := cfg.BotIdents[strings.ToLower(slug)]; ok {
+		ident = got
+	}
+	if ident.Forge == forgeUnknown {
+		return reviewerIdentity{Unresolved: fmt.Sprintf(
+			"the reviewer role is bound to slug %q on forge %q, which this build does not understand "+
+				"(it recognises github and gitlab) — no approval can be matched to the reviewer, so no "+
+				"gate:model row is flipped by this run; an unrecognised forge is could-not-check, never a pass",
+			slug, ident.ForgeRaw)}
+	}
+	logins := ident.acceptedLogins()
+	if len(logins) == 0 {
+		return reviewerIdentity{} // defensive: no trustable rendering on this forge
+	}
+	return reviewerIdentity{Logins: logins, Forge: ident.Forge, Display: logins[0]}
+}
+
+// loginInSet reports whether login (case-insensitively) is one of the accepted
+// reviewer renderings.
+func loginInSet(accepted []string, login string) bool {
+	for _, l := range accepted {
+		if strings.EqualFold(l, login) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteBodyPinsSHA reports whether a GitLab note body pins headSHA — the FULL head
+// SHA appears in the body (case-insensitive). It is the GitLab at-head signal: the
+// desk writes the head SHA into the verdict note, and a note pinning an EARLIER SHA
+// (a stale verdict) does not contain the current head and so does not corroborate.
+// The full SHA is required, never a prefix — the same strength as approvedReviewAt's
+// GitHub commit_id compare.
+func noteBodyPinsSHA(body, headSHA string) bool {
+	if headSHA == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(body), strings.ToLower(headSHA))
 }
 
 // commitScanDepth is how far back the brief file's history is walked looking
@@ -196,11 +282,17 @@ const commitScanDepth = 25
 //
 // Order matters: the reviewer identity and the repo are resolved BEFORE any
 // fetch, so an unconfigured roster costs nothing and reaches nothing.
-func decideModelFlip(root string, s *Stream, path string, briefID string, src modelFlipSource, reviewer string) modelFlipResult {
+func decideModelFlip(root string, s *Stream, path string, briefID string, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
 	res := modelFlipResult{Brief: briefID, Outcome: flipUnchecked}
 
-	if reviewer == "" {
+	if !rev.configured() {
 		res.Misconfig = true
+		if rev.Unresolved != "" {
+			// The reviewer role IS bound, but to a forge this build cannot match —
+			// could-not-check naming the forge, a fixable misconfiguration.
+			res.Reason = rev.Unresolved
+			return res
+		}
 		res.Reason = "no `reviewer=` App bound in ASSAY_TRUSTED_BOT_SLUGS — there is no identity whose approval could be corroborated"
 		return res
 	}
@@ -258,23 +350,69 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, src mo
 	res.SHA = st.HeadSHA
 
 	// From here the check WAS made, so every failure is a REFUSAL, not a
-	// could-not-check.
-	if _, ok := approvedReviewAt(st.Reviews, reviewer, st.HeadSHA); !ok {
-		// Distinguish "never approved" from "approved something else" — the
-		// second is the stale-approval case and the operator needs to see which
-		// commit was signed.
-		if r, any := approvedReviewAt(st.Reviews, reviewer, ""); any {
-			res.Outcome = flipRefused
-			res.Reason = fmt.Sprintf("PR #%d merged at %s but the %s approval is against %s — a stale approval does not close a brief",
-				pr, st.HeadSHA, reviewer, r.CommitOID)
+	// could-not-check. The corroboration rule is per forge (forge-neutral/02's
+	// identity.md §corroboration): on GitHub the at-head tie is a review's own
+	// commit_id; on GitLab CE — where approvals persist across a push — it is a
+	// note by the reviewer pinning the head SHA, the approval flag alone being
+	// insufficient.
+	if rev.Forge == forgeGitLab {
+		return decideGitLabFlip(res, pr, st, rev)
+	}
+	return decideGitHubFlip(res, pr, st, rev)
+}
+
+// decideGitHubFlip applies the GitHub corroboration rule: an APPROVED review by an
+// accepted reviewer login whose commit_id equals the merged head. A stale approval
+// (against an earlier commit) is REFUSED and names the signed commit.
+func decideGitHubFlip(res modelFlipResult, pr int, st prReviewState, rev reviewerIdentity) modelFlipResult {
+	for _, login := range rev.Logins {
+		if _, ok := approvedReviewAt(st.Reviews, login, st.HeadSHA); ok {
+			res.Outcome = flipDone
 			return res
 		}
+	}
+	// Distinguish "never approved" from "approved something else" — the second is
+	// the stale-approval case and the operator needs to see which commit was signed.
+	for _, login := range rev.Logins {
+		if r, any := approvedReviewAt(st.Reviews, login, ""); any {
+			res.Outcome = flipRefused
+			res.Reason = fmt.Sprintf("PR #%d merged at %s but the %s approval is against %s — a stale approval does not close a brief",
+				pr, st.HeadSHA, rev.Display, r.CommitOID)
+			return res
+		}
+	}
+	res.Outcome = flipRefused
+	res.Reason = fmt.Sprintf("PR #%d carries no APPROVED review from %s", pr, rev.Display)
+	return res
+}
+
+// decideGitLabFlip applies the GitLab CE corroboration rule: an approval by an
+// accepted reviewer identity PLUS a note by that identity whose body pins the head
+// SHA. The approval flag alone does NOT close the brief — on CE it persists across
+// a push, so a verdict recorded against an older head would read as current; the
+// note's pinned SHA is what ties the verdict to the head (identity.md; pilot A9/B4).
+func decideGitLabFlip(res modelFlipResult, pr int, st prReviewState, rev reviewerIdentity) modelFlipResult {
+	approved := false
+	for _, a := range st.Approvals {
+		if loginInSet(rev.Logins, a) {
+			approved = true
+			break
+		}
+	}
+	if !approved {
 		res.Outcome = flipRefused
-		res.Reason = fmt.Sprintf("PR #%d carries no APPROVED review from %s", pr, reviewer)
+		res.Reason = fmt.Sprintf("MR #%d carries no approval from %s", pr, rev.Display)
 		return res
 	}
-
-	res.Outcome = flipDone
+	for _, n := range st.Notes {
+		if loginInSet(rev.Logins, n.Author) && noteBodyPinsSHA(n.Body, st.HeadSHA) {
+			res.Outcome = flipDone
+			return res
+		}
+	}
+	res.Outcome = flipRefused
+	res.Reason = fmt.Sprintf("MR #%d is approved by %s but no note by that identity pins the head %s — on GitLab CE an approval persists across a push, so the at-head verdict lives in the note's pinned SHA, not the approval flag",
+		pr, rev.Display, st.HeadSHA)
 	return res
 }
 
@@ -289,7 +427,7 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, src mo
 // dryRun makes the identical decisions and writes nothing.
 //
 // It never touches STATUS.md (single-writer rule).
-func autoFlipModel(root string, streams []*Stream, src modelFlipSource, reviewer string, now time.Time, dryRun bool) ([]modelFlipResult, error) {
+func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev reviewerIdentity, now time.Time, dryRun bool) ([]modelFlipResult, error) {
 	var results []modelFlipResult
 
 	for _, s := range streams {
@@ -320,13 +458,13 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, reviewer
 				continue
 			}
 
-			res := decideModelFlip(root, s, path, bf.Brief, src, reviewer)
+			res := decideModelFlip(root, s, path, bf.Brief, src, rev)
 			if res.Outcome != flipDone {
 				results = append(results, res)
 				continue
 			}
 
-			res.Stamp = modelReviewedStamp(now, reviewer, res.PR, res.SHA)
+			res.Stamp = modelReviewedStamp(now, rev.Display, res.PR, res.SHA)
 			if dryRun {
 				results = append(results, res)
 				continue
@@ -561,13 +699,56 @@ func runAutoFlipModel(root string, dryRun bool) int {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
 	}
-	reviewer := modelReviewerLogin()
-	results, err := autoFlipModel(root, streams, ghModelFlipSource{}, reviewer, time.Now(), dryRun)
+	rev := modelReviewer()
+	results, err := autoFlipModel(root, streams, liveModelFlipSource(rev.Forge), rev, time.Now(), dryRun)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
 	}
-	return reportAutoFlipModel(os.Stdout, os.Stderr, results, reviewer, dryRun)
+	return reportAutoFlipModel(os.Stdout, os.Stderr, results, rev.Display, dryRun)
+}
+
+// liveModelFlipSource selects the production read seam for the reviewer's forge.
+// GitHub reads through `gh` (ghModelFlipSource). A GitLab reviewer selects
+// gitlabModelFlipUnavailable: statusgen has no GitLab merge-request read path yet —
+// the forge-aware LIVE read lands with the conformance round trip
+// (forge-neutral/10), where a real GitLab deployment exists — so the GitLab live
+// read reports an honest could-not-check rather than shelling `gh`, which cannot
+// read a GitLab MR. The corroboration DECISION for GitLab is implemented and
+// unit-tested (decideGitLabFlip); only the live reader that would feed it real MR
+// state is deferred. forgeUnknown keeps GitHub (a legacy roster with no
+// forge-qualified reviewer ident resolves to GitHub, per modelReviewer).
+func liveModelFlipSource(forge forgeKind) modelFlipSource {
+	if forge == forgeGitLab {
+		return gitlabModelFlipUnavailable{}
+	}
+	return ghModelFlipSource{}
+}
+
+// errGitLabFlipReadUnavailable is the honest could-not-check a GitLab auto-flip
+// reports until the forge-aware live merge-request read lands with the conformance
+// round trip (forge-neutral/10). It is structural, not a misconfiguration: no
+// operator setting resolves it, so it is a non-fatal NOTICE (reportAutoFlipModel),
+// never a fatal error and never a silent flip.
+var errGitLabFlipReadUnavailable = errors.New(
+	"statusgen has no GitLab merge-request read path yet — the forge-aware live read lands with the conformance round trip (forge-neutral/10); a GitLab auto-flip is could-not-check until then, never a flip")
+
+// gitlabModelFlipUnavailable is the live source for a GitLab reviewer. Commit
+// history is plain git and works on any forge, so CommitsTouching is served; the
+// merge-request reads report errGitLabFlipReadUnavailable, which decideModelFlip
+// surfaces as a structural could-not-check.
+type gitlabModelFlipUnavailable struct{}
+
+func (gitlabModelFlipUnavailable) CommitsTouching(root, relPath string, limit int) ([]string, error) {
+	return ghModelFlipSource{}.CommitsTouching(root, relPath, limit)
+}
+
+func (gitlabModelFlipUnavailable) MergedPRForCommit(repo, sha string) (int, bool, error) {
+	return 0, false, errGitLabFlipReadUnavailable
+}
+
+func (gitlabModelFlipUnavailable) ReviewState(repo string, pr int) (prReviewState, error) {
+	return prReviewState{}, errGitLabFlipReadUnavailable
 }
 
 // reportAutoFlipModel prints the per-candidate report and returns the process

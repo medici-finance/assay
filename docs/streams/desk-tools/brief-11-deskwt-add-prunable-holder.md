@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/11
+brief: assay:assay:desk-tools:11
 title: "`deskwt add` — a worktree whose directory is gone does not hold its branch"
 why: >-
   `deskwt add` already reclaims a leftover branch that no worktree holds and that carries
@@ -18,7 +18,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -26,6 +26,8 @@ sources:
   - "The bookkeeping prune `deskwt prune` already runs first: `tools/desk/cmd/deskwt/prune.go` § bookkeepingPrune (`git worktree prune`)."
   - "git's porcelain contract: a worktree whose directory is missing is listed with a `prunable <reason>` attribute line (`git worktree list --porcelain`, git ≥ 2.36)."
   - "Brief and Verify shape: `spec/brief-v1.md`; status semantics: `spec/lifecycle-v1.md`."
+version: 1
+id: f22a8f55-6807-41bf-9014-babca3feff4c
 ---
 
 # Brief 11 — `deskwt add`: a worktree whose directory is gone does not hold its branch

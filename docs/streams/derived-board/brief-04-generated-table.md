@@ -1,5 +1,5 @@
 ---
-brief: derived-board/04
+brief: assay:assay:derived-board:04
 title: generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR
 why: >-
   The engine is worthless if the board people read is still the hand-typed table. This
@@ -13,7 +13,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §4 (where derivation runs), §5 (board: generated), §8 Q3"
@@ -24,6 +24,8 @@ consumers:
   - ".github/workflows/assay-statusgen.yml: fixed-here (this repo's own workflow; the human pushes workflow files)"
   - "examples/adopter-scaffold/.github/workflows/*: fixed-here"
   - "statusgen init scaffold (the workflow it writes for adopters): fixed-here"
+version: 1
+id: f48aa289-b2e2-4de0-83a7-f530c67f33f1
 ---
 
 # Brief 04 — generated table + single-writer lint + schedule

@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/04
+brief: assay:assay:apps-installer:04
 title: "`deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs"
 why: >-
   GitHub pauses App creation on an account after roughly four Apps, silently and for an
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §4 (state machine and its edges), §2 Screen 2 (throttle banner, Resume creation, console strip), §6 (`deskapps resume`, `status`), §8 (throttle, code expired, port in use)."
@@ -26,6 +26,8 @@ exec-tier: any
 consumers:
   - "~/.config/assay/apps.state.json: fixed-here (read/write; schema owned by apps-installer/02)"
   - "docs/desk-tools/deskapps.md: fixed-here (§ Resume, § Status, § Page verbs)"
+version: 1
+id: 6d3dad6c-3dcf-4e4f-b02e-fb171d909da6
 ---
 
 # Brief 04 — Resume and status

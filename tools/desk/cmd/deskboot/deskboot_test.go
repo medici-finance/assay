@@ -578,3 +578,62 @@ func TestRepoSlugFromURL(t *testing.T) {
 		}
 	}
 }
+
+// The shared-checkout refusal must name a fix the operator can run VERBATIM: the loop name
+// deskboot was given (which `deskwt role-init` accepts as-is) with the shared checkout's
+// absolute path as --repo-root, the cd-into-its-output form, and — only when `cellctl` is
+// on PATH — the cell launcher. A refusal that names a command the tool then refuses (the
+// old `--role <loop-name>` spelling) is a boot with no clean path out of the shared tree.
+func TestSharedCheckoutRefusalNamesTheFix(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		cellctl     bool
+		wantCellctl bool
+	}{
+		{"cellctl absent", false, false},
+		{"cellctl on PATH", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			s.replies = append([]reply{
+				{match: "rev-parse --absolute-git-dir", stdout: "/repo/.git"},
+				{match: "--git-common-dir", stdout: "/repo/.git"},
+			}, happyStub(t, writeToken(t, home))[2:]...)
+			old := lookPath
+			lookPath = func(file string) (string, error) {
+				if tc.cellctl && file == "cellctl" {
+					return "/usr/local/bin/cellctl", nil
+				}
+				return "", exec.ErrNotFound
+			}
+			t.Cleanup(func() { lookPath = old })
+
+			var rc int
+			out := captureStderr(t, func() int {
+				rc = run([]string{"the-desk", "--root", root})
+				return rc
+			})
+			if rc != deskkit.ExitRefused {
+				t.Fatalf("shared-checkout boot rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+			}
+			absRoot, _ := filepath.Abs(root)
+			want := "`deskwt role-init the-desk --repo-root " + absRoot + "`"
+			if !strings.Contains(out, want) {
+				t.Fatalf("refusal does not name the verbatim fix %s:\n%s", want, out)
+			}
+			if strings.Contains(out, "role-init --role") {
+				t.Fatalf("refusal still spells the fix as `role-init --role <loop>`, which the tool refuses:\n%s", out)
+			}
+			if !strings.Contains(out, `cd "$(deskwt role-init the-desk --repo-root `+absRoot+`)"`) {
+				t.Fatalf("refusal does not show the cd-into-output launcher form:\n%s", out)
+			}
+			if got := strings.Contains(out, "cellctl desk <cell> the-desk"); got != tc.wantCellctl {
+				t.Fatalf("cellctl named = %v, want %v (cellctl on PATH = %v):\n%s", got, tc.wantCellctl, tc.cellctl, out)
+			}
+			if s.ran("worktree lock") {
+				t.Error("deskboot tried to lock the shared checkout — it must refuse before attempting it")
+			}
+		})
+	}
+}

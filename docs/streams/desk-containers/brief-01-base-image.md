@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/01
+brief: assay:assay:desk-containers:01
 title: base image — toolchains, desk-tools, assay skills, persistent-volume layout
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#63 — the request (base dockerfile; go, python, skills, persistent volume)"
@@ -19,6 +19,8 @@ why: >-
   Every desk image builds FROM this base. Without one shared, versioned base, five desk
   images drift apart (five toolchain copies, five skill snapshots) and every fix lands
   five times. One base makes the per-desk layer thin enough to be reviewable at a glance.
+version: 1
+id: b8bccc67-ae4b-4c59-898c-cc146b013ea3
 ---
 
 # Brief 01 — base image

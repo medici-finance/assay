@@ -116,6 +116,16 @@ func IsForgeNotFound(err error) bool {
 	return errors.As(err, &ae) && ae.Status == http.StatusNotFound
 }
 
+// IsForgeForbidden reports whether err is a 403 from the forge REST layer. It unwraps, so a
+// ForgeAPIError nested in a DeskError is still recognised. A 403 is distinct from a 404: it
+// means the token is authenticated but lacks the scope for THIS endpoint (e.g. the legacy
+// branch-protection endpoint needs `administration`, which the reviewer/worker App tokens do
+// not carry), which licenses an admin-free re-resolution rather than a fail-open empty.
+func IsForgeForbidden(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
+}
+
 // ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
 // answered "this repository has no commits yet". It is a distinct KNOWN state (no-commits),
 // NOT a read failure. Each backend translates ITS OWN empty signal into this sentinel inside
@@ -182,6 +192,7 @@ type ghPullWire struct {
 	State        string `json:"state"`
 	Draft        bool   `json:"draft"`
 	NodeID       string `json:"node_id"`
+	Title        string `json:"title"`
 	Body         string `json:"body"`
 	ChangedFiles int    `json:"changed_files"`
 	User         struct {
@@ -227,6 +238,7 @@ type ghIssueWire struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	State  string `json:"state"`
+	Body   string `json:"body"`
 	User   struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
@@ -235,6 +247,9 @@ type ghIssueWire struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
 	HTMLURL string `json:"html_url"`
+	Labels  []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
 }
 
 type ghReviewWire struct {
@@ -268,6 +283,7 @@ type ghCombinedStatusWire struct {
 type ghCheckRunsWire struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
+		ID          int64  `json:"id"`
 		Name        string `json:"name"`
 		Status      string `json:"status"`
 		Conclusion  string `json:"conclusion"`
@@ -292,6 +308,29 @@ type ghRequiredStatusChecksWire struct {
 	Checks   []struct {
 		Context string `json:"context"`
 	} `json:"checks"`
+}
+
+// ghBranchProtectedWire is the single field the admin-free fallback reads from
+// `GET /repos/{o}/{r}/branches/{b}`: whether ANYTHING protects the branch. This endpoint is
+// readable by a plain repo token (no `administration` scope), unlike the legacy protection
+// endpoint, so it answers "is the required set necessarily empty" without admin rights.
+type ghBranchProtectedWire struct {
+	Protected bool `json:"protected"`
+}
+
+// ghBranchRuleWire is one entry of `GET /repos/{o}/{r}/rules/branches/{b}` — the EFFECTIVE
+// rules applying to the branch, including those contributed by rulesets (not just classic
+// branch protection). Only the `required_status_checks` rule type carries required contexts,
+// under `parameters.required_status_checks[].context`; other rule types leave that slice
+// empty and contribute nothing. This endpoint is readable by the same plain repo token, so it
+// closes the ruleset gap the admin-only legacy endpoint leaves behind.
+type ghBranchRuleWire struct {
+	Type       string `json:"type"`
+	Parameters struct {
+		RequiredStatusChecks []struct {
+			Context string `json:"context"`
+		} `json:"required_status_checks"`
+	} `json:"parameters"`
 }
 
 // ghTimelineWire is one entry of the issue/PR timeline. Only `labeled` events matter to the
@@ -326,6 +365,15 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		return nil, err
 	}
+	return ghPullFromWire(w), nil
+}
+
+// ghPullFromWire maps a decoded pull object onto the interface's PullRequest. It is shared by
+// the single-change read (GetPullRequest) and the branch lookup (OpenChangeForBranch) so the
+// two cannot map one wire shape two ways — the list endpoint the branch lookup uses returns the
+// SAME object shape, minus the fields (mergeable, changed_files) the list form omits, which
+// decode to their zero values (MergeableUnknown, 0) rather than a wrong value.
+func ghPullFromWire(w ghPullWire) *PullRequest {
 	labels := make([]string, 0, len(w.Labels))
 	for _, l := range w.Labels {
 		labels = append(labels, l.Name)
@@ -335,6 +383,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		State:        w.State,
 		Draft:        w.Draft,
 		NodeID:       w.NodeID,
+		Title:        w.Title,
 		Body:         w.Body,
 		ChangedFiles: w.ChangedFiles,
 		Author:       Account{Login: w.User.Login, ID: w.User.ID},
@@ -347,7 +396,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
 		BaseRef:      w.Base.Ref,
-	}, nil
+	}
 }
 
 func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
@@ -356,13 +405,96 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		return nil, err
 	}
+	labels := make([]string, 0, len(w.Labels))
+	for _, l := range w.Labels {
+		labels = append(labels, l.Name)
+	}
 	return &Issue{
 		Number:        w.Number,
 		Title:         w.Title,
 		State:         w.State,
 		Author:        Account{Login: w.User.Login, ID: w.User.ID},
 		IsPullRequest: w.PullRequest != nil,
+		URL:           w.HTMLURL,
+		Labels:        labels,
+		Body:          w.Body,
 	}, nil
+}
+
+// OpenChangeForBranch resolves the single OPEN pull request whose HEAD branch is `branch`
+// (`GET /repos/{o}/{r}/pulls?head={owner}:{branch}&state=open`). The head filter is spelled
+// `owner:branch` — GitHub's own `user:ref` form — so it matches only same-repo branches, which
+// is every change this desk opens. NONE open → (nil, nil). MORE THAN ONE → a could-not-check
+// REFUSAL: two open PRs on one source branch has no single right answer, and a silent first-
+// match would route deskpr's mergeable read or an edit at whichever GitHub listed first.
+func (g *GitHubForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullRequest, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return nil, Unverifiable("OpenChangeForBranch needs a non-empty source branch for "+repo.Slug(), nil)
+	}
+	head := fmt.Sprintf("%s:%s", repo.Owner, branch)
+	path := fmt.Sprintf("/repos/%s/%s/pulls?head=%s&state=open&per_page=%d",
+		repo.Owner, repo.Name, url.QueryEscape(head), forgeFilePerPage)
+	var w []ghPullWire
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	switch len(w) {
+	case 0:
+		return nil, nil
+	case 1:
+		return ghPullFromWire(w[0]), nil
+	default:
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %d open changes share source branch %q in %s — refusing to guess which one is "+
+				"meant; a single open change per source branch is the assumption this read is allowed to make, "+
+				"and it does not hold here", len(w), branch, repo.Slug()), nil)
+	}
+}
+
+// SearchIssues runs a repo-scoped free-text search over ISSUES only (never PRs): the query is
+// prefixed with `repo:{o}/{r} is:issue`, so the caller supplies free text and the backend owns
+// the scope qualifiers — the closed-surface property (no caller-supplied search syntax).
+func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	q := strings.TrimSpace(fmt.Sprintf("repo:%s is:issue %s", repo.Slug(), strings.TrimSpace(in.Query)))
+	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)
+	var w ghIssueSearchWire
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	out := make([]IssueSearchResult, 0, len(w.Items))
+	for _, it := range w.Items {
+		labels := make([]string, 0, len(it.Labels))
+		for _, l := range it.Labels {
+			labels = append(labels, l.Name)
+		}
+		out = append(out, IssueSearchResult{
+			Number: it.Number, Title: it.Title, State: it.State, Labels: labels, URL: it.HTMLURL,
+		})
+	}
+	return out, nil
+}
+
+// ListLabels reads the repo's label NAMES (`GET /repos/{o}/{r}/labels`, paginated). Read-only:
+// it never creates a label, which is the whole reason it is a separate op from ApplyLabels's
+// ensure step (deskfile's probe files unstamped on a missing label rather than minting it).
+func (g *GitHubForge) ListLabels(repo ForgeRepo) ([]string, error) {
+	var all []string
+	for page := 1; page <= forgeMaxFilePages; page++ {
+		var chunk []ghLabelWire
+		path := fmt.Sprintf("/repos/%s/%s/labels?per_page=%d&page=%d",
+			repo.Owner, repo.Name, forgeFilePerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, l := range chunk {
+			all = append(all, l.Name)
+		}
+		if len(chunk) < forgeFilePerPage {
+			break
+		}
+	}
+	return all, nil
 }
 
 // forgeIssuePerPage / forgeOpenChangesCap bound the two bulk board reads. The issue read
@@ -657,6 +789,7 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		}
 		for _, c := range cr.CheckRuns {
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
+				ID:   checkRunID(c.ID),
 				Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 			})
@@ -674,9 +807,19 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 // The 404 IS the answer, not an error. GitHub returns 404 both for a branch with no
 // protection AND for a protected branch that requires no status checks; in either case
 // nothing gates the merge on a check, so the required set is EMPTY and no error is returned.
-// Every OTHER non-2xx (401/403 permission, 5xx, a parse failure) is could-not-check and is
-// returned as-is, so the caller fails closed — an absent rollup is never read as green off a
-// required-set the tool could not actually read.
+//
+// A 403 is NOT the answer, but it is not a dead end either. The legacy protection endpoint
+// needs the `administration` scope, which the reviewer/worker App tokens do not carry, so it
+// answers 403 on every repo for those identities. Reading a 403 as "nothing required" would
+// be fail-open; returning it as-is would leave the flip permanently could-not-check on every
+// App token. Instead the read re-resolves through admin-free endpoints (see
+// requiredChecksAdminFree), which — being a flip gate — still fail CLOSED: only a positively
+// unprotected branch yields empty/green; a protected branch whose required set cannot be
+// determined admin-free stays could-not-check.
+//
+// Every OTHER non-2xx (401, 5xx, a parse failure) is could-not-check and is returned as-is, so
+// the caller fails closed — an absent rollup is never read as green off a required-set the
+// tool could not actually read.
 func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
@@ -693,25 +836,112 @@ func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 			// an absent rollup, and it is distinct from the error return below.
 			return nil, nil
 		}
+		if IsForgeForbidden(err) {
+			// The token lacks `administration` for the legacy endpoint. Re-resolve the same
+			// required set through the admin-free endpoints rather than fail the whole flip.
+			return g.requiredChecksAdminFree(repo, branch, err)
+		}
 		return nil, err
 	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(w.Contexts)+len(w.Checks))
-	add := func(c string) {
-		c = strings.TrimSpace(c)
-		if c == "" || seen[c] {
-			return
+	return dedupContexts(w.Contexts, contextsOf(w.Checks)), nil
+}
+
+// requiredChecksAdminFree re-resolves the branch's required status-check contexts WITHOUT the
+// `administration` scope the legacy protection endpoint demands, for tokens that get a 403
+// there (every reviewer/worker App). It uses two endpoints a plain repo token can read:
+//
+//  1. GET /repos/{o}/{r}/branches/{b} → `.protected`. If the branch is NOT protected at all,
+//     nothing gates the merge on a check, so the required set is empty (⇒ green). This is the
+//     ONLY admin-free path to an empty/green answer.
+//  2. GET /repos/{o}/{r}/rules/branches/{b} → the branch's RULESET rules (NOT classic branch
+//     protection — the rules API surfaces rulesets only). The union of every
+//     `required_status_checks` rule's contexts is the required set from rulesets.
+//
+// This is a flip GATE, so it fails CLOSED: the only outputs are an empty set (positively
+// unprotected), a NON-empty set (rulesets name required contexts), or could-not-check. In
+// particular a branch that is `protected: true` but whose rules endpoint returns NO
+// required_status_checks contexts is could-not-check, NOT empty: the tell of CLASSIC branch
+// protection, which protects the branch (and may require checks) but is invisible to the
+// rules API — reading it as empty would let deskflip flip an un-green PR off an absent rollup
+// (the pre-fix behaviour failed closed here, and this must too). Every unreadable-or-unknown
+// path returns Unverifiable; legacyErr is threaded into the both-failed refusal for context.
+func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, legacyErr error) ([]string, error) {
+	var bp ghBranchProtectedWire
+	bpath := fmt.Sprintf("/repos/%s/%s/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
+	brErr := g.doJSON(http.MethodGet, bpath, nil, &bp)
+	if brErr == nil && !bp.Protected {
+		// The branch is not protected: nothing GitHub enforces gates the merge on a check, so
+		// the required set is empty. This is the only admin-free empty/green answer.
+		return nil, nil
+	}
+	// The branch is protected, or its protection flag could not be read. Read the ruleset rules
+	// for any required contexts they name.
+	var rules []ghBranchRuleWire
+	rpath := fmt.Sprintf("/repos/%s/%s/rules/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
+	if rErr := g.doJSON(http.MethodGet, rpath, nil, &rules); rErr != nil {
+		if brErr != nil {
+			// BOTH admin-free fallbacks failed: the required set could not be read at all.
+			// Fail closed — an absent rollup must never be read as green off a set this tool
+			// could not determine.
+			return nil, Unverifiable(fmt.Sprintf(
+				"cannot read the required status checks for %s@%s: the legacy protection endpoint is "+
+					"forbidden (%v) and both admin-free fallbacks failed (branch read: %v; rules read: %v)",
+				repo.Slug(), branch, legacyErr, brErr, rErr), nil)
 		}
-		seen[c] = true
-		out = append(out, c)
+		// The branch IS protected (step 1 succeeded) but its rules could not be read, so the
+		// required set is unknown. Fail closed rather than assume none required.
+		return nil, Unverifiable(fmt.Sprintf(
+			"cannot read the required status checks for %s@%s: %s is protected but its effective rules "+
+				"could not be read (%v)", repo.Slug(), branch, branch, rErr), nil)
 	}
-	for _, c := range w.Contexts {
-		add(c)
+	var ctxs []string
+	for _, rule := range rules {
+		for _, c := range rule.Parameters.RequiredStatusChecks {
+			ctxs = append(ctxs, c.Context)
+		}
 	}
-	for _, c := range w.Checks {
-		add(c.Context)
+	if set := dedupContexts(ctxs); len(set) > 0 {
+		return set, nil
 	}
-	return out, nil
+	// Protected (or protection-flag unreadable) AND the rules API named no required contexts.
+	// This does NOT prove nothing is required: the rules API shows only rulesets, so a branch
+	// under CLASSIC protection reads exactly this way while still gating the merge. Fail closed
+	// — could-not-check, never an empty/green set off an admin-free read that cannot see
+	// classic protection.
+	return nil, Unverifiable(fmt.Sprintf(
+		"cannot read the required status checks for %s@%s: %s is protected but the rules API named no "+
+			"required status checks — the tell of classic branch protection, which the rules API cannot "+
+			"see, so the required set is undetermined (could-not-check, never read as green)",
+		repo.Slug(), branch, branch), nil)
+}
+
+// contextsOf flattens the `checks` shape (context + optional app id) to its context names.
+func contextsOf(checks []struct {
+	Context string `json:"context"`
+}) []string {
+	out := make([]string, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, c.Context)
+	}
+	return out
+}
+
+// dedupContexts unions any number of context-name lists into a single de-duplicated,
+// whitespace-trimmed, order-preserving slice (empty entries dropped).
+func dedupContexts(lists ...[]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range lists {
+		for _, c := range list {
+			c = strings.TrimSpace(c)
+			if c == "" || seen[c] {
+				continue
+			}
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // IssueReactions is SINGLE PAGE by decision — the same reasoning HTTPRepoInfoFetcher's
@@ -767,6 +997,15 @@ func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 // listing has no field for that state at all, so this read is GraphQL by necessity rather
 // than by preference.
 //
+// The author selection carries `__typename` alongside `login` because a GraphQL Bot actor
+// reports the BARE slug as its login (`assay-worker-app`), NOT the `<slug>[bot]` REST
+// rendering every identity comparison in this house expects — `RoleAppLogin` returns
+// `<slug>[bot]`, and `SameActor` folds the two renderings ONLY when both carry the App
+// affix. Without the re-suffix below, a worker's own workpad comment never matched its own
+// identity, so `deskreply --workpad` never found a candidate and appended a second comment
+// every call (#747). This is the same fold `ghOpenChangesQuery`
+// already applies to a PR/review author.
+//
 // `first: 100` is the same bound the call site it replaces used, and the same stated
 // residual: a change with more than 100 comments is read as its first 100, never silently
 // re-ordered.
@@ -781,7 +1020,7 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
           isMinimized
           createdAt
           url
-          author { login }
+          author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
         }
       }
     }
@@ -808,7 +1047,9 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 							CreatedAt   string `json:"createdAt"`
 							URL         string `json:"url"`
 							Author      struct {
-								Login string `json:"login"`
+								Login      string `json:"login"`
+								Typename   string `json:"__typename"`
+								DatabaseID int64  `json:"databaseId"`
 							} `json:"author"`
 						} `json:"nodes"`
 					} `json:"comments"`
@@ -835,10 +1076,19 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 	nodes := out.Data.Repository.PullRequest.Comments.Nodes
 	res := make([]Comment, 0, len(nodes))
 	for _, n := range nodes {
+		// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to "<slug>[bot]"
+		// so an identity comparison (SameActor against RoleAppLogin's "<slug>[bot]") sees the
+		// same REST rendering it does elsewhere — without this the worker's own workpad comment
+		// never matches its own identity (#747). A null author (deleted
+		// account) stays "" — untrusted, fail closed. Same fold ghOpenChangesQuery applies.
+		login := n.Author.Login
+		if n.Author.Typename == "Bot" && login != "" {
+			login += "[bot]"
+		}
 		res = append(res, Comment{
 			ID:         n.ID,
 			DatabaseID: n.DatabaseID,
-			Author:     Account{Login: n.Author.Login},
+			Author:     Account{Login: login, ID: n.Author.DatabaseID},
 			Body:       n.Body,
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,
@@ -1131,6 +1381,21 @@ type ghSearchWire struct {
 	} `json:"items"`
 }
 
+// ghIssueSearchWire is the issue-dedupe search shape (SearchIssues): the /search/issues items
+// carrying the state, labels and html_url the dedupe scores and reports — the fields the
+// owner-wide change search (ghSearchWire) does not read.
+type ghIssueSearchWire struct {
+	Items []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		State  string `json:"state"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+		HTMLURL string `json:"html_url"`
+	} `json:"items"`
+}
+
 // SearchOpenChanges finds every open change under one owner via the search API
 // (`is:pr is:open user:<owner>`), the typed form of `gh search prs --owner`. The repo each row
 // belongs to is recovered from repository_url's trailing owner/name.
@@ -1313,6 +1578,27 @@ func (g *GitHubForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 	return g.doJSON(http.MethodPatch, path, body, nil)
 }
 
+// EditChange replaces a change's OWN title/body (`PATCH /repos/{o}/{r}/pulls/{n}`) — the change
+// description, not a comment. An empty field is not sent, so a body-only edit does not blank the
+// title (deskpr edit's case) and vice versa; asking to change NEITHER is a could-not-check
+// refusal rather than an empty PATCH.
+func (g *GitHubForge) EditChange(repo ForgeRepo, number int, in EditChangeInput) error {
+	body := map[string]any{}
+	if in.Title != "" {
+		body["title"] = in.Title
+	}
+	if in.Body != "" {
+		body["body"] = in.Body
+	}
+	if len(body) == 0 {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: EditChange was asked to change neither the title nor the body of %s#%d — "+
+				"nothing to write", repo.Slug(), number), nil)
+	}
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", repo.Owner, repo.Name, number)
+	return g.doJSON(http.MethodPatch, path, body, nil)
+}
+
 // DeleteRef deletes one git ref (the typed replacement for the `gh api -X DELETE
 // repos/<o>/<r>/git/refs/<ref>` passthrough fanoutloop used to release a dispatch claim).
 // The ref is validated by ValidateRefPath first, so the only thing this op can address is a
@@ -1329,6 +1615,32 @@ func (g *GitHubForge) DeleteRef(repo ForgeRepo, ref string) error {
 	}
 	path := fmt.Sprintf("/repos/%s/%s/git/refs/%s", repo.Owner, repo.Name, clean)
 	return g.doJSON(http.MethodDelete, path, nil, nil)
+}
+
+// RefExists reports whether one git ref is present, via the single-reference read
+// (`GET /repos/{o}/{r}/git/ref/{ref}` — SINGULAR `ref`, the exact endpoint that returns one
+// reference, distinct from the plural `git/refs/` DeleteRef targets). This is the logic that
+// was cmd/deskpost's hand-rolled `refExists`, moved onto the seam so a second forge implements
+// the ref-existence read rather than a second tool forking its own.
+//
+// The ref is validated by ValidateRefPath first, so the one path-shaped argument can only
+// address a ref inside the named repo — the arbitrary-endpoint bound DeleteRef carries. A 404
+// is the ANSWER "absent" (false, nil), not a failure — that is the whole point of the read;
+// every other non-2xx stays an error so a 403 from a token that cannot see refs can never be
+// mistaken for "the ref is gone".
+func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
+	clean, err := ValidateRefPath(ref)
+	if err != nil {
+		return false, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/ref/%s", repo.Owner, repo.Name, clean)
+	if err := g.doJSON(http.MethodGet, path, nil, nil); err != nil {
+		if IsForgeNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // --- File content (read / write on a branch) ---

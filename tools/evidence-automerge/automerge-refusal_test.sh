@@ -51,6 +51,10 @@ ERR_UNSTABLE='gh: Pull request is in unstable status (enablePullRequestAutoMerge
 ERR_DISABLED='gh: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)'
 ERR_ALREADY='gh: ["Pull request Auto merge is already enabled"] (enablePullRequestAutoMerge)'
 ERR_PERM='gh: Resource not accessible by integration (enablePullRequestAutoMerge)'
+# The refusal a just-flipped approved+green PR gets: it already satisfies every
+# merge requirement, so there is nothing for auto-merge to wait on. Sibling of
+# ERR_UNSTABLE on the same GraphQL surface, one mergeStateStatus over.
+ERR_CLEAN='gh: Pull request is in clean status (enablePullRequestAutoMerge)'
 OK_JSON='{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"number":568}}}}'
 
 # Rollups. `enable` is this workflow's own check run; the others are real legs.
@@ -111,6 +115,14 @@ run_case "C9 unstable with garbage rollup reds (could-not-check)" 1 1 "$ERR_UNST
 # ── C10: unstable, but statusCheckRollup is null → could-not-check → reds.
 #         A null rollup is not "no failing checks"; the question went unanswered.
 run_case "C10 unstable with null rollup reds (could-not-check)" 1 1 "$ERR_UNSTABLE" "$ROLLUP_NULL"
+
+# ── C11: the PR already satisfies every requirement (a just-flipped approved,
+#         green PR) → GitHub refuses with "clean status". THE FIFTH-CASE FIX for
+#         #586: benign skip, exit 0. The pre-fix impl reds here — the refusal
+#         publishes the very check that keeps the PR from self-clearing, exactly
+#         as the unstable case did. No rollup is consulted; the string alone
+#         decides. Run CHECK_IMPL=testdata/old-automerge-refusal.sh to see it red.
+run_case "C11 clean-status refusal skips" 0 1 "$ERR_CLEAN" ABSENT
 
 echo
 echo "passed: $pass  failed: $fail  (impl: $CHECK)"

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -148,38 +149,40 @@ func flip(o flipOpts) error {
 			"condition %s: PR #%d in %s is %s, not open — there is nothing to flip.",
 			condPROpenDraft, o.pr, repo, strings.ToLower(pr.State)))
 	}
-	// relabelOnly is the already-ready path: the flip itself is done, but the queue labels
-	// may still need reconciling.
+	// alreadyReady marks the already-out-of-draft path (#987). It is deliberately NOT a
+	// shortcut around the gate any more: every condition below still runs regardless of the
+	// queue label's state, and only the mutation decided at the very bottom differs from the
+	// still-draft path. relabelOnly is the narrower fact of whether that already-ready PR's
+	// queue label needs a WRITE.
 	//
-	// WHY THE LABEL WRITE IS GATED TOO (the fix, and the reasoning behind choosing it).
+	// WHY THE LABEL WRITE IS GATED, AND WHY "ALREADY READY" IS NO LONGER A FREE PASS (#987).
 	// Writing `approval-needed` is not bookkeeping — it is an ASSERTION to every human
 	// reading the queue that the review lane is finished with this PR and only a merge is
-	// outstanding. On a PR that is no longer a draft that assertion can be false: a human
-	// may have flipped it by hand, or it may have been pushed to since the flip and now
-	// carry a standing CHANGES_REQUESTED at its new head. Relabelling without re-gating
-	// would then tell the queue the PR is waiting on the human when it is really waiting on
-	// the reviewer — and a queue that misreports who is blocked is worse than one that says
-	// nothing, because nobody re-checks a PR that claims to be done.
-	//
-	// So the two cases are separated by whether a WRITE is actually required:
-	//
-	//   labels already correct  → pure no-op, exit 0, nothing read further, nothing written.
-	//                             This is the common re-run case, and it must stay cheap and
-	//                             non-failing: a loop re-running its Land step over a landed
-	//                             item must not report a failure.
-	//   labels need changing    → a write, so it runs the SAME gate as the flip path and
-	//                             skips only the ready mutation. On a failed condition it
-	//                             refuses by name and leaves the labels untouched.
+	// outstanding. On a PR that is no longer a draft that assertion can be false in TWO
+	// distinct ways: (1) a human may have flipped it by hand and it was since pushed to —
+	// the stale-label case this gate has always re-checked — or (2) the label already reads
+	// correctly while a LANE'S last-seen verdict sits behind the PR's actual head: a security
+	// pass pinned to an old commit, with a later, unrelated correctness re-review landing at
+	// a new head that the security lane never saw. The PREVIOUS fast path treated
+	// `isDraft == false && label correct` as proof the verdicts were current and returned
+	// "nothing to do" without reading a single review or check — which is exactly how a PR
+	// can sit ready-for-human-merge indefinitely while new, unreviewed content lands on it.
+	// So every already-ready PR, whatever its label state, now runs the SAME full re-gate a
+	// fresh flip runs — including the reviewer-approved and security-verdict lanes AT THE
+	// CURRENT HEAD — and only once every condition below has held does it fall through to
+	// "nothing to do" or "relabel" at the bottom of this function.
+	alreadyReady := !pr.IsDraft
 	relabelOnly := false
-	if !pr.IsDraft {
+	if alreadyReady {
 		if hasLabel(pr.Labels, labelAfterFlip) && !hasLabel(pr.Labels, labelBeforeFlip) {
-			o.say("%s: PR #%d is already ready-for-human and its queue label is correct — nothing to do",
-				condPROpenDraft, o.pr)
-			return nil
+			o.say("%s: PR #%d is already ready-for-human and its queue label is correct; re-gating every "+
+				"lane before reporting nothing to do — a correct label is not proof the verdicts are still "+
+				"current at this head", condPROpenDraft, o.pr)
+		} else {
+			relabelOnly = true
+			o.say("%s: PR #%d is already ready-for-human but its queue label is stale; re-gating before the "+
+				"label write", condPROpenDraft, o.pr)
 		}
-		relabelOnly = true
-		o.say("%s: PR #%d is already ready-for-human but its queue label is stale; re-gating before the "+
-			"label write", condPROpenDraft, o.pr)
 	}
 	head := strings.TrimSpace(pr.HeadRefOid)
 	if head == "" {
@@ -188,7 +191,7 @@ func flip(o flipOpts) error {
 				"vacuous at once — exactly when there is least reason to believe any of them.",
 			condPROpenDraft, o.pr), nil)
 	}
-	if relabelOnly {
+	if alreadyReady {
 		o.say("%s OK: open, already flipped, at %s", condPROpenDraft, short(head))
 	} else {
 		o.say("%s OK: open + draft at %s", condPROpenDraft, short(head))
@@ -209,7 +212,11 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
-	if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr); err != nil {
+	// One memoized reader serves BOTH calls to checkReviewerApproved — this one and the
+	// post-TOCTOU re-check at the same head — so the exemption's rollup read happens at most
+	// once per flip, and both calls decide on the same set of runs.
+	runsAtHead := checkRunsAtHeadReader(o, fg, fr, head)
+	if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
 		return err
 	}
 	o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
@@ -263,6 +270,29 @@ func flip(o flipOpts) error {
 		o.say("%s: no rollup at %s and %s requires no status checks on %q — nothing gates the merge on a check",
 			condChecksGreen, short(head), repo, pr.BaseRef)
 	case ciGreen:
+		// A GREEN rollup reports only on the checks that ACTUALLY REPORTED. A required verdict
+		// that never reported at all is not red or pending — it is ABSENT from the rollup
+		// entirely, so evalRollup, which reads only present entries, calls the rollup green with
+		// the missing gate simply not there. The leak-sweep disclosure gate is exactly this
+		// shape: its verdict is a commit status posted OUT OF BAND (a separate control-based
+		// sweep on its own schedule — leaksweep-pattern.yml, and the forge-neutral
+		// leak-gate-shape reference doc), so a head that never received it shows a green rollup and a gate
+		// that never ran. An absent required verdict is could-not-check, never "no objection":
+		// the flip cross-checks that every branch-protection-required context is PRESENT in the
+		// rollup and refuses when one is missing — the same three-state contract the empty-rollup
+		// arm above applies, extended to a rollup that is non-empty but incomplete.
+		required, rerr := readRequiredChecks(o, fg, fr, pr.BaseRef, head)
+		if rerr != nil {
+			return rerr
+		}
+		if missing := missingRequiredChecks(checks, required); len(missing) > 0 {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: the rollup at %s is green but %s requires %d status check(s) that did not "+
+					"report on this head at all (%s) — an absent required verdict is could-not-check, never a "+
+					"pass. The leak-sweep disclosure gate posts its verdict out of band, so a head missing it "+
+					"reads as green-with-the-gate-absent; absence is never 'no objection'.",
+				condChecksGreen, short(head), repo, len(missing), strings.Join(missing, ", ")), nil)
+		}
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
@@ -325,7 +355,7 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
-	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr); err != nil {
+	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr, runsAtHead); err != nil {
 		return err
 	}
 	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
@@ -339,15 +369,21 @@ func flip(o flipOpts) error {
 		return nil
 	}
 
-	// relabelOnly: the PR is already out of draft, so there is no ready mutation to make —
-	// only the queue label to reconcile, and the gate above is what earns the right to
-	// write it.
-	if relabelOnly {
-		if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
-			return err
+	// alreadyReady: the PR is already out of draft, so there is no ready mutation to make.
+	// Reaching here means every condition above — including the reviewer-approved and
+	// security-verdict lanes AT THE CURRENT HEAD — just held on a full re-gate (#987), so
+	// the only question left is whether the queue label needs reconciling.
+	if alreadyReady {
+		if relabelOnly {
+			if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
+				return err
+			}
+			fmt.Printf("deskflip: RELABELLED %s#%d — already ready-for-human at %s, queue label reconciled "+
+				"after a full re-gate.\n", repo, o.pr, short(head))
+			return nil
 		}
-		fmt.Printf("deskflip: RELABELLED %s#%d — already ready-for-human at %s, queue label reconciled "+
-			"after a full re-gate.\n", repo, o.pr, short(head))
+		fmt.Printf("deskflip: %s#%d is already ready-for-human at %s, its queue label is correct, and every "+
+			"lane's verdict is confirmed current at this head — nothing to do.\n", repo, o.pr, short(head))
 		return nil
 	}
 
@@ -426,9 +462,30 @@ func checkAppToken(o flipOpts, fr deskkit.ForgeRepo) (deskkit.Forge, deskkit.For
 			"condition %s: loop %s has no App role, so which identity this flip would be written under "+
 				"cannot be established.", condAppToken, flipRole), nil)
 	}
-	// The lookup runs HERE, before the resolver, so the refusal can name the role and the
-	// token PATH — which is what an operator needs and what a generic custody failure from
-	// inside the resolver would not carry.
+	// WHICH forge serves this repo is resolved BEFORE any credential is fetched, because the
+	// two forges keep custody in DIFFERENT places: a GitHub App installation token is MINTED
+	// (mintTokenFn, below), a GitLab PAT is a provisioned file the resolver READS. The pre-772
+	// code minted a GitHub App token here UNCONDITIONALLY, so a GitLab adopter's flip died with
+	// `no App ID for role "reviewer": set REVIEWER_APP_ID` — a GitHub credential error on a repo
+	// that authenticates with a PAT, sending the operator hunting apps.env (medici-finance/assay#772).
+	// A could-not-check resolution is NOT "it is GitLab": it falls through to the GitHub mint,
+	// keeping every repo whose forge this build cannot positively resolve byte-identical to before.
+	if fk, fkErr := deskkit.ForgeKindFor(fr); fkErr == nil && fk.Kind != deskkit.ForgeGitHub {
+		// A non-GitHub forge does not mint a GitHub App token. ResolveForge obtains the role's
+		// credential from THAT forge's own custody path (GitLab: the provisioned PAT file) and
+		// refuses — naming that file and the search path — when it is missing, so there is no
+		// ambient-credential fallback on this branch any more than on the GitHub one below.
+		fg, res, rerr := deskkit.ResolveForge(fr, role)
+		if rerr != nil {
+			return nil, deskkit.ForgeResolution{}, rerr
+		}
+		o.say("%s OK: writes authenticate as the %s App on %s (%s)",
+			condAppToken, role, res.Kind, res.Source)
+		return fg, res, nil
+	}
+	// GitHub (or a forge this build could not positively resolve). The mint runs HERE, before
+	// the resolver, so the refusal can name the role and the token PATH — which is what an
+	// operator needs and what a generic custody failure from inside the resolver would not carry.
 	_, path, err := mintTokenFn(role, fr.Slug())
 	if err != nil {
 		return nil, deskkit.ForgeResolution{}, deskkit.Refused(fmt.Sprintf(
@@ -561,18 +618,24 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //  3. STALE and NONE are reported as DIFFERENT refusals. "There is a verdict, just not at
 //     this code" and "nobody has reviewed this" call for different actions, and collapsing
 //     them sends the operator after the wrong one.
-func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, pr int) error {
+//
+// RULE 2 HAS EXACTLY ONE EXEMPTION, and it lives in this function rather than in a caller
+// so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see
+// checkOnlyCRCleared). runsAtHead supplies the check-run rollup at head that the exemption
+// needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that the
+// overwhelmingly common path — no standing CR at all — must not pay for. It is called at
+// most once, only when a standing CR has already DECLARED itself check-only.
+func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, pr int,
+	runsAtHead func() ([]deskkit.CheckRun, error)) error {
 	// Rule 2 first: a standing block at head is decisive whatever else is present.
 	for _, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
 			continue
 		}
 		if r.State == "CHANGES_REQUESTED" {
-			return deskkit.Refused(fmt.Sprintf(
-				"condition %s: a CHANGES_REQUESTED from %s stands at the current head %s. An APPROVED at an "+
-					"unchanged head cannot be a re-verification — there is nothing new to verify. Only a new "+
-					"commit clears this, or a human clearing the standing rejection directly on the PR.",
-				condReviewerApproved, reviewerLogin, short(head)))
+			if err := checkOnlyCRCleared(reviewerLogin, r, reviews, head, runsAtHead); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -597,16 +660,170 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 			"condition %s: the latest correctness verdict from %s at %s is CHANGES_REQUESTED — blocked.",
 			condReviewerApproved, reviewerLogin, short(head)))
 	case deskkit.AppVerdictStale:
+		// Both commits are named, unambiguously — #987's required shape for a stale-lane
+		// refusal: which lane, the commit its last verdict is pinned at, and the PR's actual
+		// current head.
+		staleAt := "an unknown commit"
+		if last, ok := deskkit.LastAppDecisiveReview(reviewerLogin, lane); ok && last.CommitID != "" {
+			staleAt = short(last.CommitID)
+		}
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: %s has a correctness verdict on PR #%d, but it was submitted at a DIFFERENT head — "+
-				"the PR advanced past it. A verdict that is not at this code is stale; re-review at %s.",
-			condReviewerApproved, reviewerLogin, pr, short(head)))
+			"condition %s: %s's latest correctness verdict on PR #%d is pinned at %s, but the PR's current "+
+				"head is %s — the PR advanced past the reviewed code. A verdict that is not at this code is "+
+				"stale; re-review at %s.",
+			condReviewerApproved, reviewerLogin, pr, staleAt, short(head), short(head)))
 	default:
 		return deskkit.Refused(fmt.Sprintf(
 			"condition %s: %s has posted no APPROVED/CHANGES_REQUESTED correctness verdict on PR #%d. A "+
 				"security verdict alone does not satisfy the correctness gate.",
 			condReviewerApproved, reviewerLogin, pr))
 	}
+}
+
+// standingCRRefusal is rule 2's refusal, in the wording it has always had. It is a function
+// rather than an inline literal because the exemption path below has to be able to emit it
+// UNCHANGED for the common case and APPENDED-TO for a claim that was made and failed, and
+// two copies of the sentence would drift.
+func standingCRRefusal(reviewerLogin, head, why string) error {
+	msg := fmt.Sprintf(
+		"condition %s: a CHANGES_REQUESTED from %s stands at the current head %s. An APPROVED at an "+
+			"unchanged head cannot be a re-verification — there is nothing new to verify. Only a new "+
+			"commit clears this, or a human clearing the standing rejection directly on the PR.",
+		condReviewerApproved, reviewerLogin, short(head))
+	if why != "" {
+		msg += " " + why
+	}
+	return deskkit.Refused(msg)
+}
+
+// checkOnlyCRCleared decides rule 2's ONE exemption for a single standing CHANGES_REQUESTED
+// at head: it returns nil when that CR has been legitimately cleared without a code push,
+// and the refusal otherwise.
+//
+// THE CASE. A CR whose only blocker was a required CHECK being red, where the check then
+// turned green at the SAME head with no code change — a human applying `changelog:skip`, a
+// re-run of a flaked job. Nothing in the diff moved, so rule 2's "only a new commit clears
+// this" had no path for it, and the alternatives were both bad: a no-op push, which games
+// the very head-move rule rule 2 exists to enforce, or a human dismissing the review by hand
+// on every such PR.
+//
+// THE FOUR CONDITIONS, all required. Each maps to one clause of the authorization, and each
+// is checked in the fail-closed direction — a fact that cannot be established is a refusal,
+// never a pass:
+//
+//	(a) the CR DECLARES itself check-only, naming the check, in the fixed
+//	    `Blocked-On-Check:` form. Prose is never read: see deskkit/checkonlycr.go for why
+//	    inferring "names no other finding" from English is how the hole reopens.
+//	(b) an APPROVE from the same reviewer CITES a specific check-RUN id, and that run
+//	    COMPLETED SUCCESSFULLY at a time AFTER the CR was submitted. "After" is what makes
+//	    the re-approve a statement about a changed fact rather than a restatement of one the
+//	    reviewer already had in front of them when they blocked.
+//	(c) the run is at the SAME head as both reviews. This one is structural rather than
+//	    compared: runsAtHead reads the rollup AT head, and both the CR and the APPROVE are
+//	    filtered to CommitID == head before they get here, so a run on another head is
+//	    simply not in the set and the citation finds nothing.
+//	(d) the run is the check the CR NAMED. Not in the authorization's letter, and added
+//	    deliberately: without it a reviewer could clear a CR blocked on `changelog` by citing
+//	    any other green run on the head. It only ever NARROWS the grant, which is the one
+//	    direction this exemption may be adjusted in.
+//
+// WHAT IS NOT EXEMPTED. Clearing rule 2 is not an approval. The reduction below (rule 1 +
+// ReduceAppVerdict) still has to find an APPROVED as the governing verdict at head, so a
+// check-only CR followed by a citing APPROVE followed by a second CR still refuses — the
+// exemption removes a block, it does not manufacture a verdict.
+func checkOnlyCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo, head string,
+	runsAtHead func() ([]deskkit.CheckRun, error)) error {
+	// (a) No declaration, no exemption — and no diagnosis either. This is the ordinary CR
+	// with real findings, so the refusal is rule 2's, verbatim and unadorned.
+	check := deskkit.BlockedOnCheckName(cr.Body)
+	if check == "" {
+		return standingCRRefusal(reviewerLogin, head, "")
+	}
+	// From here the reviewer HAS claimed the exemption, so every refusal says which
+	// condition the claim failed on. A claim that fails silently is a claim the reviewer
+	// will make again the same way.
+	crAt, err := time.Parse(time.RFC3339, strings.TrimSpace(cr.SubmittedAt))
+	if err != nil {
+		return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+			"The CR declares `Blocked-On-Check: %s`, but its own submission time %q is not readable as "+
+				"RFC3339 — the exemption turns on the check having gone green AFTER the CR, and an "+
+				"unreadable CR timestamp makes that unanswerable.", check, cr.SubmittedAt))
+	}
+
+	// (b) Gather the citing APPROVEs: same reviewer, same head, submitted after the CR,
+	// correctness lane only, each carrying a run id. A security-marked body is excluded for
+	// rule 1's reason — a security artifact must never act in the correctness lane, and
+	// clearing a correctness block is acting in it.
+	cited := map[string]bool{}
+	for _, r := range reviews {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+			continue
+		}
+		if r.State != "APPROVED" || hasSecurityMarker(r.Body) {
+			continue
+		}
+		at, perr := time.Parse(time.RFC3339, strings.TrimSpace(r.SubmittedAt))
+		if perr != nil || !at.After(crAt) {
+			continue
+		}
+		if id := deskkit.ClearedCheckRunID(r.Body); id != "" {
+			cited[id] = true
+		}
+	}
+	if len(cited) == 0 {
+		return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+			"The CR declares `Blocked-On-Check: %s`, but no APPROVED from %s at this head, submitted after "+
+				"the CR, cites a `Cleared-Check-Run: <id>`. The exemption requires the re-approve to name the "+
+				"specific run that turned green; a re-approve that names none is the unchanged-head "+
+				"re-approval rule 2 refuses.", check, reviewerLogin))
+	}
+
+	// The forge read happens HERE and only here — after a declaration and a citation both
+	// exist. An unreadable rollup is could-not-check, and could-not-check never clears a
+	// standing block.
+	runs, err := runsAtHead()
+	if err != nil {
+		return err
+	}
+
+	// (c) + (d) + the green-and-later test. runs is the rollup AT head, so membership is
+	// condition (c).
+	for _, run := range runs {
+		if run.ID == "" || !cited[run.ID] {
+			continue
+		}
+		if !strings.EqualFold(run.Name, check) {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The CR declares `Blocked-On-Check: %s` but the cited run %s is %q — a run other than the one "+
+					"the CR named clears nothing about the CR's stated blocker.", check, run.ID, run.Name))
+		}
+		if !checkRunGreen(run) {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The cited run %s (%s) is status=%q conclusion=%q — the exemption turns on the check having "+
+					"turned GREEN, and a run that has not completed green has not. Green here is the SAME set "+
+					"the checks-green condition uses (success/neutral/skipped), so a check a human's skip label "+
+					"turned green counts, and the two conditions cannot disagree about one run.",
+				run.ID, run.Name, run.Status, run.Conclusion))
+		}
+		doneAt, perr := time.Parse(time.RFC3339, strings.TrimSpace(run.CompletedAt))
+		if perr != nil {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The cited run %s (%s) reports completion time %q, which is not readable as RFC3339 — whether "+
+					"it went green after the CR cannot be established, and could-not-check is never cleared.",
+				run.ID, run.Name, run.CompletedAt))
+		}
+		if !doneAt.After(crAt) {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The cited run %s (%s) completed at %s, which is NOT after the CR at %s — the reviewer already "+
+					"had that result in front of them when they blocked, so citing it re-verifies nothing.",
+				run.ID, run.Name, run.CompletedAt, cr.SubmittedAt))
+		}
+		return nil // exempt: (a) declared, (b) cited + later + green, (c) at head, (d) the named check
+	}
+	return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+		"The CR declares `Blocked-On-Check: %s` and an APPROVED cites a cleared run, but no run with that id "+
+			"is in the check rollup at %s. A run the head does not carry is not evidence about this head.",
+		check, short(head)))
 }
 
 // checkSecurityVerdict runs the security lane.
@@ -706,12 +923,44 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		return nil
 	}
 	if verdict != secPass {
+		// Name BOTH commits when there IS a prior verdict to point at — #987's required shape:
+		// which lane is stale, the commit its last verdict is pinned at, and the PR's current
+		// head. A PR that has never carried a security-marked review at all still gets the
+		// plain absence message, since there is no stale commit to name.
+		detail := fmt.Sprintf("no App review at head %s carries a `Security-Review: pass` line", short(head))
+		if last, ok := lastSecurityVerdictCommit(reviews, reviewerLogin, head); ok && last != head {
+			detail = fmt.Sprintf(
+				"the last `Security-Review` verdict from %s is pinned at %s, which is behind the PR's "+
+					"current head %s — the PR advanced past the reviewed code and nobody re-ran the security "+
+					"lane there", reviewerLogin, short(last), short(head))
+		}
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: this is a RISK-CLASSED PR (%s) and no App review at head %s carries a "+
-				"`Security-Review: pass` line. Absence is never a pass — run the security review at this head "+
-				"before the flip.", condSecurityVerdict, reason, short(head)))
+			"condition %s: this is a RISK-CLASSED PR (%s) and %s. Absence is never a pass — run the security "+
+				"review at the current head %s before the flip.", condSecurityVerdict, reason, detail, short(head)))
 	}
 	return nil
+}
+
+// lastSecurityVerdictCommit returns the commit to name in a stale-verdict refusal. It shares
+// reduceSecurityVerdict with securityVerdictStanding, so the two can never disagree about
+// which review is decisive: when the reduction reached a verdict (secFail or secPass — a fail
+// at any commit, or a pass pinned at the current head), the commit returned is THAT decisive
+// review's commit — never a later, non-decisive review's. Only when the reduction never
+// became decisive at all (secNone: no fail was ever posted, and no pass ever landed at head)
+// does it fall back to the last review carrying either marker, purely so a stale-verdict
+// message still has SOME commit to point at ("the only verdict anyone posted is stale").
+//
+// Before this shared reduction, this function separately tracked "the last review carrying
+// EITHER marker" with no head filter on the pass case, so a LATER off-head pass could
+// silently overwrite the commit a standing fail had already set — reporting a plain staleness
+// framing ("pinned at B, behind head") when the real reason to refuse was a retraction pinned
+// at an earlier commit A that securityVerdictStanding was actually keying off of (#988).
+func lastSecurityVerdictCommit(reviews []reviewInfo, reviewerLogin, head string) (string, bool) {
+	red := reduceSecurityVerdict(reviews, reviewerLogin, head)
+	if red.verdict != secNone {
+		return red.commit, true
+	}
+	return red.lastMarked, red.lastMarkedFound
 }
 
 // secVerdict is the security lane's reduction.
@@ -776,8 +1025,48 @@ func hasSecurityMarker(body string) bool {
 // Returning the verdict rather than a bool keeps "nobody spoke" and "the verdict is fail"
 // distinguishable — collapsing both to false is what made an explicit retraction
 // indistinguishable from silence.
+//
+// This is a thin wrapper over reduceSecurityVerdict, the single walk shared with
+// lastSecurityVerdictCommit — see that function's doc for why the verdict and its diagnostic
+// commit are computed together rather than by two independently-maintained loops.
 func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) secVerdict {
-	out := secNone
+	return reduceSecurityVerdict(reviews, reviewerLogin, head).verdict
+}
+
+// securityVerdictReduction is one reduction's result: the governing verdict and the commit
+// the DECISIVE review — the one that produced that verdict — was pinned at, plus a weaker
+// fallback commit for when no review was decisive at all (see lastMarked below).
+type securityVerdictReduction struct {
+	verdict secVerdict
+	// commit is the decisive review's commit — set on exactly the same case that moves
+	// verdict away from secNone (a fail, unconditionally; a pass, only at head) — so it is
+	// meaningful only when verdict != secNone.
+	commit string
+	// lastMarked/lastMarkedFound track the commit of the LAST review carrying either marker
+	// at all, decisive or not — the one fallback case this reduction still needs: a history
+	// with an off-head pass and NO fail ever posted has no decisive review (verdict stays
+	// secNone, since an off-head pass never governs), yet a stale-verdict refusal still needs
+	// a commit to name for "the only verdict anyone posted, and it's stale." That off-head
+	// pass never governs anything, so it must never be allowed to eclipse a standing fail's
+	// commit (#988) — which is exactly why it is tracked separately from `commit` rather than
+	// folded into the same field.
+	lastMarked      string
+	lastMarkedFound bool
+}
+
+// reduceSecurityVerdict is the ONE walk over a reviewer App's security-marked reviews that
+// both securityVerdictStanding and lastSecurityVerdictCommit read from. Splitting the verdict
+// and its diagnostic commit into two separately-maintained loops is exactly what let them
+// diverge (#988): a loop tracking "the last review carrying either marker" with no head
+// filter on the pass case let a later off-head pass overwrite a commit that a standing fail
+// had set, even though the fail — not that pass — is what governs. Folding both into one
+// switch, updating `commit` on the SAME case that moves `verdict`, makes that divergence
+// unrepresentable: whichever branch decides the verdict is the only branch allowed to move the
+// decisive commit. `lastMarked` is tracked alongside, unconditionally, purely as a fallback
+// for callers that still want SOME commit to point at when the reduction never became
+// decisive (secNone) — it never feeds `verdict` or the decisive `commit`.
+func reduceSecurityVerdict(reviews []reviewInfo, reviewerLogin, head string) securityVerdictReduction {
+	out := securityVerdictReduction{verdict: secNone}
 	for _, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
 			continue
@@ -786,14 +1075,20 @@ func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) s
 		case deskkit.HasSecurityReviewFail(r.Body):
 			// A fail STANDS whatever commit it names: a head move that did not touch the
 			// reviewed code cannot clear a retraction. Every reason to doubt a fail is a
-			// reason to keep blocking.
-			out = secFail
+			// reason to keep blocking — and the commit it names is the one worth reporting.
+			out.verdict = secFail
+			out.commit = r.CommitID
+			out.lastMarked, out.lastMarkedFound = r.CommitID, true
 		case deskkit.HasSecurityReviewPass(r.Body):
 			// A pass GRANTS only at the current head; an empty head is not a commit, and a
-			// pass at an earlier head neither grants nor clears a standing fail.
+			// pass at an earlier head neither grants nor clears a standing fail — so it must
+			// not overwrite the DECISIVE commit either. It still updates the fallback: an
+			// off-head pass is real diagnostic evidence when nothing else ever governed.
 			if head != "" && r.CommitID == head {
-				out = secPass
+				out.verdict = secPass
+				out.commit = r.CommitID
 			}
+			out.lastMarked, out.lastMarkedFound = r.CommitID, true
 		}
 	}
 	return out
@@ -932,6 +1227,11 @@ type labelInfo struct {
 // The forge serves all of them in `statusCheckRollup` already — the fields were simply not
 // decoded before — so reducing by them costs no extra read.
 type rollupEntry struct {
+	// ID is the forge's per-EXECUTION run id, carried through from deskkit.CheckRun. The
+	// checks-green reduction does not use it — that reduction keys on NAME, which is what
+	// branch protection keys on — but it is part of what a rollup entry IS, and dropping it
+	// here would make this the one view of a run that cannot answer "which run was that".
+	ID          string
 	Name        string
 	Context     string
 	Status      string
@@ -1079,6 +1379,7 @@ func readChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string)
 	}
 	for _, c := range checks.CheckRuns {
 		out = append(out, rollupEntry{
+			ID:   c.ID,
 			Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 			StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 		})
@@ -1112,6 +1413,52 @@ func readRequiredChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, base
 			condChecksGreen, base, firstLine(err.Error())), err)
 	}
 	return required, nil
+}
+
+// checkRunsAtHeadReader returns a MEMOIZED reader of the check-RUN rollup at head, for
+// checkReviewerApproved's check-only-CR exemption.
+//
+// It is separate from readChecks, and deliberately: the two reads answer to different
+// CONDITIONS, and a refusal has to name the condition it belongs to or it sends the operator
+// to the wrong gate. readChecks failing is condChecksGreen going could-not-check; this one
+// failing is condReviewerApproved going could-not-check, on a PR whose checks may be green.
+//
+// Memoized because checkReviewerApproved runs TWICE — once in the main pass and once in the
+// post-TOCTOU re-check at the same head — and the second call must not buy a second round
+// trip to learn the same fact. The error is cached with the value for the same reason: a
+// read that failed once is could-not-check for this flip, not something to retry into.
+func checkRunsAtHeadReader(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) func() ([]deskkit.CheckRun, error) {
+	var (
+		done bool
+		runs []deskkit.CheckRun
+		err  error
+	)
+	return func() ([]deskkit.CheckRun, error) {
+		if done {
+			return runs, err
+		}
+		done = true
+		var checks *deskkit.ChecksAtHead
+		checks, err = fg.ChecksAtHead(fr, head)
+		if err != nil {
+			err = deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: a standing CHANGES_REQUESTED at %s claims the check-only exemption, but the "+
+					"check rollup at that head could not be read (%s) — the claim rests on a run having gone "+
+					"green, and a rollup that could not be read establishes no such thing.",
+				condReviewerApproved, short(head), firstLine(err.Error())), err)
+			return nil, err
+		}
+		if checks.CheckRunsTotalCount > len(checks.CheckRuns) {
+			err = deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: read %d/%d check runs at %s — the forge asserts more than it served, so the "+
+					"cited run may simply be in the part that was not read. A short rollup cannot clear a "+
+					"standing rejection.",
+				condReviewerApproved, len(checks.CheckRuns), checks.CheckRunsTotalCount, short(head)), nil)
+			return nil, err
+		}
+		runs = checks.CheckRuns
+		return runs, nil
+	}
 }
 
 func readReviews(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]reviewInfo, error) {
@@ -1186,6 +1533,33 @@ const (
 // evalRollup reduces the rollup to one state. NOT-COMPLETED and UNRECOGNISED both fall to
 // pending rather than to green: a conclusion this reader does not know is a conclusion it
 // has not verified, and the only safe reading of an unverified check is "not yet green".
+// conclusionGreen is the ONE accepted set of green check-run conclusions, shared by the
+// checks-green reduction (evalRollup) and by the check-only-CR exemption's test of the run a
+// reviewer cited.
+//
+// SHARED ON PURPOSE, and the exemption is why. NEUTRAL and SKIPPED are green here because
+// GitHub reports them for a check that deliberately did not need to do work — and that is
+// precisely the shape the exemption exists to serve: a required `changelog` check that a
+// human's `changelog:skip` label turns green reports SKIPPED, not SUCCESS. An exemption that
+// insisted on a literal SUCCESS would have refused the exact case it was authorized for,
+// while checks-green called the same run green — two readers disagreeing about the same
+// fact, which is the defect class #408 closed for verdict markers.
+func conclusionGreen(conclusion string) bool {
+	switch strings.ToUpper(strings.TrimSpace(conclusion)) {
+	case "SUCCESS", "NEUTRAL", "SKIPPED":
+		return true
+	}
+	return false
+}
+
+// checkRunGreen reports whether one check RUN has finished and finished green. A run that has
+// not COMPLETED is not green whatever else it carries — "still running" is could-not-check,
+// and the exemption never reads could-not-check as cleared.
+func checkRunGreen(run deskkit.CheckRun) bool {
+	return strings.EqualFold(strings.TrimSpace(run.Status), "COMPLETED") &&
+		conclusionGreen(run.Conclusion)
+}
+
 func evalRollup(entries []rollupEntry) ciState {
 	if len(entries) == 0 {
 		return ciEmpty
@@ -1194,9 +1568,7 @@ func evalRollup(entries []rollupEntry) ciState {
 	for _, e := range entries {
 		switch {
 		case e.Conclusion != "":
-			switch strings.ToUpper(e.Conclusion) {
-			case "SUCCESS", "NEUTRAL", "SKIPPED":
-			default:
+			if !conclusionGreen(e.Conclusion) {
 				return ciFail
 			}
 		case e.State != "":
@@ -1219,6 +1591,28 @@ func evalRollup(entries []rollupEntry) ciState {
 		return ciPending
 	}
 	return ciGreen
+}
+
+// missingRequiredChecks returns the branch-protection required contexts that are ABSENT from
+// the reduced rollup — required verdicts that never reported on this head. A required context
+// matches a rollup entry by label (a check run's Name or a status context's Context), the same
+// name branch protection keys "latest run per context" on. The comparison is
+// case-insensitive: forge status contexts and required-context strings are compared without
+// regard to case, and the trim guards a stray-whitespace mismatch. An empty required set (the
+// common no-protection case) returns nothing missing, so this changes the green-path verdict
+// only where the forge actually enforces a required check that did not report.
+func missingRequiredChecks(present []rollupEntry, required []string) []string {
+	have := make(map[string]bool, len(present))
+	for _, e := range present {
+		have[strings.ToLower(strings.TrimSpace(e.label()))] = true
+	}
+	var missing []string
+	for _, r := range required {
+		if key := strings.ToLower(strings.TrimSpace(r)); key != "" && !have[key] {
+			missing = append(missing, r)
+		}
+	}
+	return missing
 }
 
 func failedChecks(entries []rollupEntry) []string {

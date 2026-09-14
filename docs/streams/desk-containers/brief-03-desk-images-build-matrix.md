@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/03
+brief: assay:assay:desk-containers:03
 title: per-desk images (named by desk) + build matrix + publish wiring
 wave: 2
 depends: ["desk-containers/01", "desk-containers/02"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#63 — the request (each desk installed separately; call each one by their desk name; versioned)"
@@ -26,6 +26,8 @@ consumers:
   - "containers/desk-run.sh (image references): follow-up desk-containers/04"
   - "containers/compose.yaml (image references): follow-up desk-containers/05"
   - "containers/k8s/ (image references): follow-up desk-containers/06"
+version: 1
+id: 7ca03faf-2880-425a-b676-a907c164da2b
 ---
 
 # Brief 03 — per-desk images + build matrix + publish wiring

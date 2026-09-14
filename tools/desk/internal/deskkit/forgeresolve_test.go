@@ -340,6 +340,106 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 	}
 }
 
+// --- #727: an empty host never defaults to the SaaS instance -------------------------
+
+// A roster entry names the forge SOFTWARE, not the INSTANCE. When ForgeKindFromSlugAndHost is
+// given no origin host, it must NOT fill the host from the canonical SaaS instance — doing so
+// silently pointed a self-hosted GitLab adopter's credential at gitlab.com and swallowed the
+// auth failure (#727). An empty host is could-not-check (Unverifiable), naming the repo.
+func TestForgeKindFromSlugAndHostEmptyHostRefusesSaaSDefault(t *testing.T) {
+	repo := ForgeRepo{Owner: "group", Name: "repo"}
+	roster := goldenRoster()
+	roster[EnvRepoForges] = repo.Slug() + "=gitlab"
+	withRoster(t, roster)
+
+	kind, host, err := ForgeKindFromSlugAndHost(repo.Slug(), "")
+	if err == nil {
+		t.Fatalf("empty host silently resolved to kind=%q host=%q — a roster entry is not an instance", kind, host)
+	}
+	if strings.Contains(strings.ToLower(host), "gitlab.com") {
+		t.Fatalf("empty host defaulted to the SaaS host %q (the #727 defect)", host)
+	}
+	if got := ExitCodeOf(err); got != ExitUnverifiable {
+		t.Fatalf("exit = %d, want %d (unverifiable) — an unknown instance is could-not-check", got, ExitUnverifiable)
+	}
+	if !strings.Contains(err.Error(), repo.Slug()) {
+		t.Errorf("refusal does not name the repo, so an operator cannot act on it: %v", err)
+	}
+
+	// The same repo WITH its real self-hosted host supplied resolves unchanged — the fix
+	// refuses the GUESS, never a host the caller actually read.
+	k2, h2, err2 := ForgeKindFromSlugAndHost(repo.Slug(), "gitlab.selfhosted.example")
+	if err2 != nil {
+		t.Fatalf("an explicit self-hosted host must resolve, got %v", err2)
+	}
+	if k2 != ForgeGitLab || h2 != "gitlab.selfhosted.example" {
+		t.Fatalf("explicit-host resolve = (%q, %q), want (gitlab, gitlab.selfhosted.example)", k2, h2)
+	}
+}
+
+// --- #773: ForgeKindForRepoRemote resolves the kind from a caller-supplied remote --------
+
+// ForgeKindForRepoRemote answers WHICH FORGE serves a repo from a caller-supplied origin URL,
+// for a caller that has the target checkout somewhere other than its CWD (deskdispatch resolves
+// the forge of the repo its --root names, to pick the review head-fetch refspec — #773). Unlike
+// ForgeKindFromSlugAndHost it carries NO instance-host requirement: "which forge?" is all the
+// refspec choice needs, so a roster-configured repo resolves even with no readable remote.
+func TestForgeKindForRepoRemoteResolvesFromRosterAndHost(t *testing.T) {
+	repo := ForgeRepo{Owner: "medici-finance", Name: "assay"}
+
+	// Roster silent → the origin host decides. github.com → github, gitlab.com → gitlab.
+	withRoster(t, goldenRoster())
+	for _, tc := range []struct {
+		origin string
+		want   ForgeKind
+	}{
+		{"git@github.com:medici-finance/assay.git", ForgeGitHub},
+		{"https://github.com/medici-finance/assay.git", ForgeGitHub},
+		{"git@gitlab.com:medici-finance/assay.git", ForgeGitLab},
+		{"https://gitlab.com/medici-finance/assay.git", ForgeGitLab},
+	} {
+		res, err := ForgeKindForRepoRemote(repo, tc.origin)
+		if err != nil {
+			t.Fatalf("origin %q: unexpected error %v", tc.origin, err)
+		}
+		if res.Kind != tc.want {
+			t.Errorf("origin %q resolved kind=%q, want %q", tc.origin, res.Kind, tc.want)
+		}
+	}
+
+	// Roster entry answers even with NO readable remote — no instance-host requirement.
+	roster := goldenRoster()
+	roster[EnvRepoForges] = repo.Slug() + "=gitlab"
+	withRoster(t, roster)
+	res, err := ForgeKindForRepoRemote(repo, "")
+	if err != nil {
+		t.Fatalf("a roster-configured repo must resolve with an empty remote, got %v", err)
+	}
+	if res.Kind != ForgeGitLab {
+		t.Errorf("roster-configured kind = %q, want gitlab", res.Kind)
+	}
+}
+
+// With no roster entry AND no mappable origin host, ForgeKindForRepoRemote is could-not-check
+// (Unverifiable) naming the repo — never a guessed default. This is what makes deskdispatch's
+// review dispatch REFUSE rather than emit a coordinate the reviewer cannot check out.
+func TestForgeKindForRepoRemoteUnresolvableIsCouldNotCheck(t *testing.T) {
+	withRoster(t, goldenRoster())
+	repo := ForgeRepo{Owner: "example-org", Name: "unconfigured-repo"}
+	for _, origin := range []string{"", "git@example.selfhosted.test:example-org/unconfigured-repo.git"} {
+		res, err := ForgeKindForRepoRemote(repo, origin)
+		if err == nil {
+			t.Fatalf("origin %q silently resolved to %q — an unmappable forge is could-not-check", origin, res.Kind)
+		}
+		if got := ExitCodeOf(err); got != ExitUnverifiable {
+			t.Fatalf("origin %q exit = %d, want %d (unverifiable)", origin, got, ExitUnverifiable)
+		}
+		if !strings.Contains(err.Error(), repo.Slug()) {
+			t.Errorf("origin %q refusal does not name the repo: %v", origin, err)
+		}
+	}
+}
+
 // --- roster key registration --------------------------------------------------------------
 
 func TestRosterKnownKeySet(t *testing.T) {
@@ -360,9 +460,16 @@ func TestRosterKnownKeySet(t *testing.T) {
 	}
 }
 
+// TestRepoForgesRejectsBareBasenameAndBadForge — ASSAY_REPO_FORGES is an EXTENSION
+// key: a malformed or ambiguous entry no longer refuses the whole roster (the
+// TRUST/EXTENSION split this brief adds). It is recorded on cfg.Ext as ExtInvalid
+// instead, cfg.RepoForges resets to empty (ForgeFor's remote-host fallback, or its
+// own Unverifiable refusal, is exactly the "unset" behaviour — never a silent
+// widening of which forge a write targets), and only a component that requires
+// assay.roster.ext.repo-forges goes INACTIVE.
 func TestRepoForgesRejectsBareBasenameAndBadForge(t *testing.T) {
 	cases := []string{
-		"tracker=github",          // bare basename, unlike ASSAY_REPO_ALIASES this must refuse
+		"tracker=github",          // bare basename, unlike ASSAY_REPO_ALIASES this must reject
 		"example-org/tracker=svn", // unrecognised forge
 		"example-org/tracker",     // no '='
 		"example-org/tracker=",    // empty forge
@@ -385,8 +492,15 @@ func TestRepoForgesRejectsBareBasenameAndBadForge(t *testing.T) {
 		t.Setenv("HOME", home)
 		ReloadConfig()
 		cfg := EffectiveConfig()
-		if cfg.Configured() {
-			t.Errorf("entry %q was accepted — want the whole roster refused", entry)
+		if !cfg.Configured() {
+			t.Errorf("entry %q refused the WHOLE roster — an extension key's bad value must "+
+				"deactivate only its dependents", entry)
+		}
+		if len(cfg.RepoForges) != 0 {
+			t.Errorf("entry %q: cfg.RepoForges still carries entries: %v", entry, cfg.RepoForges)
+		}
+		if ext := cfg.Ext["repo-forges"]; ext.Status != ExtInvalid {
+			t.Errorf("entry %q: cfg.Ext[%q].Status = %q, want %q", entry, "repo-forges", ext.Status, ExtInvalid)
 		}
 	}
 	ReloadConfig()

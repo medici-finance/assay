@@ -81,6 +81,14 @@ func (o verdictLabelOutcome) String() string {
 // path forge-neutral: nothing below constructs a label endpoint, and a forge whose label
 // mapping does not fit refuses by name inside the backend rather than being approximated
 // here.
+// verdictLabels is ghClient's postBackend hook for the advisory verdict-time labels — the
+// GitHub backend computes them from its own files/contents reads (applyVerdictLabels), while a
+// non-GitHub backend records a could-not-check note instead (forgeBackend.verdictLabels). The
+// free function keeps its concrete-typed signature so its unit tests exercise it directly.
+func (c *ghClient) verdictLabels(pr, reportedFiles int) (verdictLabelOutcome, error) {
+	return applyVerdictLabels(c, pr, reportedFiles)
+}
+
 func applyVerdictLabels(c *ghClient, pr, reportedFiles int) (verdictLabelOutcome, error) {
 	var out verdictLabelOutcome
 

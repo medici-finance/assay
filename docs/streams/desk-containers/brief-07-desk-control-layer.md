@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/07
+brief: assay:assay:desk-containers:07
 title: multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config
 wave: 4
 depends: ["desk-containers/04"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [64]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#64 — the request (tmux and equivalents as a cheap way to control all the desks; win32 as well as mac; the aim is to fire up the docker/k8s pods)"
@@ -19,6 +19,8 @@ why: >-
   Five desks means five terminals to start, find, and re-attach by hand. One
   multiplexer session naming a pane per desk turns "fire up the fleet" into a single
   command and gives one place to see every desk — cheaply, on macOS and Windows alike.
+version: 1
+id: cbf80c98-0c5e-4309-836b-89bced9ffae5
 ---
 
 # Brief 07 — multi-desk control layer

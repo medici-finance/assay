@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/20
+brief: assay:assay:desk-tools:20
 title: "Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is"
 why: >-
   A triage or verify session that cites another repo's current state from a local sibling
@@ -19,7 +19,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-06 by a worker session, from a cross-repo triage incident
 sources:
   - "freshness-checked 2026-09-06 @ 2bc925a (origin/main) — `plugins/assay/skills/intake-desk/SKILL.md` §Shared desk rules has a `Refresh, don't remember` bullet about GitHub issue state but no rule at all about cross-repo/sibling-checkout state; `plugins/assay/skills/verify-desk/SKILL.md` §The loop has a `Sibling repos are in scope` clause that says to `Resync the sibling` before reading it but does not define resync as more than an attempted `git fetch` (no confirmation step), so a silent fetch failure passes unnoticed."
@@ -27,6 +27,8 @@ sources:
 exec-tier: any
 exec-tier-why: "(a) a bounded prose amendment to two already-published skill bodies, verified by
   grep-count and skillslint rather than by writing or changing any code."
+version: 1
+id: bcc85501-6c3b-49ed-84ee-8ee54cb8eaec
 ---
 
 # Brief 20 — Cross-repo evidence binds to the remote, not a bare sibling checkout

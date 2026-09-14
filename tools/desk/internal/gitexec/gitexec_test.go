@@ -22,6 +22,27 @@ func TestAllowlistRefusesUnknownToolVerb(t *testing.T) {
 	}
 }
 
+// TestDeskmergeAllowlistNarrowedToTrialMergeFamily is brief 07's own
+// golden: the verbs that migrated to gitcore in this brief must be OFF the allowlist,
+// and the trial-merge family (plus the still-pending transport verbs briefs 05/06 own)
+// must stay on it.
+func TestDeskmergeAllowlistNarrowedToTrialMergeFamily(t *testing.T) {
+	stayed := []string{"merge", "diff", "add", "worktree", "fetch", "push"}
+	for _, v := range stayed {
+		if !Allowed("deskmerge", v) {
+			t.Fatalf("deskmerge:%s must stay allowlisted (trial-merge family, or a "+
+				"transport verb not yet migrated)", v)
+		}
+	}
+	migrated := []string{"rev-parse", "rev-list", "merge-base", "remote", "commit", "update-ref"}
+	for _, v := range migrated {
+		if Allowed("deskmerge", v) {
+			t.Fatalf("deskmerge:%s migrated to gitcore in brief 07 — must no "+
+				"longer be allowlisted", v)
+		}
+	}
+}
+
 func TestScrubbedEnvDropsGitVars(t *testing.T) {
 	parent := []string{
 		"PATH=/bin", "HOME=/tmp", "TERM=xterm",
@@ -70,7 +91,10 @@ func TestRunExecutesAllowlistedVerbInFixture(t *testing.T) {
 	if _, err := Run("deskmerge", dir, "add", "f.txt"); err != nil {
 		t.Fatalf("fixture add: %v", err)
 	}
-	if _, err := Run("deskmerge", dir, "commit", "-q", "-m", "seed"); err != nil {
+	// "commit" migrated off deskmerge's allowlist entry to gitcore in
+	// brief 07 — deskadvisory still has it (its own commit verb is a later
+	// brief), so the fixture borrows that tool name for this one call.
+	if _, err := Run("deskadvisory", dir, "commit", "-q", "-m", "seed"); err != nil {
 		t.Fatalf("fixture commit: %v", err)
 	}
 	out, err := Run("deskgit", dir, "rev-parse", "HEAD")

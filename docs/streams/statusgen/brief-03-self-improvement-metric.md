@@ -1,5 +1,5 @@
 ---
-brief: statusgen/03
+brief: assay:assay:statusgen:03
 title: 'Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched'
 wave: 2
 depends: ["statusgen/02"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 sources:
   - "A maintainer directive (2026-07-16): capture the self-improvement metric — where the loops filed an issue about something they were seeing/experiencing and it got resolved vs one a human touched"
@@ -21,6 +21,8 @@ why: >-
   had to raise, direct, decide, or fix. That ratio (the autonomy / self-healing rate) is the single
   clearest measure of whether the machine is getting better at fixing itself, and whether that rate is
   rising over time.
+version: 1
+id: 8b86c40d-4687-4c5c-b80a-69d4fc4000e4
 ---
 
 # Brief 03 — Self-improvement metric (self-healed vs human-touched)
@@ -79,7 +81,7 @@ facts:
 | 1 | `statusgen --root . --issues --self-improvement` | exit 0; prints self-healed vs human-touched counts + rate |
 | 2 | `statusgen --root . --issues --self-improvement \| grep -iE -e 'self-healed' -e 'human-touched' -e 'merge.*not.*touch'` | ≥1 — segments + the merge-gate caveat render |
 | 3 | `statusgen --root . --issues --self-improvement --json \| jq -e '.selfHealed,.humanTouched,.selfImprovementRate,.humanTouchedByType'` | exit 0 — JSON carries the cut |
-| 4 | `go test ./statusgen/ -run SelfImprovement -count=1` | exit 0 — the classifier tests (self-healed, human-touched-by-type, and the merge-is-not-a-touch rule) run and pass |
+| 4 | `cd statusgen && GOWORK=off go test . -run SelfImprovement -count=1` | exit 0 — the classifier tests (self-healed, human-touched-by-type, and the merge-is-not-a-touch rule) run and pass |
 | 5 | `statusgen --root . --lint` | exit 0 |
 
 ## Evidence

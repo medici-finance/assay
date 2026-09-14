@@ -170,7 +170,8 @@ func Scan(root string) ([]Finding, error) {
 }
 
 // scanFile runs both layers over one parsed file and de-duplicates by (line, kind): a direct
-// `exec.Command("gh", …)` is seen by both layers and is one finding, not two.
+// exec launch naming a forge CLI (an `exec.Command` whose argv[0] is the `gh` literal) is seen
+// by both layers and is one finding, not two.
 func scanFile(fset *token.FileSet, f *ast.File, rel string) []Finding {
 	execNames, dotImported := execImportNames(f)
 	consts := packageStringConsts(f)

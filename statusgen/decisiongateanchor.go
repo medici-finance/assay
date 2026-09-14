@@ -17,10 +17,26 @@ package main
 //	(a) the linked issue is CLOSED by the blessed human (ASSAY_BLESS_LOGIN) — the
 //	    single highest-authority login in the trust roster (rosterconfig.go), and
 //	    the only close that ratifies;
-//	(b) the issue carries the per-brief marker "<!-- decision-gate: <stream>/<NN> -->"
-//	    naming THIS EXACT brief — so a decision issue filed for one brief cannot
+//	(b) the issue carries the per-record marker "<!-- decision-gate: <id> -->"
+//	    naming THIS EXACT record — so a decision issue filed for one record cannot
 //	    ratify another;
-//	(c) the brief LINKS the issue.
+//	(c) the record file LINKS the issue.
+//
+// The anchor fires for TWO kinds of stamp-carrying file, resolved to a per-record
+// id by decisionGateAnchorID (never replacing one form with the other):
+//
+//   - a brief-<NN>.md brief file, whose id is the canonical "<stream>/<NN>"
+//     (expectedBriefID) — the original case. The house's sanctioned channel for a
+//     gate:human DECISION is closing the linked needs-decision issue, so a decision
+//     brief ratified that way corroborates here rather than through a PR approval.
+//
+//   - a DR-<slug>.md design-decision record under docs/streams/decisions/, whose id
+//     is its "DR-<slug>" (decisionRecordID). A DR's `decided-by:` names the approving
+//     human, but the human act was CLOSING the linked needs-decision issue, not
+//     signing the DR's own PR — so a concrete `decided-by: "human:<name>"` on a DR
+//     would otherwise come back MISSING-CORROBORATION. This anchor lets it corroborate
+//     against the same decision-issue channel, so a DR can carry a real approver name
+//     instead of the literal "human:<name>" placeholder.
 //
 // The split mirrors citationcorroborate.go: decisionGateCorroboration is the pure,
 // offline-testable core (it consumes pre-fetched issue state); gatherDecisionGateLinks
@@ -39,19 +55,60 @@ import (
 	"strings"
 )
 
-// decisionGateMarker renders the per-brief decision-gate marker a needs-decision
-// issue must carry to corroborate a gate:human brief through this third anchor.
-// briefID is the canonical "<stream>/<NN>" form (expectedBriefID). The marker names
-// the EXACT brief so a decision issue filed for one brief cannot ratify another —
-// condition (b) of the ruling.
+// decisionGateMarker renders the per-record decision-gate marker a needs-decision
+// issue must carry to corroborate a gate:human stamp through this third anchor.
+// recordID is the canonical per-record id: a brief's "<stream>/<NN>" (expectedBriefID)
+// or a decision record's "DR-<slug>" (decisionRecordID). The marker names the EXACT
+// record so a decision issue filed for one record cannot ratify another — condition
+// (b) of the ruling.
 //
 // It is DELIBERATELY DISTINCT from decisionMarker ("<!-- needs-decision: … -->",
 // decisionissues.go), which is the emitter's idempotency key. This marker is the
 // corroboration anchor a human (or the decision-issue template) places to say "this
 // closed issue ratifies THIS brief"; keeping the two strings separate means the
 // idempotency key alone never satisfies the corroboration gate.
-func decisionGateMarker(briefID string) string {
-	return "<!-- decision-gate: " + briefID + " -->"
+func decisionGateMarker(recordID string) string {
+	return "<!-- decision-gate: " + recordID + " -->"
+}
+
+// decisionRecordID returns the "DR-<slug>" id of a design-decision record from its
+// file path, when the basename is a DR-<slug>.md file whose slug matches the shared
+// DR-id grammar (decisionIDRe, designgate.go — the same shape the design gate
+// validates). It is the DR analogue of expectedBriefID: the per-record identifier
+// that keys the decision-gate marker. ok is false for anything that is not a
+// DR-<slug>.md file.
+//
+// It matches on the basename shape only, exactly as expectedBriefID does for briefs
+// (which constrains no directory): the anchor's security lives in conditions
+// (a)/(b)/(c), not in the path — a stamp on a DR-shaped file still corroborates only
+// against a blessed-human-closed issue carrying THIS record's marker.
+func decisionRecordID(path string) (id string, ok bool) {
+	base := filepath.Base(path)
+	if !strings.HasSuffix(base, ".md") {
+		return "", false
+	}
+	id = strings.TrimSuffix(base, ".md")
+	if !decisionIDRe.MatchString(id) {
+		return "", false
+	}
+	return id, true
+}
+
+// decisionGateAnchorID resolves a stamp-carrying file path to the per-record id used
+// in its decision-gate marker, for the TWO file kinds this anchor covers: a
+// brief-<NN>.md brief file yields its canonical "<stream>/<NN>" id (expectedBriefID),
+// and a DR-<slug>.md decision record yields its "DR-<slug>" id (decisionRecordID).
+// ok is false for any other file — the anchor is then N/A and the two PR anchors
+// decide. The two id namespaces never collide: a brief id always carries a "/", a DR
+// id never does.
+func decisionGateAnchorID(path string) (id string, ok bool) {
+	if id, _, ok := expectedBriefID(path); ok {
+		return id, true
+	}
+	if id, ok := decisionRecordID(path); ok {
+		return id, true
+	}
+	return "", false
 }
 
 // decisionGateIssue is the pre-fetched state of ONE needs-decision issue a brief
@@ -73,20 +130,21 @@ type decisionGateLinks map[string][]decisionGateIssue
 
 // decisionGateCorroboration is the pure core of the third corroboration anchor
 // (the house tracker's ruling (Option 1: a linked decision issue closed by the
-// blessed login corroborates)). It reports CORROBORATED for a human:<name> stamp found in
-// a brief file when a needs-decision issue that brief LINKS satisfies ALL THREE
-// conditions (a)/(b)/(c) above.
+// blessed login corroborates)). It reports CORROBORATED for a human:<name> stamp
+// found in a brief file OR a DR-<slug>.md decision record when a needs-decision issue
+// that record LINKS satisfies ALL THREE conditions (a)/(b)/(c) above.
 //
-// It fails CLOSED in every ambiguous direction: a stamp on a non-brief file, an
-// empty links map, an unset bless login, an open (or otherwise non-blessed-closed)
-// issue, or a marker naming a different brief all yield ok == false, leaving the two
-// PR anchors to decide. None of the three conditions is sufficient alone.
+// It fails CLOSED in every ambiguous direction: a stamp on a file that is neither a
+// brief nor a decision record, an empty links map, an unset bless login, an open (or
+// otherwise non-blessed-closed) issue, or a marker naming a different record all
+// yield ok == false, leaving the two PR anchors to decide. None of the three
+// conditions is sufficient alone.
 func decisionGateCorroboration(s stamp, gates decisionGateLinks) (evidence string, ok bool) {
-	briefID, _, okID := expectedBriefID(s.File)
+	recordID, okID := decisionGateAnchorID(s.File)
 	if !okID {
-		return "", false // stamp is not in a brief-<NN>.md file — this anchor is N/A
+		return "", false // stamp is not in a brief-<NN>.md or DR-<slug>.md file — this anchor is N/A
 	}
-	linked := gates[s.File] // (c) only issues THIS brief links are present here
+	linked := gates[s.File] // (c) only issues THIS record links are present here
 	if len(linked) == 0 {
 		return "", false
 	}
@@ -94,7 +152,7 @@ func decisionGateCorroboration(s stamp, gates decisionGateLinks) (evidence strin
 	if blessLogin == "" {
 		return "", false // no blessed closer configured — the strict-but-inert direction
 	}
-	want := decisionGateMarker(briefID)
+	want := decisionGateMarker(recordID)
 	for _, iss := range linked {
 		if !strings.EqualFold(iss.ClosedBy, blessLogin) { // (a) closed by the blessed human
 			continue
@@ -118,16 +176,17 @@ type decisionGateRef struct {
 
 func (r decisionGateRef) key() string { return fmt.Sprintf("%s#%d", r.Repo, r.Number) }
 
-// briefLinkedIssueRefs reads the brief file at root/briefFile and returns every
-// GitHub issue/PR reference it links — an explicit owner/repo#N, a GitHub URL, or a
-// bare #N (resolved against prRepo). It reuses the citation lane's reference grammar
-// (citedRefRe / citedURLRe / citedBareRe) so the two lanes agree on what a link is.
+// recordLinkedIssueRefs reads the record file at root/recordFile (a brief-<NN>.md
+// brief or a DR-<slug>.md decision record) and returns every GitHub issue/PR
+// reference it links — an explicit owner/repo#N, a GitHub URL, or a bare #N (resolved
+// against prRepo). It reuses the citation lane's reference grammar (citedRefRe /
+// citedURLRe / citedBareRe) so the two lanes agree on what a link is.
 //
-// It reads the brief FILE on disk rather than the PR diff so a link that lives in the
-// brief but outside the PR's added lines still counts as a link. Best-effort: an
-// unreadable brief file yields no refs, and the third anchor simply does not fire.
-func briefLinkedIssueRefs(root, prRepo, briefFile string) []decisionGateRef {
-	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(briefFile)))
+// It reads the FILE on disk rather than the PR diff so a link that lives in the
+// record but outside the PR's added lines still counts as a link. Best-effort: an
+// unreadable file yields no refs, and the third anchor simply does not fire.
+func recordLinkedIssueRefs(root, prRepo, recordFile string) []decisionGateRef {
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(recordFile)))
 	if err != nil {
 		return nil
 	}
@@ -188,11 +247,12 @@ func fetchDecisionGateIssue(repo string, number int) *decisionGateIssue {
 }
 
 // gatherDecisionGateLinks builds the third anchor's pre-fetched data: for every
-// brief-file stamp, the needs-decision issues that brief links (briefLinkedIssueRefs)
-// with each issue's closer/body fetched once (deduplicated across briefs). A stamp
-// whose file is not a brief, or whose brief links nothing, contributes no entry, so
-// the anchor does not fire for it. root is the checkout root the brief files are read
-// from (".", as the rest of runCorroborate uses).
+// stamp on a brief-<NN>.md brief or a DR-<slug>.md decision record, the needs-decision
+// issues that record links (recordLinkedIssueRefs) with each issue's closer/body
+// fetched once (deduplicated across records). A stamp whose file is neither, or whose
+// record links nothing, contributes no entry, so the anchor does not fire for it.
+// root is the checkout root the record files are read from (".", as the rest of
+// runCorroborate uses).
 func gatherDecisionGateLinks(root, repo string, stamps []stamp) decisionGateLinks {
 	links := decisionGateLinks{}
 	processed := map[string]bool{}
@@ -202,10 +262,10 @@ func gatherDecisionGateLinks(root, repo string, stamps []stamp) decisionGateLink
 			continue
 		}
 		processed[s.File] = true
-		if _, _, ok := expectedBriefID(s.File); !ok {
-			continue // not a brief-<NN>.md file
+		if _, ok := decisionGateAnchorID(s.File); !ok {
+			continue // not a brief-<NN>.md or DR-<slug>.md file
 		}
-		refs := briefLinkedIssueRefs(root, repo, s.File)
+		refs := recordLinkedIssueRefs(root, repo, s.File)
 		if len(refs) == 0 {
 			continue
 		}

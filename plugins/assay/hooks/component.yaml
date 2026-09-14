@@ -1,20 +1,24 @@
 component: assay/hooks
 version: 0.28.0
 # The harness hook set: resident rules + board state injected at session boot,
-# and the write guard on tool calls. Shaped for the bound harness.
+# and the write guard on tool calls. The SessionStart/PreToolUse mechanism is
+# Claude Code's alone (§9), hence the flavour constraint below — under another
+# adapter this component is INACTIVE with a report, the honest state (today
+# it is silently absent).
 provides:
   - assay.hooks.session-start
   - assay.hooks.pre-tool
 inject:
-  required: []
-  optional:
+  required:
     - key: assay.harness
+      flavour: claude-code
+  optional:
     - key: assay.roster.ext.writeguard-callout
 apply:
   - id: hook-wiring
     effect: install the session-start and pre-tool hooks into the harness hook config
     boundary: inside
-    inverse: remove the hook wiring (TODO composability/02 makes the reverse real)
+    inverse: remove the hook wiring from the harness hook config
 intercept:
   - assay.roster.ext.writeguard-callout
 config: {}

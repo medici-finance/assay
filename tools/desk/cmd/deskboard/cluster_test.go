@@ -13,6 +13,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -95,9 +97,12 @@ func TestStale_ThreeStates_236(t *testing.T) {
 	// Force the #185 primary source (the `.assay-versions` desk-tools pin) OFF so
 	// these subtests deterministically reach the in-tree fallback and its
 	// could-not-check, regardless of any pin file above the test's working dir.
-	oldPin := deskToolsPin
-	t.Cleanup(func() { deskToolsPin = oldPin })
+	oldPin, oldSrc := deskToolsPin, deskToolsSourcePin
+	t.Cleanup(func() { deskToolsPin, deskToolsSourcePin = oldPin, oldSrc })
 	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	// Same for the #776 channel-D source pin: force it OFF so the fallback and its
+	// could-not-check are what these subtests reach, regardless of any pin file above.
+	deskToolsSourcePin = func() (string, string, bool) { return "", "", false }
 
 	t.Run("could-not-check fails CLOSED", func(t *testing.T) {
 		// A pinned binary whose sourceSHA does not resolve in git: the check cannot
@@ -774,13 +779,16 @@ func itoa(n int) string {
 // pinned install actually runs, and the ones #236 was about — can be asserted at all.
 func withStaleSeams(t *testing.T, pinned bool, trees map[string]string, fail bool) {
 	t.Helper()
-	oldPinned, oldTree, oldPin := isPinned, gitTree, deskToolsPin
-	t.Cleanup(func() { isPinned, gitTree, deskToolsPin = oldPinned, oldTree, oldPin })
-	// Default the #185 primary source OFF so these tests deterministically exercise
-	// the in-tree ref FALLBACK (the branch they were written for), independent of
-	// whether any `.assay-versions` happens to sit above the test's working dir.
-	// A pin: not found here.
+	oldPinned, oldTree, oldPin, oldSrc := isPinned, gitTree, deskToolsPin, deskToolsSourcePin
+	t.Cleanup(func() {
+		isPinned, gitTree, deskToolsPin, deskToolsSourcePin = oldPinned, oldTree, oldPin, oldSrc
+	})
+	// Default the #185 primary source AND the #776 channel-D source pin OFF so these
+	// tests deterministically exercise the in-tree ref FALLBACK (the branch they were
+	// written for), independent of whether any `.assay-versions` happens to sit above
+	// the test's working dir. Neither pin: found here.
 	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskToolsSourcePin = func() (string, string, bool) { return "", "", false }
 	isPinned = func() bool { return pinned }
 	gitTree = func(ref string) (string, error) {
 		if fail {
@@ -868,10 +876,10 @@ func TestStale_MeasuringStates_236(t *testing.T) {
 // the fallback here is a run whose primary branch did not answer.
 func withPinSeams(t *testing.T, pinFound bool, pinTag, runningTag string) {
 	t.Helper()
-	oldPinned, oldTree, oldPin := isPinned, gitTree, deskToolsPin
+	oldPinned, oldTree, oldPin, oldSrc := isPinned, gitTree, deskToolsPin, deskToolsSourcePin
 	oldRelease := deskkit.ReleaseTag
 	t.Cleanup(func() {
-		isPinned, gitTree, deskToolsPin = oldPinned, oldTree, oldPin
+		isPinned, gitTree, deskToolsPin, deskToolsSourcePin = oldPinned, oldTree, oldPin, oldSrc
 		deskkit.ReleaseTag = oldRelease
 	})
 	isPinned = func() bool { return true }
@@ -884,6 +892,10 @@ func withPinSeams(t *testing.T, pinFound bool, pinTag, runningTag string) {
 		}
 		return "/consumer/repo", pinTag, true
 	}
+	// The #185 tests exercise the releaseTag primary and the in-tree fallback only;
+	// keep the #776 channel-D source pin OFF so a stray `.assay-versions` above the
+	// test cwd cannot answer for them (the channel-D branch has its own test).
+	deskToolsSourcePin = func() (string, string, bool) { return "", "", false }
 	deskkit.ReleaseTag = runningTag
 }
 
@@ -969,6 +981,225 @@ func TestStale_ConsumerPin_185(t *testing.T) {
 			t.Fatalf("state=%q stale=%t, want unknown/true (detail %q)", state, stale, detail)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// #776 — a channel-D adopter (GitLab / native Windows) pins the desk-tools
+// SOURCE line (`desk-tools-source <tag> <40-hex-commit>`) instead of a
+// `desk-tools` release line, and its consumer checkout carries no in-tree
+// tools/desk ref. Before this fix both the #185 releaseTag primary and the
+// in-tree fallback missed it, so every sweep was STALE-UNKNOWN and reviewloop's
+// idle gate was pinned at could-not-check. The source pin binds the running
+// binary's stamped sourceSHA to the pinned commit, so it is now measured.
+// ---------------------------------------------------------------------------
+
+// withSourcePinSeams drives staleState()'s #776 channel-D branch: no `desk-tools`
+// releaseTag pin (primary off) and no in-tree ref (consumer checkout), only a
+// `desk-tools-source` line carrying pinCommit. The releaseTag primary is left
+// EMPTY so the run has to reach the source-pin branch to answer at all.
+func withSourcePinSeams(t *testing.T, srcFound bool, pinCommit string) {
+	t.Helper()
+	oldPinned, oldTree, oldPin, oldSrc := isPinned, gitTree, deskToolsPin, deskToolsSourcePin
+	oldRelease := deskkit.ReleaseTag
+	t.Cleanup(func() {
+		isPinned, gitTree, deskToolsPin, deskToolsSourcePin = oldPinned, oldTree, oldPin, oldSrc
+		deskkit.ReleaseTag = oldRelease
+	})
+	isPinned = func() bool { return true }
+	gitTree = func(string) (string, error) {
+		return "", fmt.Errorf("simulated consumer checkout: origin/main:tools/desk does not resolve")
+	}
+	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskkit.ReleaseTag = "" // a channel-D adopter's release line is absent
+	deskToolsSourcePin = func() (string, string, bool) {
+		if !srcFound {
+			return "", "", false
+		}
+		return "/consumer/repo", pinCommit, true
+	}
+}
+
+func TestStale_ChannelDSourcePin_776(t *testing.T) {
+	oldS, oldB := deskkit.SourceSHA, deskkit.BuiltAt
+	t.Cleanup(func() { deskkit.SourceSHA, deskkit.BuiltAt = oldS, oldB })
+	// The running binary's stamp is a SHORT sha (git rev-parse --short HEAD); the
+	// pinned commit is the full 40-hex. The bind is a prefix, exactly desksourceguard's.
+	const shortSHA = "aaf6d8a"
+	const fullMatch = "aaf6d8a1c2b3d4e5f60718293a4b5c6d7e8f9012"
+	const fullOther = "0123456789abcdef0123456789abcdef01234567"
+	deskkit.SourceSHA, deskkit.BuiltAt = shortSHA, "2026-08-25T22:57:16Z"
+
+	t.Run("matching source pin is in-sync, NOT STALE-UNKNOWN (the #776 bug)", func(t *testing.T) {
+		withSourcePinSeams(t, true, fullMatch)
+		state, stale, detail := staleState()
+		if state != staleStateInSync {
+			t.Fatalf("state = %q, want %q (detail %q)", state, staleStateInSync, detail)
+		}
+		if stale {
+			t.Errorf("a matching channel-D source pin must report stale=false; detail %q", detail)
+		}
+		if !strings.Contains(detail, "desk-tools-source") {
+			t.Errorf("detail should name the source pin it matched; got %q", detail)
+		}
+		var banner bytes.Buffer
+		printBanners(&banner, Header{StaleState: state, Stale: stale, StaleDetail: detail})
+		if strings.Contains(banner.String(), "STALE") {
+			t.Errorf("a matched source pin must not raise STALE-UNKNOWN (the #776 bug); got %q", banner.String())
+		}
+	})
+
+	t.Run("differing source pin is a MEASURED drift, not could-not-check", func(t *testing.T) {
+		withSourcePinSeams(t, true, fullOther)
+		state, stale, detail := staleState()
+		if state != staleStateDrift {
+			t.Fatalf("state = %q, want %q (detail %q)", state, staleStateDrift, detail)
+		}
+		if !stale {
+			t.Error("a measured source-pin mismatch must report stale=true")
+		}
+		if !strings.Contains(detail, shortSHA) || !strings.Contains(detail, fullOther) {
+			t.Errorf("drift detail must name both the running sourceSHA and the pinned commit; got %q", detail)
+		}
+		var banner bytes.Buffer
+		printBanners(&banner, Header{StaleState: state, Stale: stale, StaleDetail: detail})
+		if strings.Contains(banner.String(), "STALE-UNKNOWN") {
+			t.Errorf("a MEASURED source-pin drift must not render as could-not-check; got %q", banner.String())
+		}
+	})
+
+	t.Run("a malformed (non-40-hex) source commit falls through to could-not-check", func(t *testing.T) {
+		// A source line whose digest is not a full commit cannot bind the stamp; it
+		// must NOT manufacture a drift verdict. With no in-tree ref either, the honest
+		// answer is could-not-check — leaving the malformed-pin report to deskpins.
+		withSourcePinSeams(t, true, "not-a-real-commit")
+		state, stale, detail := staleState()
+		if state != staleStateUnknown || !stale {
+			t.Fatalf("state=%q stale=%t, want unknown/true (detail %q)", state, stale, detail)
+		}
+		if !strings.Contains(detail, "COULD-NOT-CHECK") {
+			t.Errorf("detail must announce it could not check; got %q", detail)
+		}
+	})
+
+	t.Run("no source pin AND no in-tree ref stays could-not-check", func(t *testing.T) {
+		withSourcePinSeams(t, false, "")
+		state, stale, detail := staleState()
+		if state != staleStateUnknown || !stale {
+			t.Fatalf("state=%q stale=%t, want unknown/true (detail %q)", state, stale, detail)
+		}
+	})
+}
+
+// #795 §3 — the READER (deskToolsSourcePinReal) must resolve the 40-hex commit
+// from EITHER column of a `desk-tools-source` line. ArtifactPin hands back field 2
+// as tag and field 3 as sha, but a real adopter's `.assay-versions` (and
+// desksourceguard) writes `desk-tools-source <40-hex-commit> channel-D` — the
+// commit in field 2, a literal `channel-D` marker in field 3 — whereas the #776
+// tests assumed `desk-tools-source <tag> <40-hex-commit>` (commit in field 3).
+// Reading only field 3 left the commit unrecognised, isFullCommitSHA rejected it,
+// and staleState falsely reported STALE-UNKNOWN. These exercise the real reader
+// against an on-disk pin file, not the seam.
+func TestDeskToolsSourcePinReal_BothColumnShapes_795(t *testing.T) {
+	const fullCommit = "aaf6d8a1c2b3d4e5f60718293a4b5c6d7e8f9012"
+
+	writePin := func(t *testing.T, line string) {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, deskkit.AssayVersionsFile), []byte(line+"\n"), 0o644); err != nil {
+			t.Fatalf("write .assay-versions: %v", err)
+		}
+		t.Chdir(dir)
+	}
+
+	t.Run("(a) field-3 commit shape still resolves (no #776 regression)", func(t *testing.T) {
+		writePin(t, "desk-tools-source desk-tools/v0.28.0 "+fullCommit)
+		_, commit, found := deskToolsSourcePinReal()
+		if !found {
+			t.Fatal("reader must find the desk-tools-source line")
+		}
+		if commit != fullCommit {
+			t.Errorf("commit = %q, want field-3 %q", commit, fullCommit)
+		}
+		if !isFullCommitSHA(commit) {
+			t.Errorf("resolved commit %q must be a full 40-hex SHA so staleState measures it", commit)
+		}
+	})
+
+	t.Run("(b) field-2 commit + channel-D marker now resolves", func(t *testing.T) {
+		writePin(t, "desk-tools-source "+fullCommit+" channel-D")
+		_, commit, found := deskToolsSourcePinReal()
+		if !found {
+			t.Fatal("reader must find the desk-tools-source line")
+		}
+		if commit != fullCommit {
+			t.Errorf("commit = %q, want field-2 %q (the <40-hex> channel-D shape)", commit, fullCommit)
+		}
+		if !isFullCommitSHA(commit) {
+			t.Errorf("resolved commit %q must be a full 40-hex SHA so staleState does NOT raise STALE-UNKNOWN", commit)
+		}
+	})
+
+	t.Run("(c) neither column a 40-hex commit falls through (no manufactured verdict)", func(t *testing.T) {
+		writePin(t, "desk-tools-source v0.28.0 channel-D")
+		_, commit, found := deskToolsSourcePinReal()
+		if !found {
+			t.Fatal("reader still finds the line (malformed-pin detection is deskpins' job)")
+		}
+		if isFullCommitSHA(commit) {
+			t.Errorf("no column holds a commit, so the resolved value %q must NOT look like one — staleState must fall through", commit)
+		}
+	})
+
+	t.Run("desk-tools-source still does not match desk-tools-source-notes", func(t *testing.T) {
+		writePin(t, "desk-tools-source-notes v0.28.0 "+fullCommit)
+		_, _, found := deskToolsSourcePinReal()
+		if found {
+			t.Error("the trailing-space prefix match must keep desk-tools-source from matching desk-tools-source-notes")
+		}
+	})
+}
+
+// TestStale_ChannelDSourcePin_795_EndToEnd wires the REAL reader into staleState
+// (rather than the seam) to prove the `<40-hex> channel-D` column shape clears the
+// STALE-UNKNOWN banner end-to-end, the concrete #795 §3 bug: primary release pin
+// absent, no in-tree ref (consumer checkout), only the on-disk source line.
+func TestStale_ChannelDSourcePin_795_EndToEnd(t *testing.T) {
+	const shortSHA = "aaf6d8a"
+	const fullMatch = "aaf6d8a1c2b3d4e5f60718293a4b5c6d7e8f9012"
+
+	oldPinned, oldTree, oldPin, oldSrc := isPinned, gitTree, deskToolsPin, deskToolsSourcePin
+	oldRelease := deskkit.ReleaseTag
+	oldS, oldB := deskkit.SourceSHA, deskkit.BuiltAt
+	t.Cleanup(func() {
+		isPinned, gitTree, deskToolsPin, deskToolsSourcePin = oldPinned, oldTree, oldPin, oldSrc
+		deskkit.ReleaseTag = oldRelease
+		deskkit.SourceSHA, deskkit.BuiltAt = oldS, oldB
+	})
+	isPinned = func() bool { return true }
+	gitTree = func(string) (string, error) {
+		return "", fmt.Errorf("simulated consumer checkout: origin/main:tools/desk does not resolve")
+	}
+	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskToolsSourcePin = deskToolsSourcePinReal // the REAL on-disk reader, not a stub
+	deskkit.ReleaseTag = ""
+	deskkit.SourceSHA, deskkit.BuiltAt = shortSHA, "2026-08-25T22:57:16Z"
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, deskkit.AssayVersionsFile),
+		[]byte("desk-tools-source "+fullMatch+" channel-D\n"), 0o644); err != nil {
+		t.Fatalf("write .assay-versions: %v", err)
+	}
+	t.Chdir(dir)
+
+	state, stale, detail := staleState()
+	if state != staleStateInSync || stale {
+		t.Fatalf("state=%q stale=%t, want in-sync/false (detail %q)", state, stale, detail)
+	}
+	var banner bytes.Buffer
+	printBanners(&banner, Header{StaleState: state, Stale: stale, StaleDetail: detail})
+	if strings.Contains(banner.String(), "STALE") {
+		t.Errorf("the <40-hex> channel-D shape must not raise STALE-UNKNOWN; banner = %q", banner.String())
+	}
 }
 
 // ---------------------------------------------------------------------------

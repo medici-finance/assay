@@ -196,4 +196,11 @@ jobs:
           SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'changelog:skip') || steps.evidence.outputs.evidence == 'true' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Lets check.sh name the EXACT fragment path in its failure message
+          # (changelog/<branch-basename>.md) instead of the literal <slug>; the
+          # staged tools/changelog copy already passed it, the live copy never did.
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          # Enables check.sh's PROXY path: a fragment named
+          # changelog/pr-<N>-<slug>.md already on the base branch greens PR <N>.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash tools/changelog/check.sh

@@ -14,18 +14,59 @@
 #             (deprecation guard; absolute — checked first, a skip label does
 #             not excuse it).
 #   PASS    — the changelog:skip label is present, OR the PR adds/updates a
-#             fragment file under changelog/ (other than README.md).
-#   FAIL    — none of the above: no fragment, no skip.
+#             fragment file under changelog/ (other than README.md), OR — the
+#             PROXY path, for a PR whose branch maintainers cannot commit to —
+#             a fragment named changelog/pr-<PR_NUMBER>-<slug>.md already sits
+#             on the BASE branch carrying a real highlight bullet.
+#   FAIL    — none of the above: no fragment, no proxy, no skip.
 #
 # INPUTS (env):
 #   SKIP        "true" when the PR carries the changelog:skip label, else "false"
-#   BASE_SHA    the PR base commit
+#   BASE_SHA    the PR base commit, as GitHub recorded it when the PR was
+#               opened. Used for the PR's own diff (rules 1 and 3) — NOT for the
+#               proxy lookup, which needs the LIVE base tip (see rule 4).
 #   HEAD_SHA    the PR head commit
+#   BASE_REF    the PR base branch name, e.g. "main" (optional; explicit override).
+#               When unset, GITHUB_BASE_REF — the base branch name GitHub Actions
+#               sets on every pull_request run WITHOUT any workflow change — is
+#               used instead: "${BASE_REF:-${GITHUB_BASE_REF:-}}". Either way this
+#               resolves the PROXY path's LIVE tip of the base branch as
+#               refs/remotes/origin/<that name>. Only if NEITHER is set does the
+#               proxy path fall back to refs/remotes/origin/HEAD as a best-effort
+#               extra (not populated by actions/checkout as configured — see rule
+#               4), and failing that to BASE_SHA with a NOTICE that the lookup is
+#               degraded.
+#   GITHUB_BASE_REF  GitHub Actions' own default env var carrying the PR's base
+#               branch name on every pull_request-triggered run — no workflow
+#               change needed. Read only when BASE_REF is not explicitly set.
 #   HEAD_REF    the PR head branch name (optional; used only to suggest the exact
 #               changelog/<slug>.md path in the failure message; degrades to the
 #               literal <slug> when unset, so the script half can merge before the
 #               workflow half that supplies it)
+#   PR_NUMBER   the PR's number (optional; enables the PROXY path below). Any
+#               value that is not a positive integer — including the literal
+#               unexpanded expression a workflow that has not been updated yet
+#               would pass — is treated as UNSET, so the script half may merge
+#               before the workflow half that supplies it and every existing
+#               outcome stays byte-identical until it does.
 #   CHANGELOG_AGG  path to aggregate.py (default: alongside this script)
+#
+# THE PROXY PATH (fork PRs). A fragment must be added by the PR itself — except
+# when it CANNOT be: a pull request from a fork whose branch the maintainers
+# cannot commit to. Labelling such a PR changelog:skip would silently drop a
+# notable change from the release notes, so instead a maintainer lands the
+# fragment on the BASE branch under the reserved name
+# changelog/pr-<N>-<slug>.md, and this check accepts it on that PR's behalf.
+# The name is what binds the proxy to exactly one PR: <N> is matched against
+# PR_NUMBER, so a proxy for one PR can never green another. The proxy is read
+# from the BASE BRANCH (never from the untrusted head) — and specifically from
+# the branch's LIVE TIP, not from BASE_SHA. That distinction is the whole point:
+# GitHub records base.sha when the PR is OPENED and never advances it as the
+# base branch moves, so a proxy merged AFTER the fork PR was opened — which is
+# the only situation the proxy path exists for — is invisible in BASE_SHA's
+# tree. Reading the live tip is what makes "land the proxy, then re-run the
+# check by adding or removing a label" (this leg re-runs on labeled/unlabeled)
+# actually work, with nothing to push to the fork branch.
 #
 # It reads git history only; it contacts no network and needs no toolchain
 # beyond git + python3.
@@ -36,6 +77,12 @@ AGG="${CHANGELOG_AGG:-$here/aggregate.py}"
 SKIP="${SKIP:-false}"
 : "${BASE_SHA:?BASE_SHA is required}"
 : "${HEAD_SHA:?HEAD_SHA is required}"
+
+# BASE_REF resolution: an explicit BASE_REF wins; otherwise fall back to
+# GITHUB_BASE_REF, the base-branch name GitHub Actions sets on every
+# pull_request run with no workflow change required. This is what makes the
+# proxy path (rule 4) resolve on a live PR without wiring BASE_REF by hand.
+BASE_REF="${BASE_REF:-${GITHUB_BASE_REF:-}}"
 
 # The suggested fragment path in the failure message. When HEAD_REF is supplied
 # (by the workflow) the slug is its basename, so the message names the EXACT file
@@ -108,6 +155,92 @@ if [ -n "$frag" ]; then
   exit 1
 fi
 
-echo "::error title=missing changelog fragment::This PR adds no changelog fragment and carries no 'changelog:skip' label. Fix: create changelog/${slug}.md with at least one highlight bullet, e.g. printf '### Fixed\n- <one line>\n' > changelog/${slug}.md then commit and push. The ### Added / ### Fixed / ### Changed bucket heading is optional; a bullet is not — an empty, whitespace-only, or bullet-less fragment is rejected. NEVER edit CHANGELOG.md (it is written only by the release workflow, which aggregates the fragments). The 'changelog:skip' waiver is a maintainer act, not one you self-apply. See changelog/README.md."
+# 4) PROXY FRAGMENT on the BASE branch — the fork-PR path. Consulted only when
+#    the ordinary in-PR fragment rule above did not fire, deliberately: the
+#    ordinary path stays the first and cheapest decision, the proxy is the
+#    exception. Ordering it here rather than ahead of rule 3 also keeps a
+#    bullet-less fragment that the PR ITSELF added a loud failure (its author
+#    can fix that one) instead of letting a proxy mask it. Either position
+#    leaves the PR_NUMBER-unset behaviour byte-identical — the block is a no-op
+#    without it — so the tie is broken on which failure stays visible.
+#   [[ =~ ]] anchors ^/$ to the WHOLE parameter (unlike `grep -E` without -z,
+#   which anchors per LINE) — a value with an embedded newline such as
+#   $'999\n77' cannot match, so it is treated the same as any other
+#   non-integer PR_NUMBER (assay#927).
+if [ -n "${PR_NUMBER:-}" ] && [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  # WHICH TREE THE PROXY IS READ FROM — the LIVE tip of the base branch, never
+  # BASE_SHA. BASE_SHA is frozen at PR-open time (GitHub does not advance
+  # github.event.pull_request.base.sha as the base branch moves), and a proxy is
+  # by definition landed AFTER the fork PR was opened, so BASE_SHA's tree cannot
+  # contain it. Resolution order, first that resolves wins:
+  #   1. refs/remotes/origin/<BASE_REF> — where BASE_REF is either an explicit
+  #      override or (the zero-config default) GITHUB_BASE_REF, which GitHub
+  #      Actions sets on every pull_request run with no workflow change. This is
+  #      the leg that actually resolves in CI and is why the fix works without
+  #      wiring anything by hand.
+  #   2. refs/remotes/origin/HEAD       — a best-effort EXTRA only. This is NOT
+  #      populated by actions/checkout as configured today: getRefSpecForAllHistory
+  #      fetches '+refs/heads/*:refs/remotes/origin/*' and never runs
+  #      `git remote set-head`, fetch-depth 0 or not, so this leg is expected to
+  #      stay unresolved under actions/checkout and exists only to help a local
+  #      clone or another checkout mechanism that does set origin/HEAD.
+  #   3. BASE_SHA                       — degraded fallback, announced with a
+  #      NOTICE: the lookup still runs, but it can only see proxies that predate
+  #      the PR, so a legitimately-landed proxy may be reported MISSING.
+  proxy_tree=""
+  if [ -n "${BASE_REF:-}" ] && git rev-parse --verify -q "refs/remotes/origin/${BASE_REF}^{commit}" >/dev/null 2>&1; then
+    proxy_tree="refs/remotes/origin/${BASE_REF}"
+  elif git rev-parse --verify -q 'refs/remotes/origin/HEAD^{commit}' >/dev/null 2>&1; then
+    proxy_tree="refs/remotes/origin/HEAD"
+  else
+    proxy_tree="$BASE_SHA"
+    echo "::notice title=proxy lookup degraded::Neither refs/remotes/origin/\${BASE_REF} (BASE_REF, or its zero-config default GITHUB_BASE_REF) nor refs/remotes/origin/HEAD (not expected to resolve under actions/checkout) resolved, so the proxy-fragment lookup is running against the RECORDED base sha (${BASE_SHA}) instead of the live base-branch tip. That sha is frozen at PR-open time, so a proxy fragment merged after this PR was opened will not be seen. Fix: ensure the workflow runs on pull_request (GITHUB_BASE_REF is then set automatically), or pass BASE_REF explicitly."
+    echo "NOTICE: proxy lookup degraded — using recorded BASE_SHA ${BASE_SHA}, not the live base-branch tip."
+  fi
+  proxy_sha="$(git rev-parse --short "$proxy_tree" 2>/dev/null || printf '%s' "$proxy_tree")"
+
+  # DEFENSE IN DEPTH (assay#927): the gate above already anchors PR_NUMBER to
+  # the WHOLE parameter, so a value with an embedded newline can never reach
+  # this point today. Re-assert it anyway, right where PR_NUMBER is
+  # interpolated into a `grep -E` pattern below — a literal newline in a
+  # grep -E pattern ARGUMENT acts like a second `-e` alternative (same
+  # mechanism as the gate bug), so this line stands on its own even if a
+  # future refactor ever lets this block be reached by a different path.
+  case "$PR_NUMBER" in
+    *$'\n'*)
+      echo "::error title=invalid PR_NUMBER::PR_NUMBER contains a newline; refusing the proxy-fragment lookup." >&2
+      exit 1
+      ;;
+  esac
+
+  # Read the BASE tree, not the diff and not the head: the proxy is a file a
+  # maintainer already merged to the base branch, so it appears in NEITHER the
+  # PR diff nor (for a fork PR) anything the contributor controls.
+  proxy="$(git ls-tree -r --name-only "$proxy_tree" -- 'changelog/' 2>/dev/null \
+             | grep -E "^changelog/pr-${PR_NUMBER}-[A-Za-z0-9._-]+\.md$" || true)"
+  if [ -n "$proxy" ]; then
+    # Same content bar as rule 3: the NAME is not enough, at least one proxy
+    # must carry a real highlight bullet, read from the same tree the
+    # listing came from (the live base tip, or the degraded fallback).
+    proxy_bullet=0
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if git show "${proxy_tree}:${f}" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]+[^[:space:]]'; then
+        proxy_bullet=1
+        break
+      fi
+    done <<< "$proxy"
+    if [ "$proxy_bullet" = 1 ]; then
+      echo "PASS: proxy fragment(s) for PR #${PR_NUMBER} found on the base branch tip ${proxy_sha}:"
+      printf '%s\n' "$proxy"
+      exit 0
+    fi
+    echo "::error title=empty changelog fragment::The proxy fragment(s) for this PR on the base branch carry no highlight bullet. An empty, whitespace-only, or bullet-less fragment records nothing and is rejected — the gate is not satisfiable by 'touch changelog/x.md'. Put at least one '- …' highlight line in the proxy fragment (see changelog/README.md), or label the PR 'changelog:skip' if the change is genuinely non-notable."
+    printf 'proxy fragment(s) with no highlight bullet:\n%s\n' "$proxy"
+    exit 1
+  fi
+fi
+
+echo "::error title=missing changelog fragment::This PR adds no changelog fragment and carries no 'changelog:skip' label. Fix: create changelog/${slug}.md with at least one highlight bullet, e.g. printf '### Fixed\n- <one line>\n' > changelog/${slug}.md then commit and push. The ### Added / ### Fixed / ### Changed bucket heading is optional; a bullet is not — an empty, whitespace-only, or bullet-less fragment is rejected. NEVER edit CHANGELOG.md (it is written only by the release workflow, which aggregates the fragments). The 'changelog:skip' waiver is a maintainer act, not one you self-apply. For a PR whose branch maintainers cannot commit to (a fork), a maintainer may instead land changelog/pr-<N>-<slug>.md on the base branch, then re-run this check by adding or removing a label — see changelog/README.md."
 echo "MISSING: no changelog/<slug>.md fragment between base ${BASE_SHA} and head ${HEAD_SHA} — suggested path: changelog/${slug}.md"
 exit 1

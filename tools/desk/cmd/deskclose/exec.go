@@ -38,15 +38,6 @@ func runCmd(name string, args ...string) (string, error) {
 	return stdout, nil
 }
 
-// runGH runs a gh subcommand under the AMBIENT gh identity. deskclose gates WHETHER
-// and WHAT, never WHO: the caller's standing credential is the closing identity,
-// unchanged. It NEVER injects a token and NEVER mints an App token — there is no
-// desktoken call on any path.
-//
-// It is a variable so tests can record argv and script responses; production binds it
-// to the exec seam above.
-var runGH = func(args ...string) (string, error) { return runCmd("gh", args...) }
-
 // runDisposition shells out to the SIBLING tool that owns the disposition schema
 // (the deskdisposition tool). deskclose deliberately does not re-implement
 // the marker parser: the record has exactly one declared reader, and a second copy of

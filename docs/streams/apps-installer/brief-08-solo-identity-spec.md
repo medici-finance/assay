@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/08
+brief: assay:assay:apps-installer:08
 title: Solo identity mode — spec and decision for running the desk verbs on the operator's own token
 why: >-
   The pilot tier promises "experience the workflow with zero Apps", but every desk verb today
@@ -22,7 +22,7 @@ gate-why: >-
   a repo whose ruleset expects a bot identity — before any code is authored.
 decision-trigger: spec
 issues: [467]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §7 — Solo creates no App and exits after Screen 0; the identity question is a decision."
@@ -36,6 +36,8 @@ exec-tier-why: >-
   Question (a) — the spec must decide the trust-model boundaries the facts leave open (which verbs,
   which surfaces, what a ruleset expecting a bot does), and question (c) — a wrong boundary here is
   an authorization change that survives every happy-path test.
+version: 1
+id: d1d1d3a0-00c4-4ee3-ad70-1e56e965d986
 ---
 
 # Brief 08 — Solo identity mode: spec and decision

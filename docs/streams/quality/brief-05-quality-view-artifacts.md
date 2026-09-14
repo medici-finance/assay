@@ -1,5 +1,5 @@
 ---
-brief: quality/05
+brief: assay:assay:quality:05
 title: single-writer QUALITY.md trend view + metrics/defects/attribution artifact schemas
 why: >-
   The miner's numbers are only useful if they are diffable, honest, and readable at a glance. This
@@ -16,13 +16,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §9.3 — trend view: single-writer QUALITY.md (CI only writer, local runs read-and-discard)"
   - "docs/streams/quality/spec.md §9.4 — artifacts: metrics.jsonl / defects.jsonl / attribution/ (append-only)"
   - "docs/streams/quality/spec.md §10 — honest-claims discipline (industry-comparable number beside local number)"
   - "docs/streams/quality/spec.md §3.2 — three-state instrument invariant"
+version: 1
+id: 502291f1-e230-4745-9cf8-1ffeba03e3fe
 ---
 
 # Brief 05 — QUALITY.md single-writer trend view + metrics artifacts

@@ -1,5 +1,5 @@
 ---
-brief: statusgen/04
+brief: assay:assay:statusgen:04
 title: 'Ladder-position indicator — one computed adoption-step number (behavioral axes, never tooling) on the board + roadmap deck'
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 sources:
   - "A maintainer directive: the ladder step must be defined by BEHAVIOR (a dated author signal), not by what tooling is installed"
@@ -20,6 +20,8 @@ why: >-
   than from what's installed. Today the rating is a hand-argued paragraph; the acceptance is that
   the daily artifact carries it with a 7-day trend so ladder movement — or stall — is visible
   without anyone re-arguing it.
+version: 1
+id: 5e5a7419-dea9-4c92-8c53-08526ed0d689
 ---
 
 # Brief 04 — Ladder-position indicator
@@ -71,8 +73,8 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/ -run Ladder -v` | exit 0; covers step mapping, missing-axis range render, constraint naming |
-| 2 | `go test ./statusgen/ && go vet ./statusgen/` | exit 0 |
+| 1 | `cd statusgen && GOWORK=off go test . -run Ladder -v` | exit 0; covers step mapping, missing-axis range render, constraint naming |
+| 2 | `cd statusgen && GOWORK=off go test . && go vet .` | exit 0 |
 | 3 | `statusgen --root . --ladder` | exit 0; output contains `step` and a named constraint axis or `unmeasured` |
 | 4 | `statusgen --root . --lint; echo $?` | 0 |
 

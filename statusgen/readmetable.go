@@ -102,30 +102,108 @@ func fileBase(path string) string {
 	return path
 }
 
+// escapeTableCell makes a value safe to interpolate into ONE markdown table cell
+// by escaping the `|` that would otherwise be read as a column delimiter.
+//
+// It is the render-side half of a round trip whose parse-side half already
+// exists: splitRow (parse.go) treats `\|` as cell content, not a delimiter. Only
+// the renderer was missing, so a brief whose title legitimately contains a pipe
+// — a flag spelled `--cadence weekly|monthly`, an alternation in a pattern —
+// rendered a row with one cell too many and the board's own parser then rejected
+// the whole stream ("row has 8 cells, header has 7"). An already-escaped `\|` is
+// left alone so a re-render is idempotent.
+func escapeTableCell(s string) string {
+	// Protect existing escapes first, then escape bare pipes, then restore.
+	const sentinel = "\x00ESCPIPE\x00"
+	s = strings.ReplaceAll(s, `\|`, sentinel)
+	s = strings.ReplaceAll(s, "|", `\|`)
+	return strings.ReplaceAll(s, sentinel, `\|`)
+}
+
+// emptyCell is the honest placeholder for a cell a render has no value for.
+const emptyCell = "—"
+
+// preservedExtras are the columns a region carries that the generated layout does
+// not know about: their header names in source order, and each row's cells for
+// them keyed by brief number.
+//
+// WHY THEY ARE CARRIED, NOT DROPPED. Dropping a column is only safe for one the
+// generated layout can RECONSTRUCT. `Gate` is such a column — it duplicates the
+// brief's own `gate:` frontmatter key — so the migration drops it. A board's own
+// column is not: a trailing `What's landed`, with cells like `implemented — PR
+// #87 merged 2026-08-16 (…)`, is authored content with no other home, and a fixed
+// seven-column render DELETED the whole column on the first regen. Extras are
+// therefore carried verbatim, appended after Reviewed in the order the source
+// header lists them, so the render is TOTAL over the board rather than a
+// truncation of it. A consumer who had already dropped `Gate` by hand still hit
+// this, so it is not a corollary of the Gate case.
+type preservedExtras struct {
+	names []string
+	byNum map[string][]string
+}
+
+// briefTableHeadWith renders the generated table's header + separator: the
+// canonical seven, byte-for-byte as briefTableHead spells them (so a board with
+// no extra column re-renders identically and no existing tree churns), followed
+// by one column per extra name.
+func briefTableHeadWith(extras []string) string {
+	if len(extras) == 0 {
+		return briefTableHead
+	}
+	lines := strings.SplitN(briefTableHead, "\n", 2)
+	var head, sep strings.Builder
+	head.WriteString(lines[0])
+	sep.WriteString(lines[1])
+	for _, e := range extras {
+		head.WriteString(" " + e + " |")
+		sep.WriteString(strings.Repeat("-", len([]rune(e))+2) + "|")
+	}
+	return head.String() + "\n" + sep.String()
+}
+
 // renderBriefsRegion builds the region text (header + separator + one row per
-// brief) for a stream. Authoring columns come from the brief frontmatter;
-// lifecycle columns come from preserved, defaulting a brief with no existing row
-// to the honest base (`todo` / `—` / `—`). The returned text has no trailing
-// newline; the caller frames it between the markers.
+// brief) for a stream, in the canonical seven-column layout. Authoring columns
+// come from the brief frontmatter; lifecycle columns come from preserved,
+// defaulting a brief with no existing row to the honest base (`todo` / `—` /
+// `—`). The returned text has no trailing newline; the caller frames it between
+// the markers.
 func renderBriefsRegion(s *Stream, preserved map[string]lifecycleCells) string {
+	return renderBriefsRegionWith(s, preserved, preservedExtras{})
+}
+
+// renderBriefsRegionWith is renderBriefsRegion plus the region's own extra
+// columns, carried through verbatim after Reviewed. With no extras it is
+// byte-identical to renderBriefsRegion.
+func renderBriefsRegionWith(s *Stream, preserved map[string]lifecycleCells, extras preservedExtras) string {
 	var b strings.Builder
-	b.WriteString(briefTableHead)
+	b.WriteString(briefTableHeadWith(extras.names))
 	for _, r := range streamBriefRows(s) {
 		lc, ok := preserved[r.num]
 		if !ok {
-			lc = lifecycleCells{status: "todo", verified: "—", reviewed: "—"}
+			lc = lifecycleCells{status: "todo", verified: emptyCell, reviewed: emptyCell}
 		}
 		if strings.TrimSpace(lc.status) == "" {
 			lc.status = "todo"
 		}
 		if strings.TrimSpace(lc.verified) == "" {
-			lc.verified = "—"
+			lc.verified = emptyCell
 		}
 		if strings.TrimSpace(lc.reviewed) == "" {
-			lc.reviewed = "—"
+			lc.reviewed = emptyCell
 		}
 		b.WriteString(fmt.Sprintf("\n| %s | [%s](%s) | %d | %s | %s | %s | %s |",
-			r.num, r.title, r.file, r.wave, r.effort, lc.status, lc.verified, lc.reviewed))
+			r.num, escapeTableCell(r.title), r.file, r.wave, r.effort, lc.status, lc.verified, lc.reviewed))
+		// Extra cells are copied through UNCHANGED — they are board content no
+		// derivation can rebuild, so they are never re-escaped or re-formatted;
+		// the source cell is already spelled for the cell it came from.
+		row := extras.byNum[r.num]
+		for i := range extras.names {
+			cell := emptyCell
+			if i < len(row) && strings.TrimSpace(row[i]) != "" {
+				cell = row[i]
+			}
+			b.WriteString(" " + cell + " |")
+		}
 	}
 	return b.String()
 }
@@ -133,16 +211,49 @@ func renderBriefsRegion(s *Stream, preserved map[string]lifecycleCells) string {
 // parsePreservedLifecycle reads the lifecycle columns out of an existing region,
 // keyed by brief number, so a re-render carries the hand-asserted/derived cells
 // through unchanged. Rows it cannot key on are skipped.
+//
+// THE COLUMNS ARE KEYED ON THE HEADER NAMES, NOT ON FIXED OFFSETS — the same way
+// parseBriefsTable (parse.go) reads a board. The region this runs against is
+// whatever the tree had BEFORE the migration wrapped it, and a hand-written
+// board is not obliged to carry exactly the canonical seven columns: an extra
+// authoring column (a `Gate` column between Effort and Status is the shape seen
+// in the wild) shifts every lifecycle cell one position. Read positionally, the
+// re-render then writes the GATE value into Status and the real status into
+// Verified — silent destruction of lifecycle state at migration time, on the one
+// run that is hardest to notice because 150 other files changed with it.
+//
+// A region whose header cannot be identified falls back to the canonical offsets
+// rather than dropping every row: that is the pre-existing behaviour, and it is
+// correct for the canonical shape, which is what a region already under the
+// markers always has.
 func parsePreservedLifecycle(region string) map[string]lifecycleCells {
+	cells, _ := parsePreservedRegion(region)
+	return cells
+}
+
+// parsePreservedRegion is parsePreservedLifecycle plus the region's EXTRA
+// columns — everything the header names that the generated layout neither
+// renders itself nor deliberately drops. One scan resolves both, so the extras
+// can never disagree with the lifecycle cells about where the header is.
+func parsePreservedRegion(region string) (map[string]lifecycleCells, preservedExtras) {
 	out := map[string]lifecycleCells{}
+	extras := preservedExtras{byNum: map[string][]string{}}
+	// Canonical offsets, used until (and unless) a header row names better ones.
+	statusAt, verifiedAt, reviewedAt, width := 4, 5, 6, 7
+	var extraAt []int
 	for _, line := range strings.Split(region, "\n") {
 		t := strings.TrimSpace(line)
 		if !strings.HasPrefix(t, "|") {
 			continue
 		}
 		cells := splitRow(line)
+		if idx, ok := lifecycleHeaderIndex(cells); ok {
+			statusAt, verifiedAt, reviewedAt, width = idx.status, idx.verified, idx.reviewed, len(cells)
+			extras.names, extraAt = idx.extraNames, idx.extraAt
+			continue
+		}
 		// header/separator and short rows carry no lifecycle data.
-		if len(cells) < 7 {
+		if len(cells) < width {
 			continue
 		}
 		num := strings.TrimSpace(cells[0])
@@ -150,12 +261,84 @@ func parsePreservedLifecycle(region string) map[string]lifecycleCells {
 			continue
 		}
 		out[num] = lifecycleCells{
-			status:   strings.TrimSpace(cells[4]),
-			verified: strings.TrimSpace(cells[5]),
-			reviewed: strings.TrimSpace(cells[6]),
+			status:   strings.TrimSpace(cells[statusAt]),
+			verified: strings.TrimSpace(cells[verifiedAt]),
+			reviewed: strings.TrimSpace(cells[reviewedAt]),
+		}
+		if len(extraAt) > 0 {
+			row := make([]string, 0, len(extraAt))
+			for _, i := range extraAt {
+				if i < 0 || i >= len(cells) {
+					row = append(row, "")
+					continue
+				}
+				row = append(row, strings.TrimSpace(cells[i]))
+			}
+			extras.byNum[num] = row
 		}
 	}
-	return out
+	return out, extras
+}
+
+// lifecycleColumnIndex is where the three lifecycle columns sit in one table,
+// plus the names and positions of every EXTRA column that table carries.
+type lifecycleColumnIndex struct {
+	status, verified, reviewed int
+	extraNames                 []string
+	extraAt                    []int
+}
+
+// canonicalColumnNames are the header names the generated layout renders itself,
+// from the brief frontmatter or from the preserved lifecycle cells. Lower-cased
+// for case-insensitive header matching.
+var canonicalColumnNames = map[string]bool{
+	"#": true, "brief": true, "wave": true, "effort": true,
+	"status": true, "verified": true, "reviewed": true,
+}
+
+// migratedAwayColumnNames are header names the generated layout deliberately does
+// NOT carry. `Gate` is the brief's own `gate:` frontmatter key, so a Gate column
+// on the board duplicates it and the render drops the column — header and cells
+// together. This set is the whole licence to drop a column: anything outside it
+// and outside canonicalColumnNames is an extra, and extras are carried.
+var migratedAwayColumnNames = map[string]bool{"gate": true}
+
+// lifecycleHeaderIndex reports the positions of the Status / Verified / Reviewed
+// columns when cells is a briefs-table HEADER row, and ok=false for any other
+// row. All three must be named: a table missing one of them is not a header this
+// can key on, and falling back is safer than guessing a partial mapping.
+//
+// It also records every column that is neither canonical nor deliberately
+// migrated away, so the renderer can carry those through instead of truncating
+// the table to seven columns.
+func lifecycleHeaderIndex(cells []string) (lifecycleColumnIndex, bool) {
+	idx := lifecycleColumnIndex{status: -1, verified: -1, reviewed: -1}
+	sawBrief := false
+	seen := map[string]bool{}
+	for i, c := range cells {
+		name := strings.TrimSpace(c)
+		lower := strings.ToLower(name)
+		switch lower {
+		case "brief":
+			sawBrief = true
+		case "status":
+			idx.status = i
+		case "verified":
+			idx.verified = i
+		case "reviewed":
+			idx.reviewed = i
+		}
+		if name == "" || canonicalColumnNames[lower] || migratedAwayColumnNames[lower] || seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		idx.extraNames = append(idx.extraNames, name)
+		idx.extraAt = append(idx.extraAt, i)
+	}
+	if !sawBrief || idx.status < 0 || idx.verified < 0 || idx.reviewed < 0 {
+		return lifecycleColumnIndex{}, false
+	}
+	return idx, true
 }
 
 // extractRegion locates the marker-wrapped region in a README's content. ok is
@@ -198,8 +381,8 @@ func rewriteReadmeRegion(s *Stream, path string) (changed bool, err error) {
 	if !ok {
 		return false, fmt.Errorf("%s: board: generated but no %s / %s markers around the Briefs table", path, briefsMarkerBegin, briefsMarkerEnd)
 	}
-	preserved := parsePreservedLifecycle(region)
-	rendered := renderBriefsRegion(s, preserved)
+	preserved, extras := parsePreservedRegion(region)
+	rendered := renderBriefsRegionWith(s, preserved, extras)
 	next := framedRegion(prefix, rendered, suffix)
 	if next == content {
 		return false, nil
@@ -233,8 +416,8 @@ func checkReadmeTables(streams []*Stream) (problems, notices []string) {
 			problems = append(problems, fmt.Sprintf("%s README: board: generated but no %s / %s markers around the Briefs table — add the markers or drop board: generated", s.Name, briefsMarkerBegin, briefsMarkerEnd))
 			continue
 		}
-		preserved := parsePreservedLifecycle(region)
-		expected := renderBriefsRegion(s, preserved)
+		preserved, extras := parsePreservedRegion(region)
+		expected := renderBriefsRegionWith(s, preserved, extras)
 		if strings.TrimSpace(region) == strings.TrimSpace(expected) {
 			continue
 		}

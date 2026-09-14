@@ -20,6 +20,11 @@ const initStreamPlaceholder = "{{stream}}"
 // (#349).
 const initCIFilePlaceholder = "{{cifile}}"
 
+// initHostPlaceholder is the token the no-CI-half next-steps text uses where the
+// unresolved origin host belongs, so the message can name the host statusgen could
+// not classify (#349).
+const initHostPlaceholder = "{{host}}"
+
 // initFallbackStream is the identity used only when the target directory's name
 // sanitises to nothing (e.g. a root named "/" or "---"). It is deliberately the
 // historical literal: a name we cannot derive is better than one we invent.
@@ -77,15 +82,31 @@ type initCITemplate struct {
 	body string
 }
 
-// ciTemplateFor resolves the CI half for a forge. forgeUnknown (no remote, or a
-// self-hosted host naming neither forge) falls back to the historical GitHub
-// half: it is the established default and keeps every no-remote scaffold (a fresh
-// `t.TempDir()`, a repo whose origin is not yet set) byte-identical to before.
-func ciTemplateFor(forge forgeKind) initCITemplate {
-	if forge == forgeGitLab {
-		return initCITemplate{path: ".gitlab-ci.yml", body: initGitlabCI}
+// ciTemplateFor resolves the CI half for a forge. The second return is false when
+// NO CI half is to be written — the unresolved-forge case forge-neutral/01's
+// resolution contract requires (refusal, never a GitHub default).
+//
+// The three cases:
+//   - github / gitlab: the matching half.
+//   - forgeUnknown WITH a readable origin remote (remotePresent) whose host names
+//     neither forge: NO half. Guessing GitHub here is exactly the "quietly defaults
+//     to GitHub" shape forge-neutral/01 forbids (#349) — the adopter is told why and
+//     pointed at --forge instead.
+//   - forgeUnknown with NO readable remote (a fresh `t.TempDir()`, a repo whose
+//     origin is not yet set): the historical GitHub half is kept, so a pre-origin
+//     bootstrap tree still scaffolds a runnable CI file byte-identically to before.
+func ciTemplateFor(forge forgeKind, remotePresent bool) (initCITemplate, bool) {
+	switch forge {
+	case forgeGitLab:
+		return initCITemplate{path: ".gitlab-ci.yml", body: initGitlabCI}, true
+	case forgeGitHub:
+		return initCITemplate{path: ".github/workflows/assay-statusgen.yml", body: initWorkflow}, true
+	default: // forgeUnknown
+		if remotePresent {
+			return initCITemplate{}, false
+		}
+		return initCITemplate{path: ".github/workflows/assay-statusgen.yml", body: initWorkflow}, true
 	}
-	return initCITemplate{path: ".github/workflows/assay-statusgen.yml", body: initWorkflow}
 }
 
 // runInit scaffolds the streams structure a repo needs to adopt the methodology:
@@ -97,25 +118,38 @@ func ciTemplateFor(forge forgeKind) initCITemplate {
 // After scaffolding it prints next steps. `statusgen init --root DIR` targets DIR.
 //
 // The CI half is chosen from the target's `origin` forge (see runInitForge): a
-// GitHub remote (or none) gets the GitHub workflow, a GitLab remote gets a
-// `.gitlab-ci.yml` running the same two halves — because a GitHub workflow on a
-// GitLab project is inert and leaves the board with no single writer (#349).
+// GitHub remote gets the GitHub workflow, a GitLab remote gets a `.gitlab-ci.yml`
+// running the same two halves — because a GitHub workflow on a GitLab project is
+// inert and leaves the board with no single writer (#349). A readable remote whose
+// host names NEITHER forge gets NO CI half (the unresolved case forge-neutral/01
+// forbids defaulting to GitHub); only a tree with no origin remote yet keeps the
+// historical GitHub fallback.
 func runInit(root string, dryRun bool) int {
-	return runInitForge(root, detectForge(root), dryRun)
+	forge, remotePresent, host := detectForgeForScaffold(root)
+	return runInitForge(root, forge, remotePresent, host, dryRun)
 }
+
+// initFile is one scaffolded target (path + rendered body). Named so the CI half
+// can be conditionally inserted into the file list — an unresolved forge writes no
+// CI half at all (ciTemplateFor's second return).
+type initFile struct{ path, body string }
 
 // runInitForge is runInit with the forge already resolved — from the `--forge`
 // flag when the operator gave one, else auto-detected. Kept separate so main()
 // can honour an explicit flag while the bare runInit (used across the tests and
-// as the default entry) still auto-detects.
+// as the default entry) still auto-detects. remotePresent/host carry the extra
+// fact detectForgeForScaffold reports so a forgeUnknown WITH a readable remote
+// (an unrecognised host) writes no CI half and says why, while a forgeUnknown with
+// no remote keeps the historical GitHub fallback. An explicit --forge is always a
+// resolved forge, so its callers pass remotePresent=true, host="".
 //
 // The starter stream is named after the target directory (see initStreamName), so
 // two freshly-init'd repos do not collide when a later run boards them together.
-func runInitForge(root string, forge forgeKind, dryRun bool) int {
+func runInitForge(root string, forge forgeKind, remotePresent bool, host string, dryRun bool) int {
 	stream := initStreamName(root)
 	streamDir := "docs/streams/" + stream
-	ci := ciTemplateFor(forge)
-	files := []struct{ path, body string }{
+	ci, hasCI := ciTemplateFor(forge, remotePresent)
+	files := []initFile{
 		{"docs/streams/README.md", initStreamsReadme},
 		{"docs/streams/FINDINGS.md", initFindings},
 		{"docs/streams/INTAKE.md", initIntake},
@@ -123,10 +157,18 @@ func runInitForge(root string, forge forgeKind, dryRun bool) int {
 		{streamDir + "/README.md", initExampleStream},
 		{streamDir + "/brief-01-first-brief.md", initExampleBrief},
 		{".assay-versions", initAssayVersions},
-		{ci.path, ci.body},
-		{"CLAUDE.md", initClaudeMd},
-		{"AGENTS.md", initAgentsMd},
 	}
+	// The CI half sits in its historical position (after .assay-versions, before
+	// CLAUDE.md) so the GitHub scaffold writes exactly the ten paths it always has.
+	// An unresolved forge writes no half — nine paths, and a next-steps note saying
+	// why rather than a GitHub workflow the adopter cannot run.
+	if hasCI {
+		files = append(files, initFile{ci.path, ci.body})
+	}
+	files = append(files,
+		initFile{"CLAUDE.md", initClaudeMd},
+		initFile{"AGENTS.md", initAgentsMd},
+	)
 	// --dry-run: print each file that would be created plus its rendered body, and
 	// write NOTHING. It is a preview of the scaffold — including the CI workflow's
 	// regen + reconcile steps — so an adopter (or a Verify row) can inspect what
@@ -173,6 +215,15 @@ func runInitForge(root string, forge forgeKind, dryRun bool) int {
 		fmt.Println("\nNothing to create — the streams structure is already in place.")
 		return 0
 	}
+	if !hasCI {
+		// Unresolved forge: no CI half was written. Say so — and why — rather than
+		// closing with advice to commit a file that does not exist (#349). The host
+		// is named so the adopter can see what statusgen could not classify.
+		fmt.Print(strings.ReplaceAll(
+			strings.ReplaceAll(initNextStepsNoCI, initStreamPlaceholder, stream),
+			initHostPlaceholder, cmpHostOrNone(host)))
+		return 0
+	}
 	next := strings.ReplaceAll(initNextSteps, initStreamPlaceholder, stream)
 	next = strings.ReplaceAll(next, initCIFilePlaceholder, ci.path)
 	fmt.Print(next)
@@ -183,6 +234,16 @@ func runInitForge(root string, forge forgeKind, dryRun bool) int {
 		fmt.Print(initGitlabRunnerNote)
 	}
 	return 0
+}
+
+// cmpHostOrNone renders the origin host for the no-CI next-steps message, so an
+// empty host (a case that should not reach here, since !hasCI implies a readable
+// remote) still reads sensibly rather than leaving a blank in the sentence.
+func cmpHostOrNone(host string) string {
+	if strings.TrimSpace(host) == "" {
+		return "(unreadable)"
+	}
+	return host
 }
 
 // initGitlabRunnerNote is appended to the next-steps ONLY on a GitLab forge. It
@@ -693,6 +754,38 @@ Scaffolded the streams structure. Next:
   6. Fill in the "This repo's bindings" section of the scaffolded CLAUDE.md. The
      ten invariants above it are universal and stay as they are; the bindings are
      the half nothing can write for you. AGENTS.md points at that one file.
+
+STATUS.md has a SINGLE writer (main's CI): regenerate it locally freely to preview,
+but never commit it on a branch. The scaffolded example stream keeps docs/streams/
+non-empty, so --lint is green from the first commit — no --allow-empty-root needed.
+`
+
+// initNextStepsNoCI is printed when the forge could not be resolved (a readable
+// origin remote whose host names neither github nor gitlab). NO CI half was
+// written — guessing GitHub is the "quietly defaults to GitHub" shape
+// forge-neutral/01 forbids — so the closing text explains that, names the host,
+// and points at the two ways to resolve it, rather than telling the adopter to
+// commit a CI file that was never created (#349).
+const initNextStepsNoCI = `
+Scaffolded the streams structure. NO CI half was written.
+
+  The origin remote's host is {{host}}, which is neither github nor gitlab, so
+  statusgen could not tell which CI half to scaffold. It does NOT guess GitHub: a
+  GitHub workflow on another forge is inert and would leave the board with no single
+  writer. Resolve the forge one of two ways, then re-run init to write the CI half:
+
+    * point the origin remote at your forge (a github or gitlab host), OR
+    * re-run with an explicit half:   statusgen init --forge github|gitlab --root .
+
+  Everything else was scaffolded. Next:
+
+  1. Fill .assay-versions: replace the REPLACE_WITH_TAG / REPLACE_WITH_SHA256 tokens
+     with a real statusgen release tag + per-platform sha256 (from that release's
+     checksums.txt on medici-finance/assay).
+  2. Lint the set:         statusgen --root . --lint
+  3. Generate the board:   statusgen --root .          writes STATUS.md at the repo root
+  4. Replace docs/streams/{{stream}}/ with your own stream, then delete it.
+  5. Fill in the "This repo's bindings" section of the scaffolded CLAUDE.md.
 
 STATUS.md has a SINGLE writer (main's CI): regenerate it locally freely to preview,
 but never commit it on a branch. The scaffolded example stream keeps docs/streams/

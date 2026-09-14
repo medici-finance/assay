@@ -33,6 +33,7 @@
     "CheckRunsTotalCount": 3,
     "CheckRuns": [
       {
+        "ID": "9001",
         "Name": "go-test",
         "Status": "completed",
         "Conclusion": "success",
@@ -40,6 +41,7 @@
         "CompletedAt": ""
       },
       {
+        "ID": "9002",
         "Name": "lint",
         "Status": "completed",
         "Conclusion": "failure",
@@ -47,6 +49,7 @@
         "CompletedAt": ""
       },
       {
+        "ID": "",
         "Name": "deploy",
         "Status": "queued",
         "Conclusion": "",

@@ -5,8 +5,9 @@
 # Creates the seven per-role service accounts, their group memberships and
 # personal access tokens, has each new account set its own avatar, then (when
 # --project is given) configures the fleet project's protected `main` branch,
-# MR-approval settings, protected release tags, and the pipeline /
-# all-discussions-resolved merge gates. Prints a plain-text summary ending with the
+# MR-approval settings, protected release tags, the pipeline /
+# all-discussions-resolved merge gates, and the queue-legibility / provenance
+# labels the desk verbs reach for. Prints a plain-text summary ending with the
 # HUMAN-ONLY remainder this script never attempts: Ultimate-tier settings, the
 # group token-expiry policy, and creation of the locked ci-config project.
 #
@@ -51,6 +52,7 @@
 #   POST   api/v4/projects/:id/protected_tags       (create_access_level SCALAR — Free)
 #   PUT    api/v4/projects/:id                       (pipeline + all-discussions-resolved merge checks)
 #   GET    api/v4/projects/:id                       (merge-checks read-back)
+#   POST   api/v4/projects/:id/labels                 (queue-legibility + provenance labels, #774)
 #
 # One non-API URL is fetched, and only when avatars are left at their default:
 #   GET    https://assay.guide/assets/app-icon-<role>.png   (public role icons)
@@ -95,6 +97,25 @@ AVATARS_DIR=""
 AVATARS=1
 AVATARS_ONLY=0
 AVATAR_ICON_BASE="https://assay.guide/assets"
+# TIER selects the OPTIONAL paid-tier hardening this run configures (brief 06).
+# Empty (the default) provisions only the CE-conforming core lane. `ultimate`
+# additionally scripts the two Ultimate refinements — a custom reviewer role
+# that cannot push, and an external-status-check verdict lane — each of which
+# NO-OPS on an instance that does not expose it (a 403 is could-not-check,
+# recorded, never a silent downgrade). `premium`/`free` are accepted for
+# symmetry and configure nothing beyond the core lane.
+TIER=""
+# The external status check the verdict lane posts to (brief 06 / spec §6). The
+# name is what the forge seam's postExternalStatusCheckVerdict resolves the check
+# id by, so it must match the deployed lane's configured name.
+STATUS_CHECK_NAME="assay-verdict"
+# The verdict lane's endpoint URL, required by GitLab to REGISTER an external
+# status check. Deployment-specific: pass --status-check-url on a live run.
+STATUS_CHECK_URL=""
+# The custom reviewer role's base access level: 20 = Reporter, which cannot push
+# to any branch. The custom role adds MR-approval granularity ON TOP of a base
+# that already lacks push — the "reviewer that cannot push" the brief names.
+CUSTOM_ROLE_BASE_LEVEL=20
 # Intended merge access level for protected `main`: 40 = Maintainers. Named
 # here because a hand repair that used 30 (Developers) let every Developer
 # service account merge its own MR — issue #346's comment 1.
@@ -106,6 +127,30 @@ MERGE_ACCESS_LEVEL=40
 # owner can create or move a tag, so a release tag is immutable to every bot.
 PROTECTED_TAG_GLOB='*'
 PROTECTED_TAG_CREATE_LEVEL=40
+
+# Project labels the desk verbs and the operating skills reach for (#774).
+# This is the GitLab twin of the GitHub `create-labels` PRIMITIVE
+# (docs/adopting-assay.md) — the SAME set of names, colors and descriptions, so
+# the two adoption profiles are label-parity. A label that is absent when a tool
+# reaches for it degrades SILENTLY on either forge: `deskflip`'s
+# `authorization-needed` -> `approval-needed` queue swap fails, and
+# `deskfile --raised-by <role>` drops the provenance stamp. Rows are
+# `name|color|description`; colors are stored bare (6 hex digits) and rendered
+# with the leading `#` GitLab requires by configure_labels (the forge seam's
+# gitlabLabelColor does the same), so the table stays forge-agnostic. The
+# `raised-by:*` rows track the roster's filing roles (ROLE_TABLE minus the
+# infra-only board-writer), matching the GitHub primitive's six.
+LABEL_TABLE='
+review-request|d4c5f9|dispatch token: a review session picks this up, runs the skill, posts the verdict
+raised-by:desk|BFDADC|filed by the process desk (the-desk)
+raised-by:worker|BFDADC|filed by a worker (worker-desk)
+raised-by:reviewer|BFDADC|filed by the reviewer desk (pr-review-desk)
+raised-by:verifier|BFDADC|filed by the verify desk (verify-desk)
+raised-by:issue-loop|BFDADC|filed by the intake/issue loop (intake-desk)
+raised-by:intake-loop|BFDADC|filed by the intake loop (roster-bound; no skill stamps it yet)
+authorization-needed|FBCA04|review lane has not approved at head — waiting on a reviewer verdict / open findings
+approval-needed|5319E7|review lane fully approved; flipped ready — waiting on the human'"'"'s merge approval
+'
 
 usage() {
   cat <<'USAGE'
@@ -143,6 +188,20 @@ Options:
                            using the token files already under --out-dir.
                            Mints nothing, creates nothing, and touches no
                            project settings. Requires --prefix and --out-dir.
+  --tier <t>              free | premium | ultimate. Default (unset): provision
+                           only the CE-conforming core lane. `ultimate` also
+                           scripts the two Ultimate refinements (brief 06): a
+                           custom reviewer role that cannot push, and an
+                           external-status-check verdict lane. Each NO-OPS as
+                           could-not-check on an instance that 403s the endpoint
+                           — never a silent downgrade. `premium`/`free` add
+                           nothing beyond the core lane.
+  --status-check-url <u>  Verdict lane endpoint URL to register the external
+                           status check against (--tier ultimate + --project,
+                           live only). Omit on a dry run.
+  --status-check-name <n> Name of the external status check the lane posts to.
+                           Default: assay-verdict (must match the deployed
+                           lane's configured name).
   --dry-run               Enumerate every action; make zero network calls.
   -h, --help              This text.
 
@@ -172,6 +231,9 @@ while [ $# -gt 0 ]; do
     --avatars-dir) AVATARS_DIR="$2"; AVATARS=1; shift 2 ;;
     --no-avatars) AVATARS=0; shift ;;
     --avatars-only) AVATARS_ONLY=1; shift ;;
+    --tier) TIER="$2"; shift 2 ;;
+    --status-check-url) STATUS_CHECK_URL="$2"; shift 2 ;;
+    --status-check-name) STATUS_CHECK_NAME="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -193,6 +255,11 @@ elif [ -z "$GROUP" ] || [ -z "$PREFIX" ]; then
   usage >&2
   exit 2
 fi
+
+case "$TIER" in
+  ""|free|premium|ultimate) ;;
+  *) echo "error: --tier must be one of: free, premium, ultimate (got '${TIER}')" >&2; usage >&2; exit 2 ;;
+esac
 
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "error: '$cmd' is required on PATH" >&2; exit 2; }
@@ -239,18 +306,40 @@ urlencode() {
 
 # gl_api METHOD PATH [JSON_BODY] — sets GL_LAST_STATUS and GL_LAST_BODY_FILE.
 # Caller is responsible for `rm -f "$GL_LAST_BODY_FILE"` when done reading it.
+#
+# Credential custody (spec.md §5, issue #786): the owner PAT is passed to curl
+# through a 0600 config file (`curl -K`, minted under `umask 077`), NEVER on the
+# command line where the process table would expose it to any local user. This
+# is the same custody upload_avatar already uses for a role's own token — the
+# only difference is the source (this reads the owner PAT from the environment,
+# upload_avatar reads a role PAT from its 0600 token file).
+#
+# Transport safety (issue #786): a curl transport failure (DNS/TLS/connection —
+# curl exits non-zero, reporting HTTP "000") is RECORDED, not fatal. The trailing
+# `|| echo "000"` keeps the command substitution's OWN exit status zero, so
+# `set -euo pipefail` does not abort the run mid-call — GL_LAST_STATUS becomes the
+# non-2xx sentinel "000", which flows to the caller's status branch where
+# record_failure fires and print_summary_and_exit surfaces it in the summary.
+# This is exactly what upload_avatar already does. Before this, the non-zero
+# substitution aborted the whole run under `set -e` BEFORE any ledger entry or
+# summary was written.
 gl_api() {
   local method="$1" path="$2" body="${3:-}"
-  local tmp
+  local tmp cfg
   tmp=$(mktemp "${TMPDIR:-/tmp}/gl-api-body.XXXXXX")
+  # PAT off argv: write the token into a 0600 curl config file and pass it with
+  # `curl -K`, so PRIVATE-TOKEN never appears on the command line.
+  cfg=$(mktemp "${TMPDIR:-/tmp}/gl-api-curlrc.XXXXXX")
+  ( umask 077; printf 'header = "PRIVATE-TOKEN: %s"\n' "$GITLAB_TOKEN" > "$cfg" )
   if [ -n "$body" ]; then
-    GL_LAST_STATUS=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H "Content-Type: application/json" \
-      -d "$body" "${GITLAB_URL}/api/v4${path}")
+    GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
+      -H "Content-Type: application/json" \
+      -d "$body" "${GITLAB_URL}/api/v4${path}" || echo "000")
   else
-    GL_LAST_STATUS=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4${path}")
+    GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
+      "${GITLAB_URL}/api/v4${path}" || echo "000")
   fi
+  rm -f "$cfg"
   GL_LAST_BODY_FILE="$tmp"
 }
 
@@ -328,15 +417,31 @@ echo "Assay fleet provisioning — group=${GROUP} prefix=${PREFIX} project=${PRO
 # Printed by every exit path that reaches the end of a mode, so a failed step
 # is always reported rather than swallowed by the step after it.
 print_summary_and_exit() {
-  cat <<CHECKLIST
-
-============================================================
-HUMAN-ONLY REMAINDER — this script does not and cannot do these:
-============================================================
+  echo ""
+  echo "============================================================"
+  echo "HUMAN-ONLY REMAINDER — this script does not and cannot do these:"
+  echo "============================================================"
+  if [ "$TIER" = "ultimate" ]; then
+    cat <<CHECKLIST
+1. Ultimate-tier settings:
+   - Custom reviewer role + external status check: CONFIGURED (or attempted,
+     with any 403 recorded as could-not-check) by this run's --tier ultimate
+     section above. Verify per docs/adopting-assay-gitlab.md's Ultimate section
+     — the custom role must FAIL a push (negative test), the status check must
+     be required on protected main.
+   - Pipeline execution policy enforcing the ci-config project's pipeline:
+     still human-only (not scripted here).
+CHECKLIST
+  else
+    cat <<CHECKLIST
 1. Ultimate-tier settings (require an Ultimate license):
-   - Custom role for the reviewer service account (Developer without push).
+   - Custom role for the reviewer service account (Reporter base, no push).
    - External status checks wired to CI verdicts.
    - Pipeline execution policy enforcing the ci-config project's pipeline.
+   Re-run with --tier ultimate on an Ultimate instance to script the first two.
+CHECKLIST
+  fi
+  cat <<CHECKLIST
 2. Group token-expiry policy: set the group/instance PAT max lifetime to
    ${PAT_EXPIRY_DAYS} days or less (Settings > General > Permissions), the
    backstop behind rotate-on-mint (spec.md §5).
@@ -359,6 +464,129 @@ CHECKLIST
   fi
   echo "============================================================"
   exit 0
+}
+
+# --- Ultimate refinements (brief 06) ---------------------------------------
+# Two Ultimate-only refinements, each behind --tier ultimate:
+#
+#   A. A CUSTOM REVIEWER ROLE that cannot push. The reviewer service account is
+#      a Reporter base (CUSTOM_ROLE_BASE_LEVEL=20 — no push to any branch) plus
+#      the `admin_merge_request` custom ability, restoring the per-resource
+#      "approve MRs but never write code" granularity a GitHub App has. Created
+#      via the member-roles API (POST /groups/:id/member_roles), then bound to
+#      the reviewer member (PUT /groups/:id/members/:user_id member_role_id).
+#
+#   B. An EXTERNAL STATUS CHECK the verdict lane posts to. Registered per project
+#      (POST /projects/:id/external_status_checks) against protected main, so the
+#      lane can post pass/fail against the MR head SHA with ZERO repo write access
+#      and merge waits on the check. The forge seam's postExternalStatusCheckVerdict
+#      is the writer; this is the one-time registration.
+#
+# TIER IS THE SINGLE POINT OF FAILURE, on purpose: both endpoints are Ultimate-
+# only, so on a lesser instance they answer 403. A 403 here is RECORDED as
+# could-not-check and surfaced in the summary — never a silent downgrade, and
+# never treated as "done".
+configure_ultimate() {
+  local reviewer_user="${PREFIX}-reviewer-bot"
+  local role_name="${PREFIX}-reviewer-role"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] --tier ultimate: would create custom role '${role_name}' (base=Reporter/${CUSTOM_ROLE_BASE_LEVEL}, admin_merge_request=true, no push) via POST /groups/:id/member_roles"
+    echo "[dry-run]   would assign the custom role to service account ${reviewer_user} via PUT /groups/:id/members/:user_id (member_role_id)"
+    if [ -n "$PROJECT" ]; then
+      echo "[dry-run] --tier ultimate: would register external status check '${STATUS_CHECK_NAME}' -> ${STATUS_CHECK_URL:-<--status-check-url>} on protected main via POST /projects/:id/external_status_checks"
+    else
+      echo "[dry-run] --tier ultimate: would register external status check '${STATUS_CHECK_NAME}' — SKIPPED in this enumeration (needs --project); pass --project to include it"
+    fi
+    return 0
+  fi
+
+  # --- A. custom reviewer role -------------------------------------------
+  # Idempotent: reuse an existing member role of the same name rather than
+  # minting a duplicate on a re-run.
+  gl_api GET "/groups/${GROUP_ID}/member_roles"
+  local role_id=""
+  if [ "$GL_LAST_STATUS" = "200" ]; then
+    role_id=$(jq -r --arg n "$role_name" '.[] | select(.name==$n) | .id' "$GL_LAST_BODY_FILE" | head -1)
+  elif [ "$GL_LAST_STATUS" = "403" ] || [ "$GL_LAST_STATUS" = "404" ]; then
+    rm -f "$GL_LAST_BODY_FILE"
+    record_failure "custom role: reading /groups/${GROUP}/member_roles returned HTTP ${GL_LAST_STATUS} (could-not-check — the instance tier does not expose member roles; Ultimate required)"
+    return 0
+  fi
+  rm -f "$GL_LAST_BODY_FILE"
+
+  if [ -z "$role_id" ]; then
+    local role_body
+    role_body=$(jq -n --arg n "$role_name" --argjson b "$CUSTOM_ROLE_BASE_LEVEL" \
+      '{name: $n, base_access_level: $b, admin_merge_request: true}')
+    gl_api POST "/groups/${GROUP_ID}/member_roles" "$role_body"
+    if [ "$GL_LAST_STATUS" = "201" ] || [ "$GL_LAST_STATUS" = "200" ]; then
+      role_id=$(jq -r '.id // ""' "$GL_LAST_BODY_FILE")
+      echo "custom role: created '${role_name}' (id=${role_id})"
+    else
+      record_failure "custom role: creating '${role_name}' returned HTTP ${GL_LAST_STATUS} (could-not-check on a non-Ultimate instance)"
+    fi
+    rm -f "$GL_LAST_BODY_FILE"
+  else
+    echo "no-op: custom role '${role_name}' already exists (id=${role_id})"
+  fi
+
+  if [ -n "$role_id" ]; then
+    gl_api GET "/groups/${GROUP_ID}/service_accounts"
+    local reviewer_id=""
+    reviewer_id=$(jq -r --arg u "$reviewer_user" '.[] | select(.username==$u) | .id' "$GL_LAST_BODY_FILE" | head -1)
+    rm -f "$GL_LAST_BODY_FILE"
+    if [ -n "$reviewer_id" ]; then
+      local assign_body
+      assign_body=$(jq -n --argjson r "$role_id" '{member_role_id: $r}')
+      gl_api PUT "/groups/${GROUP_ID}/members/${reviewer_id}" "$assign_body"
+      if [ "$GL_LAST_STATUS" = "200" ]; then
+        echo "custom role: assigned '${role_name}' to ${reviewer_user} (id=${reviewer_id})"
+      else
+        record_failure "custom role: assigning '${role_name}' to ${reviewer_user} returned HTTP ${GL_LAST_STATUS}"
+      fi
+      rm -f "$GL_LAST_BODY_FILE"
+    else
+      record_failure "custom role: reviewer account ${reviewer_user} not found — cannot assign '${role_name}'"
+    fi
+  fi
+
+  # --- B. external status check ------------------------------------------
+  if [ -z "$PROJECT" ]; then
+    echo "NOTICE: --tier ultimate but no --project — external status check registration skipped (could-not-check, not a pass); pass --project to register it"
+    return 0
+  fi
+  if [ -z "$STATUS_CHECK_URL" ]; then
+    record_failure "external status check: --status-check-url not given — GitLab requires an external_url to register '${STATUS_CHECK_NAME}'"
+    return 0
+  fi
+  local proj_enc
+  proj_enc=$(urlencode "$PROJECT")
+  gl_api GET "/projects/${proj_enc}/external_status_checks"
+  if [ "$GL_LAST_STATUS" = "403" ] || [ "$GL_LAST_STATUS" = "404" ]; then
+    rm -f "$GL_LAST_BODY_FILE"
+    record_failure "external status check: reading /projects/${PROJECT}/external_status_checks returned HTTP ${GL_LAST_STATUS} (could-not-check — Ultimate tier required)"
+    return 0
+  fi
+  local existing_check=""
+  if [ "$GL_LAST_STATUS" = "200" ]; then
+    existing_check=$(jq -r --arg n "$STATUS_CHECK_NAME" '.[] | select(.name==$n) | .id' "$GL_LAST_BODY_FILE" | head -1)
+  fi
+  rm -f "$GL_LAST_BODY_FILE"
+  if [ -n "$existing_check" ]; then
+    echo "no-op: external status check '${STATUS_CHECK_NAME}' already registered (id=${existing_check})"
+    return 0
+  fi
+  local check_body
+  check_body=$(jq -n --arg n "$STATUS_CHECK_NAME" --arg u "$STATUS_CHECK_URL" \
+    '{name: $n, external_url: $u}')
+  gl_api POST "/projects/${proj_enc}/external_status_checks" "$check_body"
+  if [ "$GL_LAST_STATUS" = "201" ] || [ "$GL_LAST_STATUS" = "200" ]; then
+    echo "external status check: registered '${STATUS_CHECK_NAME}' -> ${STATUS_CHECK_URL}"
+  else
+    record_failure "external status check: registering '${STATUS_CHECK_NAME}' returned HTTP ${GL_LAST_STATUS} (could-not-check on a non-Ultimate instance)"
+  fi
+  rm -f "$GL_LAST_BODY_FILE"
 }
 
 # --- tier detection (issue #346) -------------------------------------------
@@ -849,12 +1077,53 @@ configure_merge_settings() {
   fi
 }
 
+# Project labels (#774): create every LABEL_TABLE row idempotently via
+# POST /projects/:id/labels. GitLab answers a duplicate name with 409 on some
+# versions and 400 "already exists" on others — both are the success case for an
+# ensure, exactly as the forge seam's ApplyLabels treats them. Labels are
+# project-scoped, so this runs only inside the --project block. A create that
+# fails for any OTHER reason is recorded (not fatal to the steps after it), the
+# same failure-ledger discipline as every settings step above: a missing queue
+# label is a provisioning gap that makes a desk write degrade silently, never a
+# reason to abort the run.
+configure_labels() {
+  local name color desc body st msg
+  while IFS='|' read -r name color desc; do
+    [ -z "$name" ] && continue
+    body=$(jq -n --arg n "$name" --arg c "#${color}" --arg d "$desc" \
+      '{name: $n, color: $c, description: $d}')
+    gl_api POST "/projects/${PROJECT_ID}/labels" "$body"
+    st="$GL_LAST_STATUS"
+    msg=$(cat "$GL_LAST_BODY_FILE")
+    rm -f "$GL_LAST_BODY_FILE"
+    case "$st" in
+      200|201) echo "label: created '${name}' (#${color})" ;;
+      409) echo "label: '${name}' already exists (no-op)" ;;
+      400)
+        case "$msg" in
+          *"already exists"*|*"has already been taken"*)
+            echo "label: '${name}' already exists (no-op)" ;;
+          *)
+            echo "error: creating label '${name}' failed (HTTP ${st}): ${msg}" >&2
+            record_failure "label '${name}' not created (HTTP ${st}) — the desk write that reaches for it (deskflip queue swap / deskfile --raised-by) degrades silently until fixed" ;;
+        esac ;;
+      *)
+        echo "error: creating label '${name}' failed (HTTP ${st}): ${msg}" >&2
+        record_failure "label '${name}' not created (HTTP ${st}) — the desk write that reaches for it (deskflip queue swap / deskfile --raised-by) degrades silently until fixed" ;;
+    esac
+  done <<< "$LABEL_TABLE"
+}
+
 if [ -n "$PROJECT" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] would protect branch 'main' on project ${PROJECT}: allowed_to_push=[board-writer], allowed_to_merge=[Maintainer role]"
     echo "[dry-run] would set approvals: merge_requests_author_approval=false, merge_requests_disable_committers_approval=true"
     echo "[dry-run] would protect tags '${PROTECTED_TAG_GLOB}' with create_access_level=${PROTECTED_TAG_CREATE_LEVEL} (Maintainers)"
     echo "[dry-run] would set only_allow_merge_if_pipeline_succeeds=true and only_allow_merge_if_all_discussions_are_resolved=true"
+    while IFS='|' read -r lname _ _; do
+      [ -z "$lname" ] && continue
+      echo "[dry-run] would create project label '${lname}' (POST /projects/:id/labels, idempotent)"
+    done <<< "$LABEL_TABLE"
   else
     # A missing board-writer id no longer skips the whole block: it only rules
     # out the Premium push allowlist, which the free-tier form does not use.
@@ -881,10 +1150,18 @@ if [ -n "$PROJECT" ]; then
       configure_approvals
       configure_protected_tags
       configure_merge_settings
+      configure_labels
     }
   fi
 else
   echo "NOTICE: --project not given — protected-branch and approval settings skipped (could-not-check, not a pass); pass --project to configure them"
+fi
+
+# Ultimate refinements (brief 06): custom reviewer role + external-status-check
+# verdict lane. Runs only at --tier ultimate; each endpoint no-ops as
+# could-not-check on a lesser instance (recorded, never a silent downgrade).
+if [ "$TIER" = "ultimate" ]; then
+  configure_ultimate
 fi
 
 print_summary_and_exit

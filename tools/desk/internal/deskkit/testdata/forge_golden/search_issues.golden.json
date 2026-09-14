@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/search/issues",
+      "query": "q=repo%3Amedici-finance%2Fassay+is%3Aissue+flip+race+relabel\u0026per_page=200"
+    }
+  ],
+  "result": [
+    {
+      "Number": 5,
+      "Title": "flip races on relabel",
+      "State": "open",
+      "Labels": [
+        "bug"
+      ],
+      "URL": "https://example/issues/5"
+    }
+  ]
+}

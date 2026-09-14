@@ -5,14 +5,14 @@ package main
 // (assign_test.go: TestAssignCompiledMatchesSourceDiff), copying the lane-ACL
 // derive-or-diff convention (internal/comms/laneacl.go + laneacl.yaml).
 //
-// The prose router (a companion package landing separately) chooses an ACTION from a closed
-// vocabulary and NEVER names a model or tier — routing is a content judgment,
+// The prose router (decide.go, this same package) chooses an ACTION from a closed
+// set and NEVER names a model or tier — routing is a content judgment,
 // model assignment is a table lookup with an audit trail, including for the
-// decider's OWN model (that half is internal/runnertable's DeciderEntry, a
-// companion deliverable landing alongside this file). This file is the
-// action-side half of that lookup: (action, class, risk) -> Tier. Tier then
-// resolves through the pinned tier->runner table (internal/runnertable) to a
-// concrete runner — see TestFlowActionToRunner for the one-test end-to-end proof.
+// decider's OWN model (that half is internal/runnertable's DeciderEntry). This
+// file is the action-side half of that lookup: (action, class, risk) -> Tier.
+// Tier then resolves through the pinned tier->runner table
+// (internal/runnertable) to a concrete runner — see TestFlowActionToRunner for
+// the one-test end-to-end proof.
 //
 // ABSENT IS REFUSED. A (action, class, risk) triple this table does not
 // explicitly carry a row for refuses — there is no default tier and no
@@ -42,14 +42,17 @@ const assignSchema = "assign-v1"
 // source (mirrors laneacl.ACLSourceFile).
 const assignSourceFile = "assign.yaml"
 
-// KnownActions is the closed action vocabulary the prose router chooses
-// from. It is MIRRORED here, not imported, because the router has not landed
-// yet; once it does, its own vocabulary constant becomes the declared source
-// of this list and a diff test binds the two — the same relationship
-// compiledAssign already has to assign.yaml today. Absent is refused: an
-// action outside this set never resolves to a tier.
+// KnownActions is the closed action set the prose router (decide.go) chooses
+// from. decide.go's routerActions() is now the DECLARED SOURCE of this list —
+// TestRouterActionsMatchAssignKnownActions diffs the two — the same
+// relationship compiledAssign already has to assign.yaml. It stays its own Go
+// map rather than a direct reference to routerActions() so this file's own
+// diff test (TestAssignCompiledMatchesSourceDiff, against assign.yaml) and
+// decide.go's (against this map) each have an independent, reviewable source
+// to compare against, not a single shared slice both silently trust. Absent is
+// refused: an action outside this set never resolves to a tier.
 var KnownActions = map[string]bool{
-	"route-work-ready":     true,
+	"route-work-dispatch":  true,
 	"route-review":         true,
 	"route-verify":         true,
 	"land-report":          true,
@@ -110,17 +113,17 @@ type assignKey struct {
 //
 // See assign.yaml for the declared rule set this table implements: risk:
 // "yes" on any (action, class) forces TierHuman; dispatch-class actions
-// (route-work-ready / route-review / route-verify) default to TierSession on
+// (route-work-dispatch / route-review / route-verify) default to TierSession on
 // the non-risk path (the standing fan-out convention); the two bookkeeping
 // actions (land-report / file-question-issue) scale TierLocal -> TierCheap
 // with class instead; escalate-human-issue and quarantine are ALWAYS
 // TierHuman, regardless of class or risk.
 var compiledAssign = map[assignKey]loopengine.Tier{
-	// route-work-ready
-	{Action: "route-work-ready", Class: "routine", Risk: false}:   loopengine.TierSession,
-	{Action: "route-work-ready", Class: "sensitive", Risk: false}: loopengine.TierSession,
-	{Action: "route-work-ready", Class: "routine", Risk: true}:    loopengine.TierHuman,
-	{Action: "route-work-ready", Class: "sensitive", Risk: true}:  loopengine.TierHuman,
+	// route-work-dispatch
+	{Action: "route-work-dispatch", Class: "routine", Risk: false}:   loopengine.TierSession,
+	{Action: "route-work-dispatch", Class: "sensitive", Risk: false}: loopengine.TierSession,
+	{Action: "route-work-dispatch", Class: "routine", Risk: true}:    loopengine.TierHuman,
+	{Action: "route-work-dispatch", Class: "sensitive", Risk: true}:  loopengine.TierHuman,
 
 	// route-review
 	{Action: "route-review", Class: "routine", Risk: false}:   loopengine.TierSession,

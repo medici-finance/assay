@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/07
+brief: assay:assay:desktools-go-git:07
 title: deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest
 wave: 3
 depends: ["desktools-go-git/01", "desktools-go-git/02"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — decision 5 (deskmerge trial merge stays on the git binary; the one sanctioned caller)"
@@ -22,6 +22,8 @@ why: >-
   deskmerge's trial merge stays on the git binary as the ONE sanctioned caller, fenced and
   allowlisted; its other verbs still migrate to gitcore so the exception is exactly the
   trial merge and nothing more.
+version: 1
+id: bf949de7-254e-4de8-ad13-467d892136f7
 ---
 
 # Brief 07 — deskmerge exception: fence the trial merge, migrate the rest

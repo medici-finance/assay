@@ -42,13 +42,13 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // sourceArtifact is the `.assay-versions` artifact name carrying the source pin.
@@ -68,8 +68,26 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 // a commit.
 var shortSHA = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
-// execCommand is the seam for testing — production binds exec.Command.
-var execCommand = exec.Command
+// resolveHead is the seam for testing — production resolves HEAD in-process via
+// gitcore (brief 03; previously a `git rev-parse HEAD` subprocess through an
+// execCommand seam). A plain function value fake, rather than a faked subprocess, is
+// enough for TestEachRefusalIsLoadBearing's table: it exercises the PIN-COMPARISON
+// logic against an arbitrary literal SHA, never against a real commit, so it needs no
+// git (or gitcore) repository at all — only headOf's caller-facing contract (a 40-hex
+// SHA, or an error).
+var resolveHead = defaultResolveHead
+
+func defaultResolveHead(dir string) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	hash, err := repo.Resolve("HEAD")
+	if err != nil {
+		return "", err
+	}
+	return hash.String(), nil
+}
 
 type options struct {
 	repoRoot string
@@ -133,13 +151,12 @@ func readPin(pinFile, artifact string) (pin, error) {
 // rather than reading a file so a detached, shallow, sparse clone — which is what
 // the consumer action produces — answers correctly.
 func headOf(dir string) (string, error) {
-	cmd := execCommand("git", "-C", dir, "rev-parse", "HEAD")
-	out, err := cmd.Output()
+	out, err := resolveHead(dir)
 	if err != nil {
 		return "", deskkit.Unverifiable("cannot resolve HEAD of the materialised source at "+dir+
 			" — without it the compiled tree cannot be identified", err)
 	}
-	head := strings.TrimSpace(string(out))
+	head := strings.TrimSpace(out)
 	if !fullSHA.MatchString(head) {
 		return "", deskkit.Unverifiable("git reported a HEAD that is not a 40-hex commit for "+dir+
 			": "+fmt.Sprintf("%q", head), nil)

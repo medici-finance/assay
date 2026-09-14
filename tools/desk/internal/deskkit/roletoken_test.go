@@ -103,6 +103,24 @@ func TestSessionTokenRoleRefusesALoopWithNoAppRole(t *testing.T) {
 	}
 }
 
+// TestNoLoopActsAsCellIssues — desk-console/31, Task 3 / Verify row 5. cell-issues is the
+// write-issues App's role, mintable by NAME only (`desktoken cell-issues`); it must never be
+// a loop's default identity, or every session of that loop's window would silently start
+// filing under the write App instead of its own. Pinned two ways: no loop in the table maps
+// to it, and asking the table for it as a LOOP name (not a role) resolves nothing.
+func TestNoLoopActsAsCellIssues(t *testing.T) {
+	for loop, role := range LoopTokenRoles() {
+		if role == "cell-issues" {
+			t.Fatalf("loop %q resolves to role cell-issues — no loop may act as the write-issues "+
+				"App by default; only an explicit by-name selection may", loop)
+		}
+	}
+	if role, ok := TokenRoleForLoop("cell-issues"); ok {
+		t.Fatalf(`TokenRoleForLoop("cell-issues") = (%q, true), want ok=false — cell-issues is an `+
+			"App role, never a loop name", role)
+	}
+}
+
 func TestLoopTokenRolesHandsBackACopy(t *testing.T) {
 	got := LoopTokenRoles()
 	got["the-desk"] = "tampered"

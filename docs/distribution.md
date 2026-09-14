@@ -35,6 +35,16 @@ the paired release tag, and every per-platform `sha256` refreshed from that rele
 (`tools/pairedversions`) asserts all three and fails closed; it is intended as a required check, so
 a bump that skips the re-pin is red before it lands.
 
+**The plugin version is the umbrella tag.** Since #789 the release workflow stamps
+`plugins/assay/.claude-plugin/plugin.json` — and with it the marketplace entry, `paired-versions.yaml`'s
+`plugin:`, and the generated Codex / Cursor / hook artifacts — to `X.Y.Z` in the tree that tag `vX.Y.Z` is
+cut from (`plugins/assay/scripts/stamp-plugin-version.sh`), and its gate refuses a tag whose
+`plugins/assay/**` changed since the previous tag without that version moving: Claude Code keys its
+plugin cache on the string, so an unchanged version is an update adopters never receive. Between
+releases the default branch carries the next patch version, so a dispatch of exactly that version finds
+the tree already stamped. The pairing above is unchanged by the stamp: `plugin:` moves with the
+manifest, the paired `tag`/`sha256` lines move only with a re-pin.
+
 ## The `.assay-versions` pin file
 
 The pin file lives at the consumer repo root and is the single record of which release a consumer
@@ -52,6 +62,33 @@ runs. It has two kinds of line:
 A consumer that cannot read its pin cannot claim to be pinned: a missing or malformed pin file is
 **fail-closed** (could-not-check), never silently defaulted. `deskpins --check` validates a pin file
 against this contract.
+
+### One tag, one tree — and the exemption marker
+
+`statusgen --lint` enforces **one tag, one tree**: the artifacts share a release tag so a single
+tree is never read by tools cut from different releases. Every per-artifact line participates in
+that comparison (the umbrella line does not — it names a composition, not an asset); if two
+artifacts carry different tags the lint PROBLEMs.
+
+Two legitimate states need to opt one line out of the comparison without hiding it:
+
+- a **guard binary frozen on an earlier tag** of the same tool family by a recorded maintainer
+  ruling — still a `desk-tools`-family artifact, just an older tag; and
+- a **separate-repository artifact on its own release cadence** that the umbrella release never
+  ships.
+
+Declare the exemption **per line** with a trailing comment:
+
+```
+example-reconciler v2.4.1 <sha256>  # same-tag: exempt — separate release cadence
+desk-tools-guard v0.13.0 <sha256>  # same-tag: exempt — frozen by maintainer ruling
+```
+
+The marker is the token `same-tag: exempt` in the line's trailing comment; the text after it is a
+free-form reason kept for the human record. An exempt line stays a fully valid, lint-visible pin
+(`deskpins --check` still validates its shape and sha256) — it is only removed from the same-tag
+grouping. Every **non-exempt** artifact must still share one tag: a genuine, undeclared mixed-tag
+state still PROBLEMs, and the exempt line's off-tag never appears in that message.
 
 ## Report packs
 

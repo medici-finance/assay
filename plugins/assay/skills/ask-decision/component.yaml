@@ -6,14 +6,14 @@ provides:
   - assay.skill.ask-decision
 inject:
   required:
+    - key: assay.harness
     - key: assay.desk.verbs
       range: ">=0.20.0 <1.0.0"
-  optional:
-    - key: assay.harness
+  optional: []
 apply:
   - id: skill-body
     effect: install the ask-decision skill directory into the harness plugin cache
     boundary: inside
-    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+    inverse: remove the skill directory from the harness plugin cache
 intercept: []
 config: {}

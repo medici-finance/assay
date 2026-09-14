@@ -34,20 +34,20 @@
     {
       "name": "the dispute posts its reason but never applies needs-decision (the item stays closeable)",
       "file": "cmd/deskclose/superseded.go",
-      "old": "\tif err := addLabel(c.repo, n, it.isPR(), labelNeedsDecision); err != nil {",
-      "new": "\tif err := error(nil); err != nil {"
+      "old": "\tif err := addLabel(c.repo, n, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {",
+      "new": "\tif err := addLabel(c.repo, n, deskkit.LabelSpec{Name: \"not-applied\"}); err != nil {"
     },
     {
       "name": "the proposal posts its comment but never applies superseded? (invisible to the queue and the sweep)",
       "file": "cmd/deskclose/superseded.go",
-      "old": "\tif err := addLabel(c.repo, n, it.isPR(), labelProposed); err != nil {",
-      "new": "\tif err := error(nil); err != nil {"
+      "old": "\t\tName:        labelProposed,",
+      "new": "\t\tName:        \"not-superseded\","
     },
     {
       "name": "an UNREADABLE token identity is rounded up to the reviewer role (could-not-check becomes a grant)",
       "file": "cmd/deskclose/superseded.go",
-      "old": "\t\treturn caller{}, deskkit.Unverifiable(\n\t\t\t\"could-not-check: the identity of the token in use could not be read from the forge \"+",
-      "new": "\t\treturn caller{login: \"fallback[bot]\", role: roleReviewer}, nil; _ = deskkit.Unverifiable(\n\t\t\t\"could-not-check: the identity of the token in use could not be read from the forge \"+"
+      "old": "\tif !rok {",
+      "new": "\tif false && !rok {"
     },
     {
       "name": "a roster binding both roles to ONE App is accepted (the lane enforces nothing and says so to no one)",
@@ -70,8 +70,8 @@
     {
       "name": "a closed-unmerged target satisfies the confirm (work that never landed supersedes live work)",
       "file": "cmd/deskclose/github.go",
-      "old": "\tif !pr.Merged {",
-      "new": "\tif false && !pr.Merged {"
+      "old": "\tif !merged {",
+      "new": "\tif false && !merged {"
     }
   ]
 }

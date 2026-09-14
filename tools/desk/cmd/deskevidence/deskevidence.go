@@ -160,40 +160,60 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return ferr
 	}
 
-	// Determine the target repo path and content to commit.
+	// Determine the target repo path.
 	var targetRepoPath string
-	var commitContent []byte
-	blockAlready := false
-	remoteBriefSHA := ""
-
 	if *briefPath != "" {
 		targetRepoPath = *briefPath
-		// Read the remote brief, find its ## Evidence section, append the row — a genuine
-		// read → transform → write, which is why ReadFile exists on the seam alongside
-		// WriteFile: the merge cannot be folded into a backend-agnostic write.
-		merged, present, sha, merr := mergeEvidence(fg, fr, branch, *briefPath, localContent)
-		if merr != nil {
-			return merr
-		}
-		commitContent = merged
-		blockAlready = present
-		remoteBriefSHA = sha
 	} else {
 		targetRepoPath = evidenceRepoPath
-		commitContent = localContent
 	}
 	ac.file = targetRepoPath
+
+	// Read the current remote content of the target ONCE, up front. It is the base every
+	// scoping decision below is judged against: the brief merge (a genuine read → transform →
+	// write, which is why ReadFile exists on the seam alongside WriteFile — the merge cannot be
+	// folded into a backend-agnostic write), the secret scan's "what is genuinely NEW" question
+	// (#966, below), and — later — the idempotency and shrink-guard checks. A single fetch means
+	// none of those can disagree about what is already on the branch. A path ABSENT on the
+	// branch is a create (empty remote), not an error, EXCEPT with --brief-path: a brief must
+	// already exist to be merged into, so a not-found is propagated exactly as it was when this
+	// same ReadFile lived inside mergeEvidence.
+	var remoteContent []byte
+	remoteExists := false
+	remoteSHA := ""
+	cur, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: targetRepoPath, Ref: branch})
+	if rerr != nil {
+		if !deskkit.IsForgeNotFound(rerr) || *briefPath != "" {
+			return rerr
+		}
+	} else {
+		remoteContent, remoteExists = cur.Content, cur.Exists
+		remoteSHA = cur.SHA
+	}
+
+	// Resolve the content to commit: with --brief-path, merge the new evidence into the brief's
+	// ## Evidence section against the remote content just fetched; otherwise the local evidence
+	// file IS the target's whole content (the caller merged it locally before calling this tool).
+	var commitContent []byte
+	blockAlready := false
+	if *briefPath != "" {
+		merged, present := mergeEvidenceContent(remoteContent, localContent)
+		commitContent = merged
+		blockAlready = present
+	} else {
+		commitContent = localContent
+	}
 
 	// Block-level idempotency: a fresh Evidence block byte-equivalent (after normalising line
 	// endings, trailing whitespace and trailing blank lines) to the block already standing in
 	// the brief's ## Evidence section is a no-op — it proves what the last run proved and has
-	// nothing to land. Decided on the content the merge already fetched, so it adds no API call,
-	// and taken BEFORE the shrink guard (like the file-level noop) so an idempotent re-run is
-	// never mistaken for a shrink. NOTHING is fetched-then-put.
+	// nothing to land. Decided on the content the fetch above already returned, so it adds no
+	// extra API call, and taken BEFORE the shrink guard (like the file-level noop) so an
+	// idempotent re-run is never mistaken for a shrink. NOTHING is fetched-then-put.
 	if blockAlready {
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = fmt.Sprintf("noop: Evidence block already present in %s on %s (sha %s)",
-			targetRepoPath, branch, shortSHA(remoteBriefSHA))
+			targetRepoPath, branch, shortSHA(remoteSHA))
 		fmt.Fprintln(stdout, ac.detail)
 		return nil
 	}
@@ -203,35 +223,43 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// shrink guard for that class, and honour an explicit --append-only for any other file.
 	appendOnly := *appendOnlyFlag || strings.HasSuffix(targetRepoPath, ".jsonl")
 
-	// Secret-scan the content that will be committed.
-	if berr := deskkit.BodyCheck(commitContent); berr != nil {
+	// Secret-scan only the bytes THIS commit ADDS relative to what is already on the branch
+	// (#966). With --brief-path that is exactly localContent — mergeEvidenceContent never
+	// touches a pre-existing byte of the brief, so the evidence being merged in already IS the
+	// added bytes, never commitContent (which is the whole MERGED file: every pre-existing byte
+	// of the brief plus the new block). WITHOUT --brief-path the caller hands over the whole
+	// target file (it merged the row into a local working copy itself before calling this tool),
+	// so localContent can legitimately be almost entirely PRE-EXISTING text — scanning it whole
+	// reads a Verify row's own quoted secret-shaped material (a slash-list of stream
+	// identifiers, a Kubernetes PVC uid, a fingerprint quoted in prose — all of it already
+	// reviewed and merged through the normal PR path) as if this commit had just typed it, and a
+	// brief carrying either shape could never receive another Evidence append through the
+	// sanctioned tool at all. addedLines diffs localContent against the remote content fetched
+	// above and hands the scanner only the lines that are actually new — the same "what did THIS
+	// commit add" question already answered for the --brief-path merge, now judged against the
+	// real remote base instead of an implicit empty one. A brand-new file (remoteExists false)
+	// has no base to diff against, so the whole thing is genuinely new and is scanned whole,
+	// exactly as before.
+	scanTarget := localContent
+	if *briefPath == "" && remoteExists {
+		scanTarget = addedLines(remoteContent, localContent)
+	}
+	if berr := deskkit.BodyCheck(scanTarget); berr != nil {
 		return berr
 	}
 
-	// Public-repo trust gate. deskevidence writes a file directly to a remote branch — an
-	// outward write with no associated issue/PR number, so the gate fails closed (exit 6) for
-	// public repos (no reactions surface to consult) and passes through for private/internal.
+	// Public-repo write gate. deskevidence writes a file directly to a remote branch — an
+	// outward write. A public/internal target is authorized only by a listed `:public`
+	// allowed-repos entry (deskkit.PublicRepoGate); private/internal-without-entry refuse.
 	// The fetcher uses the minted verifier token and the backend's own default host (this tool
 	// no longer binds a GitHub API host literal of its own).
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
-	if gerr := publicRepoGateFn(fetcher, owner, name, 0); gerr != nil {
+	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
 
 	bodyDig := deskkit.Sha256Hex(commitContent)
 	ac.bodyDig = bodyDig
-
-	// Read the current target for idempotency + the shrink-guard base. A path ABSENT on the
-	// branch is a create (empty remote), not an error — the seam reports it as IsForgeNotFound.
-	var remoteContent []byte
-	remoteExists := false
-	if cur, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: targetRepoPath, Ref: branch}); rerr != nil {
-		if !deskkit.IsForgeNotFound(rerr) {
-			return rerr
-		}
-	} else {
-		remoteContent, remoteExists = cur.Content, cur.Exists
-	}
 
 	// Idempotency: same content already on the branch → noop, before any write budget is spent.
 	if remoteExists && deskkit.Sha256Hex(remoteContent) == bodyDig {
@@ -424,6 +452,41 @@ func rowDelta(older, newer []byte) (added, removed int) {
 	return added, removed
 }
 
+// addedLines returns the lines of newer that are NOT already accounted for by older, as a
+// MULTISET diff — the same "how many rows changed" comparison rowDelta already makes for the
+// audit trail (+N/-M rows), applied here to recover the literal TEXT of what changed rather than
+// just its count. It is the #966 fix's scanning base for an Evidence commit made WITHOUT
+// --brief-path: deskevidence has no other way to know what a caller-supplied whole-file body
+// actually adds relative to the branch, and scanning the whole thing re-refuses on any
+// secret-shaped run the file already carried, forever (see cmdEvidence's secret-scan comment).
+//
+// A line repeated in newer beyond how many times older carried it is added only for the SURPLUS
+// occurrences, exactly like rowDelta's own counting — so an unchanged line does not get counted
+// as "new" just because some OTHER unchanged line further down happens to read the same. Order
+// follows newer's own line order, which keeps the result readable; reBase64ish (the scanner's
+// high-entropy run detector) never matches across a newline, so nothing a line-oriented diff
+// could split a run across is lost by joining the added lines back with "\n".
+//
+// Unlike rowDelta this does NOT trim or drop blank lines: a blank line carries no secret, so
+// including it costs the scanner nothing, and dropping it would risk gluing two unrelated lines'
+// characters together across what was a line boundary in the original file.
+func addedLines(older, newer []byte) []byte {
+	remaining := map[string]int{}
+	for _, ln := range strings.Split(string(older), "\n") {
+		remaining[ln]++
+	}
+	var out strings.Builder
+	for _, ln := range strings.Split(string(newer), "\n") {
+		if remaining[ln] > 0 {
+			remaining[ln]--
+			continue
+		}
+		out.WriteString(ln)
+		out.WriteByte('\n')
+	}
+	return []byte(out.String())
+}
+
 // auditCtx accumulates fields for the ONE audit line per invocation.
 // finalize is deferred so exactly one line is written.
 type auditCtx struct {
@@ -496,20 +559,16 @@ func shortSHA(sha string) string {
 	return sha
 }
 
-// mergeEvidence reads the brief file from the forge, finds the ## Evidence section, and appends
-// the evidence content. It returns the merged content, a flag that is true when the fresh block
-// is already standing in the section (a block-level no-op — see blockAlreadyPresent), and the
-// forge's blob SHA for the brief it read. The read is the ReadFile op — a brief absent on the
-// branch is an error (the brief must exist to be merged into), so a not-found is propagated
-// rather than treated as a first-write.
-func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath string, evidence []byte) (merged []byte, alreadyPresent bool, remoteSHA string, err error) {
-	cur, err := fg.ReadFile(fr, deskkit.ReadFileInput{File: briefPath, Ref: branch})
-	if err != nil {
-		return nil, false, "", err
-	}
-	remoteContent := cur.Content
-	remoteSHA = cur.SHA
-
+// mergeEvidenceContent finds the ## Evidence section in remoteContent and appends the evidence
+// content. It returns the merged content and a flag that is true when the fresh block is already
+// standing in the section (a block-level no-op — see blockAlreadyPresent).
+//
+// This is the pure text-transform half of what was a single mergeEvidence function; the read
+// itself (the ReadFile op) now happens once, up front in cmdEvidence, alongside the fetch the
+// secret scan's added-bytes scoping (#966) and the idempotency/shrink-guard checks all judge
+// themselves against — a brief absent on the branch is refused there (a brief must exist to be
+// merged into), so remoteContent here is always a real brief body, never a not-found.
+func mergeEvidenceContent(remoteContent, evidence []byte) (merged []byte, alreadyPresent bool) {
 	// Find the ## Evidence section and append.
 	// The Evidence section starts with "## Evidence" and ends at end of file
 	// or at the next "## " heading.
@@ -531,7 +590,7 @@ func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath str
 		// No Evidence section found — append one at the end. This CREATES the section, so it is
 		// never a block-level no-op.
 		out := strings.TrimRight(remoteStr, "\n") + "\n\n## Evidence\n" + evidenceStr + "\n"
-		return []byte(out), false, remoteSHA, nil
+		return []byte(out), false
 	}
 
 	// Find the end of the Evidence section (next ## heading or EOF).
@@ -559,7 +618,7 @@ func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath str
 		out += remoteStr[evidenceEnd:]
 	}
 
-	return []byte(out), alreadyPresent, remoteSHA, nil
+	return []byte(out), alreadyPresent
 }
 
 // normalizeEvidenceText normalises a block or an Evidence section for the block-equivalence

@@ -1,5 +1,5 @@
 ---
-brief: quality/04
+brief: assay:assay:quality:04
 title: M1 instruction-layer brittleness — reference-validity + doc↔code co-change staleness
 why: >-
   Agents are only as good as the instruction layer they run on. Config/instruction files,
@@ -16,12 +16,14 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §4.6 — instruction-layer brittleness (context rot): reference-validity + doc↔code co-change"
   - "docs/streams/quality/spec.md §4.5 — change coupling, applied doc-to-code"
   - "docs/streams/quality/spec.md §3.2 — three-state instrument invariant"
+version: 1
+id: 83e74354-59d8-4dfb-882e-55c986574866
 ---
 
 # Brief 04 — M1 instruction-layer brittleness (reference-validity + doc↔code drift)

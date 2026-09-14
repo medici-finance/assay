@@ -1,5 +1,5 @@
 ---
-brief: quality/12
+brief: assay:assay:quality:12
 title: M4 gate-yield accounting + ritual-effectiveness natural-experiment joins
 why: >-
   M1-M3 measure the CODE; M4 turns the same instruments on the PROCESS, so a review lane
@@ -17,12 +17,14 @@ exec-tier: strong
 exec-tier-why: observational-validity reasoning — designing joins that acknowledge confounders and enforce brittleness-band stratification as the minimum control so no naive causal number leaks (question b).
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §7.1 — gate-yield accounting: catch-rate, escape-rate, latency per review lane, using M3's review-escape overlay"
   - "docs/streams/quality/spec.md §7.2 — ritual effectiveness (natural experiments): cost per durable KLOC by model tier x brittleness band, Verify-depth vs escape rate, agent-PR survival + first-pass approval rates, review-discipline guardrails; confounders acknowledged, brittleness-band stratification the minimum control"
   - "docs/streams/quality/spec.md §10 — honest-claims discipline (never a bare observational number; state confounders and stratification)"
+version: 1
+id: 90353ba9-74a3-48bf-918c-ae203a6d5da2
 ---
 
 # Brief 12 — M4 gate-yield accounting + ritual-effectiveness joins

@@ -1,5 +1,5 @@
 ---
-brief: quality/07
+brief: assay:assay:quality:07
 title: M2 B-SZZ inducing-commit trace + derived defect metrics
 why: >-
   Fix identification (brief 06) names WHICH changes were bug fixes; it does not name
@@ -20,7 +20,7 @@ exec-tier-why: >-
   cross-artifact reasoning over fix-parent trees, refinement filters, and report dates
   (question b).
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §5.2 — inducing-commit trace (B-SZZ with standard refinements)"
@@ -31,6 +31,8 @@ why-critical-path: >-
   On the stream critical path (01 → 06 → 07 → 10 → 12 → 14). This is the item that mints the
   defect-lineage records the whole of M2/M3 consumes; if its record shape is wrong, every
   downstream brief inherits the error.
+version: 1
+id: c3153635-2b79-45c9-87e4-5810203e5650
 ---
 
 # Brief 07 — M2 B-SZZ inducing-commit trace + derived defect metrics

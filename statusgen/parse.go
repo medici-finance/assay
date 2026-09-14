@@ -212,10 +212,12 @@ func parseBriefTable(body string) ([]Brief, error) {
 			if err != nil {
 				return nil, fmt.Errorf("brief %s: wave %q is not an integer", get("#"), get("wave"))
 			}
-			title := unwrapTitleLink(get("brief"))
+			rawCell := get("brief")
+			title := unwrapTitleLink(rawCell)
 			b := Brief{
 				Num:      get("#"),
 				Title:    title,
+				RawCell:  rawCell,
 				Wave:     wave,
 				Status:   strings.ToLower(get("status")),
 				Verified: normalizeMark(get("verified")),

@@ -1,8 +1,8 @@
 package main
 
-// conform — validate brief frontmatter against the machine-readable brief-v1
-// contract (`schemas/brief-v1.json`), a positional subcommand intercepted before
-// flag parsing (like verifyrun/shardcheck/init).
+// conform — validate brief frontmatter against the machine-readable brief-schema
+// contracts (`schemas/brief-v1.json`, `schemas/brief-v2.json`), a positional
+// subcommand intercepted before flag parsing (like verifyrun/shardcheck/init).
 //
 // # Why a schema surface at all
 //
@@ -25,15 +25,28 @@ package main
 //	conform    the schema contract — the per-file, frontmatter-shape rules only:
 //	           required keys, field types, and closed value sets. Plus schema
 //	           VERSION reporting: a file whose `schema:` marker is a brief-schema
-//	           this binary's embedded schema does not describe (a future brief-v2,
+//	           NONE of this binary's embedded schemas describe (a future brief-v3,
 //	           …) is reported as a VERSION mismatch, not a field error — the
 //	           deliberate-migration signal on a pin bump, kept distinct from a
 //	           malformed field so the two never blur.
 //
-// The schema and brieffile.go are held in lockstep by TestBriefV1SchemaCoverage,
-// which derives the required-key and value sets from brieffile.go's own tables and
-// asserts the committed schema encodes exactly those. Neither can drift from the
-// other without the assay repo's own CI failing.
+// # One contract per schema version, selected by the file's own marker
+//
+// A tree mid-migration holds brief-v1 and brief-v2 files side by side, so the
+// contract is chosen PER FILE from its `schema:` marker rather than per run:
+// every embedded contract validates the files that declare it, and a marker no
+// embedded contract describes is the version mismatch above. Before this,
+// brief-v1 was the only embedded contract, so a MIGRATED tree — every file on
+// brief-v2, exactly what `statusgen migrate brief-v1-to-v2` produces — reported
+// could-not-check for every brief and exited 2, reddening the schema-contract
+// check on the very PR that lands the flag day. The gap was in the contract, not
+// in the gate; widening the gate to swallow the exit 2 would have turned an
+// honest could-not-check into a silent pass on every brief in the tree.
+//
+// Each schema and brieffile.go are held in lockstep by TestBriefV1SchemaCoverage
+// and TestBriefV2SchemaCoverage, which derive the required-key and value sets from
+// brieffile.go's own tables and assert the committed schemas encode exactly those.
+// Neither can drift from the other without the assay repo's own CI failing.
 //
 // # Three-state, and which way it fails
 //
@@ -61,18 +74,44 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// embeddedBriefV1Schema is the committed brief-v1 contract, compiled into the
-// binary so `conform --emit-schema` reproduces the artifact from any pinned build
+// embeddedSchemaFS holds the committed brief-schema contracts, compiled into the
+// binary so `conform --emit-schema` reproduces an artifact from any pinned build
 // and `conform` validates without reading a file from the tree. The embed
 // directive cannot cross the module boundary (go.mod is rooted at statusgen/), so
-// the canonical repo-root schemas/brief-v1.json is mirrored here byte-for-byte;
-// TestEmbeddedSchemaMatchesCommitted pins the two identical.
+// the canonical repo-root schemas/*.json are mirrored here byte-for-byte;
+// TestEmbeddedSchemaMatchesCommitted pins each pair identical.
 //
-//go:embed schemas/brief-v1.json
+//go:embed schemas/brief-v1.json schemas/brief-v2.json
 var embeddedSchemaFS embed.FS
 
-// embeddedBriefV1SchemaName is the embedded path of the brief-v1 schema.
-const embeddedBriefV1SchemaName = "schemas/brief-v1.json"
+// embeddedBriefV1SchemaName / embeddedBriefV2SchemaName are the embedded paths of
+// the two brief-schema contracts this build carries.
+const (
+	embeddedBriefV1SchemaName = "schemas/brief-v1.json"
+	embeddedBriefV2SchemaName = "schemas/brief-v2.json"
+)
+
+// embeddedBriefSchemaNames maps each brief-schema MARKER to the embedded artifact
+// that describes it. It is the one place the set of contracts this binary knows is
+// declared: conform dispatches on it, `--emit-schema --schema <marker>` selects
+// from it, and the version-mismatch message enumerates it — so adding a future
+// brief-v3 contract is one entry plus its artifact, with no message or dispatch
+// arm to remember. Iterate it via embeddedBriefSchemaMarkers for stable order.
+var embeddedBriefSchemaNames = map[string]string{
+	briefSchemaCurrent: embeddedBriefV1SchemaName, // brief-v1
+	briefSchemaV2:      embeddedBriefV2SchemaName, // brief-v2
+}
+
+// embeddedBriefSchemaMarkers returns the known markers in sorted order (brief-v1,
+// brief-v2, …) so messages and emitted listings are deterministic.
+func embeddedBriefSchemaMarkers() []string {
+	out := make([]string, 0, len(embeddedBriefSchemaNames))
+	for marker := range embeddedBriefSchemaNames {
+		out = append(out, marker)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // conform exit codes — the same three-state contract, and the same numbers, as
 // verifyrun and shardcheck in this same binary.
@@ -83,32 +122,64 @@ const (
 	conformExitUsageError = 2 // usage/refusal shares the could-not-check code
 )
 
-// embeddedBriefV1Schema returns the raw bytes of the embedded schema.
-func embeddedBriefV1Schema() []byte {
-	b, err := embeddedSchemaFS.ReadFile(embeddedBriefV1SchemaName)
+// embeddedSchemaBytes returns the raw bytes of one embedded schema artifact.
+func embeddedSchemaBytes(name string) []byte {
+	b, err := embeddedSchemaFS.ReadFile(name)
 	if err != nil {
 		// A build that compiled has the file embedded; a read failure here is a
 		// programming error, not a runtime condition.
-		panic(fmt.Sprintf("statusgen: embedded %s unreadable: %v", embeddedBriefV1SchemaName, err))
+		panic(fmt.Sprintf("statusgen: embedded %s unreadable: %v", name, err))
 	}
 	return b
 }
 
+// embeddedBriefV1Schema returns the raw bytes of the embedded brief-v1 schema.
+func embeddedBriefV1Schema() []byte { return embeddedSchemaBytes(embeddedBriefV1SchemaName) }
+
+// embeddedBriefV2Schema returns the raw bytes of the embedded brief-v2 schema.
+func embeddedBriefV2Schema() []byte { return embeddedSchemaBytes(embeddedBriefV2SchemaName) }
+
+// parseEmbeddedBriefSchemas parses every embedded contract into a marker-keyed
+// map, the form conformFile dispatches on. A schema that does not parse is a
+// build-level fault and is returned as an error so the caller can report
+// could-not-check rather than validate against a half-built contract set.
+func parseEmbeddedBriefSchemas() (map[string]*schemaNode, error) {
+	out := make(map[string]*schemaNode, len(embeddedBriefSchemaNames))
+	for _, marker := range embeddedBriefSchemaMarkers() {
+		name := embeddedBriefSchemaNames[marker]
+		node, err := parseSchema(embeddedSchemaBytes(name))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		out[marker] = node
+	}
+	return out, nil
+}
+
 // runConform is the `statusgen conform` entry point. It returns the process exit
-// code. --emit-schema prints the embedded schema and returns 0; otherwise every
-// `schema: brief-v1` file under each --root is validated against the schema.
+// code. --emit-schema prints one embedded schema (brief-v1 unless --schema names
+// another) and returns 0; otherwise every brief file under each --root is
+// validated against the contract its own `schema:` marker declares.
 func runConform(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("conform", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var roots rootFlags
 	flags.Var(&roots, "root", "repository root to scan (repeatable; default \".\")")
-	emitSchema := flags.Bool("emit-schema", false, "print the embedded brief-v1 schema to stdout and exit")
+	emitSchema := flags.Bool("emit-schema", false, "print one embedded brief schema to stdout and exit")
+	emitWhich := flags.String("schema", briefSchemaCurrent,
+		"with --emit-schema: which embedded contract to print ("+strings.Join(embeddedBriefSchemaMarkers(), ", ")+")")
 	if err := flags.Parse(args); err != nil {
 		return conformExitUsageError
 	}
 
 	if *emitSchema {
-		if _, err := stdout.Write(embeddedBriefV1Schema()); err != nil {
+		name, known := embeddedBriefSchemaNames[*emitWhich]
+		if !known {
+			fmt.Fprintf(stderr, "conform: --schema %q is not a contract this binary embeds (have: %s)\n",
+				*emitWhich, strings.Join(embeddedBriefSchemaMarkers(), ", "))
+			return conformExitUsageError
+		}
+		if _, err := stdout.Write(embeddedSchemaBytes(name)); err != nil {
 			fmt.Fprintf(stderr, "conform: writing schema: %v\n", err)
 			return conformExitCouldNot
 		}
@@ -121,7 +192,7 @@ func runConform(args []string, stdout, stderr io.Writer) int {
 		return conformExitUsageError
 	}
 
-	schema, err := parseSchema(embeddedBriefV1Schema())
+	schemas, err := parseEmbeddedBriefSchemas()
 	if err != nil {
 		fmt.Fprintf(stderr, "conform: embedded schema is not valid JSON: %v\n", err)
 		return conformExitCouldNot
@@ -149,7 +220,7 @@ func runConform(args []string, stdout, stderr io.Writer) int {
 				return nil
 			}
 			scanned++
-			state, msg := conformFile(path, schema)
+			state, msg := conformFile(path, schemas)
 			switch state {
 			case conformStateClean:
 				clean++
@@ -198,11 +269,12 @@ const (
 	conformStateExempt
 )
 
-// conformFile classifies one brief-*.md file against the embedded schema. It
-// reproduces parseBriefFile's opt-in gate (frontmatter present + a recognized
-// `schema:` marker) but validates independently against the schema rather than
-// re-running the reference validator, so the schema surface does the work.
-func conformFile(path string, schema *schemaNode) (conformState, string) {
+// conformFile classifies one brief-*.md file against the embedded contract its
+// own `schema:` marker declares. It reproduces parseBriefFile's opt-in gate
+// (frontmatter present + a recognized `schema:` marker) but validates
+// independently against the schema rather than re-running the reference
+// validator, so the schema surface does the work.
+func conformFile(path string, schemas map[string]*schemaNode) (conformState, string) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return conformStateCouldNot, fmt.Sprintf("%s: %v", path, err)
@@ -231,18 +303,22 @@ func conformFile(path string, schema *schemaNode) (conformState, string) {
 	if !isStr {
 		return conformStateExempt, "" // non-string marker → not a brief this contract covers
 	}
+	schema, described := schemas[s]
 	switch {
-	case s == briefSchemaCurrent:
-		// brief-v1 → validate against the embedded schema below.
+	case described:
+		// A marker this binary embeds a contract for → validate against THAT
+		// contract below. Selecting per file, not per run, is what lets a tree
+		// mid-migration hold brief-v1 and brief-v2 files side by side and have
+		// each validated against the version it actually declares.
 	case strings.HasPrefix(s, briefSchemaFamilyPrefix):
-		// A brief-schema-family version the embedded brief-v1 schema does not
-		// describe (a brief-v2, brief-v3, …). Report it as a VERSION mismatch, not
-		// a field error: this is the deliberate-migration signal on a pin bump, and
-		// it fails CLOSED so a newer-than-the-binary brief is never validated green
-		// against the wrong contract.
+		// A brief-schema-family version no embedded contract describes (a future
+		// brief-v3, …). Report it as a VERSION mismatch, not a field error: this is
+		// the deliberate-migration signal on a pin bump, and it fails CLOSED so a
+		// newer-than-the-binary brief is never validated green against the wrong
+		// contract.
 		return conformStateVersion, fmt.Sprintf(
-			"%s: schema marker %q is newer than this binary's brief-v1 contract — upgrade statusgen to a build whose embedded schema describes %q (schema-version mismatch, not a field error)",
-			path, s, s)
+			"%s: schema marker %q is newer than this binary's brief contracts (%s) — upgrade statusgen to a build whose embedded schema describes %q (schema-version mismatch, not a field error)",
+			path, s, strings.Join(embeddedBriefSchemaMarkers(), ", "), s)
 	default:
 		return conformStateExempt, "" // a different document kind (contract-v1, …) → exempt
 	}
@@ -258,9 +334,10 @@ func conformFile(path string, schema *schemaNode) (conformState, string) {
 // ---------------------------------------------------------------------------
 // Minimal JSON Schema (draft 2020-12) validator.
 //
-// This validates the SUBSET of keywords the brief-v1 schema uses — type, const,
-// enum, required, properties, additionalProperties (boolean), items, minItems,
-// pattern — against a value decoded from YAML frontmatter (so ints are int/int64,
+// This validates the SUBSET of keywords the committed brief schemas use — type,
+// const, enum, required, properties, additionalProperties (boolean), items,
+// minItems, minimum, pattern — against a value decoded from YAML frontmatter (so
+// ints are int/int64,
 // `yes`/`no` are strings, lists are []any, maps are map[string]any: exactly what
 // the reference validator sees). It is deliberately small and closed rather than a
 // general engine: the schema it validates is fixed and committed, and a
@@ -288,7 +365,7 @@ var schemaKeywords = map[string]bool{
 	"$schema": true, "$id": true, "title": true, "description": true,
 	"type": true, "const": true, "enum": true, "required": true,
 	"properties": true, "additionalProperties": true, "items": true,
-	"minItems": true, "pattern": true,
+	"minItems": true, "minimum": true, "pattern": true,
 }
 
 // validateValue validates v against schema, returning human-readable violations
@@ -327,6 +404,16 @@ func validateNode(node map[string]any, v any, path string) []string {
 		}
 		if !matched {
 			out = append(out, fmt.Sprintf("%s: %v is not one of the allowed values %v", label, v, e))
+		}
+	}
+
+	// minimum (numeric only) — the inclusive lower bound. Applied only to a value
+	// that is actually numeric; a wrong type already returned above.
+	if mn, ok := node["minimum"]; ok {
+		if want, wantOK := numericValue(mn); wantOK {
+			if got, gotOK := numericValue(v); gotOK && got < want {
+				out = append(out, fmt.Sprintf("%s: %v is below the minimum %v", label, v, mn))
+			}
 		}
 	}
 

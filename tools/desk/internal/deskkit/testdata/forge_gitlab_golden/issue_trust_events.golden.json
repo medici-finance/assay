@@ -1,0 +1,33 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/graphql",
+      "body": {
+        "query": "query($path:ID!,$iid:String!){project(fullPath:$path){issue(iid:$iid){comments:notes(filter:ONLY_COMMENTS,first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{id username bot}}} activity:notes(filter:ONLY_ACTIVITY,last:100){pageInfo{hasPreviousPage} nodes{body createdAt}}}}}",
+        "variables": {
+          "iid": "12",
+          "path": "medici-finance/assay"
+        }
+      }
+    }
+  ],
+  "result": {
+    "BodyEdited": "0001-01-01T00:00:00Z",
+    "Events": [
+      {
+        "Author": "ada",
+        "AuthorID": 2001,
+        "CreatedAt": "2026-09-02T10:00:00Z",
+        "EditedAt": "0001-01-01T00:00:00Z"
+      },
+      {
+        "Author": "",
+        "AuthorID": 0,
+        "CreatedAt": "2026-09-02T12:00:00Z",
+        "EditedAt": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "Complete": true
+  }
+}

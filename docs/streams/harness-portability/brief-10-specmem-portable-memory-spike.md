@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/10
+brief: assay:assay:harness-portability:10
 title: SpecMem portable-memory spike — one stream's registers across Claude Code and a second harness
 why: >-
   The desks' memory and specs are welded to Claude Code's formats (CLAUDE.md, the per-session
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-16 by intake-desk authoring session
 sources:
   - "authoring dispatch (Ian, 2026-08-16): also evaluate SpecMem — two spikes, one per question; this is spike (b)"
@@ -26,6 +26,8 @@ exec-tier: strong
 exec-tier-why: >-
   (b) correctness depends on cross-harness reasoning — whether the SAME specs/registers serve
   faithfully to two different agents is exactly the portability claim under test, not a demo.
+version: 1
+id: 148d23f1-9a9b-4b3f-8797-fc24fb467156
 ---
 
 # Brief 10 — SpecMem portable-memory spike

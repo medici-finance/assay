@@ -116,6 +116,29 @@ func TestWorktreeCreateKeepsAnUnverifiableFailureUnverifiable(t *testing.T) {
 	}
 }
 
+// TestWorktreeCreateHintDiffersByKit is the #851 item-3 fix: the worktree-create failure
+// hint is SELECTED BY KIT. The brief lane's "your feat/<id> branch already exists — look for
+// a merged/open PR" advice is meaningless on the review lane, which has no brief and no feat
+// branch, so it must not be shown there; the review-lane hint points at the reviewer-worktree
+// lifecycle instead. (The worker-lane wiring — that dispatch actually calls this for a brief
+// dispatch — is covered by TestWorktreeCreateSurfacesDeskwtsOwnMessageVerbatim.)
+func TestWorktreeCreateHintDiffersByKit(t *testing.T) {
+	brief := worktreeCreateHint("worker", "feat/item-1")
+	if !strings.Contains(brief, "feat/item-1") || !strings.Contains(brief, "already delivered or in progress") {
+		t.Errorf("the brief-lane hint lost its feat-branch / already-delivered wording:\n%s", brief)
+	}
+	review := worktreeCreateHint("review", "feat/item-1")
+	if strings.Contains(review, "feat/item-1") || strings.Contains(review, "brief") {
+		t.Errorf("the review-lane hint still carries brief-lane feat/<id>/brief wording — it misleads a reviewer:\n%s", review)
+	}
+	if !strings.Contains(review, "reviewer worktree") || !strings.Contains(review, "deskwt remove") {
+		t.Errorf("the review-lane hint does not point at the reviewer-worktree lifecycle:\n%s", review)
+	}
+	if brief == review {
+		t.Error("the worktree-create hint is identical for both kits — it must differ by kit (#851)")
+	}
+}
+
 func TestToolMessageKeepsEverythingButTheKnownPreamble(t *testing.T) {
 	cases := []struct {
 		name string

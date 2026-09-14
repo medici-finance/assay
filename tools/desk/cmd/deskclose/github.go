@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,52 +26,49 @@ import (
 // discharge. Lane A closes are not in deskclose's mode set.
 var decisionLabels = []string{"needs-decision", "human-decided"}
 
-// item is the subset of a GitHub issue/PR deskclose reads.
+// item is the subset of an issue/PR deskclose reads, built from a single Forge.GetIssue (which
+// carries the item's kind, state, labels and body since the write-verbs-C migration added
+// Labels/Body to the Issue shape).
 type item struct {
-	Number      int    `json:"number"`
-	Title       string `json:"title"`
-	State       string `json:"state"`
-	StateReason string `json:"state_reason"`
-	Body        string `json:"body"`
-	Labels      []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
-	PullRequest *struct {
-		MergedAt *string `json:"merged_at"`
-	} `json:"pull_request"`
+	Number int
+	Title  string
+	State  string // open | closed
+	Body   string
+	Labels []string
+	IsPR   bool
 }
 
-func (i item) isPR() bool   { return i.PullRequest != nil }
+func (i item) isPR() bool   { return i.IsPR }
 func (i item) closed() bool { return strings.EqualFold(i.State, "closed") }
 
-func (i item) labelNames() []string {
-	out := make([]string, 0, len(i.Labels))
-	for _, l := range i.Labels {
-		out = append(out, l.Name)
-	}
-	return out
-}
+func (i item) labelNames() []string { return i.Labels }
 
-// fetchItem reads one issue or PR. The issues endpoint serves both, and carries the
-// `pull_request` key exactly when the number is a PR.
+// fetchItem reads one issue or PR through the resolved forge (GetIssue, which answers the item's
+// kind AND carries its labels and body in one read — so an unread label set can never be mistaken
+// for an empty one).
 //
-// A read failure is Unverifiable (exit 6): deskclose cannot know whether the item
-// carries a decision label, so it must not close it. There is no "assume no labels"
-// arm — that is the unread-precondition failure this tool exists to make impossible.
+// A read failure is Unverifiable (exit 6): deskclose cannot know whether the item carries a
+// decision label, so it must not close it. There is no "assume no labels" arm — that is the
+// unread-precondition failure this tool exists to make impossible.
 func fetchItem(repo string, n int) (item, error) {
-	raw, err := runGH("api", "-H", "Accept: application/vnd.github+json",
-		fmt.Sprintf("repos/%s/issues/%d", repo, n))
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return item{}, ferr
+	}
+	iss, err := fg.GetIssue(fr, n)
 	if err != nil {
 		return item{}, deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read %s#%d — its labels and state are unknown, so it is not "+
 				"closeable (an unread precondition is never a satisfied one)", repo, n), err)
 	}
-	var it item
-	if jerr := json.Unmarshal([]byte(raw), &it); jerr != nil {
-		return item{}, deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: %s#%d did not parse as a GitHub item", repo, n), jerr)
-	}
-	return it, nil
+	return item{
+		Number: iss.Number,
+		Title:  iss.Title,
+		State:  iss.State,
+		Body:   iss.Body,
+		Labels: append([]string(nil), iss.Labels...),
+		IsPR:   iss.IsPullRequest,
+	}, nil
 }
 
 // refuseDecisionItem is the label gate. Called for every close in every mode.
@@ -91,35 +87,26 @@ func refuseDecisionItem(repo string, it item) error {
 	return nil
 }
 
-// pullRequest is the subset of the PULLS endpoint that settles merged-vs-closed.
-type pullRequest struct {
-	Number int    `json:"number"`
-	State  string `json:"state"`
-	Merged bool   `json:"merged"`
-}
-
 // requireMergedPR is the merged-vs-closed gate for lanes 2 and 3.
 //
-// It reads `merged` from the PULLS endpoint, not `state` from the issues one. The
-// distinction is the whole check: a PR that was closed WITHOUT merging carries
-// state=closed and merged=false, and treating it as a supersession source closes a live
-// issue in favour of work that never landed. `state == "closed"` is not a merge, and
-// `merged_at != null` on the issues payload is not read here either — one endpoint, one
-// field, no inference.
+// It reads the forge's own `Merged` flag (GetPullRequest), not `state`. The distinction is the
+// whole check: a PR that was closed WITHOUT merging carries state=closed and merged=false, and
+// treating it as a supersession source closes a live issue in favour of work that never landed.
+// `state == "closed"` is not a merge, and the seam's PullRequest.Merged flag (independent of
+// MergedAt) is read here — one field, no inference.
 func requireMergedPR(repo string, n int) error {
-	raw, err := runGH("api", "-H", "Accept: application/vnd.github+json",
-		fmt.Sprintf("repos/%s/pulls/%d", repo, n))
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return ferr
+	}
+	pr, err := fg.GetPullRequest(fr, n)
 	if err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read %s#%d as a pull request — whether it MERGED is unknown, "+
 				"so it cannot stand as the target of a close", repo, n), err)
 	}
-	var pr pullRequest
-	if jerr := json.Unmarshal([]byte(raw), &pr); jerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: %s#%d did not parse as a pull request", repo, n), jerr)
-	}
-	if !pr.Merged {
+	merged := pr.Merged || pr.MergedAt != ""
+	if !merged {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: %s#%d is a pull request in state %q that has NOT merged. Closed-unmerged never "+
 				"satisfies a supersession or review-request lane: the work it carried did not land, so "+
@@ -176,25 +163,31 @@ func extractPRRef(repo string, it item) (int, error) {
 // a batch that turns out to be wrong — a reader of a wrongly-closed issue can see why
 // it was closed and by whose authority, and reopen is cheap.
 func postComment(repo string, n int, body string) error {
-	_, err := runGH("issue", "comment", fmt.Sprintf("%d", n), "-R", repo, "--body", body)
-	if err != nil {
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return ferr
+	}
+	if _, err := fg.PostComment(fr, n, body); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: the pre-close comment on %s#%d may or may not have posted", repo, n), err)
 	}
 	return nil
 }
 
-// closeItem performs the close. reason is a GitHub state_reason and is only meaningful
-// for issues; a PR has no state_reason, so the lane is carried by the comment written
-// immediately before this call.
+// closeItem performs the close via CloseIssue, which closes an issue OR a PR (both share the
+// issues endpoint on GitHub; GitLab routes by kind). reason is a state_reason meaningful only for
+// issues; a PR carries no state_reason, so the lane is carried by the comment written immediately
+// before this call.
 func closeItem(repo string, n int, isPR bool, reason string) error {
-	var err error
-	if isPR {
-		_, err = runGH("pr", "close", fmt.Sprintf("%d", n), "-R", repo)
-	} else {
-		_, err = runGH("issue", "close", fmt.Sprintf("%d", n), "-R", repo, "--reason", reason)
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return ferr
 	}
-	if err != nil {
+	// A PR has no state_reason; pass "" so the field is omitted.
+	if isPR {
+		reason = ""
+	}
+	if err := fg.CloseIssue(fr, n, reason); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: closing %s#%d did not confirm", repo, n), err)
 	}
 	return nil

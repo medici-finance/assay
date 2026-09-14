@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,7 +20,8 @@ func attrProblems(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return attributionProblems(streams)
+	problems, _ := attributionProblems(streams)
+	return problems
 }
 
 func TestAttributionHealthyBriefPasses(t *testing.T) {
@@ -135,11 +138,23 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 	if !evidenceHasIndependentRow(mixed) {
 		t.Error("a row with a distinct runner should count as independent")
 	}
-	// "(non-implementer)" asserts independence — the substring collision with
-	// "implementer" must not swallow it (live phrasing in methodology 01/12).
-	nonImplementerPhrasing := "| # | Command | Runner |\n|---|---|---|\n| 1 | x | sonnet verifier (non-implementer) |\n"
-	if !evidenceHasIndependentRow(nonImplementerPhrasing) {
-		t.Error(`a "(non-implementer)" runner cell asserts independence and must count as an independent row`)
+	// "(non-implementer)" is a SELF-ASSERTION, not proof of independence
+	// (security-hardening ID-2, hole-1): a session can slap "(non-implementer)"
+	// on its own Evidence row and the old strip counted it as independent. A
+	// Runner cell containing "implementer" in any spelling — the plain
+	// "implementer" and the self-labelled "(non-implementer)" — now reads as
+	// implementer-attributed and does NOT count as an independent row. An honest
+	// independent verifier names the runner instead (see the `mixed` /
+	// `sonnet-verifier` cases above), which still counts.
+	nonImplementerSelfLabel := "| # | Command | Runner |\n|---|---|---|\n| 1 | x | sonnet verifier (non-implementer) |\n"
+	if evidenceHasIndependentRow(nonImplementerSelfLabel) {
+		t.Error(`a "(non-implementer)" self-label is a self-assertion and must NOT count as an independent row (ID-2 hole-1)`)
+	}
+	// The honest form an independent verifier should use — a named runner with
+	// no "implementer" token — still counts, so the fix does not over-reject.
+	namedIndependentRunner := "| # | Command | Runner |\n|---|---|---|\n| 1 | x | opus-verifier (verify-desk) |\n"
+	if !evidenceHasIndependentRow(namedIndependentRunner) {
+		t.Error("a named independent runner with no \"implementer\" token must still count as independent")
 	}
 	empty := ""
 	if evidenceHasIndependentRow(empty) {
@@ -465,5 +480,219 @@ func TestHumanRunnerName(t *testing.T) {
 		if ok != c.wantOk || name != c.wantName {
 			t.Errorf("humanRunnerName(%q) = (%q, %v), want (%q, %v)", c.token, name, ok, c.wantName, c.wantOk)
 		}
+	}
+}
+
+// TestAttributionEvidenceNonImplementerSelfLabelRejected is the fixture-level
+// pin for security-hardening ID-2 hole-1: a verified brief whose only Evidence
+// Runner cell self-labels "(non-implementer)" no longer counts as independently
+// backed. FAIL-FIRST: against the old implementerAttributed (which stripped the
+// literal "non-implementer" before the substring test) evidenceHasIndependentRow
+// returned true and NO problem was raised, so this assertion failed; with the
+// strip removed the self-label reads as implementer-attributed and the
+// Evidence-independence problem fires. The Verified cell names a distinct runner
+// so the ONLY problem on this brief is the Evidence-independence one.
+func TestAttributionEvidenceNonImplementerSelfLabelRejected(t *testing.T) {
+	problems := attrProblems(t)
+	if !hasProblem(problems, "attr/brief-09", "independent (non-implementer) Evidence row") {
+		t.Errorf("a \"(non-implementer)\" self-labelled Evidence row must NOT count as independent (ID-2 hole-1); got:\n%s", strings.Join(problems, "\n"))
+	}
+	// And it must not additionally read as a Verified-cell self-verification —
+	// the Verified runner is a distinct token.
+	if hasProblem(problems, "attr/brief-09", "self-verification") {
+		t.Errorf("brief-09's distinct Verified runner must not be flagged as self-verification; got:\n%s", strings.Join(problems, "\n"))
+	}
+}
+
+// TestImplementerAttributed pins the predicate directly (security-hardening
+// ID-2 hole-1). A cell containing "implementer" in ANY spelling — plain or the
+// self-labelled "(non-implementer)" — names the implementer; an honest
+// independent runner token contains no such substring.
+func TestImplementerAttributed(t *testing.T) {
+	cases := []struct {
+		cell string
+		want bool
+	}{
+		{"implementer (Opus 4.8)", true},
+		{"Implementer", true},              // case-insensitive
+		{"worker (non-implementer)", true}, // ID-2 hole-1: a self-label is still a self-assertion
+		{"sonnet verifier (non-implementer)", true},
+		{"non-implementer", true},
+		{"opus-verifier", false},
+		{"sonnet-verifier (verify-desk)", false},
+		{"human:alex", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := implementerAttributed(c.cell); got != c.want {
+			t.Errorf("implementerAttributed(%q) = %v, want %v", c.cell, got, c.want)
+		}
+	}
+}
+
+// TestSelfVerificationReasonNonImplementerToken pins that a Verified runner
+// token of "non-implementer" (or "implementer") is now flagged — the same
+// hole-1 fix reaches the Verified-cell path via implementerAttributed.
+func TestSelfVerificationReasonNonImplementerToken(t *testing.T) {
+	if r := selfVerificationReason("2026-07-08 by Fable session", "2026-07-08 non-implementer"); r == "" {
+		t.Error(`a verifier token of "non-implementer" is a self-assertion and must be flagged`)
+	}
+	if r := selfVerificationReason("2026-07-08 by Fable session", "2026-07-08 opus-verifier"); r != "" {
+		t.Errorf("a distinct verifier token must not be flagged; got %q", r)
+	}
+}
+
+// --- committer-identity cross-check (security-hardening ID-2, hole-2) ---
+
+// gitAvailable reports whether a real git binary is on PATH; the identity
+// cross-check tests need actual commits.
+func gitAvailable(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH; skipping committer-identity cross-check tests")
+	}
+}
+
+// attrGitInit initialises a repo with gpg signing disabled; commits are made by
+// gitCommitAs (evidenceactor_test.go), which pins author+committer per call so
+// gitPath{First,Last}AuthorIdentity read a controlled %ae.
+func attrGitInit(t *testing.T, dir string) {
+	t.Helper()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "commit.gpgsign", "false")
+}
+
+const identBriefTmpl = `---
+schema: brief-v1
+brief: gitattr/%s
+title: t
+wave: 0
+depends: []
+unblocks: []
+effort: S
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+authored: 2026-07-08 by Fable session (test)
+sources: ["s"]
+---
+
+# Brief %s
+
+## Evidence
+
+| # | Command | Exit | Result | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | ` + "`go test ./...`" + ` | 0 | ok | 2026-07-08 | opus-verifier |
+`
+
+// writeIdentStream lays down a docs/streams/gitattr board with the given brief
+// rows (num -> filename) all at verified status with distinct Verified runners.
+func writeIdentStream(t *testing.T, root string, briefs []struct{ num, file string }) {
+	t.Helper()
+	dir := filepath.Join(root, "docs", "streams", "gitattr")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var rows strings.Builder
+	for _, b := range briefs {
+		rows.WriteString("| " + b.num + " | [t](./" + b.file + ") | 0 | S | verified | 2026-07-08 opus-verifier | 2026-07-08 model:sonnet |\n")
+		body := strings.ReplaceAll(identBriefTmpl, "%s", b.num)
+		if err := os.WriteFile(filepath.Join(dir, b.file), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readme := "---\nstream: gitattr\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# Gitattr\n\n## Briefs\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" + rows.String()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func attrProblemsAndNotices(t *testing.T, root string) (problems, notices []string) {
+	t.Helper()
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return attributionProblems(streams)
+}
+
+// TestAttributionIdentityCrossCheckMultiIdentity: in a repo with more than one
+// committer identity, a brief whose authoring and most-recent (Evidence-adding)
+// commit share ONE identity is surfaced as a NOTICE (independence not
+// corroborated by commit metadata), while a brief whose authoring and Evidence
+// commits are under DISTINCT identities is not — the healthy independent case.
+func TestAttributionIdentityCrossCheckMultiIdentity(t *testing.T) {
+	gitAvailable(t)
+	root := t.TempDir()
+	writeIdentStream(t, root, []struct{ num, file string }{
+		{"01", "brief-01-t.md"}, // will stay single-identity (author == last committer)
+		{"02", "brief-02-t.md"}, // will get a distinct last committer
+	})
+	attrGitInit(t, root)
+	gitCommitAs(t, root, "Alice", "alice@example.com", "author both briefs")
+	// A distinct identity re-touches brief-02 only (an independent re-run),
+	// leaving brief-01's first==last identity as alice.
+	b2 := filepath.Join(root, "docs", "streams", "gitattr", "brief-02-t.md")
+	f, err := os.OpenFile(b2, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("\n<!-- independent re-run touch -->\n")
+	f.Close()
+	gitCommitAs(t, root, "Bob", "bob@example.com", "bob re-touches brief-02")
+
+	problems, notices := attrProblemsAndNotices(t, root)
+	if len(problems) != 0 {
+		t.Fatalf("no hard problems expected (the identity layer is NOTICE-only); got:\n%s", strings.Join(problems, "\n"))
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "committer-identity cross-check") || !strings.Contains(joined, "brief-01") {
+		t.Errorf("want a committer-identity NOTICE naming brief-01 (author==last committer); got:\n%s", joined)
+	}
+	if strings.Contains(joined, "brief-02") {
+		t.Errorf("brief-02 has distinct authoring/Evidence identities and must NOT be flagged; got:\n%s", joined)
+	}
+}
+
+// TestAttributionIdentitySingleIdentityInconclusive: a repo whose entire brief
+// history is one git identity emits exactly one aggregate "inconclusive" NOTICE
+// — the loud, honest degradation that commit metadata cannot corroborate
+// independence — and never a hard problem.
+func TestAttributionIdentitySingleIdentityInconclusive(t *testing.T) {
+	gitAvailable(t)
+	root := t.TempDir()
+	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
+	attrGitInit(t, root)
+	gitCommitAs(t, root, "Solo", "solo@example.com", "author brief")
+
+	problems, notices := attrProblemsAndNotices(t, root)
+	if len(problems) != 0 {
+		t.Fatalf("no hard problems expected; got:\n%s", strings.Join(problems, "\n"))
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "inconclusive") || !strings.Contains(joined, "solo@example.com") {
+		t.Errorf("want one aggregate single-identity inconclusive NOTICE naming the identity; got:\n%s", joined)
+	}
+}
+
+// TestAttributionIdentityUntrackedDegradesLoudly: when .git exists but a brief
+// file has no commit history (untracked / just added), the cross-check degrades
+// LOUDLY with a per-brief NOTICE — never a silent pass.
+func TestAttributionIdentityUntrackedDegradesLoudly(t *testing.T) {
+	gitAvailable(t)
+	root := t.TempDir()
+	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
+	attrGitInit(t, root) // .git present, but nothing committed -> brief has no history
+
+	problems, notices := attrProblemsAndNotices(t, root)
+	if len(problems) != 0 {
+		t.Fatalf("no hard problems expected; got:\n%s", strings.Join(problems, "\n"))
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "could not cross-check") || !strings.Contains(joined, "brief-01") {
+		t.Errorf("an untracked brief under a .git repo must degrade loudly with a per-brief NOTICE; got:\n%s", joined)
 	}
 }

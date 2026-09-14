@@ -150,16 +150,31 @@ jobs:
           # decision #508: exercise scripts/bootstrap-windows.ps1's sha256 hash-verify at Windows
           # runtime — a TAMPERED checksum must REFUSE (nothing installed), the pinned checksum must
           # install, and a check-removed copy must install the tampered asset (so the refusal is
-          # non-vacuous). The pinned windows-amd64 tag + sha come from paired-versions.yaml (single
-          # source of truth), so the untampered path downloads the real published asset. This step
-          # DOES contact the release CDN — the sanctioned online exception, which is exactly why it
-          # lives in this job and NOT in the offline windows-smoke.
+          # non-vacuous). windows-port/06 moved tag+sha RESOLUTION into the script itself (it reads
+          # plugins/assay/paired-versions.yaml directly), so this step passes only the tag — the
+          # step passing is evidence the SCRIPT resolved the sha, because nothing else did here.
+          # This step DOES contact the release CDN — the sanctioned online exception (decision
+          # #508), which is exactly why it lives in this job and NOT in the offline windows-smoke.
           line=$(grep -E '^[[:space:]]*windows-amd64:[[:space:]]+statusgen-windows-amd64\.exe' plugins/assay/paired-versions.yaml | head -1)
           tag=$(echo "$line" | awk '{print $3}')
-          sha=$(echo "$line" | awk '{print $4}')
-          echo "pinned windows-amd64: tag=${tag} sha=${sha}"
-          test -n "${tag}" && test -n "${sha}"
-          pwsh -NoProfile -File scripts/windows-bootstrap-hashcheck-smoke.ps1 -Tag "${tag}" -RealSha256 "${sha}"
+          echo "pinned windows-amd64: tag=${tag}"
+          test -n "${tag}"
+          pwsh -NoProfile -File scripts/windows-bootstrap-hashcheck-smoke.ps1 -Tag "${tag}"
+
+      - name: Bootstrap PATH + bare-name invocation (windows-port/06 row 14)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The real (default -Dest) bootstrap run, with no operator-supplied sha — the
+          # three-command-install target. A fresh process then reads the just-written user PATH
+          # and invokes the installed binary by its bare name, proving row 5's PATH write and
+          # row 14's bare-name invocation both hold, not just the scratch-dest smoke assertions.
+          line=$(grep -E '^[[:space:]]*windows-amd64:[[:space:]]+statusgen-windows-amd64\.exe' plugins/assay/paired-versions.yaml | head -1)
+          tag=$(echo "$line" | awk '{print $3}')
+          test -n "${tag}"
+          pwsh -NoProfile -File scripts/bootstrap-windows.ps1 -Tag "${tag}"
+          userpath=$(pwsh -NoProfile -Command '[Environment]::GetEnvironmentVariable("Path","User")')
+          PATH="${userpath};${PATH}" statusgen --version
 
   # native windows/arm64 smoke: BLOCKED — needs a windows-11-arm hosted runner (or a
   # self-hosted arm64 Windows runner). This leg does NOT green arm64 from the amd64

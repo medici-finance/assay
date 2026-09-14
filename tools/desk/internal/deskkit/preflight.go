@@ -45,6 +45,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // CheckState is one check's three-state answer.
@@ -716,7 +718,11 @@ var remoteSlugRe = regexp.MustCompile(`(?:[:/])([A-Za-z0-9._-]+)/([A-Za-z0-9._-]
 // default, and the cold-mint check reports whatever that produces rather than
 // this function inventing a repo.
 func deriveRepoSlug(dir, remote string) string {
-	out, err := gitOut(orDot(dir), "remote", "get-url", remote)
+	repo, err := gitcore.Open(orDot(dir))
+	if err != nil {
+		return ""
+	}
+	out, err := repo.RemoteURL(remote)
 	if err != nil {
 		return ""
 	}
@@ -1000,15 +1006,19 @@ func writeTransportProbe(l Landing) (ProbeVerdict, string, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return ProbeInconclusive, "git is not on PATH", nil
 	}
+	probeRepo, err := gitcore.Open(dir)
+	if err != nil {
+		return ProbeInconclusive, "cannot open " + dir + " as a git repository", nil
+	}
 	branch := strings.TrimSpace(l.Branch)
 	if branch == "" {
-		out, err := gitOut(dir, "symbolic-ref", "--short", "HEAD")
+		out, err := probeRepo.SymbolicRefShortHEAD()
 		if err != nil {
 			return ProbeInconclusive, "detached HEAD: no landing branch to probe", nil
 		}
 		branch = strings.TrimSpace(out)
 	}
-	if _, err := gitOut(dir, "remote", "get-url", l.Remote); err != nil {
+	if _, err := probeRepo.RemoteURL(l.Remote); err != nil {
 		return ProbeInconclusive, "no remote named " + l.Remote, nil
 	}
 

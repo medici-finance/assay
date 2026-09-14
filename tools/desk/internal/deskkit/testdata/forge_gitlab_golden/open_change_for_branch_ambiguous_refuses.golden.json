@@ -1,0 +1,12 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "page=1\u0026per_page=100\u0026source_branch=feat%2Fx\u0026state=opened"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: 2 open merge requests share source branch \"feat/x\" in medici-finance/assay — refusing to guess which one is meant; a single open change per source branch is the assumption this read is allowed to make, and it does not hold here",
+  "not_found": false
+}

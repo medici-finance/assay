@@ -1,9 +1,11 @@
 component: assay/desk-tools
 version: 0.28.0
-# The desk-role binaries (deskboard, deskpr, deskevidence, deskfile, deskpost, …)
-# the desk-role skills drive as their primary path — they carry the guards,
-# write-budgets, and roster + trust gates. Acts on the forge with the roster's
-# identities.
+# The desk-role binaries (deskboard, deskpr, deskevidence, deskfile, deskpost,
+# deskdisable, …) the desk-role skills drive as their primary path — they carry
+# the guards, write-budgets, and roster + trust gates. Acts on the forge with
+# the roster's identities. assay.desk.verbs now includes deskdisable
+# a fixed set of desk-role binaries: the LIFO-reverse driver this component's own inverse below
+# is exercised by.
 provides:
   - assay.desk.verbs
 inject:
@@ -17,6 +19,6 @@ apply:
   - id: desk-binaries
     effect: install the pinned desk-tools binaries on PATH and pin them in .assay-versions
     boundary: inside
-    inverse: "remove the binaries and the pin (TODO: a later brief makes the reverse real)"
+    inverse: remove the desk-tools binaries and their entries from .assay-versions
 intercept: []
 config: {}

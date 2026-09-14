@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues",
+      "query": "page=1\u0026per_page=100\u0026search=flip+race+relabel"
+    }
+  ],
+  "result": [
+    {
+      "Number": 12,
+      "Title": "flip races on relabel",
+      "State": "open",
+      "Labels": [
+        "bug"
+      ],
+      "URL": "https://gitlab.example/medici-finance/assay/-/issues/12"
+    }
+  ]
+}

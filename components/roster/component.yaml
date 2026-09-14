@@ -19,6 +19,6 @@ apply:
     effect: set the fail-closed trust keys (ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP)
     boundary: outside
     ledger: roster-vars
-    compensation: unset the Actions variables; TODO composability/02 lists them for a human
+    compensation: list-for-human — list the org/repo Actions variables for a human to unset; never unset unattended (they may be read by other tools)
 intercept: []
 config: {}

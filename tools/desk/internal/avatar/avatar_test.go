@@ -40,8 +40,8 @@ func TestGenerateFamilyCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("family generate: %v", err)
 	}
-	if len(set) != 6 {
-		t.Fatalf("family: want 6 tiles, got %d", len(set))
+	if len(set) != 7 {
+		t.Fatalf("family: want 7 tiles, got %d", len(set))
 	}
 	roles := map[string]bool{}
 	for _, av := range set {
@@ -50,7 +50,7 @@ func TestGenerateFamilyCount(t *testing.T) {
 			t.Errorf("%s: 512px PNG does not decode: %v", av.App, err)
 		}
 	}
-	for _, want := range []string{"reviewer", "worker", "verifier", "desk", "issue-loop", "intake-loop"} {
+	for _, want := range []string{"reviewer", "worker", "verifier", "desk", "issue-loop", "intake-loop", "board-writer"} {
 		if !roles[want] {
 			t.Errorf("family missing role %q", want)
 		}

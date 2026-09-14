@@ -1,5 +1,5 @@
 ---
-brief: derived-board/05
+brief: assay:assay:derived-board:05
 title: desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies)
 why: >-
   The skills currently tell workers to "stop at implemented" and, since 2026-08-22, to
@@ -14,7 +14,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §2, §3"
@@ -22,6 +22,8 @@ sources:
   - "freshness-checked 2026-08-22 @ f78ea24 — PR #69 open; the private twin lives in the private toolkit"
 consumers:
   - "private toolkit .claude/skills/{author-brief,worker-desk,pr-review-desk,verify-desk}/SKILL.md: follow-up derived-board/07 (overlay re-stage with the rollout)"
+version: 1
+id: ea11d1ed-a626-4e3b-801b-28495a41c072
 ---
 
 # Brief 05 — skill updates

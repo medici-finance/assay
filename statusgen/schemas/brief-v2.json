@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/brief-v2.json",
+  "title": "brief-v2 frontmatter",
+  "description": "Machine-readable contract for `schema: brief-v2` brief frontmatter. brief-v2 is brief-v1 plus the hierarchical `brief:` id (`<cell>:<repo>:<stream>:<NN>`), the brief's own `version:` revision counter, and the RESERVED identity/graph keys `id`, `supersedes`, `gates`, `feathers` and `verify` — no brief-v1 field is removed, and there is deliberately no `status:` key (the lifecycle cell is derived from witnesses, never asserted in frontmatter). Like brief-v1 this contract is DESCRIPTIVE of the reference validator's per-file, frontmatter-shape rules only: required keys, field types, and closed value sets. It deliberately does NOT encode the cross-file or cross-field rules the reference validator's `--lint` surface owns — the `brief:` id's stream/NN matching the file path, its cell and repo-alias segments resolving in `docs/streams/graph-repos.yaml`, `id` uniqueness across the tree, the reference grammar of each reserved edge's target, the wave/README agreement, the verifier floor, the risk-answer/gate coupling. Where the shape rule and the semantic rule would disagree the shape rule is the LOOSER of the two on purpose: a schema stricter than the validator would reject a brief `--lint` accepts, and the two surfaces must never disagree in that direction. Unknown top-level keys are tolerated (additionalProperties: true) exactly as the validator tolerates them; the `risk` block, each `parallel-streams` entry, each `gates`/`feathers` edge and each `verify` row are the closed objects the validator rejects unknown keys in.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "brief",
+    "title",
+    "wave",
+    "depends",
+    "unblocks",
+    "effort",
+    "gate",
+    "risk",
+    "issues",
+    "authored",
+    "sources",
+    "schema"
+  ],
+  "properties": {
+    "schema": {
+      "description": "The opt-in schema marker. Its presence is what selects a file for validation; for this contract it is exactly brief-v2.",
+      "const": "brief-v2"
+    },
+    "brief": {
+      "description": "The hierarchical typed brief id, `<cell>:<repo>:<stream>:<NN>` — four non-empty colon-separated segments, the form `statusgen migrate brief-v1-to-v2` mints. The cell and repo segments are aliases from docs/streams/graph-repos.yaml; RESOLVING them, and matching stream/NN against the file path, needs the tree and is the reference validator's job, so only the four-segment shape is checked here. The brief-v1 `<stream>/<NN>` form is not a brief-v2 id and fails this pattern.",
+      "type": "string",
+      "pattern": "^[^:]+:[^:]+:[^:]+:[^:]+$"
+    },
+    "version": {
+      "description": "The brief's own revision counter (not the schema's): 1 at authoring, bumped on every edit to Task or Verify after first dispatch. Optional — an absent `version:` reads as 1. A present value is an integer >= 1.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "description": "RESERVED (brief-v2): the stable object identity, a canonical uuid v4 minted ONCE at authoring and never reused. Optional, and shape-validated only — a uuid is an identity, not a reference, so nothing is resolved. An empty string is accepted for the same reason the reference validator skips it: absence and emptiness are the same non-claim.",
+      "type": "string",
+      "pattern": "^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})?$"
+    },
+    "supersedes": {
+      "description": "RESERVED (brief-v2): object lineage — the briefs this one splits or re-baselines, as references in the graph reference grammar. Optional; an empty list (or null) is allowed. Each ref's GRAMMAR and alias resolution is a `--lint` check, not a shape check.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "gates": {
+      "description": "RESERVED, OPTIONAL-but-KNOWN (brief-v2): behavioural/ordering edges — parsed, type-checked and lint-validated, not yet gating. Every entry is a MAPPING; `on`, `type` and `reason` are all required, because the point of the field is the machine-attached why. No other key is allowed — a silently dropped key is an edge whose meaning nobody reads.",
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["on", "type", "reason"],
+        "properties": {
+          "on": {
+            "description": "The edge target, in the graph reference grammar. Shape-checked as a non-empty string here; the grammar and alias resolution are `--lint` checks.",
+            "type": "string"
+          },
+          "type": {
+            "description": "The edge taxonomy. A type outside this closed set is a PROBLEM rather than a silently dispatched-past edge.",
+            "type": "string",
+            "enum": [
+              "build-dep",
+              "ordering-gate",
+              "behavioural-gate",
+              "human-gate",
+              "external-env",
+              "external-repo"
+            ]
+          },
+          "reason": {
+            "description": "The machine-attached why for this edge.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "feathers": {
+      "description": "RESERVED, OPTIONAL-but-KNOWN (brief-v2): cross-repo/cross-stream edges — the same reserved treatment as `gates`. An entry may be a bare reference STRING (which defaults to type build-dep with no reason) or a mapping carrying the why. In the mapping form `ref` is required and no key other than ref/type/reason is allowed.",
+      "type": ["array", "null"],
+      "items": {
+        "type": ["string", "object"],
+        "additionalProperties": false,
+        "required": ["ref"],
+        "properties": {
+          "ref": {
+            "description": "The edge target, in the graph reference grammar. Shape-checked as a non-empty string here; the grammar and alias resolution are `--lint` checks.",
+            "type": "string"
+          },
+          "type": {
+            "description": "The edge taxonomy; absent in the mapping form it defaults to build-dep.",
+            "type": "string",
+            "enum": [
+              "build-dep",
+              "ordering-gate",
+              "behavioural-gate",
+              "human-gate",
+              "external-env",
+              "external-repo"
+            ]
+          },
+          "reason": {
+            "description": "The machine-attached why for this edge.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verify": {
+      "description": "RESERVED, OPTIONAL (brief-v2): per-Verify-row identity records. `id` names the row so a witness points at THE row it ran; `target` names the verify substrate when it is not this repo's tree (a sibling repo, a live cluster), turning the could-not-check-by-design class into a field instead of a NOTICE. Shape only; no other key is allowed.",
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "target": { "type": "string" }
+        }
+      }
+    },
+    "title": {
+      "description": "One-line human title.",
+      "type": "string"
+    },
+    "wave": {
+      "description": "Dependency wave (a non-negative integer in practice; the validator type-checks integer only).",
+      "type": "integer"
+    },
+    "depends": {
+      "description": "Typed ids this brief depends on. An empty list (or null) is allowed.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "unblocks": {
+      "description": "Typed ids this brief unblocks. An empty list (or null) is allowed.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "effort": {
+      "description": "Effort class.",
+      "type": "string",
+      "enum": ["S", "M", "L"]
+    },
+    "gate": {
+      "description": "Review gate.",
+      "type": "string",
+      "enum": ["model", "human"]
+    },
+    "risk": {
+      "description": "The four canonical risk questions. All four are required, each answered exactly `yes` or `no` (bare YAML strings, not booleans), and no other key is allowed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regulatory", "customer", "irreversible", "sensitive-data"],
+      "properties": {
+        "regulatory": { "enum": ["yes", "no"] },
+        "customer": { "enum": ["yes", "no"] },
+        "irreversible": { "enum": ["yes", "no"] },
+        "sensitive-data": { "enum": ["yes", "no"] }
+      }
+    },
+    "issues": {
+      "description": "Tracking issue numbers. An empty list (or null) is allowed.",
+      "type": ["array", "null"],
+      "items": { "type": "integer" }
+    },
+    "authored": {
+      "description": "Authoring provenance. Required to be present; the reference validator enforces presence only, not a fixed type (a bare date and a free-text line are both accepted)."
+    },
+    "sources": {
+      "description": "Non-empty list of provenance sources.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "gate-why": {
+      "description": "Optional rationale for a risk-gated brief.",
+      "type": "string"
+    },
+    "why": {
+      "description": "Optional value rationale.",
+      "type": "string"
+    },
+    "value": {
+      "description": "Optional worth signal; absence defaults to med at scoring time.",
+      "type": "string",
+      "enum": ["low", "med", "high"]
+    },
+    "domain": {
+      "description": "Optional Cynefin domain; absence defaults to complicated at read time.",
+      "type": "string",
+      "enum": ["clear", "complicated", "complex", "chaotic"]
+    },
+    "exec-tier": {
+      "description": "Optional minimum execution-model tier; absence defaults to any.",
+      "type": "string",
+      "enum": ["any", "strong"]
+    },
+    "exec-tier-why": {
+      "description": "Optional one-line rationale for exec-tier: strong.",
+      "type": "string"
+    },
+    "blocked-by": {
+      "description": "Optional environment-blocked marker; absence means not blocked.",
+      "type": "string",
+      "enum": ["env"]
+    },
+    "measures": {
+      "description": "Optional name of the process queue this brief instruments; a present value must name a wired queue.",
+      "type": "string",
+      "enum": ["verification-debt"]
+    },
+    "homed-in": {
+      "description": "Optional `<owner>/<repo>` the deliverable was re-homed to; absence means a normal in-repo brief.",
+      "type": "string",
+      "pattern": "^[^\\s/]+/[^\\s/]+$"
+    },
+    "consumers": {
+      "description": "Optional routed reader list (a list of strings) or a prose paragraph (a single string).",
+      "type": ["string", "array"],
+      "items": { "type": "string" }
+    },
+    "parallel-streams": {
+      "description": "Optional declared shards of an intra-brief split. Only name and files are defined per entry; any other key is rejected. Shape only — whether the split is safe to dispatch is decided elsewhere.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "files": {
+            "type": ["array", "null"],
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "decision-issue": {
+      "description": "Optional GitHub issue number tracking a human decision on this brief.",
+      "type": "integer"
+    }
+  }
+}

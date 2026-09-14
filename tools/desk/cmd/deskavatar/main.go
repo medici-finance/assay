@@ -30,7 +30,7 @@ func run(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var (
 		org      = fs.String("org", "", "org login the avatars are hued from (required)")
-		tier     = fs.String("tier", "team", "avatar set: team (read+act) or family (six roles)")
+		tier     = fs.String("tier", "team", "avatar set: team (read+act) or family (role suite)")
 		out      = fs.String("out", "", "output directory (required)")
 		sizesCSV = fs.String("sizes", "512", "comma-separated PNG sizes in px")
 		avatarPN = fs.String("avatar", "", "optional org avatar PNG used as the identity field")

@@ -683,9 +683,9 @@ func containsHit(hits []string, want string) bool {
 // --- the public-repo gate on the tag-cut path ---
 //
 // `deskrelease cut` creates a tag ref via POST /repos/{owner}/{repo}/git/refs — an
-// outward write, and one with no associated issue/PR, so there is no reactions surface
-// on which a ada +1 could live. On a PUBLIC repo the gate can therefore never be
-// satisfied and must refuse before the POST.
+// outward write. On a PUBLIC repo the write is authorized only by a listed `:public`
+// allowed-repos entry; the shipped default is configured :private, so a repo the forge
+// reports PUBLIC is roster drift and the gate refuses before the POST.
 //
 // The gate is INERT against the shipped default, whose visibility the fixture
 // reports as private, so these tests drive the fake rather than the slug.
@@ -694,16 +694,16 @@ func containsHit(hits []string, want string) bool {
 // of an inert-but-future-proofing gate is that it still works when the slug widens,
 // and only a test can hold that.
 
-// TestPublicRepoGateRefusesTagCutOnPublicRepo — public repo, no reactions surface:
-// exit 6, and crucially ZERO POSTs. The exit code alone would not distinguish a
-// refusal from a tag that was created and then reported as failed.
+// TestPublicRepoGateRefusesTagCutOnPublicRepo — a repo the forge reports public that is
+// not listed :public: exit 5 (refused), and crucially ZERO POSTs. The exit code alone
+// would not distinguish a refusal from a tag that was created and then reported as failed.
 func TestPublicRepoGateRefusesTagCutOnPublicRepo(t *testing.T) {
 	h := newHarness(t)
 	h.gh.visibility = "public"
 
-	if code := run([]string{"cut", goodTag}); code != deskkit.ExitUnverifiable {
-		t.Fatalf("cut on a PUBLIC repo: exit = %d, want %d (unverifiable) — the public-repo "+
-			"gate is not wired into deskrelease", code, deskkit.ExitUnverifiable)
+	if code := run([]string{"cut", goodTag}); code != deskkit.ExitRefused {
+		t.Fatalf("cut on a PUBLIC repo not listed :public: exit = %d, want %d (refused) — the "+
+			"public-repo gate is not wired into deskrelease", code, deskkit.ExitRefused)
 	}
 	if h.gh.posts != 0 {
 		t.Fatalf("POSTs = %d, want 0 — a tag was cut on a public repo behind the gate", h.gh.posts)

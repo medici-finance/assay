@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/17
+brief: assay:assay:desk-tools:17
 title: "One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on"
 why: >-
   Two desk tools answer the same question — "may this PR enter the review loop?" — with two
@@ -28,7 +28,7 @@ gate-why: >-
   implemented still refuses an UNLISTED author (Verify row 4, the negative control) and that
   no OTHER gate silently inherited the widening.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-06 by an authoring session, from a maintainer ruling recorded 2026-09-06
 sources:
   - "Maintainer ruling, 2026-09-06: align the board's author bar to the post gate. Every login in the configured trusted-logins set (and the blessing authority) is a trusted AUTHOR on public repos for review/verdict purposes; the stricter public-only bar is removed. Merge and decision authority are unchanged and remain the human's — a branch-protection matter, not a review-trust matter."
@@ -43,6 +43,8 @@ consumers:
   - "tools/desk/cmd/deskpost/github.go (trustGate / prTrustGate): out-of-scope — deskpost is the reference bar this brief aligns TO; it is read, asserted against, and left unchanged."
   - "tools/desk/internal/deskkit/trust.go (TrustedHumanAuthor): out-of-scope for BEHAVIOUR — the accountable-human axis (the board's review-neglect metric) keeps excluding shared machine accounts and is not widened here; only its doc comment, which defines its excluded set by reference to the retired function, is rewritten to stand on its own terms."
   - "tools/desk/README.md § trust gate, § quarantine visibility: follow-up in this brief's own Task step 4 (the documented bar must not outlive the code)."
+version: 1
+id: 960831d3-99c5-4efa-8fd7-df2706c20317
 ---
 
 # Brief 17 — One trust bar for public-repo authors

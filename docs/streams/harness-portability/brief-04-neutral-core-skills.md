@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/04
+brief: assay:assay:harness-portability:04
 title: Neutral-core skill bodies + per-harness binding files + neutrality lint
 why: >-
   The skill bodies are the method, and today they speak Claude: tool names (Agent,
@@ -15,7 +15,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07)", "measured touchpoints 2026-08-07: backticked Agent/SendMessage in 2 of 7 SKILL.md files; subagent|dispatch|worktree occurrences — batch-fanout 32, verify-desk 18, pr-review-desk 14, the-desk 11, author-brief 3, market-intelligence 1, adopt 0", "superpowers 6.2.0 references/ convention (per-harness binding notes — same skill, one reference file per harness)", "harness-portability/01's capability matrix (the Codex bindings' factual source)", "the harness-target ruling (HP/03 — the degradation cells the codex binding must carry)", "freshness-checked 2026-08-07 (no references/ dir exists under plugins/assay)"]
 consumers: ["every Claude Code session loading assay:* skills (this repo, the upstream skills repo, adopters): fixed-here (the neutral text + claude binding must preserve current behaviour; regression rows below)", "the upstream thin-pointer wrappers (post harness-portability/02): unaffected (pointers carry no method text)", "plugins/assay/hooks/inject-resident-rules.sh: out-of-scope (resident rules are harness-portability/05's surface)", "the plugindrift SOURCES coverage: fixed-here (new references/ files declared so coverage stays closed)"]
@@ -25,6 +25,8 @@ exec-tier-why: >-
   guarantee softened while rephrasing, a degradation left implicit — survives every
   structural test; correctness is cross-artifact (vocabulary closure across bodies and
   both binding files).
+version: 1
+id: 657026c6-eb54-49ef-bd9e-0380ed3ac161
 ---
 
 # Brief 04 — Neutral-core skill bodies, binding files, neutrality lint
@@ -111,14 +113,14 @@ facts:
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/harnesslint && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp04r1.out 2>&1; echo $?` | `0` — includes the per-fixture red tests (task 1) |
-| 2 | `go run ./tools/harnesslint bodies plugins/assay/skills > /tmp/hp04r2.out 2>&1; echo $?` | `0` — the shipped bodies are neutral |
-| 2a | **Mutation — the lint can fail**: `cp -r plugins/assay/skills /tmp/hp04-dirty && printf '\nUse the \x60Agent\x60 tool with SendMessage.\n' >> /tmp/hp04-dirty/adopt/SKILL.md && go run ./tools/harnesslint bodies /tmp/hp04-dirty > /tmp/hp04r2a.out 2>&1; echo $?; rm -rf /tmp/hp04-dirty` | non-zero, output names the adopt skill file and both tokens — the live lint, not just its test suite, goes red on a planted violation |
-| 3 | `go run ./tools/harnesslint bindings plugins/assay/references > /tmp/hp04r3.out 2>&1; echo $?` | `0` — vocabulary closure holds in both binding files, every skill has a cell in each |
-| 3a | **Mutation**: `cp -r plugins/assay/references /tmp/hp04-dirty-bind && grep -vF 'dispatch-worker' plugins/assay/references/codex.md > /tmp/hp04-dirty-bind/codex.md && go run ./tools/harnesslint bindings /tmp/hp04-dirty-bind > /tmp/hp04r3a.out 2>&1; echo $?; rm -rf /tmp/hp04-dirty-bind` | non-zero naming `dispatch-worker` — closure is checked, not assumed |
+| 2 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills > /tmp/hp04r2.out 2>&1; echo $?` | `0` — the shipped bodies are neutral |
+| 2a | **Mutation — the lint can fail**: `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && cp -r plugins/assay/skills /tmp/hp04-dirty && printf '\nUse the \x60Agent\x60 tool with SendMessage.\n' >> /tmp/hp04-dirty/adopt/SKILL.md && /tmp/hl870 bodies /tmp/hp04-dirty > /tmp/hp04r2a.out 2>&1; echo $?; rm -rf /tmp/hp04-dirty` | non-zero, output names the adopt skill file and both tokens — the live lint, not just its test suite, goes red on a planted violation |
+| 3 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bindings plugins/assay/references > /tmp/hp04r3.out 2>&1; echo $?` | `0` — vocabulary closure holds in both binding files, every skill has a cell in each |
+| 3a | **Mutation**: `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && cp -r plugins/assay/references /tmp/hp04-dirty-bind && grep -vF 'dispatch-worker' plugins/assay/references/codex.md > /tmp/hp04-dirty-bind/codex.md && /tmp/hl870 bindings /tmp/hp04-dirty-bind > /tmp/hp04r3a.out 2>&1; echo $?; rm -rf /tmp/hp04-dirty-bind` | non-zero naming `dispatch-worker` — closure is checked, not assumed |
 | 4 | `git grep -nE 'SendMessage' -- plugins/assay/skills > /tmp/hp04r4.out; test ! -s /tmp/hp04r4.out; echo $?` | `0` — spot confirmation independent of the lint's own matcher |
 | 4a | **Positive control for row 4** — `git grep -cE 'SendMessage' -- plugins/assay/references/claude-code.md` | `>= 1` — same pattern, same engine, finds the token where it legally lives; row 4's empty result therefore means clean, not blind |
 | 5 | `for c in dispatch-worker message-agent isolate-workspace invoke-skill session-notifications; do grep -qF "$c" plugins/assay/references/claude-code.md && grep -qF "$c" plugins/assay/references/codex.md \|\| echo "MISSING $c"; done > /tmp/hp04r5.out; test ! -s /tmp/hp04r5.out; echo $?` | `0` (control: the row-2a fixture method — append `no-such-cap` to the loop list and confirm MISSING prints) |
-| 6 | **Neighbour row** — `go run ./tools/plugindrift; echo $?` | `0` — the pre-existing `skills/*/SKILL.md` coverage stays closed once the new `references/` files sit alongside it in the tree. This does NOT verify references/ coverage itself: plugindrift's coverage glob is `skills/*/SKILL.md` only, so it never scans `plugins/assay/references/`, and its plain (non-`--fail-on-drift`) exit code is already `0` today regardless of drift — confirmed by running it pre-implementation: exit `0` with 5 BEHIND + 1 UNREACHABLE still present. Row 5 (the capability-loop grep) is what actually proves the references/ files exist and are complete |
+| 6 | **Neighbour row** — `(cd tools/plugindrift && GOWORK=off go run . --root ../..); echo $?` | `0` — the pre-existing `skills/*/SKILL.md` coverage stays closed once the new `references/` files sit alongside it in the tree. This does NOT verify references/ coverage itself: plugindrift's coverage glob is `skills/*/SKILL.md` only, so it never scans `plugins/assay/references/`, and its plain (non-`--fail-on-drift`) exit code is already `0` today regardless of drift — confirmed by running it pre-implementation: exit `0` with 5 BEHIND + 1 UNREACHABLE still present. Row 5 (the capability-loop grep) is what actually proves the references/ files exist and are complete |
 | 7 | CI wiring: `grep -rlE 'harnesslint' .github/workflows > /tmp/hp04r7.out; test -s /tmp/hp04r7.out; echo $?` | `0` — the lint has a CI caller; a lint no workflow runs is documentation |
 | 8 | **BLOCKED (needs live Claude session, non-CI)** — regression: one full loop cycle (fanout a trivial brief → review → verify) driven from the rewritten skills in a real Claude Code session | Behaviour matches pre-rewrite: dispatch occurs, isolation held, evidence recorded. This is the flow row for the shared value "the method text"; a non-implementer runs it and pastes the session summary |
 

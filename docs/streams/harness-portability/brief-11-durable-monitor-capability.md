@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/11
+brief: assay:assay:harness-portability:11
 title: Durable-monitor capability + residual harness-token prose-audit
 why: >-
   Brief 04's neutrality lint is TOKEN-only: it catches the fifteen banned strings
@@ -19,7 +19,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-17 by harness-portability authoring session
 sources: ["brief 04 (HP/04): shipped tools/harnesslint (TOKEN-only bodies lint + bindings closure), the two plugins/assay/references/{claude-code,codex}.md binding files, and token-strips on 4 skill bodies — this brief builds directly on that landing", "residual analysis at brief 04's landing: the token-lint's banned set (tools/harnesslint banned-tokens config) contains NO Monitor/persistent/TaskList/EnterWorktree entry, and the closed vocab (README capability block) has NO durable-watch capability — so ~15 durable-monitor + EnterWorktree sites survive brief 04 uncaught", "replaces the closed 04c/04d/04e split: this single M-brief is the ~10-20-site core that remained after brief 04, scoped as one focused follow-up rather than three disproportionate sub-briefs", "the measured Codex capability matrix (HP/01) §3.6/§3.7: Codex has no durable cross-restart monitor — V2 child agents are process-local (resume broken across restarts, codex issues #19140/#33002), an in-subagent run_in_background task is silently killed — the measured basis for the Codex degradation cell", "stream README non-negotiable floor (§ 'What natively means' item 3; ruling C via codex.md): isolation, evidence, and the review gates never degrade; a durable wake-signal is a CONVENIENCE, so durable-monitor DEGRADES on a harness that lacks it, it does not refuse"]
 consumers: ["docs/streams/harness-portability/README.md capability-vocabulary block: fixed-here (the vocab amendment — adding durable-monitor — IS part of this deliverable; harnesslint reads the closed set from this one block)", "plugins/assay/references/claude-code.md + codex.md: follow-up harness-portability/11 (both gain a capability:durable-monitor row — else harnesslint bindings fails closure — and codex.md gains the degradation cell; these binding files are edited in brief-11's implementation phase, not this authoring PR)", "plugins/assay/skills/{pr-review-desk,intake-desk,the-desk,verify-desk,worker-desk}/SKILL.md: follow-up harness-portability/11 (the ~15 residual sites rewritten to capability vocabulary — brief-11's implementation edit, not this authoring PR)", "tools/harnesslint banned-tokens config: follow-up harness-portability/11 (OPTIONAL hardening — add the backticked Monitor/TaskList/EnterWorktree + persistent:true forms so recurrence is lint-caught, not re-audited by hand; deferred to brief-11's implementation phase)"]
@@ -31,6 +31,8 @@ exec-tier-why: >-
   refuse instead of degrade, weakens a guardrail while every token-lint still passes.
   The convenience-vs-guarantee classification and the verbatim-degradation discipline
   need care.
+version: 1
+id: f0fe4b8c-e52a-48de-b008-6ef2379354e1
 ---
 
 # Brief 11 — Durable-monitor capability + residual harness-token prose-audit
@@ -198,16 +200,16 @@ present). Every absence-assertion below pairs a positive control (stream README 
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `sed -n '/assay:capability-vocabulary/,/-->/p' docs/streams/harness-portability/README.md \| grep -qx 'durable-monitor'; echo $?` | `0` — the ratified name is in the machine-readable closed set (adjust the literal if review renames it) |
-| 2 | `go run ./tools/harnesslint bindings plugins/assay/references; echo $?` | `0` — every capability in the closed set (now incl. `durable-monitor`) resolves in BOTH binding files and every skill has a degradation cell |
+| 2 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bindings plugins/assay/references; echo $?` | `0` — every capability in the closed set (now incl. `durable-monitor`) resolves in BOTH binding files and every skill has a degradation cell |
 | 2a | `grep -lc 'capability:durable-monitor' plugins/assay/references/claude-code.md plugins/assay/references/codex.md \| wc -l \| tr -d ' '` | `2` — positive control: the row is present in both files, not merely "closure didn't complain" |
-| 3 | `go run ./tools/harnesslint bodies plugins/assay/skills; echo $?` | `0` — bodies still checked-clean (capability refs all in vocab, no banned tokens) |
+| 3 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills; echo $?` | `0` — bodies still checked-clean (capability refs all in vocab, no banned tokens) |
 | 4 | `grep -rn -e 'Monitor' -e 'persistent: true' -e 'TaskList' plugins/assay/skills/*/SKILL.md; echo "exit=$?"` | `exit=1` — grep (case-sensitive, separate `-e` patterns so no cell-shredding pipe) finds NO remaining capital-`Monitor` / `persistent: true` / `TaskList` harness token in any body. `durable-monitor` (lowercase, hyphenated) and lowercase prose "monitor" do NOT match, so the capability name and neutral prose are untouched |
 | 4a | `grep -rc 'capability:durable-monitor' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md \| awk -F: '{s+=$2} END{print s}'` | `>= 8` — positive control for row 4: the durable-monitor sites were REWRITTEN to the capability, not merely deleted |
 | 5 | `grep -rn 'EnterWorktree' plugins/assay/skills/*/SKILL.md; echo "exit=$?"` | `exit=1` — no EnterWorktree token remains |
 | 5a | `grep -rc 'capability:isolate-workspace' plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| awk -F: '{s+=$2} END{print (s>=2)}'` | `1` — positive control for row 5: both former EnterWorktree sites now carry `capability:isolate-workspace` |
-| 6 | **Recurrence guard (OPTIONAL hardening) — the lint now CATCHES a reintroduced token.** `go build -o /tmp/hl11 ./tools/harnesslint; f=plugins/assay/skills/the-desk/SKILL.md; cp "$f" /tmp/hp11.bak; printf '\nProbe line arming a persistent: true monitor.\n' >> "$f"; /tmp/hl11 bodies plugins/assay/skills; echo "exit=$?"; cp /tmp/hp11.bak "$f"` | `exit=1` (built binary, so harnesslint's checked-failed=1 is unambiguous — a compile failure would have failed `go build` first), output names `plugins/assay/skills/the-desk/SKILL.md` with the banned `persistent: true` token; after restore, row 3 returns `0` — the red was the plant (planted `persistent: true` avoids the nested-backtick a `Monitor` plant would need in this cell; SKIP this row if the Task 5 hardening was not taken, and say so in Evidence) |
+| 6 | **Recurrence guard (OPTIONAL hardening) — the lint now CATCHES a reintroduced token.** `GOWORK=off go build -C tools/harnesslint -o /tmp/hl11 .; f=plugins/assay/skills/the-desk/SKILL.md; cp "$f" /tmp/hp11.bak; printf '\nProbe line arming a persistent: true monitor.\n' >> "$f"; /tmp/hl11 bodies plugins/assay/skills; echo "exit=$?"; cp /tmp/hp11.bak "$f"` | `exit=1` (built binary, so harnesslint's checked-failed=1 is unambiguous — a compile failure would have failed `go build` first), output names `plugins/assay/skills/the-desk/SKILL.md` with the banned `persistent: true` token; after restore, row 3 returns `0` — the red was the plant (planted `persistent: true` avoids the nested-backtick a `Monitor` plant would need in this cell; SKIP this row if the Task 5 hardening was not taken, and say so in Evidence) |
 | 7 | `grep -c 'never degrade' plugins/assay/references/codex.md` | `>= 1` — the non-negotiable floor (isolation / evidence / gates never degrade) is intact after the edit; durable-monitor sits BELOW it as a convenience |
-| 8 | `go run ./statusgen --root . --lint; echo $?` | `0` — stream README + brief frontmatter + Evidence lint clean |
+| 8 | `(cd statusgen && GOWORK=off go run . --root .. --lint); echo $?` | `0` — stream README + brief frontmatter + Evidence lint clean |
 
 ## Evidence
 

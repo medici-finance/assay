@@ -52,6 +52,13 @@ type target struct {
 	head        string // PR only; an issue has no head, and "" is recorded as such
 	authorLogin string
 	authorID    int64
+	// labels is the ISSUE's label set, read from the same /issues/{n} payload the kind
+	// resolution already makes. It is empty for a PR — deliberately, and not an
+	// omission: the ONE thing that consumes it is the verify-gate card carve-out
+	// (deskkit.VerifyGateCardCommentAdmitted), which applies to issues only. A PR
+	// carrying the verify-gate label therefore cannot reach the carve-out even if the
+	// author matched, because there is nothing here for it to match against.
+	labels []string
 }
 
 // resolveTarget resolves a bare number to the object it names. PR first: that keeps the
@@ -65,7 +72,7 @@ type target struct {
 // (deskkit.TrustedAuthorID("", 0) is false) and carries no blessing, so the trust gate
 // refuses before anything is written. Worth a decode-level guard one day; not one this
 // function can add without pretending the problem is local to it.
-func resolveTarget(c *ghClient, n int) (*target, error) {
+func resolveTarget(c postBackend, n int) (*target, error) {
 	p, perr := c.getPR(n)
 	if perr == nil {
 		return &target{kind: kindPR, number: n, head: p.Head.SHA,
@@ -78,9 +85,10 @@ func resolveTarget(c *ghClient, n int) (*target, error) {
 	iss, ierr := c.getIssue(n)
 	if ierr != nil {
 		if isNotFound(ierr) {
+			owner, name := c.slug()
 			return nil, deskkit.Unverifiable(fmt.Sprintf(
 				"#%d is neither a pull request nor an issue in %s/%s (or this App installation "+
-					"cannot see it) — check the number and the repo", n, c.owner, c.repo), nil)
+					"cannot see it) — check the number and the repo", n, owner, name), nil)
 		}
 		return nil, ierr
 	}
@@ -91,7 +99,7 @@ func resolveTarget(c *ghClient, n int) (*target, error) {
 		return nil, perr
 	}
 	return &target{kind: kindIssue, number: n,
-		authorLogin: iss.User.Login, authorID: iss.User.ID}, nil
+		authorLogin: iss.User.Login, authorID: iss.User.ID, labels: iss.labelNames()}, nil
 }
 
 // requirePRErr upgrades a getPR failure for the PR-ONLY verbs (`review`, `ready`) when the
@@ -104,7 +112,7 @@ func resolveTarget(c *ghClient, n int) (*target, error) {
 //
 // It only ever fires on a 404, and only after a positive issue read: a non-404 failure and
 // an unreadable number both fall through to the original error, unchanged.
-func requirePRErr(c *ghClient, repo string, n int, err error) error {
+func requirePRErr(c postBackend, repo string, n int, err error) error {
 	if !isNotFound(err) {
 		return err
 	}

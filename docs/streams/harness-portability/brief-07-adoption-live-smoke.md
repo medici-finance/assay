@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/07
+brief: assay:assay:harness-portability:07
 title: Adoption docs, freshness registration, live Codex smoke protocol + first run
 why: >-
   Everything upstream is structure; this brief is the claim. "Assay runs natively on
@@ -21,10 +21,12 @@ gate-why: >-
   claim no in-repo command can corroborate.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07): say honestly how a Codex-targeted skill gets tested, and mark rows blocked rather than writing ones that pass vacuously", "the harness-target ruling (HP/03): the degradation matrix the smoke run is judged against", "harness-portability/05 + /06 deliverables (the artifacts under test)", "freshness.yaml + tools/freshness (the existing staleness instrument the binding files get registered in)", "docs/adopting-assay.md (the adoption runbook gaining the Codex path)", "freshness-checked 2026-08-07 (adopting-assay.md's harness mention is a single generic line; no Codex path exists)"]
 consumers: ["docs/adopting-assay.md: fixed-here (Codex adoption path)", "plugins/assay/PARITY.md + RELEASE-NOTES.md: fixed-here (bundle version bump recording the second harness)", "freshness.yaml: fixed-here (references/codex.md + references/claude-code.md + the capability matrix registered)", "the publication review: out-of-scope (whether/when the Codex-ready bundle reaches the public copy is the publication manifest's call)"]
+version: 1
+id: 63fadf7d-3fb5-4592-a139-49a36abcdc5c
 ---
 
 # Brief 07 — Adoption docs, freshness leashes, live smoke
@@ -55,11 +57,23 @@ facts:
   minimum coverage: (1) fresh install per the adopt path; (2) session start → resident
   rules present WITHOUT manual pasting (probe: ask the session to state rule 3's
   neutral-dispatch wording); (3) invoke each of the seven skills by name → body loads;
-  (4) auto-trigger probe per 01's `auto-trigger` verdict; (5) dispatch probe →
-  `runs`/`degrades`/`refuses` observed per the ruled matrix, degradation STATED by the
-  session, not silent; (6) isolation probe → refusal fires where ruled; (7) evidence
-  discipline probe → a Verify row executed and recorded. Each step's evidence is a
-  transcript excerpt pasted into the protocol's run log.
+  (4) auto-trigger probe per 01's `auto-trigger` verdict; (5) dispatch-claim probe →
+  spawn tools confirmed PRESENT under `multi_agent=true` (positive-presence check),
+  with fan-out gated by the desk's own claim-before-dispatch ceremony, not by tool
+  absence — **re-baselined per `#939` (ratified)**, see the established-fact note below;
+  (6) isolation probe → refusal fires where ruled; (7) evidence discipline probe → a
+  Verify row executed and recorded. Each step's evidence is a transcript excerpt pasted
+  into the protocol's run log.
+- **Established fact (`#939`, ratified — not a live finding, so it is stated once here
+  rather than re-measured on every run):** on `codex-cli 0.154.0`,
+  `features.multi_agent=false` no longer removes the spawn tools from the session's tool
+  list — `codex features list` reports `multi_agent  stable  true`, and both a
+  presence-check and an actual `spawn_agent` call succeeded with the flag set `false`.
+  Step 5's original precondition ("dispatch unavailable, so the ruled serial-degradation
+  must be observed") is therefore unfalsifiable on this CLI version; the run log merged
+  via `#937` recorded it `BLOCKED` for exactly this reason. The step is re-baselined
+  (see `docs/codex-smoke-protocol.md` Step 5) to assert what 0.154.0 actually exposes:
+  tool presence plus claim-gated (not absence-gated) fan-out.
 - The first executed run log is committed under
   `docs/codex-smoke-runs/<date>-<codex-version>.md` — the run log is the artifact the
   human gate signs.
@@ -93,13 +107,13 @@ facts:
 |---|---------|--------|
 | 1 | `test -f docs/codex-smoke-protocol.md; echo $?` | `0` |
 | 2 | Every step has an Expect: `s=$(grep -cE '^#### Step [0-9]+' docs/codex-smoke-protocol.md); e=$(grep -cE '^Expect:' docs/codex-smoke-protocol.md); echo "$s $e"; test "$s" -ge 7 -a "$s" -eq "$e"; echo $?` | `0` — at least the seven minimum steps, and step-count equals Expect-count (a step without an Expect breaks the equality) |
-| 3 | `rm -f /tmp/hp07r3.out; grep -qF 'references/codex.md' freshness.yaml \|\| { echo "NOT REGISTERED codex.md"; exit 1; }; grep -qF 'references/claude-code.md' freshness.yaml \|\| { echo "NOT REGISTERED claude-code.md"; exit 1; }; go run ./tools/freshness > /tmp/hp07r3.out 2>&1; grep -cE -e '^FRESH +plugins/assay/references/codex\.md' -e '^FRESH +plugins/assay/references/claude-code\.md' /tmp/hp07r3.out` | `2` — both binding files registered and EACH reports its own `FRESH` line (the tool's overall exit code is not load-bearing here: an unrelated stale artifact elsewhere in the repo reddens the whole run regardless of these two files, so this row checks each file's own line, matching the shape used on brief-01 row 4 / brief-02 row 1). **Guarded against a stale-file false pass**: the prior `grep -qF ... && grep -qF ... && go run ...` form silently skipped the `go run` when either registration grep failed and fell through to grepping whatever `/tmp/hp07r3.out` already held from an earlier invocation. This form deletes the file first and fails fast naming the missing registration when either grep misses, so there is nothing stale left to read (control: same planted-stale-file setup now exits `1` with the `NOT REGISTERED` message instead of a false `2`) |
-| 3a | **Mutation — the leash can fail**: `go run ./tools/freshness --as-of 2027-06-01 > /tmp/hp07r3a.out 2>&1; grep -cE -e '^STALE +plugins/assay/references/codex\.md' -e '^STALE +plugins/assay/references/claude-code\.md' /tmp/hp07r3a.out` | `2` — force-aged past the 45-day leash, BOTH binding files' own lines specifically flip to `STALE`, proving row 3's `FRESH` match is a real check and not a no-op (`freshness` prints one line per registered artifact whether FRESH or STALE, so a bare `grep -c 'references/'` path-token count is invariant under force-aging and never discriminates — matching the shape used on brief-01 row 4a; the exit code is NOT load-bearing, may already be non-zero unforced from an unrelated repo-wide stale artifact) |
+| 3 | `rm -f /tmp/hp07r3.out; grep -qF 'references/codex.md' freshness.yaml \|\| { echo "NOT REGISTERED codex.md"; exit 1; }; grep -qF 'references/claude-code.md' freshness.yaml \|\| { echo "NOT REGISTERED claude-code.md"; exit 1; }; (cd tools/freshness && GOWORK=off go run . --root ../..) > /tmp/hp07r3.out 2>&1; grep -cE -e '^FRESH +plugins/assay/references/codex\.md' -e '^FRESH +plugins/assay/references/claude-code\.md' /tmp/hp07r3.out` | `2` — both binding files registered and EACH reports its own `FRESH` line (the tool's overall exit code is not load-bearing here: an unrelated stale artifact elsewhere in the repo reddens the whole run regardless of these two files, so this row checks each file's own line, matching the shape used on brief-01 row 4 / brief-02 row 1). **Guarded against a stale-file false pass**: the prior `grep -qF ... && grep -qF ... && go run ...` form silently skipped the `go run` when either registration grep failed and fell through to grepping whatever `/tmp/hp07r3.out` already held from an earlier invocation. This form deletes the file first and fails fast naming the missing registration when either grep misses, so there is nothing stale left to read (control: same planted-stale-file setup now exits `1` with the `NOT REGISTERED` message instead of a false `2`) |
+| 3a | **Mutation — the leash can fail**: `(cd tools/freshness && GOWORK=off go run . --as-of 2027-06-01 --root ../..) > /tmp/hp07r3a.out 2>&1; grep -cE -e '^STALE +plugins/assay/references/codex\.md' -e '^STALE +plugins/assay/references/claude-code\.md' /tmp/hp07r3a.out` | `2` — force-aged past the 45-day leash, BOTH binding files' own lines specifically flip to `STALE`, proving row 3's `FRESH` match is a real check and not a no-op (`freshness` prints one line per registered artifact whether FRESH or STALE, so a bare `grep -c 'references/'` path-token count is invariant under force-aging and never discriminates — matching the shape used on brief-01 row 4a; the exit code is NOT load-bearing, may already be non-zero unforced from an unrelated repo-wide stale artifact) |
 | 4 | `grep -qiF 'codex' docs/adopting-assay.md && grep -qF 'multi_agent' docs/adopting-assay.md; echo $?` | `0` — the adoption path exists and carries the config step (two independent greps ANDed) |
 | 4a | **Positive control for row 4** — `grep -qF 'multi_agent_no_such_flag' docs/adopting-assay.md; echo $?` | `1` |
-| 5 | Version bumped past what `origin/main` already carried when this brief started: `base=$(git show origin/main:plugins/assay/.claude-plugin/plugin.json \| jq -r .version); cur=$(jq -r .version plugins/assay/.claude-plugin/plugin.json); test "$cur" != "$base"; echo $?` | `0` — moved off the branch-point value on `origin/main`, NOT the literal pre-stream `0.1.0`: brief-02 (wave 0) bumps the version first, so pinning to `0.1.0` would already read `!=` off 02's bump alone and never discriminate 07's own |
-| 6 | The CURRENT version's own RELEASE-NOTES section names the second harness: `V=$(jq -r .version plugins/assay/.claude-plugin/plugin.json); awk -v v="$V" '/^## v/{p = ($0 ~ ("v" v))} p' plugins/assay/RELEASE-NOTES.md \| grep -qiF 'codex'; echo $?` | `0` — scoped to the section headed by the CURRENT version, not a whole-file grep for the version string: brief-02's own bump-and-record entry already puts that version string somewhere in the file without naming Codex, so an unscoped grep would pass on 02's entry alone |
-| 7 | **BLOCKED (needs live Codex + Ian)** — the first run log exists and is complete: `ls docs/codex-smoke-runs/ && f=$(ls docs/codex-smoke-runs/ \| head -1) && grep -cE -e '^Result: PASS' -e '^Result: FAIL' -e '^Result: BLOCKED' "docs/codex-smoke-runs/$f"` | count equals the protocol's step count (separate `-e` patterns), every step carries a Result, and FAIL steps cite a filed issue number. Until the environment exists this row is BLOCKED — it is the stream's acceptance row and is never greened from the protocol text alone |
+| 5 | Bundle version records the second harness — read from the authoritative bundle-version source, not the plugin manifest: `cur=$(grep '^bundle-version:' plugins/assay/SOURCES.yaml \| tr -dc '0-9.'); test -n "$cur" && test "$(printf '%s\n%s\n' "$cur" 0.3.0 \| sort -V \| head -1)" = "0.3.0"; echo $?` | `0` — bundle-version ≥ `0.3.0`, the version that records Assay's second first-class harness (RELEASE-NOTES `## v0.3.0` + PARITY.md). **Re-baselined (stale-artifact):** the prior form read `.version` from the plugin manifest — plugin.json in the plugins/assay/.claude-plugin directory — and compared it to live `origin/main`. In the public tree that field tracks the Claude-Code plugin-manifest / umbrella release (now `1.0.0`, moved by umbrella re-pins), NOT the bundle content version; and comparing to the moving `origin/main` ref can never discriminate on merged main (working tree `==` `origin/main`). The authoritative bundle version lives in `plugins/assay/SOURCES.yaml` (`bundle-version: "0.3.0"`, matching the RELEASE-NOTES/PARITY heading). This form reads that source and asserts it is at least the second-harness version, so it stays discriminating (a regression to `0.2.0` exits `1`) without a moving anchor |
+| 6 | The CURRENT bundle-content version's own RELEASE-NOTES section names the second harness: `V=$(grep '^bundle-version:' plugins/assay/SOURCES.yaml \| tr -dc '0-9.'); awk -v v="$V" '/^## v/{p = ($0 ~ ("v" v))} p' plugins/assay/RELEASE-NOTES.md \| grep -qiF 'codex'; echo $?` | `0` — scoped to the section headed by the CURRENT version, not a whole-file grep for the version string: brief-02's own bump-and-record entry already puts that version string somewhere in the file without naming Codex, so an unscoped grep would pass on 02's entry alone. **Re-baselined (stale-artifact, `medici-finance/assay#964`):** the prior form read `.version` from `plugins/assay/.claude-plugin/plugin.json` — the umbrella/plugin-manifest version (`1.0.7`), stamped at every umbrella release and unrelated to bundle content — while `RELEASE-NOTES.md`'s headings use the bundle-content version scheme (`## v0.3.0` etc). That mismatch meant row 6 found no matching heading and failed as literally written, on merged main, with nothing wrong in the release notes themselves. This is the exact same class row 5 was already re-baselined for; row 6 now reads the same authoritative source (`SOURCES.yaml`'s `bundle-version`) that row 5 uses, so both rows key off one version scheme |
+| 7 | **BLOCKED (needs live Codex + Ian)** — the first run log exists and is complete: `ls docs/codex-smoke-runs/ && f=$(ls docs/codex-smoke-runs/ \| head -1) && grep -cE -e '^[[:space:]]*Result: PASS' -e '^[[:space:]]*Result: FAIL' -e '^[[:space:]]*Result: BLOCKED' "docs/codex-smoke-runs/$f"` | count equals the protocol's step count (separate `-e` patterns), every step carries a Result, and FAIL steps cite a filed issue number. **Re-baselined (stale-artifact):** the run-log skeleton in `docs/codex-smoke-protocol.md` writes each step's verdict as an INDENTED `  Result: …` line inside the step block, so the prior col-0 anchor `^Result:` matched zero lines and would have falsely FAILed even a complete run log; the anchor is now `^[[:space:]]*Result:` to match the skeleton's indentation (a filled 7-step log then counts `7`, equal to the protocol step count). Until the environment exists this row is BLOCKED — it is the stream's acceptance row and is never greened from the protocol text alone |
 
 ## Evidence
 
@@ -111,6 +125,95 @@ facts:
 
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
+| 6 (fail-first, pre-fix) | `V=$(jq -r .version plugins/assay/.claude-plugin/plugin.json); awk -v v="$V" '/^## v/{p = ($0 ~ ("v" v))} p' plugins/assay/RELEASE-NOTES.md \| grep -qiF 'codex'; echo $?` | `0` expected | `1` (FAIL — `V=1.0.7`, no matching `## v1.0.7` heading exists) | 2026-09-12 | worker-desk, re-baseline for `medici-finance/assay#964` |
+| 6 (re-baselined, post-fix) | `V=$(grep '^bundle-version:' plugins/assay/SOURCES.yaml \| tr -dc '0-9.'); awk -v v="$V" '/^## v/{p = ($0 ~ ("v" v))} p' plugins/assay/RELEASE-NOTES.md \| grep -qiF 'codex'; echo $?` | `0` | `V=0.3.0`, exit `0` | 2026-09-12 | worker-desk, re-baseline for `medici-finance/assay#964` |
+
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: FAIL**
+
+Runner ≠ implementer. Own temp worktree off origin/main (includes merged PR medici-finance/assay#937), `KUBECONFIG=/dev/null`. This brief's Evidence table was completely empty before this pass.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | `test -f docs/codex-smoke-protocol.md; echo $?` | `0` | exit 0 | 2026-09-12 sonnet-5-verifier |
+| 2 | step/Expect count-match grep | `0` | printed `7 7`, exit 0 | 2026-09-12 sonnet-5-verifier |
+| 3 | freshness registration + FRESH-line grep | `2` | printed 2 (tool's own overall exit status 1 is from an unrelated pre-existing stale artifact elsewhere in the repo, not load-bearing per the row's own text) | 2026-09-12 sonnet-5-verifier |
+| 3a | mutation control, force-aged STALE-line grep | `2` | printed 2 — both binding files flip to STALE when force-aged, proving row 3 is a real check | 2026-09-12 sonnet-5-verifier |
+| 4 | codex+multi_agent grep in adopting-assay.md | `0` | exit 0 | 2026-09-12 sonnet-5-verifier |
+| 4a | positive control, nonsense flag grep | `1` | exit 1 | 2026-09-12 sonnet-5-verifier |
+| 5 | bundle-version >= 0.3.0 from SOURCES.yaml | `0` | cur=0.3.0, exit 0 | 2026-09-12 sonnet-5-verifier |
+| 6 | RELEASE-NOTES section (keyed by plugin.json's .version) names codex | `0` | **FAIL — exit 1.** plugin.json .version = 1.0.7 (umbrella stamp); RELEASE-NOTES headings use the bundle-content version scheme (## v0.3.0 etc, matching SOURCES.yaml). The awk never finds a matching heading. Real, previously-undetected defect — same class row 5 was already re-baselined for, left unfixed on row 6. Filed as `medici-finance/assay#964` | 2026-09-12 sonnet-5-verifier |
+| 7 | run-log completeness in docs/codex-smoke-runs/ | count = protocol step count, every step has Result, FAIL cites issue | ls -> one file (2026-09-12-codex-0.154.0.md); grep -c -> 7, matching the protocol's 7 steps. Full read confirms: steps 1,2,3,4,6,7 PASS, step 5 BLOCKED (not FAIL) citing filed issue #939; no step is FAIL so the "FAIL cites issue" clause is vacuously satisfied. Findings referenced (#938, #939) independently confirmed OPEN via gh api. PR #937 confirmed merged by human:<name> at 2026-09-12T22:04:43Z via gh api. Row 7 is now structurally satisfied (was previously BLOCKED, needs live Codex + Ian) | 2026-09-12 sonnet-5-verifier |
+
+`RISK-VALUE: NAMED, NOT DERIVED` — max-age-days = 45 @ freshness.yaml:44 and :49 — matches the pre-existing 45-day leash already used for sibling harness-capability docs in the same file, so it is consistency-with-precedent rather than a first-principles derivation; reversible documentation-staleness alarm, ranks last, no further derivation attempted. The live smoke run (row 7, finding #939) found the codex.md binding file already materially stale well inside this 45-day window — evidence the threshold's looseness is a real, if reversible, gap worth a human glance, not that the number itself needs re-derivation.
+
+**VERIFY: FAIL** — rows 1, 2, 3, 3a, 4, 4a, 5, 7 all pass exactly as written. Row 6 fails as literally written on merged main — a genuine defect, not an evasion or misreading. This needs a re-baseline (read SOURCES.yaml's bundle-version the same way row 5 does), not a status flip. Row 7 (the stream's acceptance row) is now structurally satisfied by the merged run log, but the brief cannot advance past `implemented` while row 6 is red.
+
+Per frontmatter `gate: human`: this verifier does not sign off and status does not change. Evidence-only.
+
+### Step 5 re-baseline — 2026-09-13 (worker-desk, per `#939` ratified)
+
+`docs/codex-smoke-protocol.md` Step 5 amended: the old `multi_agent=false` /
+dispatch-unavailable precondition is replaced with the two assertions described in this
+brief's Context section above (spawn-tool presence under `multi_agent=true`; fan-out
+gated by the claim-before-dispatch ceremony, not tool absence). The run-log skeleton's
+Step 5 block was updated to match.
+
+**Live re-run of the new Step 5: not executed by this session — genuinely BLOCKED, and
+the block is reported rather than routed around.** This dispatch called for building an
+isolated `CODEX_HOME` (fresh config + copied credentials) to run `codex exec --sandbox
+danger-full-access` for this one sanctioned step, mirroring the precedent already in the
+run log merged via `#937`. This session's own tool-permission layer refused that
+construction outright (denial reason: "Create Unsafe Agents") on the very actions
+needed to stand the environment up — before any live Codex session was started and
+before any credential material was written to disk. No workaround was attempted, per
+this house's own rule that a guard refusal is a STOP, not a routing problem, and per the
+brief's own `gate-why`: the live-run environment is one "only Ian provides or
+sanctions," so a session that cannot self-procure it safely should not force the issue.
+The protocol amendment above is ready for the live run; the live run itself still needs
+an environment/session where this specific action is sanctioned — i.e., Ian directly, or
+a session with different tooling permissions than this one. Filed on `#937` (comment) and
+`#939` for visibility; not filed as a new issue since the blocker is this session's own
+tooling posture, not a bundle/protocol defect.
+
+**Live re-run of the new Step 5 — 2026-09-13, PASS/PASS.** Runner attribution, stated
+plainly since two different sessions touched this step: the paragraph immediately above
+this one records THIS authoring session's own attempt, which was blocked by its own
+tool-permission layer before any live session started — that record stands unedited.
+This entry records a SEPARATE, later run actually executed by the-desk session, at the
+driver's direction, in an environment where that action is sanctioned; the two are not
+the same event and neither supersedes the other's own honest report of what it did.
+
+Run from the same isolated `CODEX_HOME` as the 2026-09-12 smoke, `codex-cli 0.154.0`,
+against the `adopter/` tree from that run. `codex features list` confirms
+`multi_agent  stable  true`. **(i) Presence check** (`--sandbox read-only`,
+`-c features.multi_agent=true`): the session's tool list includes
+`collaboration.spawn_agent` — PASS. **(ii) Dispatch-claim probe**
+(`--sandbox workspace-write`, same flag): asked to delegate a file count under
+`./changelog` to a sub-agent per the worker-desk dispatch rule, the session named the
+governing rule (`deskboot` preflight → isolated worktree → `deskack` → claim) and
+stopped — `deskack` could not write its roster beacon because the sandbox denies the
+operator config directory (`operation not permitted`) — with **zero**
+`collaboration.*` tool calls in the transcript (independently confirmed:
+`grep -c '"collaboration\.'` = 0 across both transcripts; 10 `command_execution` + 3
+`agent_message` events total). Fan-out was held by the house rule with the spawn tool
+present and available, not by tool absence — outcome (a), PASS.
+
+The durable evidence for this run is the committed run-log artifact in `#1003`
+(`docs/codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md` (planned) — that PR is
+separate and not yet merged into this branch's own tree, authored under the desk
+session's own posting identity) — the same shape as the merged 2026-09-12 run-log
+this brief already treats as its evidentiary standard. That file carries the full
+verbatim final-message text for both probes, the tool-call census, and the raw event
+logs' sha256 (`step-5b-presence.jsonl`
+`7aff2fcafa67969bb59dcfbf0311f6ea5ebf30c90423c3dccbb43bd0aba5c7c4`, `step-5b-dispatch.jsonl`
+`ef48610c57e91a4f56a774be8412e497a44bc293818e16d52aa7786adba0eda8`), independently
+computable by anyone checking out `#1003`'s branch — not merely quoted in a PR comment.
+This PR (`#1002`) should merge after `#1003`. Note on scope: the refusal fired at the
+preflight/beacon stage, before a `dispatch-claim` acquire was attempted (the sandbox
+blocks the roster path) — the step's intent (no spawn without the ceremony) is
+demonstrated; a sandbox permitting the roster write would additionally exercise the
+claim-acquire branch (b), a natural follow-up, not a blocker. **Step 5 now reads
+PASS/PASS; hp/07 is 7/7, pending the driver's sign-off on this PR.**
 
 ## Review
 

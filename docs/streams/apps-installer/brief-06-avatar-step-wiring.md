@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/06
+brief: assay:assay:apps-installer:06
 title: Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded
 why: >-
   GitHub has no API to set an App's avatar, so the drop stays a human click; without a generated
@@ -13,7 +13,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §2 Screen 1 (avatars previewed), Screen 2 (Avatar cell), §4 (`keyed → avatar_ok`; unconfirmed does not block install), §6 (`deskapps avatar --regen`), §8 (avatar never dropped)."
@@ -21,6 +21,8 @@ sources:
   - "apps-installer/05 — `internal/avatar.Generate` and the file layout `~/.config/assay/avatars/<app>.png`."
   - "freshness-checked 2026-09-05 @ 38e96f7 (origin/main) — nothing in the tree references an App avatar."
 exec-tier: any
+version: 1
+id: 722f8aa0-51fa-4201-9fb7-e4501c03a913
 ---
 
 # Brief 06 — The avatar step

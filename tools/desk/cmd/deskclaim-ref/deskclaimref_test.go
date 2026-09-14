@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -28,6 +31,11 @@ type fakeStore struct {
 	// failure injection: the fail-closed (exit 6) paths.
 	readFails  bool // read/list return claimUnverifiable
 	writeFails bool // create/update return writeUnverifiable
+
+	// cause is the "<host>: <error>" attribution the real gogitStore records on a transport
+	// failure; the fake returns it from transportCause() so a verb-level test can assert the
+	// operator-facing message carries it (#727).
+	cause string
 }
 
 type fakeClaim struct{ sha, msg, date string }
@@ -111,6 +119,8 @@ func (f *fakeStore) branchExists(branch string) (bool, bool) {
 	}
 	return f.branches[branch], true
 }
+
+func (f *fakeStore) transportCause() string { return f.cause }
 
 // harness wires the fake into the tool's store seam and captures its output.
 func harness(t *testing.T, f *fakeStore) (rc func(args ...string) int, stdout, stderr *bytes.Buffer) {
@@ -494,6 +504,104 @@ func TestUnknownVerbAndFlagRefused(t *testing.T) {
 	}
 	if rc := run("acquire", "at--x--1", "--repo", "medici-finance/assay", "--bogus", "v"); rc != exitRefused {
 		t.Errorf("unknown flag rc = %d, want 5", rc)
+	}
+}
+
+// --- #727: attributable fail-closed + worktreeConfig-aware origin read ---------------
+
+// A fail-closed (exit 6) transport failure must name the host it dialed and the underlying
+// cause in the operator-facing message — not the bare "unverifiable" that sent an operator
+// debugging the claim namespace, token scopes and ref permissions while the real fault was the
+// host (#727). Drives the verb layer over the store seam's attribution.
+func TestTransportFailureMessageCarriesHostAndCause(t *testing.T) {
+	f := newStore()
+	f.writeFails = true
+	f.cause = "gitlab.example.com: authentication required: HTTP Basic: Access denied"
+	run, _, se := harness(t, f)
+
+	rc := run("acquire", "at--issue-727", "--repo", "group/repo", "--owner", "sess-A")
+	if rc != exitUnverifiable {
+		t.Fatalf("transport-fail acquire rc = %d, want 6; err=%s", rc, se.String())
+	}
+	got := se.String()
+	for _, want := range []string{
+		"could not create the claim refs/dispatch/at--issue-727", // still names the ref
+		"gitlab.example.com",        // AND the host dialed
+		"HTTP Basic: Access denied", // AND the underlying cause
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fail-closed message missing %q — an operator cannot see WHERE/WHY:\n%s", want, got)
+		}
+	}
+}
+
+// The store-level formatter: a recorded transport error renders as "<host>: <error>", and a
+// store with no failure attributes nothing (so a non-transport unverifiable stays bare).
+func TestGogitStoreTransportCauseFormatsHostAndError(t *testing.T) {
+	g := &gogitStore{host: "gitlab.example.com"}
+	if c := g.transportCause(); c != "" {
+		t.Fatalf("a store with no transport failure attributes %q, want empty", c)
+	}
+	g.fail(errors.New("authentication required: HTTP Basic: Access denied"))
+	want := "gitlab.example.com: authentication required: HTTP Basic: Access denied"
+	if got := g.transportCause(); got != want {
+		t.Fatalf("transportCause = %q, want %q", got, want)
+	}
+}
+
+// The origin read must fall back to a direct parse of the common .git/config when go-git cannot
+// read the checkout — the worktreeConfig case that made every claim verb exit 6 on a
+// self-hosted GitLab (#727). This drives the config-file parser directly (the no-git
+// fallback), which needs neither go-git's extension support nor a git binary.
+func TestConfigFileOriginURLReadsCommonConfig(t *testing.T) {
+	dir := t.TempDir()
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A worktreeConfig-enabled config — exactly the shape go-git refuses to read.
+	cfg := "[core]\n\trepositoryformatversion = 1\n" +
+		"[extensions]\n\tworktreeConfig = true\n" +
+		"[remote \"origin\"]\n\turl = https://gitlab.example.com/group/repo.git\n" +
+		"\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
+	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := "https://gitlab.example.com/group/repo.git"
+	if got := configFileOriginURL(dir); got != want {
+		t.Fatalf("configFileOriginURL = %q, want %q", got, want)
+	}
+}
+
+// The linked-worktree case: the checkout's `.git` is a FILE pointing at
+// `<main>/.git/worktrees/<name>`, and the remotes live in the COMMON config one level up (where
+// the `commondir` file points) — not in the per-worktree config go-git reads (which is why
+// go-git returns "remote not found" with zero remotes here). The parser must follow the pointer.
+func TestConfigFileOriginURLResolvesLinkedWorktreeCommondir(t *testing.T) {
+	root := t.TempDir()
+	mainGit := filepath.Join(root, "main", ".git")
+	wtGitDir := filepath.Join(mainGit, "worktrees", "wt1")
+	if err := os.MkdirAll(wtGitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "[remote \"origin\"]\n\turl = git@gitlab.example.com:group/repo.git\n"
+	if err := os.WriteFile(filepath.Join(mainGit, "config"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wtCheckout := filepath.Join(root, "wt1")
+	if err := os.MkdirAll(wtCheckout, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtCheckout, ".git"), []byte("gitdir: "+wtGitDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// git writes a `commondir` in the worktree gitdir pointing back to the main .git.
+	if err := os.WriteFile(filepath.Join(wtGitDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := "git@gitlab.example.com:group/repo.git"
+	if got := configFileOriginURL(wtCheckout); got != want {
+		t.Fatalf("linked-worktree origin = %q, want %q", got, want)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // getwd is the seam for the tool's working directory (the worktree it runs in).
@@ -99,7 +100,7 @@ type pathGuard struct {
 // outside a git repo (git-common-dir unresolvable) is unverifiable (exit 6), never a
 // silent "assume anywhere is fine".
 func newPathGuard(dir string) (*pathGuard, error) {
-	commonDir, err := runGit(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	commonDir, err := gitcore.CommonDir(dir)
 	if err != nil || commonDir == "" {
 		return nil, deskkit.Unverifiable("cannot resolve the shared git-common-dir (are we in a git repo?)", err)
 	}
@@ -237,7 +238,11 @@ func (g *pathGuard) lockedWorktrees(dir string) (map[string]string, error) {
 // would kill the verb. This is the SINGLE implementation of the tracked-clean gate, shared
 // by `remove` and `prune` so neither can drift from the other.
 func dirtyTracked(rt string) (string, error) {
-	out, err := runGit(rt, "status", "--porcelain", "--untracked-files=no")
+	repo, err := gitcore.Open(rt)
+	if err != nil {
+		return "", deskkit.Unverifiable("cannot check the worktree's tracked status", err)
+	}
+	out, err := repo.DirtyTrackedPorcelain()
 	if err != nil {
 		return "", deskkit.Unverifiable("cannot check the worktree's tracked status", err)
 	}
@@ -330,6 +335,14 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
+	// PUSH-transport custody gate (#861). The new worktree inherits THIS checkout's remote,
+	// so an SSH push URL here is an SSH push URL there — and a bot session pushing over SSH
+	// goes out under a human's key while its commits read as the App's. Refuse now, before
+	// the branch and the worktree exist, rather than after an agent has filled them.
+	if terr := pushTransportGate(dir, "add"); terr != nil {
+		return terr
+	}
+
 	// --base must resolve to EXACTLY ONE ref. An ambiguous short name is could-not-check,
 	// not a coin flip: git resolves it at exit 0 with only a stderr warning, so this must
 	// be checked BEFORE rev-parse, whose --quiet swallows that warning entirely
@@ -338,7 +351,11 @@ func cmdAdd(args []string) (err error) {
 		return aerr
 	}
 	// --base must resolve to a commit, else exit 6.
-	if _, verr := runGit(dir, "rev-parse", "--verify", "--quiet", *base+"^{commit}"); verr != nil {
+	baseRepo, berr := gitcore.Open(dir)
+	if berr != nil {
+		return deskkit.Unverifiable("refused: --base "+*base+" does not resolve to a commit", berr)
+	}
+	if ok, verr := baseRepo.CommitVerifyQuiet(*base); verr != nil || !ok {
 		return deskkit.Unverifiable("refused: --base "+*base+" does not resolve to a commit", verr)
 	}
 
@@ -483,24 +500,54 @@ func cmdRemove(args []string) (err error) {
 	if dirtyOut != "" {
 		return deskkit.Refused("refused: worktree has uncommitted TRACKED changes — commit or discard them first:\n" + dirtyOut)
 	}
-	// Upstream + unpushed-commits guard: a detached HEAD or a branch with NO upstream is
-	// refused (its commits cannot be proven pushed); non-empty @{u}..HEAD is refused.
-	branch, berr := runGit(rt, "rev-parse", "--abbrev-ref", "HEAD")
+	// Pushed-work guard: a worktree carrying commits that are not PROVABLY on the remote is
+	// refused. The invariant is "never remove unpushed work" — but "no upstream branch" and
+	// "not present on the remote" are DIFFERENT questions, and only the second justifies a
+	// refusal. Two worktree shapes, two proofs:
+	//
+	//   - A BRANCH proves pushed through its upstream: it must HAVE an upstream and be 0
+	//     commits ahead of it.
+	//   - A DETACHED HEAD has no upstream by construction — the review kit checks an MR/PR
+	//     head out detached, because reviewing a head commit is exactly what that means. Such
+	//     a worktree is never an ancestor of origin/main and has no @{u}, so the old blanket
+	//     "detached ⇒ refuse" wedged the review lane permanently: prune skipped it (unmerged),
+	//     remove refused it, and the next dispatch on the lane key could not create its
+	//     worktree (#851). A detached HEAD proves pushed a different way: its commit is
+	//     reachable from a remote-tracking ref (it was fetched FROM the remote), so removing
+	//     the worktree loses nothing. A detached HEAD whose commit is on NO remote is
+	//     genuinely-unpushed work and is STILL refused — the invariant is unchanged; only the
+	//     provably-pushed reviewer case becomes removable, which unwedges the lane.
+	wtRepo, wterr := gitcore.Open(rt)
+	if wterr != nil {
+		return deskkit.Unverifiable("cannot resolve the worktree's branch", wterr)
+	}
+	branch, berr := wtRepo.AbbrevRefHEAD()
 	if berr != nil {
 		return deskkit.Unverifiable("cannot resolve the worktree's branch", berr)
 	}
 	if branch == "HEAD" || branch == "" {
-		return deskkit.Refused("refused: worktree is in detached HEAD (no upstream to prove pushed) — refusing to remove")
-	}
-	if _, uerr := runGit(rt, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); uerr != nil {
-		return deskkit.Refused("refused: branch " + branch + " has no upstream (cannot prove its commits are pushed) — refusing to remove")
-	}
-	ahead, aerr := runGit(rt, "rev-list", "--count", "@{u}..HEAD")
-	if aerr != nil {
-		return deskkit.Unverifiable("cannot count unpushed commits", aerr)
-	}
-	if ahead != "0" {
-		return deskkit.Refused("refused: branch " + branch + " has " + ahead + " unpushed commit(s) ahead of its upstream — refusing to remove")
+		pushed, perr := detachedHeadOnRemote(rt)
+		if perr != nil {
+			return perr
+		}
+		if !pushed {
+			return deskkit.Refused("refused: worktree is in detached HEAD whose commit is on no remote " +
+				"(cannot prove it is pushed) — refusing to remove")
+		}
+		// Provably pushed → past the guard. The upstream / ahead-count checks below are
+		// branch-only (a detached HEAD has no @{u}), so they are skipped for this shape.
+	} else {
+		upstream, uerr := wtRepo.UpstreamRef()
+		if uerr != nil {
+			return deskkit.Refused("refused: branch " + branch + " has no upstream (cannot prove its commits are pushed) — refusing to remove")
+		}
+		aheadN, aerr := wtRepo.AheadCount(upstream, "HEAD")
+		if aerr != nil {
+			return deskkit.Unverifiable("cannot count unpushed commits", aerr)
+		}
+		if aheadN != 0 {
+			return deskkit.Refused(fmt.Sprintf("refused: branch %s has %d unpushed commit(s) ahead of its upstream — refusing to remove", branch, aheadN))
+		}
 	}
 
 	// Local-only verb: NO AllowWrite and NO --force anywhere. git's own `worktree remove` refuses whenever untracked files are
@@ -527,6 +574,37 @@ func cmdRemove(args []string) (err error) {
 	ac.detail = "removed " + rt
 	fmt.Println("removed " + path)
 	return nil
+}
+
+// detachedHeadOnRemote reports whether the worktree's DETACHED HEAD commit is provably
+// present on the remote — reachable from at least one remote-tracking ref under
+// refs/remotes/. A detached HEAD has no upstream branch to compare against (the review kit
+// checks an MR/PR head out detached by construction), so "is this pushed?" cannot be
+// answered by @{u}. It is answered here instead: a commit contained in a remote-tracking
+// ref was fetched FROM the remote and so cannot be lost by removing the worktree. A commit
+// on NO remote is genuinely-unpushed work and the caller refuses it — the
+// never-remove-unpushed-work invariant. A git read that cannot be performed is Unverifiable
+// so the caller fails CLOSED (leaves the worktree), never a silent "assume pushed".
+func detachedHeadOnRemote(rt string) (bool, error) {
+	repo, err := gitcore.Open(rt)
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot resolve the detached HEAD commit", err)
+	}
+	head, err := repo.Resolve("HEAD")
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot resolve the detached HEAD commit", err)
+	}
+	// Every remote-tracking ref that has <commit> as an ancestor; a non-empty result
+	// means the commit is on the remote. Built on gitcore.Repo.Refs, which (unlike real
+	// `for-each-ref`) does not surface the SYMBOLIC ref refs/remotes/<name>/HEAD — that
+	// alias always mirrors another hash ref this DOES see (e.g. refs/remotes/origin/main),
+	// so a commit reachable via the alias is always also reachable via the ref it mirrors;
+	// see RefsContaining's doc comment.
+	names, err := repo.RefsContaining(head.String(), "refs/remotes/")
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot check whether the detached HEAD commit is present on any remote", err)
+	}
+	return len(names) != 0, nil
 }
 
 // parseInterspersed parses fs allowing flags to appear before OR after positional
@@ -579,10 +657,11 @@ func resolvePath(p string) string {
 // currentRepo verifies dir is inside a git worktree and returns its origin repo in
 // owner/name form. Any state it cannot positively verify is unverifiable (exit 6).
 func currentRepo(dir string) (string, error) {
-	if out, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
+	gitRepo, err := gitcore.Open(dir)
+	if err != nil || !gitRepo.InsideWorkTree() {
 		return "", deskkit.Unverifiable("not inside a git worktree", err)
 	}
-	originURL, oerr := runGit(dir, "config", "--get", "remote.origin.url")
+	originURL, oerr := gitRepo.RemoteURL("origin")
 	if oerr != nil {
 		return "", deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}

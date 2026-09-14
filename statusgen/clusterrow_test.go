@@ -256,7 +256,7 @@ func TestCluster_VerifyrunRecordsCouldNotCheckMarker(t *testing.T) {
 		{ID: "1", Command: "true", Expect: "exit 0", Class: classCheck, Classed: false},                                     // ordinary check → runs
 		{ID: "2", Command: "kubectl exec p -- probe-participant.sh", Expect: "ok", Class: classCheckCluster, Classed: true}, // cluster → could-not-run
 	}
-	ws := runWitnesses(t.TempDir(), rows, "test", "0000", "2026-08-26", 30*time.Second, false)
+	ws := runWitnesses(t.TempDir(), rows, "test", "", "0000", "2026-08-26", 30*time.Second, false)
 	if ws[1].State != stateCouldNotRun {
 		t.Errorf("cluster row: state %q, want %q", ws[1].State, stateCouldNotRun)
 	}

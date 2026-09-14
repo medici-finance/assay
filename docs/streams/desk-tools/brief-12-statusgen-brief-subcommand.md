@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/12
+brief: assay:assay:desk-tools:12
 title: "`statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON"
 why: >-
   `verifyloop plan` and the dispatch verbs emit item KEYS — `<stream>/<NN>` — and every
@@ -18,7 +18,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -26,6 +26,8 @@ sources:
   - "The parsers this reuses: `statusgen/brieffile.go` § parseBriefFile (frontmatter → `BriefFile`, incl. `Gate`, `Risk`, `ExecTier`, `ExecTierWhy`, `Effort`, `Wave`, `Depends`, `Unblocks`); `statusgen/parse.go` § parseBriefTable (README rows → `Brief{Status, Verified, Reviewed, …}`); `statusgen/brieffile.go` § briefFilePaths / expectedBriefID (key ↔ filename)."
   - "The subcommand registration pattern and the unknown-subcommand refusal: `statusgen/main.go` § verifyrun/shardcheck interception (before flag parsing, owns its own flags) and `unknownsubcommand_test.go`."
   - "Brief and Verify shape: `spec/brief-v1.md`; status semantics: `spec/lifecycle-v1.md`."
+version: 1
+id: da063591-bdf4-4dca-aec2-6a3f633ad27b
 ---
 
 # Brief 12 — `statusgen brief <stream/NN>`: resolve an item key to its file, frontmatter and board row

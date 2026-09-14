@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/01
+brief: assay:assay:desktools-go-git:01
 title: inventory freeze + gitexec single-seam contract + golden harness + counting CI gate
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — thesis, decisions, boundaries"
@@ -20,6 +20,8 @@ why: >-
   has a single home, and (c) behaviour goldens so a seam swap is provably outcome-
   preserving rather than argv-preserving. This brief lays those three foundations and
   stands up the CI grep gate in advisory (counting) mode so its baseline is recorded.
+version: 1
+id: 55dfa3fd-24e3-43d1-bc1b-e28553431d86
 ---
 
 # Brief 01 — inventory freeze + gitexec seam contract + golden harness + counting CI gate
@@ -39,7 +41,10 @@ files:
 - NEW `tools/desk/scripts/count-git-exec.sh` (planned) — the CI grep that counts
   `exec.Command("git"` (and `runGit` / `gitOut` seam) sites outside `internal/gitexec`.
 - The per-tool seams it inventories: `tools/desk/cmd/deskgit/exec.go`, `tools/desk/cmd/deskmerge/exec.go`,
-  `tools/desk/cmd/deskwt/exec.go`, `tools/desk/cmd/deskscanbody/exec.go`, `tools/desk/cmd/deskpr/exec.go`,
+  `tools/desk/cmd/deskwt/exec.go`, deskscanbody's `gitOut` seam (retired by desktools-go-git/03 —
+  the file it lived in, tools/desk/cmd/deskscanbody/exec.go (no longer present), is deleted; its
+  callers now call `internal/gitcore` directly from deskscanbody's main.go),
+  `tools/desk/cmd/deskpr/exec.go`,
   `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskadvisory/advisory.go`,
   `tools/desk/cmd/deskpushguard/foreigncommit.go`, `tools/desk/cmd/verifyloop/durable.go`,
   `tools/desk/internal/deskkit/preflight.go`, and the direct `exec.Command("git",...)` one-offs in

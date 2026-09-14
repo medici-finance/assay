@@ -65,11 +65,19 @@ gate. Additional `assay.roster.ext.<name>` keys follow the same pattern.
 | `assay.skill.ask-decision` | `assay/ask-decision` | the escalation skill is installed |
 | `assay.skill.pdfingest` | `assay/pdfingest` | the PDF-ingest utility skill is installed |
 
-## Exclusively-bound (arrives with brief 04)
+## Exclusively-bound
 
 | Key | Provided by | Meaning |
 |---|---|---|
-| `assay.harness` | harness adapter (brief 04) | the agent harness the skills and hooks are shaped for; exactly one ACTIVE provider at a time (§9). Until brief 04 adds the adapter component, skills and hooks inject it as **optional** so the tree lints clean. |
+| `assay.harness` | `assay/harness-claude-code`, `assay/harness-codex`, `assay/harness-cursor` | the agent harness the skills and hooks are shaped for, provided with a `flavour` per adapter; exactly one ACTIVE provider at a time (§9). |
+
+`assay.harness` is `exclusive: true` — `deskmanifest lint` (`tools/desk/cmd/deskmanifest/`)
+refuses a tree with more than one ACTIVE provider (§9): "`assay.harness has 2 ACTIVE
+providers: …`". Before this repo's own desired-state record exists (§7, still planned),
+which adapter is ACTIVE is decided by each provider's `evidence` marker — the adopting
+repo's own installed-shape file (`.claude-plugin/marketplace.json` for claude-code, root
+`AGENTS.md` for codex, root `.cursor/rules` for cursor); see the three adapters'
+`components/harness-*/component.yaml`.
 
 ## Additions beyond `component-model.md` §3
 

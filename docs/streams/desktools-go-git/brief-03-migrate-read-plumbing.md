@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/03
+brief: assay:assay:desktools-go-git:03
 title: migrate read/plumbing verbs (read-heavy tools) to gitcore
 wave: 3
 depends: ["desktools-go-git/01", "desktools-go-git/02"]
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — decision 3 (seam-swap, not rewrite)"
@@ -20,6 +20,8 @@ why: >-
   map cleanly onto gitcore's read helpers and carry no auth. Migrating them first (behind
   goldens, no behaviour change) shrinks the git-exec count the CI gate tracks and de-risks
   the transport briefs that follow.
+version: 1
+id: eb4e2008-8df1-42eb-bc90-ed3a3dec4523
 ---
 
 # Brief 03 — migrate read/plumbing verbs to gitcore
@@ -92,6 +94,24 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: PASS**
+
+Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null`. Confirmed the brief's implementation commit is an ancestor of merged main, and its two named dependencies are both already done. Nothing was blocked.
+
+| # | Command | Expect | Observed | Date / Runner |
+|---|---------|--------|----------|---------------|
+| 1 | build + vet the migrated tool packages | exit 0 | exit 0, no output | 2026-09-12 sonnet-5-verifier |
+| 2 | test the migrated tool packages | exit 0 | exit 0, all 9 packages ok | 2026-09-12 sonnet-5-verifier |
+| 3 | targeted rename-tracking test | exit 0 | exit 0, PASS | 2026-09-12 sonnet-5-verifier |
+| 4 | direct-git-exec count script | prints count, strictly below the brief-01 baseline | exit 0, printed count below baseline (one higher than this brief's own merge-point count, consistent with later merges in the same stream adding a site after this brief landed — still strictly below the baseline) | 2026-09-12 sonnet-5-verifier |
+| 5 | grep for the new git-core helper's use in the migrated call site | exit 0, count >=1 | exit 0, count 1 | 2026-09-12 sonnet-5-verifier |
+
+**VERIFY: PASS** — all 5 rows clean.
+
+`RISK-VALUE: N/A` — enumeration over the full diff (22 files: two new git-core read-helper files plus the migrated call sites) found no literal risk-bearing value; this is a behavior-preserving, golden-verified, read-only refactor with no new tunables introduced. The two fixed strings present (`"gitdir: "`, `"refs/heads/"`) mirror git's own on-disk format and are not tunable values. Matches the brief's own frontmatter (`gate: model`, all four risk fields `no`).
+
+Per frontmatter `gate: model`, all risk `no`: clean pass suitable for the normal verified/done path via CI's own auto-flip once reviewed. This verifier does not sign off itself.
 
 ## Review
 Gate: model (all four risk answers no — behaviour-preserving read-only refactor, golden-

@@ -31,7 +31,10 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // tierClause is the pickup-time STOP a strong-tier item carries. It is emitted VERBATIM
@@ -141,6 +144,30 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 // place the assignment differs by class turns on this.
 func reviewKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "review") }
 
+// worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create
+// step, SELECTED BY KIT (#851). The two lanes fail for different reasons and the wrong hint
+// misleads:
+//
+//   - The BRIEF lane (worker/verifier) fails most often because the brief's own `feat/<id>`
+//     branch already exists — the brief is already delivered or in progress, so the fix is
+//     to look for a merged/open PR, not to repair a tree.
+//   - The REVIEW lane has no brief and no `feat/<id>` branch, so that hint points a reviewer
+//     at a PR that explains nothing. A review kit checks the PR head out as a DETACHED HEAD,
+//     so the commonest cause here is the EARLIER reviewer worktree for this PR still present
+//     on the lane key; it must be reclaimed (`deskwt remove <path>`, which now allows a
+//     detached HEAD whose commit is proven on the remote — #851) before a re-dispatch can
+//     create its own worktree.
+func worktreeCreateHint(kit, branch string) string {
+	if reviewKit(kit) {
+		return "For a review re-dispatch this is most often the EARLIER reviewer worktree for this PR " +
+			"still present on the same lane key — a review kit checks the PR head out as a detached HEAD, " +
+			"so reclaim that worktree (`deskwt remove <path>`) before re-dispatching, not a transient tree fault."
+	}
+	return "For a fresh dispatch this is most often the brief's branch " + branch + " already existing " +
+		"— i.e. the brief is already delivered or in progress (look for a merged or open PR before " +
+		"re-dispatching), not a transient tree fault."
+}
+
 // writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
 // repo, self-register the instant it opens, and release the dispatch claim once the branch is
 // pushed so branch-as-claim takes over. This is the scaffold an agent that PRODUCES a change
@@ -150,6 +177,34 @@ func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 	b.WriteString("## Open the draft PR in that repo\n\n")
 	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
 		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
+
+	// Every desk WRITE verb (`deskpr create`, `deskfile`, `deskreply`) refuses with
+	// $DESK_LOOP unset — the kill switch's per-loop `STOP.<loop>` flag has nothing to
+	// match, so a stop a human is holding would silently fail. A dispatched worker must
+	// NOT inherit the dispatching desk's DESK_LOOP (that resolves to the desk's App and
+	// mints the WRONG identity for this worker's PR and comments); its OWN loop is
+	// `worker-desk`, which resolves to the worker App. State it here, at the first write,
+	// so the worker sets it now rather than meeting the refusal at the PR ceremony.
+	b.WriteString("Before `deskpr create` — and before any desk write verb (`deskfile`, `deskreply`) — " +
+		"set your OWN loop identity in this shell (do NOT inherit the dispatching desk's):\n\n")
+	b.WriteString("```\nexport DESK_LOOP=worker-desk\n```\n\n")
+
+	if n, ok := issueNumFromItem(o.item); ok {
+		// An issue-only item carries an `Issue:` trailer, not a `Brief:` one — and
+		// `deskpr create` REFUSES a body with neither. The emitted key never named which
+		// line to add, so every issue-only worker discovered the refusal at the PR
+		// ceremony; name the exact trailer here.
+		fmt.Fprintf(b, "This is ISSUE-ONLY work: your `deskpr create` body MUST carry the trailer line "+
+			"`Issue: #%d` (an issue-only PR carries `Issue: #<N>`, never a `Brief:` line).\n\n", n)
+		// The sanctioned verb for a comment on the dispatched-from ISSUE — a
+		// BLOCKED-ON-HUMAN report, a could-not-check note. `deskreply` is PR-only; a
+		// hand-rolled `gh` write bypasses deskfile's dedupe/budget/self-containment gates.
+		fmt.Fprintf(b, "To post on the ISSUE you were dispatched from (a `BLOCKED-ON-HUMAN` report, a "+
+			"could-not-check note), the sanctioned verb is `deskfile attach -R %s --to %d --body-file F` "+
+			"(with DESK_LOOP set, above). `deskreply` is for your OWN open PR only, and a hand-rolled `gh` "+
+			"write on the issue bypasses deskfile's dedupe, budget and self-containment gates.\n\n", repo, n)
+	}
+
 	b.WriteString("Self-register the instant your draft PR opens:\n\n")
 	fmt.Fprintf(b, "```\nDESK_SESSION=<your-session> deskroster set --repo %s --pr <N> --what %q\n```\n\n",
 		shortRepo(repo), o.item)
@@ -173,12 +228,19 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 		"clauses below); it never implements, merges, or flips a PR ready.\n\n", prRef(o.pr), repo)
 	b.WriteString("Review the PULL REQUEST's HEAD, not the fresh branch your worktree was cut on. Fetch the " +
 		"head into your worktree and check it out first:\n\n")
+	// The server-side ref the change's HEAD is advertised under is FORGE-specific — GitHub
+	// publishes it at refs/pull/<N>/head, GitLab at refs/merge-requests/<iid>/head (the MR's
+	// own pipeline.ref). The refspec MUST follow the resolved forge of the target repo, or a
+	// GitLab reviewer that follows this prompt verbatim fetches a GitHub-shaped coordinate that
+	// does not exist and cannot check out the head it was dispatched to verdict (#773). The
+	// forge was resolved pre-claim (validateCallerPreconditions) and carried on the plan.
+	head := reviewHeadRefPrefix(plan.forgeKind)
 	if o.pr > 0 {
-		fmt.Fprintf(b, "```\ngit -C %s fetch origin pull/%d/head && git -C %s checkout FETCH_HEAD\n```\n\n",
-			home, o.pr, home)
+		fmt.Fprintf(b, "```\ngit -C %s fetch origin %s/%d/head && git -C %s checkout FETCH_HEAD\n```\n\n",
+			home, head, o.pr, home)
 	} else {
-		fmt.Fprintf(b, "```\ngit -C %s fetch origin pull/<N>/head && git -C %s checkout FETCH_HEAD\n```\n\n",
-			home, home)
+		fmt.Fprintf(b, "```\ngit -C %s fetch origin %s/<N>/head && git -C %s checkout FETCH_HEAD\n```\n\n",
+			home, head, home)
 	}
 	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
@@ -201,6 +263,50 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 		releaseTool = claimScriptRel
 	}
 	fmt.Fprintf(b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
+}
+
+// issueNumFromItem extracts the GitHub issue number from an ISSUE-ONLY item key. The
+// worker's dispatch key for issue-only work is `issue-<N>` (also carried in the
+// repo-qualified plan-key form `<owner>/<name>:issue-<N>` and the claim-key form
+// `<repo>--issue-<N>`); this reduces any of them to <N>. ok=false for a brief-based item —
+// which carries a `Brief:` trailer, not an `Issue:` one — so the issue-shaped assignment
+// lines are emitted for issue work only, mirroring briefIDFromItem's inverse case.
+func issueNumFromItem(item string) (int, bool) {
+	s := strings.TrimSpace(item)
+	// Drop a `<owner>/<name>:` repo qualifier, then a `<repo>--` claim-key prefix, so the
+	// tail is the bare item segment in every form deskdispatch is handed.
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[i+1:]
+	}
+	if i := strings.LastIndex(s, "--"); i >= 0 {
+		s = s[i+2:]
+	}
+	s = strings.Trim(s, "/")
+	const pfx = "issue-"
+	if !strings.HasPrefix(s, pfx) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s[len(pfx):])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// reviewHeadRefPrefix is the forge-specific server-side ref NAMESPACE under which a change's
+// HEAD commit is advertised, so a reviewer can fetch the reviewed head: GitHub publishes it at
+// refs/pull/<N>/head, GitLab at refs/merge-requests/<iid>/head (the MR's own pipeline.ref).
+// The prefix follows the resolved forge because a GitHub `pull/<N>/head` fetch against a GitLab
+// MR is the wrong coordinate — the reviewer cannot check out the head it was dispatched to
+// verdict (#773). GitHub is the fallback shape: a review dispatch always resolves the forge
+// pre-claim (an unresolvable one refuses the dispatch), so an empty kind here is only reachable
+// on a code path that bypassed that resolution, where the historical GitHub shape is the safe
+// default rather than an empty ref.
+func reviewHeadRefPrefix(kind deskkit.ForgeKind) string {
+	if kind == deskkit.ForgeGitLab {
+		return "merge-requests"
+	}
+	return "pull"
 }
 
 // prRef names the PR under review for the assignment prose. --pr is optional on a review

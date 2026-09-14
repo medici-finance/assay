@@ -1,5 +1,5 @@
 ---
-brief: statusgen/10
+brief: assay:assay:statusgen:10
 title: statusgen graph export — derived-only DOT + JSONL from the existing parse tree, evaluated on real multi-hop questions
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 (re-authored clean for the statusgen board)
 sources:
   - "A scoping note (§W5) proposing the derived graph export"
@@ -24,6 +24,8 @@ why: >-
   derived-only export (no new store, no graph DB) makes the latent graph queryable for the
   cost of a render, and the evaluation note tells us whether the multi-hop value is real
   before anyone proposes heavier machinery.
+version: 1
+id: d004ffe4-7267-4d07-8608-26d1a33055c3
 ---
 
 # Brief 10 — `statusgen --graph`: derived DOT + JSONL export

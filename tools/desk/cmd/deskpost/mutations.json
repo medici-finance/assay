@@ -18,6 +18,18 @@
       "file": "cmd/deskpost/ready.go",
       "old": "\t\tcase deskkit.FloorRefuse:\n\t\t\treturn refused(\"ready\", repo, pr, head, fd.Message)",
       "new": "\t\tcase deskkit.FloorRefuse:\n\t\t\t_ = fd"
+    },
+    {
+      "name": "widen the verify-gate card carve-out from the LABEL to the AUTHOR (every github-actions[bot] issue becomes commentable, not just a sign-off card)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tfor _, l := range labels {\n\t\tif strings.EqualFold(strings.TrimSpace(l), VerifyGateLabel) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false",
+      "new": "\t_ = labels\n\treturn true"
+    },
+    {
+      "name": "drop the carve-out's author check (the verify-gate label alone admits a comment, so an external user self-labelling their own issue clears the trust gate)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tif !strings.EqualFold(strings.TrimSpace(authorLogin), forgeActionsBot) {\n\t\treturn false\n\t}",
+      "new": "\t_ = authorLogin"
     }
   ]
 }

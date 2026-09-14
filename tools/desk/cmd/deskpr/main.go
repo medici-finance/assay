@@ -26,9 +26,9 @@ var version string
 const usage = `deskpr — push a feature branch and open (or update) its pull request.
 
 USAGE:
-  deskpr create --title T (--body-file F | --body-min B) [--base main] [--as-app=false]
-  deskpr update [--as-app=false]
-  deskpr edit --body-file F [--title T] [--as-app=false]
+  deskpr create --title T (--body-file F | --body-min B) [--base main]
+  deskpr update
+  deskpr edit --body-file F [--title T]
   deskpr --version
 
 deskpr create is draft-only by construction: it can only open a DRAFT PR on a
@@ -48,12 +48,14 @@ migration deskpr update tells you to perform. Because a body edit moves no head 
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 
-By default, --as-app is true: gh calls authenticate as this session's App role via
-desktoken, resolved from the loop identity ($DESK_LOOP). That is the worker App by
-default, and the VERIFIER App under DESK_LOOP=verify-desk — so an Evidence PR is filed
-under the same App that authored its branch commits, not misattributed to the worker
-(#396). Pass --as-app=false for the example-org fallback (transition period). When no
-loop carries an App role the worker App is the default. The branch push (committed
+gh calls authenticate as this session's App role via desktoken, resolved from the
+loop identity ($DESK_LOOP). That is the worker App by default, and the VERIFIER App
+under DESK_LOOP=verify-desk — so an Evidence PR is filed under the same App that
+authored its branch commits, not misattributed to the worker (#396). When no loop
+carries an App role the worker App is the default. The minted App identity is
+mandatory: there is no ambient-credential fallback — the former --as-app=false
+transition path is retired, and a run that cannot mint a session-role token REFUSES
+rather than falling through to an ambient CLI credential. The branch push (committed
 code) carries the role App's git authorship; the PR is filed under that same App.
 
 PUBLIC-REPO SELF-CONTAINMENT (#203). When the target repo is not known-private, the
@@ -82,6 +84,17 @@ A refusal takes the same audited --force-scan-override as any other scan refusal
 there is no second bypass and no flag that turns the check off. A known-private target
 repo, and any repo when the roster is unconfigured, are unaffected.
 
+PUSH TRANSPORT. create and update REFUSE (exit 5) when the resolved PUSH url of origin is
+an ssh:// or git@host:path one AND this session presents a bot identity ($DESK_LOOP
+resolving to a role App). An SSH push authenticates with whatever key this machine's agent
+holds — a human's — so the forge records the HUMAN as the branch author and the App's
+permission envelope is bypassed, however the commits are authored. The refusal names the
+config key, the url, the acting App and the one-line remedy. Fetch over SSH stays allowed:
+remote.origin.pushurl is what is read whenever it is set, so an SSH fetch url with an https
+push override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
+is inert (a human pushes under their own key). An https push url with no App credential
+helper configured is a stderr NOTICE, never a refusal.
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {
@@ -95,6 +108,9 @@ func main() {
 	// control surface echoes it — a value that lives in settings rather than in a diff
 	// is only visible at RUN time, and a NARROWING must be as visible as a widening.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(deskkit.ExitUnverifiable)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

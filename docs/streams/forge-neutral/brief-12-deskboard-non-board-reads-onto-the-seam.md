@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/12
+brief: assay:assay:forge-neutral:12
 title: deskboard non-board reads onto the seam
 why: >-
   forge-neutral/06 migrated deskboard's two hand-authored GraphQL reads (the bulk open-PR read
@@ -16,7 +16,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-07 by forge-neutral/06's implementer (mid-flight, per the 06 ruling)
 sources:
   - "docs/streams/forge-neutral/brief-06-read-verbs-on-the-seam.md — the read established the two-op board.go migration and NARROWED, rather than removed, the deskboard permit row; this brief is that row's declared exit"
@@ -31,6 +31,8 @@ consumers:
   - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go: fixed-here (the new read ops on both backends)"
   - "tools/desk/internal/forgeban/allowlist.go: fixed-here (the deskboard permit row removed once its last ghRun caller is gone; ceiling lowered)"
   - "docs/streams/forge-gitlab/inventory.md: fixed-here (the new ops tabulated)"
+version: 1
+id: 7bcc1459-688f-41b7-9260-3d1b9a8e7166
 ---
 
 # Brief 12 — deskboard non-board reads onto the seam
@@ -166,6 +168,33 @@ move to an EXISTING op):
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local)
+
+Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer (PR #633: impl `094f1d85`, merge `4821f707`). gate: model, risk all=no.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | all packages `ok`, no FAIL/panic | PASS |
+| 2 | `go test ./cmd/deskboard/...` | 0 | `ok cmd/deskboard 31.2s` | PASS |
+| 3a | `go test -list '.*' ./cmd/deskboard/... \| grep -c '^Test'` | — | `254` (base 246 → 255 at HEAD; coverage rose, not fell) | PASS |
+| 3b | reviewed test diff | — | transport-shim retool; removed tests all tied to DELETED machinery (`token.go`/`ghRun`/`ownerFromArgs` subprocess injection + the `ghRun` subprocess-kill deadline test now gone); added tests cover each new op's three-state/negative paths; no surviving assertion weakened | PASS |
+| 4 | `grep -r '"gh"' cmd/deskboard --include='*.go' \| grep -v _test.go \| wc -l` | — | `0` — no `gh` literal remains in deskboard (the board reaches every forge through the interface) | PASS |
+| 5 | `go test ./internal/forgeban/... -v` | 0 | ratchet + `TestCheckSeparatesThePermitFromTheLedger` + `TestRegistersAreWellFormed` PASS at ceiling 9; every surviving permit row matches a live call site | PASS |
+| 6 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | — | `= 9` @ :64 (this brief lowered 13→12; later 04b →9) | PASS |
+| 7 | `TestNoForgeCLIShellout\|TestForgeNoPassthrough\|TestForgeGitlabCoverage` | 0 | all 3 PASS — surface closed, no new passthrough, new ops tabulated | PASS |
+| 8 | `TestReadOpsBothBackends` | 0 | PASS; all 6 new ops (`ListRecentCommits`, `GetCommit`, `CompareRefs`, `SearchOpenChanges`, `ListWorkflowFiles`, `ChangeDiff`) run github + gitlab | PASS |
+| 9 | `TestOutOfInstallationRepoIsCouldNotCheck\|TestOtherReadErrorsStillFailTheRunClosed` (negative) | 0 | out-of-installation repo → explicit `Unreadable` coverage entry + rendered "COULD NOT CHECK" row (other rows survive, no invented row); a non-out-of-installation 401 fails the run CLOSED with `ExitUnverifiable` | PASS |
+| 10 | `statusgen --root . --consumers --brief forge-neutral/12` | — | COULD-NOT-CHECK — offline verifier shared-home writeguard + statusgen v1.0.6 brief-v2 gap. Consumers hand-corroborated against `094f1d85`'s diff (below) | COULD-NOT-CHECK |
+
+Row 10 manual corroboration (`094f1d85`): `cmd/deskboard` (board.go, forge.go, health.go, prstate.go, scope.go, stalled.go, zeroci.go; `token.go` DELETED −149 = ghRun/token-helper removal) fixed-here; `tools/desk/internal/deskkit/forge.go`+`forge_github.go`+`forge_gitlab.go` fixed-here; `tools/desk/internal/forgeban/allowlist.go` fixed-here; `docs/streams/forge-gitlab/inventory.md` (+22, all 6 new ops tabulated) fixed-here.
+
+**Risk-bearing value (ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — allowedInvocationCeiling = 9 @ tools/desk/internal/forgeban/allowlist.go:64.` RANK #1 (security ratchet). THIS brief lowered it 13→12 (commit `094f1d85` allowlist diff: `-= 13` / `+= 12` + removal of the `cmd/deskboard/board.go::ghRun::gh` permit row); later 04b took it to the current 9 (permitted by this brief). Deskboard permit row confirmed GONE (`grep 'deskboard.*ghRun' allowlist.go` = 0; only the unrelated `repohardenguard/check.go::ghRun` survives, matching a live call site). Row 5 ratchet green at 9.
+- `RISK-VALUE: DERIVED — cmd/deskboard gh-literal count = 0 (row 4).` A re-added literal would fail rows 4 + 5 — the regression sentinel for this brief's whole point.
+
+**Scope-traceability:** every Verify row maps to observed work; all `consumers:` claims corroborated against the diff; the freeze rule holds (each of the 6 new ops lands with a consuming call site + an inventory row). No work maps to no Verify row.
+
+**VERDICT: PASS** — rows 1–9 PASS; row 10 COULD-NOT-CHECK (writeguard + brief-v2 gap; consumers hand-corroborated). gate: model, risk all=no → flip-eligible.
 
 ## Review
 Gate: **model** (from frontmatter; all four risk answers are `no`). The reviewer records verdict

@@ -259,6 +259,63 @@ func TestEmptyRollupWithUnreadableProtectionIsUnverifiable(t *testing.T) {
 	}
 }
 
+// The leak-gate three-state contract on the ready-flip decision
+// (the forge-neutral leak-gate-shape reference doc): a change whose leak-gate verdict is ABSENT
+// is could-not-check, never a pass. The leak-sweep disclosure gate is a required status posted
+// OUT OF BAND (a control-based sweep on its own schedule), so a head can carry a fully GREEN
+// rollup of every check that ran while the leak-sweep verdict simply never reported. Before the
+// fix, evalRollup — which reads only the entries that ARE present — called that rollup green and
+// the flip proceeded with the disclosure gate never having run. The flip now cross-checks that
+// every branch-protection-required context is PRESENT in the rollup and refuses could-not-check
+// when one is missing, extending the empty-rollup arm's three-state contract to a rollup that
+// is non-empty but incomplete.
+func TestMissingLeakGateIsCouldNotCheck(t *testing.T) {
+	s := newStub()
+	// Every check that reported is green — but the required leak-sweep verdict is absent.
+	s.rollup = []rollupEntry{
+		{Name: "test", Status: "COMPLETED", Conclusion: "SUCCESS"},
+		{Context: "changelog-check", State: "SUCCESS"},
+	}
+	s.requiredChecks = []string{"test", "changelog-check", "leak-sweep"} // branch protection requires the sweep
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("absent leak-gate verdict rc = %d, want %d (could-not-check, never a pass)",
+			rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped with the leak-sweep verdict absent from the rollup: %v", m)
+	}
+	if s.reqCheckReads == 0 {
+		t.Errorf("the required-status-checks endpoint was never read on the green path — a green rollup "+
+			"missing a required verdict was not cross-checked against the required set: %v", s.requests)
+	}
+}
+
+// The other side of the same contract: a green rollup that DOES carry the leak-sweep verdict
+// (and every other required context) still flips — the cross-check refuses only an ABSENT
+// required verdict, never a present one, so it does not brick the normal green path.
+func TestPresentLeakGateFlips(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{
+		{Name: "test", Status: "COMPLETED", Conclusion: "SUCCESS"},
+		{Context: "leak-sweep", State: "SUCCESS"},
+	}
+	s.requiredChecks = []string{"test", "leak-sweep"}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("green rollup carrying the leak-sweep verdict rc = %d, want %d (the flip must be allowed)",
+			rc, deskkit.ExitOK)
+	}
+	if !s.flipped() {
+		t.Errorf("the ready mutation never ran on a PR whose required leak-sweep verdict is present: %v",
+			s.requests)
+	}
+}
+
 // NEW, and a strengthening the transport swap made possible: each CI rollup now carries the
 // forge's OWN asserted total, so a rollup that serves fewer entries than the head claims is a
 // rollup nobody read in full. That is could-not-check, never green — the same fail-closed
@@ -775,6 +832,47 @@ func TestDeclaredButUnresolvableBriefRefusesTheFlip(t *testing.T) {
 	}
 }
 
+// #988 — the reviewer's finding on this PR. securityVerdictStanding and
+// lastSecurityVerdictCommit must reduce to the SAME decisive review, not merely walk the
+// same review list. A standing `Security-Review: fail` is posted at commit A. A LATER
+// `Security-Review: pass` from the same App arrives pinned at an off-head commit B (GitHub
+// allows a review's commit_id to lag a fast push — the pass never re-reviewed the current
+// head). securityVerdictStanding correctly says FAIL, driven by A, because a fail stands
+// whatever commit it names. Before this fix, lastSecurityVerdictCommit tracked the last
+// review carrying EITHER marker with no head-equality filter on the pass case, so the later
+// off-head pass silently overwrote the tracked commit and the function reported B — naming a
+// review that never actually governed the verdict — instead of A, the commit the standing
+// fail (the real reason to refuse) is pinned at.
+func TestLastSecurityVerdictCommitNamesTheStandingFailNotALaterOffHeadPass(t *testing.T) {
+	const commitA = "1111111122222222333333334444444455555555" // where the standing fail was posted
+	const commitB = "2222222233333333444444445555555566666666" // a LATER pass, but off-head
+	bot := reviewerBot(t)
+
+	fail := reviewInfo{State: "COMMENTED", CommitID: commitA, Body: "Security-Review: fail",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	fail.User.Login = bot
+	// Submitted AFTER the fail, but pinned at an off-head commit: it never satisfies
+	// securityVerdictStanding's r.CommitID == head requirement for a pass to govern.
+	pass := reviewInfo{State: "COMMENTED", CommitID: commitB, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:02:00Z"}
+	pass.User.Login = bot
+	reviews := []reviewInfo{fail, pass}
+
+	if v := securityVerdictStanding(reviews, bot, headSHA); v != secFail {
+		t.Fatalf("securityVerdictStanding = %v, want secFail — the standing fail must govern "+
+			"regardless of the later off-head pass", v)
+	}
+	last, ok := lastSecurityVerdictCommit(reviews, bot, headSHA)
+	if !ok {
+		t.Fatal("lastSecurityVerdictCommit reported not-found, but a standing fail governs")
+	}
+	if last != commitA {
+		t.Fatalf("lastSecurityVerdictCommit = %s, want %s (the standing fail's commit) — naming "+
+			"%s (the later off-head pass that never governed anything) defeats the precision the "+
+			"stale-verdict refusal is built to add", last, commitA, commitB)
+	}
+}
+
 // A pass RETRACTED by a later fail at the same head is not green. The reduction is
 // order-sensitive on purpose.
 func TestLaterFailRetractsAnEarlierPassAtTheSameHead(t *testing.T) {
@@ -948,25 +1046,89 @@ func TestHeadMovedDuringChecksRefuses(t *testing.T) {
 	}
 }
 
-// An already-ready PR whose label is ALREADY correct is a pure no-op: exit 0 and not a single
-// write. This is the common re-run case — a loop re-running its Land step over a landed item —
-// and it must stay cheap and non-failing.
-func TestAlreadyReadyWithCorrectLabelWritesNothing(t *testing.T) {
+// An already-ready PR whose label is ALREADY correct AND whose verdicts are all still current
+// at head is a no-op: exit 0 and not a single write. This is the common re-run case — a loop
+// re-running its Land step over a landed item — and it must stay non-failing.
+//
+// #987: it is NO LONGER cheap in the sense of skipping the re-read. Before the fix, an
+// already-ready PR with a correct label returned "nothing to do" on the change read alone,
+// never re-checking whether a lane's last-seen verdict was still current with the PR's actual
+// head. That let a PR sit ready-for-human-merge indefinitely while new, unreviewed commits
+// landed on it. So this case now proves the OPPOSITE of the old assertion: the full gate,
+// including the reviewer and check reads, runs even though the label needed no write — and
+// still lands on a true no-op (no mutation) when every lane's verdict is genuinely current.
+func TestAlreadyReadyWithCorrectLabelAndCurrentVerdictsWritesNothing(t *testing.T) {
 	s := newStub()
 	s.pr.IsDraft = false
 	s.pr.Labels = []string{labelAfterFlip}
 	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
-		t.Fatalf("already-ready, label correct: rc = %d, want 0 (idempotent no-op)", rc)
+		t.Fatalf("already-ready, label correct, verdicts current: rc = %d, want 0 (idempotent no-op)", rc)
 	}
 	if m := s.mutated(); len(m) != 0 {
 		t.Fatalf("a no-op re-run wrote: %v", m)
 	}
-	// It is also CHEAP: the no-op returns on the change read alone, without reading the
-	// verdicts, the diff or the rollups.
-	if s.saw(http.MethodGet, "/reviews") || s.saw(http.MethodGet, "/files") {
-		t.Errorf("the no-op path read past the change document: %v", s.requests)
+	// The re-gate REALLY ran: it read the reviews (and the diff, since the security lane always
+	// reads the changed-file list) before deciding there was nothing to do.
+	if !s.saw(http.MethodGet, "/reviews") {
+		t.Error("the already-ready fast path decided 'nothing to do' without ever reading the review " +
+			"lanes — that is the bug #987 reports")
+	}
+}
+
+// THE GAP #987 CLOSES. An already-ready PR whose queue label is ALREADY correct used to
+// short-circuit to "nothing to do" without ever re-reading the review lanes, so a lane's
+// verdict could sit pinned at a stale commit — behind the PR's actual head — indefinitely,
+// with the queue reading "ready to merge" the whole time.
+//
+// This reproduces that shape (the pattern reported against a real PR: a security pass pinned
+// to an old commit, with a later, unrelated correctness re-review landing at a new head that
+// the security lane never saw): a risk-classed repo, a correctness APPROVED at the CURRENT
+// head (a re-review genuinely happened), but the only `Security-Review: pass` pinned at an
+// OLDER commit the PR has since moved past. The already-ready fast path must re-run the full
+// gate and refuse — naming the stale lane and both commits — rather than reading
+// "isDraft=false + label correct" as proof the verdicts are current.
+func TestAlreadyReadyStaleSecurityVerdictBehindHeadRefuses(t *testing.T) {
+	const staleSecurityHead = "1111111122222222333333334444444455555555"
+	s := newStub()
+	s.pr.IsDraft = false
+	s.pr.Labels = []string{labelAfterFlip} // already ready AND the queue label is already correct
+	s.install(t)
+	bot := reviewerBot(t)
+	// Correctness lane re-reviewed at the CURRENT head — this lane alone is current.
+	approve := approvalAtHead(t, headSHA)
+	// Security lane's only pass is pinned at an OLDER commit the PR has since moved past.
+	stalePass := reviewInfo{State: "COMMENTED", CommitID: staleSecurityHead, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:00:00Z"}
+	stalePass.User.Login = bot
+	s.reviews = append(approve, stalePass)
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", publicRepo}) })
+
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("already-ready with a stale security verdict behind head: rc = %d, want %d (refused) — "+
+			"the fast path must not read 'already ready' as 'verdicts current'", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a stale-verdict PR was mutated (label swap or ready flip): %v", m)
+	}
+	// The re-gate really ran: it had to read the reviews to discover the staleness.
+	if !s.saw(http.MethodGet, "/reviews") {
+		t.Error("the already-ready fast path exited without ever reading the review lanes — " +
+			"that is the bug #987 reports")
+	}
+	// The refusal names the stale lane and BOTH commits, unambiguously.
+	if !strings.Contains(out, condSecurityVerdict) {
+		t.Errorf("the refusal does not name the security-verdict condition: %q", out)
+	}
+	if !strings.Contains(out, short(staleSecurityHead)) {
+		t.Errorf("the refusal does not name the stale verdict's commit %s: %q", short(staleSecurityHead), out)
+	}
+	if !strings.Contains(out, short(headSHA)) {
+		t.Errorf("the refusal does not name the PR's current head %s: %q", short(headSHA), out)
 	}
 }
 

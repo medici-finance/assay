@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/06
+brief: assay:assay:desk-tools:06
 title: "Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction)"
 why: >-
   The desk tools fail closed on a machine-local `roster.env` — the hand-kept file that carries the
@@ -17,7 +17,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-30 by an authoring session (author-brief); design-direction brief
 sources:
   - "The cell-separation ruling: in pod / container environments the machine-local roster.env dependency should be removed — the roster need goes away once containers power the desks, and the roster/trust config is resolved from the deployed environment instead."
@@ -25,6 +25,8 @@ sources:
   - "The container packaging direction (sibling desk-containers stream): no credential ever appears in an image layer; per-role / per-cell key material is injected at runtime via mounted sealed secrets — the natural neighbour of the pod resolution path this brief directs."
 exec-tier: strong
 exec-tier-why: "this is a design decision every desk role and every desk verb inherits — where the trust roster, the role→App bindings, the repo set and the bless login are resolved from is a boundary contract, not a local edit."
+version: 1
+id: 4138b506-08e8-48bd-8d2f-b3175296a0d1
 ---
 
 # Brief 06 — Roster from deployment (design direction)

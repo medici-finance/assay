@@ -8,19 +8,19 @@ import (
 	"testing"
 )
 
-func TestRunFamilyWritesSixPNGs(t *testing.T) {
+func TestRunFamilyWritesSevenPNGs(t *testing.T) {
 	dir := t.TempDir()
 	var errb bytes.Buffer
 	if code := run([]string{"--org", "example-org", "--tier", "family", "--out", dir}, &errb); code != 0 {
 		t.Fatalf("exit %d, stderr=%s", code, errb.String())
 	}
 	pngs, _ := filepath.Glob(filepath.Join(dir, "*.png"))
-	if len(pngs) != 6 {
-		t.Fatalf("want 6 PNGs, got %d", len(pngs))
+	if len(pngs) != 7 {
+		t.Fatalf("want 7 PNGs, got %d", len(pngs))
 	}
 	svgs, _ := filepath.Glob(filepath.Join(dir, "*.svg"))
-	if len(svgs) != 6 {
-		t.Fatalf("want 6 SVGs, got %d", len(svgs))
+	if len(svgs) != 7 {
+		t.Fatalf("want 7 SVGs, got %d", len(svgs))
 	}
 }
 

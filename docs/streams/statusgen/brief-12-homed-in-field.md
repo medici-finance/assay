@@ -1,5 +1,5 @@
 ---
-brief: statusgen/12
+brief: assay:assay:statusgen:12
 title: "`homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo"
 why: >-
   When a brief's deliverable is moved to a different repository than the board that renders it, the
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-27 (authored for the statusgen board)
 exec-tier: strong
 exec-tier-why: >-
@@ -32,6 +32,8 @@ sources:
   - "The optional-KNOWN-key pattern already used for exec-tier / blocked-by / measures (parse as a recognized field, default-inert on absence, PROBLEM on a malformed present value)"
   - "The fail-loud-when-hiding-work discipline: a brief withheld from Next-up must be NAMED on the board, never silently dropped (the StaleRef ~596-brief silent-hide lesson)"
 gate-why: n/a (gate is model; all four risk answers are no)
+version: 1
+id: c4df0e45-2253-45a6-ba5e-c310cf93a754
 ---
 
 # Brief 12 — `homed-in: <owner/repo>` — a re-home pointer that leaves the local dispatch pool but keeps the tracking row
@@ -130,7 +132,7 @@ byte-identical to today's (the additive-inert invariant every optional key holds
 
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/` | exit 0; new tests present: absent-is-inert, present-excludes-from-Next-up, present-keeps-tracking-row, malformed-is-PROBLEM, target-repo-carried-on-view |
+| 1 | `cd statusgen && GOWORK=off go test .` | exit 0; new tests present: absent-is-inert, present-excludes-from-Next-up, present-keeps-tracking-row, malformed-is-PROBLEM, target-repo-carried-on-view |
 | 2 | build the binary, run `--lint --root .` on a fixture tree with one `homed-in: owner/repo` brief | exit 0; that brief is NOT in the Next-up picks but IS present in its stream README table render |
 | 3 | same fixture, but the brief's value is `homed-in: not-a-repo` | `--lint` exit 1; message contains `invalid homed-in "not-a-repo"` and echoes the file path |
 | 4 | build from a tree where NO brief carries `homed-in`; diff its `STATUS.md` render against the pre-change binary's render of the same tree | identical output — the additive-inert invariant (absent field ⇒ byte-identical board) |

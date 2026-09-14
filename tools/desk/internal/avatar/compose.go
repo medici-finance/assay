@@ -16,15 +16,16 @@ const (
 	colInkDark   = "#0A0A0A" // a dark glyph on a bright (act) body
 )
 
-// Role hues for the full six-role suite (brief sources §5). Held as their
+// Role hues for the full role suite (brief sources §5). Held as their
 // canonical hex accents; the muted body fill is derived from each.
 const (
-	colReviewer   = "#00CC66"
-	colWorker     = "#F08A2D"
-	colVerifier   = "#E6E9F2"
-	colDesk       = "#5C85FF"
-	colIssueLoop  = "#D46BFF"
-	colIntakeLoop = "#2DD4BF"
+	colReviewer    = "#00CC66"
+	colWorker      = "#F08A2D"
+	colVerifier    = "#E6E9F2"
+	colDesk        = "#5C85FF"
+	colIssueLoop   = "#D46BFF"
+	colIntakeLoop  = "#2DD4BF"
+	colBoardWriter = "#E5484D" // crimson — no other role holds a red hue
 )
 
 // tileSpec fully determines one avatar tile. Generate builds these; every

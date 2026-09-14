@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/07
+brief: assay:assay:desk-tools:07
 title: "`clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in"
 why: >-
   A permission rule that matches on command TEXT cannot see a cluster call made from inside a
@@ -19,7 +19,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a re-home session; the control was tracked on a private board before the
   disposition review found nothing house-specific in it
 sources:
@@ -33,6 +33,8 @@ exec-tier: strong
 exec-tier-why: "safety plumbing. A subtle pass-through bug — the guard resolving itself, the
   invoked name lost, the opt-in check inverted, an unclassified verb defaulting to allowed —
   survives every happy-path test and leaves the control looking installed while it does nothing."
+version: 1
+id: 691efcfa-40d4-4382-aeb1-5f565d2415dc
 ---
 
 # Brief 07 — `clusterguard`: exec-boundary shim for cluster CLIs

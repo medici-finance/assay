@@ -1119,7 +1119,7 @@ func TestDryRunEmitsThePromptForEveryTier(t *testing.T) {
 
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"claim-acquire", "worktree-create", "roster-register", "decision-gate",
-		"model-stamp", "prompt-emit"}
+		"model-stamp", "queue-label", "prompt-emit"}
 	if len(dispatchSteps) != len(want) {
 		t.Fatalf("dispatchSteps has %d entries, want %d", len(dispatchSteps), len(want))
 	}

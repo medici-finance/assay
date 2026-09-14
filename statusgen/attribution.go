@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -342,14 +343,44 @@ func evidenceFloorFailure(evidence string) (reason string, failed bool) {
 //
 // This is BEST-EFFORT and says so in its checks, not just this comment:
 // `authored:` names the brief's AUTHOR, not necessarily who later ran the
-// verification, and every session in this repo shares one git identity — a
+// verification, and sessions in a repo may share one git identity — a
 // file-level check cannot see true cross-session independence. It catches
 // the detectable cases (missing dated runner, a verifier token matching the
 // author or reading as "the implementer"/"self", and Evidence rows that are
 // all implementer-attributed) and nothing more (brief-16 scope-honesty note).
-func attributionProblems(streams []*Stream) []string {
-	var problems []string
+//
+// The TOKEN checks above compare free strings an agent writes at will; the
+// verifier/author tokens carry no binding to who actually committed anything
+// (security-hardening ID-2, hole-2). This function therefore layers a SECOND,
+// independent signal — a committer-identity cross-check read from git — that
+// fails on different inputs than the token checks: it compares the git identity
+// of the brief's authoring commit against that of the commit that most recently
+// touched it (the Evidence-adding / status-flip commit). Because file-level git
+// attribution is best-effort (a brief is touched many times; a whole repo may
+// share one bot identity), that cross-check is reported as a loud NOTICE, never
+// a hard PROBLEM — it must never over-reject an honest verification whose
+// distinct runners happen to commit under one shared identity (the exact
+// no-over-rejection property the register's Verify table requires), and it must
+// degrade LOUDLY, never silently, when git cannot answer. Hard PROBLEMs stay the
+// province of the token/Evidence checks; the identity layer surfaces what the
+// tokens cannot corroborate.
+//
+// Returns (problems, notices): hard problems change the exit code; notices are
+// printed and do not.
+func attributionProblems(streams []*Stream) (problems, notices []string) {
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	addNotice := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
+
+	// Committer-identity cross-check accumulators (hole-2), resolved after the
+	// scan once we know whether this repo's brief history uses a single git
+	// identity (commit metadata then cannot corroborate independence — one
+	// aggregate NOTICE) or several (a brief whose authoring and Evidence commits
+	// share one identity is not independently verified — surfaced, still a
+	// NOTICE, so an honest shared-identity re-run is never red-lined).
+	type identPair struct{ label, id string } // label + the shared identity
+	var sameIdentity []identPair
+	idents := map[string]bool{}
+	gitReadable := false // at least one brief yielded readable commit identity
 
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
@@ -389,10 +420,90 @@ func attributionProblems(streams []*Stream) []string {
 			if !evidenceHasIndependentRow(bf.Evidence) {
 				add("%s: verified requires an independent (non-implementer) Evidence row", label)
 			}
+
+			// --- committer-identity cross-check (security-hardening ID-2, hole-2) ---
+			// A `git archive` export has no .git and nothing git can answer about
+			// this tree — there is no adversary to fail closed against, only an
+			// absence of data (see hasNoGitDir) — so skip it SILENTLY: a per-brief
+			// notice on every export would be pure noise, not a degradation worth
+			// announcing.
+			if hasNoGitDir(s.Root) {
+				continue
+			}
+			rel, relErr := filepath.Rel(s.Root, path)
+			if relErr != nil {
+				rel = path
+			}
+			authoringID, aok := gitPathFirstAuthorIdentity(s.Root, rel)
+			evidenceID, eok := gitPathLastAuthorIdentity(s.Root, rel)
+			if !aok || !eok {
+				// .git EXISTS but this brief's own history is unreadable — an
+				// untracked / just-added file, or a shallow clone that truncated
+				// it. Degrade LOUDLY so a reader knows the identity layer did not
+				// run for this brief; never a silent pass.
+				addNotice("%s: could not cross-check verification independence against commit history "+
+					"(brief file untracked or its history unavailable) — token-level attribution is the only "+
+					"independence signal for this brief", label)
+				continue
+			}
+			gitReadable = true
+			idents[authoringID] = true
+			idents[evidenceID] = true
+			if authoringID == evidenceID {
+				sameIdentity = append(sameIdentity, identPair{label, authoringID})
+			}
 		}
 	}
+
+	// Resolve the gathered committer-identity signal into at most one NOTICE.
+	if gitReadable {
+		switch {
+		case len(idents) <= 1:
+			// One git identity behind every checked brief's authoring AND latest
+			// commit: commit metadata cannot tell author from verifier here (all
+			// sessions share one identity). Say so ONCE, loudly — the token checks
+			// are the only independence signal — rather than emit a non-signal per
+			// brief, and never let the layer pass silently.
+			var only string
+			for id := range idents {
+				only = id
+			}
+			addNotice("verification-independence: committer-identity cross-check is inconclusive for this "+
+				"repository — every checked brief's authoring and Evidence commits are under one git identity "+
+				"(%q), so commit metadata cannot corroborate cross-session independence; token-level "+
+				"attribution is the only independence signal here", only)
+		case len(sameIdentity) > 0:
+			// Multiple identities exist in this repo, so identity IS discriminating
+			// — yet these briefs' authoring and most-recent (Evidence-adding)
+			// commits are under ONE identity: the same actor both wrote and last
+			// touched the brief, so its verification is not corroborated as
+			// independent by commit metadata. Surfaced as a bounded NOTICE (not a
+			// hard PROBLEM: a legitimate re-run can leave the author as last
+			// committer, e.g. a post-verify typo fix — file-level attribution is
+			// best-effort), so an operator can confirm the Evidence was
+			// independently run.
+			labels := make([]string, 0, len(sameIdentity))
+			for _, p := range sameIdentity {
+				labels = append(labels, fmt.Sprintf("%s (%s)", p.label, p.id))
+			}
+			sort.Strings(labels)
+			const maxShown = 8
+			shown := labels
+			suffix := ""
+			if len(labels) > maxShown {
+				shown = labels[:maxShown]
+				suffix = fmt.Sprintf(", +%d more", len(labels)-maxShown)
+			}
+			addNotice("verification-independence: committer-identity cross-check — %d verified/done brief(s) "+
+				"have their authoring and most-recent (Evidence-adding) commit under one git identity, so commit "+
+				"metadata does not corroborate independent verification; confirm the Evidence was run by a "+
+				"non-implementer: %s%s", len(sameIdentity), strings.Join(shown, ", "), suffix)
+		}
+	}
+
 	sort.Strings(problems)
-	return problems
+	sort.Strings(notices)
+	return problems, notices
 }
 
 // authorToken extracts the author's identifying token from an `authored:`
@@ -424,7 +535,7 @@ func selfVerificationReason(authored, verified string) string {
 		return fmt.Sprintf("verifier %q matches the brief's author %q", verifierTok, authorTok)
 	}
 	if implementerAttributed(verifierTok) {
-		return fmt.Sprintf("verifier %q names the implementer, not an independent runner", verifierTok)
+		return fmt.Sprintf("verifier %q contains the token \"implementer\" — it names the implementer (a self-labelled \"non-implementer\" is still a self-assertion), not an independent runner", verifierTok)
 	}
 	if verifierTok == "self" {
 		return fmt.Sprintf("verifier %q is literally \"self\"", verifierTok)
@@ -432,12 +543,28 @@ func selfVerificationReason(authored, verified string) string {
 	return ""
 }
 
-// implementerAttributed reports whether a Runner cell names the implementer.
-// "non-implementer" asserts the opposite and must not match — strip it before
-// the substring test so `sonnet verifier (non-implementer)` reads as
-// independent while `implementer (Opus 4.8)` still reads as implementer-run.
+// implementerAttributed reports whether a Runner cell names the implementer —
+// i.e. is NOT an independent runner.
+//
+// A cell containing the token "implementer" in ANY spelling — the plain
+// "implementer (Opus 4.8)" AND the self-asserted "worker (non-implementer)" —
+// names the implementer and does not count as independent
+// (security-hardening ID-2, hole-1). The earlier form stripped the literal
+// "non-implementer" before the substring test, so a cell reading
+// "sonnet verifier (non-implementer)" passed the independence check outright.
+// That turned an implementer's own affirmative self-certification ("I ran this
+// as a non-implementer") into a pass — exactly the self-assertion this gate
+// exists to deny: the tool would be trusting the claim text to certify the very
+// independence it is meant to establish. An honest independent verifier names
+// the runner that actually ran the table (e.g. "opus-verifier",
+// "sonnet-verifier") — a token that does not contain "implementer" at all — and
+// still reads as independent; only a token that spells out "implementer" (with
+// or without a "non-" prefix) is now treated as implementer-attributed.
+//
+// The match is case-insensitive so the predicate holds "in ANY spelling"
+// regardless of whether a caller pre-lowercased the cell.
 func implementerAttributed(runnerCell string) bool {
-	return strings.Contains(strings.ReplaceAll(runnerCell, "non-implementer", ""), "implementer")
+	return strings.Contains(strings.ToLower(runnerCell), "implementer")
 }
 
 // evidenceHasIndependentRow reports whether an Evidence section contains at

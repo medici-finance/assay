@@ -3,7 +3,6 @@ package deskkit
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -93,7 +92,7 @@ func TestHTTPRepoVisibilityErrorReachesTheGateAsExit6(t *testing.T) {
 	f := fetcherAgainst(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	err := PublicRepoGate(f, "example-org", "example-k8s", 1)
+	err := PublicRepoGate(f, "example-org", "example-k8s")
 	if err == nil {
 		t.Fatal("gate passed with an unreadable visibility — must fail closed")
 	}
@@ -102,95 +101,44 @@ func TestHTTPRepoVisibilityErrorReachesTheGateAsExit6(t *testing.T) {
 	}
 }
 
-func TestHTTPIssueReactionsFailsClosed(t *testing.T) {
-	cases := []struct {
-		name   string
-		status int
-		body   string
-	}{
-		{"forbidden_rate_limit", http.StatusForbidden, `{"message":"API rate limit exceeded"}`},
-		{"server_error", http.StatusInternalServerError, `{}`},
-		// A 200 carrying a NON-ARRAY payload. GitHub returns an object here on some
-		// error shapes, and decoding it into []Reaction must error rather than yield an
-		// empty slice — an empty slice reads as "no +1 present", which is a REFUSAL and
-		// therefore still safe, but it would report the wrong reason to a human.
-		{"object_not_array", http.StatusOK, `{"message":"Not Found"}`},
-		{"truncated_array", http.StatusOK, `[{"content":"+1"`},
-		{"html_error_page", http.StatusOK, `<html>nope</html>`},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			f := fetcherAgainst(t, func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(c.status)
-				w.Write([]byte(c.body))
-			})
-			if _, err := f.IssueReactions("example-org", "example-k8s", 7); err == nil {
-				t.Fatal("IssueReactions returned nil error on an unusable response")
-			}
-		})
-	}
-}
-
-// TestHTTPIssueReactionsParsesTheNumericID pins that the id the strict blessing-authority
-// check depends on actually survives the JSON decode. The `id` tag was added late;
-// a struct-tag typo would silently zero it, and IsBlessAuthorityIDStrict would then
-// refuse a genuine blessing-authority +1 — a fail-closed break, but a total outage of the
-// gate's only success path, which no stub-driven test would catch.
-func TestHTTPIssueReactionsParsesTheNumericID(t *testing.T) {
-	var gotPath, gotAccept string
-	f := fetcherAgainst(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath, gotAccept = r.URL.Path, r.Header.Get("Accept")
-		w.Write([]byte(`[{"content":"+1","user":{"login":"ada","type":"User","id":2001}}]`))
-	})
-	rs, err := f.IssueReactions("example-org", "example-k8s", 7)
-	if err != nil {
-		t.Fatalf("IssueReactions: %v", err)
-	}
-	if len(rs) != 1 {
-		t.Fatalf("got %d reactions, want 1", len(rs))
-	}
-	if rs[0].User.ID != fixtureBlessID {
-		t.Fatalf("user id decoded as %d, want %d — the json:\"id\" tag is not doing its job",
-			rs[0].User.ID, fixtureBlessID)
-	}
-	if gotPath != "/repos/example-org/example-k8s/issues/7/reactions" {
-		t.Fatalf("path = %q", gotPath)
-	}
-	if !strings.Contains(gotAccept, "squirrel-girl") {
-		t.Fatalf("Accept header = %q — the reactions API needs the squirrel-girl preview", gotAccept)
-	}
-}
-
 // TestHTTPGateEndToEndOverHTTP drives the whole gate against an httptest server: a real
-// request/response cycle for BOTH calls, refusing without a qualifying +1 and passing
-// with one. This is the closest hermetic analogue of the production path.
+// request/response cycle for the live-visibility read, then the repository-scoped
+// authorization decision. gateRoster lists example-org/pubrepo as :public and
+// example-org/privrepo as :private.
 func TestHTTPGateEndToEndOverHTTP(t *testing.T) {
-	reactions := `[]`
+	installRoster(t, gateRoster)
+
+	visibility := `public`
 	f := fetcherAgainst(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/reactions") {
-			w.Write([]byte(reactions))
-			return
-		}
-		w.Write([]byte(`{"visibility":"public"}`))
+		w.Write([]byte(`{"visibility":"` + visibility + `"}`))
 	})
 
-	if err := PublicRepoGate(f, "example-org", "example-k8s", 7); !IsRefused(err) {
-		t.Fatalf("public repo with no reactions: got %v, want Refused/exit 5", err)
+	// Listed :public repo, live public → pass.
+	if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
+		t.Fatalf("listed :public repo, live public over HTTP: got %v, want pass", err)
 	}
 
-	reactions = `[{"content":"eyes","user":{"login":"ada","type":"User","id":2001}}]`
-	if err := PublicRepoGate(f, "example-org", "example-k8s", 7); !IsRefused(err) {
-		t.Fatalf("non-+1 reaction from ada: got %v, want Refused/exit 5", err)
+	// Listed :public repo, live internal → pass.
+	visibility = "internal"
+	if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
+		t.Fatalf("listed :public repo, live internal over HTTP: got %v, want pass", err)
 	}
 
-	reactions = `[{"content":"+1","user":{"login":"example-org","type":"User","id":12345}}]`
-	if err := PublicRepoGate(f, "example-org", "example-k8s", 7); !IsRefused(err) {
-		t.Fatalf("+1 from the agent account: got %v, want Refused/exit 5", err)
+	// A repo NOT listed :public, live public → refused.
+	visibility = "public"
+	if err := PublicRepoGate(f, "example-org", "not-listed-anywhere"); !IsRefused(err) {
+		t.Fatalf("unlisted live-public repo over HTTP: got %v, want Refused/exit 5", err)
 	}
 
-	reactions = `[{"content":"+1","user":{"login":"ada","type":"User","id":2001}}]`
-	if err := PublicRepoGate(f, "example-org", "example-k8s", 7); err != nil {
-		t.Fatalf("genuine ada +1 over HTTP was refused: %v — the gate's only success "+
-			"path does not work against a real response", err)
+	// Roster drift: configured :private, live public → refused (the live read refuses on the
+	// stale roster claim).
+	if err := PublicRepoGate(f, "example-org", "privrepo"); !IsRefused(err) {
+		t.Fatalf("configured :private but live public over HTTP: got %v, want Refused/exit 5", err)
+	}
+
+	// Live private → pass, whatever the configured entry.
+	visibility = "private"
+	if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
+		t.Fatalf("live private over HTTP: got %v, want pass", err)
 	}
 }

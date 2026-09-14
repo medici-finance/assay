@@ -244,7 +244,7 @@ func TestEditSuccessPostsTheReviewNotice(t *testing.T) {
 
 	// The notice must NAME what changed; "something changed" gives a reviewer nothing to
 	// act on. Assert on the rendered text rather than on the file the fake consumed.
-	notice := reviewNotice([]string{"body", "title"}, true)
+	notice := reviewNotice([]string{"body", "title"})
 	for _, want := range []string{"body and title", "re-review requested", "no head SHA"} {
 		if !strings.Contains(notice, want) {
 			t.Fatalf("the re-review notice does not mention %q:\n%s", want, notice)
@@ -344,19 +344,19 @@ func TestEditRefusesWithoutABodyFile(t *testing.T) {
 	}
 }
 
-// TestEditGoesThroughThePublicRepoGate — the gate is asked about the PR being edited,
-// which is the reactions surface for this write. A +1 on any OTHER number must never
-// authorize it, so the ARGUMENTS are pinned, not just the propagated refusal.
+// TestEditGoesThroughThePublicRepoGate — the gate is asked about the REPOSITORY being
+// written to (authorization is repository-scoped now, not per-item), so the repo argument
+// is pinned, and a refusal must stop the edit.
 func TestEditGoesThroughThePublicRepoGate(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
 
 	var gotOwner, gotRepo string
-	var gotIssue, called int
-	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error {
+	var called int
+	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string) error {
 		called++
-		gotOwner, gotRepo, gotIssue = owner, repo, issueNumber
+		gotOwner, gotRepo = owner, repo
 		return deskkit.Refused("public-repo gate: stub refusal")
 	}
 	bodyPath := writeTempFile(t, "the corrected body\nBrief: fixture/01\n")
@@ -368,11 +368,8 @@ func TestEditGoesThroughThePublicRepoGate(t *testing.T) {
 		t.Fatalf("gate called %d times, want exactly 1", called)
 	}
 	if gotOwner != "example-org" || gotRepo != "tracker" {
-		t.Fatalf("gate asked about %s/%s, want example-org/tracker", gotOwner, gotRepo)
-	}
-	if gotIssue != 42 {
-		t.Fatalf("gate asked about #%d, want #42 (the PR being edited) — a +1 on any OTHER number "+
-			"must never authorize this write", gotIssue)
+		t.Fatalf("gate asked about %s/%s, want example-org/tracker — a gate asked about the wrong "+
+			"repo reads the wrong repo's visibility", gotOwner, gotRepo)
 	}
 	if got := editCalls(*calls); len(got) != 0 {
 		t.Fatalf("the gate refused but the PR was still edited: %v", got)
@@ -427,14 +424,17 @@ func TestTrailerLinkIsTotal(t *testing.T) {
 }
 
 // TestEditActorNeverMisnamesItself — the notice says who edited the PR, and a comment that
-// misnames its own author is worse than one that is vague. On the ambient-identity path it
-// must not claim an App at all.
+// misnames its own author is worse than one that is vague. Since the ambient `--as-app=false`
+// path is retired, the edit always posts as the minted session-role App: under the worker loop
+// it names the worker App, and on an unmapped loop it falls back to the neutral "the desk"
+// rather than claiming a role this session may not be acting as.
 func TestEditActorNeverMisnamesItself(t *testing.T) {
 	t.Setenv("DESK_LOOP", "worker-desk")
-	if got := editActor(true); got != "the worker App" {
-		t.Fatalf("editActor(as-app) = %q, want %q", got, "the worker App")
+	if got := editActor(); got != "the worker App" {
+		t.Fatalf("editActor() = %q, want %q", got, "the worker App")
 	}
-	if got := editActor(false); strings.Contains(got, "App") {
-		t.Fatalf("editActor(--as-app=false) = %q — the ambient-identity path must not claim an App", got)
+	t.Setenv("DESK_LOOP", "")
+	if got := editActor(); strings.Contains(got, "App") {
+		t.Fatalf("editActor() on an unmapped loop = %q — it must not claim an App it cannot resolve", got)
 	}
 }

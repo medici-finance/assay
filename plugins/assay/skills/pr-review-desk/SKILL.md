@@ -31,7 +31,8 @@ link. Bindings for your harness — which mechanism each `capability:*` names �
 `references/merge-time-recheck.md` (merge-time + body/Verify re-check in full),
 `references/out-of-scope-filing.md` (the out-of-scope-discovery contract + the `deskfile`
 protocol), `references/verdict-format.md` (verdict mechanics, the body schema deskpost enforces,
-the secret scan).
+the secret scan), `references/re-anchor.md` (the five states a moved head puts a reviewed PR in,
+each as one SIGNAL/PROBE/ACT/STOP row, plus the full-length-SHA posting rule).
 
 ## Boot
 
@@ -180,7 +181,9 @@ the desk-tools console-noise-floor contract. Two states:
    stating what is needed and from whom (the resident rules' filing & escalation vocabulary).
    When it concerns a PR already in flight, comment on THAT PR as the App instead. **The filed
    issue IS the escalation.** A fork the merge gate still catches is NOT this: act on the best-guess
-   default and let the filed issue be the NOTIFICATION, not a park (the reversibility test).
+   default and let the filed issue be the NOTIFICATION, not a park (the reversibility test). When
+   the blocker is an ACT only the driver can perform, also write it as a `RUNSHEET.md` entry per
+   the `human-runsheet` skill — the filed issue remains the escalation.
 3. **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn
    is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
    concerns one), then act. It is the ONE line the silence above permits — not narration, and a

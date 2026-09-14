@@ -1,0 +1,1 @@
+- Codex smoke run log for 2026-09-13: harness-portability/07 step 5 re-run under the #939 re-baseline (spawn tools present under `multi_agent=true`; fan-out held by the claim rule), recorded under `docs/codex-smoke-runs/` with transcript fingerprints.

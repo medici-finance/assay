@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,20 @@ const (
 	stepRosterRegister = "roster-register"
 	stepDecisionGate   = "decision-gate"
 	stepModelStamp     = "model-stamp"
+	stepQueueLabel     = "queue-label"
 	stepPromptEmit     = "prompt-emit"
+)
+
+// queueLabelAuthorizationNeeded is the review-lane entry signal: a change a reviewer has
+// been dispatched onto is "waiting on the reviewer's work before it is ready for a human".
+// deskflip removes it and applies `approval-needed` at the ready-flip (deskflip's
+// labelBeforeFlip/labelAfterFlip). It is defined here as well as in deskflip because each
+// verb owns the label at its own end of the lane; the two spellings must stay identical.
+// queueLabelColorHex is the bare hex the label is CREATED with when the repo does not yet
+// carry it — no leading `#` (each backend renders its own form), matching deskflip.
+const (
+	queueLabelAuthorizationNeeded = "authorization-needed"
+	queueLabelColorHex            = "0e8a16"
 )
 
 // dispatchSteps is the ordered step list, pinned by a test so a step cannot be silently
@@ -36,6 +50,7 @@ var dispatchSteps = []string{
 	stepRosterRegister,
 	stepDecisionGate,
 	stepModelStamp,
+	stepQueueLabel,
 	stepPromptEmit,
 }
 
@@ -223,17 +238,17 @@ func dispatch(o dispatchOpts) error {
 		// deskwt's OWN message is forwarded whole and verbatim (toolMessage strips only the
 		// config echo / unpinned-build warning), because it is the line that names the cause
 		// (which branch, which worktree holds it, what to do). The wrapper no longer frames this
-		// as a transient tree fault to "fix and re-run": for a fresh dispatch the commonest cause
-		// is the brief's branch already existing, which usually means the brief is already
-		// DELIVERED or in progress — a merged/open PR to look for before re-dispatching, not a
-		// tree to repair. Saying "fix the tree" sent operators re-running the claim machinery on
-		// an item that was simply already done.
+		// as a transient tree fault to "fix and re-run"; instead it names the commonest cause,
+		// which DIFFERS BY KIT and so must be selected by kit (#851). The brief-lane hint — the
+		// brief's `feat/<id>` branch already existing — is meaningless on the review lane, which
+		// has no brief and no feat branch; sending a reviewer to "look for a merged/open PR"
+		// explains nothing. The review-lane hint points instead at the reviewer-worktree
+		// lifecycle: a review kit checks the PR head out as a DETACHED HEAD, so the earlier
+		// reviewer worktree for this PR must be reclaimed before a re-dispatch on the same lane
+		// key can create its own.
 		msg := fmt.Sprintf(
-			"step %s: `deskwt add %s` failed in %s. The claim was %s. For a fresh dispatch this is most "+
-				"often the brief's branch %s already existing — i.e. the brief is already delivered or in "+
-				"progress (look for a merged or open PR before re-dispatching), not a transient tree fault. "+
-				"deskwt said:\n%s",
-			stepWorktreeCreate, wtName, o.root, released, branch, toolMessage(wt.stderr))
+			"step %s: `deskwt add %s` failed in %s. The claim was %s. %s deskwt said:\n%s",
+			stepWorktreeCreate, wtName, o.root, released, worktreeCreateHint(o.kit, branch), toolMessage(wt.stderr))
 		// deskwt's exit code passes THROUGH: a refusal (5) is a decision it made — the branch
 		// is held by a live worktree, or carries unpushed work — and flattening a decision
 		// into "could not be established" tells the operator to retry something that will
@@ -248,11 +263,24 @@ func dispatch(o dispatchOpts) error {
 		return wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg)
 	}
 	home := firstLine(wt.stdout)
-	if home == "" || home == "(no output)" || !strings.HasPrefix(home, "/") {
+	// Absoluteness is tested with homeIsAbsolute (filepath.IsAbs under the host-OS seam), not a
+	// literal leading-slash prefix: deskwt is Windows-aware and on native Windows deliberately picks
+	// the sanctioned <repo-root>/.claude/worktrees/ prefix, whose home is a drive-rooted `C:\...`
+	// that never starts with `/`. A POSIX-only `HasPrefix(home, "/")` here rejected that legitimate
+	// home and made dispatch impossible on Windows (#757), the consumer half of the #727/#732 family.
+	// This step delegates path SAFETY to deskwt (the sanctioned-prefix guard, comment above) and only
+	// asserts the home is absolute — the same portable test brief.go uses — so producer and consumer
+	// judge "absolute" the same way per OS and cannot disagree again.
+	if home == "" || home == "(no output)" || !homeIsAbsolute(home) {
+		// This abort is AFTER the durable claim was placed one step ago, so RELEASE it — exactly as
+		// the deskwt-add-failed branch above does — rather than leave a phantom HELD claim that wedges
+		// the item (every corrected re-run told "already claimed by a LIVE holder" until a human
+		// hand-deletes the ref). A refused dispatch must not be a queue suppressor.
+		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: `deskwt add %s` exited 0 but named no absolute worktree path (%q). The agent's home "+
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
-				"dispatch it must not make.", stepWorktreeCreate, wtName, wt.stdout), nil)
+				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil)
 	}
 	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
 
@@ -316,7 +344,17 @@ func dispatch(o dispatchOpts) error {
 	}
 	o.say("%s %s", stepModelStamp, stamp)
 
-	// 6 — the prompt.
+	// 6 — the review-lane queue label. When a reviewer is dispatched onto a known change,
+	// apply `authorization-needed` forge-neutrally (the resolved forge's idempotent label
+	// ensure+apply, under the reviewer role's own credential — a GitHub App token or a GitLab
+	// PAT, never the deskpost verdict-write path), so a GitLab adopter's MR carries the same
+	// queue signal a GitHub PR does (#795 §4). NON-FATAL: a label the forge would not accept
+	// or a credential gap is a provisioning issue to file, never a reason to fail a dispatch
+	// whose claim and worktree already stand — mirroring stepRoster and deskflip's
+	// ensureLabelSwap.
+	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
+
+	// 7 — the prompt.
 	return emitPrompt(o, prompt)
 }
 
@@ -358,6 +396,13 @@ type dispatchPlan struct {
 	// validateOperatorWorktree — an empty value renders the not-yet-known placeholder, so a
 	// real dispatch, which never sets it, is unaffected.
 	home string
+	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
+	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
+	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
+	// emits no forge-shaped ref, so this stays empty for one and the worker path is
+	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
+	// review dispatch before any durable state exists.
+	forgeKind deskkit.ForgeKind
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -443,6 +488,22 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 	plan.repo = repo
 	plan.claimKey = claimKeyFor(o.item, repo)
+
+	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
+	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
+	// refs/merge-requests/<iid>/head). Resolve WHICH forge serves the target repo now, pre-claim,
+	// so a GitHub-shaped fetch is never emitted into a GitLab reviewer's prompt (#773) and so a
+	// repo whose forge cannot be determined refuses HERE, before any durable state exists, rather
+	// than handing a reviewer a coordinate it cannot check out. A worker dispatch emits no
+	// forge-shaped ref, so this is skipped for one and the worker path stays byte-for-byte
+	// unchanged — including its executed-process count.
+	if reviewKit(o.kit) {
+		kind, ferr := o.resolveForgeKindForReview(repo)
+		if ferr != nil {
+			return plan, ferr
+		}
+		plan.forgeKind = kind
+	}
 
 	plan.branch = o.branch
 	if plan.branch == "" {
@@ -685,6 +746,42 @@ func claimToolAvailable(tool string, isScript bool) error {
 	}
 	_, err := lookPath(tool)
 	return err
+}
+
+// goos is the host-OS seam, mirroring cmd/deskwt's own `goos` var so the PRODUCER (deskwt,
+// which selects the worktree prefix) and this CONSUMER (which accepts the home it printed)
+// judge "absolute" the same way and cannot disagree again — the #757 defect, the consumer
+// half of the #727/#732 Windows-portability family. Production reads runtime.GOOS; white-box
+// tests set it to exercise the Windows codepath on a POSIX runner. Genuine drive-root
+// resolution is a compile-time property of path/filepath and cannot otherwise be reproduced
+// off-Windows, exactly as cmd/deskwt/windowsprefix_test.go documents for the producer half.
+var goos = runtime.GOOS
+
+// homeIsAbsolute reports whether the worktree home deskwt reported is an absolute path,
+// using filepath.IsAbs — the portable test brief.go already uses, and the one that on a
+// native-Windows build accepts the drive-rooted <repo-root>\.claude\worktrees\... home
+// deskwt selects there. The `goos == "windows"` arm exists ONLY for the seam above: on a
+// POSIX test binary filepath.IsAbs cannot see a `C:\...` path as absolute, so this lets the
+// consumer half of the contract be pinned and shown red-first on the POSIX CI runner. On a
+// real Windows build filepath.IsAbs already answers, so windowsAbs is never reached there.
+func homeIsAbsolute(home string) bool {
+	if filepath.IsAbs(home) {
+		return true
+	}
+	return goos == "windows" && windowsAbs(home)
+}
+
+// windowsAbs recognises the two Windows absolute-path forms deskwt can emit — a drive-rooted
+// path (`C:\...` or `C:/...`) and a UNC path (`\\host\share\...`). It serves the goos seam in
+// homeIsAbsolute only; a real Windows build never consults it (filepath.IsAbs answers first).
+func windowsAbs(p string) bool {
+	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, `//`) { // UNC
+		return true
+	}
+	if len(p) < 3 || p[1] != ':' || (p[2] != '\\' && p[2] != '/') {
+		return false
+	}
+	return (p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z') // <drive>:\ or <drive>:/
 }
 
 // releaseClaim releases the durable claim via the consumer claim script's own `release`
@@ -938,6 +1035,82 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		strings.Join(labels, " + "), stampRole, tokenPathForMessage(tokPath), restamped), nil
 }
 
+// applyQueueLabelFn applies the review-lane queue label to a picked-up change. It is a SEAM
+// (like mintTokenFn) so a full-run dispatch test drives the step without real forge
+// credentials or network. The default resolves the forge under the reviewer role and calls
+// the forge's idempotent label ensure+apply — the SAME forge-neutral path deskflip's
+// ensureLabelSwap uses, so GitHub and GitLab are labelled by one code path.
+var applyQueueLabelFn = applyQueueLabelReal
+
+// applyQueueLabelReal resolves the forge serving repo under the reviewer role and applies
+// queueLabelAuthorizationNeeded to the change, creating the label first if the repo does not
+// carry it (Forge.ApplyLabels' ensure step is idempotent — an already-exists is the success
+// case). It returns the labels actually added (empty when the label was already present) and
+// the resolved forge kind for the step report. Credential custody (GitHub App token / GitLab
+// PAT) is resolved inside ResolveForge; this never touches the deskpost verdict-write path.
+func applyQueueLabelReal(repo string, pr int) (added []string, forge string, err error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, "", fmt.Errorf("repo %q does not split into owner/name", repo)
+	}
+	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	fg, res, rerr := deskkit.ResolveForge(fr, deskkit.ReviewDispatcherRole)
+	if rerr != nil {
+		return nil, "", rerr
+	}
+	out, aerr := fg.ApplyLabels(fr, pr, deskkit.LabelChange{
+		Add: []deskkit.LabelSpec{{
+			Name:        queueLabelAuthorizationNeeded,
+			Color:       queueLabelColorHex,
+			Description: "Queue: this change is in the review lane and still needs the reviewer's work before it is ready for a human",
+		}},
+	})
+	if aerr != nil {
+		return nil, string(res.Kind), aerr
+	}
+	if out != nil {
+		added = out.Added
+	}
+	return added, string(res.Kind), nil
+}
+
+// stepQueueLabelApply applies the review-lane queue label when a reviewer is dispatched onto
+// a known change, and is a documented no-op otherwise.
+//
+//   - Not a review dispatch → SKIPPED: the queue label is a review-lane signal only.
+//   - Review dispatch with no --pr → DEFERRED: there is no change to label yet.
+//   - Review dispatch with --pr → apply authorization-needed, idempotently and NON-FATALLY.
+//
+// It never returns an error: a queue label is a legibility aid, not a correctness gate (the
+// claim already serialises the dispatch), so a forge/credential failure is a loud WARNING and
+// the dispatch continues — the same contract as stepRoster and deskflip's ensureLabelSwap.
+func stepQueueLabelApply(o dispatchOpts, repo string) string {
+	if !reviewKit(o.kit) {
+		kind := strings.TrimSpace(o.kit)
+		if kind == "" {
+			kind = "worker"
+		}
+		return "SKIPPED: authorization-needed is a review-lane signal; this is a " + kind + " dispatch"
+	}
+	if o.pr <= 0 {
+		return "DEFERRED: no --pr — there is no change to label yet; authorization-needed is " +
+			"applied when a reviewer is dispatched onto a known MR/PR"
+	}
+	added, forge, err := applyQueueLabelFn(repo, o.pr)
+	if err != nil {
+		return fmt.Sprintf("WARNING: could not apply %s on %s#%d (%s) — the queue label is a "+
+			"provisioning/credential gap to file; the review dispatch stands (the label is a "+
+			"legibility aid, not a claim on the change)",
+			queueLabelAuthorizationNeeded, repo, o.pr, firstLine(err.Error()))
+	}
+	if len(added) == 0 {
+		return fmt.Sprintf("OK: %s already present on %s#%d (%s)",
+			queueLabelAuthorizationNeeded, repo, o.pr, forge)
+	}
+	return fmt.Sprintf("OK: applied %s on %s#%d (%s)",
+		queueLabelAuthorizationNeeded, repo, o.pr, forge)
+}
+
 // stampRoleForKit names the App identity a dispatch of this kit must stamp under: the role
 // that actually DISPATCHED the session.
 //
@@ -1111,6 +1284,32 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 			stepClaimAcquire, r.stdout), nil)
 	}
 	return slug, nil
+}
+
+// resolveForgeKindForReview resolves WHICH forge serves the target repo, for the ONE place
+// the emitted prompt is forge-shaped: the review kit's head-fetch refspec. It reads the
+// TARGET repo's origin remote from o.root — the same checkout resolveRepo reads — through the
+// runCmd seam, and hands the raw URL to deskkit, which owns the roster-first/host-map
+// resolution and the well-known host table; deskdispatch re-derives neither. A repo the
+// roster configures (ASSAY_REPO_FORGES) resolves even with an unreadable remote; otherwise
+// the origin host decides. Unresolvable is deskkit's own could-not-check (exit 6), returned
+// verbatim so the review dispatch fails closed rather than guessing a forge.
+func (o dispatchOpts) resolveForgeKindForReview(repo string) (deskkit.ForgeKind, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved for the "+
+				"review head-fetch refspec.", stepClaimAcquire, repo), nil)
+	}
+	originURL := ""
+	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+		originURL = r.stdout
+	}
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	if err != nil {
+		return "", err
+	}
+	return res.Kind, nil
 }
 
 func (o dispatchOpts) say(format string, args ...any) {

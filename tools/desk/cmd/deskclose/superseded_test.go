@@ -306,6 +306,31 @@ func TestSupersededReviewerConfirms(t *testing.T) {
 		}
 	})
 
+	t.Run("a bare --by number normalizes against -R's repo, matching the fully-qualified marker", func(t *testing.T) {
+		s, rul := prWorld(t)
+		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#40")
+		code, out := execCLI(modeSuperseded, "-R", testRepo, "90", "--by", "40", "--rulings", rul)
+		if code != deskkit.ExitOK {
+			t.Fatalf("want exit 0, got %d\n%s", code, out)
+		}
+		assertConfirmedClose(t, s, reasonNotPlanned)
+	})
+
+	t.Run("a genuine target disagreement names both the recorded and expected forms", func(t *testing.T) {
+		s, rul := prWorld(t)
+		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#999")
+		err := execErr(modeSuperseded, "-R", testRepo, "90", "--by", "40", "--rulings", rul)
+		if err == nil || !deskkit.IsRefused(err) {
+			t.Fatalf("want a refusal, got %v", err)
+		}
+		for _, want := range []string{testRepo + "#999", testRepo + "#40"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("the refusal must name both the recorded form (%s) and the expected form (%s): %v",
+					testRepo+"#999", testRepo+"#40", err)
+			}
+		}
+	})
+
 	t.Run("the last proposal wins: a re-proposal against the right target confirms", func(t *testing.T) {
 		s, rul := prWorld(t)
 		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#999")
@@ -330,14 +355,7 @@ func TestSupersededReviewerConfirms(t *testing.T) {
 	t.Run("an unreadable thread is could-not-check, never 'no proposal'", func(t *testing.T) {
 		s, rul := prWorld(t)
 		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#40")
-		inner := runGH
-		runGH = func(args ...string) (string, error) {
-			if args[0] == "api" && strings.Contains(args[len(args)-1], "/comments?") {
-				s.calls = append(s.calls, args)
-				return "", fmt.Errorf("HTTP 502")
-			}
-			return inner(args...)
-		}
+		s.failThread[testRepo+"#90"] = true // the thread listing (ListComments) fails
 		code, _ := execCLI(modeSuperseded, "-R", testRepo, "90", "--by", testRepo+"#40", "--rulings", rul)
 		if code != deskkit.ExitUnverifiable {
 			t.Fatalf("want exit 6, got %d", code)
@@ -457,14 +475,7 @@ func TestSupersededReviewerDisputes(t *testing.T) {
 	t.Run("a failed label write is reported as could-not-check, not swallowed", func(t *testing.T) {
 		s, rul := prWorld(t)
 		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#40")
-		inner := runGH
-		runGH = func(args ...string) (string, error) {
-			if len(args) >= 2 && args[1] == "edit" {
-				s.calls = append(s.calls, args)
-				return "", fmt.Errorf("could not add label: 'needs-decision' not found")
-			}
-			return inner(args...)
-		}
+		s.failApply = true // the label write (ApplyLabels) fails
 		code, _ := execCLI(modeSuperseded, "-R", testRepo, "90", "--by", testRepo+"#40", "--dispute", "x", "--rulings", rul)
 		if code != deskkit.ExitUnverifiable {
 			t.Fatalf("want exit 6, got %d", code)

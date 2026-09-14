@@ -241,7 +241,7 @@ func withEnv(t *testing.T, work string) *[][]string {
 	t.Cleanup(func() { execCommand = oldExec })
 
 	oldGate := publicRepoGateFn
-	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error { return nil }
+	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
 	currentForge = newForgeRecorder(t)
@@ -376,16 +376,16 @@ func assertOnlyCommentWrites(t *testing.T, rec *forgeRecorder) {
 	}
 }
 
-// TestPublicRepoGateWired — deskreply refuses (exit 5) when the repo is
-// public and the target issue carries no qualifying +1. Uses a custom gate stub that
-// simulates a public-repo-without-+1 result, and asserts ZERO write calls were made.
+// TestPublicRepoGateWired — deskreply refuses (exit 5) when the gate refuses (e.g. a
+// public repo not authorized by a listed :public allowed-repos entry), and asserts ZERO
+// write calls were made.
 func TestPublicRepoGateWired(t *testing.T) {
 	work := newBaseFixture(t)
 	withEnv(t, work)
 
-	// Override the gate stub with one that refuses as if the repo is public with no +1.
-	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error {
-		return deskkit.Refused("public-repo gate: " + owner + "/" + repo + " is public with no +1")
+	// Override the gate stub with one that refuses as if the repo is not authorized.
+	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string) error {
+		return deskkit.Refused("public-repo gate: " + owner + "/" + repo + " is not authorized")
 	}
 
 	body := bodyFileWith(t, "Re-reviewed the delta.")

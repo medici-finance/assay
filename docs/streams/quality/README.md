@@ -6,6 +6,7 @@ status: active
 priority: P2
 track: platform
 issues: []
+board: generated
 ---
 
 # quality Stream
@@ -36,24 +37,26 @@ decision, not code in this stream.
 
 ## Briefs
 
+<!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [miner skeleton — go-git extraction, incremental runs, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #241 @ d4558fdeb56f2519adf49b63860c5455459c2761) |
-| 02 | [M1 line-operation taxonomy + churn/rework rate](brief-02-m1-taxonomy-churn.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #245 @ b549c04d9e0fbfbecbbba64c72f8f55bb7c9eae3) |
+| 01 | [qualgen miner skeleton — go-git extraction, incremental mine, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #241 @ d4558fdeb56f2519adf49b63860c5455459c2761) |
+| 02 | [M1 line-operation taxonomy + churn / rework rate (GitClear-aligned)](brief-02-m1-taxonomy-churn.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #245 @ b549c04d9e0fbfbecbbba64c72f8f55bb7c9eae3) |
 | 03 | [M1 hotspots + knowledge distribution (SPOF) + change coupling](brief-03-m1-hotspots-coupling.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #246 @ d174cb3ea79de972879c3fca487839d039b8cb5b) |
-| 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #247 @ 38e08544a9f8b24a792e8a7f8886d3219181113e) |
-| 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #254 @ 56724a6baf1ef210200211ffe954b2507a337bf5) |
-| 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #248 @ 2e06e6093a96bd9db39f3e09683d14f450764264) |
-| 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #273 @ 167dadea6e583cc44c04c29898c55086ffa9696a) |
+| 04 | [M1 instruction-layer brittleness — reference-validity + doc↔code co-change staleness](brief-04-m1-instruction-brittleness.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #247 @ 38e08544a9f8b24a792e8a7f8886d3219181113e) |
+| 05 | [single-writer QUALITY.md trend view + metrics/defects/attribution artifact schemas](brief-05-quality-view-artifacts.md) | 2 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #254 @ 56724a6baf1ef210200211ffe954b2507a337bf5) |
+| 06 | [M2 fix identification — pluggable fix-linkage adapter + GitHub-labels reference adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #248 @ 2e06e6093a96bd9db39f3e09683d14f450764264) |
+| 07 | [M2 B-SZZ inducing-commit trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #273 @ 167dadea6e583cc44c04c29898c55086ffa9696a) |
 | 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
-| 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #298 @ 91f4d1a6bd9815c175c02cbc0e6f2889b637fb25) |
-| 10 | [M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter](brief-10-m3-stage-attribution.md) | 3 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
-| 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #304 @ 4296f0a6e3e00b89b2c6dca152b94e63490c28af) |
-| 12 | [M4 gate-yield accounting + ritual-effectiveness joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | done | 2026-09-02 opus-4.8[1m]-verifier | 2026-09-03 assay-reviewer-app[bot] (approved PR #359 @ 621e01fb96091b58583a473bfa9b03c718a62b51) |
-| 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
-| 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #398 @ a4525730c8041b710fdc4fabcfe7dc95cf243428) |
-| 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | implemented | — | — |
+| 09 | [`check <paths>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #298 @ 91f4d1a6bd9815c175c02cbc0e6f2889b637fb25) |
+| 10 | [M3 stage attribution — deterministic dossier + judgment stage-call + per-stage defect ledger](brief-10-m3-stage-attribution.md) | 3 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
+| 11 | [DORA join — quality denominator + traced-CFR refinement + pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #304 @ 4296f0a6e3e00b89b2c6dca152b94e63490c28af) |
+| 12 | [M4 gate-yield accounting + ritual-effectiveness natural-experiment joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | done | 2026-09-02 opus-4.8[1m]-verifier | 2026-09-03 assay-reviewer-app[bot] (approved PR #359 @ 621e01fb96091b58583a473bfa9b03c718a62b51) |
+| 13 | [M4 session forensics — pluggable telemetry-source interface + file reference adapter](brief-13-m4-session-forensics.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
+| 14 | [closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #398 @ a4525730c8041b710fdc4fabcfe7dc95cf243428) |
+| 15 | [learned riskscore graduation — JIT defect-prediction model with heuristic fallback](brief-15-learned-riskscore.md) | 3 | M | implemented | — | — |
 | 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #399 @ 8c45e4c8aed8e603a3b41d13299e17abfda2e369) |
+<!-- statusgen:briefs:end -->
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
 

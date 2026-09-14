@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/16
+brief: assay:assay:desk-tools:16
 title: "`deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block"
 why: >-
   `deskevidence` is idempotent at the FILE level: the same merged content at the same head is
@@ -16,13 +16,15 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
   - "freshness-checked 2026-09-02 @ 547b708 — `tools/desk/cmd/deskevidence/deskevidence.go` § the idempotency check compares the WHOLE merged file's digest with the remote (`noop: … already has this content`); § mergeEvidence appends the new block after the existing Evidence section unconditionally, so a block already present is appended twice. The append-only shrink guard sits after the noop check and must keep doing so."
   - "The result vocabulary the no-op reports with: `tools/desk/internal/deskkit/audit.go` (`ResultNoop`) and the exit contract `exitcodes.go` (0 ok/noop)."
   - "Brief and Verify shape: `spec/brief-v1.md`; status semantics: `spec/lifecycle-v1.md`."
+version: 1
+id: cc766b01-0fa9-495a-9a3b-b4655b5287d7
 ---
 
 # Brief 16 — `deskevidence`: an Evidence block equivalent to one already standing is a no-op

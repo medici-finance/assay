@@ -19,6 +19,16 @@ package main
 //     tree — the mixed-version misread §6 closes. `--lint` PROBLEMs an
 //     .assay-versions whose artifact tags differ. One tag, one tree; no separate
 //     min-version matrix.
+//
+//     Two legitimate adopter states need an escape hatch, or the file becomes
+//     un-lintable for them: (a) a guard binary frozen on an EARLIER tag of the
+//     same family by a recorded maintainer ruling, and (b) a separate-repository
+//     artifact on its own release cadence the umbrella never ships. Both are
+//     covered by a PER-LINE exemption marker: a trailing `# same-tag: exempt —
+//     <reason>` comment removes that one artifact from the tag grouping while
+//     keeping the pin line fully visible and otherwise valid. Every non-exempt
+//     artifact must still share one tag — a genuine unexempted mixed state still
+//     PROBLEMs.
 
 import (
 	"fmt"
@@ -131,8 +141,11 @@ func sameTagPinLint(root string) (problem string, ok bool) {
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
-		// Strip trailing `# comment`.
+		// Split off any trailing `# comment`, but inspect it for the same-tag
+		// exemption marker BEFORE discarding it.
+		exempt := false
 		if i := strings.IndexByte(t, '#'); i >= 0 {
+			exempt = pinLineExempt(t[i+1:])
 			t = strings.TrimSpace(t[:i])
 		}
 		fields := strings.Fields(t)
@@ -143,6 +156,13 @@ func sameTagPinLint(root string) (problem string, ok bool) {
 		// The umbrella line (`assay vX.Y.Z`, no sha256) names a COMPOSITION, not an
 		// artifact — it is deliberately excluded from the same-tag comparison.
 		if artifact == "assay" {
+			continue
+		}
+		// A per-line `# same-tag: exempt — <reason>` marker removes this one
+		// artifact from the tag grouping (a frozen-guard family tag, or a
+		// separate-cadence foreign artifact) while leaving the pin line a valid,
+		// lint-visible pin. Non-exempt artifacts must still share one tag.
+		if exempt {
 			continue
 		}
 		tags[tag] = append(tags[tag], artifact)
@@ -161,6 +181,15 @@ func sameTagPinLint(root string) (problem string, ok bool) {
 			"statusgen and desk-tools read one tree and must be pinned to the SAME tag "+
 			"(one tag, one tree; see the derived-board bundle-versioning rule)",
 		strings.Join(parts, "; ")), true
+}
+
+// pinLineExempt reports whether a pin line's trailing comment declares that line
+// exempt from the same-tag grouping. The marker is the token `same-tag: exempt`
+// anywhere in the comment; an optional `— <reason>` follows it for the human
+// record. Its presence removes the artifact from the one-tag-one-tree comparison
+// while keeping the pin line otherwise valid and lint-visible.
+func pinLineExempt(comment string) bool {
+	return strings.Contains(comment, "same-tag: exempt")
 }
 
 // strSort is a tiny in-place sort avoiding a sort import churn in this file.

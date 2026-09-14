@@ -152,6 +152,53 @@ func hasNoGitDir(root string) bool {
 	return os.IsNotExist(err)
 }
 
+// gitPathLastAuthorIdentity returns a stable identity key (the author email,
+// lowercased) for the MOST RECENT commit that touched relPath under root — for
+// a brief file, the commit that most recently added or edited its Evidence /
+// flipped its status. ok is false when git is unavailable, root has no .git, or
+// the path has no commit history (an untracked, just-added file): callers MUST
+// degrade LOUDLY on !ok and never treat it as a pass.
+//
+// The author email is the identity key rather than the display name because a
+// name is trivially re-typed while the email is what the commit is attributed
+// to; distinct bot/human identities carry distinct emails
+// (`…+assay-worker-app[bot]@users.noreply.github.com` vs the verifier App's).
+// This is a committer-identity signal for the attribution cross-check, NOT a
+// timestamp; see attribution.go's identity cross-check for how it is used and
+// why it is a NOTICE, not a hard gate (file-level git attribution is
+// best-effort — the same shared-identity caveat attributionProblems documents).
+func gitPathLastAuthorIdentity(root, relPath string) (identity string, ok bool) {
+	out, err := exec.Command("git", "-C", root, "log", "-1", "--format=%ae", "--", relPath).Output()
+	if err != nil {
+		return "", false
+	}
+	s := strings.TrimSpace(string(out))
+	if s == "" {
+		return "", false
+	}
+	return strings.ToLower(s), true
+}
+
+// gitPathFirstAuthorIdentity returns the identity key (author email,
+// lowercased) of the FIRST commit that introduced relPath — for a brief file,
+// its authoring commit. Same ok semantics as gitPathLastAuthorIdentity: false
+// when git is unavailable or the path has no history, and callers degrade
+// loudly rather than pass. The oldest commit is read via `--reverse` and the
+// first non-empty line taken, so a file that landed in one commit and a file
+// with a long edit history both resolve to whoever first committed it.
+func gitPathFirstAuthorIdentity(root, relPath string) (identity string, ok bool) {
+	out, err := exec.Command("git", "-C", root, "log", "--reverse", "--format=%ae", "--", relPath).Output()
+	if err != nil {
+		return "", false
+	}
+	for _, ln := range strings.Split(string(out), "\n") {
+		if t := strings.TrimSpace(ln); t != "" {
+			return strings.ToLower(t), true
+		}
+	}
+	return "", false
+}
+
 // firstLine returns the first non-empty line of s, trimmed — git's stderr is
 // often multi-line and only the first line names the cause.
 func firstLine(s string) string {

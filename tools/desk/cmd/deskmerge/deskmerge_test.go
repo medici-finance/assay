@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskmerge_test.go — the Verify table, executed.
@@ -111,6 +112,33 @@ func TestConflictRefusal(t *testing.T) {
 	})
 }
 
+// TestConflictEnumeratedAndAborted — brief 07's own golden. The trial
+// merge's conflict machinery (`merge --no-ff --no-commit`, the `--diff-filter=U`
+// conflict enumeration, and the `merge --abort` rollback) now routes through
+// internal/gitexec under a narrow deskmerge-only allowlist entry instead of deskmerge's
+// own ad hoc exec seam; this proves the posture the brief says must not move: a
+// conflicting trial merge still names every conflicted path AND still rolls back with
+// nothing left mid-merge anywhere the scratch worktree touched.
+func TestConflictEnumeratedAndAborted(t *testing.T) {
+	withScratchTemp(t)
+	w := newWorld(t,
+		map[string]string{"README.md": "pr side\n"},
+		map[string]string{"README.md": "main side\n"})
+	w.install(t, defaultPR(), false)
+
+	code, out := cli(verbCheck, "-R", testRepo, "7", "--repo-root", w.root)
+	if code != deskkit.ExitRefused {
+		t.Fatalf("want exit 5 from a conflicted trial merge, got %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "conflicted") || !strings.Contains(out, "README.md") {
+		t.Fatalf("the conflicted path must be enumerated:\n%s", out)
+	}
+	w.assertNoPush(t)
+	if leaked := leakedWorktrees(t, w.root); len(leaked) != 0 {
+		t.Fatalf("the trial merge's scratch worktree must be gone after the abort: %v", leaked)
+	}
+}
+
 // ---------------------------------------------------------------- Verify row 2
 
 // TestTwoParentOnly — the pushed commit is verified to have exactly two parents with
@@ -160,16 +188,18 @@ func TestTwoParentOnly(t *testing.T) {
 
 		// Inject the #72 shape: the commit step abandons the merge and
 		// writes a single-parent commit instead. This is what a rebase, a squash or an
-		// amend would leave behind, and it must never reach the remote.
-		inner := runGit
-		runGit = func(dir string, args ...string) (string, error) {
-			if len(args) > 0 && args[0] == "commit" {
-				_, _ = inner(dir, "merge", "--abort")
-				return inner(dir, "commit", "--allow-empty", "--no-verify", "-m", "not a merge")
+		// amend would leave behind, and it must never reach the remote. Injected at
+		// gitcoreCommit — the seam commitMerge now calls — using the SAME real git
+		// tooling runGit already routes to for the (still git-binary) merge/abort verbs.
+		inner := gitcoreCommit
+		gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+			_, _ = runGit(dir, "merge", "--abort")
+			if _, err := runGit(dir, "commit", "--allow-empty", "--no-verify", "-m", "not a merge"); err != nil {
+				return "", err
 			}
-			return inner(dir, args...)
+			return runGit(dir, "rev-parse", "HEAD")
 		}
-		t.Cleanup(func() { runGit = inner })
+		t.Cleanup(func() { gitcoreCommit = inner })
 
 		code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 		if code != deskkit.ExitRefused {
@@ -191,16 +221,17 @@ func TestTwoParentOnly(t *testing.T) {
 
 		// The sibling commit is an ancestor of NEITHER side, so merging it yields a
 		// well-formed TWO-parent commit — one that a parent-count check accepts. That
-		// is exactly why parent 2 is checked by SHA.
-		inner := runGit
-		runGit = func(dir string, args ...string) (string, error) {
-			if len(args) > 0 && args[0] == "commit" {
-				_, _ = inner(dir, "merge", "--abort")
-				return inner(dir, "merge", "--no-ff", "--no-verify", "-m", "wrong base", w.siblingSHA)
+		// is exactly why parent 2 is checked by SHA. Injected at gitcoreCommit — see
+		// the single-parent case above for why.
+		inner := gitcoreCommit
+		gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+			_, _ = runGit(dir, "merge", "--abort")
+			if _, err := runGit(dir, "merge", "--no-ff", "--no-verify", "-m", "wrong base", w.siblingSHA); err != nil {
+				return "", err
 			}
-			return inner(dir, args...)
+			return runGit(dir, "rev-parse", "HEAD")
 		}
-		t.Cleanup(func() { runGit = inner })
+		t.Cleanup(func() { gitcoreCommit = inner })
 
 		code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 		if code != deskkit.ExitRefused {
@@ -345,14 +376,11 @@ func TestWorktreeHygiene(t *testing.T) {
 			pr:   map[string]string{"pr.txt": "a\n"},
 			main: map[string]string{"main.txt": "b\n"},
 			inject: func(t *testing.T) {
-				inner := runGit
-				runGit = func(dir string, args ...string) (string, error) {
-					if len(args) > 0 && args[0] == "commit" {
-						return "", errInjected{}
-					}
-					return inner(dir, args...)
+				inner := gitcoreCommit
+				gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+					return "", errInjected{}
 				}
-				t.Cleanup(func() { runGit = inner })
+				t.Cleanup(func() { gitcoreCommit = inner })
 			}},
 	}
 	for _, tc := range cases {
@@ -1024,16 +1052,17 @@ func TestParentOneMustBeThePRsOwnHistory(t *testing.T) {
 	// Swap the parents: merge the PR head INTO main. The commit has two parents and
 	// parent 2 IS the fetched base — but its first-parent history is main's, not the
 	// PR's, so the PR's own line of development stops being the trunk of its branch.
-	inner := runGit
-	runGit = func(dir string, args ...string) (string, error) {
-		if len(args) > 0 && args[0] == "commit" {
-			_, _ = inner(dir, "merge", "--abort")
-			_, _ = inner(dir, "checkout", "--detach", w.baseSHA)
-			return inner(dir, "merge", "--no-ff", "--no-verify", "-m", "swapped", w.headSHA)
+	// Injected at gitcoreCommit — see TestTwoParentOnly's single-parent case for why.
+	inner := gitcoreCommit
+	gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
+		_, _ = runGit(dir, "merge", "--abort")
+		_, _ = runGit(dir, "checkout", "--detach", w.baseSHA)
+		if _, err := runGit(dir, "merge", "--no-ff", "--no-verify", "-m", "swapped", w.headSHA); err != nil {
+			return "", err
 		}
-		return inner(dir, args...)
+		return runGit(dir, "rev-parse", "HEAD")
 	}
-	t.Cleanup(func() { runGit = inner })
+	t.Cleanup(func() { gitcoreCommit = inner })
 
 	code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 	if code != deskkit.ExitRefused {
@@ -1069,6 +1098,56 @@ func TestNeverFastForwards(t *testing.T) {
 	parents := strings.Fields(git(t, w.dir, "-C", w.remote, "rev-list", "--parents", "-n", "1", pushed))
 	if len(parents) != 3 {
 		t.Fatalf("a fast-forwardable branch was fast-forwarded instead of merged: %v", parents)
+	}
+}
+
+// TestAssessTrialMergeNeverFastForwards catches: "fast-forward instead of forcing a
+// merge commit (--no-ff dropped)" — directly, at the trial-merge step in assess.go,
+// unit-level.
+//
+// TestNeverFastForwards above drives the SAME fast-forward-candidate world through the
+// full `merge` verb and asserts the PUSHED commit has two parents — and it still does
+// even under this mutation, because commitMerge (merge.go) writes the final commit with
+// an EXPLICIT parent list (t.rep.HeadSHA, t.rep.BaseSHA), never inferred from whatever
+// git actually did during the trial. In the fast-forward-candidate case the resulting
+// tree is identical either way (the PR side contributes nothing beyond the merge base),
+// so the full-pipeline test cannot tell a genuine forced merge apart from a silent
+// fast-forward — that is exactly why this mutation survived shard 1/3 with the existing
+// suite green (#979).
+//
+// What --no-ff governs IS observable one layer down, before commitMerge ever runs: a
+// fast-forward MOVES the trial worktree's HEAD straight to the base commit (no merge is
+// ever staged, nothing for commitMerge's explicit-parent commit to be built on top of in
+// spirit even though it is forced regardless); a forced merge leaves HEAD unchanged at
+// the PR's own head with the merge result staged in the index, uncommitted, exactly as
+// --no-commit promises. This test asserts that directly against the trial's own
+// worktree, so it fails the moment --no-ff is dropped from assess.go regardless of
+// whatever independent protection merge.go's write path also carries.
+func TestAssessTrialMergeNeverFastForwards(t *testing.T) {
+	withScratchTemp(t)
+	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
+	mergeBase := git(t, w.root, "rev-parse", w.headSHA+"^")
+	git(t, w.root, "push", "-q", "--force", "origin", mergeBase+":refs/heads/pr-branch")
+	git(t, w.dir, "-C", w.remote, "update-ref", "refs/pull/7/head", mergeBase)
+	w.headSHA = mergeBase
+	w.install(t, defaultPR(), true)
+
+	p := prInfo{
+		Number: testPR, State: "OPEN", IsDraft: true,
+		HeadRefName: "pr-branch", HeadRefOid: w.headSHA, BaseRefName: "main",
+	}
+	tr, err := assess(w.root, testRepo, p, false)
+	t.Cleanup(tr.close)
+	if err != nil {
+		t.Fatalf("assess failed: %v", err)
+	}
+	if tr.rep.Mergeability != mergeClean {
+		t.Fatalf("want mergeClean, got %v", tr.rep.Mergeability)
+	}
+	if got := git(t, tr.wt.dir, "rev-parse", "HEAD"); got != w.headSHA {
+		t.Fatalf("trial worktree HEAD moved from the PR's own head (%s) to %s — the trial "+
+			"fast-forwarded past the head instead of staging a real merge for later commit",
+			w.headSHA, got)
 	}
 }
 

@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/08
+brief: assay:assay:desk-supervision:08
 title: Objectives over transitions — measure an objective-style worker kit with skillbench
 why: >-
   The worker prompt kit and skill body are long and procedural, and workers wedge on states
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony post, 'Progress comes with new, different problems' — 'treating agents as rigid nodes in a state machine doesn't work well … we eventually moved toward giving agents objectives instead of strict transitions' — https://openai.com/index/open-source-codex-orchestration-symphony/"
@@ -33,6 +33,8 @@ consumers:
   - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md (new kit): fixed-here"
   - "tools/desk/cmd/deskdispatch/references/common-clauses.md: out-of-scope (the objective kit includes the common clauses byte-identical; the guards are not the variable under test)"
   - "plugins/assay/skills/worker-desk/SKILL.md: out-of-scope (no skill-body change in this brief; adoption is a separate brief citing the report)"
+version: 1
+id: eb82d786-ffc7-46d0-ae5e-98172a4b78f9
 ---
 
 # Brief 08 — Objectives over transitions, measured

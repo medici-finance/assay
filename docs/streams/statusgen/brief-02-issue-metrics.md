@@ -1,5 +1,5 @@
 ---
-brief: statusgen/02
+brief: assay:assay:statusgen:02
 title: 'Issue metrics — statusgen --issues: standard counts + age/sitting-time + internal-vs-external + by-raising-desk'
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 sources:
   - "A maintainer directive (2026-07-16): adjust the metrics to look at GitHub issues — standard metrics, plus which desk raised each, internal vs external, and how long each has been sitting"
@@ -26,6 +26,8 @@ why: >-
   that matter operationally: **which desk raised it** (is one loop generating all the churn?),
   **internal-vs-external** (agent-found work vs a human/user reporting a bug), and **how long it has
   been sitting** (the same rot the intake-debt alarm catches, applied to issues).
+version: 1
+id: 5dafd80b-f7ed-4067-a108-b217df548789
 ---
 
 # Brief 02 — Issue metrics (`statusgen --issues`)
@@ -106,7 +108,7 @@ across the repo set — the same repos `--dora` covers):
 | 3 | `statusgen --root . --issues \| grep -iE -e unattributed -e raised-by` | ≥1 — the by-desk cut renders (unattributed until the desks stamp the label) |
 | 4 | `statusgen --root . --issues --json \| jq -e '.open,.byDesk,.internal,.external,.ageBuckets,.byType,.defects.critical' >/dev/null` | exit 0 — JSON carries the cuts incl. type/severity |
 | 4b | `statusgen --root . --issues \| grep -iE -e 'verify-gate' -e 'critical' -e 'defect'` | ≥1 — states, defects, and critical severity render as distinct classes (verify-gate is NOT counted as a bug) |
-| 5 | `go test ./statusgen/ -run 'Issue' -count=1` | exit 0 |
+| 5 | `cd statusgen && GOWORK=off go test . -run 'Issue' -count=1` | exit 0 |
 | 6 | `statusgen --root . --lint` | exit 0 (stale-issue alarm is a NOTICE, gh-guarded) |
 
 ## Evidence

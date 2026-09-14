@@ -45,6 +45,25 @@ Both guidelines are **advisory** unless this page says otherwise: the automation
 labels, and a human maintainer decides. Maintainers, collaborators, and repository bots are
 exempt from both.
 
+## Pull-request template
+
+Every pull request opens against a short template with two prompts: which factual claims the
+description makes and how you checked each one, and whether the change was produced with the
+help of an AI coding tool or agent. Neither is checkable by any tool here — the point is that
+an honest answer costs you nothing and a false one is a specific statement a reviewer can
+point at. Fill it in; it is deliberately short.
+
+## Changelog for fork pull requests
+
+Most pull requests record a notable change with one fragment file under `changelog/` (see
+`changelog/README.md`), and a required check fails a pull request that is missing one. If your
+pull request comes from a fork, maintainers cannot push a fragment to your branch to fix a red
+check the way they could on a branch in this repository — so you don't have to. When that
+applies, a maintainer lands the fragment on the base branch on your pull request's behalf
+instead, and the check picks it up from there. You are welcome to include your own fragment in
+the pull request if you'd like to suggest the wording, but a missing one on a fork pull request
+is not something you need to fix yourself.
+
 ## Practical notes
 
 - License: Apache-2.0. By contributing you agree your contribution is licensed the same.

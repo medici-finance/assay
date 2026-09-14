@@ -1,5 +1,5 @@
 ---
-brief: derived-board/01
+brief: assay:assay:derived-board:01
 title: brief-v2 spec — derived lifecycle cells, generated table, reserved graph keys; public re-stage of brief-rules + template
 why: >-
   The board's lifecycle cells are hand-asserted prose that a second actor must remember
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §2, §3, §5 — the derivation table, what stays hand-written, brief-v2 contents"
@@ -28,6 +28,8 @@ consumers:
   - "private toolkit docs/brief-rules.md: follow-up derived-board/07 (private re-stage lands with the rollout)"
   - "private toolkit docs/brief-template.md: follow-up derived-board/07"
   - "plugins/assay/skills/author-brief/SKILL.md (template block): follow-up derived-board/05"
+version: 1
+id: 98414c8d-78e3-4c8a-af1e-fa8fbc8758da
 ---
 
 # Brief 01 — brief-v2 spec + public re-stage of the brief contract

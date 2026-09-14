@@ -51,6 +51,46 @@ deskpost body-checks the file independently and refuses (exit 5) unless the body
 first; the refusal reason is in the audit `detail`. **Exit 5 is NEVER a fallback trigger** — fall
 back only on exit 3 (disabled) / 6 (unverifiable).
 
+## When your ONLY finding is a red required check
+
+A `request-changes` whose sole blocker is a required CHECK is a special case, because that
+blocker can clear **without a code push** — a human applies `changelog:skip`, a flaked job is
+re-run — and the flip gate's default is that an APPROVE at an unchanged head re-verifies
+nothing and does not lift a standing CHANGES_REQUESTED. Left alone that costs either a no-op
+push (which games the rule) or a human dismissing your review by hand.
+
+Two extra lines, and only these two, open the narrow path out. Both are ordinary body lines —
+neither is a verdict kind, so neither trips rule 4 above:
+
+1. **On the CHANGES_REQUESTED**, declare the check and nothing else:
+
+   `Blocked-On-Check: changelog`
+
+   Write it **only when it is true** — when the check is genuinely the whole of your finding.
+   The line is a claim about your own review, and the gate reads the claim, not your prose: it
+   has no way to notice that the CR also carried three code findings. A CR with any other
+   finding gets no such line.
+
+2. **On the APPROVE that answers it**, cite the specific run that went green:
+
+   `Cleared-Check-Run: 41234567890`
+
+   The numeric **run id**, not the check's name — `gh api repos/<slug>/commits/<head>/check-runs`
+   lists them. It identifies one execution, which is the point: it must be the run at *this*
+   head, of the check you named, finished green (`success` / `neutral` / `skipped`) **after** you
+   posted the CR. Cite the run you actually looked at; citing an older run of the same check, or
+   a different check's run, is refused.
+
+Both lines are read whole-line and never from inside a fenced code block — quoting the format to
+explain it (as this file does) declares nothing. Two lines of the same marker that disagree
+establish nothing. Miss any part and the flip refuses exactly as it does today, so there is no
+way for a wrong citation to become a flip; but a **false** `Blocked-On-Check:` on a CR that
+carried real findings is you clearing your own block, and nothing downstream will catch it.
+
+Clearing the block is not an approval, either: the gate still needs your APPROVE to be the
+governing verdict at head, so if you post a further CHANGES_REQUESTED afterwards the PR blocks
+again.
+
 ## The secret scan
 
 The scan refuses any run of 32+ base64ish characters, plus token prefixes, `AKIA…`, PEM and JWT

@@ -129,3 +129,23 @@ func detectForge(root string) forgeKind {
 	}
 	return classifyForgeURL(raw)
 }
+
+// detectForgeForScaffold is detectForge with the extra fact `init` needs to split
+// the two forgeUnknown cases apart: whether an origin remote was READABLE at all,
+// plus the raw host (for the message that says why).
+//
+// The split matters because forge-neutral/01's resolution contract makes refusal —
+// not a GitHub default — the only fallback for an unresolvable forge (its Verify
+// row 5: a repo whose remote names neither forge yields Unverifiable, never a
+// GitHub backend). So a remote whose host names NEITHER forge (remotePresent true)
+// is that unresolved case, and `init` writes NO CI half rather than guessing GitHub
+// (#349). A tree with no origin remote at all / an unreadable one (remotePresent
+// false) is the pre-origin bootstrap case, where the historical GitHub fallback is
+// kept so a freshly `git init`'d tree still scaffolds a runnable half.
+func detectForgeForScaffold(root string) (forge forgeKind, remotePresent bool, host string) {
+	raw, err := remoteOriginURL(root)
+	if err != nil {
+		return forgeUnknown, false, ""
+	}
+	return classifyForgeURL(raw), true, remoteHost(raw)
+}

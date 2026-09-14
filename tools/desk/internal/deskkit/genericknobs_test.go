@@ -63,10 +63,14 @@ func TestReleaseRepoParse(t *testing.T) {
 	}
 }
 
-// TestReleaseRepoMalformedRefused — a release tool that picked its target by parse
+// TestReleaseRepoMalformedRejected — a release tool that picked its target by parse
 // order, or accepted a pattern naming a SET of repos, would be choosing what gets
-// released on nobody's authority.
-func TestReleaseRepoMalformedRefused(t *testing.T) {
+// released on nobody's authority. ASSAY_RELEASE_REPO is an EXTENSION key: a
+// malformed value no longer refuses the WHOLE configuration (see the
+// TRUST/EXTENSION split this brief adds) — it is recorded on cfg.Ext as
+// ExtInvalid, so only a component that requires assay.roster.ext.release-repo
+// goes INACTIVE, and every other trust-gated verb keeps running.
+func TestReleaseRepoMalformedRejected(t *testing.T) {
 	for name, value := range map[string]string{
 		"a list":         "one/alpha,two/beta",
 		"space list":     "one/alpha two/beta",
@@ -81,11 +85,23 @@ func TestReleaseRepoMalformedRefused(t *testing.T) {
 			base[EnvReleaseRepo] = value
 			withRoster(t, base)
 			c := EffectiveConfig()
-			if len(c.Problems) == 0 {
-				t.Fatalf("%s (%q) was accepted as a release home", name, value)
+			if len(c.Problems) != 0 {
+				t.Fatalf("%s (%q) refused the WHOLE configuration — an extension key's malformed "+
+					"value must deactivate only its dependents: %v", name, value, c.Problems)
+			}
+			if !c.Configured() {
+				t.Fatalf("%s (%q) left the roster unconfigured — a bad release-repo value must not "+
+					"touch the trust surface", name, value)
 			}
 			if c.ReleaseRepo != "" {
-				t.Fatalf("a refused configuration still carries a release home: %q", c.ReleaseRepo)
+				t.Fatalf("a rejected release-repo value still carries a release home: %q", c.ReleaseRepo)
+			}
+			ext, ok := c.Ext["release-repo"]
+			if !ok || ext.Status != ExtInvalid {
+				t.Fatalf("%s (%q): cfg.Ext[%q] = %+v, want Status ExtInvalid", name, value, "release-repo", ext)
+			}
+			if !strings.Contains(ext.Reason, EnvReleaseRepo) {
+				t.Errorf("%s: ext reason does not name %s: %q", name, EnvReleaseRepo, ext.Reason)
 			}
 		})
 	}
@@ -105,9 +121,13 @@ func TestWriteguardCalloutParse(t *testing.T) {
 
 // TestWriteguardCalloutRequiresAbsolutePath is the load-bearing shape rule. A relative
 // callout path resolves against whatever directory the guard's process was spawned in
-// — caller-influenced input choosing the guard's own policy source. It is refused at
+// — caller-influenced input choosing the guard's own policy source. It is rejected at
 // LOAD (rather than blocking at invocation) because a misconfigured guard should be
 // loud in the P3 echo, not silently refusing every write on the machine.
+// ASSAY_WRITEGUARD_CALLOUT is an EXTENSION key: a malformed value no longer refuses the
+// WHOLE configuration (the TRUST/EXTENSION split this brief adds) — cfg.WriteguardCallout
+// stays empty (the compiled generic indicators alone, its own shipped default) and only a
+// component requiring assay.roster.ext.writeguard-callout goes INACTIVE.
 func TestWriteguardCalloutRequiresAbsolutePath(t *testing.T) {
 	for name, value := range map[string]string{
 		"bare name":    "callout.sh",
@@ -120,11 +140,16 @@ func TestWriteguardCalloutRequiresAbsolutePath(t *testing.T) {
 			base[EnvWriteguardCallout] = value
 			withRoster(t, base)
 			c := EffectiveConfig()
-			if len(c.Problems) == 0 {
-				t.Fatalf("%s (%q) was accepted as a callout path", name, value)
+			if len(c.Problems) != 0 {
+				t.Fatalf("%s (%q) refused the WHOLE configuration — an extension key's malformed "+
+					"value must deactivate only its dependents: %v", name, value, c.Problems)
 			}
 			if c.WriteguardCallout != "" {
-				t.Fatalf("a refused configuration still carries a callout: %q", c.WriteguardCallout)
+				t.Fatalf("a rejected callout value still carries a callout path: %q", c.WriteguardCallout)
+			}
+			ext, ok := c.Ext["writeguard-callout"]
+			if !ok || ext.Status != ExtInvalid {
+				t.Fatalf("%s (%q): cfg.Ext[%q] = %+v, want Status ExtInvalid", name, value, "writeguard-callout", ext)
 			}
 		})
 	}

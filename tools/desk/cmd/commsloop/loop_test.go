@@ -85,15 +85,14 @@ func TestBypass(t *testing.T) {
 	// Plant a message DIRECTLY into the accepted-queue — skipping commsgw's
 	// own precheck pipeline entirely (a real bypass: commsgw's checkLane
 	// would ALSO have refused this, had it ever seen it). The verb ("status")
-	// is deliberately chosen to be a REPORT-CLASS verb by isReportClass's own
-	// mechanical rule (routing.go) — a message misrouted this way would be
-	// mistakenly landed done (no session, no ACL re-check) rather than held,
-	// if the routing-boundary ACL check were ever removed or bypassed. This
-	// is the meaningful case: verb+lane legality, checked INDEPENDENTLY of
-	// (and BEFORE, in TierPolicy) the report-class mechanical rule, is what
-	// this test actually pins — a bypassed message that also happened to be
-	// non-report-class would quarantine anyway via the "awaiting the prose
-	// router" fallback, proving nothing about THIS check.
+	// is a CROSS-CELL-only verb (laneacl.yaml) used here as a within-cell
+	// message, so the routing-boundary ACL re-check (routing.go,
+	// checkLaneAtRoutingBoundary) must catch it BEFORE the message ever
+	// reaches the prose router — this is the meaningful case: verb+lane
+	// legality is checked INDEPENDENTLY of, and strictly before, the router
+	// consult. A bypassed message that also happened to be ACL-legal would
+	// quarantine anyway via the router's own fail-closed default (no advisor
+	// wired in this fixture), proving nothing about THIS check.
 	bad := comms.Envelope{
 		Schema: comms.Schema, ID: "bypass-1", Cell: "cell-a",
 		From: comms.SenderID{Cell: "cell-a", Role: "the-desk"},
@@ -130,9 +129,10 @@ func TestBypass(t *testing.T) {
 func TestQuarantine(t *testing.T) {
 	loop, root, filer := newTestLoop(t)
 
-	// An ACL-legal but NOT-YET-ROUTABLE message: a within-cell "ask" (needs
-	// the prose router, which has not landed) must quarantine, not be
-	// dropped.
+	// An ACL-legal message routed with NO advisor wired (this fixture's
+	// Router is nil, so TierPolicy's fail-closed default applies): the
+	// consult's own default action (quarantine) fires, so the message
+	// quarantines — held, never dropped.
 	env := comms.Envelope{
 		Schema: comms.Schema, ID: "unroutable-1", Cell: "cell-a",
 		From: comms.SenderID{Cell: "cell-a", Role: "the-desk"},
@@ -161,7 +161,12 @@ func TestQuarantine(t *testing.T) {
 		t.Fatalf("quarantine issue filing calls = %d, want 1", filer.calls)
 	}
 
-	// A REPORT-class message, by contrast, lands done — not held.
+	// A report-SHAPED message ("status") is NOT special-cased any more — #1767
+	// ruling 3's "no fast path" means it consults the SAME router as
+	// everything else, and with no advisor wired here it lands on the same
+	// fail-closed default: quarantined, not landed done. (Retired behaviour:
+	// before this router landed, a verb-name shortcut in routing.go landed
+	// this exact message done with no consult at all.)
 	report := comms.Envelope{
 		Schema: comms.Schema, ID: "report-1", Cell: "cell-a",
 		From: comms.SenderID{Cell: "cell-b", Role: "the-desk"},
@@ -174,10 +179,14 @@ func TestQuarantine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListHeld: %v", err)
 	}
+	found := false
 	for _, h := range held2 {
 		if h.Envelope.ID == "report-1" {
-			t.Fatalf("a report-class message must land done, not quarantine")
+			found = true
 		}
+	}
+	if !found {
+		t.Fatalf("a report-shaped message with no advisor wired must quarantine too (no fast path), held=%v", held2)
 	}
 }
 

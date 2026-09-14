@@ -362,6 +362,9 @@ Stated once for every desk; this skill adds only what is its own above.
   when labelling; whoever answers removes the label with their response. A `question` that matures
   into a formal decision fork promotes to `needs-decision` (issue-loop/06). Labelled items are
   WAITING-ON-INPUT — they join the human/escalation queue, they are NOT orphans for the fanout sweep.
+- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
+  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
+  runsheet is the exact command the driver runs.
 - **Insight-routing:** a systemic/process insight produced in passing MUST be filed as an issue in
   the shared methodology repo — `medici-finance/assay` by default, or the repo a house's own
   instructions file names for this — commentary is not a register. Repo-specific defects go to that

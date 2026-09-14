@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // currency.go — the instrument. Everything here is READ-ONLY; the write path is
@@ -189,11 +190,12 @@ func resolveRepoRoot(repo, override string) (string, error) {
 	if err != nil {
 		return "", deskkit.Unverifiable("could-not-check: cannot resolve "+root, err)
 	}
-	if _, err := runGit(abs, "rev-parse", "--git-common-dir"); err != nil {
+	gr, err := gitcore.Open(abs)
+	if err != nil {
 		return "", deskkit.Unverifiable(
 			"could-not-check: "+abs+" is not a git checkout", err)
 	}
-	url, err := runGit(abs, "remote", "get-url", "origin")
+	url, err := gr.RemoteURL("origin")
 	if err != nil {
 		return "", deskkit.Unverifiable(
 			"could-not-check: "+abs+" has no `origin` remote to fetch from", err)
@@ -240,16 +242,23 @@ func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error
 				"answering from a stale local ref",
 			deskkit.StripControl(repo), deskkit.StripControl(p.BaseRefName), p.Number), ferr)
 	}
-	baseSHA, err = runGit(root, "rev-parse", "refs/remotes/origin/"+p.BaseRefName)
+	gr, err := gitcore.Open(root)
+	if err != nil {
+		return "", "", deskkit.Unverifiable(
+			"could-not-check: cannot reopen "+deskkit.StripControl(root)+" after fetching", err)
+	}
+	baseHash, err := gr.Resolve("refs/remotes/origin/" + p.BaseRefName)
 	if err != nil {
 		return "", "", deskkit.Unverifiable(
 			"could-not-check: cannot resolve origin/"+deskkit.StripControl(p.BaseRefName)+" after fetching it", err)
 	}
-	headSHA, err = runGit(root, "rev-parse", prHeadRef(p.Number))
+	baseSHA = baseHash.String()
+	headHash, err := gr.Resolve(prHeadRef(p.Number))
 	if err != nil {
 		return "", "", deskkit.Unverifiable(
 			"could-not-check: cannot resolve the fetched PR head", err)
 	}
+	headSHA = headHash.String()
 	if !strings.EqualFold(headSHA, p.HeadRefOid) {
 		return "", "", deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: GitHub reported head %s but refs/pull/%d/head fetched %s — the PR moved "+
@@ -263,7 +272,11 @@ func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error
 // harmless (it is namespaced out of every branch listing), so its removal must never
 // turn a successful run into a failure.
 func dropPRHeadRef(root string, pr int) {
-	_, _ = runGit(root, "update-ref", "-d", prHeadRef(pr))
+	repo, err := gitcore.Open(root)
+	if err != nil {
+		return
+	}
+	_ = repo.DeleteLocalRef(prHeadRef(pr))
 }
 
 // ---------------------------------------------------------------------------

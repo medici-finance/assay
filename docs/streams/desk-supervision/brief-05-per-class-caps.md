@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/05
+brief: assay:assay:desk-supervision:05
 title: Per-class concurrency reservation — fresh / resume / rework caps in the planner
 why: >-
   The worker desk's pool is one number per loop. The rule that resuming started work
@@ -15,7 +15,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §5.3.5 (`max_concurrent_agents_by_state`) and §8.3 (per-state slots) — https://github.com/openai/symphony/blob/main/SPEC.md"
@@ -29,6 +29,8 @@ consumers:
   - "tools/desk/cmd/deskroster/main.go width: fixed-here (`width --role L --reserve resume=N,rework=M` sets it; `width --role L` prints it)"
   - "tools/desk/cmd/deskboard/main.go throughput (uses width as the depth/slot denominator): fixed-here (the denominator is unchanged; the reservation is reported as an extra column, not subtracted)"
   - "plugins/assay/skills/worker-desk/SKILL.md §The pool: follow-up desk-supervision/05 (the prose keeps the rule and points at the reservation as its enforcement, edited in the implementation PR)"
+version: 1
+id: 80ee2e96-602b-4831-a70e-c188b85f3944
 ---
 
 # Brief 05 — Per-class concurrency reservation

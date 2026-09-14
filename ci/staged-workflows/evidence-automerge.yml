@@ -266,8 +266,16 @@ jobs:
             -f query='mutation($pr:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$pr,mergeMethod:MERGE}){pullRequest{number autoMergeRequest{enabledAt}}}}' \
             -F pr="$PR_NODE_ID" 2>&1)"
           rc=$?
-          printf '%s\n' "$out"
-          printf '%s\n' "$out" > "${RUNNER_TEMP}/automerge-out.txt"
+          # Record what GitHub answered to the log BEFORE the refusal-script
+          # decides, so a run that later greens on a benign refusal ("unstable
+          # status", "clean status", …) still carries the exact mutation text
+          # that produced the decision — the log is the only place a reader can
+          # see WHY the step skipped rather than merged (#586). `tee` writes the
+          # combined output to the file the decision reads and echoes it in one
+          # pass, so the log and the decision input can never diverge.
+          echo "::group::enablePullRequestAutoMerge answer (rc=${rc})"
+          printf '%s\n' "$out" | tee "${RUNNER_TEMP}/automerge-out.txt"
+          echo "::endgroup::"
 
           # Read only on a refusal, and never fatal here: an unreadable rollup is
           # could-not-check, and the script — not this step — is what refuses to

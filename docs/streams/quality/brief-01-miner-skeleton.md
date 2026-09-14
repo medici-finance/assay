@@ -1,5 +1,5 @@
 ---
-brief: quality/01
+brief: assay:assay:quality:01
 title: qualgen miner skeleton — go-git extraction, incremental mine, three-state plumbing
 why: >-
   A flow board measures delivery (throughput, lead time) but says nothing about whether
@@ -15,7 +15,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §3 — architecture (single repo-agnostic Go binary, go-git, committed-artifact model, mine/report/pr/check modes, pinned-release distribution)"
@@ -27,6 +27,8 @@ exec-tier-why: >-
   (a) the internal commit/diff record schema, and the go-git-vs-shelled-git blame
   boundary, are design decisions the spec deliberately leaves to this brief and the facts
   do not fully pre-specify.
+version: 1
+id: 50b3b541-ec92-4096-adf2-8972cd67b846
 ---
 
 # Brief 01 — qualgen miner skeleton: go-git extraction, incremental mine, three-state plumbing

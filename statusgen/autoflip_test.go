@@ -80,6 +80,17 @@ const (
 
 const afReviewer = "rev-app[bot]"
 
+// ghReviewer wraps a single GitHub reviewer login as the forge-aware
+// reviewerIdentity autoFlipModel now takes — the accepted-login set the existing
+// GitHub fixtures approve under. GitLab fixtures build their own reviewerIdentity
+// (see TestAutoFlipGitLabCorroboration).
+func ghReviewer(login string) reviewerIdentity {
+	if login == "" {
+		return reviewerIdentity{}
+	}
+	return reviewerIdentity{Logins: []string{login}, Forge: forgeGitHub, Display: login}
+}
+
 // fakeFlipSource is the test seam. Nothing here touches git or gh.
 type fakeFlipSource struct {
 	commits map[string][]string // brief file basename -> commit SHAs, newest first
@@ -202,7 +213,7 @@ func TestAutoFlipAtHead(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
-	results, err := autoFlipModel(root, streams, src, afReviewer, afNow, false)
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -240,7 +251,7 @@ func TestAutoFlipStaleSHA(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
-	results, err := autoFlipModel(root, streams, src, afReviewer, afNow, false)
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -268,7 +279,7 @@ func TestAutoFlipHumanGate(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
-	results, err := autoFlipModel(root, streams, src, afReviewer, afNow, false)
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -300,7 +311,7 @@ func TestAutoFlipNoApproval(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
-	results, err := autoFlipModel(root, streams, src, afReviewer, afNow, false)
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -323,7 +334,7 @@ func TestAutoFlipUnreadable(t *testing.T) {
 	// PR 101 becomes unreadable: an unfetchable review is could-not-check.
 	src.errs[101] = errors.New("gh: 503 upstream")
 
-	results, err := autoFlipModel(root, streams, src, afReviewer, afNow, false)
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -349,7 +360,7 @@ func TestAutoFlipNoReviewer(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
-	results, err := autoFlipModel(root, streams, src, "", afNow, false)
+	results, err := autoFlipModel(root, streams, src, reviewerIdentity{}, afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -371,7 +382,7 @@ func TestAutoFlipDryRun(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	before := afReadme(t, root)
 
-	results, err := autoFlipModel(root, streams, afSource(), afReviewer, afNow, true)
+	results, err := autoFlipModel(root, streams, afSource(), ghReviewer(afReviewer), afNow, true)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -498,7 +509,7 @@ func TestAutoFlipIntermediateCommitFlips(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
-	results, err := autoFlipModel(root, streams, src, afReviewer, afNow, false)
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}
@@ -572,7 +583,7 @@ func TestReportAutoFlipMisconfigDominates(t *testing.T) {
 // direction on the roster is preserved.
 func TestAutoFlipNoReviewerMisconfig(t *testing.T) {
 	root, streams := loadAFStreams(t)
-	results, err := autoFlipModel(root, streams, afSource(), "", afNow, false)
+	results, err := autoFlipModel(root, streams, afSource(), reviewerIdentity{}, afNow, false)
 	if err != nil {
 		t.Fatalf("autoFlipModel: %v", err)
 	}

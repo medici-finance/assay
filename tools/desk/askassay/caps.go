@@ -71,27 +71,18 @@ var declaredListCaps = []ListCap{
 		Cap:         200,
 		Effect:      "the cross-repo scope search truncates at 200 results. A scope answer at the cap is a lower bound on what is in scope, never the scope",
 	},
-	{
-		File:        "cmd/deskfile/deskfile.go",
-		Needle:      `labelListLimit = "500"`,
-		Occurrences: 1,
-		Cap:         500,
-		Effect:      "the label read truncates at 500 labels. A label absent from a truncated read is indistinguishable from a label that does not exist, which turns a missing label into a false negative rather than an error",
-	},
-	{
-		File:        "cmd/deskfile/matcher.go",
-		Needle:      `searchLimit = "20"`,
-		Occurrences: 1,
-		Cap:         20,
-		Effect:      "the duplicate-issue search truncates at 20 hits. A duplicate past the 20th does not exist as far as the matcher is concerned, so 'no duplicate found' from this path is a bounded statement, not a clean one",
-	},
-	{
-		File:        "cmd/deskroster/roster.go",
-		Needle:      `"--limit", "50"`,
-		Occurrences: 1,
-		Cap:         50,
-		Effect:      "the roster's open-PR read truncates at 50 per repo. A repo over the cap yields a roster that omits PRs without saying so",
-	},
+	// deskfile's two silent caps (`labelListLimit = "500"` in deskfile.go, `searchLimit = "20"`
+	// in matcher.go) are GONE: deskfile migrated off the `gh` CLI onto the typed ListLabels and
+	// SearchIssues ops (write-verbs-C), so the label read and the dedupe search are now bounded by
+	// the forge backend's own page cap rather than a deskfile-local literal. There is no
+	// silent-cap instance left in either file, so both register rows are retired with the flags.
+	// The roster open-PR read's `--limit 50` cap is GONE: deskroster migrated off the `gh` CLI
+	// onto the typed ListOpenChanges op, so the read is bounded by the forge backend's own
+	// declared page cap rather than a deskroster-local literal. There is no `--limit` instance
+	// left in that file, so its register row is retired with the flag. NOTE the residual this
+	// register does not cover: the seam reports its own Cap/TruncatedAtCap, and ghListOpenPRs
+	// currently discards both, so a repo past the backend cap still yields a roster that omits
+	// PRs without saying so — a display-surfacing fix, not a silent `--limit` literal.
 	{
 		File:        "cmd/deskdisposition/verbs.go",
 		Needle:      `"--limit"`,

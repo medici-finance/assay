@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/02
+brief: assay:assay:desk-tools:02
 title: Generalize — batch-fanout as the second drain-engine consumer (contract validation)
 wave: 1
 depends: []
@@ -12,7 +12,7 @@ gate-why: >-
   cutover plus sign-off, not the implementation.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-07-19 by Fable design session; re-homed to the desk-tools board 2026-08-26
 sources:
   - "The drain-engine architecture and its batch irreducibles — the six-hook contract this brief validates against a second consumer."
@@ -26,6 +26,8 @@ why: >-
   effort × exec-tier instead of a flat floor. If the engine contract survives this consumer
   unchanged, it is real; if it needs a new hook, that is a design finding to file, not a hook
   to add.
+version: 1
+id: edc0d376-9699-4fa4-aa64-d10c8006f318
 ---
 
 # Brief 02 — batch-fanout as second engine consumer
@@ -83,9 +85,9 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./tools/desk/... -count=1` | exit 0 |
-| 2 | `go test ./tools/desk/cmd/fanoutloop/... -run 'Pool' -count=1 -v 2>&1 \| grep -cE -e 'refill' -e 'resume-priority'` | ≥2 (standing-pool + orphan-priority both exercised) |
-| 3 | `go test ./tools/desk/cmd/fanoutloop/... -run 'Serial' -count=1` | exit 0 (out-of-repo second-in-flight refused) |
+| 1 | `cd tools/desk && GOWORK=off go test ./... -count=1` | exit 0 |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'Pool' -count=1 -v 2>&1 \| grep -cE -e 'refill' -e 'resume-priority'` | ≥2 (standing-pool + orphan-priority both exercised) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'Serial' -count=1` | exit 0 (out-of-repo second-in-flight refused) |
 | 4 | `git diff --stat origin/main -- tools/desk/internal/loopengine/ \| tail -1` | empty (contract untouched — the validation claim) |
 | 5 | PR body contains the staged batch-fanout skill diff + cutover stop-point | present |
 | 6 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |

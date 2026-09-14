@@ -1,5 +1,5 @@
 ---
-brief: composability/01
+brief: assay:assay:composability:01
 title: Reactive activation — a missing extension key downs one component, not the fleet
 why: >-
   Twice in one month a single config key one tool rejected took every desk verb down at once,
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md §6 (activation rule; trust surface stays fail-closed; extension keys per component)"
@@ -23,6 +23,8 @@ sources:
   - "docs/adopting-assay.md (roster section) — the trust/extension split of the ASSAY_* keys; trust keys are fail-closed by design"
   - "house incidents, 2026-09 (two): one tool rejecting one roster key downed a whole desk lane; one unregistered ASSAY_* key fail-closed every verb — both cited by the stream README"
   - "composability/00 — the manifests and the trust-vs-extension inject split this brief reads"
+version: 1
+id: a7513cbd-6ab8-472f-8360-4b953b40e489
 ---
 
 # Brief 01 — Reactive activation: a missing extension key downs one component, not the fleet

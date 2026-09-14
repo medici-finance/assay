@@ -42,10 +42,46 @@ type verifyIssue struct {
 // `gh issue list --json body` output straight in.
 var verifyMarkerRe = regexp.MustCompile(`<!-- verify-gate: [^>]*? -->`)
 
+// normalizeBriefKey collapses either brief-key form to the canonical
+// <stream>/<NN> identity used for verify-gate card idempotency and close-back.
+//
+// A brief-v1 key is already <stream>/<NN>; a brief-v2 key is the fully-qualified
+// <cell>:<repo>:<stream>:<NN> (parseBriefV2ID). Both name the SAME brief within a
+// single tree — one repo's issue set — so the flag-day v1→v2 migration must not
+// re-file a card that already exists in the other form. This reduces the v2 form
+// to its trailing <stream>/<NN>; any other shape (a bare <stream>/<NN>, or a
+// malformed id) is returned unchanged so it fails downstream on its own terms
+// rather than being silently rewritten here. Rendering the marker in this
+// canonical form (rather than the colon form) keeps a NEW card matching every
+// pre-migration card, and keeps the extracted id inside the brief-name grammar
+// (<stream>/<NN>) the close side already speaks.
+func normalizeBriefKey(key string) string {
+	key = strings.TrimSpace(key)
+	if _, _, stream, num, ok := parseBriefV2ID(key); ok {
+		return stream + "/" + num
+	}
+	return key
+}
+
 // verifyMarker renders the hidden per-brief marker. It is the first line of the
-// issue body (idempotency) and the close-back mapping key.
+// issue body (idempotency) and the close-back mapping key. The brief key is
+// normalized to the canonical <stream>/<NN> form so a brief-v2 (colon) key and a
+// brief-v1 (slash) key produce ONE marker — the render half of the two-forms-
+// one-identity contract (loadExistingMarkers is the match half).
 func verifyMarker(brief string) string {
-	return "<!-- verify-gate: " + brief + " -->"
+	return "<!-- verify-gate: " + normalizeBriefKey(brief) + " -->"
+}
+
+// normalizeMarker reduces a full `<!-- verify-gate: KEY -->` marker to its
+// canonical form by normalizing KEY. loadExistingMarkers routes every extracted
+// marker through it so a legacy <stream>/<NN> card and a brief-v2
+// <cell>:<repo>:<stream>:<NN> card land on the SAME set key — the same canonical
+// form verifyMarker renders — and thus compare equal.
+func normalizeMarker(marker string) string {
+	inner := strings.TrimSpace(marker)
+	inner = strings.TrimPrefix(inner, "<!-- verify-gate:")
+	inner = strings.TrimSuffix(inner, "-->")
+	return verifyMarker(strings.TrimSpace(inner))
 }
 
 // gateReasons returns the risk keys answered "yes" (why the brief is
@@ -86,6 +122,13 @@ func findRow(s *Stream, num string) *Brief {
 // or a non-existent file yields an empty set (nothing exists yet). It extracts
 // every `<!-- verify-gate: … -->` occurrence, so it accepts either one marker
 // per line OR raw issue bodies.
+//
+// Every extracted marker is routed through normalizeMarker so a card carrying a
+// brief-v2 <cell>:<repo>:<stream>:<NN> key and a card carrying the legacy
+// <stream>/<NN> key collapse to ONE set entry — the same canonical form
+// verifyMarker renders. Without this, the flag-day v1→v2 migration re-filed a
+// duplicate card for every already-carded brief (issue #804): the render key
+// changed form, the exact-string match missed, and the open side re-emitted.
 func loadExistingMarkers(path string) (map[string]bool, error) {
 	set := map[string]bool{}
 	if path == "" {
@@ -99,7 +142,7 @@ func loadExistingMarkers(path string) (map[string]bool, error) {
 		return nil, err
 	}
 	for _, m := range verifyMarkerRe.FindAllString(string(raw), -1) {
-		set[strings.TrimSpace(m)] = true
+		set[normalizeMarker(m)] = true
 	}
 	return set, nil
 }
@@ -689,9 +732,13 @@ func closeVerify(root, briefID string, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// Accept either brief-key form: a brief-v1 <stream>/<NN> id or a brief-v2
+	// <cell>:<repo>:<stream>:<NN> id (issue #804). Both name one brief in this
+	// tree; normalize to the canonical <stream>/<NN> the row lookup below uses.
+	briefID = normalizeBriefKey(briefID)
 	streamName, num, ok := strings.Cut(briefID, "/")
 	if !ok || streamName == "" || num == "" {
-		return fmt.Errorf("brief id %q is not a <stream>/<NN> id", briefID)
+		return fmt.Errorf("brief id %q is not a <stream>/<NN> or <cell>:<repo>:<stream>:<NN> id", briefID)
 	}
 	var s *Stream
 	for _, st := range streams {

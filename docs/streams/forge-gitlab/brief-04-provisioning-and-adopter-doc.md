@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/04
+brief: assay:assay:forge-gitlab:04
 title: Fleet provisioning script + adopter doc + ci-config-project runbook
 why: >-
   GitLab has no App-manifest flow, so the eight-click GitHub onboarding becomes API
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §2 (identity model), §4 (ci-config project), §5 (custody)"
@@ -25,6 +25,8 @@ domain: complicated
 tier: free
 consumers:
   - "docs/adopting-assay.md: fixed-here (one cross-link line to the GitLab doc)"
+version: 1
+id: ea3ce8a4-ebbf-4231-90d4-1a59fc0cf415
 ---
 
 # Brief 04 — provisioning + adopter doc + ci-config runbook

@@ -1,5 +1,5 @@
 ---
-brief: statusgen/13
+brief: assay:assay:statusgen:13
 title: 'Cadenced roadmap artifacts — `--cadence weekly|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand'
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-27 (authored clean for the statusgen board)
 why: >-
   The `--roadmap` renderer answers one clock — "what is the portfolio's state right now."
@@ -25,6 +25,8 @@ sources:
   - "statusgen/main.go — the `-roadmap` flag registration (~L1107) and the `--roadmap` output path `docs/reports/roadmap/index.html`; the cadence flag is added beside it and switches the output directory to `docs/reports/<cadence>/<window>/`"
   - "statusgen/main.go `-scope` — the existing product-tag (`serves:`) vocabulary the priority order is expressed in; the ordered list is read from config, never hard-coded in source"
   - "the roadmap renderer's stream frontmatter reader — where the optional `theme:` key is parsed and the unmapped-renders-visibly rule lives"
+version: 1
+id: e7dba02c-cb0d-46ab-9137-368b2aaf6822
 ---
 
 # Brief 13 — Cadenced roadmap artifacts (`--cadence weekly|monthly`)
@@ -121,7 +123,7 @@ facts:
 | 1 | `statusgen --root . --roadmap --cadence weekly && command ls docs/reports/weekly/` | a week-labelled (`%G-W%V`) directory exists (literal window label per implementer's naming, recorded in Evidence) |
 | 2 | `statusgen --root . --roadmap --cadence monthly && command ls docs/reports/monthly/` | a month-labelled (`%Y-%m`) artifact directory exists |
 | 3 | `statusgen --root . --roadmap` (no `-cadence`) still writes `docs/reports/roadmap/index.html` | exit 0 — point-in-time mode unchanged |
-| 4 | `go test ./statusgen/ -count=1 -run Cadence -v > /tmp/cad.log 2>&1 && grep -q -- '--- PASS' /tmp/cad.log && go test ./statusgen/ -count=1 -run Theme -v > /tmp/thm.log 2>&1 && grep -q -- '--- PASS' /tmp/thm.log` | exit 0 — both the cadence-window and unmapped-theme test groups EXIST (a `--- PASS` line) and pass. No raw pipe: redirect to a file + `grep FILE`, chained with `&&`, so a group that runs nothing (no `--- PASS`) goes red |
+| 4 | `cd statusgen && GOWORK=off go test . -count=1 -run Cadence -v > /tmp/cad.log 2>&1 && grep -q -- '--- PASS' /tmp/cad.log && go test . -count=1 -run Theme -v > /tmp/thm.log 2>&1 && grep -q -- '--- PASS' /tmp/thm.log` | exit 0 — both the cadence-window and unmapped-theme test groups EXIST (a `--- PASS` line) and pass. No raw pipe: redirect to a file + `grep FILE`, chained with `&&`, so a group that runs nothing (no `--- PASS`) goes red |
 | 5 | `statusgen --root . --lint` | exit 0 |
 
 ## Evidence

@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/01
+brief: assay:assay:forge-neutral:01
 title: Forge resolution contract — the forge comes from repo config, and refusal is the only fallback
 why: >-
   Two complete forge backends exist and nothing in the fleet can obtain one: no constructor,
@@ -10,12 +10,12 @@ why: >-
   configured forge cannot serve an operation.
 wave: 1
 depends: []
-unblocks: ["forge-neutral/02", "forge-neutral/03", "forge-neutral/04", "forge-neutral/05", "forge-neutral/06", "forge-neutral/07", "forge-neutral/08", "forge-neutral/09", "forge-neutral/11"]
+unblocks: ["forge-neutral/02", "forge-neutral/03", "forge-neutral/04", "forge-neutral/05", "forge-neutral/06", "forge-neutral/07", "forge-neutral/08", "forge-neutral/09", "forge-neutral/11", "forge-neutral/14", "forge-neutral/17"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/README.md — the measured matrix this brief's head finding comes from"
@@ -41,6 +41,8 @@ consumers:
   - "tools/desk/cmd/deskboard, issueboard, scanloop: follow-up forge-neutral/06"
   - "tools/desk/cmd/desktoken: fixed-here (its --forge flag becomes the custody path selector the resolver drives, not an independent switch)"
   - "statusgen: follow-up forge-neutral/08 (statusgen resolves its own forge; it does not import deskkit)"
+version: 1
+id: 38a45459-d392-4a7c-a84e-8bf599ed0f75
 ---
 
 # Brief 01 — Forge resolution contract
@@ -189,6 +191,57 @@ Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: human; ris
 
 RISK-VALUE: DERIVED — verifyCustodyFileMode perm = 0o600 @ tools/desk/internal/deskkit/forgeresolve.go:284 — owner-only read/write is the correct secret-credential-file mode and matches the existing desktoken gitlab rotation path; row 6 insecure_mode subtest asserts a 0644 file is Refused. A looser mode would hand a group/other-readable token to a backend — the sensitive-data leak the human gate guards.
 RISK-VALUE: DERIVED — wellKnownForgeHosts = {github.com:github, gitlab.com:gitlab} @ tools/desk/internal/deskkit/forgeresolve.go:79-80 — the canonical public hostnames, exact-match only; every self-hosted instance deliberately does not match and falls through to refusal rather than guessing, so the set cannot silently misroute an unrecognised host to the wrong forge/identity.
+**Verify-table RUN 2026-09-10 — opus-4.8[1m]-verifier (non-implementer, verify-desk). NOT a sign-off.** Merged main `22f7645a1826ff3082836503ee518b552885b623`, offline (`KUBECONFIG=/dev/null`, go1.26.5). Frontmatter: `gate: human`, `risk {sensitive-data: yes, rest no}`. Forge resolution contract — the forge comes from repo config; refusal is the only fallback.
+
+| # | command | exit | observed | discharges |
+|---|---------|------|----------|------------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | 0 | build 0; test 0 on clean re-run (one transient non-reproducing deskflip harness flake, out of scope — passes in isolation and on a second full run) | Row 1 |
+| 2 | `go test ./internal/deskkit/ -run TestForgeSingleConstructionSite -count=1` | 0 | PASS — no backend literal outside the resolver | Row 2 |
+| 3 | grep forge-backend construction sites over `tools/desk` `*.go` (excl `_test.go`, `forgeresolve.go`) | 0 | `0` — only two sites, both inside the resolver (forgeresolve.go:395,397) | Row 3 |
+| 4 | `go test ./internal/deskkit/ -run TestForgeForRejectsCallerSuppliedForge -count=1` | 0 | PASS — `ForgeFor` takes no forge argument; no exported symbol accepts a caller-supplied forge | Row 4 |
+| 5 | `go test ./internal/deskkit/ -run TestForgeForUnconfiguredRepoRefuses -count=1` | 0 | PASS — unconfigured repo + unrecognisable remote yields Unverifiable naming the repo + the config that would resolve it; returns no backend | Row 5 |
+| 6 | `go test ./internal/deskkit/ -run TestForgeForMissingTokenRefuses -count=1` | 0 | PASS incl. file_absent, insecure_mode (0644), no_ambient_fallback — Refused, constructs no backend, reads no ambient credential | Row 6 |
+| 7 | `go test ./internal/deskkit/ -run TestUnsupportedOperationIsCouldNotCheck -count=1` | 0 | PASS — unsupported op returns Unverifiable naming forge+operation+gap; no request against the other forge, no zero-value success | Row 7 |
+| 8 | `go test ./cmd/deskpost/... -count=1` | 0 | ok deskpost; ok bodycheck — existing suite green unmodified with forge ops on the resolver | Row 8 |
+| 9 | `go test ./internal/forgeban/... && TestNoForgeCLIShellout && TestForgeNoPassthrough` | 0 | ok forgeban; ok deskkit — surface still closed, no shell-out, no passthrough added | Row 9 |
+| 10 | `go test ./internal/deskkit/ -run TestRosterKnownKeySet -count=1` | 0 | PASS — the forge key is registered in the roster known-set; setting it loads | Row 10 |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/01` | 2 | could-not-check — the installed statusgen recognises only brief-v1; this is a brief-v2 file, so it returns COULD-NOT-CHECK. statusgen schema/forge awareness is deferred to a later forge-neutral brief; route to CI-pinned statusgen. Not a FAIL; no diff defect | Row 11 (could-not-check) |
+
+`RISK-VALUE: DERIVED — custody file mode must be 0600 (Refused if looser) @ tools/desk/internal/deskkit/custodyowner_unix.go:23` — owner-only read/write is correct for a secret credential file; a looser mode (0644, group/other-readable) is Refused rather than handed to a backend (row 6 insecure_mode subtest proves a 0644 file is Refused). Matches the repo's established secret-file convention. A looser value would leak a group/other-readable token — the sensitive-data failure the human gate guards.
+`RISK-VALUE: DERIVED — well-known forge hosts = exact-match {github.com, gitlab.com} @ tools/desk/internal/deskkit/forgeresolve.go:78-80` — exact lowercased-hostname match on the two canonical public forge hostnames, no suffix/substring matching; every self-hosted instance deliberately fails the match and falls through to refusal, precisely the "refusal is the only fallback" default.
+
+**VERDICT: PASS on rows 1-10 (code contract green); row 11 could-not-check (statusgen brief-v2). gate:human + sensitive-data:yes — a model does NOT sign off.** Evidence gathered; the flip is the human's via the verify-gate sign-off card. Status stays at implemented.
+
+**Findings:** (1) Row 1 one transient non-reproducing deskflip test-harness flake under full-tree parallel run (passes in isolation + on a second full run) — a deskflip flake-tracking note, not a defect of this brief (deskkit resolver + deskpost only). (2) Line-number drift only vs the prior run: custody-mode enforcement refactored into `VerifyCustodyOwnerOnly` (custodyowner_unix.go:23), same `!= 0600` semantics; control intact. (3) Anti-gaming: row 2's single-construction-site test is corroborated by row 3's independent grep (zero sites elsewhere); negative-path rows 5/6/7 assert real refusal semantics, not happy-path passthrough.
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — gate: human, HELD at `implemented`
+
+Target: merged `origin/main` @ `a91bffd0ea73e49b85569549cb4a4521703e827d` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`, go1.26.5) in an isolated worktree; runner ≠ implementer. gate: human + `sensitive-data: yes` — the table is RUN for Evidence; a model does not sign off, status stays `implemented`, the human closes the verify-gate.
+
+| # | Command (in `tools/desk`) | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | build 0; every package `ok`, zero FAIL across the module (deskkit 35.4s, deskpost 58.6s, forgeban ok) | PASS |
+| 2 | `go test ./internal/deskkit/ -run TestForgeSingleConstructionSite` | 0 | PASS — no backend literal outside the resolver | PASS |
+| 3 | grep `GitHubForge{`/`GitLabForge{`/`&…` over `*.go` (excl `_test.go`+`forgeresolve.go`) | 0 | `0` — the only two live sites are `forgeresolve.go:444,446`, both inside the resolver | PASS |
+| 4 | `go test …TestForgeForRejectsCallerSuppliedForge` | 0 | PASS — `ForgeFor` takes no forge arg; no exported symbol accepts a caller forge | PASS |
+| 5 | `go test …TestForgeForUnconfiguredRepoRefuses` | 0 | PASS (real negative) — `err!=nil`, `f==nil`, exit `ExitUnverifiable`, message names the repo slug + `ASSAY_REPO_FORGES`; no GitHub backend | PASS |
+| 6 | `go test …TestForgeForMissingTokenRefuses` | 0 | PASS — subtests `file_absent`, `insecure_mode` (0644→Refused, names "600"), `no_ambient_fallback` (failing mint→Refused, not a Forge) | PASS |
+| 7 | `go test …TestUnsupportedOperationIsCouldNotCheck` | 0 | PASS (real negative) — unmapped ref → `ExitUnverifiable` naming forge+op+ref; `noRequestTransport` proves no request to the other forge; no zero-value success | PASS |
+| 8 | `go test ./cmd/deskpost/... -count=1` | 0 | `ok deskpost 24.6s`; `ok bodycheck` — existing suite green on the resolver | PASS |
+| 9 | forgeban tests + `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | `ok forgeban`; `ok deskkit` — surface still closed, no shell-out, no passthrough (ratchet note below) | PASS |
+| 10 | `go test …TestRosterKnownKeySet` | 0 | PASS — `ASSAY_REPO_FORGES` registered in the roster known-set | PASS |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/01` | — | COULD-NOT-CHECK — statusgen blocked by the offline verifier's shared-home writeguard backstop (writes STATUS.md; exemption human-only); consistent with both prior runs. Route to CI-pinned statusgen. | COULD-NOT-CHECK |
+
+**Ratchet note (not a defect):** `allowedInvocationCeiling = 9` @ `tools/desk/internal/forgeban/allowlist.go:64`, not 24 as row-9 prose reads — later forge-neutral briefs (03/04/06) migrated the other verbs and ratcheted the ceiling down 24→9 (tightening as designed; a lower ceiling is a stronger ban). Row 9's test asserts ceiling == permit-list length whichever value, so it passes; "24" is a stale point-in-time descriptor.
+
+**Risk-bearing value (sensitive-data: yes — ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — custody token file mode must be 0o600 else Refused @ tools/desk/internal/deskkit/custodyowner_unix.go:23.` Ranked #1 by irreversibility (a token at a group/other-readable mode is an irreversible secret leak — the exact sensitive-data harm this gate guards). Owner-only read/write is the correct mode for a secret credential file; row 6 `insecure_mode` proves a 0644 file is Refused and names the `chmod 600` remedy.
+- `RISK-VALUE: DERIVED — well-known forge hosts = exact-match {github.com→github, gitlab.com→gitlab} @ tools/desk/internal/deskkit/forgeresolve.go:79-80.` Exact lowercased-hostname match only; every self-hosted host deliberately fails and falls through to `Unverifiable` refusal rather than misrouting to a wrong forge/identity — "refusal is the only fallback." No `NAMED, NOT DERIVED` value outstanding.
+
+**Sensitive-data defense (gate: human):** the single control keeping an ambient credential from being read is that `ForgeFor` obtains the token ONLY from the custody minter path; a failing/absent mint surfaces as `Refused` rather than falling through to an ambient `gh`/`glab` read. Row 6 `no_ambient_fallback` proves it — a failing minter yields an error (not a Forge) naming the role/repo, only possible if the failure was surfaced not swallowed. Second independent layer: the `forge-surface-control.yml` no-passthrough CI ratchet + row 3's grep against any bypass construction site.
+
+**Scope-traceability:** all observed work maps to Verify rows 1–11 (resolver, custody enforcement, roster key, the one wired verb deskpost). No invented scope; negative-path rows 5/6/7 genuinely assert refusal semantics.
+
+**VERDICT: PASS** on rows 1–10; row 11 COULD-NOT-CHECK (statusgen environment limit, no diff defect) — **HELD at `implemented` (human sign-off owed via the verify-gate).** Open question for the human: none outstanding — the top-ranked risk-value (custody mode 0o600) is DERIVED and test-proven.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in

@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": false,
+  "err": "refusing ref \"heads/../../branches/main/protection\": \"..\" would traverse out of the ref namespace",
+  "not_found": false
+}

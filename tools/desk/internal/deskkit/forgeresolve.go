@@ -129,16 +129,43 @@ func knownForgeHostsList() string {
 	return strings.Join(hosts, ", ")
 }
 
-// resolveForgeKind implements resolution steps a/b/c of the contract above.
+// resolveForgeKind implements resolution steps a/b/c of the contract above, reading the
+// origin host from the CURRENT WORKING DIRECTORY's checkout (originRemoteHost). A caller
+// that has the target checkout somewhere OTHER than its CWD — deskdispatch resolves the
+// forge of a repo it is not sitting in — supplies the host itself via
+// resolveForgeKindWithHost / ForgeKindForRepoRemote rather than routing through here.
 func resolveForgeKind(repo ForgeRepo) (ForgeResolution, error) {
+	key := strings.ToLower(strings.TrimSpace(repo.Slug()))
+	if kind, ok := EffectiveConfig().RepoForges[key]; ok {
+		// The roster answered — the remote-host fallback must NOT even be consulted
+		// (TestForgeForResolvesFromRepoConfig proves it by panicking if originRemoteHost is
+		// reached), so return here rather than reading git on a question already answered.
+		return ForgeResolution{Repo: repo, Kind: ForgeKind(kind), Source: "repo-config:" + EnvRepoForges}, nil
+	}
+	host, herr := originRemoteHost()
+	if herr != nil {
+		host = ""
+	}
+	return resolveForgeKindWithHost(repo, host)
+}
+
+// resolveForgeKindWithHost is resolveForgeKind's core with the origin host supplied by the
+// caller rather than read from the CWD checkout. It answers WHICH FORGE SOFTWARE — roster
+// first (ASSAY_REPO_FORGES), then, only when the roster is silent, the given host mapped
+// through the unambiguous well-known table. host may be "" (only the roster can then
+// answer). It carries NO instance-host requirement — unlike ForgeKindFromSlugAndHost, which
+// must also decide WHERE the instance lives — because "which forge?" is all a caller
+// picking a forge-shaped literal needs. Unresolvable is Unverifiable (could-not-check),
+// naming the repo and the configuration that would resolve it: never a default, never a guess.
+func resolveForgeKindWithHost(repo ForgeRepo, host string) (ForgeResolution, error) {
 	key := strings.ToLower(strings.TrimSpace(repo.Slug()))
 	cfg := EffectiveConfig()
 	if kind, ok := cfg.RepoForges[key]; ok {
 		return ForgeResolution{Repo: repo, Kind: ForgeKind(kind), Source: "repo-config:" + EnvRepoForges}, nil
 	}
-	if host, herr := originRemoteHost(); herr == nil {
-		if kind, ok := wellKnownForgeHosts[strings.ToLower(host)]; ok {
-			return ForgeResolution{Repo: repo, Kind: kind, Source: "remote-host:" + host}, nil
+	if h := strings.ToLower(strings.TrimSpace(host)); h != "" {
+		if kind, ok := wellKnownForgeHosts[h]; ok {
+			return ForgeResolution{Repo: repo, Kind: kind, Source: "remote-host:" + h}, nil
 		}
 	}
 	return ForgeResolution{}, Unverifiable(fmt.Sprintf(
@@ -147,6 +174,28 @@ func resolveForgeKind(repo ForgeRepo) (ForgeResolution, error) {
 			"%s=%s=github (or =gitlab) in the roster — never a flag or environment variable, which this "+
 			"resolver deliberately does not read.",
 		repo.Slug(), EnvRepoForges, knownForgeHostsList(), EnvRepoForges, repo.Slug()), nil)
+}
+
+// ForgeKindForRepoRemote resolves WHICH forge serves repo — the kind and provenance — from
+// the roster first (ASSAY_REPO_FORGES) and, only when the roster is silent, the host parsed
+// from the given origin remote URL, mapped through the unambiguous well-known host table. It
+// constructs NO backend, reads NO token, and shells to NO git: the origin URL is supplied by
+// the caller, which read it from the target checkout it already has in hand (deskdispatch
+// resolves the forge of the repo its --root names, not the one it is sitting in). An empty or
+// unparseable URL is not itself an error here — only the roster can then answer — so a
+// roster-configured repo resolves with no readable remote at all.
+//
+// This is the "which forge?" read a caller makes to pick a forge-shaped literal, the review
+// kit's head-fetch refspec being the case it exists for (GitHub refs/pull/<N>/head vs GitLab
+// refs/merge-requests/<iid>/head, #773). It answers which forge SOFTWARE, not which instance,
+// so it does not carry ForgeKindFromSlugAndHost's instance-host requirement. Unresolvable is
+// Unverifiable (could-not-check), naming the repo and the configuration that would resolve it.
+func ForgeKindForRepoRemote(repo ForgeRepo, originRemoteURL string) (ForgeResolution, error) {
+	host := ""
+	if h, err := hostOfRemote(originRemoteURL); err == nil {
+		host = h
+	}
+	return resolveForgeKindWithHost(repo, host)
 }
 
 // ForgeKindFromSlugAndHost resolves WHICH forge serves a repo WITHOUT reading git, minting a
@@ -163,10 +212,19 @@ func resolveForgeKind(repo ForgeRepo) (ForgeResolution, error) {
 //	   (github.com/gitlab.com); host may be "" (only step a can then answer);
 //	c. failing that, Unverifiable — never a default, never a guess.
 //
-// It returns the resolved forge kind AND the git host to speak to: the caller's origin host
-// when non-empty (so a self-hosted instance is honored), else the forge kind's canonical SaaS
-// host (github.com / gitlab.com). The ForgeKind is a RETURN, never a parameter — resolution is
-// never a caller's choice (TestForgeForRejectsCallerSuppliedForge).
+// It returns the resolved forge kind AND the git host to speak to: the caller's origin host,
+// which the caller read in-process from its own checkout. The ForgeKind is a RETURN, never a
+// parameter — resolution is never a caller's choice (TestForgeForRejectsCallerSuppliedForge).
+//
+// When the caller supplies NO host, this NEVER guesses one. A roster entry (or the well-known
+// host table) answers WHICH FORGE SOFTWARE, never WHICH INSTANCE — GitLab and GitHub are both
+// self-hosted-capable, so "gitlab" is not "gitlab.com" and "github" is not "github.com".
+// Defaulting the host to the canonical SaaS instance is how a self-hosted adopter's credential
+// ends up presented to a public host, with the auth failure swallowed downstream as a bare
+// "unverifiable" (#727). An empty host is therefore could-not-check (Unverifiable, exit 6),
+// naming the repo — never a SaaS default. The caller's job is to hand a readable origin host
+// (see cmd/deskclaim-ref's originRemoteURL, which reads it through something that understands
+// the worktreeConfig extension go-git does not).
 func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 	key := strings.ToLower(strings.TrimSpace(slug))
 	h := strings.ToLower(strings.TrimSpace(host))
@@ -174,7 +232,16 @@ func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 		if h != "" {
 			return kind, h, nil
 		}
-		return kind, canonicalHostOf(kind), nil
+		// No origin host to go on. Refuse rather than default to the canonical SaaS host: the
+		// roster named the forge SOFTWARE, not the INSTANCE, so any host we substitute here is a
+		// guess about WHERE — and on a self-hosted adopter that guess silently points the
+		// adopter's credential at gitlab.com/github.com (#727). Fail closed, naming the repo
+		// and the forge so an operator can see the resolution stopped for lack of a host.
+		return "", "", Unverifiable(fmt.Sprintf(
+			"resolved forge %q for %s, but no instance host is known: the origin remote was unreadable "+
+				"(e.g. go-git cannot read a worktreeConfig checkout) and %s names the forge software, not "+
+				"the instance. Make the origin remote readable, or supply the host — never a SaaS default.",
+			kind, slug, EnvRepoForges), nil)
 	}
 	cfg := EffectiveConfig()
 	if kind, ok := cfg.RepoForges[key]; ok {
@@ -189,18 +256,6 @@ func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 		"cannot resolve which forge serves %s: no %s entry names it, and the origin host %q does not map "+
 			"unambiguously to a known forge (%s). Configure %s=%s=github (or =gitlab) in the roster.",
 		slug, EnvRepoForges, host, knownForgeHostsList(), EnvRepoForges, slug), nil)
-}
-
-// canonicalHostOf is the SaaS host a forge kind serves when the caller has no origin host to go
-// on (github -> github.com, gitlab -> gitlab.com). Unexported: it takes a ForgeKind, and a
-// forge selector must never reach a caller-facing surface.
-func canonicalHostOf(kind ForgeKind) string {
-	for host, k := range wellKnownForgeHosts {
-		if k == kind {
-			return host
-		}
-	}
-	return ""
 }
 
 // --- Custody: obtaining the resolved role's already-minted token ------------------------

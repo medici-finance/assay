@@ -1,5 +1,5 @@
 ---
-brief: composability/00
+brief: assay:assay:composability:00
 title: Component manifests, key catalogue, and the resolve/cycle lint
 why: >-
   Assay's units depend on each other through undeclared env keys, verb names, and paths, so
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md §2 (manifest shape), §3 (key catalogue), §6.1 (cycle rule)"
@@ -22,6 +22,8 @@ sources:
   - "docs/adopting-assay.md §2 Component inventory — the prose list this brief makes machine-readable"
   - "docs/adopting-assay.md (roster section) — the ASSAY_* keys, split into fail-closed trust surfaces and adopter extensions with defaults"
   - "Ian's direction (2026-09-07): turn the paper's model into a stream; start with the blast-radius fix"
+version: 1
+id: d91c64e8-36e6-4c8c-a4db-0974d7d9ecba
 ---
 
 # Brief 00 — Component manifests, key catalogue, and the resolve/cycle lint
@@ -133,6 +135,82 @@ so the three reds are evidence the resolution, cycle, and range checks have teet
 re-runs them by applying the row's mutation to the named manifest.
 
 An independent runner records a second run on merged main before `verified`.
+### Non-implementer verifier run — 2026-09-11 sonnet-5-verifier (verify-desk dispatch), offline — **VERIFY: PASS — first non-implementer pass**
+
+Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git rev-parse == gh api commits/main). Fresh clone. `gate: model`, `risk {all no}`, `irreversible: no`.
+
+| # | Result |
+|---|---|
+| 1 | PASS as literally specified (count 89, ≥14), but the row's own grep pattern is false-permissive on both BSD and GNU grep (`\|` parses as GNU alternation, so `^` alone matches every line — the row can't discriminate). Confirmed the real count of genuine `assay.`-prefixed key rows is 30 with a corrected pattern, well above the floor. Deliverable is fine; the check command isn't. Filed follow-up `#906`. |
+| 2 | PASS — `find . -name component.yaml \| wc -l` = 23 (≥18), unchanged from implementer's count |
+| 3 | PASS — `deskmanifest lint --root .` exit 0, `checked-clean` (23 manifests) |
+| 4 | PASS — mutation (unresolved required key) applied for real, confirmed exit 1 naming the manifest and key, reverted, confirmed clean via `git status`/re-lint |
+| 5 | PASS — mutation (2-node cycle) applied for real, confirmed exit 1 with both ids, reverted, confirmed clean |
+| 6 | PASS — mutation (out-of-range provider) applied for real, confirmed exit 1 naming the key and out-of-range provider, reverted, confirmed clean |
+| 7 | PASS — `deskmanifest lint --root /nonexistent` exit 2, `could-not-check: root /nonexistent does not exist` |
+| 8 | PASS — trust/ext grep counts match implementer's (9, 12) |
+| 9 | PASS — `go test ./cmd/deskmanifest/...` exit 0, 13 real tests (clean-baseline, unresolved-required, 2-node cycle, optional-never-cycles, out-of-range, namespace violation, duplicate-id, missing-key, could-not-check-missing-root, empty-tree-clean, semver edge cases, --version, unknown-command) — a genuine suite, not a stub |
+| 10 | PASS — `statusgen --root . --lint` exit 0, `LINT: PASS`, only pre-existing repo-wide NOTICEs |
+
+Full `git status --porcelain`/`git diff --stat` empty at the end — no leftover mutation state anywhere.
+
+**Substance checks, independently extended beyond the implementer's own coverage:**
+- Cycle detection is real graph resolution (DFS white/gray/black over the full `inject.required` adjacency map in `lint.go`'s `checkCycles`), not a 2-node special case — confirmed by constructing an out-of-repo 3-node cycle (A→B→C→A), caught correctly. Confirmed `inject.optional` edges are genuinely excluded from the graph — constructed an optional-only mutual dependency and confirmed it lints clean.
+- Namespace-collision rule (`checkNamespace`) is implemented and covered by `TestLint_NamespaceViolation` — not an unenforced gap.
+- Spot-checked 5+ representative `component.yaml` files plus two used in mutation testing: genuine, specific declarations matching real codebase mechanics, not boilerplate. Grepped all 23 manifests + KEYS.md for house-specific slugs/paths — no leaks found (the one `~/.config/assay/roster.env` mention is the documented, generic adopter-facing config path, not a house-specific value).
+
+`RISK-VALUE: DERIVED` — the `assay.` key-namespace prefix rule directly implements the brief's own stated §3 rule, confirmed in source and by the namespace-violation test. The version-range syntax and the cycle-scope rule (`inject.required` only) are both DERIVED from the brief's stated facts and confirmed by both source reading and independent boundary tests. The row 1/2/8 count floors are presence gates tied to current inventory size, not derived thresholds — expected per the brief's own framing ("presence rows gate presence, not quality").
+
+**VERIFY: PASS.** All 10 rows pass on independent re-run (3 mutation rows applied and reverted for real, not trusted from claims); substance checks (cycle depth, namespace enforcement, no house-value leak) independently confirmed and extended. Only non-blocking finding: row 1's grep command is false-permissive (filed `#906`), does not affect the deliverable's correctness. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible.
+
+### Follow-up — 2026-09-13 worker-desk dispatch, offline — row 1 check-command correction (#906, non-blocking)
+
+This brief is already `done` (README row: verified 2026-09-11, reviewed/approved PR #907
+2026-09-12), so per `docs/brief-rules.md` rule 14 the frozen Verify table itself is not
+rewritten here — this is a dated addendum recording the corrected check, not an edit to row 1.
+
+**The defect (confirmed independently, third time).** Row 1's command,
+`` grep -c '^\| \`assay\.' components/KEYS.md ``, relies on `\|` inside a basic regular
+expression meaning a literal escaped pipe. On GNU grep (and per POSIX, undefined/BSD-divergent
+behavior for BRE) an escaped `\|` is instead the **GNU alternation extension**, so the pattern
+parses as `(^)|( \`assay\.)`. The first branch, bare `^`, matches every line unconditionally —
+so the command silently counts the file's **total line count**, not table rows beginning
+`` | `assay. ``. Demonstrated on this tree:
+
+```
+$ wc -l components/KEYS.md
+      97 components/KEYS.md
+
+$ grep -c '^\| \`assay\.' components/KEYS.md      # OLD (row 1 as written) — false-permissive
+97
+
+$ grep -c '^| \`assay\.' components/KEYS.md       # NEW — drop the backslash before the pipe
+30
+```
+
+The old command returns 97 — the file's total line count — matching `wc -l` exactly, which is
+the tell that `^` alone is doing all the matching. The corrected command (same pattern, pipe
+left unescaped so it is a literal `|` rather than an alternation operator; backtick stays
+unescaped since it is already literal inside single quotes) returns 30, matching both the
+2026-09-11 non-implementer verifier's independently-confirmed count and the implementer's
+original claimed count in row 1's own Evidence line above. `>= 14` still holds either way, so
+this was never a false-negative risk to the deliverable — `components/KEYS.md` has always had
+30 genuine rows; only the check's ability to catch a *future* regression (a KEYS.md that lost
+rows) was compromised, since the old command would keep returning a large, non-zero count off
+of unrelated file growth even if every real row were deleted.
+
+**Corrected row-1 command, for any future reviewer/verifier re-running this table by hand:**
+
+```
+test -f components/KEYS.md && grep -c '^| `assay\.' components/KEYS.md
+```
+
+Expect: exit 0; count 30 (`>= 14` floor unchanged).
+
+Filed and fixed via `#906`; see that issue and its PR for the full before/after evidence. This
+addendum does not change the brief's `done` status, its gate, or the row-1 text on the record
+above — a future re-authoring of this Verify table (or a fresh brief that touches
+`components/KEYS.md`'s row-count check) should adopt the corrected form.
 
 ## Review
 

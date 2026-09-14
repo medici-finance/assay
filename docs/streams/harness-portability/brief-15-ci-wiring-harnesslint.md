@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/15
+brief: assay:assay:harness-portability:15
 title: Public CI wiring + harnesslint clean-up for the de-housed tools
 why: >-
   Brief 14 landed `tools/harnessgen`, `tools/harnesslint` and `tools/plugindrift` in the public
@@ -20,7 +20,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by harness-portability follow-up authoring dispatch (assay-worker-app)
 sources: ["the-desk ruling recorded on #631 (hp/14, merged): the three items below were flagged during hp/14 as out-of-scope-for-14 and ruled into one follow-up brief — (a) wire the three de-housed modules' test suites into public ci.yml, (b) scrub the banned harness tokens from ask-decision/install SKILL.md, (c) declare references/desk-shell.md a non-matrix reference the bindings lint skips", "brief-14-code-dehouse.md read in full 2026-09-08 as the format template, and its facts: 'CI needs no edit for the new modules' — TRUE for build+vet, which is all ci.yml's module walk does; its no-new-workflow/glob rule (Task step 5) was hp/14-scoped and does not bind this brief", ".github/workflows/ci.yml read 2026-09-08: the build-test job walks `git ls-files '*go.mod'` and runs `go build ./... && go vet ./...` per module, `go test ./...` ONLY for `tools/desk` (special-cased because two of its guard tests went latent under build+vet alone, #547/#550); no job runs harnessgen/harnesslint/plugindrift tests, and no job runs harnesslint against the real plugins/assay tree", "measured 2026-09-08 at branch head off origin/main: `go test ./...` passes in all three modules (harnessgen 28 tests, plugindrift ~39, harnesslint 15) — harnessgen checks the real tree via `--root ../..`, plugindrift stubs `gh` and is hermetic, harnesslint is fixture-based; `harnesslint bodies plugins/assay/skills` = exit 1, 4 violations (ask-decision SKILL.md lines 48/52/149 `CLAUDE_PLUGIN_ROOT`, install SKILL.md line 246 `SessionStart`); `harnesslint bindings plugins/assay/references` = exit 1, 19 violations ALL on desk-shell.md (7 unresolved capabilities + 12 missing degradation cells)", "plugins/assay/references/desk-shell.md read 2026-09-08: its own opening states it is 'the first that is not a per-harness capability binding ... this file is harness-neutral', which is the standing justification for declaring it non-matrix", "tools/harnesslint/lint.go read 2026-09-08: checkBindings globs refsDir/*.md and demands every capability resolve and every skill have a degradation cell in EVERY reference file; the tool already uses in-file HTML-comment markers (`<!-- assay:capability-vocabulary`, `<!-- assay:banned-tokens`) as its declaration convention", "changelog/README.md read 2026-09-08: this repo enforces a per-PR changelog fragment; brief-adds carry one (harness-portability-13.md, harness-portability-14-code-dehouse.md)"]
 consumers: ["docs/streams/harness-portability/README.md: fixed-here (status row 15, wave 7, notes, dependency-wave block)", ".github/workflows/ci.yml: fixed-here (the module-test wiring and the neutrality-gate step are this brief's primary deliverable)", "tools/harnesslint (lint.go + lint_test.go): fixed-here (the non-matrix-reference declaration is a tool change with its own fail-first test)", "plugins/assay/skills/ask-decision/SKILL.md, plugins/assay/skills/install/SKILL.md: fixed-here (the four token scrubs)", "plugins/assay/references/desk-shell.md: fixed-here (the non-matrix declaration marker, if the in-file-marker mechanism is chosen)"]
@@ -33,6 +33,8 @@ exec-tier-why: >-
   other references rather than only the one declared non-matrix file. Both are caught only by the
   positive-control rows below, which is why every absence-assertion here is paired with a planted
   failure.
+version: 1
+id: fcd37132-10d0-46b6-a094-adf6b493b669
 ---
 
 # Brief 15 — Public CI wiring + harnesslint clean-up for the de-housed tools
@@ -257,6 +259,35 @@ and use `../..`-relative paths — the same shape `ci.yml`'s `skillslint` job us
      Rows 4a/5a/2a: record the exit code and, for 4a, that the report body was
      NOT pasted (harnesslint bodies prints file:line, never a token value, so it
      is safe — but keep to exit code + count regardless). -->
+
+### Non-implementer verifier run — 2026-09-12 sonnet-5-verifier (verify-desk dispatch), FIRST verify pass — **VERIFY: PARTIAL**
+
+Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null`. This brief's Evidence table was completely empty before this pass.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | grep against ci.yml for the three module dirs in the go test case | dirs appear | could-not-check — the CI wiring is not applied to ci.yml; it ships as an unapplied tools/harnesslint/ci.yml.patch (the identity that authors these PRs cannot write .github/workflows). Confirmed the patch applies cleanly and its content does contain the three-module go-test case plus the harnesslint job. statusgen --lint independently flags this row's own grep pattern as using a literal-pipe bug (extended regex reads an escaped pipe as literal, not alternation), so even against an applied ci.yml this row's command matches almost nothing | 2026-09-12 sonnet-5-verifier |
+| 2 | run the three modules' go test ./... | zero failing suites | **FAIL — 1 failing suite.** harnessgen and plugindrift real-tree checks fail. Root-caused: NOT this brief's own diff — a later merged PR (desk-skills/04, closes an unrelated stream) added a new skill without regenerating Codex/Cursor packaging or the source-of-truth manifest. The harnesslint module alone passes clean. This is exactly the drift class the new oracle exists to catch — it is currently catching real drift, just from an unrelated stream, not from this brief | 2026-09-12 sonnet-5-verifier |
+| 2a | positive control: plant a canary skill, re-run the drift test filtered to the two relevant test names | non-zero exit | **Row command has an authoring bug, not a guard defect.** As literally written the test-name filter uses a backslash-escaped alternation, which Go's -run regexp reads as a literal character, matching zero tests (silent no-op, misleadingly "passes"). Re-run with the correct unescaped alternation confirms the guard itself works: the manifest-drift test genuinely fails when an unaccounted skill is planted in the real tree | 2026-09-12 sonnet-5-verifier |
+| 3 | grep ci.yml for the bodies/bindings step count | count >= 2 | could-not-check, same reason as row 1 (staged patch, not applied); same literal-pipe authoring bug independently flagged by statusgen for this row too | 2026-09-12 sonnet-5-verifier |
+| 4 | harnesslint bodies on the real skills tree | checked-clean, exit 0 | PASS — checked-clean, no violations, exit 0 | 2026-09-12 sonnet-5-verifier |
+| 4a | positive control: banned token replanted in a scratch copy | exit 1 | PASS — exit 1 (report body kept to exit code + count per the security-sensitive-content instruction, not pasted) | 2026-09-12 sonnet-5-verifier |
+| 5 | harnesslint bindings on the real references tree | checked-clean, exit 0 | **FAIL, exit 1, 3 violations** — same human-runsheet cross-stream drift as row 2: the three real matrix files each missing a degradation cell for the new skill. The declared non-matrix reference is correctly skipped, which is itself confirmation the skip did not broaden (the failures are only on the real matrix files) | 2026-09-12 sonnet-5-verifier |
+| 5a | narrowness control: an undeclared junk reference in a scratch copy | exit 1 | PASS — exit 1, 7 violations on the junk file; the declared non-matrix reference is still correctly skipped in the same run, proving the skip is narrow and does not cover its neighbour | 2026-09-12 sonnet-5-verifier |
+| 6 | fail-first suite in the harnesslint module (narrowness + skip-declaration tests) | exit 0 | PASS — exit 0, includes the three targeted narrowness/skip-declaration tests | 2026-09-12 sonnet-5-verifier |
+| 7 | statusgen --lint --root . | exit 0, no PROBLEM | PASS — built from this repo's own statusgen source; LINT: PASS, exit 0. Several NOTICE-level lines independently corroborate this pass's own row 1/2a/3/9 command-authoring findings | 2026-09-12 sonnet-5-verifier |
+| 8 | changelog aggregate check | exit 0 | PASS — exit 0 | 2026-09-12 sonnet-5-verifier |
+| 9 | conflict-marker + diffstat check vs origin/main | 0 markers, narrow diffstat | Adapted — unrunnable as literally written once fast-forwarded to merged main (the base-vs-head comparison is empty by construction); statusgen's own lint independently flags this row as a moving-ref command. A repo-wide search for the actual conflict-marker string returns only legitimate doc/test-fixture prose (this brief's own row text, skill docs, and conflict-detection code plus its tests) — zero real unresolved conflicts. Diffed the actual merge commits instead: touches exactly the plugin manifest version-parity fix, two reference-doc relocations, both affected SKILL.md files, and the harnesslint module — matches the brief's declared touch-set | 2026-09-12 sonnet-5-verifier |
+
+Additional task-correctness spot checks: token relocation confirmed real (moved out of two skill bodies into the shared reference doc, not deleted); the non-matrix reference carries the exact declared marker; the skip mechanism announces every skipped file and keys strictly on that declaration.
+
+`RISK-VALUE: DERIVED` — the one literal this diff introduces: a packaging-manifest version field regenerated as a side effect of this brief's own tooling, mechanically derived from the source-of-truth manifest's version field (the same value a dedicated equality test pins) — not a picked value, previously silently stale because nothing exercised the test that catches it, and reversible via a re-run of the generator. Everything else in the diff is structural (skip logic, doc relocation, CI step wiring) with no new numeric threshold, timeout, ratio, or authority binding.
+
+**VERIFY: PARTIAL.** Rows 1/3 could-not-check by design (already documented in the stream README — App can't write .github/workflows, wiring ships as a staged patch), not a defect in this brief. Rows 2/5 are a genuine FAIL on current merged main, but caused by an unrelated later-merged PR — not a defect in this brief's own diff; worth a separate filing against that drift. Row 2a's own command has a shell/regex-escaping bug (matches zero tests, so its "pass" would be hollow) — corrected, the underlying guard genuinely works. Row 9 unrunnable as literally written post-merge; adapted to the merge-commit diff, which is clean and narrow. Everything else (4, 4a, 5, 5a, 6, 7, 8) is a clean, real PASS including both designed positive/narrowness controls and the fail-first suite.
+
+Per frontmatter `gate: model`: this verifier does not sign off and status does not change. Evidence-only, for the dispatching session to route per the gate:model path.
+
+**Additional findings worth relaying (not Verify-row failures):** (1) this brief's own Verify rows 1, 2a, 3, and 9 have command-authoring bugs (an escaped-pipe-as-literal issue in two different regex dialects, and a moving-ref comparison) — statusgen's own lint independently flags all of these as NOTICEs; worth a small brief-hygiene fix. (2) statusgen also flags a risk-files-crossread NOTICE: this brief answers all four risk questions "no" but its files: list names a security-path-triggering CI workflow file — worth a human/desk glance even though the actual edit currently lands only as a sidecar patch rather than a live workflow change. (3) The unrelated drift causing rows 2/5's FAIL (a skill added without regenerating packaging/bindings) is a real, currently-live defect worth its own filing.
 
 ## Review
 

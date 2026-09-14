@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/04
+brief: assay:assay:desk-containers:04
 title: interactive desktop launch script (desk-run.sh)
 wave: 3
 depends: ["desk-containers/02", "desk-containers/03"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [63]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#63 — the request (a shell script I can use to fire them off from my desktop and run them interactively like I currently do)"
@@ -19,6 +19,8 @@ why: >-
   This is the primary aim of the request: one command on a desktop that fires up a
   chosen desk interactively, exactly like today's terminal sessions, with the
   credentials mounted correctly every time instead of hand-assembled docker flags.
+version: 1
+id: 8d6363a5-d747-4a47-b4da-52137ebcc3b9
 ---
 
 # Brief 04 — interactive launch script

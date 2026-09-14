@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/02
+brief: assay:assay:forge-gitlab:02
 title: gitlab forge implementation — MRs, notes, approvals, statuses over REST v4
 why: >-
   With the Forge seam in place, GitLab support is one implementation file away. This
@@ -9,12 +9,12 @@ why: >-
   "portable in principle" and a fleet that runs.
 wave: 2
 depends: ["forge-gitlab/01"]
-unblocks: ["forge-gitlab/04", "forge-gitlab/08"]
+unblocks: ["forge-gitlab/04", "forge-gitlab/08", "forge-gitlab/11"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §6 (concept mapping), §2 (identity model)"
@@ -24,6 +24,8 @@ exec-tier: strong
 exec-tier-why: "semantic-equivalence mapping across forges (question b): a plausible-but-wrong mapping (e.g. approval vs approval-rule eligibility) survives happy-path tests."
 domain: complicated
 tier: free
+version: 1
+id: 39d1e184-0045-4bf0-bdd0-7115a3f45386
 ---
 
 # Brief 02 — gitlab forge implementation
@@ -84,9 +86,9 @@ brief 04's provisioning, not here — see edition-matrix.md rows B3 and B4.
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go build ./... && go test ./tools/desk/internal/deskkit/ -run TestForgeGitlab -v` | exit 0; output contains `PASS` |
-| 2 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabCoverage -v` | exit 0 — the test reads inventory.md and fails naming any inventoried op with no gitlab contract test (dereference: coverage measured against the committed inventory, not asserted) |
-| 3 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabTierErrors -v` | exit 0; output contains `could-not-check` for a 403 fixture |
+| 1 | `cd tools/desk && GOWORK=off go build ./... && go test ./internal/deskkit/ -run TestForgeGitlab -v` | exit 0; output contains `PASS` |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v` | exit 0 — the test reads inventory.md and fails naming any inventoried op with no gitlab contract test (dereference: coverage measured against the committed inventory, not asserted) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabTierErrors -v` | exit 0; output contains `could-not-check` for a 403 fixture |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

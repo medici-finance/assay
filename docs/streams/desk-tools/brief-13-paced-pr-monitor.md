@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/13
+brief: assay:assay:desk-tools:13
 title: "`pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree"
 why: >-
   The review desk's event monitor — poll every open PR's head sha and state across the repo
@@ -18,7 +18,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -26,6 +26,8 @@ sources:
   - "The monitor the new script mirrors line for line where the concern is shared: `plugins/assay/scripts/inbound-monitor.sh` — per-repo state files, seed-silently-on-first-sight, `MONITOR-ARMED:` / `MONITOR-DEGRADED:` lines, the truncation and collapse guards, the `.assay/repos.txt` repo resolution; and its test harness `inbound-monitor.test.sh` (fake `gh` on PATH)."
   - "The outward-write budget is NOT the control here — the monitor makes reads — but the breaker vocabulary it should echo when degraded: `tools/desk/internal/deskkit/ratelimit.go`."
   - "Brief and Verify shape: `spec/brief-v1.md`; status semantics: `spec/lifecycle-v1.md`."
+version: 1
+id: 4d8f2fa6-99c4-43a7-bb1d-7a3c1d34a062
 ---
 
 # Brief 13 — `pr-monitor.sh`: a paced, per-repo head-sha / draft-state PR monitor

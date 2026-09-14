@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -13,6 +12,14 @@ import (
 // authority.go — the two fetch-and-verify gates. Nothing in this file trusts a flag,
 // a login string handed to it, or a file the caller can write. Each gate ends in a
 // GitHub read whose AUTHOR is checked against the roster's pinned blessing authority.
+
+// isBotOrAppLogin reports whether a rendered forge login belongs to a bot/App rather than a
+// human — the seam's stand-in for the REST `type != "User"` check. GitHub renders an App/Bot
+// author as `<slug>[bot]` (and, in some surfaces, `app/<slug>`); both are excluded.
+func isBotOrAppLogin(login string) bool {
+	l := strings.ToLower(strings.TrimSpace(login))
+	return l == "" || strings.HasSuffix(l, "[bot]") || strings.HasPrefix(l, "app/")
+}
 
 // defaultRulingsPath is where R-1 lives in this repo. It is a path, not a URL: the
 // FILE states the claim ("R-1 was signed, here is the artifact"), and the artifact is
@@ -98,25 +105,29 @@ func readRulingSignOff(path string) (string, error) {
 	}
 }
 
-// ghComment is the subset of a GitHub comment the authorization check consumes.
+// ghComment is the subset of a comment the authorization check consumes. It is populated from
+// Forge.ListComments (which carries the author's login AND — since the write-verbs-C extension —
+// numeric id, the pair the blessing-authority pin requires).
 type ghComment struct {
-	ID       int64  `json:"id"`
-	HTMLURL  string `json:"html_url"`
-	IssueURL string `json:"issue_url"`
-	Body     string `json:"body"`
-	User     struct {
-		Login string `json:"login"`
-		ID    int64  `json:"id"`
-		Type  string `json:"type"`
-	} `json:"user"`
+	ID      int64  // the comment's numeric (database) id
+	HTMLURL string
+	Body    string
+	User    struct {
+		Login string
+		ID    int64
+	}
 }
 
-// fetchComment retrieves the comment a permalink names.
+// fetchComment retrieves the comment a permalink names, through the resolved forge.
 //
-// Fail-closed in every direction: an unparseable URL is refused, and a fetch that does
-// not come back is Unverifiable (exit 6) with ZERO closes performed. COULD-NOT-CHECK IS
-// NOT AUTHORIZATION — a batch closer that proceeds because it failed to reach the
-// artifact has exactly the authorization of one that never looked.
+// The permalink gives the OWNER/REPO, the ITEM number and the comment id. deskclose lists the
+// comments on THAT item (ListComments) and finds the one whose database id matches — so the
+// permalink's item and the comment's actual thread are the SAME by construction (the old REST
+// path fetched the comment by id and then cross-checked its issue_url; listing on the named item
+// makes the cross-check inherent: a comment id that is not on the named item is refused).
+//
+// Fail-closed in every direction: an unparseable URL is refused, and a fetch that does not come
+// back is Unverifiable (exit 6) with ZERO closes performed. COULD-NOT-CHECK IS NOT AUTHORIZATION.
 func fetchComment(url string) (ghComment, error) {
 	m := commentURLRe.FindStringSubmatch(strings.TrimSpace(url))
 	if m == nil {
@@ -125,32 +136,41 @@ func fetchComment(url string) (ghComment, error) {
 				"(want https://github.com/<owner>/<repo>/issues|pull/<N>#issuecomment-<id>). " +
 				"A link to a thread is not an authorization: a thread is written by whoever shows up.")
 	}
-	owner, repo, cid := m[1], m[2], m[5]
-	raw, err := runGH("api", "-H", "Accept: application/vnd.github+json",
-		fmt.Sprintf("repos/%s/%s/issues/comments/%s", owner, repo, cid))
+	owner, repo, itemStr, cidStr := m[1], m[2], m[4], m[5]
+	itemN, ierr := strconv.Atoi(itemStr)
+	if ierr != nil || itemN <= 0 {
+		return ghComment{}, deskkit.Refused("refused: " + deskkit.StripControl(url) + " names an invalid item number")
+	}
+	cid, cerr := strconv.ParseInt(cidStr, 10, 64)
+	if cerr != nil || cid <= 0 {
+		return ghComment{}, deskkit.Refused("refused: " + deskkit.StripControl(url) + " names an invalid comment id")
+	}
+	fg, fr, ferr := forgeForFn(owner + "/" + repo)
+	if ferr != nil {
+		return ghComment{}, ferr
+	}
+	comments, err := fg.ListComments(fr, itemN)
 	if err != nil {
 		return ghComment{}, deskkit.Unverifiable(
 			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+
 				" could not be fetched — deskclose refuses. An unreadable authorization is not an "+
 				"authorization; zero items were closed", err)
 	}
-	var c ghComment
-	if jerr := json.Unmarshal([]byte(raw), &c); jerr != nil {
-		return ghComment{}, deskkit.Unverifiable(
-			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+
-				" did not parse as a GitHub comment", jerr)
+	for _, c := range comments {
+		if c.DatabaseID == cid {
+			out := ghComment{ID: c.DatabaseID, HTMLURL: c.URL, Body: c.Body}
+			out.User.Login = c.Author.Login
+			out.User.ID = c.Author.ID
+			if out.HTMLURL == "" {
+				out.HTMLURL = deskkit.StripControl(url) // GitLab notes have no permalink; keep the caller's.
+			}
+			return out, nil
+		}
 	}
-	// The permalink's own item path must match the comment's issue_url. Without this a
-	// doctored link could display one thread while authorizing from a comment on
-	// another.
-	wantItem := fmt.Sprintf("/repos/%s/%s/issues/%s", owner, repo, m[4])
-	if !strings.HasSuffix(strings.TrimSuffix(c.IssueURL, "/"), wantItem) {
-		return ghComment{}, deskkit.Refused(
-			"refused: the authorization permalink names " + deskkit.StripControl(owner+"/"+repo+"#"+m[4]) +
-				" but the comment it resolves to lives on " + deskkit.StripControl(c.IssueURL) +
-				" — the link and the artifact disagree")
-	}
-	return c, nil
+	return ghComment{}, deskkit.Refused(
+		"refused: the authorization permalink names comment " + deskkit.StripControl(cidStr) +
+			" on " + deskkit.StripControl(owner+"/"+repo+"#"+itemStr) +
+			", but no such comment is on that item — the link and the artifact disagree, or the comment was deleted")
 }
 
 // verifyHumanAuthor is the load-bearing identity check, and it is deliberately made of
@@ -174,10 +194,17 @@ func fetchComment(url string) (ghComment, error) {
 // refuses to accept an App as one.
 func verifyHumanAuthor(c ghComment, what string) error {
 	who := deskkit.StripControl(c.User.Login)
-	if !strings.EqualFold(c.User.Type, "User") {
+	// App/Bot exclusion. The REST `type == "User"` field is not on the forge seam; a bot
+	// identity is represented instead by its RENDERED login — `<slug>[bot]` / `app/<slug>` on
+	// GitHub, which ListComments emits (the same rendering RoleAppLogin and the trust set use).
+	// So a bot/App artifact is excluded by its login shape here. This is the SECOND layer; the
+	// id-pin below is the primary control, and on a forge whose bot rendering this shape check
+	// does not catch, the id-pin alone still fails the batch closed — a bot's numeric id is
+	// never the roster-pinned human's.
+	if isBotOrAppLogin(c.User.Login) {
 		return deskkit.Refused(fmt.Sprintf(
-			"refused: %s is authored by %s (type %s) — an App or Bot artifact is never a human "+
-				"authorization, whatever permissions it holds", what, who, deskkit.StripControl(c.User.Type)))
+			"refused: %s is authored by %s, a bot/App rendered login — an App or Bot artifact is never a "+
+				"human authorization, whatever permissions it holds", what, who))
 	}
 	if !deskkit.IsBlessAuthorityIDStrict(c.User.Login, c.User.ID) {
 		return deskkit.Refused(fmt.Sprintf(

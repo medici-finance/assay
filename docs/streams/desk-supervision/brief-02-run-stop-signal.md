@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/02
+brief: assay:assay:desk-supervision:02
 title: Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal
 why: >-
   Nothing can stop ONE run today. The kill switch knows DISABLED, STOP and STOP.<loop>, all
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §8.5 ('terminate the worker and queue a retry'), §10.6 (timeouts and error mapping) — https://github.com/openai/symphony/blob/main/SPEC.md"
@@ -34,6 +34,8 @@ consumers:
   - "plugins/assay/skills/worker-desk/SKILL.md §Cadence and wake: fixed-here (the desk window's sweep reads `desksupervise status --stops` and issues the harness-side stop in capability vocabulary)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md and verify-desk/SKILL.md cadence sections: follow-up desk-supervision/07 (the same sweep line lands with the snapshot verb for all three windows)"
   - "docs/streams/desk-containers (process-level kill in container mode): out-of-scope (a container desk's process kill is that stream's launch/control layer; this brief's two layers do not depend on it)"
+version: 1
+id: 70b635a0-b5ce-4b51-b968-e3b2a03bcfba
 ---
 
 # Brief 02 — Per-run stop signal

@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/01
+brief: assay:assay:desk-supervision:01
 title: Observable probes + the `desksupervise` observer — liveness that bites
 why: >-
   The engine's liveness taxonomy (schedule-to-start, heartbeat gap, per-tier wall cap)
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §8.5 (active-run reconciliation: stall detection per tick) and §8.4 (retry + backoff) — https://github.com/openai/symphony/blob/main/SPEC.md"
@@ -31,6 +31,8 @@ exec-tier-why: >-
 consumers:
   - "tools/desk/internal/loopengine/engine.go Config.Observe: fixed-here (the probes this brief ships are the value a future driver cutover plugs into Config.Observe unchanged — no engine edit)"
   - "plugins/assay/skills/worker-desk/SKILL.md §Sources of work row 9 (queue suppressors): follow-up desk-supervision/07 (the observer's snapshot becomes the instrument that reads expired claims; the skill row is rewritten when the snapshot verb lands)"
+version: 1
+id: 2070ddc5-4810-472d-9b27-2fb154f30907
 ---
 
 # Brief 01 — Observable probes + the `desksupervise` observer

@@ -124,3 +124,100 @@ func TestLoadIntakePerEntryDirWins(t *testing.T) {
 		t.Fatalf("per-entry directory is authoritative and empty; expected 0 entries, got %d: %+v", len(entries), entries)
 	}
 }
+
+// TestParseIntakeLegacyDispositionCaseInsensitive verifies that parseIntakeLegacy
+// matches the disposition key case-insensitively (e.g. "disposition: accepted" or
+// "Disposition: accepted"), so a lowercase or mixed-case key is not silently
+// dropped and converted to the untriaged "new" default (issue #915).
+func TestParseIntakeLegacyDispositionCaseInsensitive(t *testing.T) {
+	cases := []struct {
+		name          string
+		keyLine       string
+		wantDisp      string
+		wantUntriaged int
+	}{
+		{
+			name:          "canonical TitleCase Disposition:",
+			keyLine:       "Disposition: scoped → somestream",
+			wantDisp:      "scoped → somestream",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "lowercase disposition:",
+			keyLine:       "disposition: accepted",
+			wantDisp:      "accepted",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "mixed case DisPosition:",
+			keyLine:       "DisPosition: rejected",
+			wantDisp:      "rejected",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "lowercase disposition: new",
+			keyLine:       "disposition: new",
+			wantDisp:      "new",
+			wantUntriaged: 1,
+		},
+		{
+			name:          "leading whitespace before key",
+			keyLine:       "  disposition: accepted",
+			wantDisp:      "accepted",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "tab separator after colon",
+			keyLine:       "Disposition:\taccepted",
+			wantDisp:      "accepted",
+			wantUntriaged: 0,
+		},
+		{
+			name:          "no colon does not match and defaults to new",
+			keyLine:       "Disposition accepted",
+			wantDisp:      "new",
+			wantUntriaged: 1,
+		},
+		{
+			name:          "longer key prefix does not match and defaults to new",
+			keyLine:       "DispositionX: accepted",
+			wantDisp:      "new",
+			wantUntriaged: 1,
+		},
+		{
+			name:          "missing disposition key defaults to new",
+			keyLine:       "",
+			wantDisp:      "new",
+			wantUntriaged: 1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			streamsDir := filepath.Join(root, "docs", "streams")
+			mustMkdirAll(t, streamsDir)
+			content := "# Intake\n\n## I-case-test — 2026-07-08 — Test entry\n\nSome body.\n\n"
+			if tc.keyLine != "" {
+				content += tc.keyLine + "\n"
+			}
+			writeTemp(t, streamsDir, "INTAKE.md", content)
+
+			entries, err := loadIntake(root)
+			if err != nil {
+				t.Fatalf("loadIntake error: %v", err)
+			}
+			if len(entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(entries))
+			}
+			if entries[0].Disposition != tc.wantDisp {
+				t.Errorf("expected Disposition %q, got %q", tc.wantDisp, entries[0].Disposition)
+			}
+			res := intakeAlarm(entries, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+			if res.Untriaged != tc.wantUntriaged {
+				t.Errorf("expected Untriaged = %d, got %d", tc.wantUntriaged, res.Untriaged)
+			}
+		})
+	}
+}
+

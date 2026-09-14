@@ -1200,6 +1200,243 @@ func TestEncryptedExemptionsDoNotWidenFalseNegatives(t *testing.T) {
 	}
 }
 
+// TestPGPFingerprintExemption pins Rule 3: a 40-char UPPERCASE-hex OpenPGP key fingerprint
+// anchored to a sops `pgp:`/`fp:` recipient field is not withheld content and must pass,
+// while the anchor stays load-bearing — a bare uppercase-hex run, and a genuine
+// high-entropy token wearing the same field, both still refuse.
+//
+// The bug this fixes: a `.sops.yaml` recipient list and a sops `fp:` field carry the
+// canonical fingerprint shape (40 UPPERCASE hex). isGitSHA exempts only LOWERCASE hex, so
+// the uppercase fingerprint fell through to the high-entropy-run refusal — deskevidence
+// refusing to write a body that merely quoted a public key fingerprint.
+func TestPGPFingerprintExemption(t *testing.T) {
+	// Canonical OpenPGP v4 fingerprints: 40 UPPERCASE hex. Split into fragments for the same
+	// reason scanSecret40 is — deskpr scans the branch diff, and the scanner in force while
+	// THIS PR is open is exactly the one that (pre-fix) refuses a contiguous 40-hex run on an
+	// added line. These are house placeholder values, not real key material.
+	fpr := "D9C5F0C3E1A2B4D6F809" + "1A2B3C4D5E6F7A8B9C0D"
+	fpr2 := "A1B2C3D4E5F607182930" + "4B5C6D7E8F90ABCDEF01"
+
+	// PASS: an uppercase-hex fingerprint anchored to a recipient field. None of these carry a
+	// top-level `sops:` key, so they exercise the high-entropy loop (where the false positive
+	// lived), not the sops-encrypted-block arm.
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"sops-config recipient, folded block scalar",
+			"creation_rules:\n  - path_regex: secrets/.*\\.yaml$\n    pgp: >-\n      " + fpr + "\n"},
+		{"sops-config recipient, inline scalar",
+			"creation_rules:\n  - pgp: " + fpr + "\n"},
+		{"sops-config recipient, quoted comma-list of two",
+			"creation_rules:\n  - pgp: '" + fpr + "," + fpr2 + "'\n"},
+		{"fp field on a recipient line",
+			"recipients:\n  - fp: " + fpr + "\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("an uppercase-hex PGP fingerprint anchored to a %s was refused as "+
+					"withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	// REFUSE: the anchor is load-bearing and it does not launder a genuine secret.
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// The SAME fingerprint with no pgp:/fp: key in front of it is a bare 40-uppercase-hex
+		// run and stays refused — proving the exemption is the anchor, not the hex shape.
+		{"bare uppercase-hex run, no recipient key", "note: " + fpr + "\n"},
+		// A genuine high-entropy token is not pure uppercase hex, so Rule 3 never fires even
+		// when the token wears a recipient field: the field cannot launder a real secret.
+		{"real secret behind a fp: field", "fp: " + scanSecret40 + "\n"},
+		{"real secret behind a pgp: field", "pgp: " + scanSecret40 + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 3 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
+// TestQuantifierGluedPathExemption pins Rule 4, the leading-'+' arm, in BOTH directions.
+//
+// The false positive it clears: '+' is in the base64 alphabet and therefore in
+// reBase64ish's character class, so a regex quantifier written immediately in front of a
+// path is read as the FIRST CHARACTER of that path's run. The Verify-row idiom
+// `grep -cE -e '^FRESH +<path>'` — where ` +` means "one or more spaces" — is exactly that
+// shape. The path on its own is 31 characters, one under the run threshold, and never
+// reached the scan at all; with the quantifier glued on it is 32, and isPathLike refuses
+// any run containing '+' outright, so the row refused.
+//
+// The cost was total rather than cosmetic: deskevidence scans the WHOLE merged brief before
+// appending its Evidence row, so a brief carrying such a row could never receive an Evidence
+// append through the sanctioned tool, at any time, by anyone (#879).
+//
+// The bound is that the exemption is earned by the REMAINDER, never by the '+': the run
+// minus one leading '+' must itself satisfy isPathLike. A '+' contributes no payload, so
+// this cannot admit content the path rule would not already admit without it.
+func TestQuantifierGluedPathExemption(t *testing.T) {
+	// Split for the same reason TestPGPFingerprintExemption splits its fingerprints: the
+	// scanner in force while THIS PR is open scans the branch diff, and pre-fix it refuses
+	// the contiguous run on an added line.
+	path := "plugins/assay/" + "references/claude-code.md"
+
+	// PASS: a '+' that is syntax — a regex quantifier, a unified-diff add marker — in front
+	// of a path that is itself already exempt under Rule 1.
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"verify-row grep quantifier",
+			"| 3 | `grep -cE -e '^FRESH +" + path + "' /tmp/r3.out` | `2` |\n"},
+		{"quantifier inside a force-aged control row",
+			"| 3a | `grep -cE -e '^STALE +" + path + "' /tmp/r3a.out` | `2` |\n"},
+		{"unified-diff add marker glued to a path",
+			"@@ -1,2 +1,3 @@\n+" + path + "\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("a %s was refused as withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	// REFUSE: the '+' is not itself the exemption and cannot launder anything.
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// A bare credential-length blob behind a '+' has no '/' at all, so the remainder
+		// fails Rule 1 on its first gate.
+		{"leading + on a bare secret", "note: +" + scanSecret40 + "\n"},
+		// The #410 slash-layout draws: one lucky word-shaped segment rescuing an opaque
+		// run. isPathLike already refuses these, and the '+' does not change that.
+		{"leading + on a slash-layout draw",
+			"note: +" + "Xq7bPmT2kVn9d/Rambler/" + "Zk4hQw8sLpXt3vNb2G" + "\n"},
+		// Exactly ONE '+' is stripped. A second one is left in the remainder, where
+		// isPathLike's own '+'/'=' gate refuses it — so the arm cannot be walked forward
+		// one character at a time into a general base64 exemption.
+		{"two leading + on a real path", "note: ++" + path + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 4 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
+// TestEnumSlashListExemption pins Rule 5, the ALL-CAPS enum/status slash-list arm (#966),
+// in BOTH directions.
+//
+// The false positive it clears: a Verify/Evidence row citing a set of stream states —
+// `PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE` — carries no lowercase letters and no
+// digits, so none of isPathLike, isIdentifierLike or isAssignmentLike can reach it (an
+// ALL-CAPS stretch is deliberately opaque everywhere else in this file, since it is
+// exactly a webhook token's tail shape), and it fell straight through to the high-entropy
+// refusal.
+func TestEnumSlashListExemption(t *testing.T) {
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"a stream-status enum list", "prior states: PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE\n"},
+		{"groups at the minEnumWordLen floor", "seen: " + strings.Repeat("OK/", 12) + "NO\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("an ALL-CAPS enum slash-list (%s) was refused as withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// A single ALL-CAPS group is not a LIST — it is already, correctly, refused by
+		// every other rule (a lone acronym-shaped token in prose is credential-tail shaped).
+		{"a single ALL-CAPS group, no list", "state: " + strings.Repeat("A", 40) + "\n"},
+		// A group past maxEnumWordLen is opaque material wearing slashes, not an enum word.
+		// (Padded with extra groups so the whole run still clears the 32-char scan
+		// threshold once the oversized first group is excluded from consideration.)
+		{"a group over the length bound",
+			"note: " + strings.Repeat("A", maxEnumWordLen+1) + strings.Repeat("/DONE", 3) + "\n"},
+		// A group carrying a digit denies the exemption entirely, even joined by slashes.
+		{"a digit-bearing group", "note: PEND1NGSTATE2026" + "072233445/RUNNING\n"},
+		// A real secret does not decompose into ALL-CAPS letters-only groups — mixed case
+		// and digits are exactly what the group-content gate exists to keep out.
+		{"a real secret glued into a slash shape", "note: " + scanSecret40[:20] + "/" + scanSecret40[20:] + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 5 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
+// TestK8sUIDHexSegmentExemption pins Rule 6, the Kubernetes generated-name hex arm (#966),
+// in BOTH directions.
+//
+// The false positive it clears: a PersistentVolumeClaim's bound PersistentVolume name
+// (`pvc-<uid>`, the UID rendered with its dashes stripped, exactly how Kubernetes itself
+// emits it) quoted in an already-reviewed-and-merged Verify/Evidence row reads as a bare
+// 32-hex high-entropy run with no other exemption able to reach it, and a brief carrying
+// one could never receive another Evidence append through the sanctioned tool.
+func TestK8sUIDHexSegmentExemption(t *testing.T) {
+	uid := "38d9b7ef" + "ea064f53" + "acd58432" + "96326c99" // 32 lowercase hex, split for readability
+
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"a pvc-prefixed generated name", "bound volume: pvc-" + uid + " mounted read-only\n"},
+		{"a pv-prefixed generated name", "backing pv-" + uid + " provisioned by the CSI driver\n"},
+		{"a job-prefixed generated name", "retry against job-" + uid + " once the node drains\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("a Kubernetes generated-name UID (%s) was refused as withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// The anchor is a CLOSED list, not "any word before a hyphen" — a real secret
+		// pasted as token-<32hex> or key-<32hex> must not be laundered by this rule.
+		{"an unlisted prefix", "leaked: token-" + uid + "\n"},
+		{"another unlisted prefix", "rotate: key-" + uid + "\n"},
+		// The run must be EXACTLY 32 hex — a longer or shorter run behind a listed prefix
+		// is not the UID shape and stays refused.
+		{"wrong-length run behind a listed prefix", "bound volume: pvc-" + uid + "ff\n"},
+		// A bare 32-hex run with no listed prefix in front of it is unrelated prose/token
+		// material and stays refused exactly as it always has.
+		{"bare 32-hex run, no prefix", "note: " + uid + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 6 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
 // TestLongIdentifiersAndOneLetterWords pins the two moves that unblocked verify-desk's
 // Evidence writes:
 //

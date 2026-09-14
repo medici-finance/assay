@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/03
+brief: assay:assay:harness-portability:03
 title: "Ruling: target harnesses, delivery channel, degradation matrix"
 why: >-
   Three commitments only Ian can make sit at the neck of this stream: which Codex
@@ -24,9 +24,11 @@ gate-why: >-
   not a ruling.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07)", "harness-portability/01's capability matrix (the facts the ruling is made on)", "the publication stream (the marketplace channel's gate: publication is a fresh history-free copy into the public repo; nothing distributes from a private repo)", "superpowers precedent: distribution into openai-codex-plugins is a PR into OpenAI's fork repo (scripts/sync-to-codex-plugin.sh) — i.e. a public act", "freshness-checked 2026-08-07 (no prior harness-target ruling exists anywhere in docs/)"]
+version: 1
+id: c77edf22-8b5e-4f0b-9eb3-b0d0475debee
 ---
 
 # Brief 03 — Ruling: targets, channel, degradation

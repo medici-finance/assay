@@ -13,6 +13,6 @@ apply:
   - id: registers-tree
     effect: create the FINDINGS / INTAKE / RETRO registers under docs/streams/
     boundary: inside
-    inverse: remove the register files (TODO composability/02 makes the reverse real)
+    inverse: remove the FINDINGS / INTAKE / RETRO register files under docs/streams/
 intercept: []
 config: {}

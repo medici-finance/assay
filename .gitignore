@@ -42,3 +42,10 @@
 !/.codex/hooks.json
 !/.codex/rules/
 !/.codex/prompts/
+
+# The credits resolver's fixture REPOSITORY (contributor-trust/09). Built by
+# tools/changelog/testdata/make-credits-fixture.sh — it has to be a real git
+# history (an adding commit, a merge commit, a squash landing), which cannot be
+# committed inside this repository, and which must not resolve against this
+# repository's own history. See that script's header.
+/tools/changelog/testdata/credits-fixture-repo/

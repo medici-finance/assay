@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 
@@ -22,6 +23,22 @@ var execCommand = exec.Command
 func runGit(dir string, args ...string) (string, error) {
 	stdout, _, err := runGitStreams(dir, args...)
 	return stdout, err
+}
+
+// pushTransportGate is the PUSH-transport custody gate for `deskwt add`. A worktree
+// INHERITS the source checkout's remote, so a worktree cut from an SSH-remoted checkout is
+// pre-loaded to push under whatever key this machine's agent holds. Refusing at CREATE time
+// — before the branch exists, before a dispatched agent has committed anything into it — is
+// cheaper than refusing at push time, when the work is already in the tree.
+//
+// The read goes through this package's ONE argv seam, so the "no --force in any git argv"
+// assertion still runs over every git call add makes. See deskkit/pushtransport.go.
+func pushTransportGate(dir, verb string) error {
+	return deskkit.CheckPushTransport(deskkit.PushTransportInput{
+		Tool: "deskwt", Verb: verb, Dir: dir, Remote: "origin",
+		ConfigZ: func() (string, error) { return runGit(dir, "config", "--list", "-z") },
+		Stderr:  os.Stderr,
+	})
 }
 
 // runGitStreams is runGit with the STDERR text handed back on success too. Some git verbs

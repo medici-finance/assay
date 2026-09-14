@@ -17,6 +17,10 @@ package main
 //     is the arm --lint uses on a branch — it never renders a PR-derived todo.
 //   - online (--repo owner/name): read the repo's PRs over REST (ghfetch.go). A
 //     fetch failure is unknown WITH the HTTP status, never a clean board.
+//
+// --backfill and --report (derived-board/07, reconcilebackfill.go) layer a
+// DECLARED, reviewable, history-only fallback and a drift report on top of the
+// online mode above; see reconcilebackfill.go's header for the full contract.
 
 import (
 	"encoding/json"
@@ -24,15 +28,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // reconcileResult is the machine-readable output shape (--json). Its per-brief
-// rows are BriefCell values (id/cell/source/witness/reason/version).
+// rows are BriefCell values (id/cell/source/witness/reason/version). Applied
+// is populated only with --apply, and only with rows this run actually wrote
+// (reconcileapply.go) — omitted (nil) otherwise.
 type reconcileResult struct {
-	Repo     string      `json:"repo"`
-	LookedAt bool        `json:"lookedAt"`
-	Reason   string      `json:"reason"`
-	Briefs   []BriefCell `json:"briefs"`
+	Repo     string       `json:"repo"`
+	LookedAt bool         `json:"lookedAt"`
+	Reason   string       `json:"reason"`
+	Briefs   []BriefCell  `json:"briefs"`
+	Applied  []appliedRow `json:"applied,omitempty"`
 }
 
 const (
@@ -49,10 +57,25 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	offline := fs.Bool("offline", false, "do not touch the network; every PR-derived cell is unknown")
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
+	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo")
+	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
+	apply := fs.Bool("apply", false, "with --backfill: WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion); requires --backfill")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return reconcileOK
 		}
+		return reconcileUsageErr
+	}
+	if *report && !*backfill {
+		fmt.Fprintln(stderr, "reconcile: --report requires --backfill (the report compares against the backfill-adjusted cells)")
+		return reconcileUsageErr
+	}
+	if *apply && !*backfill {
+		fmt.Fprintln(stderr, "reconcile: --apply requires --backfill (the write only fires for a backfill-witnessed transition)")
+		return reconcileUsageErr
+	}
+	if *backfill && hasNoGitDir(*root) {
+		fmt.Fprintf(stderr, "could-not-check: %s has no .git — --backfill reads the hand-said history from git log\n", *root)
 		return reconcileUsageErr
 	}
 
@@ -63,6 +86,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 
 	in := LifecycleInput{Briefs: idents}
+	var client *ghClient
 	switch {
 	case *offline:
 		in.LookedAt = false
@@ -78,17 +102,63 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stderr, "could-not-check: %v\n", terr)
 			return reconcileUsageErr
 		}
-		prs, lookedAt, reason := newGHClient(token).ListPRs(*repo)
+		client = newGHClient(token)
+		prs, lookedAt, reason := client.ListPRs(*repo)
 		in.PRs = prs
 		in.LookedAt = lookedAt
 		in.Reason = reason
+	}
+
+	cells := DeriveLifecycle(in)
+
+	var lookup handSaidLookup
+	if *backfill {
+		lookup = func(stream, num string) (string, string, bool) {
+			return handSaidBeforeGeneration(*root, stream, num)
+		}
+		var pulls []ghPull
+		pullsLookedAt := false
+		if client != nil {
+			var reason string
+			pulls, pullsLookedAt, reason = client.fetchAllPulls(*repo)
+			if !pullsLookedAt {
+				fmt.Fprintf(stderr, "reconcile --backfill: could-not-check the raw pull list: %s\n", reason)
+			}
+		}
+		cells = applyReconcileBackfill(cells, pulls, pullsLookedAt, lookup)
+	}
+
+	var applied []appliedRow
+	if *apply {
+		// boardRoot mirrors reconcileBriefIdents' own resolution (reconcile is
+		// commonly run from a subdirectory), so the write lands on the same
+		// docs/streams tree the briefs above were enumerated from.
+		if boardRoot, found := findBoardRoot(*root); found {
+			var aerr error
+			applied, aerr = applyReconcileWrites(boardRoot, cells)
+			if aerr != nil {
+				fmt.Fprintf(stderr, "reconcile --apply: %v\n", aerr)
+				return reconcileUsageErr
+			}
+		}
 	}
 
 	res := reconcileResult{
 		Repo:     *repo,
 		LookedAt: in.LookedAt,
 		Reason:   in.Reason,
-		Briefs:   DeriveLifecycle(in),
+		Briefs:   cells,
+		Applied:  applied,
+	}
+
+	if *report {
+		rows := buildDriftRows(cells, lookup)
+		path, werr := writeDriftReport(*root, *repo, rows, time.Now())
+		if werr != nil {
+			fmt.Fprintf(stderr, "reconcile --report: writing drift report: %v\n", werr)
+			return reconcileUsageErr
+		}
+		fmt.Fprintf(stderr, "reconcile --report: wrote %s (%d drift row(s))\n", path, len(rows))
 	}
 
 	if *jsonOut {
@@ -185,5 +255,12 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 			detail = b.Reason
 		}
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
+	}
+	if len(res.Applied) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
+	for _, a := range res.Applied {
+		fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
 	}
 }

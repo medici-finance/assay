@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": false,
+  "err": "could-not-check: GitLab exposes no general ref-existence endpoint, so RefExists cannot serve \"tags/v1.2.3\" — only the \"heads/\u003cbranch\u003e\" namespace maps (the Branches API); a ref held outside refs/heads has no CE equivalent and is NOT reported absent. A dispatch claim belongs at refs/heads/dispatch/\u003ckey\u003e (deskkit.ClaimRefPath), which IS inside that namespace",
+  "not_found": false
+}

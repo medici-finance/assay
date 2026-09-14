@@ -97,6 +97,68 @@ func TestEmitDerivesFromTheRealDiff(t *testing.T) {
 	}
 }
 
+// TestRenameIntoDoneIsCountedAsRetired is brief 03's named rename-detection parity
+// golden for deskscanbody: `derive` now takes its diff from gitcore.Repo.Diff (go-git,
+// in-process) rather than shelling out to `git diff -M`, and go-git's tree.Diff alone
+// does NOT detect renames — only gitcore's own rename-detection options (mirrored from
+// DiffNames) make a `git mv` into <dir>/done/ surface as a "rename to" line rather than
+// an unrelated delete+add pair. ParseScanDiff's retired-by-archival path
+// (isRename && scanArchived(curNew) && !scanArchived(curOld)) only fires on that "rename
+// to" line, so this is genuinely fail-capable: drop rename detection from the diff this
+// tool consumes and the retired count silently goes to zero instead of counting the
+// archival.
+func TestRenameIntoDoneIsCountedAsRetired(t *testing.T) {
+	dir := gitRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	// A body long enough that the rename is detected by similarity, not only by exact-
+	// content match — the same discipline gitcore's own rename golden uses, so this
+	// exercises the real detector rather than an exact-match shortcut.
+	body := "alpha\nbravo\ncharlie\ndelta\necho\nfoxtrot\ngolf\nhotel\nstatus: todo\n"
+	if err := os.WriteFile(filepath.Join(dir, deskkit.ScanDir, "issue-950-movable.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "-A")
+	run("commit", "-qm", "add the file that will be archived")
+	run("branch", "-f", "scan-base")
+
+	if err := os.MkdirAll(filepath.Join(dir, deskkit.ScanDir, "done"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run("mv", deskkit.ScanDir+"/issue-950-movable.md", deskkit.ScanDir+"/done/issue-950-movable.md")
+	run("commit", "-qm", "archive the file into done/")
+
+	inDir(t, dir)
+	wantOut, err := exec.Command("git", "-C", dir, "diff", "--name-only", "-M", "scan-base", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wantOut), "done/issue-950-movable.md") ||
+		strings.Count(strings.TrimSpace(string(wantOut)), "\n")+1 != 1 {
+		t.Fatalf("COULD-NOT-CHECK: git itself did not report this fixture as a single detected rename: %q", wantOut)
+	}
+
+	out := captureStdout(t, func() {
+		if err := cmdEmit([]string{"--base", "scan-base", "--date", "2026-08-13", "--format", "title"}, os.Stdout); err != nil {
+			t.Fatalf("emit: %v", err)
+		}
+	})
+	want := "chore(issue-loop): scan 2026-08-13 — 0 created, 1 retired\n"
+	if out != want {
+		t.Fatalf("emit --format title = %q, want %q (the archival-by-rename must be counted as 1 retired)", out, want)
+	}
+}
+
 // TestCheckCanFail is the required proof-it-can-fail, run end to end through the verb:
 // the positive control is #627's own stale title over this branch's real diff.
 func TestCheckCanFail(t *testing.T) {

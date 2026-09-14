@@ -305,6 +305,19 @@ const (
 	// integer; ABSENT is neither an error nor a refusal (the rule is inert). KEEP IN
 	// SYNC with deskkit/rosterconfig.go's EnvStreamCap.
 	scanEnvStreamCap = "ASSAY_STREAM_CAP"
+
+	// scanEnvContributorLedger (ASSAY_CONTRIBUTOR_LEDGER) is a DESK-only roster
+	// value: the operator-configured path of the contributor-trust ledger,
+	// CONSUMED by deskkit's trusttier.go (ResolveTier) through
+	// deskkit.ContributorLedgerPath(). statusgen resolves no contributor
+	// trust tier and never consumes it — but the two readers share one
+	// roster.env, and an unknown key in the ASSAY_ namespace REFUSES the whole
+	// configuration (parseConfig). So it must be RECOGNISED here, or a
+	// roster.env that configures the ledger for the desk tools would collapse
+	// statusgen's whole trust configuration on the unknown-ASSAY_-key refusal.
+	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvContributorLedger.
+	scanEnvContributorLedger = "ASSAY_CONTRIBUTOR_LEDGER"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -347,6 +360,7 @@ func scanKnownRosterKeys() []string {
 		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
 		scanEnvGitLabSessionEmails,
 		scanEnvStreamCap,
+		scanEnvContributorLedger,
 	}
 }
 
@@ -394,8 +408,14 @@ type scanConfig struct {
 	Bless    scanIdentity
 	Humans   map[string]int64
 	Bots     map[string]int64
-	RoleBots map[string]string
-	Logins   map[string]bool
+	// BotIdents maps a lowercased slug-or-login to its full forge-qualified identity
+	// (forge-neutral/07). It is statusgen's mirror of deskkit.Config.BotIdents and is
+	// what carries the FORGE of each bot entry; the flat Bots view above keeps only
+	// GitHub bot USER ids, the shape the GitHub identity paths read. KEEP IN SYNC with
+	// deskkit's BotIdents population.
+	BotIdents map[string]scanBotIdentity
+	RoleBots  map[string]string
+	Logins    map[string]bool
 
 	Repos       map[string]string
 	HumanLogins map[string]string
@@ -711,6 +731,7 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		Source:            source,
 		Humans:            map[string]int64{},
 		Bots:              map[string]int64{},
+		BotIdents:         map[string]scanBotIdentity{},
 		RoleBots:          map[string]string{},
 		Logins:            map[string]bool{},
 		Repos:             map[string]string{},
@@ -757,18 +778,28 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 			role = strings.ToLower(strings.TrimSpace(r))
 			entry = rest
 		}
-		slug, id, ok := scanSplitIdentity(entry)
+		ident, ok := scanSplitBotEntry(entry)
 		if !ok {
-			bad("%s: cannot parse entry %q — expected [role=]slug[:id] with a positive numeric id",
-				scanEnvTrustedBotSlugs, entry)
+			bad("%s: cannot parse entry %q — expected [role=]<forge>:slug-or-login[:id] "+
+				"(forge is github or gitlab; an entry with no forge is read as github). The id, "+
+				"when present, must be a positive number", scanEnvTrustedBotSlugs, entry)
 			continue
 		}
-		cfg.Bots[slug] = id
-		// BOTH GitHub renderings; the BARE slug never (username-squatting fail-close).
-		cfg.Logins[slug+"[bot]"] = true
-		cfg.Logins["app/"+slug] = true
+		cfg.BotIdents[ident.Slug] = ident
+		// Per-forge renderings (forgeidentity.go): GitHub keeps <slug>[bot] and
+		// app/<slug>; GitLab registers the account's username; an unrecognised forge
+		// registers no login. The BARE GitHub App slug is never accepted on any forge
+		// (username-squatting fail-close). The bot USER id stays in the flat Bots view
+		// for GitHub entries only — a GitLab user id is not a GitHub id and must not
+		// enter the shape the GitHub identity paths read.
+		for _, login := range ident.acceptedLogins() {
+			cfg.Logins[login] = true
+		}
+		if ident.Forge == forgeGitHub {
+			cfg.Bots[ident.Slug] = ident.ID
+		}
 		if role != "" {
-			cfg.RoleBots[role] = slug
+			cfg.RoleBots[role] = ident.Slug
 		}
 	}
 

@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/05
+brief: assay:assay:desktools-go-git:05
 title: migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge)
 wave: 4
 depends: ["desktools-go-git/02", "desktools-go-git/03"]
@@ -8,7 +8,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — thesis (the fetch-hardening class collapses structurally); boundaries"
@@ -29,6 +29,8 @@ why: >-
   injection, upload-pack override, remote helpers, insteadOf, PATH trust. gitcore.Fetch
   executes none of them. Migrating the three fetch sites is what lets the old hardening
   code be deleted and the deskadvisory askpass-to-disk pattern disappear.
+version: 1
+id: 7d8455f5-acc2-477a-9d89-3facc6c7de7e
 ---
 
 # Brief 05 — migrate fetch + retire bespoke hardening

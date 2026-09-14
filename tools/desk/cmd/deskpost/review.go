@@ -184,7 +184,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			return withDigest(noop(verb, repo, pr, head, "already posted "+verb+" with this exact body at "+short(head)+" (idempotent no-op)"), dig)
 		}
 
-		client, err := newGHClient(owner, name)
+		client, err := newPostBackend(owner, name)
 		if err != nil {
 			return withDigest(fromReadErr(verb, repo, pr, "", err), dig)
 		}
@@ -264,9 +264,9 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if terr := prTrustGate(client, pr, info.User.Login, info.User.ID); terr != nil {
 			return withDigest(fromReadErr(verb, repo, pr, head, terr), dig)
 		}
-		// Public-repo gate: refuse to write to a public repo
-		// without a qualifying +1 from an authorized human.
-		if gerr := deskkit.PublicRepoGate(client, owner, name, pr); gerr != nil {
+		// Public-repo gate: refuse an outward write unless the repo is authorized
+		// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+		if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
 			return withDigest(fromErr(verb, repo, pr, head, gerr), dig)
 		}
 		// Non-author verdict assertion (sdlc/10) — the SECOND layer behind the forge's own
@@ -315,7 +315,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// outcome: a labeling failure is logged as a WARNING and swallowed, so the verdict
 		// still reports success. Labels gate nothing (they are a `wc -l` + glob triage aid),
 		// and a could-not-classify family is skipped, never guessed.
-		if lo, lerr := applyVerdictLabels(client, pr, info.ChangedFiles); lerr != nil {
+		if lo, lerr := client.verdictLabels(pr, info.ChangedFiles); lerr != nil {
 			fmt.Fprintln(stderr, "deskpost: WARNING: verdict-time labeling (advisory): "+lerr.Error())
 		} else if s := lo.String(); s != "no label change" {
 			fmt.Fprintln(stderr, "deskpost: verdict-time labels: "+s)

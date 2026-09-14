@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -242,6 +243,27 @@ func canonicalOf(role string) string {
 	return names[0]
 }
 
+// isolateFix names the exact command(s) that get a desk out of the shared checkout, for
+// the shared-checkout refusal. It is spelled so it can be run VERBATIM — the loop name
+// deskboot was given (which `deskwt role-init` accepts as-is) and the shared checkout's
+// absolute path as --repo-root — because a refusal that names a command the tool then
+// refuses is a boot with no clean path out. The worktree path role-init prints on its
+// last line is what the re-run's --root takes. When `cellctl` is on PATH the cell launcher
+// is named too, since it wraps the same isolate-then-boot sequence for a cell.
+func isolateFix(o bootOpts) string {
+	root := o.root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	fix := fmt.Sprintf("Run `deskwt role-init %s --repo-root %s` (its last stdout line is the new "+
+		"worktree's absolute path: `cd \"$(deskwt role-init %s --repo-root %s)\"`)",
+		o.role, root, o.role, root)
+	if _, err := lookPath("cellctl"); err == nil {
+		fix += fmt.Sprintf(", or `cellctl desk <cell> %s` (cellctl is on PATH)", o.role)
+	}
+	return fix
+}
+
 // stepLock locks this session's worktree so the prune supervisor cannot reclaim it out
 // from under a live desk — the cooperative half of the prune liveness guard.
 //
@@ -273,8 +295,8 @@ func stepLock(o bootOpts) (string, error) {
 			"step %s: %s is the SHARED checkout, not a session worktree. A desk boots into its own "+
 				"worktree — the shared tree is where generated files from a session's writes strew across "+
 				"every other session's work, and git refuses to lock a main worktree in any case. "+
-				"Run `deskwt role-init --role %s` and re-run deskboot with --root <that worktree>.",
-			stepWorktreeLock, o.root, o.role))
+				"%s and re-run deskboot with --root <that worktree>.",
+			stepWorktreeLock, o.root, isolateFix(o)))
 	}
 
 	r := runCmd(o.root, "git", "worktree", "lock", "--reason", o.role+" live session", o.root)

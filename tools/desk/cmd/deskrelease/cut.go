@@ -221,14 +221,13 @@ func planCut(rest []string) writeResult {
 		return fromErr(verb, "", err)
 	}
 
-	// Public-repo trust gate. deskrelease cut creates a tag ref via
-	// POST /repos/{owner}/{repo}/git/refs — an outward write. Release tags have no
-	// associated issue/PR number (issueNumber=0), so the gate fails closed (exit 6) for
-	// any public repo. The gate runs on whatever repoSlug RESOLVED to — the shipped
-	// default or a configured one — so making the slug configurable cannot route a
-	// release around it.
+	// Public-repo write gate. deskrelease cut creates a tag ref via
+	// POST /repos/{owner}/{repo}/git/refs — an outward write. A public/internal target
+	// is authorized only by a listed `:public` allowed-repos entry (deskkit.PublicRepoGate).
+	// The gate runs on whatever repoSlug RESOLVED to — the shipped default or a configured
+	// one — so making the slug configurable cannot route a release around it.
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: c.token, BaseURL: apiBaseURL}
-	if gerr := deskkit.PublicRepoGate(fetcher, c.owner, c.repo, 0); gerr != nil {
+	if gerr := deskkit.PublicRepoGate(fetcher, c.owner, c.repo); gerr != nil {
 		return fromErr(verb, "", gerr)
 	}
 

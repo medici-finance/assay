@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/01
+brief: assay:assay:desk-tools:01
 title: Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag
 wave: 1
 depends: []
@@ -18,7 +18,7 @@ gate-why: >-
   defaultable convenience. `irreversible: no` — the contract is a document and a validator,
   both revisable; this brief cuts no tag and publishes no release.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-02 by Opus session (author-brief); re-homed to the desk-tools board 2026-08-26
 sources:
   - "The pinned-release binary channel is the channel the reference consumer actually uses, yet no adopter-facing doc described it and no code validated it: the format existed only as a `strings.Fields` read inside one desk internal, and the release workflow computed the desk-tools tag and never used it."
@@ -36,6 +36,8 @@ why: >-
   follow. This brief publishes the grammar, adds a validator, generalises the reader off its one
   hardcoded consumer, and stamps desk-tools binaries with their release tag so a running binary
   can report which `desk-tools/vX.Y.Z` it is.
+version: 1
+id: cc19398b-3c5a-40c2-b66c-8a2cfdc3f85d
 ---
 
 # Brief 01 — Binary channel sealed: the `.assay-versions` contract, published and validated

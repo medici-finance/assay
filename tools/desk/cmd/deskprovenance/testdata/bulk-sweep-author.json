@@ -1,0 +1,13 @@
+{
+  "account_created_at": "2026-09-12T08:00:00Z",
+  "first_activity_at": "2026-09-12T10:00:00Z",
+  "fork_created_at": "2026-09-12T08:10:00Z",
+  "pr_opened_at": "2026-09-12T08:11:30Z",
+  "cross_repo_pr_count_24h": 37,
+  "prior_merged_count": 0,
+  "prior_closed_count": 11,
+  "this_body": "bump dependency to 1.2.3",
+  "recent_bodies": ["bump dependency to 1.2.3", "bump dependency to 1.2.2"],
+  "commits_signed": false,
+  "changed_paths": ["README.md"]
+}

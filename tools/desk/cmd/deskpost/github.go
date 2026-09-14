@@ -257,11 +257,52 @@ type ghClient struct {
 }
 
 func newGHClient(owner, repo string) (*ghClient, error) {
+	// Resolve WHICH forge serves this repo BEFORE minting a GitHub App installation token.
+	// deskpost's verdict/comment/flip WRITE path is GitHub-only: every precondition it verifies
+	// — the reviews, the label timeline, the CI rollups, the changed-file diff, the trust
+	// GraphQL — is read through this App-authenticated ghClient, none of it a typed Forge op.
+	// A GitLab adopter therefore has to fail CLOSED, but the pre-772 mint failed with the wrong
+	// message: `no App ID for role "reviewer": set REVIEWER_APP_ID` (exit 6) sent the operator
+	// hunting apps.env for a GitHub App credential a PAT-backed GitLab bot never uses
+	// (medici-finance/assay#772). Naming the resolved forge instead is the honest could-not-check.
+	if err := requireGitHubForge(owner, repo); err != nil {
+		return nil, err
+	}
 	tok, err := mintInstallationToken(owner)
 	if err != nil {
 		return nil, err
 	}
 	return &ghClient{owner: owner, repo: repo, token: tok, http: http.DefaultClient}, nil
+}
+
+// requireGitHubForge refuses, BEFORE any GitHub App token is minted, when the repo's resolved
+// forge is POSITIVELY not GitHub — so a GitLab adopter gets a could-not-check that names its
+// forge rather than the misleading GitHub App-ID mint error (medici-finance/assay#772).
+//
+// It fails closed only on a DEFINITE non-GitHub resolution. A could-not-check resolution — no
+// ASSAY_REPO_FORGES entry names the repo AND the origin remote maps to no known forge (e.g.
+// deskpost run from a scratch dir, #415-class) — is NOT read as "it is GitLab": it falls
+// through to the GitHub mint, so every repo whose forge this build cannot positively resolve
+// keeps its exact pre-772 behaviour. The GitLab lane is entered only when the resolver
+// AFFIRMATIVELY names GitLab (a roster `…=gitlab` binding, or a gitlab.com origin), which is
+// precisely the configuration the 772 adopter runs.
+func requireGitHubForge(owner, name string) error {
+	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+	if err != nil {
+		// Could-not-check WHICH forge — never assume GitLab. Proceed to the GitHub mint,
+		// preserving the pre-772 path exactly on an unresolved repo.
+		return nil
+	}
+	if res.Kind == deskkit.ForgeGitHub {
+		return nil
+	}
+	return deskkit.Unverifiable(fmt.Sprintf(
+		"could-not-check: deskpost has no %s write backend — %s resolves to the %s forge (%s), but every "+
+			"precondition deskpost verifies (reviews, the label timeline, CI rollups, the changed-file diff, "+
+			"the trust read) is read through a GitHub App-authenticated client, so a verdict, comment, or "+
+			"ready-flip cannot be formed on %s yet. This is NOT a missing REVIEWER_APP_ID: do NOT provision a "+
+			"GitHub App credential for a %s repo — the %s write path is the follow-up to medici-finance/assay#772.",
+		res.Kind, res.Repo.Slug(), res.Kind, res.Source, res.Kind, res.Kind, res.Kind), nil)
 }
 
 // apiError is a non-2xx REST/GraphQL response. Callers map it to Unverifiable (exit 6):
@@ -485,7 +526,11 @@ func prFilePaths(files []prFile) []string {
 // resolves a bare number to an object kind: the `pull_request` sub-object is present iff
 // the number is a pull request (the documented discriminator) and absent for a plain
 // issue. Only the fields the comment path consumes are decoded — the author identity the
-// trust gate needs, and that discriminator.
+// trust gate needs, that discriminator, and the labels the verify-gate card carve-out
+// (deskkit.VerifyGateCardCommentAdmitted) is scoped by. The labels come from THIS read
+// rather than a second call: they are already in the payload the kind resolution has to
+// make, so the carve-out costs no extra request and cannot observe a different state
+// than the author it is paired with.
 type issueInfo struct {
 	Number int    `json:"number"`
 	State  string `json:"state"`
@@ -493,10 +538,30 @@ type issueInfo struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 	} `json:"user"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
 }
+
+// labelNames flattens the decoded label objects to their names. Empty names are dropped:
+// a label with no name is not a label, and letting "" through would make an empty
+// carve-out label match an unlabelled issue.
+func (i *issueInfo) labelNames() []string {
+	out := make([]string, 0, len(i.Labels))
+	for _, l := range i.Labels {
+		if l.Name != "" {
+			out = append(out, l.Name)
+		}
+	}
+	return out
+}
+
+// slug returns the owner/name this client is bound to — the postBackend accessor the
+// object-kind resolution error messages need without reaching into unexported fields.
+func (c *ghClient) slug() (string, string) { return c.owner, c.repo }
 
 // getPR fetches the pull request (head SHA, state, draft, node id).
 func (c *ghClient) getPR(pr int) (*prInfo, error) {
@@ -877,13 +942,43 @@ func (c *ghClient) fetchIssueTrustPayload(n int) ([]byte, error) {
 	return raw, nil
 }
 
+// prTrustPayload / issueTrustPayload are the STRUCTURED trust seam trustGate reads through,
+// so the gate runs identically over a GitHub GraphQL read (fetch + parse, here) and a typed
+// Forge read (forge_gitlab's PRTrustEvents, forgeBackend). deskkit.TrustPayload carries the
+// same three fields the parser returns — the body-edit time, the content events, and whether
+// the read was COMPLETE — so a caller reduces them with deskkit.Blessed without knowing which
+// forge produced them.
+func (c *ghClient) prTrustPayload(n int) (*deskkit.TrustPayload, error) {
+	raw, err := c.fetchPRTrustPayload(n)
+	if err != nil {
+		return nil, err
+	}
+	be, ev, complete, perr := deskkit.ParsePRTrustPayload(raw)
+	if perr != nil {
+		return nil, perr
+	}
+	return &deskkit.TrustPayload{BodyEdited: be, Events: ev, Complete: complete}, nil
+}
+
+func (c *ghClient) issueTrustPayload(n int) (*deskkit.TrustPayload, error) {
+	raw, err := c.fetchIssueTrustPayload(n)
+	if err != nil {
+		return nil, err
+	}
+	be, ev, complete, perr := deskkit.ParseIssueTrustPayload(raw)
+	if perr != nil {
+		return nil, perr
+	}
+	return &deskkit.TrustPayload{BodyEdited: be, Events: ev, Complete: complete}, nil
+}
+
 // prTrustGate enforces the desk trust gate (deskkit/trust.go) on a mutating verb's
 // target PR: a PR authored outside the compiled-in trusted set (login AND numeric id
-// checked — REST has both) with no CURRENT blessing is REFUSED (exit 5,
+// checked — both forges carry them) with no CURRENT blessing is REFUSED (exit 5,
 // audited) — deskpost must never post a verdict, comment, or ready-flip on unvetted
 // third-party work. Blessing is bless-then-edit aware (deskkit.Blessed);
 // an unverifiable trust read is exit 6, never a guess.
-func prTrustGate(c *ghClient, pr int, authorLogin string, authorID int64) error {
+func prTrustGate(c postBackend, pr int, authorLogin string, authorID int64) error {
 	return trustGate(c, kindPR, pr, authorLogin, authorID)
 }
 
@@ -900,24 +995,20 @@ func prTrustGate(c *ghClient, pr int, authorLogin string, authorID int64) error 
 // PR query. It fails closed today (the PR query returns no blessing, so the gate refuses),
 // but "fails closed by luck" is not a property worth keeping when the compiler can remove
 // the possibility.
-func trustGate(c *ghClient, k targetKind, n int, authorLogin string, authorID int64) error {
+func trustGate(c postBackend, k targetKind, n int, authorLogin string, authorID int64) error {
 	if deskkit.TrustedAuthorID(authorLogin, authorID) {
 		return nil
 	}
 	kind := k.String()
-	fetch, parse := c.fetchPRTrustPayload, deskkit.ParsePRTrustPayload
+	get := c.prTrustPayload
 	if k == kindIssue {
-		fetch, parse = c.fetchIssueTrustPayload, deskkit.ParseIssueTrustPayload
+		get = c.issueTrustPayload
 	}
-	raw, err := fetch(n)
+	tp, err := get(n)
 	if err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("cannot read trust events for %s #%d (trust gate)", kind, n), err)
 	}
-	bodyEdited, events, complete, perr := parse(raw)
-	if perr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("cannot parse trust events for %s #%d (trust gate)", kind, n), perr)
-	}
-	if !complete || !deskkit.Blessed(bodyEdited, events) {
+	if !tp.Complete || !deskkit.Blessed(tp.BodyEdited, tp.Events) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: %s #%d author %q is not a trusted desk identity and carries no current blessing "+
 				"(trust gate) — a comment from the configured blessing authority on the %s admits it; edits after a blessing re-quarantine",
@@ -961,52 +1052,7 @@ func (c *ghClient) RepoVisibility(owner, repo string) (string, error) {
 	return info.Visibility, nil
 }
 
-// IssueReactions implements deskkit.RepoInfoFetcher for the App-authenticated client.
-func (c *ghClient) IssueReactions(owner, repo string, issueNumber int) ([]deskkit.Reaction, error) {
-	// SINGLE PAGE, by decision — same reasoning as deskkit.HTTPRepoInfoFetcher's
-	// IssueReactions, where it is written out in full. Fails closed past 100 reactions
-	// on one issue; keep the two implementations in step.
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions?per_page=100", owner, repo, issueNumber)
-	// The reactions API requires the squirrel-girl preview accept header.
-	// Our doJSON method sets the standard accept header, so we need to use a raw request.
-	url := ghAPIBase() + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, deskkit.Unverifiable("cannot build reactions request", err)
-	}
-	req.Header.Set("Authorization", "token "+c.token)
-	req.Header.Set("Accept", "application/vnd.github.squirrel-girl-preview+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("GET %s failed", path), err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		// Try once with reminted token
-		tok, merr := mintInstallationToken(c.owner)
-		if merr != nil {
-			return nil, merr
-		}
-		c.token = tok
-		req, _ = http.NewRequest(http.MethodGet, url, nil)
-		req.Header.Set("Authorization", "token "+c.token)
-		req.Header.Set("Accept", "application/vnd.github.squirrel-girl-preview+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		resp2, err2 := c.http.Do(req)
-		if err2 != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("GET %s failed on retry", path), err2)
-		}
-		defer resp2.Body.Close()
-		resp = resp2
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &apiError{status: resp.StatusCode, method: http.MethodGet, path: path}
-	}
-	body, _ := io.ReadAll(resp.Body)
-	var reactions []deskkit.Reaction
-	if err := json.Unmarshal(body, &reactions); err != nil {
-		return nil, deskkit.Unverifiable("cannot parse reactions response", err)
-	}
-	return reactions, nil
-}
+// NOTE: the public-repo write gate no longer consults a per-item reaction surface
+// (deskkit.PublicRepoGate reads only live visibility and the configured :public tag), so
+// ghClient implements just RepoVisibility from deskkit.RepoInfoFetcher — the former
+// reaction-reading method is gone.

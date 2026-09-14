@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/01
+brief: assay:assay:forge-gitlab:01
 title: Forge interface extraction in deskkit — github impl pinned by goldens
 why: >-
   Every desk tool calls the GitHub API directly, so a second forge means a second fork of
@@ -14,7 +14,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §6 (interface scope, freeze rule)"
@@ -26,6 +26,8 @@ tier: free
 consumers:
   - "tools/desk/cmd/*: fixed-here"
   - "tools/desk/internal/deskkit: fixed-here"
+version: 1
+id: 13f71975-1f4f-48e2-b44a-e1902d7a8d7b
 ---
 
 # Brief 01 — Forge interface extraction in deskkit
@@ -80,7 +82,7 @@ on GitLab as well (edition-matrix.md table A, rows 1-14). Nothing degrades on CE
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
 | 2 | `grep -rn "api.github.com" tools/desk/cmd --include='*.go' \| grep -v _test.go \| wc -l` | `0` — no direct API construction outside the forge implementation |
-| 3 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations |
 | 4 | `git diff --stat origin/main -- tools/desk/internal/deskkit/forge.go` then `go doc ./tools/desk/internal/deskkit Forge` | interface exists; method set matches the committed inventory (dereference: compare `go doc` output against inventory.md rows) |
 
 ## Evidence

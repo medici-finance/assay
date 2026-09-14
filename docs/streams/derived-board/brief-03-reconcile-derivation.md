@@ -1,5 +1,5 @@
 ---
-brief: derived-board/03
+brief: assay:assay:derived-board:03
 title: "`statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser"
 why: >-
   This is the engine that makes the board stop lying: every lifecycle cell is computed
@@ -14,7 +14,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §2 (derivation table), §4 (online/offline), §5 (brief-v2)"
@@ -28,6 +28,8 @@ domain: complicated
 consumers:
   - "statusgen/README.md (verbs): fixed-here"
   - "docs/streams/derived-board/spec.md §8 Q2: fixed-here"
+version: 1
+id: c4f45c56-1898-4dcc-aaaa-d10ecda4df98
 ---
 
 # Brief 03 — `statusgen reconcile` + brief-v2 parser

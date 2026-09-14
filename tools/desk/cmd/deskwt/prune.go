@@ -1,12 +1,10 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // skipEntry records a worktree that prune LEFT untouched, with why. The reason vocabulary
@@ -440,13 +439,17 @@ func lockedReason(reason string) string {
 // unpushed-relative-to-upstream from plain unmerged (both are LEFT — this only refines the
 // skip report; the removal gate is solely "merged into origin/main").
 func unmergedReason(rt string) string {
-	branch, berr := runGit(rt, "rev-parse", "--abbrev-ref", "HEAD")
+	repo, rerr := gitcore.Open(rt)
+	if rerr != nil {
+		return "unmerged (detached HEAD not an ancestor of origin/main)"
+	}
+	branch, berr := repo.AbbrevRefHEAD()
 	if berr != nil || branch == "HEAD" || branch == "" {
 		return "unmerged (detached HEAD not an ancestor of origin/main)"
 	}
-	if _, uerr := runGit(rt, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); uerr == nil {
-		if ahead, aerr := runGit(rt, "rev-list", "--count", "@{u}..HEAD"); aerr == nil && ahead != "0" {
-			return "unpushed (" + ahead + " commit(s) ahead of upstream, not on origin/main)"
+	if upstream, uerr := repo.UpstreamRef(); uerr == nil {
+		if ahead, aerr := repo.AheadCount(upstream, "HEAD"); aerr == nil && ahead != 0 {
+			return fmt.Sprintf("unpushed (%d commit(s) ahead of upstream, not on origin/main)", ahead)
 		}
 	}
 	return "unmerged (branch " + branch + " not an ancestor of origin/main — active work)"
@@ -469,17 +472,15 @@ func unmergedReason(rt string) string {
 // it does not resolve at all, that surfaces as Unverifiable (could-not-check) — never a
 // silent fall-through to the decoy.
 func mergedToOriginMain(rt string) (bool, error) {
-	cmd := execCommand("git", "merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/main")
-	cmd.Dir = rt
-	err := cmd.Run()
-	if err == nil {
-		return true, nil
+	repo, err := gitcore.Open(rt)
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot determine merge status vs refs/remotes/origin/main (does it resolve?)", err)
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
-		return false, nil
+	ok, err := repo.IsAncestor("HEAD", "refs/remotes/origin/main")
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot determine merge status vs refs/remotes/origin/main (does it resolve?)", err)
 	}
-	return false, deskkit.Unverifiable("cannot determine merge status vs refs/remotes/origin/main (does it resolve?)", err)
+	return ok, nil
 }
 
 // headAtOriginMainTip reports whether the worktree's HEAD is exactly at the remote mainline
@@ -495,15 +496,20 @@ func mergedToOriginMain(rt string) (bool, error) {
 // guard would compare HEAD against a stale decoy tip. A resolution failure surfaces as
 // Unverifiable (could-not-check → the worktree is LEFT), never a silent decoy comparison.
 func headAtOriginMainTip(rt string) (bool, error) {
-	head, err := runGit(rt, "rev-parse", "HEAD")
+	repo, err := gitcore.Open(rt)
 	if err != nil {
 		return false, deskkit.Unverifiable("cannot resolve HEAD", err)
 	}
-	originMain, err := runGit(rt, "rev-parse", "refs/remotes/origin/main")
+	headHash, err := repo.Resolve("HEAD")
+	if err != nil {
+		return false, deskkit.Unverifiable("cannot resolve HEAD", err)
+	}
+	head := headHash.String()
+	originMainHash, err := repo.Resolve("refs/remotes/origin/main")
 	if err != nil {
 		return false, deskkit.Unverifiable("cannot resolve refs/remotes/origin/main", err)
 	}
-	return head == originMain, nil
+	return head == originMainHash.String(), nil
 }
 
 // mustAbsOrRaw returns filepath.Abs(p) or, if that fails, p unchanged — resolvePath still

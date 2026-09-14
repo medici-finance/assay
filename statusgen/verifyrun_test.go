@@ -399,7 +399,7 @@ func TestFixtureBriefPassRunsGreen(t *testing.T) {
 	if len(rows) != 4 {
 		t.Fatalf("fixture has %d Verify rows, want 4", len(rows))
 	}
-	ws := runWitnesses(root, rows, "test-runner", "0000", "2026-08-13", 60*time.Second, false)
+	ws := runWitnesses(root, rows, "test-runner", "", "0000", "2026-08-13", 60*time.Second, false)
 	for _, w := range ws {
 		if w.State != statePass {
 			t.Errorf("row %s: %s (%s) — the positive-control fixture must run green at the repo root", w.ID, w.State, w.Note)
@@ -511,7 +511,7 @@ func TestRunnerFlagIsRefusedWithItsOwnMessage(t *testing.T) {
 func TestExecutingRunnerPrefersTheActionsIdentity(t *testing.T) {
 	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("GITHUB_ACTOR", "assay-reviewer-app[bot]")
-	got, ok := executingRunner(t.TempDir())
+	got, _, ok := executingRunner(t.TempDir())
 	if !ok || got != "assay-reviewer-app[bot]" {
 		t.Fatalf("runner = (%q, %v), want the App slug verbatim", got, ok)
 	}
@@ -522,7 +522,7 @@ func TestExecutingRunnerFallsBackToGitIdentity(t *testing.T) {
 	t.Setenv("GITHUB_ACTOR", "")
 	root := t.TempDir()
 	gitInit(t, root, "Alex Rivera", "alex@example.com")
-	got, ok := executingRunner(root)
+	got, _, ok := executingRunner(root)
 	if !ok || got != "human:alex" {
 		t.Fatalf("runner = (%q, %v), want human:alex", got, ok)
 	}
@@ -537,7 +537,7 @@ func TestExecutingRunnerRecordsABotVerbatim(t *testing.T) {
 	t.Setenv("GITHUB_ACTOR", "")
 	root := t.TempDir()
 	gitInit(t, root, "assay-issue-loop-app[bot]", "1234+assay-issue-loop-app[bot]@users.noreply.github.com")
-	got, ok := executingRunner(root)
+	got, _, ok := executingRunner(root)
 	if !ok || got != "assay-issue-loop-app[bot]" {
 		t.Fatalf("runner = (%q, %v), want the bot slug verbatim — a bot must not be rendered as human:", got, ok)
 	}
@@ -557,7 +557,7 @@ func TestExecutingRunnerFailsClosed(t *testing.T) {
 	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "absent"))
 	root := t.TempDir()
 	runGit(t, root, "init")
-	if got, ok := executingRunner(root); ok {
+	if got, _, ok := executingRunner(root); ok {
 		t.Fatalf("runner = %q, want a refusal — an unattributed witness is not a witness", got)
 	}
 }

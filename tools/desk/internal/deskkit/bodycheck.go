@@ -18,6 +18,18 @@ var (
 	reJWT         = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
 	reBase64ish   = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)
 	reLowerHex    = regexp.MustCompile(`^[0-9a-f]+$`)
+	reUpperHex    = regexp.MustCompile(`^[0-9A-F]+$`)
+
+	// rePGPFingerprintAnchor recognises a sops PGP-recipient field IMMEDIATELY before a
+	// high-entropy run: a `pgp:` or `fp:` key (optionally JSON-quoted) followed only by the
+	// scaffolding a YAML/JSON scalar or a comma-list of fingerprints puts between the key and
+	// this fingerprint — whitespace and newlines, block-scalar `>`/`|`, quotes, brackets,
+	// list dashes, commas, and any earlier 40-hex fingerprints. It is applied to the surface
+	// text BEFORE the run (so it ends on `$`), and it is the anchor isPGPFingerprint (Rule 3)
+	// requires. It exempts NOTHING on its own: a bare uppercase-hex run with no recipient key
+	// in front of it never matches, and the run's own shape is still checked by
+	// isPGPFingerprint (exactly 40 UPPERCASE hex) before the anchor is even consulted.
+	rePGPFingerprintAnchor = regexp.MustCompile(`(?is)(?:^|[\s"'{,\[-])(?:pgp|fp)"?\s*:[\s>|"'\[\],-]*(?:[0-9A-F]{40}[\s,"']+)*$`)
 
 	// reDocExtension matches a DOC-file extension immediately after a run — the ".md",
 	// ".txt", ".json", ".yaml" or ".yml" a doc PATH ends on, bounded so ".md" matches but
@@ -243,6 +255,12 @@ const SurfaceBody = "body"
 //     paths (#209) while still refusing opaque token material carried
 //     between slashes — including an AWS secret access key, whose `/` characters
 //     defeat a purely length-based segment gate.
+//   - that same path-shaped run behind ONE leading `+` (see isQuantifierGluedPath). `+`
+//     is in the base64 alphabet and so in the run's character class, which means a regex
+//     quantifier (`grep -E '^FRESH +plugins/…'`, the Verify-row idiom) or a unified-diff
+//     add marker is read as the path's first character — and isPathLike refuses any run
+//     containing `+` outright. The exemption is earned by the REMAINDER being path-like,
+//     never by the `+`, which carries no payload (#879).
 //   - a run that is itself a single bare identifier built entirely out of words (see
 //     isIdentifierLike). This exempts long CamelCase Go identifiers — test names like
 //     `HonoredFilterLeavesTripwireSilent` routinely clear the 32-char run threshold
@@ -490,12 +508,47 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isDocPathHexSegment(raw, loc[0], loc[1]) || isIssueNumberList(run) {
 			continue
 		}
+		// Rule 5 (enum/status slash-list arm) and Rule 6 (Kubernetes generated-name hex
+		// arm), both #966. Bounded the same way Rules 1-2 are: isEnumSlashList admits a
+		// slash-list of short ALL-CAPS words (a stream/status enum already reviewed and
+		// merged, e.g. a Verify row citing `PENDING/RUNNING/BLOCKED/DONE`), bounded by the
+		// paired positive pos-enum-word-too-long (an out-of-bounds group, or one carrying
+		// anything but A-Z, stays refused); isK8sUIDHexSegment admits a 32-hex run directly
+		// behind a hyphen and a CLOSED list of Kubernetes object-kind prefixes (a
+		// PersistentVolumeClaim's bound PersistentVolume name, `pvc-<uid>`), bounded by the
+		// paired positive pos-hex-after-unlisted-prefix (a prefix not in k8sUIDPrefixes —
+		// `token-`, `key-` — stays refused, so a real secret pasted as `key-<32hex>` is not
+		// laundered by this rule).
+		if isEnumSlashList(run) || isK8sUIDHexSegment(raw, loc[0], loc[1]) {
+			continue
+		}
+		// Rule 3 (PGP-recipient-fingerprint arm). NARROWER than the class it clears and
+		// bounded by paired positive fixtures (TestPGPFingerprintExemption): isPGPFingerprint
+		// admits a 40-char UPPERCASE-hex OpenPGP key fingerprint ONLY when a `pgp:`/`fp:`
+		// recipient key anchors it — a `.sops.yaml` creation-rules recipient and a sops `fp:`
+		// field both take that shape. A bare uppercase-hex run, a lowercase/mixed 40-char run,
+		// and a genuine secret wearing the same field all stay refused.
+		if isPGPFingerprint(raw, loc[0], loc[1]) {
+			continue
+		}
+		// Rule 4 (quantifier-glued-path arm). NARROWER than the class it clears and bounded
+		// by the paired positive pos-token-wearing-a-leading-plus: isQuantifierGluedPath
+		// strips ONE leading '+' — a regex quantifier or a unified-diff add marker, neither
+		// of which carries payload — and admits the run only if the REMAINDER is already
+		// exempt under Rule 1. A '+' on opaque material, and a second '+', both stay refused.
+		if isQuantifierGluedPath(run) {
+			continue
+		}
 		return RefusedFinding(fmt.Sprintf(
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
-				"word-shaped segments, bare word-shaped identifiers, key=<path> shell "+
-				"assignments, all-'=' banner separators, and the marker-anchored digest "+
-				"fields of a recognised structured format (go.sum h1:, SRI integrity, a "+
+				"word-shaped segments (optionally behind one leading '+' quantifier or "+
+				"diff marker), bare word-shaped identifiers, key=<path> shell "+
+				"assignments, all-'=' banner separators, a PGP recipient fingerprint (40 "+
+				"uppercase hex after a pgp:/fp: field), a slash-list of short ALL-CAPS "+
+				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
+				"prefix and hyphen (pvc-<uid>…), and the marker-anchored digest fields "+
+				"of a recognised structured format (go.sum h1:, SRI integrity, a "+
 				"complete sops envelope) are exempt", surface, len(run)),
 			&ScanFinding{Rule: "high-entropy-run", Line: lineOf(raw, loc[0]), Length: len(run), Shape: redactShape(run)})
 	}
@@ -506,6 +559,78 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 // lowercase-hex string — the one exemption to the high-entropy-run rule.
 func isGitSHA(run string) bool {
 	return (len(run) == 40 || len(run) == 64) && reLowerHex.MatchString(run)
+}
+
+// isPGPFingerprint is Rule 3, the PGP-recipient-fingerprint arm. It admits a run that is
+// EXACTLY 40 UPPERCASE hex characters — the canonical OpenPGP v4 key-fingerprint shape —
+// but ONLY when a `pgp:` or `fp:` recipient key precedes it in the surrounding surface,
+// separated by nothing but the scaffolding a YAML/JSON scalar or a comma-list of
+// fingerprints puts there (rePGPFingerprintAnchor). That is the shape a `.sops.yaml`
+// creation-rules `pgp:` recipient and a sops metadata `fp:` field both take, and it is the
+// shape isGitSHA structurally misses: isGitSHA requires LOWERCASE hex, so an uppercase
+// fingerprint fell straight through to the high-entropy refusal.
+//
+// It is bounded HARD, the same way Rules 1 and 2 are:
+//   - the run must be EXACTLY 40 UPPERCASE hex — a 40-char lowercase run is a git SHA and
+//     already exempt; a mixed-case or non-hex 40-char run is not a fingerprint and keeps the
+//     loop's own verdict (an AWS secret key is 40 mixed-case base64, so it never qualifies);
+//     a 39/41-char run fails on length;
+//   - a `pgp:`/`fp:` recipient key must PRECEDE it — a bare 40-uppercase-hex run with no key
+//     in front of it stays refused, since an uppercase token in prose is exactly that shape.
+//
+// The anchor is what keeps this from loosening the check: an uppercase-hex run is admitted
+// only when it wears a recipient field it did not earn, which is not a shape a pasted
+// credential takes. TestPGPFingerprintExemption pins both directions.
+func isPGPFingerprint(raw string, start, end int) bool {
+	run := raw[start:end]
+	if len(run) != 40 || !reUpperHex.MatchString(run) {
+		return false
+	}
+	return rePGPFingerprintAnchor.MatchString(raw[:start])
+}
+
+// isQuantifierGluedPath is Rule 4, the quantifier-glued-path arm. It admits a run that is
+// ONE leading '+' followed by content that is ITSELF already exempt under Rule 1
+// (isPathLike) — and nothing else.
+//
+// The false positive it clears: '+' is in the base64 alphabet, so it is in reBase64ish's
+// character class, so a '+' written immediately in front of a path is read as the first
+// character of that path's run. Two everyday shapes do exactly that and neither is base64:
+//
+//   - a REGEX QUANTIFIER. The Verify-row idiom `grep -cE -e '^FRESH +<path>'` — where ` +`
+//     is "one or more spaces" — glues the quantifier onto the path behind it.
+//   - a UNIFIED-DIFF add marker on a line whose content is a bare path. deskpr strips these
+//     before scanning (#812), but deskevidence scans a whole merged BRIEF, where a quoted
+//     diff is content, not transport syntax, and nothing strips it.
+//
+// Both then hit isPathLike's outright refusal of any run containing '+', so a path one
+// character under the run threshold refused as soon as a '+' preceded it. The measured cost
+// (#879) was that deskevidence scans the whole merged brief before appending its Evidence
+// row, so a brief carrying such a Verify row could not receive an Evidence append through
+// the sanctioned tool at all — the verifier correctly held rather than routing around the
+// scan, and the brief's PR stalled behind it.
+//
+// It is bounded the same way Rules 1-3 are, and the bound is that the '+' is never itself
+// the exemption:
+//
+//   - EXACTLY ONE '+' is stripped. A second one stays in the remainder, where isPathLike's
+//     own '+'/'=' gate refuses it — so the arm cannot be walked forward one character at a
+//     time into a general base64 exemption.
+//   - the REMAINDER must satisfy isPathLike in full: it must contain '/', carry no '=', and
+//     have its word-shaped segments outnumber its opaque ones. A '+' on a bare blob
+//     (no '/') or on a #410 slash-layout draw (opaque segments dominate) stays refused.
+//
+// Because '+' carries no payload, this cannot admit any CONTENT that Rule 1 would not
+// already admit with the '+' absent — it removes a one-character syntax artefact from the
+// front of a run, and re-asks the existing question. TestQuantifierGluedPathExemption and
+// the paired corpus artifacts (neg-regex-quantifier-glued-path,
+// pos-token-wearing-a-leading-plus) pin both directions.
+func isQuantifierGluedPath(run string) bool {
+	rest, ok := strings.CutPrefix(run, "+")
+	if !ok {
+		return false
+	}
+	return isPathLike(rest)
 }
 
 // regexFinding builds the explain ScanFinding for a literal-marker arm: the rule id, the
@@ -614,6 +739,110 @@ func isIssueNumberList(run string) bool {
 		sawGroup = true
 	}
 	return sawGroup
+}
+
+// minEnumWordLen / maxEnumWordLen bound one unit of an ALL-CAPS slash-list
+// (isEnumSlashList, Rule 5, #966). A stream/status enum word is a handful of letters —
+// `CANCELLED` (9) is about the longest this repo's own vocabulary uses — so a unit
+// outside these bounds is opaque material wearing slashes, not an enum list. The floor
+// keeps a lone letter (the shape a truncated or randomly-cased token leaves behind) off
+// the exemption; every real enum/status word is at least two letters.
+const (
+	minEnumWordLen = 2
+	maxEnumWordLen = 20
+)
+
+// isEnumSlashList is Rule 5 (#966). It admits a run that is ONLY short ALL-UPPERCASE
+// words joined by '/' — a stream/status enum list (`PENDING/RUNNING/BLOCKED/DONE`, a
+// Verify row citing a set of stream states) — mirroring isIssueNumberList's shape for
+// NUMERIC groups (Rule 2) but for LETTER groups. The false positive it clears: a run of
+// several 5+ letter ALL-CAPS words has no lowercase and no '/'-adjacent word-shape
+// isPathLike or looksLikeWords will admit (an ALL-CAPS stretch is deliberately opaque
+// everywhere else in this file, since it is exactly a webhook token's tail shape), so an
+// enum list joined by '/' fell straight through to the high-entropy refusal with no other
+// exemption able to reach it.
+//
+// It is bounded HARD, the same way Rule 2 is:
+//   - every group must be [minEnumWordLen, maxEnumWordLen] characters, A-Z ONLY — no
+//     digits, no lowercase, no punctuation beyond the '/' separators. A group outside the
+//     length bounds, or carrying anything but an uppercase letter, denies the exemption
+//     entirely — a real secret's mixed-case/digit material never qualifies;
+//   - there must be at least two groups (a single ALL-CAPS word is not a LIST; a bare one
+//     is already refused correctly by every other rule in this file, since a lone
+//     acronym-shaped token in prose is exactly credential-tail shaped and must stay that
+//     way — this rule only relaxes the SLASH-LIST shape, never a bare run).
+func isEnumSlashList(run string) bool {
+	segs := strings.Split(run, "/")
+	if len(segs) < 2 {
+		return false // a single group is not a slash-LIST; a bare ALL-CAPS run stays refused
+	}
+	sawGroup := false
+	for _, seg := range segs {
+		if seg == "" {
+			continue // a leading/trailing/`//` slash carries no group
+		}
+		if len(seg) < minEnumWordLen || len(seg) > maxEnumWordLen {
+			return false
+		}
+		for i := 0; i < len(seg); i++ {
+			if seg[i] < 'A' || seg[i] > 'Z' {
+				return false
+			}
+		}
+		sawGroup = true
+	}
+	return sawGroup
+}
+
+// k8sUIDPrefixes are the short Kubernetes object-KIND prefixes isK8sUIDHexSegment's
+// anchor recognises immediately before the hyphen — a CLOSED list, the same discipline
+// twoLetterWords uses for the same reason (see its comment): an anchor that admitted "any
+// lowercase word before a hyphen" would just as happily launder a real secret pasted as
+// `token-<32hex>` or `key-<32hex>`, so the list is grounded in Kubernetes' OWN
+// generated-name convention rather than widened to anything word-shaped. `pvc`/`pv` are
+// #966's own repro (a PersistentVolumeClaim's bound PersistentVolume); the rest are the
+// other object kinds whose default name generator suffixes a hash or a UID onto a base
+// name the same way.
+var k8sUIDPrefixes = map[string]bool{
+	"pvc": true, "pv": true, "pod": true, "rs": true, "rc": true,
+	"ds": true, "sts": true, "job": true, "cm": true, "svc": true,
+}
+
+// reK8sNamePrefix anchors isK8sUIDHexSegment's lookbehind: a lowercase-alnum word,
+// starting with a letter, immediately at the end of the surface preceding a hyphen a hex
+// segment sits behind. It is applied to the surface BEFORE the run (so it ends on `$`),
+// the same anchoring shape rePGPFingerprintAnchor uses for Rule 3.
+var reK8sNamePrefix = regexp.MustCompile(`([a-z][a-z0-9]*)-$`)
+
+// isK8sUIDHexSegment is Rule 6 (#966). It admits a run that is EXACTLY 32 lowercase hex
+// characters when it is immediately preceded, in the surrounding surface, by a hyphen and
+// a NAME in k8sUIDPrefixes — the shape Kubernetes' own name generator builds for a
+// PersistentVolumeClaim's bound PersistentVolume (`pvc-<uid>`) and for the other object
+// kinds that suffix a UID or a template hash onto a base name the same way. A
+// PersistentVolumeClaim UID quoted in a Verify/Evidence row is #966's own repro: it is
+// already reviewed and merged, but every one of its 32-hex segments (the UUID with its
+// dashes stripped, as Kubernetes itself renders a PV's bound name) reads as opaque
+// high-entropy material with no other exemption able to reach it.
+//
+// It is bounded the same way Rules 1-5 are:
+//   - the run must be EXACTLY 32 lowercase hex — the length isDocPathHexSegment already
+//     uses for the doc-path class, so a 31/33-char run (an MD5-shaped token that merely
+//     happens to sit near a hyphen) stays refused;
+//   - the hyphen must sit DIRECTLY against the run — a bare 32-hex run with unrelated
+//     text before it does not qualify;
+//   - the NAME behind that hyphen must be a MEMBER of k8sUIDPrefixes, not merely
+//     word-shaped: a real secret pasted as `token-<32hex>` or `key-<32hex>` stays
+//     refused, since neither prefix is a Kubernetes object kind.
+func isK8sUIDHexSegment(raw string, start, end int) bool {
+	run := raw[start:end]
+	if len(run) != 32 || !reLowerHex.MatchString(run) {
+		return false
+	}
+	m := reK8sNamePrefix.FindStringSubmatch(raw[:start])
+	if m == nil {
+		return false
+	}
+	return k8sUIDPrefixes[m[1]]
 }
 
 // isPlaceholderSecretValue is Rule 3's per-value test: a data/stringData

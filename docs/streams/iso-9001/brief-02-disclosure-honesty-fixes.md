@@ -1,5 +1,5 @@
 ---
-brief: iso-9001/02
+brief: assay:assay:iso-9001:02
 title: Align three shipped disclosures with the code they describe
 why: >-
   Three surfaces this repo ships publicly now describe a weaker system than the one it has.
@@ -26,7 +26,7 @@ exec-tier-why: >-
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the iso-9001 board)
 sources:
   - "`docs/mistake-proofing.md` §4 B9: 'Any statement in authoring guidance about what is and is not enforced MUST be generated from the enforcement source.' B9 is the standing rule that would have caught all three of these and it is unimplemented; this brief is the manual correction, not the mechanism."
@@ -38,6 +38,8 @@ sources:
   - "`docs/registers.md` header — the page ships publicly under a SUPERSEDED banner with the retired dialect still shown below the shared-conventions bullets. In scope here only to the extent of the contiguity claim; the full rewrite is not this brief."
   - "The standard-side reading: an unstated or misstated limitation becomes the adopter's own nonconformity, and a records-control statement built on a false enforcement claim is the most expensive place for one — which is what the typed unblocks: edge to iso-9001/05 encodes."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — all three stale statements were read on that commit and are present verbatim."
+version: 1
+id: 51be88f0-67e1-4035-ad96-0976460c60d6
 ---
 
 # Brief 02 — align the disclosures with the code

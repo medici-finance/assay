@@ -8,7 +8,44 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
+
+// checkInsideWorkTree reports whether dir is inside a non-bare git working tree,
+// matching `git rev-parse --is-inside-work-tree`'s success/failure outcome (every
+// caller here only checks that, never the printed "true"/"false").
+func checkInsideWorkTree(dir string) error {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return err
+	}
+	if !repo.InsideWorkTree() {
+		return fmt.Errorf("not inside a git working tree (bare repository)")
+	}
+	return nil
+}
+
+// effectiveOriginURL returns the URL the local `origin` remote effectively fetches
+// from, matching `git ls-remote --get-url origin` — a config read only, no network
+// contact.
+func effectiveOriginURL(dir string) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	return repo.RemoteURL("origin")
+}
+
+// symbolicRefShortHEAD returns the current branch's short name, matching
+// `git symbolic-ref --short HEAD` (errors, rather than returning a name, when HEAD is
+// detached — cmdPush's caller relies on exactly that to refuse a detached push).
+func symbolicRefShortHEAD(dir string) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	return repo.SymbolicRefShortHEAD()
+}
 
 // getwd is the seam for the tool's working directory (the repo it runs in). Production
 // uses os.Getwd; tests point it at a scratch checkout without os.Chdir (which would race
@@ -215,7 +252,7 @@ func cmdFetch(args []string) (err error) {
 	if werr != nil {
 		return deskkit.Unverifiable("cannot determine working directory", werr)
 	}
-	if _, terr := runGit(dir, "rev-parse", "--is-inside-work-tree"); terr != nil {
+	if terr := checkInsideWorkTree(dir); terr != nil {
 		return deskkit.Unverifiable("not inside a git worktree", terr)
 	}
 
@@ -241,7 +278,7 @@ func cmdFetch(args []string) (err error) {
 	// Gate on the EFFECTIVE origin URL — `git ls-remote --get-url` expands
 	// url.<base>.insteadOf and exits WITHOUT contacting the remote, so an insteadOf
 	// rewrite cannot present an allowed identity while fetching elsewhere.
-	originURL, oerr := runGit(dir, "ls-remote", "--get-url", "origin")
+	originURL, oerr := effectiveOriginURL(dir)
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
 	}
@@ -361,13 +398,13 @@ func cmdPush(args []string) (err error) {
 	if werr != nil {
 		return deskkit.Unverifiable("cannot determine working directory", werr)
 	}
-	if _, terr := runGit(dir, "rev-parse", "--is-inside-work-tree"); terr != nil {
+	if terr := checkInsideWorkTree(dir); terr != nil {
 		return deskkit.Unverifiable("not inside a git worktree", terr)
 	}
 
 	// The current branch is the ONLY thing pushed. A detached HEAD has no branch to name, so
 	// there is nothing to push — refuse (exit 5) rather than guess a ref.
-	branch, berr := runGit(dir, "symbolic-ref", "--short", "HEAD")
+	branch, berr := symbolicRefShortHEAD(dir)
 	if berr != nil || branch == "" {
 		return deskkit.Refused("refused: HEAD is detached — there is no current branch to push; check out a branch first")
 	}
@@ -383,7 +420,7 @@ func cmdPush(args []string) (err error) {
 	// Effective-origin gate — identical to fetch: decide on `ls-remote --get-url` (which
 	// expands insteadOf and contacts no remote), refuse an unparseable/foreign/out-of-set
 	// origin BEFORE any credential is offered.
-	originURL, oerr := runGit(dir, "ls-remote", "--get-url", "origin")
+	originURL, oerr := effectiveOriginURL(dir)
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
 	}
@@ -438,7 +475,7 @@ func cmdPush(args []string) (err error) {
 // before. `ls-remote --get-url` expands url.<base>.insteadOf locally and contacts no
 // remote, so calling it on a refusal path adds no network side effect.
 func bestEffortOriginRepo(dir string) string {
-	originURL, err := runGit(dir, "ls-remote", "--get-url", "origin")
+	originURL, err := effectiveOriginURL(dir)
 	if err != nil {
 		return ""
 	}
@@ -687,13 +724,17 @@ func localRefTarget(branch, prNum string) (flag, target string) {
 // a collision — that is the ordinary update of a branch the caller did in fact name, and it
 // stays subject to git's normal fast-forward rules.
 func branchCollision(dir, target string) string {
-	out, err := runGit(dir, "for-each-ref", "--format=%(refname:strip=2)", "refs/heads/")
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "cannot enumerate local branches to check for a case-collision"
+	}
+	names, err := repo.LocalBranchNames()
 	if err != nil {
 		// Enumeration failed: fail CLOSED for this extra check rather than assume no
 		// collision — the caller still gets a distinct, actionable reason.
 		return "cannot enumerate local branches to check for a case-collision"
 	}
-	for _, n := range strings.Fields(out) {
+	for _, n := range names {
 		if n != target && strings.EqualFold(n, target) {
 			return "differs only by case from existing local branch " + n +
 				" (a case-insensitive filesystem would silently rewrite it)"

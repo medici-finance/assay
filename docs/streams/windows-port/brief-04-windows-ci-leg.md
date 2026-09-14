@@ -1,5 +1,5 @@
 ---
-brief: windows-port/04
+brief: assay:assay:windows-port:04
 title: Windows CI leg — statusgen --lint + a desk-verb smoke on Windows
 why: >-
   "Runs on Windows" is a claim until a check corroborates it. Every existing CI leg runs on a
@@ -22,7 +22,7 @@ gate-why: >-
   risk-derived, not hand-set over four "no"s.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): a windows runner leg proving statusgen --lint + a desk-verb smoke passes on Windows"
@@ -35,6 +35,8 @@ sources:
 consumers:
   - ".github/workflows/ (a windows leg — a new job or a matrix OS axis): fixed-here"
   - "docs/adopting-assay.md: follow-up windows-port/05 (the doc points at the green Windows CI as the 'CI-proven' evidence)"
+version: 1
+id: 570ade9d-9904-423e-95fc-2c25344fe236
 ---
 
 # Brief 04 — Windows CI leg: statusgen --lint + a desk-verb smoke

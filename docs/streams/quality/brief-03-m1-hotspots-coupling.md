@@ -1,5 +1,5 @@
 ---
-brief: quality/03
+brief: assay:assay:quality:03
 title: M1 hotspots + knowledge distribution (SPOF) + change coupling
 why: >-
   Most defects concentrate in a small number of files that change often and are hard to
@@ -15,13 +15,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §4.3 — hotspots (decayed change-frequency x indentation-complexity proxy)"
   - "docs/streams/quality/spec.md §4.4 — knowledge distribution / bus factor / role-SPOF (ownership concentration by author-identity class AND dispatching role)"
   - "docs/streams/quality/spec.md §4.5 — change coupling (co-change above baseline) and the inverse missing-coupling-partner signal"
   - "docs/streams/quality/spec.md §4 — M1 aggregation grains (per file / package) and honest-claims discipline"
+version: 1
+id: 2cd138e3-e94b-41aa-90df-c1feffbd0cc4
 ---
 
 # Brief 03 — M1 hotspots + knowledge distribution (SPOF) + change coupling
