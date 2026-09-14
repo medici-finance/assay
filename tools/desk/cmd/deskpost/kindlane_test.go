@@ -26,7 +26,10 @@ func TestReviewSecurityPostsOverCorrectnessAcrossSessions(t *testing.T) {
 	f.reviews = []reviewInfo{appReviewAt("APPROVED", testHead, okReviewBody)}
 	bf := writeBody(t, "sec.md", okSecurityBody)
 
-	code := run(reviewArgs("example-org/tracker", "1", "approve", testHead, bf))
+	// The security verdict goes through its own verb (`review` now refuses a security
+	// body — see TestReviewRefusesASecurityBody); the cross-session kind check under test
+	// is the same code path either way.
+	code := run(secReviewArgs("example-org/tracker", "1", "pass", testHead, bf))
 	if code != 0 {
 		t.Fatalf("security verdict exit = %d, want 0", code)
 	}
@@ -45,10 +48,11 @@ func TestReviewSecurityPostsOverCorrectnessAcrossSessions(t *testing.T) {
 func TestReviewSecurityNoopsOverSecurityAcrossSessions(t *testing.T) {
 	f, _ := setupFake(t)
 	f.pullHeads = []string{testHead}
-	f.reviews = []reviewInfo{appReviewAt("APPROVED", testHead, okSecurityBody)}
+	// A security PASS at head is a COMMENTED review — the shape `security-review` posts.
+	f.reviews = []reviewInfo{appReviewAt("COMMENTED", testHead, okSecurityBody)}
 	bf := writeBody(t, "sec.md", okSecurityBody)
 
-	code := run(reviewArgs("example-org/tracker", "1", "approve", testHead, bf))
+	code := run(secReviewArgs("example-org/tracker", "1", "pass", testHead, bf))
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (noop)", code)
 	}

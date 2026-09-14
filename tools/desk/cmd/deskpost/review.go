@@ -86,9 +86,9 @@ type reviewShape struct {
 func correctnessShapeFor(verdictFlag string) (reviewShape, bool) {
 	switch verdictFlag {
 	case "approve":
-		return reviewShape{flag: "approve", event: "APPROVE", state: "APPROVED"}, true
+		return reviewShape{flag: "approve", event: "APPROVE", state: "APPROVED", wantKind: bodycheck.KindCorrectness}, true
 	case "request-changes":
-		return reviewShape{flag: "request-changes", event: "REQUEST_CHANGES", state: "CHANGES_REQUESTED"}, true
+		return reviewShape{flag: "request-changes", event: "REQUEST_CHANGES", state: "CHANGES_REQUESTED", wantKind: bodycheck.KindCorrectness}, true
 	}
 	return reviewShape{}, false
 }
@@ -145,24 +145,62 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if kerr != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", kerr), dig)
 		}
-		// The security verb declares BOTH the kind and the marker its body must carry, and
-		// refuses a body that disagrees — before any network call. `review` declares
-		// neither, so a correctness body and a security body both still go out through it
-		// exactly as before.
+		// EACH verdict verb declares the kind its body must carry, and refuses a body
+		// from the other lane — before any network call. The two refusals are symmetric
+		// on purpose, and neither is decoration:
 		//
-		// This is not decoration. `security-review --verdict pass` submits the COMMENT
-		// event; handed a `Security-Review: fail` body it would post a RETRACTION as a
-		// review that blocks nothing on GitHub's side. Gate (e0) would still read the fail
-		// and block the flip, so nothing fails open — but the artifact would misrepresent
-		// itself to every human reading the thread, and a refusal costs one exit 5 while a
-		// submitted review cannot be retracted.
-		if shape.wantKind != "" {
-			if kind != shape.wantKind {
-				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
-					"refused: `security-review` posts the SECURITY verdict, but this body carries a "+
-						"%s verdict line — post a correctness verdict with `deskpost review --verdict approve|request-changes`",
-					kind))), dig)
+		//   - `security-review --verdict pass` submits the COMMENT event; handed a
+		//     `Security-Review: fail` body it would post a RETRACTION as a review that
+		//     blocks nothing on GitHub's side. Gate (e0) would still read the fail and
+		//     block the flip, so nothing fails open — but the artifact would misrepresent
+		//     itself to every human reading the thread.
+		//   - `review --verdict approve` submits the APPROVE event; handed a
+		//     `Security-Review: pass` body it posts the security lane's all-clear as an
+		//     APPROVED review — the exact same-head APPROVE shape the verb split exists to
+		//     keep a security pass OUT of (a COMMENTED pass is readable by gate (e) while
+		//     leaving GitHub's review roll-up alone; an APPROVED one erases a standing
+		//     CHANGES_REQUESTED from the shared App). This happened for real when two
+		//     lanes dispatched to one PR shared a scratchpad and one lane's default body
+		//     filename was read by the other's `review --verdict approve`; before this
+		//     guard the verb let it through and the stray APPROVE had to be dismissed by
+		//     hand.
+		//
+		// A refusal costs one exit 5; a submitted review cannot be retracted.
+		if shape.wantKind != "" && kind != shape.wantKind {
+			var msg string
+			if shape.wantKind == bodycheck.KindSecurity {
+				msg = fmt.Sprintf("refused: `security-review` posts the SECURITY verdict, but this body carries a "+
+					"%s verdict line — post a correctness verdict with `deskpost review --verdict approve|request-changes`",
+					kind)
+			} else {
+				msg = fmt.Sprintf("refused: `review` posts the CORRECTNESS verdict, but this body carries a "+
+					"%s verdict line — post a security verdict with `deskpost security-review --verdict pass|fail` "+
+					"(a security PASS must land as a COMMENTED review, never APPROVED)", kind)
 			}
+			return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(msg)), dig)
+		}
+		// The kind check above parses STRICTLY (VerdictKind: whole-line anchored, no
+		// Markdown-emphasis unwrapping — the write gate's rule). The flip gate and the
+		// board read with the TOLERANT reader (#232/#238: `**Security-Review: pass**`
+		// counts, because live artifacts wrap markers in emphasis). So a body carrying a
+		// bare `Verdict: approve` PLUS an emphasised security marker parses as pure
+		// correctness here, would post as APPROVED, and would then be READ as a security
+		// pass at that head — the strict/tolerant split reopening the exact shape the
+		// kind check closes. `review` therefore also refuses whatever the tolerant reader
+		// would call a security verdict. A line quoted with a leading `> ` is a citation
+		// to that reader too, so citing the other lane stays possible.
+		if shape.wantKind == bodycheck.KindCorrectness {
+			if got := classifySecurityBody(string(body)); got != secNone {
+				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
+					"refused: `review` posts the CORRECTNESS verdict, but this body also carries a "+
+						"'Security-Review: %s' marker that the flip gate reads as a security verdict "+
+						"(emphasis such as `**Security-Review: pass**` counts) — a review posts exactly ONE "+
+						"verdict kind: post the security verdict with `deskpost security-review --verdict pass|fail`, "+
+						"or quote the other lane's line (prefix '> ') when citing it",
+					secVerdictName(got)))), dig)
+			}
+		}
+		if shape.wantKind == bodycheck.KindSecurity {
 			if got := classifySecurityBody(string(body)); got != shape.wantSec {
 				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
 					"refused: --verdict %s does not match the body, which reads as %s — the flag and the "+
