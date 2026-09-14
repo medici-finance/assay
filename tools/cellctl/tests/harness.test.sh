@@ -160,7 +160,11 @@ assert "launch line shows harness=codex" 'grep -q "harness=codex" <<<"$out"'
 assert "the codex stub ran, not claude" 'grep -q "^ARGS=" "$CELLCTL_TEST_OUT"'
 assert "codex invoked with --sandbox danger-full-access" 'grep -q -- "--sandbox danger-full-access" "$CELLCTL_TEST_OUT"'
 assert "codex invoked with -C <worktree>" "grep -q -- \"-C $WT \" \"\$CELLCTL_TEST_OUT\""
-assert "codex invoked with -m <model> (the resolved DESK_MODEL_DEFAULT)" 'grep -q -- "-m sonnet" "$CELLCTL_TEST_OUT"'
+# worker-desk has no CODEX_MODEL_worker_desk / CODEX_MODEL_default in this fixture, so it falls
+# through to the tier map (#986) — worker-desk resolves at the 'mid' tier, whose compiled codex
+# default is the one live-proven codex model id (docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md)
+# — NOT the Claude-only DESK_MODEL_DEFAULT (sonnet), which the codex arm no longer reads at all.
+assert "codex invoked with -m <model> (the tier-map fallback, not the Claude DESK_MODEL_DEFAULT)" 'grep -q -- "-m gpt-5.6-terra" "$CELLCTL_TEST_OUT" && ! grep -q -- "-m sonnet" "$CELLCTL_TEST_OUT"'
 assert "codex prompt names the skill by invoke-by-name form" 'grep -q "assay:worker-desk" "$CELLCTL_TEST_OUT"'
 assert "same DESK_ROOTS/DESK_LOOP/DESK_SESSION env as the claude arm" \
   'grep -qxF "DESK_ROOTS=$ROOTS" "$CELLCTL_TEST_OUT" && grep -qxF "DESK_LOOP=worker-desk" "$CELLCTL_TEST_OUT"'
@@ -185,13 +189,18 @@ echo "[desk: the-desk/Opus refusal binds the claude arm only]"
 printf '%s\n' "DESK_MODEL_the_desk=opus" >> "$CELL/cell.env"
 out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk 2>&1)" && rc=0 || rc=$?
 assert "claude arm still refuses an Opus pin" '[[ $rc -ne 0 ]] && grep -q "resolved DESK_MODEL_the_desk=opus" <<<"$out"'
+# The codex arm reads its OWN namespace (#986: per-harness pins never cross-read) — so proving the
+# Opus refusal is claude-arm-only needs an opus-shaped value in THAT namespace, CODEX_MODEL_the_desk,
+# not a re-read of the claude-only DESK_MODEL_the_desk pin above (which the codex arm no longer sees
+# at all).
+printf '%s\n' "CODEX_MODEL_the_desk=opus" >> "$CELL/cell.env"
 out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk --harness codex 2>&1)" && rc=0 || rc=$?
-assert "codex arm does NOT refuse the same Opus pin" '[[ $rc -eq 0 ]]'
+assert "codex arm does NOT refuse an opus-shaped pin in its own namespace" '[[ $rc -eq 0 ]]'
 # model=... is immediately followed by provider=... (this branch's --provider merge) before
 # harness=... — assert the two substrings independently rather than requiring them adjacent.
 assert "codex arm prints the resolved model as is" 'grep -q "model=opus" <<<"$out" && grep -q "harness=codex" <<<"$out"'
-# restore a non-opus pin for the remaining tests
-grep -v '^DESK_MODEL_the_desk=' "$CELL/cell.env" > "$CELL/cell.env.tmp" && mv "$CELL/cell.env.tmp" "$CELL/cell.env"
+# restore non-opus pins for the remaining tests
+grep -vE '^(DESK_MODEL_the_desk|CODEX_MODEL_the_desk)=' "$CELL/cell.env" > "$CELL/cell.env.tmp" && mv "$CELL/cell.env.tmp" "$CELL/cell.env"
 
 # ---------------------------------------------------------------- desk: roster beacon notes codex
 echo "[desk: roster beacon / DESK_SESSION notes a non-claude harness]"

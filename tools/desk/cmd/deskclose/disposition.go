@@ -165,6 +165,40 @@ func refNum(s string) (int, bool) {
 	return n, err == nil
 }
 
+// normalizeItemRef reduces any ref shape this package accepts — a bare number, `#N`,
+// `owner/repo#N`, or a github.com issues/pull permalink — to the canonical
+// `owner/repo#N` form, defaulting a repo-less ref to defaultRepo. This is the seam a
+// same-target COMPARISON runs through before deciding two refs disagree: `refsAgree`
+// treats a bare number as unparseable (refNumRe requires a `#` or an `/issues|pull/`
+// path ahead of the digits), so "40" and "owner/repo#40" read as two different targets
+// rather than the same one spelled two ways — the exact shape of #984. Comparing
+// normalized forms instead means a format mismatch is never mistaken for a target
+// disagreement.
+func normalizeItemRef(defaultRepo, ref string) (string, bool) {
+	trimmed := strings.TrimSpace(ref)
+	if trimmed == "" {
+		return "", false
+	}
+	n, ok := refNum(trimmed)
+	if !ok {
+		// No `#`/path marker at all: accept a bare positive integer, defaulting the
+		// repo to defaultRepo (atoiPositive already tolerates a leading "#").
+		bn, err := atoiPositive(trimmed, "ref")
+		if err != nil {
+			return "", false
+		}
+		n = bn
+	}
+	repo := refRepo(trimmed)
+	if repo == "" {
+		repo = defaultRepo
+	}
+	if repo == "" {
+		return "", false
+	}
+	return fmt.Sprintf("%s#%d", repo, n), true
+}
+
 var refRepoRe = regexp.MustCompile(
 	`(?:^|github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:#|/(?:issues|pull)/)\d+\s*$`)
 

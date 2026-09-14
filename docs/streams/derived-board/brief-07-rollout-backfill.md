@@ -82,9 +82,37 @@ facts:
 | 6 | `gh run list -w assay-statusgen.yml -e schedule -L 1 --json conclusion --jq '.[0].conclusion'` | `success` (first scheduled reconcile ran) |
 | 7 | `for r in $(python3 -c "import yaml;print(' '.join(v['repo'].split('/')[1] for v in yaml.safe_load(open('docs/streams/graph-repos.yaml'))['repos'].values()))"); do statusgen --root ../$r --lint; echo $r rc=$?; done` | `rc=0` each; list the five in Evidence |
 | 8 | in the private toolkit checkout: `diff <(sed -n '1,40p' docs/brief-rules.md) <(curl -fsSL https://raw.githubusercontent.com/medici-finance/assay/main/docs/brief-rules.md \| sed -n '1,40p')` | empty (private re-staged to public text) — DEREFERENCES the public file |
+| 9 | `go test ./statusgen/ -run TestApplyReconcileWrites -v` | all PASS, including: (a) a fixture `todo` row with a merged-PR witness becomes `implemented` under `reconcile --backfill --apply`; (b) a `done`/`verified` row is left byte-for-byte untouched even when fed a fresh `implemented` witness; (c) a row already carrying a `human:<name>` stamp (in Reviewed) is left untouched — the write never touches anything but the Status cell |
 
 ## Evidence
 <!-- appended at implementation time -->
+
+### Implementer run — `--apply` closes the report-only wiring gap — 2026-09-13 implementer, branch off main
+
+**What this run covers.** `reconcile --backfill [--report]` was READ-ONLY: it could derive
+a cell and report drift, but nothing wrote the derived value back into a stream README's
+Status column — the house's own board-regen job had expected `--backfill` to actually flip
+stale rows and found it never does (#945 tracks this brief; the gap itself surfaced from
+that rollout work). This run adds `--apply` (`statusgen/reconcileapply.go`,
+`statusgen/reconcile.go`): it requires `--backfill`, writes ONLY the witnessed
+todo/in-progress → implemented transition (a real `Brief:` trailer or the declared
+backfill branch/body match — never the backfill's no-PR hand-said `unknown` shape, never
+verified/done), and never touches Verified/Reviewed or any `human:<name>` sign-off stamp.
+
+**Fail-first.** `statusgen/reconcileapply_test.go` was written against the pre-change tree
+first: with `reconcileapply.go` removed and `reconcile.go`'s `--apply` wiring reverted, the
+suite fails to compile (`undefined: applyReconcileWrites`, `undefined: writeStatusCell`) —
+the capability plainly does not exist. Restoring the change turns every case green,
+including Verify row 9's three named assertions above.
+
+**Environment.** Own worktree off `refs/remotes/origin/main`; offline, no network reads.
+`go test ./... -run 'TestApplyReconcileWrites|TestWriteStatusCell'` (run inside the
+`statusgen/` module), `gofmt -l`, and `go vet ./...` all clean. The pre-existing
+`reconcile`/`backfill`/`readmetable` suites were re-run bounded and remain green (no
+regression).
+
+This is an IMPLEMENTER run, not a verdict — the frontmatter gate is model, and the flip is
+the reviewer/verify-gate's per the Review section below.
 
 ## Review
 Gate: model. Reviewer records verdict + date via the generated board.

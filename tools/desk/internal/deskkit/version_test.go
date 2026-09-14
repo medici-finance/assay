@@ -101,3 +101,33 @@ func TestVersionStampedFromReleaseWorkflow(t *testing.T) {
 		t.Error("release-desk.yml stamps ReleaseTag but not from $RELEASE_TAG — the tag would not be the resolved release tag")
 	}
 }
+
+// TestCellctlPackagedInReleaseWorkflow guards #850: tools/cellctl/cellctl must ship inside
+// desk-tools-<platform>.tar.gz, stamped with the release tag the way the Go binaries above are
+// stamped by -ldflags. A shell script cannot take -ldflags, so the workflow instead `sed`s the
+// STAGED copy's CELLCTL_VERSION line (see the comment beside that variable in
+// tools/cellctl/cellctl) — this test goes RED if either half regresses: cellctl silently
+// dropping back out of the tarball, or the tarball shipping an unstamped "dev" copy.
+// tools/cellctl/tests/version-stamp.test.sh proves the stamping mechanism itself works; this
+// test proves it is actually WIRED into release.yml.
+func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
+	// internal/deskkit sits at tools/desk/internal/deskkit; the repo root is four
+	// levels up.
+	path := filepath.Join("..", "..", "..", "..", ".github", "workflows", "release.yml")
+	skipIfFixtureAbsent(t, path,
+		".github/ is not part of this repository's published file set")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("release workflow not readable at %s: %v", path, err)
+	}
+	wf := string(raw)
+	if !strings.Contains(wf, "tools/cellctl/cellctl") {
+		t.Error("release.yml's desk-tools packaging step does not reference tools/cellctl/cellctl — cellctl would ship nowhere (#850)")
+	}
+	if !strings.Contains(wf, `"$stage/cellctl"`) {
+		t.Error("release.yml does not stage cellctl into the desk-tools tarball's $stage dir (#850)")
+	}
+	if !strings.Contains(wf, "CELLCTL_VERSION") {
+		t.Error("release.yml does not stamp CELLCTL_VERSION into the packaged cellctl copy — a released copy would report \"dev\" and defeat `cellctl --version` (#850)")
+	}
+}

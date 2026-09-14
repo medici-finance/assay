@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -288,8 +289,12 @@ func TestSweepFailureIsCouldNotCheckNotEmpty(t *testing.T) {
 }
 
 func TestReadReportsCouldNotCheck(t *testing.T) {
-	s := &ghStub{replies: []stubReply{{match: "pr view", fail: true}}}
+	// `read` now serves from the App-token forge, never `gh` (#984) — the ghStub is
+	// installed anyway so a stray `gh` call would still be caught as an unexpected
+	// mutation/argv, but the failure this test drives is a forge-level GetIssue error.
+	s := &ghStub{}
 	s.install(t)
+	installStubForge(t, &stubForge{failIssue: errors.New("HTTP 404: not found")})
 	code, out := runVerb(t, "read", "-R", allowedRepo, "--pr", "1")
 	if code != deskkit.ExitUnverifiable {
 		t.Fatalf("want exit 6, got %d: %s", code, out)
@@ -306,14 +311,12 @@ func TestReadEmitsTheEvidenceForDeskclose(t *testing.T) {
 		RecordedBy: "earlier-session",
 		RecordedAt: "2026-08-09",
 	}
-	body, err := jsonQuote(rec.Marker())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &ghStub{replies: []stubReply{
-		{match: "pr view", stdout: `{"labels":[{"name":"disposition:superseded"}],"comments":[{"body":` + body + `}]}`},
-	}}
+	s := &ghStub{}
 	s.install(t)
+	installStubForge(t, &stubForge{
+		labels:   []string{"disposition:superseded"},
+		comments: []string{rec.Marker()},
+	})
 	code, out := runVerb(t, "read", "-R", allowedRepo, "--pr", "829")
 	if code != deskkit.ExitOK {
 		t.Fatalf("want exit 0, got %d: %s", code, out)
@@ -321,6 +324,45 @@ func TestReadEmitsTheEvidenceForDeskclose(t *testing.T) {
 	for _, want := range []string{"checked-failed", "SUPERSEDED", "dispatch-eligible=false", rec.Evidence} {
 		if !strings.Contains(out, want) {
 			t.Errorf("deskclose needs %q in the read output; got: %s", want, out)
+		}
+	}
+}
+
+// TestReadNeverShellsToAmbientGH is #984's defect-2 reproduction: `deskclose
+// superseded`'s confirm path runs as a child of an already-minted desk session whose
+// environment carries no usable ambient `gh` identity. Shelling to `gh pr view` there
+// came back `HTTP 401: Requires authentication` even though a valid App-token forge read
+// was available — read had no way to use it. This plants exactly that shape (a `gh pr
+// view` stub that always 401s) alongside a forge stub carrying a real record, and proves
+// `read` answers from the forge and never touches `gh` at all.
+func TestReadNeverShellsToAmbientGH(t *testing.T) {
+	rec := deskkit.Disposition{
+		Verdict:    deskkit.DispositionSuperseded,
+		Evidence:   "https://github.com/example-org/tracker/pull/40",
+		RecordedBy: "earlier-session",
+		RecordedAt: "2026-08-09",
+	}
+	s := &ghStub{replies: []stubReply{
+		// Simulates the isolated-session shape: `gh pr view` always fails as an
+		// unauthenticated call would, regardless of what a human's own terminal sees.
+		{match: "pr view", fail: true},
+	}}
+	s.install(t)
+	installStubForge(t, &stubForge{
+		labels:   []string{"disposition:superseded"},
+		comments: []string{rec.Marker()},
+	})
+	code, out := runVerb(t, "read", "-R", allowedRepo, "--pr", "40")
+	if code != deskkit.ExitOK {
+		t.Fatalf("want exit 0 (served from the forge, not the broken ambient gh), got %d: %s", code, out)
+	}
+	if !strings.Contains(out, "SUPERSEDED") {
+		t.Errorf("expected the forge-served record in the output; got: %s", out)
+	}
+	for _, c := range s.calls {
+		if strings.Contains(strings.Join(c, " "), "pr view") {
+			t.Fatalf("read shelled out to `gh pr view` — it must read via the App-token forge, "+
+				"never ambient gh: %v", c)
 		}
 	}
 }

@@ -149,38 +149,40 @@ func flip(o flipOpts) error {
 			"condition %s: PR #%d in %s is %s, not open — there is nothing to flip.",
 			condPROpenDraft, o.pr, repo, strings.ToLower(pr.State)))
 	}
-	// relabelOnly is the already-ready path: the flip itself is done, but the queue labels
-	// may still need reconciling.
+	// alreadyReady marks the already-out-of-draft path (#987). It is deliberately NOT a
+	// shortcut around the gate any more: every condition below still runs regardless of the
+	// queue label's state, and only the mutation decided at the very bottom differs from the
+	// still-draft path. relabelOnly is the narrower fact of whether that already-ready PR's
+	// queue label needs a WRITE.
 	//
-	// WHY THE LABEL WRITE IS GATED TOO (the fix, and the reasoning behind choosing it).
+	// WHY THE LABEL WRITE IS GATED, AND WHY "ALREADY READY" IS NO LONGER A FREE PASS (#987).
 	// Writing `approval-needed` is not bookkeeping — it is an ASSERTION to every human
 	// reading the queue that the review lane is finished with this PR and only a merge is
-	// outstanding. On a PR that is no longer a draft that assertion can be false: a human
-	// may have flipped it by hand, or it may have been pushed to since the flip and now
-	// carry a standing CHANGES_REQUESTED at its new head. Relabelling without re-gating
-	// would then tell the queue the PR is waiting on the human when it is really waiting on
-	// the reviewer — and a queue that misreports who is blocked is worse than one that says
-	// nothing, because nobody re-checks a PR that claims to be done.
-	//
-	// So the two cases are separated by whether a WRITE is actually required:
-	//
-	//   labels already correct  → pure no-op, exit 0, nothing read further, nothing written.
-	//                             This is the common re-run case, and it must stay cheap and
-	//                             non-failing: a loop re-running its Land step over a landed
-	//                             item must not report a failure.
-	//   labels need changing    → a write, so it runs the SAME gate as the flip path and
-	//                             skips only the ready mutation. On a failed condition it
-	//                             refuses by name and leaves the labels untouched.
+	// outstanding. On a PR that is no longer a draft that assertion can be false in TWO
+	// distinct ways: (1) a human may have flipped it by hand and it was since pushed to —
+	// the stale-label case this gate has always re-checked — or (2) the label already reads
+	// correctly while a LANE'S last-seen verdict sits behind the PR's actual head: a security
+	// pass pinned to an old commit, with a later, unrelated correctness re-review landing at
+	// a new head that the security lane never saw. The PREVIOUS fast path treated
+	// `isDraft == false && label correct` as proof the verdicts were current and returned
+	// "nothing to do" without reading a single review or check — which is exactly how a PR
+	// can sit ready-for-human-merge indefinitely while new, unreviewed content lands on it.
+	// So every already-ready PR, whatever its label state, now runs the SAME full re-gate a
+	// fresh flip runs — including the reviewer-approved and security-verdict lanes AT THE
+	// CURRENT HEAD — and only once every condition below has held does it fall through to
+	// "nothing to do" or "relabel" at the bottom of this function.
+	alreadyReady := !pr.IsDraft
 	relabelOnly := false
-	if !pr.IsDraft {
+	if alreadyReady {
 		if hasLabel(pr.Labels, labelAfterFlip) && !hasLabel(pr.Labels, labelBeforeFlip) {
-			o.say("%s: PR #%d is already ready-for-human and its queue label is correct — nothing to do",
-				condPROpenDraft, o.pr)
-			return nil
+			o.say("%s: PR #%d is already ready-for-human and its queue label is correct; re-gating every "+
+				"lane before reporting nothing to do — a correct label is not proof the verdicts are still "+
+				"current at this head", condPROpenDraft, o.pr)
+		} else {
+			relabelOnly = true
+			o.say("%s: PR #%d is already ready-for-human but its queue label is stale; re-gating before the "+
+				"label write", condPROpenDraft, o.pr)
 		}
-		relabelOnly = true
-		o.say("%s: PR #%d is already ready-for-human but its queue label is stale; re-gating before the "+
-			"label write", condPROpenDraft, o.pr)
 	}
 	head := strings.TrimSpace(pr.HeadRefOid)
 	if head == "" {
@@ -189,7 +191,7 @@ func flip(o flipOpts) error {
 				"vacuous at once — exactly when there is least reason to believe any of them.",
 			condPROpenDraft, o.pr), nil)
 	}
-	if relabelOnly {
+	if alreadyReady {
 		o.say("%s OK: open, already flipped, at %s", condPROpenDraft, short(head))
 	} else {
 		o.say("%s OK: open + draft at %s", condPROpenDraft, short(head))
@@ -367,15 +369,21 @@ func flip(o flipOpts) error {
 		return nil
 	}
 
-	// relabelOnly: the PR is already out of draft, so there is no ready mutation to make —
-	// only the queue label to reconcile, and the gate above is what earns the right to
-	// write it.
-	if relabelOnly {
-		if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
-			return err
+	// alreadyReady: the PR is already out of draft, so there is no ready mutation to make.
+	// Reaching here means every condition above — including the reviewer-approved and
+	// security-verdict lanes AT THE CURRENT HEAD — just held on a full re-gate (#987), so
+	// the only question left is whether the queue label needs reconciling.
+	if alreadyReady {
+		if relabelOnly {
+			if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
+				return err
+			}
+			fmt.Printf("deskflip: RELABELLED %s#%d — already ready-for-human at %s, queue label reconciled "+
+				"after a full re-gate.\n", repo, o.pr, short(head))
+			return nil
 		}
-		fmt.Printf("deskflip: RELABELLED %s#%d — already ready-for-human at %s, queue label reconciled "+
-			"after a full re-gate.\n", repo, o.pr, short(head))
+		fmt.Printf("deskflip: %s#%d is already ready-for-human at %s, its queue label is correct, and every "+
+			"lane's verdict is confirmed current at this head — nothing to do.\n", repo, o.pr, short(head))
 		return nil
 	}
 
@@ -652,10 +660,18 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 			"condition %s: the latest correctness verdict from %s at %s is CHANGES_REQUESTED — blocked.",
 			condReviewerApproved, reviewerLogin, short(head)))
 	case deskkit.AppVerdictStale:
+		// Both commits are named, unambiguously — #987's required shape for a stale-lane
+		// refusal: which lane, the commit its last verdict is pinned at, and the PR's actual
+		// current head.
+		staleAt := "an unknown commit"
+		if last, ok := deskkit.LastAppDecisiveReview(reviewerLogin, lane); ok && last.CommitID != "" {
+			staleAt = short(last.CommitID)
+		}
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: %s has a correctness verdict on PR #%d, but it was submitted at a DIFFERENT head — "+
-				"the PR advanced past it. A verdict that is not at this code is stale; re-review at %s.",
-			condReviewerApproved, reviewerLogin, pr, short(head)))
+			"condition %s: %s's latest correctness verdict on PR #%d is pinned at %s, but the PR's current "+
+				"head is %s — the PR advanced past the reviewed code. A verdict that is not at this code is "+
+				"stale; re-review at %s.",
+			condReviewerApproved, reviewerLogin, pr, staleAt, short(head), short(head)))
 	default:
 		return deskkit.Refused(fmt.Sprintf(
 			"condition %s: %s has posted no APPROVED/CHANGES_REQUESTED correctness verdict on PR #%d. A "+
@@ -907,12 +923,44 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		return nil
 	}
 	if verdict != secPass {
+		// Name BOTH commits when there IS a prior verdict to point at — #987's required shape:
+		// which lane is stale, the commit its last verdict is pinned at, and the PR's current
+		// head. A PR that has never carried a security-marked review at all still gets the
+		// plain absence message, since there is no stale commit to name.
+		detail := fmt.Sprintf("no App review at head %s carries a `Security-Review: pass` line", short(head))
+		if last, ok := lastSecurityVerdictCommit(reviews, reviewerLogin, head); ok && last != head {
+			detail = fmt.Sprintf(
+				"the last `Security-Review` verdict from %s is pinned at %s, which is behind the PR's "+
+					"current head %s — the PR advanced past the reviewed code and nobody re-ran the security "+
+					"lane there", reviewerLogin, short(last), short(head))
+		}
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: this is a RISK-CLASSED PR (%s) and no App review at head %s carries a "+
-				"`Security-Review: pass` line. Absence is never a pass — run the security review at this head "+
-				"before the flip.", condSecurityVerdict, reason, short(head)))
+			"condition %s: this is a RISK-CLASSED PR (%s) and %s. Absence is never a pass — run the security "+
+				"review at the current head %s before the flip.", condSecurityVerdict, reason, detail, short(head)))
 	}
 	return nil
+}
+
+// lastSecurityVerdictCommit returns the commit to name in a stale-verdict refusal. It shares
+// reduceSecurityVerdict with securityVerdictStanding, so the two can never disagree about
+// which review is decisive: when the reduction reached a verdict (secFail or secPass — a fail
+// at any commit, or a pass pinned at the current head), the commit returned is THAT decisive
+// review's commit — never a later, non-decisive review's. Only when the reduction never
+// became decisive at all (secNone: no fail was ever posted, and no pass ever landed at head)
+// does it fall back to the last review carrying either marker, purely so a stale-verdict
+// message still has SOME commit to point at ("the only verdict anyone posted is stale").
+//
+// Before this shared reduction, this function separately tracked "the last review carrying
+// EITHER marker" with no head filter on the pass case, so a LATER off-head pass could
+// silently overwrite the commit a standing fail had already set — reporting a plain staleness
+// framing ("pinned at B, behind head") when the real reason to refuse was a retraction pinned
+// at an earlier commit A that securityVerdictStanding was actually keying off of (#988).
+func lastSecurityVerdictCommit(reviews []reviewInfo, reviewerLogin, head string) (string, bool) {
+	red := reduceSecurityVerdict(reviews, reviewerLogin, head)
+	if red.verdict != secNone {
+		return red.commit, true
+	}
+	return red.lastMarked, red.lastMarkedFound
 }
 
 // secVerdict is the security lane's reduction.
@@ -977,8 +1025,48 @@ func hasSecurityMarker(body string) bool {
 // Returning the verdict rather than a bool keeps "nobody spoke" and "the verdict is fail"
 // distinguishable — collapsing both to false is what made an explicit retraction
 // indistinguishable from silence.
+//
+// This is a thin wrapper over reduceSecurityVerdict, the single walk shared with
+// lastSecurityVerdictCommit — see that function's doc for why the verdict and its diagnostic
+// commit are computed together rather than by two independently-maintained loops.
 func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) secVerdict {
-	out := secNone
+	return reduceSecurityVerdict(reviews, reviewerLogin, head).verdict
+}
+
+// securityVerdictReduction is one reduction's result: the governing verdict and the commit
+// the DECISIVE review — the one that produced that verdict — was pinned at, plus a weaker
+// fallback commit for when no review was decisive at all (see lastMarked below).
+type securityVerdictReduction struct {
+	verdict secVerdict
+	// commit is the decisive review's commit — set on exactly the same case that moves
+	// verdict away from secNone (a fail, unconditionally; a pass, only at head) — so it is
+	// meaningful only when verdict != secNone.
+	commit string
+	// lastMarked/lastMarkedFound track the commit of the LAST review carrying either marker
+	// at all, decisive or not — the one fallback case this reduction still needs: a history
+	// with an off-head pass and NO fail ever posted has no decisive review (verdict stays
+	// secNone, since an off-head pass never governs), yet a stale-verdict refusal still needs
+	// a commit to name for "the only verdict anyone posted, and it's stale." That off-head
+	// pass never governs anything, so it must never be allowed to eclipse a standing fail's
+	// commit (#988) — which is exactly why it is tracked separately from `commit` rather than
+	// folded into the same field.
+	lastMarked      string
+	lastMarkedFound bool
+}
+
+// reduceSecurityVerdict is the ONE walk over a reviewer App's security-marked reviews that
+// both securityVerdictStanding and lastSecurityVerdictCommit read from. Splitting the verdict
+// and its diagnostic commit into two separately-maintained loops is exactly what let them
+// diverge (#988): a loop tracking "the last review carrying either marker" with no head
+// filter on the pass case let a later off-head pass overwrite a commit that a standing fail
+// had set, even though the fail — not that pass — is what governs. Folding both into one
+// switch, updating `commit` on the SAME case that moves `verdict`, makes that divergence
+// unrepresentable: whichever branch decides the verdict is the only branch allowed to move the
+// decisive commit. `lastMarked` is tracked alongside, unconditionally, purely as a fallback
+// for callers that still want SOME commit to point at when the reduction never became
+// decisive (secNone) — it never feeds `verdict` or the decisive `commit`.
+func reduceSecurityVerdict(reviews []reviewInfo, reviewerLogin, head string) securityVerdictReduction {
+	out := securityVerdictReduction{verdict: secNone}
 	for _, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
 			continue
@@ -987,14 +1075,20 @@ func securityVerdictStanding(reviews []reviewInfo, reviewerLogin, head string) s
 		case deskkit.HasSecurityReviewFail(r.Body):
 			// A fail STANDS whatever commit it names: a head move that did not touch the
 			// reviewed code cannot clear a retraction. Every reason to doubt a fail is a
-			// reason to keep blocking.
-			out = secFail
+			// reason to keep blocking — and the commit it names is the one worth reporting.
+			out.verdict = secFail
+			out.commit = r.CommitID
+			out.lastMarked, out.lastMarkedFound = r.CommitID, true
 		case deskkit.HasSecurityReviewPass(r.Body):
 			// A pass GRANTS only at the current head; an empty head is not a commit, and a
-			// pass at an earlier head neither grants nor clears a standing fail.
+			// pass at an earlier head neither grants nor clears a standing fail — so it must
+			// not overwrite the DECISIVE commit either. It still updates the fallback: an
+			// off-head pass is real diagnostic evidence when nothing else ever governed.
 			if head != "" && r.CommitID == head {
-				out = secPass
+				out.verdict = secPass
+				out.commit = r.CommitID
 			}
+			out.lastMarked, out.lastMarkedFound = r.CommitID, true
 		}
 	}
 	return out
