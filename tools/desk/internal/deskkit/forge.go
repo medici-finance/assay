@@ -21,6 +21,7 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -359,7 +360,18 @@ type LabelSpec struct {
 // family the caller has no definite value for is simply not named, so nothing in it is
 // touched — an absent signal removes nothing.
 type LabelChange struct {
-	// Add is ensured to exist on the repo/project and to be present on the change.
+	// Target says WHAT is being labelled — an issue or a change (PR/MR) — and is REQUIRED:
+	// a change that leaves it unset is refused by every backend before any request is
+	// issued. The seam cannot infer it from the number. GitHub numbers issues and pull
+	// requests in one sequence and labels both through the issues endpoint, so there the
+	// distinction costs nothing; GitLab numbers issues and merge requests in two SEPARATE
+	// sequences with two separate endpoints, so a label write that assumed "change" landed
+	// on whichever merge request happened to share the new issue's iid — the defect that
+	// left every `deskfile new` issue on a GitLab project unstamped. Refusing an unset
+	// target on BOTH forges is deliberate: a caller that forgot it would otherwise pass
+	// every GitHub test and reproduce that defect only on GitLab.
+	Target LabelTarget
+	// Add is ensured to exist on the repo/project and to be present on the target.
 	Add []LabelSpec
 	// Remove is taken off the change when present. A name that is not on the change is not
 	// an error: removal is idempotent by construction.
@@ -367,6 +379,45 @@ type LabelChange struct {
 	// RemoveFamilies are label-name prefixes whose stale members are removed. A label
 	// matching one of these prefixes that is ALSO in Add is kept.
 	RemoveFamilies []string
+}
+
+// LabelTarget names the KIND of object a LabelChange addresses. The zero value is deliberately
+// not a kind: it is the unset state ApplyLabels refuses, so a call site has to say which it
+// means (see LabelChange.Target for why the seam never guesses).
+type LabelTarget int
+
+const (
+	// LabelTargetUnset is the zero value — refused, never defaulted.
+	LabelTargetUnset LabelTarget = iota
+	// LabelTargetChange addresses a pull request / merge request.
+	LabelTargetChange
+	// LabelTargetIssue addresses an issue.
+	LabelTargetIssue
+)
+
+// String renders the target for refusal messages and step reports.
+func (t LabelTarget) String() string {
+	switch t {
+	case LabelTargetChange:
+		return "change"
+	case LabelTargetIssue:
+		return "issue"
+	default:
+		return "unset"
+	}
+}
+
+// requireTarget is the shared refusal every backend issues BEFORE its first request when a
+// LabelChange names no target. One helper rather than two copies so the two backends cannot
+// drift on which values are accepted.
+func (c LabelChange) requireTarget() error {
+	switch c.Target {
+	case LabelTargetChange, LabelTargetIssue:
+		return nil
+	default:
+		return Refused(fmt.Sprintf("refusing to apply labels with no target kind (LabelChange.Target=%d) — "+
+			"say whether the number is an issue or a change; on GitLab the two are separate sequences", int(c.Target)))
+	}
 }
 
 // LabelOutcome reports what the reconciliation actually changed, so a caller can report the
@@ -851,10 +902,11 @@ type Forge interface {
 	// MarkReadyForReview flips a draft change to ready (the only transition this seam
 	// exposes — there is no un-ready, merge, or edit).
 	MarkReadyForReview(nodeID string) error
-	// ApplyLabels reconciles a change's labels in one operation (see LabelChange). It is
-	// idempotent: applying an already-present label and removing an already-absent one are
-	// both no-ops, so a re-run REPLACES rather than stacks and never fails for having
-	// already succeeded.
+	// ApplyLabels reconciles the labels of ONE issue or change in one operation (see
+	// LabelChange; change.Target says which kind number names, and an unset target is
+	// refused before any request). It is idempotent: applying an already-present label and
+	// removing an already-absent one are both no-ops, so a re-run REPLACES rather than
+	// stacks and never fails for having already succeeded.
 	ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error)
 	// EditComment replaces the body of ONE existing comment. commentID is the opaque id a
 	// prior ListComments returned (Comment.ID) — never a locally composed one.

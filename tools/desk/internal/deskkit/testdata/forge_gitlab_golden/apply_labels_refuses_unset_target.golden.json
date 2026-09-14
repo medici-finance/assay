@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "refusing to apply labels with no target kind (LabelChange.Target=0) — say whether the number is an issue or a change; on GitLab the two are separate sequences",
+  "not_found": false
+}

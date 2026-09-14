@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestGitLabRepoInfoFetcher|TestForgeGithubGolden|TestForgeGitlabGolden'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestGitLabRepoInfoFetcher|TestForgeGithubGolden|TestForgeGitlabGolden|TestLabelTargetRoutes|TestLabelOpBothBackends'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -7,6 +7,18 @@
     "new": "\tcase false && reGitHubToken.MatchString(s):"
   },
   "mutations": [
+    {
+      "name": "route an ISSUE label target to the merge-request write on GitLab (the deskfile-new defect: same iid, wrong object)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase LabelTargetIssue:\n\t\topts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}",
+      "new": "\tcase LabelTargetUnset:\n\t\topts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}"
+    },
+    {
+      "name": "accept an UNSET label target (a caller that forgot the kind silently takes the merge-request route)",
+      "file": "internal/deskkit/forge.go",
+      "old": "\tcase LabelTargetChange, LabelTargetIssue:\n\t\treturn nil",
+      "new": "\tcase LabelTargetChange, LabelTargetIssue, LabelTargetUnset:\n\t\treturn nil"
+    },
     {
       "name": "unanchor the go.sum digest exemption (any 32+ run behind h1: passes)",
       "file": "internal/deskkit/structured.go",

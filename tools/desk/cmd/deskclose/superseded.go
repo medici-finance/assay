@@ -370,10 +370,10 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
 	}
-	if err := addLabel(c.repo, n, deskkit.LabelSpec{
+	if err := addLabel(c.repo, n, it, deskkit.LabelSpec{
 		Name:        labelProposed,
 		Color:       "FBCA04",
-		Description:  "worker proposes this item is superseded; the review desk owes it a confirm or dispute",
+		Description: "worker proposes this item is superseded; the review desk owes it a confirm or dispute",
 	}); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
@@ -500,7 +500,7 @@ func disputeProposal(c common, n int, target, reason string, who caller, out io.
 		a.log(deskkit.ResultRateLimited, "dispute posted, needs-decision label deferred: "+err.Error())
 		return err
 	}
-	if err := addLabel(c.repo, n, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {
+	if err := addLabel(c.repo, n, it, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {
 		// The label is not this tool's to provision: it is the human decision queue's,
 		// shipped by the adoption guide. Say exactly what is missing.
 		a.log(deskkit.ResultUnverifiable, err.Error())
@@ -629,6 +629,14 @@ func disputeBody(p proposal, who caller, reason string) string {
 	return b.String()
 }
 
+// labelTargetOf maps a fetched item's kind onto the label seam's target.
+func labelTargetOf(it item) deskkit.LabelTarget {
+	if it.isPR() {
+		return deskkit.LabelTargetChange
+	}
+	return deskkit.LabelTargetIssue
+}
+
 func crossRefBody(repo string, n int, p proposal, who caller) string {
 	return fmt.Sprintf("Supersedes %s#%d — %s by %s (proposed by %s). The superseded item's close comment "+
 		"carries the verdict record; this note is the back-reference so the record reads in both directions.\n",
@@ -642,12 +650,16 @@ func crossRefBody(repo string, n int, p proposal, who caller) string {
 // already exists). This folds the old three-call `label list` → `label create` → `edit
 // --add-label` sequence — including the separate ensureProposalLabel create — into the one
 // declarative reconcile.
-func addLabel(repo string, n int, spec deskkit.LabelSpec) error {
+//
+// The item's KIND comes from the fetched item, never from the number: on GitLab an issue and a
+// merge request can share a number, and the label write has to say which one it means.
+func addLabel(repo string, n int, it item, spec deskkit.LabelSpec) error {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return ferr
 	}
-	if _, err := fg.ApplyLabels(fr, n, deskkit.LabelChange{Add: []deskkit.LabelSpec{spec}}); err != nil {
+	change := deskkit.LabelChange{Target: labelTargetOf(it), Add: []deskkit.LabelSpec{spec}}
+	if _, err := fg.ApplyLabels(fr, n, change); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: applying %q to %s#%d did not confirm", spec.Name, repo, n), err)
 	}

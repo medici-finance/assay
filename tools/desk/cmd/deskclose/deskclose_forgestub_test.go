@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -17,10 +18,10 @@ import (
 // --- fixture parsing ---
 
 type stubIssueWire struct {
-	Number      int    `json:"number"`
-	Title       string `json:"title"`
-	State       string `json:"state"`
-	Body        string `json:"body"`
+	Number      int                     `json:"number"`
+	Title       string                  `json:"title"`
+	State       string                  `json:"state"`
+	Body        string                  `json:"body"`
 	Labels      []struct{ Name string } `json:"labels"`
 	PullRequest *struct {
 		MergedAt *string `json:"merged_at"`
@@ -203,9 +204,25 @@ func (s *stubRemote) CloseIssue(fr deskkit.ForgeRepo, n int, reason string) erro
 }
 
 func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.LabelChange) (*deskkit.LabelOutcome, error) {
-	kind := "issue"
-	if s.stubIsPR(fr, n) {
+	// The kind recorded on the write comes from the CALLER's stated target, not from the
+	// stub's own item lookup — so a caller that labels a PR as an issue (or leaves the target
+	// unset, which the real backends refuse) shows up as the wrong argv / an error here.
+	var kind string
+	switch change.Target {
+	case deskkit.LabelTargetIssue:
+		kind = "issue"
+	case deskkit.LabelTargetChange:
 		kind = "pr"
+	default:
+		return nil, errors.New("refusing to apply labels with no target kind")
+	}
+	if want := "issue"; s.stubIsPR(fr, n) {
+		want = "pr"
+		if kind != want {
+			return nil, fmt.Errorf("label target %s on %s#%d, which is a %s", kind, fr.Slug(), n, want)
+		}
+	} else if kind != want {
+		return nil, fmt.Errorf("label target %s on %s#%d, which is an %s", kind, fr.Slug(), n, want)
 	}
 	if s.failApply {
 		for _, l := range change.Add {
