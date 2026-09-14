@@ -84,6 +84,24 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\treturn Refused(fmt.Sprintf(\"unsupported review event %q — expected APPROVE, REQUEST_CHANGES or COMMENT\",\n\t\t\tStripControl(in.Event)))",
       "new": "\t\treturn nil"
+    },
+    {
+      "name": "route a typed ISSUE note at the merge-request notes endpoint (deskfile attach --kind issue lands on !N, the wrong object)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tpath := fmt.Sprintf(\"/projects/%s/issues/%d/notes\", g.projectPath(repo), number)\n\t\tnote, _, perr := cl.Notes.CreateIssueNote(repo.Slug(), int64(number),\n\t\t\t&gitlab.CreateIssueNoteOptions{Body: gitlab.Ptr(body)})\n\t\tif perr != nil {\n\t\t\treturn nil, g.mapErr(http.MethodPost, path, perr)\n\t\t}\n\t\treturn &CommentRef{DatabaseID: note.ID}, nil\n\tcase TargetChange:",
+      "new": "\t\tfallthrough\n\tcase TargetChange:"
+    },
+    {
+      "name": "resolve a typed ISSUE read through the bare both-kinds probe (a number that carries #N and !N is refused again, the field defect)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase TargetIssue:\n\t\tpath := fmt.Sprintf(\"/projects/%s/issues/%d\", g.projectPath(repo), number)\n\t\tiss, _, ierr := cl.Issues.GetIssue(repo.Slug(), int64(number))\n\t\tif ierr != nil {\n\t\t\treturn nil, g.mapErr(http.MethodGet, path, ierr)\n\t\t}\n\t\treturn gitlabIssueAsIssue(iss), nil",
+      "new": "\tcase TargetIssue:\n\t\treturn g.GetIssue(repo, number)"
+    },
+    {
+      "name": "read the merge request for a typed CHANGE read but report it as an issue (IsPullRequest false)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\treturn gitlabMRAsIssue(mr), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped",
+      "new": "\t\treturn gitlabIssueAsIssue(&gitlab.Issue{IID: mr.IID, Title: mr.Title, State: mr.State, WebURL: mr.WebURL}), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped"
     }
   ]
 }

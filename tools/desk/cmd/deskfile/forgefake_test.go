@@ -29,11 +29,15 @@ type dfForge struct {
 	getNums      []int
 	filed        *deskkit.IssueInput
 	appliedLabel []string // labels ApplyLabels added after a filing
+	comments     []int    // PostComment / PostCommentTyped target numbers
+	// getKinds / commentKinds record the TargetKind each typed read / typed write was
+	// asked for, in call order — the observable that proves `--kind` reached the forge.
+	getKinds     []deskkit.TargetKind
+	commentKinds []deskkit.TargetKind
 	// labelTarget is the LabelChange.Target the filing's label write carried. The real
 	// backends refuse an unset one; on GitLab an unset/change target lands on the MR sharing
 	// the issue's number, so the fake pins the ISSUE target the same way.
 	labelTarget deskkit.TargetKind
-	comments    []int // PostComment target numbers
 
 	// readOnlyCustody records the readOnly argument the verb passed to forgeForFn — i.e.
 	// whether it asked for a NON-rotating credential lookup. It is the observable that
@@ -112,6 +116,22 @@ func (f *dfForge) GetIssue(repo deskkit.ForgeRepo, number int) (*deskkit.Issue, 
 	return &deskkit.Issue{Number: number, State: state, URL: url}, nil
 }
 
+// GetIssueTyped records the stated kind and answers the same canned object as GetIssue; a
+// FAKEGH_ISSUE_IS_PR=1 environment models a GitHub number that is a pull request, so a
+// test can drive the kind-mismatch path (asked for an issue, got a change).
+func (f *dfForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	f.getKinds = append(f.getKinds, kind)
+	iss, err := f.GetIssue(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	iss.IsPullRequest = os.Getenv("FAKEGH_ISSUE_IS_PR") != ""
+	if iss.IsPullRequest && kind == deskkit.TargetIssue {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s#%d is a pull request, not an issue", repo.Slug(), number), nil)
+	}
+	return iss, nil
+}
+
 func (f *dfForge) FileIssue(repo deskkit.ForgeRepo, in deskkit.IssueInput) (*deskkit.IssueRef, error) {
 	// Record the ATTEMPT (before any failure), so the synthesised `issue create` argv reflects
 	// that the create was reached even when the forge refuses it (FAKEGH_CREATE_FAIL).
@@ -140,6 +160,12 @@ func (f *dfForge) PostComment(repo deskkit.ForgeRepo, number int, body string) (
 	}
 	f.comments = append(f.comments, number)
 	return &deskkit.CommentRef{URL: fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-1", repo.Slug(), number)}, nil
+}
+
+// PostCommentTyped records the stated kind and otherwise behaves as PostComment.
+func (f *dfForge) PostCommentTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
+	f.commentKinds = append(f.commentKinds, kind)
+	return f.PostComment(repo, number, body)
 }
 
 // synthGH renders the forge ops as canonical gh-shaped pseudo-argvs so the suite's

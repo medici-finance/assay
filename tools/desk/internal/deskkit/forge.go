@@ -741,6 +741,17 @@ type Forge interface {
 	GetPullRequest(repo ForgeRepo, number int) (*PullRequest, error)
 	// GetIssue reads an issue and answers whether the number is in fact a pull request.
 	GetIssue(repo ForgeRepo, number int) (*Issue, error)
+	// GetIssueTyped reads the object of ONE stated kind at `number` (see TargetKind). It
+	// exists because a bare number is ambiguous on a forge that numbers issues and changes
+	// in SEPARATE sequences: GitLab's `#7` and `!7` routinely both exist, and GetIssue
+	// REFUSES that case rather than pick one. A caller that knows which kind it means —
+	// `deskfile attach` is an observation on an issue — states it and gets that object, or
+	// a 404 (IsForgeNotFound) when that kind does not exist at the number. On a forge with
+	// ONE number sequence (GitHub) the kind is VALIDATED, never used to route: an issue
+	// number read as a change, or a change read as an issue, is a could-not-check error
+	// naming the mismatch, never the other object handed back under the wrong name.
+	// Consumer: cmd/deskfile's attach target read (freeze rule).
+	GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error)
 	// OpenChangeForBranch resolves the single OPEN change (PR ↔ MR) whose SOURCE branch is
 	// `branch`, returning (nil, nil) when NONE is open. It exists because every other change
 	// read on this seam is keyed by NUMBER, and deskpr's existing-PR-for-branch check and
@@ -903,6 +914,13 @@ type Forge interface {
 	// IssueRef. A write whose only output is "no error" leaves its caller re-reading the
 	// listing to find out what it just did.
 	PostComment(repo ForgeRepo, number int, body string) (*CommentRef, error)
+	// PostCommentTyped is PostComment for a caller that has STATED which kind of object
+	// `number` names (see TargetKind, GetIssueTyped). PostComment resolves the kind itself
+	// and so inherits GetIssue's both-kinds refusal on GitLab; this write takes the kind
+	// from the caller and posts to that kind's endpoint (issue notes ↔ merge-request
+	// notes) without a resolving read. On GitHub both kinds share one comments endpoint,
+	// so the kind changes nothing there. Consumer: cmd/deskfile attach (freeze rule).
+	PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error)
 	// PostReview submits a head-pinned review/approval on a change.
 	PostReview(repo ForgeRepo, number int, in ReviewInput) error
 	// MarkReadyForReview flips a draft change to ready (the only transition this seam
