@@ -1,6 +1,6 @@
 package main
 
-// classdegrade_test.go — the CLASS-level regression for brief forge-gitlab/13.
+// classdegrade_test.go — the CLASS-level regression for the per-PR-read-degrades-row-not-run fix.
 //
 // PR #1068 repaired ONE arm of classifyPR: the benign-merge compare, guarded so an
 // unpinnable reviewed sha degrades its own row (RE-REVIEW) instead of failing the whole

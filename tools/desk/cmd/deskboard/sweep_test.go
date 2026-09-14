@@ -12,7 +12,7 @@ package main
 //	                   "clean" board). A CHANGE-level per-PR read failing (one PR's reviews,
 //	                   changed files, …) is the opposite contract — see classdegrade_test.go
 //	                   and TestActions_PerPRReadDegradesRowNotRun below: that degrades ONE
-//	                   row, never the run (forge-gitlab/13).
+//	                   row, never the run.
 //	(c) BOUNDED      — the pool never runs more than `limit` work functions at once, so a
 //	                   large roster cannot explode into unbounded concurrent gh subprocesses.
 
@@ -297,9 +297,9 @@ func TestActions_FailClosed_Concurrent(t *testing.T) {
 	}
 }
 
-// TestActions_PerPRReadDegradesRowNotRun is the CLASS-level regression for
-// forge-gitlab/13: a single PR's /reviews read failing mid-sweep now degrades THAT PR's
-// OWN row — never the whole run. This test used to be TestActions_FailClosed_PerPRRead and
+// TestActions_PerPRReadDegradesRowNotRun is the CLASS-level regression: a single PR's
+// /reviews read failing mid-sweep now degrades THAT PR's OWN row — never the whole run.
+// This test used to be TestActions_FailClosed_PerPRRead and
 // pinned the opposite (pre-fix) contract: exit 6, no board at all, for exactly this
 // change-level read. That was the defect this brief closes (`classifyPR`'s fetchReviews
 // error return, one of the five whole-sweep returns the brief's facts enumerate) — the
