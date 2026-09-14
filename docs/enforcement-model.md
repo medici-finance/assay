@@ -22,10 +22,11 @@ distinct App identities must exist at all.**
 *(Reads are the exception to "the same three, identically". They are role-scoped and sit outside
 `requiredDuties`, so the boot preflight does not check them: the roles that read CI need
 `checks`/`statuses`/`actions: read`, and the **reviewer** — the identity that runs `deskflip` —
-additionally needs **`administration: read`** to see the required status checks of a branch under
-**classic** branch protection. Missing, it costs no boot; it costs every ready-flip on such a repo,
-which stays could-not-check forever. See `docs/adopting-assay.md` §3 `setup-reviewer-app`,
-*Classic branch protection needs `Administration: Read-only`*.)*
+additionally needs **`administration: read`** to see the required status checks of a protected
+branch whose required set is not expressed in a ruleset — classic protection, or a ruleset carrying
+no `required_status_checks` rule. Missing, it costs no boot; it costs every ready-flip on such a
+repo, which stays could-not-check forever. See `docs/adopting-assay.md` §3 `setup-reviewer-app`,
+*Required checks a ruleset does not express*.)*
 
 | Identity | What it does | If merged into another, what breaks |
 |---|---|---|

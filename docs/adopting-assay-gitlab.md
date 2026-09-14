@@ -110,7 +110,8 @@ honest limit as the GitHub profile (separation of attribution, not proof of dili
 
 **The ready-flip's protected-branch read — `could-not-check` on this profile.** On GitHub the
 reviewer App needs `Administration: Read-only` before `deskflip` can read the required status
-checks of a branch under classic protection (`docs/adopting-assay.md` §3 `setup-reviewer-app`).
+checks of a protected branch whose required set is not expressed in a ruleset
+(`docs/adopting-assay.md` §3 `setup-reviewer-app`).
 GitLab has **no permission toggle of that shape**: the equivalent reads are
 `GET api/v4/projects/:id/protected_branches/:name` and, for the merge-gating checks themselves,
 `GET api/v4/projects/:id/external_status_checks`, both under the role's plain `api` scope, so the

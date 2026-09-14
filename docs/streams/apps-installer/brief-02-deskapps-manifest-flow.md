@@ -70,12 +70,15 @@ facts:
     checks:read, statuses:read, actions:read; reviewer and desk additionally carry
     administration:read.
   - `administration:read` is what lets `deskflip` read a branch's required status checks through the
-    legacy branch-protection endpoint — the ONLY endpoint that can see CLASSIC branch protection
-    (the rules API surfaces rulesets only). A reviewer App born without it flips nothing on a
-    classically-protected repo: the gate fails closed to could-not-check forever (#1020). Read-only
-    is the whole grant — never `administration:write`, which can rewrite protection itself. Because
-    these manifests are what every future install is born with, the permission belongs in the
-    manifest data, not in a post-install fix-up.
+    legacy branch-protection endpoint — the ONLY endpoint that can read a required set the rules API
+    cannot express. The rules API surfaces rulesets only, and within a ruleset only a
+    `required_status_checks` rule carries contexts, so BOTH a classically-protected branch AND a
+    branch under a ruleset with no `required_status_checks` rule read as "protected, no contexts"
+    and fail the gate closed. A reviewer App born without the permission flips nothing on such a
+    repo: could-not-check forever (#1020). Read-only is the whole grant — never
+    `administration:write`, which can rewrite protection itself. Because these manifests are what
+    every future install is born with, the permission belongs in the manifest data, not in a
+    post-install fix-up.
 - Bindings written by tier (`<ROLE>_APP` lines, brief 01): `team` → all six roles → `<prefix>-act`
   except reads: `deskboard`/index paths use `<prefix>-read` via a `READ_APP=<prefix>-read` line
   (consumer: brief 03 decides which verbs mint the read App; this brief only writes the line).
