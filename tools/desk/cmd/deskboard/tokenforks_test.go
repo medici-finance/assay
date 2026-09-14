@@ -64,7 +64,7 @@ func TestBoardReadsForkTokenMinterOncePerOwner(t *testing.T) {
 		forks = append(forks, role+"/"+owner)
 		mu.Unlock()
 		p := filepath.Join(tokenDir, role+"-token-"+owner)
-		if err := os.WriteFile(p, []byte("ghs_"+owner), 0o600); err != nil {
+		if err := os.WriteFile(p, []byte("stub-token-"+owner), 0o600); err != nil {
 			return "", "", err
 		}
 		return p, "", nil

@@ -30,7 +30,7 @@ func countingMinter(t *testing.T) (calls func() int, seen func() []string) {
 		order = append(order, role+"/"+owner)
 		mu.Unlock()
 		p := filepath.Join(dir, role+"--"+owner+".token")
-		if err := os.WriteFile(p, []byte("ghs_"+role+"_"+owner), 0o600); err != nil {
+		if err := os.WriteFile(p, []byte("stub-token-"+role+"_"+owner), 0o600); err != nil {
 			return "", "", err
 		}
 		return p, "", nil
@@ -141,7 +141,7 @@ func TestRoleTokenMemoRemintsPastMaxAge(t *testing.T) {
 func TestRoleTokenMemoDoesNotCacheFailures(t *testing.T) {
 	dir := t.TempDir()
 	goodPath := filepath.Join(dir, "good.token")
-	if err := os.WriteFile(goodPath, []byte("ghs_good"), 0o600); err != nil {
+	if err := os.WriteFile(goodPath, []byte("stub-token-good"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	emptyPath := filepath.Join(dir, "empty.token")
@@ -211,7 +211,7 @@ func TestRoleTokenMemoDoesNotCacheFailures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("second lookup after a failure: %v — a memoised failure would pin the refusal", err)
 			}
-			if tok != "ghs_good" {
+			if tok != "stub-token-good" {
 				t.Fatalf("second lookup returned %q, want the freshly minted token", tok)
 			}
 			if calls != 2 {
@@ -243,7 +243,7 @@ func TestRoleTokenMemoNeverCrossesIdentities(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s/%s pass %d: %v", c.role, c.owner, pass, err)
 			}
-			wantTok := "ghs_" + c.role + "_" + c.owner
+			wantTok := "stub-token-" + c.role + "_" + c.owner
 			if tok != wantTok {
 				t.Fatalf("%s/%s pass %d got token %q, want %q — the memo returned ANOTHER identity's credential",
 					c.role, c.owner, pass, tok, wantTok)

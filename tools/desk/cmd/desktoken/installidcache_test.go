@@ -90,7 +90,7 @@ func seedKeyAndAppID(t *testing.T, home string) {
 func seedTokenCache(t *testing.T, home, installID string, ageMinutes int, sidecar string) string {
 	t.Helper()
 	p := filepath.Join(configDir(home), "reviewer-token-"+installID)
-	writeTokenCache(t, p, "ghs_cached_token")
+	writeTokenCache(t, p, "stub-token-cached_token")
 	mt := time.Now().Add(-time.Duration(ageMinutes) * time.Minute)
 	if err := os.Chtimes(p, mt, mt); err != nil {
 		t.Fatalf("chtimes %s: %v", p, err)
@@ -149,7 +149,7 @@ func TestWarmCacheMakesNoNetworkCall(t *testing.T) {
 	if !strings.Contains(stdout, tokenPath) {
 		t.Fatalf("stdout should name the cached token path %s; got: %s", tokenPath, stdout)
 	}
-	if strings.Contains(stdout, "ghs_cached_token") {
+	if strings.Contains(stdout, "stub-token-cached_token") {
 		t.Fatalf("token value leaked to stdout: %s", stdout)
 	}
 	if reqs := rt.seen(); len(reqs) != 0 {
@@ -171,7 +171,7 @@ func TestStaleCacheMintsExactlyOnce(t *testing.T) {
 		seedTokenCache(t, home, testInstallID, 51, "reviewer-app example-org\n")
 		seedInstallIDCache(t, home, "reviewer-app", "example-org", testInstallID, time.Hour)
 
-		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "ghs_minted")
+		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "stub-token-minted")
 
 		rc, _, stderr := runCap(t, []string{"reviewer", "--repo", "example-org/tracker"})
 		if rc != deskkit.ExitOK {
@@ -190,7 +190,7 @@ func TestStaleCacheMintsExactlyOnce(t *testing.T) {
 		home := setupTest(t)
 		seedKeyAndAppID(t, home)
 
-		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "ghs_minted")
+		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "stub-token-minted")
 
 		rc, _, stderr := runCap(t, []string{"reviewer", "--repo", "example-org/tracker"})
 		if rc != deskkit.ExitOK {
@@ -226,7 +226,7 @@ func TestInstallIDCacheHitAndExpiry(t *testing.T) {
 		home := setupTest(t)
 		seedKeyAndAppID(t, home)
 		seedInstallIDCache(t, home, "reviewer-app", "example-org", testInstallID, 23*time.Hour)
-		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "ghs_minted")
+		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "stub-token-minted")
 
 		rc, _, stderr := runCap(t, []string{"reviewer", "--repo", "example-org/tracker"})
 		if rc != deskkit.ExitOK {
@@ -243,7 +243,7 @@ func TestInstallIDCacheHitAndExpiry(t *testing.T) {
 		home := setupTest(t)
 		seedKeyAndAppID(t, home)
 		p := seedInstallIDCache(t, home, "reviewer-app", "example-org", testInstallID, 25*time.Hour)
-		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "ghs_minted")
+		ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "stub-token-minted")
 
 		rc, _, stderr := runCap(t, []string{"reviewer", "--repo", "example-org/tracker"})
 		if rc != deskkit.ExitOK {
@@ -298,7 +298,7 @@ func TestTwoAppsOnOneOwnerNeverShareACacheFile(t *testing.T) {
 	// App two (bound as x-act) mints a DIFFERENT installation on the same account.
 	const secondID = "100000009"
 	second := filepath.Join(configDir(home), "reviewer-token-"+secondID)
-	writeTokenCache(t, second, "ghs_other_app_token")
+	writeTokenCache(t, second, "stub-token-other_app_token")
 	writeFileMode(t, ownerSidecarPath(second), "x-act example-org\n", 0o600)
 
 	if first == second {
@@ -330,7 +330,7 @@ func TestTwoAppsOnOneOwnerNeverShareACacheFile(t *testing.T) {
 	t.Setenv("X_ACT_APP_ID", "424242")
 	writeFileMode(t, filepath.Join(configDir(home2), "x-act.pem"), makePEM(t), 0o600)
 	seedTokenCache(t, home2, testInstallID, 5, "reviewer-app example-org\n")
-	ct := useCountingServer(t, exampleInstalls(100000009, "example-org"), "ghs_minted_by_x_act")
+	ct := useCountingServer(t, exampleInstalls(100000009, "example-org"), "stub-token-minted_by_x_act")
 
 	rc, stdout, stderr := runCap(t, []string{"reviewer", "--repo", "example-org/tracker"})
 	if rc != deskkit.ExitOK {
@@ -375,7 +375,7 @@ func TestProbeFallsThroughOnAmbiguityAndMalformedInput(t *testing.T) {
 	t.Run("world-readable candidate", func(t *testing.T) {
 		home := setupTest(t)
 		p := filepath.Join(configDir(home), "reviewer-token-"+testInstallID)
-		writeFileMode(t, p, "ghs_loose", 0o644)
+		writeFileMode(t, p, "stub-token-loose", 0o644)
 		writeFileMode(t, ownerSidecarPath(p), "reviewer-app example-org\n", 0o600)
 		if id, ok := probeCachedInstallID("reviewer", "reviewer-app", "example-org"); ok {
 			t.Fatalf("a 0644 cache file was accepted as %q; the custody bar is 0600", id)
@@ -400,7 +400,7 @@ func TestProbeFallsThroughOnAmbiguityAndMalformedInput(t *testing.T) {
 			t.Fatal("a malformed account name was probed for")
 		}
 		seedKeyAndAppID(t, home)
-		ct := useCountingServer(t, exampleInstalls(100000004, badOwner), "ghs_minted")
+		ct := useCountingServer(t, exampleInstalls(100000004, badOwner), "stub-token-minted")
 		rc, _, stderr := runCap(t, []string{"reviewer", "--repo", badOwner + "/tracker"})
 		if rc != deskkit.ExitOK {
 			t.Fatalf("rc = %d, want 0 (the malformed account must still resolve normally); stderr: %s", rc, stderr)
@@ -435,7 +435,7 @@ func TestFreshBypassesProbeAndInstallIDCache(t *testing.T) {
 	writeFileMode(t, permsPath(tokenPath), `{"contents":"read"}`, 0o600)
 	seedInstallIDCache(t, home, "reviewer-app", "example-org", testInstallID, time.Hour)
 
-	ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "ghs_fresh_mint")
+	ct := useCountingServer(t, exampleInstalls(100000004, "example-org"), "stub-token-fresh_mint")
 
 	rc, _, stderr := runCap(t, []string{"reviewer", "--repo", "example-org/tracker", "--fresh"})
 	if rc != deskkit.ExitOK {
@@ -449,7 +449,7 @@ func TestFreshBypassesProbeAndInstallIDCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read re-minted token: %v", err)
 	}
-	if strings.TrimSpace(string(b)) != "ghs_fresh_mint" {
+	if strings.TrimSpace(string(b)) != "stub-token-fresh_mint" {
 		t.Fatalf("--fresh did not re-mint: token file holds %q", strings.TrimSpace(string(b)))
 	}
 	if !sidecarMatches(tokenPath, "reviewer-app", "example-org") {

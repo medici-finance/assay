@@ -34,7 +34,7 @@ func TestFlipForksTokenMinterOncePerRun(t *testing.T) {
 
 	tokenDir := t.TempDir()
 	tokenPath := filepath.Join(tokenDir, "reviewer-token-100000004")
-	if err := os.WriteFile(tokenPath, []byte("ghs_flip_token"), 0o600); err != nil {
+	if err := os.WriteFile(tokenPath, []byte("stub-token-flip_token"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
