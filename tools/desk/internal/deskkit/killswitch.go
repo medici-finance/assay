@@ -510,15 +510,21 @@ func writeDisabledAudit(tool, reason string) {
 	}
 }
 
-// lastResultWas reports whether the most recent audit line has the given result.
-// Transition detection is best-effort: a corrupt/unreadable file returns false here
-// (the outward-write flow surfaces corruption via LoadEntries/AllowWrite as exit 6).
+// lastResultWas reports whether the most recent audit line has the given result. It
+// runs on EVERY desk verb via Guard(), so it reads only the file's TAIL (LastEntry),
+// never the whole file (LoadEntries) — see LastEntry's doc for why (assay#1035: this
+// call's cost must not grow with the audit log's size).
+//
+// Transition detection is best-effort: an unreadable/malformed tail returns false here,
+// exactly as an unreadable/malformed *anywhere-in-the-file* returned false before this
+// change (the outward-write flow surfaces corruption via its own full LoadEntries/
+// AllowWrite call as exit 6 — this best-effort check does not need to duplicate that).
 func lastResultWas(result string) bool {
-	entries, err := LoadEntries()
-	if err != nil || len(entries) == 0 {
+	e, err := LastEntry()
+	if err != nil || e == nil {
 		return false
 	}
-	return entries[len(entries)-1].Result == result
+	return e.Result == result
 }
 
 // toolName derives the tool name for audit lines from the running binary

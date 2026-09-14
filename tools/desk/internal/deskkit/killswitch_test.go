@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,52 @@ func TestGuardKillSwitch(t *testing.T) {
 			t.Fatalf("Guard() = %v, want Unverifiable (fail closed, exit 6)", err)
 		}
 	})
+}
+
+// BenchmarkLastResultWas is the fail-first evidence for assay#1035, runnable against
+// EITHER implementation of lastResultWas (its signature — a bool func — never changed,
+// only what it reads did): a fleet-scale audit.jsonl makes every Guard() call pay
+// LoadEntries' O(file-size) re-parse just to look at the LAST line.
+//
+// Run before the fix (`git stash`, since lastResultWas called LoadEntries() directly)
+// and after, on the same fixture size, to see the difference directly:
+//
+//	go test ./internal/deskkit/... -run '^$' -bench BenchmarkLastResultWas -benchtime=20x -timeout 120s
+func BenchmarkLastResultWas(b *testing.B) {
+	dir := filepath.Join(b.TempDir(), "assay")
+	old := dirOverride
+	dirOverride = dir
+	defer func() { dirOverride = old }()
+	b.Setenv("DESK_TOOLS_DISABLED", "")
+	b.Setenv("DESK_SESSION", "")
+	b.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	b.Setenv("CLAUDE_SESSION_ID", "bench-session")
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		b.Fatalf("mkdir: %v", err)
+	}
+	f, err := os.Create(filepath.Join(dir, "audit.jsonl"))
+	if err != nil {
+		b.Fatalf("create audit file: %v", err)
+	}
+	w := bufio.NewWriter(f)
+	const lines = 200_000 // ~ the issue's measured one-month fleet host
+	for i := 0; i < lines; i++ {
+		if _, err := w.WriteString(`{"ts":"2026-01-01T00:00:00Z","tool":"deskversion","verb":"guard","result":"ok"}` + "\n"); err != nil {
+			b.Fatalf("write line %d: %v", i, err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		b.Fatalf("flush: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		b.Fatalf("close: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		lastResultWas(ResultDisabled)
+	}
 }
 
 // TestGuardStopFlags exercises the loop stop-flags: STOP, STOP.<loop>,

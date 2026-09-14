@@ -2,10 +2,12 @@ package deskkit
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -237,6 +239,121 @@ func LoadEntries() ([]Entry, error) {
 		return nil, Unverifiable("error scanning audit file", err)
 	}
 	return entries, nil
+}
+
+// tailReadChunk bounds each backward seek LastEntry takes while hunting for the start
+// of the file's last line. Audit lines are tens to a few hundred bytes of JSON (Entry
+// above), so in practice the loop in readLastLine runs exactly once — this is the whole
+// point of LastEntry over LoadEntries (assay#1035): the cost of finding the last entry
+// must not grow with how many entries came before it.
+const tailReadChunk = 8192
+
+// LastEntry reads ONLY the last line of the audit file, via a bounded seek-from-end
+// scan, instead of parsing the whole file the way LoadEntries does. It exists for
+// callers that only ever need the single most recent entry — lastResultWas's
+// disarm-transition check runs on the hot path of EVERY desk verb via Guard(), and on a
+// fleet-scale, never-rotated audit.jsonl (hundreds of MB) LoadEntries' O(file-size)
+// re-parse was the single largest fixed overhead in the desk-tool substrate (assay#1035).
+//
+// Semantics mirror LoadEntries as closely as a tail read can:
+//   - a MISSING or EMPTY file is empty history: (nil, nil), same as LoadEntries.
+//   - trailing blank lines (LoadEntries's `raw == ""` skip) are ignored the same way.
+//   - an I/O error, or a last line that fails to json.Unmarshal, is a REFUSAL
+//     (Unverifiable) scoped to the one line this reads.
+//
+// LastEntry deliberately does NOT detect corruption earlier in the file — that is a
+// property only a full scan can give, and the one caller that must have it (the
+// outward-write flow, ahead of AllowWrite/the audit append) still calls LoadEntries
+// under the audit flock. LastEntry is for read-only "what happened last" questions, not
+// for the fail-closed-on-any-corruption contract LoadEntries makes.
+func LastEntry() (*Entry, error) {
+	path, err := auditPath()
+	if err != nil {
+		return nil, Unverifiable("cannot resolve audit path (HOME missing?)", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, Unverifiable("cannot read audit file — run `deskaudit recover` (quarantines the bad content and carries good entries forward; a plain move resets the budget + idempotency)", err)
+	}
+	defer f.Close()
+
+	size, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, Unverifiable("cannot seek audit file", err)
+	}
+	line, err := readLastLine(f, size)
+	if err != nil {
+		return nil, Unverifiable("cannot read last audit line", err)
+	}
+	if len(line) == 0 {
+		return nil, nil
+	}
+	var e Entry
+	if err := json.Unmarshal(line, &e); err != nil {
+		return nil, Unverifiable(
+			"malformed audit line at file tail — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", err)
+	}
+	return &e, nil
+}
+
+// readLastLine returns the bytes of the last non-blank line found by reading ra
+// (sized size) backward in chunks of at most tailReadChunk bytes, stopping the first
+// time a non-blank line is found (or the start of the file is reached with nothing but
+// blank lines) — so in the common case (the file's last line IS the entry, which is
+// every case Log() ever produces) its cost is bounded by the length of that one line,
+// not by the size of everything before it.
+//
+// "Blank" matches LoadEntries's per-line skip exactly: a line that is empty, or
+// whitespace-only, after TrimSpace — not merely a bare "\n\n".
+func readLastLine(ra io.ReaderAt, size int64) ([]byte, error) {
+	if size == 0 {
+		return nil, nil
+	}
+	var tail []byte
+	pos := size
+	for {
+		chunk := int64(tailReadChunk)
+		if chunk > pos {
+			chunk = pos
+		}
+		pos -= chunk
+		buf := make([]byte, chunk)
+		if _, err := ra.ReadAt(buf, pos); err != nil && err != io.EOF {
+			return nil, err
+		}
+		tail = append(buf, tail...)
+
+		// Walk the buffered tail's lines from the end, skipping blank ones, until a
+		// non-blank line is found or the buffered tail runs out.
+		rest := tail
+		for {
+			idx := bytes.LastIndexByte(rest, '\n')
+			var candidate []byte
+			if idx >= 0 {
+				candidate = rest[idx+1:]
+			} else {
+				candidate = rest
+			}
+			if trimmed := bytes.TrimSpace(candidate); len(trimmed) > 0 {
+				return trimmed, nil
+			}
+			if idx < 0 {
+				break // nothing non-blank in the buffered tail yet
+			}
+			rest = rest[:idx]
+		}
+
+		if pos == 0 {
+			// Reached the start of the file and found only blank lines: empty history,
+			// same as LoadEntries would report (no entries survive the blank-line skip).
+			return nil, nil
+		}
+		// Not enough buffered to find a non-blank line — pull in the previous chunk and
+		// rescan; `tail` already carries everything read so far.
+	}
 }
 
 // FirstTS returns the ts of the first audit entry, for the deskboard reset banner
