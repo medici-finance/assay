@@ -2,9 +2,45 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
+
+// buildMainHistoryFastImport builds a linear chain of n+1 empty-tree commits on
+// refs/heads/main directly inside the bare repository at remoteDir, via a single
+// `git fast-import` stream. See the call site's comment (in the test below) for why this
+// replaces n+1 individual `git commit --allow-empty` calls followed by one `git push`.
+func buildMainHistoryFastImport(t *testing.T, remoteDir string, n int) {
+	t.Helper()
+
+	const epoch = 1700000000 // arbitrary fixed base; only ordering/monotonicity matters here
+
+	var b strings.Builder
+	writeCommit := func(mark int, subject string, hasParent bool) {
+		fmt.Fprintf(&b, "commit refs/heads/main\n")
+		fmt.Fprintf(&b, "mark :%d\n", mark)
+		fmt.Fprintf(&b, "author seed <seed@test> %d +0000\n", epoch+mark)
+		fmt.Fprintf(&b, "committer seed <seed@test> %d +0000\n", epoch+mark)
+		fmt.Fprintf(&b, "data <<COMMIT_MSG_EOF\n%s\nCOMMIT_MSG_EOF\n", subject)
+		if hasParent {
+			fmt.Fprintf(&b, "from :%d\n", mark-1)
+		}
+	}
+	writeCommit(1, "chore: initial commit on main", false)
+	for i := 0; i < n; i++ {
+		writeCommit(i+2, fmt.Sprintf("chore: main history commit %d", i), true)
+	}
+	b.WriteString("done\n")
+
+	cmd := exec.Command("git", "fast-import", "--quiet", "--done")
+	cmd.Dir = remoteDir
+	cmd.Stdin = strings.NewReader(b.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git fast-import (dir=%s) failed: %v\n%s", remoteDir, err, out)
+	}
+}
 
 // TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded is the regression
 // test for assay-toolkit#2527: deskpushguard pegged one CPU core indefinitely (never
@@ -56,16 +92,25 @@ func TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded(t *te
 	remoteDir := t.TempDir()
 	runGitT(t, remoteDir, "init", "--bare", "-b", "main")
 
+	// Build main's mainCommits+1-commit history directly in the bare remote via a single
+	// `git fast-import` stream, rather than mainCommits+1 individual `git commit --allow-empty`
+	// calls in a working tree followed by one `git push` of the whole history. The push-based
+	// construction was observed to fail intermittently in CI ("remote unpack failed: eof
+	// before pack header was fully read" / "Could not read <sha>") — a resource-pressure flake
+	// from spawning ~1600 git subprocesses back to back and then transferring the resulting
+	// ~800-object pack over the local push transport in one shot, immediately after. fast-import
+	// writes the identical history (a linear chain of empty-tree commits) straight into the
+	// bare repo's object store and ref in ONE process, with no push/unpack step to race —
+	// faster, and immune to that class of transport flake.
+	buildMainHistoryFastImport(t, remoteDir, mainCommits)
+
 	seed := t.TempDir()
 	runGitT(t, seed, "init", "-b", "main")
 	runGitT(t, seed, "config", "user.email", "seed@test")
 	runGitT(t, seed, "config", "user.name", "seed")
 	runGitT(t, seed, "remote", "add", "origin", remoteDir)
-	commitEmpty(t, seed, "chore: initial commit on main")
-	for i := 0; i < mainCommits; i++ {
-		commitEmpty(t, seed, fmt.Sprintf("chore: main history commit %d", i))
-	}
-	runGitT(t, seed, "push", "origin", "main")
+	runGitT(t, seed, "fetch", "origin", "main")
+	runGitT(t, seed, "checkout", "-B", "main", "origin/main")
 
 	// Long-lived siblings, each genuinely NOT an ancestor of main (their own unique
 	// commit), pushed to origin — never merged back, so an unmemoized ancestor walk
