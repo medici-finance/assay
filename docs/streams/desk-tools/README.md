@@ -84,6 +84,23 @@ sink is explicitly NOT in it: nothing here opens a socket, and only the on-disk 
 so a later sender reads it unchanged. It is the stream's first wave-2 brief — the child timings
 attach to brief 21's one subprocess runner rather than to a second measurement.
 
+Brief 24 comes from issue #1035, filed against the same ledger brief 23 declined to extend, and
+acts on the cost of reading it. `deskkit.Guard()` — the mandatory first call of every desk verb —
+ends by asking whether the LAST audit line was a `disabled` line, and answers it by parsing the
+whole file: ~0.6 s per invocation against a 105 MB ledger, on read-only verbs too, three times over
+on a write path, two of those inside the audit flock. The brief makes each read proportional to its
+ANSWER rather than to the file — a bounded tail read for the last entry, and for the rate limiter a
+bounded reverse read whose stop conditions are the meters' own termination conditions, falling back
+to the full parse whenever its answer is not yet determined, so no budget, breaker or idempotency
+verdict can change. It stops `desktoken` writing an audit row for a cache reuse that performed no
+act (the ledger's largest single contributor of rows), and rotates the ledger into daily
+`audit.jsonl.<date>` segments — deleting nothing, and carrying the counter and the idempotency store
+forward by making every reader, `deskaudit recover` included, read across the segment boundary. It
+also gives the ledger the read verb it never had, `deskaudit tail`. One correction it records rather
+than drops: only two of the three full parses on a write path are last-entry reads; the third feeds
+the idempotency predicates, which are whole-ledger by contract, so it keeps its full parse and
+bounding it is named as separate follow-up.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -112,6 +129,7 @@ attach to brief 21's one subprocess runner rather than to a second measurement.
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | implemented | — | — |
 | 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
+| 24 | [Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb](brief-24-audit-ledger-tail-read-and-rotation.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -129,7 +147,9 @@ stream — see each brief's Dependencies note.
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
-  present in the tree; the brief is dispatchable now).
+  present in the tree; the brief is dispatchable now) and desk-tools/24 (no typed dependency —
+  it is wave 2 because it reshapes the same ledger brief 23 reads the growth figures from, and
+  the two are cleaner landed in sequence than in parallel; both are dispatchable now).
 
 ## Design notes
 - [superseded-confirmation.md](superseded-confirmation.md) — the two-role `deskclose superseded`
