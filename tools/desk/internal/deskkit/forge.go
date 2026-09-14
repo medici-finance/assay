@@ -677,7 +677,7 @@ type ChangeSearchResults struct {
 
 // HardeningReadKind names one closed hardening-read kind for op 38, RepoHardeningRead — the
 // enumerated replacement for repohardenguard's former arbitrary `gh api <endpoint>` reads
-// (forge-gitlab/11). It is a named enum validated BEFORE any request exists
+// (the forge-gitlab guard-read-custody brief). It is a named enum validated BEFORE any request exists
 // (ValidateHardeningReadKind), never a path, the same DeleteRef/ValidateRefPath shape applied
 // to a fixed vocabulary instead of a ref namespace: a kind the backend does not serve is a
 // could-not-check REFUSAL naming the forge and the kind, never a guess and never the other
@@ -911,7 +911,7 @@ type Forge interface {
 	// internally and returns the ARRAY of full detail documents, so a caller's `[name=X].field`
 	// selector resolves inside the returned array without a second op on this seam. A kind the
 	// resolved backend does not serve is a could-not-check REFUSAL naming the forge and the
-	// kind — GitLab refuses every kind by name until forge-gitlab/12. Consumer:
+	// kind — GitLab refuses every kind by name until the forge-gitlab GitLab-hardening-reads follow-up. Consumer:
 	// cmd/repohardenguard's Checker (freeze rule: this op lands with its consumer).
 	RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)
 

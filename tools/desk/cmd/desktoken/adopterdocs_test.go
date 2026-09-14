@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// adopterdocs_test.go — the drift guard the #857 ruling's docs half needs (forge-gitlab/11
+// adopterdocs_test.go — the drift guard the #857 ruling's docs half needs (the forge-gitlab guard-read-custody brief
 // task 2). The ruling that approved the dedicated read-only `auditor` identity added one
 // condition: the adopter documentation is updated ALONGSIDE, so no page an adopter reads is
 // silent about a role they must provision. This is the check that keeps that promise from
@@ -39,7 +39,7 @@ const (
 //
 // It also runs the #857 ruling's NEGATIVE control on the docs themselves: no line naming the
 // auditor may also document a write permission or a write-capable scope for it. This is the
-// docs-side twin of forge-gitlab/11's Verify row 8, which proves the same thing at runtime
+// docs-side twin of the guard-read-custody brief's Verify row 8, which proves the same thing at runtime
 // against the identity actually provisioned — a documented grant an adopter copies is the
 // grant the forge ends up enforcing, so the runtime proof is only as good as this one.
 func TestAdopterDocsEnumerateEveryRole(t *testing.T) {

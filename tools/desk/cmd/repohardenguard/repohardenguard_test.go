@@ -20,7 +20,7 @@ const reposDeclared = "<!-- repohardenguard:repos: o/r, o/r2 -->\n"
 
 // The fixture mirrors the real checklist's shape: one public row, one
 // admin-gated row, one ruleset row (two-hop), one not-available row. Read cells use the
-// forge-gitlab/11 grammar (`read <kind>` / `read file <path>`) — the retired `gh api
+// the forge-gitlab guard-read-custody brief's grammar (`read <kind>` / `read file <path>`) — the retired `gh api
 // <endpoint>` form is exercised separately (TestChecklistRefusesGhApiCell).
 const fixture = "" +
 	"# fixture\n" +

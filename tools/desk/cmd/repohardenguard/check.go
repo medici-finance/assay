@@ -20,7 +20,7 @@ import (
 // `bypass_actors` key at all. A two-state instrument reads one of those as an
 // answer and reproduces #127 exactly.
 //
-// forge-gitlab/11 moved the fetcher from a shelled `gh api <endpoint>` onto the
+// The forge-gitlab guard-read-custody brief moved the fetcher from a shelled `gh api <endpoint>` onto the
 // enumerated deskkit.Forge seam (op 38 RepoHardeningRead, op 22 ReadFile), under the
 // dedicated read-only `auditor` identity — see forge.go. The three-state semantics below
 // are UNCHANGED; only the SOURCE of a fetch failure's status moved from regexing `gh`'s

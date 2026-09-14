@@ -1,6 +1,6 @@
 {
   "requests": [],
   "result": null,
-  "err": "could-not-check: gitlab serves no hardening read of kind \"repo\" — forge-gitlab/12",
+  "err": "could-not-check: gitlab serves no hardening read of kind \"repo\" — deferred to the forge-gitlab GitLab-hardening-reads follow-up",
   "not_found": false
 }

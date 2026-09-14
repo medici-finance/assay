@@ -10,7 +10,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// forge.go — repohardenguard's identity + forge wiring (forge-gitlab/11's guard migration).
+// forge.go — repohardenguard's identity + forge wiring (the forge-gitlab guard-read-custody brief's migration).
 //
 // This program resolves and mints as the FIXED role "auditor" — never `$DESK_LOOP`.
 // repohardenguard runs OUTSIDE any desk window (an operator's laptop, a cron), so there is no
@@ -106,12 +106,12 @@ func mintAuditorToken(repoSlug string) error {
 }
 
 // identity renders the auditor's known GitHub login for evidence/display purposes. It reads
-// deskkit.AppBinding — the App-NAME a role mints as (apps.env / <ROLE>_APP, never the roster's
-// trust binding) — rather than deskkit.RoleAppLogin: the auditor never posts, so it is never
-// bound in ASSAY_TRUSTED_BOT_SLUGS, and this program's identity line must still name a real
-// `[bot]` login even on a deployment that has not added an (optional) roster echo entry for it.
-// It is DISPLAY ONLY — never a comparison — the same posture cmd/deskevidence's
-// verifierBotDisplay documents for the "verifier" role.
+// deskkit.AppBinding — the App-NAME a role mints as (apps.env / <ROLE>_APP), never the
+// roster's TRUST binding: the auditor never posts, so it is never bound in the roster's bot-
+// slug map, and this program's identity line must still name a real `[bot]` login even on a
+// deployment that has not added an (optional) roster echo entry for it. It is DISPLAY ONLY —
+// never a comparison — the same posture cmd/deskevidence's verifierBotDisplay documents for
+// the "verifier" role.
 func identity() string {
 	return deskkit.AppBinding("auditor") + "[bot]"
 }

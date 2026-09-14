@@ -811,22 +811,28 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.RepoHardeningRead(forgeTestRepo, HardeningReadRulesets) },
 		},
 		{
-			name:  "hardening_read_actions_workflow_permissions",
-			setup: func(s *goldenServer) { s.actionsWorkflowPerm = map[string]any{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false} },
+			name: "hardening_read_actions_workflow_permissions",
+			setup: func(s *goldenServer) {
+				s.actionsWorkflowPerm = map[string]any{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}
+			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.RepoHardeningRead(forgeTestRepo, HardeningReadActionsWorkflowPermissions)
 			},
 		},
 		{
-			name:  "hardening_read_actions_fork_pr_approval",
-			setup: func(s *goldenServer) { s.actionsForkPRApproval = map[string]any{"approval_policy": "first_time_contributors"} },
+			name: "hardening_read_actions_fork_pr_approval",
+			setup: func(s *goldenServer) {
+				s.actionsForkPRApproval = map[string]any{"approval_policy": "first_time_contributors"}
+			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.RepoHardeningRead(forgeTestRepo, HardeningReadActionsForkPRApproval)
 			},
 		},
 		{
-			name:  "hardening_read_actions_private_fork_pr",
-			setup: func(s *goldenServer) { s.actionsPrivateForkPR = map[string]any{"run_workflows_from_fork_pull_requests": false} },
+			name: "hardening_read_actions_private_fork_pr",
+			setup: func(s *goldenServer) {
+				s.actionsPrivateForkPR = map[string]any{"run_workflows_from_fork_pull_requests": false}
+			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.RepoHardeningRead(forgeTestRepo, HardeningReadActionsPrivateForkPR)
 			},
