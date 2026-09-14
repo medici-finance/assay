@@ -415,6 +415,58 @@ func TestReviewRefusesASecurityBody(t *testing.T) {
 	}
 }
 
+// TestReviewRefusesAnEmphasisedSecurityMarker — the strict/tolerant split. VerdictKind
+// (the write gate) is whole-line anchored and does not unwrap Markdown emphasis, so a body
+// carrying a bare `Verdict: approve` plus `**Security-Review: pass**` parses as PURE
+// correctness and sails past the kind check; the flip gate and the board read with the
+// TOLERANT reader (#232/#238) and would see that posted APPROVED review as a security pass
+// at head — the same laundering shape the kind check exists to close, one emphasis away.
+// `review` must refuse whatever the tolerant reader calls a security verdict.
+//
+// Three cases pin the guard: pass and fail markers under emphasis, and — so the guard
+// cannot be satisfied by refusing every mention — a body that QUOTES the other lane's
+// line (`> Security-Review: pass`), which the tolerant reader treats as a citation and
+// which must still post.
+func TestReviewRefusesAnEmphasisedSecurityMarker(t *testing.T) {
+	for _, tc := range []struct {
+		name, flag, body string
+		wantPost         bool
+	}{
+		{"emphasised-pass-as-approve", "approve",
+			"## Review\n\nNo blockers on either lane.\n\nVerdict: approve\n\n**Security-Review: pass**\n", false},
+		{"emphasised-fail-as-request-changes", "request-changes",
+			"## Review\n\nBlocking.\n\nVerdict: request-changes\n\n**Security-Review: fail**\n", false},
+		{"quoted-security-line-still-posts", "approve",
+			"## Review\n\nThe security lane already said:\n\n> Security-Review: pass\n\nVerdict: approve\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			f.pullHeads = []string{testHead}
+			bf := writeBody(t, "emph-"+tc.name+".md", tc.body)
+
+			code := run(reviewArgs(exampleRepo, "1", tc.flag, testHead, bf))
+			if tc.wantPost {
+				if code != 0 || f.postedReview != 1 {
+					t.Fatalf("exit = %d, postedReview = %d; want 0 and 1 — a QUOTED security line is a "+
+						"citation, not a verdict, and must not be refused. stderr: %s", code, f.postedReview, errBuf.String())
+				}
+				return
+			}
+			if code != deskkit.ExitRefused {
+				t.Fatalf("exit = %d, want %d — an emphasised security marker the flip gate would read "+
+					"must be refused by `review`", code, deskkit.ExitRefused)
+			}
+			if f.postedReview != 0 {
+				t.Fatalf("postedReview = %d, want 0 — a refusal must make no write", f.postedReview)
+			}
+			if !strings.Contains(errBuf.String(), "also carries a 'Security-Review:") {
+				t.Fatalf("the tolerant-reader guard must be the one that refused (the strict kind check "+
+					"cannot see an emphasised marker). stderr: %s", errBuf.String())
+			}
+		})
+	}
+}
+
 // TestSecurityReviewRefusesFlagBodyMismatch — `--verdict pass` with a `fail` body. Gate (e0)
 // would still read the fail and block, so nothing fails open; the refusal is about the
 // artifact not misstating its own verdict to the humans reading the thread, and a submitted

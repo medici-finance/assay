@@ -179,6 +179,27 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			}
 			return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(msg)), dig)
 		}
+		// The kind check above parses STRICTLY (VerdictKind: whole-line anchored, no
+		// Markdown-emphasis unwrapping — the write gate's rule). The flip gate and the
+		// board read with the TOLERANT reader (#232/#238: `**Security-Review: pass**`
+		// counts, because live artifacts wrap markers in emphasis). So a body carrying a
+		// bare `Verdict: approve` PLUS an emphasised security marker parses as pure
+		// correctness here, would post as APPROVED, and would then be READ as a security
+		// pass at that head — the strict/tolerant split reopening the exact shape the
+		// kind check closes. `review` therefore also refuses whatever the tolerant reader
+		// would call a security verdict. A line quoted with a leading `> ` is a citation
+		// to that reader too, so citing the other lane stays possible.
+		if shape.wantKind == bodycheck.KindCorrectness {
+			if got := classifySecurityBody(string(body)); got != secNone {
+				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
+					"refused: `review` posts the CORRECTNESS verdict, but this body also carries a "+
+						"'Security-Review: %s' marker that the flip gate reads as a security verdict "+
+						"(emphasis such as `**Security-Review: pass**` counts) — a review posts exactly ONE "+
+						"verdict kind: post the security verdict with `deskpost security-review --verdict pass|fail`, "+
+						"or quote the other lane's line (prefix '> ') when citing it",
+					secVerdictName(got)))), dig)
+			}
+		}
 		if shape.wantKind == bodycheck.KindSecurity {
 			if got := classifySecurityBody(string(body)); got != shape.wantSec {
 				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
