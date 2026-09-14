@@ -581,12 +581,17 @@ func normalizeTag(tag string) string {
 // than being reported as a failure here, per #185's stated fallback order (fall back to
 // the in-tree ref "when it exists", could-not-check only when neither source resolves).
 // Malformed-pin detection is `deskpins --check`'s job, not the drift banner's.
+//
+// The read is deskkit.PlatformPin: the bare `desk-tools` line when present, else THIS
+// host's `desk-tools-<os>-<arch>` line — the only shape docs/adopting-assay.md's
+// install-desk-tools primitive writes (the tarball is platform-specific, so the pin is
+// too; the golden consumer file carries no bare `desk-tools` line at all).
 func deskToolsPinReal() (root, tag string, found bool) {
 	dir := nearestPinRoot()
 	if dir == "" {
 		return "", "", false
 	}
-	if t, _, perr := deskkit.ArtifactPin(dir, "desk-tools"); perr == nil {
+	if t, _, perr := deskkit.PlatformPin(dir, "desk-tools"); perr == nil {
 		return dir, t, true
 	}
 	return "", "", false // pin file present but no usable desk-tools line

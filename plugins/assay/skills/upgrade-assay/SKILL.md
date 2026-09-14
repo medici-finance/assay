@@ -39,6 +39,20 @@ per-artifact version is not a resolvable target: an adopter naming `statusgen/v0
 wrong question — this verb moves the **whole umbrella**, never a single artifact — and the tool
 tells them so rather than silently accommodating it.
 
+## Where the composition comes from
+
+Each umbrella's composition (which components, at which tag, with which asset digests) is read by
+`upgrade-assay` and `deskversion` from, in order: a hand-authored `releases/<vX.Y.Z>.yaml` under
+the adopter's repo (wins when present; present-but-broken refuses); the release's own
+`checksums.txt` **materialised** as `releases/<vX.Y.Z>.checksums.txt` (the offline path —
+`gh release download <tag> --repo medici-finance/assay --pattern checksums.txt -O
+releases/<tag>.checksums.txt`); else `checksums.txt` **fetched** from the release home for exactly
+that tag. No release publishes a manifest, so the derived path is the normal one. Pass `--no-fetch`
+when the adopter's environment must not touch the network (then materialise the file first), and
+`--release-home <owner/repo>` for a mirror. Components the adopter never installed show up as
+*not pinned here*, not as a disagreement; a re-pin rewrites each `<artifact>-<platform>` line with
+that asset's own digest from `checksums.txt`.
+
 ## The three marker states are your spine
 
 Before you can move anyone, you ask the marker (`deskversion`, driven inside `upgrade-assay`) one
@@ -78,7 +92,7 @@ process result alone:
 | 5 | **inconsistent records** | names the disagreeing pair (e.g. a `statusgen` pin that disagrees with the umbrella composition) and stops |
 | 6 | **undetermined version** | names the missing/unreadable record (e.g. `.assay-versions`), prints no version, and uses no "assuming latest" wording |
 | 7 | **not a bare umbrella version** | a `<component>/`-prefixed per-artifact tag, or a malformed version — "this verb moves the whole umbrella; name a bare umbrella version, e.g. `v0.13.0`" |
-| 8 | **no such published release** | a bare `vX.Y.Z` that names no published umbrella — refused as unsupported / could-not-resolve, **never a nearest-match guess** |
+| 8 | **no such published release** | a bare `vX.Y.Z` that names no published umbrella — no manifest, no materialised `checksums.txt`, and none at the release home (or `--no-fetch`); the refusal names where it looked. Unsupported / could-not-resolve, **never a nearest-match guess** |
 | 9 | **artifacts unavailable** | the target resolves but its artifacts can no longer be fetched (a release pruned from the cache) |
 
 The `refus`-al wording never contains "assuming", "nearest", or "latest" on the undetermined and

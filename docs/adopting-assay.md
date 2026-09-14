@@ -344,6 +344,12 @@ the one an adopting team should actually run:
   above; the load-bearing rules are: match the **full** platform (os *and* arch, per the Verify
   below), refuse rather than guess when the line is absent, keep each pinned artifact name distinct
   from any CI-job name, and re-pin (never edit in place) on an upgrade so the bump shows in a diff.
+  **Also carry the bare line** — `statusgen <tag> <sha256>` (same tag; the digest of the platform
+  the desk runs on). It is the line the desk tools (`deskboard` and friends) read first; `statusgen
+  init` scaffolds it alongside the per-platform lines. When it is absent the desk tools fall back to
+  the host platform's `statusgen-<os>-<arch>` line (`.exe` on Windows), so a per-platform-only file
+  still resolves — but a malformed bare line refuses rather than falling back. CI keeps selecting
+  by platform with the trailing space, so the bare line changes no CI behaviour.
 
 **Verify:** the pin line for the **fully detected platform** exists — match os *and* arch, not the
 os family, or a `darwin-amd64`-only pin file passes on a `darwin-arm64` host while the install
@@ -1756,6 +1762,30 @@ downgrade, and cached prior versions are pruned after about 14 days. Moving to a
 version re-points and re-resolves; it is **not a rollback**, and an artifact older than roughly two
 weeks may be unavailable. With no rollback to fall back on, `assay:upgrade-assay` refuses cleanly
 rather than pretending otherwise.
+
+**Where the composition comes from.** Both verbs need each umbrella's *composition* — which
+components at which tag, and each asset's sha256. A release publishes no manifest for it; it
+publishes `checksums.txt`, and that is what the tools read. In order:
+
+1. `<repo>/releases/<vX.Y.Z>.yaml` — a **hand-authored** composition manifest, if you keep one. It
+   wins when present; one that is present but unreadable **refuses** (never a silent fall-through).
+2. `<repo>/releases/<vX.Y.Z>.checksums.txt` — the release's own `checksums.txt`, **materialised**
+   locally. This is the offline / air-gapped path:
+   `gh release download vX.Y.Z --repo medici-finance/assay --pattern checksums.txt -O
+   releases/vX.Y.Z.checksums.txt`.
+3. the release home — `https://github.com/medici-finance/assay/releases/download/vX.Y.Z/checksums.txt`,
+   fetched for exactly that tag. `--no-fetch` forbids this step; `--release-home <owner/repo>`
+   re-points it at a mirror. Nothing fetched is cached or written into your repo.
+
+A derived composition names every component the release ships at the umbrella tag, with the
+per-asset digests channel E pins — the same values you would copy from `checksums.txt` by hand, so
+the trust boundary is unchanged (the download is still hash-verified against the pin at install).
+Components you never installed (say, the quality report pack) are reported as *not pinned here*,
+not as a disagreement. Re-pinning rewrites your `<artifact>-<platform>` lines with **that asset's**
+digest, and the bare `statusgen` line with this host's; a line the composition cannot digest is
+carried forward with a warning, never fabricated. "Latest stable" resolves from what is
+materialised under `releases/`, or — when fetching — from the release the release home marks
+latest.
 
 **Verify:** after an upgrade, `deskversion --root <repo>` reports **known** at the new umbrella and
 `deskpins --check` still passes.
