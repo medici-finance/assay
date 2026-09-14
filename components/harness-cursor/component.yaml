@@ -22,6 +22,6 @@ apply:
   - id: cursor-rule
     effect: generate and install the Cursor always-apply rule at .cursor/rules (tools/harnessgen cursor, source plugins/assay/cursor/assay.mdc)
     boundary: inside
-    inverse: remove the installed .cursor/rules rule (TODO composability/02 makes the reverse real)
+    inverse: remove the generated .cursor/rules rule (tools/harnessgen cursor output)
 intercept: []
 config: {}
