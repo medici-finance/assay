@@ -30,9 +30,9 @@ import (
 // classic protection with empty rules (⇒ could-not-check now); medici-finance/assay is
 // ruleset-based (⇒ its required contexts).
 
-// assay#1020 (models medici-finance/assay-site, assay-toolkit, medici-finance/medici-platform, and
-// assay-console, which all use classic branch protection with no rulesets): every draft PR on
-// those repos was stuck could-not-check with no indication of WHY, so a human re-litigated the
+// assay#1020 (models the several other repos in the fleet that use classic branch protection
+// with no rulesets): every draft PR on those repos was stuck could-not-check with no
+// indication of WHY, so a human re-litigated the
 // same could-not-check on every flip attempt instead of recognising it as a single fixed
 // permission gap. Two things are pinned here as a result:
 //
