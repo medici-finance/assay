@@ -71,7 +71,7 @@ id: b968c3d4-cec0-4dac-8c4b-fe34f65bceac
 # Brief 25 — A token memo per (role, owner), and `desktoken` reading its cache before it resolves the install id
 
 ## Dependencies
-None. The memo is a package-private addition inside `RoleTokenForOwner` and the resolution
+None. The memo is an unexported addition inside `RoleTokenForOwner` and the resolution
 reorder is internal to `desktoken`'s GitHub mint path; neither needs a deliverable from any
 other brief in this stream, and no brief in this stream needs one from it. It is filed as a
 wave-2 brief because it is a performance change to a credential path rather than an
@@ -338,7 +338,7 @@ facts — the design:
    - `RoleTokenForOwner` consults the memo after its existing role/owner validation and before
      `tokenMinter`; on a miss it performs today's lookup unchanged and stores the result; on a
      failure of any kind it stores nothing and returns today's typed refusal unchanged.
-   - `RoleTokenMints() int`, the process fork counter, and a package-private reset used by
+   - `RoleTokenMints() int`, the process fork counter, and an unexported reset used by
      tests in this package.
    - No change to any signature, refusal text, or to the rule that the token VALUE never
      appears in an error, a log line or an audit record.
