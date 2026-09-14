@@ -1164,7 +1164,7 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	// attributed to the current head.
 	//
 	// The project approval-configuration route (`reset_approvals_on_push`) is a Premium+
-	// surface (spec §3; brief-02 §"CE degradation"). Two failure shapes are NOT the same:
+	// surface (spec §3; brief-02 §"CE degradation"). Three failure shapes are NOT the same:
 	//
 	//   - On GitLab CE/Free the route is ABSENT and answers 404. That is not a
 	//     could-not-check for the whole review read — it is the documented CE gap the brief
@@ -1173,18 +1173,32 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	//     CommitID, and the head is pinned from the verdict NOTE body's SHA instead), and
 	//     CONTINUE reading the MR approvals and notes below. Failing the whole read closed
 	//     here is what left CE review desks blind (issue #697).
-	//   - A 403 tier gate, a 401 credential rejection, or any other failure IS
-	//     could-not-check for the WHOLE read — never a licence to fall back to "assume
-	//     approvals are head-pinned" or to report no reviews.
+	//   - On gitlab.com Free tier the SAME Premium-gated config is instead answered 403, not
+	//     404 — measured directly against the live API. A 403 here is ambiguous on its own:
+	//     it is what a genuinely bad credential also produces, and a bad credential must NOT
+	//     silently read as "approvals unpinned, continue" — that would be exactly the
+	//     fail-open this function's doc comment warns against. So a 403 on the CONFIG route
+	//     alone is not enough to degrade; it only degrades when the per-MR approvals read
+	//     immediately below — the one place a credential problem would ALSO surface — comes
+	//     back clean. Concretely: don't fail closed HERE on a 403; let approvalsArePinned
+	//     stay false (the same degrade a 404 gets) and fall through to the per-MR read, whose
+	//     own mapErr call still fails the WHOLE read closed if that credential is in fact bad
+	//     (issue: gitlab-approvals-403).
+	//   - A 401 credential rejection, or any other failure, IS could-not-check for the WHOLE
+	//     read — never a licence to fall back to "assume approvals are head-pinned" or to
+	//     report no reviews.
 	approvalCfgPath := fmt.Sprintf("/projects/%s/approvals", proj)
 	approvalsArePinned := false
 	cfg, _, err := cl.Projects.GetApprovalConfiguration(repo.Slug())
 	if err != nil {
 		mapped := g.mapErr(http.MethodGet, approvalCfgPath, err)
-		if !IsForgeNotFound(mapped) {
+		if !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {
 			return nil, mapped
 		}
-		// 404 (route absent / CE): degrade head-pinning only, approvalsArePinned stays false.
+		// 404 (route absent / CE) or 403 (Premium gate on gitlab.com Free): degrade
+		// head-pinning only, approvalsArePinned stays false. The 403 case is provisional —
+		// it is only actually safe once the per-MR approvals read below also succeeds; see
+		// the comment block above.
 	} else {
 		approvalsArePinned = cfg.ResetApprovalsOnPush
 	}
@@ -1192,6 +1206,10 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	approvalsPath := fmt.Sprintf("/projects/%s/merge_requests/%d/approvals", proj, number)
 	approvals, _, err := cl.MergeRequests.GetMergeRequestApprovals(repo.Slug(), int64(number))
 	if err != nil {
+		// Fails the WHOLE read closed, same as any other approvals-read error — including
+		// the case where the config route above also 403'd: if the credential is genuinely
+		// bad, it 403s here too, and this branch is what keeps that could-not-check instead
+		// of silently landing on the degraded-but-continuing path above.
 		return nil, g.mapErr(http.MethodGet, approvalsPath, err)
 	}
 

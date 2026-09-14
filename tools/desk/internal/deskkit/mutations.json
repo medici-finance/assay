@@ -162,6 +162,12 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tif p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}",
       "new": "\tif p.Visibility == \"\" {\n\t\treturn \"private\", nil\n\t}"
+    },
+    {
+      "name": "GitLab ReviewsAtHead fails the whole review read closed on a 403 approval-config gate instead of degrading (gitlab.com Free tier reads as unreviewable even though the per-MR approvals read still succeeds; reviews_at_head_gitlab_free_403_degrades reddens)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "if !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {",
+      "new": "if !IsForgeNotFound(mapped) {"
     }
   ],
   "_not_mutated": {
