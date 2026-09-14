@@ -9,3 +9,9 @@
 - `deskpost comment` gains `--kind issue|mr`, reusing the `TargetKind` / `GetIssueTyped` /
   `PostCommentTyped` typed forge operations, so it can target a GitLab merge request or issue
   explicitly when the same number names both (GitLab numbers the two in separate sequences).
+- GitLab `draft_status` now maps to MERGEABLE instead of UNKNOWN in the PR/MR mergeable-state
+  read. `deskflip` re-evaluates its `mergeable` condition against a change that is still a
+  draft (it un-drafts only once every other condition has held), and every change this desk
+  opens starts life as a draft — so with the old mapping, the condition could never pass for
+  the ordinary starting state of a fresh GitLab change. Every other policy-hold status keeps
+  its existing UNKNOWN mapping unchanged.

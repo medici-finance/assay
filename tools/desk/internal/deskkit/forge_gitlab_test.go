@@ -452,6 +452,17 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
 		},
 		{
+			// #1091 (a further GitLab merge-gate follow-up is tracked at assay#1096).
+			// `draft_status` is the one detailed_merge_status this backend deliberately maps to MERGEABLE rather than
+			// UNKNOWN — see gitlabMergeableState's doc comment for why: deskflip re-evaluates
+			// `mergeable` while a change is STILL a draft (it un-drafts only after every
+			// condition has held), so the universal starting state of every change this desk
+			// opens must not read as an unresolvable UNKNOWN forever.
+			name: "get_pull_request_draft_status_reads_mergeable", method: "GetPullRequest",
+			setup: func(s *glServer) { s.mr = glMR(map[string]any{"detailed_merge_status": "draft_status"}) },
+			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
+		},
+		{
 			name: "get_issue_plain", method: "GetIssue",
 			setup: func(s *glServer) {
 				s.issue = glIssue(nil)
@@ -1893,6 +1904,36 @@ func TestForgeGitlabAuth(t *testing.T) {
 			t.Fatalf("an unset token must never reach the network, but the server saw %d request(s)", hits)
 		}
 	})
+}
+
+// TestGitlabMergeableStateDraftStatus pins the narrow carve-out (#1091; a further GitLab
+// merge-gate follow-up is tracked at assay#1096): `draft_status` maps to MERGEABLE, and it is the ONLY status added to that
+// bucket — every other named policy hold (`not_approved`, `blocked_status`,
+// `discussions_not_resolved`, `ci_still_running`, `checking`, `unchecked`), the two conflict
+// statuses, an unrecognised future status, and the empty string all keep their EXISTING
+// mapping unchanged. A mutation that widened the carve-out (or dropped it) reddens this test.
+func TestGitlabMergeableStateDraftStatus(t *testing.T) {
+	cases := map[string]string{
+		"mergeable":                Mergeable,
+		"draft_status":             Mergeable, // the carve-out
+		"DRAFT_STATUS":             Mergeable, // case-insensitive, like every other status
+		"broken_status":            MergeableConflicting,
+		"conflict":                 MergeableConflicting,
+		"checking":                 MergeableUnknown,
+		"unchecked":                MergeableUnknown,
+		"not_approved":             MergeableUnknown,
+		"blocked_status":           MergeableUnknown,
+		"discussions_not_resolved": MergeableUnknown,
+		"ci_still_running":         MergeableUnknown,
+		"ci_must_pass":             MergeableUnknown,
+		"":                         MergeableUnknown,
+		"some_future_status_this_tree_has_never_seen": MergeableUnknown,
+	}
+	for detailed, want := range cases {
+		if got := gitlabMergeableState(detailed); got != want {
+			t.Errorf("gitlabMergeableState(%q) = %q, want %q", detailed, got, want)
+		}
+	}
 }
 
 // TestForgeGitlabPushTransportHint pins the two properties of the transport hint that are

@@ -244,17 +244,17 @@ func gitlabTime(t *time.Time) string {
 // PullRequest.Mergeable vocabulary.
 //
 // GitLab reports a DOZEN detailed statuses where GitHub reports a tri-state, and the mapping
-// is deliberately narrow in both directions:
+// is deliberately narrow in most directions:
 //
-//   - only `mergeable` maps to MERGEABLE. Everything the forge has not positively cleared
-//     stays out of that bucket.
+//   - `mergeable` maps to MERGEABLE, as does `draft_status` — see below, the one deliberate
+//     exception to "only the forge's own positive clearance counts".
 //   - only the two statuses that describe the CHANGE ITSELF being un-mergeable —
 //     `broken_status` (the source cannot be merged into the target) and `conflict` — map to
 //     CONFLICTING, because CONFLICTING is what the consuming gate treats as a decided
 //     refusal rather than a retry.
 //   - EVERYTHING ELSE maps to UNKNOWN. That includes `checking`/`unchecked` (not computed
 //     yet), the policy holds (`not_approved`, `blocked_status`, `discussions_not_resolved`,
-//     `draft_status`, `ci_still_running`, …) and any status this table has never seen.
+//     `ci_still_running`, …) and any status this table has never seen.
 //
 // The last clause is the load-bearing one. A GitLab release that adds a new detailed status
 // must not fall into MERGEABLE by default, and it must not fall into CONFLICTING either — a
@@ -262,11 +262,30 @@ func gitlabTime(t *time.Time) string {
 // rebasing when it needs an approval. UNKNOWN is the honest answer for a status this tree has
 // not been taught, and the consuming gate reads UNKNOWN as could-not-check.
 //
+// WHY `draft_status` IS THE ONE EXCEPTION (#1091; a further GitLab merge-gate follow-up is
+// tracked at assay#1096). The consuming gate (deskflip) re-evaluates EVERY condition —
+// including `mergeable` — against the change AS READ, still in draft, and performs its own
+// un-draft mutation only at the very end once every other condition has held (#987's full
+// re-gate). That design relies on the
+// forge being able to answer "is this change mergeable" independently of its draft flag — true
+// on GitHub, whose `mergeable` boolean is computed regardless of `draft`. GitLab instead
+// SUPPRESSES the real computation behind `draft_status` while a change is a draft, so with the
+// old blanket UNKNOWN mapping, `mergeable` could never pass for the completely ordinary,
+// universal starting state of every change this desk opens (`deskpr create` always opens a
+// draft) — the condition would refuse forever, not merely until some transient state settled.
+// Every OTHER policy hold in the EVERYTHING ELSE bucket names a state the forge might still
+// resolve on its own (an approval lands, a discussion gets resolved, CI finishes) without any
+// action BY THIS GATE — draft_status is the one status whose resolution IS the mutation this
+// same gate performs a few conditions later. Treating it as MERGEABLE here does not skip a
+// real conflict check: GitLab's own merge button still independently re-verifies conflicts at
+// merge time (human-gated, per house policy), so this changes only whether the desk's queue
+// label and un-draft proceed, never whether an actual conflicting change can be merged.
+//
 // An EMPTY detailed_merge_status (an older instance that does not send the field) is UNKNOWN
-// for the same reason: absence is not a clearance.
+// for the same reason every other un-cleared status is: absence is not a clearance.
 func gitlabMergeableState(detailed string) string {
 	switch strings.ToLower(strings.TrimSpace(detailed)) {
-	case "mergeable":
+	case "mergeable", "draft_status":
 		return Mergeable
 	case "broken_status", "conflict":
 		return MergeableConflicting

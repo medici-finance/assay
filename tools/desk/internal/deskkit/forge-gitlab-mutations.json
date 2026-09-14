@@ -56,9 +56,9 @@
       "new": "\tcase \"canceled\", \"canceling\":\n\t\treturn \"success\""
     },
     {
-      "name": "fail the whole review read closed on a CE 404 project-approvals route instead of degrading head-pinning (issue #697 regression)",
+      "name": "fail the whole review read closed on a CE 404 OR gitlab.com-Free 403 project-approvals route instead of degrading head-pinning (issue #697 / #1091 regression)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\t\tif !IsForgeNotFound(mapped) {",
+      "old": "\t\tif !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {",
       "new": "\t\tif true {"
     },
     {
@@ -102,6 +102,12 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\treturn gitlabMRAsIssue(mr), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped",
       "new": "\t\treturn gitlabIssueAsIssue(&gitlab.Issue{IID: mr.IID, Title: mr.Title, State: mr.State, WebURL: mr.WebURL}), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped"
+    },
+    {
+      "name": "GitLab draft_status stops mapping to MERGEABLE (deskflip refuses every fresh draft change again, #1091)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "case \"mergeable\", \"draft_status\":",
+      "new": "case \"mergeable\":"
     }
   ]
 }
