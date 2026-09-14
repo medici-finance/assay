@@ -49,7 +49,7 @@ consumers:
   - "statusgen/brieffile.go: fixed-here (the parse memo)"
   - "statusgen/main.go: fixed-here (the single history read, the `--forge` and `--changed-only` flags)"
   - "statusgen/linkcheck.go: fixed-here (the source index scoped to docs/)"
-  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: follow-up forge-neutral/18-implementation (the remaining call sites, enumerated in the DoD; slice 1 lands the interface and the first site, and the row stays in-progress until they are all on it)"
+  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. There is no follow-on brief and deliberately no forward reference to one)"
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated and already has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
@@ -75,7 +75,9 @@ thing in the loop, and the largest single cause is the forge reads this brief re
 files:
 - `tools/desk/cmd/deskread/` (planned) — the new read verb.
 - `statusgen/forgeread.go` (planned) — the `forgeReader` interface and its two implementations.
-- `statusgen/issues.go` — `openIssueDebtNotice` at `:764` and its lister at `:761`.
+- `statusgen/issues.go` — `ghIssueMetricLister` declared at `:571` with its single
+  `exec.Command("gh", …)` at `:577`, and `openIssueDebtNotice` at `:764`, whose
+  `exec.LookPath("gh")` guard is at `:768` and whose per-repo lister calls are at `:773`.
 - `statusgen/attribution.go` — the per-brief author pair at `:437-438`.
 - `statusgen/gitinfo.go` — `gitPathFirstAuthorIdentity` (`:189`) and
   `gitPathLastAuthorIdentity` (`:170`), the two per-brief git reads the walk replaces.
@@ -165,7 +167,9 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   (review corroboration and head resolution), `autonomy.go:451,479` (merged-change lists),
   `briefdecision.go:41` (a decision-issue list), `briefflowreview.go:72,103` (a change's
   reviews), `citationcorroborate.go:437,463` (comment lists), `claimdecay.go:43` (the open-change
-  list) and `issues.go:577,761` (the issue lists). The rest belong to report modes outside the
+  list) and `issues.go:577` (the one issue-list site, in `ghIssueMetricLister`, reached under
+  `--lint` from `openIssueDebtNotice` at `:764` via its calls at `:773`). The rest belong to
+  report modes outside the
   gate and are named in the DoD as the remaining work.
 
 ## Ground rules
@@ -293,7 +297,35 @@ A scoped lint for a local pre-push check, built on `run()`'s existing `changed` 
   overrides this. A scoped lint that can be the gate is a gate that stops checking the moment
   someone finds it convenient.
 
-### 6. The reach contract
+### 6. Every remaining forge-CLI call site, migrated — this brief's own completion test
+
+Not a follow-on and not a forward reference: the sites below are this brief's deliverable, and
+Verify row 3 (zero `exec.Command("gh", …)` in `statusgen/`) is what says the brief is finished.
+Each moves onto a `forgeReader` method added WITH its consuming call site, never ahead of it.
+
+| File | Sites at the freshness base | The read kind it needs |
+|---|---|---|
+| `statusgen/autoflip.go` | `:535`, `:615`, `:656`, `:666` | a change's head, its reviews at head, and commit→change resolution |
+| `statusgen/autonomy.go` | `:451`, `:479` | merged-change lists with merge time, author and body trailers |
+| `statusgen/briefdecision.go` | `:41` | a label-filtered issue list |
+| `statusgen/briefflowreview.go` | `:72`, `:103` | a change plus its full reviews array |
+| `statusgen/citationcorroborate.go` | `:437`, `:463` | comment lists |
+| `statusgen/claimdecay.go` | `:43` | the all-state change list the decay pass reduces |
+| `statusgen/issues.go` | `:577` | the issue list (slice 1 — done) |
+
+The remaining sites belong to REPORT modes outside the `--lint` gate:
+`corroborate.go:712,981,1009` · `decisiongateanchor.go:229` · `doratiming.go:631` ·
+`scanissues.go:114,870` · `selfimprovement.go:400` · `transcribescan.go:72,104` ·
+`transcribeverdict.go:500,573` · `trustgate.go:204`. They are in scope for row 3's
+zero and are migrated the same way; they are listed separately only because none of them can
+affect the gate, so none of them gates the offline-lint half.
+
+**The two groups account for the whole census, and the arithmetic is the check:** 7 files × 13
+sites in the gate group plus 8 files × 13 sites in the report group is 15 files and 26 sites —
+the same 26/15 the freshness line and Verify row 3 state. A reader who greps the tree and gets a
+different total has found either a drifted brief or a new call site, and either is worth knowing.
+
+### 7. The reach contract
 
 Add to `docs/telemetry.md` (or a sibling in the same style) a short contract stating what
 `--lint` may reach: no network without `--forge`, no process start without `--forge`, and the
@@ -310,7 +342,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 |---|-------|---------|--------|
 | 1 | check:ci | `cd statusgen && go build ./... && go test ./... -count=1` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go build ./... && go test ./... -count=1` | exit 0 |
-| 3 | check +dereference | `grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — statusgen shells no forge CLI. Measured at the freshness base: 26 sites across 17 files |
+| 3 | check +dereference | `grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — statusgen shells no forge CLI. Measured at the freshness base: 26 sites across 15 non-test files |
 | 4 | check:ci +flow | `cd statusgen && go test ./... -run TestLintOfflineMakesNoNetworkCall -count=1 -v` | **negative path**: a full `--lint` with no `--forge`, run against a harness whose network dial hook FAILS the test on any attempt and whose `PATH` contains no `gh` and no `deskread`, completes with the same verdict as a networked run. Fails if any connection is attempted or any forge process is started |
 | 5 | check:ci +mutation | `cd statusgen && go test ./... -run TestForgeBackedChecksReportCouldNotCheckOffline -count=1 -v` | **negative path**: with the offline reader wired, every forge-backed check renders could-not-check AS ITSELF. The test fails if any of them renders clean, and it enumerates the checks so a newly-added one that forgets is caught rather than skipped |
 | 6 | check:ci +mutation | `cd statusgen && go test ./... -run TestIssueDebtNoticeOptInOnly -count=1 -v` | **negative path**: `--lint` alone emits no issue-debt line and starts no process; `--lint --forge` emits it from the verb's JSON. The test fails if the notice appears without `--forge` |
