@@ -24,6 +24,13 @@ import (
 //
 // Matching stays fail-closed in every direction: an unset roster trusts nobody
 // and blesses nobody, and empty or unknown logins are untrusted.
+//
+// COMPANION READ-ONLY MONITOR. trustliveness.go / `deskroster liveness` separately asks
+// GitHub what it currently says about each configured login (deleted, renamed, reclaimed)
+// and prints a NOTICE — but no function in THIS file consults it. TrustedAuthor,
+// TrustedHumanAuthor, TrustedAuthorID, trustedContentAuthor, Blessed, ItemTrusted and
+// ItemTrustedEvents all keep comparing against the static configured roster exactly as
+// before; a liveness finding never widens or narrows who is trusted here.
 
 // TrustedAuthor reports whether login is one of the CONFIGURED trusted
 // identities. Empty and unknown logins are untrusted, and so is EVERY login when

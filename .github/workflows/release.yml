@@ -1130,6 +1130,26 @@ jobs:
             # backstop alongside the binaries.
             mkdir -p "$stage/hooks"
             cp hooks/pre-push "$stage/hooks/pre-push"
+            # cellctl (#850) — a hand-maintained shell script (tools/cellctl/cellctl), not a
+            # tools/desk/cmd/* Go program, so it needs no per-platform cross-compile: the SAME
+            # file ships in every platform's tarball, at the tarball root next to the Go
+            # binaries (deskinstall's extractTarGz flattens every entry to its base name, and
+            # docs/cellctl.md's from-tarball install line already assumes this layout: `install
+            # -m 0755 ./cellctl ...`). It ships unmodified on the windows legs too, same as
+            # hooks/pre-push above — running it there is a WSL/git-bash question the tarball
+            # layout does not need to answer.
+            #
+            # A shell script takes no -ldflags, so it cannot be link-time stamped like the Go
+            # binaries above; instead this seds the release tag into the STAGED copy's
+            # CELLCTL_VERSION line — the committed source under tools/cellctl/cellctl keeps
+            # reading "dev" (see the comment beside that variable there). The grep after is a
+            # fail-closed check that the sed actually matched, so a future rewording of that line
+            # reds the release instead of silently shipping an unstamped "dev" cellctl.
+            sed "s/^CELLCTL_VERSION=\"dev\"\$/CELLCTL_VERSION=\"${RELEASE_TAG}\"/" \
+              "$root/tools/cellctl/cellctl" > "$stage/cellctl"
+            grep -q "^CELLCTL_VERSION=\"${RELEASE_TAG}\"\$" "$stage/cellctl" \
+              || { echo "::error::cellctl version stamp did not apply — CELLCTL_VERSION=\"dev\" line not found (as expected) in tools/cellctl/cellctl" >&2; exit 1; }
+            chmod 0755 "$stage/cellctl"
             tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
           done
 

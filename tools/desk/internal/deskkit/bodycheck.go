@@ -508,6 +508,20 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isDocPathHexSegment(raw, loc[0], loc[1]) || isIssueNumberList(run) {
 			continue
 		}
+		// Rule 5 (enum/status slash-list arm) and Rule 6 (Kubernetes generated-name hex
+		// arm), both #966. Bounded the same way Rules 1-2 are: isEnumSlashList admits a
+		// slash-list of short ALL-CAPS words (a stream/status enum already reviewed and
+		// merged, e.g. a Verify row citing `PENDING/RUNNING/BLOCKED/DONE`), bounded by the
+		// paired positive pos-enum-word-too-long (an out-of-bounds group, or one carrying
+		// anything but A-Z, stays refused); isK8sUIDHexSegment admits a 32-hex run directly
+		// behind a hyphen and a CLOSED list of Kubernetes object-kind prefixes (a
+		// PersistentVolumeClaim's bound PersistentVolume name, `pvc-<uid>`), bounded by the
+		// paired positive pos-hex-after-unlisted-prefix (a prefix not in k8sUIDPrefixes —
+		// `token-`, `key-` — stays refused, so a real secret pasted as `key-<32hex>` is not
+		// laundered by this rule).
+		if isEnumSlashList(run) || isK8sUIDHexSegment(raw, loc[0], loc[1]) {
+			continue
+		}
 		// Rule 3 (PGP-recipient-fingerprint arm). NARROWER than the class it clears and
 		// bounded by paired positive fixtures (TestPGPFingerprintExemption): isPGPFingerprint
 		// admits a 40-char UPPERCASE-hex OpenPGP key fingerprint ONLY when a `pgp:`/`fp:`
@@ -531,8 +545,10 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"word-shaped segments (optionally behind one leading '+' quantifier or "+
 				"diff marker), bare word-shaped identifiers, key=<path> shell "+
 				"assignments, all-'=' banner separators, a PGP recipient fingerprint (40 "+
-				"uppercase hex after a pgp:/fp: field), and the marker-anchored digest "+
-				"fields of a recognised structured format (go.sum h1:, SRI integrity, a "+
+				"uppercase hex after a pgp:/fp: field), a slash-list of short ALL-CAPS "+
+				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
+				"prefix and hyphen (pvc-<uid>…), and the marker-anchored digest fields "+
+				"of a recognised structured format (go.sum h1:, SRI integrity, a "+
 				"complete sops envelope) are exempt", surface, len(run)),
 			&ScanFinding{Rule: "high-entropy-run", Line: lineOf(raw, loc[0]), Length: len(run), Shape: redactShape(run)})
 	}
@@ -723,6 +739,110 @@ func isIssueNumberList(run string) bool {
 		sawGroup = true
 	}
 	return sawGroup
+}
+
+// minEnumWordLen / maxEnumWordLen bound one unit of an ALL-CAPS slash-list
+// (isEnumSlashList, Rule 5, #966). A stream/status enum word is a handful of letters —
+// `CANCELLED` (9) is about the longest this repo's own vocabulary uses — so a unit
+// outside these bounds is opaque material wearing slashes, not an enum list. The floor
+// keeps a lone letter (the shape a truncated or randomly-cased token leaves behind) off
+// the exemption; every real enum/status word is at least two letters.
+const (
+	minEnumWordLen = 2
+	maxEnumWordLen = 20
+)
+
+// isEnumSlashList is Rule 5 (#966). It admits a run that is ONLY short ALL-UPPERCASE
+// words joined by '/' — a stream/status enum list (`PENDING/RUNNING/BLOCKED/DONE`, a
+// Verify row citing a set of stream states) — mirroring isIssueNumberList's shape for
+// NUMERIC groups (Rule 2) but for LETTER groups. The false positive it clears: a run of
+// several 5+ letter ALL-CAPS words has no lowercase and no '/'-adjacent word-shape
+// isPathLike or looksLikeWords will admit (an ALL-CAPS stretch is deliberately opaque
+// everywhere else in this file, since it is exactly a webhook token's tail shape), so an
+// enum list joined by '/' fell straight through to the high-entropy refusal with no other
+// exemption able to reach it.
+//
+// It is bounded HARD, the same way Rule 2 is:
+//   - every group must be [minEnumWordLen, maxEnumWordLen] characters, A-Z ONLY — no
+//     digits, no lowercase, no punctuation beyond the '/' separators. A group outside the
+//     length bounds, or carrying anything but an uppercase letter, denies the exemption
+//     entirely — a real secret's mixed-case/digit material never qualifies;
+//   - there must be at least two groups (a single ALL-CAPS word is not a LIST; a bare one
+//     is already refused correctly by every other rule in this file, since a lone
+//     acronym-shaped token in prose is exactly credential-tail shaped and must stay that
+//     way — this rule only relaxes the SLASH-LIST shape, never a bare run).
+func isEnumSlashList(run string) bool {
+	segs := strings.Split(run, "/")
+	if len(segs) < 2 {
+		return false // a single group is not a slash-LIST; a bare ALL-CAPS run stays refused
+	}
+	sawGroup := false
+	for _, seg := range segs {
+		if seg == "" {
+			continue // a leading/trailing/`//` slash carries no group
+		}
+		if len(seg) < minEnumWordLen || len(seg) > maxEnumWordLen {
+			return false
+		}
+		for i := 0; i < len(seg); i++ {
+			if seg[i] < 'A' || seg[i] > 'Z' {
+				return false
+			}
+		}
+		sawGroup = true
+	}
+	return sawGroup
+}
+
+// k8sUIDPrefixes are the short Kubernetes object-KIND prefixes isK8sUIDHexSegment's
+// anchor recognises immediately before the hyphen — a CLOSED list, the same discipline
+// twoLetterWords uses for the same reason (see its comment): an anchor that admitted "any
+// lowercase word before a hyphen" would just as happily launder a real secret pasted as
+// `token-<32hex>` or `key-<32hex>`, so the list is grounded in Kubernetes' OWN
+// generated-name convention rather than widened to anything word-shaped. `pvc`/`pv` are
+// #966's own repro (a PersistentVolumeClaim's bound PersistentVolume); the rest are the
+// other object kinds whose default name generator suffixes a hash or a UID onto a base
+// name the same way.
+var k8sUIDPrefixes = map[string]bool{
+	"pvc": true, "pv": true, "pod": true, "rs": true, "rc": true,
+	"ds": true, "sts": true, "job": true, "cm": true, "svc": true,
+}
+
+// reK8sNamePrefix anchors isK8sUIDHexSegment's lookbehind: a lowercase-alnum word,
+// starting with a letter, immediately at the end of the surface preceding a hyphen a hex
+// segment sits behind. It is applied to the surface BEFORE the run (so it ends on `$`),
+// the same anchoring shape rePGPFingerprintAnchor uses for Rule 3.
+var reK8sNamePrefix = regexp.MustCompile(`([a-z][a-z0-9]*)-$`)
+
+// isK8sUIDHexSegment is Rule 6 (#966). It admits a run that is EXACTLY 32 lowercase hex
+// characters when it is immediately preceded, in the surrounding surface, by a hyphen and
+// a NAME in k8sUIDPrefixes — the shape Kubernetes' own name generator builds for a
+// PersistentVolumeClaim's bound PersistentVolume (`pvc-<uid>`) and for the other object
+// kinds that suffix a UID or a template hash onto a base name the same way. A
+// PersistentVolumeClaim UID quoted in a Verify/Evidence row is #966's own repro: it is
+// already reviewed and merged, but every one of its 32-hex segments (the UUID with its
+// dashes stripped, as Kubernetes itself renders a PV's bound name) reads as opaque
+// high-entropy material with no other exemption able to reach it.
+//
+// It is bounded the same way Rules 1-5 are:
+//   - the run must be EXACTLY 32 lowercase hex — the length isDocPathHexSegment already
+//     uses for the doc-path class, so a 31/33-char run (an MD5-shaped token that merely
+//     happens to sit near a hyphen) stays refused;
+//   - the hyphen must sit DIRECTLY against the run — a bare 32-hex run with unrelated
+//     text before it does not qualify;
+//   - the NAME behind that hyphen must be a MEMBER of k8sUIDPrefixes, not merely
+//     word-shaped: a real secret pasted as `token-<32hex>` or `key-<32hex>` stays
+//     refused, since neither prefix is a Kubernetes object kind.
+func isK8sUIDHexSegment(raw string, start, end int) bool {
+	run := raw[start:end]
+	if len(run) != 32 || !reLowerHex.MatchString(run) {
+		return false
+	}
+	m := reK8sNamePrefix.FindStringSubmatch(raw[:start])
+	if m == nil {
+		return false
+	}
+	return k8sUIDPrefixes[m[1]]
 }
 
 // isPlaceholderSecretValue is Rule 3's per-value test: a data/stringData

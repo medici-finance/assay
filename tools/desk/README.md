@@ -485,6 +485,38 @@ work queue or steer a desk action.
   issue's suggested-fix item 3, taken in the secure direction pending Ada); relaxing
   it is a one-line change to `VisibilityRiskClassed`.
 
+### Roster liveness — `deskroster liveness`
+
+`deskroster liveness --repo OWNER/NAME` is a **read-only** NOTICE surface, separate from the
+trust gate above. The trust gate (`TrustedAuthor`/`TrustedHumanAuthor`/`Blessed`, all in
+`trust.go`) compares a login against the CONFIGURED roster — a pure string/id comparison
+that never asks GitHub whether the account behind that login still exists. `liveness`
+closes that gap by asking GitHub, right now, what it says about every login the roster
+configures (`Config.Humans`, `Config.Bless`, `Config.Bots` — GitHub-only; a GitLab identity
+lives in `Config.BotIdents`/`Config.Logins` and is untouched here), and printing one
+`NOTICE:` line for each identity that is not exactly what the roster expects:
+
+- **deleted** — the login no longer resolves to any GitHub account.
+- **reclaimed** — the login resolves, but to a DIFFERENT numeric id than the one pinned —
+  the two classes the check actually exists to catch.
+- **renamed** — the pinned id's canonical login changed (advisory).
+- **unpinned** — the login resolves, but the roster carries no id to compare against
+  (advisory: pin one).
+
+An identity that is exactly alive produces no output — the same quiet-on-the-happy-path
+shape every other NOTICE in this codebase uses.
+
+**What it does NOT do.** It never wires a finding into `TrustedAuthor`/`TrustedHumanAuthor`/
+`Blessed`/`ItemTrusted*`'s pass/fail return, never auto-revokes anything, posts no comment,
+files no issue, and mutates nothing on the forge. Who is trusted today is unchanged by
+running it. Auto-revocation is separate, explicitly human-gated follow-up, tracked on
+medici-finance/assay#933 (the issue this check was scoped from).
+
+It is GitHub-only in this version: a `--repo` backed by a non-GitHub forge prints one
+explicit "GitHub-only" line rather than skipping silently or refusing — the roster itself
+may be perfectly configured, only that repo's forge is unsupported. GitLab account-liveness
+is untracked follow-up.
+
 ## Risk classification — how a PR becomes risk-classed
 
 One computation, `deskkit.RiskPathTriggered(repo, changedFiles)`, consumed by
