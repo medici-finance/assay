@@ -85,7 +85,13 @@ automatically.
 
 ## Install
 
-Two lines. Copy the script onto your `PATH` and make it executable:
+`cellctl` ships inside `desk-tools-<platform>.tar.gz` (#850) — the same tarball, on the same
+`checksums.txt`-pinned channel, as every other desk-tools binary; the `install-desk-tools`
+PRIMITIVE (`docs/adopting-assay.md`) and `deskinstall` both extract it onto your bindir alongside
+the rest, no extra step. It is a shell script, not a Go build, so the SAME file ships in every
+platform's tarball. `make desk-install` in this repo installs it too.
+
+Two lines cover every other case — a checkout of this repo, or a tarball you extracted by hand:
 
 ```bash
 install -m 0755 tools/cellctl/cellctl ~/.local/bin/cellctl     # from a checkout of this repo
@@ -96,9 +102,9 @@ install -m 0755 ./cellctl ~/.local/bin/cellctl
 `cellctl` needs `git`, `tmux` (the default cockpit), `curl`, `openssl` and `python3` on `PATH` — `cellctl check` reports
 each one. It does not need a Go toolchain.
 
-> **Not yet in the tarball.** Shipping `cellctl` inside `desk-tools-<platform>.tar.gz` is a change to
-> the release workflow and is deliberately not part of the change that added this document. Until
-> that lands, the checkout line above is the install.
+A packaged copy reports the umbrella release tag it shipped at via `cellctl --version` (or
+`cellctl version`) — the same contract `statusgen --version` uses, so a stale copy is detectable. A
+checkout install (the two-line form above) honestly reports `dev`.
 
 ---
 
@@ -735,9 +741,9 @@ fallback* above for the full resolution order.
 
 **`--sandbox danger-full-access` is required, honestly.** Per the ruled capability matrix (the
 `#937` live smoke run is the evidence codex CLI's default `workspace-write` sandbox blocks the
-`.git/refs/heads/` write a fresh worktree needs — codex has no built-in worktree management, so a
-skill that must isolate has to run `git worktree add` itself, and that is exactly what
-`workspace-write` blocks), the worktree this window runs in could not have been **created** under
+`.git/refs/heads/` write a fresh worktree needs — codex-cli 0.154.0 gained its own `--worktree`
+flag, but a skill isolating via its own `git worktree add` call still hits the same
+`workspace-write` refusal), the worktree this window runs in could not have been **created** under
 a lesser sandbox in the first place. This is not a weakening introduced here — it is the existing
 precondition `cellctl desk`'s own worktree-creation step depends on, stated rather than glossed
 over. `#939` tracks where the capability matrix itself has drifted against newer codex

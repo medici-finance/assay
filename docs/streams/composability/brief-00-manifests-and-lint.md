@@ -163,6 +163,55 @@ Full `git status --porcelain`/`git diff --stat` empty at the end — no leftover
 
 **VERIFY: PASS.** All 10 rows pass on independent re-run (3 mutation rows applied and reverted for real, not trusted from claims); substance checks (cycle depth, namespace enforcement, no house-value leak) independently confirmed and extended. Only non-blocking finding: row 1's grep command is false-permissive (filed `#906`), does not affect the deliverable's correctness. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible.
 
+### Follow-up — 2026-09-13 worker-desk dispatch, offline — row 1 check-command correction (#906, non-blocking)
+
+This brief is already `done` (README row: verified 2026-09-11, reviewed/approved PR #907
+2026-09-12), so per `docs/brief-rules.md` rule 14 the frozen Verify table itself is not
+rewritten here — this is a dated addendum recording the corrected check, not an edit to row 1.
+
+**The defect (confirmed independently, third time).** Row 1's command,
+`` grep -c '^\| \`assay\.' components/KEYS.md ``, relies on `\|` inside a basic regular
+expression meaning a literal escaped pipe. On GNU grep (and per POSIX, undefined/BSD-divergent
+behavior for BRE) an escaped `\|` is instead the **GNU alternation extension**, so the pattern
+parses as `(^)|( \`assay\.)`. The first branch, bare `^`, matches every line unconditionally —
+so the command silently counts the file's **total line count**, not table rows beginning
+`` | `assay. ``. Demonstrated on this tree:
+
+```
+$ wc -l components/KEYS.md
+      97 components/KEYS.md
+
+$ grep -c '^\| \`assay\.' components/KEYS.md      # OLD (row 1 as written) — false-permissive
+97
+
+$ grep -c '^| \`assay\.' components/KEYS.md       # NEW — drop the backslash before the pipe
+30
+```
+
+The old command returns 97 — the file's total line count — matching `wc -l` exactly, which is
+the tell that `^` alone is doing all the matching. The corrected command (same pattern, pipe
+left unescaped so it is a literal `|` rather than an alternation operator; backtick stays
+unescaped since it is already literal inside single quotes) returns 30, matching both the
+2026-09-11 non-implementer verifier's independently-confirmed count and the implementer's
+original claimed count in row 1's own Evidence line above. `>= 14` still holds either way, so
+this was never a false-negative risk to the deliverable — `components/KEYS.md` has always had
+30 genuine rows; only the check's ability to catch a *future* regression (a KEYS.md that lost
+rows) was compromised, since the old command would keep returning a large, non-zero count off
+of unrelated file growth even if every real row were deleted.
+
+**Corrected row-1 command, for any future reviewer/verifier re-running this table by hand:**
+
+```
+test -f components/KEYS.md && grep -c '^| `assay\.' components/KEYS.md
+```
+
+Expect: exit 0; count 30 (`>= 14` floor unchanged).
+
+Filed and fixed via `#906`; see that issue and its PR for the full before/after evidence. This
+addendum does not change the brief's `done` status, its gate, or the row-1 text on the record
+above — a future re-authoring of this Verify table (or a fresh brief that touches
+`components/KEYS.md`'s row-count check) should adopt the corrected form.
+
 ## Review
 
 gate: model — pending.

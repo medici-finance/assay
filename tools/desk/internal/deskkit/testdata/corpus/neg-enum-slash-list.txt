@@ -1,0 +1,6 @@
+# corpus: a slash-separated list of ALL-CAPS stream/status enum words
+# expect: clean
+# refs:   #966 — a Verify row citing a set of stream states false-positived a clean Evidence append
+# shape:  short (2-20 letter) ALL-CAPS words joined by '/', every group letters-only
+# why:    an enum/status list carries no payload; the groups are short and letters-only
+Prior run states observed on this stream: PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE across the batch.
