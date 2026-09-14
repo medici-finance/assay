@@ -30,7 +30,7 @@ sources:
   - "tools/desk/internal/deskkit/forge.go — the frozen `Forge` interface; `ListOpenIssues`, `SearchIssues`, `ReviewsAtHead`, `ChecksAtHead`, `ListComments`, `GetPullRequest` and `SearchOpenChanges` already exist and already have both backends, which is why this brief adds no operation"
   - "tools/desk/internal/deskkit/forgeresolve.go:412,425 — `ForgeFor` / `ResolveForge`, the resolver the read verb calls"
   - "tools/desk/internal/forgeban/allowlist.go:72 — allowedInvocationCeiling = 7 at the freshness base"
-  - "freshness-checked 2026-09-14 @ e428134c (origin/main) — 26 `exec.Command(\"gh\", …)` sites across 17 statusgen files; `statusgen/go.mod` declares its own module and no statusgen source imports `deskkit`; `issues.go:764` is `openIssueDebtNotice`; `attribution.go:437-438` is the per-brief author pair; `brieffile.go:388` is `parseBriefFile` with no cache; `main.go:662,772,978` each call `LoadHistory` on the same path; `linkcheck.go:651` is `buildSourceIndex`; `run()`'s `changed []string` is threaded at `main.go:32,84,111,114,334,422,474`"
+  - "freshness-checked 2026-09-14 @ e428134c (origin/main) — 26 `exec.Command(\"gh\", …)` sites across 15 non-test statusgen files; `statusgen/go.mod` declares its own module and no statusgen source imports `deskkit`; `issues.go:764` is `openIssueDebtNotice`; `attribution.go:437-438` is the per-brief author pair; `brieffile.go:388` is `parseBriefFile` with no cache; `main.go:662,772,978` each call `LoadHistory` on the same path; `linkcheck.go:651` is `buildSourceIndex`; `run()`'s `changed []string` is threaded at `main.go:32,84,111,114,334,422,474`"
 exec-tier: strong
 exec-tier-why: >-
   Two of the four halves can fail silently in the direction that reads as a pass. A lint made
@@ -160,7 +160,7 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   `github.com/medici-finance/assay/statusgen` with two dependencies; no statusgen source file
   imports `deskkit`. That boundary is deliberate and this brief keeps it: the read verb is
   reached by running a process, not by linking a package.
-- **The remaining `gh` sites, enumerated.** 26 `exec.Command("gh", …)` sites across 17 files.
+- **The remaining `gh` sites, enumerated.** 26 `exec.Command("gh", …)` sites across 15 non-test files.
   The ones that run under `--lint` or the lifecycle flips are `autoflip.go:535,615,656,666`
   (review corroboration and head resolution), `autonomy.go:451,479` (merged-change lists),
   `briefdecision.go:41` (a decision-issue list), `briefflowreview.go:72,103` (a change's
