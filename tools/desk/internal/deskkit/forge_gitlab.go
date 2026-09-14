@@ -2612,7 +2612,7 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 	// and the write both go there, so the two can never address different kinds.
 	var objPath string
 	switch change.Target {
-	case LabelTargetIssue:
+	case TargetIssue:
 		objPath = fmt.Sprintf("/projects/%s/issues/%d", proj, number)
 	default:
 		objPath = fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
@@ -2620,7 +2620,7 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 	if len(change.RemoveFamilies) > 0 {
 		var current []string
 		switch change.Target {
-		case LabelTargetIssue:
+		case TargetIssue:
 			iss, _, gerr := cl.Issues.GetIssue(repo.Slug(), int64(number), nil)
 			if gerr != nil {
 				return nil, g.mapErr(http.MethodGet, objPath, gerr)
@@ -2668,7 +2668,7 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 		removeOpt = (*gitlab.LabelOptions)(&removeList)
 	}
 	switch change.Target {
-	case LabelTargetIssue:
+	case TargetIssue:
 		opts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}
 		if _, _, uerr := cl.Issues.UpdateIssue(repo.Slug(), int64(number), opts); uerr != nil {
 			return nil, g.mapErr(http.MethodPut, objPath, uerr)

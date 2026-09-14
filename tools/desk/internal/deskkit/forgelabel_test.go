@@ -39,7 +39,7 @@ func labelScenarios() []labelScenario {
 			// label stays, the current one is applied.
 			name: "replaces_a_stale_family_member",
 			change: LabelChange{
-				Target:         LabelTargetChange,
+				Target:         TargetChange,
 				Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 				RemoveFamilies: []string{"size:"},
 			},
@@ -58,7 +58,7 @@ func labelScenarios() []labelScenario {
 			// three-state surface label depends on.
 			name: "an_unnamed_family_is_left_alone",
 			change: LabelChange{
-				Target: LabelTargetChange,
+				Target: TargetChange,
 				Add:    []LabelSpec{{Name: "size:s", Color: "c5def5"}},
 			},
 			ghSetup: func(s *goldenServer) {
@@ -74,7 +74,7 @@ func labelScenarios() []labelScenario {
 			// The queue-label swap deskflip makes: one named removal, one addition.
 			name: "swaps_one_named_label_for_another",
 			change: LabelChange{
-				Target: LabelTargetChange,
+				Target: TargetChange,
 				Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				Remove: []string{"authorization-needed"},
 			},
@@ -92,7 +92,7 @@ func labelScenarios() []labelScenario {
 			// neither backend may remove a label it is also applying.
 			name: "a_label_in_both_halves_is_not_churned",
 			change: LabelChange{
-				Target:         LabelTargetChange,
+				Target:         TargetChange,
 				Add:            []LabelSpec{{Name: "size:s", Color: "c5def5"}},
 				Remove:         []string{"size:s"},
 				RemoveFamilies: []string{"size:"},
@@ -145,7 +145,7 @@ func TestLabelOpBothBackends(t *testing.T) {
 // both backends: GitLab must split the two routes, and GitHub must keep issuing the same
 // `/issues/{n}/labels` call for both (one number space, one endpoint).
 func TestLabelTargetRoutes(t *testing.T) {
-	change := func(target LabelTarget) LabelChange {
+	change := func(target TargetKind) LabelChange {
 		return LabelChange{
 			Target:         target,
 			Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}},
@@ -158,7 +158,7 @@ func TestLabelTargetRoutes(t *testing.T) {
 		// An MR with the SAME number is served too — the trap the defect fell into.
 		srv.mr = glMR(map[string]any{"labels": []string{"unrelated"}})
 		srv.updateMR = glMR(nil)
-		got, err := srv.forge().ApplyLabels(glRepo, 7, change(LabelTargetIssue))
+		got, err := srv.forge().ApplyLabels(glRepo, 7, change(TargetIssue))
 		assertLabelOutcome(t, "gitlab", got, err, LabelOutcome{Added: []string{"to:reviewer"}, Removed: []string{"to:desk"}})
 		assertObjectRoutes(t, glRequestLines(srv), "/issues/7", "/merge_requests/7")
 	})
@@ -167,16 +167,16 @@ func TestLabelTargetRoutes(t *testing.T) {
 		srv.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"unrelated"}})
 		srv.mr = glMR(map[string]any{"labels": []string{"to:desk"}})
 		srv.updateMR = glMR(nil)
-		got, err := srv.forge().ApplyLabels(glRepo, 7, change(LabelTargetChange))
+		got, err := srv.forge().ApplyLabels(glRepo, 7, change(TargetChange))
 		assertLabelOutcome(t, "gitlab", got, err, LabelOutcome{Added: []string{"to:reviewer"}, Removed: []string{"to:desk"}})
 		assertObjectRoutes(t, glRequestLines(srv), "/merge_requests/7", "/issues/7")
 	})
 	t.Run("github_both_targets_share_the_issues_route", func(t *testing.T) {
-		for _, target := range []LabelTarget{LabelTargetIssue, LabelTargetChange} {
+		for _, target := range []TargetKind{TargetIssue, TargetChange} {
 			srv := newGoldenServer(t)
 			srv.prLabels = []map[string]any{{"name": "to:desk"}}
 			got, err := srv.forge().ApplyLabels(forgeTestRepo, 7, change(target))
-			assertLabelOutcome(t, "github/"+target.String(), got, err,
+			assertLabelOutcome(t, "github/"+string(target), got, err,
 				LabelOutcome{Added: []string{"to:reviewer"}, Removed: []string{"to:desk"}})
 			assertObjectRoutes(t, ghRequestLines(srv), "/issues/7/labels", "/pulls/7")
 		}
@@ -184,14 +184,14 @@ func TestLabelTargetRoutes(t *testing.T) {
 	t.Run("an_unset_target_is_refused_before_any_request_on_both_forges", func(t *testing.T) {
 		gl := newGLServer(t)
 		gl.mr, gl.updateMR = glMR(nil), glMR(nil)
-		if _, err := gl.forge().ApplyLabels(glRepo, 7, change(LabelTargetUnset)); err == nil || ExitCodeOf(err) != ExitRefused {
+		if _, err := gl.forge().ApplyLabels(glRepo, 7, change(TargetKind(""))); err == nil || ExitCodeOf(err) != ExitRefused {
 			t.Fatalf("gitlab: ApplyLabels(unset target) = %v, want a refusal", err)
 		}
 		if n := len(gl.requests); n != 0 {
 			t.Fatalf("gitlab: the refusal issued %d request(s): %v — an unset target defaulted to SOME route", n, glRequestLines(gl))
 		}
 		gh := newGoldenServer(t)
-		if _, err := gh.forge().ApplyLabels(forgeTestRepo, 7, change(LabelTargetUnset)); err == nil || ExitCodeOf(err) != ExitRefused {
+		if _, err := gh.forge().ApplyLabels(forgeTestRepo, 7, change(TargetKind(""))); err == nil || ExitCodeOf(err) != ExitRefused {
 			t.Fatalf("github: ApplyLabels(unset target) = %v, want a refusal", err)
 		}
 		if n := len(gh.requests); n != 0 {

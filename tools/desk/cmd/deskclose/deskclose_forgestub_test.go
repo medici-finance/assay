@@ -209,9 +209,9 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 	// unset, which the real backends refuse) shows up as the wrong argv / an error here.
 	var kind string
 	switch change.Target {
-	case deskkit.LabelTargetIssue:
+	case deskkit.TargetIssue:
 		kind = "issue"
-	case deskkit.LabelTargetChange:
+	case deskkit.TargetChange:
 		kind = "pr"
 	default:
 		return nil, errors.New("refusing to apply labels with no target kind")

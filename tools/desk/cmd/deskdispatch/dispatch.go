@@ -1059,7 +1059,7 @@ func applyQueueLabelReal(repo string, pr int) (added []string, forge string, err
 		return nil, "", rerr
 	}
 	out, aerr := fg.ApplyLabels(fr, pr, deskkit.LabelChange{
-		Target: deskkit.LabelTargetChange,
+		Target: deskkit.TargetChange,
 		Add: []deskkit.LabelSpec{{
 			Name:        queueLabelAuthorizationNeeded,
 			Color:       queueLabelColorHex,

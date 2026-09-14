@@ -143,7 +143,7 @@ func applyVerdictLabels(c *ghClient, pr, reportedFiles int) (verdictLabelOutcome
 	// `.assay-surfaces` has no opinion and must therefore remove nothing. Naming a family is
 	// what licenses the backend to drop its stale members; not naming it leaves it untouched.
 	change := deskkit.LabelChange{
-		Target:         deskkit.LabelTargetChange,
+		Target:         deskkit.TargetChange,
 		Add:            []deskkit.LabelSpec{},
 		RemoveFamilies: []string{deskkit.SizeLabelPrefix},
 	}

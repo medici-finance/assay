@@ -546,7 +546,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
-					Target:         LabelTargetChange,
+					Target:         TargetChange,
 					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 					RemoveFamilies: []string{"size:"},
 				})
@@ -562,7 +562,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
-					Target: LabelTargetChange,
+					Target: TargetChange,
 					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				})
 			},
@@ -576,7 +576,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
-					Target: LabelTargetChange,
+					Target: TargetChange,
 					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 					Remove: []string{"authorization-needed"},
 				})
@@ -592,7 +592,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
-					Target:         LabelTargetIssue,
+					Target:         TargetIssue,
 					Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}, {Name: "raised-by:desk"}},
 					RemoveFamilies: []string{"to:"},
 				})

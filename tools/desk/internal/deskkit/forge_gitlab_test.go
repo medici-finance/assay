@@ -973,7 +973,7 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Target:         LabelTargetChange,
+					Target:         TargetChange,
 					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 					RemoveFamilies: []string{"size:"},
 				})
@@ -989,7 +989,7 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Target: LabelTargetChange,
+					Target: TargetChange,
 					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				})
 			},
@@ -1007,7 +1007,7 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Target: LabelTargetChange,
+					Target: TargetChange,
 					Add:    []LabelSpec{{Name: "authorization-needed", Color: "0e8a16"}},
 				})
 			},
@@ -1024,7 +1024,7 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Target:         LabelTargetIssue,
+					Target:         TargetIssue,
 					Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}, {Name: "raised-by:desk"}},
 					RemoveFamilies: []string{"to:"},
 				})

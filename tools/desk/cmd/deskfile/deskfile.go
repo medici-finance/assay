@@ -587,7 +587,7 @@ func cmdNew(args []string) (err error) {
 	// names an unrelated merge request, and a write that left the kind implicit stamped that
 	// MR and left the issue unaddressed (no to:<role>, no dedupe key).
 	if len(applyLabels) > 0 {
-		change := deskkit.LabelChange{Target: deskkit.LabelTargetIssue, Add: applyLabels}
+		change := deskkit.LabelChange{Target: deskkit.TargetIssue, Add: applyLabels}
 		if _, lerr := fg.ApplyLabels(fr, ref.Number, change); lerr != nil {
 			return deskkit.Unverifiable("apply labels to the filed issue failed", lerr)
 		}

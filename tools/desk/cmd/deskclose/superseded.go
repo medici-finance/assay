@@ -630,11 +630,11 @@ func disputeBody(p proposal, who caller, reason string) string {
 }
 
 // labelTargetOf maps a fetched item's kind onto the label seam's target.
-func labelTargetOf(it item) deskkit.LabelTarget {
+func labelTargetOf(it item) deskkit.TargetKind {
 	if it.isPR() {
-		return deskkit.LabelTargetChange
+		return deskkit.TargetChange
 	}
-	return deskkit.LabelTargetIssue
+	return deskkit.TargetIssue
 }
 
 func crossRefBody(repo string, n int, p proposal, who caller) string {

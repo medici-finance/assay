@@ -32,7 +32,7 @@ type dfForge struct {
 	// labelTarget is the LabelChange.Target the filing's label write carried. The real
 	// backends refuse an unset one; on GitLab an unset/change target lands on the MR sharing
 	// the issue's number, so the fake pins the ISSUE target the same way.
-	labelTarget deskkit.LabelTarget
+	labelTarget deskkit.TargetKind
 	comments    []int // PostComment target numbers
 
 	// readOnlyCustody records the readOnly argument the verb passed to forgeForFn — i.e.
@@ -124,7 +124,7 @@ func (f *dfForge) FileIssue(repo deskkit.ForgeRepo, in deskkit.IssueInput) (*des
 }
 
 func (f *dfForge) ApplyLabels(repo deskkit.ForgeRepo, number int, change deskkit.LabelChange) (*deskkit.LabelOutcome, error) {
-	if change.Target != deskkit.LabelTargetIssue {
+	if change.Target != deskkit.TargetIssue {
 		return nil, deskkit.Refused(fmt.Sprintf("refusing to apply labels: target %s, want issue — deskfile labels the ISSUE it filed", change.Target))
 	}
 	f.labelTarget = change.Target

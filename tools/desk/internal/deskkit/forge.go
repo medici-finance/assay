@@ -369,8 +369,9 @@ type LabelChange struct {
 	// on whichever merge request happened to share the new issue's iid — the defect that
 	// left every `deskfile new` issue on a GitLab project unstamped. Refusing an unset
 	// target on BOTH forges is deliberate: a caller that forgot it would otherwise pass
-	// every GitHub test and reproduce that defect only on GitLab.
-	Target LabelTarget
+	// every GitHub test and reproduce that defect only on GitLab. The type is the same
+	// TargetKind the typed reads/comments take, so one stated kind serves every op.
+	Target TargetKind
 	// Add is ensured to exist on the repo/project and to be present on the target.
 	Add []LabelSpec
 	// Remove is taken off the change when present. A name that is not on the change is not
@@ -381,42 +382,16 @@ type LabelChange struct {
 	RemoveFamilies []string
 }
 
-// LabelTarget names the KIND of object a LabelChange addresses. The zero value is deliberately
-// not a kind: it is the unset state ApplyLabels refuses, so a call site has to say which it
-// means (see LabelChange.Target for why the seam never guesses).
-type LabelTarget int
-
-const (
-	// LabelTargetUnset is the zero value — refused, never defaulted.
-	LabelTargetUnset LabelTarget = iota
-	// LabelTargetChange addresses a pull request / merge request.
-	LabelTargetChange
-	// LabelTargetIssue addresses an issue.
-	LabelTargetIssue
-)
-
-// String renders the target for refusal messages and step reports.
-func (t LabelTarget) String() string {
-	switch t {
-	case LabelTargetChange:
-		return "change"
-	case LabelTargetIssue:
-		return "issue"
-	default:
-		return "unset"
-	}
-}
-
 // requireTarget is the shared refusal every backend issues BEFORE its first request when a
 // LabelChange names no target. One helper rather than two copies so the two backends cannot
 // drift on which values are accepted.
 func (c LabelChange) requireTarget() error {
 	switch c.Target {
-	case LabelTargetChange, LabelTargetIssue:
+	case TargetChange, TargetIssue:
 		return nil
 	default:
-		return Refused(fmt.Sprintf("refusing to apply labels with no target kind (LabelChange.Target=%d) — "+
-			"say whether the number is an issue or a change; on GitLab the two are separate sequences", int(c.Target)))
+		return Refused(fmt.Sprintf("refusing to apply labels with no target kind (LabelChange.Target=%q) — "+
+			"say whether the number is an issue or a change; on GitLab the two are separate sequences", string(c.Target)))
 	}
 }
 
@@ -712,6 +687,37 @@ type ChangeSearchResult struct {
 	Number    int
 	Title     string
 	CreatedAt string // RFC3339
+}
+
+// TargetKind names WHICH kind of numbered object a typed forge operation addresses: an
+// ISSUE, or a CHANGE (pull request ↔ merge request). It exists for the forges that number
+// the two kinds in separate sequences (GitLab), where a bare number resolves to nothing
+// without it; on a single-sequence forge (GitHub) it is validated against what the number
+// actually is. The zero value is deliberately NOT a kind: a caller that has not stated one
+// gets a refusal from ParseTargetKind, never a default guessed on its behalf.
+type TargetKind string
+
+const (
+	// TargetIssue addresses an issue.
+	TargetIssue TargetKind = "issue"
+	// TargetChange addresses a change — a pull request on GitHub, a merge request on GitLab.
+	TargetChange TargetKind = "change"
+)
+
+// ParseTargetKind reduces a user-facing kind word to a TargetKind. It accepts the
+// forge-neutral names (issue, change) and both forges' own words for a change (pr, mr),
+// case-insensitively, so a flag can be spelled in whichever vocabulary the operator thinks
+// in. Anything else — the empty string included — is refused (ExitRefused) naming the
+// accepted set: the whole point of the type is that the kind was STATED, so an unparseable
+// one must not quietly become an issue.
+func ParseTargetKind(s string) (TargetKind, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "issue":
+		return TargetIssue, nil
+	case "change", "pr", "mr":
+		return TargetChange, nil
+	}
+	return "", Refused(fmt.Sprintf("refused: unknown target kind %q (want one of: issue, mr; pr is an alias of mr)", s))
 }
 
 // ChangeSearchResults is the result of an owner-wide open-change search: the rows plus whether
