@@ -501,9 +501,44 @@ func BlessAuthorityLogin() string {
 	return c.Bless.Login
 }
 
-// RoleAppLogin returns the REST rendering ("<slug>[bot]") of the App bound to a
-// desk role by the `role=` prefix on ASSAY_TRUSTED_BOT_SLUGS, and whether the
-// role is BOUND at all.
+// RoleAppLogin returns the login the App bound to a desk role by the `role=` prefix on
+// ASSAY_TRUSTED_BOT_SLUGS is attributed under BY ITS OWN FORGE, and whether the role is
+// BOUND at all. GitHub renders `<slug>[bot]`; GitLab renders the service account's bare
+// username. The rendering is BotIdentity.PrimaryLogin's answer, not a literal built here.
+//
+// WHY THE FORGE DIMENSION IS READ FROM THE ROSTER ENTRY AND NOT FROM THE REPO.
+// This function used to append "[bot]" unconditionally. On a GitLab deployment that made
+// the expected reviewer login `<slug>[bot]` while every actual approval was authored as
+// `<slug>` — and because SameActor compares an isApp FLAG as well as a name, the two did
+// not merely differ, they could never match: `SameActor("gl-act", "gl-act[bot]")` is
+// false even though the slug is identical. So the ready-flip gate's reviewer-approved
+// lane refused every GitLab merge request that HAD been approved at head, and the board's
+// UNREVIEWED / NEEDS-REVIEW classification — which reduces through the same expected
+// login — reported the same PR as never reviewed. One wrong rendering, both surfaces.
+//
+// The forge is taken from the ENTRY (`reviewer=gitlab:<slug>:<id>`) rather than from the
+// repo being acted on, for three reasons:
+//
+//  1. It is where the answer already lives. The trusted-login set already registers a
+//     GitLab entry's bare username (rosterconfig.go, via AcceptedLogins) and expectedID
+//     already resolves that username's pinned id from the forge-qualified table. The role
+//     matcher was the ONLY surface still bypassing that layer; keying it the same way
+//     makes the three agree by construction instead of by repetition.
+//  2. It widens nothing. The bare GitLab username is ALREADY a trusted login whenever the
+//     roster spells `gitlab:`; this only lets the role comparison use the same rendering
+//     the trust set accepts. A GitHub entry is untouched — still `<slug>[bot]`, and its
+//     BARE slug is still not a login here, which is the username-squatting fail-close
+//     (App slugs and user logins are separate namespaces on GitHub, so a user named after
+//     a slug must never satisfy the comparison). The bare form is safe on GitLab for the
+//     opposite reason: a GitLab username is unique instance-wide, so it IS the account.
+//  3. A repo-derived forge is not available where the comparison happens. The board's
+//     matcher runs inside reduceReviews, which receives reviews and a head sha and no
+//     repo at all, and deskboard's stalled report hoists the login above its per-repo
+//     loop. Threading a resolution to those sites would change the shape of every caller
+//     without making the answer any more authoritative than the entry that declares it —
+//     and a roster entry that names a forge the repo does not serve is already REFUSED,
+//     separately, by assertEntryForgeAgrees / AssertRoleForgeMatches (forgeidentity.go).
+//     That refusal is what keeps entry-derived and repo-derived from disagreeing.
 //
 // The ok return is not decoration, and it is why this function cannot go back to
 // returning a bare string. The previous shape answered "" for an unbound role and
@@ -530,14 +565,26 @@ func RoleAppLogin(role string) (login string, ok bool) {
 	if !bound || strings.TrimSpace(slug) == "" {
 		return "", false
 	}
+	// The forge-qualified identity is the rendering authority. A bound role whose slug
+	// has no parsed identity cannot happen through parseConfig (it lands both in one
+	// step), but a hand-built Config can produce it — and there the GitHub rendering is
+	// the correct fallback, not a refusal: an entry with no forge segment IS read as
+	// github everywhere else (splitBotEntry's backward-compatibility rule), and the
+	// decorated GitHub form is the one that cannot be squatted. So this arm preserves the
+	// pre-forge behaviour exactly rather than inventing a stricter one here.
+	if ident, found := c.RoleBotIdentity(role); found {
+		return ident.PrimaryLogin(), true
+	}
 	return slug + "[bot]", true
 }
 
-// RoleAppLoginOrEmpty is the DISPLAY-ONLY rendering of a role binding, for
-// message text ("expected <slug>[bot]"). It renders "(unbound)" rather than an
-// empty string so a diagnostic never silently reads as a blank identity. It must
-// never be used in a comparison — RoleAppLogin's ok return is the only admissible
-// basis for an identity decision.
+// RoleAppLoginOrEmpty is the DISPLAY-ONLY rendering of a role binding, for message text
+// ("expected <slug>[bot]" on GitHub, "expected <username>" on GitLab — it shows whatever
+// RoleAppLogin resolved, so a diagnostic names the login the gate actually compared
+// against rather than a shape it never used). It renders "(unbound)" rather than an empty
+// string so a diagnostic never silently reads as a blank identity. It must never be used
+// in a comparison — RoleAppLogin's ok return is the only admissible basis for an identity
+// decision.
 func RoleAppLoginOrEmpty(role string) string {
 	login, ok := RoleAppLogin(role)
 	if !ok {
