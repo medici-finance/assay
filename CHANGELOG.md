@@ -23,6 +23,201 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.8 — 2026-09-14
+
+### Added
+- **A top/mid/fast tier-map fallback** for a role/harness with neither its own per-role pin nor that
+  harness's default: `the-desk` resolves at `top`, every other role at `mid` (`fast` is defined but
+  not auto-assigned). Compiled defaults — `fable`/`sonnet`/`haiku` for claude,
+  `gpt-5.6-terra` (the one codex model id proven live, `docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md`)
+  for all three codex tiers today — are each overridable in `cell.env` via
+  `TIER_MODEL_<TIER>_<HARNESS>`. This is what lets a cell pinned Claude-only today boot
+  `--harness codex` with a real, working model and no manual re-pin.
+- **Per-harness model-pin namespaces.** `DESK_MODEL_<role>`/`DESK_MODEL_DEFAULT` are now explicitly
+  the **claude** namespace (unchanged, backward compatible); codex gets its own —
+  `CODEX_MODEL_<role>` per-role, `CODEX_MODEL_default` as its harness-wide fallback (no compiled
+  default). The two are never cross-read.
+- **`forge-neutral` brief 14 — run and gate-approval verbs (`deskrun`) onto the forge
+  resolver.** Specifies `RunWorkflow`, `ApproveGate` and `RunStatus` on the `Forge`
+  interface, both backends, plus the `deskrun` verb that wraps them: today a release or a
+  gated CI run is started by a human's own ambient `gh` session because GitHub's
+  `actions: write` permission cannot be scoped down to just dispatch-and-approve (it also
+  cancels runs, deletes run logs, and disables workflows repo-wide). The brief documents
+  `repository_dispatch` as an alternative trigger and states why it is not adopted as the
+  default, prefers GitLab's narrow, start-only pipeline trigger token over a broader
+  project token, and specifies `deskrun`'s refusal (exit 5) whenever the roster's
+  run-credential binding resolves to a human rather than a dedicated role credential. Doc
+  only; no tool behaviour changes in this PR — implementation is a separate, human-gated
+  follow-on.
+- **`forge-neutral` brief 16 — `deskclose` widened lanes.** Specifies three narrowly-scoped
+  additions to `deskclose`'s closed mode set, each staying inside the identity model
+  `forge-neutral/13` already put a human gate on rather than opening a new one: (a)
+  `self-withdraw`, letting an author-App close its own superseded-or-abandoned draft pull
+  request, gated by a login-AND-numeric-id authorship pin mirroring the blessing-authority
+  check; (b) `verify-gate-refire`, a `verifier`-role-only reopen+close cycle scoped to
+  `verify-gate`-labelled issues, whose inability to complete the human sign-off is enforced
+  independently and server-side by `verify-gate-close.yml`, not by this lane's own gate; and
+  (c) documentation of `deskclose manifest` as the already-shipped, sanctioned path for a
+  human-ruled batch close, with no behavior change. Adds one new `Forge` operation
+  (`ReopenIssue`, both backends).
+- **forge-neutral/17 — `deskrun log`/`deskrun retry` brief**
+  (`docs/streams/forge-neutral/brief-17-deskrun-log-retry.md`): specifies read-only run-log
+  access (GitHub `actions: read` / GitLab `read_api`) as safe to grant broadly to both worker
+  and reviewer Apps, and `deskrun retry` (GitHub `actions: write` / GitLab `api`) as
+  roster-bound the same way `RunWorkflow` is — the same over-broad-scope shape, refusing
+  (exit 5) rather than borrowing an ambient human credential when the roster binds the retry
+  role to a human.
+- An explicit `--model <m>` (or `DESK_MODEL_OVERRIDE`) still passes through verbatim to the selected
+  harness on either arm — it is never routed through the namespace/tier resolution above.
+- New `deskprovenance` verb and `internal/deskkit/provenance.go` gather a fixed set of
+  mechanical signals about an unknown contributor's pull request (account age, fork-to-PR
+  elapsed, cross-repository burst, prior merged/closed ratio, body-shape similarity, commit
+  signature, build/dependency paths touched) and render them as a neutral, facts-only card —
+  no score, no rating, no verdict. See `docs/contributor-provenance.md`. Posting the card
+  publicly is pending the human ruling recorded on `docs/streams/decisions/DR-provenance-card.md`
+  (contributor-trust/01).
+- `cellctl --version` (also `cellctl version`) reports the umbrella release tag a packaged copy
+  ships at, stamped into the tarball's copy at release time; a source checkout keeps reporting
+  `dev`, honestly.
+- `cellctl check` prints one `model pin: role=<role> harness=<harness> model=<m> (from <source>)`
+  row per role the cell runs, on the cell's pinned harness — a role with no per-harness pin and no
+  tier match is a `MISS` naming exactly what was checked, visible before boot rather than discovered
+  as a startup failure.
+- `cellctl set <cell> <role> [--harness claude|codex] --model <m>` — role-sugar that writes whichever
+  namespace the ACTIVE harness uses (the flag given, else the cell's own `CELL_HARNESS`), so a codex
+  call writes `CODEX_MODEL_<role>`, never `DESK_MODEL_<role>`. `cellctl desk ... --harness codex
+  --model <m> --set` persists into the same namespace for a live boot.
+- `cellctl` now ships inside `desk-tools-<platform>.tar.gz` (every platform gets the same file —
+  it is a shell script, not a per-platform Go build) and `make desk-install`, sha-pinned by the
+  umbrella `checksums.txt` like every other desk-tools asset. No more hand-copied script.
+- `deskroster liveness --repo OWNER/NAME` — a read-only NOTICE surface that asks GitHub
+  what it currently says about every trusted login the roster configures (deleted, renamed,
+  reclaimed, or unpinned), without touching `TrustedAuthor`/`TrustedHumanAuthor`/`Blessed`'s
+  pass/fail verdict.
+- `statusgen reconcile --backfill --apply` now WRITES a witnessed `todo`/`in-progress` →
+  `implemented` cell back into the brief's stream README `Status` column — closing the
+  wiring gap where `--backfill [--report]` only ever reported drift, never applied it.
+  The write fires only for a real merged-PR witness (a `Brief:` trailer or the declared
+  backfill branch/body match), never touches `Verified`/`Reviewed` or any `human:<name>`
+  sign-off stamp, and never writes `verified`/`done`. Idempotent — a re-run with nothing
+  witnessed exits 0 having written nothing.
+- `tools/cellctl/tests/model-namespace.test.sh` — a plain-bash, no-network test covering the
+  tier-map fallback with no manual re-pin, the unaffected claude arm, per-role/default codex pins
+  winning over the tier map, `--model` bypassing all resolution, the no-pin/no-tier-match refusal on
+  both `desk` and `check`, the `TIER_MODEL_<TIER>_<HARNESS>` override, and the harness-aware
+  `cellctl set` role-sugar form. `tools/cellctl/tests/harness.test.sh` is updated where it asserted
+  the old (buggy) pass-through behavior.
+
+### Fixed
+- **`--harness codex` no longer passes a Claude model name straight to `codex -m`.** `cellctl
+  desk`/`cellctl up` previously resolved a role's model from `DESK_MODEL_<role>`/`DESK_MODEL_DEFAULT`
+  regardless of harness, so a cell pinned Claude-only (`fable`, `opus`, `sonnet`, ...) handed codex a
+  name it does not understand, and the reverse (a codex-only pin reaching the claude arm) was
+  equally broken (`#986`).
+- **`cellctl up --cockpit herdr` now brings up a herdr window when none is open, instead of
+  silently doing nothing.** Previously the herdr arm only ever added labelled tabs to whatever
+  window herdr already had open (`herdr tab create --label <l>`) — with no window open, those tabs
+  had nowhere to land and the operator had to open herdr by hand first (#985). `up` now checks
+  first (`herdr workspace list` — herdr's own noun, verified live against herdr 0.8.2, for what
+  this cockpit and #961 call a "window") and, finding none, starts one
+  (`herdr workspace create --label <cell>-<the first window>`) before any tab create — the same
+  trigger point and create-if-absent shape the tmux arm already uses for its `<cell>-cell` session
+  (`tmux has-session || tmux new-session`). The new workspace's own auto-seeded default tab is
+  dropped once the cell's real tabs exist in it (closing it any earlier closes the whole workspace
+  with it — verified live). When a window is already open, behaviour is unchanged: no
+  `workspace create` call, and tab create runs exactly as it did before this fix. A build that
+  cannot list or create workspaces, or whose `workspace create` fails, refuses up-front naming
+  herdr and the exact command tried — never opens no window at all. `--cockpit auto` still falls
+  through to tmux when herdr is not installed, as before. `tools/cellctl/tests/herdr-orca-launch.test.sh`
+  covers all three cases (no window / window already open / herdr absent or lacking the verb),
+  each against fixture stubs shaped from live probing of a real herdr 0.8.2.
+- The stale-verdict refusal's diagnostic commit now names the SAME decisive security review
+  that governs the pass/fail decision, never a later off-head review that never actually
+  governed anything. A standing `Security-Review: fail` at commit A followed by a LATER
+  `Security-Review: pass` pinned at an off-head commit B previously made the refusal claim
+  the verdict was "pinned at B" — a plain staleness framing — when the real reason to refuse
+  was the standing fail at A. `securityVerdictStanding` and `lastSecurityVerdictCommit` now
+  share one reduction so they can no longer name different reviews. (#988)
+- `composability/00`'s Verify row 1 documented a `grep -c '^\| \`assay\.'` check that was
+  false-permissive on both GNU and BSD grep: the escaped `\|` parses as a GNU alternation
+  extension, so the pattern matched every line via its `^` branch and silently counted the
+  whole file instead of `components/KEYS.md` table rows. Documented the corrected,
+  unescaped-pipe form (confirmed to return the real row count, 30, instead of the file's
+  total line count, 97) in a dated Evidence addendum on the already-`done` brief, per the
+  house mid-flight-edit convention (#906).
+- `consumedFragmentIndex.build()` (the `changelog/<slug>.md` consumed-release-fragment
+  exemption, #722) now detects a shallow git clone (`git rev-parse --is-shallow-repository`)
+  and treats it the same as a `git log` error, instead of reading its truncated history as a
+  definitive "never tracked" answer. On CI's default shallow `actions/checkout`, that false
+  read spuriously PROBLEMs a genuinely consumed changelog fragment on every PR, unrelated to
+  the diff — this makes the failure an honest could-not-check instead of a silent wrong
+  verdict. The companion fix — giving the `lint` and `windows-smoke` jobs `fetch-depth: 0` so
+  CI actually greens on a real clone — is tracked separately, blocked on the worker App's
+  standing no-workflow-write policy. (#999)
+- `deskclose superseded`'s confirm/dispute now normalizes both the standing proposal's
+  recorded target and the caller's `--by` value to `owner/repo#N` before comparing — a
+  bare `--by 40` against a marker recorded as `owner/repo#40` used to read as a target
+  DISAGREEMENT ("record and caller disagree") when it was only a format mismatch. A
+  genuine disagreement now names both the recorded form and the expected form explicitly
+  (#984).
+- `deskdisposition read` no longer shells out to `gh pr view` at all: it mints the
+  session-role App installation token and reads the record (labels + comment thread)
+  through the resolved forge over REST, the same custody pattern `deskclose`/`deskfile`
+  already use. Previously, `deskclose superseded`'s confirm path (a child process of an
+  already-minted desk session with no usable ambient `gh` identity) got a bare
+  `HTTP 401: Requires authentication` from the shelled `gh` call even though a valid
+  App-token read was available (#984).
+- `deskevidence`'s secret scan no longer re-scans a brief's WHOLE pre-existing body on an
+  Evidence landing made without `--brief-path`. In that flow `--evidence-file` is the caller's
+  own merged copy of the target file, so the scan previously treated every pre-existing byte —
+  a Verify row's own quoted secret-shaped material — as part of THIS commit, forever. It now
+  fetches the target's current remote content once, up front, and scans only the lines that
+  are actually new relative to it (the same "added bytes only" scoping `--brief-path` merges
+  already had). (#966)
+- `deskflip`'s already-ready fast path no longer treats "not a draft, queue label already
+  correct" as proof the review verdicts are current. It now re-runs the FULL condition gate —
+  including the reviewer-approved and security-verdict lanes AT THE CURRENT HEAD — before
+  reporting "nothing to do", and refuses (naming the stale lane and both the stale-verdict
+  commit and the PR's current head) when a lane's last-seen verdict is behind the head.
+  Before the fix, an already-ready PR could sit reading as mergeable indefinitely while new
+  commits landed with content no review lane had seen. (#987)
+- `docs/adopting-assay.md` §1's install arm A (plugin/marketplace) is recorded as demonstrated, not
+  merely documented: a clean Codex home on 0.154.0 ran
+  `codex plugin marketplace add` → `codex plugin add` → `codex plugin list` end to end against this
+  repo's legacy manifest, with all twelve skills discoverable namespaced `assay:<name>`. (#939)
+- `docs/adopting-assay.md` §3's `multi_agent_v2` could-not-check is narrowed: `codex features list`
+  on 0.154.0 confirms the key exists (`stable`, defaults `false`); only the V2 tool-name behaviour
+  itself remains unexercised. (#939)
+- `internal/deskkit`'s secret/entropy scanner gained two narrow, closed exemptions so neither
+  shape can trip a false positive again even when correctly scoped to newly-added text: a
+  slash-list of short ALL-CAPS enum/status words (`PENDING/RUNNING/BLOCKED/DONE`), and a 32-hex
+  run directly behind a hyphen and a recognised Kubernetes object-kind prefix (`pvc-<uid>`, the
+  dashes-stripped rendering Kubernetes itself emits for a PersistentVolumeClaim's bound
+  PersistentVolume). Both are bounded the same way every other exemption in this file is: a
+  real secret pasted in either shape (mixed case, digits, or an unlisted prefix) still refuses.
+  (#966)
+- `plugins/assay/references/codex.md`'s `capability:isolate-workspace` row (and the two skill rows
+  that derive from it, `pr-shepherd` and `worker-desk`) re-measured on **codex-cli 0.154.0**: the
+  CLI now ships a managed-worktree mechanism (`codex exec --worktree`), so the prior `§3.9 absent`
+  reading is stale. The floor behaviour is unchanged — still refuses under `workspace-write`,
+  still runs under `danger-full-access` — only the mechanism classification updates. (#939)
+- `tools/changelog/check.sh`'s `PR_NUMBER` validation now anchors the whole
+  parameter (`[[ =~ ]]`) instead of anchoring per-line via a piped `grep -E`,
+  closing an embedded-newline bypass that could launder one PR's number into
+  matching another PR's proxy changelog fragment; the downstream proxy-lookup
+  `grep -E` match gained its own newline guard as defense in depth. Not
+  exploitable in production (`github.event.pull_request.number` cannot carry a
+  newline) — a hardening fix plus a new regression test (`check_test.sh` P13).
+- board: reconciled two merged-but-unflipped stream README rows
+  (`desktools-go-git/04`, `desktools-go-git/07`) to `implemented` — both rows' delivery
+  PRs (#951, #958) were already merged, reviewed, and green, but the board Status cells
+  had never been flipped off `dispatched`.
+- statusgen's human-stamp sole-permitted-writer check no longer false-positives on Windows: `relPath` now normalizes backslash separators before building git pathspecs, so a legitimately gate-written `human:<name>` sign-off stamp reads clean on `windows-smoke` the same way it already did on Linux/macOS (#1007).
+
+### Changed
+- Codex smoke run log for 2026-09-13: harness-portability/07 step 5 re-run under the #939 re-baseline (spawn tools present under `multi_agent=true`; fan-out held by the claim rule), recorded under `docs/codex-smoke-runs/` with transcript fingerprints.
+- Two stream README rows (desktools-go-git/02, windows-port/04) return to `implemented`: their `human:reviewer` Reviewed cells had been written by the board-writer bot and the brief-v2 migration rather than by `verify-gate-close`, which `statusgen --lint` refuses; re-closing the two gate cards lets the gate write the stamps itself.
+
 ## v1.0.7 — 2026-09-13
 
 ### Added
