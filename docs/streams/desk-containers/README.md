@@ -37,7 +37,7 @@ component list, build/run topology, and open questions.
 | 05 | [docker-compose definition for the five desks](brief-05-docker-compose.md) | 3 | S | todo | — | — |
 | 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | todo | — | — |
 | 07 | [multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config](brief-07-desk-control-layer.md) | 4 | M | todo | — | — |
-| 08 | [A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish](brief-08-tick-contract-for-desk-skills.md) | 3 | M | in-progress | — | — |
+| 08 | [A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish](brief-08-tick-contract-for-desk-skills.md) | 3 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
