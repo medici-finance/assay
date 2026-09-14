@@ -32,14 +32,56 @@ const (
 // silently dropped or reordered. The order is deliberate: the cheap, no-network refusals
 // come first, and the head re-read comes LAST because its whole purpose is to be the final
 // thing checked before the mutation.
+//
+// THE ORDER IS COST-ORDERED, AND THE COSTS WERE MEASURED. Every condition here is
+// individually necessary — all nine must hold — so the order changes nothing about WHICH
+// PRs flip. What it changes is how much a REFUSAL costs, and that is worth ordering for:
+// measured over 2,704 recorded invocations on one operating desk host, 1,185 non-OK outcomes
+// named a condition, and `checks-green` named 651 of them (54.9%) — more than
+// `reviewer-approved` (224), `security-verdict` (148), `mergeable` (99), `pr-open-draft`
+// (43) and `model-floor` (16) combined. It used to be evaluated sixth, so the commonest
+// refusal was also the most expensive one to reach: every one of those 651 runs bought the
+// model-floor read and the reviews read before learning a check was red.
+//
+// Per condition, why it sits where it does:
+//
+//   - caller-role, app-token — first, unchanged. The first is the no-network identity gate;
+//     the second must precede the FIRST forge call so no read and no write can happen on an
+//     ambient credential, and it is where the forge itself is resolved.
+//   - pr-open-draft — third, unchanged. It performs the ONE read every condition below
+//     consumes: the head, the base ref, the draft flag, the labels, the mergeable verdict.
+//   - mergeable — MOVED UP, seventh to fourth. It costs NOTHING: it reads `pr.Mergeable`, a
+//     field the pr-open-draft read already populated, and issues no forge call of its own. A
+//     zero-read condition has no business sitting behind three that each cost at least one.
+//   - reviewer-approved, then checks-green — this pair's relative order is UNCHANGED, and
+//     deliberately so. Cost alone would put checks-green first, but checkonlycr_test.go
+//     records the opposite rule for a reason that outranks cost: when a standing
+//     CHANGES_REQUESTED claims the check-only exemption, the exemption must decide first, or
+//     an operator rejected for a reason that was never about CI is sent to the CI gate to
+//     look for it. Both read the SAME rollup, and since it is now read once (checksAtHeadOnce)
+//     the second of the two is free anyway, so the cost argument for swapping them has
+//     largely evaporated.
+//   - model-floor — MOVED DOWN, fourth to seventh. It is the one that made a checks-green
+//     refusal expensive: it buys a PAGINATED label-event timeline read, and a PR refused for a
+//     red check or a conflict paid for that timeline and discarded it.
+//   - security-verdict — kept near the end: it walks a PAGINATED changed-file list, the most
+//     expensive read in the gate.
+//   - head-stable — LAST, unchanged, because its whole purpose is to be the final thing
+//     checked before the mutation.
+//
+// What this costs a REFUSAL, in forge reads: a `mergeable` refusal is now 1 (the PR document)
+// rather than 4; a `checks-green` refusal is now 3 (PR, reviews, rollup) rather than 4, the
+// one dropped being the paginated timeline. No condition was added, removed, weakened, or
+// made conditional, and no refusal's condition NAME changed — callers key on those names, and
+// a name that drifts breaks every one of them.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
 	condPROpenDraft,
-	condModelFloor,
+	condMergeable,
 	condReviewerApproved,
 	condChecksGreen,
-	condMergeable,
+	condModelFloor,
 	condSecurityVerdict,
 	condHeadStable,
 }
@@ -197,15 +239,27 @@ func flip(o flipOpts) error {
 		o.say("%s OK: open + draft at %s", condPROpenDraft, short(head))
 	}
 
-	// --- model-floor -------------------------------------------------------------
-	// The authority-bearing-write floor: a ready-flip requires a strong-tier dispatch. It
-	// is read from the target PR's dispatcher-attested tier stamp (the applier-aware reader,
-	// so a self-applied stamp is worthless), and it fails CLOSED — an attested below-tier
-	// dispatch, or a stamp present-but-unreadable, refuses. An UNATTESTED PR (human-driven
-	// or pre-attestation) is not bricked: it proceeds with a NOTICE. The override is loud.
-	if err := checkModelFloor(o, fg, fr, pr); err != nil {
-		return err
+	// The rollup at this head is read AT MOST ONCE for the whole flip, and two conditions
+	// consume it: reviewer-approved's check-only-CR exemption and checks-green. The reader is
+	// created here, where the head it is addressed by is first known, so neither consumer owns
+	// it and neither can buy a second round trip for the same fact. Each wraps the same raw
+	// outcome in its OWN condition's message (see checksAtHeadOnce).
+	rollupAtHead := checksAtHeadOnce(fg, fr, head)
+
+	// --- mergeable ---------------------------------------------------------------
+	switch strings.ToUpper(strings.TrimSpace(pr.Mergeable)) {
+	case "MERGEABLE":
+	case "CONFLICTING":
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d is CONFLICTING — a conflicting PR is not flippable, and its resolution "+
+				"touches the PR's own files, which is authored work that invalidates the approval and "+
+				"requires a re-review.", condMergeable, o.pr))
+	default:
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: PR #%d reports mergeable=%q — the forge has not computed it yet. Unknown is not "+
+				"mergeable; re-run once it settles.", condMergeable, o.pr, pr.Mergeable), nil)
 	}
+	o.say("%s OK", condMergeable)
 
 	// --- reviewer-approved -------------------------------------------------------
 	reviews, err := readReviews(o, fg, fr)
@@ -215,7 +269,7 @@ func flip(o flipOpts) error {
 	// One memoized reader serves BOTH calls to checkReviewerApproved — this one and the
 	// post-TOCTOU re-check at the same head — so the exemption's rollup read happens at most
 	// once per flip, and both calls decide on the same set of runs.
-	runsAtHead := checkRunsAtHeadReader(o, fg, fr, head)
+	runsAtHead := checkRunsAtHeadReader(o, rollupAtHead, head)
 	if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
 		return err
 	}
@@ -227,7 +281,7 @@ func flip(o flipOpts) error {
 	// double-trigger) does not count against a PR whose current run for that name is green.
 	// The reduction changes only WHICH run is judged, never HOW: the reduced set flows
 	// through the same evaluation, so a name whose LATEST run is red/pending still blocks.
-	rollup, err := readChecks(o, fg, fr, head)
+	rollup, err := readChecks(o, rollupAtHead, head)
 	if err != nil {
 		return err
 	}
@@ -296,20 +350,15 @@ func flip(o flipOpts) error {
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
-	// --- mergeable ---------------------------------------------------------------
-	switch strings.ToUpper(strings.TrimSpace(pr.Mergeable)) {
-	case "MERGEABLE":
-	case "CONFLICTING":
-		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: PR #%d is CONFLICTING — a conflicting PR is not flippable, and its resolution "+
-				"touches the PR's own files, which is authored work that invalidates the approval and "+
-				"requires a re-review.", condMergeable, o.pr))
-	default:
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"condition %s: PR #%d reports mergeable=%q — the forge has not computed it yet. Unknown is not "+
-				"mergeable; re-run once it settles.", condMergeable, o.pr, pr.Mergeable), nil)
+	// --- model-floor -------------------------------------------------------------
+	// The authority-bearing-write floor: a ready-flip requires a strong-tier dispatch. It
+	// is read from the target PR's dispatcher-attested tier stamp (the applier-aware reader,
+	// so a self-applied stamp is worthless), and it fails CLOSED — an attested below-tier
+	// dispatch, or a stamp present-but-unreadable, refuses. An UNATTESTED PR (human-driven
+	// or pre-attestation) is not bricked: it proceeds with a NOTICE. The override is loud.
+	if err := checkModelFloor(o, fg, fr, pr); err != nil {
+		return err
 	}
-	o.say("%s OK", condMergeable)
 
 	// --- security-verdict --------------------------------------------------------
 	// The changed-file list is read HERE, in full, and only here: it is the security
@@ -1351,6 +1400,35 @@ func readPR(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (prInfo, error) 
 	}, nil
 }
 
+// checksAtHeadOnce returns a MEMOIZED reader of the RAW check rollup at head — the forge
+// response and the forge error, wrapped in nothing.
+//
+// WHY RAW, AND WHY ONE. Two conditions need this rollup: `checks-green` judges it, and
+// `reviewer-approved`'s check-only-CR exemption reads the check RUNS out of it. They used to
+// buy two round trips for it, and the reason given was a good one — "a refusal has to name
+// the condition it belongs to or it sends the operator to the wrong gate". But that reason
+// argues for two WRAPPERS, not two reads. So the read happens at most once per flip and each
+// consumer wraps the same raw outcome in its OWN condition's message and its own short-read
+// reconcile. The property the two-function split protected is preserved exactly; what is
+// removed is the second round trip, not the second message.
+//
+// The error is cached with the value, deliberately: a read that failed once is
+// could-not-check for this flip, not something to retry into.
+func checksAtHeadOnce(fg deskkit.Forge, fr deskkit.ForgeRepo, head string) func() (*deskkit.ChecksAtHead, error) {
+	var (
+		done   bool
+		checks *deskkit.ChecksAtHead
+		err    error
+	)
+	return func() (*deskkit.ChecksAtHead, error) {
+		if !done {
+			done = true
+			checks, err = fg.ChecksAtHead(fr, head)
+		}
+		return checks, err
+	}
+}
+
 // readChecks reads the two CI rollups AT THE HEAD the gate verified and flattens them into
 // the single entry list the reduction and the green/pending/fail evaluation run over.
 //
@@ -1358,8 +1436,8 @@ func readPR(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (prInfo, error) 
 // walk that returned fewer entries than the head claims is a rollup nobody read in full —
 // which on this gate would mean judging a head green on a partial view, the exact fail-open
 // the paginated reads exist to prevent. That is could-not-check, never green.
-func readChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) ([]rollupEntry, error) {
-	checks, err := fg.ChecksAtHead(fr, head)
+func readChecks(o flipOpts, read func() (*deskkit.ChecksAtHead, error), head string) ([]rollupEntry, error) {
+	checks, err := read()
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is "+
@@ -1427,7 +1505,7 @@ func readRequiredChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, base
 // post-TOCTOU re-check at the same head — and the second call must not buy a second round
 // trip to learn the same fact. The error is cached with the value for the same reason: a
 // read that failed once is could-not-check for this flip, not something to retry into.
-func checkRunsAtHeadReader(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) func() ([]deskkit.CheckRun, error) {
+func checkRunsAtHeadReader(o flipOpts, read func() (*deskkit.ChecksAtHead, error), head string) func() ([]deskkit.CheckRun, error) {
 	var (
 		done bool
 		runs []deskkit.CheckRun
@@ -1439,7 +1517,7 @@ func checkRunsAtHeadReader(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, h
 		}
 		done = true
 		var checks *deskkit.ChecksAtHead
-		checks, err = fg.ChecksAtHead(fr, head)
+		checks, err = read()
 		if err != nil {
 			err = deskkit.Unverifiable(fmt.Sprintf(
 				"condition %s: a standing CHANGES_REQUESTED at %s claims the check-only exemption, but the "+
