@@ -147,6 +147,14 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
+	// The statusgen PROBLEM-diff check defaults to "introduces nothing" so the whole
+	// behavioural suite never shells a real statusgen or touches a real tree merely by
+	// calling cmdEvidence. Tests specifically exercising the check override this seam
+	// themselves (see the lint-diff tests below).
+	oldLintDiff := lintDiffFn
+	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
+	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr
 	stdout = &bytes.Buffer{}
@@ -258,10 +266,11 @@ func TestKillSwitchExit3(t *testing.T) {
 // as the verifier App.
 func TestSuccessfulCommitEndToEnd(t *testing.T) {
 	f, _ := setupFake(t)
-	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
 	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("successful commit exit = %d, want 0", code)
 	}
@@ -287,10 +296,11 @@ func TestSuccessfulCommitEndToEnd(t *testing.T) {
 func TestIdempotencyNoop(t *testing.T) {
 	f, _ := setupFake(t)
 	content := "# Brief\n\n## Evidence\ncontent already on branch\n"
-	evidencePath := writeRepoFile(t, "docs/brief.md", content)
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, content)
 	f.setFile(evidencePath, content) // remote == local
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("idempotent noop exit = %d, want 0", code)
 	}
@@ -307,10 +317,11 @@ func TestIdempotencyNoop(t *testing.T) {
 func TestSecretScanRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	secret := "ghp_" + strings.Repeat("a", 36)
-	evidencePath := writeRepoFile(t, "docs/brief.md", "token: "+secret+"\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "token: "+secret+"\n")
 	f.setFile(evidencePath, "old\n")
 
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitRefused {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
 		t.Fatalf("secret-scan exit = %d, want %d", code, deskkit.ExitRefused)
 	}
 	if f.putCalls != 0 {
@@ -321,9 +332,10 @@ func TestSecretScanRefused(t *testing.T) {
 func TestSecretScanRefusedNoRemote(t *testing.T) {
 	f, _ := setupFake(t)
 	secret := "ghp_" + strings.Repeat("b", 36)
-	evidencePath := writeRepoFile(t, "docs/new.md", "token: "+secret+"\n")
+	evidencePath := "docs/streams/x/new.md"
+	root := rootWithFile(t, evidencePath, "token: "+secret+"\n")
 	// No remote file set → ReadFile 404 (create path); the secret scan must still refuse first.
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitRefused {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
 		t.Fatalf("secret-scan (no remote) exit = %d, want %d", code, deskkit.ExitRefused)
 	}
 	if f.putCalls != 0 {
@@ -335,8 +347,9 @@ func TestSecretScanRefusedNoRemote(t *testing.T) {
 func TestOversizeRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	big := strings.Repeat("x", maxBytes+1)
-	evidencePath := writeRepoFile(t, "docs/big.md", big)
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitRefused {
+	evidencePath := "docs/streams/x/big.md"
+	root := rootWithFile(t, evidencePath, big)
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
 		t.Fatalf("oversize exit = %d, want %d", code, deskkit.ExitRefused)
 	}
 	if len(f.hits) != 0 {
@@ -349,10 +362,11 @@ func TestOversizeRefused(t *testing.T) {
 func TestCommitAttributionToVerifierApp(t *testing.T) {
 	f, _ := setupFake(t)
 	f.writeAuthor = "assay-verifier-app[bot]"
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
 
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("verifier-attributed write exit = %d, want 0", code)
 	}
 	if !strings.Contains(lastAudit(t).Detail, "assay-verifier-app[bot]") {
@@ -365,10 +379,11 @@ func TestCommitAttributionToVerifierApp(t *testing.T) {
 func TestMissingAuthorIsCouldNotCheckNotSuccess(t *testing.T) {
 	f, errBuf := setupFake(t)
 	f.emptyAuthor = true
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
 
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("empty-author exit = %d, want 0 (could-not-check)", code)
 	}
 	if !strings.Contains(lastAudit(t).Detail, "could-not-check") {
@@ -384,10 +399,11 @@ func TestMissingAuthorIsCouldNotCheckNotSuccess(t *testing.T) {
 func TestCommitAttributedToAnotherAppIsRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	f.writeAuthor = "some-other-app[bot]"
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
 
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitUnverifiable {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitUnverifiable {
 		t.Fatalf("wrong-author exit = %d, want %d", code, deskkit.ExitUnverifiable)
 	}
 	if !strings.Contains(lastAudit(t).Detail, "some-other-app[bot]") {
@@ -464,10 +480,11 @@ func TestSecretScanIgnoresPreexistingSecretWithoutBriefPath(t *testing.T) {
 	f, _ := setupFake(t)
 	preexistingSecret := "ghp_" + strings.Repeat("f", 36)
 	remote := "# Brief\n\ntoken: " + preexistingSecret + "\n\n## Evidence\n| 1 | a | b |\n"
-	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"| 2 | c | d |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, remote+"| 2 | c | d |\n")
 	f.setFile(evidencePath, remote)
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0 (pre-existing secret-shaped text on the branch must not block a clean append)", code)
 	}
@@ -485,10 +502,11 @@ func TestSecretScanIgnoresPreexistingSecretWithoutBriefPath(t *testing.T) {
 func TestSecretScanIgnoresPreexistingEnumListWithoutBriefPath(t *testing.T) {
 	f, _ := setupFake(t)
 	remote := "# Brief\n\nprior states: PENDING/RUNNING/BLOCKED/FAILED/RETRYING/DONE\n\n## Evidence\n| 1 | a | b |\n"
-	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"| 2 | c | d |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, remote+"| 2 | c | d |\n")
 	f.setFile(evidencePath, remote)
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0 (a pre-existing enum slash-list must not block a clean append)", code)
 	}
@@ -506,10 +524,11 @@ func TestSecretScanIgnoresPreexistingEnumListWithoutBriefPath(t *testing.T) {
 func TestSecretScanIgnoresPreexistingKubernetesUIDWithoutBriefPath(t *testing.T) {
 	f, _ := setupFake(t)
 	remote := "# Brief\n\nbound volume: pvc-38d9b7efea064f53" + "acd5843296326c99\n\n## Evidence\n| 1 | a | b |\n"
-	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"| 2 | c | d |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, remote+"| 2 | c | d |\n")
 	f.setFile(evidencePath, remote)
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0 (a pre-existing k8s generated UID must not block a clean append)", code)
 	}
@@ -529,10 +548,11 @@ func TestSecretScanStillRefusesNewSecretWithoutBriefPath(t *testing.T) {
 	f, _ := setupFake(t)
 	remote := "# Brief\n\n## Evidence\n| 1 | a | b |\n"
 	newSecret := "ghp_" + strings.Repeat("e", 36)
-	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md", remote+"token: "+newSecret+"\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, remote+"token: "+newSecret+"\n")
 	f.setFile(evidencePath, remote)
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitRefused {
 		t.Fatalf("exit = %d, want %d (a secret in the NEWLY ADDED bytes must still refuse)", code, deskkit.ExitRefused)
 	}
@@ -662,10 +682,11 @@ func TestNearEquivalentBlocksStillLand(t *testing.T) {
 func TestEvidenceLandsAsChangeWhenDefaultBranchClosed(t *testing.T) {
 	f, _ := setupFake(t)
 	f.defaultBranch = "main" // a WriteFile to main returns the sentinel, records nothing
-	evidencePath := writeRepoFile(t, "docs/brief.md", "row\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "row\n")
 
 	stdoutBuf := stdout.(*bytes.Buffer)
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("closed-default-branch exit = %d, want 0", code)
 	}
@@ -716,9 +737,10 @@ func TestMissingBranchRefused(t *testing.T) {
 
 func TestUnpinnedWarning(t *testing.T) {
 	f, _ := setupFake(t)
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	// WarnIfUnpinned writes to stderr when the binary is unstamped (the test binary is); its
@@ -727,9 +749,10 @@ func TestUnpinnedWarning(t *testing.T) {
 
 func TestAuditFields(t *testing.T) {
 	f, _ := setupFake(t)
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	last := lastAudit(t)
@@ -758,9 +781,10 @@ func TestRepoNotInSetRefused(t *testing.T) {
 
 func TestRepoInSetNotRefusedByRepoGate(t *testing.T) {
 	f, _ := setupFake(t)
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"medici-finance/assay", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"medici-finance/assay", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("in-set repo exit = %d, want 0", code)
 	}
 }
@@ -782,9 +806,10 @@ func TestMainBranchRefusedWithoutSanction(t *testing.T) {
 func TestMainBranchAllowedWithSanction(t *testing.T) {
 	f, _ := setupFake(t)
 	t.Setenv("VERIFIER_MAIN_OK", "1")
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("main with sanction exit = %d, want 0", code)
 	}
 }
@@ -792,9 +817,10 @@ func TestMainBranchAllowedWithSanction(t *testing.T) {
 func TestNonMainBranchNeedsNoSanction(t *testing.T) {
 	f, _ := setupFake(t)
 	t.Setenv("VERIFIER_MAIN_OK", "")
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "feat/x", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "feat/x", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("non-main branch exit = %d, want 0", code)
 	}
 }
@@ -826,9 +852,10 @@ func TestFullRefBranchStillGuarded(t *testing.T) {
 func TestFullRefNonMainNotGuarded(t *testing.T) {
 	f, _ := setupFake(t)
 	t.Setenv("VERIFIER_MAIN_OK", "")
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "refs/heads/feat/x", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "refs/heads/feat/x", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("refs/heads/feat/x exit = %d, want 0", code)
 	}
 }
@@ -860,9 +887,10 @@ func TestStatusMDRefusedAsBriefPath(t *testing.T) {
 
 func TestNonStatusFileStillCommits(t *testing.T) {
 	f, _ := setupFake(t)
-	evidencePath := writeRepoFile(t, "docs/NOTSTATUS.md", "content\n")
+	evidencePath := "docs/streams/x/NOTSTATUS.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("non-STATUS file exit = %d, want 0", code)
 	}
 	if f.putCalls != 1 {
@@ -877,9 +905,10 @@ func TestPublicRepoGateRefusesCommitToPublicRepo(t *testing.T) {
 	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string) error {
 		return deskkit.Refused("public repo: not authorized by a listed :public allowed-repos entry")
 	}
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitRefused {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
 		t.Fatalf("public-repo gate exit = %d, want %d", code, deskkit.ExitRefused)
 	}
 	if f.putCalls != 0 {
@@ -890,9 +919,10 @@ func TestPublicRepoGateRefusesCommitToPublicRepo(t *testing.T) {
 func TestPublicRepoGatePassesPrivateRepo(t *testing.T) {
 	f, _ := setupFake(t)
 	// Default stub returns nil (private/internal passes through).
-	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("private-repo exit = %d, want 0", code)
 	}
 }
@@ -901,7 +931,7 @@ func TestPublicRepoGatePassesPrivateRepo(t *testing.T) {
 
 func TestRootResolvesEvidenceFileAgainstCheckout(t *testing.T) {
 	f, _ := setupFake(t)
-	rel := "docs/brief.md"
+	rel := "docs/streams/x/brief.md"
 	root := rootWithFile(t, rel, "from the right checkout\n")
 	f.setFile(rel, "old\n")
 	if code := run([]string{"example-org/tracker", "main", "--evidence-file", rel, "--root", root}); code != deskkit.ExitOK {
@@ -926,7 +956,7 @@ func TestRootWithAbsoluteEvidenceFileRefused(t *testing.T) {
 
 func TestAppendOnlyShrinkRefused(t *testing.T) {
 	f, _ := setupFake(t)
-	target := "docs/rows.jsonl"
+	target := "docs/streams/x/rows.jsonl"
 	root := rootWithFile(t, target, "{\"a\":1}\n")         // local has 1 row
 	f.setFile(target, "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n") // remote has 3
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root})
@@ -940,7 +970,7 @@ func TestAppendOnlyShrinkRefused(t *testing.T) {
 
 func TestAppendOnlyShrinkOverride(t *testing.T) {
 	f, _ := setupFake(t)
-	target := "docs/rows.jsonl"
+	target := "docs/streams/x/rows.jsonl"
 	root := rootWithFile(t, target, "{\"a\":1}\n")
 	f.setFile(target, "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n")
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root, "--allow-shrink"})
@@ -954,7 +984,7 @@ func TestAppendOnlyShrinkOverride(t *testing.T) {
 
 func TestAppendOnlyGrowthAllowed(t *testing.T) {
 	f, _ := setupFake(t)
-	target := "docs/rows.jsonl"
+	target := "docs/streams/x/rows.jsonl"
 	root := rootWithFile(t, target, "{\"a\":1}\n{\"b\":2}\n")
 	f.setFile(target, "{\"a\":1}\n")
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root})
@@ -968,7 +998,7 @@ func TestAppendOnlyGrowthAllowed(t *testing.T) {
 
 func TestNonJSONLShrinkNotBlockedWithoutFlag(t *testing.T) {
 	f, _ := setupFake(t)
-	target := "docs/notes.md"
+	target := "docs/streams/x/notes.md"
 	root := rootWithFile(t, target, "line1\n")
 	f.setFile(target, "line1\nline2\nline3\n")
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root})
@@ -982,7 +1012,7 @@ func TestNonJSONLShrinkNotBlockedWithoutFlag(t *testing.T) {
 
 func TestAppendOnlyFlagBlocksNonJSONLShrink(t *testing.T) {
 	f, _ := setupFake(t)
-	target := "docs/notes.md"
+	target := "docs/streams/x/notes.md"
 	root := rootWithFile(t, target, "line1\n")
 	f.setFile(target, "line1\nline2\nline3\n")
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root, "--append-only"})
@@ -991,5 +1021,189 @@ func TestAppendOnlyFlagBlocksNonJSONLShrink(t *testing.T) {
 	}
 	if f.putCalls != 0 {
 		t.Fatalf("append-only refusal still wrote %d time(s)", f.putCalls)
+	}
+}
+
+// --- docs/streams/ scoping guard (issue: deskevidence: refuse a landing that adds a
+// statusgen PROBLEM or lands outside docs/streams/) ---
+
+// TestTargetOutsideDocsStreamsRefused: a target path at the repo root (the "stray root
+// file" main-red shape the issue names) is refused before any network call.
+func TestTargetOutsideDocsStreamsRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	target := "STRAY-ROOT-FILE.md"
+	root := rootWithFile(t, target, "content\n")
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("outside-docs/streams exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("outside-docs/streams refusal reached the forge: %v", f.hits)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("outside-docs/streams refusal still wrote %d time(s)", f.putCalls)
+	}
+}
+
+// TestBriefPathOutsideDocsStreamsRefused: the SAME guard on --brief-path, since that (not
+// --evidence-file) is the path actually committed when both flags are given.
+func TestBriefPathOutsideDocsStreamsRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	evidencePath := "docs/streams/x/row.md"
+	root := rootWithFile(t, evidencePath, "| 2 | c | d |\n")
+	code := run([]string{"example-org/tracker", "main",
+		"--evidence-file", evidencePath, "--brief-path", "ROOT-BRIEF.md", "--root", root})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("outside-docs/streams (brief-path) exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("outside-docs/streams (brief-path) refusal reached the forge: %v", f.hits)
+	}
+}
+
+// TestTraversalEscapeOutsideDocsStreamsRefused: a directory-traversal escape out of
+// docs/streams/ is refused on its CLEANED form — path.Clean collapses the ../ segments, so
+// the escape shows up as a path failing the prefix check rather than surviving as a literal
+// "..".
+func TestTraversalEscapeOutsideDocsStreamsRefused(t *testing.T) {
+	_, _ = setupFake(t)
+	target := "docs/streams/../../etc/passwd"
+	// Placed so the local read succeeds (filepath.Join cleans the same ../../ the guard's own
+	// path.Clean does, so this lands at exactly where --root resolution would look) — the
+	// refusal under test is the docs/streams scoping guard, not an incidental "file not
+	// found", so the escape must be reachable to prove the guard (not the local read) is
+	// what catches it.
+	root := rootWithFile(t, target, "content\n")
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("traversal-escape exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+}
+
+// TestAbsoluteTargetOutsideDocsStreamsRefused: an absolute --evidence-file with no --root
+// is refused by the docs/streams guard — a Contents-API repo path is never absolute in real
+// use.
+func TestAbsoluteTargetOutsideDocsStreamsRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", "/etc/passwd"})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("absolute-target exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("absolute-target refusal reached the forge: %v", f.hits)
+	}
+}
+
+// --- statusgen PROBLEM-diff guard (issue: deskevidence: refuse a landing that adds a
+// statusgen PROBLEM or lands outside docs/streams/) ---
+//
+// These drive cmdEvidence through the top-level lintDiffFn seam — the same seam setupFake
+// stubs to "introduces nothing" by default — so they exercise exactly what cmdEvidence does
+// with the seam's answer, independent of lintDiffAt's own staging/diff mechanics (covered
+// separately in lintdiff_test.go).
+
+// TestLintDiffIntroducedProblemRefused: lintDiffFn reporting an introduced PROBLEM refuses
+// the landing (exit 5, naming the PROBLEM line) before any write.
+func TestLintDiffIntroducedProblemRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	const problemLine = "PROBLEM: docs/streams/x/brief.md: backticked path \"../sibling/x\" does not exist — " +
+		"for a sibling-repo file, prefix it ../<repo>/../sibling/x"
+	lintDiffFn = func(root, target string, content []byte) ([]string, error) {
+		return []string{problemLine}, nil
+	}
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
+	f.setFile(evidencePath, "old\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("introduced-PROBLEM exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("introduced-PROBLEM refusal still wrote %d time(s)", f.putCalls)
+	}
+	// The audit line carries the refusal's error text (ac.finalize sets detail = err.Error()
+	// on every non-nil-error path), so it is where the introduced PROBLEM line's own
+	// ../<repo>/ hint — passed through verbatim, never re-summarised — is checked.
+	if !strings.Contains(lastAudit(t).Detail, problemLine) {
+		t.Fatalf("audit detail does not carry the introduced PROBLEM line verbatim (including its ../<repo>/ hint): %q", lastAudit(t).Detail)
+	}
+}
+
+// TestLintDiffCleanCommits: lintDiffFn reporting no introduced problems lets a clean
+// landing through — the default setupFake stub already proves this for every OTHER test in
+// the suite; this test additionally proves lintDiffFn is actually CALLED with the landing's
+// own root/target/content, not skipped.
+func TestLintDiffCleanCommits(t *testing.T) {
+	f, _ := setupFake(t)
+	var gotRoot, gotTarget string
+	var gotContent []byte
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
+	lintDiffFn = func(r, target string, content []byte) ([]string, error) {
+		gotRoot, gotTarget, gotContent = r, target, content
+		return nil, nil
+	}
+	f.setFile(evidencePath, "old\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	if code != deskkit.ExitOK {
+		t.Fatalf("clean lint-diff exit = %d, want 0", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", f.putCalls)
+	}
+	if gotRoot != root {
+		t.Fatalf("lintDiffFn root = %q, want %q", gotRoot, root)
+	}
+	if gotTarget != evidencePath {
+		t.Fatalf("lintDiffFn target = %q, want %q", gotTarget, evidencePath)
+	}
+	if string(gotContent) != "content\n" {
+		t.Fatalf("lintDiffFn content = %q, want %q", gotContent, "content\n")
+	}
+}
+
+// TestLintDiffCouldNotCheckIsUnverifiable: lintDiffFn itself returning an error (statusgen
+// not on PATH, in production) is could-not-check — Unverifiable (exit 6), never rounded up
+// to a pass and never treated as the specific "introduced a PROBLEM" refusal (exit 5).
+func TestLintDiffCouldNotCheckIsUnverifiable(t *testing.T) {
+	f, _ := setupFake(t)
+	lintDiffFn = func(string, string, []byte) ([]string, error) {
+		return nil, deskkit.Unverifiable("statusgen is not on PATH", nil)
+	}
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "content\n")
+	f.setFile(evidencePath, "old\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("could-not-check exit = %d, want %d", code, deskkit.ExitUnverifiable)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("could-not-check still wrote %d time(s)", f.putCalls)
+	}
+}
+
+// TestLintDiffSkippedForNoop: an idempotent noop (content already on the branch) never
+// reaches the lint-diff check at all — nothing is landing, so there is nothing to lint.
+func TestLintDiffSkippedForNoop(t *testing.T) {
+	f, _ := setupFake(t)
+	called := false
+	lintDiffFn = func(string, string, []byte) ([]string, error) {
+		called = true
+		return nil, nil
+	}
+	content := "# Brief\n\n## Evidence\ncontent already on branch\n"
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, content)
+	f.setFile(evidencePath, content)
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	if code != deskkit.ExitOK {
+		t.Fatalf("noop exit = %d, want 0", code)
+	}
+	if called {
+		t.Fatal("lintDiffFn was called for a noop landing — nothing is landing, nothing to lint")
 	}
 }

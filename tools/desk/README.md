@@ -2832,6 +2832,26 @@ half reached this repo without them:
   window, one coarse env var must not also open `main` to a generated file. The refusal keys
   on the basename, so `docs/…/status.md` and `STATUS-notes.md` still commit normally.
 
+Two more gates, added after three same-day main-red episodes traced to a `deskevidence`
+landing with no pre-commit check that the landed content was clean:
+
+- **`docs/streams/` scoping.** The target path (`--brief-path` when set, `--evidence-file`
+  otherwise) must resolve under `docs/streams/` — checked on its `path.Clean` form, so an
+  absolute path or a `../` traversal escape is refused the same as a plain stray root file.
+  Catches the "landed outside `docs/streams/`" shape: a stray file committed by
+  `deskevidence` outside the tree the tool exists to write to.
+- **statusgen PROBLEM-diff.** Before the write, `deskevidence` runs the pinned
+  `statusgen --root <dir> --lint` against the landing worktree (`--root` when given, the
+  process cwd otherwise) as it stands, stages the pending write locally, runs `--lint`
+  again, and refuses (naming the PROBLEM lines) if the landing would introduce any PROBLEM
+  not already present — a pre-existing red elsewhere in the repo never blocks a clean
+  landing, only a PROBLEM this write would add. The local stage is always reverted before
+  return; the real commit still rides the Contents API. An introduced PROBLEM's own
+  `../<repo>/` sibling-path hint (statusgen's own wording) is passed through unchanged, never
+  re-summarised. Mirrors `deskpreflight`'s own `statusgen --lint` shell
+  (`cmd/deskpreflight/main.go`) rather than reinventing it. statusgen not being on PATH is
+  Unverifiable (exit 6), never a silent pass.
+
 **The `flock`** (the third of #1282's guards, ported in #227).
 `cmd/deskevidence/writeflow.go` now holds a `syscall.Flock(…, LOCK_EX|LOCK_NB)` over the
 whole C-5 window — `AllowWrite → commitFile → audit append` — on the same

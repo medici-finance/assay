@@ -122,6 +122,19 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	evidenceRepoPath := *evidenceFile
 	ac.file = evidenceRepoPath
 
+	// Determine the target repo path this commit will land at. Computed here, ahead of the
+	// local-read resolution right below, because the docs/streams scoping guard a few lines
+	// down needs it and depends on nothing else (not --root, not the file's own content) —
+	// so it stays a cheap, pre-network check regardless of where exactly it runs relative to
+	// the root-contradiction/oversize checks that follow.
+	var targetRepoPath string
+	if *briefPath != "" {
+		targetRepoPath = *briefPath
+	} else {
+		targetRepoPath = evidenceRepoPath
+	}
+	ac.file = targetRepoPath
+
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
 	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file with
@@ -147,6 +160,27 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxBytes, len(localContent)))
 	}
 
+	// docs/streams/ scoping guard (deskevidence: refuse a landing that adds a statusgen
+	// PROBLEM or lands outside docs/streams/). deskevidence exists to commit Evidence rows
+	// and the brief-status flips that accompany them under that tree; a target path
+	// resolving anywhere else — a stray root file, a directory-traversal escape, an
+	// absolute path — is refused here, before any network call. This is exactly the
+	// "landed outside docs/streams/" main-red shape: a stray root file landed by a
+	// deskevidence commit, outside the tree the tool is meant to write to.
+	//
+	// Checked on the CLEANED repo-relative form: path.Clean collapses any ../ segments the
+	// string carries, so an escape (docs/streams/../../etc/passwd) shows up as a path that
+	// no longer starts with docs/streams/ rather than surviving as a literal "..". An
+	// absolute path fails path.IsAbs outright — a Contents-API repo path is never absolute
+	// in real use, so refusing one here is not a new restriction, it is the first thing
+	// that has ever checked the shape. Placed after the root-contradiction and oversize
+	// checks above (both more specific refusals for the shapes they cover) so neither is
+	// ever shadowed by this more general one.
+	if !underDocsStreams(targetRepoPath) {
+		return deskkit.Refused("refused: target path " + targetRepoPath +
+			" resolves outside docs/streams/ — deskevidence only writes under that tree")
+	}
+
 	// Mint the verifier App installation token and resolve the forge that serves this repo,
 	// under the verifier App's custody. The JWT→installation-token exchange moved OUT of this
 	// package to the identity layer (mintTokenFn → `desktoken verifier`); ForgeFor hands the
@@ -159,15 +193,6 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if ferr != nil {
 		return ferr
 	}
-
-	// Determine the target repo path.
-	var targetRepoPath string
-	if *briefPath != "" {
-		targetRepoPath = *briefPath
-	} else {
-		targetRepoPath = evidenceRepoPath
-	}
-	ac.file = targetRepoPath
 
 	// Read the current remote content of the target ONCE, up front. It is the base every
 	// scoping decision below is judged against: the brief merge (a genuine read → transform →
@@ -283,6 +308,33 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 					"or --allow-shrink to override when the reduction is intended",
 				targetRepoPath, remoteRows, newRows, remoteRows-newRows))
 		}
+	}
+
+	// statusgen PROBLEM-diff guard (deskevidence: refuse a landing that adds a statusgen
+	// PROBLEM or lands outside docs/streams/). Diffs the PROBLEM set statusgen --lint
+	// reports for the landing worktree BEFORE this write against the set it reports AFTER
+	// staging commitContent at targetRepoPath, and refuses if the landing would introduce
+	// any PROBLEM not already present — a pre-existing red elsewhere in the repo never
+	// blocks a clean landing (#1078), only a PROBLEM THIS write would add. Placed after the
+	// noop/shrink checks (nothing to lint when nothing is landing) and before the rate
+	// limit (a doomed write should not spend a budget slot).
+	//
+	// The landing worktree is --root when given, the process cwd otherwise — the same
+	// fallback the local-read resolution above already uses, so "the tree this check lints"
+	// and "the tree a bare --evidence-file would have been read from" are always the same
+	// tree.
+	lintRoot := *root
+	if lintRoot == "" {
+		lintRoot = "."
+	}
+	introduced, lerr := lintDiffFn(lintRoot, targetRepoPath, commitContent)
+	if lerr != nil {
+		return lerr
+	}
+	if len(introduced) > 0 {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
+			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
 
 	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
@@ -542,6 +594,17 @@ func (a *auditCtx) finalize(err error) {
 		detail = a.detail + " — " + detail
 	}
 	a.log(result, detail)
+}
+
+// underDocsStreams reports whether repoPath, once cleaned, resolves under docs/streams/ —
+// the tree deskevidence exists to write to (see the docs/streams/ scoping guard in
+// cmdEvidence). An absolute path is refused outright: a Contents-API repo path is never
+// absolute in real use. A relative path is checked on its path.Clean form, so a
+// directory-traversal escape (docs/streams/../../etc/passwd) shows up as failing the
+// prefix check rather than surviving as a literal "..".
+func underDocsStreams(repoPath string) bool {
+	cleaned := path.Clean(repoPath)
+	return !path.IsAbs(cleaned) && strings.HasPrefix(cleaned, "docs/streams/")
 }
 
 func splitRepo(s string) (owner, name string, ok bool) {

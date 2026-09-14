@@ -73,10 +73,11 @@ func TestMintFailureAbortsBeforeForge(t *testing.T) {
 		"desktoken verifier --repo example-org/tracker: mint refused", errors.New("mint boom"))
 	mintTokenFn = func(string) error { return mintErr }
 
-	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | ... | row |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | row |\n")
 	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitUnverifiable {
 		t.Fatalf("mint failure exit = %d, want %d (the mint error must propagate)", code, deskkit.ExitUnverifiable)
 	}
