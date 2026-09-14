@@ -624,6 +624,7 @@ func cmdToken(args []string) (err error) {
 	forge := fs.String("forge", "", "forge backend: empty/github (default) mints a GitHub App installation token; gitlab rotates the role's PAT in place (rotate-on-mint custody)")
 	ttl := fs.Bool("ttl", false, "print remaining TTL of cached token (does not mint)")
 	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms sidecar before minting — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
+	noRotate := fs.Bool("no-rotate", false, "read-only credential lookup: verify the role's existing custody and print its PATH without performing a destructive rotation. GitLab: skips the self-rotation (and its network contact) entirely — the shape a read-only or dry-run verb asks for. GitHub: no effect, the App mint is cached and non-destructive already, so the flag is accepted for callers that do not know the forge before they ask")
 
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
@@ -652,16 +653,22 @@ func cmdToken(args []string) (err error) {
 	//     could-not-check resolution falls through to the App mint, so every repo whose forge
 	//     cannot be POSITIVELY resolved keeps its exact pre-#798 behaviour — the same
 	//     three-state fall-through requireGitHubForge makes on the deskpost side.
+	//
+	// --no-rotate selects the READ-ONLY shape of whichever path is taken. It is passed as
+	// `rotate=!noRotate` rather than branching here, so the custody checks a read-only lookup
+	// makes stay byte-identical to the rotating one — a read verb that accepted custody the
+	// write verb would refuse is a difference an operator would only discover at the moment
+	// it mattered. On the GitHub path it is a no-op: mint-or-reuse is already non-destructive.
 	switch strings.ToLower(strings.TrimSpace(*forge)) {
 	case "":
 		if gitlabRepoResolved(*repo) {
-			return cmdGitLabRotate(role, ac)
+			return cmdGitLabRotate(role, ac, !*noRotate)
 		}
 		// fall through to the GitHub App-token mint path.
 	case "github":
 		// fall through to the GitHub App-token mint path.
 	case "gitlab":
-		return cmdGitLabRotate(role, ac)
+		return cmdGitLabRotate(role, ac, !*noRotate)
 	default:
 		return deskkit.Refused("unknown --forge " + *forge + "; valid: github (default), gitlab")
 	}

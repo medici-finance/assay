@@ -64,7 +64,7 @@ func TestDeskfileFilesOnGitLabThroughBackend(t *testing.T) {
 func TestDeskfileRefusesWithoutMintedToken(t *testing.T) {
 	withEnv(t)
 	rec := curForge
-	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+	forgeForFn = func(repo string, _ bool) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 		return nil, deskkit.ForgeRepo{}, "", deskkit.Refused(
 			"cannot obtain the session-role App installation token — ForgeFor never falls back to an ambient identity")
 	}
@@ -86,7 +86,7 @@ func TestDeskfileRefusesWithoutMintedToken(t *testing.T) {
 func TestDeskfileUnresolvableForgeCouldNotCheck(t *testing.T) {
 	withEnv(t)
 	rec := curForge
-	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+	forgeForFn = func(repo string, _ bool) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 		return nil, deskkit.ForgeRepo{}, "", deskkit.Unverifiable(
 			"cannot resolve which forge serves "+repo+": configure ASSAY_REPO_FORGES", nil)
 	}

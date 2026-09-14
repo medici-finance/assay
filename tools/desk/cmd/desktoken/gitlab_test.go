@@ -152,6 +152,23 @@ func TestGitLabWriteFailureLockout(t *testing.T) {
 	tokPath := gitlabTokenPath(homeDir, "worker")
 	writeTokenCache(t, tokPath, glOldWorker)
 
+	// Create the per-role rotation lock file while the directory is still writable. The
+	// rotation now serialises on it, and O_CREATE against an ALREADY-EXISTING file needs no
+	// write permission on the directory — so the lock is still acquired once the chmod below
+	// lands, and this test reaches the persistence failure it is about.
+	//
+	// Without this the chmod would stop the LOCK from being created and the command would
+	// refuse BEFORE rotating. That refusal is the better outcome for an operator (the live
+	// token survives instead of being revoked into a lockout) and is pinned by
+	// TestGitLabRotateRefusesBeforeRotatingWhenCustodyDirIsUnwritable. It is not this test's
+	// subject: the LOCKOUT branch still has to work for every OTHER way persistence can fail
+	// (a full disk, a failing rename), which is what is exercised here.
+	lf, lerr := os.OpenFile(gitlabRotateLockPath(tokPath), os.O_CREATE|os.O_RDWR, 0o600)
+	if lerr != nil {
+		t.Fatalf("pre-create rotation lock: %v", lerr)
+	}
+	_ = lf.Close()
+
 	// Make the custody directory non-writable so the atomic temp-file write cannot land,
 	// after the file itself is already readable (mode check + read succeed; the write fails).
 	dir := filepath.Dir(tokPath)
