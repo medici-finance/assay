@@ -290,11 +290,19 @@ func (v postFlagVals) resolve() (postOpts, bool) {
 	return o, true
 }
 
-// cmdComment takes a bare <number>, which may name EITHER a pull request or an issue —
-// GitHub numbers both from one per-repo sequence (#296). The kind is resolved
-// against the API before anything is posted (resolveTarget); there is deliberately no
-// --issue / --pr flag, because a caller-declared kind is a second source of truth that can
-// disagree with the remote, and the remote is the one that decides where the comment lands.
+// cmdComment takes a bare <number>, which may name EITHER a pull request or an issue.
+// GitHub numbers both from one per-repo sequence (#296), so the kind there is resolved
+// against the API before anything is posted (resolveTarget) with no caller-declared kind
+// needed — a second source of truth that could disagree with the one-sequence remote would
+// only add a way to be wrong.
+//
+// GitLab numbers issues and merge requests in SEPARATE sequences, so `#4` and `!4` routinely
+// both exist, and resolveTarget's automatic ordering (PR/MR read first) silently lands on
+// whichever one resolves first — with no error to notice the other was meant instead (#1091).
+// --kind (issue|mr) is the caller-declared override for exactly that case: given, it forces
+// the typed read AND write for the stated kind (resolveTargetKind, deskkit.Forge's
+// GetIssueTyped/PostCommentTyped) instead of the ambiguous bare-number resolution. Omitted
+// (the default), behaviour is unchanged: automatic resolution, as before this flag existed.
 func cmdComment(argv []string) int {
 	rest := argv[1:]
 	if len(rest) < 2 {
@@ -328,6 +336,14 @@ func cmdComment(argv []string) int {
 	// defect #197 closed on the review path.
 	head := fs.String("head", "", "assert the PR head the comment was written against — FULL 40- (or 64-) char "+
 		"lowercase hex; refuses if the head has moved (optional; not valid on an issue)")
+	// --kind forces the object kind instead of the automatic resolution above (#1091). It
+	// matters on GitLab, whose issues and merge requests are numbered in separate
+	// sequences — #4 and !4 can both exist — so a bare number can silently resolve to the
+	// wrong one. Left empty (the default), nothing changes: resolveTarget runs exactly as
+	// it always has.
+	kindFlag := fs.String("kind", "", "force the object kind for <number>: issue or mr (pr is "+
+		"accepted as an alias of mr) — matters when GitLab's separate issue/MR sequences both "+
+		"have a match at this number; default resolves automatically")
 	raw := addPostFlags(fs)
 	if err := fs.Parse(rest[2:]); err != nil {
 		return 2
@@ -344,12 +360,25 @@ func cmdComment(argv []string) int {
 		fmt.Fprintln(stderr, "deskpost comment: "+headFormError(*head))
 		return 2
 	}
+	var forcedKind *deskkit.TargetKind
+	if *kindFlag != "" {
+		k, kerr := deskkit.ParseTargetKind(*kindFlag)
+		if kerr != nil {
+			// deskkit.ParseTargetKind's own message already names the accepted set; this
+			// is a plain flag-parse failure (exit 2), the same class as a bad --head above
+			// — nothing has been read or audited yet, so there is nothing to route through
+			// the audited refusal path for.
+			fmt.Fprintln(stderr, "deskpost comment: --kind: "+kerr.Error())
+			return 2
+		}
+		forcedKind = &k
+	}
 	body, err := os.ReadFile(*bodyFile)
 	if err != nil {
 		fmt.Fprintln(stderr, "deskpost comment: cannot read --body-file: "+err.Error())
 		return 2
 	}
-	return runComment(owner, name, pr, *head, body, argv, opts)
+	return runComment(owner, name, pr, *head, forcedKind, body, argv, opts)
 }
 
 func cmdReady(argv []string) int {
@@ -403,7 +432,7 @@ func usage() {
 usage:
   deskpost review          <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-or-64-char-sha> --body-file F
   deskpost security-review <owner/repo> <pr>     --verdict pass|fail              --head <full-40-or-64-char-sha> --body-file F
-  deskpost comment         <owner/repo> <number> --body-file F [--head <full-40-or-64-char-sha>]
+  deskpost comment         <owner/repo> <number> --body-file F [--head <full-40-or-64-char-sha>] [--kind issue|mr]
   deskpost ready           <owner/repo> <pr>
   deskpost version
 
@@ -428,6 +457,11 @@ targets:
                  guess). Both kinds get the same body checks, trust gate, budget, audit
                  line and idempotency. --head is optional and PR-only: when given, the
                  comment is refused if the head has moved since it was written.
+                 --kind issue|mr forces the object kind instead of the automatic
+                 resolution above (pr is accepted as an alias of mr). GitLab numbers
+                 issues and merge requests in SEPARATE sequences, so #4 and !4 routinely
+                 both exist; without --kind the automatic resolution can silently land on
+                 the wrong one. Omitted, behaviour is unchanged.
   review, security-review, ready
                  pull requests ONLY. Given an issue number they refuse (exit 5) and name
                  `+"`comment`"+` — they never report it as unverifiable (exit 6).

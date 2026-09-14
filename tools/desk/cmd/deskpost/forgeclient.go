@@ -31,6 +31,15 @@ type postBackend interface {
 	getPR(pr int) (*prInfo, error)
 	getPRHead(pr int) (string, error)
 	getIssue(n int) (*issueInfo, error)
+	// getIssueTyped is getIssue for a caller that has STATED which kind `n` names (#1091 /
+	// the sibling of assay#1087's deskfile attach --kind). It exists so `deskpost comment
+	// --kind issue` can force the ISSUE-only typed read (deskkit.Forge.GetIssueTyped on a
+	// GitLab-resolved repo) instead of the ambiguous bare-number resolution, which on
+	// GitLab silently prefers whichever of #N / !N its own probe order finds first. Only
+	// deskkit.TargetIssue is ever passed by this binary's one caller (resolveTargetKind);
+	// the kind parameter is carried for parity with the Forge-level op it wraps, not
+	// because a second value is exercised here.
+	getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error)
 	listReviews(pr int) ([]reviewInfo, error)
 	listFiles(pr int) ([]prFile, error)
 	stampTimeline(pr int) (deskkit.StampTimeline, error)
@@ -152,6 +161,26 @@ func (b *forgeBackend) getIssue(n int) (*issueInfo, error) {
 	if iss.IsPullRequest {
 		// The PullRequest sub-object is the object-kind discriminator resolveTarget /
 		// requirePRErr read; only its presence matters, its URL is carried for parity.
+		out.PullRequest = &struct {
+			URL string `json:"url"`
+		}{URL: iss.URL}
+	}
+	return out, nil
+}
+
+// getIssueTyped mirrors getIssue's mapping, sourced from the typed forge op
+// (deskkit.Forge.GetIssueTyped) instead of the ambiguous GetIssue. On the GitLab backend
+// this reads exactly ONE endpoint for the stated kind, so a number carrying both an issue
+// and a merge request no longer refuses — see GetIssueTyped's own doc comment (forge.go).
+func (b *forgeBackend) getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error) {
+	iss, err := b.fg.GetIssueTyped(b.repo, n, kind)
+	if err != nil {
+		return nil, err
+	}
+	out := &issueInfo{Number: iss.Number, State: iss.State}
+	out.User.Login = iss.Author.Login
+	out.User.ID = iss.Author.ID
+	if iss.IsPullRequest {
 		out.PullRequest = &struct {
 			URL string `json:"url"`
 		}{URL: iss.URL}
