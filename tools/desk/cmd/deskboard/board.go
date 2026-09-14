@@ -1886,10 +1886,12 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// only a KNOWN-private repo keeps the plain TrustedAuthor bar; public/internal/unknown
 	// all get the tighter gate. The blessing authority can still admit any single PR by
 	// commenting (the manual override, unchanged on either path).
+	// ONE trust bar on every repo (desk-tools/17, ruled in #808): a login the roster
+	// trusts is a reviewable author whether the repo is private or public. Review-trust
+	// is not merge-authority; the layers behind it are unchanged: the outward-write
+	// gate, the unconditional public-repo Security-Review at head, and branch protection
+	// with a human merge. An unlisted author is still quarantined unless blessed.
 	authorTrusted := deskkit.TrustedAuthor(p.Author.Login)
-	if deskkit.VisibilityRiskClassed(repo) {
-		authorTrusted = deskkit.TrustedPublicAuthor(p.Author.Login)
-	}
 	if !authorTrusted {
 		blessed, berr := prBlessed(repo, p.Number)
 		if berr != nil {
