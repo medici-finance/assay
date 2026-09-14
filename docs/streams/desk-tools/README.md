@@ -84,6 +84,22 @@ sink is explicitly NOT in it: nothing here opens a socket, and only the on-disk 
 so a later sender reads it unchanged. It is the stream's first wave-2 brief — the child timings
 attach to brief 21's one subprocess runner rather than to a second measurement.
 
+Brief 25 comes from the same 2026-09-14 performance review, filed as #1036: the path that turns
+a role and an account into an App installation token has no memo at any layer, so a board read
+that touches ten repositories forks the `desktoken` binary 140 times a tick for a credential
+that has not changed — and underneath it the minter resolves the installation id, signing a JWT
+and calling the installations endpoint, BEFORE it consults the token cache, because the cache
+path is keyed by that id. So every "reuse cached token" is still a round trip. The brief fixes
+both ends of one path: a per-process memo keyed (role, owner) in front of the minter, bounded
+under the minter's own 50-minute reuse window; and a cache-first resolution order in
+`desktoken`, with an owner sidecar that proves which App and which account a cached file belongs
+to and a 24-hour install-id cache behind it. Every fast path is gated on a positive identity
+match and falls through to authoritative resolution on absence, ambiguity or a malformed name;
+no custody check is moved or relaxed, and the environment override stays first. It is
+independent of every other brief in the stream, including the separately filed brief on the
+shared substrate's per-invocation audit parse (#1035) — that one makes each invocation cheaper,
+this one makes there be fewer of them.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -112,6 +128,7 @@ attach to brief 21's one subprocess runner rather than to a second measurement.
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | implemented | — | — |
 | 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
+| 25 | [One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id](brief-25-token-memo-and-cache-before-install-id.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -129,7 +146,9 @@ stream — see each brief's Dependencies note.
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
-  present in the tree; the brief is dispatchable now).
+  present in the tree; the brief is dispatchable now) and desk-tools/25 (no `depends:` edge at
+  all — it is wave 2 because it is a performance change to an existing credential path rather
+  than an independent feature, and it is dispatchable now).
 
 ## Design notes
 - [superseded-confirmation.md](superseded-confirmation.md) — the two-role `deskclose superseded`
