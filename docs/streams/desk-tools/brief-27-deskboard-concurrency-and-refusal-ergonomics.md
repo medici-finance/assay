@@ -332,26 +332,40 @@ facts — the design:
   matching a per-platform line is the control, and this brief supplies the exact name instead of
   relaxing the matcher. A run whose verdict came from the fallback SAYS so in its detail line,
   naming the artifact it matched, so the two sources are distinguishable in the banner.
-- **The flip condition order becomes cost-ordered, and nothing else about the gate changes.**
-  New order: `caller-role, app-token, pr-open-draft, mergeable, checks-green, model-floor,
-  reviewer-approved, security-verdict, head-stable`. The reasoning, per condition: `caller-role`
-  and `app-token` stay first because they are the no-network and credential gates and nothing may
+- **The flip condition order becomes cost-ordered — as far as a RECORDED RULE allows.**
+  New order: `caller-role, app-token, pr-open-draft, mergeable, reviewer-approved, checks-green,
+  model-floor, security-verdict, head-stable`. The reasoning, per condition: `caller-role` and
+  `app-token` stay first because they are the no-network and credential gates and nothing may
   precede the credential one; `pr-open-draft` stays third because it performs the ONE read every
-  condition after it consumes; `mergeable` moves to fourth because it costs NOTHING — it reads a
-  field already in hand; `checks-green` moves to fifth because it is the single largest refusal
-  condition and costs one read (two when the rollup is absent or incomplete and the required set
-  must be read); `model-floor` and `reviewer-approved` follow; `security-verdict` keeps its
-  place before the end because it walks a paginated file list; and `head-stable` stays LAST
-  because its whole purpose is to be the final thing checked before the mutation. The
-  `flipConditions` list is test-pinned, so the reorder is a deliberate, reviewed edit of both the
-  list and the test — not a silent drift.
-- **A red-check refusal after the reorder costs two forge reads in total.** The PR document read
-  (`pr-open-draft`) and the rollup read (`checks-green`) — i.e. exactly ONE read beyond the PR
-  read, down from the PR read plus the model-floor read plus the reviews read plus the rollup
-  read. **Correction to the dispatch note** (worker-kit clause 7): that note asked for "exactly
-  one forge read", which is not reachable — the head the rollup is addressed by comes from the
-  PR document, so a rollup read is always preceded by a PR read. The row below asserts the
-  reachable and meaningful bound, two, and names what each one is.
+  condition after it consumes; `mergeable` moves UP from seventh to fourth because it costs
+  NOTHING — it reads a field already in hand; `model-floor` moves DOWN from fourth to seventh
+  because it is the condition that made every earlier refusal expensive (it buys a PAGINATED
+  label-event timeline); `security-verdict` keeps its place before the end because it walks a
+  paginated changed-file list; and `head-stable` stays LAST because its whole purpose is to be
+  the final thing checked before the mutation. The `flipConditions` list is test-pinned, so the
+  reorder is a deliberate, reviewed edit of both the list and the test — not a silent drift.
+- **`reviewer-approved` KEEPS its place ahead of `checks-green`, and the reason outranks cost.**
+  Cost alone would put `checks-green` fourth. It does not go there, because
+  `tools/desk/cmd/deskflip/checkonlycr_test.go` records the opposite rule in two tests with their reasoning
+  written out: when a standing CHANGES_REQUESTED claims the check-only exemption, the exemption
+  must decide FIRST, "or an operator sent to the CI gate for a rejection that was never about CI
+  goes looking in the wrong place". Moving `checks-green` ahead of it reddens both tests — one
+  of them because a still-running cited run would then be reported as a pending rollup (exit 6)
+  instead of as a rejected exemption claim (exit 5). Neither outcome flips a PR that should not
+  flip, so this is a DIAGNOSTIC regression rather than a safety one, but it is a deliberate
+  recorded decision and a performance brief does not get to overturn it quietly. The cost
+  argument for swapping them has largely evaporated anyway: both conditions read the SAME rollup,
+  and it is now read once, so the second of the two is free. Whether the exemption's precedence
+  should be revisited is a design question with a named owner, not a worker's judgement — it is
+  recorded here and left open.
+- **What a REFUSAL costs after the reorder, in forge reads.** A `mergeable` refusal costs ONE —
+  the PR document — down from four. A `checks-green` refusal costs THREE (the PR document, the
+  reviews list, the rollup), down from four; the one dropped is the paginated timeline.
+  **Correction to the dispatch note** (worker-kit clause 7): that note asked for a red-check
+  refusal costing "exactly one forge read", which is not reachable — the head the rollup is
+  addressed by comes from the PR document, so a rollup read is always preceded by a PR read —
+  and with `reviewer-approved` correctly staying ahead it is three, not two. The rows below
+  assert the reachable bounds and name what each read is.
 - **One rollup read, two wrappers.** A memoized `checksAtHeadOnce(fg, fr, head)` performs
   `fg.ChecksAtHead` at most once per run and caches the RAW result and the RAW error.
   `readChecks` wraps it in `condChecksGreen`'s message (including its short-read reconcile) and
@@ -459,9 +473,9 @@ facts — the design:
    otherwise unchanged.
 5. **Cost-ordered flip gate + one rollup read — `flip.go`.**
    - `flipConditions` reordered to `caller-role, app-token, pr-open-draft, mergeable,
-     checks-green, model-floor, reviewer-approved, security-verdict, head-stable`, with the gate
-     body moved to match and a doc comment stating the cost reasoning and the measured
-     distribution behind it.
+     reviewer-approved, checks-green, model-floor, security-verdict, head-stable`, with the gate
+     body moved to match and a doc comment stating the cost reasoning, the measured distribution
+     behind it, and why `reviewer-approved` keeps its place ahead of `checks-green`.
    - `checksAtHeadOnce(fg, fr, head)` — a memoized RAW reader; `readChecks` and
      `checkRunsAtHeadReader` become wrappers over it, each keeping its own condition-named
      message and its own short-read reconcile.
@@ -499,9 +513,10 @@ facts — the design:
   bottleneck selection; no stage is ever rendered as a zero it did not measure.
 - A pin file carrying only `desk-tools-<GOOS>-<GOARCH>` yields an in-sync (or a drift) verdict
   naming that artifact, not could-not-check; a file carrying both still uses the bare line.
-- A `deskflip` run refused on a red check performs exactly two forge reads — the PR document and
-  the rollup — and names `condition checks-green`; a run that proceeds performs the rollup read
-  exactly once across both of its consumers.
+- A `deskflip` run refused on a CONFLICTING PR performs exactly ONE forge read — the PR document
+  — and names `condition mergeable`; a run refused on a red check performs three (the PR
+  document, the reviews list, the rollup) and names `condition checks-green`; and a run that
+  reaches both rollup consumers performs the rollup read exactly once across them.
 - Every measured top body/schema refusal class in `deskpost`, `deskpr` and `deskreply` carries
   the offline-check hint; `deskpr --check` runs every local gate, opens no connection, and exits
   0 only when they all pass.
@@ -525,8 +540,8 @@ facts — the design:
 | 6 | check:ci | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestThroughputResolvesRootsExactlyOnce$' -count=1` | exit 0 — a counting stub over the root-resolution seam records exactly ONE resolution, one pin walk and one `statusgen` version probe for a whole `throughput` run, against the two-of-each a serial run of the current code records |
 | 7 | check:ci | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestThroughputBlindStageIsNeverACountedZero$' -count=1` | exit 0 — the blind row: with the shared root resolution forced to fail, the dispatch AND verify stages are both reported could-not-check with a reason naming the shared resolution, both are excluded from bottleneck selection, neither renders as `0`, and the bottleneck line states how many of the four stages were actually read; separately, with only the `actions` call failing, the review stage alone goes blind and the other two still report |
 | 8 | check:ci | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestStalePinResolvesPerPlatformArtifact$' -count=1` | exit 0 — a fixture pin file carrying ONLY `desk-tools-<GOOS>-<GOARCH>` yields in-sync or drift (never could-not-check) and the detail names that artifact; a file carrying both lines still resolves through the bare one; a file carrying only some OTHER platform's line still falls through to could-not-check; and `ArtifactPin` is called with two exact names, never with a relaxed prefix |
-| 9 | check:ci | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestConditionOrderIsCostOrderedAndEveryConditionStillRefuses$' -count=1` | exit 0 — `flipConditions` equals the new nine-entry order exactly (the pinned list, updated deliberately); and, driven one at a time against a fake forge, EACH of the nine conditions still produces its own refusal naming its own condition when it is the one made to fail, including when an earlier-passing condition would previously have masked it — the vacuous-pass control for the reorder |
-| 10 | check:ci | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestRedCheckRefusalCostsTwoForgeReads$' -count=1 && go test ./cmd/deskflip/ -run '^TestRollupIsReadOnceAcrossBothConsumers$' -count=1` | exit 0 — a counting fake forge records EXACTLY two reads for a flip refused on a red check (the PR document and the rollup) and the refusal names `condition checks-green`; and on a run that reaches `reviewer-approved`'s check-only exemption the rollup endpoint is hit exactly once, with a forced rollup failure still producing `condition checks-green` from one consumer and `condition reviewer-approved` from the other |
+| 9 | check:ci | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestConditionListIsTheDocumentedContract$' -count=1 && go test ./cmd/deskflip/ -count=1` | exit 0 — `flipConditions` equals the new nine-entry order exactly (the pinned list, edited deliberately, with the reason recorded on the test); and the gate's whole existing suite — every condition's own refusal test, both check-only-exemption precedence tests included — still passes from the new positions, which is the vacuous-pass control for the reorder |
+| 10 | check:ci | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestMergeableRefusalCostsOneForgeRead$' -count=1 && go test ./cmd/deskflip/ -run '^TestRollupIsReadOnceAcrossBothConsumers$' -count=1 && go test ./cmd/deskflip/ -run '^TestSharedRollupFailureKeepsEachConditionsOwnName$' -count=1` | exit 0 — a counting fake forge records EXACTLY one read for a flip refused as CONFLICTING (the PR document, and no rollup, reviews, timeline or file list), and the refusal names `condition mergeable`; on a run that reaches `reviewer-approved`'s check-only exemption the rollup endpoint is hit exactly once; and a forced rollup failure still produces `condition checks-green` from one consumer and `condition reviewer-approved` from the other, on both the short-read and the unreadable branch |
 | 11 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskboard/mutations.json && go run ./cmd/muhar -spec cmd/deskflip/mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, and every mutation CAUGHT: the pool's fail-closed rule turned into a per-repo skip; a converted worker swallowing its own error; the per-root pool's error dropped; a blind stage rendered as a counted zero; `ArtifactPin`'s trailing-space prefix relaxed to a bare prefix; the per-platform fallback made to win over the bare line; a flip condition moved ahead of the read that supplies its input; and the shared rollup wrapper made to return the other condition's name |
 | 12 | check:ci | `cd tools/desk && go test -timeout 300s ./cmd/deskboard/... ./cmd/deskflip/... -count=1` | exit 0 — every EXISTING test of the two changed binaries, unchanged: `sweep_test.go`'s pool invariants, the empty-scope guard, the truncation/coverage rows and the flip gate's own suite all still hold |
 | 13 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestHelpOnlyHasNoFalsePositive$' -count=1` | exit 0 — `HelpOnly` returns true for the single-token `-h` / `-help` / `--help` shapes and FALSE for every shape where the token could be a value or is not alone: `--title --help`, `--body-file --help`, `-- --help`, `--help extra`, `create --help --json`, and an empty argument list |
@@ -563,6 +578,7 @@ Pre-mortem → detection map:
 | `deskpr --check` opens a connection or pushes something, so the "offline" claim is false | row 16 (a forge stub that fails every call and a git stub that refuses any push) |
 | `--check` passes something the real write path would refuse, making it a preview rather than a gate | row 16 (identical refusal text on the no-trailer body) |
 | The whole change is neutral or a regression in wall clock | row 18 (four before/after measurements, a regression on any is a finding) |
+| The cost-ordering is taken at the expense of a deliberately-recorded diagnostic rule | row 9 (the gate's existing suite, including both check-only-exemption precedence tests, must pass from the new positions) |
 | A mutation spec entry is silently disarmed because this diff moved its anchor text | row 11 (baseline GREEN and positive control CAUGHT are both asserted before any mutation runs) |
 | A second worker pool or a second root resolver is written instead of the existing one being reused | review-only — the reuse ladder; the absence of a new pool and the single `resolveRootsOnce` are a diff-shape check |
 | The two gate-score reads are merged across root sets, silently changing `actions`' scope | review-only — the reviewer confirms `execGateScores` still reads `findRepoRoot()` and `gateScoresForRoot` still reads configured roots, and that no call site crosses them |
