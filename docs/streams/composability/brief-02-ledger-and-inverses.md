@@ -205,10 +205,30 @@ statusgen binaries). This follow-up writes the same real, non-TODO `inverse:` pr
 `deskdisable` executor and does not touch ledger/disable execution logic at all. Re-ran row 1
 (`0`), `deskmanifest lint --root .` (`checked-clean: 26 manifest(s)...`), and the row 8 suite
 (`go test -timeout 180s ./internal/deskkit/... ./cmd/deskdisable/... ./cmd/deskmanifest/...` —
-all packages `ok`). Also corrected this stream's board row for brief 02 from `todo` to
-`implemented` (PR #953 never flipped it, so it had read stale since 2026-09-12).
+all packages `ok`).
 
 The brief's `gate: human` decision issue was opened 2026-09-14, after PR #953 already merged;
 it is still OPEN at the time of this follow-up. This PR does not pre-empt it — no new
 deletion, compensation, or execution capability is added here, only descriptive text on inert
-manifest fields — and does not itself flip this brief past `implemented`.
+manifest fields.
+
+**Correction — 2026-09-13 (later same day).** The first pass of this follow-up also flipped
+this stream's board row for brief 02 from `todo` to `implemented`, on the reasoning that PR
+#953 had merged the implementation but never flipped it. `statusgen --lint` (v1.0.6, picked up
+after merging forward past #1022) caught what that reasoning missed: this brief is
+risk-gated (`risk.irreversible: yes` → `gate: human`, `spec/lifecycle-v1.md` §4.3) and
+`authored: 2026-09-08`, strictly after the §4.4 design-approval-gate cutover
+(2026-09-05). §4.4 requires a cited, approved `DR-<slug>` record under
+`docs/streams/decisions/` before such a brief may sit at `in-progress` or later — none exists
+for composability (checked: no file under `docs/streams/decisions/` mentions it), and the
+brief's own `gate: human` decision issue (#1023) is still open and unruled, so no such record
+can honestly be authored yet (`decided-by` requires a dated `human:<name>` stamp on an actual
+decision — fabricating one to pass this gate would be exactly the self-attested rubber stamp
+§4.4 exists to prevent). The row is reverted to `todo` — the lint-compliant state — until a
+human rules on #1023 and an approved DR record can be cited. This is a real, standing gap:
+the underlying code has been on `main` since PR #953 (2026-09-12) without ever having passed
+this gate, because the rule did not yet exist/enforce at that time; grandfathering in
+`spec/lifecycle-v1.md` §4.4 is by `authored:` date only, so this brief does not qualify for
+it. Re-ran `statusgen --root . --lint` after the revert: the composability/brief-02 PROBLEM is
+gone (one unrelated pre-existing backticked-path PROBLEM remains, on the forge-gitlab
+stream's brief 11, untouched by this PR).
