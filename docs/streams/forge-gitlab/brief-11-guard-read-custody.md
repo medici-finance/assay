@@ -192,7 +192,7 @@ files:
   under this identity and are re-run by a human administrator, and the grant is NOT widened to
   make them readable. The auditor is NOT added to the `--raised-by` attribution roles — it never
   files.
-- `changelog/forge-gitlab-11-guard-read-custody.md` — the fragment.
+- `CHANGELOG.md`, the v1.0.8 section — the fragment (changelog/forge-gitlab-11-guard-read-custody.md) was consumed by the v1.0.8 changelog roll, so the fragment file no longer exists and the section is its record.
 - Conditional: `tools/desk/cmd/deskroster/roster.go`, `forge.go`, tests — ONLY if #841 has
   closed unmerged at pickup; then re-land its diff here unchanged (same ops, same session-role
   custody).
