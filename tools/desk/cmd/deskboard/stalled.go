@@ -134,160 +134,45 @@ func cmdStalled(hdr Header, minAgeHours int) (*Report, error) {
 	briefStatus := fetchBriefStatusBestEffort()
 	knownBriefs := knownBriefIDs(briefStatus)
 
-	for _, repo := range deskkit.AllowedRepos() {
-		prs, _, err := fetchOpenPRs(repo)
-		if err != nil {
-			// Whole-repo enumeration failure: fail-closed (exit 6). "No stalled drafts in
-			// repo X" cannot be claimed when repo X's open PRs could not be read (#236).
-			return nil, err
+	// Bounded-concurrency sweep, on the same pool `actions` and `health` already use.
+	//
+	// TWO LEVELS, THE SAME PAIRING `actions` ALREADY RUNS. Repos go under sweepRepos; each
+	// repo's PRs go under a nested sweepConcurrent inside that repo's worker. This verb was
+	// serial twice over and spent up to four forge reads on every candidate PR, which made
+	// it the slowest read in the suite. Concurrent forge reads are bounded by the PRODUCT of
+	// the two limits (sweep.go), i.e. the same bound `cmdActions` has operated at since it
+	// was pooled — not a new one.
+	//
+	// FAIL-CLOSED IS UNCHANGED at both levels: a repo whose open-PR enumeration fails still
+	// fails the whole run (#236 — "no stalled drafts in repo X" cannot be claimed when repo
+	// X's open PRs could not be read), and a per-PR read failure is still a labelled
+	// `unassessable` row rather than an error, exactly as before. Results come back in input
+	// order at both levels and the report is re-sorted to a total order below, so the output
+	// is byte-identical to the serial version however the workers finish.
+	sctx := stalledCtx{
+		now: now, minAge: minAge, reviewerLogin: reviewerLogin,
+		briefStatus: briefStatus, knownBriefs: knownBriefs,
+	}
+	repos := deskkit.AllowedRepos()
+	partials, serr := sweepRepos(repos, sweepConcurrency, func(repo string) (stalledPartial, error) {
+		return sweepStalledRepo(repo, sctx)
+	})
+	if serr != nil {
+		return nil, serr
+	}
+	for i := range repos {
+		part := partials[i]
+		if part.truncated {
+			rep.Truncated = append(rep.Truncated, repos[i])
 		}
-		if len(prs) >= prListLimit {
-			// At the cap: some open PRs in this repo were never enumerated, so a clean
-			// board for it means "nothing stalled among the ones we saw", not "nothing
-			// stalled". Say so in the report shape both audiences read.
-			rep.Truncated = append(rep.Truncated, repo)
-		}
-		for _, p := range prs {
-			// #247: MERGED / CLOSED / OPEN are distinguished HERE, before any branch
-			// comparison runs. A merged or closed PR is never a stalled draft — it is
-			// finished — and its head compared against main reads "behind by N" exactly
-			// like a live branch, which is the misread #247 names.
-			kind := deskkit.ParsePRKind(p.State)
-			switch kind {
-			case deskkit.PRMerged, deskkit.PRClosed:
-				continue // finished; never a dispatch row
-			case deskkit.PRUnknown:
-				// The enumeration asked for --state open, so an absent/garbled state means
-				// the read did not tell us what we asked for. Label it — do NOT assume
-				// open and do NOT drop it silently (#236 both ways).
-				rep.Unassessable = append(rep.Unassessable, unassessableRow{
-					Repo: repo, Number: p.Number, Title: p.Title,
-					Reason: "open/merged/closed state not stated by the PR list (got " +
-						strconv.Quote(p.State) + ")",
-				})
-				continue
+		for _, o := range part.outcomes {
+			switch {
+			case o.unassessable != nil:
+				rep.Unassessable = append(rep.Unassessable, *o.unassessable)
+			case o.stalled != nil:
+				rep.Stalled = append(rep.Stalled, *o.stalled)
+				stalledIDs = append(stalledIDs, fmt.Sprintf("%s#%d", o.stalled.Repo, o.stalled.Number))
 			}
-
-			// Cheap filters next: not-a-draft cannot be stalled; never listed.
-			if !p.IsDraft {
-				continue
-			}
-			// Review verdict (the #268 deskkit reduction). A fetch failure on one PR is
-			// labeled unassessable; the rest of the board still renders (Task 3).
-			reviews, rerr := fetchReviews(repo, p.Number)
-			if rerr != nil {
-				rep.Unassessable = append(rep.Unassessable, unassessableRow{
-					Repo: repo, Number: p.Number, Title: p.Title,
-					Reason: "cannot read reviewer-App verdict (" + errShort(rerr) + ")",
-				})
-				continue
-			}
-			appReviews := toAppReviews(reviews)
-			// The ONE shared snapshot (#268) — stalled reads its fields, it does not
-			// re-derive them. CIVerdict rides along free (the rollup came with the PR
-			// list); stalled does not gate on it, but the snapshot is the shape every
-			// consumer gets, not a stalled-shaped subset.
-			st := deskkit.PRState{
-				HeadSHA:    p.HeadRefOid,
-				Draft:      p.IsDraft,
-				State:      kind,
-				AppVerdict: deskkit.ReduceAppVerdict(reviewerLogin, appReviews, p.HeadRefOid),
-				CIVerdict:  deskkit.ReduceCIVerdict(toCIChecks(p.StatusCheckRollup), deskkit.CIRequired(repo)),
-			}
-			if !st.AppVerdict.IsBlockingAtHead() {
-				continue // latest decisive App review at head is not CHANGES_REQUESTED
-			}
-
-			// Candidate: open draft blocking at head. Now the two stall clocks. If EITHER
-			// signal is unassessable, the row is `unassessable` — never silently dropped,
-			// never reported stalled/clean on a signal we did not read (#236).
-			headTime, headBy, herr := fetchHeadCommit(repo, p.HeadRefOid)
-			if herr != nil {
-				rep.Unassessable = append(rep.Unassessable, unassessableRow{
-					Repo: repo, Number: p.Number, Title: p.Title,
-					Reason: "cannot read head-commit push date (" + errShort(herr) + ")",
-				})
-				continue
-			}
-			lastComment, cerr := fetchLastAuthorComment(repo, p.Number, p.Author.Login)
-			if cerr != nil {
-				rep.Unassessable = append(rep.Unassessable, unassessableRow{
-					Repo: repo, Number: p.Number, Title: p.Title,
-					Reason: "cannot read author comments (" + errShort(cerr) + ")",
-				})
-				continue
-			}
-
-			// lastActivity = the most recent activity BY THE AUTHOR, across both channels
-			// (a push, a reply). A PR is stalled when BOTH clocks are past the window —
-			// the author neither pushed a fix NOR replied in minAge. If only one is past,
-			// the author is still active on the other channel and the PR is not stalled.
-			//
-			// The push clock counts ONLY a push attributable to the author. A
-			// merge-currency push by anyone else — `prsync --push` merges origin/main and
-			// pushes, and the desk's loop tells workers to merge main on conflict — would
-			// otherwise reset the clock on a branch its author abandoned months ago,
-			// hiding it from the list forever. That is the one FALSE-QUIET direction in
-			// this verb, so it is closed rather than merely noted.
-			//
-			// Unknown attribution (`headBy == ""`, a commit GitHub maps to no account) is
-			// NOT read as "somebody else": that would invent a stall from missing data.
-			// It keeps the push on the author's clock and the row, if any, says so.
-			pushIsAuthors := headBy == "" || deskkit.SameActor(headBy, p.Author.Login)
-
-			var lastActivity time.Time
-			if pushIsAuthors {
-				lastActivity = headTime
-			}
-			authorCommented := !lastComment.IsZero()
-			if authorCommented && lastComment.After(lastActivity) {
-				lastActivity = lastComment
-			}
-			if lastActivity.IsZero() {
-				// Nothing at all is attributable to the author: the only push was somebody
-				// else's and there is no reply. The clock then runs from the moment the
-				// ball entered the author's court — the decisive review — because that is
-				// the last thing that provably happened, and dating the stall from a
-				// stranger's merge commit would understate it. No parseable review
-				// timestamp falls back to the head commit rather than to the zero time,
-				// which would report a stall measured in millennia.
-				lastActivity = headTime
-				if last, ok := deskkit.LastAppDecisiveReview(reviewerLogin, appReviews); ok {
-					if t, perr := time.Parse(time.RFC3339, last.SubmittedAt); perr == nil {
-						lastActivity = t
-					}
-				}
-			}
-			if !isStalled(now, lastActivity, minAge) {
-				continue // active inside the window on at least one channel
-			}
-
-			// Stalled. Disposition is advisory and best-effort: a fetch failure degrades
-			// to "shepherd" (the safe default), never a fabricated close-candidate.
-			behind, _ := fetchBehindMain(repo, st.HeadSHA)
-			disposition, note := stallDisposition(repo, p, behind, briefStatus, knownBriefs)
-
-			row := stalledRow{
-				Repo:          repo,
-				Number:        p.Number,
-				Title:         p.Title,
-				HeadSHA:       st.HeadSHA,
-				DaysStalled:   daysRounded(now.Sub(lastActivity)),
-				LastPushAt:    headTime.UTC().Format(time.RFC3339),
-				LastPushBy:    headBy,
-				PushIsAuthors: pushIsAuthors,
-				Disposition:   disposition,
-				BehindMain:    behind,
-				Note:          note,
-			}
-			if authorCommented {
-				row.LastAuthorCommentAt = lastComment.UTC().Format(time.RFC3339)
-			}
-			if last, ok := deskkit.LastAppDecisiveReview(reviewerLogin, appReviews); ok {
-				row.LastReviewAt = last.SubmittedAt
-			}
-			rep.Stalled = append(rep.Stalled, row)
-			stalledIDs = append(stalledIDs, fmt.Sprintf("%s#%d", repo, p.Number))
 		}
 	}
 
@@ -616,4 +501,207 @@ func errShort(err error) string {
 		return msg[:60]
 	}
 	return msg
+}
+
+// ---- the pooled sweep ----
+//
+// These three declarations are the serial double loop cmdStalled used to carry, split so the
+// per-repo and per-PR stages can each run in a worker. The LOGIC inside sweepStalledPR is the
+// former loop body verbatim, with each `continue` expressed as the outcome it produced: a
+// skip, a labelled unassessable row, or a stalled row. Nothing about which PRs are reported,
+// which are labelled, or which are silently skipped changed — only where the decision is
+// returned from.
+
+// stalledCtx is the read-only per-run context every PR worker shares. It is built once in
+// cmdStalled and never written after, so passing it by value into concurrent workers shares
+// no mutable state.
+type stalledCtx struct {
+	now           time.Time
+	minAge        time.Duration
+	reviewerLogin string
+	briefStatus   map[string]string
+	knownBriefs   []string
+}
+
+// stalledOutcome is one PR's verdict: at most one of the two pointers is non-nil, and both
+// nil means "not a stalled draft, nothing to report" — the three states the serial loop
+// expressed as append/append/continue.
+type stalledOutcome struct {
+	stalled      *stalledRow
+	unassessable *unassessableRow
+}
+
+// stalledPartial is one repo's contribution: its PRs' outcomes in PR order, and whether its
+// listing came back at the cap.
+type stalledPartial struct {
+	outcomes  []stalledOutcome
+	truncated bool
+}
+
+// sweepStalledRepo is one repo's worth of the stalled sweep. A failure to enumerate the
+// repo's open PRs is returned as an error and therefore fails the whole run (#236); a
+// per-PR failure never is.
+func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
+	var part stalledPartial
+	prs, _, err := fetchOpenPRs(repo)
+	if err != nil {
+		// Whole-repo enumeration failure: fail-closed (exit 6). "No stalled drafts in
+		// repo X" cannot be claimed when repo X's open PRs could not be read (#236).
+		return stalledPartial{}, err
+	}
+	if len(prs) >= prListLimit {
+		// At the cap: some open PRs in this repo were never enumerated, so a clean
+		// board for it means "nothing stalled among the ones we saw", not "nothing
+		// stalled". Say so in the report shape both audiences read.
+		part.truncated = true
+	}
+	// Per-PR fan-out inside this repo's worker, exactly as cmdActions already does. The
+	// work returns no error — a per-PR read failure is a labelled row, not a dead board —
+	// so the pool's fail-closed path is unreachable from here and the discarded error
+	// cannot hide one.
+	outcomes, _ := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (stalledOutcome, error) {
+		return sweepStalledPR(repo, p, c), nil
+	})
+	part.outcomes = outcomes
+	return part, nil
+}
+
+// sweepStalledPR is the former per-PR loop body. Every `continue` it used to execute is a
+// return of the outcome that `continue` implied.
+func sweepStalledPR(repo string, p prBase, c stalledCtx) stalledOutcome {
+	// #247: MERGED / CLOSED / OPEN are distinguished HERE, before any branch
+	// comparison runs. A merged or closed PR is never a stalled draft — it is
+	// finished — and its head compared against main reads "behind by N" exactly
+	// like a live branch, which is the misread #247 names.
+	kind := deskkit.ParsePRKind(p.State)
+	switch kind {
+	case deskkit.PRMerged, deskkit.PRClosed:
+		return stalledOutcome{} // finished; never a dispatch row
+	case deskkit.PRUnknown:
+		// The enumeration asked for --state open, so an absent/garbled state means
+		// the read did not tell us what we asked for. Label it — do NOT assume
+		// open and do NOT drop it silently (#236 both ways).
+		return stalledOutcome{unassessable: &unassessableRow{
+			Repo: repo, Number: p.Number, Title: p.Title,
+			Reason: "open/merged/closed state not stated by the PR list (got " +
+				strconv.Quote(p.State) + ")",
+		}}
+	}
+
+	// Cheap filters next: not-a-draft cannot be stalled; never listed.
+	if !p.IsDraft {
+		return stalledOutcome{}
+	}
+	// Review verdict (the #268 deskkit reduction). A fetch failure on one PR is
+	// labeled unassessable; the rest of the board still renders (Task 3).
+	reviews, rerr := fetchReviews(repo, p.Number)
+	if rerr != nil {
+		return stalledOutcome{unassessable: &unassessableRow{
+			Repo: repo, Number: p.Number, Title: p.Title,
+			Reason: "cannot read reviewer-App verdict (" + errShort(rerr) + ")",
+		}}
+	}
+	appReviews := toAppReviews(reviews)
+	// The ONE shared snapshot (#268) — stalled reads its fields, it does not
+	// re-derive them. CIVerdict rides along free (the rollup came with the PR
+	// list); stalled does not gate on it, but the snapshot is the shape every
+	// consumer gets, not a stalled-shaped subset.
+	st := deskkit.PRState{
+		HeadSHA:    p.HeadRefOid,
+		Draft:      p.IsDraft,
+		State:      kind,
+		AppVerdict: deskkit.ReduceAppVerdict(c.reviewerLogin, appReviews, p.HeadRefOid),
+		CIVerdict:  deskkit.ReduceCIVerdict(toCIChecks(p.StatusCheckRollup), deskkit.CIRequired(repo)),
+	}
+	if !st.AppVerdict.IsBlockingAtHead() {
+		return stalledOutcome{} // latest decisive App review at head is not CHANGES_REQUESTED
+	}
+
+	// Candidate: open draft blocking at head. Now the two stall clocks. If EITHER
+	// signal is unassessable, the row is `unassessable` — never silently dropped,
+	// never reported stalled/clean on a signal we did not read (#236).
+	headTime, headBy, herr := fetchHeadCommit(repo, p.HeadRefOid)
+	if herr != nil {
+		return stalledOutcome{unassessable: &unassessableRow{
+			Repo: repo, Number: p.Number, Title: p.Title,
+			Reason: "cannot read head-commit push date (" + errShort(herr) + ")",
+		}}
+	}
+	lastComment, cerr := fetchLastAuthorComment(repo, p.Number, p.Author.Login)
+	if cerr != nil {
+		return stalledOutcome{unassessable: &unassessableRow{
+			Repo: repo, Number: p.Number, Title: p.Title,
+			Reason: "cannot read author comments (" + errShort(cerr) + ")",
+		}}
+	}
+
+	// lastActivity = the most recent activity BY THE AUTHOR, across both channels
+	// (a push, a reply). A PR is stalled when BOTH clocks are past the window —
+	// the author neither pushed a fix NOR replied in minAge. If only one is past,
+	// the author is still active on the other channel and the PR is not stalled.
+	//
+	// The push clock counts ONLY a push attributable to the author. A
+	// merge-currency push by anyone else — `prsync --push` merges origin/main and
+	// pushes, and the desk's loop tells workers to merge main on conflict — would
+	// otherwise reset the clock on a branch its author abandoned months ago,
+	// hiding it from the list forever. That is the one FALSE-QUIET direction in
+	// this verb, so it is closed rather than merely noted.
+	//
+	// Unknown attribution (`headBy == ""`, a commit GitHub maps to no account) is
+	// NOT read as "somebody else": that would invent a stall from missing data.
+	// It keeps the push on the author's clock and the row, if any, says so.
+	pushIsAuthors := headBy == "" || deskkit.SameActor(headBy, p.Author.Login)
+
+	var lastActivity time.Time
+	if pushIsAuthors {
+		lastActivity = headTime
+	}
+	authorCommented := !lastComment.IsZero()
+	if authorCommented && lastComment.After(lastActivity) {
+		lastActivity = lastComment
+	}
+	if lastActivity.IsZero() {
+		// Nothing at all is attributable to the author: the only push was somebody
+		// else's and there is no reply. The clock then runs from the moment the
+		// ball entered the author's court — the decisive review — because that is
+		// the last thing that provably happened, and dating the stall from a
+		// stranger's merge commit would understate it. No parseable review
+		// timestamp falls back to the head commit rather than to the zero time,
+		// which would report a stall measured in millennia.
+		lastActivity = headTime
+		if last, ok := deskkit.LastAppDecisiveReview(c.reviewerLogin, appReviews); ok {
+			if t, perr := time.Parse(time.RFC3339, last.SubmittedAt); perr == nil {
+				lastActivity = t
+			}
+		}
+	}
+	if !isStalled(c.now, lastActivity, c.minAge) {
+		return stalledOutcome{} // active inside the window on at least one channel
+	}
+
+	// Stalled. Disposition is advisory and best-effort: a fetch failure degrades
+	// to "shepherd" (the safe default), never a fabricated close-candidate.
+	behind, _ := fetchBehindMain(repo, st.HeadSHA)
+	disposition, note := stallDisposition(repo, p, behind, c.briefStatus, c.knownBriefs)
+
+	row := stalledRow{
+		Repo:          repo,
+		Number:        p.Number,
+		Title:         p.Title,
+		HeadSHA:       st.HeadSHA,
+		DaysStalled:   daysRounded(c.now.Sub(lastActivity)),
+		LastPushAt:    headTime.UTC().Format(time.RFC3339),
+		LastPushBy:    headBy,
+		PushIsAuthors: pushIsAuthors,
+		Disposition:   disposition,
+		BehindMain:    behind,
+		Note:          note,
+	}
+	if authorCommented {
+		row.LastAuthorCommentAt = lastComment.UTC().Format(time.RFC3339)
+	}
+	if last, ok := deskkit.LastAppDecisiveReview(c.reviewerLogin, appReviews); ok {
+		row.LastReviewAt = last.SubmittedAt
+	}
+	return stalledOutcome{stalled: &row}
 }
