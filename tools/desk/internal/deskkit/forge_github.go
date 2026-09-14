@@ -908,10 +908,25 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 	// under CLASSIC protection reads exactly this way while still gating the merge. Fail closed
 	// — could-not-check, never an empty/green set off an admin-free read that cannot see
 	// classic protection.
+	//
+	// The message names the exact permission gap rather than leaving it generic. Every read
+	// that lands here does so because the legacy endpoint 403'd (no other path reaches this
+	// return), which for a GitHub App token means exactly one thing: the token lacks the
+	// `administration` repository permission (read is sufficient) the legacy endpoint requires.
+	// That is a ONE-TIME permission decision, not a per-PR judgment call — a caller that reads
+	// this as an ordinary could-not-check and re-asks a human on every flip attempt is treating
+	// a fixed fact as if it might resolve itself. Naming the permission here is what lets an
+	// operator or desk recognise "grant this once" instead of "decide this again."
 	return nil, Unverifiable(fmt.Sprintf(
 		"cannot read the required status checks for %s@%s: %s is protected but the rules API named no "+
-			"required status checks — the tell of classic branch protection, which the rules API cannot "+
-			"see, so the required set is undetermined (could-not-check, never read as green)",
+			"required status checks — the tell of CLASSIC branch protection, which the rules API cannot "+
+			"see, so the required set is undetermined (could-not-check, never read as green). This is a "+
+			"PERMISSION gap, not a per-PR judgment call: the calling App token lacks the `administration: "+
+			"read` repository permission the legacy branch-protection endpoint (GET "+
+			"/repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks) requires to see "+
+			"classic protection's required-checks list. Every flip on this branch will stay could-not-check "+
+			"until that permission is granted ONCE — escalate it as a permission grant, not as a recurring "+
+			"human decision.",
 		repo.Slug(), branch, branch), nil)
 }
 
