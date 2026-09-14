@@ -26,7 +26,7 @@ func plantLedger(t *testing.T, dir, name string, n int, detail string) int64 {
 	for i := 0; i < n; i++ {
 		pr := i
 		line, merr := json.Marshal(Entry{
-			TS: base.Add(time.Duration(i) * time.Second).Format(time.RFC3339),
+			TS:   base.Add(time.Duration(i) * time.Second).Format(time.RFC3339),
 			Tool: "deskpost", Verb: "comment", Repo: "example-org/repo", PR: &pr,
 			Result: ResultOK, Detail: fmt.Sprintf("%s %d", detail, i),
 			ArgsDigest: "0000", SourceSHA: "dev", BuiltAt: "dev", SessionTag: "test-session",
