@@ -83,13 +83,13 @@ type goldenServer struct {
 	forceStatus map[string]int
 	// bigReviewPages: when true, /reviews returns 100 entries on page 1, 1 on page 2.
 	bigReviewPages bool
-	// rulesetsList / rulesetDetails are op 38's `rulesets` kind two-hop fixtures: the LIST
+	// rulesetsList / rulesetDetails are op 40's `rulesets` kind two-hop fixtures: the LIST
 	// response (id + name only, no rules/bypass_actors) and, keyed by id as a string, each
 	// entry's DETAIL response.
 	rulesetsList   []map[string]any
 	rulesetDetails map[string]map[string]any
 	// actionsWorkflowPerm / actionsForkPRApproval / actionsPrivateForkPR / vulnReporting are
-	// op 38's four remaining fixed-endpoint kinds.
+	// op 40's four remaining fixed-endpoint kinds.
 	actionsWorkflowPerm   map[string]any
 	actionsForkPRApproval map[string]any
 	actionsPrivateForkPR  map[string]any
@@ -118,7 +118,7 @@ var (
 	gContents  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/`)
 	gSearchIss = regexp.MustCompile(`^/search/issues$`)
 
-	// op 38's routes: the ruleset two-hop plus the four fixed-endpoint hardening kinds.
+	// op 40's routes: the ruleset two-hop plus the four fixed-endpoint hardening kinds.
 	gRulesetDetail        = regexp.MustCompile(`^/repos/[^/]+/[^/]+/rulesets/[0-9]+$`)
 	gRulesets             = regexp.MustCompile(`^/repos/[^/]+/[^/]+/rulesets$`)
 	gActionsWorkflowPerm  = regexp.MustCompile(`/actions/permissions/workflow$`)

@@ -51,7 +51,7 @@ package forgeban
 //	here. LABELS are no longer in that list — ApplyLabels landed with its two consuming call
 //	sites — so the rows below that cited "the label brief" now cite whatever is actually left
 //	blocking them. REPO-HARDENING READS are no longer in that list either — the forge-gitlab guard-read-custody brief
-//	gave them their own enumerated op (RepoHardeningRead, op 38) and moved
+//	gave them their own enumerated op (RepoHardeningRead, op 40) and moved
 //	`cmd/repohardenguard` onto it under a dedicated read-only `auditor` identity, so this
 //	register carries no repohardenguard row any more; the ceiling came down by one more.
 //

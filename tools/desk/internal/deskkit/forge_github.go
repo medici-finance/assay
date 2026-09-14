@@ -421,6 +421,35 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	}, nil
 }
 
+// GetIssueTyped is GetIssue with the caller's stated kind VALIDATED against what the number
+// is. GitHub numbers issues and pull requests in ONE sequence, so there is nothing to route
+// on — the one read answers both — but a caller that said "issue" and is handed a pull
+// request (or the reverse) would go on to act on the wrong kind of object under the right
+// number, so the mismatch is a could-not-check error naming both, never a silent hand-back.
+// A 404 is returned as-is (IsForgeNotFound holds). An unknown kind is refused.
+func (g *GitHubForge) GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: GetIssueTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+	}
+	iss, err := g.GetIssue(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if iss.IsPullRequest && kind == TargetIssue {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)",
+			repo.Slug(), number), nil)
+	}
+	if !iss.IsPullRequest && kind == TargetChange {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is an issue, not a pull request — state the kind you mean (--kind issue)",
+			repo.Slug(), number), nil)
+	}
+	return iss, nil
+}
+
 // OpenChangeForBranch resolves the single OPEN pull request whose HEAD branch is `branch`
 // (`GET /repos/{o}/{r}/pulls?head={owner}:{branch}&state=open`). The head filter is spelled
 // `owner:branch` — GitHub's own `user:ref` form — so it matches only same-repo branches, which
@@ -1540,6 +1569,20 @@ func (g *GitHubForge) PostComment(repo ForgeRepo, number int, body string) (*Com
 	return &CommentRef{ID: w.NodeID, DatabaseID: w.ID, URL: w.HTMLURL}, nil
 }
 
+// PostCommentTyped is PostComment on GitHub: issues and pull requests share ONE comments
+// endpoint (`/issues/{n}/comments` serves both), so the stated kind selects nothing here.
+// It is not re-validated against the object either — the caller's preceding GetIssueTyped
+// is where a kind mismatch is caught, and a second read per comment would double the
+// footprint of every attach for no new information. An unknown kind is still refused.
+func (g *GitHubForge) PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: PostCommentTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+	}
+	return g.PostComment(repo, number, body)
+}
+
 func (g *GitHubForge) PostReview(repo ForgeRepo, number int, in ReviewInput) error {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", repo.Owner, repo.Name, number)
 	body := map[string]any{"commit_id": in.HeadSHA, "event": in.Event, "body": in.Body}
@@ -1658,7 +1701,7 @@ func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 	return true, nil
 }
 
-// --- Repo-hardening reads (op 38) ---
+// --- Repo-hardening reads (op 40) ---
 
 // hardeningGithubPaths maps every kind but `rulesets` (a two-hop, handled separately) to its
 // ONE fixed endpoint literal. There is exactly one literal per kind — no caller-supplied
@@ -1671,7 +1714,7 @@ var hardeningGithubPaths = map[HardeningReadKind]string{
 	HardeningReadVulnerabilityReporting:     "/repos/%s/%s/private-vulnerability-reporting",
 }
 
-// RepoHardeningRead implements op 38 on GitHub: kind is validated against the closed
+// RepoHardeningRead implements op 40 on GitHub: kind is validated against the closed
 // vocabulary before any request exists, so an unknown kind emits ZERO requests. Every kind
 // but `rulesets` is one fixed GET; `rulesets` performs the list→detail walk and returns the
 // ARRAY of detail documents (hardeningRulesets).
@@ -1693,7 +1736,7 @@ func (g *GitHubForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) 
 	return g.hardeningGET(fmt.Sprintf(tmpl, repo.Owner, repo.Name))
 }
 
-// hardeningGET performs one GET and returns the raw response body unparsed — op 38 hands the
+// hardeningGET performs one GET and returns the raw response body unparsed — op 40 hands the
 // document back as-is so the CALLER'S OWN field selector (repohardenguard's checklist, never
 // this package) decides what inside it matters.
 func (g *GitHubForge) hardeningGET(path string) (json.RawMessage, error) {

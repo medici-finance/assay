@@ -1,5 +1,5 @@
 ### Added
-- `RepoHardeningRead` (op 38) on the `Forge` seam: a closed hardening-read kind vocabulary
+- `RepoHardeningRead` (op 40) on the `Forge` seam: a closed hardening-read kind vocabulary
   (`repo`, `rulesets`, `actions-workflow-permissions`, `actions-fork-pr-approval`,
   `actions-private-fork-pr`, `vulnerability-reporting`), validated before any request exists.
   GitHub implements all six; GitLab refuses each by name until forge-gitlab/12.

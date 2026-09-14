@@ -610,12 +610,21 @@ func cmdNew(args []string) (err error) {
 	return nil
 }
 
-// cmdAttach implements `deskfile attach -R <repo> --to <N> --body-file <f>`. Posts the
-// observation as a comment on issue N (a class issue or a duplicate target). Never
+// cmdAttach implements `deskfile attach -R <repo> --to <N> --body-file <f> [--kind issue|mr]`.
+// Posts the observation as a comment on issue N (a class issue or a duplicate target). Never
 // budgeted (attach is the motion the gate encourages). Refuses (exit 5) if N is CLOSED
 // with the reopen-or-new guidance. Flow: repo allowed → body scan → verify target
 // OPEN (fail closed exit 6 on an API error; refuse exit 5 if closed) → outward-write
 // budget → `gh issue comment` → audit.
+//
+// --kind states WHICH object N names. It exists for GitLab, which numbers issues and merge
+// requests in SEPARATE sequences: `#4` and `!4` routinely both exist, and the bare-number
+// read (GetIssue) refuses that case rather than pick one — so without a stated kind every
+// low number an adopter's project carries in both sequences was un-attachable. The default
+// is `issue`, because attach is by definition an observation on an issue; `mr` (alias
+// `pr`) is for the rarer observation on a change. The kind drives BOTH the target read and
+// the note's endpoint (GetIssueTyped / PostCommentTyped), so the state check and the write
+// address the same object. On GitHub the kind is validated against what N is, nothing more.
 func cmdAttach(args []string) (err error) {
 	ac := &auditCtx{verb: "attach"}
 	defer func() { ac.finalize(err) }()
@@ -624,6 +633,7 @@ func cmdAttach(args []string) (err error) {
 	repo := fs.String("R", "", "target repo, owner/name (required, must be in the desk-tools set)")
 	to := fs.Int("to", 0, "target issue number (required)")
 	bodyFile := fs.String("body-file", "", "path to a file containing the comment body (required)")
+	kindFlag := fs.String("kind", "issue", "which object --to names: issue (default) or mr (pr is an alias)")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -632,6 +642,10 @@ func cmdAttach(args []string) (err error) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
+	}
+	kind, kerr := deskkit.ParseTargetKind(*kindFlag)
+	if kerr != nil {
+		return kerr
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: unexpected extra arguments")
@@ -671,7 +685,7 @@ func cmdAttach(args []string) (err error) {
 
 	// Verify the target is OPEN before posting. An API/parse failure is unverifiable
 	// (exit 6); a non-OPEN target is refused (exit 5) with reopen-or-new guidance.
-	view, verr := viewIssue(fg, fr, target)
+	view, verr := viewIssue(fg, fr, target, kind)
 	if verr != nil {
 		return deskkit.Unverifiable("cannot read issue state — refuse rather than guess", verr)
 	}
@@ -689,12 +703,17 @@ func cmdAttach(args []string) (err error) {
 		return werr
 	}
 
-	ref, cerr := fg.PostComment(fr, target, string(body))
+	ref, cerr := fg.PostCommentTyped(fr, target, kind, string(body))
 	if cerr != nil {
 		return deskkit.Unverifiable("post comment failed", cerr)
 	}
+	// A forge whose note reference carries no page URL (a GitLab issue note reports only its
+	// numeric id) still gets the TARGET's URL printed, so the caller can find what it wrote.
 	url := deskkit.StripControl(ref.URL)
-	ac.detail = "commented " + url
+	if url == "" {
+		url = view.URL
+	}
+	ac.detail = "commented " + url + " kind=" + string(kind)
 	fmt.Println(url)
 	return nil
 }
@@ -914,17 +933,19 @@ type ghIssueView struct {
 	URL   string
 }
 
-// viewIssue reads an issue's state and url through the resolved forge (GetIssue, which now
-// carries the URL — #691). The state comes back in the forge-neutral open|closed vocabulary; the
-// caller compares it case-insensitively against "OPEN". Both fields are remote-authored text
-// rendered into the CLOSED-target refusal, so they are control-stripped at ingest.
-func viewIssue(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) (*ghIssueView, error) {
-	iss, err := fg.GetIssue(fr, number)
+// viewIssue reads the target's state and url through the resolved forge (GetIssueTyped, which
+// carries the URL — #691 — and reads exactly the STATED kind, so a GitLab number that is both
+// an issue and a merge request resolves to the one the caller meant). The state comes back in
+// the forge-neutral open|closed vocabulary; the caller compares it case-insensitively against
+// "OPEN". Both fields are remote-authored text rendered into the CLOSED-target refusal, so they
+// are control-stripped at ingest.
+func viewIssue(fg deskkit.Forge, fr deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*ghIssueView, error) {
+	iss, err := fg.GetIssueTyped(fr, number, kind)
 	if err != nil {
 		return nil, err
 	}
 	if iss.State == "" {
-		return nil, fmt.Errorf("forge GetIssue returned no state for %s#%d", fr.Slug(), number)
+		return nil, fmt.Errorf("forge GetIssueTyped returned no state for %s#%d", fr.Slug(), number)
 	}
 	return &ghIssueView{
 		State: deskkit.StripControl(iss.State),

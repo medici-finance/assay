@@ -479,6 +479,35 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.GetIssue(glRepo, 9) },
 		},
 		{
+			// The typed read the both-kinds refusal points at: #9 and !9 both exist, the caller
+			// has STATED the kind, so exactly ONE endpoint is probed and the other kind's
+			// presence is irrelevant.
+			name: "get_issue_typed_issue_both_kinds", method: "GetIssueTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssueTyped(glRepo, 9, TargetIssue) },
+		},
+		{
+			name: "get_issue_typed_change_both_kinds", method: "GetIssueTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssueTyped(glRepo, 9, TargetChange) },
+		},
+		{
+			// The stated kind is absent: a 404 for THAT kind (IsForgeNotFound), never the other
+			// kind handed back under the wrong name.
+			name: "get_issue_typed_issue_missing", method: "GetIssueTyped",
+			setup: func(s *glServer) {
+				s.issueMissing = true
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssueTyped(glRepo, 9, TargetIssue) },
+		},
+		{
 			name: "get_issue_neither_kind", method: "GetIssue",
 			setup: func(s *glServer) {
 				s.issueMissing = true
@@ -774,6 +803,24 @@ func glCases() []glCase {
 				s.mr = glMR(nil)
 			},
 			run: func(f *GitLabForge) (any, error) { return f.PostComment(glRepo, 7, "hello") },
+		},
+		{
+			// The typed write: #9 and !9 both exist, and the note lands on the STATED kind's
+			// endpoint with NO resolving read — the golden's single request is the assertion.
+			name: "post_comment_typed_issue_both_kinds", method: "PostCommentTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PostCommentTyped(glRepo, 9, TargetIssue, "hello") },
+		},
+		{
+			name: "post_comment_typed_change_both_kinds", method: "PostCommentTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PostCommentTyped(glRepo, 9, TargetChange, "hello") },
 		},
 		{
 			// The note is posted BEFORE the approval. The request sequence in the golden is
@@ -1328,7 +1375,7 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.ChangeDiff(glRepo, 7) },
 		},
 		{
-			// The forge-gitlab guard-read-custody brief's op 38: every hardening-read kind is a NAMED could-not-check
+			// The forge-gitlab guard-read-custody brief's op 40: every hardening-read kind is a NAMED could-not-check
 			// refusal on GitLab until the forge-gitlab GitLab-hardening-reads follow-up, with ZERO requests emitted — never an
 			// empty document standing in for "not yet served".
 			name: "repo_hardening_read_gap", method: "RepoHardeningRead",

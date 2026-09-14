@@ -21,7 +21,7 @@ import (
 // answer and reproduces #127 exactly.
 //
 // The forge-gitlab guard-read-custody brief moved the fetcher from a shelled `gh api <endpoint>` onto the
-// enumerated deskkit.Forge seam (op 38 RepoHardeningRead, op 22 ReadFile), under the
+// enumerated deskkit.Forge seam (op 40 RepoHardeningRead, op 22 ReadFile), under the
 // dedicated read-only `auditor` identity — see forge.go. The three-state semantics below
 // are UNCHANGED; only the SOURCE of a fetch failure's status moved from regexing `gh`'s
 // stderr to *deskkit.ForgeAPIError.Status / deskkit.IsForgeNotFound / deskkit.IsForgeForbidden.
@@ -91,7 +91,7 @@ func (c Checker) checkFileRow(r Row, path string) Result {
 	return Result{Row: r, State: StateOK, Detail: fmt.Sprintf("file %s: present", path)}
 }
 
-// checkKindRow evaluates a `read <kind>` row: the closed hardening-read vocabulary (op 38).
+// checkKindRow evaluates a `read <kind>` row: the closed hardening-read vocabulary (op 40).
 // The kind is validated by the SAME deskkit.ValidateHardeningReadKind the backend itself runs
 // before any request exists — validating it here too means an unknown kind is reported against
 // THIS row (naming its ID and line) rather than as a bare backend error.
@@ -138,7 +138,7 @@ func (c Checker) checkKindRow(r Row, kindStr string) Result {
 	return compare(r, field, v)
 }
 
-// findRuleset locates the entry in arr (op 38's `rulesets` array of detail documents) whose
+// findRuleset locates the entry in arr (op 40's `rulesets` array of detail documents) whose
 // "name" field equals name.
 func findRuleset(arr []any, name string) (any, bool) {
 	for _, el := range arr {

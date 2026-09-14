@@ -527,9 +527,12 @@ jobs:
 //     them over plain HTTPS and sha256-verifies, rather than shelling `gh`.
 //   - GitLab's default CI job token cannot push back to the repo. The regen job
 //     therefore uses a project/group access token the adopter sets as the masked
-//     CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear message rather
-//     than pushing when it is unset — the same refuse-don't-guess shape as the
-//     pin line.
+//     AND protected CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear
+//     message rather than pushing when it is unset — the same refuse-don't-guess
+//     shape as the pin line. Protected is load-bearing, not cosmetic: a
+//     masked-only variable is still injected into merge_request_event pipelines,
+//     which run the MR branch's own CI file, so any member who can open an MR
+//     could read the token and push to the default branch past the merge gate.
 //   - A push by the regen job would itself trigger a pipeline; the [skip-status-regen]
 //     commit marker is matched by a `when: never` rule so the board write does not
 //     loop.
@@ -548,10 +551,15 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 #
 # The regen job pushes STATUS.md back to the default branch. GitLab's default CI
 # job token cannot push, so create a project (or group) access token with the
-# write_repository scope and set it as a MASKED CI/CD variable named
-# STATUSGEN_PUSH_TOKEN. Until it is set the regen job stops with a clear message
-# rather than pushing. See docs/adopting-assay-gitlab.md, section "Board-push
-# credential" for the token kind, minimum role, and variable visibility.
+# write_repository scope and set it as a MASKED and PROTECTED CI/CD variable named
+# STATUSGEN_PUSH_TOKEN. Protected means only pipelines on protected refs receive
+# it, so the default branch this job runs on must be a protected branch. A
+# masked-only variable is still injected into merge-request pipelines, which run
+# the MR branch's own CI file — anyone who can open an MR could then read the
+# token and push to the default branch past the merge gate. Until it is set the
+# regen job stops with a clear message rather than pushing. See
+# docs/adopting-assay-gitlab.md, section "Board-push credential" for the token
+# kind, minimum role, and variable visibility.
 #
 # RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
 # neither installs nor configures one for you. Unlike GitHub's hosted
@@ -624,7 +632,7 @@ statusgen-regen:
     - |
       if [ -z "${STATUSGEN_PUSH_TOKEN:-}" ]; then
         echo "STATUSGEN_PUSH_TOKEN is not set — cannot push the regenerated board."
-        echo "Create a project access token with the write_repository scope and set it as a masked CI/CD variable named STATUSGEN_PUSH_TOKEN. Refusing rather than guessing."
+        echo "Create a project access token with the write_repository scope and set it as a masked and protected CI/CD variable named STATUSGEN_PUSH_TOKEN (protected: the default branch must be a protected branch). Refusing rather than guessing."
         exit 1
       fi
     - statusgen --root .

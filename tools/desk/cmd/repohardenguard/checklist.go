@@ -43,7 +43,7 @@ type Row struct {
 	Line     int    // 1-based line number in the checklist, for error messages
 }
 
-// ParsedRead is a Row's Read cell parsed into either a hardening-read KIND (op 38) or a
+// ParsedRead is a Row's Read cell parsed into either a hardening-read KIND (op 40) or a
 // repo-relative file PATH (op 22, ReadFile) — exactly one of the two is non-empty.
 type ParsedRead struct {
 	Kind string

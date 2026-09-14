@@ -47,7 +47,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// The forge-gitlab guard-read-custody brief: the guard's fetcher is deskkit.Forge (op 38 RepoHardeningRead, op 22
+// The forge-gitlab guard-read-custody brief: the guard's fetcher is deskkit.Forge (op 40 RepoHardeningRead, op 22
 // ReadFile) under the fixed, read-only "auditor" identity — see forge.go. No `gh`/`glab` shell-out
 // remains in this package's shipped source (fg/08 Verify row 3).
 
