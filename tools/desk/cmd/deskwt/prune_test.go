@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -139,6 +140,20 @@ func TestPruneSkipsDirtyTracked(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "dirty")
+
+	// Advance origin/main one commit so the worktree is merged-BELOW-tip rather than
+	// fresh-AT-tip: since issue #1037's F3 reorders the merge/fresh-tip gate (now an O(1)
+	// lookup) ahead of the tracked-clean gate, a worktree that is BOTH dirty AND still
+	// exactly at origin/main's tip would be skipped for "fresh worktree at origin/main"
+	// before dirtyTracked ever runs — masking the very check this test exists to exercise.
+	// Merged-below-tip isolates the dirty gate: the merge/fresh-tip gate passes cleanly,
+	// so the skip this test asserts on can only be the tracked-clean one.
+	writeFile(t, filepath.Join(work, "mainline.txt"), "marched forward\n")
+	mustGit(t, work, "add", "mainline.txt")
+	mustGit(t, work, "commit", "-m", "advance mainline")
+	newMain := mustGit(t, work, "rev-parse", "HEAD")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/main", newMain)
+
 	// Modify an already-tracked file (unstaged) — a dirty tracked change.
 	writeFile(t, filepath.Join(target, "README.md"), "seed\nmodified\n")
 
@@ -459,4 +474,80 @@ func TestPruneIntervalHaltsOnStopFlag(t *testing.T) {
 		t.Fatalf("runPruneLoop under STOP returned exit %d, want 3 (disabled)", deskkit.ExitCodeOf(loopErr))
 	}
 	assertExists(t, target) // halted before any sweep — worktree untouched
+}
+
+// --- prune: many worktrees against a deep history share ONE walk (issue #1037) ----
+//
+// Before this fix, `mergedToOriginMain`'s IsAncestor and `unmergedReason`'s AheadCount each
+// ran a fresh, independent full walk of origin/main's history PER CANDIDATE worktree — so a
+// sweep over N candidates cost N walks of the same history instead of one. The worst case is
+// exactly what this fixture builds: every candidate is clean but UNMERGED (its own unpushed
+// commit, no upstream other than origin/main), so the old per-candidate IsAncestor walk had
+// to run to EXHAUSTION (found nothing) before concluding "not an ancestor" — the case the
+// issue measured at ~0.8-1.3s per worktree on a 5,779-commit history.
+//
+// This is both a correctness check (every unmerged worktree survives prune, none wrongly
+// removed) and a performance regression pin: the whole sweep must stay well inside a bound
+// the pre-fix O(candidates x history-depth) shape blows past at this fixture's size. It is
+// deliberately still small enough to run in a normal `go test` pass (issue #1037's own
+// "Verify" section calls for N up to 600 on a 5k-commit history; this fixture trades that
+// down to a size a unit test can carry while still separating the two shapes by a wide
+// margin — see the fail-first run recorded in this PR's body, which reproduces this exact
+// test against the pre-fix code and shows it several times slower on this same fixture).
+func TestPruneManyUnmergedWorktreesShareOneWalk(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+
+	const historyDepth = 1000
+	const numWorktrees = 60
+
+	// Deepen origin/main's history well past the single seed commit so a per-candidate
+	// full walk has real cost to pay.
+	for i := 0; i < historyDepth; i++ {
+		writeFile(t, filepath.Join(work, "mainline.txt"), fmt.Sprintf("commit %d\n", i))
+		mustGit(t, work, "add", "mainline.txt")
+		mustGit(t, work, "commit", "-m", fmt.Sprintf("mainline %d", i))
+	}
+	newMain := mustGit(t, work, "rev-parse", "HEAD")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/main", newMain)
+
+	targets := make([]string, 0, numWorktrees)
+	for i := 0; i < numWorktrees; i++ {
+		name := fmt.Sprintf("busy%d", i)
+		target := addWorktree(t, name)
+		// Its own unpushed commit — clean but UNMERGED: the worst case for the pre-fix
+		// per-candidate walk, which had to run to exhaustion to conclude "not found".
+		writeFile(t, filepath.Join(target, "feat.txt"), name+"\n")
+		mustGit(t, target, "add", "feat.txt")
+		mustGit(t, target, "commit", "-m", "unmerged work on "+name)
+		targets = append(targets, target)
+	}
+
+	start := time.Now()
+	rc, errout := runCapErr(t, []string{"prune"})
+	elapsed := time.Since(start)
+	t.Logf("prune sweep over %d worktrees / %d-deep history took %s", numWorktrees, historyDepth, elapsed)
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+
+	// Correctness: every unmerged worktree MUST survive — active work is never removed.
+	for _, target := range targets {
+		assertExists(t, target)
+	}
+	if strings.Contains(errout, fmt.Sprintf("removed %d merged+clean", numWorktrees)) ||
+		!strings.Contains(errout, "removed 0 merged+clean") {
+		t.Fatalf("prune removed unmerged worktrees out of the %d-worktree fixture; stderr:\n%s", numWorktrees, errout)
+	}
+
+	// Performance pin: the shared single walk (issue #1037) answers all N candidates from
+	// ONE walk of origin/main's history; the pre-fix shape ran N independent full walks and
+	// is measurably slower at this scale. 5s is generous headroom on this fixture's size
+	// while remaining far below what N=40 independent O(historyDepth) walks would cost.
+	if elapsed > 5*time.Second {
+		t.Fatalf("prune over %d worktrees against a %d-deep history took %s — want well under 5s "+
+			"(the shared-walk fix should make this size-independent per candidate); "+
+			"if this is failing, the N-walks regression (issue #1037) may be back",
+			numWorktrees, historyDepth, elapsed)
+	}
 }

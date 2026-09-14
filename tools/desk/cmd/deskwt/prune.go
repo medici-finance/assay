@@ -338,6 +338,15 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		return res, lkErr
 	}
 
+	// Shared origin/main reach state, built ONCE for the whole sweep (issue #1037): every
+	// commit reachable from refs/remotes/origin/main, plus its tip hash. Before this, each
+	// candidate ran its OWN independent full-history walk (mergedToOriginMain's IsAncestor,
+	// unmergedReason's AheadCount) — N candidates, N walks of the same history. Now the walk
+	// runs once and every candidate answers with a single Resolve("HEAD") + O(1) lookup. A
+	// failure here (origin/main itself unresolvable) is repo-wide, not per-worktree, so it is
+	// read once and applied to every candidate below rather than re-attempted per worktree.
+	reach, reachErr := loadOriginMainReach(guard.sharedCheckout)
+
 	for _, rt := range roots {
 		// Lock gate FIRST: a locked worktree is never deleted, whatever its content state
 		// says (a live agent's worktree was spared here only by luck of a content heuristic).
@@ -358,7 +367,44 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			continue
 		}
 
+		// Fresh-tip / merge gate BEFORE the tracked-clean gate (issue #1037 F3): the merge
+		// test is now an O(1) lookup against the shared reach state above, so it is cheap
+		// enough to run FIRST — and running it first means `dirtyTracked`'s `git status`-
+		// equivalent walk (the ~4,100-file case measured in the field) is only ever paid by
+		// candidates that are otherwise removable. The ~95% of candidates held on merge
+		// grounds regardless never pay for a status walk whose answer cannot change the
+		// outcome.
+		if reachErr != nil {
+			res.skips = append(res.skips, skipEntry{rt, "unverifiable origin/main position: " + reachErr.Error()})
+			continue
+		}
+		pos, posErr := classifyAgainstOriginMain(reach, rt)
+		if posErr != nil {
+			res.skips = append(res.skips, skipEntry{rt, "unverifiable origin/main position: " + posErr.Error()})
+			continue
+		}
+		switch pos {
+		case positionAtTip:
+			// Fresh-worktree guard (prune-only): a worktree whose HEAD is exactly at
+			// origin/main tip (zero landed commits) may hold untracked new work. The
+			// automatic sweep must not delete another session's uncommitted new source
+			// files — dirtyTracked ignores untracked files deliberately (build artifacts
+			// don't block), but in prune this creates a hole: a fresh worktree with
+			// untracked new .go files is "tracked-clean AND merged" and would be removed.
+			// Skip it; a genuine merge-commit/rebase landing has HEAD below the tip and
+			// is still removed. remove (human-named single path) is not gated.
+			res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — may hold untracked new work)"})
+			continue
+		case positionUnmerged:
+			// The active-worker protection. HEAD must be an ancestor of origin/main.
+			res.skips = append(res.skips, skipEntry{rt, unmergedReason(rt)})
+			continue
+		}
+
 		// Tracked-clean gate — identical to remove's (untracked build artifacts ignored).
+		// Reached only for candidates already proven merged-below-tip, so this is the
+		// worktree-content check for a genuinely otherwise-removable candidate — not, as
+		// before, every candidate the sweep looks at.
 		dirtyOut, derr := dirtyTracked(rt)
 		if derr != nil {
 			// Fail closed for THIS worktree: cannot verify → leave it, note it, keep going.
@@ -367,35 +413,6 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		}
 		if dirtyOut != "" {
 			res.skips = append(res.skips, skipEntry{rt, "dirty (uncommitted tracked changes)"})
-			continue
-		}
-
-		// Fresh-worktree guard (prune-only): a worktree whose HEAD is exactly at
-		// origin/main tip (zero landed commits) may hold untracked new work. The
-		// automatic sweep must not delete another session's uncommitted new source
-		// files — dirtyTracked ignores untracked files deliberately (build artifacts
-		// don't block), but in prune this creates a hole: a fresh worktree with
-		// untracked new .go files is "tracked-clean AND merged" and would be removed.
-		// Skip it; a genuine merge-commit/rebase landing has HEAD below the tip and
-		// is still removed. remove (human-named single path) is not gated.
-		atTip, tipErr := headAtOriginMainTip(rt)
-		if tipErr != nil {
-			res.skips = append(res.skips, skipEntry{rt, "unverifiable origin/main position: " + tipErr.Error()})
-			continue
-		}
-		if atTip {
-			res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — may hold untracked new work)"})
-			continue
-		}
-
-		// Merge gate — the active-worker protection. HEAD must be an ancestor of origin/main.
-		merged, mErr := mergedToOriginMain(rt)
-		if mErr != nil {
-			res.skips = append(res.skips, skipEntry{rt, "unverifiable merge status: " + mErr.Error()})
-			continue
-		}
-		if !merged {
-			res.skips = append(res.skips, skipEntry{rt, unmergedReason(rt)})
 			continue
 		}
 
@@ -438,6 +455,12 @@ func lockedReason(reason string) string {
 // unmergedReason produces a human sub-diagnosis for a NOT-merged worktree, distinguishing
 // unpushed-relative-to-upstream from plain unmerged (both are LEFT — this only refines the
 // skip report; the removal gate is solely "merged into origin/main").
+//
+// This does NOT call AheadCount (issue #1037 F1): AheadCount walks base's entire history
+// into a map purely to COUNT how far ahead HEAD is, and no gate reads that count — only
+// whether HEAD equals upstream's tip is needed to tell "unpushed" from plain "unmerged", and
+// that is a single Resolve on each side plus a hash comparison. The skip string loses the
+// exact count but keeps the "unpushed" distinction the count used to decorate.
 func unmergedReason(rt string) string {
 	repo, rerr := gitcore.Open(rt)
 	if rerr != nil {
@@ -448,68 +471,95 @@ func unmergedReason(rt string) string {
 		return "unmerged (detached HEAD not an ancestor of origin/main)"
 	}
 	if upstream, uerr := repo.UpstreamRef(); uerr == nil {
-		if ahead, aerr := repo.AheadCount(upstream, "HEAD"); aerr == nil && ahead != 0 {
-			return fmt.Sprintf("unpushed (%d commit(s) ahead of upstream, not on origin/main)", ahead)
+		headHash, hErr := repo.Resolve("HEAD")
+		upstreamHash, uErr := repo.Resolve(upstream)
+		if hErr == nil && uErr == nil && headHash != upstreamHash {
+			return "unpushed (commit(s) ahead of upstream, not on origin/main)"
 		}
 	}
 	return "unmerged (branch " + branch + " not an ancestor of origin/main — active work)"
 }
 
-// mergedToOriginMain reports whether the worktree's HEAD is an ancestor of the remote
-// mainline. It shells `git merge-base --is-ancestor HEAD refs/remotes/origin/main`: exit 0
-// = ancestor (merged → safe), exit 1 = not an ancestor (unmerged → active work, LEFT), any
-// other exit or a resolution failure = Unverifiable so the caller fails CLOSED and leaves
-// the worktree.
+// originMainReach is the shared-walk state built ONCE per sweep (issue #1037): every commit
+// hash reachable from refs/remotes/origin/main (the "already on the remote mainline" set,
+// tip included) plus the tip hash itself. Before this, `mergedToOriginMain`'s IsAncestor and
+// `headAtOriginMainTip`'s comparison were computed independently PER WORKTREE — on a sweep
+// with N candidates against a repo with a large main history, that is N full walks of the
+// same history instead of one. Every candidate's position is now answered by
+// classifyAgainstOriginMain: one Resolve("HEAD") plus an O(1) map lookup against this set.
+type originMainReach struct {
+	tip       string
+	ancestors map[string]bool
+}
+
+// loadOriginMainReach walks refs/remotes/origin/main's history EXACTLY ONCE for the whole
+// sweep and returns its reach state.
 //
-// The base is spelled FULLY QUALIFIED (`refs/remotes/origin/main`), not the bare short name
+// The ref is spelled FULLY QUALIFIED (`refs/remotes/origin/main`), not the bare short name
 // `origin/main`, and this is load-bearing (issue #885, the ambiguity variant of #22). A
 // checkout that has ever run `git branch origin/main` / `git worktree add ... -b origin/main`
 // carries a stray LOCAL branch literally named `refs/heads/origin/main`; the short name is
 // then ambiguous and `refs/heads/` wins gitrevisions disambiguation order, so bare `origin/main`
 // silently resolves to that stale decoy while git only warns on stderr at exit 0. Resolving
-// against a stale decoy would compute this gate against the wrong baseline. A fully-qualified
-// remote-tracking ref is unambiguous by construction and cannot be shadowed by the decoy; if
-// it does not resolve at all, that surfaces as Unverifiable (could-not-check) — never a
-// silent fall-through to the decoy.
-func mergedToOriginMain(rt string) (bool, error) {
-	repo, err := gitcore.Open(rt)
+// against a stale decoy would compute every candidate's position against the wrong baseline.
+// A fully-qualified remote-tracking ref is unambiguous by construction and cannot be shadowed
+// by the decoy; if it does not resolve at all, that surfaces as Unverifiable (could-not-check)
+// — never a silent fall-through to the decoy.
+func loadOriginMainReach(sharedCheckout string) (originMainReach, error) {
+	repo, err := gitcore.Open(sharedCheckout)
 	if err != nil {
-		return false, deskkit.Unverifiable("cannot determine merge status vs refs/remotes/origin/main (does it resolve?)", err)
+		return originMainReach{}, deskkit.Unverifiable("cannot resolve refs/remotes/origin/main (does it resolve?)", err)
 	}
-	ok, err := repo.IsAncestor("HEAD", "refs/remotes/origin/main")
+	tipHash, err := repo.Resolve("refs/remotes/origin/main")
 	if err != nil {
-		return false, deskkit.Unverifiable("cannot determine merge status vs refs/remotes/origin/main (does it resolve?)", err)
+		return originMainReach{}, deskkit.Unverifiable("cannot resolve refs/remotes/origin/main (does it resolve?)", err)
 	}
-	return ok, nil
+	hashes, err := repo.Log("refs/remotes/origin/main")
+	if err != nil {
+		return originMainReach{}, deskkit.Unverifiable("cannot walk refs/remotes/origin/main (does it resolve?)", err)
+	}
+	ancestors := make(map[string]bool, len(hashes))
+	for _, h := range hashes {
+		ancestors[h] = true
+	}
+	return originMainReach{tip: tipHash.String(), ancestors: ancestors}, nil
 }
 
-// headAtOriginMainTip reports whether the worktree's HEAD is exactly at the remote mainline
-// tip (zero landed commits). Fresh worktrees at the tip may hold untracked new work
-// — `dirtyTracked` intentionally ignores untracked files so build artifacts (node_modules,
-// build/, dist/) don't block, but in an automatic sweep this means a fresh worktree
-// with new source files would be wrongly removed. This guard is prune-only: remove is a
-// human-named single-path deletion where the caller affirms the path is safe.
-//
-// Like mergedToOriginMain, the tip is spelled FULLY QUALIFIED (`refs/remotes/origin/main`)
-// rather than the ambiguous short name `origin/main` (issue #885): a stray local branch
-// `refs/heads/origin/main` would otherwise shadow the real remote-tracking ref and this
-// guard would compare HEAD against a stale decoy tip. A resolution failure surfaces as
-// Unverifiable (could-not-check → the worktree is LEFT), never a silent decoy comparison.
-func headAtOriginMainTip(rt string) (bool, error) {
+// mainPosition classifies a worktree's HEAD against the shared origin/main reach state.
+type mainPosition int
+
+const (
+	// positionUnmerged is HEAD not reachable from origin/main — active work, LEFT.
+	positionUnmerged mainPosition = iota
+	// positionAtTip is HEAD exactly at origin/main's tip — zero landed commits.
+	positionAtTip
+	// positionMergedBelowTip is HEAD an ancestor of origin/main, but not the tip itself —
+	// the proven-safe-to-remove position (subject to the tracked-clean gate).
+	positionMergedBelowTip
+)
+
+// classifyAgainstOriginMain resolves rt's HEAD once and answers both the fresh-tip question
+// and the merge question from the shared reach state — a single Open + Resolve("HEAD") per
+// worktree, replacing the two independent full-history walks
+// (`mergedToOriginMain`'s IsAncestor, the old `headAtOriginMainTip`'s two Resolves) that used
+// to run per candidate.
+func classifyAgainstOriginMain(reach originMainReach, rt string) (mainPosition, error) {
 	repo, err := gitcore.Open(rt)
 	if err != nil {
-		return false, deskkit.Unverifiable("cannot resolve HEAD", err)
+		return positionUnmerged, deskkit.Unverifiable("cannot resolve HEAD", err)
 	}
 	headHash, err := repo.Resolve("HEAD")
 	if err != nil {
-		return false, deskkit.Unverifiable("cannot resolve HEAD", err)
+		return positionUnmerged, deskkit.Unverifiable("cannot resolve HEAD", err)
 	}
 	head := headHash.String()
-	originMainHash, err := repo.Resolve("refs/remotes/origin/main")
-	if err != nil {
-		return false, deskkit.Unverifiable("cannot resolve refs/remotes/origin/main", err)
+	if head == reach.tip {
+		return positionAtTip, nil
 	}
-	return head == originMainHash.String(), nil
+	if reach.ancestors[head] {
+		return positionMergedBelowTip, nil
+	}
+	return positionUnmerged, nil
 }
 
 // mustAbsOrRaw returns filepath.Abs(p) or, if that fails, p unchanged — resolvePath still
