@@ -60,7 +60,7 @@ func TestDerived_DryRunAndApply(t *testing.T) {
 	root := writeDerivedFixture(t)
 	host := deskkit.HostPlatformAssets("statusgen")[0]
 
-	code, out := run2(t, "--root", root, "--to", "v0.13.0", "--dry-run", "--no-fetch")
+	code, out := run2(t, "--root", root, "--to", "v0.13.0", "--dry-run")
 	if code != exitOK {
 		t.Fatalf("dry-run: exit %d\n%s", code, out)
 	}
@@ -71,7 +71,7 @@ func TestDerived_DryRunAndApply(t *testing.T) {
 	}
 	before, _ := os.ReadFile(filepath.Join(root, ".assay-versions"))
 
-	code, out = run2(t, "--root", root, "--to", "v0.13.0", "--no-fetch")
+	code, out = run2(t, "--root", root, "--to", "v0.13.0")
 	if code != exitOK {
 		t.Fatalf("apply: exit %d\n%s", code, out)
 	}
@@ -99,14 +99,14 @@ func TestDerived_DryRunAndApply(t *testing.T) {
 		t.Errorf("post-apply marker: %s %s (%s)", m.State, m.Umbrella, m.Reason)
 	}
 	// Idempotent: a second run is the already-at no-op.
-	if code, out := run2(t, "--root", root, "--to", "v0.13.0", "--no-fetch"); code != exitOK || !strings.Contains(out, "already at") {
+	if code, out := run2(t, "--root", root, "--to", "v0.13.0"); code != exitOK || !strings.Contains(out, "already at") {
 		t.Errorf("second apply: exit %d\n%s", code, out)
 	}
 }
 
 func TestDerived_LatestFromLocalMaterialisation(t *testing.T) {
 	root := writeDerivedFixture(t)
-	code, out := run2(t, "--root", root, "--dry-run", "--no-fetch")
+	code, out := run2(t, "--root", root, "--dry-run")
 	if code != exitOK || !strings.Contains(out, "v0.12.0 -> v0.13.0") {
 		t.Errorf("latest (offline) must resolve to the highest materialised umbrella: exit %d\n%s", code, out)
 	}
@@ -114,12 +114,15 @@ func TestDerived_LatestFromLocalMaterialisation(t *testing.T) {
 
 func TestDerived_UnpublishedTargetRefuses(t *testing.T) {
 	root := writeDerivedFixture(t)
-	code, out := run2(t, "--root", root, "--to", "v0.14.0", "--no-fetch")
+	code, out := run2(t, "--root", root, "--to", "v0.14.0")
 	if code != exitUnknownTarget {
 		t.Fatalf("exit %d, want %d\n%s", code, exitUnknownTarget, out)
 	}
-	if !strings.Contains(out, "v0.14.0.checksums.txt") || !strings.Contains(out, "no fetch") {
-		t.Errorf("refusal must name where it looked and that the network was off:\n%s", out)
+	if !strings.Contains(out, "v0.14.0.checksums.txt") || !strings.Contains(out, "--fetch") {
+		t.Errorf("refusal must name where it looked and the --fetch opt-in:\n%s", out)
+	}
+	if strings.Contains(out, "fetching ") {
+		t.Errorf("no fetch may be announced without --fetch:\n%s", out)
 	}
 	for _, bad := range []string{"assum", "nearest", "latest"} {
 		if strings.Contains(strings.ToLower(out), bad) {
@@ -144,18 +147,22 @@ func TestDerived_FetchesFromReleaseHome(t *testing.T) {
 	}
 	t.Cleanup(func() { fetchFunc = prev })
 
-	code, out := run2(t, "--root", root, "--to", "v0.14.0", "--dry-run")
+	code, out := run2(t, "--root", root, "--to", "v0.14.0", "--dry-run", "--fetch")
 	if code != exitOK || !strings.Contains(out, "derived from "+url) {
 		t.Errorf("named fetched target: exit %d\n%s", code, out)
 	}
-	code, out = run2(t, "--root", root, "--dry-run")
-	if code != exitOK || !strings.Contains(out, "v0.12.0 -> v0.14.0") {
-		t.Errorf("latest via the release home: exit %d\n%s", code, out)
+	if !strings.Contains(out, "fetching "+url+"\n") {
+		t.Errorf("the exact URL must be announced before contact:\n%s", out)
 	}
-	// A transport failure is a refusal that says so — never demoted to "not published".
+	code, out = run2(t, "--root", root, "--dry-run", "--fetch")
+	if code != exitOK || !strings.Contains(out, "v0.12.0 -> v0.14.0") || !strings.Contains(out, "fetching "+api+"\n") {
+		t.Errorf("latest via the release home, announced: exit %d\n%s", code, out)
+	}
+	// A transport failure is a refusal that says so — never demoted to "not published" —
+	// and the attempted URL was still announced.
 	fetchFunc = func(u string) ([]byte, error) { return nil, errors.New("dial tcp: connection refused") }
-	code, out = run2(t, "--root", root, "--to", "v0.14.0", "--dry-run")
-	if code != exitUnknownTarget || !strings.Contains(out, "could not check the release home") {
+	code, out = run2(t, "--root", root, "--to", "v0.14.0", "--dry-run", "--fetch")
+	if code != exitUnknownTarget || !strings.Contains(out, "could not check the release home") || !strings.Contains(out, "fetching "+url) {
 		t.Errorf("transport failure: exit %d\n%s", code, out)
 	}
 }
@@ -167,12 +174,30 @@ func TestHandAuthoredManifestStillWins(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "releases", "v0.13.0.checksums.txt"), []byte(checksumsFor('9')), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, out := run2(t, "--root", root, "--to", "v0.13.0", "--no-fetch")
+	code, out := run2(t, "--root", root, "--to", "v0.13.0")
 	if code != exitOK || strings.Contains(out, "derived from") {
 		t.Fatalf("manifest must win over checksums: exit %d\n%s", code, out)
 	}
 	after, _ := os.ReadFile(filepath.Join(root, ".assay-versions"))
 	if !strings.Contains(string(after), "statusgen v0.13.0 "+strings.Repeat("c", 64)) {
 		t.Errorf("bare line must carry the manifest's sha256:\n%s", after)
+	}
+}
+
+// TestNoFetchByDefault — without --fetch the verb never calls the fetcher, even
+// when the target is unknown locally (no default probe of a remote).
+func TestNoFetchByDefault(t *testing.T) {
+	root := writeDerivedFixture(t)
+	prev := fetchFunc
+	fetchFunc = func(u string) ([]byte, error) {
+		t.Fatalf("fetcher called without --fetch: %s", u)
+		return nil, nil
+	}
+	t.Cleanup(func() { fetchFunc = prev })
+	if code, _ := run2(t, "--root", root, "--to", "v0.14.0", "--dry-run"); code != exitUnknownTarget {
+		t.Errorf("unknown target without --fetch: exit %d, want %d", code, exitUnknownTarget)
+	}
+	if code, _ := run2(t, "--root", root, "--dry-run"); code != exitOK {
+		t.Errorf("latest from local materialisation without --fetch: exit %d", code)
 	}
 }

@@ -25,9 +25,11 @@
 // a `releases/<vX.Y.Z>.yaml` manifest, so requiring one meant no adopter could run
 // this verb at all. The composition is now DERIVED from the release's published
 // `checksums.txt` whenever a hand-authored manifest is absent: a materialised
-// `<releases>/<vX.Y.Z>.checksums.txt` first (offline), else fetched from the
-// release home for exactly that tag (`--no-fetch` forbids the network,
-// `--release-home` re-points it). A hand-authored manifest still wins when
+// `<releases>/<vX.Y.Z>.checksums.txt` first (offline), else — ONLY under an
+// explicit `--fetch` — fetched from the release home for exactly that tag
+// (`--release-home` re-points it), the URL printed to stderr before contact.
+// Without `--fetch` the verb never reaches the network and refuses, naming the
+// flag, when neither local source exists. A hand-authored manifest still wins when
 // present; a present-but-broken one still refuses. The digests a derived
 // composition carries are the per-asset sha256s channel E pins — the same values
 // an adopter would copy from checksums.txt by hand.
@@ -59,7 +61,7 @@
 // USAGE:
 //
 //	upgrade-assay --root <adopter-repo> [--to vX.Y.Z] [--dry-run] [--releases <dir>]
-//	              [--release-home <owner/repo>] [--no-fetch]
+//	              [--fetch] [--release-home <owner/repo>]
 //	upgrade-assay --version
 //
 // EXIT CODES — each refusal is a first-class outcome with a distinct code, never
@@ -121,18 +123,19 @@ const usage = `upgrade-assay — move an adopter to latest-stable or a named umb
 
 usage:
   upgrade-assay --root <adopter-repo> [--to vX.Y.Z] [--dry-run] [--releases <dir>]
-                [--release-home <owner/repo>] [--no-fetch]
+                [--fetch] [--release-home <owner/repo>]
   upgrade-assay --version
 
 verbs:
   --to omitted     move to LATEST STABLE (highest umbrella materialised under
-                   <releases>, or the release home's latest when fetching)
+                   <releases>, or the release home's latest under --fetch)
   --to vX.Y.Z      move to a NAMED bare umbrella version
 
 compositions:      <releases>/<vX.Y.Z>.yaml when authored; else DERIVED from the
                    release's checksums.txt — <releases>/<vX.Y.Z>.checksums.txt when
-                   materialised (offline), else fetched from the release home
-                   (--no-fetch forbids the network).
+                   materialised (offline), else — only under --fetch — fetched
+                   from the release home, the URL printed to stderr first.
+                   Without --fetch the verb never reaches the network.
 
   A per-artifact tag (e.g. statusgen/v0.13.0) is NOT a target: the verb moves the
   whole umbrella, never one artifact. Bare umbrella versions only.
@@ -162,7 +165,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		dryRun   = fs.Bool("dry-run", false, "preview only; write nothing")
 		releases = fs.String("releases", "", "materialised composition-manifest / checksums dir (default <root>/releases)")
 		home     = fs.String("release-home", deskkit.DefaultReleaseHome, "release home <owner>/<repo> whose checksums.txt derives a composition")
-		noFetch  = fs.Bool("no-fetch", false, "never consult the release home; local files only")
+		fetch    = fs.Bool("fetch", false, "allow fetching checksums.txt / latest from the release home (default: local files only)")
 		version  = fs.Bool("version", false, "print version and exit")
 	)
 	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
@@ -181,8 +184,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if relDir == "" {
 		relDir = filepath.Join(*root, deskkit.ReleasesDir)
 	}
-	src := deskkit.CompositionSource{ReleasesDir: relDir, ReleaseHome: *home}
-	if !*noFetch {
+	src := deskkit.CompositionSource{ReleasesDir: relDir, ReleaseHome: *home, Announce: stderr}
+	if *fetch {
 		src.Fetch = fetchFunc
 	}
 
@@ -234,7 +237,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		latest, ok := latestOf(published)
 		if !ok {
-			fmt.Fprintf(stderr, "upgrade-assay: refusing — no published umbrella release is available under %s (or from the release home) to resolve as latest stable.\n", relDir)
+			fmt.Fprintf(stderr, "upgrade-assay: refusing — no published umbrella release is materialised under %s to resolve as latest stable (pass --fetch to ask the release home, or materialise releases/<tag>.checksums.txt).\n", relDir)
 			return exitUnknownTarget
 		}
 		target = latest

@@ -21,9 +21,10 @@ The release home `medici-finance/assay` cuts a **bare `vX.Y.Z`** umbrella tag (e
 never a component-prefixed `assay/vX.Y.Z`. One umbrella version names a **composition**: the exact
 per-artifact tag each shipped component was built at. The release records it in its published
 `checksums.txt` (every asset is built at the umbrella tag), and the version marker and upgrade verb
-**derive** the composition from that file — materialised as `releases/<umbrella>.checksums.txt` for
-offline use, or fetched from the release home for the tag — unless a hand-authored composition
-manifest (`releases/<umbrella>.yaml`) is present, which wins. "Latest stable" means the highest
+**derive** the composition from that file — materialised as `releases/<umbrella>.checksums.txt`, or,
+only under an explicit `--fetch` (each URL printed to stderr before contact; never by default),
+fetched from the release home for the tag — unless a hand-authored composition manifest
+(`releases/<umbrella>.yaml`) is present, which wins. "Latest stable" means the highest
 **umbrella** release — never the highest per-artifact tag.
 
 Per-artifact tags (`statusgen/v0.8.2`, `desk-tools/v0.2.6`) are how the source repo cuts individual

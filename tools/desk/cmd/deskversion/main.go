@@ -10,8 +10,10 @@
 // to this tool. The composition comes from `<releases>/<umbrella>.yaml` when the
 // adopter has authored one, else from the release's published `checksums.txt` —
 // materialised as `<releases>/<umbrella>.checksums.txt` for offline use, or
-// fetched from the release home for exactly that tag (`--no-fetch` forbids the
-// network; `--release-home` re-points it). Nothing fetched is cached or written.
+// or, ONLY under an explicit `--fetch`, fetched from the release home for exactly
+// that tag (`--release-home` re-points it), with the URL printed to stderr before
+// contact. Without `--fetch` the tool never reaches the network. Nothing fetched
+// is cached or written.
 //
 // THREE STATES, ONE EXIT CODE EACH (deskkit contract, exitcodes.go):
 //
@@ -23,7 +25,7 @@
 //
 // USAGE:
 //
-//	deskversion --root <consumer-repo> [--releases <dir>] [--release-home <owner/repo>] [--no-fetch]
+//	deskversion --root <consumer-repo> [--releases <dir>] [--fetch] [--release-home <owner/repo>]
 //	deskversion --version
 //
 // --root defaults to ".". --releases defaults to <root>/releases (where a consumer
@@ -44,14 +46,15 @@ import (
 const usage = `deskversion — the adopter version marker.
 
 USAGE:
-  deskversion --root <consumer-repo> [--releases <dir>] [--release-home <owner/repo>] [--no-fetch]
+  deskversion --root <consumer-repo> [--releases <dir>] [--fetch] [--release-home <owner/repo>]
   deskversion --version
 
 Reads the umbrella line + per-artifact lines from <root>/.assay-versions and
 cross-checks them against the umbrella's composition: <releases>/<umbrella>.yaml
 when authored, else derived from the release's checksums.txt — read from
-<releases>/<umbrella>.checksums.txt when materialised, else fetched from the
-release home for that tag (--no-fetch forbids the network).
+<releases>/<umbrella>.checksums.txt when materialised, else — only under
+--fetch — fetched from the release home for that tag, the URL printed to stderr
+before contact. Without --fetch the tool never reaches the network.
 
 Exit codes:
   0  known               — one umbrella version, consistent composition
@@ -79,7 +82,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		root     = fs.String("root", ".", "consumer repo root holding .assay-versions")
 		releases = fs.String("releases", "", "composition-manifest / materialised-checksums dir (default <root>/releases)")
 		home     = fs.String("release-home", deskkit.DefaultReleaseHome, "release home <owner>/<repo> whose checksums.txt derives a composition")
-		noFetch  = fs.Bool("no-fetch", false, "never consult the release home; local files only")
+		fetch    = fs.Bool("fetch", false, "allow fetching checksums.txt from the release home (default: local files only)")
 		version  = fs.Bool("version", false, "print version and exit")
 	)
 	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
@@ -107,8 +110,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		relDir = filepath.Join(*root, deskkit.ReleasesDir)
 	}
 
-	src := deskkit.CompositionSource{ReleasesDir: relDir, ReleaseHome: *home}
-	if !*noFetch {
+	src := deskkit.CompositionSource{ReleasesDir: relDir, ReleaseHome: *home, Announce: stderr}
+	if *fetch {
 		src.Fetch = fetchFunc
 	}
 	m := deskkit.ReadMarkerFrom(*root, src)

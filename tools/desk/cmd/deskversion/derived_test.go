@@ -35,7 +35,7 @@ func TestDeskversion_DerivedFromChecksums(t *testing.T) {
 	}
 
 	var out, errb bytes.Buffer
-	code := run([]string{"--root", root, "--no-fetch"}, &out, &errb)
+	code := run([]string{"--root", root}, &out, &errb)
 	if code != deskkit.ExitOK {
 		t.Fatalf("exit %d, want 0\nstdout=%s\nstderr=%s", code, out.String(), errb.String())
 	}
@@ -45,21 +45,34 @@ func TestDeskversion_DerivedFromChecksums(t *testing.T) {
 		}
 	}
 
-	// Without the materialised file and with the network forbidden: could-not-determine,
-	// at the unverifiable exit, naming the path it looked for.
+	// Without the materialised file and without --fetch: could-not-determine at the
+	// unverifiable exit, naming the path it looked for and the --fetch opt-in — and
+	// the fetcher is NEVER called (no default probe of a remote).
 	os.Remove(filepath.Join(rel, "v1.0.8.checksums.txt"))
-	out.Reset()
-	code = run([]string{"--root", root, "--no-fetch"}, &out, &errb)
-	if code != deskkit.ExitUnverifiable || !strings.Contains(out.String(), "v1.0.8.checksums.txt") {
-		t.Errorf("no source + --no-fetch: exit %d\n%s", code, out.String())
-	}
-
-	// With a fetch that serves the tag, the same root reads known again.
 	prev := fetchFunc
-	fetchFunc = func(url string) ([]byte, error) { return []byte(checksums), nil }
+	fetchFunc = func(url string) ([]byte, error) {
+		t.Fatalf("fetcher called without --fetch: %s", url)
+		return nil, nil
+	}
 	t.Cleanup(func() { fetchFunc = prev })
 	out.Reset()
-	if code := run([]string{"--root", root}, &out, &errb); code != deskkit.ExitOK || !strings.Contains(out.String(), "releases/download/v1.0.8/checksums.txt") {
+	code = run([]string{"--root", root}, &out, &errb)
+	if code != deskkit.ExitUnverifiable || !strings.Contains(out.String(), "v1.0.8.checksums.txt") || !strings.Contains(out.String(), "--fetch") {
+		t.Errorf("no source, no --fetch: exit %d\n%s", code, out.String())
+	}
+
+	// With --fetch and a fetcher that serves the tag, the same root reads known again,
+	// and the exact URL was announced on stderr BEFORE the fetcher was contacted.
+	url := deskkit.ChecksumsURL(deskkit.DefaultReleaseHome, "v1.0.8")
+	errb.Reset()
+	fetchFunc = func(u string) ([]byte, error) {
+		if !strings.Contains(errb.String(), "fetching "+url+"\n") {
+			t.Errorf("URL not announced before contact; stderr so far:\n%s", errb.String())
+		}
+		return []byte(checksums), nil
+	}
+	out.Reset()
+	if code := run([]string{"--root", root, "--fetch"}, &out, &errb); code != deskkit.ExitOK || !strings.Contains(out.String(), url) {
 		t.Errorf("fetched: exit %d\n%s", code, out.String())
 	}
 }

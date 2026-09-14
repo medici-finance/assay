@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -161,6 +162,45 @@ func TestCompositionSource_NetworkStates(t *testing.T) {
 	}
 	if !strings.Contains(src.Describe("v9.9.9"), url) {
 		t.Errorf("Describe must name the URL consulted: %s", src.Describe("v9.9.9"))
+	}
+}
+
+// TestCompositionSource_AnnouncesBeforeContact — every fetch prints its exact URL
+// on Announce before the fetcher is called, whatever the outcome; and a source with
+// no Fetch never announces anything (nothing to contact).
+func TestCompositionSource_AnnouncesBeforeContact(t *testing.T) {
+	dir := t.TempDir()
+	var announced bytes.Buffer
+	url := ChecksumsURL(DefaultReleaseHome, "v1.0.8")
+	api := "https://api.github.com/repos/" + DefaultReleaseHome + "/releases/latest"
+	seen := func(want string) Fetcher {
+		return func(u string) ([]byte, error) {
+			if !strings.HasSuffix(announced.String(), "fetching "+want+"\n") {
+				t.Errorf("fetch of %s not announced first; announced so far: %q", u, announced.String())
+			}
+			return nil, errors.New("dial tcp: connection refused")
+		}
+	}
+	src := CompositionSource{ReleasesDir: dir, Fetch: seen(url), Announce: &announced}
+	if _, _, err := src.Load("v1.0.8"); err == nil {
+		t.Error("transport failure must surface as an error")
+	}
+	src.Fetch = seen(api)
+	if _, _, err := src.LatestReleaseTag(); err == nil {
+		t.Error("transport failure must surface as an error")
+	}
+	if got := announced.String(); got != "fetching "+url+"\n"+"fetching "+api+"\n" {
+		t.Errorf("announcements = %q", got)
+	}
+	announced.Reset()
+	offline := CompositionSource{ReleasesDir: dir, Announce: &announced}
+	offline.Load("v1.0.8")
+	offline.LatestReleaseTag()
+	if announced.Len() != 0 {
+		t.Errorf("an offline source announced a fetch: %q", announced.String())
+	}
+	if !strings.Contains(offline.Describe("v1.0.8"), "--fetch") {
+		t.Errorf("Describe must name the --fetch opt-in when offline: %s", offline.Describe("v1.0.8"))
 	}
 }
 

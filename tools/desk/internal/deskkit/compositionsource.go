@@ -31,7 +31,10 @@ package deskkit
 //     -O releases/<tag>.checksums.txt`): the offline / air-gapped path.
 //  3. the release home                        — `https://github.com/<home>/releases/
 //     download/<umbrella>/checksums.txt`, fetched for exactly that tag, only when
-//     the caller supplies a Fetch (a `--no-fetch` caller supplies none).
+//     the caller supplies a Fetch. Reaching the network is OPT-IN: both verbs
+//     supply a Fetch only under an explicit `--fetch`, and every fetch announces
+//     its exact URL on Announce (stderr) immediately before contact, whatever the
+//     outcome — a tool never probes a remote by default or in silence.
 //  4. nothing                                 — (‑, found=false, nil): the umbrella
 //     is not a published release as far as this adopter can tell. The caller
 //     refuses; this reader never invents a composition.
@@ -179,6 +182,20 @@ type CompositionSource struct {
 	ReleasesDir string
 	ReleaseHome string
 	Fetch       Fetcher
+	// Announce receives one `fetching <url>` line immediately BEFORE every Fetch
+	// call, regardless of its outcome. nil means os.Stderr. It is never silenced:
+	// an operator must be able to see every remote the tool contacted.
+	Announce io.Writer
+}
+
+// announce prints the URL about to be fetched. Called before, never after, the
+// fetch — a failed or refused fetch is still an attempted contact.
+func (s CompositionSource) announce(url string) {
+	w := s.Announce
+	if w == nil {
+		w = os.Stderr
+	}
+	fmt.Fprintf(w, "fetching %s\n", url)
 }
 
 func (s CompositionSource) home() string {
@@ -223,6 +240,7 @@ func (s CompositionSource) Load(umbrellaTag string) (Composition, bool, error) {
 		return Composition{}, false, nil
 	}
 	url := ChecksumsURL(s.home(), umbrellaTag)
+	s.announce(url)
 	raw, err := s.Fetch(url)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -248,7 +266,7 @@ func (s CompositionSource) Describe(umbrellaTag string) string {
 	if s.Fetch != nil {
 		parts = append(parts, ChecksumsURL(s.home(), umbrellaTag))
 	} else {
-		parts = append(parts, "(release home not consulted: no fetch)")
+		parts = append(parts, "(release home not consulted: pass --fetch to allow it)")
 	}
 	return strings.Join(parts, ", ")
 }
@@ -300,6 +318,7 @@ func (s CompositionSource) LatestReleaseTag() (string, bool, error) {
 		return "", false, nil
 	}
 	url := "https://api.github.com/repos/" + s.home() + "/releases/latest"
+	s.announce(url)
 	raw, err := s.Fetch(url)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

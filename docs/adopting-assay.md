@@ -1774,7 +1774,10 @@ publishes `checksums.txt`, and that is what the tools read. In order:
    `gh release download vX.Y.Z --repo medici-finance/assay --pattern checksums.txt -O
    releases/vX.Y.Z.checksums.txt`.
 3. the release home — `https://github.com/medici-finance/assay/releases/download/vX.Y.Z/checksums.txt`,
-   fetched for exactly that tag. `--no-fetch` forbids this step; `--release-home <owner/repo>`
+   fetched for exactly that tag, **only when you pass `--fetch`**. Fetching is opt-in: without the
+   flag neither tool touches the network, and when neither local source exists they refuse with a
+   message naming `--fetch` (or materialise the file per step 2). Every fetch prints its exact URL
+   to stderr immediately before contact, whatever the outcome. `--release-home <owner/repo>`
    re-points it at a mirror. Nothing fetched is cached or written into your repo.
 
 A derived composition names every component the release ships at the umbrella tag, with the
@@ -1784,7 +1787,7 @@ Components you never installed (say, the quality report pack) are reported as *n
 not as a disagreement. Re-pinning rewrites your `<artifact>-<platform>` lines with **that asset's**
 digest, and the bare `statusgen` line with this host's; a line the composition cannot digest is
 carried forward with a warning, never fabricated. "Latest stable" resolves from what is
-materialised under `releases/`, or — when fetching — from the release the release home marks
+materialised under `releases/`, or — under `--fetch` — from the release the release home marks
 latest.
 
 **Verify:** after an upgrade, `deskversion --root <repo>` reports **known** at the new umbrella and
