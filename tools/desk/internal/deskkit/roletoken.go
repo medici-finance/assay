@@ -27,6 +27,8 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 // loopTokenRoles maps a desk LOOP name (what a session presents in $DESK_LOOP, and what a
@@ -140,6 +142,128 @@ var tokenMinter = func(role, owner string) (path string, stderr string, err erro
 	return strings.TrimSpace(out.String()), strings.TrimSpace(errb.String()), err
 }
 
+// SetRoleTokenMinter installs fn as the process's token minter and returns a function that
+// restores the previous one. It is the TEST seam for the lookup below, exported for the same
+// reason SetGitHubCustodyMinter is: the binaries that own the hot call paths
+// (cmd/deskboard, cmd/deskflip) live in other packages, and the assertion those packages
+// need — "how many times did this process actually fork the minter" — cannot be made from
+// outside without a way to supply a minter that does not.
+//
+// It grants no capability that is not already granted: SetGitHubCustodyMinter replaces the
+// whole custody step, of which this is one part. Production installs nothing and gets
+// exec.Command("desktoken", ...).
+func SetRoleTokenMinter(fn func(role, owner string) (path, stderr string, err error)) (restore func()) {
+	prev := tokenMinter
+	if fn != nil {
+		tokenMinter = fn
+	}
+	return func() { tokenMinter = prev }
+}
+
+// --- The per-process memo ---------------------------------------------------------------
+//
+// WHY A MEMO AT ALL. Every desk verb's forge reads authenticate as a minted App
+// installation token, and until this memo existed the lookup below forked the `desktoken`
+// binary on EVERY call — once per repository per read, with no layer above it caching
+// anything (the resolver seam in forgeresolve.go reads custody at call time by design).
+// Measured on one operating desk host: 140 desktoken invocations per `deskboard actions
+// --delta` tick over 10 repositories, 99.7% of which reported "reused cached" (#1036).
+// The memo makes one verb invocation fork at most once per account.
+//
+// WHAT IT IS NOT. It is not an on-disk cache: nothing here is written to a file, nothing is
+// shared between processes, and a new invocation starts empty. The on-disk reuse window
+// already exists — it is desktoken's own 50-minute token cache — and a second one in front
+// of it would be two caches of one fact.
+
+// roleTokenMemoMaxAge bounds how long ONE PROCESS may reuse a token it already obtained.
+//
+// 45 minutes is DERIVED, not chosen. desktoken reuses its own on-disk cache for 50 minutes
+// (cmd/desktoken's cacheMaxAge), and GitHub's installation tokens live about 60. A memo
+// that outlived the minter's own reuse window would hand back a token the minter would
+// have replaced — the one way a memo could make a verb FAIL where it previously succeeded.
+// This constant must stay strictly under cmd/desktoken's cacheMaxAge; each names the other
+// so the two cannot drift apart silently.
+const roleTokenMemoMaxAge = 45 * time.Minute
+
+// roleOwnerKey is the memo key. It is the PAIR, always. A GitHub App installation token
+// resolves only the repositories of ITS installation, so a memo keyed on the role alone
+// would hand one account's token to another account's read — which does not surface as a
+// 401 but as "could not resolve to a repository" several calls downstream, reading like a
+// missing repo rather than a wrong identity. That is the failure RoleTokenForOwner's own
+// doc comment already names, and the reason the key is not narrowed.
+type roleOwnerKey struct{ role, owner string }
+
+type roleTokenMemoEntry struct {
+	token string
+	path  string
+	at    time.Time
+}
+
+// roleTokenNow is the clock the age guard reads. A package var so a test can age an entry
+// without sleeping for 45 minutes.
+var roleTokenNow = time.Now
+
+var (
+	roleTokenMu    sync.Mutex
+	roleTokenMemo  = map[roleOwnerKey]roleTokenMemoEntry{}
+	roleTokenMints int
+)
+
+// RoleTokenMints reports how many times THIS PROCESS actually ran the token minter — memo
+// hits are not counted. It exists because that is the assertion a caller's own test needs
+// and there is otherwise no way to make it: counting calls INTO RoleTokenForOwner counts
+// memo hits, and counting audit rows measures a different tool's behaviour. It carries no
+// identity and never appears in any output.
+func RoleTokenMints() int {
+	roleTokenMu.Lock()
+	defer roleTokenMu.Unlock()
+	return roleTokenMints
+}
+
+// resetRoleTokenMemo drops every entry and zeroes the counter. Test-only: package-private
+// precisely so no binary can clear a memo mid-run and re-fork what it already holds.
+func resetRoleTokenMemo() {
+	roleTokenMu.Lock()
+	defer roleTokenMu.Unlock()
+	roleTokenMemo = map[roleOwnerKey]roleTokenMemoEntry{}
+	roleTokenMints = 0
+}
+
+// lookupRoleTokenMemo returns a live entry for k, or ok=false when there is none or the one
+// there has aged past roleTokenMemoMaxAge. An aged entry is DELETED on the way out rather
+// than left to be re-tested on every later call.
+func lookupRoleTokenMemo(k roleOwnerKey) (roleTokenMemoEntry, bool) {
+	roleTokenMu.Lock()
+	defer roleTokenMu.Unlock()
+	e, ok := roleTokenMemo[k]
+	if !ok {
+		return roleTokenMemoEntry{}, false
+	}
+	if roleTokenNow().Sub(e.at) >= roleTokenMemoMaxAge {
+		delete(roleTokenMemo, k)
+		return roleTokenMemoEntry{}, false
+	}
+	return e, true
+}
+
+// storeRoleTokenMemo records a SUCCESSFUL lookup. Failures are never stored — see
+// RoleTokenForOwner.
+func storeRoleTokenMemo(k roleOwnerKey, e roleTokenMemoEntry) {
+	roleTokenMu.Lock()
+	defer roleTokenMu.Unlock()
+	roleTokenMemo[k] = e
+}
+
+// mintRoleToken runs the minter and counts the fork. The lock is NOT held across the call:
+// minting shells out to another process, and holding a package mutex across it would
+// serialise every concurrent forge read in the verb behind the slowest mint.
+func mintRoleToken(role, owner string) (path, stderr string, err error) {
+	roleTokenMu.Lock()
+	roleTokenMints++
+	roleTokenMu.Unlock()
+	return tokenMinter(role, owner)
+}
+
 // OwnerOf returns the account half of an "owner/name" slug. A bare owner is returned
 // unchanged, so a caller that only knows the account (an owner-scoped search) can ask for
 // its token without inventing a repository name.
@@ -157,7 +281,13 @@ func OwnerOf(repo string) string {
 // token resolves only the repositories of ITS installation. A token minted for one owner
 // used against another owner's repo does not 401 — it fails with "could not resolve to a
 // repository", which reads like a missing repo rather than a wrong identity. So the owner
-// is the unit, and every caller keys its cache on it.
+// is the unit, and the memo below is keyed on it (with the role) rather than on either half.
+//
+// MEMOISED PER PROCESS. The first lookup for a (role, owner) pair forks the minter; every
+// later one in the same process returns the same token and path without a fork, for up to
+// roleTokenMemoMaxAge. A FAILURE is never memoised — a transient mint failure must not pin
+// a refusal for the life of a long-running verb — so every refusal below is reached by
+// running the minter, exactly as it was before the memo existed.
 func RoleTokenForOwner(role, owner string) (token, path string, err error) {
 	role = strings.TrimSpace(role)
 	owner = strings.TrimSpace(owner)
@@ -170,7 +300,11 @@ func RoleTokenForOwner(role, owner string) (token, path string, err error) {
 			"no account named for the %s App token lookup — an installation token is per account, so "+
 				"there is nothing to mint against", role), nil)
 	}
-	path, stderr, err := tokenMinter(role, owner)
+	key := roleOwnerKey{role: role, owner: owner}
+	if e, ok := lookupRoleTokenMemo(key); ok {
+		return e.token, e.path, nil
+	}
+	path, stderr, err := mintRoleToken(role, owner)
 	if err != nil {
 		detail := minterErrorDetail(stderr)
 		if detail == "" {
@@ -193,6 +327,7 @@ func RoleTokenForOwner(role, owner string) (token, path string, err error) {
 		return "", path, Unverifiable(fmt.Sprintf(
 			"the %s App installation token at %s is empty", role, path), nil)
 	}
+	storeRoleTokenMemo(key, roleTokenMemoEntry{token: token, path: path, at: roleTokenNow()})
 	return token, path, nil
 }
 
