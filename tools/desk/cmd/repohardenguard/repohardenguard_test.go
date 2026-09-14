@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,65 +19,89 @@ import (
 const reposDeclared = "<!-- repohardenguard:repos: o/r, o/r2 -->\n"
 
 // The fixture mirrors the real checklist's shape: one public row, one
-// admin-gated row, one ruleset row (two-hop), one not-available row.
+// admin-gated row, one ruleset row (two-hop), one not-available row. Read cells use the
+// forge-gitlab/11 grammar (`read <kind>` / `read file <path>`) — the retired `gh api
+// <endpoint>` form is exercised separately (TestChecklistRefusesGhApiCell).
 const fixture = "" +
 	"# fixture\n" +
 	reposDeclared +
 	rowsBegin + "\n" +
 	"| ID | Repo | Setting | Gated | Read | Field | Required | Set |\n" +
 	"|---|---|---|---|---|---|---|---|\n" +
-	"| vis | o/r | visibility | public | `gh api repos/o/r` | visibility | public | admin only |\n" +
-	"| scan | o/r | secret scanning | admin | `gh api repos/o/r` | security_and_analysis.secret_scanning.status | enabled | admin UI |\n" +
-	"| bypass | o/r | protect-main bypass_actors | admin | `gh api repos/o/r/rulesets` | [name=protect-main].bypass_actors | [] | admin UI |\n" +
-	"| tagrule | o/r | tag immutability | public | `gh api repos/o/r/rulesets` | [name=protect-release-tags].rules | contains:update | admin UI |\n" +
-	"| doc | o/r | SECURITY.md present | public | `gh api repos/o/r/contents/SECURITY.md` | name | SECURITY.md | copy |\n" +
-	"| rulesets | o/r2 | rulesets | admin | `gh api repos/o/r2/rulesets` | - | not available — private repo on a free plan | n/a |\n" +
+	"| vis | o/r | visibility | public | `read repo` | visibility | public | admin only |\n" +
+	"| scan | o/r | secret scanning | admin | `read repo` | security_and_analysis.secret_scanning.status | enabled | admin UI |\n" +
+	"| bypass | o/r | protect-main bypass_actors | admin | `read rulesets` | [name=protect-main].bypass_actors | [] | admin UI |\n" +
+	"| tagrule | o/r | tag immutability | public | `read rulesets` | [name=protect-release-tags].rules | contains:update | admin UI |\n" +
+	"| doc | o/r | SECURITY.md present | public | `read file SECURITY.md` | - | present | copy |\n" +
+	"| rulesets | o/r2 | rulesets | admin | `read rulesets` | - | not available — private repo on a free plan | n/a |\n" +
 	rowsEnd + "\n"
 
-// fakeGH answers from a table of endpoint→body, and errors for anything else the
-// way gh does (message plus "(HTTP nnn)").
-type fakeGH struct {
-	body map[string]string
-	fail map[string]int // endpoint → status code
-	seen []string
+// stubForge is a minimal deskkit.Forge for these tests: it embeds the interface (nil), so it
+// satisfies deskkit.Forge at compile time, and overrides only the two operations
+// cmd/repohardenguard actually calls (RepoHardeningRead, ReadFile) — any other method called
+// through it panics on the embedded nil, which would itself fail a test loudly rather than
+// silently answering something plausible.
+type stubForge struct {
+	deskkit.Forge
+	hardening map[string]hardeningFixture
+	files     map[string]fileFixture
+	seen      []string // kinds/paths read, in call order
 }
 
-func (f *fakeGH) get(endpoint string) ([]byte, error) {
-	f.seen = append(f.seen, endpoint)
-	if code, ok := f.fail[endpoint]; ok {
-		return nil, fmt.Errorf("gh api %s: HTTP %d (HTTP %d)", endpoint, code, code)
-	}
-	b, ok := f.body[endpoint]
-	if !ok {
-		return nil, fmt.Errorf("gh api %s: Not Found (HTTP 404)", endpoint)
-	}
-	return []byte(b), nil
+type hardeningFixture struct {
+	raw json.RawMessage
+	err error
 }
+
+type fileFixture struct {
+	fc  *deskkit.FileContent
+	err error
+}
+
+func (s *stubForge) RepoHardeningRead(repo deskkit.ForgeRepo, kind deskkit.HardeningReadKind) (json.RawMessage, error) {
+	s.seen = append(s.seen, "read "+string(kind))
+	f, ok := s.hardening[string(kind)]
+	if !ok {
+		return nil, fmt.Errorf("stubForge: no fixture for hardening kind %q", kind)
+	}
+	return f.raw, f.err
+}
+
+func (s *stubForge) ReadFile(repo deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
+	s.seen = append(s.seen, "read file "+in.File)
+	f, ok := s.files[in.File]
+	if !ok {
+		return nil, fmt.Errorf("stubForge: no fixture for file %q", in.File)
+	}
+	return f.fc, f.err
+}
+
+func rawObj(s string) json.RawMessage { return json.RawMessage(s) }
 
 // adminWorld is the world as a repository ADMIN sees it, fully hardened.
-func adminWorld() *fakeGH {
-	return &fakeGH{body: map[string]string{
-		"user":       `{"login":"admin-person"}`,
-		"repos/o/r":  `{"visibility":"public","security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`,
-		"repos/o/r2": `{"visibility":"private"}`,
-		"repos/o/r/rulesets": `[{"id":1,"name":"protect-main"},` +
-			`{"id":2,"name":"protect-release-tags"}]`,
-		"repos/o/r/rulesets/1":           `{"id":1,"name":"protect-main","bypass_actors":[],"rules":[{"type":"pull_request"}]}`,
-		"repos/o/r/rulesets/2":           `{"id":2,"name":"protect-release-tags","bypass_actors":[],"rules":[{"type":"update"},{"type":"deletion"}]}`,
-		"repos/o/r/contents/SECURITY.md": `{"name":"SECURITY.md"}`,
-	}}
+func adminWorld() *stubForge {
+	return &stubForge{
+		hardening: map[string]hardeningFixture{
+			"repo": {raw: rawObj(`{"visibility":"public","security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`)},
+			"rulesets": {raw: rawObj(`[` +
+				`{"id":1,"name":"protect-main","bypass_actors":[],"rules":[{"type":"pull_request"}]},` +
+				`{"id":2,"name":"protect-release-tags","bypass_actors":[],"rules":[{"type":"update"},{"type":"deletion"}]}]`)},
+		},
+		files: map[string]fileFixture{
+			"SECURITY.md": {fc: &deskkit.FileContent{Exists: true, Content: []byte("policy\n")}},
+		},
+	}
 }
 
 // nonAdminWorld is the SAME hardened repo read with a token that lacks admin:
 // security_and_analysis reads null and the ruleset detail carries no
-// bypass_actors key. Both responses are HTTP 200. This is the exact shape
-// measured against medici-finance/assay.
-func nonAdminWorld() *fakeGH {
+// bypass_actors key. This is the exact shape measured against medici-finance/assay.
+func nonAdminWorld() *stubForge {
 	w := adminWorld()
-	w.body["user"] = `{"login":"member-person"}`
-	w.body["repos/o/r"] = `{"visibility":"public","security_and_analysis":null}`
-	w.body["repos/o/r/rulesets/1"] = `{"id":1,"name":"protect-main","current_user_can_bypass":"never","rules":[{"type":"pull_request"}]}`
-	w.body["repos/o/r/rulesets/2"] = `{"id":2,"name":"protect-release-tags","current_user_can_bypass":"never","rules":[{"type":"update"},{"type":"deletion"}]}`
+	w.hardening["repo"] = hardeningFixture{raw: rawObj(`{"visibility":"public","security_and_analysis":null}`)}
+	w.hardening["rulesets"] = hardeningFixture{raw: rawObj(`[` +
+		`{"id":1,"name":"protect-main","current_user_can_bypass":"never","rules":[{"type":"pull_request"}]},` +
+		`{"id":2,"name":"protect-release-tags","current_user_can_bypass":"never","rules":[{"type":"update"},{"type":"deletion"}]}]`)}
 	return w
 }
 
@@ -89,21 +114,26 @@ func writeFixture(t *testing.T, body string) string {
 	return p
 }
 
-func runGuard(t *testing.T, w *fakeGH, path, repo string, extra ...string) (int, string, string) {
+// runGuard drives run() with forgeForFn stubbed onto w — no network, no minted token, no
+// desktoken subprocess. It restores the real forgeForFn afterward so tests do not leak state.
+func runGuard(t *testing.T, w *stubForge, path, repo string, extra ...string) (int, string, string) {
 	t.Helper()
-	orig := ghRun
-	t.Cleanup(func() { ghRun = orig })
-	ghRun = func(args ...string) ([]byte, error) {
-		if len(args) != 2 || args[0] != "api" {
-			t.Fatalf("guard shelled out to a non-GET gh call: %v", args)
-		}
-		return w.get(args[1])
+	origForgeFor := forgeForFn
+	t.Cleanup(func() { forgeForFn = origForgeFor })
+	forgeForFn = func(r string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, _ := strings.Cut(r, "/")
+		return w, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
 	var out, errb bytes.Buffer
 	args := append([]string{"--repo", repo, "--checklist", path}, extra...)
 	code := run(args, &out, &errb)
 	return code, out.String(), errb.String()
 }
+
+// wantIdentity is what production's identity() renders absent any deployment-specific
+// AUDITOR_APP binding — computed the same way identity() itself does, so this assertion
+// tracks the real wiring rather than a value hand-copied out of it.
+func wantIdentity() string { return deskkit.AppBinding("auditor") + "[bot]" }
 
 func stateOf(t *testing.T, out, id string) string {
 	t.Helper()
@@ -137,8 +167,8 @@ func TestAdminRun_HardenedRepoIsGreen(t *testing.T) {
 	if strings.Contains(out, string(StateUnknown)) {
 		t.Fatalf("a green run mentions %q — a Verify row grepping for it would go red:\n%s", StateUnknown, out)
 	}
-	if !strings.Contains(out, "identity: admin-person") {
-		t.Fatalf("output does not name the acting identity:\n%s", out)
+	if !strings.Contains(out, "identity: "+wantIdentity()) {
+		t.Fatalf("output does not name the acting identity (want %s):\n%s", wantIdentity(), out)
 	}
 }
 
@@ -172,8 +202,8 @@ func TestNonAdminReads_CouldNotCheckAndNonZeroExit(t *testing.T) {
 // something the world does not have and the verdict must flip.
 func TestRequiredValueChange_FlipsTheVerdict(t *testing.T) {
 	mutated := strings.Replace(fixture,
-		"| vis | o/r | visibility | public | `gh api repos/o/r` | visibility | public |",
-		"| vis | o/r | visibility | public | `gh api repos/o/r` | visibility | private |", 1)
+		"| vis | o/r | visibility | public | `read repo` | visibility | public |",
+		"| vis | o/r | visibility | public | `read repo` | visibility | private |", 1)
 	if mutated == fixture {
 		t.Fatal("fixture mutation did not apply — the test would prove nothing")
 	}
@@ -189,7 +219,9 @@ func TestRequiredValueChange_FlipsTheVerdict(t *testing.T) {
 
 func TestBypassActors_NonEmptyIsWrong(t *testing.T) {
 	w := adminWorld()
-	w.body["repos/o/r/rulesets/1"] = `{"id":1,"name":"protect-main","bypass_actors":[{"actor_id":5,"actor_type":"Team","bypass_mode":"always"}]}`
+	w.hardening["rulesets"] = hardeningFixture{raw: rawObj(
+		`[{"id":1,"name":"protect-main","bypass_actors":[{"actor_id":5,"actor_type":"Team","bypass_mode":"always"}]},` +
+			`{"id":2,"name":"protect-release-tags","bypass_actors":[],"rules":[{"type":"update"},{"type":"deletion"}]}]`)}
 	p := writeFixture(t, fixture)
 	code, out, _ := runGuard(t, w, p, "o/r")
 	if code != deskkit.ExitRefused {
@@ -211,21 +243,19 @@ func TestNotAvailableRow_NeitherPassNorFail(t *testing.T) {
 		t.Fatalf("output does not carry the literal %q:\n%s", StateNotAvailable, out)
 	}
 	// It must not have made the call it says is unavailable — asking would
-	// produce a 403 that reads like a permission wall and muddy the two states
-	// that matter. Assert on THIS world's call log, not a fresh one.
-	if len(w.seen) == 0 {
-		t.Fatal("the fake recorded no calls at all — the assertion below would be vacuous")
-	}
-	for _, ep := range w.seen {
-		if ep == "repos/o/r2/rulesets" {
-			t.Fatalf("the guard called %q, an endpoint the checklist records as not available", ep)
+	// produce a permission-wall-shaped error and muddy the two states that matter. Assert on
+	// THIS world's call log, not a fresh one. The preflight's own `read repo` call is expected
+	// (it always runs); a "read rulesets" beyond that would be the leak.
+	for _, k := range w.seen {
+		if k == "read rulesets" {
+			t.Fatalf("the guard read a kind the checklist records as not available: %v", w.seen)
 		}
 	}
 }
 
 func TestAbsentFileOnPublicRow_IsWrongNotUnknown(t *testing.T) {
 	w := adminWorld()
-	delete(w.body, "repos/o/r/contents/SECURITY.md") // 404 from a readable repo = real absence
+	w.files["SECURITY.md"] = fileFixture{err: &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "repos/o/r/contents/SECURITY.md"}} // absent from a readable repo = real absence
 	p := writeFixture(t, fixture)
 	code, out, _ := runGuard(t, w, p, "o/r")
 	if code != deskkit.ExitRefused {
@@ -236,9 +266,9 @@ func TestAbsentFileOnPublicRow_IsWrongNotUnknown(t *testing.T) {
 	}
 }
 
-func TestForbiddenRead_UnknownEvenOnPublicRow(t *testing.T) {
+func TestForbiddenIsCouldNotCheck(t *testing.T) {
 	w := adminWorld()
-	w.fail = map[string]int{"repos/o/r/contents/SECURITY.md": 403}
+	w.files["SECURITY.md"] = fileFixture{err: &deskkit.ForgeAPIError{Status: 403, Method: "GET", Path: "repos/o/r/contents/SECURITY.md"}}
 	p := writeFixture(t, fixture)
 	code, out, _ := runGuard(t, w, p, "o/r")
 	if got := stateOf(t, out, "doc"); got != string(StateUnknown) {
@@ -249,9 +279,40 @@ func TestForbiddenRead_UnknownEvenOnPublicRow(t *testing.T) {
 	}
 }
 
+// The three-state verdicts survive the seam: an admin-gated null is could-not-check, a
+// forbidden read is could-not-check, and a not-found on a public row is absent-therefore-wrong
+// — exactly what TestNonAdminReads_CouldNotCheckAndNonZeroExit,
+// TestForbiddenIsCouldNotCheck and TestAbsentFileOnPublicRow_IsWrongNotUnknown each already
+// pin per-scenario; these three focused tests are the names Verify row 6 dereferences.
+func TestAdminNullIsCouldNotCheck(t *testing.T) {
+	w := adminWorld()
+	w.hardening["repo"] = hardeningFixture{raw: rawObj(`{"visibility":"public","security_and_analysis":{"secret_scanning":{"status":null}}}`)}
+	p := writeFixture(t, fixture)
+	code, out, _ := runGuard(t, w, p, "o/r")
+	if got := stateOf(t, out, "scan"); got != string(StateUnknown) {
+		t.Fatalf("a terminal null on an admin-gated row reported %q, want %q — null is not an answer", got, StateUnknown)
+	}
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("exit %d, want %d\n%s", code, deskkit.ExitUnverifiable, out)
+	}
+}
+
+func TestPublicNotFoundIsAbsent(t *testing.T) {
+	w := adminWorld()
+	w.files["SECURITY.md"] = fileFixture{err: &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "repos/o/r/contents/SECURITY.md"}}
+	p := writeFixture(t, fixture)
+	code, out, _ := runGuard(t, w, p, "o/r")
+	if got := stateOf(t, out, "doc"); got != string(StateWrong) {
+		t.Fatalf("an absent file on a public row reported %q, want %q", got, StateWrong)
+	}
+	if code != deskkit.ExitRefused {
+		t.Fatalf("exit %d, want %d", code, deskkit.ExitRefused)
+	}
+}
+
 func TestUnreadableRepo_ReportsNothing(t *testing.T) {
 	w := adminWorld()
-	w.fail = map[string]int{"repos/o/r": 404}
+	w.hardening["repo"] = hardeningFixture{err: &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "repos/o/r"}}
 	p := writeFixture(t, fixture)
 	code, out, errb := runGuard(t, w, p, "o/r")
 	if code != deskkit.ExitUnverifiable {
@@ -267,7 +328,7 @@ func TestUnreadableRepo_ReportsNothing(t *testing.T) {
 
 func TestMissingRulesetIsWrong(t *testing.T) {
 	w := adminWorld()
-	w.body["repos/o/r/rulesets"] = `[{"id":2,"name":"protect-release-tags"}]`
+	w.hardening["rulesets"] = hardeningFixture{raw: rawObj(`[{"id":2,"name":"protect-release-tags","bypass_actors":[],"rules":[{"type":"update"},{"type":"deletion"}]}]`)}
 	p := writeFixture(t, fixture)
 	code, out, _ := runGuard(t, w, p, "o/r")
 	if code != deskkit.ExitRefused {
@@ -286,7 +347,7 @@ func TestRepoWithNoRows_Refuses(t *testing.T) {
 		rowsBegin + "\n" +
 		"| ID | Repo | Setting | Gated | Read | Field | Required | Set |\n" +
 		"|---|---|---|---|---|---|---|---|\n" +
-		"| vis | o/r | visibility | public | `gh api repos/o/r` | visibility | public | n/a |\n" +
+		"| vis | o/r | visibility | public | `read repo` | visibility | public | n/a |\n" +
 		rowsEnd + "\n"
 	p := writeFixture(t, body)
 	code, out, errb := runGuard(t, adminWorld(), p, "o/absent")
@@ -298,113 +359,6 @@ func TestRepoWithNoRows_Refuses(t *testing.T) {
 	}
 }
 
-// Finding 1 on PR #487. A row scoped to one repo whose Read cell reads a
-// DIFFERENT repo used to be evaluated happily, and its verdict printed under the
-// scoped repo's name — the guard certifying a repository it never measured.
-// Without the parse-time coupling check this exits 0 and prints checked-ok.
-func TestRowReadsAnotherRepo_IsFatalNotGreen(t *testing.T) {
-	body := "# lab\n" +
-		"<!-- repohardenguard:repos: o/r, o/other -->\n" +
-		rowsBegin + "\n" +
-		"| ID | Repo | Setting | Gated | Read | Field | Required | Set |\n" +
-		"|---|---|---|---|---|---|---|---|\n" +
-		"| lie | o/r | visibility | public | `gh api repos/o/other` | visibility | public | n/a |\n" +
-		rowsEnd + "\n"
-	w := adminWorld()
-	w.body["repos/o/other"] = `{"visibility":"public"}` // the OTHER repo really is compliant
-	p := writeFixture(t, body)
-	code, out, errb := runGuard(t, w, p, "o/r")
-	if code == deskkit.ExitOK {
-		t.Fatalf("exit 0 — the guard certified o/r green from a read of o/other:\n%s", out)
-	}
-	if code != deskkit.ExitUnverifiable {
-		t.Fatalf("exit %d, want %d\n%s%s", code, deskkit.ExitUnverifiable, out, errb)
-	}
-	if strings.Contains(out, string(StateOK)) {
-		t.Fatalf("a mis-scoped row produced a checked-ok verdict:\n%s", out)
-	}
-	if !strings.Contains(errb, "must not be measured against another") {
-		t.Fatalf("stderr does not name the mis-scoping: %s", errb)
-	}
-}
-
-// The boundary case that makes the coupling check non-trivial: `o/r` is a
-// PREFIX of `o/r-toolkit`, exactly as `medici-finance/assay` is a prefix of
-// `medici-finance/assay` in the shipped table. A prefix test without the
-// segment separator would accept this row.
-func TestPrefixRepoIsNotTheSameRepo(t *testing.T) {
-	if scopedTo("repos/o/r-toolkit/rulesets", "o/r") {
-		t.Fatal("repos/o/r-toolkit/rulesets accepted as scoped to o/r — a prefix is not a repo")
-	}
-	if scopedTo("repos/o/rr", "o/r") {
-		t.Fatal("repos/o/rr accepted as scoped to o/r")
-	}
-	if !scopedTo("repos/o/r", "o/r") {
-		t.Fatal("the bare repo endpoint must be scoped to itself")
-	}
-	if !scopedTo("repos/o/r/actions/permissions/workflow", "o/r") {
-		t.Fatal("a sub-path of the repo must be scoped to it")
-	}
-}
-
-// Finding 2 on PR #487, the same root cause. A one-character typo in a Repo cell
-// used to DELETE the row: it matched no run, was never evaluated, and nothing in
-// the output said so. The count stayed plausible while coverage shrank. The
-// typo'd row here would otherwise be checked-wrong (no such ruleset exists).
-func TestTypoedRepoCell_DoesNotSilentlyDropTheRow(t *testing.T) {
-	body := "# lab\n" +
-		"<!-- repohardenguard:repos: o/r -->\n" +
-		rowsBegin + "\n" +
-		"| ID | Repo | Setting | Gated | Read | Field | Required | Set |\n" +
-		"|---|---|---|---|---|---|---|---|\n" +
-		"| vis | o/r | visibility | public | `gh api repos/o/r` | visibility | public | n/a |\n" +
-		"| tagimm | o/R | tag immutability | public | `gh api repos/o/r/rulesets` | [name=no-such-ruleset].enforcement | active | n/a |\n" +
-		rowsEnd + "\n"
-	p := writeFixture(t, body)
-	code, out, errb := runGuard(t, adminWorld(), p, "o/r")
-	if code == deskkit.ExitOK {
-		t.Fatalf("exit 0 — a typo'd Repo cell removed a check and the run still went green:\n%s", out)
-	}
-	if code != deskkit.ExitUnverifiable {
-		t.Fatalf("exit %d, want %d\n%s%s", code, deskkit.ExitUnverifiable, out, errb)
-	}
-	// Either guard may fire first here — the typo desynchronises the Repo cell
-	// from its own Read cell as well as from the declared set. What matters is
-	// that the run refuses and names the row rather than dropping it.
-	if !strings.Contains(errb, "tagimm") {
-		t.Fatalf("stderr does not name the dropped row: %s", errb)
-	}
-}
-
-// The form of Finding 2 that the Read/Repo coupling check CANNOT catch: the typo
-// is applied consistently to both the Repo cell and its endpoint, so the two
-// agree with each other and disagree only with reality. Nothing but membership
-// in the declared set catches this, and without it the row is silently deleted
-// and the run goes green.
-func TestBothSidesTypoedRepo_IsFatalNotSilentlyDropped(t *testing.T) {
-	body := "# lab\n" +
-		"<!-- repohardenguard:repos: o/r -->\n" +
-		rowsBegin + "\n" +
-		"| ID | Repo | Setting | Gated | Read | Field | Required | Set |\n" +
-		"|---|---|---|---|---|---|---|---|\n" +
-		"| vis | o/r | visibility | public | `gh api repos/o/r` | visibility | public | n/a |\n" +
-		"| tagimm | o/rr | tag immutability | public | `gh api repos/o/rr/rulesets` | [name=nope].enforcement | active | n/a |\n" +
-		rowsEnd + "\n"
-	p := writeFixture(t, body)
-	code, out, errb := runGuard(t, adminWorld(), p, "o/r")
-	if code == deskkit.ExitOK {
-		t.Fatalf("exit 0 — a consistently typo'd repo deleted a check and the run went green:\n%s", out)
-	}
-	if code != deskkit.ExitUnverifiable {
-		t.Fatalf("exit %d, want %d\n%s%s", code, deskkit.ExitUnverifiable, out, errb)
-	}
-	if !strings.Contains(errb, "does not declare") {
-		t.Fatalf("stderr does not name the undeclared repo cell: %s", errb)
-	}
-}
-
-// The executed-check count must be visible and must account for the whole file,
-// so a reader can see that no row went missing.
 func TestScopeLine_AccountsForEveryRowInTheFile(t *testing.T) {
 	p := writeFixture(t, fixture)
 	_, out, _ := runGuard(t, adminWorld(), p, "o/r")
@@ -432,31 +386,48 @@ func TestUndeclaredRepoArgument_Refuses(t *testing.T) {
 	}
 }
 
+// The old grammar is refused BY NAME at parse time, naming the enumerated replacement — never
+// silently reaching the fetcher as a malformed kind.
+func TestChecklistRefusesGhApiCell(t *testing.T) {
+	body := reposDeclared + rowsBegin +
+		"\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n"
+	p := writeFixture(t, body)
+	_, _, errb := runGuard(t, adminWorld(), p, "o/r")
+	if !strings.Contains(errb, "retired `gh api <endpoint>` form") {
+		t.Fatalf("stderr does not name the retired grammar: %s", errb)
+	}
+	if !strings.Contains(errb, "repo") || !strings.Contains(errb, "rulesets") {
+		t.Fatalf("stderr does not enumerate the replacement vocabulary: %s", errb)
+	}
+}
+
 func TestChecklistParse_FailuresAreFatal(t *testing.T) {
 	cases := map[string]string{
-		"no markers":     "# just prose\n",
-		"empty table":    reposDeclared + rowsBegin + "\n" + rowsEnd + "\n",
-		"short row":      reposDeclared + rowsBegin + "\n| a | b |\n" + rowsEnd + "\n",
-		"bad gated":      reposDeclared + rowsBegin + "\n| a | o/r | s | sometimes | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
-		"not a gh api":   reposDeclared + rowsBegin + "\n| a | o/r | s | public | `curl https://api.github.com` | visibility | public | x |\n" + rowsEnd + "\n",
-		"duplicate ids":  reposDeclared + rowsBegin + "\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
-		"no field":       reposDeclared + rowsBegin + "\n| a | o/r | s | public | `gh api repos/o/r` | - | public | x |\n" + rowsEnd + "\n",
-		"bad repo shape": reposDeclared + rowsBegin + "\n| a | justname | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
+		"no markers":  "# just prose\n",
+		"empty table": reposDeclared + rowsBegin + "\n" + rowsEnd + "\n",
+		"short row":   reposDeclared + rowsBegin + "\n| a | b |\n" + rowsEnd + "\n",
+		"bad gated":   reposDeclared + rowsBegin + "\n| a | o/r | s | sometimes | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
+		"not a read cell": reposDeclared + rowsBegin +
+			"\n| a | o/r | s | public | `curl https://api.github.com` | visibility | public | x |\n" + rowsEnd + "\n",
+		"duplicate ids": reposDeclared + rowsBegin +
+			"\n| a | o/r | s | public | `read repo` | visibility | public | x |\n| a | o/r | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
+		"no field":       reposDeclared + rowsBegin + "\n| a | o/r | s | public | `read repo` | - | public | x |\n" + rowsEnd + "\n",
+		"bad repo shape": reposDeclared + rowsBegin + "\n| a | justname | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
 
 		// The repos directive itself is required and must be unambiguous.
-		"no repos directive": rowsBegin + "\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
+		"no repos directive": rowsBegin + "\n| a | o/r | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
 		"empty repos directive": "<!-- repohardenguard:repos: -->\n" + rowsBegin +
-			"\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
+			"\n| a | o/r | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
 		"two repos directives": reposDeclared + reposDeclared + rowsBegin +
-			"\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
+			"\n| a | o/r | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
 		"declared repo not owner/name": "<!-- repohardenguard:repos: justname -->\n" + rowsBegin +
-			"\n| a | o/r | s | public | `gh api repos/o/r` | visibility | public | x |\n" + rowsEnd + "\n",
+			"\n| a | o/r | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
 		"row repo not declared": "<!-- repohardenguard:repos: o/r -->\n" + rowsBegin +
-			"\n| a | o/elsewhere | s | public | `gh api repos/o/elsewhere` | visibility | public | x |\n" + rowsEnd + "\n",
-		"read cell reads another repo": reposDeclared + rowsBegin +
-			"\n| a | o/r | s | public | `gh api repos/o/r2` | visibility | public | x |\n" + rowsEnd + "\n",
-		"not-available row mis-scoped": reposDeclared + rowsBegin +
-			"\n| a | o/r | s | admin | `gh api repos/o/r2/rulesets` | - | not available — free plan | x |\n" + rowsEnd + "\n",
+			"\n| a | o/elsewhere | s | public | `read repo` | visibility | public | x |\n" + rowsEnd + "\n",
+		"read file with no path": reposDeclared + rowsBegin +
+			"\n| a | o/r | s | public | `read file` | - | present | x |\n" + rowsEnd + "\n",
+		"read cell with trailing tokens": reposDeclared + rowsBegin +
+			"\n| a | o/r | s | public | `read repo extra` | visibility | public | x |\n" + rowsEnd + "\n",
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -478,7 +449,7 @@ func TestChecklistParse_FailuresAreFatal(t *testing.T) {
 // reports checked-wrong: a verdict manufactured from a non-answer.
 func TestTerminalNull_IsAbsenceNotAValue(t *testing.T) {
 	w := adminWorld()
-	w.body["repos/o/r"] = `{"visibility":"public","security_and_analysis":{"secret_scanning":{"status":null}}}`
+	w.hardening["repo"] = hardeningFixture{raw: rawObj(`{"visibility":"public","security_and_analysis":{"secret_scanning":{"status":null}}}`)}
 	p := writeFixture(t, fixture)
 	code, out, _ := runGuard(t, w, p, "o/r")
 	if got := stateOf(t, out, "scan"); got != string(StateUnknown) {
@@ -494,7 +465,7 @@ func TestTerminalNull_IsAbsenceNotAValue(t *testing.T) {
 // the nil guard routes to absent(), which is what distinguishes the two.
 func TestTerminalNull_OnPublicRowIsWrong(t *testing.T) {
 	w := adminWorld()
-	w.body["repos/o/r"] = `{"visibility":null,"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`
+	w.hardening["repo"] = hardeningFixture{raw: rawObj(`{"visibility":null,"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`)}
 	p := writeFixture(t, fixture)
 	code, out, _ := runGuard(t, w, p, "o/r")
 	if got := stateOf(t, out, "vis"); got != string(StateWrong) {
@@ -502,19 +473,6 @@ func TestTerminalNull_OnPublicRowIsWrong(t *testing.T) {
 	}
 	if code == deskkit.ExitOK {
 		t.Fatalf("exit 0 with a null value\n%s", out)
-	}
-}
-
-func TestHTTPStatusParsing(t *testing.T) {
-	cases := map[string]int{
-		"gh api x: Bad credentials (HTTP 401)": 401,
-		"gh api x: Not Found":                  404,
-		"gh api x: dial tcp: no route":         0,
-	}
-	for msg, want := range cases {
-		if got := httpStatus(fmt.Errorf("%s", msg)); got != want {
-			t.Errorf("httpStatus(%q) = %d, want %d", msg, got, want)
-		}
 	}
 }
 

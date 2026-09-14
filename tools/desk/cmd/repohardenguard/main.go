@@ -47,6 +47,10 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// forge-gitlab/11: the guard's fetcher is deskkit.Forge (op 38 RepoHardeningRead, op 22
+// ReadFile) under the fixed, read-only "auditor" identity — see forge.go. No `gh`/`glab` shell-out
+// remains in this package's shipped source (fg/08 Verify row 3).
+
 const defaultChecklist = "docs/repo-hardening-checklist.md"
 
 func main() {
@@ -93,15 +97,20 @@ func run(args []string, out, errW io.Writer) int {
 		return deskkit.ExitUnverifiable
 	}
 
-	c := Checker{Get: ghGet}
+	fg, fr, ferr := forgeForFn(*repo)
+	if ferr != nil {
+		fmt.Fprintf(errW, "repohardenguard: cannot resolve a forge for %s: %v\n", *repo, ferr)
+		return deskkit.ExitCodeOf(ferr)
+	}
+	c := Checker{Repo: fr, Forge: fg}
 
 	// Preflight. Two jobs, both load-bearing:
-	//   1. It proves the token can read this repo at all. Every "404 means the
+	//   1. It proves the token can read this repo at all. Every "not found means the
 	//      thing is absent" call below rests on that; without it a token with no
 	//      access would report the whole checklist as absent-and-wrong.
 	//   2. It names the acting identity, because evidence for an admin-gated row
 	//      is worthless unless it says who ran it.
-	if _, perr := c.Get("repos/" + *repo); perr != nil {
+	if _, perr := c.Forge.RepoHardeningRead(c.Repo, deskkit.HardeningReadRepo); perr != nil {
 		fmt.Fprintf(errW, "repohardenguard: cannot read %s (%v) — nothing below could be established, so no row is reported\n", *repo, perr)
 		return deskkit.ExitUnverifiable
 	}
@@ -113,10 +122,11 @@ func run(args []string, out, errW io.Writer) int {
 
 	code := exitCode(results)
 	scope := scopeLine(*repo, len(cl.Rows), census)
+	who := identity()
 	if *jsonOut {
-		emitJSON(out, *repo, identity(c), *path, scope, results, code)
+		emitJSON(out, *repo, who, *path, scope, results, code)
 	} else {
-		emitText(out, *repo, identity(c), *path, scope, results, code)
+		emitText(out, *repo, who, *path, scope, results, code)
 	}
 	return code
 }
@@ -140,23 +150,6 @@ func scopeLine(repo string, total int, census map[string]int) string {
 		s += fmt.Sprintf("; %s (a separate run)", strings.Join(others, ", "))
 	}
 	return s
-}
-
-// identity reports the login the reads were made as. Best effort: an App
-// installation token cannot read /user, and that is reported as unknown rather
-// than guessed — a wrong identity on an admin-gated row is worse than none.
-func identity(c Checker) string {
-	body, err := c.Get("user")
-	if err != nil {
-		return "unknown (the token cannot read /user)"
-	}
-	var u struct {
-		Login string `json:"login"`
-	}
-	if json.Unmarshal(body, &u) != nil || u.Login == "" {
-		return "unknown"
-	}
-	return u.Login
 }
 
 func exitCode(results []Result) int {

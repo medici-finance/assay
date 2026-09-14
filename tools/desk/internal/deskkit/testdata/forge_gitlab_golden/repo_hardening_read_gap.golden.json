@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: gitlab serves no hardening read of kind \"repo\" — forge-gitlab/12",
+  "not_found": false
+}

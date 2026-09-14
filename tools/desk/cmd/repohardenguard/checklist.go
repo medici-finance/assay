@@ -5,6 +5,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // checklist.go — the parser for docs/repo-hardening-checklist.md.
@@ -34,11 +36,49 @@ type Row struct {
 	Repo     string // owner/name — the repo this row is about
 	Setting  string // human description
 	Gated    string // "admin" (admin-visibility-gated field) or "public"
-	Read     string // the exact `gh api …` command; the endpoint is parsed OUT of it
+	Read     string // `read <kind>` or `read file <path>` — see ParseRead
 	Field    string // dotted path into the response, or "[name=X].path" for a ruleset
 	Required string // literal value, "[]", "contains:<tok>", or "not available — <why>"
 	Set      string // what a human runs (or does) to put the value right
 	Line     int    // 1-based line number in the checklist, for error messages
+}
+
+// ParsedRead is a Row's Read cell parsed into either a hardening-read KIND (op 38) or a
+// repo-relative file PATH (op 22, ReadFile) — exactly one of the two is non-empty.
+type ParsedRead struct {
+	Kind string
+	File string
+}
+
+// ParseRead parses the Read cell's grammar: `read <kind>` or `read file <path>`. It does NOT
+// validate the kind against the closed vocabulary — that is deskkit.ValidateHardeningReadKind's
+// job, run at CHECK time (the flow this guard's tests pin is checklist → kind → backend →
+// status → verdict, never checklist → backend). A `gh api <endpoint>` cell — the retired
+// grammar — is refused BY NAME here, at parse time, naming the enumerated vocabulary so a
+// checklist author sees the replacement rather than a generic syntax error.
+func (r Row) ParseRead() (ParsedRead, error) {
+	f := strings.Fields(r.Read)
+	if len(f) >= 2 && f[0] == "gh" && f[1] == "api" {
+		return ParsedRead{}, fmt.Errorf(
+			"row %q (line %d): Read cell %q uses the retired `gh api <endpoint>` form — the guard now reads "+
+				"`read <kind>` (kinds: %s) or `read file <path>`",
+			r.ID, r.Line, r.Read, strings.Join(deskkit.HardeningReadKinds(), ", "))
+	}
+	if len(f) < 2 || f[0] != "read" {
+		return ParsedRead{}, fmt.Errorf(
+			"row %q (line %d): Read cell %q is not a `read <kind>` or `read file <path>` command", r.ID, r.Line, r.Read)
+	}
+	if f[1] == "file" {
+		if len(f) < 3 {
+			return ParsedRead{}, fmt.Errorf("row %q (line %d): `read file` needs a path", r.ID, r.Line)
+		}
+		return ParsedRead{File: strings.Join(f[2:], " ")}, nil
+	}
+	if len(f) != 2 {
+		return ParsedRead{}, fmt.Errorf(
+			"row %q (line %d): Read cell %q has trailing tokens after the kind", r.ID, r.Line, r.Read)
+	}
+	return ParsedRead{Kind: f[1]}, nil
 }
 
 // Checklist is a parsed checklist document: the repos it declares it covers,
@@ -84,33 +124,6 @@ func (r Row) gatedAdmin() bool { return strings.EqualFold(r.Gated, "admin") }
 // a pass nor a failure.
 func (r Row) notAvailable() bool {
 	return strings.HasPrefix(strings.ToLower(r.Required), "not available")
-}
-
-// Endpoint extracts the API path from the Read cell, so the command the document
-// shows a human and the request the guard makes are the same string.
-func (r Row) Endpoint() (string, error) {
-	f := strings.Fields(r.Read)
-	if len(f) < 3 || f[0] != "gh" || f[1] != "api" {
-		return "", fmt.Errorf("row %q (line %d): Read cell %q is not a `gh api <endpoint>` command", r.ID, r.Line, r.Read)
-	}
-	ep := f[2]
-	if strings.HasPrefix(ep, "-") {
-		return "", fmt.Errorf("row %q (line %d): Read cell %q has a flag where the endpoint should be", r.ID, r.Line, r.Read)
-	}
-	return strings.TrimPrefix(ep, "/"), nil
-}
-
-// scopedTo reports whether endpoint addresses repo and no other repo.
-//
-// The boundary is load-bearing, not pedantry: `medici-finance/assay` is a
-// PREFIX of `medici-finance/assay`, and the shipped checklist is two
-// structurally parallel blocks over exactly that pair. A prefix test without the
-// trailing separator would accept a row that says `Repo = medici-finance/assay`
-// while reading `repos/medici-finance/assay/rulesets` — the single most
-// likely copy-paste error this table can suffer.
-func scopedTo(endpoint, repo string) bool {
-	want := "repos/" + repo
-	return endpoint == want || strings.HasPrefix(endpoint, want+"/")
 }
 
 // parseRepos reads the repos directive. Exactly one must be present: zero leaves
@@ -260,23 +273,21 @@ func validate(r Row, declared []string) error {
 	if !strings.EqualFold(r.Gated, "admin") && !strings.EqualFold(r.Gated, "public") {
 		return fmt.Errorf("checklist line %d: Gated is %q, want admin or public — the value decides whether an absent field is could-not-check or wrong, so there is no safe default", r.Line, r.Gated)
 	}
-	ep, err := r.Endpoint()
+	// The Read cell must parse under the new grammar — `read <kind>` / `read file <path>` —
+	// so a checklist author sees the enumerated replacement rather than a generic syntax
+	// error, and the retired `gh api <endpoint>` form is refused BY NAME. This also
+	// structurally retires the former repo/endpoint mis-scoping hazard: a `read <kind>` cell
+	// names no repo at all (the row's OWN Repo cell is the only source the guard ever reads
+	// one from — the Checker always calls the Forge for r.Repo), so a Read cell can no
+	// longer address a DIFFERENT repo than the row claims to be about. Not-available rows
+	// are held to the same parse, since their Read cell is documentation a reader may run.
+	parsed, err := r.ParseRead()
 	if err != nil {
 		return err
 	}
-	// The row's repo and the endpoint's repo must be the same repo. Until this
-	// check existed the two were independent: a run scoped by the Repo cell would
-	// happily read an endpoint about some OTHER repo and print a green verdict
-	// under the scoped repo's name — certifying a repository it never measured.
-	// For a hardening verifier that is the worst available failure, so the
-	// coupling is asserted at parse time rather than trusted. Not-available rows
-	// are held to it too: their Read cell is documentation a reader may run, and
-	// a mis-scoped one would ship the defect the day the row becomes checkable.
-	if !scopedTo(ep, r.Repo) {
-		return fmt.Errorf("checklist line %d: row %q is about %s but its Read cell reads %q — a verdict for one repo must not be measured against another",
-			r.Line, r.ID, r.Repo, ep)
-	}
-	if !r.notAvailable() && (r.Field == "" || r.Field == "-") {
+	// A `read <kind>` row needs a Field selector into the returned document; a `read file
+	// <path>` row does not — presence IS the check, and the path already named what matters.
+	if !r.notAvailable() && parsed.File == "" && (r.Field == "" || r.Field == "-") {
 		return fmt.Errorf("checklist line %d: row %q is checkable but names no Field to read", r.Line, r.ID)
 	}
 	return nil

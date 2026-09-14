@@ -176,6 +176,22 @@ exists. The golden `delete_ref_refuses_namespace_escape` pins that a ref aimed a
 | # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
 |---|--------|--------------------|-------------|----------------|-------------|
 | 37 | `RefExists(repo, ref)` | ref-existence read (model-capability-floor stamp age-out) | `GET /repos/{o}/{r}/git/ref/{ref}` (SINGULAR single-reference read, distinct from the plural `git/refs/` `DeleteRef` targets) — the logic extracted from `deskpost`'s hand-rolled `refExists`; a 404 is the ANSWER "absent" (false, nil), every other non-2xx is could-not-check | `GET /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**) — `DeleteRef`'s read twin, reaching exactly as far: GitLab CE exposes NO general ref-existence endpoint, so only the `heads/<branch>` namespace maps and every other namespace is a could-not-check REFUSAL naming the gap. The dispatch claim ref (`refs/heads/dispatch/<key>`) is INSIDE that namespace, so the live read round-trips here. A 404 → absent (false, nil); a 403 → could-not-check, never a guessed release | implemented |
+| 38 | `RepoHardeningRead(repo, kind)` | repo-hardening read (guard-read custody, `repohardenguard`) | ONE closed kind enum, validated by `ValidateHardeningReadKind` before any request exists — never a path, so this cannot become the passthrough it replaces. `repo` → `GET /repos/{o}/{r}` (`.visibility`, `.security_and_analysis.*`, admin-visible only); `rulesets` → `GET …/rulesets` then `GET …/rulesets/{id}` per entry, returning the ARRAY of detail documents (`bypass_actors` present only for a caller with write access to the ruleset); `actions-workflow-permissions` → `GET …/actions/permissions/workflow`; `actions-fork-pr-approval` → `GET …/actions/permissions/fork-pr-contributor-approval`; `actions-private-fork-pr` → `GET …/actions/permissions/fork-pr-workflows-private-repos`; `vulnerability-reporting` → `GET …/private-vulnerability-reporting` (all four admin-gated) | Every kind is a NAMED could-not-check REFUSAL (`could-not-check: gitlab serves no hardening read of kind %q — forge-gitlab/12`), emitting zero requests — deferred to forge-gitlab/12's GitLab kinds (protected branches, protected tags, push rules, approvals) | github-only |
+
+**Op 38 (`RepoHardeningRead`) closes forge-gitlab/08's row 3 to zero (forge-gitlab/11).** It is the
+guard-read-custody brief's enumerated replacement for `repohardenguard`'s former arbitrary
+`gh api <endpoint>` reads, and lands WITH its consumer in the same change (spec §6 freeze rule):
+`cmd/repohardenguard`'s `Checker` now resolves a `Forge` via `deskkit.ForgeFor(fr, "auditor")` — a
+FIXED role, never `$DESK_LOOP` (the guard runs outside any desk window) — and the checklist's
+`Read` cell grammar moves from `gh api <endpoint>` to `read <kind>` / `read file <path>` (the
+latter routes through the existing `ReadFile`, op 22; a `gh api` cell is now a parse-time REFUSAL
+naming the vocabulary). The `auditor` role is a new, READ-ONLY `desktoken` identity (#857's ruling:
+option 1) with no write permission of any kind on GitHub and a `read_api`-scoped Reporter PAT on
+GitLab — the forge-side grant is the single point of failure the brief's Verify row 8 proves by
+attempting a settings write with the guard's own token and observing the forge itself refuse it
+with 403, the LOWER layer catching the fault with the enumerated-surface UPPER layer bypassed
+entirely. The three-state rule (#127) is unchanged in meaning; only the SOURCE of the status moves
+from regexing `gh`'s stderr to `*deskkit.ForgeAPIError.Status` / `IsForgeNotFound`.
 
 **Op 37 (`RefExists`) was added by brief `forge-gitlab/09` under the same freeze rule**, with its one
 consuming call site converted in the same change: `deskpost`'s `claimLiveness` — the model-capability
@@ -242,11 +258,16 @@ stale — the ops they needed had landed since brief 08:
 | `deskroster` `ghListOpenPRs` | `gh pr list --state open --json number,title,isDraft` (listed under **no enumerated op**) | `ListOpenChanges` (op 23), which landed with `deskboard`'s `fetchOpenPRs` |
 
 Both are READ-only display annotations under the session's own minted App token (not a write), so
-no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7. The one remaining
-naive-grep hit — `repohardenguard`'s `ghRun` — is **open work, not a ruled exception**: the driver
-ratified closure-to-zero (option B on #834), so every residual `gh` shell-out must reach the seam.
-That site is owned by the guard-read-custody brief (`forge-gitlab/11`) and its design record; its
-`forgeban` permit row is permitted only until that brief lands, and row 3 closes to 0 with it.
+no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7.
+
+**forge-gitlab/11 closes the last naive-grep hit.** `repohardenguard`'s `ghRun` — the guard's
+arbitrary `gh api <endpoint>` reads — is retired onto op 38 `RepoHardeningRead` under a dedicated
+read-only `auditor` identity (#857's ruling: option 1). fg/08's Verify row 3 (the whole-tree grep)
+closes to **0**; its `forgeban` permit row is removed and the ceiling comes down 7 → 6.
+
+| Retired | Was | Now |
+|---------|-----|-----|
+| `repohardenguard` `ghRun`/`ghGet` | `gh api <endpoint>` — arbitrary GET parsed out of a checklist document (rulesets, branch protection, App permissions, `repos/<repo>` preflight, `/user` identity) | `RepoHardeningRead(repo, kind)` (op 38) under the `auditor` role, over a closed kind vocabulary; the identity line reads the role's known `[bot]` login instead of `/user` (an App token cannot read it) |
 
 The rest are classified, not migrated. Every one is blocked on a decision this brief does not own:
 
@@ -254,7 +275,7 @@ The rest are classified, not migrated. Every one is blocked on a decision this b
 |-------|-----------|---------------------------|
 | **identity** | `deskclose`, `deskdigest`, `deskfile`, `deskflip` (7 sites), `deskreply`, `deskpr`, `deskboard`, `deskmerge`, `deskdisposition`, `issueboard`, `scanloop` | Each reaches the forge under the caller's AMBIENT CLI credential BY DOCUMENTED DESIGN ("gates WHETHER and WHAT, never WHO … mints no App token on any path"). Both backends REFUSE to build a client without an explicitly minted token — deliberately (brief 07's posture, mirroring #562/#563). Routing these through the seam therefore changes WHO performs each write. That is a **token-custody ruling**, not a transport change, and it is the single decision gating ~20 of the 25 sites. (`deskroster` was here — its two reads migrated under #834; see the follow-up table above.) |
 | **no enumerated op** | labels (`deskdispatch`, `deskflip`, `deskdisposition`, `scanloop`), `pr list` (`deskdisposition`), branch→PR resolution (`deskpushguard`), issue listing + GraphQL counts (`issueboard`, `deskboard`), merge-authority read (`deskmerge`), trust-association read (`scanloop`) | Spec §6's freeze rule forbids adding a method without converting its consuming call site in the same change. Each of these is a real op set with a real GitLab mapping question (project-scoped labels, MR source-branch lookup, issue IID sequences) and needs its own brief rather than a speculative method. (`deskroster`'s `pr list` was here — migrated onto the now-landed `ListOpenChanges` under #834.) |
-| **not a forge op at all** | `deskadvisory` (`gh auth token`), `repohardenguard` (`gh api` reads of rulesets / branch protection / App permissions) | The first is the identity layer (delta D2); the second is repo HARDENING, the same class delta D3 keeps out of the frozen set. Neither has a Forge method it could move to *today* — under the ratified closure-to-zero both are OPEN WORK, `repohardenguard` under the guard-read-custody brief (`forge-gitlab/11`), not permanent carve-outs. |
+| **not a forge op at all** | `deskadvisory` (`gh auth token`) | The identity layer (delta D2) — `gh auth token` READS the ambient CLI credential rather than performing a forge operation, and there is no Forge method it could move to. (`repohardenguard`'s hardening reads were here; forge-gitlab/11 gave them their own enumerated op, op 38, so this class is down to one site.) |
 
 The 14 unresolved-argv sites are a **could-not-check ledger, not a permit**: each runs a resolved
 `statusgen`/`desktoken`/callout binary or a caller-supplied argv, none launches a forge CLI on any
