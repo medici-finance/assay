@@ -1,6 +1,6 @@
 package main
 
-// Tests for the prune singleton (brief desk-tools/26, issue #1037 ask F7).
+// Tests for the prune singleton (issue #1037, ask F7).
 //
 // The load-bearing property is the ASYMMETRY: the lock fails CLOSED and the TTL debounce
 // fails OPEN. Most of what is asserted here is the second half — four kinds of bad stamp,

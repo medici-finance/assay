@@ -1,6 +1,6 @@
 package main
 
-// Tests for the prune sweep's PERFORMANCE restructure (brief desk-tools/26, issue #1037).
+// Tests for the prune sweep's PERFORMANCE restructure (issue #1037).
 //
 // The restructure is a performance change whose only possible failure is a wrong REMOVAL,
 // so nothing here asserts a duration. Every row asserts BEHAVIOUR: which paths came out of

@@ -1,6 +1,6 @@
 package main
 
-// The MEASUREMENT rows for brief desk-tools/26 (issue #1037).
+// The MEASUREMENT rows for the prune-performance brief (issue #1037).
 //
 // Everything here runs against a SYNTHETIC repository the test itself builds under its own
 // t.TempDir(). Nothing in this file touches a real checkout, and nothing reads a path it
