@@ -140,7 +140,7 @@ for the map: the step after the one being fixed is knowable in advance.
 | 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | implemented | — | — |
 | 11 | [Guard-read custody — the last gh shell-outs onto the Forge seam](brief-11-guard-read-custody.md) | 4 | M | todo | — | — |
 | 12 | [GitLab hardening reads — repohardenguard kinds on the GitLab backend](brief-12-gitlab-hardening-reads.md) | 5 | M | todo | — | — |
-| 13 | [Board reads degrade per row, never per sweep — the GitLab empty-field class](brief-13-board-reads-degrade-per-row.md) | 3 | M | todo | — | — |
+| 13 | [Board reads degrade per row, never per sweep — the GitLab empty-field class](brief-13-board-reads-degrade-per-row.md) | 3 | M | implemented | — | — |
 | 14 | [The public-repo gate reads the forge that serves the repo — every verb, not one](brief-14-public-repo-gate-on-the-resolved-forge.md) | 3 | M | todo | — | — |
 | 15 | [The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane](brief-15-gitlab-runbook-missing-keys.md) | 4 | M | todo | — | — |
 | 16 | [The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls](brief-16-review-tick-conformance-walk.md) | 5 | M | todo | — | — |

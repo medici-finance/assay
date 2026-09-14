@@ -1874,6 +1874,9 @@ type prOutcome struct {
 // (lowest-index PR first).
 func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
 	var part actionsPartial
+	// repo-level: fetchOpenPRs lists ALL open PRs for the repo in one read — nothing about
+	// the repo can be classified without it, so failing the whole run here is correct
+	// (contrast classifyPR below, whose five per-change reads are the opposite kind).
 	prs, truncated, err := fetchOpenPRs(repo)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
@@ -1937,11 +1940,32 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 		}
 	}
 
+	// degradeReasons collects the could-not-check reason from every read below that
+	// degrades THIS row rather than failing the whole sweep: each is folded into the
+	// row's own Note at the end (this brief's task 2/6), so an operator reading the board
+	// sees not just THAT a row degraded but WHY — the rendering is the second, independent
+	// layer behind the degrade decision itself (see this brief's single-point-of-failure
+	// note: the classifier's own choice, and the row text an operator actually reads).
+	var degradeReasons []string
+	degrade := func(reason string) {
+		degradeReasons = append(degradeReasons, reason)
+		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s#%d — %s\n", repo, p.Number, reason)
+	}
+
+	// change-level: this PR's own reviews. A read failure here is a fact about ONE PR, not
+	// the repo, so it degrades to "no verdict established" — reviewState{}'s zero value
+	// (ever=false) — rather than failing the sweep. That routes through classify()'s
+	// existing !ever arm to NEEDS-REVIEW (or HUMAN-OWNED for a trusted human author,
+	// #177 — also not a cleared state), reusing the existing contract instead of a second
+	// degrade mechanism.
+	var rs reviewState
 	reviews, err := fetchReviews(repo, p.Number)
 	if err != nil {
-		return prOutcome{}, err
+		degrade(fmt.Sprintf("could not read reviews (%v) — degrading to no verdict "+
+			"established rather than failing the sweep", err))
+	} else {
+		rs = reduceReviews(reviews, p.HeadRefOid)
 	}
-	rs := reduceReviews(reviews, p.HeadRefOid)
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly
 	// zero rollup (pass==pending==fail==unknown==0) and never errors — every failure is a
@@ -1965,12 +1989,19 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// body/title edited) after the last review re-flags the row RE-REVIEW instead of
 	// leaving it BLOCKED where the head-sha trigger can never see the fix.
 	if rs.blocking && rs.atHead && !rs.suspectNoOp {
-		ncr, note, err := detectNonCommitResolution(repo, p, rs.lastReviewAt)
-		if err != nil {
-			return prOutcome{}, err
+		// change-level: the label-timeline probe for this one PR. A read failure here
+		// leaves nonCommitResolution unset (false), which keeps the row on the plain
+		// `case in.blocking` arm below — already BLOCKED, already the safe side (never
+		// this signal's RE-REVIEW, and never a cleared state) — rather than failing the
+		// sweep to probe a signal that can only ever WIDEN which rows get re-flagged.
+		ncr, ncrNote, ncrErr := detectNonCommitResolution(repo, p, rs.lastReviewAt)
+		if ncrErr != nil {
+			degrade(fmt.Sprintf("could not read the non-commit-resolution signal (%v) — "+
+				"staying BLOCKED rather than probing further", ncrErr))
+		} else {
+			in.nonCommitResolution = ncr
+			in.nonCommitResolutionNote = ncrNote
 		}
-		in.nonCommitResolution = ncr
-		in.nonCommitResolutionNote = note
 	}
 
 	// MERGE-CURR needs the PR's own files vs the changes since the reviewed
@@ -2008,22 +2039,33 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 		// — and the sweep carries on.
 		if !shasComparable(rs.lastSHA, p.HeadRefOid) {
 			in.ownFilesChanged = true
-			fmt.Fprintf(os.Stderr, "deskboard: WARNING %s#%d — the benign-merge compare needs the "+
-				"reviewed sha and the PR head sha; could not establish %s, so this row degrades to "+
-				"RE-REVIEW rather than MERGE-CURR (on GitLab a verdict the forge cannot pin to a head "+
-				"reports no sha by design)\n", repo, p.Number, unreadableSHAFields(rs.lastSHA, p.HeadRefOid))
+			degrade(fmt.Sprintf("the benign-merge compare needs the reviewed sha and the PR head "+
+				"sha; could not establish %s, so this row degrades to RE-REVIEW rather than "+
+				"MERGE-CURR (on GitLab a verdict the forge cannot pin to a head reports no sha by "+
+				"design)", unreadableSHAFields(rs.lastSHA, p.HeadRefOid)))
 		} else {
-			own, complete, err := fetchChangedFiles(repo, p.Number)
-			if err != nil {
-				return prOutcome{}, err
+			// change-level: this PR's own changed files, for the benign-merge compare. A
+			// read failure here is a fact about ONE PR — reuse fetchChangedFiles' own
+			// truncation contract (degrade to RE-REVIEW) rather than a second mechanism.
+			own, complete, ownErr := fetchChangedFiles(repo, p.Number)
+			if ownErr != nil {
+				in.ownFilesChanged = true
+				degrade(fmt.Sprintf("could not read this PR's own changed files for the "+
+					"benign-merge compare (%v) — degrading to RE-REVIEW rather than MERGE-CURR", ownErr))
+			} else {
+				// change-level: the interval between the reviewed sha and head, for the same
+				// compare. Same treatment: a could-not-check for this row, not the repo.
+				changed, cmpErr := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
+				if cmpErr != nil {
+					in.ownFilesChanged = true
+					degrade(fmt.Sprintf("could not compare the reviewed sha to head (%v) — "+
+						"degrading to RE-REVIEW rather than MERGE-CURR", cmpErr))
+				} else {
+					// A truncated own-files set cannot prove the intersection is empty, so it
+					// degrades to RE-REVIEW (the safe side) rather than the benign MERGE-CURR.
+					in.ownFilesChanged = ownFilesChanged(own, complete, changed)
+				}
 			}
-			changed, err := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
-			if err != nil {
-				return prOutcome{}, err
-			}
-			// A truncated own-files set cannot prove the intersection is empty, so it
-			// degrades to RE-REVIEW (the safe side) rather than the benign MERGE-CURR.
-			in.ownFilesChanged = ownFilesChanged(own, complete, changed)
 		}
 	}
 
@@ -2038,9 +2080,16 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	riskClassed := false
 	riskReason := ""
 	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
-		files, complete, err := fetchChangedFiles(repo, p.Number)
-		if err != nil {
-			return prOutcome{}, err
+		// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
+		// EXISTING changed-files degrade shape rather than a second one — a hard read
+		// failure gets the same fail-closed treatment the `!complete` case below already
+		// gives a truncated diff, because both mean the same thing to this gate: the
+		// trigger it exists to catch might be in the part that could not be read.
+		files, complete, rcErr := fetchChangedFiles(repo, p.Number)
+		if rcErr != nil {
+			complete = false
+			degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
+				"fail closed to risk-classed", rcErr))
 		}
 		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
 		// A diff we could not read in full — the trigger we did not see is exactly the one this
@@ -2065,6 +2114,13 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	in.riskReason = riskReason
 
 	action, note := classify(in)
+	if len(degradeReasons) > 0 {
+		// The row's RENDERED text carries the could-not-check reason(s) that produced the
+		// degrade, whether or not the classify() arm it landed on would otherwise have
+		// mentioned one — the second, independent layer this brief's single-point-of-failure
+		// note asks for: a row that degraded silently is visible as a row that degraded.
+		note += " — DEGRADED: " + strings.Join(degradeReasons, "; ")
+	}
 
 	// The owning brief is the trailer's; branch-as-claim is the fallback for a body that
 	// names none.
