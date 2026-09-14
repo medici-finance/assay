@@ -14,7 +14,7 @@ why: >-
   beside it, and the superseded single-forge adapter that made the second shape possible is deleted.
 wave: 3
 depends: ["forge-gitlab/02"]
-unblocks: ["forge-gitlab/16"]
+unblocks: ["forge-gitlab/16", "forge-gitlab/17"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
