@@ -288,10 +288,11 @@ critical path):
 Review-desk track (Track A — the open work; off the same backend, not gated by the pilot and
 not gating it):
 
-- **Wave 3** — `forge-gitlab/13` (depends on 02; board reads degrade per row, never per sweep —
-  the head of the open path) and `forge-gitlab/14` (depends on 02; the public-repo gate reads
-  the resolved forge at every site, not two of three). Parallelizable: one touches the board's
-  classifier, the other two command call sites and a deletion; no shared surface.
+- **Wave 3** — `forge-gitlab/14` (depends on 02; the public-repo gate reads the resolved forge
+  at every site, not two of three — **the head of the open path**) and `forge-gitlab/13`
+  (depends on 02; board reads degrade per row, never per sweep — the class behind the one arm
+  repaired on 2026-09-14). Parallelizable: one touches two command call sites and a deletion,
+  the other the board's classifier; no shared surface.
 - **Wave 4** — `forge-gitlab/15` (depends on 04, whose runbook it edits; the forge-binding key,
   the board-push credential, the source-pin lane).
 - **Wave 5** — `forge-gitlab/16` (depends on 13 + 14 + 15; **human-gated** — the live review

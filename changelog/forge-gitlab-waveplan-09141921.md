@@ -17,10 +17,16 @@
 
 ### Changed
 
-- The critical path is re-cut into three tracks, with the open one first. Its verified head is
-  brief 13: on GitLab a review approval carries no commit sha, the board's benign-merge arm asks
-  for a diff against that empty sha, and the resulting per-change refusal is returned as a
-  whole-sweep error — so the ordinary case blanks the queue and every later verb has nothing to
-  act on. Two tempting-but-wrong heads are recorded with what was checked to rule them out.
+- The critical path is re-cut into three tracks, with the open one first. **Its verified head is
+  brief 14**: two of the seven verbs in a review tick still send the public-repo gate's live
+  visibility read to a hardcoded GitHub client instead of the backend they already resolved, so
+  on a GitLab project the desk's workpad and its Evidence landing have no working path.
+  Two tempting-but-wrong heads are recorded with what was checked to rule each out.
+- The head moved while the plan was being written, and the plan says so. It started at brief 13 —
+  on GitLab a review approval carries no commit sha, the board's benign-merge arm asked for a diff
+  against that empty sha, and the per-change refusal came back as a whole-sweep error, blanking
+  the queue. That arm was fixed mid-pass and the board is visible again, so the blocker moved one
+  step down the ceremony within the hour. Brief 13 stays on the plan re-baselined onto what
+  landed: the instance is closed, the class of four further unguarded whole-sweep returns is not.
 - Brief 10's board row corrected from `todo` to `implemented`: its work merged on 2026-09-11 and
   the hand-maintained row never moved.
