@@ -155,9 +155,16 @@ func TestWarmCacheMakesNoNetworkCall(t *testing.T) {
 	if reqs := rt.seen(); len(reqs) != 0 {
 		t.Fatalf("a warm cache hit made %d network call(s): %v — the whole point of the row is that it makes none", len(reqs), reqs)
 	}
-	entries := auditEntries(t)
-	if len(entries) == 0 || !strings.Contains(entries[len(entries)-1].Detail, "reused cached") {
-		t.Fatalf("expected a cache-reuse audit row; got %+v", entries)
+	// A reuse performs no act, so since brief 24 it writes NO audit row at all (the
+	// cache-reuse rows were the ledger's largest single contributor). The row this
+	// assertion started as — "the audit says `reused cached`" — was written before that
+	// landed; the property it was really pinning is that this run MINTED nothing, and the
+	// post-24 spelling of that is an empty ledger.
+	for _, e := range auditEntries(t) {
+		if strings.Contains(e.Detail, "minted new") {
+			t.Fatalf("a warm cache hit minted a token: %+v", e)
+		}
+		t.Fatalf("a warm cache hit wrote an audit row; since brief 24 a reuse writes none: %+v", e)
 	}
 }
 

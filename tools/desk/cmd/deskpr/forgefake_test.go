@@ -30,11 +30,19 @@ type envForge struct {
 	openCalls    int
 	openBranches []string // the source branch of each OpenChangeForBranch, for the `pr list` synth
 	getCalls     int
-	getNums     []int // the PR number of each GetPullRequest, for the synthesised `pr view` argv
-	edited      *deskkit.EditChangeInput
-	editedNum   int
-	comments    []string
-	commentNums []int // the PR number of each PostComment ATTEMPT (recorded before any failure)
+	getNums      []int // the PR number of each GetPullRequest, for the synthesised `pr view` argv
+	edited       *deskkit.EditChangeInput
+	editedNum    int
+	comments     []string
+	commentNums  []int // the PR number of each PostComment ATTEMPT (recorded before any failure)
+
+	// visibilityCalls/visibilityRepo/visibility record the public-repo gate's RepoVisibility
+	// read when the production fetcher is routed through THIS fake (assay#1054's regression
+	// coverage — see gatewired_test.go's TestCreateGateFetcherRoutesThroughResolvedForge).
+	// visibility defaults to "private" (the gate's no-op case) when unset.
+	visibilityCalls int
+	visibilityRepo  deskkit.ForgeRepo
+	visibility      string
 }
 
 // synthGH renders the forge ops this fake recorded as canonical gh-shaped pseudo-argvs, so the
@@ -150,6 +158,19 @@ func (f *envForge) mergeable() string {
 	default:
 		return deskkit.MergeableUnknown
 	}
+}
+
+// RepoVisibility answers the public-repo gate's live-visibility read from THIS fake — the
+// resolved forge backend — rather than any hardcoded GitHub-only client. Defaults to
+// "private" (the gate's no-write-authorization-needed case) so tests that never set
+// f.visibility keep sailing through the gate exactly as before this method existed.
+func (f *envForge) RepoVisibility(repo deskkit.ForgeRepo) (string, error) {
+	f.visibilityCalls++
+	f.visibilityRepo = repo
+	if f.visibility != "" {
+		return f.visibility, nil
+	}
+	return "private", nil
 }
 
 func (f *envForge) EditChange(repo deskkit.ForgeRepo, number int, in deskkit.EditChangeInput) error {
