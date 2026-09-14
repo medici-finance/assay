@@ -35,12 +35,13 @@
 #          `tab close` takes a positional tab_id and advertises no `--label` at all)
 #
 #   orca:
-#     up   `orca repo add --path <cell-dir>` is called (idempotent registration — real orca 404s
+#     up   `orca repo add --path <cell-repo>` is called on the cell's CHECKOUT (orca registers git
+#          repositories only; a cell directory is refused) — idempotent registration — real orca 404s
 #          a `--worktree path:<dir>` selector on an unregistered path) before any terminal is
-#          created; `orca terminal create` receives `--worktree path:<cell-dir>` (a real orca's
+#          created; `orca terminal create` receives `--worktree path:<cell-repo>` (a real orca's
 #          create-a-terminal flag for "where", confirmed live — NOT `--cwd`, which real orca does
 #          not advertise on this verb at all) plus `--command <role_cmd>` and `--title <cell>-<role>`
-#     down `orca terminal close --worktree path:<cell-dir> --all` is called once (closes every
+#     down `orca terminal close --worktree path:<cell-repo> --all` is called once (closes every
 #          terminal orca owns for the cell in one call) rather than tracking individual handles;
 #          this also proves `down_orca` even RUNS to completion — the pre-existing body (before
 #          this suite, and before this commit's fix) had `local roles; roles="$(up_roles 0)" r`,
@@ -335,7 +336,7 @@ orca_stub
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit orca 2>&1)" && rc=0 || rc=$?
 assert "up --cockpit orca exits 0" '[[ $rc -eq 0 ]]'
 assert "'repo add --path <cell-dir>' registers the cell before any terminal create" "grep -q \"repo add --path \$CELL\\\$\" \"\$ORCA_CALLS\""
-assert "terminal create uses --worktree path:<cell-dir> (real orca's selector), not --cwd" "grep -q \"terminal create --worktree path:\$CELL --title example-cell-worker-desk --command\" \"\$ORCA_CALLS\""
+assert "terminal create uses --worktree path:<cell-repo> (real orca's selector), not --cwd" "grep -q \"terminal create --worktree path:\$REPO --title example-cell-worker-desk --command\" \"\$ORCA_CALLS\""
 assert "no call ever uses --cwd (real orca's create-a-terminal verb advertises no such flag)" '! grep -q -- "--cwd" "$ORCA_CALLS"'
 assert "the role window's --command is the exact role_cmd every cockpit runs" "grep -q \"terminal create .*--command .*desk 'example-cell' 'worker-desk'\" \"\$ORCA_CALLS\""
 
@@ -343,7 +344,7 @@ echo "[orca down]"
 : > "$ORCA_CALLS"
 out="$(DRY_RUN=0 "$CELLCTL" down example-cell --cockpit orca 2>&1)" && rc=0 || rc=$?
 assert "down --cockpit orca exits 0" '[[ $rc -eq 0 ]]'
-assert "'terminal close --worktree path:<cell-dir> --all' closes everything in one call" "grep -q \"terminal close --worktree path:\$CELL --all\" \"\$ORCA_CALLS\""
+assert "'terminal close --worktree path:<cell-repo> --all' closes everything in one call" "grep -q \"terminal close --worktree path:\$REPO --all\" \"\$ORCA_CALLS\""
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "herdr-orca-launch.test.sh: OK"; else echo "herdr-orca-launch.test.sh: $fails FAILED"; exit 1; fi
