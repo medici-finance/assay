@@ -86,6 +86,10 @@
 #                                                CELL_HARNESS) — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
 #                                                on codex — so `cellctl set <cell> <role> --harness codex --model
 #                                                X` writes CODEX_MODEL_<role>=X, never DESK_MODEL_<role>.
+#   cellctl --version | version                  the release tag this copy ships at ("dev" for a source
+#                                                checkout — see the CELLCTL_VERSION comment below), the same
+#                                                contract `statusgen --version` uses, so a stale copy is
+#                                                detectable.
 #
 # Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role, on the
 # claude harness) and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are
@@ -165,6 +169,24 @@ ROLES_DEFAULT="the-desk pr-review-desk verify-desk intake-desk worker-desk"
 # The desk verbs a house cell's `check` proves are installed: the boot/roster pair every role
 # needs, the board/dispatch/worktree verbs the loops call, and the write verbs the roles post with.
 HOUSE_VERBS="deskboot deskroster deskwt deskboard deskdispatch deskpr deskfile deskpost desktoken"
+
+# CELLCTL_VERSION is the release tag this copy ships at. A shell script takes no -ldflags, so it
+# cannot be link-time stamped the way statusgen/qualgen/the desk-tools binaries are
+# (-X main.statusgenVersion=... in .github/workflows/release.yml); instead the release workflow's
+# packaging step `sed`s this line, in the STAGED copy only (never the committed source file), to
+# the umbrella tag being cut before that copy is tar'd into desk-tools-<platform>.tar.gz. The
+# source tree — and a checkout install per docs/cellctl.md's `install` line — always honestly
+# reports "dev", the same convention `var statusgenVersion = "dev"` uses for an unstamped Go build.
+CELLCTL_VERSION="dev"
+
+# `cellctl --version` / `cellctl version` — pure introspection, recognised as the SOLE argument
+# only (mirrors statusgen's `--version` contract: a version query combined with real work has no
+# defined meaning), answered before any other parsing so a stale copy is detectable exactly the
+# way `statusgen --version` makes a stale statusgen detectable.
+if [[ $# -eq 1 && ( "$1" == "--version" || "$1" == "version" ) ]]; then
+  echo "$CELLCTL_VERSION"
+  exit 0
+fi
 
 die(){ echo "cellctl: $*" >&2; exit 3; }
 # The usage text is the header comment above, up to the `set -euo` line — so the header can grow
