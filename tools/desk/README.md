@@ -1757,6 +1757,38 @@ also runs a one-shot `deskwt prune` at boot so a session starts on a pruned work
 repos, `scripts/deskwt-prune-all.sh` invokes `deskwt prune --repo <path>` per existing repo
 (one-shot; safe with no session active).
 
+### The prune singleton — N windows booting together run ONE sweep
+
+Because every desk loop runs a one-shot prune at boot, N windows starting inside a minute
+used to run N identical full sweeps over the same repository at once. The singleton makes
+that one sweep. It is two mechanisms over one stamp file under `~/.config/assay/prune/`
+(never inside the target repository, so `--dry-run` can promise it writes nothing there):
+
+- **A non-blocking exclusive advisory lock.** A sweep that cannot take it prints
+  `deskwt prune: held by pid <pid>, running <age> — skipping this sweep`, exits **0** (a
+  held sweep is a clean no-op, not a failure), and removes nothing. The kernel releases an
+  advisory lock when its holder exits — however it exits — so there is no liveness question
+  to answer and nothing to time out. The lock cannot be disabled; there is no `--force`.
+- **A recency debounce, `--singleton-ttl` (default `10m`).** A sweep that takes the lock and
+  finds one COMPLETED less than the TTL ago skips with `swept <age> ago`. `--singleton-ttl 0`
+  or `--no-singleton` disables the debounce only — both still take the lock. A sweep started
+  by the SAME process as the recorded one is never debounced (an operator re-running after a
+  change, or the `--interval` supervisor's next tick, whose cadence the operator already set).
+
+The lock fails **closed** and the TTL fails **open**, deliberately. A stamp that is missing,
+truncated, not JSON, of an unknown schema, or carrying a future timestamp is treated as no
+stamp and the sweep PROCEEDS — so a corrupt or abandoned stamp can delay one sweep by at
+most the TTL and can never wedge prune. The `--interval` supervisor takes and releases the
+singleton **per tick**, never for its lifetime, so it cannot lock out a boot-time or manual
+sweep.
+
+### `--dry-run` is read-only
+
+`deskwt prune --dry-run` writes nothing, anywhere: it uses git's own `worktree prune
+--dry-run` for the bookkeeping count, reports the locks `--reclaim-stale-locks` would
+retire without unlocking any of them, deletes no worktree, and writes no singleton stamp.
+It still REPORTS everything a real sweep would do.
+
 ## clusterguard — the cluster-CLI exec boundary
 
 A permission rule that matches on command TEXT cannot see a cluster call made from inside a
