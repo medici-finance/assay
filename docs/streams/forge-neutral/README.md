@@ -223,7 +223,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 15 | [desklabel — a role-keyed label verb](brief-15-desklabel-role-keyed.md) | 2 | M | todo | — | — |
 | 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | todo | — | — |
 | 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | todo | — | — |
-| 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | todo | — | — |
+| 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

@@ -1,0 +1,71 @@
+{
+  "test": "go test ./cmd/deskwt/ -count=1 -timeout 600s -run 'TestPrune|TestMergeGateBeforeStatus|TestConcurrentPrunesCostOne|TestRemove|TestStaleLock|TestReclaim|TestUnattributedLock|TestDirtyHeld|TestUnmergedHeld'",
+  "control": {
+    "name": "CONTROL — invert the ancestor-set membership test (an unmerged worktree reads as merged and is deleted)",
+    "file": "cmd/deskwt/prune.go",
+    "old": "\t_, ok := sc.mainAncestors[head.String()]\n\treturn ok, nil",
+    "new": "\t_, ok := sc.mainAncestors[head.String()]\n\treturn !ok, nil"
+  },
+  "mutations": [
+    {
+      "name": "a sweep that could not build the ancestor set proceeds on an EMPTY one instead of holding everything (today safe, one refactor from deleting live work)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\tif sc.mainAncestors == nil {\n\t\treturn false, deskkit.Unverifiable(",
+      "new": "\tif false {\n\t\treturn false, deskkit.Unverifiable("
+    },
+    {
+      "name": "the tracked-clean gate stops holding a dirty worktree (the gate reorder drops a hold instead of moving it)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\tif dirtyOut != \"\" {\n\t\t\tres.skips = append(res.skips, skipEntry{rt, \"dirty (uncommitted tracked changes)\"})\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif dirtyOut == \"THIS WILL NEVER MATCH\" {\n\t\t\tres.skips = append(res.skips, skipEntry{rt, \"dirty (uncommitted tracked changes)\"})\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "the batched deregistration stops DEMOTING a path that is still registered (an unverified removal is counted as removed)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\tfor _, rt := range pendingRemoved {\n\t\t\tif !strandedSet[rt] {\n\t\t\t\tres.removed++\n\t\t\t}\n\t\t}",
+      "new": "\t\tfor range pendingRemoved {\n\t\t\tres.removed++\n\t\t}"
+    },
+    {
+      "name": "--dry-run reaches the REAL `git worktree prune` again (the read-only promise is gone)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\targv := []string{\"worktree\", \"prune\", \"--verbose\"}\n\tif dryRun {",
+      "new": "\targv := []string{\"worktree\", \"prune\", \"--verbose\"}\n\tif false && dryRun {"
+    },
+    {
+      "name": "--dry-run unlocks for real again (a report retires a live session's lock)",
+      "file": "cmd/deskwt/lockreclaim.go",
+      "old": "\t\tif dryRun {\n\t\t\tcandidates = append(candidates, reclaimEntry{path: rt, reason: reason, why: v.why + \" [dry-run: not unlocked]\"})\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tcandidates = append(candidates, reclaimEntry{path: rt, reason: reason, why: v.why + \" [dry-run: not unlocked]\"})\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "the singleton's TTL half is made to FAIL CLOSED — an unreadable stamp now HOLDS the sweep, which is the stale-lock class recreated",
+      "file": "cmd/deskwt/prunesingleton.go",
+      "old": "\tvar st pruneStamp\n\tif jerr := json.Unmarshal(b, &st); jerr != nil {\n\t\treturn nil, false\n\t}\n\tif st.Schema != pruneStampSchema {\n\t\treturn nil, false\n\t}\n\treturn &st, true",
+      "new": "\tvar st pruneStamp\n\tif jerr := json.Unmarshal(b, &st); jerr != nil {\n\t\tst.FinishedAt = time.Now().UTC().Format(time.RFC3339)\n\t\tst.Schema = pruneStampSchema\n\t\treturn &st, true\n\t}\n\tif st.Schema != pruneStampSchema {\n\t\treturn nil, false\n\t}\n\treturn &st, true"
+    },
+    {
+      "name": "a FUTURE finishedAt is treated as recent (a clock that went backwards holds prune indefinitely)",
+      "file": "cmd/deskwt/prunesingleton.go",
+      "old": "\tif age < 0 || age >= ttl {\n\t\treturn false, 0\n\t}",
+      "new": "\tif age >= ttl {\n\t\treturn false, 0\n\t}"
+    },
+    {
+      "name": "the singleton's LOCK is made to FAIL OPEN — ErrLockBusy is read as free and five windows sweep concurrently again",
+      "file": "cmd/deskwt/prunesingleton.go",
+      "old": "\tif lerr := deskkit.TryLockExclusive(f); lerr != nil {",
+      "new": "\tif lerr := error(nil); lerr != nil {"
+    },
+    {
+      "name": "the --interval supervisor holds the singleton for its LIFETIME (every boot-time and manual sweep on the machine is locked out)",
+      "file": "cmd/deskwt/prunesingleton.go",
+      "old": "\t_ = deskkit.UnlockFile(s.file)\n\t_ = s.file.Close()\n\ts.file = nil",
+      "new": "\t_ = s.file.Sync()"
+    },
+    {
+      "name": "the ancestor walk goes back inside the candidate loop (the whole fix, undone: one walk per candidate again)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\tsc := newSweepCtx(dir)",
+      "new": "\tsc := newSweepCtx(dir)\n\tfor range roots {\n\t\tsc.mainAncestors = nil\n\t\tsc = newSweepCtx(dir)\n\t}"
+    }
+  ]
+}

@@ -271,6 +271,23 @@ func (g *pathGuard) lockFileMtimes() map[string]time.Time {
 // that are genuinely gone are counted, so the reported count can never overstate what
 // happened (git reporting success is not the same as the lock being gone).
 func reclaimStaleLocks(guard *pathGuard, dir, cwd string, ttl time.Duration) ([]reclaimEntry, []string, error) {
+	return reclaimStaleLocksMode(guard, dir, cwd, ttl, false)
+}
+
+// reclaimStaleLocksMode is reclaimStaleLocks with a REPORT-ONLY arm. With dryRun set it
+// makes every identical judgement and runs no `git worktree unlock` at all: the returned
+// entries are the locks it WOULD have retired, rendered by the same caller with the same
+// evidence line.
+//
+// It exists because `deskwt prune --dry-run` must write nothing anywhere. Retiring a lock
+// during a dry run is a worse surprise than the bookkeeping prune that used to run there —
+// a lock is the last thing standing between an automatic sweep and a live session's
+// worktree, and a report is not a licence to retire one.
+//
+// The post-unlock re-read that makes the non-dry path never overstate what happened is
+// skipped in the dry arm for the same reason it exists: there is nothing to re-read, and
+// reporting a would-be unlock as VERIFIED would be the overstatement it guards against.
+func reclaimStaleLocksMode(guard *pathGuard, dir, cwd string, ttl time.Duration, dryRun bool) ([]reclaimEntry, []string, error) {
 	locked, err := guard.lockedWorktrees(dir)
 	if err != nil {
 		return nil, nil, err
@@ -309,6 +326,10 @@ func reclaimStaleLocks(guard *pathGuard, dir, cwd string, ttl time.Duration) ([]
 		if !v.stale {
 			continue
 		}
+		if dryRun {
+			candidates = append(candidates, reclaimEntry{path: rt, reason: reason, why: v.why + " [dry-run: not unlocked]"})
+			continue
+		}
 		if _, uerr := runGit(dir, "worktree", "unlock", rt); uerr != nil {
 			warns = append(warns, "could not unlock "+rt+" ("+v.why+"): "+uerr.Error())
 			continue
@@ -317,6 +338,9 @@ func reclaimStaleLocks(guard *pathGuard, dir, cwd string, ttl time.Duration) ([]
 	}
 	if len(candidates) == 0 {
 		return nil, warns, nil
+	}
+	if dryRun {
+		return candidates, warns, nil
 	}
 
 	after, aerr := guard.lockedWorktrees(dir)
