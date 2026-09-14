@@ -107,17 +107,17 @@ func TrustedPublicAuthor(login string) bool {
 // not dispatch a model reviewer on it — a model reviewing the human's ratified
 // ruling inverts the gate.
 //
-// The accountable-human set is the SAME one the public-repo trust bar honours as a
-// human (TrustedPublicAuthor, #943): the mapped humans of ASSAY_HUMAN_LOGIN_MAP,
-// plus the single blessing authority (an accountable human by construction — the
+// The accountable-human set is: the mapped humans of ASSAY_HUMAN_LOGIN_MAP, plus
+// the single blessing authority (an accountable human by construction — the
 // loader refuses a bot/App bless login). It deliberately EXCLUDES:
 //   - role Apps / bot renderings ([bot], app/, -app, -bot) — never a human, and
 //     #177's non-goal keeps App-authored PRs in the review-neglect metric;
 //   - a shared machine account admitted to ASSAY_TRUSTED_LOGINS as a plain human
-//     (an org push/token account, not an accountable person) — exactly the account
-//     TrustedPublicAuthor refuses public-review trust to. Its PRs are NOT "a trusted
-//     human's own PRs" and stay in the neglect metric. This is why the check is NOT
-//     `TrustedAuthor && !bot`: that would sweep the shared account in too.
+//     (an org push/token account, not an accountable person). Its PRs are NOT "a
+//     trusted human's own PRs" and stay in the neglect metric. This is why the
+//     check is NOT `TrustedAuthor && !bot`: that would sweep the shared account
+//     in too — the accountable-human set is ASSAY_HUMAN_LOGIN_MAP plus the bless
+//     authority, nothing wider.
 //
 // Empty/unknown logins and an unconfigured roster are false (fail closed).
 func TrustedHumanAuthor(login string) bool {

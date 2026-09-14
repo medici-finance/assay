@@ -1877,20 +1877,21 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// Quarantined PRs get NO ACTION row and stay out of the open= audit set (they are not
 	// on anyone's work list), but keep their id so a prior run's row tombstones cleanly.
 	//
-	// On a PUBLIC (risk-classed) repo the author bar is HIGHER (#943): only role Apps
-	// (ASSAY_TRUSTED_BOT_SLUGS) and mapped humans (ASSAY_HUMAN_LOGIN_MAP) qualify — NEVER
-	// a shared machine account that ASSAY_TRUSTED_LOGINS admits as a human, and never a
-	// fork author. Public repos accept fork PRs from any account, so
-	// auto-reviewing an untrusted diff would spend the reviewer App's identity on hostile
-	// input and blur the fork-PR trust boundary. VisibilityRiskClassed is fail-closed:
-	// only a KNOWN-private repo keeps the plain TrustedAuthor bar; public/internal/unknown
-	// all get the tighter gate. The blessing authority can still admit any single PR by
-	// commenting (the manual override, unchanged on either path).
-	// ONE trust bar on every repo (desk-tools/17, ruled in #808): a login the roster
-	// trusts is a reviewable author whether the repo is private or public. Review-trust
-	// is not merge-authority; the layers behind it are unchanged: the outward-write
-	// gate, the unconditional public-repo Security-Review at head, and branch protection
-	// with a human merge. An unlisted author is still quarantined unless blessed.
+	// ONE trust bar on every repo, private or public (ruled in #808): the
+	// author bar is `deskkit.TrustedAuthor(p.Author.Login)` — the same predicate
+	// `deskpost`'s trustGate applies before posting a verdict — with no stricter branch
+	// for a risk-classed (public/internal/unknown) repo. A login the configured roster
+	// trusts is a reviewable author everywhere; an unlisted author is still quarantined
+	// unless blessed (the manual override below, unchanged).
+	//
+	// WHY THIS IS SAFE ON A PUBLIC REPO: review-trust is not merge-authority. The layers
+	// behind this gate are independent of it and unchanged by this rule — (1) the
+	// outward-write gate refuses any write to a repo the operator did not configure into
+	// the allowed-repo set; (2) every PR on a public repo is unconditionally risk-classed
+	// and needs a `Security-Review: pass` at head before any flip, whatever the diff
+	// touches; (3) branch protection and a human merge — a posted verdict is not a merge,
+	// and no desk tool merges. A widened author set still cannot reach an unlisted repo,
+	// still cannot flip past a failing Security-Review, and still cannot merge itself in.
 	authorTrusted := deskkit.TrustedAuthor(p.Author.Login)
 	if !authorTrusted {
 		blessed, berr := prBlessed(repo, p.Number)
