@@ -335,7 +335,7 @@ echo "[orca up]"
 orca_stub
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit orca 2>&1)" && rc=0 || rc=$?
 assert "up --cockpit orca exits 0" '[[ $rc -eq 0 ]]'
-assert "'repo add --path <cell-repo>' registers the cell's CHECKOUT (orca refuses a non-repo) before any terminal create" "grep -q \"repo add --path \$CELL\\\$\" \"\$ORCA_CALLS\""
+assert "'repo add --path <cell-repo>' registers the cell's CHECKOUT (orca refuses a non-repo) before any terminal create" "grep -q \"repo add --path \$REPO\\\$\" \"\$ORCA_CALLS\""
 assert "terminal create uses --worktree path:<cell-repo> (real orca's selector), not --cwd" "grep -q \"terminal create --worktree path:\$REPO --title example-cell-worker-desk --command\" \"\$ORCA_CALLS\""
 assert "no call ever uses --cwd (real orca's create-a-terminal verb advertises no such flag)" '! grep -q -- "--cwd" "$ORCA_CALLS"'
 assert "the role window's --command is the exact role_cmd every cockpit runs" "grep -q \"terminal create .*--command .*desk 'example-cell' 'worker-desk'\" \"\$ORCA_CALLS\""
