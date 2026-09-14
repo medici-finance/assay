@@ -550,7 +550,8 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 # job token cannot push, so create a project (or group) access token with the
 # write_repository scope and set it as a MASKED CI/CD variable named
 # STATUSGEN_PUSH_TOKEN. Until it is set the regen job stops with a clear message
-# rather than pushing.
+# rather than pushing. See docs/adopting-assay-gitlab.md, section "Board-push
+# credential" for the token kind, minimum role, and variable visibility.
 #
 # RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
 # neither installs nor configures one for you. Unlike GitHub's hosted
