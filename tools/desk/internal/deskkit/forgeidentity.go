@@ -88,6 +88,28 @@ func splitBotEntry(entry string) (BotIdentity, bool) {
 	return b, true
 }
 
+// PrimaryLogin is the CANONICAL rendering of this identity on its own forge — the login
+// the forge's API attributes a review, note or commit to, and therefore the one an
+// expected-actor comparison must be built from.
+//
+// On GitHub that is `<slug>[bot]`, the REST rendering (the gh-CLI's `app/<slug>` is the
+// same identity seen through a different endpoint, which is why it is an ACCEPTED
+// rendering below but not the primary one — SameActor folds the pair). On GitLab a
+// service account has no decorated form at all: the account's username is what the API
+// reports as the author, so the username IS the primary rendering.
+//
+// This exists because the role→login resolver (RoleAppLogin) used to hard-code the
+// GitHub suffix, which made every GitLab approval invisible to every gate keyed on it.
+// The renderings were already known here; only the role resolver bypassed them.
+func (b BotIdentity) PrimaryLogin() string {
+	switch b.Forge {
+	case ForgeGitLab:
+		return b.Slug
+	default:
+		return b.Slug + "[bot]"
+	}
+}
+
 // AcceptedLogins is the per-forge set of login renderings this identity is recognised
 // under, lowercased. On GitHub the account renders in two decorated forms and the bare
 // slug is deliberately absent (App slugs and usernames share no namespace, so a plain
@@ -96,12 +118,14 @@ func splitBotEntry(entry string) (BotIdentity, bool) {
 // — there is no decorated form — so the username is the one genuine rendering; the
 // GitHub `[bot]`/`app/` decorations are NOT minted for it, so a GitLab username dressed
 // in GitHub bot clothing is not accepted.
+//
+// The first element is always PrimaryLogin, so the two views cannot drift.
 func (b BotIdentity) AcceptedLogins() []string {
 	switch b.Forge {
 	case ForgeGitLab:
-		return []string{b.Slug}
+		return []string{b.PrimaryLogin()}
 	default:
-		return []string{b.Slug + "[bot]", "app/" + b.Slug}
+		return []string{b.PrimaryLogin(), "app/" + b.Slug}
 	}
 }
 

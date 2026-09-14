@@ -325,6 +325,20 @@ At runtime the tools read/write, under `~/.config/assay/`:
 - `audit.jsonl` — append-only audit log (dir 0700, file 0600 on first use). On
   corruption a tool refuses (exit 6) and prints the recovery: a **human** moves the
   file to `audit.jsonl.corrupt-<ts>` (tools never truncate/rewrite it).
+- `audit.jsonl.<YYYY-MM-DD>` — a ROTATED ledger segment. On the first append of a new
+  UTC day the live file is renamed to the day it covers and a fresh `audit.jsonl` is
+  started, so the file every append and every tail read touches stays one day long
+  (#1035). **Nothing is deleted and nothing is reset.** Every reader spans the segments
+  — `LoadEntries`, the rate-limit counter, the circuit breaker, the idempotency store,
+  and `deskaudit recover` — so the history they see is identical, row for row and in
+  order, to the history they saw before rotation existed. That is what distinguishes it
+  from a plain file move, which resets the counter and empties the idempotency store.
+  Retention is deliberately NOT a policy here: no tool removes a segment.
+- `deskaudit tail [N]` prints the newest N entries (default 10) across the segments, as
+  the raw lines they are on disk. It reads only, locks nothing, and costs a bounded read
+  whatever the ledger's size. An absent ledger says so and exits 0; an unreadable one is
+  exit 6; a malformed line is printed with a note naming `deskaudit recover`, never
+  dropped.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.
