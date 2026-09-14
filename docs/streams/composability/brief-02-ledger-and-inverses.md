@@ -220,12 +220,22 @@ risk-gated (`risk.irreversible: yes` → `gate: human`, `spec/lifecycle-v1.md` �
 `authored: 2026-09-08`, strictly after the §4.4 design-approval-gate cutover
 (2026-09-05). §4.4 requires a cited, approved `DR-<slug>` record under
 `docs/streams/decisions/` before such a brief may sit at `in-progress` or later — none exists
-for composability (checked: no file under `docs/streams/decisions/` mentions it), and the
-brief's own `gate: human` decision issue (#1023) is still open and unruled, so no such record
-can honestly be authored yet (`decided-by` requires a dated `human:<name>` stamp on an actual
+for composability (checked: no file under `docs/streams/decisions/` mentions it).
+
+**Correction (2026-09-14) — #1023's actual state.** This section originally said #1023 "is
+still open and unruled" — that was wrong at the time it was written: Ian closed #1023 at
+2026-09-14T03:03:46Z ("not planned since its work already merged in #953"), roughly 19 minutes
+before this note's own commit. §4.4's requirement stands regardless — a `design:` frontmatter
+key / cited `DR-<slug>` record is what the gate asks for, and a "not planned" issue closure is
+not that record on its own (`decided-by` requires a dated `human:<name>` stamp on an actual
 decision — fabricating one to pass this gate would be exactly the self-attested rubber stamp
-§4.4 exists to prevent). The row is reverted to `todo` — the lint-compliant state — until a
-human rules on #1023 and an approved DR record can be cited. This is a real, standing gap:
+§4.4 exists to prevent). **Open question, not resolved here**: does a human "not planned"
+closure on the decision issue actually SATISFY §4.4 (i.e. should the row go back to
+`implemented` since Ian effectively said no formal DR is needed for already-shipped work), or
+does the gate strictly require the frontmatter/record regardless of how the issue closed? Routed
+to the-desk for a standing ruling — it would apply to any risk-gated brief whose decision issue
+closes "not planned." The row stays at `todo` — the lint-compliant state — until that's
+answered. This is a real, standing gap:
 the underlying code has been on `main` since PR #953 (2026-09-12) without ever having passed
 this gate, because the rule did not yet exist/enforce at that time; grandfathering in
 `spec/lifecycle-v1.md` §4.4 is by `authored:` date only, so this brief does not qualify for
