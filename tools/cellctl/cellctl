@@ -1444,10 +1444,14 @@ up_orca(){
   # registered with `orca repo add --path <dir>` at least once (also confirmed live; `repo add` is
   # idempotent — a second call on the same path is a harmless `ok`). `--cwd`/`--path`/`--directory`
   # are kept as a fallback for a future/alternate orca build that takes a bare directory instead.
+  # Orca registers GIT REPOSITORIES only ("Not a valid git repository: <dir>" otherwise). The cell
+  # directory is config, not a checkout, so the cell's own checkout ($CELL_REPO) is what gets
+  # registered and selected; the role commands are absolute and carry the cell name themselves.
+  local orca_dir="${CELL_REPO:-$CELL_DIR}"
   wtflag="$(first_flag "$h" --worktree)" || wtflag=""
   if [[ -n "$wtflag" ]]; then
-    help_has add orca repo && { orca repo add --path "$CELL_DIR" >/dev/null 2>&1 \
-      || echo "NOTICE: 'orca repo add --path $CELL_DIR' failed — terminal create below may 404 with selector_not_found until $CELL_DIR is registered by hand ('orca repo add --path $CELL_DIR')" >&2; }
+    help_has add orca repo && { orca repo add --path "$orca_dir" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca repo add --path $orca_dir' failed — terminal create below may 404 with selector_not_found until $orca_dir is registered by hand ('orca repo add --path $orca_dir')" >&2; }
   else
     cwdflag="$(first_flag "$h" --cwd --path --directory)" || cwdflag=""
   fi
@@ -1457,8 +1461,8 @@ up_orca(){
   local role
   for role in $roles; do
     local -a args=(terminal "$verb")
-    if [[ -n "$wtflag" ]]; then args+=("$wtflag" "path:$CELL_DIR")
-    elif [[ -n "${cwdflag:-}" ]]; then args+=("$cwdflag" "$CELL_DIR")
+    if [[ -n "$wtflag" ]]; then args+=("$wtflag" "path:$orca_dir")
+    elif [[ -n "${cwdflag:-}" ]]; then args+=("$cwdflag" "$orca_dir")
     fi
     [[ -n "$nameflag" ]] && args+=("$nameflag" "${CELL}-${role}")
     args+=("$cmdflag" "$(role_cmd "$role" "$cfg")")
@@ -1565,21 +1569,21 @@ down_orca(){
   local roles r; roles="$(up_roles 0)"
   # `orca terminal close --worktree <selector> --all` stops every terminal orca owns for that
   # worktree in one call — verified live against real orca that `--worktree path:<dir>` is a valid
-  # selector (the `up_orca` arm registers `$CELL_DIR` via `orca repo add` before ever creating a
+  # selector (the `up_orca` arm registers `$CELL_REPO` via `orca repo add` before ever creating a
   # terminal there), so this is a real close, not a by-hand notice, whenever the build advertises it.
   local h; h="$(orca terminal close --help 2>&1 || true)"
   local wtflag allflag
   wtflag="$(first_flag "$h" --worktree)" || wtflag=""
   allflag="$(first_flag "$h" --all)" || allflag=""
   if [[ -n "$wtflag" && -n "$allflag" ]]; then
-    if orca terminal close "$wtflag" "path:$CELL_DIR" "$allflag" >/dev/null 2>&1; then
-      echo "[cell] orca: closed every terminal for $CELL_DIR ('orca terminal close $wtflag path:$CELL_DIR $allflag')"
+    if orca terminal close "$wtflag" "path:${CELL_REPO:-$CELL_DIR}" "$allflag" >/dev/null 2>&1; then
+      echo "[cell] orca: closed every terminal for ${CELL_REPO:-$CELL_DIR} ('orca terminal close $wtflag path:${CELL_REPO:-$CELL_DIR} $allflag')"
     else
-      echo "[cell] 'orca terminal close $wtflag path:$CELL_DIR $allflag' failed — close the ${CELL}-<role> terminals by hand:" >&2
+      echo "[cell] 'orca terminal close $wtflag path:${CELL_REPO:-$CELL_DIR} $allflag' failed — close the ${CELL}-<role> terminals by hand:" >&2
       for r in cell $roles; do echo "  ${CELL}-${r}"; done
     fi
   else
-    echo "[cell] this orca build advertises no worktree-scoped terminal close — close the ${CELL}-<role> terminals by hand ('orca terminal list --worktree path:$CELL_DIR'):"
+    echo "[cell] this orca build advertises no worktree-scoped terminal close — close the ${CELL}-<role> terminals by hand ('orca terminal list --worktree path:${CELL_REPO:-$CELL_DIR}'):"
     for r in cell $roles; do echo "  ${CELL}-${r}"; done
   fi
   # Scheduled automations OUTLIVE a `down` on purpose: `up --automate` is the run-while-away

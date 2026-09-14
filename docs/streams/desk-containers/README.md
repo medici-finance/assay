@@ -37,6 +37,7 @@ component list, build/run topology, and open questions.
 | 05 | [docker-compose definition for the five desks](brief-05-docker-compose.md) | 3 | S | todo | — | — |
 | 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | todo | — | — |
 | 07 | [multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config](brief-07-desk-control-layer.md) | 4 | M | todo | — | — |
+| 08 | [A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish](brief-08-tick-contract-for-desk-skills.md) | 3 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -60,18 +61,35 @@ Tempting-but-wrong first step: writing the five desk Dockerfiles first. They are
 and easy, but without 01's base and 02's contract they would hard-code credential paths
 that the human gate may reject — churn, not progress.
 
+**`desk-containers/08` sits beside that path rather than on it, and it is the one brief
+here that blocks a SHIPPED surface.** The five desk skills are standing loops by design:
+every body says the loop is armed before the first sweep and kept ticking for the life of
+the window, and none has a second mode. A scheduled pod invokes a role skill as a one-shot
+call under an outer `timeout`, so a standing loop there has exactly one possible ending —
+the kill — and the one-shot output mode prints nothing when that happens. Measured
+2026-09-14: the review loop's first successful boot on the fixed image ran the full tick
+deadline and was killed with an empty log; no review tick has ever completed. Brief 08 adds
+the missing mode as a contract — one bounded pass, a fixed-grammar summary line, no durable
+wake — stated once in a shared reference and derived into all five bodies. It depends on no
+other brief in this stream (its deliverables are plugin content every image already bakes),
+and the dependency runs the other way: the image cannot usefully pass a flag to a mode that
+does not exist.
+
 ## Dependency waves
 
 - **Wave 1** — `desk-containers/01`, `desk-containers/02` (independent;
   parallelizable; 02 carries the human gate).
 - **Wave 2** — `desk-containers/03` (depends on 01 + 02).
 - **Wave 3** — `desk-containers/04`, `desk-containers/05`, `desk-containers/06`
-  (all depend on 02 + 03; parallelizable).
+  (all depend on 02 + 03; parallelizable), and `desk-containers/08` (depends on
+  NOTHING — it changes skill content, not image content, so it is parallelizable with
+  every other brief in the stream; it is placed here because that is when the launch
+  surfaces make it operationally load-bearing, not because anything blocks it).
 - **Wave 4** — `desk-containers/07` (depends on 04; the tmux/equivalent fleet-control
   layer over the launch script).
 
 Path: `02 → 03 → 04 → 07`, with `01 → 03` joining at wave 2 and `05`/`06` fanning out
-beside `04`.
+beside `04`. `08` hangs off no edge at all.
 
 ## Shared conventions
 
