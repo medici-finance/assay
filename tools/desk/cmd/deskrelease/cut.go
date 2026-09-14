@@ -226,6 +226,17 @@ func planCut(rest []string) writeResult {
 	// is authorized only by a listed `:public` allowed-repos entry (deskkit.PublicRepoGate).
 	// The gate runs on whatever repoSlug RESOLVED to — the shipped default or a configured
 	// one — so making the slug configurable cannot route a release around it.
+	//
+	// RULING (assay#1066/forge-gitlab-14): this site legitimately stays single-forge and is
+	// NOT routed through deskkit.ForgeRepoInfoFetcher. Unlike deskpr/deskreply/deskevidence,
+	// this tool never resolves a Forge backend in the first place — ghClient (github.go) is a
+	// deliberately minimal, GitHub-only REST client for exactly two ref operations (read,
+	// create-tag) against a fixed compiled-in/configured repo (topology.yaml's release_repo,
+	// screened through IsAllowedRepo), and the tool runs no external program but `desktoken`.
+	// There is no already-resolved forge backend here to route the gate's read through; adding
+	// one would be new scope — standing up dynamic forge resolution in a tool that has none
+	// today — not a two-line swap at an existing call site. Release cuts are GitHub-only by
+	// design; a GitLab release target is a follow-up brief, not this one.
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: c.token, BaseURL: apiBaseURL}
 	if gerr := deskkit.PublicRepoGate(fetcher, c.owner, c.repo); gerr != nil {
 		return fromErr(verb, "", gerr)
