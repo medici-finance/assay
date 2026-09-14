@@ -295,6 +295,21 @@ PR_NUMBER=77 BASE_REF=main run_case "P11 live-tip proxy for another PR does not 
 liveproxyrepo "$PROXY_WITH_BULLET" 77
 PR_NUMBER=77 BASE_REF=main GITHUB_BASE_REF=other run_case "P12 explicit BASE_REF wins over GITHUB_BASE_REF" 0
 
+# ── P13: an embedded-newline PR_NUMBER must not bypass the whole-string gate
+#         (assay#927). `grep -qE '^[1-9][0-9]*$'` (no -z) anchors ^/$ per LINE,
+#         not to the whole input, so $'999\n77' used to pass the gate because
+#         ONE of its lines is a bare positive integer — and the same value then
+#         widened the downstream `grep -E "^changelog/pr-${PR_NUMBER}-..."`
+#         match (a literal newline in a grep -E pattern argument acts like a
+#         second `-e` alternative), matching PR 77's proxy fragment for a
+#         request that named PR 999. Fixture: base carries only
+#         changelog/pr-77-fix.md (no proxy for 999 exists) — the vulnerable
+#         gate wrongly PASSes (exit 0) by matching PR 77's proxy anyway; the
+#         fixed gate must treat the value as not-a-positive-integer (same as
+#         P6's non-integer row) and FAIL (exit 1).
+proxyrepo "$PROXY_WITH_BULLET"
+PR_NUMBER=$'999\n77' run_case "P13 embedded-newline PR_NUMBER rejected, not laundered into PR 77's proxy" 1
+
 echo "---"
 echo "check_test: $pass passed, $fail failed (impl: $CHECK)"
 [ "$fail" = 0 ]

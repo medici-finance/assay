@@ -219,7 +219,7 @@ facts (read at `b35225c6`, 2026-09-12):
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go vet ./...` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCheckRosterLivenessClassifiesEveryCase$' -count=1` | exit 0 — a stub fetcher table drives Alive/Renamed/Reclaimed/Deleted/Unpinned/CouldNotCheck, INCLUDING a mixed batch where one identity errors and the others still get their own findings |
-| 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCheckRosterLivenessNeverReportsAliveOnIDMismatch$' -count=1` | exit 0 — the NEGATIVE control: an id mismatch is never classified `LivenessAlive` |
+| 3 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCheckRosterLivenessNeverReportsAliveOnIDMismatch$' -count=1` | exit 0 — the NEGATIVE control: an id mismatch is never classified `LivenessAlive`. Mutation: with the `acct.ID != id.PinnedID` branch in `classifyLiveness` disabled, this test REDDENS (proving the guard is what the row exercises), and passes again once restored |
 | 4 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGetAccountDeletedIs404$' -count=1 && go test ./internal/deskkit/ -run '^TestGetAccountRenameKeepsIDMatchesDifferentLogin$' -count=1 && go test ./internal/deskkit/ -run '^TestGetAccountReclaimDifferentID$' -count=1` | exit 0 — the three live-wire shapes, hermetic httptest per `repovis_http_test.go`'s pattern |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGetAccountTransportFailureIsNotDeleted$' -count=1` | exit 0 — a 500/timeout is NOT `ErrAccountNotFound`, so it is never misclassified `LivenessDeleted` |
 | 6 | check:ci | `cd tools/desk && go test ./cmd/deskroster/ -run '^TestLivenessCmdUnconfiguredRosterRefuses$' -count=1` | exit 0 — an unconfigured roster exits refused, printing zero findings for a reason NAMED as "unconfigured", never the same shape as a clean, fully-configured run |
@@ -247,6 +247,56 @@ Pre-mortem → detection map:
 ## Evidence
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
+
+### Implementer run — 2026-09-13, worker session (darwin/arm64, go1.26.5, offline)
+
+Implementer evidence, NOT a verification: rows 1–13 run in the implementation worktree off
+`refs/remotes/origin/main` @ `468a3082`. A non-implementer re-runs them at verify time.
+
+| # | Exit | Key observed output |
+|---|------|---------------------|
+| 1 | 0 / 0 | `go build ./...` and `go vet ./...` both silent across the whole module |
+| 2 | 0 | `TestCheckRosterLivenessClassifiesEveryCase` PASS — one mixed batch drives Alive/Renamed/Reclaimed/Deleted/Unpinned/CouldNotCheck together; the transport-error identity does not suppress the other 5 findings |
+| 3 | 0 | `TestCheckRosterLivenessNeverReportsAliveOnIDMismatch` PASS — an id mismatch (pinned 42, live 99999) classifies `LivenessReclaimed`, never `LivenessAlive`. **Mutation demonstrated**: with `classifyLiveness`'s `acct.ID != id.PinnedID` branch short-circuited to `false`, the SAME test FAILs (`an id mismatch (pinned 42, live 99999) classified Alive — the negative control this test exists for`), confirmed by re-running with the mutation applied, then the file was restored byte-identical (`diff` confirmed) and the test re-passes |
+| 4 | 0 / 0 / 0 | `TestGetAccountDeletedIs404`, `TestGetAccountRenameKeepsIDMatchesDifferentLogin`, `TestGetAccountReclaimDifferentID` all PASS against the hermetic httptest server |
+| 5 | 0 | `TestGetAccountTransportFailureIsNotDeleted` PASS across 500/403/401 subtests — none classified `ErrAccountNotFound` |
+| 6 | 0 | `TestLivenessCmdUnconfiguredRosterRefuses` PASS — refusal text contains "unconfigured", zero lines to stdout |
+| 7 | 0 | `TestLivenessCmdReportsFindingsForConfiguredIdentities` PASS — stderr: `liveness: 4 identities, 2 notices`; exactly one RECLAIMED and one DELETED line, none for the two alive `ada` entries (human + bless) |
+| 8 | 0 | `TestLivenessCmdNonGitHubForgeNamesTheGap` PASS — stderr: `liveness: 0 identities checked (non-GitHub forge), 1 notice`; stdout carries the explicit "GitHub-only" line |
+| 9 | 0 / 0 / 0 / 0 | `TestTrustedAuthor`, `TestBlessed`, `TestItemTrusted` all PASS unchanged. `TestTrustedHumanAuthor` reports `[no tests to run]` — **could-not-check, not a pass**: no test of that exact name exists in this tree (verified via `grep -n 'func TestTrustedHumanAuthor' internal/deskkit/*_test.go`, zero hits; `TrustedHumanAuthor` itself is exercised incidentally inside `verifygatecard_test.go`, which also passes unchanged). This is a pre-existing gap in the brief's Verify row, not introduced by this change — flagged rather than silently rounded up to a pass |
+| 10 | 0 | absence-grep passes: `trust.go` carries zero references to `LivenessClass`/`CheckRosterLiveness`/`RenderLivenessNotices`/`AccountFetcher` |
+| 11 | not run in-agent | per worker-kit clause 12, the whole-module `go test ./...` is never run inside the agent. Bounded equivalents run instead: `go test ./internal/deskkit/... -count=1` → `ok` (33s) and `go test ./cmd/deskroster/... -count=1` → `ok` (3.2s); full-module `go build ./...` and `go vet ./...` (row 1) are clean. CI runs the full suite |
+| 12 | 0 | `gofmt -l` on the five named files: empty output |
+| 13 | 0 | `cd statusgen && go run . --root .. --lint` → `LINT: PASS`, exit 0 |
+
+### Design deviation from the brief, recorded per worker-kit clause 7 (verify before applying)
+
+The brief specifies `GetAccount` as a plain, exported method directly on `*GitHubForge`
+(forge_github.go), modeled on `RepoInfoFetcher`/`HTTPRepoInfoFetcher`. That placement does
+not compile clean against this tree: `tools/desk/internal/deskkit/forge_surface_test.go`'s
+`TestForgeNoPassthrough/neither_backend_exports_a_method_outside_the_interface` — a
+pre-existing invariant already present at the brief's own cited freshness-check commit
+`b35225c6`, not something this change introduces — asserts by reflection that `*GitHubForge`'s
+and `*GitLabForge`'s EXPORTED method sets equal the frozen `Forge` interface's exactly, with
+no exceptions. An exported `GetAccount` on `*GitHubForge` trips it directly (reproduced: `go
+test ./internal/deskkit/ -run '^TestForgeNoPassthrough$'` FAILs with "GitHubForge exports 1
+method(s) outside the frozen Forge surface: GetAccount").
+
+The brief's own cited precedent is actually the correct fix, just mis-attributed to the
+wrong type: `RepoVisibility` is not a method on `*GitHubForge` either — it lives on
+`HTTPRepoInfoFetcher`, a standalone fetcher struct that never implements `Forge` at all, so
+the closed-surface test never sees it. This change places `GetAccount` the same way —
+`HTTPAccountFetcher` (`tools/desk/internal/deskkit/trustliveness.go`), a standalone struct, not a
+`GitHubForge` method — which satisfies every stated intent of the brief (no Forge interface
+change, no GitLab implementation obligation, `AccountFetcher` still takes any fetcher a
+caller hands it) while compiling clean against the pre-existing invariant. The consumer
+(`tools/desk/cmd/deskroster/liveness.go`) still resolves the repo's `Forge` through the existing
+`forgeFor` seam to decide GitHub-vs-not and to read the already-minted
+`Token`/`BaseURL`/`Client` off the resolved `*deskkit.GitHubForge` value (plain exported
+FIELD reads, not a method call), then hands those to `HTTPAccountFetcher` — the same
+authenticated transport, just not reached through a new `GitHubForge` method. `trust.go`,
+`forge_github.go`'s existing methods, the `Forge` interface, and `forge_gitlab.go` are all
+untouched by this deviation.
 
 ## Review
 
