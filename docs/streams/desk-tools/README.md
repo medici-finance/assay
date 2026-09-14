@@ -117,11 +117,11 @@ attach to brief 21's one subprocess runner rather than to a second measurement.
 ## Critical path
 desk-tools/21 → desk-tools/23. That is the stream's only typed edge: brief 23's per-child
 timing attaches to the ONE subprocess runner brief 21 delivers, so a second measurement is
-never written. Every other brief is independent and self-contained. The soft ordering their source streams
-carried (a version-scheme brief ahead of 01, the drain engine ahead of 02, a set of
-risk-path briefs ahead of 03, the verdict payload/row-classes ahead of 04) is satisfied by
-work already landed outside this stream, so no typed `depends:` edge remains — see each
-brief's Dependencies note.
+never written. Every other brief is independent and self-contained. The soft ordering their
+source streams carried (a version-scheme brief ahead of 01, the drain engine ahead of 02, a set
+of risk-path briefs ahead of 03, the verdict payload/row-classes ahead of 04) is satisfied by
+work already landed outside this stream, so 21 → 23 is the only typed `depends:` edge in the
+stream — see each brief's Dependencies note.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
