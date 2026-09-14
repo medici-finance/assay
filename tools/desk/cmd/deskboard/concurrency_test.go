@@ -100,7 +100,7 @@ func TestThroughputSharedRootFailureBlindsBothStages(t *testing.T) {
 	installFakeStatusgen(t)
 	// An UNRESOLVABLE root configuration: the shared resolution fails before either depth
 	// reader is reached.
-	t.Setenv(deskkit.RootsEnv, "example-org/tracker=/nonexistent/root/for/this/test")
+	t.Setenv(deskkit.RootsEnv, "example-org/tracker=/no/such/root")
 
 	var out, errb bytes.Buffer
 	_ = run([]string{"throughput", "--json"}, &out, &errb)
