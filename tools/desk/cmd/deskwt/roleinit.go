@@ -184,6 +184,10 @@ func parseRoleParams(verb string, args []string) (roleInitParams, error) {
 	noFetch := fs.Bool("no-fetch", false, "start from the local origin/main as-is instead of fetching it fresh first")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
+		// TIER TWO — see deskkit/helprequest.go.
+		if deskkit.IsHelpRequest(perr) {
+			return roleInitParams{}, deskkit.ErrHelpRequested
+		}
 		return roleInitParams{}, deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	rawRole := strings.TrimSpace(*role)

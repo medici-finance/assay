@@ -330,6 +330,12 @@ func (a *auditCtx) log(result, detail string) {
 
 // finalize maps the terminal error (or success) to exactly one audit result.
 func (a *auditCtx) finalize(err error) {
+	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
+	// would land in is append-only, never rotated, and counted per tool for the write budget
+	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
+	if deskkit.IsHelpRequest(err) {
+		return
+	}
 	// A read-only verb's every outcome is a dry run — see auditCtx.readOnly. The EXIT CODE
 	// is unaffected (check still exits 5 on a duplicate, 6 on an unanswered search); only
 	// the meters' view of the line changes, and they are write meters.
@@ -409,6 +415,12 @@ func cmdNew(args []string) (err error) {
 	forceNew := fs.Bool("force-new", false, "bypass the dedupe search (escape hatch; requires --reason)")
 	reason := fs.String("reason", "", "stated reason for --force-new (required with --force-new)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
@@ -617,6 +629,12 @@ func cmdAttach(args []string) (err error) {
 	to := fs.Int("to", 0, "target issue number (required)")
 	bodyFile := fs.String("body-file", "", "path to a file containing the comment body (required)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
@@ -701,6 +719,12 @@ func cmdCheck(args []string) (err error) {
 	repo := fs.String("R", "", "target repo, owner/name (required, must be in the desk-tools set)")
 	title := fs.String("title", "", "title to check (required)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
