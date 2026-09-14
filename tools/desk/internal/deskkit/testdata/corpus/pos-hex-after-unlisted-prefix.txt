@@ -1,0 +1,7 @@
+# corpus: a 32-hex run behind an unlisted prefix, or of the wrong length, which must STILL refuse
+# expect: refused
+# refs:   the paired positive that bounds the k8s-uid-hex-segment rule (#966)
+# shape:  a hyphen-prefixed 32-hex run whose prefix is NOT a Kubernetes object kind, and a 40-hex run behind a listed prefix
+# why:    the k8s-uid-hex-segment exemption is anchored on a CLOSED list of object-kind prefixes and is length-exact (32); a secret pasted as token-<32hex> or a wrong-length run must not be laundered by either bound
+A leaked-looking value: token-38d9b7efea064f53{{+}}acd5843296326c99 must not be admitted.
+A wrong-length run behind a listed prefix: pvc-38d9b7efea064f53{{+}}acd5843296326c99ff stays opaque payload, not structure.
