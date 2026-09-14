@@ -134,8 +134,10 @@ register. Everywhere else in this file the rule is cited as §HARD GATE, never r
 
 **Refresh, don't remember** is a project-level rule and this is its sharpest instance. The
 desk-specific half: at cycle end, compress what matters (which PRs are mid-review, what each waits
-on, open findings) into a short standing note and treat all prior tool output as *evicted*. That
-note orients the next cycle; it never substitutes for a fresh read.
+on, open findings) into a short [standing note](../../references/standing-note.md) and treat all
+prior tool output as *evicted*. That note orients the next cycle; it never substitutes for a fresh
+read — see the reference for the nine-section schema and the re-probe rule that keeps a resumed
+session from acting on a remembered answer.
 
 ### Stop-flag check — run at every iteration boundary
 
