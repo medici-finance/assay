@@ -101,6 +101,11 @@ type glServer struct {
 	// notePages, when true, serves 2 pages of notes and sets X-Next-Page on the first —
 	// GitLab's continuation signal (it uses headers, not Link relations).
 	notePages bool
+	// issuePages drives the project-issues LIST route's pagination (ListOpenIssues): 0 serves
+	// the single canned issueList, N>0 serves N one-issue pages chained by X-Next-Page, and a
+	// NEGATIVE value serves an ENDLESS chain that never stops advertising a next page — the
+	// runaway a page ceiling exists to bound.
+	issuePages int
 	// forceStatus maps an escaped-path suffix to the HTTP status to return instead.
 	forceStatus map[string]int
 }
@@ -263,6 +268,20 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		}
 		enc(s.issue)
 	case r.Method == http.MethodGet && lIssueRoot.MatchString(path):
+		if s.issuePages != 0 {
+			n := 1
+			if page != "" {
+				_, _ = fmt.Sscanf(page, "%d", &n)
+			}
+			if s.issuePages < 0 || n < s.issuePages {
+				w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
+			}
+			enc([]map[string]any{glIssue(map[string]any{
+				"id": 1000 + n, "iid": 100 + n,
+				"title": fmt.Sprintf("issue on page %d", n), "created_at": "2026-09-01T09:00:00Z",
+			})})
+			return
+		}
 		enc(s.issueList)
 	case r.Method == http.MethodPost && lIssueRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
@@ -1109,12 +1128,30 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
 		},
 		{
-			// forge-neutral/06. The issue-lane summary feeds a trust gate that is itself
-			// could-not-check on GitLab, so the whole lane is deferred together — a refusal
-			// with zero requests, not a half-served list.
-			name: "list_open_issues_gap", method: "ListOpenIssues",
-			setup: func(s *glServer) {},
-			run:   func(f *GitLabForge) (any, error) { return f.ListOpenIssues(glRepo) },
+			// issue #1033. The issue-lane summary is now a REAL read: the gate it is consumed
+			// paired with (IssueTrustEvents) is served on GitLab, so deferring the list left the
+			// lane enumerable-by-nobody rather than protecting anything. The golden pins the
+			// request (state=opened, per_page=100) and the mapped summary — IID as the number,
+			// the numeric author id the trust gate pins on, the author login left BARE (no
+			// GitHub `[bot]` decoration, matching what this backend's trust reader produces),
+			// labels, created-at and the web URL. No PR filter appears because GitLab cannot
+			// serve a merge request from the issues endpoint at all.
+			name: "list_open_issues", method: "ListOpenIssues",
+			setup: func(s *glServer) {
+				s.issueList = []map[string]any{
+					glIssue(map[string]any{
+						"id": 1000, "iid": 12, "title": "a question about the board",
+						"labels": []string{"question"}, "created_at": "2026-09-01T09:00:00Z",
+					}),
+					glIssue(map[string]any{
+						"id": 1001, "iid": 13, "title": "filed by a service account",
+						"labels": []string{}, "created_at": "2026-09-02T09:00:00Z",
+						"author":  map[string]any{"id": 41987965, "username": "assay-reviewer-bot"},
+						"web_url": "https://gitlab.example/medici-finance/assay/-/issues/13",
+					}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListOpenIssues(glRepo) },
 		},
 		{
 			// GitLab trust-events brief. PRTrustEvents is a REAL read: one bounded GraphQL query over the
@@ -1768,6 +1805,75 @@ func TestForgeGitlabChangedFileCount(t *testing.T) {
 	if n <= 1000 {
 		t.Fatalf("a truncated changes_count of %q reported as %d would let a 1000-entry walk reconcile clean",
 			"1000+", n)
+	}
+}
+
+// TestForgeGitlabListOpenIssuesPaginates pins that the open-issue walk follows GitLab's
+// X-Next-Page continuation to EXHAUSTION rather than returning the first page.
+//
+// This is the property the issue lane's correctness rests on, and the golden cannot show it:
+// the golden serves one page, so a backend that read only page 1 would pin an identical
+// golden. issueboard reads an open issue's ABSENCE from this list as "closed" and emits a
+// RETIRE row for its placeholder, so a first-page-only read would not merely under-report —
+// it would retire placeholders for issues that are still open.
+func TestForgeGitlabListOpenIssuesPaginates(t *testing.T) {
+	s := newGLServer(t)
+	s.issuePages = 3 // three one-issue pages, chained by X-Next-Page
+
+	got, err := s.forge().ListOpenIssues(glRepo)
+	if err != nil {
+		t.Fatalf("ListOpenIssues: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("ListOpenIssues walked %d issues, want 3 — the walk must follow X-Next-Page to "+
+			"exhaustion, not stop at the first page: %+v", len(got), got)
+	}
+	for i, want := range []int{101, 102, 103} {
+		if got[i].Number != want {
+			t.Errorf("issue[%d].Number = %d, want %d (IID, in page order)", i, got[i].Number, want)
+		}
+	}
+	// The state filter is what makes this an OPEN-issue read; without it GitLab serves closed
+	// issues too and every closed issue would read as open.
+	var sawOpened bool
+	for _, rq := range s.requests {
+		if strings.Contains(rq.Query, "state=opened") {
+			sawOpened = true
+		}
+	}
+	if !sawOpened {
+		t.Errorf("no request carried state=opened; the read would admit closed issues: %+v", s.requests)
+	}
+}
+
+// TestForgeGitlabListOpenIssuesCeilingRefuses pins that reaching the page ceiling is a
+// could-not-check REFUSAL, never a truncated set handed back as if complete.
+//
+// IssueSummary carries no truncation field (unlike OpenChanges.TruncatedAtCap), so a partial
+// return is indistinguishable from a complete one at the call site — and its consumer reads
+// absence as "closed". Returning what was walked so far is therefore the fail-OPEN this
+// refusal exists to prevent.
+func TestForgeGitlabListOpenIssuesCeilingRefuses(t *testing.T) {
+	s := newGLServer(t)
+	s.issuePages = -1 // never stops advertising a next page
+
+	got, err := s.forge().ListOpenIssues(glRepo)
+	if err == nil {
+		t.Fatalf("a never-ending pagination returned %d issues and no error — a partial open-issue "+
+			"set read as complete makes the issue lane retire still-open issues", len(got))
+	}
+	if got != nil {
+		t.Errorf("a refusal must carry NO rows, got %d", len(got))
+	}
+	if !IsUnverifiable(err) {
+		t.Errorf("ceiling overflow must be could-not-check (Unverifiable), got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "could-not-check") {
+		t.Errorf("refusal text must name itself could-not-check, got %q", err.Error())
+	}
+	// The walk is BOUNDED: it stops at the ceiling instead of spinning forever.
+	if n := len(s.requests); n != gitlabMaxIssuePage {
+		t.Errorf("walk issued %d requests, want exactly the %d-page ceiling", n, gitlabMaxIssuePage)
 	}
 }
 

@@ -396,6 +396,12 @@ const (
 	// gitlabMaxChangesPage bounds the open-MR pagination independently of the cap, so a forge
 	// that keeps returning a NextPage cannot spin the loop unbounded.
 	gitlabMaxChangesPage = 25
+	// gitlabMaxIssuePage bounds the bulk open-ISSUE walk (2500 issues) so a forge that keeps
+	// returning a NextPage cannot spin the loop unbounded. Unlike the open-change read there is
+	// no companion CAP: IssueSummary carries no truncation field and its consumer reads absence
+	// as "closed", so reaching this ceiling is a REFUSAL rather than a truncated set — see
+	// ListOpenIssues.
+	gitlabMaxIssuePage = 25
 )
 
 // GitLabRollupUnmapped is the Typename this backend stamps on the single synthetic
@@ -771,20 +777,87 @@ func gitlabOpenChange(mr *gitlab.BasicMergeRequest) OpenChange {
 	return oc
 }
 
-// ListOpenIssues is a could-not-check REFUSAL on GitLab, naming the gap. GitLab DOES list open
-// issues, but this summary is defined to FEED the trust gate and the escalation clock — the
-// rendered bot-suffixed login, the numeric author id a recycled login cannot fake, paired per
-// issue with IssueTrustEvents (below, itself could-not-check on GitLab). Shipping the list
-// while its consuming gate cannot be served on the same forge would hand the issue lane a set
-// it can enumerate but never admit or escalate, so the whole issue lane is deferred together
-// to the forge-gitlab trust-events brief rather than half-served here.
+// ListOpenIssues reads a GitLab project's OPEN issues as the issue lane's classification
+// summaries (`GET /projects/:id/issues?state=opened`, paginated). It is a REAL read, not a
+// degraded one: every IssueSummary field is served for real, so issueboard's trust gate and
+// escalation clock run on a GitLab adopter exactly as they do on GitHub.
+//
+// It was previously a blanket could-not-check REFUSAL, on the ground that the summary is
+// consumed only PAIRED with IssueTrustEvents and that gate was itself unserved on GitLab.
+// That premise no longer holds — IssueTrustEvents (below) is a real bounded GraphQL read
+// since the GitLab trust-events brief — so the pairing the refusal was protecting is exactly
+// what is now available, and withholding the list is what leaves the lane blind.
+//
+// The three shape facts that make this a 1:1 read rather than an approximation:
+//
+//   - ISSUES ONLY holds by the endpoint's own shape. GitLab numbers issues and merge requests
+//     in SEPARATE sequences served by separate endpoints, so a project-issue list can never
+//     contain a change — the same property SearchIssues already relies on. GitHub's REST
+//     /issues serves PRs from one shared sequence and must filter them out; there is nothing
+//     here to filter, so no filter is invented.
+//   - The AUTHOR is the identity the trust gate pins on: the numeric user id a recycled
+//     username cannot fake, plus the login. The login stays the BARE username — GitHub's
+//     `<slug>[bot]` decoration is a GitHub-only rendering and a GitLab service account is
+//     recognised by its bare username (see gitlabActorTypeBot), which is the SAME rendering
+//     this backend's trust-events reader produces. Decorating it here would make the summary
+//     and its paired trust payload disagree about who authored the issue.
+//   - No issue TYPE is dropped. GitLab's work-item types (issue / incident / test_case / task)
+//     are all open issues of the project and all classify on labels and title; filtering any
+//     of them out would hide real inbound from the lane.
+//
+// Pagination REFUSES rather than truncates. IssueSummary carries no truncation field (unlike
+// OpenChanges.TruncatedAtCap), and the consumer reads ABSENCE from this list as "closed":
+// issueboard cross-references the open set against local placeholders and emits a RETIRE row
+// for every placeholder whose issue it did not see. A silently short page would therefore not
+// merely under-report — it would drive the lane to retire placeholders for issues that are
+// still open. So the walk runs to exhaustion on the authoritative X-Next-Page signal, and a
+// project that is still paginating at the page ceiling is a could-not-check naming the
+// ceiling, never a partial set handed over as if it were complete.
 func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	listPath := fmt.Sprintf("/projects/%s/issues", g.projectPath(repo))
+	state := "opened"
+	out := make([]IssueSummary, 0, gitlabPerPage)
+	for page := 1; page <= gitlabMaxIssuePage; page++ {
+		chunk, resp, lerr := cl.Issues.ListProjectIssues(repo.Slug(),
+			&gitlab.ListProjectIssuesOptions{
+				State:       &state,
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+		}
+		for _, iss := range chunk {
+			if iss == nil {
+				continue
+			}
+			s := IssueSummary{
+				Number:    int(iss.IID),
+				Title:     iss.Title,
+				Labels:    append([]string(nil), iss.Labels...),
+				CreatedAt: gitlabTime(iss.CreatedAt),
+				URL:       iss.WebURL,
+			}
+			if iss.Author != nil {
+				s.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
+			}
+			out = append(out, s)
+		}
+		// NextPage == 0 is GitLab's authoritative end-of-walk signal, unlike inferring the
+		// end from a short page.
+		if resp == nil || resp.NextPage == 0 {
+			return out, nil
+		}
+	}
 	return nil, Unverifiable(fmt.Sprintf(
-		"could-not-check: the GitLab backend does not serve ListOpenIssues for %s — the issue-board summary "+
-			"is consumed only paired with IssueTrustEvents (the trust gate + escalation clock), which is "+
-			"itself could-not-check on GitLab, so the whole issue lane is deferred to the forge-gitlab "+
-			"trust-events brief rather than shipping a list its gate cannot admit.",
-		repo.Slug()), nil)
+		"could-not-check: %s still reports more open issues after %d pages of %d (the open-issue page "+
+			"ceiling) — refusing to hand back a PARTIAL open-issue set, because the issue lane reads an "+
+			"issue's absence from this list as CLOSED and would retire placeholders for issues that are "+
+			"still open",
+		repo.Slug(), gitlabMaxIssuePage, gitlabPerPage), nil)
 }
 
 // --- Trust events (the GitLab trust-events brief) ---
