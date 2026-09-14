@@ -443,7 +443,7 @@ work queue or steer a desk action.
   other bodies are not generated from the tree; the label is how the card says which
   one it is, and putting it there takes write access to the repo's workflows.
   `github-actions[bot]` stays **untrusted** for every general predicate
-  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedPublicAuthor`, `TrustedHumanAuthor`) —
+  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedHumanAuthor`) —
   this is a narrower read alongside them, not an addition to the roster. **What it
   fixes:** before it, no desk could annotate a card at all — not to mark one an inert
   duplicate, not to warn that closing it will not flip the brief's row — so the human
