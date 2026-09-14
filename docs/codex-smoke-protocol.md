@@ -111,18 +111,47 @@ per HP/01 §3.3 (`auto-trigger` = `supported` on Codex CLI). If auto-trigger is 
 in the environment, record that posture and confirm the by-name floor (Step 3) still
 holds — a disabled auto-trigger is a config posture, not a FAIL, but MUST be stated.
 
-#### Step 5 — Dispatch probe → runs / degrades / refuses per the matrix
+#### Step 5 — Dispatch-claim probe → spawn tools present; fan-out gated by the claim rule, not tool absence
 
-Action: Exercise a dispatch-bearing skill (`the-desk`, `worker-desk`, or a `pr-review-desk`
-fan-out) with `[features] multi_agent` **off** in `~/.codex/config.toml`. Observe
-whether the fan-out runs in parallel, runs serially, or refuses.
+**Re-baselined (`#939`, ratified):** the original form of this step used
+`[features] multi_agent` **off** as its precondition — "dispatch is unavailable, so a
+degraded serial run must be observed and stated." On `codex-cli 0.154.0` that
+precondition no longer holds: `multi_agent=false` does not remove the spawn tools (see
+the established-fact note below), so the old `Expect:` was neither observable nor
+falsifiable and the step recorded `BLOCKED` in the run log merged via `#937`. The step
+now asserts what 0.154.0 actually exposes.
 
-Expect: the ruled posture from `references/codex.md` is observed AND **stated in-session**
-— with `multi_agent` off, the fan-out **degrades: runs serially, one item at a time,
-with an explicit in-session statement of the degradation** (the one permitted
-convenience degradation). A silent serial run (degradation not stated) is a FAIL routed
-to harness-portability/04 (the skill body's neutral-core degradation text); the
-guarantees themselves are never degraded.
+Action:
+  (i) Under `-c features.multi_agent=true`, issue a simple presence-check prompt
+      confirming a subagent-spawning tool (e.g. `spawn_agent`) is in the session's tool
+      list — a positive-presence check, not an absence check.
+  (ii) In a separate, real session (same config), exercise a dispatch-bearing skill
+      (`the-desk`, `worker-desk`, or a `dailies` fan-out) with a request that would fan
+      out work, and capture the FULL transcript (`--json` event log + `-o` final
+      message). Grep the transcript for evidence that the fan-out was gated by the
+      desk methodology's own claim-before-dispatch ceremony (no sub-agent is spawned
+      without first acquiring a dispatch claim — the skill bodies' own
+      claim-acquire-then-worktree-create rule) rather than by the spawn tool being
+      absent.
+
+Expect:
+  (i) the presence-check names the spawn tool — a positive observation.
+  (ii) the transcript shows the session either (a) refusing or deferring the spawn
+      because no dispatch claim was established, or (b) establishing a claim via the
+      proper desk mechanism before making any spawn tool call. A transcript showing a
+      spawn tool call fired with no preceding claim step is a FAIL routed to
+      harness-portability/04 (the skill body's dispatch-ceremony text) — the tool being
+      present is expected; spawning without a claim is not. A run that never reaches a
+      dispatch decision for an unrelated reason (e.g., a sandbox write refusal before
+      the claim step) BLOCKS this step rather than passing or failing it — the claim
+      gate specifically must be exercised and observed.
+
+**Established fact, not a live finding (cite `#939` and the run log merged via `#937`,
+both bare — public-repo citation convention):** on `codex-cli 0.154.0`,
+`features.multi_agent=false` no longer removes the spawn tools from the tool list.
+`codex features list` reports `multi_agent  stable  true`; a paired presence-check
+and an actual `spawn_agent` call both succeeded with the flag set to `false`. This is
+recorded once, here, rather than re-measured on every run.
 
 #### Step 6 — Isolation probe → refusal fires where ruled
 
@@ -193,10 +222,11 @@ Step 4: Auto-trigger probe
   Result: PASS | FAIL | BLOCKED
   Issue (if FAIL): owner/repo#<n> (harness-portability/06)
 
-Step 5: Dispatch probe (multi_agent off) -> degrades: serial-with-statement
+Step 5: Dispatch-claim probe (multi_agent=true) -> spawn tools present, claim-gated not tool-absence-gated
   Action taken: ...
   Transcript excerpt:
-    <paste — the in-session degradation statement>
+    <paste — (i) the presence-check naming the spawn tool, and (ii) the real
+    dispatch-attempt transcript lines showing the claim-before-dispatch gate>
   Result: PASS | FAIL | BLOCKED
   Issue (if FAIL): owner/repo#<n> (harness-portability/04)
 

@@ -32,12 +32,15 @@ import (
 )
 
 // reconcileResult is the machine-readable output shape (--json). Its per-brief
-// rows are BriefCell values (id/cell/source/witness/reason/version).
+// rows are BriefCell values (id/cell/source/witness/reason/version). Applied
+// is populated only with --apply, and only with rows this run actually wrote
+// (reconcileapply.go) — omitted (nil) otherwise.
 type reconcileResult struct {
-	Repo     string      `json:"repo"`
-	LookedAt bool        `json:"lookedAt"`
-	Reason   string      `json:"reason"`
-	Briefs   []BriefCell `json:"briefs"`
+	Repo     string       `json:"repo"`
+	LookedAt bool         `json:"lookedAt"`
+	Reason   string       `json:"reason"`
+	Briefs   []BriefCell  `json:"briefs"`
+	Applied  []appliedRow `json:"applied,omitempty"`
 }
 
 const (
@@ -56,6 +59,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
 	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
+	apply := fs.Bool("apply", false, "with --backfill: WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion); requires --backfill")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return reconcileOK
@@ -64,6 +68,10 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 	if *report && !*backfill {
 		fmt.Fprintln(stderr, "reconcile: --report requires --backfill (the report compares against the backfill-adjusted cells)")
+		return reconcileUsageErr
+	}
+	if *apply && !*backfill {
+		fmt.Fprintln(stderr, "reconcile: --apply requires --backfill (the write only fires for a backfill-witnessed transition)")
 		return reconcileUsageErr
 	}
 	if *backfill && hasNoGitDir(*root) {
@@ -120,11 +128,27 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		cells = applyReconcileBackfill(cells, pulls, pullsLookedAt, lookup)
 	}
 
+	var applied []appliedRow
+	if *apply {
+		// boardRoot mirrors reconcileBriefIdents' own resolution (reconcile is
+		// commonly run from a subdirectory), so the write lands on the same
+		// docs/streams tree the briefs above were enumerated from.
+		if boardRoot, found := findBoardRoot(*root); found {
+			var aerr error
+			applied, aerr = applyReconcileWrites(boardRoot, cells)
+			if aerr != nil {
+				fmt.Fprintf(stderr, "reconcile --apply: %v\n", aerr)
+				return reconcileUsageErr
+			}
+		}
+	}
+
 	res := reconcileResult{
 		Repo:     *repo,
 		LookedAt: in.LookedAt,
 		Reason:   in.Reason,
 		Briefs:   cells,
+		Applied:  applied,
 	}
 
 	if *report {
@@ -231,5 +255,12 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 			detail = b.Reason
 		}
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
+	}
+	if len(res.Applied) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
+	for _, a := range res.Applied {
+		fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
 	}
 }

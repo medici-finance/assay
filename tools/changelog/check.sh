@@ -163,7 +163,11 @@ fi
 #    can fix that one) instead of letting a proxy mask it. Either position
 #    leaves the PR_NUMBER-unset behaviour byte-identical — the block is a no-op
 #    without it — so the tie is broken on which failure stays visible.
-if [ -n "${PR_NUMBER:-}" ] && printf '%s' "$PR_NUMBER" | grep -qE '^[1-9][0-9]*$'; then
+#   [[ =~ ]] anchors ^/$ to the WHOLE parameter (unlike `grep -E` without -z,
+#   which anchors per LINE) — a value with an embedded newline such as
+#   $'999\n77' cannot match, so it is treated the same as any other
+#   non-integer PR_NUMBER (assay#927).
+if [ -n "${PR_NUMBER:-}" ] && [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   # WHICH TREE THE PROXY IS READ FROM — the LIVE tip of the base branch, never
   # BASE_SHA. BASE_SHA is frozen at PR-open time (GitHub does not advance
   # github.event.pull_request.base.sha as the base branch moves), and a proxy is
@@ -194,6 +198,20 @@ if [ -n "${PR_NUMBER:-}" ] && printf '%s' "$PR_NUMBER" | grep -qE '^[1-9][0-9]*$
     echo "NOTICE: proxy lookup degraded — using recorded BASE_SHA ${BASE_SHA}, not the live base-branch tip."
   fi
   proxy_sha="$(git rev-parse --short "$proxy_tree" 2>/dev/null || printf '%s' "$proxy_tree")"
+
+  # DEFENSE IN DEPTH (assay#927): the gate above already anchors PR_NUMBER to
+  # the WHOLE parameter, so a value with an embedded newline can never reach
+  # this point today. Re-assert it anyway, right where PR_NUMBER is
+  # interpolated into a `grep -E` pattern below — a literal newline in a
+  # grep -E pattern ARGUMENT acts like a second `-e` alternative (same
+  # mechanism as the gate bug), so this line stands on its own even if a
+  # future refactor ever lets this block be reached by a different path.
+  case "$PR_NUMBER" in
+    *$'\n'*)
+      echo "::error title=invalid PR_NUMBER::PR_NUMBER contains a newline; refusing the proxy-fragment lookup." >&2
+      exit 1
+      ;;
+  esac
 
   # Read the BASE tree, not the diff and not the head: the proxy is a file a
   # maintainer already merged to the base branch, so it appears in NEITHER the

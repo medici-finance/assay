@@ -7,7 +7,11 @@
 #                installs those already-built binaries root-owned 0755 to
 #                /opt/desk-tools/bin and writes tools/desk/MANIFEST.sha256.
 #                The sudo password IS the manual permission gate — no agent runs
-#                this target.
+#                this target. Also installs tools/cellctl/cellctl (a hand-maintained
+#                shell script, not a tools/desk/cmd/* Go build product — it is
+#                COPIED, never built) to the same bindir, so a local `make
+#                desk-install` matches what a downloaded desk-tools release tarball
+#                gives an adopter (#850).
 #
 # Version stamp: SourceSHA + BuiltAt are embedded via -ldflags so every audit
 # record and --version shows exactly which source a binary was built from.
@@ -28,6 +32,7 @@ DESK_DIR     := tools/desk
 DIST_DIR     := $(DESK_DIR)/dist
 INSTALL_DIR  := /opt/desk-tools/bin
 MANIFEST     := $(DESK_DIR)/MANIFEST.sha256
+CELLCTL_SRC  := tools/cellctl/cellctl
 
 SHA      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -80,6 +85,12 @@ desk-install:
 			install -o root -g 0 -m 0755 "$(DIST_DIR)/$$name" "$(INSTALL_DIR)/$$name"; \
 			echo "desk-install: installed $(INSTALL_DIR)/$$name"; \
 		done; \
+	fi
+	@if [ -f "$(CELLCTL_SRC)" ]; then \
+		install -o root -g 0 -m 0755 "$(CELLCTL_SRC)" "$(INSTALL_DIR)/cellctl"; \
+		echo "desk-install: installed $(INSTALL_DIR)/cellctl"; \
+	else \
+		echo "desk-install: $(CELLCTL_SRC) not found — skipping (ok)"; \
 	fi
 	@make --no-print-directory desk-hook-install
 	@make --no-print-directory desk-manifest
