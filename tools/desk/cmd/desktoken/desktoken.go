@@ -56,6 +56,18 @@ type auditCtx struct {
 	appID      string
 	detail     string
 	argsDigest string
+	// suppress marks an invocation that performed NO ACT — the cache-reuse path, which
+	// contacts nothing, mints nothing and changes nothing. Its row was the ledger's single
+	// largest contributor (145,639 reuse rows against 2,583 real mints on one measured
+	// host, #1035) and recorded a no-op. It is honoured on the SUCCESS path only: a reuse
+	// that fails still writes its row, because a refusal is an act the ledger must carry.
+	//
+	// Nothing downstream reads a desktoken row: no budget, no breaker, no idempotency
+	// decision and no gate consults one — desktoken does not call AllowWrite at all — so
+	// this removes forensic detail about invocations that did nothing, and no control's
+	// input. Per-invocation visibility, reuses included, is what brief 23's opt-in local
+	// perf record is for.
+	suppress bool
 }
 
 func (a *auditCtx) log(result, detail string) {
@@ -72,6 +84,9 @@ func (a *auditCtx) log(result, detail string) {
 // finalize maps the terminal error (or success) to exactly one audit result.
 func (a *auditCtx) finalize(err error) {
 	if err == nil {
+		if a.suppress {
+			return // a cache reuse performed no act — see auditCtx.suppress
+		}
 		a.log(deskkit.ResultOK, a.detail)
 		return
 	}
@@ -804,6 +819,7 @@ func cmdToken(args []string) (err error) {
 			// Output only the token file path — never the token value.
 			printTokenPath(tokenPath)
 			ac.detail = fmt.Sprintf("reused cached %s token [app=%s install %s] (%dm old)", role, appName, installID, int(age.Minutes()))
+			ac.suppress = true // no network call, no mint, nothing changed — no audit row
 			return nil
 		}
 	} else if !os.IsNotExist(serr) {
