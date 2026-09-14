@@ -220,7 +220,7 @@ func RoleTokenMints() int {
 	return roleTokenMints
 }
 
-// resetRoleTokenMemo drops every entry and zeroes the counter. Test-only: package-private
+// resetRoleTokenMemo drops every entry and zeroes the counter. Test-only: unexported
 // precisely so no binary can clear a memo mid-run and re-fork what it already holds.
 func resetRoleTokenMemo() {
 	roleTokenMu.Lock()
