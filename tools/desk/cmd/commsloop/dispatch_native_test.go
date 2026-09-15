@@ -70,14 +70,22 @@ func runFakeExecutorAgent(mode string) {
 	modeDefault := false
 	nextID := 9000
 
-	requestPermission := func(kind, title string) string {
+	// requestPermissionRaw issues one session/request_permission carrying an
+	// optional rawInput (the command a real agent's tool call would carry —
+	// roleprofile.go's extractCommand reads rawInput.command, never the
+	// agent-chosen title). Returns the selected optionId.
+	requestPermissionRaw := func(kind, title string, rawInput map[string]any) string {
 		pid := nextID
 		nextID++
+		toolCall := map[string]any{"toolCallId": "tc1", "title": title, "kind": kind}
+		if rawInput != nil {
+			toolCall["rawInput"] = rawInput
+		}
 		writeMsg(map[string]any{
 			"jsonrpc": "2.0", "id": pid, "method": "session/request_permission",
 			"params": map[string]any{
 				"sessionId": sessionID,
-				"toolCall":  map[string]any{"toolCallId": "tc1", "title": title, "kind": kind},
+				"toolCall":  toolCall,
 				"options": []any{
 					map[string]any{"optionId": "reject", "name": "Deny", "kind": "reject_once"},
 					map[string]any{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
@@ -87,6 +95,9 @@ func runFakeExecutorAgent(mode string) {
 		resp, ok := readMsg()
 		if !ok {
 			return "no-response"
+		}
+		if _, isErr := resp["error"]; isErr {
+			return "error"
 		}
 		if result, isMap := resp["result"].(map[string]any); isMap {
 			if oc, isMap2 := result["outcome"].(map[string]any); isMap2 {
@@ -99,6 +110,27 @@ func runFakeExecutorAgent(mode string) {
 			}
 		}
 		return "unknown"
+	}
+	requestPermission := func(kind, title string) string {
+		return requestPermissionRaw(kind, title, nil)
+	}
+	// requestFSRead issues one fs/read_text_file and reports "error" when the
+	// client refused it at the JSON-RPC layer (the containment drill's signal).
+	requestFSRead := func(path string) string {
+		pid := nextID
+		nextID++
+		writeMsg(map[string]any{
+			"jsonrpc": "2.0", "id": pid, "method": "fs/read_text_file",
+			"params": map[string]any{"sessionId": sessionID, "path": path},
+		})
+		resp, ok := readMsg()
+		if !ok {
+			return "no-response"
+		}
+		if _, isErr := resp["error"]; isErr {
+			return "error"
+		}
+		return "ok"
 	}
 
 	for {
@@ -141,6 +173,28 @@ func runFakeExecutorAgent(mode string) {
 					outcome = requestPermission("edit", "Write worker-only-file.go")
 				}
 				report = "VERDICT: PASS\n| edit-attempt | 0 | perm-outcome=" + outcome + " |\n"
+			case "act":
+				// The bypass battery's positive-path drill: the fired session
+				// tries to ACT with the command COMMSLOOP_FAKE_CMD names, as a
+				// real tool call would (rawInput.command carries it).
+				cmd := os.Getenv("COMMSLOOP_FAKE_CMD")
+				outcome := "allow-internal (auto mode; no set_mode(default))"
+				if modeDefault {
+					outcome = requestPermissionRaw("execute", cmd, map[string]any{"command": cmd})
+				}
+				report = "VERDICT: PASS\n| act | 0 | perm-outcome=" + outcome + " |\n"
+			case "contain":
+				// The bypass battery's containment drill: a contained READER
+				// (the prose router's decider) tries to escape — an fs read and
+				// a tool permission — then answers with COMMSLOOP_FAKE_REPLY.
+				// Its own view of each escape's outcome is echoed first so the
+				// test can assert the client refused both.
+				fsOut, permOut := "not-attempted", "not-attempted"
+				if modeDefault {
+					fsOut = requestFSRead("/etc/hostname")
+					permOut = requestPermission("execute", "run shell")
+				}
+				report = "fs-outcome=" + fsOut + " perm-outcome=" + permOut + "\n" + os.Getenv("COMMSLOOP_FAKE_REPLY") + "\n"
 			default:
 				report = "VERDICT: BLOCKED\n"
 			}
