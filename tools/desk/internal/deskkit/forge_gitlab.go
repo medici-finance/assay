@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1271,12 +1272,30 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		return nil, g.mapErr(http.MethodGet, approvalsPath, err)
 	}
 
+	// The notes walk is pinned NEWEST-FIRST, and the result is re-ordered to ascending
+	// below. Both halves are deliberate, and they answer two different questions:
+	//
+	//   - `order_by=created_at&sort=desc` is spelled out rather than left to the endpoint's
+	//     default (which is this, today). The page walk is CAPPED at gitlabMaxNotePage, so
+	//     the wire order decides WHICH notes a long thread loses: newest-first drops the
+	//     OLDEST, and every reduction over this read is "the last verdict governs", so the
+	//     governing verdict is the one that must survive truncation. A default that changed
+	//     under us would silently invert that.
+	//   - the ASCENDING return order is the interface's contract (see Forge.ReviewsAtHead).
+	//     GitHub's reviews endpoint is chronological; GitLab's notes endpoint is not, and
+	//     every consumer — deskboard's reduceReviews, deskpost's latestAppVerdict,
+	//     deskflip — reduces by walking the slice and letting the last decisive entry win.
+	//     Handed the reversed stream they let the OLDEST verdict govern: an approval at a
+	//     newer head never cleared an older request-changes, and an ordinary
+	//     approve-then-reject at one head read as the #37 forged no-op approval (#1124).
 	notesPath := fmt.Sprintf("/projects/%s/merge_requests/%d/notes", proj, number)
 	var notes []*gitlab.Note
 	for page := 1; page <= gitlabMaxNotePage; page++ {
 		chunk, resp, nerr := cl.Notes.ListMergeRequestNotes(repo.Slug(), int64(number),
 			&gitlab.ListMergeRequestNotesOptions{
 				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+				OrderBy:     gitlab.Ptr("created_at"),
+				Sort:        gitlab.Ptr("desc"),
 			})
 		if nerr != nil {
 			return nil, g.mapErr(http.MethodGet, notesPath, nerr)
@@ -1321,14 +1340,22 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		if n == nil || n.System {
 			continue
 		}
-		// A correctness verdict has no native GitLab review object — PostReview writes it as
-		// this note's body (a `Verdict: approve|request-changes` line). Reduce that line to
+		// A reviewer verdict has no native GitLab review object — PostReview writes it as
+		// this note's body (a `Verdict:` or `Security-Review:` line). Reduce that line to
 		// the review STATE a GitHub review of the same verdict reports, so the note is the
 		// ONE object both the write and the read agree on (#798). A note that carries no
-		// correctness verdict line stays COMMENTED — including a `Security-Review:` note,
-		// whose lane is read from the body markers, not from this State.
+		// verdict line at all stays COMMENTED.
+		//
+		// The reduction is VerdictNoteState, not CorrectnessNoteState, because BOTH deskpost
+		// verdict verbs can submit REQUEST_CHANGES and only one of them writes a correctness
+		// line: `security-review --verdict fail` may carry ONLY `Security-Review: fail` (the
+		// verb refuses a correctness line in that lane). Read as COMMENTED, that rejection
+		// was invisible to the board, which reported NEEDS-REVIEW over a standing block and
+		// re-dispatched a reviewer onto an already-rejected change (#1124). The note's LANE
+		// is still read from its body markers by the consumers that need it, so a security
+		// verdict reported with this State does not speak in the correctness lane.
 		state := "COMMENTED"
-		if s := CorrectnessNoteState(n.Body); s != "" {
+		if s := VerdictNoteState(n.Body); s != "" {
 			state = s
 		}
 		r := Review{
@@ -1343,7 +1370,42 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		}
 		out = append(out, r)
 	}
+	sortReviewsAscending(out)
 	return out, nil
+}
+
+// sortReviewsAscending puts a review slice into the ascending-submitted order
+// Forge.ReviewsAtHead promises, in place and STABLY.
+//
+// It sorts the WHOLE slice, approvals included, rather than merely un-reversing the notes:
+// the two kinds are collected from two endpoints and interleave in time, and the reduction
+// downstream is order-sensitive across both. An approval read today may be OLDER than a
+// later rejection note (its timestamp comes from GitLab's approval system note), and
+// emitting approvals first regardless would let a stale grant out-rank the rejection that
+// superseded it.
+//
+// An EMPTY SubmittedAt sorts FIRST — oldest. That is the fail-closed placement and not an
+// arbitrary tie-break: an unknown timestamp is a could-not-check, and treating it as oldest
+// means it can be superseded by any verdict that DOES carry one, but can never supersede
+// one. Sorting it last would let a review nobody could date silently govern.
+//
+// The sort is STABLE so entries sharing a timestamp keep the order they were collected in,
+// which is the wire's own id order — the only further ordering evidence available.
+//
+// Comparing the timestamps as STRINGS is sound here, and only because of how they are
+// produced: every SubmittedAt in this slice comes from gitlabTime, which renders UTC
+// RFC3339 — one zone, one fixed width — so byte order IS chronological order. A value
+// arriving from anywhere else (a local offset, a differing precision) would not have that
+// property, which is why this helper is scoped to this backend's own output rather than
+// offered as a general comparator.
+func sortReviewsAscending(rs []Review) {
+	sort.SliceStable(rs, func(i, j int) bool {
+		a, b := rs[i].SubmittedAt, rs[j].SubmittedAt
+		if (a == "") != (b == "") {
+			return a == ""
+		}
+		return a < b
+	})
 }
 
 // gitlabApprovalSystemNoteBodies are the system-note bodies GitLab writes when an approval

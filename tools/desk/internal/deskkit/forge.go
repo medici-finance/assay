@@ -966,7 +966,22 @@ type Forge interface {
 	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate and
 	// escalation clock, cmd/scanloop's queueing trust gate (freeze rule).
 	IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
-	// ReviewsAtHead returns every review on a change (paginated to exhaustion).
+	// ReviewsAtHead returns every review on a change (paginated to exhaustion), in
+	// ASCENDING SUBMITTED ORDER — oldest first.
+	//
+	// The order is part of the contract, not an incidental property of whichever endpoint
+	// a backend happens to read. Every consumer reduces this slice by walking it and
+	// letting the LAST decisive verdict win (deskboard's reduceReviews, deskpost's
+	// latestAppVerdict, deskflip's ReduceAppVerdict), because that is what "the standing
+	// verdict" means. Handed the reversed stream those reductions silently invert: the
+	// oldest verdict governs, an approval at a newer head never clears an earlier
+	// request-changes, and an ordinary approve-then-reject reads as a forged no-op
+	// approval. GitHub's reviews endpoint is chronological and satisfies this for free;
+	// GitLab's notes endpoint defaults to newest-first and its backend re-orders (#1124).
+	//
+	// A review whose submitted time could not be established sorts FIRST — an undatable
+	// verdict may be superseded by any dated one and may never supersede one, which is the
+	// fail-closed placement.
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The
 	// caller reconciles len against PullRequest.ChangedFiles before trusting it complete.
