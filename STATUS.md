@@ -17,9 +17,9 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-15 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/8 | 2026-09-15 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-15 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 6/27 | 2026-09-15 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 7/27 | 2026-09-15 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 2/8 | 2026-09-15 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 7/17 | 2026-09-15 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 8/17 | 2026-09-15 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/18 | 2026-09-15 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-15 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-15 |  |
@@ -41,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (60 desk-actionable of 70 total — 70 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (58 desk-actionable of 68 total — 65 at implemented, 3 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (60)
+### Desk-actionable (58)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -75,10 +75,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | composability | 04 | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desktools-go-git | 04 | implemented | 1500 | 1 | — | — | — |
-| desktools-go-git | 07 | implemented | 1500 | 1 | — | — | — |
+| desktools-go-git | 04 | verified | 1500 | 1 | — | 2026-09-15 sonnet-5-verifier (5/5 rows PASS incl. a real-fixture mutation test; risk-value DERIVED) | — |
+| desktools-go-git | 07 | verified | 1500 | 1 | — | 2026-09-15 sonnet-5-verifier (6/6 rows PASS incl. an independently re-derived baseline; risk-value DERIVED) | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| forge-gitlab | 15 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -92,7 +91,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 15 | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 16 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -101,7 +99,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 25 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| forge-gitlab | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| forge-gitlab | 10 [exec:strong] | verified | 1000 | 0 | — | 2026-09-15 sonnet-5-verifier (7/7 rows PASS incl. a genuine cross-backend parity comparison; risk-value DERIVED) | — |
 | forge-gitlab | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -213,7 +211,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (21 open)
+### desk-tools (20 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -225,7 +223,6 @@ _None._
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — implemented (wave 1)
-- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — implemented (wave 1)
 - 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — implemented (wave 1)
 - 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — implemented (wave 1)
 - 19 `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so — implemented (wave 1)
@@ -240,22 +237,21 @@ _None._
 ### desktools-go-git (6 open)
 
 - 02 gitcore package + in-process transport/auth (BasicAuth) + go-git pin — implemented (wave 2)
-- 04 migrate deskpushguard detection reads to gitcore (parity + mutation test) — implemented (wave 3)
+- 04 migrate deskpushguard detection reads to gitcore (parity + mutation test) — verified (wave 3)
 - 05 migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) — todo (wave 4)
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — todo (wave 4)
-- 07 deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest — implemented (wave 3)
+- 07 deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest — verified (wave 3)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
-### forge-gitlab (10 open)
+### forge-gitlab (9 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
-- 10 GitLab trust-events + commit author-login for the deskpost trust read — implemented (wave 5)
+- 10 GitLab trust-events + commit author-login for the deskpost trust read — verified (wave 5)
 - 11 Guard-read custody — the last gh shell-outs onto the Forge seam — implemented (wave 4)
 - 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — todo (wave 5)
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
 - 14 The public-repo gate reads the forge that serves the repo — every verb, not one — implemented (wave 3)
-- 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — implemented (wave 4)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 - 17 An enforceable merge gate on GitLab Free — the unresolved review thread — implemented (wave 5)
 
@@ -348,13 +344,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 06 Workpad — one upserted progress comment per PR — done (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — done (wave 1)
 
-### desk-tools (6 done)
+### desk-tools (7 done)
 
 - 04 Deterministic runner: execute rows, batch ~5 min, sign, file verdict issues — done (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — enum-bounded agent consults for deterministic loops — done (wave 1)
 - 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — done (wave 1)
 - 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — done (wave 1)
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — done (wave 1)
+- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — done (wave 1)
 - 20 Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is — done (wave 1)
 
 ### desktools-go-git (2 done)
@@ -362,7 +359,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 01 inventory freeze + gitexec single-seam contract + golden harness + counting CI gate — done (wave 1)
 - 03 migrate read/plumbing verbs (read-heavy tools) to gitcore — done (wave 3)
 
-### forge-gitlab (7 done)
+### forge-gitlab (8 done)
 
 - 01 Forge interface extraction in deskkit — github impl pinned by goldens — done (wave 1)
 - 02 gitlab forge implementation — MRs, notes, approvals, statuses over REST v4 — done (wave 2)
@@ -371,6 +368,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — done (wave 5)
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — done (wave 2)
 - 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — done (wave 4)
+- 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — done (wave 4)
 
 ### forge-neutral (4 done)
 
@@ -428,4 +426,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **63/176** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **65/176** briefs done · completed initiatives: see `docs/archive/`
