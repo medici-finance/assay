@@ -11,53 +11,35 @@
     },
     {
       "method": "GET",
-      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/55/jobs",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/78/jobs",
       "query": "page=1\u0026per_page=100"
     }
   ],
   "result": {
-    "CombinedState": "failure",
-    "StatusTotalCount": 3,
+    "CombinedState": "success",
+    "StatusTotalCount": 1,
     "Statuses": [
       {
         "State": "success",
-        "Context": "leak-sweep",
-        "CreatedAt": ""
-      },
-      {
-        "State": "failure",
-        "Context": "external/policy",
-        "CreatedAt": ""
-      },
-      {
-        "State": "failure",
         "Context": "pipeline",
-        "CreatedAt": ""
+        "CreatedAt": "2026-09-15T10:00:00Z"
       }
     ],
-    "CheckRunsTotalCount": 3,
+    "CheckRunsTotalCount": 2,
     "CheckRuns": [
       {
-        "ID": "9001",
-        "Name": "go-test",
+        "ID": "9201",
+        "Name": "statusgen-lint",
         "Status": "completed",
         "Conclusion": "success",
         "StartedAt": "",
         "CompletedAt": ""
       },
       {
-        "ID": "9002",
-        "Name": "lint",
+        "ID": "9202",
+        "Name": "flaky-probe",
         "Status": "completed",
-        "Conclusion": "failure",
-        "StartedAt": "",
-        "CompletedAt": ""
-      },
-      {
-        "ID": "",
-        "Name": "deploy",
-        "Status": "queued",
-        "Conclusion": "",
+        "Conclusion": "neutral",
         "StartedAt": "",
         "CompletedAt": ""
       }

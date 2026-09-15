@@ -34,15 +34,15 @@
         "MergeStateStatus": "",
         "Rollup": [
           {
-            "Typename": "GitLabRollupUnmapped",
+            "Typename": "StatusContext",
             "Name": "",
             "Status": "",
             "Conclusion": "",
             "StartedAt": "",
             "CompletedAt": "",
-            "Context": "",
-            "State": "",
-            "CreatedAt": ""
+            "Context": "pipeline",
+            "State": "success",
+            "CreatedAt": "2026-09-15T10:00:00Z"
           }
         ]
       }
