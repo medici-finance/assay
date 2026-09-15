@@ -1593,7 +1593,13 @@ func glCases() []glCase {
 			setup: func(s *glServer) {
 				s.discussions = []map[string]any{glDiscussion("disc-1",
 					glMergeHoldMarkerNote(true, "reviewer-bot"),
-					map[string]any{"id": 951, "body": "unrelated comment\nHead: spoofed-sha"},
+					// Authored by the resolver itself: the guard this case pins is the
+					// FIRST-LINE marker-shape check in mergeHoldReleasedHead, independent of
+					// the author-identity check (read_merge_hold_ignores_released_reply_from_
+					// wrong_author pins that one) — the reply here would pass the author
+					// check, so an author-mismatch could never mask a marker-shape regression.
+					map[string]any{"id": 951, "body": "unrelated comment\nHead: spoofed-sha",
+						"author": map[string]any{"id": 42, "username": "reviewer-bot"}},
 				)}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
