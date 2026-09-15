@@ -54,10 +54,10 @@ func TestDecayDeadClaimsDecaysOnGitLabOrigin(t *testing.T) {
 
 	stubGitLabDoer(t, &gitlabFakeDoer{respond: func(*http.Request) (int, string) {
 		return 200, `[
-		  {"source_branch":"fix/issue-loop-01-live",  "state":"opened"},
-		  {"source_branch":"fix/issue-loop-02-merged","state":"merged"},
-		  {"source_branch":"fix/issue-loop-03-closed","state":"closed"},
-		  {"source_branch":"fix/issue-loop-05-locked","state":"locked"}
+		  {"source_branch":"fix/issue-loop-01-live",  "state":"opened","source_project_id":4242,"target_project_id":4242},
+		  {"source_branch":"fix/issue-loop-02-merged","state":"merged","source_project_id":4242,"target_project_id":4242},
+		  {"source_branch":"fix/issue-loop-03-closed","state":"closed","source_project_id":4242,"target_project_id":4242},
+		  {"source_branch":"fix/issue-loop-05-locked","state":"locked","source_project_id":4242,"target_project_id":4242}
 		]`
 	}})
 
@@ -82,6 +82,142 @@ func TestDecayDeadClaimsDecaysOnGitLabOrigin(t *testing.T) {
 	}
 	if strings.Contains(stderr, "could-not-check") || strings.Contains(stderr, "NOT APPLICABLE") {
 		t.Errorf("a GitLab decay that RAN must not report could-not-check or not-applicable; got:\n%s", stderr)
+	}
+}
+
+// TestDecayNeverDropsALiveClaimAForkMRNameCollidesWith is the end-to-end guard on
+// the pass's load-bearing invariant: decay may only ever shrink the claim set to
+// what it VERIFIED is dead.
+//
+// `GET /projects/:id/merge_requests` returns every merge request TARGETING the
+// project, forks included, and a fork's source_branch is a name chosen inside the
+// fork — it names nothing in the tracked project. Matching dead claims by bare
+// source_branch therefore let anyone who can fork and open a merge request (the
+// ordinary contribution bar — no elevated access, no write to this project) open a
+// throwaway MR named after a live claim branch, close it, and have the decay drop
+// that live claim: the brief goes back on the board and a second worker is
+// dispatched onto work already in flight. This walks the whole pass, not just the
+// reader, because the claim set is what the invariant is about.
+func TestDecayNeverDropsALiveClaimAForkMRNameCollidesWith(t *testing.T) {
+	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
+	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
+	t.Setenv("CI_PROJECT_ID", "4242")
+	t.Setenv("STATUSGEN_GITLAB_TOKEN", "pat")
+	t.Setenv("GITLAB_TOKEN", "")
+	t.Setenv("CI_JOB_TOKEN", "")
+
+	// Project 4242 is the tracked project. Its own "fix/issue-loop-02-merged" MR
+	// really did merge and SHOULD decay. Fork 9999 opened and closed a merge
+	// request whose source_branch collides with the tracked project's live claim
+	// "fix/issue-loop-01-live"; that one must survive untouched.
+	stubGitLabDoer(t, &gitlabFakeDoer{respond: func(*http.Request) (int, string) {
+		return 200, `[
+		  {"source_branch":"fix/issue-loop-01-live",  "state":"closed","source_project_id":9999,"target_project_id":4242},
+		  {"source_branch":"fix/issue-loop-02-merged","state":"merged","source_project_id":4242,"target_project_id":4242}
+		]`
+	}})
+
+	branches := []string{"main", "fix/issue-loop-01-live", "fix/issue-loop-02-merged"}
+	var got []string
+	var reason string
+	stderr := captureStderr(t, func() { got, reason = decayDeadClaims("/repo", branches) })
+
+	want := []string{"main", "fix/issue-loop-01-live"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("decay = %v, want %v — the fork MR must not decay the live claim it collides with, and the project's own merged MR must still decay", got, want)
+	}
+	if reason != "" {
+		t.Errorf("a decay that ran must report no could-not-check reason; got %q", reason)
+	}
+	if strings.Contains(stderr, "could-not-check") {
+		t.Errorf("a fully-attributed listing must report no could-not-check; got:\n%s", stderr)
+	}
+}
+
+// TestGitLabDecayWithoutProjectIDsDoesNotDecay pins the fail DIRECTION of the
+// fork check. A merge request whose source/target project cannot be read is one
+// this reader could not attribute — and an unattributable merge request is
+// indistinguishable from a fork's, whose source_branch does not name a branch of
+// this project at all. Treating "no ids" as "same project" would put the decay
+// back on the wrong side of its own invariant (shrink only to what was VERIFIED
+// dead) for exactly the responses we understand least. It is skipped, counted, and
+// reported — under-decay, never over-decay.
+func TestGitLabDecayWithoutProjectIDsDoesNotDecay(t *testing.T) {
+	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
+	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
+	t.Setenv("CI_PROJECT_ID", "4242")
+	t.Setenv("STATUSGEN_GITLAB_TOKEN", "pat")
+	t.Setenv("GITLAB_TOKEN", "")
+	t.Setenv("CI_JOB_TOKEN", "")
+	stubGitLabDoer(t, &gitlabFakeDoer{respond: func(*http.Request) (int, string) {
+		return 200, `[{"source_branch":"stream/07","state":"merged"}]`
+	}})
+
+	var dead map[string]bool
+	var err error
+	stderr := captureStderr(t, func() { dead, err = listMergedClosedBranchesGitLab("/repo") })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dead["stream/07"] {
+		t.Error("a merge request whose projects could not be read must NOT decay a claim — it was never attributed to this project")
+	}
+	if !strings.Contains(stderr, "could-not-check: dead-claim decay skipped 1 merge request(s)") {
+		t.Errorf("skipping an unattributable merge request must be reported, not silent; got:\n%s", stderr)
+	}
+}
+
+// TestGitLabDecayIgnoresAnotherProjectsTarget is the belt-and-braces arm: when the
+// numeric project id is known, a row targeting some OTHER project is a response we
+// do not understand and must draw no conclusion from, even though its source and
+// target agree with each other.
+func TestGitLabDecayIgnoresAnotherProjectsTarget(t *testing.T) {
+	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
+	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
+	t.Setenv("CI_PROJECT_ID", "4242")
+	t.Setenv("STATUSGEN_GITLAB_TOKEN", "pat")
+	t.Setenv("GITLAB_TOKEN", "")
+	t.Setenv("CI_JOB_TOKEN", "")
+	stubGitLabDoer(t, &gitlabFakeDoer{respond: func(*http.Request) (int, string) {
+		return 200, `[{"source_branch":"stream/07","state":"merged","source_project_id":5555,"target_project_id":5555}]`
+	}})
+
+	dead, err := listMergedClosedBranchesGitLab("/repo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dead["stream/07"] {
+		t.Error("a merge request between two OTHER projects must not decay this project's branch")
+	}
+}
+
+// TestGitLabDecayPathAddressedProjectStillDecays proves the numeric-id check does
+// not break the local/outside-CI path, where CI_PROJECT_ID is unset and the project
+// is addressed by its escaped path: source == target is then the whole test, and an
+// ordinary same-project merge request still decays.
+func TestGitLabDecayPathAddressedProjectStillDecays(t *testing.T) {
+	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
+	t.Setenv("CI_API_V4_URL", "")
+	t.Setenv("CI_PROJECT_ID", "")
+	t.Setenv("STATUSGEN_GITLAB_TOKEN", "pat")
+	t.Setenv("GITLAB_TOKEN", "")
+	t.Setenv("CI_JOB_TOKEN", "")
+	stubGitLabDoer(t, &gitlabFakeDoer{respond: func(*http.Request) (int, string) {
+		return 200, `[
+		  {"source_branch":"stream/07","state":"merged","source_project_id":4242,"target_project_id":4242},
+		  {"source_branch":"stream/08","state":"closed","source_project_id":9999,"target_project_id":4242}
+		]`
+	}})
+
+	dead, err := listMergedClosedBranchesGitLab("/repo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dead["stream/07"] {
+		t.Error("a same-project merged merge request must decay even when the project is addressed by path")
+	}
+	if dead["stream/08"] {
+		t.Error("a fork-sourced merge request must not decay, path-addressed or not")
 	}
 }
 
@@ -163,10 +299,10 @@ func TestGitLabDecayPagesThroughEveryPage(t *testing.T) {
 	// corpse lives only on page 2.
 	full := make([]string, 0, gitlabMRPerPage)
 	for i := 0; i < gitlabMRPerPage; i++ {
-		full = append(full, fmt.Sprintf(`{"source_branch":"feat/filler-%d","state":"opened"}`, i))
+		full = append(full, fmt.Sprintf(`{"source_branch":"feat/filler-%d","state":"opened","source_project_id":7,"target_project_id":7}`, i))
 	}
 	page1 := "[" + strings.Join(full, ",") + "]"
-	page2 := `[{"source_branch":"fix/late-corpse","state":"merged"}]`
+	page2 := `[{"source_branch":"fix/late-corpse","state":"merged","source_project_id":7,"target_project_id":7}]`
 	stubGitLabDoer(t, &gitlabFakeDoer{respond: func(req *http.Request) (int, string) {
 		if req.URL.Query().Get("page") == "1" {
 			return 200, page1

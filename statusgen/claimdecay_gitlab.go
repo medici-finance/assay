@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,6 +55,14 @@ type gitlabAPI struct {
 	token   string
 	header  string // "PRIVATE-TOKEN" for a PAT/project token, "JOB-TOKEN" for CI_JOB_TOKEN
 	source  string // which env var supplied the token, for the could-not-check reason
+
+	// projectID is the NUMERIC id of the project being read, when it is known
+	// (CI_PROJECT_ID inside a pipeline). It is 0 when the project is addressed by
+	// its URL-escaped path, because the path form never yields a number without a
+	// second API call this reader deliberately does not make. Where it IS known,
+	// sameProjectMR checks each merge request's target against it, so a listing
+	// that somehow answered for a different project cannot contribute corpses.
+	projectID int
 }
 
 // remoteProjectPath extracts the `group/subgroup/project` path from a git remote
@@ -148,7 +157,44 @@ func resolveGitLabAPI(root string) (gitlabAPI, error) {
 	if api.token == "" {
 		return api, fmt.Errorf("no GitLab API token in the environment — set STATUSGEN_GITLAB_TOKEN (or GITLAB_TOKEN) to a token with the read_api scope, or run inside a pipeline where CI_JOB_TOKEN is defined")
 	}
+	// Remember the numeric project id when the project was addressed by one; a
+	// path-addressed project simply leaves it 0 and sameProjectMR falls back to the
+	// source-vs-target comparison alone.
+	if n, err := strconv.Atoi(api.project); err == nil && n > 0 {
+		api.projectID = n
+	}
 	return api, nil
+}
+
+// sameProjectMR reports whether mr was opened FROM the project being read, which
+// is the only case in which its source_branch names a branch of that project.
+//
+// `GET /projects/:id/merge_requests` returns every merge request TARGETING the
+// project, forks included, and a fork's source_branch is a name chosen inside the
+// fork — unscoped to this project entirely. Anyone who can fork and open a merge
+// request (the ordinary contribution bar; no elevated access) could otherwise open
+// and close a throwaway MR named after a live claim branch and have the decay drop
+// that live claim, letting a second worker be dispatched onto a brief already in
+// flight. That is a direct breach of the pass's load-bearing invariant: decay may
+// only ever shrink the claim set to what it VERIFIED is dead.
+//
+// Absent ids (either side zero) are therefore NOT read as "same project". An MR
+// this reader cannot attribute is one it did not verify, so it does not decay —
+// under-decay is the safe direction, over-decay is the one that loses work.
+func (a gitlabAPI) sameProjectMR(mr gitlabMR) bool {
+	if mr.SourceProjectID == 0 || mr.TargetProjectID == 0 {
+		return false
+	}
+	if mr.SourceProjectID != mr.TargetProjectID {
+		return false
+	}
+	// Belt and braces where the numeric id is known: the listing is supposed to be
+	// scoped to this project, so a row targeting another one is a response we do
+	// not understand and must not draw conclusions from.
+	if a.projectID != 0 && mr.TargetProjectID != a.projectID {
+		return false
+	}
+	return true
 }
 
 // gitlabHTTPDoer is the transport seam, a package var so tests substitute a
@@ -157,9 +203,17 @@ func resolveGitLabAPI(root string) (gitlabAPI, error) {
 var gitlabHTTPDoer httpDoer = &http.Client{Timeout: 30 * time.Second}
 
 // gitlabMR is the subset of a REST merge-request object this reader needs.
+//
+// SourceProjectID / TargetProjectID are not decoration: they are what tells a
+// merge request opened from THIS project from one opened from a fork. Only the
+// former's source_branch names a branch of this project, so only the former may
+// ever contribute a corpse. sameProjectMR is the predicate; its doc carries the
+// reasoning and the fail direction.
 type gitlabMR struct {
-	SourceBranch string `json:"source_branch"`
-	State        string `json:"state"` // opened | closed | locked | merged
+	SourceBranch    string `json:"source_branch"`
+	State           string `json:"state"` // opened | closed | locked | merged
+	SourceProjectID int    `json:"source_project_id"`
+	TargetProjectID int    `json:"target_project_id"`
 }
 
 // listMergedClosedBranchesGitLab returns the set of source-branch names whose
@@ -176,6 +230,18 @@ var listMergedClosedBranchesGitLab = func(root string) (map[string]bool, error) 
 		return nil, err
 	}
 	dead := map[string]bool{}
+	unattributable := 0
+	// Skipping an MR we could not attribute is the safe direction, but a floor
+	// presented as a total is still a lie (three-state rule 2) — so if any row was
+	// skipped for want of project ids, say how many, once.
+	finish := func() (map[string]bool, error) {
+		if unattributable > 0 {
+			fmt.Fprintf(os.Stderr, "could-not-check: dead-claim decay skipped %d merge request(s) whose source/target project could not be read, "+
+				"so their branches were NOT decayed and may still be consuming their stream's dispatch cap; an unattributable merge request "+
+				"cannot be told from a fork's, and a fork's branch name does not name a branch of this project\n", unattributable)
+		}
+		return dead, nil
+	}
 	for page := 1; page <= gitlabMRMaxPages; page++ {
 		endpoint := fmt.Sprintf("%s/projects/%s/merge_requests?state=all&per_page=%d&page=%d&order_by=updated_at",
 			api.base, api.project, gitlabMRPerPage, page)
@@ -188,13 +254,24 @@ var listMergedClosedBranchesGitLab = func(root string) (map[string]bool, error) 
 			if name == "" {
 				continue
 			}
+			// Fork-scoping (see sameProjectMR): only a merge request opened
+			// from THIS project names a branch of this project. A fork's
+			// source_branch is chosen in the fork and may collide with a live
+			// claim here; an MR whose projects cannot be read at all is one we
+			// did not verify. Neither may contribute a corpse.
+			if !api.sameProjectMR(mr) {
+				if mr.SourceProjectID == 0 || mr.TargetProjectID == 0 {
+					unattributable++
+				}
+				continue
+			}
 			switch strings.ToLower(strings.TrimSpace(mr.State)) {
 			case "merged", "closed":
 				dead[name] = true
 			}
 		}
 		if len(batch) < gitlabMRPerPage {
-			return dead, nil
+			return finish()
 		}
 		if page == gitlabMRMaxPages {
 			// Rule 2 of the three-state invariant: name the cap, the count seen, and
@@ -207,7 +284,7 @@ var listMergedClosedBranchesGitLab = func(root string) (map[string]bool, error) 
 				gitlabMRPerPage*gitlabMRMaxPages, gitlabMRMaxPages, gitlabMRPerPage)
 		}
 	}
-	return dead, nil
+	return finish()
 }
 
 // getMRPage performs one authenticated GET and decodes a merge-request page. Any
