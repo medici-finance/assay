@@ -38,6 +38,18 @@
       "new": "\tfmt.Println(path, result.Token)\n\texp := result.ExpiresAt"
     },
     {
+      "name": "rename the rotated token over the custody PATH instead of the link's resolved target (a symlinked custody layout is replaced by a regular file and the provisioned file is stranded holding the invalidated token)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif err := os.Rename(tmpName, target); err != nil {",
+      "new": "\ttarget = path\n\tif err := os.Rename(tmpName, target); err != nil {"
+    },
+    {
+      "name": "make the write-target resolver report every custody as unlinked (a symlinked layout is written over instead of through)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif fi.Mode()&os.ModeSymlink == 0 {\n\t\treturn path, false, nil\n\t}",
+      "new": "\tif fi.Mode()&os.ModeSymlink == 0 || true {\n\t\treturn path, false, nil\n\t}"
+    },
+    {
       "name": "leak the new token as a recovery hint on the LOCKOUT route (persistence failed, so the operator is 'helpfully' handed the value)",
       "file": "cmd/desktoken/gitlab.go",
       "old": "\tif werr := writeVerifyGitLabToken(path, result.Token); werr != nil {",
