@@ -54,6 +54,14 @@ func newConcurrentRotateServer(t *testing.T, initial string) (*httptest.Server, 
 	t.Helper()
 	f := &concurrentRotateFixture{valid: initial}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, gitlabSelfCheckPath) {
+			// The post-rotation self-check (#1142): the live value under the same mutex.
+			f.mu.Lock()
+			valid := f.valid
+			f.mu.Unlock()
+			serveSelfCheck(w, r, valid)
+			return
+		}
 		if r.Method != "POST" || !strings.HasSuffix(r.URL.Path, "/personal_access_tokens/self/rotate") {
 			http.Error(w, "not found", 404)
 			return

@@ -648,9 +648,8 @@ func deskToolsPlatformArtifact() string {
 // job, matching deskToolsPinReal). The trailing-space prefix match inside
 // ArtifactPin keeps `desk-tools-source ` from matching `desk-tools-source-notes`.
 //
-// TWO LEGITIMATE COLUMN LAYOUTS (#795 §3). ArtifactPin returns field 2 as `tag`
-// and field 3 as `sha`, but a `desk-tools-source` line can carry its 40-hex
-// commit in EITHER column:
+// TWO LEGITIMATE COLUMN LAYOUTS (#795 §3). A `desk-tools-source` line can carry
+// its 40-hex commit in EITHER column:
 //
 //   - `desk-tools-source <tag> <40-hex-commit>` — commit in field 3 (the shape
 //     the #776 tests and CheckPins' `-source` rule assume);
@@ -658,27 +657,27 @@ func deskToolsPlatformArtifact() string {
 //     literal `channel-D` channel marker in field 3, the shape a real adopter's
 //     `.assay-versions` (and `desksourceguard`) actually writes.
 //
-// Prefer field 3 when it is a full commit (no regression for the #776 shape),
-// otherwise use field 2 when THAT is the full commit. When NEITHER column holds a
-// 40-hex commit, return field 3 unchanged so staleState's own isFullCommitSHA
-// guard falls the run through to the in-tree ref / could-not-check exactly as
-// before — a malformed pin never manufactures a verdict here.
+// That interpretation is deskkit.SourcePin's and is not restated here (#1122): it
+// is the ONE reader of a source line, shared with the statusgen pin the board's
+// Next-up selection resolves, so the two can never drift into disagreeing about
+// what the same line says. Field 3 is preferred when it is a full commit (no
+// regression for the #776 shape), then field 2. When NEITHER column holds a 40-hex
+// commit, field 3 is returned unchanged so staleState's own isFullCommitSHA guard
+// falls the run through to the in-tree ref / could-not-check exactly as before —
+// a malformed pin never manufactures a verdict here.
 func deskToolsSourcePinReal() (root, commit string, found bool) {
 	dir := nearestPinRoot()
 	if dir == "" {
 		return "", "", false
 	}
-	if field2, field3, perr := deskkit.ArtifactPin(dir, "desk-tools-source"); perr == nil {
-		switch {
-		case isFullCommitSHA(field3):
-			return dir, field3, true
-		case isFullCommitSHA(field2):
-			return dir, field2, true
-		default:
-			return dir, field3, true
-		}
+	ref, hit, err := deskkit.SourcePin(dir, deskToolsArtifact)
+	if err != nil || !hit {
+		return "", "", false // pin file present but no usable desk-tools-source line
 	}
-	return "", "", false // pin file present but no usable desk-tools-source line
+	if ref.Commit != "" {
+		return dir, ref.Commit, true
+	}
+	return dir, ref.Field3, true
 }
 
 // nearestPinRoot walks up from the working directory and returns the first
