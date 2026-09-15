@@ -42,14 +42,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (59 desk-actionable of 69 total — 69 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (60 desk-actionable of 70 total — 70 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (59)
+### Desk-actionable (60)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -103,6 +103,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| forge-gitlab | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -258,7 +259,7 @@ _None._
 - 14 The public-repo gate reads the forge that serves the repo — every verb, not one — todo (wave 3)
 - 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — implemented (wave 4)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
-- 17 An enforceable merge gate on GitLab Free — the unresolved review thread — todo (wave 5)
+- 17 An enforceable merge gate on GitLab Free — the unresolved review thread — implemented (wave 5)
 
 ### forge-neutral (14 open)
 
