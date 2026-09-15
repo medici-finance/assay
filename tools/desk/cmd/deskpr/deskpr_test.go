@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -543,6 +544,46 @@ func TestCreateConflictingPRWarnsLoudly(t *testing.T) {
 	// three-value Mergeable verdict (MERGEABLE/CONFLICTING/UNKNOWN), not GitHub's mergeStateStatus
 	// enum (which lives only on the board's bulk OpenChange read). CONFLICTING is the load-bearing
 	// word the warning turns on, and it is present.
+}
+
+// TestCreateOpensMergeHoldOnGitLab is the forge-gitlab merge-hold brief's task 2: after
+// CreateDraftChange succeeds, deskpr create opens the desk's merge-hold marker thread on the
+// new change. The fake's default (GitHub-shaped) answer is the typed not-applicable, which
+// this test exercises as a genuine call rather than an untouched default — proving the verb
+// reaches OpenMergeHold on every create, not only a GitLab-resolved one.
+func TestCreateOpensMergeHoldOnGitLab(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create rc = %d, want 0", rc)
+	}
+	if curForge.openMergeHoldCalls != 1 {
+		t.Fatalf("OpenMergeHold called %d time(s), want exactly 1", curForge.openMergeHoldCalls)
+	}
+	if curForge.openMergeHoldNum != 101 {
+		t.Fatalf("OpenMergeHold was called for PR #%d, want the just-created #101", curForge.openMergeHoldNum)
+	}
+}
+
+// TestCreateMergeHoldOpenFailureIsLoud is the negative half of task 2: a REAL failure to open
+// the merge-hold (as opposed to the typed not-applicable every GitHub-resolved create sees)
+// must fail the create loudly — never a silent success that leaves a change without its
+// server-side merge gate and nothing on the audit line to say so.
+func TestCreateMergeHoldOpenFailureIsLoud(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	curForge.openMergeHoldErr = errors.New("503 the instance is unavailable")
+
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
+	if rc == deskkit.ExitOK {
+		t.Fatal("create rc = 0, want non-zero — a merge-hold open failure must never read as a clean create")
+	}
+	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
+		t.Fatalf("the change itself must still have been created before the hold-open failure; gh calls: %v",
+			ghCalls(*calls))
+	}
 }
 
 // noPollSleep swaps pollSleep for a no-op for the duration of a test so the polling loop

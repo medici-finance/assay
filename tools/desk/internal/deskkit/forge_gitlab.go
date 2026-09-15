@@ -245,17 +245,17 @@ func gitlabTime(t *time.Time) string {
 // PullRequest.Mergeable vocabulary.
 //
 // GitLab reports a DOZEN detailed statuses where GitHub reports a tri-state, and the mapping
-// is deliberately narrow in most directions:
+// is deliberately narrow in both directions:
 //
-//   - `mergeable` maps to MERGEABLE, as does `draft_status` — see below, the one deliberate
-//     exception to "only the forge's own positive clearance counts".
+//   - only `mergeable` maps to MERGEABLE. Everything the forge has not positively cleared
+//     stays out of that bucket.
 //   - only the two statuses that describe the CHANGE ITSELF being un-mergeable —
 //     `broken_status` (the source cannot be merged into the target) and `conflict` — map to
 //     CONFLICTING, because CONFLICTING is what the consuming gate treats as a decided
 //     refusal rather than a retry.
 //   - EVERYTHING ELSE maps to UNKNOWN. That includes `checking`/`unchecked` (not computed
 //     yet), the policy holds (`not_approved`, `blocked_status`, `discussions_not_resolved`,
-//     `ci_still_running`, …) and any status this table has never seen.
+//     `draft_status`, `ci_still_running`, …) and any status this table has never seen.
 //
 // The last clause is the load-bearing one. A GitLab release that adds a new detailed status
 // must not fall into MERGEABLE by default, and it must not fall into CONFLICTING either — a
@@ -263,30 +263,26 @@ func gitlabTime(t *time.Time) string {
 // rebasing when it needs an approval. UNKNOWN is the honest answer for a status this tree has
 // not been taught, and the consuming gate reads UNKNOWN as could-not-check.
 //
-// WHY `draft_status` IS THE ONE EXCEPTION (#1091; a further GitLab merge-gate follow-up is
-// tracked at assay#1096). The consuming gate (deskflip) re-evaluates EVERY condition —
-// including `mergeable` — against the change AS READ, still in draft, and performs its own
-// un-draft mutation only at the very end once every other condition has held (#987's full
-// re-gate). That design relies on the
-// forge being able to answer "is this change mergeable" independently of its draft flag — true
-// on GitHub, whose `mergeable` boolean is computed regardless of `draft`. GitLab instead
-// SUPPRESSES the real computation behind `draft_status` while a change is a draft, so with the
-// old blanket UNKNOWN mapping, `mergeable` could never pass for the completely ordinary,
-// universal starting state of every change this desk opens (`deskpr create` always opens a
-// draft) — the condition would refuse forever, not merely until some transient state settled.
-// Every OTHER policy hold in the EVERYTHING ELSE bucket names a state the forge might still
-// resolve on its own (an approval lands, a discussion gets resolved, CI finishes) without any
-// action BY THIS GATE — draft_status is the one status whose resolution IS the mutation this
-// same gate performs a few conditions later. Treating it as MERGEABLE here does not skip a
-// real conflict check: GitLab's own merge button still independently re-verifies conflicts at
-// merge time (human-gated, per house policy), so this changes only whether the desk's queue
-// label and un-draft proceed, never whether an actual conflicting change can be merged.
+// `draft_status` is DELIBERATELY NOT an exception here, though an interim fix (#1099) briefly
+// made it one. #1099's own commit message named exactly why that was interim: deskflip's
+// `mergeable` condition, evaluated while the change is still a draft, could never pass for the
+// completely ordinary starting state of every change this desk opens — and a blanket mapping
+// change was the fastest way to stop that. But a blanket MERGEABLE for `draft_status` reaches
+// every OTHER caller of GetPullRequest too, not only the one condition the leniency is sound
+// for, and it grants that leniency unconditionally rather than only once the reviewer-approved
+// condition has actually confirmed the merge-hold. The forge-gitlab merge-hold brief (tracked
+// at assay#1096, which #1099's own message named as the real fix) supersedes it: the mapping
+// stays exactly what it was before #1099, and the ONE condition the leniency belongs to
+// (deskflip's `mergeable`) reads the raw status straight off PullRequest.GitLabMergeStatus and
+// treats `draft_status` and `discussions_not_resolved` as non-blocking THERE — see that
+// field's doc comment. Reverting the blanket case here is not a regression of #1099: it moves
+// the fix to the one place it is sound, the same day it landed.
 //
 // An EMPTY detailed_merge_status (an older instance that does not send the field) is UNKNOWN
-// for the same reason every other un-cleared status is: absence is not a clearance.
+// for the same reason: absence is not a clearance.
 func gitlabMergeableState(detailed string) string {
 	switch strings.ToLower(strings.TrimSpace(detailed)) {
-	case "mergeable", "draft_status":
+	case "mergeable":
 		return Mergeable
 	case "broken_status", "conflict":
 		return MergeableConflicting
@@ -479,19 +475,20 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 			http.MethodGet, path, StripControl(mr.ChangesCount)), nil)
 	}
 	out := &PullRequest{
-		Number:       int(mr.IID),
-		State:        gitlabState(mr.State),
-		Draft:        mr.Draft,
-		NodeID:       gitlabNodeID(repo, int(mr.IID)),
-		Title:        mr.Title,
-		Body:         mr.Description,
-		ChangedFiles: changed,
-		HeadSHA:      mr.SHA,
-		Mergeable:    gitlabMergeableState(mr.DetailedMergeStatus),
-		Labels:       append([]string(nil), mr.Labels...),
-		URL:          mr.WebURL,
-		HeadRef:      mr.SourceBranch,
-		BaseRef:      mr.TargetBranch,
+		Number:            int(mr.IID),
+		State:             gitlabState(mr.State),
+		Draft:             mr.Draft,
+		NodeID:            gitlabNodeID(repo, int(mr.IID)),
+		Title:             mr.Title,
+		Body:              mr.Description,
+		ChangedFiles:      changed,
+		HeadSHA:           mr.SHA,
+		Mergeable:         gitlabMergeableState(mr.DetailedMergeStatus),
+		GitLabMergeStatus: mr.DetailedMergeStatus,
+		Labels:            append([]string(nil), mr.Labels...),
+		URL:               mr.WebURL,
+		HeadRef:           mr.SourceBranch,
+		BaseRef:           mr.TargetBranch,
 	}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
@@ -2243,6 +2240,213 @@ func (g *GitLabForge) PostReview(repo ForgeRepo, number int, in ReviewInput) err
 		}
 		return nil
 	}
+}
+
+// --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
+//
+// GitLab enforces, on every tier, that a merge request carrying an unresolved discussion
+// thread cannot be merged (`only_allow_merge_if_all_discussions_are_resolved`). This backend
+// makes a resolvable discussion thread the desk's own merge hold, over the Discussions API:
+// one thread per change, found again by the FIXED first line of its marker note rather than
+// by a locally-kept id, so a read never has to trust a caller's memory of which discussion is
+// the desk's own.
+
+// mergeHoldMarkerBody is the marker note's body, VERBATIM — the first line every read matches
+// on to find the desk's own thread among any human ones the change may also carry.
+const mergeHoldMarkerBody = "assay-merge-hold: review pending — released by the reviewer's approve verdict at the current head"
+
+// mergeHoldReleasedMarker and mergeHoldRearmedMarker are the first lines of the two reply
+// shapes SetMergeHold posts. ReadMergeHold matches on these exactly, so the wire text here and
+// the text SetMergeHold renders below must never drift apart.
+const (
+	mergeHoldReleasedMarker = "assay-merge-hold: released"
+	mergeHoldRearmedMarker  = "assay-merge-hold: re-armed"
+	mergeHoldHeadPrefix     = "Head: "
+)
+
+// mergeHoldReleasedHead extracts the full sha off a RELEASED reply's second line, the shape
+// SetMergeHold renders (see below). ok is false for anything else — a reply that is not a
+// released marker, or one whose second line does not carry the `Head: ` prefix, which a
+// caller reads as "this resolved thread names no head" rather than guessing one.
+func mergeHoldReleasedHead(body string) (string, bool) {
+	lines := strings.SplitN(body, "\n", 3)
+	if len(lines) < 2 || strings.TrimSpace(lines[0]) != mergeHoldReleasedMarker {
+		return "", false
+	}
+	line := strings.TrimSpace(lines[1])
+	if !strings.HasPrefix(line, mergeHoldHeadPrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, mergeHoldHeadPrefix)), true
+}
+
+// OpenMergeHold opens the marker discussion on a newly created change. The thread must come
+// back RESOLVABLE (`notes[0].resolvable: true`) — a plain note would never block the merge
+// button, which is the whole point of this op — so a discussion that comes back otherwise is
+// a could-not-check refusal naming the change, not a silent success.
+func (g *GitLabForge) OpenMergeHold(repo ForgeRepo, number int) (string, error) {
+	cl, err := g.client()
+	if err != nil {
+		return "", err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions", g.projectPath(repo), number)
+	disc, _, derr := cl.Discussions.CreateMergeRequestDiscussion(repo.Slug(), int64(number),
+		&gitlab.CreateMergeRequestDiscussionOptions{Body: gitlab.Ptr(mergeHoldMarkerBody)})
+	if derr != nil {
+		return "", g.mapErr(http.MethodPost, path, derr)
+	}
+	if len(disc.Notes) == 0 || !disc.Notes[0].Resolvable {
+		return "", Unverifiable(fmt.Sprintf(
+			"could-not-check: the merge-hold marker thread opened on !%d in %s came back NOT resolvable — "+
+				"the server cannot block the merge on it, so the gate this op exists to provide is not armed",
+			number, repo.Slug()), nil)
+	}
+	return disc.ID, nil
+}
+
+// ReadMergeHold walks the change's discussions to find the desk's own marker thread (by its
+// FIXED first line) and reports its state. Absent entirely is a real answer (MergeHoldAbsent),
+// not an error — the same three-state discipline every other read on this seam holds to.
+func (g *GitLabForge) ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions", g.projectPath(repo), number)
+	opt := &gitlab.ListMergeRequestDiscussionsOptions{ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: 1}}
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		opt.Page = int64(page)
+		discs, resp, derr := cl.Discussions.ListMergeRequestDiscussions(repo.Slug(), int64(number), opt)
+		if derr != nil {
+			return nil, g.mapErr(http.MethodGet, path, derr)
+		}
+		for _, d := range discs {
+			if d == nil || len(d.Notes) == 0 || d.Notes[0] == nil {
+				continue
+			}
+			marker := d.Notes[0]
+			if strings.TrimSpace(marker.Body) != mergeHoldMarkerBody {
+				continue
+			}
+			if !marker.Resolved {
+				return &MergeHold{State: MergeHoldUnresolved, ID: d.ID}, nil
+			}
+			// The LATEST released reply wins — a thread can be released, re-armed, and
+			// released again across its life, and only the most recent release describes
+			// the CURRENT state.
+			//
+			// GitLab does NOT lock a resolved discussion against further replies: any
+			// project member with ordinary comment rights (which, on a project where the
+			// `Draft:` prefix is just a title string, includes the change's own author) can
+			// post a note into an already-resolved thread at any time. So a released-shaped
+			// reply's TEXT is never trusted on its own — only a reply AUTHORED BY the actor
+			// who actually resolved the discussion (marker.ResolvedBy, the one field GitLab
+			// itself sets and only the resolve API can touch) can name the head the hold was
+			// released at. This is the same identity check checkMergeHoldApproved already
+			// applies to ResolvedBy, extended to the reply the head comes from — otherwise
+			// anyone with comment rights forges "approved at current head" by replying
+			// `assay-merge-hold: released\nHead: <their-own-unreviewed-sha>` into a thread a
+			// real reviewer resolved earlier. A reply from anyone else is treated exactly
+			// like a reply that isn't released-shaped at all: it does not move head.
+			head := ""
+			for _, n := range d.Notes[1:] {
+				if n == nil {
+					continue
+				}
+				h, ok := mergeHoldReleasedHead(n.Body)
+				if !ok {
+					continue
+				}
+				if !SameActor(n.Author.Username, marker.ResolvedBy.Username) {
+					continue
+				}
+				head = h
+			}
+			return &MergeHold{
+				State:      MergeHoldResolved,
+				ID:         d.ID,
+				ResolvedBy: marker.ResolvedBy.Username,
+				Head:       head,
+			}, nil
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+	}
+	return &MergeHold{State: MergeHoldAbsent}, nil
+}
+
+// SetMergeHold releases or re-arms the change's marker thread, finding it the same way
+// ReadMergeHold does (never by a caller-supplied id, so a stale local id can never address the
+// wrong thread). A change with no marker thread at all cannot be released or re-armed — a
+// could-not-check refusal naming the change, never a silent no-op.
+//
+// THE WRITE ORDER IS THE SAFETY PROPERTY, mirroring PostReview's own note-then-approve
+// reasoning (see its doc comment) but in the direction each half's failure should fail safe:
+//
+//   - RELEASE (Resolved:true) posts the reply FIRST, then resolves the discussion. Releasing
+//     is the direction that WEAKENS the server-side gate, so if only the reply lands, the
+//     gate stays UP (thread still unresolved) — a visible half-success, never a merge hold
+//     silently lifted with no recorded head.
+//   - RE-ARM (Resolved:false) un-resolves the discussion FIRST, then posts the reply. Re-arming
+//     is the direction that TIGHTENS the gate, so if only the un-resolve lands, the gate is
+//     already back up — the missing reply is a cosmetic loss, never a safety one.
+func (g *GitLabForge) SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdate) error {
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	proj := g.projectPath(repo)
+	hold, herr := g.ReadMergeHold(repo, number)
+	if herr != nil {
+		return herr
+	}
+	switch hold.State {
+	case MergeHoldAbsent:
+		return Refused(fmt.Sprintf(
+			"!%d in %s carries no merge-hold marker thread to release or re-arm — OpenMergeHold never ran, "+
+				"or the change predates this control", number, repo.Slug()))
+	case MergeHoldNotApplicable:
+		return ErrMergeHoldNotApplicable
+	}
+	notePath := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions/%s/notes", proj, number, hold.ID)
+	resolvePath := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions/%s", proj, number, hold.ID)
+	if in.Resolved {
+		head := strings.TrimSpace(in.Head)
+		if head == "" {
+			return Refused("SetMergeHold: releasing a merge-hold requires a non-empty Head")
+		}
+		body := mergeHoldReleasedMarker + "\n" + mergeHoldHeadPrefix + head
+		if _, _, nerr := cl.Discussions.AddMergeRequestDiscussionNote(repo.Slug(), int64(number), hold.ID,
+			&gitlab.AddMergeRequestDiscussionNoteOptions{Body: gitlab.Ptr(body)}); nerr != nil {
+			return g.mapErr(http.MethodPost, notePath, nerr)
+		}
+		if _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,
+			&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(true)}); rerr != nil {
+			return Unverifiable(fmt.Sprintf(
+				"could-not-check: the released reply posted on !%d in %s's merge-hold thread, but resolving "+
+					"the thread failed — the server-side gate is still UP with a reply recorded that claims "+
+					"otherwise: %v", number, repo.Slug(), g.mapErr(http.MethodPut, resolvePath, rerr)), rerr)
+		}
+		return nil
+	}
+	reason := strings.TrimSpace(in.Reason)
+	if reason == "" {
+		return Refused("SetMergeHold: re-arming a merge-hold requires a non-empty Reason")
+	}
+	if _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,
+		&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(false)}); rerr != nil {
+		return g.mapErr(http.MethodPut, resolvePath, rerr)
+	}
+	body := mergeHoldRearmedMarker + "\n" + reason
+	if _, _, nerr := cl.Discussions.AddMergeRequestDiscussionNote(repo.Slug(), int64(number), hold.ID,
+		&gitlab.AddMergeRequestDiscussionNoteOptions{Body: gitlab.Ptr(body)}); nerr != nil {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: !%d in %s's merge-hold thread was re-armed (the server-side gate is back up), "+
+				"but posting the re-arm reply failed — the state is correct, its record is not: %v",
+			number, repo.Slug(), g.mapErr(http.MethodPost, notePath, nerr)), nerr)
+	}
+	return nil
 }
 
 // MarkReadyForReview clears the `Draft:` prefix — GitLab's only ready transition.

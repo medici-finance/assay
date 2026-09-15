@@ -1781,6 +1781,29 @@ func (g *GitHubForge) hardeningRulesets(repo ForgeRepo) (json.RawMessage, error)
 	return json.Marshal(details)
 }
 
+// --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
+//
+// GitHub's server-side twin of this control is branch protection's required reviewer-App
+// review, already stronger than a discussion-thread hold — so every op here is a typed
+// not-applicable, and none issues a request.
+
+// ReadMergeHold returns MergeHoldNotApplicable — GitHub's gate is branch protection, not a
+// discussion thread.
+func (g *GitHubForge) ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, error) {
+	return &MergeHold{State: MergeHoldNotApplicable}, nil
+}
+
+// OpenMergeHold returns ErrMergeHoldNotApplicable — there is no hold to open on GitHub.
+func (g *GitHubForge) OpenMergeHold(repo ForgeRepo, number int) (string, error) {
+	return "", ErrMergeHoldNotApplicable
+}
+
+// SetMergeHold returns ErrMergeHoldNotApplicable — there is no hold to release or re-arm on
+// GitHub.
+func (g *GitHubForge) SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdate) error {
+	return ErrMergeHoldNotApplicable
+}
+
 // --- File content (read / write on a branch) ---
 
 // ghContentsWire is the Contents-API read shape (only the fields consumed). `content` is

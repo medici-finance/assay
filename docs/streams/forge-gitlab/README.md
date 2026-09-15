@@ -144,7 +144,7 @@ for the map: the step after the one being fixed is knowable in advance.
 | 14 | [The public-repo gate reads the forge that serves the repo — every verb, not one](brief-14-public-repo-gate-on-the-resolved-forge.md) | 3 | M | todo | — | — |
 | 15 | [The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane](brief-15-gitlab-runbook-missing-keys.md) | 4 | M | implemented | — | — |
 | 16 | [The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls](brief-16-review-tick-conformance-walk.md) | 5 | M | todo | — | — |
-| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | todo | — | — |
+| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

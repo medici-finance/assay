@@ -228,6 +228,36 @@ note's endpoint (op 39). The goldens `get_issue_typed_issue_both_kinds` / `get_i
 kind's endpoint, with the other kind present at the same number. Ops 2 and 9 keep their behaviour for
 every caller not yet converted.
 
+| # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
+|---|--------|--------------------|-------------|----------------|-------------|
+| 41 | `ReadMergeHold(repo, number)` | read a change's merge-hold marker thread | typed not-applicable (`MergeHoldNotApplicable`) — the twin control is server-side branch protection, already stronger | `GET /projects/:id/merge_requests/:iid/discussions`, paginated; finds the desk's own thread by the FIXED first line of its marker note. Absent is a real answer (`MergeHoldAbsent`), never an error | implemented |
+| 42 | `OpenMergeHold(repo, number)` | open the merge-hold marker thread on a new change | typed not-applicable (`ErrMergeHoldNotApplicable`) | `POST /projects/:id/merge_requests/:iid/discussions`; refuses (could-not-check) if the thread comes back not `resolvable` — a plain note would never block the merge button | implemented |
+| 43 | `SetMergeHold(repo, number, in)` | release (resolved, at head) or re-arm (unresolved, with reason) a merge-hold | typed not-applicable (`ErrMergeHoldNotApplicable`) | release: `POST …/discussions/:id/notes` (the `released`+`Head:` reply) then `PUT …/discussions/:id?resolved=true`; re-arm: the same PUT with `resolved=false` FIRST, then the `re-armed` reply note — the order in each direction is the one that fails safe (see the backend's own doc comment) | implemented |
+
+**Ops 41–43 (the merge-hold op set) were added by brief `forge-gitlab/17`**, immediately following
+op 40 (`RepoHardeningRead`, `forge-gitlab/11`) under the same freeze rule, with three consuming
+call sites in the same change: `deskpr create` (op 42, opening the hold
+right after `CreateDraftChange` on a GitLab-resolved repo — task 2), `deskpost review` (op 43,
+releasing on an approve at head and re-arming on a request-changes or a stale-head resolve — task
+3), and `deskflip`'s `reviewer-approved` condition (op 41, and op 43 for its own stale-head
+re-arm — task 4a). They exist because neither half of GitHub's server-side verdict-before-merge
+gate exists on GitLab Free (the `Draft:` prefix is a title string any Developer can strip; required
+approvals are Premium), and the field found on 2026-09-14 that the desk's TOOL-SIDE half was also
+missing on gitlab.com Free: the review-state read consults the Premium approval-configuration
+route first, which answers 403 there (not the 404 the tree degrades on), failing the whole read
+closed (issue #1091). GitLab enforces `only_allow_merge_if_all_discussions_are_resolved` on every
+tier as a plain project setting; this op set turns a resolvable discussion thread into the desk's
+own merge hold — opened with the change, released only by the reviewer's approve at the current
+head, re-armed by a request-changes verdict or a new head — and `deskflip`'s `reviewer-approved`
+condition on GitLab now keys ENTIRELY on this thread's own state (who resolved it, and at which
+head), never on the project approval-configuration route; the correctness note/approval-based
+lane (op 3/op 10) stays the whole gate on every OTHER forge, unchanged. `PullRequest` also gained
+a `GitLabMergeStatus` field in the same change (a field, not a method, so it carries no row here)
+holding GitLab's raw `detailed_merge_status` string — the one `deskflip`'s `mergeable` condition
+reads to tell the two named policy holds this brief's hold is about to release (`draft_status`,
+`discussions_not_resolved`) apart from a genuine not-yet-computed state, without touching the
+shared `gitlabMergeableState` mapping (which stays exactly as it was — Verify row 7).
+
 ## Per-tool call-site inventory (current state)
 
 ### Direct-HTTP tools (the `api.github.com` construction Verify item 2 targets)

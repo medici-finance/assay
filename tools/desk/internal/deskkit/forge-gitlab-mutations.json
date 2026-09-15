@@ -104,10 +104,52 @@
       "new": "\t\treturn gitlabIssueAsIssue(&gitlab.Issue{IID: mr.IID, Title: mr.Title, State: mr.State, WebURL: mr.WebURL}), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped"
     },
     {
-      "name": "GitLab draft_status stops mapping to MERGEABLE (deskflip refuses every fresh draft change again, #1091)",
+      "name": "open a merge-hold marker thread that came back not resolvable as if it were armed (the server would never block the merge on it)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "case \"mergeable\", \"draft_status\":",
-      "new": "case \"mergeable\":"
+      "old": "\tif len(disc.Notes) == 0 || !disc.Notes[0].Resolvable {",
+      "new": "\tif false && (len(disc.Notes) == 0 || !disc.Notes[0].Resolvable) {"
+    },
+    {
+      "name": "match ANY discussion as the merge-hold marker instead of the fixed marker body (a human thread would be read as the desk's own hold)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif strings.TrimSpace(marker.Body) != mergeHoldMarkerBody {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "read a resolved marker thread's resolved_by as empty (a hand-resolved thread would pass reviewer-approved's actor check)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\t\tResolvedBy: marker.ResolvedBy.Username,",
+      "new": "\t\t\t\tResolvedBy: \"\","
+    },
+    {
+      "name": "extract a released reply's head from a body that is not the released marker (a re-armed reply's text would be misread as a head)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif len(lines) < 2 || strings.TrimSpace(lines[0]) != mergeHoldReleasedMarker {",
+      "new": "\tif len(lines) < 2 {"
+    },
+    {
+      "name": "let SetMergeHold act on an ABSENT hold instead of refusing (nothing to release or re-arm, so nothing would actually be resolved)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase MergeHoldAbsent:\n\t\treturn Refused(fmt.Sprintf(\n\t\t\t\"!%d in %s carries no merge-hold marker thread to release or re-arm — OpenMergeHold never ran, \"+\n\t\t\t\t\"or the change predates this control\", number, repo.Slug()))",
+      "new": "\tcase MergeHoldAbsent:\n\t\tbreak"
+    },
+    {
+      "name": "release a merge-hold by resolving the discussion BEFORE posting the reply (a resolve that succeeds and a reply that fails would silently lift the gate with no recorded head)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tbody := mergeHoldReleasedMarker + \"\\n\" + mergeHoldHeadPrefix + head\n\t\tif _, _, nerr := cl.Discussions.AddMergeRequestDiscussionNote(repo.Slug(), int64(number), hold.ID,\n\t\t\t&gitlab.AddMergeRequestDiscussionNoteOptions{Body: gitlab.Ptr(body)}); nerr != nil {\n\t\t\treturn g.mapErr(http.MethodPost, notePath, nerr)\n\t\t}\n\t\tif _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,\n\t\t\t&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(true)}); rerr != nil {",
+      "new": "\t\tif _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,\n\t\t\t&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(true)}); rerr != nil {"
+    },
+    {
+      "name": "reopen the #1099 draft_status carve-out in the shared mapping instead of leaving it to deskflip's mergeable condition alone (every PullRequest reader, not just the one condition the leniency is sound for, would see a draft as MERGEABLE)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase \"mergeable\":\n\t\treturn Mergeable",
+      "new": "\tcase \"mergeable\", \"draft_status\":\n\t\treturn Mergeable"
+    },
+    {
+      "name": "trust a released reply's Head regardless of who authored it (a non-reviewer forges \"approved at current head\" by replying into an already-resolved thread — GitLab does not lock a resolved discussion against further replies)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\t\th, ok := mergeHoldReleasedHead(n.Body)\n\t\t\t\tif !ok {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif !SameActor(n.Author.Username, marker.ResolvedBy.Username) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\thead = h",
+      "new": "\t\t\t\tif h, ok := mergeHoldReleasedHead(n.Body); ok {\n\t\t\t\t\thead = h\n\t\t\t\t}"
     }
   ]
 }

@@ -51,6 +51,13 @@ type postBackend interface {
 	checkRunsAt(sha string) (*checkRunsResp, error)
 	postReview(pr int, head, event, body string) error
 	markReadyForReview(nodeID string) error
+	// readMergeHold / setMergeHold: the forge-gitlab merge-hold brief. GitHub's ghClient path
+	// is the typed not-applicable, unconditionally — its server-side twin is branch
+	// protection. postVerdictReview's correctness lane reads and writes the hold AFTER the
+	// verdict itself lands (release on approve, re-arm on request-changes or a resolve found
+	// stale at this head); the security lane never touches it.
+	readMergeHold(pr int) (*deskkit.MergeHold, error)
+	setMergeHold(pr int, in deskkit.MergeHoldUpdate) error
 	// verdictLabels applies the mechanical, ADVISORY verdict-time labels (size + surface). It
 	// is post-write and gates nothing; a backend that cannot compute them returns a note, not
 	// an error (see forgeBackend.verdictLabels).
@@ -294,6 +301,14 @@ func (b *forgeBackend) postReview(pr int, head, event, body string) error {
 
 func (b *forgeBackend) markReadyForReview(nodeID string) error {
 	return b.fg.MarkReadyForReview(nodeID)
+}
+
+func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {
+	return b.fg.ReadMergeHold(b.repo, pr)
+}
+
+func (b *forgeBackend) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return b.fg.SetMergeHold(b.repo, pr, in)
 }
 
 func (b *forgeBackend) RepoVisibility(owner, repo string) (string, error) {
