@@ -59,6 +59,16 @@ type runResult struct {
 }
 
 func runCmd(dir, name string, args ...string) runResult {
+	return runCmdEnv(dir, nil, name, args...)
+}
+
+// runCmdEnv is runCmd with an explicit child environment. env follows the os/exec contract:
+// nil inherits this process's environment, non-nil REPLACES it (so a caller that means to add
+// one variable passes append(os.Environ(), "K=V")). It exists for the claim child (issue
+// 1151), which the legacy claim script authenticates through GH_TOKEN in its environment;
+// every other call site passes nil through runCmd. A `gh` call ignores env: its environment
+// is always the dispatcher token's, by the rule above.
+func runCmdEnv(dir string, env []string, name string, args ...string) runResult {
 	// The fail-closed backstop for the rule above: even if a future code path reached a
 	// forge call before the token was minted, the call does not happen. The stamp step's
 	// own mint is the check a caller sees; this is the one that cannot be forgotten.
@@ -67,7 +77,7 @@ func runCmd(dir, name string, args ...string) runResult {
 			"refusing to run gh with no dispatcher App installation token — the dispatch stamp is an " +
 				"attestation about WHO applied it, so it is never written under the ambient gh identity")}
 	}
-	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Start: execCommand}
+	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Env: env, Start: execCommand}
 	if name == "gh" {
 		call.Env = append(os.Environ(), "GH_TOKEN="+dispatcherToken)
 	}
