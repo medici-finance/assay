@@ -61,13 +61,17 @@ type glServer struct {
 	// at one number is the case the typed reads exist for, and a shared fixture could not
 	// tell an issue-thread read from a merge-request one.
 	issueNotes []map[string]any
-	diffs        []map[string]any
-	commit       map[string]any
-	commits      []map[string]any
-	statuses     []map[string]any
-	jobs         []map[string]any
-	awards       []map[string]any
-	users        map[string]map[string]any
+	diffs      []map[string]any
+	commit     map[string]any
+	commits    []map[string]any
+	statuses   []map[string]any
+	jobs       []map[string]any
+	// pipelines is the project-pipelines LIST payload, served by SHA: an entry is returned only
+	// when its "sha" equals the request's ?sha=, so a fixture cannot answer for a head it does
+	// not belong to. Empty/absent → the instance ran no pipeline at that head.
+	pipelines []map[string]any
+	awards    []map[string]any
+	users     map[string]map[string]any
 	// userSearch is the users LIST payload (`GET /users?search=<term>`), keyed by the search
 	// term; a term with no entry answers an empty list (the instance found nobody).
 	userSearch map[string][]map[string]any
@@ -150,11 +154,14 @@ var (
 	lCommitList   = regexp.MustCompile(`/repository/commits$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
-	lBranch       = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
-	lMRLabelEvts  = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
-	lMRNote1      = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
-	lProjLabels   = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
-	lRepoFile     = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
+	// lPipelines is the project PIPELINES collection (ListOpenChanges' per-change head-pipeline
+	// read, addressed by ?sha=). It is anchored so it cannot also match lPipelineJobs' path.
+	lPipelines   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines$`)
+	lBranch      = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
+	lMRLabelEvts = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
+	lMRNote1     = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
+	lProjLabels  = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
+	lRepoFile    = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
 	// the forge-gitlab merge-hold brief adds the merge-hold marker thread's discussion endpoints. lMRDiscNote
 	// (the note sub-resource) is matched BEFORE lMRDisc1 (the discussion resource) and
 	// lMRDiscussions (the list/create collection), same ordering discipline lMRNote1 already
@@ -343,6 +350,17 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.commit)
 	case r.Method == http.MethodGet && lPipelineJobs.MatchString(path):
 		enc(s.jobs)
+	case r.Method == http.MethodGet && lPipelines.MatchString(path):
+		// Served BY SHA, as the real endpoint is: only a pipeline stamped with the requested
+		// sha comes back, so a fixture can never answer for a head it does not belong to.
+		want := r.URL.Query().Get("sha")
+		hits := []map[string]any{}
+		for _, p := range s.pipelines {
+			if sha, _ := p["sha"].(string); sha == want {
+				hits = append(hits, p)
+			}
+		}
+		enc(hits)
 	case r.Method == http.MethodGet && lProjApproval.MatchString(path):
 		if s.projApprovalStatus != 0 {
 			w.WriteHeader(s.projApprovalStatus)
@@ -758,6 +776,58 @@ func glCases() []glCase {
 					{"id": 9002, "name": "lint", "status": "failed"},
 					{"name": "deploy", "status": "manual"},
 				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// issue #1125 — the shape a GitLab adopter actually runs: ONE `merge_request_event`
+			// pipeline at the head, one job, everything green. The golden pins the two facts the
+			// flip gate depends on: the head PIPELINE arrives as a status context named
+			// `pipeline` — the very context RequiredStatusChecks names on a pipeline-gated
+			// project, so the required verdict is one the rollup carries — and the job arrives
+			// alongside it as a green check run. Before the fix nothing in this rollup was ever
+			// named `pipeline`, so the gate read a green MR as "a required check that did not
+			// report on this head at all" and refused every flip.
+			name: "checks_at_head_green_mr_pipeline", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success",
+					"last_pipeline": map[string]any{"id": 77, "sha": "abc123", "status": "success",
+						"source": "merge_request_event", "created_at": "2026-09-15T10:00:00Z"}}
+				s.statuses = []map[string]any{}
+				s.jobs = []map[string]any{
+					{"id": 9101, "name": "statusgen-lint", "status": "success",
+						"finished_at": "2026-09-15T10:04:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// A job declared `allow_failure: true` that FAILED does not block the merge — the
+			// pipeline it belongs to still reports success — so it maps to the neutral
+			// conclusion rather than a failure. Mapping it `failure` would make the job entry
+			// contradict the pipeline entry inside ONE rollup, which is the same
+			// two-readings-of-one-fact defect #1125 is about.
+			name: "checks_at_head_allowed_failure_job", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success",
+					"last_pipeline": map[string]any{"id": 78, "sha": "abc123", "status": "success",
+						"created_at": "2026-09-15T10:00:00Z"}}
+				s.jobs = []map[string]any{
+					{"id": 9201, "name": "statusgen-lint", "status": "success"},
+					{"id": 9202, "name": "flaky-probe", "status": "failed", "allow_failure": true},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// A pipeline stamped with a DIFFERENT sha is not a verdict on this head: it is not
+			// mapped, so the rollup carries no `pipeline` context and a pipeline-gated project
+			// reads the head as could-not-check rather than borrowing an older head's green.
+			name: "checks_at_head_pipeline_off_head", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success",
+					"last_pipeline": map[string]any{"id": 79, "sha": "deadbee", "status": "success"}}
+				s.jobs = []map[string]any{}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
 		},
@@ -1395,14 +1465,33 @@ func glCases() []glCase {
 			// issue #686. The bulk open-change read is served in a DEGRADED shape: real change
 			// metadata (so the board's NEEDS-REVIEW/RE-REVIEW trigger works), with the two
 			// fields GitLab does not map 1:1 marked could-not-check PER CHANGE — MergeStateStatus
-			// left EMPTY (mergeVerdictUnknown → MERGE-NOW withheld) and the CI rollup a single
-			// GitLabRollupUnmapped entry (ciUnknown → CI-green, and thus MERGE-NOW/FLIP, withheld).
+			// left EMPTY (mergeVerdictUnknown → MERGE-NOW withheld) and, with NO pipeline at this
+			// head, the CI rollup a single GitLabRollupUnmapped entry (ciUnknown → CI-green, and
+			// thus MERGE-NOW/FLIP, withheld). The head-with-a-pipeline case is the next golden.
 			// LastEditedAt is likewise empty (GitLab exposes no title/body-edit timestamp).
 			name: "list_open_changes", method: "ListOpenChanges",
 			setup: func(s *glServer) {
 				s.mrList = []map[string]any{glMR(map[string]any{
 					"iid": 7, "created_at": "2026-09-01T09:00:00Z",
 				})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+		},
+		{
+			// issue #1125 — the board half. A head with a green pipeline is mapped for real:
+			// the change carries one StatusContext rollup node named `pipeline`, from the same
+			// mapping ChecksAtHead publishes, so the board reads CI green instead of the
+			// permanent CI-UNKNOWN the unconditional could-not-check sentinel produced. The
+			// golden also pins the per-change pipeline read (?sha=), addressed by head SHA.
+			name: "list_open_changes_head_pipeline_mapped", method: "ListOpenChanges",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{glMR(map[string]any{
+					"iid": 7, "created_at": "2026-09-01T09:00:00Z",
+				})}
+				s.pipelines = []map[string]any{
+					{"id": 77, "sha": "abc123", "status": "success", "source": "merge_request_event",
+						"created_at": "2026-09-15T10:00:00Z"},
+				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
 		},
