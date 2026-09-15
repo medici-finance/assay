@@ -9,4 +9,7 @@
 ### Fixed
 - `deskflip`'s `mergeable` condition on GitLab no longer refuses forever on a brand-new draft
   merge request: `draft_status` and `discussions_not_resolved` are treated as non-blocking
-  there, with the reviewer-approved condition immediately after doing the real gating.
+  there, with the reviewer-approved condition immediately after doing the real gating. This
+  supersedes an interim same-day fix that mapped `draft_status` to `MERGEABLE` in the shared
+  GitLab merge-status mapping — that mapping is reverted to what it was, and the leniency
+  moves to the one condition it belongs to.

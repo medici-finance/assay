@@ -79,6 +79,22 @@ Do not present a Free deployment as GitHub-equivalent on the rows above; do run 
 there, and pay for the tier that closes a row only when that row's remediation is what you
 need.
 
+**The unresolved-review-thread merge gate (row B3's server-side layer, every tier).**
+Required approvals (B3, above) are advisory on Free — the reviewer service account's
+Developer role can approve, but nothing on GitLab itself refuses a merge for lack of one.
+GitLab does enforce, on every tier, that a merge request carrying an unresolved discussion
+thread cannot be merged (the row this section's table adds above,
+`only_allow_merge_if_all_discussions_are_resolved`). The desk turns that into a real gate: a
+resolvable "merge-hold" discussion thread opens with every merge request the worker creates,
+carrying a fixed marker body; the reviewer's approve verdict resolves it (recording the
+approved head on a reply); a request-changes verdict, or a push past the head it was resolved
+at, re-opens it. The GitLab merge button is blocked while it stands open — from the first
+second, on Free, with no Premium route consulted. The `Draft:` title prefix stays exactly what
+it always was: the human-facing "not ready yet" signal, additive to this gate rather than
+replaced by it. And the human merge remains the outer gate it already is on this profile —
+this control narrows what an accidental or bypassed merge can do, it does not remove the
+human from the loop.
+
 ## 0.2 Group, not a personal namespace
 
 `create-fleet-gitlab.sh` provisions **group-owned** service accounts. A project under a
@@ -567,6 +583,7 @@ comment for the full endpoint list):
 | Protect `main` | `POST api/v4/projects/:id/protected_branches` | `allowed_to_push=[{user_id: <board-writer>}]`, `allowed_to_merge=[{access_level: 40}]` (Maintainer role) |
 | Set approval settings | `POST api/v4/projects/:id/approvals` | `merge_requests_author_approval: false`, `merge_requests_disable_committers_approval: true` — the prevent-author / prevent-committers pair |
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
+| Require all threads resolved before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_all_discussions_are_resolved: true` — the merge-hold marker thread's server-side half (§0.1); Free tier, read back the same way as the pipeline flag above |
 | Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
 
 Every endpoint above is reachable at the **Premium** tier — nothing the script calls
