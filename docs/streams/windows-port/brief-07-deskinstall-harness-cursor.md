@@ -200,11 +200,6 @@ placement. Row 9 proves layer 2 with layer 1 bypassed.
      (command, exit code, output line(s) or hash, date, runner). Every row here is
      OS-neutral Go — a POSIX verifier can discharge all of them; there is no
      Windows-runtime row to defer. -->
-## Evidence
-<!-- appended at implementation time by a NON-implementer: one row per Verify item
-     (command, exit code, output line(s) or hash, date, runner). Every row here is
-     OS-neutral Go — a POSIX verifier can discharge all of them; there is no
-     Windows-runtime row to defer. -->
 
 | # | Command | Expected | Observed | Date / Runner |
 |---|---------|----------|----------|---------------|
