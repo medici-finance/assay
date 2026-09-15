@@ -859,10 +859,10 @@ func (c *ghClient) checkRunsAt(sha string) (*checkRunsResp, error) {
 
 // postReview submits a head-pinned review AS THE APP. event is APPROVE or
 // REQUEST_CHANGES; commit_id pins the verdict to the reviewed head.
-func (c *ghClient) postReview(pr int, head, event, body string) error {
+func (c *ghClient) postReview(pr int, head, event, body string) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", c.owner, c.repo, pr)
 	in := map[string]any{"commit_id": head, "event": event, "body": body}
-	return c.doJSON(http.MethodPost, path, in, nil)
+	return "", c.doJSON(http.MethodPost, path, in, nil)
 }
 
 // postComment posts a plain issue comment AS THE APP.

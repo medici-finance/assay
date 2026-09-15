@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode"
@@ -238,17 +239,100 @@ func intakeFileLabel(loc intakeFileLoc) string {
 	return loc.Subdir + "/" + loc.Name
 }
 
+// intakeFrontmatterKeys is the set of frontmatter keys parseIntakeFile owns —
+// every `yaml:"…"` tag on intakeEntry, derived by reflection so a field added
+// later is covered without a second list to keep in step.
+var intakeFrontmatterKeys = yamlTagKeys(reflect.TypeOf(intakeEntry{}))
+
+// yamlTagKeys returns the YAML mapping keys the struct type t decodes from: the
+// name part of each field's `yaml` tag, or yaml.v3's default (the lower-cased
+// field name) when the tag is absent. Fields tagged `yaml:"-"` are not keys.
+func yamlTagKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name, _, _ := strings.Cut(f.Tag.Get("yaml"), ",")
+		switch name {
+		case "-":
+			continue
+		case "":
+			name = strings.ToLower(f.Name)
+		}
+		keys[name] = true
+	}
+	return keys
+}
+
+// foldFrontmatterKeys rewrites, in place, every top-level mapping key of doc
+// that matches one of the owned keys case-insensitively to that owned spelling,
+// so the case-sensitive struct-tag match yaml.v3 performs sees it. Only the KEY
+// is rewritten; values pass through untouched, whatever their case or quoting.
+//
+// An owned key that appears more than once — in the same spelling or a
+// differing one — is ambiguous: neither "first wins" nor "last wins" is a rule
+// an author could have meant, so the file is refused with both spellings and
+// their line numbers named (the caller prefixes the file path). yaml.v3 already
+// rejects an exact repeat; this makes the differing-case repeat, which it would
+// otherwise silently resolve to the first value, fail the same way.
+//
+// A doc that is not a mapping is left alone for the decoder to report exactly
+// as it did before.
+func foldFrontmatterKeys(doc *yaml.Node, owned map[string]bool) error {
+	m := doc
+	if m.Kind == yaml.DocumentNode && len(m.Content) > 0 {
+		m = m.Content[0]
+	}
+	if m.Kind != yaml.MappingNode {
+		return nil
+	}
+	seen := make(map[string]*yaml.Node, len(owned))
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		k := m.Content[i]
+		if k.Kind != yaml.ScalarNode {
+			continue
+		}
+		canon := strings.ToLower(k.Value)
+		if !owned[canon] {
+			continue
+		}
+		if prev, dup := seen[canon]; dup {
+			return fmt.Errorf("frontmatter key %q (line %d) repeats %q (line %d): keys are matched case-insensitively, keep exactly one",
+				k.Value, k.Line, prev.Value, prev.Line)
+		}
+		seen[canon] = &yaml.Node{Value: k.Value, Line: k.Line}
+		k.Value = canon
+	}
+	return nil
+}
+
 // parseIntakeFile parses a single intake entry .md file (YAML frontmatter + body).
 // If the frontmatter has no disposition key (Disposition == ""), it defaults to
 // "new" — matching the brief's stated fact that Disposition defaults to new.
+//
+// Frontmatter keys are matched case-insensitively (`disposition:`,
+// `Disposition:`, `DISPOSITION:` all populate Disposition — and likewise for
+// every other intakeEntry field), mirroring parseIntakeLegacy's rule for the
+// monolithic register so the two paths classify one entry the same way. Values
+// are never rewritten. yaml.v3 matches struct tags case-sensitively, so without
+// the fold a title-cased key left the field empty and the entry silently
+// counted as untriaged (issue #931; the legacy-path sibling was #915).
 func parseIntakeFile(raw []byte) (*intakeEntry, error) {
 	fm, body, err := splitFrontmatter(string(raw))
 	if err != nil {
 		return nil, err
 	}
-	var e intakeEntry
-	if err := yaml.Unmarshal([]byte(fm), &e); err != nil {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(fm), &doc); err != nil {
 		return nil, err
+	}
+	if err := foldFrontmatterKeys(&doc, intakeFrontmatterKeys); err != nil {
+		return nil, err
+	}
+	var e intakeEntry
+	if doc.Kind != 0 {
+		if err := doc.Decode(&e); err != nil {
+			return nil, err
+		}
 	}
 	if e.Disposition == "" {
 		e.Disposition = "new"

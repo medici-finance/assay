@@ -32,8 +32,11 @@ Before touching the branch, verify no other session or worker owns it:
   not an owner. **The claim tool is `deskclaim-ref`** — installed with desk-tools, verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
   **5** refused (a live holder owns it) · **6** unverifiable. A repo may ship its own
-  `tools/dispatch-claim.sh`; `deskdispatch` prefers that script when the resolved root carries
-  it, and the two speak the same wire protocol, so either one's `show` answers this question.
+  `tools/dispatch-claim.sh`; `deskdispatch` prefers `deskclaim-ref` when it is on PATH and falls
+  back to that script when the resolved root carries it, and the two speak the same wire
+  protocol, so either one's `show` answers this question. Hand either tool your own role's token
+  (`--token-file "$(desktoken worker)"` for the binary, `GH_TOKEN` exported for the script) —
+  neither reads anything but the credential it is given.
   Run BOTH reads: the tool acquires and lists in the `refs/dispatch/*` namespace, while the
   `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the Go claim readers
   use — the divergence is known and unresolved, so a holder shown by either read means owned.

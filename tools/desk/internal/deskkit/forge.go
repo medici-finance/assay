@@ -383,6 +383,13 @@ type ReviewInput struct {
 	HeadSHA string // pins the verdict to the reviewed head
 	Event   string // APPROVE | REQUEST_CHANGES | COMMENT
 	Body    string
+	// Report, when set, receives a human-readable note about a write that SUCCEEDED by a
+	// route other than the plain one — the verdict is in force, nothing is refused, but the
+	// caller should say what the forge actually did. It is never called on an error path:
+	// a note accompanies a nil return only. The GitLab backend uses it when POST /approve
+	// answers 401 for an approval this identity already holds (#1106); the GitHub backend
+	// never calls it. A nil Report drops the note.
+	Report func(note string)
 }
 
 // IssueInput is the request to file an issue.

@@ -113,6 +113,16 @@ func ArtifactPin(root, artifact string) (tag, sha string, err error) {
 	return tag, sha, nil
 }
 
+// ArtifactPinFrom is ArtifactPin over a body the caller already holds — a pin file read
+// from a git ref (`refs/remotes/origin/main:.assay-versions`) rather than from disk, so a
+// verdict can compare THIS checkout's pin against main's without a second selector that
+// could drift from the trailing-space rule. source names where raw came from, for the
+// malformed-line message. found=false means no line for artifact; a malformed matching
+// line is an error, never skipped.
+func ArtifactPinFrom(raw []byte, source, artifact string) (tag, sha string, found bool, err error) {
+	return lookupPin(raw, source, artifact)
+}
+
 // lookupPin is the one selector every reader goes through: the trailing-space
 // prefix match over raw, returning (tag, field3, true, nil) for the first matching
 // line, (‑, ‑, false, nil) when NO line matches, and a fail-closed Unverifiable when
@@ -167,31 +177,135 @@ func HostPlatformAssets(artifact string) []string {
 // platform line likewise refuses; and a file with neither the bare line nor any
 // host-platform line refuses, naming every line it looked for.
 func PlatformPin(root, artifact string) (tag, sha string, err error) {
-	path := filepath.Join(root, AssayVersionsFile)
-	raw, rerr := os.ReadFile(path)
-	if rerr != nil {
-		return "", "", Unverifiable("cannot read "+path+" (the "+artifact+" pin)", rerr)
-	}
-	tag, sha, found, err := lookupPin(raw, path, artifact)
+	tag, sha, found, err := PlatformPinLookup(root, artifact)
 	if err != nil {
 		return "", "", err
 	}
-	if found {
-		return tag, sha, nil
+	if !found {
+		return "", "", Unverifiable(fmt.Sprintf(
+			"no %s pin in %s (looked for a bare `%s ` line, then this host's platform line %s)",
+			artifact, filepath.Join(root, AssayVersionsFile), artifact,
+			strings.Join(HostPlatformAssets(artifact), " / ")), nil)
 	}
-	candidates := HostPlatformAssets(artifact)
-	for _, name := range candidates {
+	return tag, sha, nil
+}
+
+// PlatformPinLookup is PlatformPin's THREE-STATE core, and the reader to call when
+// "the release line is absent" and "the release line is malformed" must be told
+// apart — a caller that has a further pin shape to try (a `-source` channel-D
+// line, say) may fall through on ABSENCE only. Collapsing the two is what would
+// let a broken release line be silently skipped in favour of another line, which
+// pins.go's fail-closed rule forbids.
+//
+//   - (tag, sha, true, nil)  — the bare line, else this host's platform line.
+//   - ("", "", false, nil)   — NO line of either shape is present. Not an error;
+//     the caller decides what absence means.
+//   - ("", "", false, err)   — fail-closed: unreadable file, or a matching line
+//     with fewer than three fields. A malformed bare line is NOT skipped in
+//     favour of a platform line.
+func PlatformPinLookup(root, artifact string) (tag, sha string, found bool, err error) {
+	path := filepath.Join(root, AssayVersionsFile)
+	raw, rerr := os.ReadFile(path)
+	if rerr != nil {
+		return "", "", false, Unverifiable("cannot read "+path+" (the "+artifact+" pin)", rerr)
+	}
+	tag, sha, found, err = lookupPin(raw, path, artifact)
+	if err != nil {
+		return "", "", false, err
+	}
+	if found {
+		return tag, sha, true, nil
+	}
+	for _, name := range HostPlatformAssets(artifact) {
 		tag, sha, found, err := lookupPin(raw, path, name)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		if found {
-			return tag, sha, nil
+			return tag, sha, true, nil
 		}
 	}
-	return "", "", Unverifiable(fmt.Sprintf(
-		"no %s pin in %s (looked for a bare `%s ` line, then this host's platform line %s)",
-		artifact, path, artifact, strings.Join(candidates, " / ")), nil)
+	return "", "", false, nil
+}
+
+// SourcePinSuffix is the artifact-name suffix of a SOURCE-CHANNEL ("channel D")
+// pin line — `statusgen-source`, `desk-tools-source`. Such a line pins the COMMIT
+// a consumer builds the tool from, in place of the sha256 of a published release
+// asset, and it is what an adopter writes when no release binary is published for
+// the platform or forge they run on. It is a real pin: a pin file that carries
+// only source lines is PINNED, not unpinned.
+const SourcePinSuffix = "-source"
+
+// SourcePinRef is one resolved `<artifact>-source` line. Both columns are kept
+// raw alongside the interpretation so a caller reporting a refusal can quote what
+// it actually read rather than describing it.
+type SourcePinRef struct {
+	Artifact string // the line's own artifact name, e.g. `statusgen-source`
+	Field2   string // column 2 as written
+	Field3   string // column 3 as written
+	Tag      string // field 2 when it is a release tag, else ""
+	Commit   string // the 40-hex commit from whichever column carries it, else ""
+}
+
+// Ref is the identity this source pin names: its release tag when it carries one
+// (comparable against a stamped binary's `--version`), else its commit. "" when
+// the line carries neither — see Usable.
+func (r SourcePinRef) Ref() string {
+	if r.Tag != "" {
+		return r.Tag
+	}
+	return r.Commit
+}
+
+// Usable reports whether the line identifies anything at all. A source line whose
+// columns hold neither a tag nor a 40-hex commit pins nothing a caller can act on;
+// it is a NAMED refusal ("this is a source pin, and it is unreadable"), never the
+// same verdict as an absent pin.
+func (r SourcePinRef) Usable() bool { return r.Ref() != "" }
+
+// SourcePin reads the `<artifact>-source` line from root's `.assay-versions`. It
+// goes through the SAME selector every other reader uses (lookupPin's
+// trailing-space prefix match), so `statusgen-source ` never matches
+// `statusgen-source-notes`, and it has the same three states as PlatformPinLookup:
+// found, absent (not an error), fail-closed on unreadable/malformed.
+//
+// TWO LEGITIMATE COLUMN LAYOUTS. A `-source` line carries its 40-hex commit in
+// EITHER column, and both shapes are in the field:
+//
+//   - `<artifact>-source <tag> <40-hex-commit>` — commit in field 3, the shape
+//     CheckPins' `-source` rule describes;
+//   - `<artifact>-source <40-hex-commit> channel-D` — commit in field 2 with a
+//     literal channel marker in field 3, the shape a channel-D adopter's pin file
+//     (and `desksourceguard`) actually writes.
+//
+// Field 3 is preferred when it is a full commit, then field 2; field 2 is read as
+// the Tag when it matches the pin-tag grammar. Interpretation lives HERE, once, so
+// every reader of a source line agrees on what one says.
+func SourcePin(root, artifact string) (ref SourcePinRef, found bool, err error) {
+	name := artifact + SourcePinSuffix
+	path := filepath.Join(root, AssayVersionsFile)
+	raw, rerr := os.ReadFile(path)
+	if rerr != nil {
+		return SourcePinRef{}, false, Unverifiable("cannot read "+path+" (the "+name+" pin)", rerr)
+	}
+	field2, field3, hit, lerr := lookupPin(raw, path, name)
+	if lerr != nil {
+		return SourcePinRef{}, false, lerr
+	}
+	if !hit {
+		return SourcePinRef{}, false, nil
+	}
+	ref = SourcePinRef{Artifact: name, Field2: field2, Field3: field3}
+	switch {
+	case commitPattern.MatchString(field3):
+		ref.Commit = field3
+	case commitPattern.MatchString(field2):
+		ref.Commit = field2
+	}
+	if artifactTagPattern.MatchString(field2) {
+		ref.Tag = field2
+	}
+	return ref, true, nil
 }
 
 // goosAlternation is the set of operating-system tokens a platform suffix can

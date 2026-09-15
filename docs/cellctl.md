@@ -36,7 +36,7 @@ operator's config home and are reached by symlink.
     .gitconfig         symlink to the operator's real gitconfig
   bin/                 deskd + deskcli for this cell
   index/               the persistent deskd index (survives restarts)
-  worktrees/<role>/    one worktree per role, fast-forwarded to origin/main at every boot
+  worktrees/<role>/    one worktree per role, merged up to origin/main at every boot
   shim/                generated — every desk verb wrapped to run with HOME=<cell>/home
 ```
 
@@ -327,7 +327,8 @@ switches the model **endpoint and credential** (`--model` alone only changes the
 still talks to Anthropic) — see *Providers* below. `--harness` is the same per-run-override shape
 for the harness — see *Harnesses* below.
 
-Each window gets: its own worktree under `worktrees/<role>` fast-forwarded to `origin/main` and
+Each window gets: its own worktree under `worktrees/<role>` **merged up to `origin/main`** (see
+*Worktree currency* below) and
 **locked** (`git worktree lock`, so a worktree prune never takes a live window's tree); the real
 `HOME` with `shim/` first on `PATH`; `DESK_LOOP` and `DESK_SESSION` set, and `DESK_ROOTS` when
 `cell.env` carries `CELL_ROOTS` (a cell without one boots with a notice that the desk verbs are on
@@ -340,9 +341,23 @@ first prompt.
 When the installed desk-tools ship a `deskwt role-init` that supports the role (probe: `deskwt
 role-init --help` exits 0), `cellctl desk` lets **it** create the role worktree on first boot — its
 last output line is the path — and links `worktrees/<role>` to that tree, so cellctl and the desk
-skills agree on the worktree's name and the next boot fast-forwards the same tree. A `deskwt` that
-is absent or refuses the probe leaves cellctl's own worktree path in charge; `CELLCTL_DESKWT=0`
+skills agree on the worktree's name and the next boot merges the same tree up to main. A `deskwt`
+that is absent or refuses the probe leaves cellctl's own worktree path in charge; `CELLCTL_DESKWT=0`
 forces that path.
+
+**Worktree currency.** An existing role worktree is brought up to the fetched `origin/main` with a
+real merge — a fast-forward when the tree carries nothing of its own, a two-parent merge commit
+when it does — never a rebase, and never left behind. (The earlier `--ff-only`-or-notice arm booted
+the desk on whatever the tree was: a role worktree that had ever carried a local commit could never
+fast-forward again, so every later boot ran days behind main, silently, until the desk's first
+board read said `STALE:drift` and its loop refused every flip — #1157.) On a conflict the generated
+single-writer files — `STATUS.md` and `docs/streams/FINDINGS.md`, overridable as the
+space-separated `CELLCTL_GENERATED_FILES` — are taken from main outright, never hand-merged; any
+**other** conflict **stops the boot**: the merge is aborted, the tree is left exactly as it was,
+the conflicting paths are named, and nothing is launched. Resolve by hand (`git -C <worktree>
+merge <sha>` — merge, never rebase), then re-run. Inside the session, `deskboot`'s own
+`worktree-current` step re-proves the same thing against the same `FETCH_HEAD` and refuses a tree
+that is behind, so a hand boot that skipped the launcher is caught too.
 
 Each window is named **`<cell>-<short role>`** — the role without its `-desk` suffix, except
 `the-desk`, which keeps its full name (`<cell>-the-desk`, `<cell>-pr-review`, `<cell>-verify`,

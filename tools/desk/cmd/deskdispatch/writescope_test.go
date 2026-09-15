@@ -100,6 +100,7 @@ func TestDispatch_OverlapWarnsAndProceeds(t *testing.T) {
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("DESK_SESSION", "deskdispatch-test")
 	t.Setenv("CLAUDE_SESSION_ID", "deskdispatch-test")
+	isolateClaimTool(t, home)
 
 	// root is a REAL git repo (InFlightClaimScopes reads its local refs directly), carrying the
 	// consumer scripts, the candidate brief, and an in-flight claim ref it overlaps.
