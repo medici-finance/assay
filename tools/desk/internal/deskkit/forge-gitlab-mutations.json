@@ -150,6 +150,18 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\t\t\th, ok := mergeHoldReleasedHead(n.Body)\n\t\t\t\tif !ok {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif !SameActor(n.Author.Username, marker.ResolvedBy.Username) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\thead = h",
       "new": "\t\t\t\tif h, ok := mergeHoldReleasedHead(n.Body); ok {\n\t\t\t\t\thead = h\n\t\t\t\t}"
+    },
+    {
+      "name": "#1106: treat EVERY 401 from POST /approve as an approval that already stands (the not-eligible and rejected-credential cases become success)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif a.User.ID == me.ID {",
+      "new": "\t\t\tif true {"
+    },
+    {
+      "name": "#1106: stop classifying the approve route's 401 (an approval that already stands is reported as a rejected credential again)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif mapped == nil || !isForgeUnauthorized(mapped) {",
+      "new": "\t\tif true {"
     }
   ]
 }
