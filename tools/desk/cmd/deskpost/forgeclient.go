@@ -49,7 +49,10 @@ type postBackend interface {
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
 	combinedStatusAt(sha string) (*combinedStatus, error)
 	checkRunsAt(sha string) (*checkRunsResp, error)
-	postReview(pr int, head, event, body string) error
+	// postReview lands the verdict. A non-empty note on success says the verdict is in force
+	// by a route other than the plain POST (GitLab: the App's approval already stood, #1106);
+	// it is empty on the ordinary path and never accompanies an error.
+	postReview(pr int, head, event, body string) (note string, err error)
 	markReadyForReview(nodeID string) error
 	// readMergeHold / setMergeHold: the forge-gitlab merge-hold brief. GitHub's ghClient path
 	// is the typed not-applicable, unconditionally — its server-side twin is branch
@@ -290,13 +293,19 @@ func (b *forgeBackend) checkRunsAt(sha string) (*checkRunsResp, error) {
 	return cr, nil
 }
 
-func (b *forgeBackend) postReview(pr int, head, event, body string) error {
+func (b *forgeBackend) postReview(pr int, head, event, body string) (string, error) {
 	// The shipping consumer of the typed reviewer verdict-write op on the GitLab backend: the
 	// forge-neutral event (APPROVE / REQUEST_CHANGES / COMMENT) maps to a head-pinned approval +
 	// verdict note that ReviewsAtHead reads at head (brief 02). No `glab` shell, no
 	// arbitrary-endpoint method — the write goes through the enumerated Forge op or it does not
 	// ship (brief 08's ban / no-passthrough test).
-	return b.fg.PostReview(b.repo, pr, deskkit.ReviewInput{HeadSHA: head, Event: event, Body: body})
+	var note string
+	err := b.fg.PostReview(b.repo, pr, deskkit.ReviewInput{HeadSHA: head, Event: event, Body: body,
+		Report: func(n string) { note = n }})
+	if err != nil {
+		return "", err
+	}
+	return note, nil
 }
 
 func (b *forgeBackend) markReadyForReview(nodeID string) error {
