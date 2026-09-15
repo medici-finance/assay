@@ -212,7 +212,7 @@ func TestGitLabReviewApproveAtNewHeadRearmsStaleHoldFirst(t *testing.T) {
 	f := newGLReviewFake()
 	f.holdState = deskkit.MergeHoldResolved
 	f.holdResolvedBy = "assay-reviewer-app"
-	f.holdHead = "0000000000000000000000000000000000dead" // stale — not testHead
+	f.holdHead = "000000000000000000000000000000000000dead" // stale — not testHead
 	_ = setupGitLabReview(t, f)
 	bf := writeBody(t, "rev.md", okReviewBody)
 

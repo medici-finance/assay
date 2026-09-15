@@ -39,8 +39,8 @@ func (f *mergeHoldFake) SetMergeHold(_ deskkit.ForgeRepo, _ int, in deskkit.Merg
 
 const (
 	mhReviewerLogin = "assay-reviewer-app"
-	mhHead          = "1111111111111111111111111111111111face"
-	mhStaleHead     = "0000000000000000000000000000000000dead"
+	mhHead          = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaface"
+	mhStaleHead     = "000000000000000000000000000000000000dead"
 	mhPR            = 7
 )
 
