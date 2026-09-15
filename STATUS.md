@@ -24,7 +24,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-15 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-15 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-15 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 9/13 | 2026-09-15 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-15 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/10 | 2026-09-15 |  |
 
 ## Next up
@@ -41,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (55 desk-actionable of 65 total — 64 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (54 desk-actionable of 64 total — 64 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (55)
+### Desk-actionable (54)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -103,7 +103,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| statusgen | 03 | verified | 1000 | 0 | — | 2026-09-15 sonnet-5-verifier | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
@@ -291,9 +290,8 @@ _None._
 
 - 15 learned riskscore graduation — JIT defect-prediction model with heuristic fallback — implemented (wave 3)
 
-### statusgen (4 open)
+### statusgen (3 open)
 
-- 03 Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched — verified (wave 2)
 - 05 Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable) — implemented (wave 1)
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
@@ -403,10 +401,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 14 closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed — done (wave 5)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — done (wave 1)
 
-### statusgen (9 done)
+### statusgen (10 done)
 
 - 01 30-day statusgen check-firing audit — retire cold --lint rules — done (wave 1)
 - 02 Issue metrics — statusgen --issues: standard counts + age/sitting-time + internal-vs-external + by-raising-desk — done (wave 1)
+- 03 Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched — done (wave 2)
 - 04 Ladder-position indicator — one computed adoption-step number (behavioral axes, never tooling) on the board + roadmap deck — done (wave 1)
 - 07 New brief-flow metrics in statusgen — done (wave 1)
 - 08 Composite AssayScore computation — done (wave 2)
@@ -423,4 +422,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **68/176** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **69/176** briefs done · completed initiatives: see `docs/archive/`
