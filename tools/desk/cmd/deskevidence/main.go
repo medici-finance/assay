@@ -128,9 +128,13 @@ func run(args []string) int {
 
 	// runOutward holds the flock across the whole write window and writes the
 	// single audit line (#227).
+	// The refusal goes to the package-level stderr (helpers.go), which IS os.Stderr in
+	// production and the captured buffer under test — so a test can assert on the
+	// refusal's wording (the origin a scan refusal names, #1161) the same way it asserts
+	// on the notices the flow prints to the same writer.
 	err := runOutward(args)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "deskevidence: "+err.Error())
+		fmt.Fprintln(stderr, "deskevidence: "+err.Error())
 	}
 	return deskkit.ExitCodeOf(err)
 }

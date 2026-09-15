@@ -24,6 +24,30 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tif newRows < remoteRows {",
       "new": "\t\tif false && newRows < remoteRows {"
+    },
+    {
+      "name": "scan the whole merged file instead of the bytes this landing adds (a brief already carrying a secret-shaped run can never receive an Evidence append again — #901/#966/#1161 re-opened)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tscanTarget = addedLines(remoteContent, commitContent)",
+      "new": "\t\tscanTarget = commitContent"
+    },
+    {
+      "name": "addedLines stops subtracting the lines the branch already carries (every line of the commit is scanned as new — a Verify row's own quoted run re-refuses forever, #1161)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tif present[ln] {",
+      "new": "\t\tif false && present[ln] {"
+    },
+    {
+      "name": "drop the origin from a scan refusal (the operator is back to isolating by hand which line tripped it — #1161 ask 3)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\treturn withAddedOrigin(berr, scanTarget, localContent)",
+      "new": "\t\treturn berr"
+    },
+    {
+      "name": "drop the pre-existing notice (a brief carrying a secret-shaped run lands silently; nothing tells the operator the scan saw it and where — #1161 ask 3)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tpreexistingNotice(stderr, targetRepoPath, remoteContent)",
+      "new": "\t\t_ = remoteContent"
     }
   ]
 }
