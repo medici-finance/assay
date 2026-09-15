@@ -79,6 +79,22 @@ Do not present a Free deployment as GitHub-equivalent on the rows above; do run 
 there, and pay for the tier that closes a row only when that row's remediation is what you
 need.
 
+**The unresolved-review-thread merge gate (row B3's server-side layer, every tier).**
+Required approvals (B3, above) are advisory on Free — the reviewer service account's
+Developer role can approve, but nothing on GitLab itself refuses a merge for lack of one.
+GitLab does enforce, on every tier, that a merge request carrying an unresolved discussion
+thread cannot be merged (the row this section's table adds above,
+`only_allow_merge_if_all_discussions_are_resolved`). The desk turns that into a real gate: a
+resolvable "merge-hold" discussion thread opens with every merge request the worker creates,
+carrying a fixed marker body; the reviewer's approve verdict resolves it (recording the
+approved head on a reply); a request-changes verdict, or a push past the head it was resolved
+at, re-opens it. The GitLab merge button is blocked while it stands open — from the first
+second, on Free, with no Premium route consulted. The `Draft:` title prefix stays exactly what
+it always was: the human-facing "not ready yet" signal, additive to this gate rather than
+replaced by it. And the human merge remains the outer gate it already is on this profile —
+this control narrows what an accidental or bypassed merge can do, it does not remove the
+human from the loop.
+
 ## 0.2 Group, not a personal namespace
 
 `create-fleet-gitlab.sh` provisions **group-owned** service accounts. A project under a
@@ -102,11 +118,28 @@ token (PAT):
 | issue-loop | service account | Reporter (20) | `api` | files/triages issues |
 | intake-loop | service account | Reporter (20) | `api` | files/triages issues |
 | board-writer | service account | Developer (30) + allowed-to-push entry on protected `main` | `api`, `write_repository` | the ruleset-bypass analog |
+| auditor | service account | Reporter (20) | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope |
+| cell-issues | not yet mapped on GitLab | — | — | GitHub-only "write-issues" identity today (a narrower, per-purpose issues-filing role, selectable only by name); no GitLab consumer is wired to it yet |
 | promote | usually **no identity at all** — see §3 | — | — | workflow promotion is a human-merged MR into the ci-config project, not a bot act |
 
 Attribution separation holds exactly as on GitHub: notes/approvals/commits carry the
 service-account identity, which the PR/MR author's own token cannot produce — the same
 honest limit as the GitHub profile (separation of attribution, not proof of diligence).
+
+**The ready-flip's protected-branch read — `could-not-check` on this profile.** On GitHub the
+reviewer App needs `Administration: Read-only` before `deskflip` can read the required status
+checks of a protected branch whose required set is not expressed in a ruleset
+(`docs/adopting-assay.md` §3 `setup-reviewer-app`).
+GitLab has **no permission toggle of that shape**: the equivalent reads are
+`GET api/v4/projects/:id/protected_branches/:name` and, for the merge-gating checks themselves,
+`GET api/v4/projects/:id/external_status_checks`, both under the role's plain `api` scope, so the
+grant is expressed as an **access level**, not a scope. **Whether Developer (30) — the reviewer
+service account's level in the table above — can read either endpoint on your edition is
+`could-not-check` here: it has not been measured on a live project, and GitLab has historically
+gated protected-branch reads at Maintainer.** Read it back on your own instance before you claim
+the flip gate works (the edition + read-back rule in §0 *Tier ladder* applies unchanged);
+a 403 there is a **level** decision for a human, and raising the reviewer to Maintainer is not a free swap — it
+carries push rights the Developer level deliberately withholds.
 
 **Three credential classes — do not collapse them.**
 
@@ -186,10 +219,11 @@ straight at it. The script names each file `<prefix>-<role>-bot.token`
 custody in §5 — looks for **`gitlab-<role>.token`**. Until the two agree, link **or copy**
 them once after provisioning.
 
-Unix:
+Unix (`auditor` is optional — link it only if you provisioned that service account for
+`repohardenguard`, per §1's role table; the fleet script does not provision it):
 
 ```
-cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop intake-loop board-writer; do
+cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop intake-loop board-writer auditor; do
   ln -s "<prefix>-$r-bot.token" "gitlab-$r.token"
 done
 ```
@@ -271,6 +305,33 @@ it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set i
 
   A non-empty `ASSAY_SCAN_REPOS=` listing at least the adopter slug is the pass; `exit 6`
   with an empty value is the silent half-configured state this step exists to close.
+
+**`ASSAY_REPO_FORGES` — required so a GitLab-provisioned repo is not read as the default
+forge.** Every desk verb resolves which forge software serves a repo before it does
+anything else (`ForgeFor`, `tools/desk/internal/deskkit/forgeresolve.go`): first the
+roster's `ASSAY_REPO_FORGES` entry for that repo, then — only when the roster is silent —
+the origin remote's host mapped through a short, exact-match table (`github.com` → GitHub,
+`gitlab.com` → GitLab). A self-hosted GitLab instance has no host literal that table can
+match, so a correctly provisioned self-hosted fleet with this key unset either resolves as
+the default forge or refuses could-not-check — the symptom this key exists to close.
+
+- **Required value shape.** A comma-separated list of `<owner>/<name>=gitlab` (or
+  `=github`) entries — **full slug only**, a bare basename is refused. This key is held to
+  a stricter grammar than the display-only `ASSAY_REPO_ALIASES`: it chooses which minted
+  credential a write is performed as, so a malformed entry, an unrecognised forge value, or
+  a repo bound twice refuses the WHOLE roster rather than degrading one feature. Example,
+  for a single-project cell:
+
+  ```
+  ASSAY_REPO_FORGES=mygroup/myproject=gitlab
+  ```
+
+- **Where it lives.** Like `ASSAY_SCAN_REPOS` above, the config-home `roster.env` — never
+  compiled in.
+- **Unset is not itself an error** for a `gitlab.com` / `github.com` project — the
+  remote-host fallback (and, failing that, an Unverifiable could-not-check refusal naming
+  the repo) is a complete answer on its own there. It is a **self-hosted** GitLab project
+  that has no fallback and needs this key to resolve at all.
 
 **The owner PAT.** Use a **legacy** personal access token with scope `api` (and only
 `api`), issued by a group Owner, expiring in 30–90 days, stored `0600` in the same
@@ -419,12 +480,91 @@ CI as installed while a job is still `pending` / `stuck_pending_no_matching_runn
 install is proven only once a job has **left pending** — it reached `running`, or a **terminal
 non-stuck** result. Note the ordering: an unset `STATUSGEN_PUSH_TOKEN` makes the regen job
 fail, but that is a *later* red — the job ran, so the runner match is proven and only the push
-credential is missing (see §2, token custody). A job that never leaves `pending` proves
-nothing about either; it is a runner-match gap, and the fix is a runner, not a token.
+credential is missing (see §2c, board-push credential). A job that never leaves `pending`
+proves nothing about either; it is a runner-match gap, and the fix is a runner, not a token.
 
 This is the CI half of the Free-tier "pipeline execution gate" degradation in §0.1: that row
 assumes a runner exists once the CI file is scaffolded. It does not exist until you provide
 one here.
+
+## 2c. Board-push credential — `STATUSGEN_PUSH_TOKEN`
+
+The scaffolded `statusgen-regen` job (`.gitlab-ci.yml`, generated by `statusgen init --forge
+gitlab`) cannot push the regenerated `STATUS.md` with the job's own `CI_JOB_TOKEN` — GitLab's
+default job token has no push scope. The job needs a **separate** masked **and protected**
+CI/CD variable holding a real push credential, and refuses with a clear message rather than
+guessing when it is unset. The instruction below is dereferenced from the generated file's own
+source (`statusgen/init.go`, `initGitlabCI`), whose job script prints, verbatim, on an unset
+token:
+
+```
+STATUSGEN_PUSH_TOKEN is not set — cannot push the regenerated board.
+Create a project access token with the write_repository scope and set it as a masked and
+protected CI/CD variable named STATUSGEN_PUSH_TOKEN (protected: the default branch must be a
+protected branch). Refusing rather than guessing.
+```
+
+- **Token kind.** A **project or group access token** — GitLab's bot-user-backed token
+  scoped to one project or its whole group. This is deliberately **not** a human's personal
+  credential (no human PAT belongs in a project-level CI/CD variable) and **not** one of the
+  §1 role-fleet service-account tokens (`gitlab-<role>.token`): the fleet identities mint and
+  rotate through the `desktoken --forge gitlab <role>` custody path documented in §5, which
+  is a different credential class from a CI variable a runner reads directly. Do not point
+  `STATUSGEN_PUSH_TOKEN` at a role-fleet token file.
+- **Scope.** `write_repository` only — the literal scope named in the refusal text above. Do
+  not add `api`; the regen job pushes a file, it does not call the REST API.
+- **Minimum role under a protected default branch.** A project/group access token's bot user
+  is subject to the same protected-branch push check GitLab applies to a human member at the
+  same role; the valid `push_access_level` values are `0` ("No one"), `30` Developer, `40`
+  Maintainer, and `60` Admin (self-managed only) (docs.gitlab.com, Protected Branches API).
+  Mint the token at **Maintainer**: §2's by-hand table names `access_level: 40` (Maintainer)
+  as the role the provisioning script's protect step grants an exception to, and a
+  self-managed instance's protected-branch read-back has been observed to stay at Maintainer
+  (`40`) even when the script requested "No one" (§2, "the protect step is tier-aware").
+  **If your instance's own printed read-back genuinely holds `push_access_level = 0`**, no
+  token role clears a direct push under it — the regen job cannot push at all, and board
+  regeneration has to travel as a human-merged MR instead, the same Free-tier degradation
+  §0.1's board-writer row already discloses. Read your instance's protect-step read-back
+  before relying on Maintainer being sufficient; this doc does not assert it holds on yours.
+- **Variable visibility — masked AND protected, both required.** Create it under
+  **Settings > CI/CD > Variables** at the project (or group, if shared across the fleet) that
+  owns the pipeline, flagged **Masked** (so a leaked job log never prints it) **and**
+  **Protected** (so it is exposed only to pipelines running on protected refs — the default
+  branch this job runs on already is one, per §2's protect step). Protected is not optional: a
+  masked-only variable is still injected into merge-request pipelines, which run the MR
+  branch's own CI file, so any member who can open an MR could read the token and push to the
+  default branch past the merge gate. Via the API the same variable is
+  `POST api/v4/projects/:id/variables` with `key=STATUSGEN_PUSH_TOKEN`, `masked=true`,
+  `protected=true` (a GitLab adopter cell's review found a masked-only variable in the field;
+  that variable is now protected).
+
+The runners section above used to send the reader to the per-role fleet credential section
+by a wrong number — the section that actually holds the per-role rotation rules is §5, and
+its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this
+subsection instead.
+
+## 2d. Source-pin lane — GitLab + native Windows (channel D)
+
+A GitLab adopter on **native Windows** installs `statusgen` through the same channel D
+"from-source" lane a native-Windows adopter on the other forge uses. This runbook does not
+fork a second copy of that lane's grammar — a forked copy is the one that goes stale (#896).
+The full lane (cloning this repo at a pinned commit, building `statusgen` and the desk-tool
+cmds, and scaffolding with `statusgen init --forge gitlab --root <adopter>`) is documented in
+[`adopting-assay.md`](adopting-assay.md), section "Channel D — from-source Windows"; read it
+there before writing a `.assay-versions` line on this lane.
+
+**The one rule worth restating, because getting it wrong stalls the board silently.** Channel
+D writes **no** `-source` `.assay-versions` pin line at all — the `-source` grammar
+(`<artifact> <tag> <40-hex-commit-SHA>`) is a release-provenance mechanism for a
+**published** tag, and the literal string `channel-D` is never a field in it. A live install
+that wrote a `statusgen-source <sha> channel-D` line anyway then ran `deskboard dispatch` and
+got **no statusgen pin found**, reading a stale board as an all-clear (#896). The desk-tools
+pin reader now accepts the commit in either field position (#795), so a wrongly-shaped line
+can be *accepted* by that one reader and still be refused by the generic pin reader
+(`tools/desk/cmd/deskboard/main.go`), which returns fields two and three positionally — the
+asymmetry is exactly why the rule is "write no source pin line", not "write it carefully."
+Prove the binary that ran from `statusgen --version` / desk-tools' `sourceSHA=<shortsha>`,
+never from a fabricated `.assay-versions` entry.
 
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 
@@ -446,6 +586,7 @@ comment for the full endpoint list):
 | Protect `main` | `POST api/v4/projects/:id/protected_branches` | `allowed_to_push=[{user_id: <board-writer>}]`, `allowed_to_merge=[{access_level: 40}]` (Maintainer role) |
 | Set approval settings | `POST api/v4/projects/:id/approvals` | `merge_requests_author_approval: false`, `merge_requests_disable_committers_approval: true` — the prevent-author / prevent-committers pair |
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
+| Require all threads resolved before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_all_discussions_are_resolved: true` — the merge-hold marker thread's server-side half (§0.1); Free tier, read back the same way as the pipeline flag above |
 | Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
 
 Every endpoint above is reachable at the **Premium** tier — nothing the script calls

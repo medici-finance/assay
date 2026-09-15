@@ -31,6 +31,15 @@ type postBackend interface {
 	getPR(pr int) (*prInfo, error)
 	getPRHead(pr int) (string, error)
 	getIssue(n int) (*issueInfo, error)
+	// getIssueTyped is getIssue for a caller that has STATED which kind `n` names (#1091 /
+	// the sibling of assay#1087's deskfile attach --kind). It exists so `deskpost comment
+	// --kind issue` can force the ISSUE-only typed read (deskkit.Forge.GetIssueTyped on a
+	// GitLab-resolved repo) instead of the ambiguous bare-number resolution, which on
+	// GitLab silently prefers whichever of #N / !N its own probe order finds first. Only
+	// deskkit.TargetIssue is ever passed by this binary's one caller (resolveTargetKind);
+	// the kind parameter is carried for parity with the Forge-level op it wraps, not
+	// because a second value is exercised here.
+	getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error)
 	listReviews(pr int) ([]reviewInfo, error)
 	listFiles(pr int) ([]prFile, error)
 	stampTimeline(pr int) (deskkit.StampTimeline, error)
@@ -42,6 +51,13 @@ type postBackend interface {
 	checkRunsAt(sha string) (*checkRunsResp, error)
 	postReview(pr int, head, event, body string) error
 	markReadyForReview(nodeID string) error
+	// readMergeHold / setMergeHold: the forge-gitlab merge-hold brief. GitHub's ghClient path
+	// is the typed not-applicable, unconditionally — its server-side twin is branch
+	// protection. postVerdictReview's correctness lane reads and writes the hold AFTER the
+	// verdict itself lands (release on approve, re-arm on request-changes or a resolve found
+	// stale at this head); the security lane never touches it.
+	readMergeHold(pr int) (*deskkit.MergeHold, error)
+	setMergeHold(pr int, in deskkit.MergeHoldUpdate) error
 	// verdictLabels applies the mechanical, ADVISORY verdict-time labels (size + surface). It
 	// is post-write and gates nothing; a backend that cannot compute them returns a note, not
 	// an error (see forgeBackend.verdictLabels).
@@ -159,6 +175,26 @@ func (b *forgeBackend) getIssue(n int) (*issueInfo, error) {
 	return out, nil
 }
 
+// getIssueTyped mirrors getIssue's mapping, sourced from the typed forge op
+// (deskkit.Forge.GetIssueTyped) instead of the ambiguous GetIssue. On the GitLab backend
+// this reads exactly ONE endpoint for the stated kind, so a number carrying both an issue
+// and a merge request no longer refuses — see GetIssueTyped's own doc comment (forge.go).
+func (b *forgeBackend) getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error) {
+	iss, err := b.fg.GetIssueTyped(b.repo, n, kind)
+	if err != nil {
+		return nil, err
+	}
+	out := &issueInfo{Number: iss.Number, State: iss.State}
+	out.User.Login = iss.Author.Login
+	out.User.ID = iss.Author.ID
+	if iss.IsPullRequest {
+		out.PullRequest = &struct {
+			URL string `json:"url"`
+		}{URL: iss.URL}
+	}
+	return out, nil
+}
+
 func (b *forgeBackend) listReviews(pr int) ([]reviewInfo, error) {
 	rs, err := b.fg.ReviewsAtHead(b.repo, pr)
 	if err != nil {
@@ -265,6 +301,14 @@ func (b *forgeBackend) postReview(pr int, head, event, body string) error {
 
 func (b *forgeBackend) markReadyForReview(nodeID string) error {
 	return b.fg.MarkReadyForReview(nodeID)
+}
+
+func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {
+	return b.fg.ReadMergeHold(b.repo, pr)
+}
+
+func (b *forgeBackend) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return b.fg.SetMergeHold(b.repo, pr, in)
 }
 
 func (b *forgeBackend) RepoVisibility(owner, repo string) (string, error) {

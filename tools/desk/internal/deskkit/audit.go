@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -89,6 +91,162 @@ func auditPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "audit.jsonl"), nil
+}
+
+// segmentPattern matches a ROTATED audit segment name EXACTLY — `audit.jsonl.<YYYY-MM-DD>`
+// with an optional `.N` disambiguator. Nothing else in the state directory can satisfy it:
+// `audit.lock`, `audit.jsonl.corrupt-<ts>`, the kill-switch flags and anything a future
+// change adds are all outside it, so rotation and segment enumeration can never sweep one
+// in. A prefix match here would be exactly that defect.
+var segmentPattern = regexp.MustCompile(`^audit\.jsonl\.\d{4}-\d{2}-\d{2}(\.\d+)?$`)
+
+// auditNow is the clock rotation reads. A test hook in the dirOverride mould: production
+// uses time.Now, white-box tests drive a day boundary without waiting for one. Like
+// dirOverride it is deliberately NOT wired to any env var or flag.
+var auditNow = time.Now
+
+// segmentPaths returns every file the ledger currently spans, OLDEST FIRST: the rotated
+// segments in chronological order, then the live audit.jsonl (which is listed whether or
+// not it exists yet — a missing file is empty history to every reader here).
+//
+// Segment names sort lexicographically into chronological order because the date is
+// zero-padded ISO, and `audit.jsonl.2026-09-13` sorts before `audit.jsonl.2026-09-13.1`
+// which sorts before `audit.jsonl.2026-09-14`.
+//
+// THIS LIST IS WHY ROTATION IS NOT A RESET. auditrecover.go's package comment states the
+// case plainly: the rate-limit counter, the circuit breaker and the idempotency store are
+// pure functions of the entries, so moving the file aside returns every budget to full and
+// makes the store forget every prior write. Rotation avoids that not by copying state
+// forward but by deleting nothing and making every reader read the whole span — so the
+// slice LoadEntries returns is identical, row for row and in order, to the one it would
+// have returned had the ledger never been rotated.
+func segmentPaths() ([]string, error) {
+	dir, err := deskDir()
+	if err != nil {
+		return nil, Unverifiable("cannot resolve audit path (HOME missing?)", err)
+	}
+	live := filepath.Join(dir, "audit.jsonl")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{live}, nil
+		}
+		return nil, Unverifiable("cannot list desk-tools dir", err)
+	}
+	var segs []string
+	for _, e := range ents {
+		if e.IsDir() || !segmentPattern.MatchString(e.Name()) {
+			continue
+		}
+		segs = append(segs, e.Name())
+	}
+	sort.Strings(segs)
+	out := make([]string, 0, len(segs)+1)
+	for _, s := range segs {
+		out = append(out, filepath.Join(dir, s))
+	}
+	return append(out, live), nil
+}
+
+// rotationDue reports whether an append-only file last written at mtime belongs to an
+// earlier UTC day than now. An append-only file's mtime IS the instant of its last append,
+// so this costs one os.Stat and reads no bytes.
+func rotationDue(mtime, now time.Time) bool {
+	return mtime.UTC().Format("2006-01-02") < now.UTC().Format("2006-01-02")
+}
+
+// rotateIfNeeded renames audit.jsonl to audit.jsonl.<its last day> when its last append
+// fell on an earlier UTC day, so the file every append and every tail read touches stays
+// one day long. Log calls it before it opens the file; Log's existing O_CREATE re-creates
+// the live file, so there is no window in which the ledger is absent to a lock holder.
+//
+// BEST-EFFORT, NEVER LOAD-BEARING. Every failure path returns silently and the append
+// proceeds against whatever file is there: the worst case of a rotation that cannot happen
+// is a file that stays long — the state this work starts from — never a lost or unwritten
+// row and never a changed exit code.
+//
+// The lock is the audit flock every other writer and `deskaudit recover` take, acquired
+// with a SINGLE non-blocking attempt rather than lockAudit's 60-second wait: rotation is
+// due at most once a day, and a rotation that blocked a writer for a minute would have
+// converted a cleanup into an outage. A busy lock simply means someone else is writing;
+// the next invocation checks again.
+func rotateIfNeeded() {
+	dir, err := deskDir()
+	if err != nil {
+		return
+	}
+	path := filepath.Join(dir, "audit.jsonl")
+	fi, err := os.Stat(path)
+	if err != nil || !rotationDue(fi.ModTime(), auditNow()) {
+		return
+	}
+
+	unlock, ok := tryLockAudit(dir)
+	if !ok {
+		return
+	}
+	defer unlock()
+
+	// Re-check under the lock: the loser of a race between two processes that both saw a
+	// due rotation must do nothing rather than rotate a file the winner already replaced.
+	fi, err = os.Stat(path)
+	if err != nil || !rotationDue(fi.ModTime(), auditNow()) {
+		return
+	}
+
+	base := "audit.jsonl." + fi.ModTime().UTC().Format("2006-01-02")
+	target := filepath.Join(dir, base)
+	for i := 1; ; i++ {
+		if _, serr := os.Stat(target); os.IsNotExist(serr) {
+			break
+		}
+		target = filepath.Join(dir, fmt.Sprintf("%s.%d", base, i))
+	}
+	_ = os.Rename(path, target)
+}
+
+// LastEntry returns the newest entry in the ledger. It reads at most one tailBlockSize
+// block per segment it has to touch, whatever the ledger's size — which is the whole
+// point: Guard's disarm-transition check asks one question of one line and used to pay a
+// whole-file parse for it.
+//
+// ok=false for a missing ledger, a wholly empty one, or a final line that does not parse.
+// That is exactly lastResultWas' existing best-effort contract (killswitch.go): corruption
+// is surfaced as a refusal by the outward-write flow's LoadEntries, not by the guard.
+//
+// When the LIVE file is empty — the state immediately after a rotation — it continues into
+// the newest prior segment, so a UTC day boundary cannot blind the disarm check.
+func LastEntry() (Entry, bool) {
+	paths, err := segmentPaths()
+	if err != nil {
+		return Entry{}, false
+	}
+	for i := len(paths) - 1; i >= 0; i-- {
+		var out Entry
+		found, malformed := false, false
+		serr := scanBackwards(paths[i], func(line []byte) bool {
+			var e Entry
+			if json.Unmarshal(line, &e) != nil {
+				malformed = true
+				return false
+			}
+			out, found = e, true
+			return false
+		})
+		if malformed {
+			return Entry{}, false
+		}
+		if serr != nil {
+			if os.IsNotExist(serr) {
+				continue // this segment is gone; an older one may still answer
+			}
+			return Entry{}, false
+		}
+		if found {
+			return out, true
+		}
+	}
+	return Entry{}, false
 }
 
 // SessionTag names the AGENT this process is acting as: $DESK_SESSION if set, else
@@ -175,6 +333,10 @@ func Log(e Entry) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Unverifiable("cannot create desk-tools dir", err)
 	}
+	// Daily rotation, best-effort: one os.Stat on the common path, and a rename only on
+	// the first append of a new UTC day. It deletes nothing and every reader spans the
+	// segments, so no meter observes it — see segmentPaths.
+	rotateIfNeeded()
 	path := filepath.Join(dir, "audit.jsonl")
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -203,10 +365,25 @@ func Log(e Entry) error {
 // This is the canonical reader the outward-write flow calls (under its flock) BEFORE
 // AllowWrite / AlreadyDoneIn, so corruption surfaces as a single exit-6 refusal.
 func LoadEntries() ([]Entry, error) {
-	path, err := auditPath()
+	paths, err := segmentPaths()
 	if err != nil {
-		return nil, Unverifiable("cannot resolve audit path (HOME missing?)", err)
+		return nil, err
 	}
+	var all []Entry
+	for _, p := range paths {
+		entries, lerr := loadEntriesFrom(p)
+		if lerr != nil {
+			return nil, lerr
+		}
+		all = append(all, entries...)
+	}
+	return all, nil
+}
+
+// loadEntriesFrom is LoadEntries over ONE file. The whole-ledger reader is the loop above
+// it, so the file-level semantics — missing file is empty history, first malformed line is
+// a refusal — stay stated in one place.
+func loadEntriesFrom(path string) ([]Entry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -228,8 +405,12 @@ func LoadEntries() ([]Entry, error) {
 		}
 		var e Entry
 		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+			where := ""
+			if base := filepath.Base(path); base != "audit.jsonl" {
+				where = " of " + base
+			}
 			return nil, Unverifiable(
-				fmt.Sprintf("malformed audit line %d — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", n), err)
+				fmt.Sprintf("malformed audit line %d%s — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", n, where), err)
 		}
 		entries = append(entries, e)
 	}

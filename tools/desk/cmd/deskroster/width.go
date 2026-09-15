@@ -131,9 +131,15 @@ func setReserve(rawLoop string, reserve map[string]int, setBy string, now time.T
 // reservation only means anything beside the width it floors a share of, and this is where
 // that width is already resolved and printed; `set --width` remains the width-only knob.
 //
-// The plain read prints `width=<n> reserve=<classes> (source=default|set, expires=...)` on
-// stdout — a compound line, not the bare integer this verb used to print alone, because a
-// reader now needs both numbers to know whether a resume/rework item is actually protected.
+// The plain read prints `width=<n> reserve=<classes> (source=default|set-by:<session>,
+// expires=n/a|<RFC3339>)` on stdout — a compound line, not the bare integer this verb used to
+// print alone, because a reader now needs both numbers to know whether a resume/rework item is
+// actually protected. The trailer describes the ONE stored entry the width and the reserve
+// share (they decay on one TTL): it reads `set-by:` + an expiry whenever that entry is fresh —
+// the same freshness ResolvedWidth keys its own `source` on — and `default` + `n/a` only when
+// nothing is stored or the entry has lapsed. It is NOT a description of the reserve field
+// alone: a plain `set --width N` stores no reserve, and a trailer keyed on that field read
+// "default" one second after a confirmed set, which a coordinator took for a lapsed width.
 // --verbose adds the ceiling and the width's own source on stderr, as before.
 func cmdWidth(args []string) error {
 	fs := flag.NewFlagSet("width", flag.ContinueOnError)
@@ -197,10 +203,10 @@ func cmdWidth(args []string) error {
 	if lerr != nil {
 		return lerr
 	}
-	reserveMap, reserveSourceLabel, expiresLabel := reserveDisplay(canonical, entry, fresh)
+	reserveMap, sourceLabel, expiresLabel := entryDisplay(canonical, entry, fresh)
 
 	fmt.Printf("width=%d reserve=%s (source=%s, expires=%s)\n",
-		width, deskkit.FormatReserve(reserveMap), reserveSourceLabel, expiresLabel)
+		width, deskkit.FormatReserve(reserveMap), sourceLabel, expiresLabel)
 	if *verbose {
 		max, why, merr := deskkit.MaxWidth(canonical)
 		if merr != nil {
@@ -213,18 +219,36 @@ func cmdWidth(args []string) error {
 	return nil
 }
 
-// reserveDisplay derives the plain read's reserve map and its two labels — "default"/"set", and
-// an expiry timestamp or "n/a" — from the raw stored entry. A stored entry with no Reserve set
-// (an entry saved before this feature, or a plain `--width` set with no `--reserve`) reads as
-// the shipped default, exactly as ResolvedWidth itself falls back when nothing was stored.
-func reserveDisplay(loop string, entry *deskkit.WidthEntry, fresh bool) (reserve map[string]int, sourceLabel, expiresLabel string) {
-	if fresh && entry.Reserve != nil {
-		updated, perr := time.Parse(time.RFC3339, entry.Updated)
-		if perr != nil {
-			return entry.Reserve, "set", "unparseable"
-		}
-		return entry.Reserve, "set", updated.Add(deskkit.WidthTTL).UTC().Format(time.RFC3339)
+// entryDisplay derives the plain read's reserve map and its trailer — a source label and an
+// expiry — from the stored entry and the freshness verdict LoadWidth gave it. The trailer is
+// keyed on that freshness alone, which is exactly what ResolvedWidth keys its verbose
+// `source` on, so the plain and verbose lines can never disagree about whether an override
+// is live:
+//
+//   - fresh entry → `set-by:<session>` and `<updated + WidthTTL>` as RFC3339 (UTC), for the
+//     width AND the reserve, since both ride that one entry and decay together. A fresh entry
+//     with no Reserve stored (a plain `set --width`, or an entry saved before reservations
+//     existed) shows the shipped default reserve beside that trailer — the reserve VALUE
+//     falls back, the entry's liveness does not.
+//   - no entry, or a decayed one → `default` and `n/a`, the shipped values for both.
+func entryDisplay(loop string, entry *deskkit.WidthEntry, fresh bool) (reserve map[string]int, sourceLabel, expiresLabel string) {
+	if !fresh || entry == nil {
+		def, _ := deskkit.DefaultReserve(loop)
+		return def, "default", "n/a"
 	}
-	def, _ := deskkit.DefaultReserve(loop)
-	return def, "default", "n/a"
+	reserve = entry.Reserve
+	if reserve == nil {
+		reserve, _ = deskkit.DefaultReserve(loop)
+	}
+	sourceLabel = "set"
+	if entry.SetBy != "" {
+		sourceLabel = "set-by:" + entry.SetBy
+	}
+	updated, perr := time.Parse(time.RFC3339, entry.Updated)
+	if perr != nil {
+		// LoadWidth refuses an unparseable `updated` before it ever reaches here; this is
+		// belt-and-braces so a future caller cannot print an expiry it cannot compute.
+		return reserve, sourceLabel, "unparseable"
+	}
+	return reserve, sourceLabel, updated.Add(deskkit.WidthTTL).UTC().Format(time.RFC3339)
 }

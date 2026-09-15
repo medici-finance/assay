@@ -1,0 +1,35 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues",
+      "query": "page=1\u0026per_page=100\u0026state=opened"
+    }
+  ],
+  "result": [
+    {
+      "Number": 12,
+      "Title": "a question about the board",
+      "Author": {
+        "Login": "someone",
+        "ID": 5
+      },
+      "Labels": [
+        "question"
+      ],
+      "CreatedAt": "2026-09-01T09:00:00Z",
+      "URL": "https://gitlab.example/medici-finance/assay/-/issues/12"
+    },
+    {
+      "Number": 13,
+      "Title": "filed by a service account",
+      "Author": {
+        "Login": "assay-reviewer-bot",
+        "ID": 41987965
+      },
+      "Labels": null,
+      "CreatedAt": "2026-09-02T09:00:00Z",
+      "URL": "https://gitlab.example/medici-finance/assay/-/issues/13"
+    }
+  ]
+}

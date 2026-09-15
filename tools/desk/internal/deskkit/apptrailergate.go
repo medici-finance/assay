@@ -3,10 +3,9 @@ package deskkit
 import "strings"
 
 // AuthorIsRoleApp reports whether login renders as one of the roster's role Apps
-// (ASSAY_TRUSTED_BOT_SLUGS), using the SAME `<slug>[bot]` / `app/<slug>` resolution the
-// public-author trust gate (TrustedPublicAuthor) uses — never a hard-coded login. It is the
-// App half of that gate WITHOUT the accountable-human fallback: the question here is "is the
-// author one of our role Apps", not "is the author trusted to be auto-reviewed".
+// (ASSAY_TRUSTED_BOT_SLUGS), using the SAME `<slug>[bot]` / `app/<slug>` resolution
+// TrustedAuthorID's expectedID uses — never a hard-coded login. It answers "is the
+// author one of our role Apps", not "is the author trusted" (TrustedAuthor covers that).
 //
 // Fail closed on the unknown: an empty login or an unconfigured roster is NOT asserted to be
 // an App. That is the safe direction for THIS predicate — it never invents App-ness — and

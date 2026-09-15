@@ -1661,3 +1661,173 @@ func TestBudgetStillCapsOneAgentAtThree(t *testing.T) {
 	}
 	assertNoIssueCreate(t, *calls)
 }
+
+// --- assay#955: a REFUSED `new` must not consume the session budget slot ----------
+
+// TestBudgetBodyCheckRefusalDoesNotConsumeSlot is the assay#955 repro: BodyCheck refuses
+// three consecutive `new` attempts (a secret-shaped token in the body), none of which ever
+// reached `gh issue create`. Before the fix these three ResultRefused lines were
+// nonetheless charged against the 3-per-24h session budget, so the FOURTH attempt — a
+// genuinely clean filing — was itself refused with exit 4 (rate-limited) having filed
+// nothing at all: the session burned its whole budget on refusals and had no slot left to
+// file the legitimate finding the refusals were about.
+//
+// After the fix a refusal is audited (the ResultRefused lines are still on the log) but
+// FREE: only a write that actually reaches `gh issue create` may charge the budget, so the
+// clean filing right after three refusals must still succeed.
+func TestBudgetBodyCheckRefusalDoesNotConsumeSlot(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // no dupes — isolate the BodyCheck refusal path
+	secretBody := bodyFileWith(t, "token ghp_"+strings.Repeat("a", 36))
+
+	for i := 1; i <= defaultNewBudgetPerSession; i++ {
+		rc, out := runCapture([]string{"new", "-R", allowedRepo,
+			"--title", fmt.Sprintf("secret-tripping filing attempt %d", i), "--body-file", secretBody})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("BodyCheck refusal attempt %d rc = %d, want %d (refused); out=%s",
+				i, rc, deskkit.ExitRefused, out)
+		}
+	}
+	// None of the three refused attempts ever reached the remote.
+	assertNoIssueCreate(t, *calls)
+
+	// The refusals must be on the audit log (audited, not silent) but marked as NOT
+	// charging the session budget.
+	for _, e := range auditEntriesFor(t, "new") {
+		if e.Result != deskkit.ResultRefused {
+			continue
+		}
+		if chargedNewEntry(e) {
+			t.Fatalf("a BodyCheck refusal charged the session budget: %+v", e)
+		}
+	}
+
+	// The budget slot must still be available: a clean, non-duplicate filing right after
+	// the three refusals must succeed and actually create the issue.
+	cleanBody := bodyFileWith(t, "a clean, unique observation with no secrets in it")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a genuinely new, clean filing after three refusals", "--body-file", cleanBody})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("clean filing after 3 BodyCheck refusals rc = %d, want 0 — a REFUSED new must not "+
+			"consume the budget a legitimate filing needs (assay#955); out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestBudgetDedupeRefusalDoesNotConsumeSlot is the same assay#955 repro through the OTHER
+// named refusal path: a dedupe match (not BodyCheck). Three attempts against a
+// near-duplicate title are refused, then a clean, unrelated filing must still be admitted.
+func TestBudgetDedupeRefusalDoesNotConsumeSlot(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", searchHitsJSON(t, "oracle price feed goes stale"))
+	dupeBody := bodyFileWith(t, "the oracle price feed is going stale under load")
+
+	for i := 1; i <= defaultNewBudgetPerSession; i++ {
+		rc, out := runCapture([]string{"new", "-R", allowedRepo,
+			"--title", "oracle price feed goes stale", "--body-file", dupeBody})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("dedupe refusal attempt %d rc = %d, want %d (refused); out=%s",
+				i, rc, deskkit.ExitRefused, out)
+		}
+	}
+	assertNoIssueCreate(t, *calls)
+
+	for _, e := range auditEntriesFor(t, "new") {
+		if e.Result != deskkit.ResultRefused {
+			continue
+		}
+		if chargedNewEntry(e) {
+			t.Fatalf("a dedupe refusal charged the session budget: %+v", e)
+		}
+	}
+
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // the clean filing has no near-duplicate
+	cleanBody := bodyFileWith(t, "a fresh unrelated observation")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a brand new unrelated topic", "--body-file", cleanBody})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("clean filing after 3 dedupe refusals rc = %d, want 0 — a REFUSED new must not "+
+			"consume the budget a legitimate filing needs (assay#955); out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// --- attach --kind (a GitLab adopter cell: #N and !N both exist) ---------------------------
+
+// TestAttachKindDefaultsToIssue: without --kind, both the target read and the note write are
+// typed ISSUE — attach is an observation on an issue — so a GitLab number that also names a
+// merge request resolves to the issue instead of the bare-number refusal.
+func TestAttachKindDefaultsToIssue(t *testing.T) {
+	calls := withEnv(t)
+	body := bodyFileWith(t, "observation as the worker")
+
+	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--body-file", body})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("attach rc = %d, want 0", rc)
+	}
+	if got := curForge.getKinds; len(got) != 1 || got[0] != deskkit.TargetIssue {
+		t.Fatalf("target read kinds = %v, want [issue]", got)
+	}
+	if got := curForge.commentKinds; len(got) != 1 || got[0] != deskkit.TargetIssue {
+		t.Fatalf("comment kinds = %v, want [issue]", got)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "comment") {
+		t.Fatalf("expected the comment write; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestAttachKindMRTypesBothReadAndWrite: --kind mr (and its alias pr) types the read AND the
+// write as CHANGE, so the state check and the note address the same object.
+func TestAttachKindMRTypesBothReadAndWrite(t *testing.T) {
+	for _, kind := range []string{"mr", "pr", "MR"} {
+		withEnv(t)
+		body := bodyFileWith(t, "observation on the change")
+		rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--kind", kind, "--body-file", body})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("attach --kind %s rc = %d, want 0", kind, rc)
+		}
+		if got := curForge.getKinds; len(got) != 1 || got[0] != deskkit.TargetChange {
+			t.Fatalf("--kind %s: target read kinds = %v, want [change]", kind, got)
+		}
+		if got := curForge.commentKinds; len(got) != 1 || got[0] != deskkit.TargetChange {
+			t.Fatalf("--kind %s: comment kinds = %v, want [change]", kind, got)
+		}
+	}
+}
+
+// TestAttachKindUnknownRefusedBeforeAnyForgeCall: an unparseable kind is exit 5 with nothing
+// read or written — the kind was meant to be STATED, so a typo must not become "issue".
+func TestAttachKindUnknownRefusedBeforeAnyForgeCall(t *testing.T) {
+	withEnv(t)
+	body := bodyFileWith(t, "x")
+	rc, out := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--kind", "merge", "--body-file", body})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("attach --kind merge rc = %d, want 5; out=%s", rc, out)
+	}
+	if len(curForge.getKinds) != 0 || len(curForge.comments) != 0 {
+		t.Fatalf("unknown kind must reach no forge call; reads=%v comments=%v", curForge.getKinds, curForge.comments)
+	}
+	if !strings.Contains(out, "issue, mr") {
+		t.Fatalf("refusal must name the accepted kinds; out=%s", out)
+	}
+}
+
+// TestAttachKindMismatchIsUnverifiable: on a one-sequence forge the typed read reports a kind
+// mismatch (asked for an issue, the number is a pull request); attach fails CLOSED (exit 6)
+// and writes nothing rather than commenting on the other kind.
+func TestAttachKindMismatchIsUnverifiable(t *testing.T) {
+	withEnv(t)
+	t.Setenv("FAKEGH_ISSUE_IS_PR", "1")
+	body := bodyFileWith(t, "x")
+	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--body-file", body})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("attach on a kind mismatch rc = %d, want 6", rc)
+	}
+	if len(curForge.comments) != 0 {
+		t.Fatalf("a kind mismatch must write nothing; comments=%v", curForge.comments)
+	}
+}

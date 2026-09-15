@@ -53,6 +53,26 @@ type fakeForge struct {
 	putCalls   int
 	putBranch  string
 	putContent string
+
+	// visibility is what RepoVisibility reports (the public-repo gate's live-visibility
+	// read — assay#1066's regression coverage, see gatewired_test.go). Defaults to
+	// "private" (the gate's no-op case) when unset.
+	visibility      string
+	visibilityCalls int
+	visibilityRepo  deskkit.ForgeRepo
+}
+
+// RepoVisibility answers the public-repo gate's live-visibility read from THIS fake — the
+// resolved forge backend — rather than any hardcoded GitHub-only client.
+func (f *fakeForge) RepoVisibility(repo deskkit.ForgeRepo) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.visibilityCalls++
+	f.visibilityRepo = repo
+	if f.visibility != "" {
+		return f.visibility, nil
+	}
+	return "private", nil
 }
 
 func (f *fakeForge) setFile(path, content string) {

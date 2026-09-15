@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/osfs"
@@ -56,6 +57,11 @@ const transientRemoteName = "origin"
 type Repo struct {
 	repo *git.Repository
 	dir  string
+
+	// reachIdx is the lazily built, Repo-lifetime commit-reachability cache behind
+	// RefsContaining (see contains.go); reachMu guards its construction.
+	reachMu  sync.Mutex
+	reachIdx *reachIndex
 }
 
 // Open opens the repository rooted at dir (an exact repo/worktree root — like
@@ -74,6 +80,37 @@ type Repo struct {
 // and the workpad id via `git config --worktree`), so without this, Open would refuse
 // almost every real worktree here.
 func Open(dir string) (*Repo, error) {
+	return OpenWith(dir, NewObjectCache())
+}
+
+// ObjectCache is the object cache OpenWith routes reads through. It is an alias for
+// go-git's cache.Object so callers outside this package can hold one WITHOUT importing
+// go-git themselves — this package exists to be the one place that knows go-git.
+type ObjectCache = cache.Object
+
+// NewObjectCache returns a fresh object cache with go-git's default size bound — the exact
+// cache Open builds for itself. A caller opening many worktrees of one repository in one
+// pass makes one of these and hands it to every OpenWith; see OpenWith.
+func NewObjectCache() ObjectCache { return cache.NewObjectLRUDefault() }
+
+// OpenWith opens dir exactly as Open does, but routes every object read through the
+// CALLER-SUPPLIED object cache instead of a fresh one. Open is this function with a fresh
+// cache, so no existing caller changes behaviour.
+//
+// It exists for one shape: a caller that opens MANY worktrees OF THE SAME REPOSITORY in
+// one pass. Every linked worktree shares the main checkout's object store, so with Open's
+// per-call cache the same commits are decoded and inflated again for every worktree —
+// `deskwt prune` measured ~700 redundant inflations of one 5,779-commit history in a
+// single sweep. Handing one cache to every OpenWith in the pass makes that work happen
+// once, and it LOWERS the memory ceiling rather than raising it: one cache with go-git's
+// default cap, instead of one per Open.
+//
+// The cache is not synchronised by this package. A caller that shares one across
+// goroutines owns that question; the callers here are sequential.
+func OpenWith(dir string, objects ObjectCache) (*Repo, error) {
+	if objects == nil {
+		objects = NewObjectCache()
+	}
 	gitDir, worktreeDir, err := resolveGitDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
@@ -88,7 +125,7 @@ func Open(dir string) (*Repo, error) {
 	if commonDir, cerr := commonDirOf(gitDir); cerr == nil && commonDir != "" && commonDir != gitDir {
 		repoFS = dotgit.NewRepositoryFilesystem(osfs.New(gitDir), osfs.New(commonDir))
 	}
-	st := filesystem.NewStorage(repoFS, cache.NewObjectLRUDefault())
+	st := filesystem.NewStorage(repoFS, objects)
 	r, err := git.Open(extensionTolerantStorer{st}, osfs.New(worktreeDir))
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
@@ -919,26 +956,42 @@ func (r *Repo) LocalBranchNames() ([]string, error) {
 // is always ALSO reachable via the ref it mirrors. This helper must not be reused for a
 // check that needs to see the alias ref itself (see ambiguousbase.go's refCandidates,
 // deliberately NOT migrated in this brief for exactly that reason).
+//
+// Like for-each-ref, commit is peeled through annotated tags to the commit underneath,
+// and so is every ref tip (an annotated tag under refs/tags/ is listed when the commit it
+// tags contains the target); a ref whose tip is not a commit — a tag of a tree or blob, a
+// dangling ref — is dropped from the answer. An error is returned only when the question
+// itself cannot be answered: commit does not resolve to a readable commit, or a commit
+// INSIDE some tip's history cannot be read (a broken object store). A caller using this
+// as a guard must treat that error as could-not-check, never as "no ref contains it".
+//
+// Cost is bounded by the size of the commit graph reachable from the tips, not by
+// refs x history: all tips share ONE walk (memoised across calls on this Repo) and, when
+// the repository carries a commit-graph file, that walk is cut off exactly by generation
+// numbers — see contains.go for the mechanism and why it is exact rather than heuristic.
 func (r *Repo) RefsContaining(commit, refsPrefix string) ([]string, error) {
+	resolved, err := r.Resolve(commit)
+	if err != nil {
+		return nil, err
+	}
 	refs, err := r.Refs()
 	if err != nil {
 		return nil, err
 	}
-	var out []string
+	tips := make(map[string]plumbing.Hash)
 	for name, hash := range refs {
-		if !strings.HasPrefix(name, refsPrefix) {
-			continue
-		}
-		ok, err := r.IsAncestor(commit, hash)
-		if err != nil {
-			continue // an unresolvable tip is skipped, matching for-each-ref's own behaviour
-		}
-		if ok {
-			out = append(out, name)
+		if strings.HasPrefix(name, refsPrefix) {
+			tips[name] = plumbing.NewHash(hash)
 		}
 	}
-	sort.Strings(out)
-	return out, nil
+	ri := r.reach()
+	ri.mu.Lock()
+	defer ri.mu.Unlock()
+	target, ok := ri.peelToCommit(resolved)
+	if !ok {
+		return nil, fmt.Errorf("gitcore: refs-containing %q: %s is not a commit", commit, resolved)
+	}
+	return ri.refsContaining(target, tips)
 }
 
 // --- Read helpers added for brief 04 (migrate deskpushguard detection reads) -----------
