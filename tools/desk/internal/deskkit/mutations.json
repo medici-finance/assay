@@ -164,6 +164,12 @@
       "new": "\tif p.Visibility == \"\" {\n\t\treturn \"private\", nil\n\t}"
     },
     {
+      "name": "GitLab ReviewsAtHead fails the whole review read closed on a 403 approval-config gate instead of degrading (gitlab.com Free tier reads as unreviewable even though the per-MR approvals read still succeeds; reviews_at_head_gitlab_free_403_degrades reddens)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "if !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {",
+      "new": "if !IsForgeNotFound(mapped) {"
+    },
+    {
       "name": "key the role-token memo on the role alone (one account's installation token is handed to another account's read)",
       "file": "internal/deskkit/roletoken.go",
       "old": "\tkey := roleOwnerKey{role: role, owner: owner}",

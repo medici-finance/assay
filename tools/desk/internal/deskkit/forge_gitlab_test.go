@@ -452,6 +452,17 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
 		},
 		{
+			// #1091 (a further GitLab merge-gate follow-up is tracked at assay#1096).
+			// `draft_status` is the one detailed_merge_status this backend deliberately maps to MERGEABLE rather than
+			// UNKNOWN — see gitlabMergeableState's doc comment for why: deskflip re-evaluates
+			// `mergeable` while a change is STILL a draft (it un-drafts only after every
+			// condition has held), so the universal starting state of every change this desk
+			// opens must not read as an unresolvable UNKNOWN forever.
+			name: "get_pull_request_draft_status_reads_mergeable", method: "GetPullRequest",
+			setup: func(s *glServer) { s.mr = glMR(map[string]any{"detailed_merge_status": "draft_status"}) },
+			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
+		},
+		{
 			name: "get_issue_plain", method: "GetIssue",
 			setup: func(s *glServer) {
 				s.issue = glIssue(nil)
@@ -568,8 +579,10 @@ func glCases() []glCase {
 			// two things at once: the request footprint still reaches the MR approvals AND the
 			// notes route after the 404 (so the board can classify CE queues), and the mapped
 			// result carries the approval with an empty CommitID and no error. Contrast
-			// error_forbidden_approval_config_tier below, where a 403 on the same route IS a
-			// whole-read could-not-check.
+			// reviews_at_head_gitlab_free_403_degrades and error_forbidden_approval_config_tier
+			// below: a 403 (not 404) on this same route degrades exactly like this case
+			// PROVIDED the per-MR approvals read also succeeds, but is a whole-read
+			// could-not-check when that second read also 403s (the credential-rejection shape).
 			name: "reviews_at_head_ce_404_degrades", method: "ReviewsAtHead",
 			setup: func(s *glServer) {
 				s.mr = glMR(nil)
@@ -577,6 +590,34 @@ func glCases() []glCase {
 					{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"},
 				}
 				s.projApprovalStatus = http.StatusNotFound
+				s.approvals = map[string]any{"approved_by": []map[string]any{
+					{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
+				}}
+				s.notes = []map[string]any{
+					{"id": 2, "body": "Verdict: APPROVE", "system": false,
+						"created_at": "2026-08-30T11:00:01Z",
+						"author":     map[string]any{"id": 42, "username": "reviewer-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReviewsAtHead(glRepo, 7) },
+		},
+		{
+			// gitlab.com Free tier answers the SAME Premium-gated project route with 403,
+			// not 404 (measured directly against the live API). This is not a tier gate to
+			// fail closed on by itself: it degrades exactly like the CE 404 case above, but
+			// ONLY because the per-MR approvals read immediately below — the route a bad
+			// credential would ALSO 403 — comes back 200 here. Contrast the direct
+			// could-not-check assertions in TestForgeGitlabReviewsAtHead, where the SAME
+			// project-route 403 is paired with a per-MR 403 and the whole read stays
+			// could-not-check: the degrade is conditioned on the per-MR read succeeding,
+			// never on the project route's status alone.
+			name: "reviews_at_head_gitlab_free_403_degrades", method: "ReviewsAtHead",
+			setup: func(s *glServer) {
+				s.mr = glMR(nil)
+				s.versions = []map[string]any{
+					{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"},
+				}
+				s.projApprovalStatus = http.StatusForbidden
 				s.approvals = map[string]any{"approved_by": []map[string]any{
 					{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
 				}}
@@ -1146,9 +1187,15 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
 		},
 		{
-			// The approval-configuration read is a Premium+ surface. A 403 there is a
-			// could-not-check for the WHOLE review read — never a licence to fall back to
-			// "assume approvals are head-pinned" or to report no reviews.
+			// forceStatus keys on a path SUFFIX, and "/approvals" is a suffix of BOTH the
+			// project approval-configuration route AND the per-MR
+			// "/merge_requests/:iid/approvals" route (see glServer.projApprovalStatus's doc
+			// comment) — so this case forces 403 on BOTH at once. That is deliberately the
+			// credential-rejection shape, not the gitlab.com-Free-tier shape: a 403 on the
+			// config route alone now degrades (reviews_at_head_gitlab_free_403_degrades
+			// above), but ONLY when the per-MR read that follows succeeds. Here it does not —
+			// the per-MR route 403s too — so the whole read still ends could-not-check,
+			// proving the degrade is conditioned on that second read rather than unconditional.
 			name: "error_forbidden_approval_config_tier", method: "ReviewsAtHead",
 			setup: func(s *glServer) {
 				s.mr = glMR(nil)
@@ -1663,6 +1710,11 @@ func TestForgeGitlabTierErrors(t *testing.T) {
 
 	// A tier failure on a LIST operation is the one most easily mistaken for an empty
 	// result, because the happy-path shape of "no approvals yet" is also empty.
+	//
+	// forceStatus keys on a path SUFFIX and "/approvals" is a suffix of BOTH the project
+	// approval-configuration route and the per-MR route, so this incidentally forces 403 on
+	// BOTH — the credential-rejection shape (gitlab_com_403_plus_bad_credential_still_refuses
+	// below exercises the same shape with the two routes targeted explicitly and separately).
 	t.Run("tier_failure_is_not_an_empty_list", func(t *testing.T) {
 		s := newGLServer(t)
 		s.mr = glMR(nil)
@@ -1680,6 +1732,64 @@ func TestForgeGitlabTierErrors(t *testing.T) {
 			t.Fatalf("tier refusal must say could-not-check, got %q", err.Error())
 		}
 		t.Logf("Premium-gated approval read 403 → could-not-check: %v", err)
+	})
+
+	// gitlab.com Free tier answers the SAME Premium-gated project-approvals route with 403,
+	// not 404 (measured directly against the live API — issue: gitlab-approvals-403). A 403
+	// there must degrade exactly like the CE 404 case below, PROVIDED the per-MR approvals
+	// read that follows still succeeds — never fail the whole review read closed the way an
+	// unqualified 403 does. Distinguishing "403 + per-MR 200" (real Free-tier gap) from
+	// "403 + per-MR 403" (bad credential, tested below) is the whole fix.
+	t.Run("gitlab_com_403_on_project_approvals_degrades_not_refuses", func(t *testing.T) {
+		s := newGLServer(t)
+		s.mr = glMR(nil)
+		s.versions = []map[string]any{{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"}}
+		s.projApprovalStatus = http.StatusForbidden // gitlab.com Free: same Premium gate, 403 not 404
+		s.approvals = map[string]any{"approved_by": []map[string]any{
+			{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
+		}}
+		s.notes = []map[string]any{}
+
+		rs, err := s.forge().ReviewsAtHead(glRepo, 7)
+		if err != nil {
+			t.Fatalf("a 403 on the gitlab.com-Free project approval route must degrade when the per-MR read succeeds, not refuse: %v", err)
+		}
+		if len(rs) != 1 {
+			t.Fatalf("the MR approval must still be read and reported after the project-route 403, got %d reviews", len(rs))
+		}
+		if rs[0].State != "APPROVED" || rs[0].Author.ID != 42 {
+			t.Fatalf("expected the reviewer-bot approval, got %+v", rs[0])
+		}
+		if rs[0].CommitID != "" {
+			t.Fatalf("a degraded (unpinned) approval must not be stamped with a head it cannot claim, got CommitID %q", rs[0].CommitID)
+		}
+		t.Logf("gitlab.com project-approval 403 (per-MR read OK) → degraded: 1 unpinned review")
+	})
+
+	// The inverse of the case above: the SAME project-route 403 this time paired with a 403
+	// on the per-MR approvals route too — the shape a genuinely bad credential produces. This
+	// must NOT silently land on the degraded-but-continuing path; the whole read stays
+	// could-not-check. The two routes are targeted separately (rather than relying on
+	// forceStatus's "/approvals" suffix collision, as tier_failure_is_not_an_empty_list does)
+	// so the intent — both routes independently denied — is unambiguous.
+	t.Run("gitlab_com_403_plus_bad_credential_still_refuses", func(t *testing.T) {
+		s := newGLServer(t)
+		s.mr = glMR(nil)
+		s.versions = []map[string]any{{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"}}
+		s.projApprovalStatus = http.StatusForbidden
+		s.forceStatus["/merge_requests/7/approvals"] = http.StatusForbidden
+
+		rs, err := s.forge().ReviewsAtHead(glRepo, 7)
+		if err == nil {
+			t.Fatalf("a 403 on BOTH the project AND per-MR approval routes must be could-not-check, not %d reviews", len(rs))
+		}
+		if rs != nil {
+			t.Fatalf("a could-not-check must yield a nil list, got %d entries", len(rs))
+		}
+		if !strings.Contains(err.Error(), "could-not-check") {
+			t.Fatalf("credential-rejection refusal must say could-not-check, got %q", err.Error())
+		}
+		t.Logf("project 403 + per-MR 403 (bad credential) → could-not-check: %v", err)
 	})
 
 	// issue #697. The 404 on the PROJECT approval-configuration route is NOT a tier gate: it
@@ -1794,6 +1904,36 @@ func TestForgeGitlabAuth(t *testing.T) {
 			t.Fatalf("an unset token must never reach the network, but the server saw %d request(s)", hits)
 		}
 	})
+}
+
+// TestGitlabMergeableStateDraftStatus pins the narrow carve-out (#1091; a further GitLab
+// merge-gate follow-up is tracked at assay#1096): `draft_status` maps to MERGEABLE, and it is the ONLY status added to that
+// bucket — every other named policy hold (`not_approved`, `blocked_status`,
+// `discussions_not_resolved`, `ci_still_running`, `checking`, `unchecked`), the two conflict
+// statuses, an unrecognised future status, and the empty string all keep their EXISTING
+// mapping unchanged. A mutation that widened the carve-out (or dropped it) reddens this test.
+func TestGitlabMergeableStateDraftStatus(t *testing.T) {
+	cases := map[string]string{
+		"mergeable":                Mergeable,
+		"draft_status":             Mergeable, // the carve-out
+		"DRAFT_STATUS":             Mergeable, // case-insensitive, like every other status
+		"broken_status":            MergeableConflicting,
+		"conflict":                 MergeableConflicting,
+		"checking":                 MergeableUnknown,
+		"unchecked":                MergeableUnknown,
+		"not_approved":             MergeableUnknown,
+		"blocked_status":           MergeableUnknown,
+		"discussions_not_resolved": MergeableUnknown,
+		"ci_still_running":         MergeableUnknown,
+		"ci_must_pass":             MergeableUnknown,
+		"":                         MergeableUnknown,
+		"some_future_status_this_tree_has_never_seen": MergeableUnknown,
+	}
+	for detailed, want := range cases {
+		if got := gitlabMergeableState(detailed); got != want {
+			t.Errorf("gitlabMergeableState(%q) = %q, want %q", detailed, got, want)
+		}
+	}
 }
 
 // TestForgeGitlabPushTransportHint pins the two properties of the transport hint that are
