@@ -1,6 +1,9 @@
 package deskkit
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestBodyCheckPGPFingerprintAnnotatedLine pins the #1161 widening of Rule 3: a 40-char
 // UPPERCASE-hex run is admitted when the SAME LINE names it as a fingerprint — the word
@@ -60,7 +63,7 @@ func TestBodyCheckPGPFingerprintAnnotatedLine(t *testing.T) {
 		{"41 uppercase hex chars with the word", "fingerprint " + fpr + "A\n"},
 		{"lowercase-suffixed mixed-case run with the word", "fingerprint " + fpr[:39] + "a\n"},
 		{"a real secret behind the word is not pure uppercase hex", "gpg key " + scanSecret40 + "\n"},
-		{"a real secret behind the word, ghp arm", "fingerprint ghp_" + "cccccccccccccccccccccccccccccccccccc" + "\n"},
+		{"a real secret behind the word, ghp arm", "fingerprint ghp_" + strings.Repeat("c", 36) + "\n"},
 		{"annotated run plus a bare run on another line",
 			"gpg fingerprint " + fpr + "\nalso " + fpr2 + "\n"},
 	}
