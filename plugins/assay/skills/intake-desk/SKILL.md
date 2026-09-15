@@ -1,6 +1,16 @@
 ---
 name: intake-desk
-description: Run the intake-desk — the generic front door of the process desk and the first of four desks in the pipeline (intake-desk → worker-desk → pr-review-desk → verify-desk). Ingests ALL inbound — open GitHub issues, the intake register (docs/streams/intake entries), and any incoming request or idea — and converts each into one of five tracked exits: spec/brief · bug/issue · finding · needs-decision · rejected/watching. Scans issues into placeholders, triages raw intake entries through their four disposition exits, files human-decision issues, and closes out resolved issues. Use when starting or resuming the dedicated intake window, or when asked to "run the intake desk / work the front door / triage inbound / triage the front door / work the incoming / intake / run the issue loop / work the issue queue / watch the inbound queue". Role window, no persona (Bob belongs to the-desk only); driver human:<name>; the human decides and merges.
+description: >-
+  Run the intake-desk — the generic front door of the process desk and the first of four desks in
+  the pipeline (intake-desk → worker-desk → pr-review-desk → verify-desk). Ingests ALL inbound —
+  open GitHub issues, the intake register (docs/streams/intake entries), and any incoming request or
+  idea — and converts each into one of five tracked exits: spec/brief · bug/issue · finding ·
+  needs-decision · rejected/watching. Scans issues into placeholders, triages raw intake entries
+  through their four disposition exits, files human-decision issues, and closes out resolved issues.
+  Use when starting or resuming the dedicated intake window, or when asked to "run the intake desk /
+  work the front door / triage inbound / triage the front door / work the incoming / intake / run
+  the issue loop / work the issue queue / watch the inbound queue". Role window, no persona (Bob
+  belongs to the-desk only); driver human:<name>; the human decides and merges.
 ---
 
 # Intake Desk (the generic front door)
