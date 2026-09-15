@@ -93,6 +93,15 @@ func runNextUp(root string) int {
 		fmt.Fprintln(os.Stderr, "statusgen: --next-up: claim filtering could not be established and --require-claims is set: "+claimSource.reason())
 		return 1
 	}
+	// Dead-claim decay that could not look (#1111) is announced here too: a queue
+	// built from an undecayed claim set is a SUBSET — briefs held behind
+	// merged/closed corpses are missing from it. It does NOT fail the queue, for
+	// the reason spelled out at the same point in main.go: this direction is safe
+	// to dispatch from, it just hides work, and reddening a run that has no forge
+	// credential teaches the caller to stop reading the instrument.
+	if d := claimSource.DecayNotice(); d != "" {
+		fmt.Fprintln(os.Stderr, "statusgen: --next-up: "+d)
+	}
 	briefTouch := map[string]time.Time{}
 	if entries, err := LoadHistory(filepath.Join(root, filepath.FromSlash(historyRelPath))); err == nil {
 		briefTouch = LastTransitionTime(entries)

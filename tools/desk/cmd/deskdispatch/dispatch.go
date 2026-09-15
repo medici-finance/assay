@@ -40,6 +40,15 @@ const (
 	queueLabelColorHex            = "0e8a16"
 )
 
+// stampLabelColorHex / stampLabelDescription are the cosmetics a dispatched-* stamp label is
+// CREATED with when the repo or project does not yet carry it. The NAME is the load-bearing
+// part (deskkit.ModelStampLabels); these exist because a forge's label-create call needs a
+// colour (GitLab requires one) and a reader deserves to be told what the label attests.
+const (
+	stampLabelColorHex    = "ededed"
+	stampLabelDescription = "Dispatch attestation: the model/tier the dispatcher launched for this change, applied under the dispatcher's own identity"
+)
+
 // dispatchSteps is the ordered step list, pinned by a test so a step cannot be silently
 // dropped or reordered. The order is the safety property: the CLAIM is first, before any
 // worktree exists and before any prompt is emitted, because everything after it is work
@@ -834,10 +843,10 @@ type claimAuth struct {
 // tools read only the AMBIENT credential — bare `gh api` in the script, GH_TOKEN/--token-file
 // in the binary — so a dispatch from a sandboxed desk window, which holds no ambient `gh`
 // login, failed closed at claim-acquire on every fresh item while every other write verb
-// minted its own role token and succeeded. This is the same mint the stamp step makes
-// (mintTokenFn, the dispatching role stampRoleForKit names), taken here because the claim
-// runs four steps before the stamp; the seam is memoised per process, so the stamp's later
-// call costs no second fork.
+// minted its own role token and succeeded. The mint is the same role token the stamp step
+// attests under (the dispatching role stampRoleForKit names), taken here through mintTokenFn
+// because the claim runs four steps before the stamp — which reads its own credential inside
+// deskkit.ResolveForge.
 //
 // PRECEDENCE. An explicit GH_TOKEN already in the environment wins outright and nothing is
 // minted: an operator who exported a credential chose it, and both tools already read it —
@@ -1021,90 +1030,124 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	// calling session's own credential is what made a correctly dispatched strong-tier PR
 	// read as a forged self-report and refuse every verdict and ready-flip on it.
 	//
-	// A mint failure is UNVERIFIABLE and stops the step: the alternative — stamping under
-	// the ambient credential — produces an attestation the floor must refuse, and a PR
-	// carrying an untrusted stamp is in a WORSE state than an unstamped one (absent reads
-	// UNKNOWN and proceeds with a NOTICE). So no stamp at all is the safe failure here.
+	// A credential the resolver cannot read is UNVERIFIABLE and stops the step: the
+	// alternative — stamping under the ambient credential — produces an attestation the floor
+	// must refuse, and a PR carrying an untrusted stamp is in a WORSE state than an unstamped
+	// one (absent reads UNKNOWN and proceeds with a NOTICE). So no stamp at all is the safe
+	// failure here.
 	//
-	// THE LANE'S OWN DISPATCHER. The role minted here is the role that DISPATCHED this
+	// THE LANE'S OWN DISPATCHER. The role resolved here is the role that DISPATCHED this
 	// session, which is not always the desk App: the review lane is dispatched by the
 	// reviewer App, and stamping a review dispatch under the desk App would re-open the
 	// dispatcher/applier split from the other side — an attestation written by an identity
 	// that did not launch the session. deskkit accepts both roles (DispatcherRoles) precisely
 	// so each lane's own dispatcher can attest for it, and stampRole is where that choice is
 	// made once for every stamp this verb writes.
+	//
+	// THE FORGE IS RESOLVED, NEVER CHOSEN. ResolveForge answers GitHub or GitLab from the
+	// roster/remote and reads the lane's own dispatcher credential for whichever it is (a
+	// GitHub App installation token, a GitLab PAT). Every read and write below goes through
+	// that one backend — the same seam the queue-label step uses — so a GitLab-served project
+	// is stamped by the same code path a GitHub one is. Before #1154 this step read and wrote
+	// labels through the GitHub CLI, so a stamped review dispatch on a GitLab project failed
+	// closed here and the forge-neutral queue label (step 6) was never reached.
 	stampRole := stampRoleForKit(o.kit)
-	tok, tokPath, terr := mintTokenFn(stampRole, repo)
-	if terr != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: the %s App installation token for %s could not be minted or read (%s): %v — so the "+
-				"identity the stamp would be applied under cannot be established. NO label was applied: a "+
-				"stamp written under this session's own credential reads as a non-dispatcher stamp and "+
-				"refuses every authority-bearing write on the PR, which is worse than leaving it unstamped.",
-			stepModelStamp, stampRole, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), terr), terr)
+	fr, ferr := forgeRepoOf(repo)
+	if ferr != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf("step %s: %v", stepModelStamp, ferr), ferr)
 	}
-	dispatcherToken = tok
+	fg, res, rerr := deskkit.ResolveForge(fr, stampRole)
+	if rerr != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the forge serving %s could not be resolved under the %s role, or that role's credential "+
+				"could not be read (%s) — so the identity the stamp would be applied under cannot be "+
+				"established. NO label was applied: a stamp written under this session's own credential reads "+
+				"as a non-dispatcher stamp and refuses every authority-bearing write on the PR, which is worse "+
+				"than leaving it unstamped.",
+			stepModelStamp, repo, stampRole, firstLine(rerr.Error())), rerr)
+	}
+	forge := string(res.Kind)
 
-	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so `--add-label` over a label the PR
-	// already carries is a NO-OP — and a stamp the floor cannot read is exactly the state it
-	// refuses. Re-running this step therefore changed nothing on the PRs that needed it most.
-	// A GitHub timeline is APPEND-ONLY, so the only repair the forge offers is to REMOVE the
+	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so applying a label the PR already carries
+	// is a NO-OP — and a stamp the floor cannot read is exactly the state it refuses.
+	// Re-running this step therefore changed nothing on the PRs that needed it most. A
+	// forge's label history is APPEND-ONLY, so the only repair it offers is to REMOVE the
 	// offending labels and re-apply the intended pair under the dispatcher; that is what the
-	// floor's reader resolves (the actor of the last standing `labeled` event), so it is what
-	// this step must do. The set to remove comes from deskkit.ReStampRemovals(labels): every
-	// present dispatched-* label that is not part of the pair being applied (a conflicting,
-	// stale, or malformed stamp — INCLUDING one an earlier run of the dispatcher itself left),
-	// plus any half of the pair whose standing application is foreign. Clearing only the
-	// foreign labels (the old ForeignStampLabels set) left a dispatcher-applied conflicting
-	// label standing, so the re-dispatch reported OK while the floor kept refusing — the
-	// present-but-unreadable deadlock this recovery exists to break. Reader and writer project
-	// the standing-applier resolution from one place, so they cannot disagree about it.
+	// floor's reader resolves (the actor of the last standing application event), so it is
+	// what this step must do. The set to remove comes from deskkit.ReStampRemovals(labels):
+	// every present dispatched-* label that is not part of the pair being applied (a
+	// conflicting, stale, or malformed stamp — INCLUDING one an earlier run of the dispatcher
+	// itself left), plus any half of the pair whose standing application is foreign. Clearing
+	// only the foreign labels (the old ForeignStampLabels set) left a dispatcher-applied
+	// conflicting label standing, so the re-dispatch reported OK while the floor kept
+	// refusing — the present-but-unreadable deadlock this recovery exists to break. Reader
+	// and writer project the standing-applier resolution from one place — and read it through
+	// the same two enumerated operations (GetPullRequest for the present set, ListLabelEvents
+	// for who applied each) — so they cannot disagree about it.
 	//
 	// The reads are UNVERIFIABLE on failure rather than best-effort: proceeding blind would
 	// silently re-create the no-op — the labels would be "applied" and the PR would still
 	// carry the foreign stamp, which is the failure this whole step exists to prevent.
-	labelRead := runCmd("", "gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/issues/%d/labels", repo, o.pr), "--jq", ".[].name")
-	if labelRead.err != nil {
+	change, perr := fg.GetPullRequest(fr, o.pr)
+	if perr != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: could not read the labels currently on %s#%d (%s) — whether this PR already carries "+
-				"a foreign stamp is unknown, and adding a label over one is a no-op, so stamping blind "+
-				"would report success on a PR that stays refused.",
-			stepModelStamp, repo, o.pr, labelRead.run.Said()), labelRead.err)
+			"step %s: could not read the labels currently on %s#%d through the %s backend (%s) — whether "+
+				"this PR already carries a foreign stamp is unknown, and adding a label over one is a no-op, "+
+				"so stamping blind would report success on a PR that stays refused.",
+			stepModelStamp, repo, o.pr, forge, firstLine(perr.Error())), perr)
 	}
-	tlRead := runCmd("", "gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/issues/%d/timeline", repo, o.pr),
-		"--jq", `.[]|select(.event=="labeled" or .event=="unlabeled")|[.event,(.label.name//""),(.actor.login//"")]|@tsv`)
-	if tlRead.err != nil {
+	events, eerr := fg.ListLabelEvents(fr, o.pr)
+	if eerr != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: could not read the label timeline of %s#%d (%s) — WHO applied the stamp this PR "+
-				"carries cannot be established, so a foreign application could not be replaced.",
-			stepModelStamp, repo, o.pr, tlRead.run.Said()), tlRead.err)
+			"step %s: could not read the label history of %s#%d through the %s backend (%s) — WHO applied "+
+				"the stamp this PR carries cannot be established, so a foreign application could not be "+
+				"replaced.",
+			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
-	stale := deskkit.ReStampRemovals(deskkit.StampTimeline{
-		Present: parseLabelNames(labelRead.stdout),
-		Events:  parseLabelEventLines(tlRead.stdout),
-	}, labels, deskkit.IsDispatcherLogin)
-	for _, l := range stale {
-		if r := runCmd("", "gh", "pr", "edit", fmt.Sprint(o.pr), "-R", repo, "--remove-label", l); r.err != nil {
+	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
+	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsDispatcherLogin)
+	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
+		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
+		// removed and nothing is re-applied, so a re-dispatch neither churns the label
+		// history nor leaves the PR briefly unstamped.
+		return fmt.Sprintf("OK: %s already standing on %s#%d under the %s App, the identity the capability "+
+			"floor accepts (%s) — an identical stamp is a no-op, nothing was written",
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge), nil
+	}
+	if len(stale) > 0 {
+		// The removal is its OWN write, ahead of the application, on purpose: a label named in
+		// both halves of one LabelChange is skipped by the backends as a caller bug, and a
+		// single reconciliation that removed and re-added the same name would leave the forge's
+		// label set unchanged — no new application event, so the standing applier would not
+		// change and the PR would stay refused. Two writes are two events.
+		if _, aerr := fg.ApplyLabels(fr, o.pr, deskkit.LabelChange{
+			Target: deskkit.TargetChange,
+			Remove: stale,
+		}); aerr != nil {
 			return "", deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: could not remove the stamp label %s from %s#%d (%s) — re-applying the intended "+
-					"stamp on top would be a no-op, leaving the PR carrying labels the floor refuses.",
-				stepModelStamp, l, repo, o.pr, r.run.Said()), r.err)
+				"step %s: could not remove the stamp label(s) %s from %s#%d through the %s backend (%s) — "+
+					"re-applying the intended stamp on top would be a no-op, leaving the PR carrying labels "+
+					"the floor refuses.",
+				stepModelStamp, strings.Join(stale, " + "), repo, o.pr, forge, firstLine(aerr.Error())), aerr)
 		}
 	}
 
+	// Both halves in ONE reconciliation: the backend ensures each label exists (an
+	// already-exists is the success case, so two dispatchers stamping in parallel both end up
+	// with the label present) and applies the pair in one request, so the stamp can never land
+	// half-applied on a forge that writes the set atomically.
+	add := make([]deskkit.LabelSpec, 0, len(labels))
 	for _, l := range labels {
-		// Label provisioning is idempotent and an already-exists error is the success
-		// case: two dispatchers stamping in parallel must both end up with the label
-		// present, not one of them failing.
-		_ = runCmd("", "gh", "label", "create", l, "-R", repo, "--force")
-		if r := runCmd("", "gh", "pr", "edit", fmt.Sprint(o.pr), "-R", repo, "--add-label", l); r.err != nil {
-			return "", deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: could not apply %s to %s#%d (%s) — an INCOMPLETE stamp (one label of two) reads "+
-					"as indeterminate, which is worse than no stamp at all.",
-				stepModelStamp, l, repo, o.pr, r.run.Said()), r.err)
-		}
+		add = append(add, deskkit.LabelSpec{Name: l, Color: stampLabelColorHex, Description: stampLabelDescription})
+	}
+	if _, aerr := fg.ApplyLabels(fr, o.pr, deskkit.LabelChange{
+		Target: deskkit.TargetChange,
+		Add:    add,
+	}); aerr != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: could not apply %s to %s#%d through the %s backend (%s) — an INCOMPLETE or absent "+
+				"stamp reads as indeterminate, and one half of a stamp is worse than no stamp at all.",
+			stepModelStamp, strings.Join(labels, " + "), repo, o.pr, forge, firstLine(aerr.Error())), aerr)
 	}
 	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
 	// record of why; the removal is half the repair and belongs in the step report next to
@@ -1115,13 +1158,39 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
 			"present label is a no-op)", strings.Join(stale, " + "))
 	}
-	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)%s",
-		strings.Join(labels, " + "), stampRole, tokenPathForMessage(tokPath), restamped), nil
+	return fmt.Sprintf("OK: applied %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
+		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
+}
+
+// labelsPresent reports whether every wanted label is already on the change, by the same
+// case-insensitive comparison the stamp reader uses for label names.
+func labelsPresent(present, want []string) bool {
+	for _, w := range want {
+		found := false
+		for _, p := range present {
+			if strings.EqualFold(strings.TrimSpace(p), strings.TrimSpace(w)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// forgeRepoOf splits an owner/name slug into the coordinate the Forge seam addresses.
+func forgeRepoOf(repo string) (deskkit.ForgeRepo, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return deskkit.ForgeRepo{}, fmt.Errorf("repo %q does not split into owner/name", repo)
+	}
+	return deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 }
 
 // applyQueueLabelFn applies the review-lane queue label to a picked-up change. It is a SEAM
-// (like mintTokenFn) so a full-run dispatch test drives the step without real forge
-// credentials or network. The default resolves the forge under the reviewer role and calls
+// so a full-run dispatch test drives the step without real forge credentials or network. The default resolves the forge under the reviewer role and calls
 // the forge's idempotent label ensure+apply — the SAME forge-neutral path deskflip's
 // ensureLabelSwap uses, so GitHub and GitLab are labelled by one code path.
 var applyQueueLabelFn = applyQueueLabelReal
@@ -1133,11 +1202,10 @@ var applyQueueLabelFn = applyQueueLabelReal
 // the resolved forge kind for the step report. Credential custody (GitHub App token / GitLab
 // PAT) is resolved inside ResolveForge; this never touches the deskpost verdict-write path.
 func applyQueueLabelReal(repo string, pr int) (added []string, forge string, err error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok || owner == "" || name == "" {
-		return nil, "", fmt.Errorf("repo %q does not split into owner/name", repo)
+	fr, ferr := forgeRepoOf(repo)
+	if ferr != nil {
+		return nil, "", ferr
 	}
-	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
 	fg, res, rerr := deskkit.ResolveForge(fr, deskkit.ReviewDispatcherRole)
 	if rerr != nil {
 		return nil, "", rerr
@@ -1211,50 +1279,9 @@ func stampRoleForKit(kit string) string {
 	return deskkit.DispatcherRole
 }
 
-// parseLabelNames reads the `gh api --jq '.[].name'` output of the PR's labels — one name
-// per line, blank lines ignored. An EMPTY output is a PR with no labels, which is a real
-// answer, not a failure: the caller has already treated a failed READ as unverifiable.
-func parseLabelNames(out string) []string {
-	var names []string
-	for _, ln := range strings.Split(out, "\n") {
-		if s := strings.TrimSpace(ln); s != "" {
-			names = append(names, s)
-		}
-	}
-	return names
-}
-
-// parseLabelEventLines reads the TSV label-event stream (`event\tlabel\tactor` per line) the
-// timeline --jq emits, IN ORDER — the order is load-bearing, because the standing applier of
-// a label is decided by which of its events came last. A line missing a field is skipped
-// rather than guessed: a half-read event would attribute a label to the wrong login, and the
-// reader treats a label it cannot attribute as could-not-check, which is the safe answer.
-func parseLabelEventLines(out string) []deskkit.LabelEvent {
-	var events []deskkit.LabelEvent
-	for _, ln := range strings.Split(out, "\n") {
-		if strings.TrimSpace(ln) == "" {
-			continue
-		}
-		f := strings.Split(ln, "\t")
-		if len(f) < 3 || strings.TrimSpace(f[1]) == "" {
-			continue
-		}
-		kind := strings.TrimSpace(f[0])
-		if kind != "labeled" && kind != "unlabeled" {
-			continue
-		}
-		events = append(events, deskkit.LabelEvent{
-			Name:      strings.TrimSpace(f[1]),
-			AppliedBy: strings.TrimSpace(f[2]),
-			Removed:   kind == "unlabeled",
-		})
-	}
-	return events
-}
-
 // tokenPathForMessage renders the token file path for a step report or refusal. The PATH is
 // what an operator needs and is safe to print; the token VALUE never is, and never reaches
-// a message from anywhere in this verb.
+// a message from anywhere in this verb. The claim step (resolveClaimAuth) is its caller.
 func tokenPathForMessage(path string) string {
 	if strings.TrimSpace(path) == "" {
 		return "the minter named no token path"

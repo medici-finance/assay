@@ -17,6 +17,16 @@ func stubMergedClosedBranches(t *testing.T, dead map[string]bool, err error) {
 	t.Cleanup(func() { listMergedClosedBranches = prev })
 }
 
+// stubMergedClosedBranchesGitLab is the GitLab twin of stubMergedClosedBranches:
+// it substitutes the merge-request-state reader so the GitLab arm of the decay is
+// exercised with no network call (#1111).
+func stubMergedClosedBranchesGitLab(t *testing.T, dead map[string]bool, err error) {
+	t.Helper()
+	prev := listMergedClosedBranchesGitLab
+	listMergedClosedBranchesGitLab = func(string) (map[string]bool, error) { return dead, err }
+	t.Cleanup(func() { listMergedClosedBranchesGitLab = prev })
+}
+
 // TestDecayDeadClaimsDropsMergedAndClosed is the unit-level property: a branch
 // whose PR merged or closed is a corpse and must be dropped before it becomes a
 // claim; a branch with an OPEN PR — or no PR at all (a worker that pushed but has
@@ -34,10 +44,13 @@ func TestDecayDeadClaimsDropsMergedAndClosed(t *testing.T) {
 		"fix/issue-loop-03-closed": true,
 	}, nil)
 
-	got := decayDeadClaims("/repo", branches)
+	got, reason := decayDeadClaims("/repo", branches)
 	want := []string{"main", "fix/issue-loop-01-live", "fix/issue-loop-04-nopr"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("decayDeadClaims = %v, want %v", got, want)
+	}
+	if reason != "" {
+		t.Errorf("a decay that RAN must report no could-not-check reason; got %q", reason)
 	}
 }
 
@@ -50,12 +63,16 @@ func TestDecayDeadClaimsFailsToTheSuperset(t *testing.T) {
 	stubMergedClosedBranches(t, nil, errors.New("gh: not authenticated"))
 
 	var got []string
-	stderr := captureStderr(t, func() { got = decayDeadClaims("/repo", branches) })
+	var reason string
+	stderr := captureStderr(t, func() { got, reason = decayDeadClaims("/repo", branches) })
 	if !reflect.DeepEqual(got, branches) {
 		t.Fatalf("failed decay dropped branches: got %v, want the full set %v", got, branches)
 	}
-	if !strings.Contains(stderr, "dead-claim decay unavailable") {
-		t.Errorf("a failed decay must announce itself on stderr; got:\n%s", stderr)
+	if !strings.Contains(stderr, "could-not-check: claims not decayed") {
+		t.Errorf("a failed decay must announce itself on stderr as a could-not-check; got:\n%s", stderr)
+	}
+	if !strings.Contains(reason, "gh: not authenticated") {
+		t.Errorf("a failed decay must hand back the reason so the board can wear it; got %q", reason)
 	}
 }
 

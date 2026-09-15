@@ -971,6 +971,74 @@ worktree_via_deskwt(){
   printf '%s\n' "$out"
 }
 
+# CELLCTL_GENERATED_FILES: the single-writer files main's CI regenerates (the board and the
+# findings view). On a boot merge they are taken from origin/main outright — never hand-merged,
+# never left conflicted — because a role worktree's copy is at best a local regen main has already
+# superseded. Space-separated repo-relative paths; overridable for a repo that generates others.
+CELLCTL_GENERATED_FILES="${CELLCTL_GENERATED_FILES:-STATUS.md docs/streams/FINDINGS.md}"
+is_generated_file(){ local g; for g in $CELLCTL_GENERATED_FILES; do [[ "$1" == "$g" ]] && return 0; done; return 1; }
+
+# merge_role_worktree <wt> <sha>: bring an EXISTING role worktree up to the fetched origin/main
+# (#1157). A real merge — a fast-forward when the tree carries nothing of its own, a two-parent
+# merge commit when it does — never a rebase (force-push is denied, and a rebase rewrites what a
+# reviewer saw), and never `--ff-only`-then-give-up: the old arm printed one NOTICE and booted
+# the desk on a tree that could be days behind main. A role worktree that ever carried a local
+# commit (its own merge of main, a discarded regen) can never fast-forward again, so every later
+# boot was stale and silent — the desk's first board read then said STALE:drift and its loop
+# refused every flip, with a remediation pointing at the shim, the side that was current.
+#
+# On a conflict the generated single-writer files (CELLCTL_GENERATED_FILES) are taken from main;
+# ANY other conflict STOPS the boot — merge aborted, tree left exactly as it was, the paths named,
+# nothing launched. A desk never starts on a half-merged or behind-main tree.
+merge_role_worktree(){
+  local wt="$1" sha="$2"
+  if git -C "$wt" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+    echo "[worktree] $wt already contains origin/main ${sha:0:8}"
+    return 0
+  fi
+  local before; before="$(git -C "$wt" rev-parse HEAD)"
+  local merge_out
+  if merge_out="$(git -C "$wt" merge --no-edit -m "merge origin/main ${sha:0:8} at cellctl desk boot" "$sha" 2>&1)"; then
+    if [[ "$(git -C "$wt" rev-parse HEAD)" == "$sha" ]]; then
+      echo "[worktree] fast-forwarded $wt to origin/main ${sha:0:8}"
+    else
+      echo "[worktree] merged origin/main ${sha:0:8} into $wt (two-parent merge; local commits kept)"
+    fi
+    return 0
+  fi
+  local conflicts; conflicts="$(git -C "$wt" diff --name-only --diff-filter=U 2>/dev/null || true)"
+  if [[ -z "$conflicts" ]]; then
+    # Not a conflict: git refused the merge outright (a dirty tree the merge would overwrite, no
+    # commit identity, …). Nothing is half-done, but the tree IS behind main — STOP, quoting git,
+    # rather than launching a desk on it.
+    git -C "$wt" merge --abort >/dev/null 2>&1 || true
+    die "desk: $wt is behind origin/main ${sha:0:8} and could not merge it — $(printf '%s' "$merge_out" | tail -n 3 | tr '\n' ' ')— boot STOPPED (nothing launched). Fix that, then re-run; or by hand: git -C $wt merge $sha (merge, never rebase)"
+  fi
+  local p remaining=()
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    if is_generated_file "$p"; then
+      # Main's side: `--theirs` in a merge is the branch being merged in. A path main deleted has
+      # no "theirs" to check out — dropping it is main's side too.
+      if git -C "$wt" checkout --theirs -- "$p" 2>/dev/null; then
+        git -C "$wt" add -- "$p"
+      else
+        git -C "$wt" rm -q --cached -- "$p" >/dev/null 2>&1 || true; rm -f "$wt/$p"
+      fi
+      echo "[worktree] $p taken from origin/main (generated, single-writer — never hand-merged)"
+    else
+      remaining+=("$p")
+    fi
+  done <<<"$conflicts"
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    git -C "$wt" merge --abort >/dev/null 2>&1 || git -C "$wt" reset -q --hard "$before"
+    die "desk: $wt conflicts with origin/main ${sha:0:8} on: ${remaining[*]} — boot STOPPED (merge aborted, tree left at ${before:0:8}, nothing launched). Resolve by hand: git -C $wt merge $sha (merge, never rebase; take main's side for generated files), then re-run cellctl desk"
+  fi
+  git -C "$wt" commit -q --no-edit >/dev/null 2>&1 \
+    || die "desk: $wt could not commit the boot merge of origin/main ${sha:0:8} after taking the generated files from main — boot STOPPED (nothing launched). Inspect: git -C $wt status"
+  echo "[worktree] merged origin/main ${sha:0:8} into $wt (two-parent merge; generated files taken from main)"
+}
+
 # ---------------------------------------------------------------- codex harness
 # codex_multi_agent_on: true when `[features] multi_agent = true` resolves in codex's effective
 # config. Probed via a `codex config get`-style verb where the installed build advertises one
@@ -1194,12 +1262,15 @@ cmd_desk(){
   rmdir "$lock" 2>/dev/null || true
   mkdir -p "$CELL_DIR/worktrees"
   if [[ -e "$wt/.git" ]]; then
-    git -C "$wt" merge --ff-only "$sha" >/dev/null 2>&1 || echo "NOTICE: $wt did not fast-forward (local commits?) — left as is" >&2
+    # An existing tree is MERGED up to the fetched main, or the boot stops — never left behind
+    # with a notice (#1157). deskboot's own `worktree-current` step re-proves this inside the
+    # session; the two agree by construction because both read the same FETCH_HEAD.
+    merge_role_worktree "$wt" "$sha"
   else
     local dwt
     if dwt="$(worktree_via_deskwt "$role")"; then
       # deskwt named and created the tree; the cell's fixed path points at it so the next boot
-      # finds it and fast-forwards it as usual.
+      # finds it and merges it up to main as usual.
       ln -sfn "$dwt" "$wt"
       echo "[worktree] created by deskwt role-init: $dwt (linked from $wt)"
     else
