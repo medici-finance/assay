@@ -595,8 +595,12 @@ func cmdNew(args []string) (err error) {
 	// Apply the resolved labels. Every label in applyLabels was confirmed to EXIST above (user
 	// labels refuse if missing; stamp/to labels resolve to "" if missing), so ApplyLabels'
 	// ensure step no-ops (the create returns already-exists) and NO label is minted.
+	// The target is the ISSUE just filed, stated explicitly: on GitLab the same number also
+	// names an unrelated merge request, and a write that left the kind implicit stamped that
+	// MR and left the issue unaddressed (no to:<role>, no dedupe key).
 	if len(applyLabels) > 0 {
-		if _, lerr := fg.ApplyLabels(fr, ref.Number, deskkit.LabelChange{Add: applyLabels}); lerr != nil {
+		change := deskkit.LabelChange{Target: deskkit.TargetIssue, Add: applyLabels}
+		if _, lerr := fg.ApplyLabels(fr, ref.Number, change); lerr != nil {
 			return deskkit.Unverifiable("apply labels to the filed issue failed", lerr)
 		}
 	}

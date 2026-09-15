@@ -1158,6 +1158,7 @@ func ensureLabelSwap(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, pr prIn
 		return nil // already swapped
 	}
 	change := deskkit.LabelChange{
+		Target: deskkit.TargetChange,
 		Add: []deskkit.LabelSpec{{
 			Name:        labelAfterFlip,
 			Color:       queueLabelColor,

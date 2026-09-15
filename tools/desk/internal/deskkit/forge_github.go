@@ -1198,7 +1198,16 @@ func sortedKeys(set map[string]bool) []string {
 // Every step degrades in the direction the operation is idempotent in: a create that comes
 // back 422 (already exists) is the SUCCESS case for an ensure, and a removal that comes back
 // 404 (already absent) is the success case for a removal. Anything else propagates.
+//
+// change.Target is required but does not change the requests here: GitHub numbers issues and
+// pull requests in ONE sequence and labels both through `/issues/{n}/labels`, so an issue and
+// a change map to the same calls. The unset refusal still stands on this backend so a caller
+// that forgot the target is caught by the forge most contributors run, not only on GitLab
+// where the two kinds are separate sequences.
 func (g *GitHubForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
+	if err := change.requireTarget(); err != nil {
+		return nil, err
+	}
 	out := &LabelOutcome{}
 	adding := map[string]bool{}
 	for _, l := range change.Add {
