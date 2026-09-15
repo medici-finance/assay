@@ -421,19 +421,31 @@ const (
 	gitlabMaxIssuePage = 25
 )
 
-// GitLabRollupUnmapped is the Typename this backend stamps on the single synthetic
-// RollupNode it attaches to every open change ListOpenChanges returns. The GitLab bulk
-// board read does NOT map the per-change CI rollup — GitHub's statusCheckRollup is the
-// CheckRun ↔ StatusContext union, GitLab's CI is pipelines-and-jobs, which ChecksAtHead
-// maps as a DIFFERENT per-change shape at the cost of extra reads the bulk sweep exists to
-// avoid. Rather than approximate that union here (a half-mapped rollup feeding the board's
-// MERGE-NOW verdict is the harm the original refusal avoided) OR leave the rollup EMPTY
-// (which a CI-less repo's classifier reads as vacuously green and could FLIP a draft on),
-// each change carries ONE rollup entry that decodes to NEITHER shape — Status and State both
-// empty — so cmd/deskboard's ciState reducer counts it as an UNINTERPRETABLE entry
-// (ciUnknown). An uninterpretable rollup blocks the CI-green verdict, and therefore MERGE-NOW
-// and FLIP: the board reads this change's CI as could-not-check, never as green, never as
-// merely pending. The Typename is descriptive so a log or a golden fixture names the gap.
+// GitLabPipelineContext is the status-context name the head PIPELINE is published under, and
+// the name RequiredStatusChecks returns when the project gates the merge on it.
+//
+// It is ONE constant on purpose. GitLab's pipeline gate
+// (`only_allow_merge_if_pipeline_succeeds`) names no per-check context, so the neutral rollup
+// needs a name for it; the gate's required set and the rollup entry both spell it from here,
+// which is what makes a required verdict one the rollup can actually satisfy. It is GitLab's
+// own noun for the object it maps — no GitHub-shaped status check is minted, and no name is
+// expected that this backend does not itself serve (issue #1125).
+const GitLabPipelineContext = "pipeline"
+
+// GitLabRollupUnmapped is the Typename this backend stamps on the synthetic RollupNode it
+// attaches to an open change whose head has NO pipeline to read.
+//
+// Where GitLab ran a pipeline for the change's head SHA, ListOpenChanges maps it for real —
+// one status context named GitLabPipelineContext carrying the pipeline's state, through the
+// same gitlabPipelineStatusAt mapping ChecksAtHead uses, so the board and the flip gate read
+// one pipeline one way. Where it did NOT (no pipeline at that head, or the pipeline read did
+// not answer), the change carries instead ONE rollup entry that decodes to NEITHER shape —
+// Status and State both empty — so cmd/deskboard's ciState reducer counts it as an
+// UNINTERPRETABLE entry (ciUnknown). That is deliberate and fail-closed: an absent pipeline is
+// could-not-check, never a pass, and leaving the rollup EMPTY instead would read as vacuously
+// green on a CI-less repo and could FLIP a draft on it. An uninterpretable rollup blocks the
+// CI-green verdict, and therefore MERGE-NOW and FLIP. The Typename is descriptive so a log or
+// a golden fixture names the gap.
 const GitLabRollupUnmapped = "GitLabRollupUnmapped"
 
 // gitlabTotal reads the forge's OWN asserted total for a listing.
@@ -759,9 +771,15 @@ func (g *GitLabForge) ListLabels(repo ForgeRepo) ([]string, error) {
 //     detailed_merge_status is a different, dozen-value vocabulary with no 1:1 mapping onto
 //     that enum. An empty value is the board's OWN could-not-check (mergeVerdictUnknown), so
 //     it withholds MERGE-NOW rather than acting on a guessed merge state.
-//   - The CI rollup is a single could-not-check entry (GitLabRollupUnmapped, see its doc):
-//     the board reads it as an uninterpretable rollup (ciUnknown), which blocks CI-green and
-//     therefore MERGE-NOW and FLIP.
+//   - The CI rollup is the change's HEAD PIPELINE, read by SHA and mapped through the same
+//     gitlabPipelineStatusAt the per-change ChecksAtHead uses — one pipeline, one mapping, so
+//     the board and deskflip's checks-green gate cannot read one MR's CI two ways (#1125).
+//     Where no pipeline ran at that head, or the pipeline read did not answer, the change
+//     carries a single could-not-check entry instead (GitLabRollupUnmapped, see its doc): the
+//     board reads it as an uninterpretable rollup (ciUnknown), which blocks CI-green and
+//     therefore MERGE-NOW and FLIP. The mapping costs ONE bounded extra read per open change;
+//     the alternative measured in the field was a permanently CI-UNKNOWN row on every GitLab
+//     MR, green pipeline or not.
 //
 // This restores the review loop on GitLab while keeping the no-approximation rule the earlier
 // refusal protected: nothing is guessed, the two unmappable fields are named unreadable, and
@@ -791,7 +809,7 @@ func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 			if mr == nil {
 				continue
 			}
-			changes = append(changes, gitlabOpenChange(mr))
+			changes = append(changes, gitlabOpenChange(mr, g.headPipelineAt(cl, repo, mr.SHA)))
 			if len(changes) >= gitlabOpenChangesCap {
 				break
 			}
@@ -807,10 +825,39 @@ func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	}, nil
 }
 
-// gitlabOpenChange maps one BasicMergeRequest to the board's OpenChange in the degraded shape
-// ListOpenChanges documents: real metadata, MergeStateStatus and LastEditedAt left
-// could-not-check (empty), and a single could-not-check CI rollup entry.
-func gitlabOpenChange(mr *gitlab.BasicMergeRequest) OpenChange {
+// headPipelineAt returns the pipeline GitLab ran for EXACTLY sha, or nil when there is none to
+// read. It is the one extra read the board sweep buys per open change, and it is addressed BY
+// SHA (`GET /projects/:id/pipelines?sha=…`, newest first, one entry) rather than by branch, so
+// a pipeline from an older head can never be mapped onto this one.
+//
+// A failed read answers nil, not an error, and the caller renders that change's CI as
+// could-not-check (GitLabRollupUnmapped) while every OTHER change on the board stays readable.
+// Failing the whole sweep on one change's pipeline read would cost the board rows the read had
+// nothing to say about; a per-change could-not-check states exactly what was not established.
+// Nothing here can turn an unread pipeline into a pass.
+func (g *GitLabForge) headPipelineAt(cl *gitlab.Client, repo ForgeRepo, sha string) *gitlab.PipelineInfo {
+	if strings.TrimSpace(sha) == "" {
+		return nil
+	}
+	list, _, err := cl.Pipelines.ListProjectPipelines(repo.Slug(), &gitlab.ListProjectPipelinesOptions{
+		SHA:         gitlab.Ptr(sha),
+		ListOptions: gitlab.ListOptions{PerPage: 1},
+	})
+	if err != nil || len(list) == 0 {
+		return nil
+	}
+	return list[0]
+}
+
+// gitlabOpenChange maps one BasicMergeRequest to the board's OpenChange: real metadata,
+// MergeStateStatus and LastEditedAt left could-not-check (empty), and the head pipeline mapped
+// into the CI rollup when one ran at the change's head SHA.
+//
+// The pipeline is passed in rather than read here so this mapper stays pure. When it is nil —
+// no pipeline at that head, or a pipeline read that did not answer — the change carries the
+// single could-not-check rollup entry instead (GitLabRollupUnmapped), which the board reads as
+// CI-not-established rather than as green.
+func gitlabOpenChange(mr *gitlab.BasicMergeRequest, headPipeline *gitlab.PipelineInfo) OpenChange {
 	// GitLab marks a draft by a title prefix; strip it so Title matches GitHub's (whose
 	// isDraft is a separate flag and whose title carries no prefix), and OR the strip result
 	// into Draft as a belt-and-braces backstop for mr.Draft.
@@ -826,14 +873,33 @@ func gitlabOpenChange(mr *gitlab.BasicMergeRequest) OpenChange {
 		BaseRef: mr.TargetBranch,
 		Labels:  append([]string(nil), mr.Labels...),
 		// MergeStateStatus and LastEditedAt: left could-not-check (empty) — see ListOpenChanges.
-		// Rollup: one could-not-check entry the board reads as ciUnknown — see GitLabRollupUnmapped.
-		Rollup: []RollupNode{{Typename: GitLabRollupUnmapped}},
+		// Rollup: the head pipeline when one ran at this head, else one could-not-check entry
+		// the board reads as ciUnknown — see GitLabRollupUnmapped.
+		Rollup: gitlabRollupFor(headPipeline, mr.SHA),
 	}
 	oc.CreatedAt = gitlabTime(mr.CreatedAt)
 	if mr.Author != nil {
 		oc.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 	}
 	return oc
+}
+
+// gitlabRollupFor renders the board rollup for one change: the head pipeline as a StatusContext
+// node when gitlabPipelineStatusAt mapped one at this head, and otherwise the single
+// could-not-check entry. It reuses the SAME mapping ChecksAtHead publishes the pipeline
+// through, which is what keeps the board's CI verdict and the flip gate's reading of one
+// pipeline from diverging (issue #1125).
+func gitlabRollupFor(headPipeline *gitlab.PipelineInfo, sha string) []RollupNode {
+	sc, ok := gitlabPipelineStatusAt(headPipeline, sha)
+	if !ok {
+		return []RollupNode{{Typename: GitLabRollupUnmapped}}
+	}
+	return []RollupNode{{
+		Typename:  "StatusContext",
+		Context:   sc.Context,
+		State:     sc.State,
+		CreatedAt: sc.CreatedAt,
+	}}
 }
 
 // ListOpenIssues reads a GitLab project's OPEN issues as the issue lane's classification
@@ -1504,6 +1570,13 @@ func gitlabDiffStatus(d *gitlab.MergeRequestDiff) string {
 //     check-run; a GitLab required check is a named pipeline job. Enumerating
 //     jobs is what makes "is check X green at this head" answerable at all —
 //     the pipeline's own status is a single rollup with no names in it.
+//   - Statuses  ← ALSO the head PIPELINE itself, as one status context named
+//     GitLabPipelineContext. This is the entry RequiredStatusChecks names when the
+//     project gates the merge on the pipeline: the gate and the rollup read the
+//     SAME pipeline through the same mapping, so a required verdict that the gate
+//     demands is a verdict the rollup actually carries. Without it the required
+//     context could never match any entry and every green MR pipeline read as a
+//     required check that "did not report on this head at all" (issue #1125).
 //   - CombinedState ← the commit's build status, which IS GitLab's rollup over both.
 //
 // External status checks (Ultimate) are deliberately NOT read here: that endpoint is
@@ -1558,7 +1631,17 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	out.StatusTotalCount = gitlabTotal(lastResp, len(out.Statuses))
 
 	if commit.LastPipeline == nil {
+		// No pipeline ran for this head. Nothing is appended and nothing is invented: the
+		// caller sees a rollup with no GitLabPipelineContext entry, which against a
+		// pipeline-gated project is could-not-check — never a pass.
 		return out, nil
+	}
+	if pipe, ok := gitlabPipelineStatusAt(commit.LastPipeline, sha); ok {
+		out.Statuses = append(out.Statuses, pipe)
+		// The forge's own asserted total is raised by the one entry mapped from the pipeline,
+		// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
+		// rather than reading the appended entry as an over-serve.
+		out.StatusTotalCount++
 	}
 	jobsPath := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", proj, commit.LastPipeline.ID)
 	lastResp = nil
@@ -1576,6 +1659,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 				continue
 			}
 			status, conclusion := gitlabJobStatus(j.Status)
+			conclusion = gitlabAllowedFailure(conclusion, j.AllowFailure)
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
 				// The JOB id is GitLab's per-execution identifier, the same kind of fact
 				// GitHub's check-run id carries: a retried job gets a new one, so a
@@ -1596,6 +1680,66 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	}
 	out.CheckRunsTotalCount = gitlabTotal(lastResp, len(out.CheckRuns))
 	return out, nil
+}
+
+// gitlabPipelineStatusAt maps a head PIPELINE into the neutral rollup's status-context shape —
+// the ONE mapping every instrument reads GitLab CI through.
+//
+// It is the single place the pipeline becomes a rollup entry, and both consumers go through
+// it: ChecksAtHead (deskflip's checks-green gate and its reviewer-approved exemption) and
+// ListOpenChanges (deskboard's board read, and therefore reviewloop's FLIP-VERB). Two callers,
+// one mapping, so the two instruments cannot classify one pipeline differently — the exact
+// divergence issue #1125 reported, where the flip gate and the board read the same successful
+// MR pipeline as "required check absent" and "CI-UNKNOWN" respectively.
+//
+// The name is GitLabPipelineContext because GitLab publishes no per-context name for the
+// pipeline gate: `only_allow_merge_if_pipeline_succeeds` gates on THE PIPELINE, so the
+// required set and the rollup entry are spelled from the same constant and cannot drift apart.
+//
+// SHA RECONCILE, and why it fails closed. GitLab's `last_pipeline` is the last pipeline
+// ATTACHED to the commit; a pipeline stamped with a different SHA is not a verdict on this
+// head, so it is NOT mapped and the caller sees the entry as absent — could-not-check, never a
+// pass. A pipeline the forge served with no SHA at all is mapped (there is nothing to
+// contradict), since the read was addressed by this SHA in the first place.
+func gitlabPipelineStatusAt(p *gitlab.PipelineInfo, sha string) (StatusContext, bool) {
+	if p == nil {
+		return StatusContext{}, false
+	}
+	if p.SHA != "" && sha != "" && !strings.EqualFold(strings.TrimSpace(p.SHA), strings.TrimSpace(sha)) {
+		return StatusContext{}, false
+	}
+	return StatusContext{
+		State:     gitlabBuildState(p.Status),
+		Context:   GitLabPipelineContext,
+		CreatedAt: gitlabTime(p.CreatedAt),
+	}, true
+}
+
+// gitlabAllowedFailure folds a job's `allow_failure: true` into its conclusion.
+//
+// A GitLab job declared `allow_failure: true` does not block the merge: the PIPELINE it
+// belongs to still reports `success` when such a job fails. A reader that kept the job's raw
+// `failure` would therefore redden a head whose pipeline — the thing the project actually
+// gates on — is green, and the two entries mapped from ONE pipeline would contradict each
+// other inside a single rollup.
+//
+// NEUTRAL is the honest neutral-vocabulary answer rather than a green one: GitHub uses it for
+// a check that reported and does not block, which is exactly what an allowed failure is. Every
+// reducer in this tree already treats NEUTRAL as non-blocking-and-not-a-pass, so the fold needs
+// no per-consumer cooperation — the property that keeps the instruments in agreement.
+//
+// A job whose conclusion is not a failure is returned untouched: `allow_failure` says what a
+// failure MEANS, never that a pending job has finished or a green one did not run.
+func gitlabAllowedFailure(conclusion string, allowFailure bool) string {
+	if !allowFailure {
+		return conclusion
+	}
+	switch strings.ToLower(strings.TrimSpace(conclusion)) {
+	case "failure", "cancelled", "canceled":
+		return "neutral"
+	default:
+		return conclusion
+	}
 }
 
 // RequiredStatusChecks answers, for GitLab, whether a merge on the branch is gated on a
@@ -1631,9 +1775,12 @@ func (g *GitLabForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 	}
 	if p.OnlyAllowMergeIfPipelineSucceeds {
 		// GitLab names no individual context here — the gate is "the pipeline must succeed" —
-		// so a single synthetic context reports that a check IS required without inventing a
-		// name the forge did not give.
-		return []string{"pipeline"}, nil
+		// so ONE context stands for it, spelled from the same GitLabPipelineContext constant
+		// that ChecksAtHead publishes the head pipeline under. Requiring a name this backend
+		// also SERVES is what makes the gate answerable: before #1125 the required name was
+		// never mapped into any rollup, so a green MR pipeline read as a required check that
+		// never reported, and every flip on a GitLab MR refused could-not-check.
+		return []string{GitLabPipelineContext}, nil
 	}
 	return nil, nil
 }
