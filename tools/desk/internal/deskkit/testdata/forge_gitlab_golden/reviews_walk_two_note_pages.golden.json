@@ -20,12 +20,12 @@
     {
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/notes",
-      "query": "page=1\u0026per_page=100"
+      "query": "order_by=created_at\u0026page=1\u0026per_page=100\u0026sort=desc"
     },
     {
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/notes",
-      "query": "page=2\u0026per_page=100"
+      "query": "order_by=created_at\u0026page=2\u0026per_page=100\u0026sort=desc"
     }
   ],
   "result": 3
