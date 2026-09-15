@@ -91,8 +91,9 @@ files:
 - `tools/desk/cmd/deskflip/flip.go` — the GitLab `reviewer-approved` and `mergeable` conditions.
 - `docs/adopting-assay-gitlab.md` — the by-hand table row and the §0.1 paragraph naming the gate.
 - `docs/streams/forge-gitlab/README.md` — the status row.
-- `changelog/forge-gitlab-17-resolved-threads-gate.md` (this authoring change carries it; the
-  implementation change adds its own).
+- `CHANGELOG.md`, the v1.0.9 section — the fragment (changelog/forge-gitlab-17-resolved-threads-gate.md)
+  this authoring change carried was consumed by the v1.0.9 changelog roll, so the fragment file no
+  longer exists and the section is its record; the implementation change adds its own fragment.
 
 single-point-of-failure: the project setting `only_allow_merge_if_all_discussions_are_resolved`
 is the ONE server-side control — a Maintainer who flips it off, or a provisioner that never set
