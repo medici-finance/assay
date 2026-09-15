@@ -589,6 +589,13 @@ jobs:
 //     path (owner-only permissions, the mode the loader enforces) before statusgen
 //     runs, and print a NOTICE naming the variable when it is unset. A token never
 //     belongs in it; a secret-shaped key refuses.
+//   - The dead-claim decay reads merge-request state over REST v4 (#1111). Every
+//     GitLab job already carries CI_API_V4_URL, CI_PROJECT_ID and CI_JOB_TOKEN, so
+//     the read needs no wiring in the common case; where an instance does not let
+//     the job token list merge requests, STATUSGEN_GITLAB_TOKEN (read_api) is the
+//     override. Either way an unreadable listing is a could-not-check the board
+//     itself wears, never a silent pass — the job is not failed over it, because
+//     an undecayed claim set holds work back rather than double-dispatching it.
 const initGitlabCI = `# statusgen CI — the two-half single-writer shape on GitLab, mirroring the GitHub
 # workflow (medici-finance/assay docs/adopting-assay.md, section: add-statusgen-ci).
 # The merge-request half runs --lint only; the default-branch half regenerates
@@ -629,6 +636,20 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 # token, key, or password: it is NOT masked and NOT protected, so the merge-request
 # --lint half receives it too, and a secret-shaped key makes the job refuse. See
 # docs/adopting-assay-gitlab.md, section "Trust roster for CI".
+#
+# DEAD-CLAIM DECAY — the regen job also decays dead claims: a branch whose merge
+# request has already merged or closed is dropped before it can consume its
+# stream's dispatch cap. That read is the project's merge-request listing over the
+# v4 API, and it uses the predefined CI_API_V4_URL, CI_PROJECT_ID and CI_JOB_TOKEN
+# every job already has — nothing to configure. If your instance does not expose
+# the merge_requests endpoint to the job token, set a project access token with the
+# read_api scope as the CI/CD variable STATUSGEN_GITLAB_TOKEN and it is used
+# instead. When the listing cannot be read, the run prints
+# "could-not-check: claims not decayed" and the generated board carries the same
+# line: the job still succeeds, because an undecayed claim set holds briefs back
+# rather than handing the same brief to two sessions. Read it as work possibly
+# hidden, never as a clean board. See docs/adopting-assay-gitlab.md, section
+# "Dead-claim decay credential".
 #
 # RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
 # neither installs nor configures one for you. Unlike GitHub's hosted
