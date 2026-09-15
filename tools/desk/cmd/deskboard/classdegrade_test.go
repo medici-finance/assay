@@ -227,3 +227,126 @@ func TestDegradedRowCarriesItsReason(t *testing.T) {
 			"to the wrong forge surface)", out.row.Note)
 	}
 }
+
+// TestRiskClassificationFailsClosedOnReadFailure closes the HIGHEST-consequence gap this
+// file's own tests left open: the changed-files read feeding RISK CLASSIFICATION
+// (board.go's `rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail==0 &&
+// pending==0` block). Before this test, `ListChangedFiles` had no independent error hook —
+// only `GetPullRequest` (getPR) could be forced to fail — so nothing in this package could
+// fail JUST the changed-files half of fetchChangedFiles without also tripping the
+// `!rs.atHead` benign-merge precondition and skipping the risk block entirely. The
+// `forgeHookSet.changedFiles` hook (deskboard_test.go) closes that: this test fails
+// ListChangedFiles alone, with atHead genuinely true, so the risk-classification fetch is
+// the one exercised. A risk-classification read failure must fail CLOSED to risk-classed
+// (board.go: `rcErr != nil -> complete = false -> riskClassed = true`) and the row must
+// never reach the un-gated MERGE-NOW/FLIP outcomes — losing the human security-review gate
+// on a mere read failure would be a silent risk-classification bypass.
+func TestRiskClassificationFailsClosedOnReadFailure(t *testing.T) {
+	installBoardRoster(t, classDegradeRoster)
+	head := strings.Repeat("4", 40)
+
+	p := greenRollupPR(70, head)
+	p.IsDraft = true // risk classification only runs for a still-draft PR
+
+	stubForgeHooks(t, forgeHookSet{
+		reviews: func(string, int) ([]deskkit.Review, error) {
+			return []deskkit.Review{{
+				Author: deskkit.Account{Login: "gl-reviewer", ID: 41987965},
+				State:  "APPROVED", CommitID: head,
+				Body: "Verdict: approve", SubmittedAt: "2026-09-14T16:00:00Z",
+			}}, nil
+		},
+		// GetPullRequest answers fine — only the changed-files half of the read fails,
+		// proving the new hook isolates the risk-classification call rather than riding
+		// along on an already-hookable GetPullRequest failure.
+		getPR: func(string, int) (*deskkit.PullRequest, error) {
+			return &deskkit.PullRequest{ChangedFiles: 1}, nil
+		},
+		changedFiles: func(string, int) ([]deskkit.ChangedFile, error) {
+			return nil, errors.New("simulated: cannot read changed files for risk classification")
+		},
+	})
+
+	out, err := classifyPR("example-org/tracker", p, false, nil, nil, nil, time.Now())
+	if err != nil {
+		t.Fatalf("classifyPR returned %v — a read failure on the risk-classification changed-files "+
+			"read must degrade THIS row (fail closed to risk-classed), never fail the whole sweep", err)
+	}
+	if out.row == nil {
+		t.Fatal("classifyPR produced no row — a degraded PR must still be classified, on the safe side")
+	}
+	if !out.row.RiskClassed {
+		t.Fatalf("RiskClassed = false — a changed-files read failure on the risk-classification call "+
+			"must fail CLOSED to risk-classed; reading false here is exactly the risk-classification "+
+			"bypass this test exists to catch (a risk-classed PR silently losing its human gate on a "+
+			"read failure)")
+	}
+	if out.row.Action == actMergeNow || out.row.Action == actFlip {
+		t.Fatalf("action = %s — a PR whose risk-classification read FAILED must never reach the "+
+			"un-gated MERGE-NOW/FLIP outcome; without a posted Security-Review: pass at head it must "+
+			"stay on the SECURITY-REVIEW-REQUIRED side", out.row.Action)
+	}
+	if out.row.Action != actSecReview {
+		t.Fatalf("action = %s, want %s — approved+green+draft+risk-classed with no security pass at "+
+			"head must read SECURITY-REVIEW-REQUIRED", out.row.Action, actSecReview)
+	}
+	if !strings.Contains(out.row.Note, "DEGRADED:") {
+		t.Errorf("row.Note = %q — must carry the could-not-check reason so an operator reading the "+
+			"board (not stderr) can see this row was affected", out.row.Note)
+	}
+}
+
+// TestNonCommitResolutionProbeFailsClosedToBlocked closes the second gap the review
+// identified: the label-timeline probe feeding non-commit-resolution re-review
+// (detectNonCommitResolution's error return, board.go ~2047-2054). Every pre-existing
+// `labelEvents` stub in this package (noncommit_reresolve_test.go) always returns a nil
+// error, so the `ncrErr != nil` degrade branch had no test anywhere. This drives a
+// genuinely BLOCKED-at-head PR (rs.blocking && rs.atHead && !rs.suspectNoOp, carrying a
+// `*:skip` resolution label so the label-timeline fetch is actually reached) through a
+// forced ListLabelEvents failure and asserts the row stays on the safe BLOCKED side —
+// never silently cleared to RE-REVIEW (which would falsely claim a post-review fix was
+// detected) and never a cleared/benign action.
+func TestNonCommitResolutionProbeFailsClosedToBlocked(t *testing.T) {
+	installBoardRoster(t, classDegradeRoster)
+	head := strings.Repeat("5", 40)
+
+	p := greenRollupPR(71, head)
+	p.Labels = []struct {
+		Name string `json:"name"`
+	}{{Name: "changelog:skip"}} // a resolution label present is what makes the label-timeline fetch fire
+
+	stubForgeHooks(t, forgeHookSet{
+		reviews: func(string, int) ([]deskkit.Review, error) {
+			return []deskkit.Review{{
+				Author: deskkit.Account{Login: "gl-reviewer", ID: 41987965},
+				State:  "CHANGES_REQUESTED", CommitID: head,
+				Body: "Verdict: request-changes", SubmittedAt: "2026-09-14T16:00:00Z",
+			}}, nil
+		},
+		labelEvents: func(string, int) ([]deskkit.LabelEvent, error) {
+			return nil, errors.New("simulated: cannot read label events")
+		},
+	})
+
+	out, err := classifyPR("example-org/tracker", p, false, nil, nil, nil, time.Now())
+	if err != nil {
+		t.Fatalf("classifyPR returned %v — a read failure on the non-commit-resolution label probe "+
+			"must degrade THIS row, never fail the whole sweep", err)
+	}
+	if out.row == nil {
+		t.Fatal("classifyPR produced no row — a degraded PR must still be classified, on the safe side")
+	}
+	if out.row.Action == actMergeNow || out.row.Action == actFlip || out.row.Action == actMergeCurr {
+		t.Fatalf("action = %s — a PR whose non-commit-resolution probe FAILED must never read as "+
+			"cleared/benign", out.row.Action)
+	}
+	if out.row.Action != actBlocked {
+		t.Fatalf("action = %s, want %s — a label-events read failure must leave the row on the safe "+
+			"BLOCKED side (the arm the source comments say it falls back to), never silently promoted "+
+			"to RE-REVIEW on a signal that could not actually be established", out.row.Action, actBlocked)
+	}
+	if !strings.Contains(out.row.Note, "DEGRADED:") {
+		t.Errorf("row.Note = %q — must carry the could-not-check reason so an operator reading the "+
+			"board (not stderr) can see this row was affected", out.row.Note)
+	}
+}
