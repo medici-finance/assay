@@ -28,6 +28,20 @@ var requireClaims bool
 type ClaimSource struct {
 	Known  bool   // true ONLY when the remote branch list was actually read
 	Reason string // why not, when !Known
+
+	// DecayReason records the SECOND thing that can go blind here, independently
+	// of the first: the branch list was read, but the change-state read that
+	// decays dead claims out of it was not. Empty when the decay ran.
+	//
+	// It is its own field because the two failures point in OPPOSITE directions
+	// and a reader must not confuse them. !Known means the claim set is a
+	// SUB-set (nothing was filtered) and the board is an unfiltered SUPERSET of
+	// dispatchable briefs — dangerous to dispatch from. DecayReason means the
+	// claim set is a SUPER-set (merged/closed corpses still count) and the board
+	// is a SUBSET — safe to dispatch from, but silently holding real backlog
+	// behind corpses, which is the silent-suppression class this generator
+	// exists to prevent. Both are could-not-check; neither is a pass.
+	DecayReason string
 }
 
 // ClaimView is the claim signal the Next-up capping reasons about: the
@@ -85,6 +99,39 @@ func (c ClaimSource) reason() string {
 	return "the remote branch list was never read"
 }
 
+// DecayNotice renders the stderr/--lint could-not-check line for a run whose
+// dead-claim decay could not look. Empty when the decay ran.
+//
+// It says "could-not-check" in its own words rather than wearing the same
+// NOTICE: prefix as ordinary advisories, because it is the third state of a
+// three-state instrument and must be distinguishable from both a clean run and a
+// found defect (docs/three-state-instrument-rule.md).
+func (c ClaimSource) DecayNotice() string {
+	r := strings.TrimSpace(c.DecayReason)
+	if r == "" {
+		return ""
+	}
+	return fmt.Sprintf("could-not-check: claims not decayed — %s. Branches whose PR/merge request has already merged or "+
+		"closed are still counted as claims, so the briefs they hold may be silently held back (HeldByStreamCap) and the "+
+		"Next-up rows below are a SUBSET, not the full dispatchable set", r)
+}
+
+// DecayBanner renders the in-board could-not-check notice for STATUS.md's Next-up
+// section. Empty when the decay ran. It goes in the ARTIFACT, not only on stderr:
+// a warning printed by a generator nobody watches, while the board it wrote reads
+// clean, is a TWO-state instrument — which is exactly how a forge whose decay
+// could never run stayed invisible for six days.
+func (c ClaimSource) DecayBanner() string {
+	r := strings.TrimSpace(c.DecayReason)
+	if r == "" {
+		return ""
+	}
+	return fmt.Sprintf("> **COULD-NOT-CHECK — dead-claim decay did not run.** %s\n"+
+		"> Open branches whose PR/merge request has already **merged or closed** are still counted as claims, so they keep "+
+		"consuming their stream's dispatch cap. The rows below are a **subset**: briefs held behind those dead claims are "+
+		"missing from this board, not absent from the backlog.", r)
+}
+
 // resolveClaims builds the "stream/NN" claim set from open origin branches.
 //
 // It returns the ClaimSource alongside, so the caller can never confuse "read
@@ -96,18 +143,20 @@ func resolveClaims(root string, streams []*Stream) (map[string]bool, ClaimSource
 	if err != nil {
 		return map[string]bool{}, ClaimSource{Reason: err.Error()}
 	}
-	// Decay dead claims: a branch whose PR has already merged or closed is not an
-	// in-flight claim — drop it before it consumes its stream's dispatch cap. A
-	// failed PR-state read leaves the full open-branch set (see decayDeadClaims),
-	// so this only ever shrinks the claim set, never drops a live claim.
-	branches = decayDeadClaims(root, branches)
+	// Decay dead claims: a branch whose PR/merge request has already merged or
+	// closed is not an in-flight claim — drop it before it consumes its stream's
+	// dispatch cap. A failed change-state read leaves the full open-branch set
+	// (see decayDeadClaims), so this only ever shrinks the claim set, never drops
+	// a live claim — and hands back the reason, which travels on the ClaimSource
+	// so the run and the board both wear the could-not-check.
+	branches, decayReason := decayDeadClaims(root, branches)
 	claimed := claimedBriefs(streams, branches)
 	// Placeholder claim-awareness: an open fix/issue-<NN>
 	// branch excludes that issue's placeholder from Next-up.
 	for k := range claimedPlaceholders(streams, branches) {
 		claimed[k] = true
 	}
-	return claimed, ClaimSource{Known: true}
+	return claimed, ClaimSource{Known: true, DecayReason: decayReason}
 }
 
 // This repo's brief-branch conventions (CLAUDE.md "one brief = one branch = one PR"),

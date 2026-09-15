@@ -383,6 +383,13 @@ type ReviewInput struct {
 	HeadSHA string // pins the verdict to the reviewed head
 	Event   string // APPROVE | REQUEST_CHANGES | COMMENT
 	Body    string
+	// Report, when set, receives a human-readable note about a write that SUCCEEDED by a
+	// route other than the plain one — the verdict is in force, nothing is refused, but the
+	// caller should say what the forge actually did. It is never called on an error path:
+	// a note accompanies a nil return only. The GitLab backend uses it when POST /approve
+	// answers 401 for an approval this identity already holds (#1106); the GitHub backend
+	// never calls it. A nil Report drops the note.
+	Report func(note string)
 }
 
 // IssueInput is the request to file an issue.
@@ -966,7 +973,22 @@ type Forge interface {
 	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate and
 	// escalation clock, cmd/scanloop's queueing trust gate (freeze rule).
 	IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
-	// ReviewsAtHead returns every review on a change (paginated to exhaustion).
+	// ReviewsAtHead returns every review on a change (paginated to exhaustion), in
+	// ASCENDING SUBMITTED ORDER — oldest first.
+	//
+	// The order is part of the contract, not an incidental property of whichever endpoint
+	// a backend happens to read. Every consumer reduces this slice by walking it and
+	// letting the LAST decisive verdict win (deskboard's reduceReviews, deskpost's
+	// latestAppVerdict, deskflip's ReduceAppVerdict), because that is what "the standing
+	// verdict" means. Handed the reversed stream those reductions silently invert: the
+	// oldest verdict governs, an approval at a newer head never clears an earlier
+	// request-changes, and an ordinary approve-then-reject reads as a forged no-op
+	// approval. GitHub's reviews endpoint is chronological and satisfies this for free;
+	// GitLab's notes endpoint defaults to newest-first and its backend re-orders (#1124).
+	//
+	// A review whose submitted time could not be established sorts FIRST — an undatable
+	// verdict may be superseded by any dated one and may never supersede one, which is the
+	// fail-closed placement.
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The
 	// caller reconciles len against PullRequest.ChangedFiles before trusting it complete.

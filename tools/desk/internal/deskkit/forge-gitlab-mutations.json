@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestForgeGitlab'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1 -run 'TestForgeGitlab|TestGitLab'",
   "control": {
     "name": "CONTROL — stop normalising GitLab's lifecycle vocabulary (an MR reports state \"opened\" instead of \"open\")",
     "file": "internal/deskkit/forge_gitlab.go",
@@ -150,6 +150,78 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\t\t\th, ok := mergeHoldReleasedHead(n.Body)\n\t\t\t\tif !ok {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif !SameActor(n.Author.Username, marker.ResolvedBy.Username) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\thead = h",
       "new": "\t\t\t\tif h, ok := mergeHoldReleasedHead(n.Body); ok {\n\t\t\t\t\thead = h\n\t\t\t\t}"
+    },
+    {
+      "name": "stop publishing the head pipeline into the rollup (a green MR pipeline reports no verdict any instrument can read — issue #1125)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p == nil {\n\t\treturn StatusContext{}, false\n\t}",
+      "new": "\tif true {\n\t\treturn StatusContext{}, false\n\t}"
+    },
+    {
+      "name": "map the head pipeline without reconciling its SHA (an older head's green is borrowed by this one)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p.SHA != \"\" && sha != \"\" && !strings.EqualFold(strings.TrimSpace(p.SHA), strings.TrimSpace(sha)) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "count the mapped pipeline entry outside the asserted status total (the caller's short-read reconcile misreads the rollup)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tout.StatusTotalCount++",
+      "new": "\t\tout.StatusTotalCount += 0"
+    },
+    {
+      "name": "redden an allow_failure job's failure (a job the forge does not gate on contradicts the green pipeline it belongs to)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif !allowFailure {\n\t\treturn conclusion\n\t}",
+      "new": "\tif true {\n\t\treturn conclusion\n\t}"
+    },
+    {
+      "name": "require a context name the backend does not publish (the phantom required check that refused every GitLab flip)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\treturn []string{GitLabPipelineContext}, nil",
+      "new": "\t\treturn []string{\"pipeline-succeeds\"}, nil"
+    },
+    {
+      "name": "serve the could-not-check sentinel for every change regardless of the head pipeline (the board reads CI-UNKNOWN on a green MR)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif !ok {",
+      "new": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif true {"
+    },
+    {
+      "name": "#1106: treat EVERY 401 from POST /approve as an approval that already stands (the not-eligible and rejected-credential cases become success)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif a.User.ID == me.ID {",
+      "new": "\t\t\tif true {"
+    },
+    {
+      "name": "#1106: stop classifying the approve route's 401 (an approval that already stands is reported as a rejected credential again)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif mapped == nil || !isForgeUnauthorized(mapped) {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "skip the re-stamp removal (a foreign dispatched-* stamp stays standing on the MR and the floor keeps refusing; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif len(stale) > 0 {\n\t\t// The removal is its OWN write",
+      "new": "\tif false {\n\t\t// The removal is its OWN write"
+    },
+    {
+      "name": "stamp blind when the label history cannot be read (WHO applied the present stamp is unknown, yet the step writes; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tevents, eerr := fg.ListLabelEvents(fr, o.pr)\n\tif eerr != nil {",
+      "new": "\tevents, eerr := fg.ListLabelEvents(fr, o.pr)\n\tif eerr != nil && false {"
+    },
+    {
+      "name": "stamp blind when the present labels cannot be read (an unreadable change is treated as unlabelled; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tchange, perr := fg.GetPullRequest(fr, o.pr)\n\tif perr != nil {",
+      "new": "\tchange, perr := fg.GetPullRequest(fr, o.pr)\n\tif perr != nil {\n\t\tchange = &deskkit.PullRequest{}\n\t}\n\tif false {"
+    },
+    {
+      "name": "report an ABSENT stamp as already standing (nothing stale means nothing written, so a fresh MR is never stamped; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif len(stale) == 0 && labelsPresent(change.Labels, labels) {",
+      "new": "\tif len(stale) == 0 {"
     }
   ]
 }

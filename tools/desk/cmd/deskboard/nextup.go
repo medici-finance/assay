@@ -50,6 +50,12 @@ import (
 // install step puts there from the pinned release.
 const statusgenBinEnv = "STATUSGEN_BIN"
 
+// statusgenArtifact is the artifact name statusgen is pinned under in a
+// `.assay-versions` — the base name every pin shape is spelled from: the bare
+// line, the per-platform `statusgen-<os>-<arch>` line, and the `statusgen-source`
+// channel-D line.
+const statusgenArtifact = "statusgen"
+
 // gateScoreRow is the shape `statusgen --gate-scores` emits. `repo` arrived with
 // multi-root statusgen and is absent from older releases;
 // when absent the configured repo key is used instead.
@@ -201,16 +207,58 @@ func gateScoresForRoot(bin, absRoot, repo string) ([]gateScoreRow, error) {
 // SOURCE repo, never carries one — but a root whose pin file IS present and
 // unreadable or malformed fails closed immediately, naming that root, rather
 // than silently falling through to the next one.
+// CHANNEL D (#1122). A release line is not the only shape a statusgen pin takes.
+// An adopter on a platform or forge the release publishes no binary for pins the
+// SOURCE line instead — `statusgen-source <40-hex-commit> channel-D`, the same
+// shape `desksourceguard` reads and the drift banner already honours for
+// `desk-tools`. This resolver only ever asked for a bare `statusgen ` line and
+// then this host's `statusgen-<os>-<arch>` line, so such a pin file read as NO
+// PIN and the whole verb exited 6: Next-up came back could-not-check for every
+// channel-D adopter, on a pin file that is valid and that `statusgen --lint`
+// passes. A source line IS a pin, so it is read as one here; the interpretation
+// of its two column layouts is deskkit.SourcePin's, not a second copy.
 func resolveStatusgenPin(resolved []deskkit.RootConfig) (tag, repo string, err error) {
 	for _, r := range resolved {
-		if _, statErr := os.Stat(filepath.Join(r.Path, ".assay-versions")); statErr != nil {
+		pinFile := filepath.Join(r.Path, deskkit.AssayVersionsFile)
+		if _, statErr := os.Stat(pinFile); statErr != nil {
 			continue
 		}
-		pinnedTag, _, perr := deskkit.StatusgenPin(r.Path)
+		// The release line first, and its MALFORMED verdict is still terminal: only
+		// ABSENCE falls through to the source line, so a broken `statusgen ` line is
+		// never skipped in favour of another shape (pins.go's fail-closed rule).
+		pinnedTag, _, found, perr := deskkit.PlatformPinLookup(r.Path, statusgenArtifact)
 		if perr != nil {
 			return "", "", perr // fail-closed: a present-but-bad pin is never skipped
 		}
-		return pinnedTag, r.Repo, nil
+		if found {
+			return pinnedTag, r.Repo, nil
+		}
+		src, srcFound, serr := deskkit.SourcePin(r.Path, statusgenArtifact)
+		if serr != nil {
+			return "", "", serr // fail-closed, exactly as for the release line
+		}
+		if srcFound {
+			if !src.Usable() {
+				// A source pin that genuinely cannot serve gets a NAMED reason. The one
+				// verdict this must never give is "no pin": the adopter's file pins
+				// statusgen, and being told it does not sends them looking for a missing
+				// line instead of at the unreadable one they have.
+				return "", "", deskkit.Unverifiable(fmt.Sprintf(
+					"channel D: the statusgen pin in %s is a `%s` line (%s %s %s) whose columns carry "+
+						"neither a release tag nor a 40-hex commit, so it names no statusgen to run — "+
+						"build from source and pin the commit (`%s <40-hex-commit> channel-D`), "+
+						"or install a release and pin `%s <tag> <sha256>`",
+					pinFile, src.Artifact, src.Artifact, src.Field2, src.Field3,
+					src.Artifact, statusgenArtifact), nil)
+			}
+			return src.Ref(), r.Repo, nil
+		}
+		return "", "", deskkit.Unverifiable(fmt.Sprintf(
+			"no %s pin in %s (looked for a bare `%s ` line, this host's platform line %s, and a "+
+				"`%s%s` channel-D source line)",
+			statusgenArtifact, pinFile, statusgenArtifact,
+			strings.Join(deskkit.HostPlatformAssets(statusgenArtifact), " / "),
+			statusgenArtifact, deskkit.SourcePinSuffix), nil)
 	}
 	names := make([]string, len(resolved))
 	for i, r := range resolved {

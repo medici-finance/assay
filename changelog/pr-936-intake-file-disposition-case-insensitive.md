@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen` per-entry intake files (`docs/streams/intake/*.md`) now match their frontmatter keys case-insensitively — `Disposition:` / `DISPOSITION:` and every other `intakeEntry` field — instead of silently leaving the field empty and counting the entry as untriaged `new`; an owned key repeated in differing case is now a parse error naming the file rather than a silent first-wins. Sibling of the legacy-path fix in #920. (#931) — thanks @teddyvj

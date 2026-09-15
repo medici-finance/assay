@@ -137,14 +137,14 @@ for the map: the step after the one being fixed is knowable in advance.
 | 07 | [GitHub forge backend on go-gh — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | done | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; 5/5 rows PASS; go-gh backend, unset-token refuses no-ambient-fallback proven hitCount==0; 42 golden scenarios) | 2026-09-11 assay-reviewer-app[bot] (approved PR #878 @ 353845668ede560a672dd0986c0687435c37b9ff) |
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
 | 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | done | 2026-09-11 opus-4.8[1m]-verifier (assay 8953d38d; 7/7 + §6 consumer PASS; §1 landed #846, prior FAIL was stale) | 2026-09-11 assay-reviewer-app[bot] (approved PR #878 @ 353845668ede560a672dd0986c0687435c37b9ff) |
-| 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | implemented | — | — |
+| 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | done | 2026-09-15 sonnet-5-verifier (7/7 rows PASS incl. a genuine cross-backend parity comparison; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1127 @ a6c32c2ee629da73f8e4362375ac49a765449985) |
 | 11 | [Guard-read custody — the last gh shell-outs onto the Forge seam](brief-11-guard-read-custody.md) | 4 | M | implemented | — | — |
 | 12 | [GitLab hardening reads — repohardenguard kinds on the GitLab backend](brief-12-gitlab-hardening-reads.md) | 5 | M | todo | — | — |
 | 13 | [Board reads degrade per row, never per sweep — the GitLab empty-field class](brief-13-board-reads-degrade-per-row.md) | 3 | M | todo | — | — |
 | 14 | [The public-repo gate reads the forge that serves the repo — every verb, not one](brief-14-public-repo-gate-on-the-resolved-forge.md) | 3 | M | verified | 2026-09-15 sonnet-5-verifier (8/8 rows PASS incl. a genuine anti-vacuity proof; risk-value DERIVED) | — |
-| 15 | [The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane](brief-15-gitlab-runbook-missing-keys.md) | 4 | M | implemented | — | — |
+| 15 | [The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane](brief-15-gitlab-runbook-missing-keys.md) | 4 | M | done | 2026-09-15 sonnet-5-verifier (8/8 rows PASS incl. an independent scope-literal anti-drift check; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1129 @ c062d398a4b15a7cb6507597baeeaf38a4a3409c) |
 | 16 | [The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls](brief-16-review-tick-conformance-walk.md) | 5 | M | todo | — | — |
-| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | implemented | — | — |
+| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | done | 2026-09-15 sonnet-5-verifier (rows 6-12 PASS offline incl. structural no-approval-route proof; rows 1-5 could-not-check by design, no live GitLab project; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1143 @ 0216b7fed6fc87156974de54d8cfbd2524840dec) |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

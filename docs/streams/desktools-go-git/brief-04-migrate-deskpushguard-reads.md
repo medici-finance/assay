@@ -80,6 +80,21 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | build + vet the migrated command | exit 0 | exit 0 both | 2026-09-15 | sonnet-5-verifier |
+| 2 | full package test suite | exit 0, clean-push/foreign-commit/register-id goldens pass | exit 0, ~35 tests PASS incl. clean-branch, foreign-commit, merge-masquerade, stray-base, register-id-collision goldens | 2026-09-15 | sonnet-5-verifier |
+| 3 | mutation test, foreign-commit still detected post-migration | exit 0, flagged RED | exit 0, PASS -- genuine fixture-based proof: builds a real 3-repo on-disk git fixture with the real git binary, calls the migrated production function against it, asserts real detection, not a canned string | 2026-09-15 | sonnet-5-verifier |
+| 4 | no exec.Command in the migrated read seam | count 0 | count correctly 0 (grep -c's own exit 1 on zero-matches is standard behavior, not a failure) | 2026-09-15 | sonnet-5-verifier |
+| 5 | git-exec site count below pre-brief baseline | lower | confirmed: independently reconstructed the pre-brief baseline from the parent commit (100 sites) vs current (82, with 19 seam-call sites removed by this brief's own commit) -- required reduction holds. Noted a pre-existing, stream-wide off-by-one in the counting script's own exclusion filter that affects before/after equally, not attributable to this brief | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- enumerated every read-seam swap (log-range, merge-base/ancestor, ref-containment, cat-file, show, ls-tree, rev-list --parents) at file:line, ranked by irreversibility (a silent failure in the ancestry/range or ref-containment logic ranks highest since that's the actual guarded security property), and derived sound: row 3's mutation test reconstructs the historical laundering bug class with a REAL git repository built via the real git binary and calls the now fully in-process production function against it -- a genuine proof, not a golden-string comparison, corroborated by the rest of the passing suite (row 2) covering merge-commit histories, single-parent-merge masquerades, stray-base cuts, and register-id collisions on real fixtures. Detection logic (thresholds, exclusion rules, scoping) confirmed unchanged by code review -- only the read seam moved. One retained shell-out (a network-liveness probe, ls-remote) is explicitly out of scope, unchanged, bounded to a rare code path.
+
+**VERIFY: PASS** -- all 5 rows checked-clean under their substantive intent (row 4's literal exit code is a grep-with-zero-matches artifact, not a defect).
 
 ## Review
 Gate: model (all four risk answers no — behaviour-preserving read swap under unchanged
