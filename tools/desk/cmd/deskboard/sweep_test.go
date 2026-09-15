@@ -5,10 +5,14 @@ package main
 //	(a) DETERMINISM  — the concurrent sweep returns results in the SAME order as a serial
 //	                   reference, byte-identical, regardless of goroutine finish order; and
 //	                   the whole `actions` board is byte-stable across repeated runs.
-//	(b) FAIL-CLOSED  — a mid-sweep repo error fails the WHOLE run (exit 6) and names the
-//	                   repo, at both the sweepRepos unit level and the `actions` verb level,
-//	                   even when other repos succeed concurrently (must not degrade to a
-//	                   partial "clean" board).
+//	(b) FAIL-CLOSED  — a mid-sweep REPO-level error (the repo itself unresolvable, or its
+//	                   PR list unreadable) fails the WHOLE run (exit 6) and names the repo,
+//	                   at both the sweepRepos unit level and the `actions` verb level, even
+//	                   when other repos succeed concurrently (must not degrade to a partial
+//	                   "clean" board). A CHANGE-level per-PR read failing (one PR's reviews,
+//	                   changed files, …) is the opposite contract — see classdegrade_test.go
+//	                   and TestActions_PerPRReadDegradesRowNotRun below: that degrades ONE
+//	                   row, never the run.
 //	(c) BOUNDED      — the pool never runs more than `limit` work functions at once, so a
 //	                   large roster cannot explode into unbounded concurrent gh subprocesses.
 
@@ -18,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -292,13 +297,24 @@ func TestActions_FailClosed_Concurrent(t *testing.T) {
 	}
 }
 
-// TestActions_FailClosed_PerPRRead is the fail-closed proof for the PER-PR fan-out specifically:
-// a single PR's /reviews read failing mid-sweep must still fail the WHOLE run (exit 6),
-// even though every repo's pr-list read and every other PR succeed concurrently. This
-// guards the finer-grained concurrency the per-PR fan-out introduced — a failed leaf read
-// must never be swallowed into a partial clean board.
-func TestActions_FailClosed_PerPRRead(t *testing.T) {
+// TestActions_PerPRReadDegradesRowNotRun is the CLASS-level regression: a single PR's
+// /reviews read failing mid-sweep now degrades THAT PR's OWN row — never the whole run.
+// This test used to be TestActions_FailClosed_PerPRRead and
+// pinned the opposite (pre-fix) contract: exit 6, no board at all, for exactly this
+// change-level read. That was the defect this brief closes (`classifyPR`'s fetchReviews
+// error return, one of the five whole-sweep returns the brief's facts enumerate) — the
+// updated assertion is the corrected contract, not a loosened one: the affected row must
+// still render, on the SAFE side, with its could-not-check reason visible in the row text.
+// TestActions_FailClosed_Concurrent (above) remains the guard for a genuinely REPO-level
+// failure (the pr-list read itself) — that one is unchanged and still exits 6.
+func TestActions_PerPRReadDegradesRowNotRun(t *testing.T) {
 	installFakeGH(t)
+	// Scope the fixture PR to ONE repo (DESKBOARD_GH_PR_REPO) — the roster behind
+	// installFakeGH carries many repos, and an unscoped DESKBOARD_GH_PRLIST_JSON serves the
+	// same fixture PR to every one of them, which would multiply the degraded row this test
+	// is isolating.
+	const onlyRepo = "example-org/tracker"
+	t.Setenv("DESKBOARD_GH_PR_REPO", onlyRepo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 		`[{"number":1,"title":"t","state":"OPEN","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"abc123","mergeStateStatus":"BLOCKED","statusCheckRollup":[]}]`)
 	// Fail only the per-PR reviews read (leaves pr-list and everything else answering).
@@ -306,11 +322,32 @@ func TestActions_FailClosed_PerPRRead(t *testing.T) {
 
 	var out, errb bytes.Buffer
 	code := run([]string{"actions"}, &out, &errb)
-	if code != deskkit.ExitUnverifiable {
-		t.Fatalf("run(actions) with a failing per-PR read = exit %d, want %d (fail-closed)", code, deskkit.ExitUnverifiable)
+	if code != 0 {
+		t.Fatalf("run(actions) with a failing per-PR reviews read = exit %d, want 0 — one PR whose "+
+			"reviews could not be read must degrade its OWN row, never fail the whole run; stderr=%s",
+			code, errb.String())
 	}
-	if bytes.Contains(out.Bytes(), []byte(`"rows"`)) {
-		t.Errorf("a failed per-PR read must not emit a (partial) board on stdout; got: %s", out.String())
+	var rep actionsReport
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatalf("parsing actions JSON: %v\n%s", err, out.String())
+	}
+	var ourRows []actionRow
+	for _, r := range rep.Rows {
+		if r.Repo == onlyRepo {
+			ourRows = append(ourRows, r)
+		}
+	}
+	if len(ourRows) != 1 {
+		t.Fatalf("got %d rows for %s, want 1 — the PR whose reviews could not be read must still "+
+			"render (on the safe side), not vanish from the board; rows=%+v", len(ourRows), onlyRepo, ourRows)
+	}
+	row := ourRows[0]
+	if row.Action == actMergeNow || row.Action == actFlip || row.Action == actMergeCurr {
+		t.Fatalf("action = %s — a PR whose reviews could not be read must never read as cleared/benign", row.Action)
+	}
+	if !strings.Contains(row.Note, "DEGRADED:") {
+		t.Errorf("row.Note = %q — must carry the could-not-check reason so an operator reading the "+
+			"board (not stderr) can see this row was affected", row.Note)
 	}
 }
 
