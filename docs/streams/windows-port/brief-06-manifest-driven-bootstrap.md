@@ -201,6 +201,32 @@ check before it ever reaches the download comparison. NONE is not the answer her
      (command, exit code, output line(s) or hash, date, runner). Rows 8-14 are
      Windows-runtime / online rows — an offline POSIX verifier records them as
      could-not-check with the reason, never greened from the static rows. -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PARTIAL (rows 8-14 could-not-check — no Windows runtime, cannot trigger/observe live CI from this offline session)**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | -Sha256 no longer mandatory | 0 | exit 0, checked-clean (note: default shell grep here is ugrep-wrapped and mishandles literal $ mid-pattern; re-ran through /usr/bin/grep for a truthful result) | 2026-09-15 | sonnet-5-verifier |
+| 2 | exactly one mandatory param (-Tag) remains | 1 | exit 0, checked-clean | 2026-09-15 | sonnet-5-verifier |
+| 3 | script names the committed manifest | 0 | exit 0, checked-clean | 2026-09-15 | sonnet-5-verifier |
+| 4 | hash-check precedes placement | ORDER-OK | ORDER-OK, checked-clean | 2026-09-15 | sonnet-5-verifier |
+| 5 | no floating latest ref | NO-LATEST | NO-LATEST, checked-clean | 2026-09-15 | sonnet-5-verifier |
+| 6 | PATH write is User-scoped | 0 | exit 0, checked-clean | 2026-09-15 | sonnet-5-verifier |
+| 7 | one refusal message per failure class | >=5 | 9, checked-clean | 2026-09-15 | sonnet-5-verifier |
+| 8 | positive-path Windows CI smoke | green run | could-not-check — no Windows runtime, cannot trigger/observe live CI from an offline macOS session. Exact command to run: dispatch `windows-bootstrap-smoke` on windows-latest with `scripts/windows-bootstrap-hashcheck-smoke.ps1 -Tag <pinned>` (no -RealSha256), confirm green + log shows the resolved sha matching the manifest | 2026-09-15 | sonnet-5-verifier |
+| 9 | tampered-manifest negative path (security row) | REFUSED, non-zero exit | could-not-check — same reason. Exact command: on windows-latest, flip one hex char of the windows-amd64 digest in a scratch copy of paired-versions.yaml, run the bootstrap against it, confirm sha256-mismatch refusal and no statusgen*.exe placed | 2026-09-15 | sonnet-5-verifier |
+| 10 | absent-platform-line negative path | REFUSED naming missing platform | could-not-check — same reason. Exact command: remove the windows-amd64: line from a scratch manifest copy, run the bootstrap, confirm refusal naming the missing platform | 2026-09-15 | sonnet-5-verifier |
+| 11 | non-vacuity control for rows 9-10 | check-removed copy proceeds | could-not-check — same reason. Exact command: run the same two tampered inputs against a copy of the script with resolution-refusal lines stripped, confirm it installs/attempts download | 2026-09-15 | sonnet-5-verifier |
+| 12 | fail-first capture for rows 9-11 | RED against pre-change script | could-not-check — same reason. Exact command: capture the row-9 assertion failing against the pre-change script or a stubbed-refusal mutation, paste under a Fail-first heading with the commit/mutation | 2026-09-15 | sonnet-5-verifier |
+| 13 | -Sha256 override disagreement refuses | non-zero, names both digests | could-not-check — same reason. Exact command: `pwsh -File scripts/bootstrap-windows.ps1 -Tag <pinned> -Sha256 <64 hex not matching manifest>` on a Windows runner | 2026-09-15 | sonnet-5-verifier |
+| 14 | binary invocable by name post-bootstrap | prints pinned tag | could-not-check — same reason. Exact command: on the Windows runner after bootstrap, `statusgen --version` in a fresh shell | 2026-09-15 | sonnet-5-verifier |
+| 15 | dereference pin against manifest | agree exactly | checked-clean for the manifest's own internal well-formedness (3 space-separated fields, valid tag/sha256 shape); cannot cross-check against a live CI log since row 8 is could-not-check | 2026-09-15 | sonnet-5-verifier |
+| 16 | consumers routing corroborated | 0 | exit 0, checked-clean (no diff to check against post-merge, expected) | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: enumerated all 9 distinct REFUSED literals at file:line, ranked the downloaded-asset sha256 mismatch (L107) as highest-consequence (a bypass places a tampered binary that becomes PATH-invocable), and derived from static control-flow analysis alone that every resolution branch either assigns a validated value or throws (no silent fall-through), and the one network call strictly follows all resolution guards while hash-check strictly precedes placement -- as far as static analysis can go; the live-runner proof (rows 8-14) is what would close the residual gap between "the text says this order" and "the interpreter executes it in this order," and that residual remains open.
+
+**VERIFY: PARTIAL** -- all statically-checkable rows (1-7, 15, 16) hold on independent re-derivation; rows 8-14 require a live Windows CI runner this offline session cannot provide, recorded explicitly could-not-check with the exact command each needs -- never assumed passing. Status held at implemented pending a runner that can execute the live rows.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no). The reviewer's two questions on this
