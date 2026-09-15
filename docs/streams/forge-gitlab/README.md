@@ -49,9 +49,9 @@ the desk tools own.
 Minimum tier per brief (the `tier:` line in each brief's front-matter, with the detail in its
 `## Edition` section):
 
-| Brief | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Minimum tier | free | free | free | free | free | ultimate | free | free | free | free | free | free | free | free | free | free |
+| Brief | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Minimum tier | free | free | free | free | free | ultimate | free | free | free | free | free | free | free | free | free | free | free |
 
 The open point that stood here — spec.md section 1 declaring Free/CE non-conforming, which the
 matrix's per-feature citations did not support as written — was ruled on 2026-08-30
@@ -144,6 +144,7 @@ for the map: the step after the one being fixed is knowable in advance.
 | 14 | [The public-repo gate reads the forge that serves the repo — every verb, not one](brief-14-public-repo-gate-on-the-resolved-forge.md) | 3 | M | todo | — | — |
 | 15 | [The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane](brief-15-gitlab-runbook-missing-keys.md) | 4 | M | implemented | — | — |
 | 16 | [The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls](brief-16-review-tick-conformance-walk.md) | 5 | M | todo | — | — |
+| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -297,6 +298,12 @@ not gating it):
   the board-push credential, the source-pin lane).
 - **Wave 5** — `forge-gitlab/16` (depends on 13 + 14 + 15; **human-gated** — the live review
   tick and the adopter-backlog close-out. The only brief that may mark the finish line reached).
+- **Wave 5** — `forge-gitlab/17` (depends on `forge-gitlab/09` + `forge-gitlab/14`; the enforceable merge gate on GitLab Free —
+  a marker discussion thread opened with every merge request, released by the reviewer's at-head
+  approve, re-armed by request-changes or a new head, behind the Free-tier project setting
+  `only_allow_merge_if_all_discussions_are_resolved`; `deskflip`'s GitLab gate keys on it and
+  never on the Premium approval-rules route. Beside 16, not under it: 16 walks whatever gate is
+  live on its day; 17 gives the Free-tier walk a server-side merge block to walk).
 
 ## Issue → brief map
 
@@ -319,6 +326,7 @@ dispatched. Measured 2026-09-14 @ `2c67b34f`.
 | #651, #652 | `forge-gitlab/16` | The front-door docs landed for the other forge's runbook; what remains is the GitLab-side confirmation the walk produces |
 | #655, #667, #668, #671, #676, #677, #678, #642 | `forge-gitlab/16` close-out | All eight look delivered against the tree (see Track A's second tempting-but-wrong head for what was re-measured). They are routed to the walk because a code read cannot close a field report |
 | #1054, #1056 | no brief — **awaiting close** | Fixed by PR #1060 and PR #1058, both merged 2026-09-14; the issues are still open and need a close, not work |
+| #1091 | its 403 fix is a one-site defect, not a brief; the CLASS is `forge-gitlab/17` | Filed 2026-09-14 by a GitLab adopter cell on a Free project: the review-state read consults the Premium approval-configuration route first, gitlab.com Free answers 403 (not the 404 the tree degrades on), and the whole read fails closed — verdict verb aborts, board exits 6, flip refuses. The instance fix (treat 403 like 404 on that one route) is a sibling; `forge-gitlab/17` is the design that stops the flip depending on that route at all, by giving Free a server-enforced merge condition the desk drives |
 
 ### Out of scope for the review-desk finish line
 
