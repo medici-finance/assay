@@ -113,6 +113,16 @@ func ArtifactPin(root, artifact string) (tag, sha string, err error) {
 	return tag, sha, nil
 }
 
+// ArtifactPinFrom is ArtifactPin over a body the caller already holds — a pin file read
+// from a git ref (`refs/remotes/origin/main:.assay-versions`) rather than from disk, so a
+// verdict can compare THIS checkout's pin against main's without a second selector that
+// could drift from the trailing-space rule. source names where raw came from, for the
+// malformed-line message. found=false means no line for artifact; a malformed matching
+// line is an error, never skipped.
+func ArtifactPinFrom(raw []byte, source, artifact string) (tag, sha string, found bool, err error) {
+	return lookupPin(raw, source, artifact)
+}
+
 // lookupPin is the one selector every reader goes through: the trailing-space
 // prefix match over raw, returning (tag, field3, true, nil) for the first matching
 // line, (‑, ‑, false, nil) when NO line matches, and a fail-closed Unverifiable when
