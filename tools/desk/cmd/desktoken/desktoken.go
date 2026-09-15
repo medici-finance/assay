@@ -26,7 +26,11 @@ import (
 // validRoles is the fixed set of desk roles. A role's config is parameterised
 // by the role name: ~/.config/assay/<role>-app.pem, <ROLE>_APP_ID, etc.
 // cell-issues is the write-issues App identity — selectable only by name, never a loop's
-// default.
+// default. auditor (the forge-gitlab guard-read-custody brief) is a dedicated READ-ONLY identity for
+// cmd/repohardenguard's hardening reads — it carries no write permission of any kind on
+// either forge and is never bound in ASSAY_TRUSTED_BOT_SLUGS/`--raised-by` (it never posts,
+// files, or writes anything), so its custody is minted/read through the SAME
+// role-parameterised paths as every other role with no further change.
 var validRoles = map[string]bool{
 	"reviewer":    true,
 	"verifier":    true,
@@ -35,6 +39,7 @@ var validRoles = map[string]bool{
 	"issue-loop":  true,
 	"intake-loop": true,
 	"cell-issues": true,
+	"auditor":     true,
 }
 
 const (

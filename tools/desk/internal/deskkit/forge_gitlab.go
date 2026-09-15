@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -2014,6 +2015,19 @@ func (g *GitLabForge) ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, e
 		repo.Slug(), ref), nil)
 }
 
+// RepoHardeningRead is a NAMED could-not-check REFUSAL on GitLab for every kind, until
+// the forge-gitlab GitLab-hardening-reads follow-up lands the GitLab kinds (protected branches, protected tags, push rules,
+// approvals). kind is still validated first — an unknown kind refuses on the SAME grounds it
+// would on GitHub (ValidateHardeningReadKind), so the "unknown kind" and "not yet served on
+// GitLab" refusals are never confused with each other in a caller's error text.
+func (g *GitLabForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
+	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
+		return nil, err
+	}
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: gitlab serves no hardening read of kind %q — deferred to the forge-gitlab GitLab-hardening-reads follow-up", kind), nil)
+}
+
 // ChangeDiff is a could-not-check REFUSAL on GitLab, naming the gap. It returns a change's raw
 // unified-diff DOCUMENT (GitHub `pr diff`) for human display. GitLab serves a change's diff as
 // a STRUCTURED per-file list (the shape ListChangedFiles already carries on both backends), not
@@ -2830,26 +2844,37 @@ func (g *GitLabForge) EditComment(repo ForgeRepo, commentID, body string) error 
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 
-// ApplyLabels reconciles a merge request's labels.
+// ApplyLabels reconciles an issue's or a merge request's labels, per change.Target.
 //
-// The GitLab mapping is 1:1 with GitHub's in effect but not in shape, and the difference is
-// where the care goes:
+// The TARGET is load-bearing on this forge in a way it is not on GitHub. GitLab numbers
+// issues and merge requests in two SEPARATE per-project sequences and labels them through two
+// separate endpoints — `PUT /projects/:id/issues/:iid` and `PUT
+// /projects/:id/merge_requests/:iid` — so the same number names two unrelated objects. A
+// write that assumed "merge request" for an issue number landed its labels on whichever MR
+// shared the iid and left the issue untouched; that is why an unset target is refused rather
+// than defaulted (LabelChange.Target).
+//
+// Otherwise the GitLab mapping is 1:1 with GitHub's in effect but not in shape, and the
+// difference is where the care goes:
 //
 //   - Labels are PROJECT-scoped on both forges, and both require a label to exist before it
 //     can be applied — so the ensure step is `POST /projects/:id/labels`, with an
 //     already-exists response treated as the success case for an ensure exactly as GitHub's
-//     422 is.
-//   - GitLab has NO per-label add/remove endpoints on an MR. Instead ONE `PUT
-//     /merge_requests/:iid` carries `add_labels` and `remove_labels` together, which is
-//     strictly better for this operation: the whole reconciliation lands atomically, where
-//     the GitHub backend has to issue one request per removal.
+//     422 is. The ensure step is the same for both targets.
+//   - GitLab has NO per-label add/remove endpoints on an issue or an MR. Instead ONE PUT on
+//     the object carries `add_labels` and `remove_labels` together, which is strictly better
+//     for this operation: the whole reconciliation lands atomically, where the GitHub backend
+//     has to issue one request per removal.
 //   - GitLab colors REQUIRE a leading `#`; GitHub forbids one. LabelSpec carries the bare
 //     hex digits and each backend renders its own form, so a caller never has to know which
 //     forge it is talking to.
 //
-// The current label set comes from the MR read the family reconciliation needs anyway, so a
-// change with no RemoveFamilies issues no extra read.
+// The current label set comes from the object read the family reconciliation needs anyway,
+// so a change with no RemoveFamilies issues no extra read.
 func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
+	if err := change.requireTarget(); err != nil {
+		return nil, err
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -2893,13 +2918,32 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 	for _, n := range change.Remove {
 		remove[n] = true
 	}
+	// objPath is the one route the target resolves to — the read (when a family is named)
+	// and the write both go there, so the two can never address different kinds.
+	var objPath string
+	switch change.Target {
+	case TargetIssue:
+		objPath = fmt.Sprintf("/projects/%s/issues/%d", proj, number)
+	default:
+		objPath = fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
+	}
 	if len(change.RemoveFamilies) > 0 {
-		mrPath := fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
-		mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
-		if gerr != nil {
-			return nil, g.mapErr(http.MethodGet, mrPath, gerr)
+		var current []string
+		switch change.Target {
+		case TargetIssue:
+			iss, _, gerr := cl.Issues.GetIssue(repo.Slug(), int64(number), nil)
+			if gerr != nil {
+				return nil, g.mapErr(http.MethodGet, objPath, gerr)
+			}
+			current = iss.Labels
+		default:
+			mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
+			if gerr != nil {
+				return nil, g.mapErr(http.MethodGet, objPath, gerr)
+			}
+			current = mr.Labels
 		}
-		for _, cur := range mr.Labels {
+		for _, cur := range current {
 			if adding[cur] {
 				continue
 			}
@@ -2926,16 +2970,24 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 	if len(addList) == 0 && len(removeList) == 0 {
 		return out, nil
 	}
-	opts := &gitlab.UpdateMergeRequestOptions{}
+	var addOpt, removeOpt *gitlab.LabelOptions
 	if len(addList) > 0 {
-		opts.AddLabels = (*gitlab.LabelOptions)(&addList)
+		addOpt = (*gitlab.LabelOptions)(&addList)
 	}
 	if len(removeList) > 0 {
-		opts.RemoveLabels = (*gitlab.LabelOptions)(&removeList)
+		removeOpt = (*gitlab.LabelOptions)(&removeList)
 	}
-	updPath := fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
-	if _, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number), opts); uerr != nil {
-		return nil, g.mapErr(http.MethodPut, updPath, uerr)
+	switch change.Target {
+	case TargetIssue:
+		opts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}
+		if _, _, uerr := cl.Issues.UpdateIssue(repo.Slug(), int64(number), opts); uerr != nil {
+			return nil, g.mapErr(http.MethodPut, objPath, uerr)
+		}
+	default:
+		opts := &gitlab.UpdateMergeRequestOptions{AddLabels: addOpt, RemoveLabels: removeOpt}
+		if _, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number), opts); uerr != nil {
+			return nil, g.mapErr(http.MethodPut, objPath, uerr)
+		}
 	}
 	out.Added = addList
 	out.Removed = removeList

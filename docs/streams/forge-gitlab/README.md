@@ -138,7 +138,7 @@ for the map: the step after the one being fixed is knowable in advance.
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
 | 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | done | 2026-09-11 opus-4.8[1m]-verifier (assay 8953d38d; 7/7 + §6 consumer PASS; §1 landed #846, prior FAIL was stale) | 2026-09-11 assay-reviewer-app[bot] (approved PR #878 @ 353845668ede560a672dd0986c0687435c37b9ff) |
 | 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | implemented | — | — |
-| 11 | [Guard-read custody — the last gh shell-outs onto the Forge seam](brief-11-guard-read-custody.md) | 4 | M | todo | — | — |
+| 11 | [Guard-read custody — the last gh shell-outs onto the Forge seam](brief-11-guard-read-custody.md) | 4 | M | implemented | — | — |
 | 12 | [GitLab hardening reads — repohardenguard kinds on the GitLab backend](brief-12-gitlab-hardening-reads.md) | 5 | M | todo | — | — |
 | 13 | [Board reads degrade per row, never per sweep — the GitLab empty-field class](brief-13-board-reads-degrade-per-row.md) | 3 | M | todo | — | — |
 | 14 | [The public-repo gate reads the forge that serves the repo — every verb, not one](brief-14-public-repo-gate-on-the-resolved-forge.md) | 3 | M | todo | — | — |

@@ -118,6 +118,8 @@ token (PAT):
 | issue-loop | service account | Reporter (20) | `api` | files/triages issues |
 | intake-loop | service account | Reporter (20) | `api` | files/triages issues |
 | board-writer | service account | Developer (30) + allowed-to-push entry on protected `main` | `api`, `write_repository` | the ruleset-bypass analog |
+| auditor | service account | Reporter (20) | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope |
+| cell-issues | not yet mapped on GitLab | — | — | GitHub-only "write-issues" identity today (a narrower, per-purpose issues-filing role, selectable only by name); no GitLab consumer is wired to it yet |
 | promote | usually **no identity at all** — see §3 | — | — | workflow promotion is a human-merged MR into the ci-config project, not a bot act |
 
 Attribution separation holds exactly as on GitHub: notes/approvals/commits carry the
@@ -217,10 +219,11 @@ straight at it. The script names each file `<prefix>-<role>-bot.token`
 custody in §5 — looks for **`gitlab-<role>.token`**. Until the two agree, link **or copy**
 them once after provisioning.
 
-Unix:
+Unix (`auditor` is optional — link it only if you provisioned that service account for
+`repohardenguard`, per §1's role table; the fleet script does not provision it):
 
 ```
-cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop intake-loop board-writer; do
+cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop intake-loop board-writer auditor; do
   ln -s "<prefix>-$r-bot.token" "gitlab-$r.token"
 done
 ```

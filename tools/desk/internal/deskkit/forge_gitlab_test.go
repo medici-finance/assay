@@ -1127,6 +1127,7 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target:         TargetChange,
 					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 					RemoveFamilies: []string{"size:"},
 				})
@@ -1142,7 +1143,8 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				})
 			},
 		},
@@ -1159,7 +1161,37 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Add: []LabelSpec{{Name: "authorization-needed", Color: "0e8a16"}},
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "authorization-needed", Color: "0e8a16"}},
+				})
+			},
+		},
+		{
+			// An ISSUE target: the same ensure step, then the reconciliation lands on
+			// `PUT /issues/:iid` — never on the merge request that shares the number. This is
+			// the `deskfile new` write (stamp + to:<role> on a freshly filed issue); before the
+			// target existed it went to the MR route and left the issue unlabelled.
+			name: "apply_labels_issue", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"to:desk", "keep-me"}})
+				s.mr = glMR(map[string]any{"labels": []string{"unrelated"}})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target:         TargetIssue,
+					Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}, {Name: "raised-by:desk"}},
+					RemoveFamilies: []string{"to:"},
+				})
+			},
+		},
+		{
+			// No target, no request: the golden's empty request list is the assertion that an
+			// unset target is refused rather than defaulted to either route.
+			name: "apply_labels_refuses_unset_target", method: "ApplyLabels",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Add: []LabelSpec{{Name: "to:reviewer"}},
 				})
 			},
 		},
@@ -1486,6 +1518,14 @@ func glCases() []glCase {
 			name: "change_diff_gap", method: "ChangeDiff",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.ChangeDiff(glRepo, 7) },
+		},
+		{
+			// The forge-gitlab guard-read-custody brief's op 40: every hardening-read kind is a NAMED could-not-check
+			// refusal on GitLab until the forge-gitlab GitLab-hardening-reads follow-up, with ZERO requests emitted — never an
+			// empty document standing in for "not yet served".
+			name: "repo_hardening_read_gap", method: "RepoHardeningRead",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadRepo) },
 		},
 		// --- the forge-gitlab merge-hold brief: the merge-hold marker thread ---
 		{

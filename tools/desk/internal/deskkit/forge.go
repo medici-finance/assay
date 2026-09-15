@@ -21,6 +21,7 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -454,7 +455,19 @@ type LabelSpec struct {
 // family the caller has no definite value for is simply not named, so nothing in it is
 // touched — an absent signal removes nothing.
 type LabelChange struct {
-	// Add is ensured to exist on the repo/project and to be present on the change.
+	// Target says WHAT is being labelled — an issue or a change (PR/MR) — and is REQUIRED:
+	// a change that leaves it unset is refused by every backend before any request is
+	// issued. The seam cannot infer it from the number. GitHub numbers issues and pull
+	// requests in one sequence and labels both through the issues endpoint, so there the
+	// distinction costs nothing; GitLab numbers issues and merge requests in two SEPARATE
+	// sequences with two separate endpoints, so a label write that assumed "change" landed
+	// on whichever merge request happened to share the new issue's iid — the defect that
+	// left every `deskfile new` issue on a GitLab project unstamped. Refusing an unset
+	// target on BOTH forges is deliberate: a caller that forgot it would otherwise pass
+	// every GitHub test and reproduce that defect only on GitLab. The type is the same
+	// TargetKind the typed reads/comments take, so one stated kind serves every op.
+	Target TargetKind
+	// Add is ensured to exist on the repo/project and to be present on the target.
 	Add []LabelSpec
 	// Remove is taken off the change when present. A name that is not on the change is not
 	// an error: removal is idempotent by construction.
@@ -462,6 +475,19 @@ type LabelChange struct {
 	// RemoveFamilies are label-name prefixes whose stale members are removed. A label
 	// matching one of these prefixes that is ALSO in Add is kept.
 	RemoveFamilies []string
+}
+
+// requireTarget is the shared refusal every backend issues BEFORE its first request when a
+// LabelChange names no target. One helper rather than two copies so the two backends cannot
+// drift on which values are accepted.
+func (c LabelChange) requireTarget() error {
+	switch c.Target {
+	case TargetChange, TargetIssue:
+		return nil
+	default:
+		return Refused(fmt.Sprintf("refusing to apply labels with no target kind (LabelChange.Target=%q) — "+
+			"say whether the number is an issue or a change; on GitLab the two are separate sequences", string(c.Target)))
+	}
 }
 
 // LabelOutcome reports what the reconciliation actually changed, so a caller can report the
@@ -799,6 +825,78 @@ type ChangeSearchResults struct {
 	Cap            int
 }
 
+// HardeningReadKind names one closed hardening-read kind for op 40, RepoHardeningRead — the
+// enumerated replacement for repohardenguard's former arbitrary `gh api <endpoint>` reads
+// (the forge-gitlab guard-read-custody brief). It is a named enum validated BEFORE any request exists
+// (ValidateHardeningReadKind), never a path, the same DeleteRef/ValidateRefPath shape applied
+// to a fixed vocabulary instead of a ref namespace: a kind the backend does not serve is a
+// could-not-check REFUSAL naming the forge and the kind, never a guess and never the other
+// forge's document.
+type HardeningReadKind string
+
+const (
+	// HardeningReadRepo reads the repo document itself: `.visibility`,
+	// `.security_and_analysis.*` (admin-visible only — a `null` here is could-not-check,
+	// exactly as an unauthenticated/non-admin read reports today).
+	HardeningReadRepo HardeningReadKind = "repo"
+	// HardeningReadRulesets reads every ruleset's DETAIL document (the list→detail walk
+	// happens inside the backend) as an ARRAY, so a caller's `[name=X].field` selector
+	// resolves inside the returned array. `bypass_actors` is present only for a caller with
+	// write access to the ruleset, so under a read-only identity those rows are
+	// could-not-check.
+	HardeningReadRulesets HardeningReadKind = "rulesets"
+	// HardeningReadActionsWorkflowPermissions reads the default Actions workflow permissions
+	// (admin-gated).
+	HardeningReadActionsWorkflowPermissions HardeningReadKind = "actions-workflow-permissions"
+	// HardeningReadActionsForkPRApproval reads the fork-PR contributor-approval setting
+	// (admin-gated).
+	HardeningReadActionsForkPRApproval HardeningReadKind = "actions-fork-pr-approval"
+	// HardeningReadActionsPrivateForkPR reads the fork-PR-workflows-on-private-repos setting
+	// (admin-gated).
+	HardeningReadActionsPrivateForkPR HardeningReadKind = "actions-private-fork-pr"
+	// HardeningReadVulnerabilityReporting reads the private-vulnerability-reporting setting
+	// (admin read).
+	HardeningReadVulnerabilityReporting HardeningReadKind = "vulnerability-reporting"
+)
+
+// hardeningReadKinds is the closed vocabulary op 40 serves, in a stable declared order — the
+// order HardeningReadKinds() renders and ValidateHardeningReadKind walks.
+var hardeningReadKinds = []HardeningReadKind{
+	HardeningReadRepo,
+	HardeningReadRulesets,
+	HardeningReadActionsWorkflowPermissions,
+	HardeningReadActionsForkPRApproval,
+	HardeningReadActionsPrivateForkPR,
+	HardeningReadVulnerabilityReporting,
+}
+
+// HardeningReadKinds returns the closed vocabulary op 40 serves, as strings, in a stable
+// order — for a caller (repohardenguard's checklist parser, an error message) that needs to
+// name every valid kind without restating the enum.
+func HardeningReadKinds() []string {
+	out := make([]string, len(hardeningReadKinds))
+	for i, k := range hardeningReadKinds {
+		out[i] = string(k)
+	}
+	return out
+}
+
+// ValidateHardeningReadKind checks kind against the closed vocabulary BEFORE any request is
+// built — the DeleteRef/ValidateRefPath shape, applied to a fixed enum rather than a ref
+// namespace. An unrecognised kind is a could-not-check REFUSAL naming the kind and the
+// vocabulary; RepoHardeningRead calls this first on both backends, so an unknown kind emits
+// ZERO requests on either.
+func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
+	for _, k := range hardeningReadKinds {
+		if string(k) == kind {
+			return k, nil
+		}
+	}
+	return "", Unverifiable(fmt.Sprintf(
+		"could-not-check: %q is not a known hardening-read kind — the enumerated kinds are: %s",
+		kind, strings.Join(HardeningReadKinds(), ", ")), nil)
+}
+
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
 // operations a shipping tool consumes (stream spec §6), reconciled against the stream's
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
@@ -965,6 +1063,18 @@ type Forge interface {
 	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
 	// changes nothing (freeze rule: this read lands with the call site that consumes it).
 	RefExists(repo ForgeRepo, ref string) (bool, error)
+	// RepoHardeningRead reads ONE closed hardening-read kind's document(s) for repo (see
+	// HardeningReadKind) — the enumerated replacement for repohardenguard's former arbitrary
+	// `gh api <endpoint>` reads. kind is validated by ValidateHardeningReadKind BEFORE any
+	// request is built, so this cannot be steered at an arbitrary endpoint
+	// (TestForgeNoPassthrough's no-endpoint-argument check keys on parameter names, and `kind`
+	// is a closed enum, never a path). The `rulesets` kind performs the list→detail walk
+	// internally and returns the ARRAY of full detail documents, so a caller's `[name=X].field`
+	// selector resolves inside the returned array without a second op on this seam. A kind the
+	// resolved backend does not serve is a could-not-check REFUSAL naming the forge and the
+	// kind — GitLab refuses every kind by name until the forge-gitlab GitLab-hardening-reads follow-up. Consumer:
+	// cmd/repohardenguard's Checker (freeze rule: this op lands with its consumer).
+	RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)
 	// ReadMergeHold reads the current state of a change's merge-hold marker thread (see
 	// MergeHold; the forge-gitlab merge-hold brief). GitHub returns MergeHoldNotApplicable and issues no
 	// request — its twin control is server-side branch protection. Any other error is
@@ -1015,10 +1125,11 @@ type Forge interface {
 	// MarkReadyForReview flips a draft change to ready (the only transition this seam
 	// exposes — there is no un-ready, merge, or edit).
 	MarkReadyForReview(nodeID string) error
-	// ApplyLabels reconciles a change's labels in one operation (see LabelChange). It is
-	// idempotent: applying an already-present label and removing an already-absent one are
-	// both no-ops, so a re-run REPLACES rather than stacks and never fails for having
-	// already succeeded.
+	// ApplyLabels reconciles the labels of ONE issue or change in one operation (see
+	// LabelChange; change.Target says which kind number names, and an unset target is
+	// refused before any request). It is idempotent: applying an already-present label and
+	// removing an already-absent one are both no-ops, so a re-run REPLACES rather than
+	// stacks and never fails for having already succeeded.
 	ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error)
 	// EditComment replaces the body of ONE existing comment. commentID is the opaque id a
 	// prior ListComments returned (Comment.ID) — never a locally composed one.

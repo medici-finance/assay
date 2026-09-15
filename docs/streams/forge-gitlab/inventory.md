@@ -178,6 +178,29 @@ exists. The golden `delete_ref_refuses_namespace_escape` pins that a ref aimed a
 | 37 | `RefExists(repo, ref)` | ref-existence read (model-capability-floor stamp age-out) | `GET /repos/{o}/{r}/git/ref/{ref}` (SINGULAR single-reference read, distinct from the plural `git/refs/` `DeleteRef` targets) — the logic extracted from `deskpost`'s hand-rolled `refExists`; a 404 is the ANSWER "absent" (false, nil), every other non-2xx is could-not-check | `GET /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**) — `DeleteRef`'s read twin, reaching exactly as far: GitLab CE exposes NO general ref-existence endpoint, so only the `heads/<branch>` namespace maps and every other namespace is a could-not-check REFUSAL naming the gap. The dispatch claim ref (`refs/heads/dispatch/<key>`) is INSIDE that namespace, so the live read round-trips here. A 404 → absent (false, nil); a 403 → could-not-check, never a guessed release | implemented |
 | 38 | `GetIssueTyped(repo, number, kind)` | typed read of ONE stated kind (issue ↔ change) at a number | `GET /repos/{o}/{r}/issues/{n}` — the same single read as op 2, with the stated kind VALIDATED against the `pull_request` discriminator: a mismatch is could-not-check naming both kinds, never the other object handed back | `GET /projects/:id/issues/:iid` OR `…/merge_requests/:iid` — exactly the ONE endpoint the stated kind names; the other sequence's object at the same number is irrelevant once the kind is stated (the case op 2 refuses). A 404 from that one probe is the answer for THAT kind | implemented |
 | 39 | `PostCommentTyped(repo, number, kind, body)` | comment on the object of ONE stated kind | `POST /repos/{o}/{r}/issues/{n}/comments` — issues and PRs share the endpoint, so the kind selects nothing (it is not re-validated: op 38 precedes it in every consumer) | `POST /projects/:id/issues/:iid/notes` OR `…/merge_requests/:iid/notes`, routed by the caller's kind alone with NO resolving read — op 9 routes through op 2 and so inherits its both-kinds refusal | implemented |
+| 40 | `RepoHardeningRead(repo, kind)` | repo-hardening read (guard-read custody, `repohardenguard`) | ONE closed kind enum, validated by `ValidateHardeningReadKind` before any request exists — never a path, so this cannot become the passthrough it replaces. `repo` → `GET /repos/{o}/{r}` (`.visibility`, `.security_and_analysis.*`, admin-visible only); `rulesets` → `GET …/rulesets` then `GET …/rulesets/{id}` per entry, returning the ARRAY of detail documents (`bypass_actors` present only for a caller with write access to the ruleset); `actions-workflow-permissions` → `GET …/actions/permissions/workflow`; `actions-fork-pr-approval` → `GET …/actions/permissions/fork-pr-contributor-approval`; `actions-private-fork-pr` → `GET …/actions/permissions/fork-pr-workflows-private-repos`; `vulnerability-reporting` → `GET …/private-vulnerability-reporting` (all four admin-gated) | Every kind is a NAMED could-not-check REFUSAL (`could-not-check: gitlab serves no hardening read of kind %q — forge-gitlab/12`), emitting zero requests — deferred to forge-gitlab/12's GitLab kinds (protected branches, protected tags, push rules, approvals) | github-only |
+
+**Op 40 (`RepoHardeningRead`) closes forge-gitlab/08's row 3 to zero (forge-gitlab/11).** It is the
+guard-read-custody brief's enumerated replacement for `repohardenguard`'s former arbitrary
+`gh api <endpoint>` reads, and lands WITH its consumer in the same change (spec §6 freeze rule):
+`cmd/repohardenguard`'s `Checker` now resolves a `Forge` via `deskkit.ForgeFor(fr, "auditor")` — a
+FIXED role, never `$DESK_LOOP` (the guard runs outside any desk window) — and the checklist's
+`Read` cell grammar moves from `gh api <endpoint>` to `read <kind>` / `read file <path>` (the
+latter routes through the existing `ReadFile`, op 22; a `gh api` cell is now a parse-time REFUSAL
+naming the vocabulary). The `auditor` role is a new, READ-ONLY `desktoken` identity (#857's ruling:
+option 1) with no write permission of any kind on GitHub and a `read_api`-scoped Reporter PAT on
+GitLab — the forge-side grant is the single point of failure the brief's Verify row 8 proves by
+attempting a settings write with the guard's own token and observing the forge itself refuse it
+with 403, the LOWER layer catching the fault with the enumerated-surface UPPER layer bypassed
+entirely. The three-state rule (#127) is unchanged in meaning; only the SOURCE of the status moves
+from regexing `gh`'s stderr to `*deskkit.ForgeAPIError.Status` / `IsForgeNotFound`.
+
+**Renumbered from op 38 to op 40 on the `feat/assay--forge-gitlab--11` merge with `main`
+(2026-09-14):** `medici-finance/assay#1087` merged `GetIssueTyped`/`PostCommentTyped` as ops
+38–39 from the same op-37 base this brief branched from, so both streams independently claimed
+op 38. `RepoHardeningRead` takes the next free number, 40; nothing about its behavior, kind
+vocabulary, or consumer wiring changed — only the numeral in this table and its own code
+comments/docs.
 
 **Op 37 (`RefExists`) was added by brief `forge-gitlab/09` under the same freeze rule**, with its one
 consuming call site converted in the same change: `deskpost`'s `claimLiveness` — the model-capability
@@ -207,15 +230,16 @@ every caller not yet converted.
 
 | # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
 |---|--------|--------------------|-------------|----------------|-------------|
-| 40 | `ReadMergeHold(repo, number)` | read a change's merge-hold marker thread | typed not-applicable (`MergeHoldNotApplicable`) — the twin control is server-side branch protection, already stronger | `GET /projects/:id/merge_requests/:iid/discussions`, paginated; finds the desk's own thread by the FIXED first line of its marker note. Absent is a real answer (`MergeHoldAbsent`), never an error | implemented |
-| 41 | `OpenMergeHold(repo, number)` | open the merge-hold marker thread on a new change | typed not-applicable (`ErrMergeHoldNotApplicable`) | `POST /projects/:id/merge_requests/:iid/discussions`; refuses (could-not-check) if the thread comes back not `resolvable` — a plain note would never block the merge button | implemented |
-| 42 | `SetMergeHold(repo, number, in)` | release (resolved, at head) or re-arm (unresolved, with reason) a merge-hold | typed not-applicable (`ErrMergeHoldNotApplicable`) | release: `POST …/discussions/:id/notes` (the `released`+`Head:` reply) then `PUT …/discussions/:id?resolved=true`; re-arm: the same PUT with `resolved=false` FIRST, then the `re-armed` reply note — the order in each direction is the one that fails safe (see the backend's own doc comment) | implemented |
+| 41 | `ReadMergeHold(repo, number)` | read a change's merge-hold marker thread | typed not-applicable (`MergeHoldNotApplicable`) — the twin control is server-side branch protection, already stronger | `GET /projects/:id/merge_requests/:iid/discussions`, paginated; finds the desk's own thread by the FIXED first line of its marker note. Absent is a real answer (`MergeHoldAbsent`), never an error | implemented |
+| 42 | `OpenMergeHold(repo, number)` | open the merge-hold marker thread on a new change | typed not-applicable (`ErrMergeHoldNotApplicable`) | `POST /projects/:id/merge_requests/:iid/discussions`; refuses (could-not-check) if the thread comes back not `resolvable` — a plain note would never block the merge button | implemented |
+| 43 | `SetMergeHold(repo, number, in)` | release (resolved, at head) or re-arm (unresolved, with reason) a merge-hold | typed not-applicable (`ErrMergeHoldNotApplicable`) | release: `POST …/discussions/:id/notes` (the `released`+`Head:` reply) then `PUT …/discussions/:id?resolved=true`; re-arm: the same PUT with `resolved=false` FIRST, then the `re-armed` reply note — the order in each direction is the one that fails safe (see the backend's own doc comment) | implemented |
 
-**Ops 40–42 (the merge-hold op set) were added by brief `forge-gitlab/17`** under the same freeze
-rule, with three consuming call sites in the same change: `deskpr create` (op 41, opening the hold
-right after `CreateDraftChange` on a GitLab-resolved repo — task 2), `deskpost review` (op 42,
+**Ops 41–43 (the merge-hold op set) were added by brief `forge-gitlab/17`**, immediately following
+op 40 (`RepoHardeningRead`, `forge-gitlab/11`) under the same freeze rule, with three consuming
+call sites in the same change: `deskpr create` (op 42, opening the hold
+right after `CreateDraftChange` on a GitLab-resolved repo — task 2), `deskpost review` (op 43,
 releasing on an approve at head and re-arming on a request-changes or a stale-head resolve — task
-3), and `deskflip`'s `reviewer-approved` condition (op 40, and op 42 for its own stale-head
+3), and `deskflip`'s `reviewer-approved` condition (op 41, and op 43 for its own stale-head
 re-arm — task 4a). They exist because neither half of GitHub's server-side verdict-before-merge
 gate exists on GitLab Free (the `Draft:` prefix is a title string any Developer can strip; required
 approvals are Premium), and the field found on 2026-09-14 that the desk's TOOL-SIDE half was also
@@ -284,11 +308,16 @@ stale — the ops they needed had landed since brief 08:
 | `deskroster` `ghListOpenPRs` | `gh pr list --state open --json number,title,isDraft` (listed under **no enumerated op**) | `ListOpenChanges` (op 23), which landed with `deskboard`'s `fetchOpenPRs` |
 
 Both are READ-only display annotations under the session's own minted App token (not a write), so
-no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7. The one remaining
-naive-grep hit — `repohardenguard`'s `ghRun` — is **open work, not a ruled exception**: the driver
-ratified closure-to-zero (option B on #834), so every residual `gh` shell-out must reach the seam.
-That site is owned by the guard-read-custody brief (`forge-gitlab/11`) and its design record; its
-`forgeban` permit row is permitted only until that brief lands, and row 3 closes to 0 with it.
+no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7.
+
+**forge-gitlab/11 closes the last naive-grep hit.** `repohardenguard`'s `ghRun` — the guard's
+arbitrary `gh api <endpoint>` reads — is retired onto op 40 `RepoHardeningRead` under a dedicated
+read-only `auditor` identity (#857's ruling: option 1). fg/08's Verify row 3 (the whole-tree grep)
+closes to **0**; its `forgeban` permit row is removed and the ceiling comes down 7 → 6.
+
+| Retired | Was | Now |
+|---------|-----|-----|
+| `repohardenguard` `ghRun`/`ghGet` | `gh api <endpoint>` — arbitrary GET parsed out of a checklist document (rulesets, branch protection, App permissions, `repos/<repo>` preflight, `/user` identity) | `RepoHardeningRead(repo, kind)` (op 40) under the `auditor` role, over a closed kind vocabulary; the identity line reads the role's known `[bot]` login instead of `/user` (an App token cannot read it) |
 
 The rest are classified, not migrated. Every one is blocked on a decision this brief does not own:
 
@@ -296,7 +325,7 @@ The rest are classified, not migrated. Every one is blocked on a decision this b
 |-------|-----------|---------------------------|
 | **identity** | `deskclose`, `deskdigest`, `deskfile`, `deskflip` (7 sites), `deskreply`, `deskpr`, `deskboard`, `deskmerge`, `deskdisposition`, `issueboard`, `scanloop` | Each reaches the forge under the caller's AMBIENT CLI credential BY DOCUMENTED DESIGN ("gates WHETHER and WHAT, never WHO … mints no App token on any path"). Both backends REFUSE to build a client without an explicitly minted token — deliberately (brief 07's posture, mirroring #562/#563). Routing these through the seam therefore changes WHO performs each write. That is a **token-custody ruling**, not a transport change, and it is the single decision gating ~20 of the 25 sites. (`deskroster` was here — its two reads migrated under #834; see the follow-up table above.) |
 | **no enumerated op** | labels (`deskdispatch`, `deskflip`, `deskdisposition`, `scanloop`), `pr list` (`deskdisposition`), branch→PR resolution (`deskpushguard`), issue listing + GraphQL counts (`issueboard`, `deskboard`), merge-authority read (`deskmerge`), trust-association read (`scanloop`) | Spec §6's freeze rule forbids adding a method without converting its consuming call site in the same change. Each of these is a real op set with a real GitLab mapping question (project-scoped labels, MR source-branch lookup, issue IID sequences) and needs its own brief rather than a speculative method. (`deskroster`'s `pr list` was here — migrated onto the now-landed `ListOpenChanges` under #834.) |
-| **not a forge op at all** | `deskadvisory` (`gh auth token`), `repohardenguard` (`gh api` reads of rulesets / branch protection / App permissions) | The first is the identity layer (delta D2); the second is repo HARDENING, the same class delta D3 keeps out of the frozen set. Neither has a Forge method it could move to *today* — under the ratified closure-to-zero both are OPEN WORK, `repohardenguard` under the guard-read-custody brief (`forge-gitlab/11`), not permanent carve-outs. |
+| **not a forge op at all** | `deskadvisory` (`gh auth token`) | The identity layer (delta D2) — `gh auth token` READS the ambient CLI credential rather than performing a forge operation, and there is no Forge method it could move to. (`repohardenguard`'s hardening reads were here; forge-gitlab/11 gave them their own enumerated op, op 40, so this class is down to one site.) |
 
 The 14 unresolved-argv sites are a **could-not-check ledger, not a permit**: each runs a resolved
 `statusgen`/`desktoken`/callout binary or a caller-supplied argv, none launches a forge CLI on any
