@@ -41,7 +41,7 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 | 04 | [migrate deskpushguard detection reads to gitcore (parity + mutation test)](brief-04-migrate-deskpushguard-reads.md) | 3 | M | verified | 2026-09-15 sonnet-5-verifier (5/5 rows PASS incl. a real-fixture mutation test; risk-value DERIVED) | — |
 | 05 | [migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge)](brief-05-migrate-fetch-retire-hardening.md) | 4 | M | todo | — | — |
 | 06 | [migrate push + retire ambient-credential machinery + preflight transport probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | todo | — | — |
-| 07 | [deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | implemented | — | — |
+| 07 | [deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | verified | 2026-09-15 sonnet-5-verifier (6/6 rows PASS incl. an independently re-derived baseline; risk-value DERIVED) | — |
 | 08 | [flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
