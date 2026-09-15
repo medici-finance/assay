@@ -85,7 +85,7 @@ func TestDecayDeadClaimsDecaysOnGitLabOrigin(t *testing.T) {
 	}
 }
 
-// TestDecayNeverDropsALiveClaimAForkMRNameCollidesWith is the end-to-end guard on
+// TestForkMRNameNeverDecaysLiveClaim is the end-to-end guard on
 // the pass's load-bearing invariant: decay may only ever shrink the claim set to
 // what it VERIFIED is dead.
 //
@@ -98,7 +98,7 @@ func TestDecayDeadClaimsDecaysOnGitLabOrigin(t *testing.T) {
 // that live claim: the brief goes back on the board and a second worker is
 // dispatched onto work already in flight. This walks the whole pass, not just the
 // reader, because the claim set is what the invariant is about.
-func TestDecayNeverDropsALiveClaimAForkMRNameCollidesWith(t *testing.T) {
+func TestForkMRNameNeverDecaysLiveClaim(t *testing.T) {
 	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
 	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
 	t.Setenv("CI_PROJECT_ID", "4242")
@@ -134,7 +134,7 @@ func TestDecayNeverDropsALiveClaimAForkMRNameCollidesWith(t *testing.T) {
 	}
 }
 
-// TestGitLabDecayWithoutProjectIDsDoesNotDecay pins the fail DIRECTION of the
+// TestDecaySkipsUnattributedMR pins the fail DIRECTION of the
 // fork check. A merge request whose source/target project cannot be read is one
 // this reader could not attribute — and an unattributable merge request is
 // indistinguishable from a fork's, whose source_branch does not name a branch of
@@ -142,7 +142,7 @@ func TestDecayNeverDropsALiveClaimAForkMRNameCollidesWith(t *testing.T) {
 // back on the wrong side of its own invariant (shrink only to what was VERIFIED
 // dead) for exactly the responses we understand least. It is skipped, counted, and
 // reported — under-decay, never over-decay.
-func TestGitLabDecayWithoutProjectIDsDoesNotDecay(t *testing.T) {
+func TestDecaySkipsUnattributedMR(t *testing.T) {
 	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
 	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
 	t.Setenv("CI_PROJECT_ID", "4242")
@@ -167,11 +167,11 @@ func TestGitLabDecayWithoutProjectIDsDoesNotDecay(t *testing.T) {
 	}
 }
 
-// TestGitLabDecayIgnoresAnotherProjectsTarget is the belt-and-braces arm: when the
+// TestDecaySkipsOtherProjectMR is the belt-and-braces arm: when the
 // numeric project id is known, a row targeting some OTHER project is a response we
 // do not understand and must draw no conclusion from, even though its source and
 // target agree with each other.
-func TestGitLabDecayIgnoresAnotherProjectsTarget(t *testing.T) {
+func TestDecaySkipsOtherProjectMR(t *testing.T) {
 	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
 	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
 	t.Setenv("CI_PROJECT_ID", "4242")
@@ -191,11 +191,11 @@ func TestGitLabDecayIgnoresAnotherProjectsTarget(t *testing.T) {
 	}
 }
 
-// TestGitLabDecayPathAddressedProjectStillDecays proves the numeric-id check does
+// TestDecayPathAddressedProject proves the numeric-id check does
 // not break the local/outside-CI path, where CI_PROJECT_ID is unset and the project
 // is addressed by its escaped path: source == target is then the whole test, and an
 // ordinary same-project merge request still decays.
-func TestGitLabDecayPathAddressedProjectStillDecays(t *testing.T) {
+func TestDecayPathAddressedProject(t *testing.T) {
 	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
 	t.Setenv("CI_API_V4_URL", "")
 	t.Setenv("CI_PROJECT_ID", "")
