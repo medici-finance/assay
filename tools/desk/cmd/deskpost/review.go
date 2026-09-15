@@ -345,8 +345,14 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 					"), --head matches the current head "+short(head)+", trust gate passed, public-repo "+
 					"gate passed, no equivalent verdict already at head — stopped before POST"), dig)
 		}
-		if err := client.postReview(pr, head, shape.event, string(body)); err != nil {
+		postNote, err := client.postReview(pr, head, shape.event, string(body))
+		if err != nil {
 			return withDigest(fromErr(verb, repo, pr, head, err), dig)
+		}
+		if postNote != "" {
+			// The verdict is in force by a route other than the plain POST (GitLab's
+			// already-approved 401, #1106): success, but say which route it was.
+			fmt.Fprintln(stderr, "deskpost: NOTE: "+postNote)
 		}
 		// Merge-hold release/re-arm (the forge-gitlab merge-hold brief, task 3): the CORRECTNESS
 		// verdict's own gate — the security lane (wantKind == KindSecurity) touches it not at
@@ -367,7 +373,11 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		} else if s := lo.String(); s != "no label change" {
 			fmt.Fprintln(stderr, "deskpost: verdict-time labels: "+s)
 		}
-		return done(verb, repo, pr, head, dig, "posted "+verdictFlag+" review as "+reviewerBotDisplay()+" at "+short(head))
+		detail := "posted " + verdictFlag + " review as " + reviewerBotDisplay() + " at " + short(head)
+		if postNote != "" {
+			detail += " (" + postNote + ")"
+		}
+		return done(verb, repo, pr, head, dig, detail)
 	})
 }
 

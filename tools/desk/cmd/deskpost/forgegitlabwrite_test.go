@@ -49,6 +49,9 @@ type glReviewFake struct {
 	holdReadErr    error
 	holdSetErr     error
 	setHoldCalls   []deskkit.MergeHoldUpdate
+	// reportNote, when set, is handed to ReviewInput.Report on a successful PostReview — the
+	// GitLab backend's "approval already stood" success-with-note (#1106).
+	reportNote string
 }
 
 func (g *glReviewFake) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
@@ -73,6 +76,9 @@ func (g *glReviewFake) PostReview(_ deskkit.ForgeRepo, _ int, in deskkit.ReviewI
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.postedReview = append(g.postedReview, in)
+	if g.reportNote != "" && in.Report != nil {
+		in.Report(g.reportNote)
+	}
 	return nil
 }
 func (g *glReviewFake) ReadMergeHold(deskkit.ForgeRepo, int) (*deskkit.MergeHold, error) {
@@ -269,5 +275,35 @@ func TestGitLabReviewRequestChangesRoutesThroughForge(t *testing.T) {
 	}
 	if h := f.setHoldCalls[0]; h.Resolved || h.Reason != "request-changes" {
 		t.Errorf("SetMergeHold = %+v, want a re-arm with reason \"request-changes\"", h)
+	}
+}
+
+// TestGitLabReviewAlreadyApprovedNoteIsReported (#1106): when the backend lands the verdict
+// by a route other than the plain POST — GitLab's approve route answered 401 because the
+// App's approval already stood — the verb SUCCEEDS (exit 0, audit ok, so the idempotency
+// store records the body) and REPORTS which route it saw: the note reaches stderr and the
+// audit detail, naming the endpoint. A success that swallowed the note would leave the
+// operator unable to tell "posted" from "already in force", and a refusal is the defect.
+func TestGitLabReviewAlreadyApprovedNoteIsReported(t *testing.T) {
+	f := newGLReviewFake()
+	f.reportNote = "already approved by example-bot (id 42) — POST /projects/example-org%2Fexample-project/merge_requests/1/approve answered HTTP 401 because this identity's approval already stands"
+	errBuf := setupGitLabReview(t, f)
+	bf := writeBody(t, "rev.md", okReviewBody)
+
+	if code := run(reviewArgs(glReviewRepo, "1", "approve", testHead, bf)); code != 0 {
+		t.Fatalf("an already-standing approval must be success, exit = %d, want 0\nstderr:\n%s", code, errBuf.String())
+	}
+	if len(f.postedReview) != 1 || f.postedReview[0].Report == nil {
+		t.Fatalf("PostReview must be called once with a Report sink wired; got %+v", f.postedReview)
+	}
+	if !strings.Contains(errBuf.String(), "deskpost: NOTE: "+f.reportNote) {
+		t.Errorf("the backend's note must reach stderr; stderr:\n%s", errBuf.String())
+	}
+	e := lastAudit(t)
+	if e.Result != deskkit.ResultOK {
+		t.Fatalf("audit result = %q, want ok (the verdict is in force)", e.Result)
+	}
+	if !strings.Contains(e.Detail, f.reportNote) {
+		t.Errorf("audit detail must carry the note; got %q", e.Detail)
 	}
 }

@@ -188,6 +188,18 @@
       "new": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif true {"
     },
     {
+      "name": "#1106: treat EVERY 401 from POST /approve as an approval that already stands (the not-eligible and rejected-credential cases become success)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif a.User.ID == me.ID {",
+      "new": "\t\t\tif true {"
+    },
+    {
+      "name": "#1106: stop classifying the approve route's 401 (an approval that already stands is reported as a rejected credential again)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif mapped == nil || !isForgeUnauthorized(mapped) {",
+      "new": "\t\tif true {"
+    },
+    {
       "name": "skip the re-stamp removal (a foreign dispatched-* stamp stays standing on the MR and the floor keeps refusing; #1154)",
       "file": "cmd/deskdispatch/dispatch.go",
       "old": "\tif len(stale) > 0 {\n\t\t// The removal is its OWN write",

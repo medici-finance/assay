@@ -31,13 +31,50 @@ func chdir(t *testing.T, dir string) func() {
 }
 
 // runGitT runs git in dir and fails the test on error, returning trimmed stdout.
+//
+// AUTO-MAINTENANCE IS TURNED OFF FOR EVERY FIXTURE GIT COMMAND, and that is not a
+// tidiness preference. `git commit` (and fetch/merge/receive-pack) forks
+// `git maintenance run --auto --quiet --detach` — a DETACHED child that outlives
+// the git process the test waited on and keeps writing inside `.git`
+// (`maintenance.lock`, `gc.log`, repacked objects). The fixtures below build their
+// repos in `t.TempDir()` directories, so that child races the cleanup Go runs when
+// the test returns, and the loser is the cleanup:
+//
+//	TempDir RemoveAll cleanup: unlinkat /tmp/TestForeignCommitFlagged…/003/.git: directory not empty
+//
+// RemoveAll empties the directory and then rmdir()s it; an entry the detached
+// child recreates in that window is ENOTEMPTY. It is a race, so it fails on a
+// loaded CI runner and passes locally, and it fails in whichever test happened to
+// lose — never the one that is actually broken. `gc.auto=0` /
+// `maintenance.auto=false` stop the fork happening at all (verified with
+// GIT_TRACE: the `maintenance run --auto` lines disappear), which removes the race
+// rather than widening the window.
+//
+// It is set BOTH ways because neither alone covers every repo. The
+// GIT_CONFIG_COUNT trio covers the invocation itself, including `init` and
+// `clone`, which run before there is a repo config to write into. But git clears
+// that trio (it is in `local_repo_env`) when it runs a command in a DIFFERENT
+// repository — `git push` to a local path spawns `receive-pack` in the bare
+// remote, and that child was still forking maintenance into the remote's own
+// TempDir. So every repo this helper creates also gets the settings written into
+// its config, which no env-clearing can strip.
 func runGitT(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_COUNT=2",
+		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
+		"GIT_CONFIG_KEY_1=maintenance.auto", "GIT_CONFIG_VALUE_1=false",
+	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s (dir=%s) failed: %v\n%s", strings.Join(args, " "), dir, err, out)
+	}
+	if len(args) > 0 && (args[0] == "init" || args[0] == "clone") {
+		// Every fixture repo is created AT dir (`init` in it, `clone … .` into it).
+		runGitT(t, dir, "config", "gc.auto", "0")
+		runGitT(t, dir, "config", "maintenance.auto", "false")
 	}
 	return strings.TrimSpace(string(out))
 }

@@ -2429,7 +2429,11 @@ func (g *GitLabForge) PostReview(repo ForgeRepo, number int, in ReviewInput) err
 			opt = &gitlab.ApproveMergeRequestOptions{SHA: gitlab.Ptr(in.HeadSHA)}
 		}
 		_, _, aerr := cl.MergeRequestApprovals.ApproveMergeRequest(repo.Slug(), int64(number), opt)
-		return g.mapErr(http.MethodPost, path, aerr)
+		mapped := g.mapErr(http.MethodPost, path, aerr)
+		if mapped == nil || !isForgeUnauthorized(mapped) {
+			return mapped
+		}
+		return g.classifyApprove401(cl, repo, number, path, mapped, in.Report)
 	case "REQUEST_CHANGES":
 		path := fmt.Sprintf("/projects/%s/merge_requests/%d/unapprove", proj, number)
 		_, uerr := cl.MergeRequestApprovals.UnapproveMergeRequest(repo.Slug(), int64(number))
@@ -2449,6 +2453,113 @@ func (g *GitLabForge) PostReview(repo ForgeRepo, number int, in ReviewInput) err
 		}
 		return nil
 	}
+}
+
+// isForgeUnauthorized reports whether err is a 401 from the forge REST layer. It unwraps,
+// so a ForgeAPIError nested in a DeskError is still recognised.
+func isForgeUnauthorized(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && ae.Status == http.StatusUnauthorized
+}
+
+// classifyApprove401 decides what a 401 from POST /merge_requests/:iid/approve MEANS,
+// because on that one route GitLab overloads the status (#1106).
+//
+// The approve endpoint answers `unauthorized!` — HTTP 401 with an EMPTY body — whenever the
+// acting user "cannot approve" the merge request, and that predicate is true for a user who
+// has ALREADY approved it, not only for a rejected credential. Measured on a live instance:
+// the same token answered 200 on `GET /user`, `GET /personal_access_tokens/self` (active,
+// unrevoked, scope `api`) and `GET /merge_requests/:iid/approvals` (`approved_by` naming the
+// acting user) within seconds of the approve route's bodyless 401. There is no `message`
+// field to read, so the generic 401 handler owned the case by default and sent an operator
+// off to rotate a healthy token while the verdict it wanted was already in force.
+//
+// The credential story is disprovable with reads this backend can make, so it is disproved
+// rather than assumed. In order:
+//
+//  1. `GET /user` — who is the token? A 401 HERE confirms the credential really is rejected:
+//     the original refusal stands, with the confirming endpoint named. Any other failure is
+//     could-not-check for the classification, and the approve 401 stays a refusal — an
+//     instrument that could not look has not cleared anything (clause C4).
+//  2. `GET /merge_requests/:iid/approvals` — who has approved? A 401 here is the credential
+//     again; any other failure is could-not-check, as above.
+//  3. Acting user present in `approved_by` → the approval already stands. That is the
+//     post-condition an APPROVE asks for, so the write is a SUCCESS: nil is returned and the
+//     note goes to in.Report, naming the endpoint that answered 401 and the one that proved
+//     the approval. The verdict NOTE (the reasoning) was posted above regardless, so the
+//     body-bearing half of the verdict took its ordinary path.
+//  4. Acting user absent → the credential is valid but the user is not an eligible approver
+//     on this merge request (an author or committer where self-approval is disabled, a role
+//     below Developer, or an approver set that excludes it). Still fail-closed — the verdict
+//     did NOT land — but the refusal names the eligibility gate and the acting identity, not
+//     the credential, so nobody rotates a healthy token.
+//
+// Whether an approval that stands is "at this head" is the read path's question
+// (ReviewsAtHead pins it via the project's reset-on-push policy), not this one's; the caller
+// has already asserted the reviewed head is the merge request's current head before posting.
+func (g *GitLabForge) classifyApprove401(cl *gitlab.Client, repo ForgeRepo, number int,
+	approvePath string, approveErr error, report func(string)) error {
+	proj := g.projectPath(repo)
+	const userPath = "/user"
+	// The cause every refusal below wraps is the approve route's bare *ForgeAPIError — so
+	// IsForge*/errors.As classification still sees "POST …/approve → 401" — and NOT the
+	// mapped DeskError, whose rendered chain would re-attach the "credential rejected"
+	// diagnosis this function exists to disprove.
+	var cause error = approveErr
+	var fae *ForgeAPIError
+	if errors.As(approveErr, &fae) {
+		cause = fae
+	}
+	me, _, uerr := cl.Users.CurrentUser()
+	if uerr != nil {
+		umapped := g.mapErr(http.MethodGet, userPath, uerr)
+		if isForgeUnauthorized(umapped) {
+			return Unverifiable(fmt.Sprintf("could-not-check: POST %s — %s (confirmed: GET %s also returned HTTP 401)",
+				approvePath, gitlabStatusReason(http.StatusUnauthorized), userPath), cause)
+		}
+		return Unverifiable(fmt.Sprintf("could-not-check: POST %s returned HTTP 401, and whether that is a rejected "+
+			"credential or an approval that already stands could not be classified: %s", approvePath, umapped.Error()),
+			cause)
+	}
+	if me == nil {
+		return Unverifiable(fmt.Sprintf("could-not-check: POST %s returned HTTP 401, and whether that is a rejected "+
+			"credential or an approval that already stands could not be classified: GET %s returned no user",
+			approvePath, userPath), cause)
+	}
+
+	approvalsPath := fmt.Sprintf("/projects/%s/merge_requests/%d/approvals", proj, number)
+	approvals, _, aerr := cl.MergeRequests.GetMergeRequestApprovals(repo.Slug(), int64(number))
+	if aerr != nil {
+		amapped := g.mapErr(http.MethodGet, approvalsPath, aerr)
+		if isForgeUnauthorized(amapped) {
+			return Unverifiable(fmt.Sprintf("could-not-check: POST %s — %s (confirmed: GET %s also returned HTTP 401)",
+				approvePath, gitlabStatusReason(http.StatusUnauthorized), approvalsPath), cause)
+		}
+		return Unverifiable(fmt.Sprintf("could-not-check: POST %s returned HTTP 401, and whether that is a rejected "+
+			"credential or an approval that already stands could not be classified: %s", approvePath, amapped.Error()),
+			cause)
+	}
+	who := fmt.Sprintf("%s (id %d)", StripControl(me.Username), me.ID)
+	if approvals != nil {
+		for _, a := range approvals.ApprovedBy {
+			if a == nil || a.User == nil {
+				continue
+			}
+			if a.User.ID == me.ID {
+				if report != nil {
+					report(fmt.Sprintf("already approved by %s — POST %s answered HTTP 401 because this identity's "+
+						"approval already stands (GET %s lists it in approved_by); the credential is valid and "+
+						"nothing was re-posted", who, approvePath, approvalsPath))
+				}
+				return nil
+			}
+		}
+	}
+	return Unverifiable(fmt.Sprintf("could-not-check: POST %s — not an eligible approver (HTTP 401): the credential "+
+		"is valid (GET %s answered 200 as %s) and GET %s does not list that user in approved_by, so the instance "+
+		"refuses this user's approval on this merge request (self-approval by an author or committer, a role below "+
+		"Developer, or an approver set that excludes it) — rotating the token will not change this",
+		approvePath, userPath, who, approvalsPath), cause)
 }
 
 // --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
