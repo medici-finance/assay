@@ -142,7 +142,7 @@ DIAGNOSTICS: DESK_TRACE=1 (or a global --trace, any position) prints the full ca
 chain, every child process with its command line, exit status and elapsed time, and the
 failing child's stderr in full. Credentials are redacted. With it off, output is
 unchanged. Reach for it when a step reports an exit code and you cannot tell which of
-deskwt, the claim tool or gh produced it. See tools/desk/README.md, "Diagnostics —
+deskwt, the claim tool or the forge backend produced it. See tools/desk/README.md, "Diagnostics —
 DESK_TRACE".`
 
 func main() {

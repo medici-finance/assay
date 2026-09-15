@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestForgeGitlab|TestGitLab'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1 -run 'TestForgeGitlab|TestGitLab'",
   "control": {
     "name": "CONTROL — stop normalising GitLab's lifecycle vocabulary (an MR reports state \"opened\" instead of \"open\")",
     "file": "internal/deskkit/forge_gitlab.go",
@@ -186,6 +186,30 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif !ok {",
       "new": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif true {"
+    },
+    {
+      "name": "skip the re-stamp removal (a foreign dispatched-* stamp stays standing on the MR and the floor keeps refusing; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif len(stale) > 0 {\n\t\t// The removal is its OWN write",
+      "new": "\tif false {\n\t\t// The removal is its OWN write"
+    },
+    {
+      "name": "stamp blind when the label history cannot be read (WHO applied the present stamp is unknown, yet the step writes; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tevents, eerr := fg.ListLabelEvents(fr, o.pr)\n\tif eerr != nil {",
+      "new": "\tevents, eerr := fg.ListLabelEvents(fr, o.pr)\n\tif eerr != nil && false {"
+    },
+    {
+      "name": "stamp blind when the present labels cannot be read (an unreadable change is treated as unlabelled; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tchange, perr := fg.GetPullRequest(fr, o.pr)\n\tif perr != nil {",
+      "new": "\tchange, perr := fg.GetPullRequest(fr, o.pr)\n\tif perr != nil {\n\t\tchange = &deskkit.PullRequest{}\n\t}\n\tif false {"
+    },
+    {
+      "name": "report an ABSENT stamp as already standing (nothing stale means nothing written, so a fresh MR is never stamped; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif len(stale) == 0 && labelsPresent(change.Labels, labels) {",
+      "new": "\tif len(stale) == 0 {"
     }
   ]
 }
