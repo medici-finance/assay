@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/permissions/fork-pr-workflows-private-repos"
+    }
+  ],
+  "result": {
+    "run_workflows_from_fork_pull_requests": false
+  }
+}

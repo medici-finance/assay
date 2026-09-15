@@ -61,6 +61,12 @@ func cmdEdit(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	defer func() { explainScanRefusal(*explain, err) }()

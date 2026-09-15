@@ -1,0 +1,50 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/labels",
+      "body": {
+        "color": "0e8a16",
+        "description": "",
+        "name": "to:reviewer"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/labels",
+      "body": {
+        "color": "",
+        "description": "",
+        "name": "raised-by:desk"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/issues/7/labels",
+      "query": "per_page=100\u0026page=1"
+    },
+    {
+      "method": "DELETE",
+      "path": "/repos/medici-finance/assay/issues/7/labels/to:desk"
+    },
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/issues/7/labels",
+      "body": {
+        "labels": [
+          "to:reviewer",
+          "raised-by:desk"
+        ]
+      }
+    }
+  ],
+  "result": {
+    "Added": [
+      "to:reviewer",
+      "raised-by:desk"
+    ],
+    "Removed": [
+      "to:desk"
+    ]
+  }
+}

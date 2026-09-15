@@ -14,7 +14,7 @@ why: >-
   the head of the field-check critical path (#795 §1 and §2).
 wave: 4
 depends: ["forge-gitlab/02", "forge-gitlab/08"]
-unblocks: []
+unblocks: ["forge-gitlab/17"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

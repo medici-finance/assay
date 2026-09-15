@@ -348,6 +348,15 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if err := client.postReview(pr, head, shape.event, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, pr, head, err), dig)
 		}
+		// Merge-hold release/re-arm (the forge-gitlab merge-hold brief, task 3): the CORRECTNESS
+		// verdict's own gate — the security lane (wantKind == KindSecurity) touches it not at
+		// all, and keeps its own gate (deskflip's security-verdict). A GitHub-resolved repo's
+		// readMergeHold answers the typed not-applicable and this is a no-op.
+		if shape.wantKind == bodycheck.KindCorrectness {
+			if hErr := applyMergeHoldForVerdict(client, pr, shape.event, head); hErr != nil {
+				return withDigest(fromErr(verb, repo, pr, head, hErr), dig)
+			}
+		}
 		// Mechanical, ADVISORY verdict-time labels (diff size class + surface tier) for
 		// merge-queue triage. This runs AFTER the verdict has landed and NEVER changes its
 		// outcome: a labeling failure is logged as a WARNING and swallowed, so the verdict
@@ -585,4 +594,54 @@ func reviewAlreadyPostedIn(entries []deskkit.Entry, repo string, pr int, head, v
 		}
 	}
 	return false
+}
+
+// applyMergeHoldForVerdict is `review`'s task-3 half of the forge-gitlab merge-hold brief,
+// run AFTER postReview has already landed the verdict itself: an approve releases the
+// change's merge-hold at head; a request-changes re-arms it; and a verdict that lands
+// against a hold RESOLVED AT A DIFFERENT HEAD re-arms it FIRST (the stale resolution is never
+// left standing), before applying its own release or re-arm. GitHub's readMergeHold answers
+// the typed not-applicable and this is a no-op there.
+//
+// A verdict that posted but whose hold write fails returns a non-zero error naming which half
+// landed — never a silent success that leaves the server-side gate out of step with the
+// verdict that was just recorded.
+func applyMergeHoldForVerdict(client postBackend, pr int, event, head string) error {
+	hold, err := client.readMergeHold(pr)
+	if err != nil {
+		if deskkit.IsMergeHoldNotApplicable(err) {
+			return nil
+		}
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"the %s verdict posted, but reading PR #%d's merge-hold to release/re-arm it failed: %v — "+
+				"the verdict landed; the server-side gate may be out of step with it", event, pr, err), err)
+	}
+	if hold.State == deskkit.MergeHoldNotApplicable {
+		return nil
+	}
+	if hold.State == deskkit.MergeHoldResolved && hold.Head != "" && hold.Head != head {
+		if rerr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{
+			Reason: fmt.Sprintf("new head %s", head),
+		}); rerr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"the %s verdict posted, but re-arming PR #%d's merge-hold — resolved at %s, now at %s — "+
+					"failed: %v — the verdict landed; the server-side gate is still resolved at the STALE head",
+				event, pr, short(hold.Head), short(head), rerr), rerr)
+		}
+	}
+	switch strings.ToUpper(event) {
+	case "APPROVE":
+		if serr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{Resolved: true, Head: head}); serr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"the approve verdict posted on PR #%d, but releasing its merge-hold at %s failed: %v — the "+
+					"verdict landed; the server-side gate is still UP", pr, short(head), serr), serr)
+		}
+	case "REQUEST_CHANGES":
+		if serr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{Reason: "request-changes"}); serr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"the request-changes verdict posted on PR #%d, but re-arming its merge-hold failed: %v — the "+
+					"verdict landed; the server-side gate may still read released", pr, serr), serr)
+		}
+	}
+	return nil
 }

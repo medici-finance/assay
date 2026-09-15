@@ -65,6 +65,12 @@ func (a *auditCtx) log(result, detail string) {
 
 // finalize maps the terminal error (or success) to exactly one audit result.
 func (a *auditCtx) finalize(err error) {
+	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
+	// would land in is append-only, never rotated, and counted per tool for the write budget
+	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
+	if deskkit.IsHelpRequest(err) {
+		return
+	}
 	if err == nil {
 		result := a.successResult
 		if result == "" {
@@ -361,6 +367,11 @@ func cmdAdd(args []string) (err error) {
 	// still errors → refused).
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
+		// TIER TWO: `-h`/`--help` reaches the parser as flag.ErrHelp. A help screen is
+		// not a refusal and writes no audit row (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if len(positionals) != 1 {

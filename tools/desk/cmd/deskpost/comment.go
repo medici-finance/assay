@@ -23,7 +23,15 @@ import (
 // written against; it is verified against the live head and refuses on a mismatch
 // (#513). Empty means "no assertion" — the pre-existing behaviour, which
 // stamps whatever head is live at post time.
-func runComment(owner, name string, num int, wantHead string, body []byte, args []string, opts postOpts) int {
+//
+// forcedKind, when non-nil, is --kind's parsed value (#1091): it routes target resolution
+// through resolveTargetKind instead of the automatic resolveTarget, and routes the WRITE
+// through the typed deskkit.Forge.PostCommentTyped instead of PostComment. It exists for
+// GitLab's separate issue/MR numbering, where a bare number resolved automatically can
+// silently land on the wrong one of #N / !N when both exist (target.go's resolveTargetKind
+// doc comment). nil means "no --kind given" — the pre-existing automatic behaviour,
+// unchanged.
+func runComment(owner, name string, num int, wantHead string, forcedKind *deskkit.TargetKind, body []byte, args []string, opts postOpts) int {
 	repo := owner + "/" + name
 	dig := deskkit.Sha256Hex(body)
 	// preVerb labels audit lines for refusals raised BEFORE the object kind is known
@@ -61,7 +69,12 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		if err != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
-		tgt, err := resolveTarget(client, num)
+		var tgt *target
+		if forcedKind != nil {
+			tgt, err = resolveTargetKind(client, num, *forcedKind)
+		} else {
+			tgt, err = resolveTarget(client, num)
+		}
 		if err != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
@@ -152,7 +165,16 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		if ferr != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, ferr), dig)
 		}
-		if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
+		// A forced --kind routes the WRITE through PostCommentTyped, not just the read
+		// through resolveTargetKind: PostComment resolves its own routing via GetIssue
+		// (forge_gitlab.go), which hits the SAME both-kinds refusal a forced read exists
+		// to route around — so leaving the write untyped would silently defeat --kind
+		// exactly when it matters (both #N and !N exist).
+		if forcedKind != nil {
+			if _, err := fg.PostCommentTyped(deskkit.ForgeRepo{Owner: owner, Name: name}, num, *forcedKind, string(body)); err != nil {
+				return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
+			}
+		} else if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
 		}
 		return done(verb, repo, num, tgt.head, dig,

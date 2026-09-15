@@ -1,0 +1,41 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/rulesets"
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/rulesets/1"
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/rulesets/2"
+    }
+  ],
+  "result": [
+    {
+      "bypass_actors": [],
+      "id": 1,
+      "name": "protect-main",
+      "rules": [
+        {
+          "type": "pull_request"
+        }
+      ]
+    },
+    {
+      "bypass_actors": [],
+      "id": 2,
+      "name": "protect-release-tags",
+      "rules": [
+        {
+          "type": "update"
+        },
+        {
+          "type": "deletion"
+        }
+      ]
+    }
+  ]
+}

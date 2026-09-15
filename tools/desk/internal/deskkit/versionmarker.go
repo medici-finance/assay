@@ -93,15 +93,46 @@ type Marker struct {
 	Artifacts []MarkerArtifactVersion
 	// Disagreements names each record pair that disagrees, on MarkerInconsistent.
 	Disagreements []string
+	// NotPinned lists components a DERIVED composition names that this repo pins
+	// under no line of any shape — the release ships them, the adopter did not
+	// install them. Provenance, never a disagreement (see ReadMarkerFrom).
+	NotPinned []string
+	// Origin records where a derived composition came from, when it was derived.
+	Origin string
 	// Reason is a one-line human summary, always set.
 	Reason string
 }
 
 // ReadMarker assembles the marker for the consumer repo at root, reading its
 // composition manifests from releasesDir (conventionally <root>/releases). It is
-// pure and offline: it reads only the two files and never the platform install
-// cache, so it can never mutate an adopter's environment.
+// pure and OFFLINE: it reads only local files — a hand-authored manifest or a
+// materialised checksums.txt under releasesDir — and never the platform install
+// cache or the network. A caller that may consult the release home for a
+// composition that is not materialised passes a CompositionSource with a Fetch to
+// ReadMarkerFrom instead.
 func ReadMarker(root, releasesDir string) Marker {
+	return ReadMarkerFrom(root, CompositionSource{ReleasesDir: releasesDir})
+}
+
+// ReadMarkerFrom is ReadMarker with the composition's provenance made explicit:
+// src decides where the umbrella's composition comes from (compositionsource.go —
+// hand-authored manifest first, then a materialised checksums.txt, then the
+// release home when src carries a Fetch). The marker's three states are unchanged.
+//
+// HOW A PIN IS MATCHED AGAINST THE COMPOSITION. Each component the composition
+// names is resolved through ComponentPinTag: the bare `<component>` line when
+// present, else the `<component>-<os>-<arch>` platform lines (which must agree).
+// An adopter pinned per platform, as docs/adopting-assay.md writes the file, is
+// therefore read at the tag it is on, rather than reported as "no readable line".
+//
+// AN UN-PINNED COMPONENT is a disagreement under a HAND-AUTHORED manifest (its
+// author named that artifact deliberately; the adopter is not on the composition
+// the umbrella claims) but provenance-only under a DERIVED composition, which
+// names EVERY component the release ships — an adopter who never installed the
+// quality report pack is still on umbrella T. Derived + nothing pinned at all is
+// still inconsistent: an umbrella line no artifact line backs is a disagreement,
+// not a "known" answer resting on nothing.
+func ReadMarkerFrom(root string, src CompositionSource) Marker {
 	// 1. The umbrella line. Absent-but-valid is the "no umbrella pin" state, an
 	//    unreadable file is fail-closed — both are could-not-determine, with
 	//    distinct wording so "no file" and "no umbrella line" stay separable.
@@ -121,10 +152,10 @@ func ReadMarker(root, releasesDir string) Marker {
 		}
 	}
 
-	// 2. The composition manifest for that umbrella version. Fail-closed if it
-	//    cannot be read — a "known" answer must never rest on a manifest we could
-	//    not open.
-	comp, err := LoadComposition(releasesDir, umbrella)
+	// 2. The composition for that umbrella version. Fail-closed if it cannot be
+	//    read or found — a "known" answer must never rest on a composition we
+	//    could not open.
+	comp, found, err := src.Load(umbrella)
 	if err != nil {
 		return Marker{
 			State:    MarkerCouldNotDetermine,
@@ -132,14 +163,21 @@ func ReadMarker(root, releasesDir string) Marker {
 			Reason:   "could-not-determine: " + err.Error(),
 		}
 	}
+	if !found {
+		return Marker{
+			State:    MarkerCouldNotDetermine,
+			Umbrella: umbrella,
+			Reason: "could-not-determine: no composition for umbrella " + umbrella +
+				" — no manifest, no materialised checksums, and the release home does not " +
+				"publish it (looked in: " + src.Describe(umbrella) + ")",
+		}
+	}
 
 	// 3. Cross-check every artifact the composition names against the pin file.
 	//    A pinned tag that differs from the composition's tag is the disagreement
-	//    the inconsistent state exists to surface; a missing pin for a named
-	//    artifact is likewise a disagreement (the adopter is not on the composition
-	//    the umbrella claims).
+	//    the inconsistent state exists to surface.
 	var resolved []MarkerArtifactVersion
-	var disagreements []string
+	var disagreements, notPinned []string
 	for _, a := range comp.Artifacts {
 		name := a.ArtifactName()
 		if name == "" {
@@ -147,11 +185,21 @@ func ReadMarker(root, releasesDir string) Marker {
 				fmt.Sprintf("composition entry %q names no artifact and no namespaced tag", a.Tag))
 			continue
 		}
-		pinTag, _, perr := ArtifactPin(root, name)
+		pinTag, pinned, perr := ComponentPinTag(root, name)
 		if perr != nil {
 			disagreements = append(disagreements, fmt.Sprintf(
 				"umbrella %s names %s %s, but the pin file has no readable %s line (%v)",
 				umbrella, name, a.Tag, name, perr))
+			continue
+		}
+		if !pinned {
+			if comp.Derived {
+				notPinned = append(notPinned, name)
+				continue
+			}
+			disagreements = append(disagreements, fmt.Sprintf(
+				"umbrella %s names %s %s, but the pin file has no %s line of any shape",
+				umbrella, name, a.Tag, name))
 			continue
 		}
 		resolved = append(resolved, MarkerArtifactVersion{Artifact: name, Tag: pinTag})
@@ -162,6 +210,13 @@ func ReadMarker(root, releasesDir string) Marker {
 		}
 	}
 	sort.Slice(resolved, func(i, j int) bool { return resolved[i].Artifact < resolved[j].Artifact })
+	sort.Strings(notPinned)
+	if comp.Derived && len(resolved) == 0 && len(notPinned) > 0 {
+		disagreements = append(disagreements, fmt.Sprintf(
+			"umbrella %s names %s, but the pin file pins none of them under any line shape",
+			umbrella, strings.Join(notPinned, ", ")))
+		notPinned = nil
+	}
 
 	if len(disagreements) > 0 {
 		sort.Strings(disagreements)
@@ -170,6 +225,8 @@ func ReadMarker(root, releasesDir string) Marker {
 			Umbrella:      umbrella,
 			Artifacts:     resolved,
 			Disagreements: disagreements,
+			NotPinned:     notPinned,
+			Origin:        comp.Origin,
 			Reason: fmt.Sprintf("known-inconsistent: %d record(s) disagree with umbrella %s",
 				len(disagreements), umbrella),
 		}
@@ -179,6 +236,8 @@ func ReadMarker(root, releasesDir string) Marker {
 		State:     MarkerKnown,
 		Umbrella:  umbrella,
 		Artifacts: resolved,
+		NotPinned: notPinned,
+		Origin:    comp.Origin,
 		Reason:    "known: umbrella " + umbrella,
 	}
 }
@@ -207,6 +266,13 @@ func (m Marker) Report() string {
 		if m.Umbrella != "" {
 			fmt.Fprintf(&b, "umbrella: %s\n", m.Umbrella)
 		}
+	}
+	if len(m.NotPinned) > 0 {
+		fmt.Fprintf(&b, "not pinned here (the release ships them; this repo installs none): %s\n",
+			strings.Join(m.NotPinned, ", "))
+	}
+	if m.Origin != "" {
+		fmt.Fprintf(&b, "composition derived from: %s\n", m.Origin)
 	}
 	fmt.Fprintf(&b, "%s\n", m.Reason)
 	return b.String()

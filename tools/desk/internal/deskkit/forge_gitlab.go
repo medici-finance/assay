@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -262,6 +263,21 @@ func gitlabTime(t *time.Time) string {
 // rebasing when it needs an approval. UNKNOWN is the honest answer for a status this tree has
 // not been taught, and the consuming gate reads UNKNOWN as could-not-check.
 //
+// `draft_status` is DELIBERATELY NOT an exception here, though an interim fix (#1099) briefly
+// made it one. #1099's own commit message named exactly why that was interim: deskflip's
+// `mergeable` condition, evaluated while the change is still a draft, could never pass for the
+// completely ordinary starting state of every change this desk opens — and a blanket mapping
+// change was the fastest way to stop that. But a blanket MERGEABLE for `draft_status` reaches
+// every OTHER caller of GetPullRequest too, not only the one condition the leniency is sound
+// for, and it grants that leniency unconditionally rather than only once the reviewer-approved
+// condition has actually confirmed the merge-hold. The forge-gitlab merge-hold brief (tracked
+// at assay#1096, which #1099's own message named as the real fix) supersedes it: the mapping
+// stays exactly what it was before #1099, and the ONE condition the leniency belongs to
+// (deskflip's `mergeable`) reads the raw status straight off PullRequest.GitLabMergeStatus and
+// treats `draft_status` and `discussions_not_resolved` as non-blocking THERE — see that
+// field's doc comment. Reverting the blanket case here is not a regression of #1099: it moves
+// the fix to the one place it is sound, the same day it landed.
+//
 // An EMPTY detailed_merge_status (an older instance that does not send the field) is UNKNOWN
 // for the same reason: absence is not a clearance.
 func gitlabMergeableState(detailed string) string {
@@ -459,19 +475,20 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 			http.MethodGet, path, StripControl(mr.ChangesCount)), nil)
 	}
 	out := &PullRequest{
-		Number:       int(mr.IID),
-		State:        gitlabState(mr.State),
-		Draft:        mr.Draft,
-		NodeID:       gitlabNodeID(repo, int(mr.IID)),
-		Title:        mr.Title,
-		Body:         mr.Description,
-		ChangedFiles: changed,
-		HeadSHA:      mr.SHA,
-		Mergeable:    gitlabMergeableState(mr.DetailedMergeStatus),
-		Labels:       append([]string(nil), mr.Labels...),
-		URL:          mr.WebURL,
-		HeadRef:      mr.SourceBranch,
-		BaseRef:      mr.TargetBranch,
+		Number:            int(mr.IID),
+		State:             gitlabState(mr.State),
+		Draft:             mr.Draft,
+		NodeID:            gitlabNodeID(repo, int(mr.IID)),
+		Title:             mr.Title,
+		Body:              mr.Description,
+		ChangedFiles:      changed,
+		HeadSHA:           mr.SHA,
+		Mergeable:         gitlabMergeableState(mr.DetailedMergeStatus),
+		GitLabMergeStatus: mr.DetailedMergeStatus,
+		Labels:            append([]string(nil), mr.Labels...),
+		URL:               mr.WebURL,
+		HeadRef:           mr.SourceBranch,
+		BaseRef:           mr.TargetBranch,
 	}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
@@ -540,24 +557,65 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 				"use the typed operation for the kind you mean",
 			repo.Slug(), number, number), nil)
 	case iss != nil:
-		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false,
-			URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...)}
-		if iss.Author != nil {
-			out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
-		}
-		return out, nil
+		return gitlabIssueAsIssue(iss), nil
 	case mr != nil:
-		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true,
-			URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...)}
-		if mr.Author != nil {
-			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
-		}
-		return out, nil
+		return gitlabMRAsIssue(mr), nil
 	default:
 		// Neither kind exists (or is visible). Surface the issue-side 404 so
 		// IsForgeNotFound holds.
 		return nil, g.mapErr(http.MethodGet, issuePath, issErr)
 	}
+}
+
+// gitlabIssueAsIssue maps a GitLab issue onto the forge-neutral Issue (IsPullRequest false).
+func gitlabIssueAsIssue(iss *gitlab.Issue) *Issue {
+	out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false,
+		URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...)}
+	if iss.Author != nil {
+		out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
+	}
+	return out
+}
+
+// gitlabMRAsIssue maps a GitLab merge request onto the forge-neutral Issue (IsPullRequest true).
+func gitlabMRAsIssue(mr *gitlab.MergeRequest) *Issue {
+	out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true,
+		URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...)}
+	if mr.Author != nil {
+		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
+	}
+	return out
+}
+
+// GetIssueTyped is the typed read GetIssue's both-kinds refusal points at. The caller has
+// STATED the kind, so exactly ONE endpoint is probed — the issue for TargetIssue, the
+// merge request for TargetChange — and the other kind's existence at the same number is
+// irrelevant: `#4` and `!4` both existing is the ordinary GitLab case, not an ambiguity,
+// once the caller has said which it means. A 404 from the one probe is returned as-is
+// (IsForgeNotFound holds); any other error is returned as-is for the same reason GetIssue
+// does. An unknown kind is refused rather than defaulted.
+func (g *GitLabForge) GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	switch kind {
+	case TargetIssue:
+		path := fmt.Sprintf("/projects/%s/issues/%d", g.projectPath(repo), number)
+		iss, _, ierr := cl.Issues.GetIssue(repo.Slug(), int64(number))
+		if ierr != nil {
+			return nil, g.mapErr(http.MethodGet, path, ierr)
+		}
+		return gitlabIssueAsIssue(iss), nil
+	case TargetChange:
+		path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), number)
+		mr, _, merr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
+		if merr != nil {
+			return nil, g.mapErr(http.MethodGet, path, merr)
+		}
+		return gitlabMRAsIssue(mr), nil
+	}
+	return nil, Refused(fmt.Sprintf("refused: GetIssueTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
 }
 
 // OpenChangeForBranch resolves the single OPEN merge request whose SOURCE branch is `branch`
@@ -1164,7 +1222,7 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	// attributed to the current head.
 	//
 	// The project approval-configuration route (`reset_approvals_on_push`) is a Premium+
-	// surface (spec §3; brief-02 §"CE degradation"). Two failure shapes are NOT the same:
+	// surface (spec §3; brief-02 §"CE degradation"). Three failure shapes are NOT the same:
 	//
 	//   - On GitLab CE/Free the route is ABSENT and answers 404. That is not a
 	//     could-not-check for the whole review read — it is the documented CE gap the brief
@@ -1173,18 +1231,32 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	//     CommitID, and the head is pinned from the verdict NOTE body's SHA instead), and
 	//     CONTINUE reading the MR approvals and notes below. Failing the whole read closed
 	//     here is what left CE review desks blind (issue #697).
-	//   - A 403 tier gate, a 401 credential rejection, or any other failure IS
-	//     could-not-check for the WHOLE read — never a licence to fall back to "assume
-	//     approvals are head-pinned" or to report no reviews.
+	//   - On gitlab.com Free tier the SAME Premium-gated config is instead answered 403, not
+	//     404 — measured directly against the live API. A 403 here is ambiguous on its own:
+	//     it is what a genuinely bad credential also produces, and a bad credential must NOT
+	//     silently read as "approvals unpinned, continue" — that would be exactly the
+	//     fail-open this function's doc comment warns against. So a 403 on the CONFIG route
+	//     alone is not enough to degrade; it only degrades when the per-MR approvals read
+	//     immediately below — the one place a credential problem would ALSO surface — comes
+	//     back clean. Concretely: don't fail closed HERE on a 403; let approvalsArePinned
+	//     stay false (the same degrade a 404 gets) and fall through to the per-MR read, whose
+	//     own mapErr call still fails the WHOLE read closed if that credential is in fact bad
+	//     (issue: gitlab-approvals-403).
+	//   - A 401 credential rejection, or any other failure, IS could-not-check for the WHOLE
+	//     read — never a licence to fall back to "assume approvals are head-pinned" or to
+	//     report no reviews.
 	approvalCfgPath := fmt.Sprintf("/projects/%s/approvals", proj)
 	approvalsArePinned := false
 	cfg, _, err := cl.Projects.GetApprovalConfiguration(repo.Slug())
 	if err != nil {
 		mapped := g.mapErr(http.MethodGet, approvalCfgPath, err)
-		if !IsForgeNotFound(mapped) {
+		if !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {
 			return nil, mapped
 		}
-		// 404 (route absent / CE): degrade head-pinning only, approvalsArePinned stays false.
+		// 404 (route absent / CE) or 403 (Premium gate on gitlab.com Free): degrade
+		// head-pinning only, approvalsArePinned stays false. The 403 case is provisional —
+		// it is only actually safe once the per-MR approvals read below also succeeds; see
+		// the comment block above.
 	} else {
 		approvalsArePinned = cfg.ResetApprovalsOnPush
 	}
@@ -1192,6 +1264,10 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	approvalsPath := fmt.Sprintf("/projects/%s/merge_requests/%d/approvals", proj, number)
 	approvals, _, err := cl.MergeRequests.GetMergeRequestApprovals(repo.Slug(), int64(number))
 	if err != nil {
+		// Fails the WHOLE read closed, same as any other approvals-read error — including
+		// the case where the config route above also 403'd: if the credential is genuinely
+		// bad, it 403s here too, and this branch is what keeps that could-not-check instead
+		// of silently landing on the degraded-but-continuing path above.
 		return nil, g.mapErr(http.MethodGet, approvalsPath, err)
 	}
 
@@ -1939,6 +2015,19 @@ func (g *GitLabForge) ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, e
 		repo.Slug(), ref), nil)
 }
 
+// RepoHardeningRead is a NAMED could-not-check REFUSAL on GitLab for every kind, until
+// the forge-gitlab GitLab-hardening-reads follow-up lands the GitLab kinds (protected branches, protected tags, push rules,
+// approvals). kind is still validated first — an unknown kind refuses on the SAME grounds it
+// would on GitHub (ValidateHardeningReadKind), so the "unknown kind" and "not yet served on
+// GitLab" refusals are never confused with each other in a caller's error text.
+func (g *GitLabForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
+	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
+		return nil, err
+	}
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: gitlab serves no hardening read of kind %q — deferred to the forge-gitlab GitLab-hardening-reads follow-up", kind), nil)
+}
+
 // ChangeDiff is a could-not-check REFUSAL on GitLab, naming the gap. It returns a change's raw
 // unified-diff DOCUMENT (GitHub `pr diff`) for human display. GitLab serves a change's diff as
 // a STRUCTURED per-file list (the shape ListChangedFiles already carries on both backends), not
@@ -2037,6 +2126,39 @@ func (g *GitLabForge) PostComment(repo ForgeRepo, number int, body string) (*Com
 	return &CommentRef{DatabaseID: note.ID}, nil
 }
 
+// PostCommentTyped posts a note on the object of the STATED kind — issue notes for
+// TargetIssue, merge-request notes for TargetChange — with no resolving read. It is the
+// write half of GetIssueTyped: PostComment resolves the kind through GetIssue and so
+// cannot post at a number that carries both an issue and a merge request; this one takes
+// the kind from the caller and routes on it alone. The returned reference follows
+// PostComment's rule per kind (a merge-request note carries the opaque editable id, an
+// issue note only its numeric id). An unknown kind is refused rather than defaulted.
+func (g *GitLabForge) PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	switch kind {
+	case TargetIssue:
+		path := fmt.Sprintf("/projects/%s/issues/%d/notes", g.projectPath(repo), number)
+		note, _, perr := cl.Notes.CreateIssueNote(repo.Slug(), int64(number),
+			&gitlab.CreateIssueNoteOptions{Body: gitlab.Ptr(body)})
+		if perr != nil {
+			return nil, g.mapErr(http.MethodPost, path, perr)
+		}
+		return &CommentRef{DatabaseID: note.ID}, nil
+	case TargetChange:
+		path := fmt.Sprintf("/projects/%s/merge_requests/%d/notes", g.projectPath(repo), number)
+		note, _, perr := cl.Notes.CreateMergeRequestNote(repo.Slug(), int64(number),
+			&gitlab.CreateMergeRequestNoteOptions{Body: gitlab.Ptr(body)})
+		if perr != nil {
+			return nil, g.mapErr(http.MethodPost, path, perr)
+		}
+		return &CommentRef{ID: gitlabNoteID(repo, number, note.ID), DatabaseID: note.ID}, nil
+	}
+	return nil, Refused(fmt.Sprintf("refused: PostCommentTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+}
+
 // PostReview submits a head-pinned verdict on a merge request.
 //
 // GitHub's review is ONE atomic call carrying a body, a verdict and the reviewed commit.
@@ -2118,6 +2240,213 @@ func (g *GitLabForge) PostReview(repo ForgeRepo, number int, in ReviewInput) err
 		}
 		return nil
 	}
+}
+
+// --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
+//
+// GitLab enforces, on every tier, that a merge request carrying an unresolved discussion
+// thread cannot be merged (`only_allow_merge_if_all_discussions_are_resolved`). This backend
+// makes a resolvable discussion thread the desk's own merge hold, over the Discussions API:
+// one thread per change, found again by the FIXED first line of its marker note rather than
+// by a locally-kept id, so a read never has to trust a caller's memory of which discussion is
+// the desk's own.
+
+// mergeHoldMarkerBody is the marker note's body, VERBATIM — the first line every read matches
+// on to find the desk's own thread among any human ones the change may also carry.
+const mergeHoldMarkerBody = "assay-merge-hold: review pending — released by the reviewer's approve verdict at the current head"
+
+// mergeHoldReleasedMarker and mergeHoldRearmedMarker are the first lines of the two reply
+// shapes SetMergeHold posts. ReadMergeHold matches on these exactly, so the wire text here and
+// the text SetMergeHold renders below must never drift apart.
+const (
+	mergeHoldReleasedMarker = "assay-merge-hold: released"
+	mergeHoldRearmedMarker  = "assay-merge-hold: re-armed"
+	mergeHoldHeadPrefix     = "Head: "
+)
+
+// mergeHoldReleasedHead extracts the full sha off a RELEASED reply's second line, the shape
+// SetMergeHold renders (see below). ok is false for anything else — a reply that is not a
+// released marker, or one whose second line does not carry the `Head: ` prefix, which a
+// caller reads as "this resolved thread names no head" rather than guessing one.
+func mergeHoldReleasedHead(body string) (string, bool) {
+	lines := strings.SplitN(body, "\n", 3)
+	if len(lines) < 2 || strings.TrimSpace(lines[0]) != mergeHoldReleasedMarker {
+		return "", false
+	}
+	line := strings.TrimSpace(lines[1])
+	if !strings.HasPrefix(line, mergeHoldHeadPrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, mergeHoldHeadPrefix)), true
+}
+
+// OpenMergeHold opens the marker discussion on a newly created change. The thread must come
+// back RESOLVABLE (`notes[0].resolvable: true`) — a plain note would never block the merge
+// button, which is the whole point of this op — so a discussion that comes back otherwise is
+// a could-not-check refusal naming the change, not a silent success.
+func (g *GitLabForge) OpenMergeHold(repo ForgeRepo, number int) (string, error) {
+	cl, err := g.client()
+	if err != nil {
+		return "", err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions", g.projectPath(repo), number)
+	disc, _, derr := cl.Discussions.CreateMergeRequestDiscussion(repo.Slug(), int64(number),
+		&gitlab.CreateMergeRequestDiscussionOptions{Body: gitlab.Ptr(mergeHoldMarkerBody)})
+	if derr != nil {
+		return "", g.mapErr(http.MethodPost, path, derr)
+	}
+	if len(disc.Notes) == 0 || !disc.Notes[0].Resolvable {
+		return "", Unverifiable(fmt.Sprintf(
+			"could-not-check: the merge-hold marker thread opened on !%d in %s came back NOT resolvable — "+
+				"the server cannot block the merge on it, so the gate this op exists to provide is not armed",
+			number, repo.Slug()), nil)
+	}
+	return disc.ID, nil
+}
+
+// ReadMergeHold walks the change's discussions to find the desk's own marker thread (by its
+// FIXED first line) and reports its state. Absent entirely is a real answer (MergeHoldAbsent),
+// not an error — the same three-state discipline every other read on this seam holds to.
+func (g *GitLabForge) ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions", g.projectPath(repo), number)
+	opt := &gitlab.ListMergeRequestDiscussionsOptions{ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: 1}}
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		opt.Page = int64(page)
+		discs, resp, derr := cl.Discussions.ListMergeRequestDiscussions(repo.Slug(), int64(number), opt)
+		if derr != nil {
+			return nil, g.mapErr(http.MethodGet, path, derr)
+		}
+		for _, d := range discs {
+			if d == nil || len(d.Notes) == 0 || d.Notes[0] == nil {
+				continue
+			}
+			marker := d.Notes[0]
+			if strings.TrimSpace(marker.Body) != mergeHoldMarkerBody {
+				continue
+			}
+			if !marker.Resolved {
+				return &MergeHold{State: MergeHoldUnresolved, ID: d.ID}, nil
+			}
+			// The LATEST released reply wins — a thread can be released, re-armed, and
+			// released again across its life, and only the most recent release describes
+			// the CURRENT state.
+			//
+			// GitLab does NOT lock a resolved discussion against further replies: any
+			// project member with ordinary comment rights (which, on a project where the
+			// `Draft:` prefix is just a title string, includes the change's own author) can
+			// post a note into an already-resolved thread at any time. So a released-shaped
+			// reply's TEXT is never trusted on its own — only a reply AUTHORED BY the actor
+			// who actually resolved the discussion (marker.ResolvedBy, the one field GitLab
+			// itself sets and only the resolve API can touch) can name the head the hold was
+			// released at. This is the same identity check checkMergeHoldApproved already
+			// applies to ResolvedBy, extended to the reply the head comes from — otherwise
+			// anyone with comment rights forges "approved at current head" by replying
+			// `assay-merge-hold: released\nHead: <their-own-unreviewed-sha>` into a thread a
+			// real reviewer resolved earlier. A reply from anyone else is treated exactly
+			// like a reply that isn't released-shaped at all: it does not move head.
+			head := ""
+			for _, n := range d.Notes[1:] {
+				if n == nil {
+					continue
+				}
+				h, ok := mergeHoldReleasedHead(n.Body)
+				if !ok {
+					continue
+				}
+				if !SameActor(n.Author.Username, marker.ResolvedBy.Username) {
+					continue
+				}
+				head = h
+			}
+			return &MergeHold{
+				State:      MergeHoldResolved,
+				ID:         d.ID,
+				ResolvedBy: marker.ResolvedBy.Username,
+				Head:       head,
+			}, nil
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+	}
+	return &MergeHold{State: MergeHoldAbsent}, nil
+}
+
+// SetMergeHold releases or re-arms the change's marker thread, finding it the same way
+// ReadMergeHold does (never by a caller-supplied id, so a stale local id can never address the
+// wrong thread). A change with no marker thread at all cannot be released or re-armed — a
+// could-not-check refusal naming the change, never a silent no-op.
+//
+// THE WRITE ORDER IS THE SAFETY PROPERTY, mirroring PostReview's own note-then-approve
+// reasoning (see its doc comment) but in the direction each half's failure should fail safe:
+//
+//   - RELEASE (Resolved:true) posts the reply FIRST, then resolves the discussion. Releasing
+//     is the direction that WEAKENS the server-side gate, so if only the reply lands, the
+//     gate stays UP (thread still unresolved) — a visible half-success, never a merge hold
+//     silently lifted with no recorded head.
+//   - RE-ARM (Resolved:false) un-resolves the discussion FIRST, then posts the reply. Re-arming
+//     is the direction that TIGHTENS the gate, so if only the un-resolve lands, the gate is
+//     already back up — the missing reply is a cosmetic loss, never a safety one.
+func (g *GitLabForge) SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdate) error {
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	proj := g.projectPath(repo)
+	hold, herr := g.ReadMergeHold(repo, number)
+	if herr != nil {
+		return herr
+	}
+	switch hold.State {
+	case MergeHoldAbsent:
+		return Refused(fmt.Sprintf(
+			"!%d in %s carries no merge-hold marker thread to release or re-arm — OpenMergeHold never ran, "+
+				"or the change predates this control", number, repo.Slug()))
+	case MergeHoldNotApplicable:
+		return ErrMergeHoldNotApplicable
+	}
+	notePath := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions/%s/notes", proj, number, hold.ID)
+	resolvePath := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions/%s", proj, number, hold.ID)
+	if in.Resolved {
+		head := strings.TrimSpace(in.Head)
+		if head == "" {
+			return Refused("SetMergeHold: releasing a merge-hold requires a non-empty Head")
+		}
+		body := mergeHoldReleasedMarker + "\n" + mergeHoldHeadPrefix + head
+		if _, _, nerr := cl.Discussions.AddMergeRequestDiscussionNote(repo.Slug(), int64(number), hold.ID,
+			&gitlab.AddMergeRequestDiscussionNoteOptions{Body: gitlab.Ptr(body)}); nerr != nil {
+			return g.mapErr(http.MethodPost, notePath, nerr)
+		}
+		if _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,
+			&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(true)}); rerr != nil {
+			return Unverifiable(fmt.Sprintf(
+				"could-not-check: the released reply posted on !%d in %s's merge-hold thread, but resolving "+
+					"the thread failed — the server-side gate is still UP with a reply recorded that claims "+
+					"otherwise: %v", number, repo.Slug(), g.mapErr(http.MethodPut, resolvePath, rerr)), rerr)
+		}
+		return nil
+	}
+	reason := strings.TrimSpace(in.Reason)
+	if reason == "" {
+		return Refused("SetMergeHold: re-arming a merge-hold requires a non-empty Reason")
+	}
+	if _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,
+		&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(false)}); rerr != nil {
+		return g.mapErr(http.MethodPut, resolvePath, rerr)
+	}
+	body := mergeHoldRearmedMarker + "\n" + reason
+	if _, _, nerr := cl.Discussions.AddMergeRequestDiscussionNote(repo.Slug(), int64(number), hold.ID,
+		&gitlab.AddMergeRequestDiscussionNoteOptions{Body: gitlab.Ptr(body)}); nerr != nil {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: !%d in %s's merge-hold thread was re-armed (the server-side gate is back up), "+
+				"but posting the re-arm reply failed — the state is correct, its record is not: %v",
+			number, repo.Slug(), g.mapErr(http.MethodPost, notePath, nerr)), nerr)
+	}
+	return nil
 }
 
 // MarkReadyForReview clears the `Draft:` prefix — GitLab's only ready transition.
@@ -2507,26 +2836,37 @@ func (g *GitLabForge) EditComment(repo ForgeRepo, commentID, body string) error 
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 
-// ApplyLabels reconciles a merge request's labels.
+// ApplyLabels reconciles an issue's or a merge request's labels, per change.Target.
 //
-// The GitLab mapping is 1:1 with GitHub's in effect but not in shape, and the difference is
-// where the care goes:
+// The TARGET is load-bearing on this forge in a way it is not on GitHub. GitLab numbers
+// issues and merge requests in two SEPARATE per-project sequences and labels them through two
+// separate endpoints — `PUT /projects/:id/issues/:iid` and `PUT
+// /projects/:id/merge_requests/:iid` — so the same number names two unrelated objects. A
+// write that assumed "merge request" for an issue number landed its labels on whichever MR
+// shared the iid and left the issue untouched; that is why an unset target is refused rather
+// than defaulted (LabelChange.Target).
+//
+// Otherwise the GitLab mapping is 1:1 with GitHub's in effect but not in shape, and the
+// difference is where the care goes:
 //
 //   - Labels are PROJECT-scoped on both forges, and both require a label to exist before it
 //     can be applied — so the ensure step is `POST /projects/:id/labels`, with an
 //     already-exists response treated as the success case for an ensure exactly as GitHub's
-//     422 is.
-//   - GitLab has NO per-label add/remove endpoints on an MR. Instead ONE `PUT
-//     /merge_requests/:iid` carries `add_labels` and `remove_labels` together, which is
-//     strictly better for this operation: the whole reconciliation lands atomically, where
-//     the GitHub backend has to issue one request per removal.
+//     422 is. The ensure step is the same for both targets.
+//   - GitLab has NO per-label add/remove endpoints on an issue or an MR. Instead ONE PUT on
+//     the object carries `add_labels` and `remove_labels` together, which is strictly better
+//     for this operation: the whole reconciliation lands atomically, where the GitHub backend
+//     has to issue one request per removal.
 //   - GitLab colors REQUIRE a leading `#`; GitHub forbids one. LabelSpec carries the bare
 //     hex digits and each backend renders its own form, so a caller never has to know which
 //     forge it is talking to.
 //
-// The current label set comes from the MR read the family reconciliation needs anyway, so a
-// change with no RemoveFamilies issues no extra read.
+// The current label set comes from the object read the family reconciliation needs anyway,
+// so a change with no RemoveFamilies issues no extra read.
 func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
+	if err := change.requireTarget(); err != nil {
+		return nil, err
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -2570,13 +2910,32 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 	for _, n := range change.Remove {
 		remove[n] = true
 	}
+	// objPath is the one route the target resolves to — the read (when a family is named)
+	// and the write both go there, so the two can never address different kinds.
+	var objPath string
+	switch change.Target {
+	case TargetIssue:
+		objPath = fmt.Sprintf("/projects/%s/issues/%d", proj, number)
+	default:
+		objPath = fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
+	}
 	if len(change.RemoveFamilies) > 0 {
-		mrPath := fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
-		mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
-		if gerr != nil {
-			return nil, g.mapErr(http.MethodGet, mrPath, gerr)
+		var current []string
+		switch change.Target {
+		case TargetIssue:
+			iss, _, gerr := cl.Issues.GetIssue(repo.Slug(), int64(number), nil)
+			if gerr != nil {
+				return nil, g.mapErr(http.MethodGet, objPath, gerr)
+			}
+			current = iss.Labels
+		default:
+			mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
+			if gerr != nil {
+				return nil, g.mapErr(http.MethodGet, objPath, gerr)
+			}
+			current = mr.Labels
 		}
-		for _, cur := range mr.Labels {
+		for _, cur := range current {
 			if adding[cur] {
 				continue
 			}
@@ -2603,16 +2962,24 @@ func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange
 	if len(addList) == 0 && len(removeList) == 0 {
 		return out, nil
 	}
-	opts := &gitlab.UpdateMergeRequestOptions{}
+	var addOpt, removeOpt *gitlab.LabelOptions
 	if len(addList) > 0 {
-		opts.AddLabels = (*gitlab.LabelOptions)(&addList)
+		addOpt = (*gitlab.LabelOptions)(&addList)
 	}
 	if len(removeList) > 0 {
-		opts.RemoveLabels = (*gitlab.LabelOptions)(&removeList)
+		removeOpt = (*gitlab.LabelOptions)(&removeList)
 	}
-	updPath := fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
-	if _, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number), opts); uerr != nil {
-		return nil, g.mapErr(http.MethodPut, updPath, uerr)
+	switch change.Target {
+	case TargetIssue:
+		opts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}
+		if _, _, uerr := cl.Issues.UpdateIssue(repo.Slug(), int64(number), opts); uerr != nil {
+			return nil, g.mapErr(http.MethodPut, objPath, uerr)
+		}
+	default:
+		opts := &gitlab.UpdateMergeRequestOptions{AddLabels: addOpt, RemoveLabels: removeOpt}
+		if _, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number), opts); uerr != nil {
+			return nil, g.mapErr(http.MethodPut, objPath, uerr)
+		}
 	}
 	out.Added = addList
 	out.Removed = removeList

@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay"
+    }
+  ],
+  "result": {
+    "security_and_analysis": {
+      "secret_scanning": {
+        "status": "enabled"
+      }
+    },
+    "visibility": "public"
+  }
+}

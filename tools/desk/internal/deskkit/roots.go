@@ -152,12 +152,17 @@ func ResolveRoot(r RootConfig) (string, error) {
 // the desk runs; a consumer that cannot read it cannot claim to be pinned, so a
 // missing or malformed pin is Unverifiable (exit 6) rather than a default.
 //
-// It is now a THIN WRAPPER over the generic ArtifactPin: the
-// reader was generalised to any artifact line, and this preserves the exact
-// behaviour every existing caller depends on — including the trailing-space
-// prefix match, so it still never matches a `statusgen-<platform>` line.
+// It is a THIN WRAPPER over PlatformPin: the bare `statusgen ` line is preferred
+// and read exactly as before (trailing-space prefix match, so it never matches a
+// `statusgen-<platform>` line by accident); only when that line is ABSENT does the
+// reader fall back to THIS host's platform line (`statusgen-<GOOS>-<GOARCH>`,
+// `.exe` first on Windows). An adopter's pin file written per
+// docs/adopting-assay.md § install-statusgen carries only the per-platform lines,
+// and a bare-only reader refused "no statusgen pin" on a file the install and CI
+// paths themselves accept. A malformed bare line still fails closed — it is never
+// skipped in favour of a platform line.
 func StatusgenPin(root string) (tag, sha string, err error) {
-	return ArtifactPin(root, "statusgen")
+	return PlatformPin(root, "statusgen")
 }
 
 // RepoForLocalPath resolves a BARE LOCAL remote path to the allowed repo whose configured
