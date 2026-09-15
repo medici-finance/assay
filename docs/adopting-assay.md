@@ -1147,10 +1147,23 @@ from `.assay-versions`.** `statusgen --version` on this lane prints only the bar
 CI-pinned commit, and statusgen cannot be sha-pinned on a source lane this way. The desk-tools'
 `--version` prints `sourceSHA=<shortsha>` — a **short** git SHA (`git rev-parse --short HEAD` at
 build time) — which prefix-matches the 40-hex commit your CI clones and rebuilds (step 1); that
-comparison is what establishes what ran, for desk-tools. Delete any `-source` / `channel-D`
-lines you find in a source-lane `.assay-versions`; they satisfy no check and mislead the next
-operator. (Whether the board tools should additionally *accept* a source pin, rather than only a
-release pin, is an open follow-up — #896; do not fabricate a release pin line to work around it.)
+comparison is what establishes what ran, for desk-tools. A `-source` / `channel-D` line you find
+in a source-lane `.assay-versions` still satisfies no `deskpins --check` rule, and it is not what
+proves this lane — so prefer the CI-pinned commit of step 1 and do not fabricate a release pin
+line to work around anything.
+
+**The board tools no longer read a source-only pin file as "no pin" (#1122).** #896 asked whether
+they should *accept* a source pin rather than only a release pin; for the statusgen pin the answer
+is now yes. `deskboard dispatch` / `awaiting`, and the dispatch stage of `throughput`, look for the
+bare `statusgen ` line, then this host's `statusgen-<os>-<arch>` line, and then a
+`statusgen-source` line — so a pin file carrying only source lines resolves a pin and the board
+runs, instead of exiting 6 and leaving Next-up could-not-check. The source line reports the release
+tag it names when it has one (comparable against `statusgen --version`), else the 40-hex commit;
+one that carries neither is refused with a reason that says so and names channel D, never with
+"no statusgen pin". Two things this does **not** change: a release line still wins when the file
+carries both, and a present-but-malformed release line still fails closed rather than being
+quietly replaced by a source line. Nor does it move the provenance: on this lane the running
+binary is still what you prove, per the paragraph above.
 
 > **Never treat a `deskboard` pin-drift as an all-clear board.** A source-lane install can print
 > `sourceSHA=<newer>` from a binary built more recently than the commit a role worktree was
