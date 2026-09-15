@@ -1324,6 +1324,23 @@ func glCases() []glCase {
 			},
 		},
 		{
+			// #1154 — the model stamp's RE-STAMP removal. deskdispatch takes a foreign or stale
+			// dispatched-* label OFF the MR as its own write, ahead of re-applying the intended
+			// pair, so the forge records two events and the standing applier changes. A
+			// remove-only change issues NO ensure (nothing is created) and NO object read (no
+			// family is named): one PUT carrying only remove_labels.
+			name: "apply_labels_stamp_remove_only", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.updateMR = glMR(map[string]any{"labels": []string{"keep-me"}})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target: TargetChange,
+					Remove: []string{"dispatched-model:example-model-2", "dispatched-tier:strong"},
+				})
+			},
+		},
+		{
 			// An ISSUE target: the same ensure step, then the reconciliation lands on
 			// `PUT /issues/:iid` — never on the merge request that shares the number. This is
 			// the `deskfile new` write (stamp + to:<role> on a freshly filed issue); before the

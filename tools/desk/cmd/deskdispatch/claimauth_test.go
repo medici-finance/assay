@@ -141,8 +141,6 @@ func TestClaimChildReceivesTheMintedTokenAsTokenFileForTheGoBinary(t *testing.T)
 	plantGoClaimChild(t)
 	record := installClaimChild(t, s)
 	s.replies = happyReplies("/private/tmp/worker-home")
-	dispatcherToken = "" // nothing minted before step 1 — the ordering the issue names
-	t.Cleanup(func() { dispatcherToken = "" })
 
 	rc := run([]string{"example--stream--07", "--root", root, "--repo", allowedRepo,
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
@@ -183,8 +181,6 @@ func TestClaimChildReceivesTheMintedTokenAsGHTokenForTheLegacyScript(t *testing.
 	plantScriptClaimChild(t, root)
 	record := installClaimChild(t, s)
 	s.replies = happyReplies("/private/tmp/worker-home")
-	dispatcherToken = ""
-	t.Cleanup(func() { dispatcherToken = "" })
 
 	rc := run([]string{"example--stream--07", "--root", root, "--repo", allowedRepo,
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
@@ -207,6 +203,22 @@ func TestClaimChildReceivesTheMintedTokenAsGHTokenForTheLegacyScript(t *testing.
 	if os.Getenv("GH_TOKEN") != "" {
 		t.Errorf("GH_TOKEN leaked into the dispatcher's own environment: %q", os.Getenv("GH_TOKEN"))
 	}
+}
+
+// stubMint replaces the CLAIM step's role-token seam (mintTokenFn) and records what identity
+// was asked for. Only resolveClaimAuth runs through this seam: the model stamp reads its
+// credential inside deskkit.ResolveForge (see stampidentity_test.go's custody hook), so a
+// mint recorded here is the claim step's and nobody else's.
+func stubMint(t *testing.T, token string, err error) *[]mintCall {
+	t.Helper()
+	var calls []mintCall
+	old := mintTokenFn
+	mintTokenFn = func(role, repo string) (string, string, error) {
+		calls = append(calls, mintCall{role: role, repo: repo})
+		return token, "/tmp/example-token-path", err
+	}
+	t.Cleanup(func() { mintTokenFn = old })
+	return &calls
 }
 
 // An explicit GH_TOKEN already in the environment WINS: nothing is minted, the child sees the
