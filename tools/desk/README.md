@@ -3771,15 +3771,23 @@ internals (and even its module home) change without a rewrite anywhere else.
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
-worktree to `deskwt add` and invokes the consumer scripts `tools/dispatch-claim.sh` and
+worktree to `deskwt add` and invokes the claim tool and the consumer decision script
 `tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
 a claim protocol is two claim protocols, and two claim protocols dispatch the same item
-twice. Both scripts already speak the deskkit exit-code contract, so their verdicts pass
-straight through. The scripts are resolved under `--claim-root` when given, else under
-`--root`: the scripts were centralized out of the consumer repos, so on a cross-repo
-dispatch `--claim-root` names the checkout that carries the tools while `--root` stays the
-item's own repo — the worktree is always cut from `--root`, and the claim itself is a ref
-in the target repo (`--repo`) regardless of where the script file sits.
+twice. The claim tool is `deskclaim-ref` whenever it is on PATH (installed with desk-tools),
+else the legacy `tools/dispatch-claim.sh` when the resolved root carries it; both speak the
+deskkit exit-code contract and the same `refs/dispatch/<id>` wire protocol, so their verdicts
+pass straight through and the `claim-acquire OK` line names which one ran. The claim child
+runs as the DISPATCHING role, never on the ambient `gh` login: `deskdispatch` mints (or
+reuses) that role's App token through the same seam its model-stamp step uses and hands it
+over in the tool's own shape — `--token-file <0600 path>` for `deskclaim-ref`, `GH_TOKEN` in
+the child's environment for the script — printing neither; an exported `GH_TOKEN` wins and
+nothing is minted; a mint refusal is exit 6 with no claim attempted. The scripts are resolved
+under `--claim-root` when given, else under `--root`: the scripts were centralized out of the
+consumer repos, so on a cross-repo dispatch `--claim-root` names the checkout that carries
+the tools while `--root` stays the item's own repo — the worktree is always cut from
+`--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
+script file sits.
 
 **Fail closed, with the step or condition NAMED.** Exit 0 means the whole ceremony
 completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`

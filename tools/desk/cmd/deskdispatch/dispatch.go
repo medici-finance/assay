@@ -80,13 +80,15 @@ const (
 )
 
 // goClaimBinary is the pure-Go port of the claim script (cmd/deskclaim-ref). It is the
-// FALLBACK claim tool: when the resolved root carries no tools/dispatch-claim.sh, this verb
-// invokes goClaimBinary by bare name (resolved on PATH, the way deskwt/deskroster are), so a
-// green-field adopter — including a native-Windows one, where a shebang `.sh` will not run
-// under CreateProcess — dispatches with NO consumer script on disk and NO tribal
-// --claim-root. It speaks the SAME wire protocol as the script (the refs/dispatch/<id> claim
-// namespace, the same holder encoding, the same 0/5/6 exit codes), so which one runs never
-// changes where the claim lands or whether two dispatchers collide. Issue 708.
+// PREFERRED claim tool: whenever it resolves on PATH (by bare name, the way deskwt/deskroster
+// are), this verb invokes it and hands it the dispatching role's token as `--token-file`;
+// the legacy tools/dispatch-claim.sh is the fallback for a tree that predates the binary,
+// and it receives the same token as GH_TOKEN in its environment. A green-field adopter —
+// including a native-Windows one, where a shebang `.sh` will not run under CreateProcess —
+// therefore dispatches with NO consumer script on disk and NO tribal --claim-root. It speaks
+// the SAME wire protocol as the script (the refs/dispatch/<id> claim namespace, the same
+// holder encoding, the same 0/5/6 exit codes), so which one runs never changes where the
+// claim lands or whether two dispatchers collide. Issues 708 and 1151.
 const goClaimBinary = "deskclaim-ref"
 
 // itemKeyRe bounds what may be passed to a shell script as a claim key. The key goes into
@@ -224,11 +226,19 @@ func dispatch(o dispatchOpts) error {
 	echoWriteOverlap(os.Stderr, o)
 
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
-	// must not also be doing.
-	if err := stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, plan.claimKey); err != nil {
+	// must not also be doing. The claim child is handed the DISPATCHING role's credential
+	// before it runs (resolveClaimAuth): the claim is a forge write, and the stamp step's mint
+	// comes four steps too late to serve it — so the claim step mints on demand, from the
+	// same seam, and fails closed on the same refusal. Issue 1151.
+	auth, aerr := resolveClaimAuth(o, repo, plan.claimToolIsScript)
+	if aerr != nil {
+		return aerr
+	}
+	if err := stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey); err != nil {
 		return err
 	}
-	o.say("%s OK: %s claimed in %s (claim key %s)", stepClaimAcquire, o.item, repo, plan.claimKey)
+	o.say("%s OK: %s claimed in %s (claim key %s) via %s, authenticated by %s",
+		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, auth.source)
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -243,7 +253,7 @@ func dispatch(o dispatchOpts) error {
 		// operator's corrected re-run a second later, is told "already claimed by a LIVE holder",
 		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
 		// never released it is the field defect this line closes.
-		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
+		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
 		// deskwt's OWN message is forwarded whole and verbatim (toolMessage strips only the
 		// config echo / unpinned-build warning), because it is the line that names the cause
 		// (which branch, which worktree holds it, what to do). The wrapper no longer frames this
@@ -285,7 +295,7 @@ func dispatch(o dispatchOpts) error {
 		// the deskwt-add-failed branch above does — rather than leave a phantom HELD claim that wedges
 		// the item (every corrected re-run told "already claimed by a LIVE holder" until a human
 		// hand-deletes the ref). A refused dispatch must not be a queue suppressor.
-		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
+		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: `deskwt add %s` exited 0 but named no absolute worktree path (%q). The agent's home "+
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
@@ -324,7 +334,7 @@ func dispatch(o dispatchOpts) error {
 	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
 		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
 	}); herr != nil {
-		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
+		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
 			released, herr), herr)
@@ -573,14 +583,23 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 	plan.decisionScript = filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))
 
-	// The claim TOOL: prefer the legacy tools/dispatch-claim.sh when the resolved root
-	// carries it (a consumer mid-transition, whose script and this verb's Go fallback speak
-	// the same wire protocol), else fall back to the pure-Go goClaimBinary on PATH. Only when
-	// NEITHER is available is this a fail-closed refusal — a claim this verb cannot place is
-	// not permission to proceed. Resolved BEFORE the claim, from disk/PATH alone, so it costs
-	// nothing durable and keeps the "no state before this returns" invariant total.
+	// The claim TOOL: prefer the pure-Go goClaimBinary when it resolves on PATH (it is
+	// installed with desk-tools, takes the role credential as a --token-file flag, and runs
+	// with no shell on every host), else fall back to the legacy tools/dispatch-claim.sh
+	// when the resolved root carries it (a consumer whose tree predates the binary; the two
+	// speak the same wire protocol). Only when NEITHER is available is this a fail-closed
+	// refusal — a claim this verb cannot place is not permission to proceed. Resolved BEFORE
+	// the claim, from disk/PATH alone, so it costs nothing durable and keeps the "no state
+	// before this returns" invariant total. Issue 1151 inverted the order: the script used to
+	// win when both resolved, which kept the ambient-`gh` claim path in use on every tree that
+	// still carried the script.
 	claimScriptPath := filepath.Join(scriptsRoot, filepath.FromSlash(claimScriptRel))
+	_, goErr := lookPath(goClaimBinary)
 	switch {
+	case goErr == nil:
+		plan.claimTool = goClaimBinary
+		plan.claimToolIsScript = false
+		plan.claimReleaseHint = goClaimBinary
 	case fileExists(claimScriptPath):
 		plan.claimTool = claimScriptPath
 		plan.claimToolIsScript = true
@@ -590,17 +609,12 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			plan.claimReleaseHint = claimScriptRel // in the agent's own worktree — stable relative spelling
 		}
 	default:
-		if _, err := lookPath(goClaimBinary); err != nil {
-			return plan, deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: no claim tool is available — %s is not present in %s and the pure-Go %s binary is "+
-					"not on PATH, so no durable claim can be taken. A claim this verb cannot place is NOT "+
-					"permission to proceed: a machine-local lock would serialise two dispatchers on one machine "+
-					"and nothing at all across two, which is the case that double-dispatches%s.",
-				stepClaimAcquire, claimScriptRel, scriptsRoot, goClaimBinary, claimRootHint(o)), err)
-		}
-		plan.claimTool = goClaimBinary
-		plan.claimToolIsScript = false
-		plan.claimReleaseHint = goClaimBinary
+		return plan, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: no claim tool is available — the pure-Go %s binary is not on PATH and %s is not "+
+				"present in %s, so no durable claim can be taken. A claim this verb cannot place is NOT "+
+				"permission to proceed: a machine-local lock would serialise two dispatchers on one machine "+
+				"and nothing at all across two, which is the case that double-dispatches%s.",
+			stepClaimAcquire, goClaimBinary, claimScriptRel, scriptsRoot, claimRootHint(o)), goErr)
 	}
 
 	// The human-decision gate's own preconditions: the flag pairing AND the script's
@@ -679,7 +693,9 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 // FILE resolves under --claim-root: the target repo is always passed explicitly via
 // --repo, and any cwd-derived fallback inside the script should resolve to the item's
 // repo, never to the checkout that merely happens to carry the tool.
-func stepClaim(o dispatchOpts, repo, script string, isScript bool, claimKey string) error {
+// Every child here — acquire, and the show that qualifies an exit 5 — runs under the
+// credential resolveClaimAuth handed over (auth), never the ambient one.
+func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAuth, claimKey string) error {
 	if err := claimToolAvailable(script, isScript); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the claim tool %s is not available, so no durable claim can be taken. A claim this verb "+
@@ -691,13 +707,13 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, claimKey stri
 	if o.branch != "" {
 		args = append(args, "--branch", o.branch)
 	}
-	r := runCmd(o.root, script, args...)
+	r := runCmdEnv(o.root, auth.env, script, append(args, auth.args...)...)
 	if r.err == nil {
 		return nil
 	}
 	switch exitCodeOf(r.err) {
 	case deskkit.ExitRefused:
-		show := runCmd(o.root, script, "show", claimKey, "--repo", repo)
+		show := runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)
 		holder := firstLine(show.stdout)
 		// A holder was READ: the show verb succeeded, said something, and did not say the
 		// key is FREE. Only this is a collision — but a collision is not the same as a LIVE
@@ -799,13 +815,81 @@ func windowsAbs(p string) bool {
 // behind a dispatcher that never dispatched. It returns a human phrase for the report; a
 // release that itself fails is surfaced in that phrase rather than swallowed, because a
 // claim this verb believed it released but did not is worse than one it never touched.
-func releaseClaim(o dispatchOpts, script, claimKey, repo string) string {
-	r := runCmd(o.root, script, "release", claimKey, "--repo", repo)
+func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo string) string {
+	r := runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)
 	if r.err != nil {
 		return "NOT released (release failed: " + r.run.Said() + ") — release it by hand: " +
 			script + " release " + claimKey + " --repo " + repo
 	}
 	return "released"
+}
+
+// claimAuth is the credential hand-off for every claim-tool child this verb starts (acquire,
+// show, release). Exactly one of the two carriers is populated per tool, matching how each
+// tool reads its credential: the Go binary takes `--token-file <0600 path>` (args), the legacy
+// script reads GH_TOKEN from its environment (env). A zero claimAuth means the child inherits
+// the calling environment unchanged — the explicit-GH_TOKEN case, where the operator's export
+// already IS the credential and both tools read it as-is.
+//
+// The token VALUE never appears in a message: source names the explicit export or the role and
+// token-file PATH, which is what an operator needs and is safe to print.
+type claimAuth struct {
+	env    []string // non-nil REPLACES the child's environment (os/exec contract); nil inherits
+	args   []string // appended after the verb's own positionals and flags
+	source string   // for the claim-acquire report line
+}
+
+// resolveClaimAuth obtains the credential the claim child runs under. Issue 1151: the claim
+// tools read only the AMBIENT credential — bare `gh api` in the script, GH_TOKEN/--token-file
+// in the binary — so a dispatch from a sandboxed desk window, which holds no ambient `gh`
+// login, failed closed at claim-acquire on every fresh item while every other write verb
+// minted its own role token and succeeded. The mint is the same role token the stamp step
+// attests under (the dispatching role stampRoleForKit names), taken here through mintTokenFn
+// because the claim runs four steps before the stamp — which reads its own credential inside
+// deskkit.ResolveForge.
+//
+// PRECEDENCE. An explicit GH_TOKEN already in the environment wins outright and nothing is
+// minted: an operator who exported a credential chose it, and both tools already read it —
+// the Go binary via its env fallback (no --token-file is passed, because that flag would
+// outrank the export inside the binary). Otherwise the role token is minted and handed over
+// in the tool's own shape: `--token-file <path>` for the binary (the minter's 0600 cache file,
+// never a copy written anywhere new) and GH_TOKEN in the child environment for the script.
+//
+// FAIL CLOSED. A mint failure is UNVERIFIABLE and stops the dispatch before any claim child
+// runs. The alternative — letting the child fall back to whatever `gh` is logged in as — is
+// the field defect: nothing (401) in a sandboxed window, or a human OAuth login with no write
+// on the target (404), and in the worst case a claim ref minted under a human's identity.
+func resolveClaimAuth(o dispatchOpts, repo string, isScript bool) (claimAuth, error) {
+	if strings.TrimSpace(os.Getenv("GH_TOKEN")) != "" {
+		return claimAuth{source: "the GH_TOKEN already exported in this environment"}, nil
+	}
+	role := stampRoleForKit(o.kit)
+	tok, tokPath, err := mintTokenFn(role, repo)
+	if err != nil {
+		return claimAuth{}, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the %s App installation token for %s could not be minted or read (%s): %v — so the "+
+				"identity the claim would be taken under cannot be established. NO claim was attempted: the "+
+				"claim tool is never run on the ambient `gh` credential (nothing at all in a sandboxed desk "+
+				"window, or a human login with no write on the target — the two ways this step failed before "+
+				"it minted its own token). Export GH_TOKEN to override the mint deliberately.",
+			stepClaimAcquire, role, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), err), err)
+	}
+	if isScript {
+		return claimAuth{
+			env:    append(os.Environ(), "GH_TOKEN="+tok),
+			source: fmt.Sprintf("the %s App token (GH_TOKEN in the child environment, %s)", role, tokenPathForMessage(tokPath)),
+		}, nil
+	}
+	if strings.TrimSpace(tokPath) == "" {
+		return claimAuth{}, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the %s App installation token for %s was minted but the minter named no token file, "+
+				"so it cannot be handed to %s as --token-file. NO claim was attempted.",
+			stepClaimAcquire, role, deskkit.OwnerOf(repo), goClaimBinary), nil)
+	}
+	return claimAuth{
+		args:   []string{"--token-file", tokPath},
+		source: fmt.Sprintf("the %s App token (--token-file, %s)", role, tokenPathForMessage(tokPath)),
+	}, nil
 }
 
 // claimedClaimTTL is the age past which a `state=claimed` dispatch claim — acquired but never
@@ -1193,6 +1277,16 @@ func stampRoleForKit(kit string) string {
 		return deskkit.ReviewDispatcherRole
 	}
 	return deskkit.DispatcherRole
+}
+
+// tokenPathForMessage renders the token file path for a step report or refusal. The PATH is
+// what an operator needs and is safe to print; the token VALUE never is, and never reaches
+// a message from anywhere in this verb. The claim step (resolveClaimAuth) is its caller.
+func tokenPathForMessage(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return "the minter named no token path"
+	}
+	return "token file " + path
 }
 
 // validTier checks the tier against the dispatch-tier vocabulary the stamp reader owns,

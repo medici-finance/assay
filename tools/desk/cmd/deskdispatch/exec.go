@@ -24,6 +24,13 @@ var execCommand = exec.Command
 // happens to be installed on the test runner's PATH.
 var lookPath = exec.LookPath
 
+// mintTokenFn is the seam the CLAIM step's role-token mint runs through (resolveClaimAuth,
+// issue 1151), so a full-run dispatch test hands the claim child a stub token without a real
+// App credential. Production binds it to the shared deskkit resolver, which shells out to the
+// token minter and reads the file it names. The model stamp does NOT use it: its credential
+// is read inside deskkit.ResolveForge, under the resolver's own custody hook.
+var mintTokenFn = deskkit.RoleTokenForRepo
+
 // NO FORGE CLI. Every forge read and write this verb makes — the model stamp's label
 // reads and writes, the review-lane queue label — goes through the resolved deskkit.Forge
 // under an explicitly minted role credential (deskkit.ResolveForge), never through `gh` or
@@ -52,7 +59,16 @@ type runResult struct {
 }
 
 func runCmd(dir, name string, args ...string) runResult {
-	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Start: execCommand}
+	return runCmdEnv(dir, nil, name, args...)
+}
+
+// runCmdEnv is runCmd with an explicit child environment. env follows the os/exec contract:
+// nil inherits this process's environment, non-nil REPLACES it (so a caller that means to add
+// one variable passes append(os.Environ(), "K=V")). It exists for the claim child (issue
+// 1151), which the legacy claim script authenticates through GH_TOKEN in its environment;
+// every other call site passes nil through runCmd.
+func runCmdEnv(dir string, env []string, name string, args ...string) runResult {
+	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Env: env, Start: execCommand}
 	// The capture, the exit-status recovery and the preamble strip are the shared runner's
 	// (deskkit/runtool.go). The recording seam stays LOCAL — ToolCall.Start is execCommand —
 	// so every argv assertion in this package's tests still runs against the real
