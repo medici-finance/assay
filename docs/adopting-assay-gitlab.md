@@ -231,6 +231,17 @@ done
 Windows (no `ln -s` required): copy each `<prefix>-<role>-bot.token` to `gitlab-<role>.token`
 in the same directory. Keep both files `0600`-equivalent (owner-only ACL).
 
+**The link survives rotation — and the copy does not.** `desktoken --forge gitlab <role>`
+rotates THROUGH the custody path: when `gitlab-<role>.token` is a symlink it resolves the link
+and renames the new token onto the link's target, so the link stays a link and
+`<prefix>-<role>-bot.token` holds the live credential afterwards. Re-running the `ln -s` loop
+above therefore stays a no-op at any time, and a re-issue or re-provisioning pass that re-links
+cannot re-point custody at a stale value. The COPY layout has no such property: after the first
+rotation `gitlab-<role>.token` holds the live token and the `<prefix>-<role>-bot.token` copy
+holds an invalidated one, so on that layout never copy the provisioned file back over
+`gitlab-<role>.token` — doing so installs a dead credential, and the next desk verb fails `401`
+on its first API read. Prefer the link on any platform that has one. (#1112)
+
 The script itself is **bash + curl + jq**. On native Windows run it from Git-Bash or WSL,
 not from PowerShell.
 
@@ -681,6 +692,16 @@ Carried verbatim in spirit from spec.md §5 — this doc does not relax any of i
   (§4's checklist item 2); the script cannot set it via a group-scoped PAT.
 - **File custody unchanged.** `0600` token files, path-only printing, never in an
   environment variable or a command's argv.
+- **Custody layout the rotate path expects.** `gitlab-<role>.token` on the config-home search
+  path, resolving to a `0600` regular file — either the file itself or a **symlink** at that
+  name pointing at one (§2's link step). A rotation resolves the link, writes the new token to
+  a temp file in the target's own directory, `fsync`s it, renames it onto the target, `fsync`s
+  that directory, and reads the value back THROUGH `gitlab-<role>.token`. Two properties follow,
+  and both are what the verbs depend on: the link is never replaced by a regular file, so
+  exactly one file holds the live credential whichever name reaches it; and the value is durably
+  written before the command prints the path, so the verb's own read after its own rotation
+  cannot return the pre-rotation token. A rotation that finds the link gone after its write
+  fails at mint time rather than leaving a layout that reads stale later. (#1112)
 - **Audit events** (Premium+) should be reviewed periodically for rotation/use anomalies.
 
 ## 6. Parity statement
