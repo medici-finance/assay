@@ -2663,40 +2663,13 @@ func (g *GitLabForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 	return true, nil
 }
 
-// GitLabRepoInfoFetcher adapts a *GitLabForge to the string-signature RepoInfoFetcher the
-// public-repo security gate (repovis.go's PublicRepoGate) consumes. The gate is written against
-// (owner, repo string) coordinates and the GitHub side hands it HTTPRepoInfoFetcher; the GitLab
-// backend already serves both reads the gate needs — RepoVisibility and IssueReactions — but
-// under the ForgeRepo-signature the Forge interface uses, so PublicRepoGate cannot take it
-// directly. This shim bridges the two signatures WITHOUT reimplementing either read: it
-// delegates to the existing, golden-pinned GitLab backend methods, so the gate runs on a
-// GitLab-resolved repo with the SAME visibility read (`GET /projects/:id` `.visibility`,
-// `internal` passing through unfolded) and the SAME award-emoji→reaction mapping
-// (`thumbsup`→`+1`, human/bot resolved from the users API, never defaulted) it is tested
-// against. It is a SEPARATE type rather than extra methods on GitLabForge precisely because the
-// backend's exported method set must equal the frozen Forge interface exactly (a Go type cannot
-// carry two RepoVisibility signatures anyway).
-//
-// The gate is a SECURITY control and this adapter does not weaken it: it adds no fall-open path
-// — a read error propagates unchanged, so the gate still fails closed on an unreadable
-// visibility or reactions surface.
-type GitLabRepoInfoFetcher struct {
-	Forge *GitLabForge
-}
-
-// RepoVisibility delegates to the GitLab backend's ForgeRepo-signature read.
-func (a GitLabRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error) {
-	return a.Forge.RepoVisibility(ForgeRepo{Owner: owner, Name: repo})
-}
-
-// IssueReactions delegates to the GitLab backend's ForgeRepo-signature read (award emoji mapped
-// to GitHub's reaction vocabulary, so the gate's `+1` check works unchanged).
-func (a GitLabRepoInfoFetcher) IssueReactions(owner, repo string, issueNumber int) ([]Reaction, error) {
-	return a.Forge.IssueReactions(ForgeRepo{Owner: owner, Name: repo}, issueNumber)
-}
-
-// GitLabRepoInfoFetcher satisfies the public-repo gate's fetcher contract.
-var _ RepoInfoFetcher = GitLabRepoInfoFetcher{}
+// The single-forge public-repo-gate adapter that used to live here (adapting *GitLabForge
+// alone to the public-repo gate's RepoInfoFetcher signature) is retired (assay#1066): it is
+// superseded by the generic ForgeRepoInfoFetcher (repovis.go), which wraps WHICHEVER backend
+// the caller already resolved — GitHubForge, GitLabForge, or a test fake — instead of a
+// second, forge-specific type each command site would have to know to pick. No production
+// caller constructs a single-forge fetcher any more; see deskpr, deskreply and deskevidence,
+// which all route the gate's visibility read through the backend already resolved beside it.
 
 // ListLabelEvents returns the merge request's label-application events with the user that
 // applied each one.
