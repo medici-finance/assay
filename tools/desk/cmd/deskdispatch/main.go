@@ -23,15 +23,24 @@
 // claim exists to prevent. Both scripts already speak the deskkit exit-code contract, so
 // their verdicts pass straight through.
 //
-// THE CLAIM TOOL, AND THE PURE-GO FALLBACK (issue 708). The claim script is a shebang bash
-// file, so a freshly adopted tree that never received it — and a native-Windows adopter,
-// where CreateProcess will not run a `.sh` — cannot dispatch. When the resolved root carries
-// no `tools/dispatch-claim.sh`, this verb falls back to `deskclaim-ref` (cmd/deskclaim-ref),
-// a pure-Go port of the SAME wire protocol (the refs/dispatch/<id> claim ref, the same holder
-// encoding, the same 0/5/6 exit codes), invoked by bare name on PATH with no shell. Because
-// both speak the same protocol and land the claim in the same ref, a Go dispatcher and a
-// still-running bash dispatcher collide on one claim and never double-dispatch. The script,
-// when present, still WINS, so a consumer mid-transition is unchanged.
+// THE CLAIM TOOL, AND THE LEGACY-SCRIPT FALLBACK (issues 708, 1151). The claim script is a
+// shebang bash file, so a freshly adopted tree that never received it — and a native-Windows
+// adopter, where CreateProcess will not run a `.sh` — cannot dispatch through it. This verb
+// therefore PREFERS `deskclaim-ref` (cmd/deskclaim-ref) whenever it resolves on PATH: a
+// pure-Go port of the SAME wire protocol (the refs/dispatch/<id> claim ref, the same holder
+// encoding, the same 0/5/6 exit codes), invoked by bare name with no shell. The resolved
+// root's `tools/dispatch-claim.sh` is the fallback for a tree that predates the binary.
+// Because both speak the same protocol and land the claim in the same ref, a Go dispatcher
+// and a still-running bash dispatcher collide on one claim and never double-dispatch.
+//
+// THE CLAIM CHILD RUNS AS THE DISPATCHING ROLE, NEVER ON AMBIENT AUTH (issue 1151). Both
+// claim tools read only the credential they are handed — `--token-file` for the binary,
+// GH_TOKEN for the script — and until 1151 this verb handed them nothing, so a sandboxed
+// desk window (no ambient `gh` login) failed closed on every fresh claim while its other
+// steps minted their own role token and succeeded. Now the claim step mints (or reuses)
+// the dispatching role's token through the same seam the model stamp uses and passes it in
+// the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
+// failure is the refusal, never a fall-back to whatever `gh` is logged in as.
 //
 // ON CONTENTION, NAME THE HOLDER — NEVER STEAL. A claim held by someone else exits 5 with
 // the existing holder printed. There is no inline steal: breaking a live claim is a
@@ -74,13 +83,19 @@ prompt's item key stay on the ORIGINAL key.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
-  1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is
-                      tools/dispatch-claim.sh when the resolved root (--claim-root when
-                      given, else --root) carries it, ELSE the pure-Go deskclaim-ref binary
-                      on PATH — so a tree with no consumer script (a green-field or Windows
-                      adopter) still dispatches, with no shebang .sh and no --claim-root.
-                      The claim itself is a ref in the TARGET repo (--repo) either way — the
-                      flag names where the TOOL lives, never where the claim lands. Exit 5
+  1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is the pure-Go
+                      deskclaim-ref binary when it is on PATH (installed with desk-tools;
+                      no shebang .sh, no --claim-root, so a green-field or Windows adopter
+                      dispatches), ELSE the legacy tools/dispatch-claim.sh when the resolved
+                      root (--claim-root when given, else --root) carries it. The OK line
+                      names which one ran. The claim itself is a ref in the TARGET repo
+                      (--repo) either way — the flag names where the TOOL lives, never where
+                      the claim lands. The child runs as the DISPATCHING role: this step
+                      mints (or reuses) that role's App token exactly as the model-stamp step
+                      does and hands it over as --token-file <0600 path> (deskclaim-ref) or
+                      GH_TOKEN in the child's environment (the script); a GH_TOKEN already
+                      exported wins and nothing is minted; a mint failure is exit 6 with NO
+                      claim attempted — the tool is never run on the ambient gh login. Exit 5
                       there with a READABLE holder = a LIVE holder owns it: this verb prints
                       the holder and exits 5; it never steals. Exit 5 with no readable holder
                       is the claim tool refusing the invocation itself and is reported as
