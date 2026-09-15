@@ -41,7 +41,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (53 desk-actionable of 63 total — 63 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (53 desk-actionable of 63 total — 62 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -96,7 +96,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 25 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| forge-gitlab | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| forge-gitlab | 17 [exec:strong] | verified | 1000 | 0 | — | 2026-09-15 sonnet-5-verifier (rows 6-12 PASS offline incl. structural no-approval-route proof; rows 1-5 could-not-check by design, no live GitLab project; risk-value DERIVED) | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -245,7 +245,7 @@ _None._
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
 - 14 The public-repo gate reads the forge that serves the repo — every verb, not one — implemented (wave 3)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
-- 17 An enforceable merge gate on GitLab Free — the unresolved review thread — implemented (wave 5)
+- 17 An enforceable merge gate on GitLab Free — the unresolved review thread — verified (wave 5)
 
 ### forge-neutral (14 open)
 
