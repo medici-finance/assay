@@ -38,8 +38,11 @@ import (
 const (
 	glProject = "example-org/example-project"
 	glMRIID   = "7"
-	// glPATPlaceholder is a low-entropy placeholder — NOT a real credential.
-	glPATPlaceholder = "glpat-example-placeholder-0000"
+	// glPATPlaceholder is a low-entropy placeholder — NOT a real credential. It deliberately
+	// carries no vendor token prefix: the pattern leg of the leak gate (gitleaks' `gitlab-pat`
+	// rule) matches on the prefix shape alone, so a prefixed placeholder reddens CI whatever
+	// the text after it says. Sibling tests spell fake PATs the same bare way.
+	glPATPlaceholder = "example-placeholder-pat-0000"
 )
 
 // glStampServer is the fake GitLab instance. Paths arrive URL-encoded
