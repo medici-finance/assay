@@ -290,3 +290,72 @@ func TestDecayStillRunsOnGitHubAndUnknown(t *testing.T) {
 		t.Errorf("unknown-forge decay must keep the transient \"unavailable\" wording; got:\n%s", stderr)
 	}
 }
+
+// TestInitGitLabCIMaterialisesNonSecretRoster pins #1110: the scaffolded GitLab
+// regen job used to run statusgen with no roster at all — on a GitLab runner
+// there is no GITHUB_ACTIONS, so statusgen is in its file-only class and read
+// `$HOME/.config/assay/roster.env`, which no step ever wrote. The Evidence-actor
+// check then reported could-not-check on every row of every board regen while
+// the job stayed green, so the gap was silent. The template now materialises the
+// NON-secret half of the roster from a CI/CD variable (STATUSGEN_ROSTER_ENV)
+// into that path with owner-only permissions before statusgen runs, in BOTH
+// halves (--lint on merge requests, regen on the default branch), and prints a
+// clear NOTICE naming the variable when it is absent — loud, never silent.
+func TestInitGitLabCIMaterialisesNonSecretRoster(t *testing.T) {
+	gl := initGitlabCI
+	for _, want := range []string{
+		// The variable, the path it lands at, and the permissions the loader enforces.
+		"STATUSGEN_ROSTER_ENV",
+		`"${HOME}/.config/assay/roster.env"`,
+		`install -d -m 700 "${HOME}/.config/assay"`,
+		`chmod 600 "${HOME}/.config/assay/roster.env"`,
+		// A File-type CI/CD variable arrives as a PATH; a Variable-type one as the
+		// contents. Both are accepted, so the adopter's choice of type cannot
+		// silently produce a one-line roster holding a temp-file path.
+		`if [ -f "${STATUSGEN_ROSTER_ENV}" ]; then`,
+		// The loud half: an absent variable prints a NOTICE that names the
+		// variable AND says what statusgen will report without it.
+		"NOTICE: STATUSGEN_ROSTER_ENV is not set",
+		"could-not-check",
+		// The roster is the NON-secret half only; a secret-shaped key refuses.
+		"never a token, key, or password",
+		// It is a shared anchor so both halves get the same roster.
+		".statusgen-roster: &statusgen-roster",
+	} {
+		if !strings.Contains(gl, want) {
+			t.Errorf(".gitlab-ci.yml missing %q (#1110)", want)
+		}
+	}
+	// Both jobs must apply the anchor BEFORE their statusgen invocation.
+	if n := strings.Count(gl, "- *statusgen-roster"); n != 2 {
+		t.Errorf(".gitlab-ci.yml applies *statusgen-roster %d time(s), want 2 (lint + regen) (#1110)", n)
+	}
+	lintJobAt, regenJobAt := strings.Index(gl, "statusgen-lint:"), strings.Index(gl, "statusgen-regen:")
+	if lintJobAt < 0 || regenJobAt < lintJobAt {
+		t.Fatalf("expected statusgen-lint: ahead of statusgen-regen: (lint at %d, regen at %d)", lintJobAt, regenJobAt)
+	}
+	regen := gl[regenJobAt:]
+	rosterAt := strings.Index(regen, "- *statusgen-roster")
+	runAt := strings.Index(regen, "- statusgen --root .")
+	if rosterAt < 0 || runAt < 0 || rosterAt > runAt {
+		t.Errorf("regen job must materialise the roster before `statusgen --root .` (roster at %d, run at %d) (#1110)", rosterAt, runAt)
+	}
+	lint := gl[lintJobAt:regenJobAt]
+	rosterAt = strings.Index(lint, "- *statusgen-roster")
+	runAt = strings.Index(lint, "- statusgen --lint")
+	if rosterAt < 0 || runAt < 0 || rosterAt > runAt {
+		t.Errorf("lint job must materialise the roster before `statusgen --lint` (roster at %d, run at %d) (#1110)", rosterAt, runAt)
+	}
+	// The push credential must never be folded into the roster: the roster block
+	// must not reference STATUSGEN_PUSH_TOKEN, and the header must say the roster
+	// variable is not the place for a token.
+	anchorAt := strings.Index(gl, ".statusgen-roster: &statusgen-roster")
+	lintAt := strings.Index(gl, "statusgen-lint:")
+	if anchorAt < 0 || lintAt < anchorAt {
+		t.Fatalf("no .statusgen-roster anchor ahead of the lint job (anchor at %d, lint at %d) (#1110)", anchorAt, lintAt)
+	}
+	anchor := gl[anchorAt:lintAt]
+	if strings.Contains(anchor, "STATUSGEN_PUSH_TOKEN") {
+		t.Errorf("the roster anchor references STATUSGEN_PUSH_TOKEN — the roster is the NON-secret half and must never carry the push credential (#1110)")
+	}
+}

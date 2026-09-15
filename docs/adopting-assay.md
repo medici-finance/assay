@@ -519,7 +519,26 @@ identity* — plan for it before you turn protection on, not after the board sil
 > or rename that accidentally WIPES `docs/streams/`, so keeping the flag permanently would
 > silence that guard.
 
-**Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint.
+> **TRUST ROSTER — both halves need the NON-secret half, or the Evidence-actor check is
+> could-not-check on every run (#1110).** Under GitHub Actions `statusgen` reads its roster from
+> the **environment** (repository/organization Actions **variables**, never secrets). A workflow
+> that passes no `ASSAY_*` variable — which is what the scaffold did before #1110 — regenerates
+> a board that *looks* clean while every roster-backed check (the Evidence-actor check on
+> `verified`/`done` rows: which identity committed each brief's Evidence lines; the trust gates)
+> reports could-not-check, and the job stays green. The scaffolded workflow now carries a
+> workflow-level `env:` block passing the five roster variables through from `vars.*` —
+> `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`, `ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`,
+> `ASSAY_HUMAN_LOGIN_MAP` — and a **Report trust-roster presence** step in each job that prints a
+> `::notice::` naming the variables when `ASSAY_TRUSTED_BOT_SLUGS` is unset, so the gap is loud in
+> the job log. Set them as Actions **Variables** (Settings > Secrets and variables > Actions >
+> Variables) with the values from `configure-roster`; `ASSAY_TRUSTED_BOT_SLUGS` must bind
+> `verifier=<slug>:<bot-user-id>` or the Evidence-actor check has nothing to compare against.
+> They carry logins, numeric ids and role bindings **only** — a token or key never belongs in
+> them. A GitLab adopter has the same gap and a different transport: one CI/CD variable,
+> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — see
+> [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster for CI".
+
+**Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint. Roster: `grep -c 'vars.ASSAY_' …/statusgen.yml` is 5, and the regen job's log shows `role-bindings=` naming your `verifier=` binding rather than `(none bound)` — a `::notice::ASSAY_TRUSTED_BOT_SLUGS is not set` line in that log means the variables are not set yet.
 
 ### PRIMITIVE: install-desk-plugin
 Install the methodology plugin so the skills surface namespaced (`assay:<name>`):
@@ -684,8 +703,13 @@ chmod 600 ~/.config/assay/roster.env
 
 The mode is enforced, not advisory: a group- or world-writable file **or directory**, or one owned
 by another user, is refused with the mode printed. Anything that can write that file names the
-accounts the tools trust. Then set the Actions variables for the reporting half, and add the `env:`
-passthrough to your `statusgen --lint` step.
+accounts the tools trust. Then set the Actions variables for the reporting half, and make sure
+the `env:` passthrough reaches **both** `statusgen` steps — the PR `--lint` half **and** the
+push-to-main regen half (the scaffolded workflow carries it at workflow level; a hand-written one
+that passes it only to `--lint` leaves every regen's Evidence-actor check could-not-check, #1110).
+On GitLab the same five values travel as one CI/CD variable, `STATUSGEN_ROSTER_ENV`, that the
+scaffolded jobs write to this file — see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md),
+section "Trust roster for CI".
 
 **Verify:** every surface is present — the configured-check covers only two of them, so assert all
 five yourself:
