@@ -144,7 +144,7 @@ for the map: the step after the one being fixed is knowable in advance.
 | 14 | [The public-repo gate reads the forge that serves the repo — every verb, not one](brief-14-public-repo-gate-on-the-resolved-forge.md) | 3 | M | implemented | — | — |
 | 15 | [The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane](brief-15-gitlab-runbook-missing-keys.md) | 4 | M | done | 2026-09-15 sonnet-5-verifier (8/8 rows PASS incl. an independent scope-literal anti-drift check; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1129 @ c062d398a4b15a7cb6507597baeeaf38a4a3409c) |
 | 16 | [The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls](brief-16-review-tick-conformance-walk.md) | 5 | M | todo | — | — |
-| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | implemented | — | — |
+| 17 | [An enforceable merge gate on GitLab Free — the unresolved review thread](brief-17-resolved-thread-merge-gate.md) | 5 | M | verified | 2026-09-15 sonnet-5-verifier (rows 6-12 PASS offline incl. structural no-approval-route proof; rows 1-5 could-not-check by design, no live GitLab project; risk-value DERIVED) | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
