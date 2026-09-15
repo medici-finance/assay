@@ -144,6 +144,12 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tcase \"mergeable\":\n\t\treturn Mergeable",
       "new": "\tcase \"mergeable\", \"draft_status\":\n\t\treturn Mergeable"
+    },
+    {
+      "name": "trust a released reply's Head regardless of who authored it (a non-reviewer forges \"approved at current head\" by replying into an already-resolved thread — GitLab does not lock a resolved discussion against further replies)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\t\th, ok := mergeHoldReleasedHead(n.Body)\n\t\t\t\tif !ok {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif !SameActor(n.Author.Username, marker.ResolvedBy.Username) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\thead = h",
+      "new": "\t\t\t\tif h, ok := mergeHoldReleasedHead(n.Body); ok {\n\t\t\t\t\thead = h\n\t\t\t\t}"
     }
   ]
 }

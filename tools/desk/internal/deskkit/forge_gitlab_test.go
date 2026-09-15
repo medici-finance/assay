@@ -482,9 +482,16 @@ func glMergeHoldMarkerNote(resolved bool, resolvedByUsername string) map[string]
 	return n
 }
 
-// glMergeHoldReleasedReply is the reply note SetMergeHold posts on a release.
-func glMergeHoldReleasedReply(id int, head string) map[string]any {
-	return map[string]any{"id": id, "body": mergeHoldReleasedMarker + "\n" + mergeHoldHeadPrefix + head}
+// glMergeHoldReleasedReply is the reply note SetMergeHold posts on a release, authored by
+// author — real released replies are always authored by whoever actually resolved the
+// discussion (SetMergeHold posts the reply as the same caller that then resolves it), so
+// every non-attack call site names that same actor.
+func glMergeHoldReleasedReply(id int, head string, author string) map[string]any {
+	return map[string]any{
+		"id":     id,
+		"body":   mergeHoldReleasedMarker + "\n" + mergeHoldHeadPrefix + head,
+		"author": map[string]any{"id": 42, "username": author},
+	}
 }
 
 // glDiscussion wraps notes into one discussion object, the shape ReadMergeHold walks.
@@ -1573,7 +1580,7 @@ func glCases() []glCase {
 			setup: func(s *glServer) {
 				s.discussions = []map[string]any{glDiscussion("disc-1",
 					glMergeHoldMarkerNote(true, "reviewer-bot"),
-					glMergeHoldReleasedReply(950, "abc123"),
+					glMergeHoldReleasedReply(950, "abc123", "reviewer-bot"),
 				)}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
@@ -1587,6 +1594,28 @@ func glCases() []glCase {
 				s.discussions = []map[string]any{glDiscussion("disc-1",
 					glMergeHoldMarkerNote(true, "reviewer-bot"),
 					map[string]any{"id": 951, "body": "unrelated comment\nHead: spoofed-sha"},
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// THE ATTACK: GitLab does not lock a resolved discussion against further replies,
+			// so a non-reviewer with ordinary comment rights (e.g. the change's own author, on
+			// a project where the `Draft:` prefix is just a title string) can push an
+			// unreviewed head B and then post a CORRECTLY-SHAPED released reply into the
+			// still-resolved thread claiming `Head: B`. The marker's own resolved_by is still
+			// the real reviewer, but the released-shaped reply that supplies the head is
+			// authored by someone else entirely — that reply must be ignored and the hold must
+			// report NO head (checkMergeHoldApproved already treats "" as a mismatch requiring
+			// re-arm/refusal), never the forged one. The previous suite covered "ignores a
+			// reply whose first line isn't the marker" and "resolved by hand" (via ResolvedBy
+			// alone) but had no case for a correctly-shaped released reply from the WRONG
+			// author.
+			name: "read_merge_hold_ignores_released_reply_from_wrong_author", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					glMergeHoldReleasedReply(951, "forged-unreviewed-sha", "attacker-dev"),
 				)}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
@@ -1621,7 +1650,7 @@ func glCases() []glCase {
 			setup: func(s *glServer) {
 				s.discussions = []map[string]any{glDiscussion("disc-1",
 					glMergeHoldMarkerNote(true, "reviewer-bot"),
-					glMergeHoldReleasedReply(950, "abc123"),
+					glMergeHoldReleasedReply(950, "abc123", "reviewer-bot"),
 				)}
 			},
 			run: func(f *GitLabForge) (any, error) {

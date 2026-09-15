@@ -2334,14 +2334,33 @@ func (g *GitLabForge) ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, err
 			// The LATEST released reply wins — a thread can be released, re-armed, and
 			// released again across its life, and only the most recent release describes
 			// the CURRENT state.
+			//
+			// GitLab does NOT lock a resolved discussion against further replies: any
+			// project member with ordinary comment rights (which, on a project where the
+			// `Draft:` prefix is just a title string, includes the change's own author) can
+			// post a note into an already-resolved thread at any time. So a released-shaped
+			// reply's TEXT is never trusted on its own — only a reply AUTHORED BY the actor
+			// who actually resolved the discussion (marker.ResolvedBy, the one field GitLab
+			// itself sets and only the resolve API can touch) can name the head the hold was
+			// released at. This is the same identity check checkMergeHoldApproved already
+			// applies to ResolvedBy, extended to the reply the head comes from — otherwise
+			// anyone with comment rights forges "approved at current head" by replying
+			// `assay-merge-hold: released\nHead: <their-own-unreviewed-sha>` into a thread a
+			// real reviewer resolved earlier. A reply from anyone else is treated exactly
+			// like a reply that isn't released-shaped at all: it does not move head.
 			head := ""
 			for _, n := range d.Notes[1:] {
 				if n == nil {
 					continue
 				}
-				if h, ok := mergeHoldReleasedHead(n.Body); ok {
-					head = h
+				h, ok := mergeHoldReleasedHead(n.Body)
+				if !ok {
+					continue
 				}
+				if !SameActor(n.Author.Username, marker.ResolvedBy.Username) {
+					continue
+				}
+				head = h
 			}
 			return &MergeHold{
 				State:      MergeHoldResolved,

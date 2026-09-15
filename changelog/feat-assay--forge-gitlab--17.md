@@ -13,3 +13,10 @@
   supersedes an interim same-day fix that mapped `draft_status` to `MERGEABLE` in the shared
   GitLab merge-status mapping — that mapping is reverted to what it was, and the leniency
   moves to the one condition it belongs to.
+- `GitLabForge.ReadMergeHold` no longer trusts a released reply's `Head` unless that specific
+  reply's own author matches the discussion's resolver. GitLab does not lock a resolved
+  discussion against further replies, so any project member with ordinary comment rights
+  could previously post a correctly-shaped `assay-merge-hold: released` reply naming an
+  unreviewed head into an already-resolved thread and have it read as "approved at current
+  head." A released reply from anyone but the resolver is now ignored, reporting `Head: ""`,
+  which the reviewer-approved condition already treats as a mismatch requiring re-arm/refusal.
