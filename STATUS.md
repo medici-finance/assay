@@ -41,7 +41,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (54 desk-actionable of 64 total — 64 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (54 desk-actionable of 64 total — 63 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -77,7 +77,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| windows-port | 06 [exec:strong] | verified | 1500 | 1 | — | 2026-09-15 assay-verifier (15/17 rows PASS + 1 satisfied-by-equivalent, 1 could-not-check apply-gated; risk-value DERIVED, independently re-derived sha256 against the real release asset) | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -301,7 +301,7 @@ _None._
 - 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
-- 06 Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH — implemented (wave 3)
+- 06 Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH — verified (wave 3)
 - 07 deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings — implemented (wave 3)
 - 08 Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency — todo (wave 1)
 - 09 Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew — todo (wave 4)
