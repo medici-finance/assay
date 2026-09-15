@@ -96,6 +96,22 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | build + vet the fenced command | exit 0 | exit 0 both | 2026-09-15 | sonnet-5-verifier |
+| 2 | full package test suite | exit 0, trial-merge and allowlist goldens pass | exit 0, both packages ok, all named goldens PASS | 2026-09-15 | sonnet-5-verifier |
+| 3 | conflict still enumerated and aborted | exit 0 | exit 0, posture preserved exactly (checked-failed message names the file outside the regenerable list) | 2026-09-15 | sonnet-5-verifier |
+| 4 | no-ff literal present | count >=1 | count=2, confirmed with explanatory comment at the call site | 2026-09-15 | sonnet-5-verifier |
+| 5 | exception documented at the allowlist | count >=1 | count=15 | 2026-09-15 | sonnet-5-verifier |
+| 6 | git-exec site count reduced | lower than pre-brief baseline | independently derived baseline from the parent commit (109) vs the implementing commit (97) vs current (82) -- real reduction confirmed; remaining deskmerge seam calls use only the allowlisted verb set, none of the migrated verbs appear as runGit calls anymore | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- enumerated every safety property of the fenced exception (hard-coded no-ff/no-commit literal argv, read-only conflict enumeration, unconditional rollback, single Allowed() chokepoint before any spawn, literal-slice argv with no shell interpolation, scrubbed environment, human-gate upstream of any run, never-merges-to-main/no-force-escape-hatch tests) at file:line; ranked the allowlist-map edit itself as the highest-irreversibility widening vector (mitigated by a pinning golden test); derived the fence is genuinely tight -- three independent layers (code chokepoint, passing pinning tests, documentation) agree, with no scope creep beyond what the brief and inventory document as in-scope.
+
+**VERIFY: PASS** -- all 6 rows checked-clean with independently-reproduced evidence, including an independently re-derived pre-brief baseline rather than trusting stated numbers.
 
 ## Review
 Gate: model (all four risk answers no — implements a decided exception; the trial-merge

@@ -83,12 +83,23 @@ var declaredListCaps = []ListCap{
 	// register does not cover: the seam reports its own Cap/TruncatedAtCap, and ghListOpenPRs
 	// currently discards both, so a repo past the backend cap still yields a roster that omits
 	// PRs without saying so — a display-surfacing fix, not a silent `--limit` literal.
+	// The deskdisposition sweep's caller-supplied `--limit` read is GONE from this register's
+	// worse half: `sweep` migrated off the `gh` CLI onto the typed ListOpenChanges op (#1123,
+	// which is what made the verb answer on a GitLab project at all), so the open-change read
+	// is bounded by the forge backend's own declared page cap rather than a `--limit` literal
+	// this scan can see. Its row is not retired, because the file still holds ONE `--limit`
+	// instance — the label existence probe below — so the row is resized rather than removed.
+	// NOTE the residual, stated the way deskroster's is: the `--limit` FLAG still exists on the
+	// sweep and still bounds how many changes are PRINTED. It is no longer a SILENT cap — the
+	// verb reads OpenChanges.Cap/TruncatedAtCap and names on stderr which ceiling clipped the
+	// page (the forge read's cap, or `--limit`) — which is the property this register is about;
+	// a declared cap is not a defect.
 	{
 		File:        "cmd/deskdisposition/verbs.go",
 		Needle:      `"--limit"`,
-		Occurrences: 2,
-		Cap:         0,
-		Effect:      "two capped reads: a label existence probe fixed at 5, and an issue read whose cap comes from a caller flag. The caller-supplied one is the worse shape — the cap is chosen at the call site and the answer never says which value was used, so the same command produces different totals with no visible difference",
+		Occurrences: 1,
+		Cap:         5,
+		Effect:      "one capped read is left: the label existence probe fixed at 5. It decides whether `set` must create the disposition label before applying it, so a repo carrying more than five labels matching the search can answer 'absent' for a label that exists — a wrong answer in the harmless direction here (the add-label call that follows is the real gate and reports the actionable error), which is why the probe's failure is deliberately non-fatal",
 	},
 	{
 		File:        "cmd/deskdigest/collect.go",

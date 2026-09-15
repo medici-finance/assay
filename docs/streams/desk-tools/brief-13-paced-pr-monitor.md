@@ -119,6 +119,24 @@ Pre-mortem → detection map:
 ## Evidence
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null). No live GitHub API calls made -- all rows use each script's own hermetic fake `gh` on PATH.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | syntax check both scripts | exit 0 | exit 0, no output | 2026-09-15 | sonnet-5-verifier |
+| 2 | pr-monitor test suite | exit 0, every case passes | exit 0, 39 passed 0 failed, 9 named cases all ok | 2026-09-15 | sonnet-5-verifier |
+| 3 | inbound-monitor test suite | exit 0, existing suite unchanged and green | exit 0, 45 passed 0 failed | 2026-09-15 | sonnet-5-verifier |
+| 4 | negative control: rate-limit-stops-cycle | exit 0, no further calls after 403, remaining repos degraded | exit 0, 7 passed; exactly TWO gh calls happened total, repos 3 and 4 never called (call-log assertion, not just exit code) | 2026-09-15 | sonnet-5-verifier |
+| 5 | pacing-honoured | exit 0, call log spans >=2s | exit 0, 3 passed, wall-clock measured 2.369s, consistent with two 1s inter-repo sleeps | 2026-09-15 | sonnet-5-verifier |
+| 6 | cross-component wiring check | exit 0 | exit 0, script executable, skill names it, README and both scripts carry the knob | 2026-09-15 | sonnet-5-verifier |
+| 7 | dereferenced default (README vs script) | exit 0 | exit 0, script default=2s, README states default 2 at the matching row -- dereferenced, not restated | 2026-09-15 | sonnet-5-verifier |
+| 8 | pinned lint | exit 0 | exit 0, LINT: PASS, no PROBLEM/FAIL | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- the pacing default (2s between reads) and the stop-on-rate-limit-signature control were independently enumerated at file:line, ranked (a failed stop-on-limit match ranks highest -- would silently let the original incident recur while looking protected), and derived sound: row 4 provides a genuine negative-control proof (an explicit call-count assertion, not just an exit code), and the chosen default converts a tight unpaced loop into a serialized cadence consistent with the documented mitigation for this failure class.
+
+**VERIFY: PASS** -- all 8 rows checked-clean, no could-not-check, no blocks, no live API traffic.
 
 ## Review
 
