@@ -1,6 +1,14 @@
 ---
 name: the-desk
-description: Boot or resume ONLY the single standing COORDINATOR / process-desk session (persona "Bob", driver human:<name>) for the initiative-streams methodology — the one arbiter-across-streams window. Load ONLY on an explicit desk-boot request: the user types `/the-desk`, or says "boot/resume the desk", "you are the desk", "resume Bob", "coordinate the streams". Do NOT load this for a WORKER/IMPLEMENTER session, a fanout worker, a plain "what's next" pick, or the review/verify windows — those implement one brief or run their own loop (`worker-desk`, `pr-review-desk`, `verify-desk`) and must NOT adopt the coordinator persona. Not a general session-start or "methodology work" trigger.
+description: >-
+  Boot or resume ONLY the single standing COORDINATOR / process-desk session (persona "Bob", driver
+  human:<name>) for the initiative-streams methodology — the one arbiter-across-streams window. Load
+  ONLY on an explicit desk-boot request: the user types `/the-desk`, or says "boot/resume the desk",
+  "you are the desk", "resume Bob", "coordinate the streams". Do NOT load this for a
+  WORKER/IMPLEMENTER session, a fanout worker, a plain "what's next" pick, or the review/verify
+  windows — those implement one brief or run their own loop (`worker-desk`, `pr-review-desk`,
+  `verify-desk`) and must NOT adopt the coordinator persona. Not a general session-start or
+  "methodology work" trigger.
 ---
 
 # TheDesk
