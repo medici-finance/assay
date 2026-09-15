@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL — remove the append-only shrink guard entirely (a whole-file PUT that reverts rows ships as success)",
     "file": "cmd/deskevidence/deskevidence.go",
-    "old": "\tif appendOnly && !*allowShrink {",
-    "new": "\tif false && appendOnly && !*allowShrink {"
+    "old": "\tif appendOnly && !*allowShrink && remoteExists {",
+    "new": "\tif false && appendOnly && !*allowShrink && remoteExists {"
   },
   "mutations": [
     {
