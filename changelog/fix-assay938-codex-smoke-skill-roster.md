@@ -7,3 +7,7 @@
   `intake-desk`, `pdfingest`, `pr-review-desk`, `pr-shepherd`, `the-desk`, `upgrade-assay`,
   `verify-desk`, `worker-desk`), matching `plugins/assay/codex/packaging.md`'s
   `assay:codex-packaging` roster and `plugins/assay/skills/`. (#938)
+- Step 5's Action also named the retired `dailies` skill as a dispatch-bearing fan-out
+  example — the same stale-roster defect, one instance the initial pass missed. Swapped
+  for `pr-review-desk`, consistent with the two skills already named earlier in the same
+  sentence. (#938)

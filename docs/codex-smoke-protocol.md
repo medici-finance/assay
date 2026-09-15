@@ -126,7 +126,7 @@ Action:
       confirming a subagent-spawning tool (e.g. `spawn_agent`) is in the session's tool
       list — a positive-presence check, not an absence check.
   (ii) In a separate, real session (same config), exercise a dispatch-bearing skill
-      (`the-desk`, `worker-desk`, or a `dailies` fan-out) with a request that would fan
+      (`the-desk`, `worker-desk`, or a `pr-review-desk` fan-out) with a request that would fan
       out work, and capture the FULL transcript (`--json` event log + `-o` final
       message). Grep the transcript for evidence that the fan-out was gated by the
       desk methodology's own claim-before-dispatch ceremony (no sub-agent is spawned
