@@ -50,16 +50,30 @@ func (i item) labelNames() []string { return i.Labels }
 // A read failure is Unverifiable (exit 6): deskclose cannot know whether the item carries a
 // decision label, so it must not close it. There is no "assume no labels" arm — that is the
 // unread-precondition failure this tool exists to make impossible.
-func fetchItem(repo string, n int) (item, error) {
+func fetchItem(repo string, n int, kind deskkit.TargetKind) (item, error) {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return item{}, ferr
 	}
-	iss, err := fg.GetIssue(fr, n)
+	var iss *deskkit.Issue
+	var err error
+	if kind != "" {
+		iss, err = fg.GetIssueTyped(fr, n, kind)
+	} else {
+		iss, err = fg.GetIssue(fr, n)
+	}
 	if err != nil {
+		detail := ""
+		if kind == "" {
+			// The forge could not resolve a bare number to one kind — the case a project
+			// carrying both an issue and a merge request at that number produces. The refusal
+			// underneath is right; what it used to be missing is the spelling of the operation
+			// it tells the caller to use, which deskclose now exposes on every mode.
+			detail = " State which kind you mean: " + deskkit.TypedRefForms() + "."
+		}
 		return item{}, deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read %s#%d — its labels and state are unknown, so it is not "+
-				"closeable (an unread precondition is never a satisfied one)", repo, n), err)
+				"closeable (an unread precondition is never a satisfied one).%s", repo, n, detail), err)
 	}
 	return item{
 		Number: iss.Number,
@@ -162,32 +176,36 @@ func extractPRRef(repo string, it item) (int, error) {
 // trail naming the lane, the canonical target and the authorizing ruling survives even
 // a batch that turns out to be wrong — a reader of a wrongly-closed issue can see why
 // it was closed and by whose authority, and reopen is cheap.
-func postComment(repo string, n int, body string) error {
+func postComment(repo string, n int, kind deskkit.TargetKind, body string) error {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return ferr
 	}
-	if _, err := fg.PostComment(fr, n, body); err != nil {
+	if _, err := fg.PostCommentTyped(fr, n, kind, body); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: the pre-close comment on %s#%d may or may not have posted", repo, n), err)
 	}
 	return nil
 }
 
-// closeItem performs the close via CloseIssue, which closes an issue OR a PR (both share the
-// issues endpoint on GitHub; GitLab routes by kind). reason is a state_reason meaningful only for
-// issues; a PR carries no state_reason, so the lane is carried by the comment written immediately
-// before this call.
-func closeItem(repo string, n int, isPR bool, reason string) error {
+// closeItem performs the close via CloseIssueTyped, so the close addresses the kind of object
+// that was actually READ. The untyped CloseIssue reaches only the ISSUE sequence on a forge
+// that numbers the two kinds separately, which on a project carrying both an issue and a
+// merge request at one number means the close lands on the other object — a wrong write, not
+// a failed one.
+//
+// reason is a state reason meaningful only for issues; a change carries none on either forge,
+// so it is dropped here rather than handed to the seam (which refuses it), and the lane is
+// carried by the comment written immediately before this call.
+func closeItem(repo string, n int, kind deskkit.TargetKind, reason string) error {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return ferr
 	}
-	// A PR has no state_reason; pass "" so the field is omitted.
-	if isPR {
+	if kind == deskkit.TargetChange {
 		reason = ""
 	}
-	if err := fg.CloseIssue(fr, n, reason); err != nil {
+	if err := fg.CloseIssueTyped(fr, n, kind, reason); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: closing %s#%d did not confirm", repo, n), err)
 	}
 	return nil

@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/discussions",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "State": "RESOLVED",
+    "ID": "disc-1",
+    "ResolvedBy": "some-developer",
+    "Head": ""
+  }
+}

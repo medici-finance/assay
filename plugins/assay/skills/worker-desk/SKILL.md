@@ -39,6 +39,8 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+
 ## Boot
 
 `deskboot worker-desk` — loop identity, `deskwt prune`, worktree lock, roster register, roster
@@ -51,6 +53,32 @@ gets the same rule from the common-clauses kit) and inline `-c` commit identity 
 **Two things the boot owes before the first sweep:** arm the standing wake (§Cadence and wake) so the
 window has a cadence from the start rather than after its first quiet queue, and print the BOARD ROOTS
 ∪ SCAN REPOS symmetric difference (§THE REPO SET) so a root nothing sweeps is visible on day one.
+
+## Tick mode
+
+A run is a TICK when the harness passes the literal argument `--tick`, or the environment
+carries `ASSAY_TICK` compared EXACTLY to `1`. Absent both, the run is a standing WINDOW and
+every rule in this body holds unchanged — so the contract is inert until a caller asks for it,
+and a loose truthiness test on that variable is what would silently convert a live window into
+a one-pass run.
+
+A tick is ONE bounded pass: boot, ONE fresh sweep of this desk's own queue with the instrument
+this body already names, act on what that sweep made actionable up to this role's declared
+width, wait bounded for what it dispatched, print the summary line, exit. In tick mode this
+desk arms no `capability:durable-monitor`, schedules no wake-up, sleeps for no cadence, runs no
+second sweep, and never waits in line for an answer — an escalation is a FILED issue and the
+pass continues. It never claims idle or caught up: one fresh sweep supports a verdict about the
+pass that ran, never a standing claim about the queue. **A tick narrows the LOOP, never a
+GATE** — gates, budgets, stop flags, identity rules and escalation obligations are unchanged,
+and a tick short of budget drops WORK, never a CHECK. Its last line of output is the summary
+line, in which a pass that could not read its queue says so and is never reported as an empty
+one.
+
+The trigger predicate, the bounded pass, the budget arithmetic (`ASSAY_TICK_DEADLINE` and the
+exit reserve) and the summary-line grammar are stated once in
+[`../../references/tick-contract.md`](../../references/tick-contract.md), whose grammar has one
+executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
+not own.
 
 ## The pool — keep slots FULL, not waves: refill on completion
 

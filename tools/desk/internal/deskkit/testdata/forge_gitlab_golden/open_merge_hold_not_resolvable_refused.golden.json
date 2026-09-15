@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/discussions",
+      "body": {
+        "body": "assay-merge-hold: review pending — released by the reviewer's approve verdict at the current head"
+      }
+    }
+  ],
+  "result": "",
+  "err": "could-not-check: the merge-hold marker thread opened on !7 in medici-finance/assay came back NOT resolvable — the server cannot block the merge on it, so the gate this op exists to provide is not armed",
+  "not_found": false
+}

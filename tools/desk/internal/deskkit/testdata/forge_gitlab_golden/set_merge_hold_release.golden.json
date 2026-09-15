@@ -1,0 +1,23 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/discussions",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/discussions/disc-1/notes",
+      "body": {
+        "body": "assay-merge-hold: released\nHead: abc123"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/discussions/disc-1",
+      "body": {
+        "resolved": true
+      }
+    }
+  ]
+}

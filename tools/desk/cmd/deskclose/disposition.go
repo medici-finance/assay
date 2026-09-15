@@ -135,9 +135,12 @@ func requireTerminalDisposition(repo string, n int, declaredTarget string) (disp
 	return d, nil
 }
 
-// refNumRe pulls the trailing item number out of any ref shape: `#123`,
-// `owner/repo#123`, or a github.com issues/pull permalink.
-var refNumRe = regexp.MustCompile(`(?:#|/(?:issues|pull)/)(\d+)\s*$`)
+// refNumRe pulls the trailing item number out of any ref shape: `#123`, `!123`,
+// `owner/repo#123`, `owner/repo!123`, or an issues / pull / merge-request permalink. The `!`
+// sigil and the `merge_requests` path segment are the typed CHANGE spellings (see
+// deskkit.ParseItemRef): a comparison that did not recognise them would read `!4` as
+// unparseable and report two spellings of one target as a disagreement.
+var refNumRe = regexp.MustCompile(`(?:[#!]|/(?:issues|pull|merge_requests)/)(\d+)\s*$`)
 
 // refsAgree reports whether two item references name the same item. It compares the
 // numbers, and the owner/repo when BOTH sides carry one — a bare `#123` is read in the
@@ -200,7 +203,7 @@ func normalizeItemRef(defaultRepo, ref string) (string, bool) {
 }
 
 var refRepoRe = regexp.MustCompile(
-	`(?:^|github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:#|/(?:issues|pull)/)\d+\s*$`)
+	`(?:^|github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:[#!]|/(?:issues|pull)/)\d+\s*$`)
 
 func refRepo(s string) string {
 	m := refRepoRe.FindStringSubmatch(strings.TrimSpace(s))

@@ -43,9 +43,18 @@ const (
 var valueFlags = map[string]bool{
 	"-R": true, "--of": true, "--by": true, "--file": true, "--rulings": true,
 	"--resume-from": true, "--max-wait": true, "--mined": true, "--dispute": true,
+	"--kind": true, "--by-kind": true,
 }
 
-var numTokenRe = regexp.MustCompile(`^#?\d+$`)
+// numTokenRe recognises the positional item number in its accepted spellings: a bare number,
+// `#N`, or the typed `!N` that names a merge request on a forge whose issues and changes are
+// separate number sequences. The sigil is kept ON the token and parsed by
+// deskkit.ParseItemRef — stripping it here would throw away the only thing that tells the two
+// kinds apart.
+// A repo-qualified spelling matches too, so it lands in the positional slot and is refused
+// with a message that says the repository is named by -R — rather than falling through to the
+// flag parser, which would report an argument-count error naming neither cause nor fix.
+var numTokenRe = regexp.MustCompile(`^(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?[#!]?\d+$`)
 
 // splitPositionals pulls bare item numbers out of an argv so the brief's documented
 // shape (`deskclose duplicate -R <repo> <N> --of <M>`) parses. Go's flag package stops
@@ -77,12 +86,51 @@ type common struct {
 	repo    string
 	dryRun  bool
 	rulings string
+	// kindFlag is the raw `--kind` value; kind is what it resolved to, together with any
+	// sigil the item number itself carried. Empty means the caller stated no kind, which is
+	// the correct answer on a forge with one number sequence and a refusal on one without.
+	kindFlag string
+	kind     deskkit.TargetKind
 }
 
 func (c *common) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.repo, "R", "", "owner/repo")
 	fs.BoolVar(&c.dryRun, "dry-run", false, "validate and read the remote; write nothing")
 	fs.StringVar(&c.rulings, "rulings", defaultRulingsPath, "path to the rulings register carrying "+rulingID)
+	fs.StringVar(&c.kindFlag, "kind", "",
+		"which kind of object the item number names: issue | mr (pr is an alias of mr). "+
+			"Equivalent to writing the number as `!N`; required only where a project carries both kinds at one number")
+}
+
+// statedTargetKind resolves the kind of a TARGET reference from its own sigil and its kind
+// flag, BEFORE any forge read. Doing it here rather than at the point of use means an
+// unparseable reference or a sigil that contradicts its flag is refused pre-flight, with no
+// request emitted and no partial write behind it.
+func statedTargetKind(refName, ref, flagName, flagValue string) (deskkit.TargetKind, error) {
+	parsed, err := deskkit.ParseItemRef(ref)
+	if err != nil {
+		return "", err
+	}
+	flagKind, ferr := parseKindFlag(flagName, flagValue)
+	if ferr != nil {
+		return "", ferr
+	}
+	return deskkit.ResolveStatedKind(refName, parsed, flagKind)
+}
+
+// parseKindFlag resolves a `--kind`-shaped flag value. An empty value is "unstated", which is
+// a legitimate answer — the forge resolves it where it can. Anything else goes through the
+// shared vocabulary so deskclose cannot accept a kind word its siblings reject.
+func parseKindFlag(name, value string) (deskkit.TargetKind, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+	k, err := deskkit.ParseTargetKind(value)
+	if err != nil {
+		return "", deskkit.Refused(fmt.Sprintf("refused: %s: %s", name,
+			strings.TrimPrefix(err.Error(), "refused: ")))
+	}
+	return k, nil
 }
 
 // requireRepo applies the repo allowlist. The set is roster configuration read from
@@ -106,9 +154,16 @@ type closeReq struct {
 	repo   string
 	number int
 	mode   string
+	// kind is the kind of object `number` names, as the caller STATED it (`!N` or --kind),
+	// or "" when they stated none. It selects the typed read; every write after that read
+	// takes its kind from the object that was actually fetched, never from this field.
+	kind deskkit.TargetKind
 	// target is the canonical item this close points at (`--of` / `--by` / the PR ref
 	// extracted from a review-request body). Empty only where the lane has none.
 	target string
+	// targetKind is the kind the caller stated for `target` (`--by !N` / --by-kind), or ""
+	// when they stated none.
+	targetKind deskkit.TargetKind
 	// mined is the duplicate lane's mandatory "I checked for unique value first"
 	// assertion, echoed verbatim into the close comment.
 	mined  string
@@ -136,7 +191,8 @@ func cmdDuplicate(args []string, out io.Writer) error {
 	fs.SetOutput(os.Stderr)
 	var c common
 	c.bind(fs)
-	of := fs.String("of", "", "the canonical item this duplicates")
+	of := fs.String("of", "", "the canonical item this duplicates (N | #N | !N | owner/repo#N | owner/repo!N | web URL)")
+	ofKindFlag := fs.String("of-kind", "", "which kind of object --of names: issue | mr (pr is an alias of mr)")
 	mined := fs.String("mined", "", "one-line summary of the unique value folded into --of, or 'nothing-unique'")
 	n, err := parseItemVerb(fs, args, &c)
 	if err != nil {
@@ -144,6 +200,10 @@ func cmdDuplicate(args []string, out io.Writer) error {
 	}
 	if strings.TrimSpace(*of) == "" {
 		return deskkit.Refused("refused: duplicate requires --of <M>, the canonical item")
+	}
+	ofKind, err := statedTargetKind("--of", strings.TrimSpace(*of), "--of-kind", *ofKindFlag)
+	if err != nil {
+		return err
 	}
 	// --mined is mandatory and is checked BEFORE the lane refusal below, so the
 	// contract stays enforced against the day the lane unlocks. A duplicate close
@@ -171,8 +231,8 @@ func cmdDuplicate(args []string, out io.Writer) error {
 			rulingID, c.repo, n, rulingID, supersedeMarker, rulingID))
 	}
 	return applyClose(closeReq{
-		repo: c.repo, number: n, mode: modeDuplicate,
-		target: strings.TrimSpace(*of), mined: strings.TrimSpace(*mined),
+		repo: c.repo, number: n, mode: modeDuplicate, kind: c.kind,
+		target: strings.TrimSpace(*of), targetKind: ofKind, mined: strings.TrimSpace(*mined),
 		dryRun: c.dryRun, g: g,
 	}, out)
 }
@@ -185,7 +245,10 @@ func cmdSuperseded(args []string, out io.Writer) error {
 	fs.SetOutput(os.Stderr)
 	var c common
 	c.bind(fs)
-	by := fs.String("by", "", "the issue or PR that supersedes this item")
+	by := fs.String("by", "", "the issue or change that supersedes this item "+
+		"(N | #N | !N | owner/repo#N | owner/repo!N | web URL)")
+	byKindFlag := fs.String("by-kind", "", "which kind of object --by names: issue | mr (pr is an alias of mr). "+
+		"Equivalent to writing it as `!N`")
 	dispute := fs.String("dispute", "", "reviewer role only: dispute the standing proposal for this reason — applies "+
 		labelNeedsDecision+" and never closes")
 	n, err := parseItemVerb(fs, args, &c)
@@ -193,9 +256,14 @@ func cmdSuperseded(args []string, out io.Writer) error {
 		return err
 	}
 	if strings.TrimSpace(*by) == "" {
-		return deskkit.Refused("refused: superseded requires --by <ref> (an issue or PR)")
+		return deskkit.Refused("refused: superseded requires --by <ref> (an issue or change). " +
+			deskkit.TypedRefForms())
 	}
-	return runSupersededLane(c, n, strings.TrimSpace(*by), *dispute, out)
+	byKind, err := statedTargetKind("--by", strings.TrimSpace(*by), "--by-kind", *byKindFlag)
+	if err != nil {
+		return err
+	}
+	return runSupersededLane(c, n, strings.TrimSpace(*by), byKind, *dispute, out)
 }
 
 func cmdReviewRequest(args []string, out io.Writer) error {
@@ -212,7 +280,7 @@ func cmdReviewRequest(args []string, out io.Writer) error {
 		return err
 	}
 	return applyClose(closeReq{
-		repo: c.repo, number: n, mode: modeReviewRequest, dryRun: c.dryRun, g: g,
+		repo: c.repo, number: n, mode: modeReviewRequest, kind: c.kind, dryRun: c.dryRun, g: g,
 	}, out)
 }
 
@@ -228,14 +296,28 @@ func parseItemVerb(fs *flag.FlagSet, args []string, c *common) (int, error) {
 		return 0, deskkit.Refused(fmt.Sprintf(
 			"refused: %s takes exactly one item number, got %d %v", fs.Name(), len(pos), pos))
 	}
-	n, err := atoiPositive(pos[0], "the item number")
+	ref, err := deskkit.ParseItemRef(pos[0])
 	if err != nil {
 		return 0, err
 	}
+	if ref.Repo != "" {
+		return 0, deskkit.Refused(fmt.Sprintf(
+			"refused: the item number takes no owner/repo prefix (%s) — the repository is named by -R",
+			deskkit.StripControl(pos[0])))
+	}
+	flagKind, kerr := parseKindFlag("--kind", c.kindFlag)
+	if kerr != nil {
+		return 0, kerr
+	}
+	kind, kerr := deskkit.ResolveStatedKind("the item number", ref, flagKind)
+	if kerr != nil {
+		return 0, kerr
+	}
+	c.kind = kind
 	if err := requireRepo(c.repo); err != nil {
 		return 0, err
 	}
-	return n, nil
+	return ref.Number, nil
 }
 
 // gateFor runs the ruling gate once per process. Every mode goes through it, so there
@@ -277,12 +359,15 @@ func gateFor(c *common) (grant, error) {
 func applyClose(r closeReq, out io.Writer) error {
 	a := &auditCtx{verb: r.mode, repo: r.repo, number: r.number}
 
-	it, err := fetchItem(r.repo, r.number)
+	it, err := fetchItem(r.repo, r.number, r.kind)
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
 	}
 	a.title = it.Title
+	// Every write below addresses the object that was READ, so its kind comes from the read
+	// rather than from what the caller said it would be.
+	itemKind := labelTargetOf(it)
 
 	if it.closed() {
 		a.log(deskkit.ResultNoop, "already closed — idempotent no-op")
@@ -294,7 +379,7 @@ func applyClose(r closeReq, out io.Writer) error {
 		return err
 	}
 
-	target, disp, err := verifyLane(r, it)
+	target, disp, err := verifyLane(&r, it)
 	if err != nil {
 		a.log(resultFor(err), err.Error())
 		return err
@@ -315,7 +400,7 @@ func applyClose(r closeReq, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
 	}
-	if err := postComment(r.repo, r.number, body); err != nil {
+	if err := postComment(r.repo, r.number, itemKind, body); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
@@ -326,7 +411,7 @@ func applyClose(r closeReq, out io.Writer) error {
 			a.log(deskkit.ResultRateLimited, "comment posted, cross-reference and close deferred: "+err.Error())
 			return err
 		}
-		if err := postComment(r.crossRef.repo, r.crossRef.number, r.crossRef.body); err != nil {
+		if err := postComment(r.crossRef.repo, r.crossRef.number, r.crossRef.kind, r.crossRef.body); err != nil {
 			a.log(deskkit.ResultUnverifiable, err.Error())
 			return err
 		}
@@ -340,7 +425,7 @@ func applyClose(r closeReq, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, "comment posted, close deferred: "+err.Error())
 		return err
 	}
-	if err := closeItem(r.repo, r.number, it.isPR(), r.stateReason()); err != nil {
+	if err := closeItem(r.repo, r.number, itemKind, r.stateReason()); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
@@ -351,16 +436,21 @@ func applyClose(r closeReq, out io.Writer) error {
 
 // verifyLane applies the per-lane preconditions and returns the resolved target plus
 // any disposition record consulted.
-func verifyLane(r closeReq, it item) (string, dispositionRead, error) {
+func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 	var disp dispositionRead
 	target := r.target
+	targetKind := r.targetKind
 
 	if r.mode == modeReviewRequest {
 		n, err := extractPRRef(r.repo, it)
 		if err != nil {
 			return "", disp, err
 		}
+		// The ref came out of the issue BODY, where `#N` is how a human writes a pull
+		// request. The lane then requires that target to be a MERGED pull request, so the
+		// kind is not a guess here — it is the lane's own precondition, stated.
 		target = fmt.Sprintf("#%d", n)
+		targetKind = deskkit.TargetChange
 	}
 
 	// A PULL REQUEST being closed must already carry a terminal disposition record.
@@ -381,60 +471,78 @@ func verifyLane(r closeReq, it item) (string, dispositionRead, error) {
 	// an ISSUE skips this check — an issue cannot merge — so the ref kind is resolved
 	// first, and an unresolvable ref is a refusal rather than a skipped check.
 	if r.mode == modeSuperseded || r.mode == modeReviewRequest {
-		repo, n, err := resolveRef(r.repo, target)
+		tr, err := resolveRef(r.repo, target, targetKind)
 		if err != nil {
 			return "", disp, err
 		}
-		refItem, err := fetchItem(repo, n)
+		refItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 		if err != nil {
 			return "", disp, err
+		}
+		// The back-reference is posted on THIS object, so it is written with the kind the
+		// object turned out to be — read, not assumed.
+		if r.crossRef != nil {
+			r.crossRef.kind = labelTargetOf(refItem)
 		}
 		if refItem.isPR() {
-			if err := requireMergedPR(repo, n); err != nil {
+			if err := requireMergedPR(tr.repo, tr.number); err != nil {
 				return "", disp, err
 			}
 		} else if r.mode == modeReviewRequest {
 			return "", disp, deskkit.Refused(fmt.Sprintf(
 				"refused: %s#%d is an issue, not a pull request — the review-request lane closes on a "+
-					"MERGED PR and nothing else", repo, n))
+					"MERGED PR and nothing else", tr.repo, tr.number))
 		}
 	}
 
 	if r.mode == modeDuplicate {
-		repo, n, err := resolveRef(r.repo, target)
+		tr, err := resolveRef(r.repo, target, targetKind)
 		if err != nil {
 			return "", disp, err
 		}
-		refItem, err := fetchItem(repo, n)
+		refItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 		if err != nil {
 			return "", disp, err
 		}
 		if refItem.closed() && !refItem.isPR() {
 			return "", disp, deskkit.Refused(fmt.Sprintf(
 				"refused: the canonical item %s#%d is itself closed — folding a duplicate into a closed "+
-					"issue retires both", repo, n))
+					"issue retires both", tr.repo, tr.number))
 		}
 	}
 	return target, disp, nil
 }
 
-// resolveRef turns `#123`, `owner/repo#123` or a permalink into (repo, number),
-// defaulting the repo to the item's own. An unparseable ref is a refusal: deskclose
-// never proceeds on a target it could not identify.
-func resolveRef(defaultRepo, ref string) (string, int, error) {
-	n, ok := refNum(ref)
-	if !ok {
-		return "", 0, deskkit.Refused("refused: cannot read " + deskkit.StripControl(ref) +
-			" as an item reference (want #N, owner/repo#N, or a github.com permalink)")
+// resolvedRef is one target reference after parsing: where it lives, which number it is,
+// and the kind the caller STATED for it ("" = unstated, resolved by the forge).
+type resolvedRef struct {
+	repo   string
+	number int
+	kind   deskkit.TargetKind
+}
+
+// resolveRef turns any accepted reference form — `N`, `#N`, `!N`, `owner/repo#N`,
+// `owner/repo!N`, or the object's web URL — into a resolvedRef, defaulting the repo to the
+// item's own and folding in a kind the caller stated separately (`--by-kind`). An
+// unparseable ref is a refusal: deskclose never proceeds on a target it could not identify,
+// and a ref whose sigil and whose kind flag disagree is a refusal too rather than a pick.
+func resolveRef(defaultRepo, ref string, statedKind deskkit.TargetKind) (resolvedRef, error) {
+	parsed, err := deskkit.ParseItemRef(ref)
+	if err != nil {
+		return resolvedRef{}, err
 	}
-	repo := refRepo(ref)
+	kind, kerr := deskkit.ResolveStatedKind(ref, parsed, statedKind)
+	if kerr != nil {
+		return resolvedRef{}, kerr
+	}
+	repo := parsed.Repo
 	if repo == "" {
 		repo = defaultRepo
 	}
 	if err := requireRepo(repo); err != nil {
-		return "", 0, err
+		return resolvedRef{}, err
 	}
-	return repo, n, nil
+	return resolvedRef{repo: repo, number: parsed.Number, kind: kind}, nil
 }
 
 // closeComment renders the trail. It names the lane, the canonical target and the

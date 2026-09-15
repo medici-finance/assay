@@ -90,6 +90,18 @@ func TestReadOpsBothBackends(t *testing.T) {
 				`"labels":["size:s"],"author":{"id":99,"username":"worker-bot"},"description":"body"}]`)
 			return
 		}
+		// GitLab project-issues list (ListOpenIssues) — checked BEFORE the GitHub arm below,
+		// whose "/issues" substring would otherwise swallow it. The payload is GitLab-shaped
+		// (iid, author.username, flat labels) and carries NO merge request: GitLab numbers
+		// issues and MRs in separate sequences on separate endpoints, so the "issues only"
+		// property holds without a filter.
+		if r.Method == http.MethodGet && strings.HasPrefix(p, "/api/v4/") && strings.HasSuffix(p, "/issues") {
+			io.WriteString(w, `[{"id":900,"iid":3,"state":"opened","title":"an issue",`+
+				`"author":{"id":5,"username":"u"},"labels":["question"],`+
+				`"created_at":"2026-01-01T00:00:00Z",`+
+				`"web_url":"https://gitlab.example/o/r/-/issues/3"}]`)
+			return
+		}
 		// REST issues list (ListOpenIssues) — one issue and one PR entry; the PR is dropped.
 		if r.Method == http.MethodGet && strings.Contains(p, "/issues") {
 			io.WriteString(w, `[`+
@@ -173,7 +185,34 @@ func TestReadOpsBothBackends(t *testing.T) {
 					t.Errorf("issue summary not decoded: %+v", iss[0])
 				}
 			},
-			glRun: func() error { _, err := gl.ListOpenIssues(repo); return err },
+			// issue #1033. A REAL result on GitLab too — the gate this summary is consumed
+			// paired with (IssueTrustEvents) is served here, so the list no longer has a
+			// reason to be withheld. Every field the issue lane classifies on is mapped: IID
+			// as the number, the numeric author id the trust gate pins on, and the author
+			// login left BARE (GitHub's `[bot]` decoration is a GitHub-only rendering, and
+			// decorating it here would disagree with this backend's own trust reader).
+			glCheck: func(t *testing.T) {
+				iss, err := gl.ListOpenIssues(repo)
+				if err != nil {
+					t.Fatalf("gitlab ListOpenIssues: %v", err)
+				}
+				if len(iss) != 1 || iss[0].Number != 3 {
+					t.Fatalf("gitlab ListOpenIssues = %+v (IID is the number)", iss)
+				}
+				s := iss[0]
+				if s.Author.ID != 5 || s.Author.Login != "u" {
+					t.Errorf("author identity not mapped (the trust gate pins on the id): %+v", s.Author)
+				}
+				if s.Title != "an issue" || len(s.Labels) != 1 || s.Labels[0] != "question" {
+					t.Errorf("issue summary not decoded: %+v", s)
+				}
+				if s.CreatedAt != "2026-01-01T00:00:00Z" {
+					t.Errorf("CreatedAt = %q — the escalation clock's baseline must be RFC3339", s.CreatedAt)
+				}
+				if s.URL == "" {
+					t.Errorf("URL empty; deskboard's queue row prints the issue's location")
+				}
+			},
 		},
 		{
 			name: "PRTrustEvents",

@@ -417,7 +417,7 @@ func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
 	if err != nil {
 		return err // a key attributing to no known tool is refused, never given a private budget
 	}
-	mine, err := pointsFor(tool)
+	mine, err := pointsFor(tool, now)
 	if err != nil {
 		return err
 	}
@@ -458,7 +458,7 @@ func AllowWriteAt(tool, repo string, pr int, now time.Time) error {
 	if err != nil {
 		return err // a key attributing to no known tool is refused, never given a private budget
 	}
-	mine, err := pointsFor(tool)
+	mine, err := pointsFor(tool, now)
 	if err != nil {
 		return err
 	}
@@ -488,36 +488,38 @@ func AllowWriteAt(tool, repo string, pr int, now time.Time) error {
 // oldest-first. Shared by every AllowWrite* entry point so they cannot disagree about
 // which lines the meters see or about the fail-closed treatment of an unparseable timestamp
 // (Unverifiable — never a silent "assume under budget").
-func pointsFor(tool string) ([]auditPoint, error) {
+//
+// It reads BOUNDED first (#1035): ratelimitread.go walks the ledger backwards and stops as
+// soon as no older entry could change any meter's verdict. That arm answers only when its
+// answer is PROVABLY the whole parse's; on anything it cannot determine — a hard cap, a
+// malformed line, an unparseable timestamp, an unreadable segment — it declines, and the
+// whole-ledger read below runs exactly as it always did, raising exactly the refusals it
+// always raised. The bounded arm never narrows a meter; it only saves the read when the
+// answer was already settled.
+//
+// Count by CANONICAL key so variant spellings of one tool share one budget: a test
+// build (deskpost.test), a locally built copy (deskpr-322), or a guard line written
+// under a basename all fold into the same tool's meter instead of each escaping into a
+// fresh, uncounted bucket (audittoolkey.go). The caller's `tool` is resolved the same
+// way, so a caller passing a variant is metered against the canonical history too. An
+// unregistered key stays its own opaque bucket here (CanonicalToolKeyOr returns it
+// unchanged) rather than failing this read closed — the write GATE is where an
+// unattributable key is refused (RequireCanonicalToolKey), not the counting read.
+func pointsFor(tool string, now time.Time) ([]auditPoint, error) {
+	want := CanonicalToolKeyOr(tool)
+	if mine, ok := boundedPointsFor(want, now); ok {
+		sortPoints(mine)
+		return mine, nil
+	}
 	entries, err := LoadEntries()
 	if err != nil {
 		return nil, err // already an Unverifiable *DeskError
 	}
-	// Count by CANONICAL key so variant spellings of one tool share one budget: a test
-	// build (deskpost.test), a locally built copy (deskpr-322), or a guard line written
-	// under a basename all fold into the same tool's meter instead of each escaping into a
-	// fresh, uncounted bucket (audittoolkey.go). The caller's `tool` is resolved the same
-	// way, so a caller passing a variant is metered against the canonical history too. An
-	// unregistered key stays its own opaque bucket here (CanonicalToolKeyOr returns it
-	// unchanged) rather than failing this read closed — the write GATE is where an
-	// unattributable key is refused (RequireCanonicalToolKey), not the counting read.
-	want := CanonicalToolKeyOr(tool)
-	var mine []auditPoint
-	for _, e := range entries {
-		if CanonicalToolKeyOr(e.Tool) != want {
-			continue
-		}
-		ts, perr := time.Parse(time.RFC3339, e.TS)
-		if perr != nil {
-			return nil, Unverifiable(
-				fmt.Sprintf("audit entry for %q has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", tool, e.TS),
-				perr)
-		}
-		mine = append(mine, auditPoint{ts: ts, result: e.Result, repo: e.Repo, pr: e.PR})
+	mine, err := pointsFrom(entries, want, tool)
+	if err != nil {
+		return nil, err
 	}
-	// Stable so entries sharing a whole-second RFC3339 timestamp keep append order —
-	// the breaker's "consecutive" walk depends on it.
-	sort.SliceStable(mine, func(i, j int) bool { return mine[i].ts.Before(mine[j].ts) })
+	sortPoints(mine)
 	return mine, nil
 }
 
@@ -777,7 +779,7 @@ func BreakerOpenRepoWide(tool, repo string) (open bool, err error) {
 
 // BreakerOpenRepoWideAt is BreakerOpenRepoWide with an injectable clock (test seam).
 func BreakerOpenRepoWideAt(tool, repo string, now time.Time) (open bool, err error) {
-	mine, perr := pointsFor(tool)
+	mine, perr := pointsFor(tool, now)
 	if perr != nil {
 		return false, perr
 	}

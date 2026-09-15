@@ -2,7 +2,7 @@
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
 #   cellctl ls                                   cells under $CELLS_ROOT
-#   cellctl new   <cell> [--kind k8s|house] [--forge github|gitlab] --repo <checkout> ...
+#   cellctl new   <cell> [--kind k8s|house|container] [--forge github|gitlab] --repo <checkout> ...
 #                        --kind k8s   (default) a full cell: its own deskd, roster and App keys under home/
 #                                     --cells-yaml <file> [forge custody flags]
 #                                     scaffold <cell>/ (cell.env, home/, README) — then YOU fill
@@ -20,6 +20,10 @@
 #                                     required, and every role still boots in its own LOCKED worktree.
 #                                     --roots '<owner>/<repo>=<abs path>,...'   (the DESK_ROOTS map)
 #                                     [--roles "<role> ..."] [--port N]
+#                        --kind container --repo <repo-id> --launcher <absolute-executable>
+#                                     registers an operator-owned container launcher; copies no credentials.
+#                                     check/desk/down delegate to it. up opens the coordinator only;
+#                                     multi-role up and host cockpit/provider flags are not supported yet.
 #   cellctl check <cell>                         preconditions per the cell's kind and forge (cell.env, roster,
 #                                                keys or token store, binaries, repo, roots, plugin) — a
 #                                                precondition for the OTHER kind/forge is reported n/a or MISS,
@@ -139,7 +143,7 @@
 #   shim/               generated: every desk verb wrapped to run with HOME=<cell>/home
 #
 # cell.env keys that decide the KIND:
-#   CELL_KIND=k8s|house   default k8s (a cell scaffolded before kinds existed carries none)
+#   CELL_KIND=k8s|house|container   default k8s (a cell scaffolded before kinds existed carries none)
 #   CELL_ROOTS=<owner>/<repo>=<abs path>,...   exported to every role window as DESK_ROOTS — the stream-root
 #                         map the desk verbs (deskboard / verifyloop / deskdispatch) read. REQUIRED on a house
 #                         cell; optional on k8s, where a boot without it leaves the verbs on their compiled
@@ -215,11 +219,17 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   CELL_KIND="${CELL_KIND:-k8s}"
   case "$CELL_KIND" in
     k8s) DESKD="${DESKD:-1}" ;;
+    container)
+      [[ "${DESKD:-0}" == "0" ]] || die "container cells do not run host deskd"
+      DESKD=0
+      [[ "${CELL_CONTAINER_LAUNCHER:-}" == /* && -f "$CELL_CONTAINER_LAUNCHER" && -x "$CELL_CONTAINER_LAUNCHER" ]] \
+        || die "container cell needs an absolute executable CELL_CONTAINER_LAUNCHER"
+      ;;
     house)
       DESKD="${DESKD:-0}"
       [[ -n "${CELL_ROOTS:-}" ]] || die "cell.env: CELL_ROOTS (the <owner>/<repo>=<abs path>,... stream-root map) is not set — a house cell needs it"
       ;;
-    *) die "cell.env: CELL_KIND=$CELL_KIND is not a known kind (k8s|house)" ;;
+    *) die "cell.env: CELL_KIND=$CELL_KIND is not a known kind (k8s|house|container)" ;;
   esac
   # Forge awareness. A cell provisioned before forge support carries no CELL_FORGE; it is a
   # GitHub cell by construction, so default there and keep every legacy cell working. The
@@ -240,7 +250,8 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
       ;;
     *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
   esac
-  ROLES="${ROLES:-$ROLES_DEFAULT}"
+  if [[ "$CELL_KIND" == "container" ]]; then ROLES="${ROLES:-the-desk}"
+  else ROLES="${ROLES:-$ROLES_DEFAULT}"; fi
   DESK_MODEL_DEFAULT="${DESK_MODEL_DEFAULT:-sonnet}"
   # The harness a role window boots on, pinned the same way a model is: cell.env CELL_HARNESS
   # (default claude — a cell scaffolded before harness support carries none), `--harness` on
@@ -273,6 +284,22 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
 }
 resolve_cfg(){ local in="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; [[ -d "$in" ]] || die "CLAUDE_CONFIG_DIR not a directory: $in"; (cd "$in" && pwd); }
 deskd_up(){ curl -fsS --max-time 3 "http://${DESKD_ADDR}/healthz" >/dev/null 2>&1; }
+
+# Container launcher contract: executable argv, never eval. A clean environment
+# carries registry metadata, not the operator's forge/model credentials or SSH agent.
+# The launcher is trusted host code; it owns container mounts, credentials, state
+# validation, and the runtime. This boundary is not a sandbox around the launcher.
+container_run(){
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    printf '[dry-run] container cell=%s launcher=%q argv=' "$CELL" "$CELL_CONTAINER_LAUNCHER"
+    printf '%q ' "$@"; printf '\n'
+    return 0
+  fi
+  env -i HOME="$HOME" PATH="$PATH" TERM="${TERM:-xterm-256color}" \
+    CELL="$CELL" CELL_KIND=container CELL_DIR="$CELL_DIR" CELL_REPO="$CELL_REPO" \
+    CELL_ROOTS="${CELL_ROOTS:-}" CELL_HARNESS="$CELL_HARNESS" ROLES="$ROLES" \
+    "$CELL_CONTAINER_LAUNCHER" "$@"
+}
 
 # ---------------------------------------------------------------- cockpits
 # A COCKPIT is only the SURFACE the role windows appear in. Nothing about the per-role worktree,
@@ -494,7 +521,7 @@ resolve_provider(){
 # CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV}
 # families (a typo'd role/tier/provider name is refused rather than silently scaffolding a variable
 # nothing ever reads).
-CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
+CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
 CELL_HARNESS TMUX_SESSION CELL_PROVIDER \
@@ -659,6 +686,17 @@ cmd_ls(){ local d; for d in "$CELLS_ROOT"/*/; do [[ -f "$d/cell.env" ]] && basen
 # shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
 cmd_check(){
   load_cell "$1"; local ok=1
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ -z "${2:-}" ]] || die "container check does not accept a host config directory"
+    local container_role
+    for container_role in $ROLES; do
+      resolve_role_model "$container_role" "$CELL_HARNESS" || die "$RESOLVED_MODEL_SRC"
+      [[ "$container_role" == "the-desk" && "$CELL_HARNESS" == "claude" ]] && refuse_opus_for_the_desk "$RESOLVED_MODEL"
+      printf '[model] role=%s harness=%s model=%s\n' "$container_role" "$CELL_HARNESS" "$RESOLVED_MODEL"
+    done
+    container_run check
+    return $?
+  fi
   chk(){ if eval "$2"; then echo "  ok    $1"; else echo "  MISS  $1"; ok=0; fi; }
   # A precondition that belongs to the OTHER kind or forge is reported n/a — it is stated, not
   # silently skipped, so a half-provisioned or mis-kinded cell reads as such rather than clean.
@@ -769,6 +807,10 @@ check_k8s(){
       chk "GitLab group: ${GITLAB_GROUP:-unset}" '[[ -n "${GITLAB_GROUP:-}" ]]'
       chk "GitLab role token store: ${GITLAB_TOKEN_STORE:-unset}" '[[ -d "${GITLAB_TOKEN_STORE:-/nonexistent}" ]]'
       chk "deskd GitLab read token (0600, hand-provisioned): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
+      # CELL_REPO's own fetch transport, not just the API token: probes the SAME credential helper
+      # the boot fetch in cmd_desk uses, so a broken/missing token is a MISS here rather than a
+      # boot-time hang at an interactive Username prompt (issue-1080 sibling defect).
+      chk "GitLab fetch transport reachable (ls-remote, prompts disabled): $CELL_REPO" 'gitlab_fetch_reachable'
       # GitHub-only preconditions on a GitLab cell are reported explicitly, never dropped: a
       # stray App PEM is a MISS (a github artifact on a gitlab cell is a misconfiguration to
       # surface), and the gh-config link is n/a (GitLab reads through the role token store).
@@ -811,6 +853,7 @@ check_house(){
 
 cmd_deskd(){
   load_cell "$1"
+  [[ "$CELL_KIND" != "container" ]] || die "container cells do not run host deskd"
   # deskd stands live cross-org reads on freshly minted (GitHub) or hand-provisioned (GitLab)
   # tokens. It is ATTENDED-ONLY: the operator starts it from their own shell, so a token act is
   # never unattended.
@@ -885,6 +928,31 @@ deskd_provision_gitlab(){
   [[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]] || die "deskd GitLab read token not readable: ${DESKD_GITLAB_TOKEN_FILE:-unset} — place gitlab-deskd.token in the role token store (mode 0600); it is not minted for you"
   export GITLAB_API_BASE="$FORGE_API_BASE"
   echo "[deskd] GitLab cell: reading group $GITLAB_GROUP via $FORGE_API_BASE from role token store $GITLAB_TOKEN_STORE (no token minted — rotation is a hand step)"
+}
+
+# gitlab_cred_args: populates the global array GITLAB_CRED_ARGS with the `-c credential.helper=…`
+# flags that answer git's HTTPS auth for CELL_REPO's own fetch transport on a gitlab cell (issue
+# 1080's sibling defect — GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
+# nothing wired a git credential for CELL_REPO's own fetch, so a private GitLab project stopped at
+# an interactive `Username for 'https://gitlab.com':` prompt, or `fatal: could not read Username`
+# with prompts disabled). The first `credential.helper=` clears any OS keychain helper that would
+# otherwise shadow this one; the inline function reads the hand-provisioned deskd read token from
+# its FILE and never a token in the URL, never persisted into the operator's git config. Shared
+# verbatim between the boot fetch below and the check-time ls-remote probe (gitlab_fetch_reachable)
+# so the two never drift apart.
+# shellcheck disable=SC2016  # the inline credential-helper function expands at git-invocation
+# time (inside git's own shell), not here — this string is a literal on purpose.
+gitlab_cred_args(){
+  GITLAB_CRED_ARGS=(-c credential.helper= -c credential.helper='!f(){ echo username=oauth2; printf "password=%s\n" "$(cat "$DESKD_GITLAB_TOKEN_FILE")"; }; f')
+}
+
+# gitlab_fetch_reachable: the check-time probe for the gitlab arm's fetch transport, proving a
+# broken/missing token is caught at `cellctl check` rather than as a boot hang. `ls-remote` never
+# mutates CELL_REPO; it only proves the same credential helper the boot fetch uses actually
+# authenticates.
+gitlab_fetch_reachable(){
+  gitlab_cred_args
+  GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" ls-remote --exit-code origin main >/dev/null 2>&1
 }
 
 # worktree_via_deskwt: when the installed desk-tools ship a `deskwt role-init` that supports the
@@ -1007,7 +1075,14 @@ cmd_desk(){
   [[ "$persist" == "0" || -n "$model_override" ]] \
     || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment) — nothing to persist otherwise"
   case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
-  local cfg; cfg="$(resolve_cfg "$cfg_in")"
+  local cfg=""
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
+      || die "container desks do not accept host config directories or providers; configure credentials in the container launcher"
+    case " $ROLES " in *" $role "*) ;; *) die "role '$role' is not enabled in this container cell";; esac
+  else
+    cfg="$(resolve_cfg "$cfg_in")"
+  fi
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
   # (unset = Anthropic, cellctl's own long-standing default).
   provider="${provider:-${CELL_PROVIDER:-}}"
@@ -1024,7 +1099,9 @@ cmd_desk(){
   # The harness is NOTED on the roster beacon/session name when it is not the claude default, so
   # "which harness is this window on" is answerable from the roster the same way the model is.
   [[ "$harness" == "codex" ]] && session="${session}-codex"
-  [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
+  if [[ "$CELL_KIND" != "container" ]]; then
+    [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
+  fi
   # The model is PINNED per role, never left to the CLI default, and PER HARNESS (#986): mvar is
   # also what `--set` persists into below, so it must name the ACTIVE harness's own namespace —
   # CODEX_MODEL_<role> on codex, DESK_MODEL_<role> on claude — never the other one, whichever
@@ -1045,6 +1122,13 @@ cmd_desk(){
   # meaning to codex (issue-946 Part 2): on codex this refuses nothing, it prints the resolved
   # model as is.
   [[ "$role" == "the-desk" && "$harness" == "claude" ]] && refuse_opus_for_the_desk "$model"
+  if [[ "$CELL_KIND" == "container" ]]; then
+    if [[ "$persist" == "1" && "${DRY_RUN:-0}" != "1" ]]; then
+      set_env_key "$CELL_DIR/cell.env" "$mvar" "$model_override" 0
+    fi
+    container_run desk "$role" --harness "$harness" --model "$model"
+    return $?
+  fi
   # model_disp is what every line below PRINTS: the resolved model, plus "(override)" when
   # --model/DESK_MODEL_OVERRIDE is the reason, or the tier-map source when the namespace pin fell
   # all the way through to it, so the source of the value is visible in the transcript and not just
@@ -1075,8 +1159,15 @@ cmd_desk(){
   # enable`) — skipped on the codex arm, where skills are discovered per Part 3's check block
   # (marketplace plugin or .agents/skills/) rather than a Claude Code plugin enable.
   if [[ "$harness" == "claude" ]]; then
-    CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
-      || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+    # A non-zero exit here is not always a real failure: `claude plugin enable` also exits 1
+    # when the plugin is already enabled (issue-1080's misleading-NOTICE bug), printing
+    # `Failed to enable plugin "assay@assay": Plugin "assay@assay" is already enabled` — so the
+    # NOTICE below fires only when the captured output does NOT match that already-enabled shape.
+    local plugin_out
+    plugin_out="$(CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay 2>&1)" || {
+      [[ "$plugin_out" == *"already enabled"* ]] \
+        || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+    }
   fi
   # Serialise the shared fetch: several windows boot at once against ONE .git, and concurrent
   # fetches race on the same ref lock. The lock lives in the COMMON git dir, so a CELL_REPO that
@@ -1086,7 +1177,19 @@ cmd_desk(){
   local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
   # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
   # below — so a non-zero exit here is a notice, not a stop.
-  git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  # On the gitlab arm, GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
+  # nothing else wires a git credential for CELL_REPO's own fetch transport — on a private GitLab
+  # project over HTTPS this fetch otherwise stops at an interactive `Username for
+  # 'https://gitlab.com':` prompt (or `fatal: could not read Username` with prompts disabled). The
+  # github arm never hits this: the operator's `gh` credential helper already answers for it, so it
+  # keeps the plain fetch unchanged.
+  if [[ "$CELL_FORGE" == "gitlab" ]]; then
+    gitlab_cred_args
+    GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" fetch --no-tags origin main \
+      || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  else
+    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  fi
   local sha; sha="$(git -C "$CELL_REPO" rev-parse FETCH_HEAD)"
   rmdir "$lock" 2>/dev/null || true
   mkdir -p "$CELL_DIR/worktrees"
@@ -1186,6 +1289,11 @@ up_roles(){
 
 cmd_up(){
   load_cell "$1"; shift
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ "$ROLES" == "the-desk" ]] || die "container up currently requires ROLES=the-desk; use desk for explicit roles"
+    cmd_desk "$CELL" the-desk "$@"
+    return $?
+  fi
   local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --no-the-desk) no_the_desk=1; shift;;
@@ -1444,10 +1552,14 @@ up_orca(){
   # registered with `orca repo add --path <dir>` at least once (also confirmed live; `repo add` is
   # idempotent — a second call on the same path is a harmless `ok`). `--cwd`/`--path`/`--directory`
   # are kept as a fallback for a future/alternate orca build that takes a bare directory instead.
+  # Orca registers GIT REPOSITORIES only ("Not a valid git repository: <dir>" otherwise). The cell
+  # directory is config, not a checkout, so the cell's own checkout ($CELL_REPO) is what gets
+  # registered and selected; the role commands are absolute and carry the cell name themselves.
+  local orca_dir="${CELL_REPO:-$CELL_DIR}"
   wtflag="$(first_flag "$h" --worktree)" || wtflag=""
   if [[ -n "$wtflag" ]]; then
-    help_has add orca repo && { orca repo add --path "$CELL_DIR" >/dev/null 2>&1 \
-      || echo "NOTICE: 'orca repo add --path $CELL_DIR' failed — terminal create below may 404 with selector_not_found until $CELL_DIR is registered by hand ('orca repo add --path $CELL_DIR')" >&2; }
+    help_has add orca repo && { orca repo add --path "$orca_dir" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca repo add --path $orca_dir' failed — terminal create below may 404 with selector_not_found until $orca_dir is registered by hand ('orca repo add --path $orca_dir')" >&2; }
   else
     cwdflag="$(first_flag "$h" --cwd --path --directory)" || cwdflag=""
   fi
@@ -1457,8 +1569,8 @@ up_orca(){
   local role
   for role in $roles; do
     local -a args=(terminal "$verb")
-    if [[ -n "$wtflag" ]]; then args+=("$wtflag" "path:$CELL_DIR")
-    elif [[ -n "${cwdflag:-}" ]]; then args+=("$cwdflag" "$CELL_DIR")
+    if [[ -n "$wtflag" ]]; then args+=("$wtflag" "path:$orca_dir")
+    elif [[ -n "${cwdflag:-}" ]]; then args+=("$cwdflag" "$orca_dir")
     fi
     [[ -n "$nameflag" ]] && args+=("$nameflag" "${CELL}-${role}")
     args+=("$cmdflag" "$(role_cmd "$role" "$cfg")")
@@ -1496,6 +1608,11 @@ orca_automate(){
 # ---------------------------------------------------------------- down
 cmd_down(){
   load_cell "$1"; shift
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ $# == 0 ]] || die "container down does not accept host cockpit or deskd flags"
+    container_run down
+    return $?
+  fi
   local keep=0 cockpit_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --keep-deskd) keep=1; shift;;
@@ -1565,21 +1682,21 @@ down_orca(){
   local roles r; roles="$(up_roles 0)"
   # `orca terminal close --worktree <selector> --all` stops every terminal orca owns for that
   # worktree in one call — verified live against real orca that `--worktree path:<dir>` is a valid
-  # selector (the `up_orca` arm registers `$CELL_DIR` via `orca repo add` before ever creating a
+  # selector (the `up_orca` arm registers `$CELL_REPO` via `orca repo add` before ever creating a
   # terminal there), so this is a real close, not a by-hand notice, whenever the build advertises it.
   local h; h="$(orca terminal close --help 2>&1 || true)"
   local wtflag allflag
   wtflag="$(first_flag "$h" --worktree)" || wtflag=""
   allflag="$(first_flag "$h" --all)" || allflag=""
   if [[ -n "$wtflag" && -n "$allflag" ]]; then
-    if orca terminal close "$wtflag" "path:$CELL_DIR" "$allflag" >/dev/null 2>&1; then
-      echo "[cell] orca: closed every terminal for $CELL_DIR ('orca terminal close $wtflag path:$CELL_DIR $allflag')"
+    if orca terminal close "$wtflag" "path:${CELL_REPO:-$CELL_DIR}" "$allflag" >/dev/null 2>&1; then
+      echo "[cell] orca: closed every terminal for ${CELL_REPO:-$CELL_DIR} ('orca terminal close $wtflag path:${CELL_REPO:-$CELL_DIR} $allflag')"
     else
-      echo "[cell] 'orca terminal close $wtflag path:$CELL_DIR $allflag' failed — close the ${CELL}-<role> terminals by hand:" >&2
+      echo "[cell] 'orca terminal close $wtflag path:${CELL_REPO:-$CELL_DIR} $allflag' failed — close the ${CELL}-<role> terminals by hand:" >&2
       for r in cell $roles; do echo "  ${CELL}-${r}"; done
     fi
   else
-    echo "[cell] this orca build advertises no worktree-scoped terminal close — close the ${CELL}-<role> terminals by hand ('orca terminal list --worktree path:$CELL_DIR'):"
+    echo "[cell] this orca build advertises no worktree-scoped terminal close — close the ${CELL}-<role> terminals by hand ('orca terminal list --worktree path:${CELL_REPO:-$CELL_DIR}'):"
     for r in cell $roles; do echo "  ${CELL}-${r}"; done
   fi
   # Scheduled automations OUTLIVE a `down` on purpose: `up --automate` is the run-while-away
@@ -1606,19 +1723,27 @@ cmd_new(){
   # validation is the property the negative-path Verify rows assert, and it must fire whether or
   # not a cell name was given.
   local kind="k8s" forge="github" cell="" repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
-  local group="" gitlab_api_base="" token_store="" roots="" roles="$ROLES_DEFAULT"
+  local group="" gitlab_api_base="" token_store="" roots="" roles="$ROLES_DEFAULT" launcher="" roles_set=0
   while [[ $# -gt 0 ]]; do case "$1" in
     --kind) kind="$2"; shift 2;;
+    --launcher) launcher="${2:?--launcher needs an absolute executable}"; shift 2;;
     --forge) forge="$2"; shift 2;;
     --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
     --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
     --group) group="$2"; shift 2;; --gitlab-api-base) gitlab_api_base="$2"; shift 2;;
     --gitlab-token-store) token_store="$2"; shift 2;;
-    --roots) roots="$2"; shift 2;; --roles) roles="$2"; shift 2;;
+    --roots) roots="$2"; shift 2;; --roles) roles="$2"; roles_set=1; shift 2;;
     --*) die "new: unknown flag $1";;
     *) [[ -z "$cell" ]] || die "new: unexpected extra argument '$1' (the cell name is '$cell')"; cell="$1"; shift;;
   esac; done
-  case "$kind" in k8s) ;; house) new_house "$cell" "$repo" "$roots" "$roles" "$port"; return;; *) die "new: --kind must be k8s or house, got '$kind'";; esac
+  if [[ "$kind" == "container" ]]; then
+    [[ "$roles_set" == "1" ]] || roles=the-desk
+    [[ -z "$yaml$orgs$pem$group$token_store" ]] || die "container new does not accept host credential or deskd configuration"
+    new_container "$cell" "$repo" "$launcher" "$roles" "$roots"
+    return
+  fi
+  [[ -z "$launcher" ]] || die "--launcher is only valid for --kind container"
+  case "$kind" in k8s) ;; house) new_house "$cell" "$repo" "$roots" "$roles" "$port"; return;; *) die "new: --kind must be k8s, house or container, got '$kind'";; esac
   case "$forge" in github|gitlab) ;; *) die "new: --forge must be github or gitlab, got '$forge'";; esac
   # Common requirements on BOTH forges.
   [[ -n "$repo" && -n "$yaml" ]] || die "new: --repo and --cells-yaml are required (both forges)"
@@ -1768,6 +1893,28 @@ the group this cell reads is \`$group\`. Then: \`CELL_ATTENDED=1 cellctl deskd $
 EOF
   fi
   echo "[new] scaffolded $d ($forge cell) — see $d/README.md for the hand steps"
+}
+
+# Registration only: no daemon, host checkout, credential directory or symlink.
+new_container(){
+  local cell="$1" repo="$2" launcher="$3" roles="$4" roots="$5" role
+  [[ "$cell" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "new: invalid container cell name"
+  [[ -n "$repo" ]] || die "container new needs --repo <repo-id>"
+  [[ "$launcher" == /* && -f "$launcher" && -x "$launcher" ]] || die "container new needs --launcher <absolute-executable>"
+  [[ -n "$roles" ]] || die "container new needs at least one role"
+  for role in $roles; do case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown container role '$role'";; esac; done
+  local d="$CELLS_ROOT/$cell"
+  [[ ! -e "$d" ]] || die "$d already exists (cellctl new never overwrites a cell)"
+  mkdir -p "$CELLS_ROOT"
+  mkdir -m 700 "$d"
+  {
+    printf '# Container cell registration; the launcher owns runtime custody.\n'
+    printf 'CELL=%q\nCELL_KIND=container\nCELL_REPO=%q\n' "$cell" "$repo"
+    printf 'CELL_CONTAINER_LAUNCHER=%q\nROLES=%q\nCELL_ROOTS=%q\n' "$launcher" "$roles" "$roots"
+    printf 'CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESKD=0\n'
+  } > "$d/cell.env"
+  chmod 600 "$d/cell.env"
+  echo "[new] registered $d (container) — cellctl check $cell, then cellctl up $cell"
 }
 
 # new_house scaffolds a HOUSE cell: the operator's own desks on the operator's own laptop. There

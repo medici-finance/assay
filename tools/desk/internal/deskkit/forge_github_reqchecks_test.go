@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,26 @@ import (
 // classic protection with empty rules (⇒ could-not-check now); medici-finance/assay is
 // ruleset-based (⇒ its required contexts).
 
+// assay#1020 (models the several other repos in the fleet that use classic branch protection
+// with no rulesets): every draft PR on those repos was stuck could-not-check with no
+// indication of WHY, so a human re-litigated the
+// same could-not-check on every flip attempt instead of recognising it as a single fixed
+// permission gap. Two things are pinned here as a result:
+//
+//  1. TestRequiredStatusChecksLegacySuccessDirect — the case (e) fixture's premise is that the
+//     legacy endpoint has already 403'd; but nothing in RequiredStatusChecks stops it from
+//     succeeding directly once the calling token DOES carry `administration: read` (the
+//     permission the note above asks a human to grant). This case pins that path stays wired,
+//     with the legacy body providing real contexts and NEITHER admin-free fallback consulted —
+//     the fix for #1020 is the permission grant, not a code change to this path, and this test
+//     is what proves that no code change is needed here once the grant lands.
+//  2. Case (e) below additionally asserts the could-not-check message names the exact
+//     permission gap (`administration: read`) rather than reading as an undifferentiated
+//     could-not-check. Before this fix the message described ONLY the mechanism (classic
+//     protection is invisible to the rules API) and never named the fix; a human reading it had
+//     to go read this file's comments to learn what to grant. This assertion is fail-first: it
+//     fails against the pre-fix message text and passes once the message names the permission.
+//
 // reqChecksMux routes the three endpoints RequiredStatusChecks may touch. A handler set to nil
 // means "endpoint not expected"; if it is hit anyway the test fails. Each handler returns the
 // (status, body) the scenario needs.
@@ -96,12 +117,13 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 	const injected = "test-injected-token-0000"
 
 	cases := []struct {
-		name        string
-		mux         *reqChecksMux
-		wantSet     []string
-		wantErr     bool // could-not-check
-		wantSawBr   bool
-		wantSawRule bool
+		name          string
+		mux           *reqChecksMux
+		wantSet       []string
+		wantErr       bool     // could-not-check
+		wantErrSubstr []string // fail-first (assay#1020): every substring must appear in err.Error()
+		wantSawBr     bool
+		wantSawRule   bool
 	}{
 		{
 			// (a) legacy 404 ⇒ nothing required (empty), no fallback consulted.
@@ -112,6 +134,21 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 				rulesNil:     true,
 			},
 			wantSet: nil,
+		},
+		{
+			// (a2) legacy 200 with real contexts ⇒ used directly, NEITHER admin-free fallback
+			// consulted. This is the path a classic-protected repo takes once the calling App
+			// is granted `administration: read` (assay#1020's actual fix: a permission grant,
+			// not a code change) — pinned here so a future edit cannot silently start
+			// preferring the rulesets fallback over a legacy read that already succeeded.
+			name: "legacy_200_protected_contexts_direct",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusOK,
+				legacyBody:   `{"contexts":["ci/build"],"checks":[{"context":"leak-sweep","app_id":1}]}`,
+				branchNil:    true,
+				rulesNil:     true,
+			},
+			wantSet: []string{"ci/build", "leak-sweep"},
 		},
 		{
 			// (b) legacy 403 + branch not protected ⇒ empty; rules not consulted.
@@ -166,7 +203,15 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			// CLASSIC-branch-protection tell: the rules API surfaces only rulesets, so a
 			// classically-protected branch reads protected with no rules. It must fail CLOSED
 			// (Unverifiable), never return an empty/green set — otherwise deskflip flips an
-			// un-green PR off an absent rollup. Models kubernetes/kubernetes@master.
+			// un-green PR off an absent rollup. Models kubernetes/kubernetes@master and, live,
+			// assay#1020's four affected repos.
+			//
+			// wantErrSubstr is the assay#1020 fail-first assertion: pre-fix, the message named
+			// only the MECHANISM ("classic branch protection... rules API cannot see") and never
+			// the FIX. A human reading it had no way to tell "grant a permission once" apart from
+			// an ordinary could-not-check that might resolve on retry — which is exactly how this
+			// stayed a per-PR human decision on four repos instead of a single escalated
+			// permission grant. Run against the pre-fix message, this assertion fails.
 			name: "legacy_403_protected_rules_empty_unverifiable",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
@@ -178,6 +223,11 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantErr:     true,
 			wantSawBr:   true,
 			wantSawRule: true,
+			wantErrSubstr: []string{
+				"administration: read",
+				"PERMISSION gap",
+				"granted ONCE",
+			},
 		},
 	}
 
@@ -192,6 +242,11 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 				}
 				if !IsUnverifiable(err) {
 					t.Fatalf("could-not-check should be Unverifiable, got %v", err)
+				}
+				for _, sub := range tc.wantErrSubstr {
+					if !strings.Contains(err.Error(), sub) {
+						t.Errorf("error message missing expected substring %q\ngot: %s", sub, err.Error())
+					}
 				}
 			} else {
 				if err != nil {

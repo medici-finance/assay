@@ -102,6 +102,69 @@ func resolveTarget(c postBackend, n int) (*target, error) {
 		authorLogin: iss.User.Login, authorID: iss.User.ID, labels: iss.labelNames()}, nil
 }
 
+// isNotFoundAnyBackend is isNotFound widened to recognise a 404 from EITHER postBackend
+// implementation. isNotFound alone only recognises ghClient's own *apiError, because it
+// predates forgeBackend (#296 shipped GitHub-only); a GitLab-sourced error instead wraps
+// *deskkit.ForgeAPIError, which deskkit.IsForgeNotFound recognises. resolveTargetKind is
+// reached on a GitLab-resolved repo whenever --kind is given (the feature's whole reason
+// to exist), so it needs both, not just the one resolveTarget's pre-existing check covers.
+func isNotFoundAnyBackend(err error) bool {
+	return isNotFound(err) || deskkit.IsForgeNotFound(err)
+}
+
+// resolveTargetKind resolves n as the CALLER-STATED kind, bypassing resolveTarget's
+// automatic PR-first / ambiguous-number resolution entirely (#1091, the sibling of
+// assay#1087's deskfile attach --kind). It exists for GitLab's separate issue/MR
+// sequences: `#4` and `!4` routinely both exist, and resolveTarget's ordering (try the
+// PR/MR read first) silently picks whichever one resolves without the caller ever having
+// a say — a `deskpost comment` on issue #4 lands on merge request !4 instead whenever
+// both exist, with no error to notice it by. A caller who already knows the kind states
+// it and gets exactly that object, or a clean refusal naming the mismatch.
+//
+//   - deskkit.TargetChange reads ONLY the PR/MR endpoint (c.getPR) — the same probe
+//     resolveTarget already tries first, and unambiguous on every forge: a merge-request
+//     read never touches the issues endpoint.
+//   - deskkit.TargetIssue reads ONLY the issue endpoint via the typed op (c.getIssueTyped),
+//     the same one GitLab's GetIssue both-kinds refusal (forge.go) points a caller at:
+//     once the kind is stated, the other kind's existence at the same number is no longer
+//     an ambiguity.
+func resolveTargetKind(c postBackend, n int, kind deskkit.TargetKind) (*target, error) {
+	owner, name := c.slug()
+	switch kind {
+	case deskkit.TargetChange:
+		p, err := c.getPR(n)
+		if err != nil {
+			if isNotFoundAnyBackend(err) {
+				return nil, deskkit.Unverifiable(fmt.Sprintf(
+					"--kind mr was given but #%d is not a merge request (pull request) in %s/%s "+
+						"(or this App installation cannot see it) — check the number and the repo",
+					n, owner, name), nil)
+			}
+			return nil, err
+		}
+		return &target{kind: kindPR, number: n, head: p.Head.SHA,
+			authorLogin: p.User.Login, authorID: p.User.ID}, nil
+	case deskkit.TargetIssue:
+		iss, err := c.getIssueTyped(n, kind)
+		if err != nil {
+			if isNotFoundAnyBackend(err) {
+				return nil, deskkit.Unverifiable(fmt.Sprintf(
+					"--kind issue was given but #%d is not an issue in %s/%s "+
+						"(or this App installation cannot see it) — check the number and the repo",
+					n, owner, name), nil)
+			}
+			return nil, err
+		}
+		return &target{kind: kindIssue, number: n,
+			authorLogin: iss.User.Login, authorID: iss.User.ID, labels: iss.labelNames()}, nil
+	default:
+		// main.go validates --kind through deskkit.ParseTargetKind before this is ever
+		// reached, so this is unreachable in practice — refused rather than silently
+		// defaulted, matching ParseTargetKind's own fail-closed shape.
+		return nil, fmt.Errorf("resolveTargetKind: unsupported kind %q", string(kind))
+	}
+}
+
 // requirePRErr upgrades a getPR failure for the PR-ONLY verbs (`review`, `ready`) when the
 // number turns out to name an ISSUE. Wrong object type is a REFUSAL (exit 5) naming the
 // verb that does work, not the generic exit 6: the two call for opposite responses from

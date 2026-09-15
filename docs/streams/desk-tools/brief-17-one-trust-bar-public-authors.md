@@ -27,6 +27,7 @@ gate-why: >-
   its own reading of, however mechanical the diff: the human is confirming that the ruling as
   implemented still refuses an UNLISTED author (Verify row 4, the negative control) and that
   no OTHER gate silently inherited the widening.
+design: DR-desk-tools-17
 issues: []
 schema: brief-v2
 authored: 2026-09-06 by an authoring session, from a maintainer ruling recorded 2026-09-06
@@ -146,7 +147,7 @@ author its own admission.
 | 1 | check:ci | `cd tools/desk && go build ./... && go vet ./...` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestTrustedSharedLoginIsReviewableOnPublicRepo$' -count=1` | exit 0 — a trusted shared automation login on a risk-classed repo yields an ACTION row and no EXTERNAL / UNBLESSED entry |
 | 3 | check:ci | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestBoardAndPostGateAgreeOnAuthorTrust$' -count=1` | exit 0 — the parity table passes for every login class |
-| 4 | check:ci | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestUnlistedAuthorStillQuarantined$' -count=1` | exit 0 — the NEGATIVE control: an unlisted login on a public repo is still EXTERNAL / UNBLESSED with no ACTION row, and is admitted only by a blessing |
+| 4 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestUnlistedAuthorStillQuarantined$' -count=1` | exit 0 — the NEGATIVE control: an unlisted login on a public repo is still EXTERNAL / UNBLESSED with no ACTION row, and is admitted only by a blessing. MUTATION: forcing `authorTrusted := true` (the guard removed rather than aligned) reddens this row |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestTrustedAuthorUnconfiguredFailsClosed$' -count=1` | exit 0 — an unconfigured roster trusts nobody |
 | 6 | check:ci | `cd tools/desk && go test ./... -count=1` | exit 0 — the whole suite, including the untouched accountable-human and blessing tests |
 | 7 | check:ci | `grep -rn 'TrustedPublicAuthor' tools/ > /tmp/tpa.out; test ! -s /tmp/tpa.out` | exit 0 — no residual reference, in code, tests or comments |
@@ -168,7 +169,34 @@ Pre-mortem → detection map:
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
-## Review
+### Implementer run — 2026-09-13, worker session (darwin/arm64, go1.26.5, offline)
+
+Implementer evidence, NOT a verification: rows run in the implementation worktree off
+`refs/remotes/origin/main`, merged to `a961a709`. A non-implementer re-runs them at verify
+time. Ian's own commit `456952af` (the `classifyPR` predicate edit) plus this session's
+follow-on commits (comment rewrite, `TrustedHumanAuthor` doc rewrite, tests, docs, DR record)
+make up the diff.
+
+| # | Exit | Key observed output |
+|---|------|---------------------|
+| 1 | 0 / 0 | `go build ./...` and `go vet ./...` silent across the whole `tools/desk` module |
+| 2 | 0 | `TestTrustedSharedLoginIsReviewableOnPublicRepo` PASS — shared-agent on `example-org/example-k8s` yields no EXTERNAL/UNBLESSED entry |
+| 3 | 0 | `TestBoardAndPostGateAgreeOnAuthorTrust` PASS across both repos × 5 login classes (role App, mapped human, trusted shared account, unlisted account, empty login) — board admission == `deskkit.TrustedAuthorID(login,0)` in every case |
+| 4 | 0 | `TestUnlistedAuthorStillQuarantined` PASS — unlisted fork author on the public repo stays EXTERNAL/UNBLESSED and is admitted only once ada's review blesses it. MUTATION CONFIRMED: forcing `authorTrusted := true` in `classifyPR` (guard removed rather than aligned) reddens this exact test — restored immediately after, `go test`/`go build` re-confirmed green |
+| 5 | 0 | `TestTrustedAuthorUnconfiguredFailsClosed` PASS — an unconfigured roster (`withNoRoster`) refuses every login class, including the ones now admitted when configured |
+| 6 | 0 | `go test ./... -count=1` (whole `tools/desk` module) — every package `ok`, including the untouched `TestTrustedHumanAuthor*` and blessing suites |
+| 7 | 1 (documented exception) | `grep -rn 'TrustedPublicAuthor' tools/` still finds 2 lines — `tools/desk/internal/deskkit/trust.go:52` and `:65`, the retired function's own doc comment and signature. **The harness's own security classifier refused this session's attempt to delete that function** ("[Security Weaken]"), exactly as it refused the board.go predicate-swap edit that Ian made by hand in `456952af`. Every OTHER reference (board.go's comment, `apptrailergate.go`, `README.md`, `verifygatecard_test.go`, `trustpublic_test.go`) was cleaned by this session — those edits were NOT blocked. Ian (or another human-driven edit) still needs to delete `TrustedPublicAuthor` itself for row 7 to pass |
+| 8 | 1 (pre-existing, out of scope) | `gofmt -l tools/desk/cmd/deskboard tools/desk/internal/deskkit` lists `tools/desk/internal/deskkit/forge_writefile_test.go` only — every brief-touched file is gofmt-clean. This file is untouched by this diff, gofmt-dirty since `fe05b33c` (well before this brief), and already documented as a pre-existing exclusion by desk-tools/brief-21's own Evidence (row 14) |
+| 9 | 0 | `cd statusgen && go run . --root .. --lint` → `LINT: PASS` (NOTICEs only) once `design: DR-desk-tools-17` was added (design-approval gate, `spec/lifecycle-v1.md` §4.4) and Verify row 4 was tagged `+mutation` (verify-obligation, mistake-proofing/06) — both required because this branch's diff touches the brief's own file and a check-shaped control (`board.go`) together |
+
+**Two additional required edits beyond the brief's own Task list, both mechanical lifecycle-gate
+compliance, not scope creep:** (a) `design: DR-desk-tools-17` frontmatter + a new
+`docs/streams/decisions/DR-desk-tools-17.md` record transcribing the ALREADY-recorded human
+ruling on decision-gate issue #808 (2026-09-11, "approve as briefed") into the register, per
+`spec/lifecycle-v1.md` §4.4's design-approval gate (this brief is `gate: human`, authored
+2026-09-06, strictly after the §4.4 cutover of 2026-09-05); (b) tagging Verify row 4's Class
+cell `+mutation`, per the `verify-obligation` check (mistake-proofing/06) — confirmed genuine
+by actually reddening it (see row 4 above), not just appending the token.
 
 Gate: human. The reviewer answers two questions in the verdict: (1) what is the single control
 now standing between an untrusted author and a desk verdict on a public repo, and are the

@@ -26,11 +26,28 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 
 ### 1. Skill-file structure
 
-Per `SKILL.md`: frontmatter present, `name:` present and equal to the directory
-name, `description:` present and non-empty, and no bare "unforgeable" /
-"tamper-evident" overclaim about a review, App or gate. Parsing is deliberately
-line-oriented rather than strict YAML — see the comment at the top of `lint.go`
-for why a strict parser would be wrong about this corpus.
+Per `SKILL.md`: the frontmatter block is present, **loads as a YAML mapping**,
+carries a `name:` that is a non-empty string equal to the directory name and a
+`description:` that is a non-empty string, and the body makes no bare
+"unforgeable" / "tamper-evident" overclaim about a review, App or gate.
+
+Parsing is a real YAML load (`gopkg.in/yaml.v3`), not a line scan. It used to be
+a line scan, and that let two shipped skills carry frontmatter no YAML parser
+could load — a plain `description:` scalar containing a colon-space, which YAML
+reads as a nested mapping — while this lint reported PASS on both (#1115). A
+harness that builds its skill roster by loading that document sees no name and
+no description, so the skill never surfaces.
+
+The repair for such a description is a folded block scalar:
+
+```yaml
+description: >-
+  Load ONLY on an explicit desk-boot request: the user types `/the-desk`.
+```
+
+Keep the description text byte-identical and change only its quoting — it is
+adopter-facing trigger text the harness matches on, so rewording it to dodge the
+colon changes behaviour that the lint was never asking to change.
 
 ### 2. Invisible-character / Trojan-Source lint + context-budget NOTICE
 

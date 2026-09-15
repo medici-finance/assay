@@ -25,7 +25,7 @@ const usage = `deskfile — filing gate: mandatory dedupe, class-issue attach, p
 USAGE:
   deskfile new    -R <owner/repo> --title <t> --body-file <f> [--label ...] [--raised-by <role>]
                   [--to <role>] [--force-new --reason <r>]
-  deskfile attach -R <owner/repo> --to <N> --body-file <f>
+  deskfile attach -R <owner/repo> --to <N> --body-file <f> [--kind issue|mr]
   deskfile check  -R <owner/repo> --title <t>
   deskfile --version
 
@@ -65,6 +65,13 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
 
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
          Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
+         --kind states WHICH object N names: issue (the default — attach is an observation
+         on an issue) or mr (pr is accepted as an alias). It matters on GitLab, where
+         issues and merge requests are numbered in SEPARATE sequences and #N and !N
+         routinely both exist: the kind selects the object the state check reads and the
+         note is posted to. On GitHub (one number sequence) the kind is only validated
+         against what N is — asking for an issue at a pull request's number is refused
+         (exit 6), never posted to the other kind. An unknown kind is refused (exit 5).
 
 check  — dry-run dedupe: prints candidates and exits 0/5 the same as ` + "`new`" + ` would, but
          writes nothing. The verb skills embed in authoring loops.
@@ -125,6 +132,19 @@ func run(args []string) int {
 		return deskkit.ExitOK
 	}
 
+	// TIER ONE of the help retrofit (deskkit/helprequest.go). A SUBCOMMAND help request —
+	// `deskfile <sub> --help` — is a request for a help screen, not an invocation of the verb, and
+	// until this it was recorded as `refused: bad flags: flag: help requested`: exit 5 plus one
+	// row appended to a ledger the write budget counts and nothing rotates (1,043 such rows
+	// measured on one operating desk host over 32 days). It returns HERE, before Guard, and
+	// writes nothing. HelpOnly matches only the unambiguous single-token shape, so a `--help`
+	// that is another flag's VALUE cannot be mistaken for one; every wider spelling falls
+	// through to the subcommand's own parse, where flag.ErrHelp is recognised instead.
+	if deskkit.HelpOnly(args) {
+		fmt.Fprintln(os.Stderr, usage)
+		return deskkit.ExitOK
+	}
+
 	// The kill-switch check is the FIRST action of the tool. Guard writes its own
 	// result=disabled audit line and maps to exit 3.
 	if err := deskkit.Guard(); err != nil {
@@ -157,6 +177,12 @@ func run(args []string) int {
 		err = cmdCheck(rest)
 	default:
 		err = deskkit.Refused("refused: unknown verb " + verb + " (want one of: new, attach, check)")
+	}
+	// TIER TWO terminus (deskkit/helprequest.go): print the help screen the operator asked
+	// for and exit 0. The sentinel's own message is never what they wanted to read.
+	if deskkit.IsHelpRequest(err) {
+		fmt.Fprintln(os.Stderr, usage)
+		return deskkit.ExitOK
 	}
 	// The shared exit path. With DESK_TRACE off this is byte-identical to the
 	// fmt.Fprintln(os.Stderr, err.Error()) it replaces.

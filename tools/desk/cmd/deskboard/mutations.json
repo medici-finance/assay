@@ -1,0 +1,65 @@
+{
+  "test": "go test ./cmd/deskboard/... -count=1",
+  "control": {
+    "name": "CONTROL — make the per-platform pin fallback unreachable (the defect, restated as a mutation)",
+    "file": "cmd/deskboard/main.go",
+    "old": "\tfor _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {",
+    "new": "\tfor _, name := range []string{deskToolsArtifact} {"
+  },
+  "mutations": [
+    {
+      "name": "let the per-platform line WIN over a bare line that is present (an existing consumer's verdict changes under it)",
+      "file": "cmd/deskboard/main.go",
+      "old": "\tfor _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {",
+      "new": "\tfor _, name := range []string{deskToolsPlatformArtifact(), deskToolsArtifact} {"
+    },
+    {
+      "name": "ask for the artifact PREFIX instead of the exact per-platform name (collapses the two pin lines into one match)",
+      "file": "cmd/deskboard/main.go",
+      "old": "\treturn deskToolsArtifact + \"-\" + deskPlatform",
+      "new": "\treturn deskToolsArtifact + \"-\""
+    },
+    {
+      "name": "build the per-platform name even with no platform token (asks for `desk-tools-`, matching any line that starts that way)",
+      "file": "cmd/deskboard/main.go",
+      "old": "\tif strings.TrimSpace(deskPlatform) == \"\" {\n\t\treturn \"\"\n\t}",
+      "new": "\tif false {\n\t\treturn \"\"\n\t}"
+    },
+    {
+      "name": "drop the prs sweep's fail-closed propagation (one repo's hard error becomes a partial board that reads clean)",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\treturn prsPartial{}, err // exit 6, repo named — never a partial board",
+      "new": "\t\treturn prsPartial{}, nil // exit 6, repo named — never a partial board"
+    },
+    {
+      "name": "turn the prs out-of-installation carve-out into a hard failure (a watched-but-uninstalled repo kills the board)",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\tif outOfInstallation(err) {",
+      "new": "\t\tif false && outOfInstallation(err) {"
+    },
+    {
+      "name": "drop the stalled sweep's per-repo fail-closed propagation (#236: a clean board for a repo whose PRs were never read)",
+      "file": "cmd/deskboard/stalled.go",
+      "old": "\t\treturn stalledPartial{}, err",
+      "new": "\t\treturn stalledPartial{}, nil"
+    },
+    {
+      "name": "make the policy-drift probe fail-closed (an unreadable repo's metadata kills the desk's primary read)",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\t\t// could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass\n\t\t\treturn visibilityObservation{repo: repo}, nil",
+      "new": "\t\t\t// could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass\n\t\t\treturn visibilityObservation{repo: repo}, err"
+    },
+    {
+      "name": "drop the per-root pool's fail-closed propagation (a root that could not be read silently vanishes from the queue)",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": "\t\treturn nil, rerr // fail-closed",
+      "new": "\t\treturn nil, nil // fail-closed"
+    },
+    {
+      "name": "let a failed shared root resolution blind only ONE of the two stages it fed",
+      "file": "cmd/deskboard/throughput.go",
+      "old": "\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, rootsBlind)",
+      "new": "\t\t_ = rootsBlind"
+    }
+  ]
+}
