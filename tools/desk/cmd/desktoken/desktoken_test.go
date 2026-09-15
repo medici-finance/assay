@@ -463,14 +463,14 @@ func TestCacheReuseFresh(t *testing.T) {
 		t.Fatalf("access_tokens POST should not have been called; got %v", *recordedPaths)
 	}
 
-	// Audit should mention cache reuse, not a mint.
-	entries := auditEntries(t)
-	if len(entries) == 0 {
-		t.Fatal("expected at least one audit entry")
-	}
-	last := entries[len(entries)-1]
-	if !strings.Contains(last.Detail, "reused cached") {
-		t.Fatalf("expected cache reuse in audit; got: %s", last.Detail)
+	// A cache REUSE writes NO audit row (#1035). It contacted nothing, minted nothing and
+	// changed nothing; its row was the ledger's single largest contributor and recorded a
+	// no-op. This assertion is the inverse of the one it replaces — the row used to be
+	// required here.
+	for _, e := range auditEntries(t) {
+		if strings.Contains(e.Detail, "reused cached") {
+			t.Fatalf("a cache reuse must write no audit row; found: %+v", e)
+		}
 	}
 }
 
@@ -1462,4 +1462,71 @@ func (rt *rewriteTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	r2 := r.Clone(r.Context())
 	r2.URL = &u
 	return http.DefaultTransport.RoundTrip(r2)
+}
+
+// --- audit rows: one per real mint, none for a cache reuse (#1035) ---------------
+
+// TestCacheReuseWritesNoAuditRowAndMintWritesOne is the reuse-row row of brief
+// desk-tools/24. A cache reuse contacts nothing, mints nothing and changes nothing; its
+// audit row was the ledger's single largest contributor (145,639 reuse rows against 2,583
+// real mints on one measured host) and recorded a no-op. A real MINT still writes exactly
+// one row, and so does every refusal — suppression is scoped to the success path alone.
+func TestCacheReuseWritesNoAuditRowAndMintWritesOne(t *testing.T) {
+	homeDir := setupTest(t)
+	t.Setenv("REVIEWER_APP_ID", "12345")
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem"), makePEM(t), 0o600)
+
+	const installID = "100000004"
+	installs := []installationInfo{
+		{ID: 100000004, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+	}
+	srv, _ := makeInstallTokenServer(t, installs, "fixture-minted-once", "2124-01-01T01:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-"+installID)
+
+	// 1. A real mint (no cache at all) writes exactly one row.
+	before := len(auditEntries(t))
+	if rc, _, stderr := runCap(t, []string{"reviewer"}); rc != deskkit.ExitOK {
+		t.Fatalf("mint rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	afterMint := auditEntries(t)
+	if len(afterMint)-before != 1 {
+		t.Fatalf("a mint wrote %d audit rows, want exactly 1", len(afterMint)-before)
+	}
+	if !strings.Contains(afterMint[len(afterMint)-1].Detail, "minted new") {
+		t.Fatalf("the mint's row does not record a mint: %s", afterMint[len(afterMint)-1].Detail)
+	}
+
+	// 2. The next invocation is served from the cache and writes NOTHING.
+	fresh := time.Now().Add(-5 * time.Minute)
+	if err := os.Chtimes(tokenPath, fresh, fresh); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	if rc, stdout, stderr := runCap(t, []string{"reviewer"}); rc != deskkit.ExitOK {
+		t.Fatalf("reuse rc = %d, want 0; stdout: %s stderr: %s", rc, stdout, stderr)
+	}
+	afterReuse := auditEntries(t)
+	if len(afterReuse) != len(afterMint) {
+		t.Fatalf("a cache reuse wrote %d audit row(s); it must write none — the invocation performed no act", len(afterReuse)-len(afterMint))
+	}
+
+	// 3. A FAILING invocation still records. Suppression is not a licence to lose a
+	//    refusal: a token cache whose mode is not 0600 is a refusal, and the ledger must
+	//    carry it exactly as it did before.
+	if err := os.Chmod(tokenPath, 0o644); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	if rc, _, _ := runCap(t, []string{"reviewer"}); rc == deskkit.ExitOK {
+		t.Fatal("a 0644 token cache must be refused")
+	}
+	afterFailure := auditEntries(t)
+	if len(afterFailure)-len(afterReuse) != 1 {
+		t.Fatalf("a refusal wrote %d audit rows, want exactly 1 — suppression must not swallow a failure", len(afterFailure)-len(afterReuse))
+	}
 }

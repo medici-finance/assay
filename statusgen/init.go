@@ -391,7 +391,8 @@ Gate: model (from frontmatter).
 `
 
 // initAssayVersions is a PLACEHOLDER pin file in the channel-E shape
-// (statusgen-<platform> <tag> <sha256>). It is deliberately not a live pin: init
+// (statusgen-<platform> <tag> <sha256>, plus the bare `statusgen <tag> <sha256>`
+// line the desk tools read). It is deliberately not a live pin: init
 // is baked into the statusgen binary, so a hardcoded digest here would go stale
 // every release and show stale in the very tool that emits it. The adopter fills
 // a real tag + per-platform digest once, consciously, from a release's
@@ -414,6 +415,13 @@ const initAssayVersions = `# statusgen pin for this repo's lint/regen CI — cha
 statusgen-darwin-arm64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 statusgen-darwin-amd64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 statusgen-linux-amd64   REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
+#
+# The BARE line is the one the desk tools (deskboard and friends) read first: same
+# tag as the platform lines, and the digest of the platform the desk runs on. CI
+# selects with the trailing space (grep '^statusgen-<platform> '), so this line is
+# additive and changes no CI behaviour. When it is absent the desk tools fall back
+# to this host's platform line above; keep it so every reader agrees on one tag.
+statusgen               REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 `
 
 const initWorkflow = `# statusgen CI — the two-half single-writer shape (medici-finance/assay
@@ -527,9 +535,12 @@ jobs:
 //     them over plain HTTPS and sha256-verifies, rather than shelling `gh`.
 //   - GitLab's default CI job token cannot push back to the repo. The regen job
 //     therefore uses a project/group access token the adopter sets as the masked
-//     CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear message rather
-//     than pushing when it is unset — the same refuse-don't-guess shape as the
-//     pin line.
+//     AND protected CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear
+//     message rather than pushing when it is unset — the same refuse-don't-guess
+//     shape as the pin line. Protected is load-bearing, not cosmetic: a
+//     masked-only variable is still injected into merge_request_event pipelines,
+//     which run the MR branch's own CI file, so any member who can open an MR
+//     could read the token and push to the default branch past the merge gate.
 //   - A push by the regen job would itself trigger a pipeline; the [skip-status-regen]
 //     commit marker is matched by a `when: never` rule so the board write does not
 //     loop.
@@ -548,9 +559,15 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 #
 # The regen job pushes STATUS.md back to the default branch. GitLab's default CI
 # job token cannot push, so create a project (or group) access token with the
-# write_repository scope and set it as a MASKED CI/CD variable named
-# STATUSGEN_PUSH_TOKEN. Until it is set the regen job stops with a clear message
-# rather than pushing.
+# write_repository scope and set it as a MASKED and PROTECTED CI/CD variable named
+# STATUSGEN_PUSH_TOKEN. Protected means only pipelines on protected refs receive
+# it, so the default branch this job runs on must be a protected branch. A
+# masked-only variable is still injected into merge-request pipelines, which run
+# the MR branch's own CI file — anyone who can open an MR could then read the
+# token and push to the default branch past the merge gate. Until it is set the
+# regen job stops with a clear message rather than pushing. See
+# docs/adopting-assay-gitlab.md, section "Board-push credential" for the token
+# kind, minimum role, and variable visibility.
 #
 # RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
 # neither installs nor configures one for you. Unlike GitHub's hosted
@@ -623,7 +640,7 @@ statusgen-regen:
     - |
       if [ -z "${STATUSGEN_PUSH_TOKEN:-}" ]; then
         echo "STATUSGEN_PUSH_TOKEN is not set — cannot push the regenerated board."
-        echo "Create a project access token with the write_repository scope and set it as a masked CI/CD variable named STATUSGEN_PUSH_TOKEN. Refusing rather than guessing."
+        echo "Create a project access token with the write_repository scope and set it as a masked and protected CI/CD variable named STATUSGEN_PUSH_TOKEN (protected: the default branch must be a protected branch). Refusing rather than guessing."
         exit 1
       fi
     - statusgen --root .

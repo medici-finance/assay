@@ -19,7 +19,7 @@ const fixtureRepoPath = "example-org/tracker.git"
 
 // --- fixtures -------------------------------------------------------------------
 
-func mustGit(t *testing.T, dir string, args ...string) string {
+func mustGit(t testing.TB, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	if dir != "" {
@@ -32,7 +32,7 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func writeFile(t *testing.T, path, content string) {
+func writeFile(t testing.TB, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
@@ -46,7 +46,7 @@ func writeFile(t *testing.T, path, content string) {
 // LOCAL bare repo (path ending in fixtureRepoPath, so it parses to an allowed repo) holding
 // the same commit, and whose refs/remotes/origin/{main,HEAD} are set (no network) so
 // `origin/main` resolves for `deskwt add --base` and `role-init`'s fresh fetch succeeds.
-func newRepo(t *testing.T) string {
+func newRepo(t testing.TB) string {
 	t.Helper()
 	root := t.TempDir()
 	work := filepath.Join(root, "work")
@@ -162,7 +162,7 @@ func resetCalls(calls *[][]string) { *calls = nil }
 
 // assertExists fails if path was destroyed — the strongest proof that a refusal path
 // touched nothing on disk.
-func assertExists(t *testing.T, path string) {
+func assertExists(t testing.TB, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected %s to still exist (a refusal must destroy nothing); got: %v", path, err)

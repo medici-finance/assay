@@ -46,11 +46,14 @@ package forgeban
 //
 //	(no-op) The operation has no enumerated Forge method, and spec §6's freeze rule forbids
 //	adding one without converting its consuming callsite in the same change. PR listing,
-//	branch→PR resolution, repo-hardening reads and issue listing are each a real op set with
-//	a real GitLab mapping question behind it, and each needs its own brief rather than a
-//	speculative method added here. LABELS are no longer in that list — ApplyLabels landed
-//	with its two consuming call sites — so the rows below that cited "the label brief" now
-//	cite whatever is actually left blocking them.
+//	branch→PR resolution and issue listing are each a real op set with a real GitLab mapping
+//	question behind it, and each needs its own brief rather than a speculative method added
+//	here. LABELS are no longer in that list — ApplyLabels landed with its two consuming call
+//	sites — so the rows below that cited "the label brief" now cite whatever is actually left
+//	blocking them. REPO-HARDENING READS are no longer in that list either — the forge-gitlab guard-read-custody brief
+//	gave them their own enumerated op (RepoHardeningRead, op 40) and moved
+//	`cmd/repohardenguard` onto it under a dedicated read-only `auditor` identity, so this
+//	register carries no repohardenguard row any more; the ceiling came down by one more.
 //
 // A migration that does not answer its row's blocker is not a migration; it is the ban being
 // satisfied by moving the identity question somewhere less visible.
@@ -69,7 +72,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 7
+const allowedInvocationCeiling = 6
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -111,15 +114,6 @@ var AllowedInvocations = []Allowance{
 		Reason: "TODO(forge-surface): `pr view <branch> --json state,number` resolves a PR from a BRANCH NAME. " +
 			"No enumerated op does that — every read on the interface is keyed by number. Needs a typed " +
 			"branch→change lookup, with its GitLab source-branch mapping, in its own brief.",
-	},
-	{
-		Key: "cmd/repohardenguard/check.go::ghRun::gh",
-		Reason: "TODO(forge-surface): `gh api` reads of rulesets, branch protection and App permissions. These " +
-			"are repo-HARDENING reads, not workflow forge ops — the same class inventory delta D3 keeps out of " +
-			"the frozen set. They need their own enumerated surface and their own GitLab mapping (protected " +
-			"branches + push rules). This is OPEN WORK, not a standing exception: the driver ruled " +
-			"closure-to-zero, so this site is owned by the guard-read-custody brief (example-stream/11) and " +
-			"this row retires when that brief lands. It is permitted only until then.",
 	},
 }
 

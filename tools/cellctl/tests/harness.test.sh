@@ -70,10 +70,25 @@ for v in deskboot deskroster deskwt deskboard deskdispatch deskpr deskfile deskp
   printf '#!/usr/bin/env bash\nexit 0\n' > "$DESK_TOOLS_BIN/$v"; chmod +x "$DESK_TOOLS_BIN/$v"
 done
 printf '#!/usr/bin/env bash\necho "$HOME" > "%s/deskroster.home"\nexit 0\n' "$T" > "$DESK_TOOLS_BIN/deskroster"
+# Control dir toggling `claude plugin enable`'s exit shape for the issue-1080 already-enabled-vs-
+# real-failure test below: absent (or any other content) is the default "succeeds" case every
+# other test in this file relies on; the two named modes are opted into per-test and reset after.
+export CLAUDE_TEST_DIR="$T/claude-state"; mkdir -p "$CLAUDE_TEST_DIR"
 cat > "$T/bin/claude" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-} ${2:-}" in
-  "plugin enable") exit 0 ;;
+  "plugin enable")
+    mode="$(cat "$CLAUDE_TEST_DIR/plugin-enable-mode" 2>/dev/null || true)"
+    case "$mode" in
+      already-enabled)
+        echo 'Failed to enable plugin "assay@assay": Plugin "assay@assay" is already enabled' >&2
+        exit 1 ;;
+      real-failure)
+        echo 'Failed to enable plugin "assay@assay": marketplace unreachable' >&2
+        exit 1 ;;
+      *) exit 0 ;;
+    esac
+    ;;
   "plugin list") printf '[{"id":"assay@assay","version":"0.0.0","scope":"project","enabled":true}]\n'; exit 0 ;;
 esac
 {
@@ -145,6 +160,22 @@ assert "dry-run shows harness=claude" 'grep -q "harness=claude" <<<"$out"'
 export CELLCTL_TEST_OUT="$T/launch-default.env"
 "$CELLCTL" desk house-cell the-desk >/dev/null
 assert "the claude stub ran (unchanged arm)" 'grep -q "^ARGS=" "$CELLCTL_TEST_OUT" && grep -q -- "/assay:the-desk" "$CELLCTL_TEST_OUT"'
+
+# ------------------------------------------- desk: already-enabled exit is not a NOTICE (issue-1080)
+echo "[desk: assay@assay already-enabled does not print the reinstall NOTICE (issue-1080)]"
+printf 'already-enabled\n' > "$CLAUDE_TEST_DIR/plugin-enable-mode"
+export CELLCTL_TEST_OUT="$T/launch-already-enabled.env"
+out="$("$CELLCTL" desk house-cell the-desk 2>&1)" && rc=0 || rc=$?
+assert "desk boot still exits 0 when the plugin is already enabled" '[[ $rc -eq 0 ]]'
+assert "no misleading reinstall NOTICE is printed" '! grep -q "could not enable assay@assay" <<<"$out"'
+
+echo "[desk: a genuine plugin-enable failure still prints the NOTICE]"
+printf 'real-failure\n' > "$CLAUDE_TEST_DIR/plugin-enable-mode"
+export CELLCTL_TEST_OUT="$T/launch-real-failure.env"
+out="$("$CELLCTL" desk house-cell the-desk 2>&1)" && rc=0 || rc=$?
+assert "desk boot still exits 0 on a real plugin-enable failure" '[[ $rc -eq 0 ]]'
+assert "the reinstall NOTICE IS printed for a genuine failure" 'grep -q "could not enable assay@assay" <<<"$out"'
+rm -f "$CLAUDE_TEST_DIR/plugin-enable-mode"
 
 # ---------------------------------------------------------------- desk: --harness codex
 echo "[desk: --harness codex]"

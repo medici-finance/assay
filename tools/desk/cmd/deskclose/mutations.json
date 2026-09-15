@@ -34,8 +34,8 @@
     {
       "name": "the dispute posts its reason but never applies needs-decision (the item stays closeable)",
       "file": "cmd/deskclose/superseded.go",
-      "old": "\tif err := addLabel(c.repo, n, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {",
-      "new": "\tif err := addLabel(c.repo, n, deskkit.LabelSpec{Name: \"not-applied\"}); err != nil {"
+      "old": "\tif err := addLabel(c.repo, n, it, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {",
+      "new": "\tif err := addLabel(c.repo, n, it, deskkit.LabelSpec{Name: \"not-applied\"}); err != nil {"
     },
     {
       "name": "the proposal posts its comment but never applies superseded? (invisible to the queue and the sweep)",

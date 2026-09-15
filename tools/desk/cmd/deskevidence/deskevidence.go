@@ -251,9 +251,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Public-repo write gate. deskevidence writes a file directly to a remote branch — an
 	// outward write. A public/internal target is authorized only by a listed `:public`
 	// allowed-repos entry (deskkit.PublicRepoGate); private/internal-without-entry refuse.
-	// The fetcher uses the minted verifier token and the backend's own default host (this tool
-	// no longer binds a GitHub API host literal of its own).
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	// The gate's visibility read goes through the SAME forge backend already resolved above
+	// (fg) — never a second, hardcoded GitHub-only client (assay#1054): a GitLab-resolved
+	// repo must have its visibility answered by GitLab's own API, not GitHub's, and fg is
+	// already whichever backend the resolver picked.
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}

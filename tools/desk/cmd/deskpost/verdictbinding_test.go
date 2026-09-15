@@ -260,7 +260,10 @@ func TestReviewSecurityFailPostsBehindUnparseableAtHead(t *testing.T) {
 	}
 	bf := writeBody(t, "secfail.md", "## Security review\n\nRetracting.\n\nSecurity-Review: fail\n")
 
-	code := run(reviewArgs("example-org/tracker", "1", "request-changes", testHead, bf))
+	// Through the security verb: `review` refuses a security body outright now, and the
+	// #238/#239 path under test (a retraction behind an unreadable review) is the same
+	// write flow either way.
+	code := run(secReviewArgs("example-org/tracker", "1", "fail", testHead, bf))
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}

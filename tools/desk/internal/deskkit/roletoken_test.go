@@ -133,11 +133,20 @@ func TestLoopTokenRolesHandsBackACopy(t *testing.T) {
 
 // stubMinter replaces the token minter for one test. It returns whatever path the caller
 // asks it to, so the file-read half runs against a real file on disk.
+//
+// It also clears the per-process memo, on the way in AND on the way out. The memo is
+// process-wide state by design (brief 25): without the reset, a test that mints
+// reviewer/example-org successfully would answer the NEXT test's identical lookup from
+// memory, and every refusal row below would silently stop exercising the minter at all.
 func stubMinter(t *testing.T, path, stderr string, err error) *[]string {
 	t.Helper()
 	var seen []string
+	resetRoleTokenMemo()
 	prev := tokenMinter
-	t.Cleanup(func() { tokenMinter = prev })
+	t.Cleanup(func() {
+		tokenMinter = prev
+		resetRoleTokenMemo()
+	})
 	tokenMinter = func(role, owner string) (string, string, error) {
 		seen = append(seen, role+" "+owner)
 		return path, stderr, err
@@ -274,6 +283,11 @@ func TestNoRefusalEverCarriesTheTokenValue(t *testing.T) {
 	if err := os.WriteFile(path, []byte("  \n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The memo answers a repeat lookup of the same (role, owner) from memory for the life
+	// of the process (brief 25), which is exactly what it is for — so the "the file changed
+	// underneath us" case this half asserts is a NEW process in production, and a cleared
+	// memo here. Without the reset this would assert the memo, not the refusal.
+	resetRoleTokenMemo()
 	_, _, err = RoleTokenForOwner("reviewer", "example-org")
 	if err == nil {
 		t.Fatal("an unusable token file was accepted")

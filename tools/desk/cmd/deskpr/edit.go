@@ -61,6 +61,12 @@ func cmdEdit(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	defer func() { explainScanRefusal(*explain, err) }()
@@ -215,7 +221,11 @@ func cmdEdit(args []string) (err error) {
 	// Public-repo gate: refuse an outward write unless the repo is authorized
 	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	// The gate's visibility read goes through the SAME forge backend already resolved above
+	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
+	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not
+	// GitHub's, and fg is already whichever backend the resolver picked.
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}

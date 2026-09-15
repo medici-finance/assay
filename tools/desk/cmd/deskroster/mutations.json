@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/deskroster/... -count=1",
+  "control": {
+    "name": "CONTROL — disarm the width ceiling (an over-budget width is stored instead of refused)",
+    "file": "cmd/deskroster/width.go",
+    "old": "\tif err := deskkit.CheckWidth(canonical, n); err != nil {\n\t\treturn \"\", err\n\t}\n\texisting, fresh, lerr := deskkit.LoadWidth(canonical, now)",
+    "new": "\tif err := deskkit.CheckWidth(canonical, n); err != nil && false {\n\t\treturn \"\", err\n\t}\n\texisting, fresh, lerr := deskkit.LoadWidth(canonical, now)"
+  },
+  "mutations": [
+    {
+      "name": "key the plain-read trailer on the reserve field again (a fresh width-only entry reads as default — the 2026-09-14 defect, restated)",
+      "file": "cmd/deskroster/width.go",
+      "old": "\tif !fresh || entry == nil {\n\t\tdef, _ := deskkit.DefaultReserve(loop)\n\t\treturn def, \"default\", \"n/a\"\n\t}",
+      "new": "\tif !fresh || entry == nil || entry.Reserve == nil {\n\t\tdef, _ := deskkit.DefaultReserve(loop)\n\t\treturn def, \"default\", \"n/a\"\n\t}"
+    },
+    {
+      "name": "drop the setter from the plain-read trailer (a live override prints as source=default)",
+      "file": "cmd/deskroster/width.go",
+      "old": "\tsourceLabel = \"set\"\n\tif entry.SetBy != \"\" {\n\t\tsourceLabel = \"set-by:\" + entry.SetBy\n\t}",
+      "new": "\tsourceLabel = \"default\"\n\tif entry.SetBy != \"\" {\n\t\tsourceLabel = \"default\"\n\t}"
+    },
+    {
+      "name": "never compute an expiry on the plain read (a live override prints expires=n/a)",
+      "file": "cmd/deskroster/width.go",
+      "old": "\treturn reserve, sourceLabel, updated.Add(deskkit.WidthTTL).UTC().Format(time.RFC3339)",
+      "new": "\treturn reserve, sourceLabel, \"n/a\""
+    },
+    {
+      "name": "treat a decayed entry as live on the plain read (a lapsed width keeps printing set-by)",
+      "file": "cmd/deskroster/width.go",
+      "old": "\tif !fresh || entry == nil {\n\t\tdef, _ := deskkit.DefaultReserve(loop)",
+      "new": "\tif entry == nil {\n\t\tdef, _ := deskkit.DefaultReserve(loop)"
+    }
+  ]
+}

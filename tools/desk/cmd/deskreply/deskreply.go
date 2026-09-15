@@ -219,8 +219,12 @@ func cmdReply(args []string) (err error) {
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
 	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// The gate's visibility read goes through the SAME forge backend already resolved
+	// above (fg) — never a second, hardcoded GitHub-only client (assay#1054): a
+	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not
+	// GitHub's, and fg is already whichever backend the resolver picked.
 	owner, name := splitOwnerRepo(repo)
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
