@@ -1701,6 +1701,77 @@ func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 	return true, nil
 }
 
+// --- Repo-hardening reads (op 40) ---
+
+// hardeningGithubPaths maps every kind but `rulesets` (a two-hop, handled separately) to its
+// ONE fixed endpoint literal. There is exactly one literal per kind — no caller-supplied
+// segment — so the map itself is the proof this is not a passthrough in a different shape.
+var hardeningGithubPaths = map[HardeningReadKind]string{
+	HardeningReadRepo:                       "/repos/%s/%s",
+	HardeningReadActionsWorkflowPermissions: "/repos/%s/%s/actions/permissions/workflow",
+	HardeningReadActionsForkPRApproval:      "/repos/%s/%s/actions/permissions/fork-pr-contributor-approval",
+	HardeningReadActionsPrivateForkPR:       "/repos/%s/%s/actions/permissions/fork-pr-workflows-private-repos",
+	HardeningReadVulnerabilityReporting:     "/repos/%s/%s/private-vulnerability-reporting",
+}
+
+// RepoHardeningRead implements op 40 on GitHub: kind is validated against the closed
+// vocabulary before any request exists, so an unknown kind emits ZERO requests. Every kind
+// but `rulesets` is one fixed GET; `rulesets` performs the list→detail walk and returns the
+// ARRAY of detail documents (hardeningRulesets).
+func (g *GitHubForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
+	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
+		return nil, err
+	}
+	if kind == HardeningReadRulesets {
+		return g.hardeningRulesets(repo)
+	}
+	tmpl, ok := hardeningGithubPaths[kind]
+	if !ok {
+		// Unreachable: ValidateHardeningReadKind above already refused anything not in
+		// hardeningReadKinds, and every entry of that slice is handled here or above. Kept as
+		// could-not-check, never a panic — a resolver that cannot name a mapping fails closed.
+		return nil, Unverifiable(fmt.Sprintf(
+			"RepoHardeningRead: kind %q passed validation but has no GitHub path mapping", kind), nil)
+	}
+	return g.hardeningGET(fmt.Sprintf(tmpl, repo.Owner, repo.Name))
+}
+
+// hardeningGET performs one GET and returns the raw response body unparsed — op 40 hands the
+// document back as-is so the CALLER'S OWN field selector (repohardenguard's checklist, never
+// this package) decides what inside it matters.
+func (g *GitHubForge) hardeningGET(path string) (json.RawMessage, error) {
+	var raw json.RawMessage
+	if err := g.doJSON(http.MethodGet, path, nil, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// hardeningRulesets performs the ONE two-hop kind: GET the ruleset list (which deliberately
+// omits `rules`/`bypass_actors`), then GET each entry's own detail by id, and returns the
+// ARRAY of detail documents. The hop lives here, once, rather than being repeated by every
+// caller that wants a named ruleset's field — repohardenguard's `[name=X].field` selector
+// resolves inside the returned array.
+func (g *GitHubForge) hardeningRulesets(repo ForgeRepo) (json.RawMessage, error) {
+	listPath := fmt.Sprintf("/repos/%s/%s/rulesets", repo.Owner, repo.Name)
+	var list []struct {
+		ID int64 `json:"id"`
+	}
+	if err := g.doJSON(http.MethodGet, listPath, nil, &list); err != nil {
+		return nil, err
+	}
+	details := make([]json.RawMessage, 0, len(list))
+	for _, rs := range list {
+		detailPath := fmt.Sprintf("/repos/%s/%s/rulesets/%d", repo.Owner, repo.Name, rs.ID)
+		var d json.RawMessage
+		if err := g.doJSON(http.MethodGet, detailPath, nil, &d); err != nil {
+			return nil, err
+		}
+		details = append(details, d)
+	}
+	return json.Marshal(details)
+}
+
 // --- File content (read / write on a branch) ---
 
 // ghContentsWire is the Contents-API read shape (only the fields consumed). `content` is

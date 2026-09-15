@@ -21,6 +21,7 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -705,6 +706,78 @@ type ChangeSearchResults struct {
 	Cap            int
 }
 
+// HardeningReadKind names one closed hardening-read kind for op 40, RepoHardeningRead — the
+// enumerated replacement for repohardenguard's former arbitrary `gh api <endpoint>` reads
+// (the forge-gitlab guard-read-custody brief). It is a named enum validated BEFORE any request exists
+// (ValidateHardeningReadKind), never a path, the same DeleteRef/ValidateRefPath shape applied
+// to a fixed vocabulary instead of a ref namespace: a kind the backend does not serve is a
+// could-not-check REFUSAL naming the forge and the kind, never a guess and never the other
+// forge's document.
+type HardeningReadKind string
+
+const (
+	// HardeningReadRepo reads the repo document itself: `.visibility`,
+	// `.security_and_analysis.*` (admin-visible only — a `null` here is could-not-check,
+	// exactly as an unauthenticated/non-admin read reports today).
+	HardeningReadRepo HardeningReadKind = "repo"
+	// HardeningReadRulesets reads every ruleset's DETAIL document (the list→detail walk
+	// happens inside the backend) as an ARRAY, so a caller's `[name=X].field` selector
+	// resolves inside the returned array. `bypass_actors` is present only for a caller with
+	// write access to the ruleset, so under a read-only identity those rows are
+	// could-not-check.
+	HardeningReadRulesets HardeningReadKind = "rulesets"
+	// HardeningReadActionsWorkflowPermissions reads the default Actions workflow permissions
+	// (admin-gated).
+	HardeningReadActionsWorkflowPermissions HardeningReadKind = "actions-workflow-permissions"
+	// HardeningReadActionsForkPRApproval reads the fork-PR contributor-approval setting
+	// (admin-gated).
+	HardeningReadActionsForkPRApproval HardeningReadKind = "actions-fork-pr-approval"
+	// HardeningReadActionsPrivateForkPR reads the fork-PR-workflows-on-private-repos setting
+	// (admin-gated).
+	HardeningReadActionsPrivateForkPR HardeningReadKind = "actions-private-fork-pr"
+	// HardeningReadVulnerabilityReporting reads the private-vulnerability-reporting setting
+	// (admin read).
+	HardeningReadVulnerabilityReporting HardeningReadKind = "vulnerability-reporting"
+)
+
+// hardeningReadKinds is the closed vocabulary op 40 serves, in a stable declared order — the
+// order HardeningReadKinds() renders and ValidateHardeningReadKind walks.
+var hardeningReadKinds = []HardeningReadKind{
+	HardeningReadRepo,
+	HardeningReadRulesets,
+	HardeningReadActionsWorkflowPermissions,
+	HardeningReadActionsForkPRApproval,
+	HardeningReadActionsPrivateForkPR,
+	HardeningReadVulnerabilityReporting,
+}
+
+// HardeningReadKinds returns the closed vocabulary op 40 serves, as strings, in a stable
+// order — for a caller (repohardenguard's checklist parser, an error message) that needs to
+// name every valid kind without restating the enum.
+func HardeningReadKinds() []string {
+	out := make([]string, len(hardeningReadKinds))
+	for i, k := range hardeningReadKinds {
+		out[i] = string(k)
+	}
+	return out
+}
+
+// ValidateHardeningReadKind checks kind against the closed vocabulary BEFORE any request is
+// built — the DeleteRef/ValidateRefPath shape, applied to a fixed enum rather than a ref
+// namespace. An unrecognised kind is a could-not-check REFUSAL naming the kind and the
+// vocabulary; RepoHardeningRead calls this first on both backends, so an unknown kind emits
+// ZERO requests on either.
+func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
+	for _, k := range hardeningReadKinds {
+		if string(k) == kind {
+			return k, nil
+		}
+	}
+	return "", Unverifiable(fmt.Sprintf(
+		"could-not-check: %q is not a known hardening-read kind — the enumerated kinds are: %s",
+		kind, strings.Join(HardeningReadKinds(), ", ")), nil)
+}
+
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
 // operations a shipping tool consumes (stream spec §6), reconciled against the stream's
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
@@ -871,6 +944,18 @@ type Forge interface {
 	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
 	// changes nothing (freeze rule: this read lands with the call site that consumes it).
 	RefExists(repo ForgeRepo, ref string) (bool, error)
+	// RepoHardeningRead reads ONE closed hardening-read kind's document(s) for repo (see
+	// HardeningReadKind) — the enumerated replacement for repohardenguard's former arbitrary
+	// `gh api <endpoint>` reads. kind is validated by ValidateHardeningReadKind BEFORE any
+	// request is built, so this cannot be steered at an arbitrary endpoint
+	// (TestForgeNoPassthrough's no-endpoint-argument check keys on parameter names, and `kind`
+	// is a closed enum, never a path). The `rulesets` kind performs the list→detail walk
+	// internally and returns the ARRAY of full detail documents, so a caller's `[name=X].field`
+	// selector resolves inside the returned array without a second op on this seam. A kind the
+	// resolved backend does not serve is a could-not-check REFUSAL naming the forge and the
+	// kind — GitLab refuses every kind by name until the forge-gitlab GitLab-hardening-reads follow-up. Consumer:
+	// cmd/repohardenguard's Checker (freeze rule: this op lands with its consumer).
+	RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)
 
 	// --- Writes ---
 

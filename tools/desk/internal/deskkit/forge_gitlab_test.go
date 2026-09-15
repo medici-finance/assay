@@ -1421,6 +1421,14 @@ func glCases() []glCase {
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.ChangeDiff(glRepo, 7) },
 		},
+		{
+			// The forge-gitlab guard-read-custody brief's op 40: every hardening-read kind is a NAMED could-not-check
+			// refusal on GitLab until the forge-gitlab GitLab-hardening-reads follow-up, with ZERO requests emitted — never an
+			// empty document standing in for "not yet served".
+			name: "repo_hardening_read_gap", method: "RepoHardeningRead",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadRepo) },
+		},
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -2015,6 +2016,19 @@ func (g *GitLabForge) ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, e
 			"`.gitlab-ci.yml`, not a per-workflow-file directory, so there is no 1:1 listing. It is deferred to "+
 			"the forge-gitlab CI brief, never approximated.",
 		repo.Slug(), ref), nil)
+}
+
+// RepoHardeningRead is a NAMED could-not-check REFUSAL on GitLab for every kind, until
+// the forge-gitlab GitLab-hardening-reads follow-up lands the GitLab kinds (protected branches, protected tags, push rules,
+// approvals). kind is still validated first — an unknown kind refuses on the SAME grounds it
+// would on GitHub (ValidateHardeningReadKind), so the "unknown kind" and "not yet served on
+// GitLab" refusals are never confused with each other in a caller's error text.
+func (g *GitLabForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
+	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
+		return nil, err
+	}
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: gitlab serves no hardening read of kind %q — deferred to the forge-gitlab GitLab-hardening-reads follow-up", kind), nil)
 }
 
 // ChangeDiff is a could-not-check REFUSAL on GitLab, naming the gap. It returns a change's raw
