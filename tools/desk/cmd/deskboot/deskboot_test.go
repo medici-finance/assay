@@ -91,6 +91,9 @@ func happyStub(t *testing.T, tokenPath string) []reply {
 		{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"},
 		{match: "desktoken desk", stdout: tokenPath},
 		{match: "show FETCH_HEAD:STATUS.md", stdout: "# Board\n\n## Next up\n\n| item | why |\n|---|---|\n| a | x |\n| b | y |\n"},
+		// worktree-current: FETCH_HEAD resolves, HEAD contains it (merge-base exits 0 by the
+		// stub default), and neither side carries a pin file (an empty `git show` is "no pin").
+		{match: "rev-parse FETCH_HEAD", stdout: "0123456789abcdef0123456789abcdef01234567"},
 	}
 }
 
@@ -493,7 +496,7 @@ func TestEveryKnownRoleIsBothMappedAndStoppable(t *testing.T) {
 // consumer that keys on a step name.
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"loop-identity", "worktree-prune", "worktree-lock", "roster-set",
-		"roster-preflight", "token-mint", "board-fetch"}
+		"roster-preflight", "token-mint", "board-fetch", "worktree-current"}
 	if len(bootSteps) != len(want) {
 		t.Fatalf("bootSteps has %d entries, want %d", len(bootSteps), len(want))
 	}
@@ -635,5 +638,98 @@ func TestSharedCheckoutRefusalNamesTheFix(t *testing.T) {
 				t.Error("deskboot tried to lock the shared checkout — it must refuse before attempting it")
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------- worktree-current (#1157)
+//
+// The defect: seven green steps on a tree three days behind origin/main. The board fetch
+// updated FETCH_HEAD and nothing compared the worktree against it, so a desk booted
+// "7/7" on a stale pin and discovered the drift an hour later, in a read verb, with a
+// remediation that pointed at the wrong side. These tests pin the eighth step.
+
+// A worktree whose HEAD does not contain FETCH_HEAD is BEHIND main: the boot refuses at
+// `worktree-current` (exit 6), after the board fetch, and names the one-line self-heal —
+// a merge, never a rebase.
+func TestBehindMainWorktreeRefusesAtWorktreeCurrent(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	s.replies = append(happyStub(t, writeToken(t, home)),
+		reply{match: "merge-base --is-ancestor FETCH_HEAD HEAD", fail: true})
+
+	stderr := captureStderr(t, func() int {
+		if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitUnverifiable {
+			t.Errorf("behind-main boot rc = %d, want %d (unverifiable) — a stale desk must be loud at boot, "+
+				"not blind an hour later", rc, deskkit.ExitUnverifiable)
+		}
+		return 0
+	})
+	if !strings.Contains(stderr, "step worktree-current") {
+		t.Errorf("the refusal does not name step worktree-current:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "merge refs/remotes/origin/main") {
+		t.Errorf("the refusal does not carry the one-line self-heal (a merge of origin/main):\n%s", stderr)
+	}
+	if strings.Contains(strings.ToLower(stderr), "rebase") && !strings.Contains(strings.ToLower(stderr), "never rebase") {
+		t.Errorf("the self-heal must be a merge, never a rebase:\n%s", stderr)
+	}
+	if !s.ran("fetch --no-tags origin main") {
+		t.Error("worktree-current ran without the board fetch that produces FETCH_HEAD")
+	}
+	if fetch, cur := s.indexOf("fetch --no-tags"), s.indexOf("merge-base --is-ancestor"); fetch < 0 || cur < 0 || fetch > cur {
+		t.Errorf("board fetch at %d, worktree-current at %d — the currency check reads the FETCH_HEAD the fetch wrote", fetch, cur)
+	}
+}
+
+// A worktree whose `.assay-versions` differs from FETCH_HEAD's is refused even when the
+// commit graph looks current: the pin is what every desk verb keys its drift check on,
+// so the pin is the thing the boot must prove equal. The refusal names BOTH pins.
+func TestPinDiffersFromFetchHeadRefusesAtWorktreeCurrent(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	if err := os.WriteFile(filepath.Join(root, ".assay-versions"),
+		[]byte("desk-tools v1.0.6 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.replies = append(happyStub(t, writeToken(t, home)),
+		reply{match: "show FETCH_HEAD:.assay-versions",
+			stdout: "desk-tools v1.0.9 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"})
+
+	stderr := captureStderr(t, func() int {
+		if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitUnverifiable {
+			t.Errorf("pin-mismatch boot rc = %d, want %d (unverifiable)", rc, deskkit.ExitUnverifiable)
+		}
+		return 0
+	})
+	if !strings.Contains(stderr, "step worktree-current") {
+		t.Errorf("the refusal does not name step worktree-current:\n%s", stderr)
+	}
+	for _, want := range []string{"v1.0.6", "v1.0.9"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal does not name pin %s — an operator must see WHICH side is stale:\n%s", want, stderr)
+		}
+	}
+}
+
+// The happy path: HEAD contains FETCH_HEAD and the pins agree — the boot completes with
+// the eighth step counted, so a green boot is a boot on a CURRENT tree by construction.
+func TestCurrentWorktreeWithEqualPinsBoots(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	pin := "desk-tools v1.0.9 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err := os.WriteFile(filepath.Join(root, ".assay-versions"), []byte(pin+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.replies = append(happyStub(t, writeToken(t, home)),
+		reply{match: "show FETCH_HEAD:.assay-versions", stdout: pin})
+
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitOK {
+		t.Fatalf("current worktree with equal pins rc = %d, want 0", rc)
+	}
+	if !s.ran("merge-base --is-ancestor FETCH_HEAD HEAD") {
+		t.Error("a green boot never checked that HEAD contains FETCH_HEAD — 'BOOT COMPLETE' on an unchecked tree is the #1157 defect")
+	}
+	if !s.ran("show FETCH_HEAD:.assay-versions") {
+		t.Error("a green boot never read FETCH_HEAD's pin — the pin comparison did not run")
 	}
 }

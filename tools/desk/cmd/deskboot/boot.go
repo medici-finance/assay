@@ -24,13 +24,16 @@ const (
 	stepRosterPreflight = "roster-preflight"
 	stepTokenMint       = "token-mint"
 	stepBoardFetch      = "board-fetch"
+	stepWorktreeCurrent = "worktree-current"
 )
 
 // bootSteps is the ordered step list, used for the plan output and pinned by a test so a
 // step cannot be silently reordered or dropped. Order is load-bearing: the envelope
 // preflight runs BEFORE the token mint proof only because the preflight's own cold-mint
-// check is the stricter instrument, and the board fetch runs last because a desk with no
-// verified envelope has no business reading a queue it might act on.
+// check is the stricter instrument, and the board fetch runs after it because a desk with
+// no verified envelope has no business reading a queue it might act on. The currency
+// check comes LAST because it reads the FETCH_HEAD the board fetch wrote (#1157): a boot
+// that stopped at the fetch had proved main was readable, not that this tree was main.
 var bootSteps = []string{
 	stepLoopIdentity,
 	stepWorktreePrune,
@@ -39,6 +42,7 @@ var bootSteps = []string{
 	stepRosterPreflight,
 	stepTokenMint,
 	stepBoardFetch,
+	stepWorktreeCurrent,
 }
 
 // loopToTokenRole maps a desk LOOP name (what a session presents in $DESK_LOOP, and what
@@ -189,6 +193,14 @@ func boot(o bootOpts) error {
 		return err
 	}
 	o.say("%s OK: %s", stepBoardFetch, summary)
+
+	// 8 — worktree currency. Seven green steps on a tree three days behind main was the
+	// #1157 boot: the fetch proved main READABLE, and nothing proved this tree WAS main.
+	current, err := stepCurrent(o)
+	if err != nil {
+		return err
+	}
+	o.say("%s OK: %s", stepWorktreeCurrent, current)
 
 	fmt.Printf("deskboot: BOOT COMPLETE — role=%s token-role=%s root=%s (%d/%d steps)\n",
 		o.role, tokenRole, o.root, len(bootSteps), len(bootSteps))
@@ -400,6 +412,106 @@ func stepBoard(o bootOpts) (string, error) {
 		return fmt.Sprintf("board read at FETCH_HEAD (%d lines); no Next-up section", countLines(r.stdout)), nil
 	}
 	return fmt.Sprintf("board read at FETCH_HEAD (%d lines); %d row(s) under %q", countLines(r.stdout), rows, section), nil
+}
+
+// stepCurrent proves this worktree IS the main the board fetch just read (#1157): HEAD
+// must contain FETCH_HEAD, and the worktree's `.assay-versions` must equal FETCH_HEAD's.
+//
+// Both halves are needed. The commit-graph check catches the ordinary stale tree (a role
+// worktree that carried a local commit, could never fast-forward again, and sat days
+// behind main). The pin check is what the desk verbs actually key their drift banner on —
+// a tree whose graph contains main but whose pin was changed by a local commit or an
+// uncommitted edit would boot green and then read STALE:drift on its first board read,
+// which is the same blind hour this step exists to remove. A refusal here is exit 6 (a
+// step ran and could not prove the tree current) and names the ONE-LINE self-heal: a
+// merge of origin/main, spelled with the fully-qualified ref so a stray local branch named
+// `origin/main` can never be what gets merged. Merge, never rebase: force-push is denied,
+// and a rebase rewrites lineage a reviewer has already seen.
+//
+// READ-ONLY, like the fetch before it: the step reports and refuses; it never merges on
+// the session's behalf. The cell launcher (`cellctl desk`) is the layer that merges at
+// boot, and this step is what proves the launcher — or a hand boot — actually left the
+// tree current rather than printing a notice and moving on.
+func stepCurrent(o bootOpts) (string, error) {
+	root := o.root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	head := runCmd(o.root, "git", "rev-parse", "FETCH_HEAD")
+	if head.err != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: FETCH_HEAD does not resolve in %s after the board fetch (%s) — whether this tree "+
+				"is current cannot be established, and 'unknown' is not 'current'.",
+			stepWorktreeCurrent, o.root, firstLine(head.stderr)), head.err)
+	}
+	sha := firstLine(head.stdout)
+	short := sha
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	heal := "git -C " + root + " merge refs/remotes/origin/main"
+
+	// The pins on both sides, read before the graph check so a behind-main refusal can
+	// ALSO say which desk-tools pin the operator is about to be stuck on.
+	fetched := runCmd(o.root, "git", "show", "FETCH_HEAD:"+deskkit.AssayVersionsFile)
+	fetchedPin := ""
+	if fetched.err == nil {
+		fetchedPin = strings.TrimSpace(fetched.stdout)
+	}
+	localRaw, _ := os.ReadFile(filepath.Join(o.root, deskkit.AssayVersionsFile))
+	localPin := strings.TrimSpace(string(localRaw))
+	pinNote := ""
+	if fetchedPin != localPin {
+		pinNote = fmt.Sprintf(" This worktree's %s pins [%s]; origin/main's pins [%s].",
+			deskkit.AssayVersionsFile, pinSummary(localPin), pinSummary(fetchedPin))
+	}
+
+	if r := runCmd(o.root, "git", "merge-base", "--is-ancestor", "FETCH_HEAD", "HEAD"); r.err != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: %s is BEHIND origin/main — HEAD does not contain FETCH_HEAD %s, the main the board "+
+				"fetch just read.%s A desk booted here reads a current board and acts from a stale tree: its "+
+				"first board read says STALE:drift, its loop refuses every flip, and nothing in the boot said "+
+				"so. Self-heal (one line, merge — never rebase): `%s`, then re-run deskboot.",
+			stepWorktreeCurrent, o.root, short, pinNote, heal), r.err)
+	}
+	if fetchedPin != localPin {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: %s carries a different %s from origin/main although HEAD already contains FETCH_HEAD "+
+				"%s — a local commit or an uncommitted edit in this worktree changed the pin.%s A desk boots "+
+				"only on main's pin (every drift check keys on it). Restore main's: `git -C %s checkout "+
+				"FETCH_HEAD -- %s` if the edit is uncommitted, else re-cut the role worktree from origin/main "+
+				"(`deskwt role-init %s --repo-root <shared checkout>`), then re-run deskboot.",
+			stepWorktreeCurrent, o.root, deskkit.AssayVersionsFile, short, pinNote, root,
+			deskkit.AssayVersionsFile, o.role), nil)
+	}
+	if fetchedPin == "" {
+		return "HEAD contains FETCH_HEAD " + short + "; no " + deskkit.AssayVersionsFile + " on either side", nil
+	}
+	return "HEAD contains FETCH_HEAD " + short + "; " + deskkit.AssayVersionsFile + " equals origin/main's (" +
+		pinSummary(fetchedPin) + ")", nil
+}
+
+// pinSummary renders a `.assay-versions` body as its `<artifact> <tag>` pairs, one per
+// line, comments and digests dropped — enough to see WHICH pin differs without quoting a
+// 64-hex digest per line into a boot log. An empty body renders as "none".
+func pinSummary(body string) string {
+	var pairs []string
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) >= 2 {
+			pairs = append(pairs, f[0]+" "+f[1])
+		} else {
+			pairs = append(pairs, f[0])
+		}
+	}
+	if len(pairs) == 0 {
+		return "none"
+	}
+	return strings.Join(pairs, ", ")
 }
 
 // summariseBoard counts the table rows under the board's Next-up section without

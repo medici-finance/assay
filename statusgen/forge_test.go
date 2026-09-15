@@ -225,14 +225,16 @@ func TestInitDefaultsToGitHubForNoRemote(t *testing.T) {
 	}
 }
 
-// TestDecayNotApplicableOnGitLabForge is the #349 honesty fix: on a GitLab
-// remote the dead-claim decay does not shell `gh` at all — it returns the branch
-// set unchanged and prints a DISTINCT "not applicable on this forge" NOTICE, never
-// the "unavailable this run" message that reads as a transient could-not-check.
-func TestDecayNotApplicableOnGitLabForge(t *testing.T) {
+// TestDecayRoutesToTheGitLabReaderOnAGitLabForge supersedes the #349 gate. That
+// gate was the honest answer while the decay had only a GitHub reader: it said
+// NOT APPLICABLE rather than dressing a permanent gap as a transient failure. But
+// "honestly does not run" still meant a GitLab adopter's claims never decayed, so
+// #1111 gives the pass a GitLab reader and this test pins the routing: a GitLab
+// remote reaches the merge-request reader, NEVER the GitHub-only `gh` lister, and
+// the decay actually happens.
+func TestDecayRoutesToTheGitLabReaderOnAGitLabForge(t *testing.T) {
 	stubRemoteOriginURL(t, "git@gitlab.com:group/project.git", nil)
-	// If the gh lister is reached at all on a GitLab remote, that is the bug —
-	// fail loudly. It would also (wrongly) decay a branch, which we assert against.
+	// Reaching the gh lister on a GitLab remote is the #349 bug — fail loudly.
 	called := false
 	prev := listMergedClosedBranches
 	listMergedClosedBranches = func(string) (map[string]bool, error) {
@@ -240,40 +242,45 @@ func TestDecayNotApplicableOnGitLabForge(t *testing.T) {
 		return map[string]bool{"fix/issue-loop-02-merged": true}, nil
 	}
 	t.Cleanup(func() { listMergedClosedBranches = prev })
+	stubMergedClosedBranchesGitLab(t, map[string]bool{"fix/issue-loop-02-merged": true}, nil)
 
 	branches := []string{"main", "fix/issue-loop-02-merged"}
 	var got []string
-	stderr := captureStderr(t, func() { got = decayDeadClaims("/repo", branches) })
+	var reason string
+	stderr := captureStderr(t, func() { got, reason = decayDeadClaims("/repo", branches) })
 
 	if called {
 		t.Error("decay shelled the GitHub-only lister on a GitLab remote")
 	}
-	if !reflect.DeepEqual(got, branches) {
-		t.Fatalf("gitlab decay altered the branch set: got %v, want unchanged %v", got, branches)
+	if !reflect.DeepEqual(got, []string{"main"}) {
+		t.Fatalf("gitlab decay did not drop the merged-MR corpse: got %v, want [main]", got)
 	}
-	if !strings.Contains(stderr, "NOT APPLICABLE") {
-		t.Errorf("gitlab decay must say NOT APPLICABLE; got:\n%s", stderr)
+	if reason != "" {
+		t.Errorf("a decay that RAN must report no could-not-check reason; got %q", reason)
 	}
-	// The transient could-not-check wording ("dead-claim decay unavailable — …")
-	// must NOT be what a GitLab adopter sees: this is a permanent not-applicable,
-	// not a "gh was not authed this run".
-	if strings.Contains(stderr, "decay unavailable") {
-		t.Errorf("gitlab decay must NOT reuse the transient \"decay unavailable\" wording; got:\n%s", stderr)
+	// The retired wording must not come back: neither the permanent-gap message
+	// (the pass runs here now) nor a could-not-check (it looked and answered).
+	if strings.Contains(stderr, "NOT APPLICABLE") {
+		t.Errorf("a GitLab decay that RUNS must not say NOT APPLICABLE; got:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "could-not-check") {
+		t.Errorf("a GitLab decay that RUNS must not report could-not-check; got:\n%s", stderr)
 	}
 }
 
 // TestDecayStillRunsOnGitHubAndUnknown proves the forge gate did not disable the
 // decay everywhere: on a GitHub remote it still drops merged/closed corpses, and
 // on an UNKNOWN remote (could not tell — never rounded to "not GitHub") it still
-// ATTEMPTS the gh read and degrades loudly on failure, exactly as before.
+// ATTEMPTS the gh read and degrades loudly on failure. This is the GitHub-side
+// regression for #1111 — adding the GitLab reader must change neither arm.
 func TestDecayStillRunsOnGitHubAndUnknown(t *testing.T) {
 	branches := []string{"main", "fix/issue-loop-02-merged"}
 
 	// GitHub remote: decay runs, corpse dropped.
 	stubRemoteOriginURL(t, "https://github.com/acme/repo.git", nil)
 	stubMergedClosedBranches(t, map[string]bool{"fix/issue-loop-02-merged": true}, nil)
-	if got := decayDeadClaims("/repo", branches); !reflect.DeepEqual(got, []string{"main"}) {
-		t.Errorf("github decay did not drop the corpse: got %v", got)
+	if got, reason := decayDeadClaims("/repo", branches); !reflect.DeepEqual(got, []string{"main"}) || reason != "" {
+		t.Errorf("github decay did not drop the corpse: got %v (reason %q)", got, reason)
 	}
 
 	// Unknown remote (self-hosted, neither forge): still attempts gh; on failure
@@ -282,12 +289,16 @@ func TestDecayStillRunsOnGitHubAndUnknown(t *testing.T) {
 	stubRemoteOriginURL(t, "https://git.example.com/g/p.git", nil)
 	stubMergedClosedBranches(t, nil, errors.New("gh: not authenticated"))
 	var got []string
-	stderr := captureStderr(t, func() { got = decayDeadClaims("/repo", branches) })
+	var reason string
+	stderr := captureStderr(t, func() { got, reason = decayDeadClaims("/repo", branches) })
 	if !reflect.DeepEqual(got, branches) {
 		t.Errorf("unknown-forge decay must fall back to the full set: got %v", got)
 	}
-	if !strings.Contains(stderr, "unavailable") {
-		t.Errorf("unknown-forge decay must keep the transient \"unavailable\" wording; got:\n%s", stderr)
+	if !strings.Contains(stderr, "could-not-check: claims not decayed") {
+		t.Errorf("unknown-forge decay must report could-not-check with the reason; got:\n%s", stderr)
+	}
+	if !strings.Contains(reason, "gh: not authenticated") {
+		t.Errorf("unknown-forge decay must hand back the reason; got %q", reason)
 	}
 }
 
