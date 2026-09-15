@@ -1,0 +1,10 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    }
+  ],
+  "err": "merge request !7 in medici-finance/assay has no title beyond its draft marker, so clearing the marker would leave it untitled — retitle it before flipping it ready",
+  "not_found": false
+}

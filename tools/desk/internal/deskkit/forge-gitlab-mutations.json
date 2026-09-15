@@ -150,6 +150,24 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\t\t\th, ok := mergeHoldReleasedHead(n.Body)\n\t\t\t\tif !ok {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif !SameActor(n.Author.Username, marker.ResolvedBy.Username) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\thead = h",
       "new": "\t\t\t\tif h, ok := mergeHoldReleasedHead(n.Body); ok {\n\t\t\t\t\thead = h\n\t\t\t\t}"
+    },
+    {
+      "name": "apply a label with no name instead of refusing (the ensure step creates a nameless project label and the queue/escalation stamp lands as an empty string) — pinned by apply_labels_refuses_unnamed_label",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif strings.TrimSpace(l.Name) == \"\" {\n\t\t\treturn nil, Refused(\"refusing to apply an unnamed label — the label NAME is the load-bearing part\")\n\t\t}",
+      "new": "\t\tif false && strings.TrimSpace(l.Name) == \"\" {\n\t\t\treturn nil, Refused(\"refusing to apply an unnamed label — the label NAME is the load-bearing part\")\n\t\t}"
+    },
+    {
+      "name": "report a merge request as flipped ready on the strength of the PUT alone, ignoring that it still reads draft — pinned by mark_ready_for_review_still_draft_after_strip",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif updated.Draft {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: merge request !%d in %s is still marked draft after clearing its title marker\",",
+      "new": "\tif false && updated.Draft {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: merge request !%d in %s is still marked draft after clearing its title marker\","
+    },
+    {
+      "name": "treat a project payload with no visibility field as a readable visibility (the public-repo gate then decides on an empty string instead of failing closed) — pinned by repo_visibility_missing_field_refuses",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}",
+      "new": "\tif false && p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}"
     }
   ]
 }

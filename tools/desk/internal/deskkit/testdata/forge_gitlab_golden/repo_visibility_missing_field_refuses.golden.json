@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    }
+  ],
+  "result": "",
+  "err": "project medici-finance/assay has no .visibility field in the API response",
+  "not_found": false
+}

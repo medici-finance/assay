@@ -61,13 +61,13 @@ type glServer struct {
 	// at one number is the case the typed reads exist for, and a shared fixture could not
 	// tell an issue-thread read from a merge-request one.
 	issueNotes []map[string]any
-	diffs        []map[string]any
-	commit       map[string]any
-	commits      []map[string]any
-	statuses     []map[string]any
-	jobs         []map[string]any
-	awards       []map[string]any
-	users        map[string]map[string]any
+	diffs      []map[string]any
+	commit     map[string]any
+	commits    []map[string]any
+	statuses   []map[string]any
+	jobs       []map[string]any
+	awards     []map[string]any
+	users      map[string]map[string]any
 	// userSearch is the users LIST payload (`GET /users?search=<term>`), keyed by the search
 	// term; a term with no entry answers an empty list (the instance found nobody).
 	userSearch map[string][]map[string]any
@@ -1751,6 +1751,137 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) {
 				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: true, Head: "abc123"})
 			},
+		},
+
+		// ---- forge-gitlab review-tick conformance walk: the OFFLINE half ----
+		//
+		// The review tick's seven verbs (board read, review dispatch, verdict, escalation
+		// filing, workpad edit, Evidence landing, ready-flip) each call a handful of the
+		// operations above. The success path of every one of them is already pinned; the
+		// cases below pin, per verb, at least one REFUSAL the verb is built on — the negative
+		// row the finish line demands offline, so that a table of successes cannot be read
+		// as proof of the boundary. Each names the verb row it serves.
+		{
+			// deskboard actions — the sweep's first read. A forbidden project must surface
+			// as a classified read failure (exit 6 with a repo-named diagnosis), NEVER as an
+			// empty queue: an empty list is indistinguishable from an idle repo.
+			name: "list_open_changes_forbidden", method: "ListOpenChanges",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/merge_requests": http.StatusForbidden} },
+			run:   func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+		},
+		{
+			// deskpost review / deskreply --workpad / deskevidence — the public-repo gate's
+			// visibility read. A project payload with no visibility field is could-not-check,
+			// never "private": the gate fails closed on the missing field rather than letting
+			// a write through on an inference.
+			name: "repo_visibility_missing_field_refuses", method: "RepoVisibility",
+			setup: func(s *glServer) { s.project = map[string]any{"default_branch": "main"} },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoVisibility(glRepo) },
+		},
+		{
+			// deskdispatch --kit review --pr / deskfile new — the label write. A label with no
+			// name is refused before any request exists; the empty request list is the
+			// assertion (the ensure step would otherwise create a nameless project label).
+			name: "apply_labels_refuses_unnamed_label", method: "ApplyLabels",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "   "}},
+				})
+			},
+		},
+		{
+			// deskfile new — the dedupe search that runs before the issue is filed. A
+			// forbidden search is a classified failure the verb refuses on ("refuse rather
+			// than mint a possible duplicate"); it must not read as "no match found".
+			name: "search_issues_forbidden", method: "SearchIssues",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/issues": http.StatusForbidden} },
+			run: func(f *GitLabForge) (any, error) {
+				return f.SearchIssues(glRepo, SearchIssuesInput{Query: "flip race relabel"})
+			},
+		},
+		{
+			// deskfile new — the write itself, under a role that cannot create issues on the
+			// project. The refusal carries the route and status so the operator can tell a
+			// permission gap from a missing project; no phantom issue number comes back.
+			name: "file_issue_forbidden", method: "FileIssue",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/issues": http.StatusForbidden} },
+			run: func(f *GitLabForge) (any, error) {
+				return f.FileIssue(glRepo, IssueInput{Title: "bug", Body: "detail"})
+			},
+		},
+		{
+			// deskreply --workpad — the candidate listing that finds the comment to edit. A
+			// forbidden thread read is could-not-check; the verb refuses rather than treating
+			// "no candidate" as licence to create a duplicate workpad.
+			name: "list_comments_forbidden", method: "ListComments",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/notes": http.StatusForbidden} },
+			run:   func(f *GitLabForge) (any, error) { return f.ListComments(glRepo, 7) },
+		},
+		{
+			// deskevidence — the up-front read of the Evidence target on the branch. An absent
+			// file is a classified NOT-FOUND (IsForgeNotFound true), which is what routes the
+			// verb to its create path; any other failure must not be mistaken for it.
+			name: "read_file_absent_not_found", method: "ReadFile",
+			setup: func(s *glServer) { s.repoFile = map[string]map[string]any{} },
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// deskevidence — the append-only shrink guard on the backend, the independent
+			// second layer behind the verb's own row-count check. A write that would reduce an
+			// append-only file's row count is refused after the idempotency read and before
+			// any write call: the request list ends at the read.
+			name: "write_file_shrink_refused", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"verify-outcomes.jsonl": {
+						"file_name": "verify-outcomes.jsonl", "file_path": "verify-outcomes.jsonl",
+						"content": glB64("{\"row\":1}\n{\"row\":2}\n{\"row\":3}\n"), "encoding": "base64",
+						"ref": "feat/x", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "verify-outcomes.jsonl", Branch: "feat/x", Content: []byte("{\"row\":1}\n"),
+					Message: "Evidence: verification row", AppendOnly: true,
+				})
+			},
+		},
+		{
+			// deskflip — the mutation, on a merge request whose title is nothing but the draft
+			// marker. Clearing it would leave the change untitled, so the flip is refused with
+			// no PUT: the request list carries only the read.
+			name: "mark_ready_for_review_refuses_marker_only_title", method: "MarkReadyForReview",
+			setup: func(s *glServer) { s.mr = glMR(map[string]any{"title": "Draft:"}) },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.MarkReadyForReview(gitlabNodeID(glRepo, 7))
+			},
+		},
+		{
+			// deskflip — the post-write check. A merge request that still reports draft after
+			// its marker was cleared is could-not-check, never a completed flip: the caller
+			// must not report the change ready on the strength of the PUT alone.
+			name: "mark_ready_for_review_still_draft_after_strip", method: "MarkReadyForReview",
+			setup: func(s *glServer) {
+				s.mr = glMR(nil)
+				s.updateMR = glMR(map[string]any{"draft": true, "title": "add the thing"})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.MarkReadyForReview(gitlabNodeID(glRepo, 7))
+			},
+		},
+		{
+			// deskflip — the required-checks read behind the empty-rollup branch. An empty
+			// branch name would address the project's default settings for no branch at all;
+			// it is refused before a request exists.
+			name: "required_status_checks_refuses_empty_branch", method: "RequiredStatusChecks",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "") },
 		},
 	}
 }

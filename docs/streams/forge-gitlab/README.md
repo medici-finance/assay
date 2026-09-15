@@ -91,7 +91,11 @@ fixture set in the backend's golden tests, so every mechanical fact in the table
 re-established by a later reader with no live project. `forge-gitlab/16` is the brief that
 runs both and is the only thing that may mark this finish line reached.
 
-**Proven on:** not yet — `forge-gitlab/16` is unstarted (2026-09-14).
+**Proven on:** not yet — `forge-gitlab/16` is dispatched. The **offline** half is recorded
+(2026-09-15, [pilot-report.md](pilot-report.md) §7: every verb's operations pinned by a golden,
+success and refusal); the **live** half — the walk itself, under per-role service-account
+credentials on a Community Edition project — is still owed and waits on the human decision the
+brief's gate names. Every live cell in §7 reads `could-not-check` until it runs.
 
 ## Sequencing note — why this stream is planned, not fanned out
 
@@ -310,14 +314,14 @@ not gating it):
 Every open issue on this repo that touches the GitLab review desk, its adopter path, or this
 stream, mapped to **exactly one** brief or explicitly out of scope with a reason. Standing rule
 1 in the sequencing note above says a new GitLab review-desk issue is added here before it is
-dispatched. Measured 2026-09-14 @ `2c67b34f`.
+dispatched. Measured 2026-09-14 @ `2c67b34f`; the 2026-09-15 field reports added 2026-09-15.
 
 ### On the open path
 
 | Issue | Routes to | Note |
 |---|---|---|
 | #1071 | the plan itself | The notification that asked for this plan; its exit is this document, and `forge-gitlab/16` is the finish line it asked to see named |
-| #1067 | no brief — **awaiting close**; the class is `forge-gitlab/13` | The instance was fixed by PR #1068, merged 2026-09-14 at 19:34Z, mid-authoring of this plan. The issue is still open and needs a close. `forge-gitlab/13` carries the CLASS the instance belongs to: four further whole-sweep returns in the same classifier, unguarded |
+| #1067 | no brief — **closed 2026-09-15**; the class is `forge-gitlab/13` | The instance was fixed by PR #1068, merged 2026-09-14 at 19:34Z, mid-authoring of this plan; the issue was closed 2026-09-15. `forge-gitlab/13` carries the CLASS the instance belongs to: four further whole-sweep returns in the same classifier, unguarded |
 | #1066 | `forge-gitlab/14` — **head of the open path** | Two named sites, both live on main; a third (the release verb) found during this pass and carried into 14 as a ruling, not a sweep |
 | #719 | `forge-gitlab/15` | The board-push credential subsection, and the removal of the pointer that sends the reader to the wrong section for the wrong credential |
 | #896 | `forge-gitlab/15` | Its scan-scope half is already in the GitLab runbook; its source-pin half is not, and is 15's third section |
@@ -325,8 +329,20 @@ dispatched. Measured 2026-09-14 @ `2c67b34f`.
 | #798 | `forge-gitlab/16` | Its verdict-write and escalation-filing halves are served on the current tree; its queue-label half is served in code and was recorded by the reporter as **unproven in production**, which is a walk row |
 | #651, #652 | `forge-gitlab/16` | The front-door docs landed for the other forge's runbook; what remains is the GitLab-side confirmation the walk produces |
 | #655, #667, #668, #671, #676, #677, #678, #642 | `forge-gitlab/16` close-out | All eight look delivered against the tree (see Track A's second tempting-but-wrong head for what was re-measured). They are routed to the walk because a code read cannot close a field report |
-| #1054, #1056 | no brief — **awaiting close** | Fixed by PR #1060 and PR #1058, both merged 2026-09-14; the issues are still open and need a close, not work |
-| #1091 | its 403 fix is a one-site defect, not a brief; the CLASS is `forge-gitlab/17` | Filed 2026-09-14 by a GitLab adopter cell on a Free project: the review-state read consults the Premium approval-configuration route first, gitlab.com Free answers 403 (not the 404 the tree degrades on), and the whole read fails closed — verdict verb aborts, board exits 6, flip refuses. The instance fix (treat 403 like 404 on that one route) is a sibling; `forge-gitlab/17` is the design that stops the flip depending on that route at all, by giving Free a server-enforced merge condition the desk drives |
+| #1054, #1056 | no brief — **closed 2026-09-15** | Fixed by PR #1060 and PR #1058, both merged 2026-09-14; both issues closed 2026-09-15 |
+| #1091 | its 403 fix is a one-site defect, not a brief (**closed 2026-09-15**); the CLASS is `forge-gitlab/17` | Filed 2026-09-14 by a GitLab adopter cell on a Free project: the review-state read consults the Premium approval-configuration route first, gitlab.com Free answers 403 (not the 404 the tree degrades on), and the whole read fails closed — verdict verb aborts, board exits 6, flip refuses. The instance fix (treat 403 like 404 on that one route) is a sibling; `forge-gitlab/17` is the design that stops the flip depending on that route at all, by giving Free a server-enforced merge condition the desk drives |
+| #1086, #1087, #1090 | no brief — **closed 2026-09-15** | Three 2026-09-14 field reports on the same-numbered-object class (`deskfile new` stamped the MR, `deskfile attach` could not target the issue) and the scaffold's CI guidance (`protected` missing from the push-token advice). Each fixed by a one-site PR and closed 2026-09-15; the typed-target refusal the fixes rest on is pinned offline by the `apply_labels_issue` / `apply_labels_refuses_unset_target` goldens |
+| #1106 | `forge-gitlab/16` — the verdict row; instance fix **dispatched** 2026-09-15 | `deskpost review` on GitLab misreports a bodyless 401 from the re-approve route as a rejected credential. The instance fix is dispatched (no PR yet); the walk's verdict row is what proves the verb's second approval at head is idempotent, not a 401 |
+| #1107 | no brief — fixed by PR #1108 (merged 2026-09-15); **awaiting close** | Runbook: the issue-loop and intake-loop service accounts need Developer (30), not Reporter (20), because both lanes open draft MRs. A runbook correction, not a tick verb |
+| #1109 | no brief — fixed by PR #1114 (merged 2026-09-15); **awaiting close** | `deskclose` gained a typed item selector so an issue and a merge request that share a number can be told apart. `deskclose` is not one of the seven tick verbs, so it is not a walk row |
+| #1110 | no brief — fix PR #1149 **open** | The scaffolded GitLab CI regen job carries no trust roster, so statusgen's Evidence-actor check is could-not-check on every board regen. A `statusgen init` scaffold defect on the board-push lane, not a review-tick verb |
+| #1111 | no brief — fix PR #1135 **open** | statusgen's dead-claim decay shells `gh pr list`, which cannot exist on a GitLab project, so claims never decay there. The board's claim-decay pass is D-2's second half from the 2026-09-02 pilot; not a tick verb |
+| #1112 | no brief — fixed by PR #1113 (merged 2026-09-15); **awaiting close**; residue is #1142 | `desktoken` rotated the GitLab PAT over the custody symlink. Fixed; the intermittent first-read 401 after rotation is carved out as #1142 |
+| #1122 | no brief — fix PR #1132 **open** | `deskboard dispatch` treats a channel-D statusgen-source pin as no pin. The source-pin lane is `forge-gitlab/15`'s runbook subject (done); the reader defect is a one-site fix on the dispatch verb, which is not the `deskboard actions` sweep the tick reads |
+| #1123 | no brief — fixed by PR #1130, **closed 2026-09-15** | `deskdisposition`'s sweep shelled `gh pr list`; it now reads open changes through the resolved forge. Not a tick verb |
+| #1124 | no brief — fixed by PR #1133, **closed 2026-09-15**; the walk's verdict + board rows replay it | A GitLab request-changes verdict posted a note the board did not read as CHANGES_REQUESTED. Fixed on the backend; pinned offline by the `post_review_request_changes` golden and the verdict-lane tests. The live verdict row and the board read that follows it are what prove the standing rejection is visible on a real project |
+| #1125 | `forge-gitlab/16` — the flip row; fixed by PR #1134 (merged 2026-09-15); **awaiting close** | `deskflip` required a GitHub status check named `pipeline` that never reports on GitLab. The fix publishes the head pipeline into the check rollup; pinned offline by the `checks_at_head` / `checks_at_head_no_pipeline` goldens. The live flip row is what proves it on a real project; the issue stays open until that row or a desk close records it |
+| #1142 | no brief — **dispatched** 2026-09-15 | `desktoken` should verify the rotated GitLab PAT with a live read before returning it. A mint-time defect that precedes the tick; the walk boots under a minted token, so a recurrence shows as a boot failure, not a verb row |
 
 ### Out of scope for the review-desk finish line
 
@@ -340,6 +356,7 @@ dispatched. Measured 2026-09-14 @ `2c67b34f`.
 | #786 | Hardening the fleet provisioning script's credential handling. A `forge-gitlab/04` follow-up on the provisioning path, not the review path; it is a real security item and should not be folded into a conformance walk |
 | #641 | A one-line umbrella ("Windows isn't POSIX") whose concrete instances are #667 and #642, both routed above. Nothing left to route separately |
 | #611 | A formatting nit on a test file. No relation to this stream beyond the file's name |
+| #1147 | The GitHub-side sibling of #1111: the GitHub dead-claim-decay reader keys fork PRs on a bare head ref and can decay a live claim; it asks for the same-project guard PR #1135 adds on the GitLab arm. A GitHub reader defect, so it is out of this stream's scope even though the fix is mirrored from the GitLab one |
 
 **Interlock with `forge-neutral`.** That stream's `10` (a round trip driven entirely by desk
 verbs) and `11` (install on a box with no forge CLI) are both `todo` and both sit beside
