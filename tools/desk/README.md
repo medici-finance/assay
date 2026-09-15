@@ -2537,11 +2537,34 @@ close lanes executable — and makes every other close impossible rather than me
 forbidden.
 
 ```bash
-deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
-deskclose review-request -R <owner/repo> <N>
+deskclose duplicate      -R <owner/repo> <item> --of <ref> --mined <summary> [--kind K] [--of-kind K]
+deskclose superseded     -R <owner/repo> <item> --by <ref> [--kind K] [--by-kind K] [--dispute <reason>]
+deskclose review-request -R <owner/repo> <item> [--kind K]
 deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>] [--max-wait <dur>]
 ```
+
+### Typed item references
+
+`<item>` and every `<ref>` take a number that may STATE which kind of object it names:
+
+| Form | Means |
+|---|---|
+| `N` · `#N` · `owner/repo#N` | kind unstated — the forge resolves it |
+| `!N` · `owner/repo!N` | a merge request / pull request |
+| the object's web URL | the kind the URL's own path states (`…/issues/N`, `…/pull/N`, `…/-/merge_requests/N`) |
+
+`#N` is **neutral, not "an issue"**: on a forge with ONE number sequence it is the ordinary
+way to write a pull-request reference, and it keeps that meaning here. Where a project
+numbers issues and merge requests **separately**, one number can name two different objects,
+and reading it would be a guess — so a bare number stays a could-not-check refusal there, and
+the kind is stated instead: `!N`, or the kind flag (`--kind` for `<item>`; `--of-kind` /
+`--by-kind` for that mode's target; `K` is `issue` or `mr`, with `pr` an alias of `mr`). A
+sigil and a kind flag that disagree are refused, never resolved in favour of one of them.
+
+The stated kind selects the endpoint for every read and write the lane makes — the item read,
+the comment, the proposal-thread read and the close. Without it the close addresses the issue
+sequence, so on a project carrying both kinds at one number it closes the object the caller
+never named.
 
 ### The superseded lane is two-role, keyed on the token
 

@@ -74,6 +74,16 @@ type stubRemote struct {
 
 	calls     [][]string
 	dispCalls [][]string
+
+	// The TYPED trail: which kind deskclose stated on each typed read and write, as
+	// "repo#N:kind". A close or a thread read routed at the wrong kind of object is not
+	// visible in the gh-shaped argv above — both kinds render the same number — so the kind
+	// itself is recorded, and the assertions read it.
+	untypedGets   []string
+	typedGets     []string
+	typedThreads  []string
+	typedComments []string
+	typedCloses   []string
 }
 
 func newStub(t *testing.T) *stubRemote {

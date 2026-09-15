@@ -233,6 +233,15 @@ every caller not yet converted.
 | 41 | `ReadMergeHold(repo, number)` | read a change's merge-hold marker thread | typed not-applicable (`MergeHoldNotApplicable`) — the twin control is server-side branch protection, already stronger | `GET /projects/:id/merge_requests/:iid/discussions`, paginated; finds the desk's own thread by the FIXED first line of its marker note. Absent is a real answer (`MergeHoldAbsent`), never an error | implemented |
 | 42 | `OpenMergeHold(repo, number)` | open the merge-hold marker thread on a new change | typed not-applicable (`ErrMergeHoldNotApplicable`) | `POST /projects/:id/merge_requests/:iid/discussions`; refuses (could-not-check) if the thread comes back not `resolvable` — a plain note would never block the merge button | implemented |
 | 43 | `SetMergeHold(repo, number, in)` | release (resolved, at head) or re-arm (unresolved, with reason) a merge-hold | typed not-applicable (`ErrMergeHoldNotApplicable`) | release: `POST …/discussions/:id/notes` (the `released`+`Head:` reply) then `PUT …/discussions/:id?resolved=true`; re-arm: the same PUT with `resolved=false` FIRST, then the `re-armed` reply note — the order in each direction is the one that fails safe (see the backend's own doc comment) | implemented |
+| 44 | `ListCommentsTyped(repo, number, kind)` | read the comment thread of ONE stated kind | `POST /graphql` with `issue(number:)` or `pullRequest(number:)` — the two noteables are separate GraphQL selections, so one query cannot serve both; the node selection is identical, and a noteable that resolves NULL is could-not-check, never an empty thread | `GET /projects/:id/issues/:iid/notes` OR `…/merge_requests/:iid/notes` — op 17 walks the merge-request endpoint only, so an issue's thread reads as another object's notes at the same number without the kind. Same system-note drop, same requested `created_at asc` order, same page bound; an ISSUE note carries no opaque id (the opaque id addresses merge-request notes) | implemented |
+| 45 | `CloseIssueTyped(repo, number, kind, reason)` | close the object of ONE stated kind | `PATCH /repos/{o}/{r}/issues/{n}` — one sequence, one state endpoint for both kinds, so the kind selects no different request and makes the intent explicit at the seam instead | `PUT /projects/:id/issues/:iid` OR `…/merge_requests/:iid` with `state_event:close`. Op 13 addresses the ISSUE endpoint only, so on a project carrying both kinds at one number it closes the OTHER object — a wrong write, not a failed one. A state reason is recorded as a note for an issue (as op 13 does) and REFUSED for a change, since no forge records one there | implemented |
+
+**Ops 44–45 (`ListCommentsTyped`, `CloseIssueTyped`) were added for `deskclose`'s typed item
+references** (`medici-finance/assay#1109`), under the same freeze rule and with their consuming
+call sites in the same change: `deskclose`'s two-role superseded lane reads the proposal thread
+through op 44 and every lane closes through op 45. They complete the typed family ops 38–39
+opened: a verb that can now READ and COMMENT on the kind it means could still, before this, only
+close the issue sequence and only read the change sequence's thread.
 
 **Ops 41–43 (the merge-hold op set) were added by brief `forge-gitlab/17`**, immediately following
 op 40 (`RepoHardeningRead`, `forge-gitlab/11`) under the same freeze rule, with three consuming
@@ -277,7 +286,7 @@ shared `gitlabMergeableState` mapping (which stays exactly as it was — Verify 
 |------|------|--------------|------------------|
 | `deskpr` | `tools/desk/cmd/deskpr/deskpr.go` | `gh pr create --draft`, `gh pr view/list` | `CreateDraftChange` (+ reads via `GetPullRequest`) |
 | `deskfile` | `tools/desk/cmd/deskfile/deskfile.go` | `gh issue create`, `gh issue comment`, `gh issue view` | `FileIssue`, `PostComment`, `CloseIssue` |
-| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `PostComment`, `CloseIssue` |
+| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `GetIssueTyped`, `PostCommentTyped`, `ListCommentsTyped`, `CloseIssueTyped` |
 | `deskreply` | `tools/desk/cmd/deskreply/deskreply.go` | `gh pr/issue comment` | `PostComment` |
 | `deskflip` | `tools/desk/cmd/deskflip/flip.go` | `gh pr ready` | `MarkReadyForReview` |
 

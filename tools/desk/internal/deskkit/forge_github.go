@@ -1071,39 +1071,81 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
   }
 }`
 
-func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+// ghIssueCommentsQuery is ghCommentsQuery's ISSUE half. GitHub's GraphQL schema keeps
+// `issue` and `pullRequest` as separate selections on a repository, so one query cannot
+// serve both; the node selection below is byte-identical to the pull-request one, so the
+// two reads produce the same Comment shape and nothing downstream has to know which ran.
+const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      comments(first: 100) {
+        nodes {
+          id
+          databaseId
+          body
+          isMinimized
+          createdAt
+          url
+          author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
+        }
+      }
+    }
+  }
+}`
+
+// ghCommentNodeWire is one comment node of either query's `comments` connection.
+type ghCommentNodeWire struct {
+	ID          string `json:"id"`
+	DatabaseID  int64  `json:"databaseId"`
+	Body        string `json:"body"`
+	IsMinimized bool   `json:"isMinimized"`
+	CreatedAt   string `json:"createdAt"`
+	URL         string `json:"url"`
+	Author      struct {
+		Login      string `json:"login"`
+		Typename   string `json:"__typename"`
+		DatabaseID int64  `json:"databaseId"`
+	} `json:"author"`
+}
+
+// ghCommentsConnWire is the `comments` connection hanging off one noteable.
+type ghCommentsConnWire struct {
+	Comments struct {
+		Nodes []ghCommentNodeWire `json:"nodes"`
+	} `json:"comments"`
+}
+
+// ghCommentsRespWire decodes either comments query. Exactly one of the two noteables is
+// selected by the query that ran, and a noteable that does not exist at the number comes
+// back NULL — which is why both are pointers: a nil here is "the forge resolved no object
+// of that kind", not "an object with no comments", and the two must not be conflated.
+type ghCommentsRespWire struct {
+	Data struct {
+		Repository struct {
+			PullRequest *ghCommentsConnWire `json:"pullRequest"`
+			Issue       *ghCommentsConnWire `json:"issue"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// listCommentsGQL runs the comments query for ONE kind and maps its nodes. It is the shared
+// body of ListComments (changes) and ListCommentsTyped (either kind); the request it emits
+// for a change is byte-identical to the one the golden corpus pins.
+func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	query := ghCommentsQuery
+	if kind == TargetIssue {
+		query = ghIssueCommentsQuery
+	}
 	in := map[string]any{
-		"query": ghCommentsQuery,
+		"query": query,
 		"variables": map[string]any{
 			"owner": repo.Owner, "name": repo.Name, "number": number,
 		},
 	}
-	var out struct {
-		Data struct {
-			Repository struct {
-				PullRequest struct {
-					Comments struct {
-						Nodes []struct {
-							ID          string `json:"id"`
-							DatabaseID  int64  `json:"databaseId"`
-							Body        string `json:"body"`
-							IsMinimized bool   `json:"isMinimized"`
-							CreatedAt   string `json:"createdAt"`
-							URL         string `json:"url"`
-							Author      struct {
-								Login      string `json:"login"`
-								Typename   string `json:"__typename"`
-								DatabaseID int64  `json:"databaseId"`
-							} `json:"author"`
-						} `json:"nodes"`
-					} `json:"comments"`
-				} `json:"pullRequest"`
-			} `json:"repository"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
+	var out ghCommentsRespWire
 	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
 		return nil, err
 	}
@@ -1117,7 +1159,19 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 		}
 		return nil, Unverifiable("comments GraphQL error: "+strings.Join(msgs, "; "), nil)
 	}
-	nodes := out.Data.Repository.PullRequest.Comments.Nodes
+	conn := out.Data.Repository.PullRequest
+	if kind == TargetIssue {
+		conn = out.Data.Repository.Issue
+	}
+	if conn == nil {
+		// The noteable resolved to null: there is no object of the stated kind at this
+		// number. Reporting that as an empty comment list is the unread-precondition
+		// failure — a caller asking "does a proposal stand?" would read it as "no".
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s carries no %s at number %d, so its comment thread could not be read",
+			repo.Slug(), kindNoun(kind), number), nil)
+	}
+	nodes := conn.Comments.Nodes
 	res := make([]Comment, 0, len(nodes))
 	for _, n := range nodes {
 		// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to "<slug>[bot]"
@@ -1140,6 +1194,25 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 		})
 	}
 	return res, nil
+}
+
+func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+	return g.listCommentsGQL(repo, number, TargetChange)
+}
+
+// ListCommentsTyped reads the thread of the object of the STATED kind. On GitHub the two
+// kinds share a number sequence but NOT a GraphQL selection, so the kind picks the query —
+// `issue(number:)` or `pullRequest(number:)` — and a number that names the other kind comes
+// back as a null noteable, which is reported as could-not-check rather than as an empty
+// thread. An unknown kind is refused rather than defaulted.
+func (g *GitHubForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: ListCommentsTyped: unknown target kind %q for %s#%d",
+			string(kind), repo.Slug(), number))
+	}
+	return g.listCommentsGQL(repo, number, kind)
 }
 
 // ghEditCommentMutation replaces an issue comment's body. The target is the comment's
@@ -1643,6 +1716,19 @@ func (g *GitHubForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 		body["state_reason"] = stateReason
 	}
 	return g.doJSON(http.MethodPatch, path, body, nil)
+}
+
+// CloseIssueTyped closes the object of the STATED kind. On GitHub issues and pull requests
+// share ONE number sequence and one state endpoint (`PATCH /issues/{n}` closes either), so
+// the kind selects no different request here — what it does is make the caller's intent
+// explicit at the seam, so the same call site works unchanged on a forge where the two kinds
+// are separate sequences. A state reason on a CHANGE is refused: GitHub records `state_reason`
+// on issues only, and accepting one on a pull request would drop it silently.
+func (g *GitHubForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error {
+	if err := requireNoReasonOnChange(repo, number, kind, stateReason); err != nil {
+		return err
+	}
+	return g.CloseIssue(repo, number, stateReason)
 }
 
 // EditChange replaces a change's OWN title/body (`PATCH /repos/{o}/{r}/pulls/{n}`) — the change

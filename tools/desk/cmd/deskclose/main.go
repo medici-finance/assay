@@ -51,9 +51,9 @@ import (
 const usage = `deskclose — close issues/PRs only as propagation of a human-authorized event.
 
 USAGE:
-  deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-  deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
-  deskclose review-request -R <owner/repo> <N>
+  deskclose duplicate      -R <owner/repo> <item> --of <ref> --mined <summary> [--kind K] [--of-kind K]
+  deskclose superseded     -R <owner/repo> <item> --by <ref> [--kind K] [--by-kind K] [--dispute <reason>]
+  deskclose review-request -R <owner/repo> <item> [--kind K]
   deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>]
                                                                  [--max-wait <dur>]
   deskclose --version
@@ -62,37 +62,22 @@ Every mode accepts --dry-run (validate + read the remote, write nothing) and
 --rulings <path> (where to read R-1 from; the SIGN-OFF URL in it is fetched and
 verified either way, so this flag cannot manufacture authority).
 
-duplicate      — REFUSED today. R-1 withdraws the duplicate lane from the desk: the
-                 two-role duplicate procedure governs (a strong-tier worker folds the
-                 loser's unique content into the FIRST-FILED survivor and marks the
-                 second; a REVIEWER closes it, and only after agreeing the content
-                 moved). The verb exists, validates its inputs — --mined is
-                 mandatory — and then exits 5 naming both roles. It unlocks only if
-                 R-1's sign-off EXPLICITLY supersedes the two-role ruling, which is what
-                 R-1's own conflict disclosure requires.
+TYPED ITEM REFERENCES. <item> and every <ref> take a number that may STATE which
+kind of object it names:
 
-superseded     — the item's substance is fully captured by --by <ref>. TWO-ROLE, keyed
-                 on the TOKEN in use (its roster binding), never on a flag:
-                   worker token   → PROPOSES: label ` + "`superseded?`" + ` + a marker comment
-                                    naming the target. Never closes; --dispute refused.
-                   reviewer token → CONFIRMS: needs a standing proposal by a different
-                                    actor naming the same target; the target PR must be
-                                    genuinely MERGED (closed-unmerged never satisfies);
-                                    posts SUPERSEDED-CONFIRMED + a back-reference on the
-                                    target, then closes not-planned.
-                                  → --dispute <reason>: posts SUPERSEDED-DISPUTED and
-                                    applies needs-decision, after which every close is
-                                    refused — the item is a human's from there.
-                 Any other token is refused; an unreadable one is could-not-check.
+  N        #N        owner/repo#N       kind unstated — the forge resolves it
+  !N       owner/repo!N                 a merge request / pull request
+  <web URL>                             the kind the URL's own path states
+                                        (…/issues/N, …/pull/N, …/-/merge_requests/N)
 
-review-request — extracts the PR ref from the issue body; absent or ambiguous is a
-                 refusal, never a guess. Verifies MERGED. Closes completed.
-
-manifest       — a batch, authorized once by a human, applied ONE ROW AT A TIME with
-                 a per-row audit line. Already-closed rows are idempotent no-ops. A
-                 hard error stops the run and prints the exact --resume-from to
-                 continue with; a rate-limit refusal WAITS and retries the SAME row.
-                 No row is ever skipped.
+The # sigil is neutral, not "an issue": on a forge with ONE number sequence (GitHub)
+it is the ordinary way to write a pull-request reference, and it keeps that meaning
+here. Where a project numbers issues and merge requests SEPARATELY (GitLab), a bare
+number can name two different objects, and reading it would be a guess — so it stays
+a could-not-check refusal, and the kind is stated instead: ! for a change, or the
+kind flag for either. --kind applies to <item>; --of-kind and --by-kind apply to the
+target of that mode. K is issue or mr (pr is an alias of mr). A sigil and a kind flag
+that disagree are refused, never resolved in favour of one of them.
 
 DISPOSITION RECORDS. A pull-request target must already carry a machine-readable
 disposition record (deskdisposition: the disposition:<verdict> label plus the
