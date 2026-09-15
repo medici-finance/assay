@@ -59,9 +59,29 @@ func stubRenderLogin(login, typ string) string {
 	return login
 }
 
-func (s *stubRemote) GetIssue(fr deskkit.ForgeRepo, n int) (*deskkit.Issue, error) {
-	key := fr.Slug() + "#" + strconv.Itoa(n)
-	s.calls = append(s.calls, []string{"api", "repos/" + fr.Slug() + "/issues/" + strconv.Itoa(n)})
+// stubKey resolves the fixture key for the object of one kind at a number.
+//
+// A fixture that models a project with SEPARATE number sequences (the GitLab shape)
+// registers its change under "repo!N" alongside the issue at "repo#N"; a fixture that models
+// ONE sequence (the GitHub shape) registers only "repo#N" and both kinds resolve to it. That
+// is what lets one stub serve both forges' numbering without modelling two APIs.
+func (s *stubRemote) stubKey(slug string, n int, kind deskkit.TargetKind) string {
+	if kind == deskkit.TargetChange {
+		if k := slug + "!" + strconv.Itoa(n); s.items[k] != "" {
+			return k
+		}
+	}
+	return slug + "#" + strconv.Itoa(n)
+}
+
+// stubCollides reports whether the fixture carries BOTH kinds at one number — the case the
+// untyped read cannot resolve.
+func (s *stubRemote) stubCollides(slug string, n int) bool {
+	return s.items[slug+"#"+strconv.Itoa(n)] != "" && s.items[slug+"!"+strconv.Itoa(n)] != ""
+}
+
+// stubIssueAt decodes one fixture object into the forge-neutral Issue.
+func (s *stubRemote) stubIssueAt(key string) (*deskkit.Issue, error) {
 	if s.failItem[key] {
 		return nil, errors.New("HTTP 502: bad gateway")
 	}
@@ -83,8 +103,66 @@ func (s *stubRemote) GetIssue(fr deskkit.ForgeRepo, n int) (*deskkit.Issue, erro
 	}, nil
 }
 
+// GetIssue is the UNTYPED read, and it reproduces the one behaviour that matters here: a
+// number that names two different objects has no correct answer, so it is a could-not-check
+// refusal worded as the GitLab backend words it — never one of the two picked.
+func (s *stubRemote) GetIssue(fr deskkit.ForgeRepo, n int) (*deskkit.Issue, error) {
+	slug := fr.Slug()
+	s.calls = append(s.calls, []string{"api", "repos/" + slug + "/issues/" + strconv.Itoa(n)})
+	s.untypedGets = append(s.untypedGets, fmt.Sprintf("%s#%d", slug, n))
+	if s.stubCollides(slug, n) {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s carries BOTH issue #%d and merge request !%d — GitLab numbers issues and "+
+				"merge requests in separate sequences, so a bare number cannot be resolved to one kind; "+
+				"use the typed operation for the kind you mean", slug, n, n), nil)
+	}
+	return s.stubIssueAt(slug + "#" + strconv.Itoa(n))
+}
+
+// GetIssueTyped records the STATED kind on the call trail and then answers from the same
+// fixture map, so a test can assert which kind deskclose asked for without the fixture having
+// to model two number sequences. A stated kind that contradicts the fixture's own kind is an
+// error, the way both real backends report it — a typed read is an assertion, not a hint.
+func (s *stubRemote) GetIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	s.typedGets = append(s.typedGets, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
+	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
+		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
+	}
+	key := s.stubKey(fr.Slug(), n, kind)
+	s.calls = append(s.calls, []string{"api", "repos/" + fr.Slug() + "/issues/" + strconv.Itoa(n)})
+	iss, err := s.stubIssueAt(key)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case iss.IsPullRequest && kind == deskkit.TargetIssue:
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is a pull request, not an issue", fr.Slug(), n), nil)
+	case !iss.IsPullRequest && kind == deskkit.TargetChange:
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is an issue, not a pull request", fr.Slug(), n), nil)
+	case kind != deskkit.TargetIssue && kind != deskkit.TargetChange:
+		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
+	}
+	return iss, nil
+}
+
+// ListCommentsTyped records the kind and serves the same thread fixture ListComments does.
+func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
+	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
+		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
+	}
+	s.typedThreads = append(s.typedThreads, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
+	return s.listCommentsAt(fr, n, s.stubKey(fr.Slug(), n, kind))
+}
+
 func (s *stubRemote) GetPullRequest(fr deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
-	key := fr.Slug() + "#" + strconv.Itoa(n)
+	// A change read is kind-implied: there is no ambiguity to resolve, so the change fixture
+	// wins wherever a project registers one under the separate-sequence key.
+	key := s.stubKey(fr.Slug(), n, deskkit.TargetChange)
+	if _, ok := s.pulls[key]; !ok {
+		key = fr.Slug() + "#" + strconv.Itoa(n)
+	}
 	s.calls = append(s.calls, []string{"api", "repos/" + fr.Slug() + "/pulls/" + strconv.Itoa(n)})
 	j, ok := s.pulls[key]
 	if !ok {
@@ -114,7 +192,13 @@ func commentItem(j string) (string, bool) {
 }
 
 func (s *stubRemote) ListComments(fr deskkit.ForgeRepo, n int) ([]deskkit.Comment, error) {
-	key := fr.Slug() + "#" + strconv.Itoa(n)
+	return s.listCommentsAt(fr, n, fr.Slug()+"#"+strconv.Itoa(n))
+}
+
+// listCommentsAt serves the thread registered under one fixture key. The key — not the
+// number — is what distinguishes an issue's thread from the thread of a change sharing its
+// number, which is the whole property the typed read exists to hold.
+func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]deskkit.Comment, error) {
 	s.calls = append(s.calls, []string{"api", "repos/" + fr.Slug() + "/issues/" + strconv.Itoa(n) + "/comments"})
 	if s.failThread[key] {
 		return nil, errors.New("HTTP 502: bad gateway")
@@ -168,7 +252,11 @@ func (s *stubRemote) ListComments(fr deskkit.ForgeRepo, n int) ([]deskkit.Commen
 // stubIsPR reports whether the fixture item is a pull request, so the recorded gh-shaped argv
 // uses the `pr`/`issue` verb the old code emitted (the confirm/propose assertions key on it).
 func (s *stubRemote) stubIsPR(fr deskkit.ForgeRepo, n int) bool {
-	j, ok := s.items[fr.Slug()+"#"+strconv.Itoa(n)]
+	return s.stubIsPRAt(fr.Slug() + "#" + strconv.Itoa(n))
+}
+
+func (s *stubRemote) stubIsPRAt(key string) bool {
+	j, ok := s.items[key]
 	if !ok {
 		return false
 	}
@@ -184,9 +272,43 @@ func (s *stubRemote) PostComment(fr deskkit.ForgeRepo, n int, body string) (*des
 	return &deskkit.CommentRef{URL: "https://github.com/" + fr.Slug() + "/issues/" + strconv.Itoa(n) + "#issuecomment-1"}, nil
 }
 
+// PostCommentTyped records the kind on the write trail and then emits the same gh-shaped argv
+// PostComment does, so the existing writes() assertions read unchanged.
+func (s *stubRemote) PostCommentTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
+	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
+		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
+	}
+	s.typedComments = append(s.typedComments, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
+	return s.PostComment(fr, n, body)
+}
+
+// CloseIssueTyped is the close deskclose actually calls. The stub asserts the stated kind
+// against the fixture's own kind, which is what makes a close routed at the wrong kind of
+// object a TEST FAILURE here rather than a silently wrong write on a real project.
+func (s *stubRemote) CloseIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind, reason string) error {
+	key := s.stubKey(fr.Slug(), n, kind)
+	want := deskkit.TargetIssue
+	if s.stubIsPRAt(key) {
+		want = deskkit.TargetChange
+	}
+	if kind != want {
+		return fmt.Errorf("close targeted kind %s on %s#%d, which is a %s", kind, fr.Slug(), n, want)
+	}
+	if kind == deskkit.TargetChange && strings.TrimSpace(reason) != "" {
+		return fmt.Errorf("close of the change %s!%d carried state reason %q, which no forge records",
+			fr.Slug(), n, reason)
+	}
+	s.typedCloses = append(s.typedCloses, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
+	return s.closeAt(fr, n, key, reason)
+}
+
 func (s *stubRemote) CloseIssue(fr deskkit.ForgeRepo, n int, reason string) error {
+	return s.closeAt(fr, n, fr.Slug()+"#"+strconv.Itoa(n), reason)
+}
+
+func (s *stubRemote) closeAt(fr deskkit.ForgeRepo, n int, key, reason string) error {
 	var argv []string
-	if s.stubIsPR(fr, n) {
+	if s.stubIsPRAt(key) {
 		argv = []string{"pr", "close", strconv.Itoa(n), "-R", fr.Slug()}
 	} else {
 		argv = []string{"issue", "close", strconv.Itoa(n), "-R", fr.Slug()}
@@ -196,7 +318,6 @@ func (s *stubRemote) CloseIssue(fr deskkit.ForgeRepo, n int, reason string) erro
 	}
 	s.calls = append(s.calls, argv)
 	// Reflect the close so a resumed run sees the item as already closed.
-	key := fr.Slug() + "#" + strconv.Itoa(n)
 	if v, ok := s.items[key]; ok {
 		s.items[key] = strings.Replace(v, `"state":"open"`, `"state":"closed"`, 1)
 	}
@@ -216,7 +337,7 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 	default:
 		return nil, errors.New("refusing to apply labels with no target kind")
 	}
-	if want := "issue"; s.stubIsPR(fr, n) {
+	if want := "issue"; s.stubIsPRAt(s.stubKey(fr.Slug(), n, change.Target)) {
 		want = "pr"
 		if kind != want {
 			return nil, fmt.Errorf("label target %s on %s#%d, which is a %s", kind, fr.Slug(), n, want)

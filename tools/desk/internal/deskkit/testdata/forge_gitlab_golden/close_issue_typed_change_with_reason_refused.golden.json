@@ -1,0 +1,5 @@
+{
+  "requests": [],
+  "err": "refused: CloseIssueTyped was asked to close the change medici-finance/assay!33 with state reason \"not_planned\", but no forge records a state reason on a change — close it with an empty reason and let the comment posted before the close carry the lane",
+  "not_found": false
+}

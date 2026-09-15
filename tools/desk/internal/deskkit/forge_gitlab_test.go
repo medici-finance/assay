@@ -56,6 +56,11 @@ type glServer struct {
 	versions     []map[string]any
 	approvals    map[string]any
 	notes        []map[string]any
+	// issueNotes is the ISSUE-side notes fixture. It is separate from `notes` (the
+	// merge-request side) on purpose: a project carrying both an issue and a merge request
+	// at one number is the case the typed reads exist for, and a shared fixture could not
+	// tell an issue-thread read from a merge-request one.
+	issueNotes []map[string]any
 	diffs        []map[string]any
 	commit       map[string]any
 	commits      []map[string]any
@@ -300,6 +305,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		enc(u)
+	case r.Method == http.MethodGet && lIssueNotes.MatchString(path):
+		enc(s.issueNotes)
 	case r.Method == http.MethodPost && lIssueNotes.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(map[string]any{"id": 901})
@@ -1098,6 +1105,79 @@ func glCases() []glCase {
 				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListComments(glRepo, 7) },
+		},
+		{
+			// The typed read of an ISSUE thread. The endpoint is the whole point: GitLab keeps
+			// issue notes and merge-request notes under separate sequences, so the untyped
+			// ListComments — which walks /merge_requests/:iid/notes — reads another object's
+			// thread at the same number. The golden pins that this one touches /issues/:iid/notes
+			// and nothing else. An issue note carries NO opaque id (the opaque id addresses
+			// merge-request notes, so handing one back would route a later edit at the wrong
+			// endpoint); its numeric id is still reported.
+			name: "list_comments_typed_issue", method: "ListCommentsTyped",
+			setup: func(s *glServer) {
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "note on the issue", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+					{"id": 951, "body": "changed the description", "system": true,
+						"created_at": "2026-08-30T12:01:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+				s.notes = []map[string]any{
+					{"id": 900, "body": "note on the MERGE REQUEST sharing the number", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommentsTyped(glRepo, 7, TargetIssue) },
+		},
+		{
+			// The typed read of a CHANGE thread is the same walk ListComments makes — the same
+			// endpoint, the same system-note drop, the same opaque id — so a caller that states
+			// the kind loses nothing by stating it.
+			name: "list_comments_typed_change", method: "ListCommentsTyped",
+			setup: func(s *glServer) {
+				s.notes = []map[string]any{
+					{"id": 900, "body": "note on the merge request", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "note on the ISSUE sharing the number", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommentsTyped(glRepo, 7, TargetChange) },
+		},
+		{
+			// The typed close of a CHANGE. CloseIssue reaches only /issues/:iid, so on a project
+			// carrying both kinds at one number it closes the OTHER object; the golden pins that
+			// this one issues exactly one PUT, to /merge_requests/:iid, and writes no note.
+			name: "close_issue_typed_change", method: "CloseIssueTyped",
+			setup: func(s *glServer) { s.updateMR = glMR(map[string]any{"iid": 33, "state": "closed"}) },
+			run:   func(f *GitLabForge) (any, error) { return nil, f.CloseIssueTyped(glRepo, 33, TargetChange, "") },
+		},
+		{
+			// The typed close of an ISSUE is CloseIssue's behaviour unchanged, state-reason note
+			// included — stating the kind narrows what is reachable, it does not alter what the
+			// reachable half does.
+			name: "close_issue_typed_issue", method: "CloseIssueTyped",
+			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "closed"}) },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.CloseIssueTyped(glRepo, 33, TargetIssue, "not_planned")
+			},
+		},
+		{
+			// A state reason on a CHANGE is REFUSED, not dropped: no forge records one on a
+			// change, and a silent drop would tell the caller a distinction it asked for had
+			// been recorded. Zero requests are emitted.
+			name: "close_issue_typed_change_with_reason_refused", method: "CloseIssueTyped",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.CloseIssueTyped(glRepo, 33, TargetChange, "not_planned")
+			},
 		},
 		{
 			name: "edit_comment", method: "EditComment",

@@ -2548,6 +2548,34 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 
+// CloseIssueTyped closes the object of the STATED kind.
+//
+// This is the mapping CloseIssue cannot make. GitLab numbers issues and merge requests in
+// separate sequences and closes them through different endpoints, so CloseIssue — which
+// addresses `/issues/:iid` — reaches only one of the two kinds. On a project that carries
+// both an issue and a merge request at one number, a caller meaning the merge request would
+// have closed the ISSUE: a wrong write, not a failed one. With the kind stated, the close
+// goes to that kind's endpoint and nothing else.
+//
+// The state reason keeps CloseIssue's treatment for an issue (recorded as a note, because
+// GitLab has no state-reason field) and is REFUSED for a change rather than dropped.
+func (g *GitLabForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error {
+	if err := requireNoReasonOnChange(repo, number, kind, stateReason); err != nil {
+		return err
+	}
+	if kind == TargetIssue {
+		return g.CloseIssue(repo, number, stateReason)
+	}
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), number)
+	_, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number),
+		&gitlab.UpdateMergeRequestOptions{StateEvent: gitlab.Ptr("close")})
+	return g.mapErr(http.MethodPut, path, uerr)
+}
+
 // EditChange replaces a merge request's OWN title/description
 // (`PUT /projects/:id/merge_requests/:iid`). An empty field is not sent, so a body-only edit
 // (deskpr edit's case) leaves the title — and therefore the `Draft:` prefix that IS GitLab's
@@ -2771,23 +2799,67 @@ func parseGitLabNoteID(id string) (ForgeRepo, int, int64, error) {
 // Comment.Minimized is false for every GitLab note, and that is EXACT rather than a default:
 // GitLab has no minimise/hide-comment feature, so on a GitLab instance no comment is hidden.
 func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+	return g.listNotes(repo, number, TargetChange)
+}
+
+// ListCommentsTyped reads the notes of the object of the STATED kind. GitLab keeps issue
+// notes and merge-request notes on DIFFERENT endpoints under different number sequences, so
+// the kind is what selects the endpoint: without it an issue's thread is read as the notes
+// of whichever merge request happens to share its number. An unknown kind is refused rather
+// than defaulted.
+func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: ListCommentsTyped: unknown target kind %q for %s#%d",
+			string(kind), repo.Slug(), number))
+	}
+	return g.listNotes(repo, number, kind)
+}
+
+// listNotes is the shared paginating body. The only thing the kind changes is WHICH notes
+// endpoint is walked; the system-note drop, the requested ordering, the page bound and the
+// mapping are one implementation for both kinds, so the two cannot drift.
+//
+// An ISSUE note's opaque id is deliberately left EMPTY, the same rule PostComment applies on
+// the write side: the opaque id addresses merge-request notes (EditComment parses it back
+// into an MR coordinate), so handing one back for an issue note would route a later edit at
+// the wrong endpoint. The numeric DatabaseID is still reported, so the note is identifiable.
+func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/projects/%s/merge_requests/%d/notes", g.projectPath(repo), number)
+	noteable := "merge_requests"
+	if kind == TargetIssue {
+		noteable = "issues"
+	}
+	path := fmt.Sprintf("/projects/%s/%s/%d/notes", g.projectPath(repo), noteable, number)
 	var out []Comment
 	for page := 1; page <= gitlabMaxNotePage; page++ {
-		chunk, resp, nerr := cl.Notes.ListMergeRequestNotes(repo.Slug(), int64(number),
-			&gitlab.ListMergeRequestNotesOptions{
-				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
-				// GitLab's default note order is newest-first; the interface promises
-				// oldest-first (GitHub's order), and the consuming newest-wins rule depends
-				// on it, so the order is REQUESTED rather than reversed after the fact —
-				// a local reversal would only reorder the page that was fetched.
-				OrderBy: gitlab.Ptr("created_at"),
-				Sort:    gitlab.Ptr("asc"),
-			})
+		// GitLab's default note order is newest-first; the interface promises oldest-first
+		// (GitHub's order), and the consuming newest-wins rule depends on it, so the order is
+		// REQUESTED rather than reversed after the fact — a local reversal would only reorder
+		// the page that was fetched.
+		lo := gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)}
+		var chunk []*gitlab.Note
+		var resp *gitlab.Response
+		var nerr error
+		if kind == TargetIssue {
+			chunk, resp, nerr = cl.Notes.ListIssueNotes(repo.Slug(), int64(number),
+				&gitlab.ListIssueNotesOptions{
+					ListOptions: lo,
+					OrderBy:     gitlab.Ptr("created_at"),
+					Sort:        gitlab.Ptr("asc"),
+				})
+		} else {
+			chunk, resp, nerr = cl.Notes.ListMergeRequestNotes(repo.Slug(), int64(number),
+				&gitlab.ListMergeRequestNotesOptions{
+					ListOptions: lo,
+					OrderBy:     gitlab.Ptr("created_at"),
+					Sort:        gitlab.Ptr("asc"),
+				})
+		}
 		if nerr != nil {
 			return nil, g.mapErr(http.MethodGet, path, nerr)
 		}
@@ -2795,14 +2867,17 @@ func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 			if n == nil || n.System {
 				continue
 			}
-			out = append(out, Comment{
-				ID:         gitlabNoteID(repo, number, n.ID),
+			c := Comment{
 				DatabaseID: n.ID,
 				Author:     gitlabAccount(n.Author.ID, n.Author.Username),
 				Body:       n.Body,
 				Minimized:  false,
 				CreatedAt:  gitlabTime(n.CreatedAt),
-			})
+			}
+			if kind == TargetChange {
+				c.ID = gitlabNoteID(repo, number, n.ID)
+			}
+			out = append(out, c)
 		}
 		if resp == nil || resp.NextPage == 0 {
 			break

@@ -996,6 +996,18 @@ type Forge interface {
 	ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
 	// ListComments returns the comments/notes on a change or issue, oldest first.
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
+	// ListCommentsTyped is ListComments for a caller that has STATED which kind of object
+	// `number` names (see TargetKind, GetIssueTyped). ListComments reads a CHANGE's thread
+	// on BOTH backends — GitHub's read is the `pullRequest` GraphQL connection and GitLab's
+	// is `/merge_requests/:iid/notes` — so an ISSUE's own thread is unreachable through it
+	// on either forge: on GitHub it comes back EMPTY (the `pullRequest` selection resolves
+	// to null at an issue's number) and on GitLab it comes back as the notes of whichever
+	// merge request shares the number. An empty thread reads as "nobody has commented",
+	// which is exactly how an unread precondition becomes a satisfied one. This op routes
+	// on the stated kind, so an issue's thread is read from the issue. Consumer:
+	// cmd/deskclose's two-role superseded lane (freeze rule: it lands with that call site).
+	// An unknown kind is refused rather than defaulted.
+	ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error)
 	// RepoVisibility returns the repo's visibility (private | public | internal | ...).
 	RepoVisibility(repo ForgeRepo) (string, error)
 	// ReadFile reads a file's content at a ref (GitHub Contents API ↔ GitLab Repository Files
@@ -1138,6 +1150,16 @@ type Forge interface {
 	FileIssue(repo ForgeRepo, in IssueInput) (*IssueRef, error)
 	// CloseIssue closes an issue with an optional state reason.
 	CloseIssue(repo ForgeRepo, number int, stateReason string) error
+	// CloseIssueTyped is CloseIssue for a caller that has STATED which kind of object
+	// `number` names (see TargetKind). CloseIssue addresses an ISSUE on GitLab
+	// (`PUT /issues/:iid`), so a merge request is unreachable through it — and on a project
+	// carrying both at one number the close lands on the OTHER object, which is worse than
+	// not closing at all. This op routes on the stated kind. A non-empty stateReason with
+	// TargetChange is REFUSED rather than dropped: neither forge records a state reason on a
+	// change, and silently discarding one would leave a caller believing a distinction it
+	// asked for had been recorded. Consumer: cmd/deskclose (freeze rule: it lands with that
+	// call site). An unknown kind is refused rather than defaulted.
+	CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error
 	// WriteFile writes a file's whole content at a path on a branch (GitHub Contents API ↔
 	// GitLab Repository Files API), as the minted identity the backend holds. It folds three
 	// properties into the one op (see WriteFileInput/WriteFileResult): an idempotency read

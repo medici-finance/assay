@@ -1,0 +1,23 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/7/notes",
+      "query": "order_by=created_at\u0026page=1\u0026per_page=100\u0026sort=asc"
+    }
+  ],
+  "result": [
+    {
+      "ID": "",
+      "DatabaseID": 950,
+      "Author": {
+        "Login": "worker-bot",
+        "ID": 42
+      },
+      "Body": "note on the issue",
+      "Minimized": false,
+      "CreatedAt": "2026-08-30T12:00:00Z",
+      "URL": ""
+    }
+  ]
+}
