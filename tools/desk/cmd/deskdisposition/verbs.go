@@ -23,13 +23,6 @@ type prView struct {
 	Comments []struct{ Body string } `json:"comments"`
 }
 
-// prListItem is the shape of `gh pr list --json number,title,labels`.
-type prListItem struct {
-	Number int                     `json:"number"`
-	Title  string                  `json:"title"`
-	Labels []struct{ Name string } `json:"labels"`
-}
-
 func labelNames(ls []struct{ Name string }) []string {
 	out := make([]string, 0, len(ls))
 	for _, l := range ls {
@@ -242,11 +235,33 @@ func cmdRead(args []string, out io.Writer) error {
 
 // ---------------------------------------------------------------- sweep
 
+// sweepOpenChanges is the data source `sweep` acts on: the repo's OPEN changes read
+// through the RESOLVED forge (ListOpenChanges), never `gh pr list`.
+//
+// THE DEFECT (#1123). `sweep` shelled `gh pr list -R <owner/name>` whatever forge served
+// the repo. On a GitLab project the slug is not a GitHub repository, so the GraphQL call
+// came back `Could not resolve to a Repository with the name '<owner/name>'` and the sweep
+// reported the whole queue as could-not-check (exit 6) — a GitLab adopter's orphan sweep
+// could never look at all. The forge is a property of the REPO, not of the tool, and
+// `ListOpenChanges` is the enumerated op that already answers this question on both
+// backends: GitHub's open pull requests, GitLab's open merge requests (the degraded shape,
+// whose number/title/label fields — the only three this sweep classifies on — are served
+// for real). Routing the read there is the same migration deskroster's two display READS
+// made: a read under the session's OWN minted token, so no token-custody question is moved
+// (`set`'s writes still shell to `gh` under the ambient identity, unchanged).
+func sweepOpenChanges(repo string) (*deskkit.OpenChanges, error) {
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return nil, ferr
+	}
+	return fg.ListOpenChanges(fr)
+}
+
 func cmdSweep(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("sweep", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	repo := fs.String("R", "", "owner/repo")
-	limit := fs.Int("limit", 100, "max open PRs to list")
+	limit := fs.Int("limit", 100, "max open changes to print (also clipped by the forge read's own page cap)")
 	eligibleOnly := fs.Bool("eligible-only", false, "print only PRs the orphan sweep may dispatch")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("sweep: " + err.Error())
@@ -255,35 +270,38 @@ func cmdSweep(args []string, out io.Writer) error {
 		return err
 	}
 
-	raw, err := gh("pr", "list", "-R", *repo, "--state", "open",
-		"--limit", fmt.Sprint(*limit), "--json", "number,title,labels")
-	if err != nil {
+	oc, err := sweepOpenChanges(*repo)
+	if err != nil || oc == nil {
 		// A sweep that could not look reports could-not-check for the WHOLE repo and
 		// exits 6. It must never be read as "this repo has no orphans" — the empty
 		// board is the #777 failure this three-state exists to prevent.
-		fmt.Fprintf(out, "could-not-check\t%s\tPR list read failed — this repo's queue is UNKNOWN, not empty\n", *repo)
-		return deskkit.Unverifiable("sweep: could-not-check for "+*repo, err)
-	}
-	var items []prListItem
-	if err := json.Unmarshal([]byte(raw), &items); err != nil {
-		fmt.Fprintf(out, "could-not-check\t%s\tPR list unparseable — this repo's queue is UNKNOWN, not empty\n", *repo)
+		fmt.Fprintf(out, "could-not-check\t%s\topen-change list read failed — this repo's queue is UNKNOWN, not empty\n", *repo)
+		if err == nil {
+			err = deskkit.Unverifiable("sweep: the forge returned no open-change result", nil)
+		}
 		return deskkit.Unverifiable("sweep: could-not-check for "+*repo, err)
 	}
 
-	// At the cap the page is possibly truncated. Say so: a sweep that silently
-	// truncates reports a short queue as the whole queue (the #80/#79 trap).
-	if len(items) >= *limit {
-		fmt.Fprintf(os.Stderr, "%s: sweep returned %d results at --limit %d — treat as POSSIBLY TRUNCATED "+
-			"and widen the limit rather than claiming this is the whole queue\n", *repo, len(items), *limit)
+	// At either cap the page is possibly truncated — the forge's own page ceiling
+	// (OpenChanges.TruncatedAtCap) or this verb's --limit. Say so: a sweep that
+	// silently truncates reports a short queue as the whole queue (the #80/#79 trap).
+	changes := oc.Changes
+	truncated, why := oc.TruncatedAtCap, fmt.Sprintf("the forge read's page cap (%d)", oc.Cap)
+	if *limit > 0 && len(changes) > *limit {
+		changes, truncated, why = changes[:*limit], true, fmt.Sprintf("--limit %d", *limit)
+	}
+	if truncated {
+		fmt.Fprintf(os.Stderr, "%s: sweep returned %d results at %s — treat as POSSIBLY TRUNCATED "+
+			"and widen the limit rather than claiming this is the whole queue\n", *repo, len(changes), why)
 	}
 
-	for _, it := range items {
-		r := deskkit.ReadDispositionIndex(labelNames(it.Labels), nil)
+	for _, ch := range changes {
+		r := deskkit.ReadDispositionIndex(ch.Labels, nil)
 		if *eligibleOnly && !r.DispatchEligible() {
 			continue
 		}
-		fmt.Fprintf(out, "%d\t%s\t%s\t%t\t%s\n", it.Number, r.State, r.Record.Verdict,
-			r.DispatchEligible(), deskkit.StripControl(it.Title))
+		fmt.Fprintf(out, "%d\t%s\t%s\t%t\t%s\n", ch.Number, r.State, r.Record.Verdict,
+			r.DispatchEligible(), deskkit.StripControl(ch.Title))
 	}
 	return nil
 }
