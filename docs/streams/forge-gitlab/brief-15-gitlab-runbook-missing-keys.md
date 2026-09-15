@@ -183,6 +183,24 @@ subsection must state a minimum role rather than only a scope. No new degradatio
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null). No live GitLab API calls.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | forge-binding key documented | >=1 | count=3, incl. value shape and location | 2026-09-15 | sonnet-5-verifier |
+| 2 | credential has its own subsection | >=4 | count=7, spread across a real subsection, not a single pointer | 2026-09-15 | sonnet-5-verifier |
+| 3 | no stale token-custody-points-at-section-2 pointer | exit 0 | exit 0, no line pairs "token custody" with the old section number | 2026-09-15 | sonnet-5-verifier |
+| 4 | scope literal lifted from source, not memory | non-empty + count>=1 | independently extracted S=write_repository from init.go's own refusal text; count=7 in the doc, exact match, no drift | 2026-09-15 | sonnet-5-verifier |
+| 5 | pin-reader behavior test | exit 0 PASS | exit 0, PASS | 2026-09-15 | sonnet-5-verifier |
+| 6 | source-pin lane cross-referenced not forked | >=1 | count=5, cross-references the shared doc's section rather than restating | 2026-09-15 | sonnet-5-verifier |
+| 7 | consumers routing | exit 0 | exit 0 | 2026-09-15 | sonnet-5-verifier |
+| 8 | pinned lint | exit 0 | exit 0, LINT: PASS | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- the credential-scope literal (row 4, the highest-consequence row: an over-grant would be a security risk, an under-grant an operational failure) was independently re-extracted from the source-of-truth generated refusal text and found character-for-character identical to what the runbook documents -- no drift in either direction, genuine match not coincidental.
+
+**VERIFY: PASS** -- all 8 rows pass, no could-not-check rows, no blocks.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

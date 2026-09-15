@@ -191,6 +191,23 @@ keeps its could-not-check posture until the ruling, exactly as it does today.
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null). No live network calls -- all tests run against httptest fixtures.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | build + full test suite | exit 0 | exit 0 both, 70+ packages ok, 0 FAIL | 2026-09-15 | sonnet-5-verifier |
+| 2 | trust-events fixtures return real payloads | exit 0 PASS, non-stub | exit 0, both MR and issue fixtures return real non-nil payloads with correct field population | 2026-09-15 | sonnet-5-verifier |
+| 3 | trust parity vs GitHub semantics | exit 0 PASS | exit 0, all 9 parity + 3 completeness cases pass | 2026-09-15 | sonnet-5-verifier |
+| 4 | commit author-login resolution | exit 0 PASS | exit 0, resolvable cases fill logins, unresolvable/ambiguous leave fields empty, memoisation confirmed | 2026-09-15 | sonnet-5-verifier |
+| 5 | transport-error vs empty-read distinction | exit 0 PASS | exit 0, all error classes correctly could-not-check, distinct from real-empty payloads | 2026-09-15 | sonnet-5-verifier |
+| 6 | no shell-out, no passthrough | exit 0 both | exit 0 both, frozen op surface confirmed | 2026-09-15 | sonnet-5-verifier |
+| 7 | refusal stub gone | count 0 | count 0 | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- enumerated every re-quarantine trigger at file:line (blessing-time computation by numeric authority id not login, body-edit detection via an exact system-note-body match rather than a generic updatedAt field, separate comment/activity GraphQL connections so system notes can never leak into content events); ranked the description-edit wording-match as highest fragility (a real but out-of-scope-for-this-brief dependency on GitLab's exact system-note string) and numeric-id pinning against login-recycling as directly tested; derived the GitLab implementation reproduces GitHub's semantics by construction (verified via real HTTP transport fixtures and a genuine cross-backend comparison using the SAME shared reducer against independently-built GitLab and GitHub payloads), not merely by returning non-empty data.
+
+**VERIFY: PASS** -- all 7 rows pass as specified.
 
 ## Review
 Gate: model (from frontmatter). This brief's deliverable IS a security-parity control — the trust

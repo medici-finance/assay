@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -216,6 +216,18 @@
       "file": "internal/deskkit/roletoken.go",
       "old": "\troleTokenMints++",
       "new": "\troleTokenMints += 0"
+    },
+    {
+      "name": "narrow the GitLab verdict-note reducer back to the correctness lane (a `Security-Review: fail` REQUEST_CHANGES reads as an ordinary comment, so the rejection is invisible to the board and the flip gate — #1124)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif s := VerdictNoteState(n.Body); s != \"\" {",
+      "new": "\t\tif s := CorrectnessNoteState(n.Body); s != \"\" {"
+    },
+    {
+      "name": "drop the ascending re-order from the GitLab review read (the slice comes back newest-first, so every \"the last verdict governs\" reduction lands on the OLDEST one — #1124)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tsortReviewsAscending(out)\n\treturn out, nil",
+      "new": "\treturn out, nil"
     }
   ],
   "_not_mutated": {
