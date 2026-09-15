@@ -1,2 +1,0 @@
-### Fixed
-- `cellctl up --cockpit orca` registers and selects the cell's git CHECKOUT with Orca (`CELL_REPO`) instead of the cell directory, which Orca refuses (`Not a valid git repository`); every `orca terminal create --worktree path:<cell dir>` used to 404 with `selector_not_found` and the operator was told to open the role windows by hand. The `--cwd`-only orca fallback keeps working (the selected path is declared before either branch).
