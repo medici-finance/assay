@@ -69,13 +69,21 @@ STEPS, in order. Each prints one line; the first red one stops the boot and NAME
   7 board-fetch       fetches origin/main read-only and summarises the board at
                       FETCH_HEAD. Read-only by construction: a write-mode board regen from
                       a session home strews generated files across the shared checkout.
+  8 worktree-current  proves THIS tree is the main step 7 read: HEAD contains FETCH_HEAD
+                      and the worktree's .assay-versions equals FETCH_HEAD's. A tree behind
+                      main used to boot green and silent, then read STALE:drift on its
+                      first board read while its loop refused every flip. Refuses (exit 6)
+                      naming the one-line self-heal, run in the worktree:
+                      ` + "`git merge refs/remotes/origin/main`" + ` — merge, never rebase.
+                      Read-only: it reports, it never merges for you (` + "`cellctl desk`" + `
+                      merges at boot; this proves it did).
 
 --dry-run prints the plan (every step, its command, and the derived role/repo) and stops
 before step 2 — nothing is pruned, locked, registered, minted or fetched.
 --quiet suppresses the per-step OK lines; failures and the summary always print.
 
 Exit: 0 boot complete · 3 disabled · 5 refused (caller precondition) · 6 unverifiable
-(a step ran and could not be proven green).`
+(a step ran and could not be proven green — including a worktree behind origin/main).`
 
 func main() {
 	// Explicit roster class: deskboot ACTS on the roster (it registers a role and
