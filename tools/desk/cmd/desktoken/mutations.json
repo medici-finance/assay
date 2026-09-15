@@ -74,6 +74,24 @@
       "new": "\tif v == \"\" {\n\t\treturn \"https://gitlab.example.invalid/api/v4\", true\n\t}\n\treturn v, v != \"\""
     },
     {
+      "name": "skip the post-rotation self-check (a rotated token the forge does not yet accept is returned as good, the first-read 401 comes back)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {",
+      "new": "\tstatus, serr := 200, error(nil)\n\tif serr != nil {"
+    },
+    {
+      "name": "accept any self-check status as verified (a 401 on the new token still prints the path as good)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif status != 200 {\n\t\treturn gitlabSelfCheckFailure(role, base, path, current, status)\n\t}",
+      "new": "\tif status != 200 && false {\n\t\treturn gitlabSelfCheckFailure(role, base, path, current, status)\n\t}"
+    },
+    {
+      "name": "treat a self-check the transport could not make as a pass (an unreachable forge returns the path as good)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {",
+      "new": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {\n\t\tstatus, serr = 200, nil\n\t}\n\tif serr != nil {"
+    },
+    {
       "name": "drop the group/other-WRITE refusal from the private-key mode rule (a 0660/0620 key becomes acceptable)",
       "file": "cmd/desktoken/desktoken.go",
       "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",

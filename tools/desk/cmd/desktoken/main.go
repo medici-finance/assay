@@ -97,9 +97,14 @@ GitLab (--forge gitlab) — rotate-on-mint token custody:
   Reads the role's current PAT from gitlab-<role>.token (0600) on the
   App-credential search path, calls the GitLab self-rotation endpoint (which
   returns a NEW token and atomically INVALIDATES the current one), write-verifies
-  the new value 0600 back to the same file, and prints the PATH only — never the
-  token value. At most one credential per role is ever valid; a captured token
-  dies at the next mint. The new token's expiry is set by the GROUP
+  the new value 0600 back to the same file, SELF-CHECKS it with ONE live
+  read-only GET /user (no retry, no sleep), and only then prints the PATH —
+  never the token value. A self-check the forge does not answer 200 exits 6
+  naming the endpoint, the status the NEW token got and whether the PREVIOUS
+  token was still accepted (propagation lag: re-run once) or rejected too
+  (lockout: a group owner re-issues the PAT); the persisted path is NOT
+  printed as good. At most one credential per role is ever valid; a captured
+  token dies at the next mint. The new token's expiry is set by the GROUP
   token-lifetime policy (7 days RECOMMENDED, configured on the group, not here) —
   the expiry backstop that retires an idle fleet's credential on its own.
   Concurrent mints for ONE role are SERIALISED by a per-role advisory lock on
