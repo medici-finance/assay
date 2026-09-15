@@ -53,10 +53,11 @@ evidence is the run log the human gate signs.
 
 ## The steps
 
-Minimum coverage is the seven steps below. (The bundle currently ships **nine** skills —
-`adopt`, `author-brief`, `dailies`, `intake-desk`, `market-intelligence`,
-`pr-review-desk`, `the-desk`, `verify-desk`, `worker-desk`; Step 3 iterates over all of
-them, and Steps 5/6 probe the specific skills whose matrix cell is not a bare `runs`.)
+Minimum coverage is the seven steps below. (The bundle currently ships **thirteen**
+skills — `adopt`, `ask-decision`, `author-brief`, `human-runsheet`, `install`,
+`intake-desk`, `pdfingest`, `pr-review-desk`, `pr-shepherd`, `the-desk`,
+`upgrade-assay`, `verify-desk`, `worker-desk`; Step 3 iterates over all of them, and
+Steps 5/6 probe the specific skills whose matrix cell is not a bare `runs`.)
 
 #### Step 1 — Fresh install per the adopt path
 
@@ -67,9 +68,9 @@ the Assay Codex bundle exactly as the adoption path in
 deviate from the documented commands; if a documented command fails, that is the finding.
 
 Expect: the documented install commands complete without error; `codex` reports the
-`assay` plugin present and the nine skills discoverable (a `skills`/plugin listing shows
-each of the nine names). A deviation from the runbook needed to make install succeed is
-a FAIL routed to harness-portability/06 (packaging/install path).
+`assay` plugin present and the thirteen skills discoverable (a `skills`/plugin listing
+shows each of the thirteen names). A deviation from the runbook needed to make install
+succeed is a FAIL routed to harness-portability/06 (packaging/install path).
 
 #### Step 2 — Resident rules present WITHOUT manual pasting
 
@@ -86,15 +87,16 @@ harness-portability/05 (resident-rules delivery).
 
 #### Step 3 — Invoke each skill by name → body loads
 
-Action: For **each** of the nine bundled skills, invoke it by its namespaced name
-(`assay:adopt`, `assay:author-brief`, `assay:dailies`, `assay:intake-desk`,
-`assay:market-intelligence`, `assay:pr-review-desk`, `assay:the-desk`,
-`assay:verify-desk`, `assay:worker-desk`) and confirm the full SKILL.md body loads (not
-merely the description). Paste one identifying line from each loaded body.
+Action: For **each** of the thirteen bundled skills, invoke it by its namespaced name
+(`assay:adopt`, `assay:ask-decision`, `assay:author-brief`, `assay:human-runsheet`,
+`assay:install`, `assay:intake-desk`, `assay:pdfingest`, `assay:pr-review-desk`,
+`assay:pr-shepherd`, `assay:the-desk`, `assay:upgrade-assay`, `assay:verify-desk`,
+`assay:worker-desk`) and confirm the full SKILL.md body loads (not merely the
+description). Paste one identifying line from each loaded body.
 
-Expect: all nine bodies load on by-name invocation (invoke-by-name is the availability
-floor, `references/codex.md` §`capability:invoke-skill`). Any skill whose body does not
-load is a FAIL routed to harness-portability/06 (packaging coverage).
+Expect: all thirteen bodies load on by-name invocation (invoke-by-name is the
+availability floor, `references/codex.md` §`capability:invoke-skill`). Any skill whose
+body does not load is a FAIL routed to harness-portability/06 (packaging coverage).
 
 #### Step 4 — Auto-trigger probe
 
@@ -124,7 +126,7 @@ Action:
       confirming a subagent-spawning tool (e.g. `spawn_agent`) is in the session's tool
       list — a positive-presence check, not an absence check.
   (ii) In a separate, real session (same config), exercise a dispatch-bearing skill
-      (`the-desk`, `worker-desk`, or a `dailies` fan-out) with a request that would fan
+      (`the-desk`, `worker-desk`, or a `pr-review-desk` fan-out) with a request that would fan
       out work, and capture the FULL transcript (`--json` event log + `-o` final
       message). Grep the transcript for evidence that the fan-out was gated by the
       desk methodology's own claim-before-dispatch ceremony (no sub-agent is spawned
@@ -206,7 +208,7 @@ Step 2: Resident rules present without manual pasting
   Issue (if FAIL): owner/repo#<n> (harness-portability/05)
 
 Step 3: Invoke each skill by name -> body loads
-  Action taken: invoked all nine assay:* skills by name
+  Action taken: invoked all thirteen assay:* skills by name
   Transcript excerpt:
     <paste one identifying line per loaded body>
   Result: PASS | FAIL | BLOCKED

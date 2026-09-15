@@ -1974,6 +1974,37 @@ the search path, so the failure read as a broken key rather than a wrong directo
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
 
+#### What a token lookup costs, and the two caches that make it nearly free
+
+A desk verb obtains an App installation token through one function —
+`deskkit.RoleTokenForOwner`, which shells out to `desktoken` — and a board read calls it once
+per repository per read. Two caches keep that from costing a process and an API round trip
+every time (#1036). Both are local, both are safe to delete, and deleting either costs one
+network call, never a wrong answer.
+
+| | What it holds | Where | Good for | Cleared by |
+|---|---|---|---|---|
+| **The memo** | the token for one `(role, account)` pair | in memory, one process | 45 min, or the process's life, whichever is shorter | the process exiting |
+| **The token cache** | the installation token | `<config home>/<role>-token-<install id>` (0600) | 50 min | `desktoken <role> --fresh` |
+| **The owner sidecar** | which App and which account the cache file belongs to | `<token cache>.owner` (0600) | as long as its token | `--fresh`, with the token |
+| **The install-id cache** | the resolved installation id for one `(App, account)` | `<config home>/<App>-install-<account>` (0600) | 24 h | `--fresh`, or a 404 from the exchange |
+
+The memo is bounded at **45 minutes deliberately**: `desktoken` reuses its own token cache
+for 50, and GitHub's installation tokens live about 60, so the in-memory layer always expires
+first and can never hand back a token the minter would have replaced.
+
+`desktoken` consults the **owner sidecar and the install-id cache BEFORE it resolves an
+installation id**, which is what makes a warm cache hit cost no network at all. Every fast
+path is a positive match on BOTH the App name and the account; absence, ambiguity (two
+candidates), a file that is not 0600, or an account name outside `[A-Za-z0-9._-]` all fall
+through to the full resolution — read the key, sign a JWT, `GET /app/installations`.
+`<PREFIX>_INSTALL_ID` remains the authoritative short-circuit and is unaffected, and
+`--fresh` bypasses every cache above.
+
+If a cached installation id ever goes stale (the App was uninstalled and reinstalled), the
+token exchange returns 404, `desktoken` removes that cache entry and says so — the next run
+re-resolves.
+
 #### Role→App binding — running fewer Apps than roles
 
 `desktoken` otherwise keys every credential lookup on the **role** name: role `reviewer` reads
@@ -2506,11 +2537,34 @@ close lanes executable — and makes every other close impossible rather than me
 forbidden.
 
 ```bash
-deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
-deskclose review-request -R <owner/repo> <N>
+deskclose duplicate      -R <owner/repo> <item> --of <ref> --mined <summary> [--kind K] [--of-kind K]
+deskclose superseded     -R <owner/repo> <item> --by <ref> [--kind K] [--by-kind K] [--dispute <reason>]
+deskclose review-request -R <owner/repo> <item> [--kind K]
 deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>] [--max-wait <dur>]
 ```
+
+### Typed item references
+
+`<item>` and every `<ref>` take a number that may STATE which kind of object it names:
+
+| Form | Means |
+|---|---|
+| `N` · `#N` · `owner/repo#N` | kind unstated — the forge resolves it |
+| `!N` · `owner/repo!N` | a merge request / pull request |
+| the object's web URL | the kind the URL's own path states (`…/issues/N`, `…/pull/N`, `…/-/merge_requests/N`) |
+
+`#N` is **neutral, not "an issue"**: on a forge with ONE number sequence it is the ordinary
+way to write a pull-request reference, and it keeps that meaning here. Where a project
+numbers issues and merge requests **separately**, one number can name two different objects,
+and reading it would be a guess — so a bare number stays a could-not-check refusal there, and
+the kind is stated instead: `!N`, or the kind flag (`--kind` for `<item>`; `--of-kind` /
+`--by-kind` for that mode's target; `K` is `issue` or `mr`, with `pr` an alias of `mr`). A
+sigil and a kind flag that disagree are refused, never resolved in favour of one of them.
+
+The stated kind selects the endpoint for every read and write the lane makes — the item read,
+the comment, the proposal-thread read and the close. Without it the close addresses the issue
+sequence, so on a project carrying both kinds at one number it closes the object the caller
+never named.
 
 ### The superseded lane is two-role, keyed on the token
 

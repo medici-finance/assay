@@ -53,7 +53,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "SKILLSLINT: FAIL — %d issue(s) across %d skill file(s)\n", len(issues), checked)
 		exit = 1
 	} else {
-		fmt.Printf("SKILLSLINT: PASS — %d skill file(s) under %s, all frontmatter valid (name==dir, description present) and no bare unforgeable/tamper-evident claims\n", checked, *root)
+		fmt.Printf("SKILLSLINT: PASS — %d skill file(s) under %s, all frontmatter loads as a YAML mapping (name==dir, description a non-empty string) and no bare unforgeable/tamper-evident claims\n", checked, *root)
 	}
 
 	// Invisible-character / Trojan-Source lint + context-budget NOTICE over the

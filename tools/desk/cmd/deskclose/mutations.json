@@ -34,8 +34,8 @@
     {
       "name": "the dispute posts its reason but never applies needs-decision (the item stays closeable)",
       "file": "cmd/deskclose/superseded.go",
-      "old": "\tif err := addLabel(c.repo, n, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {",
-      "new": "\tif err := addLabel(c.repo, n, deskkit.LabelSpec{Name: \"not-applied\"}); err != nil {"
+      "old": "\tif err := addLabel(c.repo, n, it, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {",
+      "new": "\tif err := addLabel(c.repo, n, it, deskkit.LabelSpec{Name: \"not-applied\"}); err != nil {"
     },
     {
       "name": "the proposal posts its comment but never applies superseded? (invisible to the queue and the sweep)",
@@ -72,6 +72,30 @@
       "file": "cmd/deskclose/github.go",
       "old": "\tif !merged {",
       "new": "\tif false && !merged {"
+    },
+    {
+      "name": "the close is routed by NUMBER again (a change is closed as the issue sharing its number)",
+      "file": "cmd/deskclose/github.go",
+      "old": "\tif err := fg.CloseIssueTyped(fr, n, kind, reason); err != nil {",
+      "new": "\tif err := fg.CloseIssue(fr, n, reason); err != nil {"
+    },
+    {
+      "name": "the proposal thread is read UNTYPED again (an issue reads another object's notes)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tcomments, err := fg.ListCommentsTyped(fr, n, kind)",
+      "new": "\tcomments, err := fg.ListComments(fr, n)"
+    },
+    {
+      "name": "a stated kind no longer selects the read (the typed form resolves nothing)",
+      "file": "cmd/deskclose/github.go",
+      "old": "\tif kind != \"\" {",
+      "new": "\tif false && kind != \"\" {"
+    },
+    {
+      "name": "a sigil and a kind flag that disagree are resolved in favour of the flag",
+      "file": "cmd/deskclose/verbs.go",
+      "old": "\tkind, kerr := deskkit.ResolveStatedKind(\"the item number\", ref, flagKind)",
+      "new": "\tkind, kerr := flagKind, error(nil)"
     }
   ]
 }

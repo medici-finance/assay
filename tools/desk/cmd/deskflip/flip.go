@@ -247,33 +247,59 @@ func flip(o flipOpts) error {
 	rollupAtHead := checksAtHeadOnce(fg, fr, head)
 
 	// --- mergeable ---------------------------------------------------------------
-	switch strings.ToUpper(strings.TrimSpace(pr.Mergeable)) {
-	case "MERGEABLE":
-	case "CONFLICTING":
-		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: PR #%d is CONFLICTING — a conflicting PR is not flippable, and its resolution "+
-				"touches the PR's own files, which is authored work that invalidates the approval and "+
-				"requires a re-review.", condMergeable, o.pr))
-	default:
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"condition %s: PR #%d reports mergeable=%q — the forge has not computed it yet. Unknown is not "+
-				"mergeable; re-run once it settles.", condMergeable, o.pr, pr.Mergeable), nil)
+	rawMergeStatus := ""
+	if pr.change != nil {
+		rawMergeStatus = pr.change.GitLabMergeStatus
 	}
-	o.say("%s OK", condMergeable)
+	if err := checkMergeableCondition(o, o.pr, pr.Mergeable, rawMergeStatus); err != nil {
+		return err
+	}
 
 	// --- reviewer-approved -------------------------------------------------------
-	reviews, err := readReviews(o, fg, fr)
-	if err != nil {
-		return err
-	}
 	// One memoized reader serves BOTH calls to checkReviewerApproved — this one and the
 	// post-TOCTOU re-check at the same head — so the exemption's rollup read happens at most
-	// once per flip, and both calls decide on the same set of runs.
+	// once per flip, and both calls decide on the same set of runs. Built unconditionally: it
+	// costs nothing until a check-runs read actually happens inside it.
 	runsAtHead := checkRunsAtHeadReader(o, rollupAtHead, head)
-	if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
-		return err
+
+	// A forge that implements the merge-hold op set (the forge-gitlab merge-hold brief)
+	// answers this read with the marker thread's own state; one that does not (GitHub, whose
+	// twin control is server-side branch protection) answers the typed not-applicable, and
+	// the ORIGINAL note/approval-based correctness lane below is the whole gate, exactly as
+	// before this brief. The two lanes are never both consulted for the same forge, and this
+	// read never touches the project approval-configuration route (`/projects/:id/approvals`)
+	// that 403s on gitlab.com Free (#1091) — that route belongs to the note/approval lane's
+	// OWN read (ReviewsAtHead), deferred below until it is known this forge needs it.
+	hold, holdErr := fg.ReadMergeHold(fr, o.pr)
+	if holdErr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: PR #%d's merge-hold could not be read: %v", condReviewerApproved, o.pr, holdErr), holdErr)
 	}
-	o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
+
+	var reviews []reviewInfo
+	if hold.State == deskkit.MergeHoldNotApplicable {
+		reviews, err = readReviews(o, fg, fr)
+		if err != nil {
+			return err
+		}
+		if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
+			return err
+		}
+		o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
+	} else {
+		if err := checkMergeHoldApproved(hold, fg, fr, reviewerLogin, o.pr, head); err != nil {
+			return err
+		}
+		o.say("%s OK: merge-hold resolved by %s at %s", condReviewerApproved, reviewerLogin, short(head))
+		// The security lane below still needs the review/note content (Security-Review
+		// markers); that lane keeps its OWN gate and whatever pre-existing exposure it has to
+		// the forge's review-read route (task 3: "the security lane keeps its own gate") —
+		// unrelated to, and unchanged by, this brief's reviewer-approved condition.
+		reviews, err = readReviews(o, fg, fr)
+		if err != nil {
+			return err
+		}
+	}
 
 	// --- checks-green ------------------------------------------------------------
 	// Reduce to the LATEST run per check NAME first — branch protection's own rule — so a
@@ -404,8 +430,19 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
-	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr, runsAtHead); err != nil {
-		return err
+	if hold.State == deskkit.MergeHoldNotApplicable {
+		if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr, runsAtHead); err != nil {
+			return err
+		}
+	} else {
+		hold2, herr := fg.ReadMergeHold(fr, o.pr)
+		if herr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: PR #%d's merge-hold could not be re-read: %v", condReviewerApproved, o.pr, herr), herr)
+		}
+		if err := checkMergeHoldApproved(hold2, fg, fr, reviewerLogin, o.pr, head); err != nil {
+			return err
+		}
 	}
 	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
 		return err
@@ -726,6 +763,98 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 			"condition %s: %s has posted no APPROVED/CHANGES_REQUESTED correctness verdict on PR #%d. A "+
 				"security verdict alone does not satisfy the correctness gate.",
 			condReviewerApproved, reviewerLogin, pr))
+	}
+}
+
+// checkMergeableCondition evaluates condition `mergeable` against the forge's tri-state
+// verdict PLUS, on the UNKNOWN path, the raw GitLab status carried on
+// PullRequest.GitLabMergeStatus (empty on GitHub and on any read that predates it).
+//
+// The forge-gitlab merge-hold brief's task 4b: two named GitLab policy holds this flip's OWN
+// progress is about to release are NOT refused here — `discussions_not_resolved`, which
+// condition reviewer-approved (evaluated immediately after this one, in cmdFlip) independently
+// re-derives from the merge-hold's own state, and `draft_status`, which this flip's own
+// ready-mutation clears once every condition below has held. Refusing on either would make
+// every GitLab draft this desk ever opens permanently unflippable, since EVERY change starts in
+// exactly this state (#1091). The leniency grants the flip nothing by itself: reviewer-approved
+// runs next and refuses independently should the hold not actually be resolved by the reviewer
+// at head, so it is sound WITHOUT needing to run after that condition — either both conditions
+// hold, or the flip refuses at whichever one does not, unaffected by what mergeable said here.
+// gitlabMergeableState's shared mapping stays untouched (Verify row 7); this leniency lives
+// only here, in the one condition it is sound for. Every OTHER raw value —
+// checking/unchecked/empty/anything else — still refuses, exactly as gitlabMergeableState
+// documents.
+func checkMergeableCondition(o flipOpts, pr int, mergeable, rawGitLabStatus string) error {
+	switch strings.ToUpper(strings.TrimSpace(mergeable)) {
+	case "MERGEABLE":
+	case "CONFLICTING":
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d is CONFLICTING — a conflicting PR is not flippable, and its resolution "+
+				"touches the PR's own files, which is authored work that invalidates the approval and "+
+				"requires a re-review.", condMergeable, pr))
+	default:
+		raw := strings.ToLower(strings.TrimSpace(rawGitLabStatus))
+		if raw != "draft_status" && raw != "discussions_not_resolved" {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: PR #%d reports mergeable=%q — the forge has not computed it yet. Unknown is not "+
+					"mergeable; re-run once it settles.", condMergeable, pr, mergeable), nil)
+		}
+		o.say("%s: forge reports mergeable=%q (%s) — non-blocking here; condition %s evaluates the real gate",
+			condMergeable, mergeable, raw, condReviewerApproved)
+	}
+	o.say("%s OK", condMergeable)
+	return nil
+}
+
+// checkMergeHoldApproved is condition reviewer-approved's gate on a forge that implements the
+// merge-hold op set (the forge-gitlab merge-hold brief, task 4a) — GitLab today. It reads the
+// marker thread's OWN resolved/resolved-by/head state, a signal independent of the verdict
+// note lane checkReviewerApproved parses: a thread resolved by hand, by a non-reviewer, or at
+// a head the PR has since moved past never satisfies it, however a verdict note reads. It
+// consults no approval route of any kind — only the merge-hold read/write ops.
+//
+// A hold resolved at a STALE head is RE-ARMED here, as part of the refusal, so the
+// server-side gate (`only_allow_merge_if_all_discussions_are_resolved`) is back up before the
+// next tick reads it — the same "leave the server-side layer correct even on a refusal"
+// property deskpost review's own stale-head handling keeps (task 3).
+func checkMergeHoldApproved(hold *deskkit.MergeHold, fg deskkit.Forge, fr deskkit.ForgeRepo, reviewerLogin string, pr int, head string) error {
+	switch hold.State {
+	case deskkit.MergeHoldAbsent:
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d carries no merge-hold marker thread — the server-side merge gate has "+
+				"nothing to release. `deskpr create` opens one when the change is created; if this change "+
+				"predates that, open one by hand or re-create the change.",
+			condReviewerApproved, pr))
+	case deskkit.MergeHoldUnresolved:
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d's merge-hold marker thread is still unresolved — no reviewer has approved "+
+				"at the current head %s.", condReviewerApproved, pr, short(head)))
+	case deskkit.MergeHoldResolved:
+		if !deskkit.SameActor(hold.ResolvedBy, reviewerLogin) {
+			return deskkit.Refused(fmt.Sprintf(
+				"condition %s: PR #%d's merge-hold marker thread was resolved by %s, not the reviewer %s — "+
+					"a hand-resolved thread is not a reviewer verdict.",
+				condReviewerApproved, pr, hold.ResolvedBy, reviewerLogin))
+		}
+		if hold.Head != head {
+			rerr := fg.SetMergeHold(fr, pr, deskkit.MergeHoldUpdate{
+				Reason: fmt.Sprintf("new head %s", head),
+			})
+			msg := fmt.Sprintf(
+				"condition %s: PR #%d's merge-hold marker thread was resolved at %s, but the current head is "+
+					"%s — the code advanced past the reviewed commit. Re-armed the marker thread so the "+
+					"server-side gate is back up; re-review at %s.",
+				condReviewerApproved, pr, short(hold.Head), short(head), short(head))
+			if rerr != nil {
+				msg += fmt.Sprintf(" (re-arm also failed: %v — the server-side gate may still read resolved)", rerr)
+			}
+			return deskkit.Refused(msg)
+		}
+		return nil
+	default:
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: PR #%d's merge-hold marker thread reports an unrecognised state %q",
+			condReviewerApproved, pr, hold.State), nil)
 	}
 }
 
@@ -1158,6 +1287,7 @@ func ensureLabelSwap(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, pr prIn
 		return nil // already swapped
 	}
 	change := deskkit.LabelChange{
+		Target: deskkit.TargetChange,
 		Add: []deskkit.LabelSpec{{
 			Name:        labelAfterFlip,
 			Color:       queueLabelColor,

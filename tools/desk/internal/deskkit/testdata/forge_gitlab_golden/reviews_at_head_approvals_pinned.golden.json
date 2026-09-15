@@ -20,10 +20,21 @@
     {
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/notes",
-      "query": "page=1\u0026per_page=100"
+      "query": "order_by=created_at\u0026page=1\u0026per_page=100\u0026sort=desc"
     }
   ],
   "result": [
+    {
+      "ID": 3,
+      "Author": {
+        "Login": "human",
+        "ID": 7
+      },
+      "State": "COMMENTED",
+      "CommitID": "",
+      "Body": "stale comment from before this head",
+      "SubmittedAt": "2026-08-30T09:00:00Z"
+    },
     {
       "ID": 42,
       "Author": {
@@ -45,17 +56,6 @@
       "CommitID": "abc123",
       "Body": "Verdict: APPROVE",
       "SubmittedAt": "2026-08-30T11:00:01Z"
-    },
-    {
-      "ID": 3,
-      "Author": {
-        "Login": "human",
-        "ID": 7
-      },
-      "State": "COMMENTED",
-      "CommitID": "",
-      "Body": "stale comment from before this head",
-      "SubmittedAt": "2026-08-30T09:00:00Z"
     }
   ]
 }

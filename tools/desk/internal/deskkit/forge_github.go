@@ -421,6 +421,35 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	}, nil
 }
 
+// GetIssueTyped is GetIssue with the caller's stated kind VALIDATED against what the number
+// is. GitHub numbers issues and pull requests in ONE sequence, so there is nothing to route
+// on — the one read answers both — but a caller that said "issue" and is handed a pull
+// request (or the reverse) would go on to act on the wrong kind of object under the right
+// number, so the mismatch is a could-not-check error naming both, never a silent hand-back.
+// A 404 is returned as-is (IsForgeNotFound holds). An unknown kind is refused.
+func (g *GitHubForge) GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: GetIssueTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+	}
+	iss, err := g.GetIssue(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if iss.IsPullRequest && kind == TargetIssue {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)",
+			repo.Slug(), number), nil)
+	}
+	if !iss.IsPullRequest && kind == TargetChange {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is an issue, not a pull request — state the kind you mean (--kind issue)",
+			repo.Slug(), number), nil)
+	}
+	return iss, nil
+}
+
 // OpenChangeForBranch resolves the single OPEN pull request whose HEAD branch is `branch`
 // (`GET /repos/{o}/{r}/pulls?head={owner}:{branch}&state=open`). The head filter is spelled
 // `owner:branch` — GitHub's own `user:ref` form — so it matches only same-repo branches, which
@@ -1042,39 +1071,81 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
   }
 }`
 
-func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+// ghIssueCommentsQuery is ghCommentsQuery's ISSUE half. GitHub's GraphQL schema keeps
+// `issue` and `pullRequest` as separate selections on a repository, so one query cannot
+// serve both; the node selection below is byte-identical to the pull-request one, so the
+// two reads produce the same Comment shape and nothing downstream has to know which ran.
+const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      comments(first: 100) {
+        nodes {
+          id
+          databaseId
+          body
+          isMinimized
+          createdAt
+          url
+          author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
+        }
+      }
+    }
+  }
+}`
+
+// ghCommentNodeWire is one comment node of either query's `comments` connection.
+type ghCommentNodeWire struct {
+	ID          string `json:"id"`
+	DatabaseID  int64  `json:"databaseId"`
+	Body        string `json:"body"`
+	IsMinimized bool   `json:"isMinimized"`
+	CreatedAt   string `json:"createdAt"`
+	URL         string `json:"url"`
+	Author      struct {
+		Login      string `json:"login"`
+		Typename   string `json:"__typename"`
+		DatabaseID int64  `json:"databaseId"`
+	} `json:"author"`
+}
+
+// ghCommentsConnWire is the `comments` connection hanging off one noteable.
+type ghCommentsConnWire struct {
+	Comments struct {
+		Nodes []ghCommentNodeWire `json:"nodes"`
+	} `json:"comments"`
+}
+
+// ghCommentsRespWire decodes either comments query. Exactly one of the two noteables is
+// selected by the query that ran, and a noteable that does not exist at the number comes
+// back NULL — which is why both are pointers: a nil here is "the forge resolved no object
+// of that kind", not "an object with no comments", and the two must not be conflated.
+type ghCommentsRespWire struct {
+	Data struct {
+		Repository struct {
+			PullRequest *ghCommentsConnWire `json:"pullRequest"`
+			Issue       *ghCommentsConnWire `json:"issue"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// listCommentsGQL runs the comments query for ONE kind and maps its nodes. It is the shared
+// body of ListComments (changes) and ListCommentsTyped (either kind); the request it emits
+// for a change is byte-identical to the one the golden corpus pins.
+func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	query := ghCommentsQuery
+	if kind == TargetIssue {
+		query = ghIssueCommentsQuery
+	}
 	in := map[string]any{
-		"query": ghCommentsQuery,
+		"query": query,
 		"variables": map[string]any{
 			"owner": repo.Owner, "name": repo.Name, "number": number,
 		},
 	}
-	var out struct {
-		Data struct {
-			Repository struct {
-				PullRequest struct {
-					Comments struct {
-						Nodes []struct {
-							ID          string `json:"id"`
-							DatabaseID  int64  `json:"databaseId"`
-							Body        string `json:"body"`
-							IsMinimized bool   `json:"isMinimized"`
-							CreatedAt   string `json:"createdAt"`
-							URL         string `json:"url"`
-							Author      struct {
-								Login      string `json:"login"`
-								Typename   string `json:"__typename"`
-								DatabaseID int64  `json:"databaseId"`
-							} `json:"author"`
-						} `json:"nodes"`
-					} `json:"comments"`
-				} `json:"pullRequest"`
-			} `json:"repository"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
+	var out ghCommentsRespWire
 	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
 		return nil, err
 	}
@@ -1088,7 +1159,19 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 		}
 		return nil, Unverifiable("comments GraphQL error: "+strings.Join(msgs, "; "), nil)
 	}
-	nodes := out.Data.Repository.PullRequest.Comments.Nodes
+	conn := out.Data.Repository.PullRequest
+	if kind == TargetIssue {
+		conn = out.Data.Repository.Issue
+	}
+	if conn == nil {
+		// The noteable resolved to null: there is no object of the stated kind at this
+		// number. Reporting that as an empty comment list is the unread-precondition
+		// failure — a caller asking "does a proposal stand?" would read it as "no".
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s carries no %s at number %d, so its comment thread could not be read",
+			repo.Slug(), kindNoun(kind), number), nil)
+	}
+	nodes := conn.Comments.Nodes
 	res := make([]Comment, 0, len(nodes))
 	for _, n := range nodes {
 		// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to "<slug>[bot]"
@@ -1111,6 +1194,25 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 		})
 	}
 	return res, nil
+}
+
+func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+	return g.listCommentsGQL(repo, number, TargetChange)
+}
+
+// ListCommentsTyped reads the thread of the object of the STATED kind. On GitHub the two
+// kinds share a number sequence but NOT a GraphQL selection, so the kind picks the query —
+// `issue(number:)` or `pullRequest(number:)` — and a number that names the other kind comes
+// back as a null noteable, which is reported as could-not-check rather than as an empty
+// thread. An unknown kind is refused rather than defaulted.
+func (g *GitHubForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: ListCommentsTyped: unknown target kind %q for %s#%d",
+			string(kind), repo.Slug(), number))
+	}
+	return g.listCommentsGQL(repo, number, kind)
 }
 
 // ghEditCommentMutation replaces an issue comment's body. The target is the comment's
@@ -1169,7 +1271,16 @@ func sortedKeys(set map[string]bool) []string {
 // Every step degrades in the direction the operation is idempotent in: a create that comes
 // back 422 (already exists) is the SUCCESS case for an ensure, and a removal that comes back
 // 404 (already absent) is the success case for a removal. Anything else propagates.
+//
+// change.Target is required but does not change the requests here: GitHub numbers issues and
+// pull requests in ONE sequence and labels both through `/issues/{n}/labels`, so an issue and
+// a change map to the same calls. The unset refusal still stands on this backend so a caller
+// that forgot the target is caught by the forge most contributors run, not only on GitLab
+// where the two kinds are separate sequences.
 func (g *GitHubForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
+	if err := change.requireTarget(); err != nil {
+		return nil, err
+	}
 	out := &LabelOutcome{}
 	adding := map[string]bool{}
 	for _, l := range change.Add {
@@ -1540,6 +1651,20 @@ func (g *GitHubForge) PostComment(repo ForgeRepo, number int, body string) (*Com
 	return &CommentRef{ID: w.NodeID, DatabaseID: w.ID, URL: w.HTMLURL}, nil
 }
 
+// PostCommentTyped is PostComment on GitHub: issues and pull requests share ONE comments
+// endpoint (`/issues/{n}/comments` serves both), so the stated kind selects nothing here.
+// It is not re-validated against the object either — the caller's preceding GetIssueTyped
+// is where a kind mismatch is caught, and a second read per comment would double the
+// footprint of every attach for no new information. An unknown kind is still refused.
+func (g *GitHubForge) PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error) {
+	switch kind {
+	case TargetIssue, TargetChange:
+	default:
+		return nil, Refused(fmt.Sprintf("refused: PostCommentTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
+	}
+	return g.PostComment(repo, number, body)
+}
+
 func (g *GitHubForge) PostReview(repo ForgeRepo, number int, in ReviewInput) error {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", repo.Owner, repo.Name, number)
 	body := map[string]any{"commit_id": in.HeadSHA, "event": in.Event, "body": in.Body}
@@ -1591,6 +1716,19 @@ func (g *GitHubForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 		body["state_reason"] = stateReason
 	}
 	return g.doJSON(http.MethodPatch, path, body, nil)
+}
+
+// CloseIssueTyped closes the object of the STATED kind. On GitHub issues and pull requests
+// share ONE number sequence and one state endpoint (`PATCH /issues/{n}` closes either), so
+// the kind selects no different request here — what it does is make the caller's intent
+// explicit at the seam, so the same call site works unchanged on a forge where the two kinds
+// are separate sequences. A state reason on a CHANGE is refused: GitHub records `state_reason`
+// on issues only, and accepting one on a pull request would drop it silently.
+func (g *GitHubForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error {
+	if err := requireNoReasonOnChange(repo, number, kind, stateReason); err != nil {
+		return err
+	}
+	return g.CloseIssue(repo, number, stateReason)
 }
 
 // EditChange replaces a change's OWN title/body (`PATCH /repos/{o}/{r}/pulls/{n}`) — the change
@@ -1656,6 +1794,100 @@ func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// --- Repo-hardening reads (op 40) ---
+
+// hardeningGithubPaths maps every kind but `rulesets` (a two-hop, handled separately) to its
+// ONE fixed endpoint literal. There is exactly one literal per kind — no caller-supplied
+// segment — so the map itself is the proof this is not a passthrough in a different shape.
+var hardeningGithubPaths = map[HardeningReadKind]string{
+	HardeningReadRepo:                       "/repos/%s/%s",
+	HardeningReadActionsWorkflowPermissions: "/repos/%s/%s/actions/permissions/workflow",
+	HardeningReadActionsForkPRApproval:      "/repos/%s/%s/actions/permissions/fork-pr-contributor-approval",
+	HardeningReadActionsPrivateForkPR:       "/repos/%s/%s/actions/permissions/fork-pr-workflows-private-repos",
+	HardeningReadVulnerabilityReporting:     "/repos/%s/%s/private-vulnerability-reporting",
+}
+
+// RepoHardeningRead implements op 40 on GitHub: kind is validated against the closed
+// vocabulary before any request exists, so an unknown kind emits ZERO requests. Every kind
+// but `rulesets` is one fixed GET; `rulesets` performs the list→detail walk and returns the
+// ARRAY of detail documents (hardeningRulesets).
+func (g *GitHubForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
+	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
+		return nil, err
+	}
+	if kind == HardeningReadRulesets {
+		return g.hardeningRulesets(repo)
+	}
+	tmpl, ok := hardeningGithubPaths[kind]
+	if !ok {
+		// Unreachable: ValidateHardeningReadKind above already refused anything not in
+		// hardeningReadKinds, and every entry of that slice is handled here or above. Kept as
+		// could-not-check, never a panic — a resolver that cannot name a mapping fails closed.
+		return nil, Unverifiable(fmt.Sprintf(
+			"RepoHardeningRead: kind %q passed validation but has no GitHub path mapping", kind), nil)
+	}
+	return g.hardeningGET(fmt.Sprintf(tmpl, repo.Owner, repo.Name))
+}
+
+// hardeningGET performs one GET and returns the raw response body unparsed — op 40 hands the
+// document back as-is so the CALLER'S OWN field selector (repohardenguard's checklist, never
+// this package) decides what inside it matters.
+func (g *GitHubForge) hardeningGET(path string) (json.RawMessage, error) {
+	var raw json.RawMessage
+	if err := g.doJSON(http.MethodGet, path, nil, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// hardeningRulesets performs the ONE two-hop kind: GET the ruleset list (which deliberately
+// omits `rules`/`bypass_actors`), then GET each entry's own detail by id, and returns the
+// ARRAY of detail documents. The hop lives here, once, rather than being repeated by every
+// caller that wants a named ruleset's field — repohardenguard's `[name=X].field` selector
+// resolves inside the returned array.
+func (g *GitHubForge) hardeningRulesets(repo ForgeRepo) (json.RawMessage, error) {
+	listPath := fmt.Sprintf("/repos/%s/%s/rulesets", repo.Owner, repo.Name)
+	var list []struct {
+		ID int64 `json:"id"`
+	}
+	if err := g.doJSON(http.MethodGet, listPath, nil, &list); err != nil {
+		return nil, err
+	}
+	details := make([]json.RawMessage, 0, len(list))
+	for _, rs := range list {
+		detailPath := fmt.Sprintf("/repos/%s/%s/rulesets/%d", repo.Owner, repo.Name, rs.ID)
+		var d json.RawMessage
+		if err := g.doJSON(http.MethodGet, detailPath, nil, &d); err != nil {
+			return nil, err
+		}
+		details = append(details, d)
+	}
+	return json.Marshal(details)
+}
+
+// --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
+//
+// GitHub's server-side twin of this control is branch protection's required reviewer-App
+// review, already stronger than a discussion-thread hold — so every op here is a typed
+// not-applicable, and none issues a request.
+
+// ReadMergeHold returns MergeHoldNotApplicable — GitHub's gate is branch protection, not a
+// discussion thread.
+func (g *GitHubForge) ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, error) {
+	return &MergeHold{State: MergeHoldNotApplicable}, nil
+}
+
+// OpenMergeHold returns ErrMergeHoldNotApplicable — there is no hold to open on GitHub.
+func (g *GitHubForge) OpenMergeHold(repo ForgeRepo, number int) (string, error) {
+	return "", ErrMergeHoldNotApplicable
+}
+
+// SetMergeHold returns ErrMergeHoldNotApplicable — there is no hold to release or re-arm on
+// GitHub.
+func (g *GitHubForge) SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdate) error {
+	return ErrMergeHoldNotApplicable
 }
 
 // --- File content (read / write on a branch) ---

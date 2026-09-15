@@ -31,14 +31,14 @@ ticked without a case behind it.
 |---|--------|--------------------|------------------------------|---------------------------|-------------|
 | 1 | `GetPullRequest(repo, number)` | read change (supports flip + checks) | `deskpost` `getPR` (`GET /repos/{o}/{r}/pulls/{n}`) | `GET /projects/:id/merge_requests/:iid`; `changes_count` → `ChangedFiles` (a truncated `N+` reports `N+1`, so it can only fail closed) | implemented |
 | 2 | `GetIssue(repo, number)` | resolve number kind | `deskpost` `getIssue` / `deskclose` `fetchItem` (`GET /issues/{n}`) | `GET /projects/:id/issues/:iid` AND `…/merge_requests/:iid` — separate IID sequences make a bare number ambiguous, so both are probed and a both-resolve is refused | implemented |
-| 3 | `ReviewsAtHead(repo, number)` | read reviews at head | `deskpost` `listReviews` (`GET /pulls/{n}/reviews`, paginated) | MR approvals + notes; the head-pin comes from `reset_approvals_on_push` (approvals) and the diff-version timestamp (notes), and is left unset where neither establishes it | implemented |
+| 3 | `ReviewsAtHead(repo, number)` | read reviews at head | `deskpost` `listReviews` (`GET /pulls/{n}/reviews`, paginated, chronological) | MR approvals + notes. The head-pin comes from `reset_approvals_on_push` (approvals) and the diff-version timestamp (notes), and is left unset where neither establishes it. A note's review STATE is its verdict line reduced by `VerdictNoteState` — **both** lanes, since two of the three verdicts `deskpost` submits are REQUEST_CHANGES: `Verdict: request-changes` AND `Security-Review: fail` are CHANGES_REQUESTED, `Verdict: approve` is APPROVED, and `Security-Review: pass` stays COMMENTED (it is submitted as COMMENT so a security all-clear cannot erase a standing correctness rejection). The notes walk is pinned newest-first so the page cap drops the OLDEST, and the result is returned in **ascending submitted order**, approvals interleaved — the order the interface promises and every last-wins reduction depends on (#1124) | implemented |
 | 4 | `ListChangedFiles(repo, number)` | read change files (risk gate) | `deskpost` `listFiles` (`GET /pulls/{n}/files`, paginated, rename-aware) | `GET /merge_requests/:iid/diffs` (paginated; `changes` is the deprecated single-shot form) | implemented |
 | 5 | `ChecksAtHead(repo, sha)` | read checks at head | `deskpost` `combinedStatusAt` + `checkRunsAt` (both rollups, paginated) | commit `status` → combined state; `/statuses` → statuses; last pipeline's JOBS → check-runs. External status checks are MR-scoped and stay for the Ultimate lane | implemented |
 | 6 | `IssueReactions(repo, number)` | read reactions/awards | `deskpost` `IssueReactions` / `deskkit.HTTPRepoInfoFetcher` (squirrel-girl, single page) | award emoji, with names mapped to GitHub's reaction vocabulary and the human/bot discriminator resolved from the users API (never defaulted) | implemented |
 | 7 | `RepoVisibility(repo)` | repo visibility gate | `deskpost` `RepoVisibility` / `deskkit.HTTPRepoInfoFetcher` (`GET /repos/{o}/{r}`) | `GET /projects/:id` `.visibility` (`internal` passes through) | implemented |
 | 8 | `CreateDraftChange(repo, in)` | create draft change | `deskpr` `gh pr create --draft` → REST `POST /pulls` `draft:true` | `Draft:` MR (`POST /merge_requests`), refused if it does not come back marked draft | implemented |
 | 9 | `PostComment(repo, number, body)` | comment | `deskpost` `postComment` (`POST /issues/{n}/comments`) | MR/issue note, routed by the same kind resolution as op 2 | implemented |
-| 10 | `PostReview(repo, number, in)` | approve/review | `deskpost` `postReview` (`POST /pulls/{n}/reviews`, head-pinned) | note first, then `POST /approve` with `sha` (server-validated); REQUEST_CHANGES = note + unapprove | implemented |
+| 10 | `PostReview(repo, number, in)` | approve/review | `deskpost` `postReview` (`POST /pulls/{n}/reviews`, head-pinned) | note first, then `POST /approve` with `sha` (server-validated); REQUEST_CHANGES = note + unapprove. The NOTE is the verdict object on both events — GitLab has no native request-changes object, and its unapprove only revokes a grant, so the standing rejection is the reviewer's newest verdict note, which op 3 must read back as CHANGES_REQUESTED (#1124) | implemented |
 | 11 | `MarkReadyForReview(nodeID)` | flip draft | `deskpost` `markReadyForReview` (GraphQL mutation) | clear the `Draft:` prefix via `PUT`; the node id is the backend-minted `gitlab:<owner>/<name>!<iid>` | implemented |
 | 12 | `FileIssue(repo, in)` | file issue | `deskfile` `gh issue create` → REST `POST /issues` | `POST /projects/:id/issues` | implemented |
 | 13 | `CloseIssue(repo, number, reason)` | close issue | `deskclose`/`deskfile` `gh issue close` → REST `PATCH /issues/{n}` `state:closed` | `PUT /issues/:iid` `state_event:close`; the reason has no GitLab field and is recorded as a note | implemented |
@@ -176,6 +176,31 @@ exists. The golden `delete_ref_refuses_namespace_escape` pins that a ref aimed a
 | # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
 |---|--------|--------------------|-------------|----------------|-------------|
 | 37 | `RefExists(repo, ref)` | ref-existence read (model-capability-floor stamp age-out) | `GET /repos/{o}/{r}/git/ref/{ref}` (SINGULAR single-reference read, distinct from the plural `git/refs/` `DeleteRef` targets) — the logic extracted from `deskpost`'s hand-rolled `refExists`; a 404 is the ANSWER "absent" (false, nil), every other non-2xx is could-not-check | `GET /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**) — `DeleteRef`'s read twin, reaching exactly as far: GitLab CE exposes NO general ref-existence endpoint, so only the `heads/<branch>` namespace maps and every other namespace is a could-not-check REFUSAL naming the gap. The dispatch claim ref (`refs/heads/dispatch/<key>`) is INSIDE that namespace, so the live read round-trips here. A 404 → absent (false, nil); a 403 → could-not-check, never a guessed release | implemented |
+| 38 | `GetIssueTyped(repo, number, kind)` | typed read of ONE stated kind (issue ↔ change) at a number | `GET /repos/{o}/{r}/issues/{n}` — the same single read as op 2, with the stated kind VALIDATED against the `pull_request` discriminator: a mismatch is could-not-check naming both kinds, never the other object handed back | `GET /projects/:id/issues/:iid` OR `…/merge_requests/:iid` — exactly the ONE endpoint the stated kind names; the other sequence's object at the same number is irrelevant once the kind is stated (the case op 2 refuses). A 404 from that one probe is the answer for THAT kind | implemented |
+| 39 | `PostCommentTyped(repo, number, kind, body)` | comment on the object of ONE stated kind | `POST /repos/{o}/{r}/issues/{n}/comments` — issues and PRs share the endpoint, so the kind selects nothing (it is not re-validated: op 38 precedes it in every consumer) | `POST /projects/:id/issues/:iid/notes` OR `…/merge_requests/:iid/notes`, routed by the caller's kind alone with NO resolving read — op 9 routes through op 2 and so inherits its both-kinds refusal | implemented |
+| 40 | `RepoHardeningRead(repo, kind)` | repo-hardening read (guard-read custody, `repohardenguard`) | ONE closed kind enum, validated by `ValidateHardeningReadKind` before any request exists — never a path, so this cannot become the passthrough it replaces. `repo` → `GET /repos/{o}/{r}` (`.visibility`, `.security_and_analysis.*`, admin-visible only); `rulesets` → `GET …/rulesets` then `GET …/rulesets/{id}` per entry, returning the ARRAY of detail documents (`bypass_actors` present only for a caller with write access to the ruleset); `actions-workflow-permissions` → `GET …/actions/permissions/workflow`; `actions-fork-pr-approval` → `GET …/actions/permissions/fork-pr-contributor-approval`; `actions-private-fork-pr` → `GET …/actions/permissions/fork-pr-workflows-private-repos`; `vulnerability-reporting` → `GET …/private-vulnerability-reporting` (all four admin-gated) | Every kind is a NAMED could-not-check REFUSAL (`could-not-check: gitlab serves no hardening read of kind %q — forge-gitlab/12`), emitting zero requests — deferred to forge-gitlab/12's GitLab kinds (protected branches, protected tags, push rules, approvals) | github-only |
+
+**Op 40 (`RepoHardeningRead`) closes forge-gitlab/08's row 3 to zero (forge-gitlab/11).** It is the
+guard-read-custody brief's enumerated replacement for `repohardenguard`'s former arbitrary
+`gh api <endpoint>` reads, and lands WITH its consumer in the same change (spec §6 freeze rule):
+`cmd/repohardenguard`'s `Checker` now resolves a `Forge` via `deskkit.ForgeFor(fr, "auditor")` — a
+FIXED role, never `$DESK_LOOP` (the guard runs outside any desk window) — and the checklist's
+`Read` cell grammar moves from `gh api <endpoint>` to `read <kind>` / `read file <path>` (the
+latter routes through the existing `ReadFile`, op 22; a `gh api` cell is now a parse-time REFUSAL
+naming the vocabulary). The `auditor` role is a new, READ-ONLY `desktoken` identity (#857's ruling:
+option 1) with no write permission of any kind on GitHub and a `read_api`-scoped Reporter PAT on
+GitLab — the forge-side grant is the single point of failure the brief's Verify row 8 proves by
+attempting a settings write with the guard's own token and observing the forge itself refuse it
+with 403, the LOWER layer catching the fault with the enumerated-surface UPPER layer bypassed
+entirely. The three-state rule (#127) is unchanged in meaning; only the SOURCE of the status moves
+from regexing `gh`'s stderr to `*deskkit.ForgeAPIError.Status` / `IsForgeNotFound`.
+
+**Renumbered from op 38 to op 40 on the `feat/assay--forge-gitlab--11` merge with `main`
+(2026-09-14):** `medici-finance/assay#1087` merged `GetIssueTyped`/`PostCommentTyped` as ops
+38–39 from the same op-37 base this brief branched from, so both streams independently claimed
+op 38. `RepoHardeningRead` takes the next free number, 40; nothing about its behavior, kind
+vocabulary, or consumer wiring changed — only the numeral in this table and its own code
+comments/docs.
 
 **Op 37 (`RefExists`) was added by brief `forge-gitlab/09` under the same freeze rule**, with its one
 consuming call site converted in the same change: `deskpost`'s `claimLiveness` — the model-capability
@@ -191,6 +216,56 @@ ages a stamp out; every uncertain path is could-not-check, which changes nothing
 `GitLabRepoInfoFetcher` adapter (below, delta note) landed in the same brief so the public-repo gate can
 run on a GitLab-resolved repo; it is not a `Forge` method (the gate takes the string-signature
 `RepoInfoFetcher`), so it is not a row here.
+
+**Ops 38–39 (`GetIssueTyped`, `PostCommentTyped`) were added for `deskfile attach --kind` under the same
+freeze rule** (medici-finance/assay#1087). They are the typed pair op 2's both-kinds refusal points at: a
+GitLab adopter cell found every low number its project carried in BOTH sequences un-attachable, because
+`attach` read the target through op 2 (refused) and had no way to state which kind it meant. `attach`
+now takes `--kind issue|mr` (default `issue`), and the kind drives both the state read (op 38) and the
+note's endpoint (op 39). The goldens `get_issue_typed_issue_both_kinds` / `get_issue_typed_change_both_kinds`
+/ `get_issue_typed_issue_missing` and `post_comment_typed_issue_both_kinds` /
+`post_comment_typed_change_both_kinds` pin that each typed op emits exactly ONE request, at the stated
+kind's endpoint, with the other kind present at the same number. Ops 2 and 9 keep their behaviour for
+every caller not yet converted.
+
+| # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
+|---|--------|--------------------|-------------|----------------|-------------|
+| 41 | `ReadMergeHold(repo, number)` | read a change's merge-hold marker thread | typed not-applicable (`MergeHoldNotApplicable`) — the twin control is server-side branch protection, already stronger | `GET /projects/:id/merge_requests/:iid/discussions`, paginated; finds the desk's own thread by the FIXED first line of its marker note. Absent is a real answer (`MergeHoldAbsent`), never an error | implemented |
+| 42 | `OpenMergeHold(repo, number)` | open the merge-hold marker thread on a new change | typed not-applicable (`ErrMergeHoldNotApplicable`) | `POST /projects/:id/merge_requests/:iid/discussions`; refuses (could-not-check) if the thread comes back not `resolvable` — a plain note would never block the merge button | implemented |
+| 43 | `SetMergeHold(repo, number, in)` | release (resolved, at head) or re-arm (unresolved, with reason) a merge-hold | typed not-applicable (`ErrMergeHoldNotApplicable`) | release: `POST …/discussions/:id/notes` (the `released`+`Head:` reply) then `PUT …/discussions/:id?resolved=true`; re-arm: the same PUT with `resolved=false` FIRST, then the `re-armed` reply note — the order in each direction is the one that fails safe (see the backend's own doc comment) | implemented |
+| 44 | `ListCommentsTyped(repo, number, kind)` | read the comment thread of ONE stated kind | `POST /graphql` with `issue(number:)` or `pullRequest(number:)` — the two noteables are separate GraphQL selections, so one query cannot serve both; the node selection is identical, and a noteable that resolves NULL is could-not-check, never an empty thread | `GET /projects/:id/issues/:iid/notes` OR `…/merge_requests/:iid/notes` — op 17 walks the merge-request endpoint only, so an issue's thread reads as another object's notes at the same number without the kind. Same system-note drop, same requested `created_at asc` order, same page bound; an ISSUE note carries no opaque id (the opaque id addresses merge-request notes) | implemented |
+| 45 | `CloseIssueTyped(repo, number, kind, reason)` | close the object of ONE stated kind | `PATCH /repos/{o}/{r}/issues/{n}` — one sequence, one state endpoint for both kinds, so the kind selects no different request and makes the intent explicit at the seam instead | `PUT /projects/:id/issues/:iid` OR `…/merge_requests/:iid` with `state_event:close`. Op 13 addresses the ISSUE endpoint only, so on a project carrying both kinds at one number it closes the OTHER object — a wrong write, not a failed one. A state reason is recorded as a note for an issue (as op 13 does) and REFUSED for a change, since no forge records one there | implemented |
+
+**Ops 44–45 (`ListCommentsTyped`, `CloseIssueTyped`) were added for `deskclose`'s typed item
+references** (`medici-finance/assay#1109`), under the same freeze rule and with their consuming
+call sites in the same change: `deskclose`'s two-role superseded lane reads the proposal thread
+through op 44 and every lane closes through op 45. They complete the typed family ops 38–39
+opened: a verb that can now READ and COMMENT on the kind it means could still, before this, only
+close the issue sequence and only read the change sequence's thread.
+
+**Ops 41–43 (the merge-hold op set) were added by brief `forge-gitlab/17`**, immediately following
+op 40 (`RepoHardeningRead`, `forge-gitlab/11`) under the same freeze rule, with three consuming
+call sites in the same change: `deskpr create` (op 42, opening the hold
+right after `CreateDraftChange` on a GitLab-resolved repo — task 2), `deskpost review` (op 43,
+releasing on an approve at head and re-arming on a request-changes or a stale-head resolve — task
+3), and `deskflip`'s `reviewer-approved` condition (op 41, and op 43 for its own stale-head
+re-arm — task 4a). They exist because neither half of GitHub's server-side verdict-before-merge
+gate exists on GitLab Free (the `Draft:` prefix is a title string any Developer can strip; required
+approvals are Premium), and the field found on 2026-09-14 that the desk's TOOL-SIDE half was also
+missing on gitlab.com Free: the review-state read consults the Premium approval-configuration
+route first, which answers 403 there (not the 404 the tree degrades on), failing the whole read
+closed (issue #1091). GitLab enforces `only_allow_merge_if_all_discussions_are_resolved` on every
+tier as a plain project setting; this op set turns a resolvable discussion thread into the desk's
+own merge hold — opened with the change, released only by the reviewer's approve at the current
+head, re-armed by a request-changes verdict or a new head — and `deskflip`'s `reviewer-approved`
+condition on GitLab now keys ENTIRELY on this thread's own state (who resolved it, and at which
+head), never on the project approval-configuration route; the correctness note/approval-based
+lane (op 3/op 10) stays the whole gate on every OTHER forge, unchanged. `PullRequest` also gained
+a `GitLabMergeStatus` field in the same change (a field, not a method, so it carries no row here)
+holding GitLab's raw `detailed_merge_status` string — the one `deskflip`'s `mergeable` condition
+reads to tell the two named policy holds this brief's hold is about to release (`draft_status`,
+`discussions_not_resolved`) apart from a genuine not-yet-computed state, without touching the
+shared `gitlabMergeableState` mapping (which stays exactly as it was — Verify row 7).
 
 ## Per-tool call-site inventory (current state)
 
@@ -211,7 +286,7 @@ run on a GitLab-resolved repo; it is not a `Forge` method (the gate takes the st
 |------|------|--------------|------------------|
 | `deskpr` | `tools/desk/cmd/deskpr/deskpr.go` | `gh pr create --draft`, `gh pr view/list` | `CreateDraftChange` (+ reads via `GetPullRequest`) |
 | `deskfile` | `tools/desk/cmd/deskfile/deskfile.go` | `gh issue create`, `gh issue comment`, `gh issue view` | `FileIssue`, `PostComment`, `CloseIssue` |
-| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `PostComment`, `CloseIssue` |
+| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `GetIssueTyped`, `PostCommentTyped`, `ListCommentsTyped`, `CloseIssueTyped` |
 | `deskreply` | `tools/desk/cmd/deskreply/deskreply.go` | `gh pr/issue comment` | `PostComment` |
 | `deskflip` | `tools/desk/cmd/deskflip/flip.go` | `gh pr ready` | `MarkReadyForReview` |
 
@@ -242,11 +317,16 @@ stale — the ops they needed had landed since brief 08:
 | `deskroster` `ghListOpenPRs` | `gh pr list --state open --json number,title,isDraft` (listed under **no enumerated op**) | `ListOpenChanges` (op 23), which landed with `deskboard`'s `fetchOpenPRs` |
 
 Both are READ-only display annotations under the session's own minted App token (not a write), so
-no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7. The one remaining
-naive-grep hit — `repohardenguard`'s `ghRun` — is **open work, not a ruled exception**: the driver
-ratified closure-to-zero (option B on #834), so every residual `gh` shell-out must reach the seam.
-That site is owned by the guard-read-custody brief (`forge-gitlab/11`) and its design record; its
-`forgeban` permit row is permitted only until that brief lands, and row 3 closes to 0 with it.
+no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7.
+
+**forge-gitlab/11 closes the last naive-grep hit.** `repohardenguard`'s `ghRun` — the guard's
+arbitrary `gh api <endpoint>` reads — is retired onto op 40 `RepoHardeningRead` under a dedicated
+read-only `auditor` identity (#857's ruling: option 1). fg/08's Verify row 3 (the whole-tree grep)
+closes to **0**; its `forgeban` permit row is removed and the ceiling comes down 7 → 6.
+
+| Retired | Was | Now |
+|---------|-----|-----|
+| `repohardenguard` `ghRun`/`ghGet` | `gh api <endpoint>` — arbitrary GET parsed out of a checklist document (rulesets, branch protection, App permissions, `repos/<repo>` preflight, `/user` identity) | `RepoHardeningRead(repo, kind)` (op 40) under the `auditor` role, over a closed kind vocabulary; the identity line reads the role's known `[bot]` login instead of `/user` (an App token cannot read it) |
 
 The rest are classified, not migrated. Every one is blocked on a decision this brief does not own:
 
@@ -254,7 +334,7 @@ The rest are classified, not migrated. Every one is blocked on a decision this b
 |-------|-----------|---------------------------|
 | **identity** | `deskclose`, `deskdigest`, `deskfile`, `deskflip` (7 sites), `deskreply`, `deskpr`, `deskboard`, `deskmerge`, `deskdisposition`, `issueboard`, `scanloop` | Each reaches the forge under the caller's AMBIENT CLI credential BY DOCUMENTED DESIGN ("gates WHETHER and WHAT, never WHO … mints no App token on any path"). Both backends REFUSE to build a client without an explicitly minted token — deliberately (brief 07's posture, mirroring #562/#563). Routing these through the seam therefore changes WHO performs each write. That is a **token-custody ruling**, not a transport change, and it is the single decision gating ~20 of the 25 sites. (`deskroster` was here — its two reads migrated under #834; see the follow-up table above.) |
 | **no enumerated op** | labels (`deskdispatch`, `deskflip`, `deskdisposition`, `scanloop`), `pr list` (`deskdisposition`), branch→PR resolution (`deskpushguard`), issue listing + GraphQL counts (`issueboard`, `deskboard`), merge-authority read (`deskmerge`), trust-association read (`scanloop`) | Spec §6's freeze rule forbids adding a method without converting its consuming call site in the same change. Each of these is a real op set with a real GitLab mapping question (project-scoped labels, MR source-branch lookup, issue IID sequences) and needs its own brief rather than a speculative method. (`deskroster`'s `pr list` was here — migrated onto the now-landed `ListOpenChanges` under #834.) |
-| **not a forge op at all** | `deskadvisory` (`gh auth token`), `repohardenguard` (`gh api` reads of rulesets / branch protection / App permissions) | The first is the identity layer (delta D2); the second is repo HARDENING, the same class delta D3 keeps out of the frozen set. Neither has a Forge method it could move to *today* — under the ratified closure-to-zero both are OPEN WORK, `repohardenguard` under the guard-read-custody brief (`forge-gitlab/11`), not permanent carve-outs. |
+| **not a forge op at all** | `deskadvisory` (`gh auth token`) | The identity layer (delta D2) — `gh auth token` READS the ambient CLI credential rather than performing a forge operation, and there is no Forge method it could move to. (`repohardenguard`'s hardening reads were here; forge-gitlab/11 gave them their own enumerated op, op 40, so this class is down to one site.) |
 
 The 14 unresolved-argv sites are a **could-not-check ledger, not a permit**: each runs a resolved
 `statusgen`/`desktoken`/callout binary or a caller-supplied argv, none launches a forge CLI on any

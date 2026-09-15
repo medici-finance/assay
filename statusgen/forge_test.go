@@ -115,9 +115,26 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 		"skip-status-regen",
 		"STATUSGEN_PUSH_TOKEN",
 		"sha256sum -c -",
+		// The push credential must be MASKED AND PROTECTED: a masked-only
+		// variable is still injected into merge_request_event pipelines, which
+		// run the MR branch's own CI file, so a member who can open an MR could
+		// read it and push to the default branch past the merge gate. Both the
+		// guidance comment and the regen job's stop message say so.
+		"set it as a MASKED and PROTECTED CI/CD variable named",
+		"set it as a masked and protected CI/CD variable named STATUSGEN_PUSH_TOKEN",
+		"still injected into merge-request pipelines",
 	} {
 		if !strings.Contains(gl, want) {
 			t.Errorf(".gitlab-ci.yml missing %q", want)
+		}
+	}
+	// No line may still describe the variable as masked-only.
+	for _, stale := range []string{
+		"a MASKED CI/CD variable named",
+		"a masked CI/CD variable named",
+	} {
+		if strings.Contains(gl, stale) {
+			t.Errorf(".gitlab-ci.yml still describes STATUSGEN_PUSH_TOKEN as masked-only: %q", stale)
 		}
 	}
 	// The GitLab half must not shell `gh` — that is exactly the GitHub-only
@@ -134,9 +151,9 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 	// placeholder, and neither hardcodes an instance-local tag (linux-dind was the
 	// live instance's tag — must not be baked in).
 	for _, want := range []string{
-		"run_untagged",             // names the exact runner attribute that must be true
+		"run_untagged",                      // names the exact runner attribute that must be true
 		"stuck_pending_no_matching_runners", // the failure mode being warned about
-		"ADOPTER: runner",          // the commented tags: placeholder, GitHub-house shape
+		"ADOPTER: runner",                   // the commented tags: placeholder, GitHub-house shape
 		"# tags: [REPLACE_WITH_YOUR_RUNNER_TAG]",
 	} {
 		if !strings.Contains(gl, want) {

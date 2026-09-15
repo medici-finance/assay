@@ -43,6 +43,15 @@ type envForge struct {
 	visibilityCalls int
 	visibilityRepo  deskkit.ForgeRepo
 	visibility      string
+
+	// openMergeHoldCalls / openMergeHoldNum record every OpenMergeHold call this fake sees.
+	// openMergeHoldErr, when set, is returned instead of the default typed not-applicable —
+	// the GitHub-shaped default every existing test implicitly relies on, so a case that does
+	// not touch this field sees byte-identical behaviour to before the merge-hold op set
+	// existed.
+	openMergeHoldCalls int
+	openMergeHoldNum   int
+	openMergeHoldErr   error
 }
 
 // synthGH renders the forge ops this fake recorded as canonical gh-shaped pseudo-argvs, so the
@@ -107,6 +116,18 @@ func (f *envForge) CreateDraftChange(repo deskkit.ForgeRepo, in deskkit.DraftCha
 		Number: 101,
 		URL:    fmt.Sprintf("https://github.com/%s/pull/101", repo.Slug()),
 	}, nil
+}
+
+// OpenMergeHold defaults to the GitHub-shaped typed not-applicable — byte-identical to how
+// this fake behaved before the merge-hold op set existed, for every test that does not set
+// openMergeHoldErr.
+func (f *envForge) OpenMergeHold(repo deskkit.ForgeRepo, number int) (string, error) {
+	f.openMergeHoldCalls++
+	f.openMergeHoldNum = number
+	if f.openMergeHoldErr != nil {
+		return "", f.openMergeHoldErr
+	}
+	return "", deskkit.ErrMergeHoldNotApplicable
 }
 
 func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {

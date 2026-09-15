@@ -16,6 +16,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,16 @@ type glReviewFake struct {
 
 	mu           sync.Mutex
 	postedReview []deskkit.ReviewInput
+
+	// Merge-hold fixture state (the forge-gitlab merge-hold brief, task 3). holdState
+	// defaults to MergeHoldUnresolved ("" == unresolved) — the ordinary state of a freshly
+	// opened change nobody has reviewed yet.
+	holdState      string
+	holdResolvedBy string
+	holdHead       string
+	holdReadErr    error
+	holdSetErr     error
+	setHoldCalls   []deskkit.MergeHoldUpdate
 }
 
 func (g *glReviewFake) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
@@ -63,6 +74,22 @@ func (g *glReviewFake) PostReview(_ deskkit.ForgeRepo, _ int, in deskkit.ReviewI
 	defer g.mu.Unlock()
 	g.postedReview = append(g.postedReview, in)
 	return nil
+}
+func (g *glReviewFake) ReadMergeHold(deskkit.ForgeRepo, int) (*deskkit.MergeHold, error) {
+	if g.holdReadErr != nil {
+		return nil, g.holdReadErr
+	}
+	state := g.holdState
+	if state == "" {
+		state = deskkit.MergeHoldUnresolved
+	}
+	return &deskkit.MergeHold{State: state, ID: "disc-1", ResolvedBy: g.holdResolvedBy, Head: g.holdHead}, nil
+}
+func (g *glReviewFake) SetMergeHold(_ deskkit.ForgeRepo, _ int, in deskkit.MergeHoldUpdate) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.setHoldCalls = append(g.setHoldCalls, in)
+	return g.holdSetErr
 }
 
 // setupGitLabReview plants a roster binding a GitLab repo, injects the fake Forge through the
@@ -170,6 +197,56 @@ func TestGitLabReviewRealRunLandsVerdictThroughForge(t *testing.T) {
 	if e := lastAudit(t); e.Result != deskkit.ResultOK {
 		t.Fatalf("audit result = %q, want ok", e.Result)
 	}
+	// task 3: an approve at head RELEASES the merge-hold, naming that head.
+	if len(f.setHoldCalls) != 1 {
+		t.Fatalf("SetMergeHold called %d time(s), want exactly 1", len(f.setHoldCalls))
+	}
+	if h := f.setHoldCalls[0]; !h.Resolved || h.Head != testHead {
+		t.Errorf("SetMergeHold = %+v, want a release naming head %q", h, testHead)
+	}
+}
+
+// task 3: releasing the merge-hold when it is resolved at a STALE head re-arms FIRST (naming
+// the new head), then applies the verdict's own release — two writes, in that order.
+func TestGitLabReviewApproveAtNewHeadRearmsStaleHoldFirst(t *testing.T) {
+	f := newGLReviewFake()
+	f.holdState = deskkit.MergeHoldResolved
+	f.holdResolvedBy = "assay-reviewer-app"
+	f.holdHead = "000000000000000000000000000000000000dead" // stale — not testHead
+	_ = setupGitLabReview(t, f)
+	bf := writeBody(t, "rev.md", okReviewBody)
+
+	if code := run(reviewArgs(glReviewRepo, "1", "approve", testHead, bf)); code != 0 {
+		t.Fatalf("approve review on a GitLab repo exit = %d, want 0", code)
+	}
+	if len(f.setHoldCalls) != 2 {
+		t.Fatalf("SetMergeHold called %d time(s), want 2 (re-arm the stale resolve, then release at head): %+v",
+			len(f.setHoldCalls), f.setHoldCalls)
+	}
+	if h := f.setHoldCalls[0]; h.Resolved || !strings.Contains(h.Reason, "new head") {
+		t.Errorf("first SetMergeHold = %+v, want a re-arm naming the new head", h)
+	}
+	if h := f.setHoldCalls[1]; !h.Resolved || h.Head != testHead {
+		t.Errorf("second SetMergeHold = %+v, want a release at %q", h, testHead)
+	}
+}
+
+// task 3: a verdict that posts but whose hold write fails exits non-zero, naming the failure —
+// never a silent success that leaves the recorded verdict and the server-side gate out of step.
+func TestGitLabReviewApproveMergeHoldWriteFailureIsLoud(t *testing.T) {
+	f := newGLReviewFake()
+	f.holdSetErr = errors.New("503 the instance is unavailable")
+	errBuf := setupGitLabReview(t, f)
+	bf := writeBody(t, "rev.md", okReviewBody)
+
+	code := run(reviewArgs(glReviewRepo, "1", "approve", testHead, bf))
+	if code == 0 {
+		t.Fatalf("expected a non-zero exit when releasing the merge-hold fails; stderr:\n%s", errBuf.String())
+	}
+	if len(f.postedReview) != 1 {
+		t.Fatalf("the verdict itself must still have posted before the hold-release failure, got %d posts",
+			len(f.postedReview))
+	}
 }
 
 // A request-changes verdict on GitLab reaches the same Forge write path with the
@@ -185,5 +262,12 @@ func TestGitLabReviewRequestChangesRoutesThroughForge(t *testing.T) {
 	}
 	if len(f.postedReview) != 1 || f.postedReview[0].Event != "REQUEST_CHANGES" {
 		t.Fatalf("PostReview = %+v, want one REQUEST_CHANGES verdict", f.postedReview)
+	}
+	// task 3: request-changes RE-ARMS the merge-hold, naming the reason.
+	if len(f.setHoldCalls) != 1 {
+		t.Fatalf("SetMergeHold called %d time(s), want exactly 1", len(f.setHoldCalls))
+	}
+	if h := f.setHoldCalls[0]; h.Resolved || h.Reason != "request-changes" {
+		t.Errorf("SetMergeHold = %+v, want a re-arm with reason \"request-changes\"", h)
 	}
 }

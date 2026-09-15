@@ -44,10 +44,29 @@ package main
 //     reads no longer spends N rotations on work that writes nothing. That removes most of
 //     the contention the lock then has to serialise.
 //
-// The lock is a separate file, never the custody file itself: writeVerifyGitLabToken replaces
-// the custody path by rename, so a lock taken on the custody inode would be orphaned by the
-// very write it is meant to guard. The lock file is created once and never renamed, so its
-// inode is stable for the life of the custody directory.
+// The lock is a separate file, never the custody file itself: writeVerifyGitLabToken lands the
+// rotated value by rename, so a lock taken on the custody inode would be orphaned by the very
+// write it is meant to guard. The lock file is created once and never renamed, so its inode is
+// stable for the life of the custody directory.
+//
+// CUSTODY LAYOUT. The custody path may be a SYMLINK to the file the provisioning step actually
+// wrote — that is the documented layout (docs/adopting-assay-gitlab.md §2 links
+// gitlab-<role>.token at the provisioned <prefix>-<role>-bot.token), not an exotic
+// deployment. A rotation therefore writes THROUGH the link: it renames onto the link's
+// resolved target and leaves the link itself in place. Renaming onto the LINK PATH instead
+// would replace the link with a regular file, which has two consequences that only show up
+// later:
+//
+//   - the provisioned file the link pointed at keeps the PRE-ROTATION value forever, so any
+//     step that re-creates the documented link (an idempotent re-run of the provisioning
+//     step, a re-issue script) silently re-points custody at a token the rotation already
+//     invalidated — the next API read then presents a dead credential and 401s, with nothing
+//     in the rotate path itself having failed;
+//   - the layout the operator provisioned is gone, so the next `ln -s` is not a no-op.
+//
+// Writing through the link keeps ONE file holding the live credential, whichever name is used
+// to reach it. The read-back verification then reads back through the CUSTODY PATH rather than
+// the target, so a rotation that broke the link fails at mint time instead of at the next read.
 
 import (
 	"encoding/json"
@@ -261,18 +280,62 @@ func rotateGitLabToken(base, current string) (*gitlabRotateResult, error) {
 	return &result, nil
 }
 
-// writeVerifyGitLabToken persists token to path 0600 and reads it back to confirm the bytes
-// landed. A write that reports success but does not durably persist the new token is a
+// gitlabCustodyWriteTarget resolves WHICH file a rotation's bytes must land in so that the
+// custody PATH keeps the shape the deployment provisioned. For an ordinary regular-file
+// custody the answer is the path itself. For a SYMLINK custody — the documented layout, see
+// the file header — it is the link's fully resolved target, so the rename swaps the file the
+// link points AT and the link survives the rotation.
+//
+// linked reports whether path was a symlink, so the caller can assert afterwards that it still
+// is one. A link that cannot be resolved is an ERROR, never a silent fall-back to writing at
+// the link path: resolving is how the rotation learns where the live credential actually
+// lives, and guessing would strand the rotated value somewhere nothing reads.
+func gitlabCustodyWriteTarget(path string) (target string, linked bool, err error) {
+	fi, lerr := os.Lstat(path)
+	if lerr != nil {
+		// No entry to inspect. cmdGitLabRotate has already stat'd and refused on a missing or
+		// non-regular custody, so this is only reachable for a path that vanished between the
+		// two calls; write where we were told and let the rename surface the failure.
+		return path, false, nil
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return path, false, nil
+	}
+	resolved, rerr := filepath.EvalSymlinks(path)
+	if rerr != nil {
+		return "", true, fmt.Errorf("resolve custody symlink %s: %w", path, rerr)
+	}
+	return resolved, true, nil
+}
+
+// writeVerifyGitLabToken persists token 0600 through path and reads it back to confirm the
+// bytes landed. A write that reports success but does not durably persist the new token is a
 // lockout waiting to happen, because rotation has already invalidated the old one; the
 // read-back turns that into an observed failure at mint time instead.
 //
-// The write is temp-file-then-rename in the same directory, so the credential swap is atomic:
-// a crash or an error mid-write never leaves a torn file that holds neither the old nor a
-// whole new token — path either still holds the old bytes or holds the whole new token, never
-// a fragment. When the directory is not writable, creating the temp file fails here, and that
-// surfaces as the lockout the caller reports (rather than a silently torn custody file).
+// The write is temp-file-then-rename in the TARGET's own directory, so the credential swap is
+// atomic: a crash or an error mid-write never leaves a torn file that holds neither the old nor
+// a whole new token — the custody path either still resolves to the old bytes or to the whole
+// new token, never a fragment. When the directory is not writable, creating the temp file fails
+// here, and that surfaces as the lockout the caller reports (rather than a silently torn
+// custody file).
+//
+// The target is resolved rather than assumed to be path: on a symlinked custody layout the
+// rename must land on the link's target so the link survives (file header, CUSTODY LAYOUT).
+//
+// It is also DURABLE before it returns: the temp file is fsync'd before the rename and the
+// containing directory afterwards. The caller prints the custody path the moment this returns
+// and the verb that invoked it immediately re-reads that path to obtain the credential it will
+// present, so "written" has to mean written — not merely queued behind a rename the operating
+// system has not committed. The directory fsync is best-effort: not every platform lets a
+// directory handle be synced, and a platform that refuses it is not a reason to fail a rotation
+// whose bytes are already on disk.
 func writeVerifyGitLabToken(path, token string) error {
-	dir := filepath.Dir(path)
+	target, linked, terr := gitlabCustodyWriteTarget(path)
+	if terr != nil {
+		return terr
+	}
+	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".gitlab-token-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp in %s: %w", dir, err)
@@ -290,13 +353,20 @@ func writeVerifyGitLabToken(path, token string) error {
 		_ = tmp.Close()
 		return fmt.Errorf("chmod temp: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temp: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("rename temp over %s: %w", path, err)
+	if err := os.Rename(tmpName, target); err != nil {
+		return fmt.Errorf("rename temp over %s: %w", target, err)
 	}
+	syncDir(dir)
 
+	// Read back through the CUSTODY PATH, not the target: on a linked layout that proves both
+	// that the bytes landed AND that the path the verbs read still resolves to them.
 	got, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read-back %s: %w", path, err)
@@ -304,7 +374,35 @@ func writeVerifyGitLabToken(path, token string) error {
 	if string(got) != token {
 		return fmt.Errorf("read-back mismatch: persisted token does not match the rotated value")
 	}
+	// A custody link must still be a link. If it is not, the rotation has just converted the
+	// layout the deployment provisioned into a regular file, and the file the link pointed at
+	// is now stranded holding the invalidated token — the condition that makes a later re-link
+	// hand a dead credential to the next read.
+	//
+	// This is a BACKSTOP under the target resolution above, not a second implementation of it:
+	// with the resolver correct nothing reaches it, which is why it carries no mutation entry
+	// (a mutant that disables it survives by construction). It is kept because the cost of a
+	// silently converted layout is a lockout an operator only discovers at the next read.
+	if linked {
+		fi, lerr := os.Lstat(path)
+		if lerr != nil || fi.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("custody symlink at %s did not survive the rotation (it is now a regular file); "+
+				"the rotated token must be written THROUGH the link, never over it", path)
+		}
+	}
 	return nil
+}
+
+// syncDir best-effort fsyncs a directory so a rename into it is durable. Failures are ignored:
+// syncing a directory handle is not supported everywhere (notably Windows), and a platform that
+// refuses it must not turn a completed rotation into a reported lockout.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
 
 // readGitLabCustody reads the role's current PAT from an already-mode-verified custody file.
