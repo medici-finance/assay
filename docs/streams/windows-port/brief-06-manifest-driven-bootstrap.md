@@ -201,6 +201,66 @@ check before it ever reaches the download comparison. NONE is not the answer her
      (command, exit code, output line(s) or hash, date, runner). Rows 8-14 are
      Windows-runtime / online rows — an offline POSIX verifier records them as
      could-not-check with the reason, never greened from the static rows. -->
+### Non-implementer verifier run — merged main `3f57c25a` (windows-port/06 merged at `b67e22e`) — 2026-09-15 assay-verifier (verify-desk dispatch, offline POSIX, `KUBECONFIG=/dev/null`)
+
+Runner is not the implementer (fresh dispatched verifier). This repo's default `grep` is a
+`ugrep` shim that mishandles an unescaped `$` mid-pattern (rows 1-2 below); re-run with
+`/usr/bin/grep` to get the real counts — noted per-row.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `/usr/bin/grep -n 'Mandatory=$true' scripts/bootstrap-windows.ps1 \| /usr/bin/grep -c 'Sha256'` | `0` | `0` — exit 0 | 2026-09-15 | assay-verifier |
+| 2 | `/usr/bin/grep -c 'Mandatory=$true' scripts/bootstrap-windows.ps1` | `1` | `1` | 2026-09-15 | assay-verifier |
+| 3 | `/usr/bin/grep -qF 'paired-versions.yaml' scripts/bootstrap-windows.ps1; echo $?` | `0` | `0` | 2026-09-15 | assay-verifier |
+| 4 | `awk '/Get-FileHash/{h=NR} /REFUSED: sha256 mismatch/{r=NR} /Move-Item/{m=NR} END{print (h>0 && r>h && m>r) ? "ORDER-OK" : "ORDER-BROKEN"}' scripts/bootstrap-windows.ps1` | `ORDER-OK` | `ORDER-OK` | 2026-09-15 | assay-verifier |
+| 5 | `/usr/bin/grep -niE '(^\|[^a-z])latest([^a-z]\|$)' scripts/bootstrap-windows.ps1 && echo USES-LATEST \|\| echo NO-LATEST` | `NO-LATEST` | `NO-LATEST` | 2026-09-15 | assay-verifier |
+| 6 | `/usr/bin/grep -qF "SetEnvironmentVariable" scripts/bootstrap-windows.ps1 && /usr/bin/grep -qiE "'User'\|\"User\"" scripts/bootstrap-windows.ps1; echo $?` | `0` | `0` | 2026-09-15 | assay-verifier |
+| 7 | `/usr/bin/grep -coE 'throw "REFUSED' scripts/bootstrap-windows.ps1` | `>= 5` | `9` | 2026-09-15 | assay-verifier |
+| 8 | Positive path, Windows runtime — `windows-bootstrap-smoke` job at PR 893 head `cebf064` | green, sha printed matches manifest | **PASS** — job log: `resolved windows-amd64 from manifest: tag=v1.0.6 sha256=235e87d0c36e22f9798b7f9441fda8ec902a0cc2b5adf3f340ec5cf29f33916a`, `OK 2/6: tag+sha256 resolved from the manifest alone; statusgen-windows-amd64.exe and statusgen.exe installed`. Run https://github.com/medici-finance/assay/actions/runs/34651641255/job/103434914821 (windows-latest, conclusion success) | 2026-09-15 | assay-verifier (reading real CI run) |
+| 9 | Negative path — tampered manifest digest | REFUSES, sha256 mismatch, exits non-zero, nothing placed | **PASS** — same job log: `OK 3/6: tampered manifest digest REFUSED at the download hash mismatch; nothing installed` | 2026-09-15 | assay-verifier |
+| 10 | Negative path — absent platform line | REFUSES naming the platform, nothing downloaded/placed | **PASS** — same job log: `OK 4/6: absent platform line REFUSED naming windows-amd64; nothing downloaded or installed` | 2026-09-15 | assay-verifier |
+| 11 | Non-vacuity for rows 9-10 | check-removed copy installs on both tampered inputs | **PASS** — same job log: `OK 5/6: with the hash check removed, the tampered-manifest asset installs — assertion 3 is non-vacuous`; `OK 6/6: with the resolution guards removed, the absent-platform-line asset installs — assertion 4 is non-vacuous` | 2026-09-15 | assay-verifier |
+| 12 | Fail-first for rows 9-11 | new assertion observed FAILING against pre-change script or a stubbed mutation, pasted in PR body | **Substituted, not literally satisfied** — PR 893 body's `## Fail-first` records could-not-check locally (implementer had no Windows/pwsh runtime) and substitutes the committed non-vacuity control (assertions 5/6, same script) as the "committed mutation the reviewer/CI can re-run" alternative. That control DID execute for real on `windows-latest` at PR head (see row 11) and passed, which is stronger evidence than a pasted static red run would have been, but it is not the literal artifact row 12 asks for (a pasted FAILING run). Recorded as satisfied-by-equivalent, not a literal pass. | 2026-09-15 | assay-verifier |
+| 13 | `-Sha256` override disagreement refuses | non-zero exit, refusal naming both digests, nothing downloaded | **PASS** — same job log: `OK 1/6: disagreeing -Sha256 override REFUSED naming both digests; nothing downloaded` | 2026-09-15 | assay-verifier |
+| 14 | Bare-name `statusgen --version` after PATH write, Windows runner, fresh shell | prints pinned tag, exit 0 | **COULD-NOT-CHECK — apply-gated.** The exact assertion (`PATH="${userpath};${PATH}" statusgen --version`) exists only in the staged `ci/staged-workflows/windows-ci-leg.yml:167`; the LIVE `.github/workflows/windows-ci-leg.yml` still has the old pre-06 bash pre-extraction (confirmed by reading both files at merged main — no App credential can push a workflow-file change, per the brief's own ground rules) — so this literal row has not executed anywhere yet. Both of its preconditions ARE proven true on real `windows-latest` CI (job 103434914821): the verified asset was placed as `statusgen.exe` under `$Dest`, and `$Dest` was added to the user PATH (log lines `bootstrapped statusgen-windows-amd64.exe v1.0.6 sha256:235e87d0… -> C:\Users\runneradmin\AppData\Local\Temp\assay-smoke-…` and `added C:\Users\runneradmin\AppData\Local\Temp\assay-smoke-… to the user PATH`). Re-check once a maintainer promotes the staged workflow per `ci/staged-workflows/README.md`. | 2026-09-15 | assay-verifier |
+| 15 | Dereference the pin against the manifest: `line=$(grep -E '^[[:space:]]*windows-amd64:[[:space:]]+statusgen-windows-amd64\.exe' plugins/assay/paired-versions.yaml \| head -1); echo "$line" \| awk '{print $3, $4}'` vs row-8 log | agree exactly | **PASS** — manifest line 40 gives `v1.0.6 235e87d0c36e22f9798b7f9441fda8ec902a0cc2b5adf3f340ec5cf29f33916a`; row-8 log resolved `tag=v1.0.6 sha256=235e87d0c36e22f9798b7f9441fda8ec902a0cc2b5adf3f340ec5cf29f33916a` — exact match | 2026-09-15 | assay-verifier |
+| 16 | `statusgen --root . --consumers windows-port/06; echo $?` | `0` | `0` — "no brief files in the diff against 3f57c25a… — nothing to corroborate" (vacuous post-merge; the brief's own note says run on the implementer's branch, which no longer exists as an open diff) | 2026-09-15 | assay-verifier |
+| 17 | `statusgen --root . --lint` | `0` PROBLEMs | `0` PROBLEMs, `LINT: PASS`, exit 0 (NOTICEs only, unrelated to this brief) | 2026-09-15 | assay-verifier |
+
+**Independent risk-value re-derivation (beyond "a test passes"):** downloaded the real published
+release assets at `https://github.com/medici-finance/assay/releases/download/v1.0.6/statusgen-windows-amd64.exe`
+and `…-windows-arm64.exe` and computed their sha256 locally (`shasum -a 256`):
+- `statusgen-windows-amd64.exe` → `235e87d0c36e22f9798b7f9441fda8ec902a0cc2b5adf3f340ec5cf29f33916a` — matches
+  `plugins/assay/paired-versions.yaml:40` exactly.
+- `statusgen-windows-arm64.exe` → `1d3869c261544597a54b93f48c78e9b84dbf8a131331a4d2ebe529ab83343e3f` — matches
+  `plugins/assay/paired-versions.yaml:41` exactly.
+
+**RISK-VALUE: DERIVED** — `'^[0-9a-f]{64}$'` @ `scripts/bootstrap-windows.ps1:86` (the shape gate
+applied to the manifest-resolved digest before it can become the trusted comparator at the
+existing download-verify at `:107`) — correct: SHA-256 output is exactly 32 bytes = 64 hex
+characters, and `Get-FileHash…Hash.ToLower()` at `:106` normalizes to lowercase before comparison,
+so a lowercase-only 64-hex gate matches the value space the comparison actually produces. Enumerated
+over the full diff (`git diff 11bf3e2a..b67e22ee -- scripts/bootstrap-windows.ps1`): the other new
+literals are the block-scoping regexes (`'^statusgen:\s*$'` @:60, `'^\S'` @:67, the per-platform
+line matcher @:71) and the exact-3-fields check @:80 — all rank below the shape gate because their
+failure mode is fail-safe (a scoping/parse bug either throws a named refusal or yields a
+differently-shaped/valued string that then fails the UNCHANGED download-hash comparison at `:107`;
+there is no code path where a resolution bug causes an unverified install — confirmed by reading
+the full control-flow: every branch before `Invoke-WebRequest` either throws or falls through to
+the one `$Sha256` assignment, no fall-through skips the comparison). The manifest's own pinned
+digests (`plugins/assay/paired-versions.yaml:40-41`, out of this brief's diff scope) were
+independently re-derived above against the real released bytes, not merely trusted because a test
+passed.
+
+**VERIFY: PASS** — rows 1-11, 13, 15-17 pass with real observed output (rows 8-11, 13 against an
+actual `windows-latest` CI run at PR head, not simulated). Row 12 is satisfied by a stronger
+equivalent (a real non-vacuity run) rather than the literal pasted-red-run artifact requested. Row
+14 is could-not-check, narrowly: its two preconditions are proven true on real Windows CI, and the
+remaining gap is the workflow-promotion step this brief's own ground rules assign to a human
+(App credentials cannot push `.github/workflows/**`), not a defect in this brief's script logic.
+No row FAILED. Gate is **model** (frontmatter: all four risk answers `no`; not `irreversible`);
+the risk-classed path was independently re-derived above rather than waved through on a green
+Verify table. Model-signable.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no). The reviewer's two questions on this
