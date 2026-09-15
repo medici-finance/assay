@@ -1,5 +1,5 @@
 ### Added
-- **`forge-neutral` brief 18 — human-only surfaces made server-side (the closing brief of
+- **`forge-neutral` brief 19 — human-only surfaces made server-side (the closing brief of
   #992's five-brief series).** For each surface a human currently performs by hand — merge
   to a protected branch, a workflow-file push, ruleset/branch-protection edits, repo/CI
   variables, and App/OAuth installation — states plainly whether it is genuinely

@@ -1,5 +1,5 @@
 ---
-brief: assay:assay:forge-neutral:18
+brief: assay:assay:forge-neutral:19
 title: Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs
 why: >-
   The design principle this whole series follows is two-sided: "every desk action a human
@@ -72,7 +72,7 @@ sources:
     ruleset id"
 domain: complicated
 consumers:
-  - "docs/streams/forge-neutral/brief-18-human-only-surfaces-server-side.md: fixed-here (this document)"
+  - "docs/streams/forge-neutral/brief-19-human-only-surfaces-server-side.md: fixed-here (this document)"
   - "docs/streams/forge-neutral/README.md: fixed-here (brief-table row)"
   - ".github/workflows/human-approved-gate.yml (new): out-of-scope — specified in Task 1
     below (the trigger, the check, the roster read it performs); a follow-on brief authors
