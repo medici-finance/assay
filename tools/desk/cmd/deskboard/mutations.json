@@ -60,6 +60,24 @@
       "file": "cmd/deskboard/throughput.go",
       "old": "\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, rootsBlind)",
       "new": "\t\t_ = rootsBlind"
+    },
+    {
+      "name": "make the channel-D source line unreachable again (a source-pinned consumer reads as unpinned, and Next-up is could-not-check for it)",
+      "file": "cmd/deskboard/nextup.go",
+      "old": "\t\tif srcFound {",
+      "new": "\t\tif false && srcFound {"
+    },
+    {
+      "name": "let the source line WIN over a release line that is present (an existing consumer's pin verdict changes under it)",
+      "file": "cmd/deskboard/nextup.go",
+      "old": "\t\tif found {\n\t\t\treturn pinnedTag, r.Repo, nil\n\t\t}",
+      "new": "\t\tif found && false {\n\t\t\treturn pinnedTag, r.Repo, nil\n\t\t}"
+    },
+    {
+      "name": "skip a MALFORMED release line in favour of the source line (a broken pin is silently replaced instead of failing closed)",
+      "file": "cmd/deskboard/nextup.go",
+      "old": "\t\tif perr != nil {\n\t\t\treturn \"\", \"\", perr // fail-closed: a present-but-bad pin is never skipped\n\t\t}",
+      "new": "\t\tif perr != nil {\n\t\t\tfound = false\n\t\t}"
     }
   ]
 }
