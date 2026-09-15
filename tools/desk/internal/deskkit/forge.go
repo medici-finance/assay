@@ -21,6 +21,7 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -142,6 +143,19 @@ type PullRequest struct {
 	// MergedAt != ""`. Consumer: cmd/deskboard's fetchPRState. omitempty keeps a non-merged
 	// change byte-identical in the forge golden corpus.
 	Merged bool `json:",omitempty"`
+	// GitLabMergeStatus is the forge's OWN raw merge-status string (GitLab
+	// `detailed_merge_status`) where the forge reports one FINER-GRAINED than the tri-state
+	// Mergeable above. It exists for exactly one consumer: cmd/deskflip's `mergeable`
+	// condition, which on GitLab must tell a genuine "not computed yet" (`checking`,
+	// `unchecked`, an empty string) apart from the two NAMED policy holds this brief's
+	// merge-hold op set is about to release (`draft_status`, `discussions_not_resolved`) —
+	// a distinction the three-value Mergeable enum, BY DESIGN, collapses away
+	// (gitlabMergeableState's own doc comment says so, and Verify row 7 pins that mapping
+	// unchanged). EMPTY on GitHub, and on every GitLab read this field predates; omitempty
+	// keeps every existing golden fixture byte-identical. Consumer: cmd/deskflip's
+	// `mergeable` condition (the forge-gitlab merge-hold brief; freeze rule binds METHODS, not fields, so this
+	// addition changes no method count).
+	GitLabMergeStatus string `json:",omitempty"`
 }
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
@@ -153,6 +167,86 @@ const (
 	MergeableConflicting = "CONFLICTING"
 	MergeableUnknown     = "UNKNOWN"
 )
+
+// --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
+//
+// On GitLab Free neither half of GitHub's server-side verdict-before-merge gate exists: the
+// `Draft:` prefix is a title string any Developer can strip, and required approvals are
+// Premium. GitLab DOES enforce, on every tier, that a merge request with an unresolved
+// discussion thread cannot be merged (`only_allow_merge_if_all_discussions_are_resolved`,
+// a plain project setting). This op set makes a resolvable discussion thread the desk's own
+// merge hold: opened with the change, released only by the reviewer's approve verdict at the
+// current head, re-armed by a request-changes verdict or a new head. GitHub's twin of this
+// control is server-side branch protection, already stronger, so its implementation of every
+// op here is the typed not-applicable a caller skips.
+
+// MergeHold is the read of a change's merge-hold marker thread. See Forge.ReadMergeHold.
+type MergeHold struct {
+	// State is one of the MergeHold* constants below.
+	State string
+	// ID is the hold's opaque id (the GitLab discussion id) — "" unless State is RESOLVED or
+	// UNRESOLVED.
+	ID string
+	// ResolvedBy is the login the FORGE records as having resolved the marker note itself
+	// (GitLab Note.ResolvedBy) — populated only when State is RESOLVED. This is a signal
+	// independent of who authored the RELEASED reply below: a Developer who resolves the
+	// thread by hand (GitLab lets any Developer resolve any thread) sets THIS field to their
+	// own login without ever posting a reply, which is exactly the hand-resolve
+	// cmd/deskflip's reviewer-approved condition must refuse.
+	ResolvedBy string
+	// Head is the full commit sha named on the RELEASED reply's `Head:` line — populated
+	// only when State is RESOLVED, and EMPTY when a resolved thread carries no such reply (a
+	// hand resolve, never touched by SetMergeHold). Consumer: cmd/deskflip's
+	// reviewer-approved condition, which refuses a resolved thread whose Head does not equal
+	// the change's CURRENT head — a resolve that never named a head can never equal one.
+	Head string
+}
+
+const (
+	// MergeHoldNotApplicable is ReadMergeHold's answer on a forge whose server-side twin of
+	// this control is something else entirely (GitHub: branch protection's required
+	// reviewer-App review) — never a lack of data, a genuine typed "there is nothing here to
+	// read". Consumer: cmd/deskflip's reviewer-approved condition, which reads this as "run
+	// the original note/approval-based correctness lane instead", never as an absent hold on
+	// a forge that does have a real one.
+	MergeHoldNotApplicable = "NOT_APPLICABLE"
+	// MergeHoldAbsent means the forge HAS the concept but this change carries no marker
+	// thread — CreateDraftChange's caller never opened one (task 2 makes that a loud,
+	// non-zero failure rather than a silent gap), or the change predates this brief.
+	MergeHoldAbsent = "ABSENT"
+	// MergeHoldUnresolved means the marker thread exists and is still open — no reviewer has
+	// released it at the current head.
+	MergeHoldUnresolved = "UNRESOLVED"
+	// MergeHoldResolved means the marker thread is resolved; ResolvedBy and Head narrow
+	// further whether THIS resolution is the one a caller may act on.
+	MergeHoldResolved = "RESOLVED"
+)
+
+// MergeHoldUpdate is SetMergeHold's argument: release (Resolved:true, at Head) or re-arm
+// (Resolved:false, naming Reason) a change's merge-hold, with the reply body text the hold's
+// next Read finds again (see the marker-reply shapes in forge_gitlab.go).
+type MergeHoldUpdate struct {
+	// Resolved selects release (true) or re-arm (false).
+	Resolved bool
+	// Head is the full commit sha the release names on the reply's `Head:` line. Required
+	// (and validated non-empty by the implementation) when Resolved is true; ignored
+	// otherwise.
+	Head string
+	// Reason is the re-arm reply's own second line — "request-changes" or "new head <sha>"
+	// (see the brief's marker-reply facts). Required when Resolved is false; ignored
+	// otherwise.
+	Reason string
+}
+
+// ErrMergeHoldNotApplicable is OpenMergeHold's and SetMergeHold's typed not-applicable — the
+// write-side twin of MergeHoldNotApplicable, needed because neither returns a MergeHold value
+// with a State field to carry it. Test with IsMergeHoldNotApplicable, never errors.Is
+// directly — the same indirection every other typed sentinel on this seam uses (IsForgeNotFound,
+// IsForgeEmptyRepo).
+var ErrMergeHoldNotApplicable = errors.New("merge-hold: not applicable on this forge")
+
+// IsMergeHoldNotApplicable reports whether err is, or wraps, ErrMergeHoldNotApplicable.
+func IsMergeHoldNotApplicable(err error) bool { return errors.Is(err, ErrMergeHoldNotApplicable) }
 
 // Issue is the subset of an issue the desk tools read. IsPullRequest is the discriminator:
 // GitHub serves issues and PRs from one number sequence and the issues endpoint carries a
@@ -871,11 +965,31 @@ type Forge interface {
 	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
 	// changes nothing (freeze rule: this read lands with the call site that consumes it).
 	RefExists(repo ForgeRepo, ref string) (bool, error)
+	// ReadMergeHold reads the current state of a change's merge-hold marker thread (see
+	// MergeHold; the forge-gitlab merge-hold brief). GitHub returns MergeHoldNotApplicable and issues no
+	// request — its twin control is server-side branch protection. Any other error is
+	// could-not-check, never a silent ABSENT. Consumer: cmd/deskflip's reviewer-approved
+	// condition (freeze rule: this read lands with the call site that consumes it).
+	ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, error)
 
 	// --- Writes ---
 
 	// CreateDraftChange opens a draft change (draft PR ↔ Draft: MR).
 	CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*PullRef, error)
+	// OpenMergeHold opens the desk's merge-hold marker thread on a change, returning the
+	// hold's opaque id. GitHub returns ErrMergeHoldNotApplicable (test with
+	// IsMergeHoldNotApplicable) and issues no request. Consumer: cmd/deskpr create, which
+	// opens the hold immediately after CreateDraftChange succeeds on a GitLab-resolved repo
+	// (the forge-gitlab merge-hold brief, task 2; freeze rule).
+	OpenMergeHold(repo ForgeRepo, number int) (string, error)
+	// SetMergeHold releases (MergeHoldUpdate.Resolved true, at Head) or re-arms (Resolved
+	// false, naming Reason) a change's merge-hold, posting the reply body text ReadMergeHold
+	// finds again. GitHub returns ErrMergeHoldNotApplicable and issues no request.
+	// Consumers: cmd/deskpost review (release on approve at head, re-arm on
+	// request-changes or a stale-head resolve) and cmd/deskflip's reviewer-approved
+	// condition (re-arm on a resolve found stale at the flip) — the forge-gitlab merge-hold
+	// brief's tasks 3-4; freeze rule.
+	SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdate) error
 	// EditChange replaces a change's OWN title/body text (see EditChangeInput) — the change's
 	// description, not a comment on it, and NOT a lifecycle transition (that is
 	// MarkReadyForReview). A field left empty is not written, so a body-only edit does not blank

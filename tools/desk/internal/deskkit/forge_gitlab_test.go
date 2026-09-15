@@ -86,6 +86,15 @@ type glServer struct {
 	// branch is the Branches-API GET payload (RefExists); branchMissing → 404 (ref absent).
 	branch        map[string]any
 	branchMissing bool
+	// discussions is the MR discussions LIST payload (ReadMergeHold's walk); nil serves an
+	// empty list. createDiscussion is the create-discussion POST response (OpenMergeHold).
+	// discussionResolveResp / discussionNoteResp are the PUT-resolve and POST-note
+	// responses (SetMergeHold); nil defaults to a stock non-empty object so the client
+	// library's decode never sees a bare `null`.
+	discussions           []map[string]any
+	createDiscussion      map[string]any
+	discussionResolveResp map[string]any
+	discussionNoteResp    map[string]any
 	// labelCreateStatus, when set, is the status the project-label create route returns
 	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
 	// both of which mean the ensure's post-condition already holds.
@@ -141,6 +150,13 @@ var (
 	lMRNote1      = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
 	lProjLabels   = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
 	lRepoFile     = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
+	// the forge-gitlab merge-hold brief adds the merge-hold marker thread's discussion endpoints. lMRDiscNote
+	// (the note sub-resource) is matched BEFORE lMRDisc1 (the discussion resource) and
+	// lMRDiscussions (the list/create collection), same ordering discipline lMRNote1 already
+	// keeps ahead of lMR/lMRNotes.
+	lMRDiscussions = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions$`)
+	lMRDisc1       = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions/[^/]+$`)
+	lMRDiscNote    = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions/[^/]+/notes$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +199,32 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
+	case r.Method == http.MethodPost && lMRDiscNote.MatchString(path):
+		// the forge-gitlab merge-hold brief's SetMergeHold reply note (released/re-armed).
+		w.WriteHeader(http.StatusCreated)
+		if s.discussionNoteResp != nil {
+			enc(s.discussionNoteResp)
+			return
+		}
+		enc(map[string]any{"id": 950, "body": string(body)})
+	case r.Method == http.MethodPut && lMRDisc1.MatchString(path):
+		// the forge-gitlab merge-hold brief's SetMergeHold resolve/unresolve toggle.
+		if s.discussionResolveResp != nil {
+			enc(s.discussionResolveResp)
+			return
+		}
+		enc(map[string]any{"id": "disc-1", "notes": []map[string]any{{"id": 900, "resolvable": true}}})
+	case r.Method == http.MethodGet && lMRDiscussions.MatchString(path):
+		// the forge-gitlab merge-hold brief's ReadMergeHold walk.
+		if s.discussions == nil {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.discussions)
+	case r.Method == http.MethodPost && lMRDiscussions.MatchString(path):
+		// the forge-gitlab merge-hold brief's OpenMergeHold.
+		w.WriteHeader(http.StatusCreated)
+		enc(s.createDiscussion)
 	case r.Method == http.MethodGet && lMRLabelEvts.MatchString(path):
 		enc(s.labelEvents)
 	case r.Method == http.MethodPut && lMRNote1.MatchString(path):
@@ -425,6 +467,29 @@ func glIssue(overrides map[string]any) map[string]any {
 		base[k] = v
 	}
 	return base
+}
+
+// glMergeHoldMarkerNote is the marker discussion's own first note — glMergeHoldMarker's
+// resolved/resolvedBy state, exactly the shape ReadMergeHold parses.
+func glMergeHoldMarkerNote(resolved bool, resolvedByUsername string) map[string]any {
+	n := map[string]any{
+		"id": 800, "body": mergeHoldMarkerBody, "resolvable": true, "resolved": resolved,
+		"author": map[string]any{"id": 42, "username": "worker-bot"},
+	}
+	if resolved && resolvedByUsername != "" {
+		n["resolved_by"] = map[string]any{"id": 42, "username": resolvedByUsername}
+	}
+	return n
+}
+
+// glMergeHoldReleasedReply is the reply note SetMergeHold posts on a release.
+func glMergeHoldReleasedReply(id int, head string) map[string]any {
+	return map[string]any{"id": id, "body": mergeHoldReleasedMarker + "\n" + mergeHoldHeadPrefix + head}
+}
+
+// glDiscussion wraps notes into one discussion object, the shape ReadMergeHold walks.
+func glDiscussion(id string, notes ...map[string]any) map[string]any {
+	return map[string]any{"id": id, "individual_note": false, "notes": notes}
 }
 
 // glCase is one golden-pinned operation. `method` names the Forge method it exercises and is
@@ -1373,6 +1438,116 @@ func glCases() []glCase {
 			name: "change_diff_gap", method: "ChangeDiff",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.ChangeDiff(glRepo, 7) },
+		},
+		// --- the forge-gitlab merge-hold brief: the merge-hold marker thread ---
+		{
+			// A freshly opened marker thread comes back RESOLVABLE — the property that lets the
+			// server actually block the merge button on it.
+			name: "open_merge_hold", method: "OpenMergeHold",
+			setup: func(s *glServer) {
+				s.createDiscussion = glDiscussion("disc-1", glMergeHoldMarkerNote(false, ""))
+			},
+			run: func(f *GitLabForge) (any, error) { return f.OpenMergeHold(glRepo, 7) },
+		},
+		{
+			// A thread that comes back NOT resolvable can never block the merge button — the
+			// whole point of this op — so this is a could-not-check refusal, never a silent id.
+			name: "open_merge_hold_not_resolvable_refused", method: "OpenMergeHold",
+			setup: func(s *glServer) {
+				s.createDiscussion = glDiscussion("disc-2", map[string]any{
+					"id": 801, "body": mergeHoldMarkerBody, "resolvable": false, "resolved": false,
+				})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.OpenMergeHold(glRepo, 7) },
+		},
+		{
+			// No discussion at all carries the marker's fixed first line — a real answer, never
+			// an error.
+			name: "read_merge_hold_absent", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-human", map[string]any{
+					"id": 700, "body": "looks good to me", "resolvable": false, "resolved": false,
+				})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			name: "read_merge_hold_unresolved", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1", glMergeHoldMarkerNote(false, ""))}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// Resolved BY the reviewer, with a released reply naming the head — the shape
+			// deskflip's reviewer-approved condition accepts.
+			name: "read_merge_hold_resolved_at_head", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					glMergeHoldReleasedReply(950, "abc123"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// A reply that is NOT the released marker must never be misread as one just because
+			// its second line happens to start with `Head: ` — only a reply whose FIRST line is
+			// the exact released marker names a head at all.
+			name: "read_merge_hold_ignores_non_released_reply_head_line", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					map[string]any{"id": 951, "body": "unrelated comment\nHead: spoofed-sha"},
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// Resolved BY HAND — a Developer can resolve any thread on GitLab, so the forge's
+			// OWN resolved_by is the signal that lets a caller tell this apart from a reviewer's
+			// verdict, independent of whatever reply (if any) accompanies it.
+			name: "read_merge_hold_resolved_by_non_reviewer", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "some-developer"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// Releasing an unresolved hold: the reply posts FIRST (the reasoning is recorded
+			// before the gate is weakened), then the resolve toggle.
+			name: "set_merge_hold_release", method: "SetMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1", glMergeHoldMarkerNote(false, ""))}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: true, Head: "abc123"})
+			},
+		},
+		{
+			// Re-arming a resolved hold: the resolve toggle goes FIRST (the gate is back up
+			// immediately), then the explanatory reply.
+			name: "set_merge_hold_rearm", method: "SetMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					glMergeHoldReleasedReply(950, "abc123"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: false, Reason: "request-changes"})
+			},
+		},
+		{
+			// A change with no marker thread cannot be released or re-armed — a could-not-check
+			// refusal naming the change, never a silent no-op.
+			name: "set_merge_hold_absent_refused", method: "SetMergeHold",
+			setup: func(s *glServer) { s.discussions = []map[string]any{} },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: true, Head: "abc123"})
+			},
 		},
 	}
 }
