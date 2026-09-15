@@ -115,8 +115,8 @@ token (PAT):
 | worker | service account | Developer (30) | `api`, `write_repository` | branches + `Draft:` MRs |
 | verifier | service account | Developer (30) | `api`, `write_repository` | commits Evidence; excluded from approval eligibility by approval rules |
 | desk | service account | Developer (30) | `api` | coordination via MRs |
-| issue-loop | service account | Reporter (20) | `api` | files/triages issues |
-| intake-loop | service account | Reporter (20) | `api` | files/triages issues |
+| issue-loop | service account | Developer (30) | `api`, `write_repository` | files/triages issues AND lands its exits (placeholders, closes) as draft MRs on a branch — GitLab refuses MR creation below Developer |
+| intake-loop | service account | Developer (30) | `api`, `write_repository` | files/triages issues AND lands intake entries, specs and brief rows as draft MRs on a branch — GitLab refuses MR creation below Developer |
 | board-writer | service account | Developer (30) + allowed-to-push entry on protected `main` | `api`, `write_repository` | the ruleset-bypass analog |
 | auditor | service account | Reporter (20) | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope |
 | cell-issues | not yet mapped on GitLab | — | — | GitHub-only "write-issues" identity today (a narrower, per-purpose issues-filing role, selectable only by name); no GitLab consumer is wired to it yet |
