@@ -1,6 +1,6 @@
 package main
 
-// forge.go — deskdisposition's forge wiring for the `read` verb.
+// forge.go — deskdisposition's forge wiring for the two READ verbs, `read` and `sweep`.
 //
 // THE DEFECT (#984). `read` used to shell out to `gh pr view -R <repo> <N> --json
 // labels,comments` under whatever identity `gh` resolved AMBIENTLY. That is fine for a
@@ -19,9 +19,16 @@ package main
 // deskfile's every-verb does) via `desktoken` and reaches the forge through the resolved
 // deskkit.Forge under that App's custody, via REST (go-gh's client), never `gh`. There is
 // no ambient fallback here either: an empty token is a hard refusal at the custody step,
-// same as every other migrated verb. `set` and `sweep` are UNCHANGED — they still shell to
-// `gh` under the ambient identity, per the tool's original design; only `read` is the
-// authenticated-by-another-tool's-child path this defect was found on.
+// same as every other migrated verb. `set` is UNCHANGED — it still shells to `gh` under the
+// ambient identity, per the tool's original design, because routing a WRITE through the seam
+// changes WHO performs it; only `read` was the authenticated-by-another-tool's-child path
+// this defect was found on.
+//
+// `sweep` joined them for a DIFFERENT defect (#1123): shelling `gh pr list` asked GitHub
+// about a repo whichever forge actually serves it, so a GitLab project's queue read as
+// UNKNOWN rather than as its merge requests. It reaches the same resolved deskkit.Forge
+// through the same wiring below (ListOpenChanges), and being a read under the session's own
+// minted token it moves no token-custody question. See verbs.go's sweepOpenChanges.
 
 import (
 	"bytes"
@@ -38,7 +45,7 @@ import (
 var ghToken string
 
 // mintedRole is the App role mintSessionToken resolved for this session (worker by default,
-// mirroring deskfile — `read` has no two-role concept of its own to key on).
+// mirroring deskfile — the read verbs have no two-role concept of their own to key on).
 var mintedRole = "worker"
 
 // forgeAPIBase is a TEST-ONLY override of the API base the resolved backend is pointed at. Empty
