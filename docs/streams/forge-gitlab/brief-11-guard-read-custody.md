@@ -39,7 +39,7 @@ sources:
   - "#835 — the fg/08 Evidence PR recording the FAIL (row 3 returns 4: three real invocations plus one comment literal)"
   - "#841 — open at authoring (draft, reviewer-App APPROVED @ 887c6ce): moves the two `deskroster` sites onto the EXISTING `GetPullRequest` / `ListOpenChanges` ops under the session-role token and lowers the forgeban ceiling 9 → 7; proposed keeping `repohardenguard` as CLI, which the ruling rejects"
   - "docs/streams/forge-gitlab/spec.md §3 (a constrained typed surface is the stronger side of the parity table), §5 (custody: minted tokens, rotate-on-mint, file custody 0600), §6 (freeze rule — an op lands with its consuming tool in the same change)"
-  - "docs/streams/forge-gitlab/inventory.md — the frozen 37-op table this brief adds op 38 to; its `Residual forge-CLI call sites` section classes `repohardenguard` as `not a forge op at all` and `deskroster` as `identity`; deltas D2 (minting stays outside the interface) and D3 (hardening reads are not frozen forge ops — until a consumer exists)"
+  - "docs/streams/forge-gitlab/inventory.md — the frozen 39-op table this brief adds op 40 to; its `Residual forge-CLI call sites` section classes `repohardenguard` as `not a forge op at all` and `deskroster` as `identity`; deltas D2 (minting stays outside the interface) and D3 (hardening reads are not frozen forge ops — until a consumer exists)"
   - "docs/streams/forge-gitlab/brief-08-close-the-forge-surface.md — Verify row 3 (whole-tree grep, expect 0) and the no-passthrough test this brief must stay inside"
   - "docs/streams/forge-gitlab/brief-03-gitlab-token-custody.md — the per-role token-file contract (`<config>/gitlab-<role>.token`, 0600, rotate-on-mint) the new role inherits unchanged"
   - "tools/desk/internal/forgeban/allowlist.go — the permit register; its header names the blocker in its own words: both backends REFUSE a client without an explicitly minted token, so routing an ambient-credential tool through the seam changes WHO acts, which is a token-custody decision"
@@ -55,11 +55,11 @@ exec-tier-why: "it fixes the acting identity of two tools (question c: an over-s
 domain: complicated
 tier: free
 consumers:
-  - "tools/desk/internal/deskkit/forge.go + forge_github.go + forge_gitlab.go + their golden tests: fixed-here (op 38 `RepoHardeningRead` with its kind validator, the GitHub kinds, the GitLab named refusal)"
+  - "tools/desk/internal/deskkit/forge.go + forge_github.go + forge_gitlab.go + their golden tests: fixed-here (op 40 `RepoHardeningRead` with its kind validator, the GitHub kinds, the GitLab named refusal)"
   - "tools/desk/cmd/repohardenguard/*.go: fixed-here (the fetcher moves from `ghGet` onto the typed op under the `auditor` identity; `Row.Endpoint()` becomes `Row.Kind()` over the closed vocabulary; error→status mapping reads `ForgeAPIError`)"
   - "tools/desk/cmd/desktoken/desktoken.go (`validRoles`) + internal/deskkit/preflight.go remediation text: fixed-here (the `auditor` role; GitHub App mint and GitLab token-file read both keyed on the role name, no new code path)"
   - "tools/desk/internal/forgeban/allowlist.go + forgeban.go: fixed-here (the `repohardenguard` permit row is removed and the ceiling lowered; the comment literal at forgeban.go:173 is reworded so the whole-tree grep reads 0)"
-  - "docs/streams/forge-gitlab/inventory.md: fixed-here (op 38's row and delta paragraph land WITH the method: `TestForgeNoPassthrough` reflects the interface against this table, so the row cannot precede the code)"
+  - "docs/streams/forge-gitlab/inventory.md: fixed-here (op 40's row and delta paragraph land WITH the method: `TestForgeNoPassthrough` reflects the interface against this table, so the row cannot precede the code)"
   - "docs/adopting-assay.md + docs/adopting-assay-gitlab.md: fixed-here (the #857 ruling's docs half, a DELIVERABLE with its own Verify rows: provisioning the auditor identity at every place these two pages ENUMERATE roles or permission sets — the GitHub App inventory + the provisioning checklist step 2 (`Metadata: read`, `Contents: read`, `Administration: read`, nothing writable), the GitLab role→service-account table (`read_api`, Reporter) and the per-role `gitlab-<role>.token` list, plus the `<config>/auditor-app.pem` / `gitlab-auditor.token` custody files and the preflight remediation text)"
   - "the public website's adoption + apps pages: out-of-scope (the #857 ruling's website half; it lives in a different repo and lands as a COMPANION change tracked separately, so this brief neither edits nor gates on it — the wording it mirrors is the two adopter pages above)"
   - "tools/desk/internal/deskkit/echocoverage_test.go (`exemptFromRoster` reason for repohardenguard): fixed-here (the guard now reads the roster's forge map, still never the write-authorisation set; the exemption's reason is rewritten to say so)"
@@ -90,7 +90,7 @@ change." This brief makes that decision and lands the three migrations behind it
 |---|---|---|---|---|
 | `deskroster` `ghViewPR` | `pr view --json state,isDraft,title` | ambient `gh` login | `GetPullRequest` (op 1; `Title` landed with `deskpr edit`) | the SESSION's own role token (`SessionTokenRole` from the loop identity) — #841's shape |
 | `deskroster` `ghListOpenPRs` | `pr list --state open` | ambient `gh` login | `ListOpenChanges` (op 23) | same |
-| `repohardenguard` `ghRun`/`ghGet` | arbitrary GET `gh api <endpoint>` parsed out of a checklist document; preflight `repos/<repo>`; `/user` for the identity line | ambient `gh` login, usually a human admin's | NONE today — a new enumerated op over a closed kind set (op 38, below); file-presence rows via the existing `ReadFile` (op 22) | a dedicated READ-ONLY `auditor` role with its own App / service account, minted and read through the existing per-role custody paths |
+| `repohardenguard` `ghRun`/`ghGet` | arbitrary GET `gh api <endpoint>` parsed out of a checklist document; preflight `repos/<repo>`; `/user` for the identity line | ambient `gh` login, usually a human admin's | NONE today — a new enumerated op over a closed kind set (op 40, below); file-presence rows via the existing `ReadFile` (op 22) | a dedicated READ-ONLY `auditor` role with its own App / service account, minted and read through the existing per-role custody paths |
 
 **Why not the other custody shapes.** Passing the ambient credential into the Forge client is
 what the seam was built to retire: both backends refuse an unminted token by design, the audit
@@ -118,7 +118,7 @@ the public site's adoption and apps pages, which mirror these two documents — 
 repo and lands as a COMPANION change tracked separately; this brief neither edits it nor gates on
 it, and no Verify row here dereferences it.
 
-**Op 38 — `RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)`.**
+**Op 40 — `RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)`.**
 One method, a CLOSED kind vocabulary, one fixed endpoint literal per kind per backend. The
 argument is a named enum validated BEFORE any request exists (`ValidateHardeningReadKind`, the
 `DeleteRef`/`ValidateRefPath` shape), never a path — so the method passes `TestForgeNoPassthrough`
@@ -144,7 +144,7 @@ guard's tests pin is preserved and sharpened: the DOCUMENT is the source of ever
 the TOOL is the source of the enumerated reads, and neither can widen the other.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` — op 38 `RepoHardeningRead` + `HardeningReadKind` +
+- `tools/desk/internal/deskkit/forge.go` — op 40 `RepoHardeningRead` + `HardeningReadKind` +
   `ValidateHardeningReadKind`; no other method, no field taking a path.
 - `tools/desk/internal/deskkit/forge_github.go`, `forge_github_golden_test.go` — the six GitHub
   kinds, one golden per kind (the `rulesets` golden pins the list-then-detail walk) plus
@@ -179,7 +179,7 @@ files:
   comment so it no longer carries the literal the whole-tree grep counts.
 - `tools/desk/internal/deskkit/echocoverage_test.go` — `exemptFromRoster["repohardenguard"]`
   reason updated (reads the forge map, never the write-authorisation set).
-- `docs/streams/forge-gitlab/inventory.md` — op 38 row + delta paragraph (consumer:
+- `docs/streams/forge-gitlab/inventory.md` — op 40 row + delta paragraph (consumer:
   `repohardenguard`), the residual-call-sites table updated, the ceiling narrative.
 - `docs/adopting-assay.md`, `docs/adopting-assay-gitlab.md` — provisioning the auditor identity,
   at EVERY place these pages enumerate a role or a permission set (the #857 ruling's docs half):
@@ -200,7 +200,7 @@ files:
 single-point-of-failure: the FORGE-SIDE GRANT on the auditor identity is the one control between a
 leaked or mis-provisioned guard token and a settings write — our code is GET-only, but code is not
 a boundary a stolen token respects. It is backed by two independent layers that fail for different
-reasons in different components: (1) the enumerated surface — op 38 takes a closed kind, not a
+reasons in different components: (1) the enumerated surface — op 40 takes a closed kind, not a
 path, `TestForgeNoPassthrough` forbids any method that does, and the forgeban ratchet forbids a
 shell-out around it, so the tool's own code path cannot be steered at a write endpoint; (2) the
 forge's permission model — the auditor App / PAT carries no write scope, so a write attempted with
@@ -209,7 +209,7 @@ layer 2 with layer 1 bypassed. A third, out-of-band signal already exists: the f
 and the inventory reflection redden CI on any new shell-out or method.
 
 facts:
-- Spec §6 freeze rule: op 38 lands WITH `repohardenguard` converted in the same change; the
+- Spec §6 freeze rule: op 40 lands WITH `repohardenguard` converted in the same change; the
   inventory row lands with the method (the reflection test compares the two).
 - fg/08 Verify row 3 is the closure target, verbatim: `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' | grep -v _test.go | wc -l` must read `0`. On main @ 8953d38d it reads 4. #841 takes it to 2 (repohardenguard + the comment); this brief takes it to 0.
 - The permit register (2026-09-11): ceiling 9; #841 → 7; this brief → one fewer than whatever
@@ -333,11 +333,11 @@ recorded ruling).
      keeps the docs half from rotting on the next role.
    The WEBSITE half (the public site's adoption + apps pages) is a COMPANION change in the site
    repo — out of scope here, not edited from this branch, not gated on.
-3. **Op 38.** Add `RepoHardeningRead` + `HardeningReadKind` + `ValidateHardeningReadKind` to
+3. **Op 40.** Add `RepoHardeningRead` + `HardeningReadKind` + `ValidateHardeningReadKind` to
    `forge.go`; implement the six GitHub kinds (fixed literals; `rulesets` walks list→detail
    and returns the detail array); implement the GitLab named refusal; goldens for every kind,
    the zero-request unknown-kind refusal, and the GitLab coverage case. Update `inventory.md`
-   (row 38, delta paragraph, residual-sites table) in the same change.
+   (row 40, delta paragraph, residual-sites table) in the same change.
 4. **Guard migration.** Replace `ghRun`/`ghGet` with the resolver seam (`forge.go`, fixed role
    `auditor`, roster-map resolution only); `Row.Endpoint()` → `Row.Kind()` over `read <kind>` /
    `read file <path>` (a `gh api` cell is a parse REFUSAL naming the vocabulary); file rows via
@@ -357,7 +357,7 @@ recorded ruling).
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | check:ci |
 | 2 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | `0` — fg/08 row 3, verbatim, now closed | check +neighbour |
-| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` — the ratchet reconciles at the lowered ceiling, op 38 passes the name and no-endpoint-argument checks, the inventory reflects 38 methods, every kind has a golden | check:ci |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` — the ratchet reconciles at the lowered ceiling, op 40 passes the name and no-endpoint-argument checks, the inventory reflects 40 methods, every kind has a golden | check:ci |
 | 4 | `grep -cE -e 'Key: +"cmd/repohardenguard/' -e 'Key: +"cmd/deskroster/' tools/desk/internal/forgeban/allowlist.go; test "$(grep -oE 'allowedInvocationCeiling = [0-9]+' tools/desk/internal/forgeban/allowlist.go \| grep -oE '[0-9]+$')" -le 6` | first line `0`; exit 0 — no permit row for either tool, ceiling at or below 6 | check |
 | 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden/hardening_read_unknown_kind -v` | exit 0; output contains `PASS` (`hardening_read_unknown_kind` (planned)) and the golden records ZERO requests — the kind validator refuses before a request exists | check +mutation |
 | 6 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestChecklistRefusesGhApiCell -v && go test ./cmd/repohardenguard/ -run TestAdminNullIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestForbiddenIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestPublicNotFoundIsAbsent -v` | exit 0; output contains `PASS` — the old Read grammar is refused by name; the three-state verdicts survive the seam (`TestChecklistRefusesGhApiCell` (planned), `TestAdminNullIsCouldNotCheck` (planned), `TestForbiddenIsCouldNotCheck` (planned), `TestPublicNotFoundIsAbsent` (planned) — names the re-plumbed suite creates; the four verdict classes are the contract) | check +flow |
