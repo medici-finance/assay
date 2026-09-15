@@ -101,8 +101,11 @@ var AllowedInvocations = []Allowance{
 	},
 	{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",
-		Reason: "TODO(forge-surface): mixed. `pr comment` maps to PostComment and the label verbs now map to " +
-			"ApplyLabels; `label list` and `pr list` still have no enumerated op, and the tool mints no token.",
+		Reason: "TODO(forge-surface): mixed, and now WRITE-ONLY — `sweep`'s `pr list` came off this row when it " +
+			"migrated onto the enumerated ListOpenChanges (#1123), which is what made the verb answer on a " +
+			"GitLab project at all. What is left is `set`: `pr comment` maps to PostComment and the label " +
+			"verbs now map to ApplyLabels, but `label list` still has no enumerated op and the verb mints no " +
+			"token, so routing its writes through the seam is a token-custody decision.",
 	},
 	{
 		Key: "cmd/deskmerge/exec.go::runGH::gh",
