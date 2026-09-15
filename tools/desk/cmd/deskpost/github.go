@@ -1037,6 +1037,17 @@ func (c *ghClient) markReadyForReview(nodeID string) error {
 	return nil
 }
 
+// readMergeHold / setMergeHold: the ghClient path is GitHub-only (branch protection is
+// GitHub's server-side twin — the forge-gitlab merge-hold brief), so both are the typed
+// not-applicable, unconditionally, and issue no request.
+func (c *ghClient) readMergeHold(pr int) (*deskkit.MergeHold, error) {
+	return &deskkit.MergeHold{State: deskkit.MergeHoldNotApplicable}, nil
+}
+
+func (c *ghClient) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return deskkit.ErrMergeHoldNotApplicable
+}
+
 // RepoVisibility implements deskkit.RepoInfoFetcher for the App-authenticated client.
 func (c *ghClient) RepoVisibility(owner, repo string) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s", owner, repo)
