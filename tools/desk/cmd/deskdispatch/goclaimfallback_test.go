@@ -10,12 +10,14 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// goclaimfallback_test.go — issue 708. When a repo carries no tools/dispatch-claim.sh,
-// deskdispatch falls back to the pure-Go claim binary (goClaimBinary, cmd/deskclaim-ref)
-// resolved on PATH. That fallback is the ONLY claim path that runs on a native-Windows
-// adopter: a bare executable CreateProcess resolves through PATH, with no shebang `.sh` and
-// no bash association. These tests pin the fallback, the fail-closed when neither tool
-// exists, and the Windows-viable exec shape (no script, no shell).
+// goclaimfallback_test.go — issues 708 and 1151. deskdispatch dispatches through the pure-Go
+// claim binary (goClaimBinary, cmd/deskclaim-ref) whenever it resolves on PATH, and through
+// the legacy tools/dispatch-claim.sh only when the binary is absent and the resolved root
+// carries the script (1151 inverted 708's order). The binary is the ONLY claim path that runs
+// on a native-Windows adopter: a bare executable CreateProcess resolves through PATH, with no
+// shebang `.sh` and no bash association. These tests pin the preference order, the script
+// fallback, the fail-closed when neither tool exists, and the Windows-viable exec shape (no
+// script, no shell).
 
 // withGoClaimOnPath makes goClaimBinary resolvable via the lookPath seam, the way the
 // installer places it on PATH alongside the other desk-tools binaries.
@@ -103,11 +105,12 @@ func TestNoScriptAndNoGoBinaryFailsClosedNamingBoth(t *testing.T) {
 	}
 }
 
-// The legacy script still WINS when present: a consumer mid-transition keeps its exact
-// current behavior (the .sh is invoked, the release hint is the repo-relative path), and the
-// Go binary is not consulted. This is what lets a Go and a bash dispatcher coexist without
-// double-dispatching — they collide on the same refs/dispatch ref either way.
-func TestLegacyScriptIsPreferredOverTheGoBinaryWhenBothExist(t *testing.T) {
+// The Go binary WINS when both resolve (issue 1151 inverted the 708 order): a tree that still
+// carries the legacy .sh dispatches through deskclaim-ref, which takes the role credential as
+// --token-file, and the release hint names the binary. The script is consulted only when the
+// binary is absent (the test below). Both land the claim in the same refs/dispatch ref, so a
+// Go and a bash dispatcher still collide rather than double-dispatch.
+func TestGoClaimBinaryIsPreferredOverTheLegacyScriptWhenBothExist(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root) // the tree DOES carry the .sh
@@ -118,11 +121,36 @@ func TestLegacyScriptIsPreferredOverTheGoBinaryWhenBothExist(t *testing.T) {
 	if rc := run([]string{"example--stream--07", "--root", root, "--repo", allowedRepo, "--prompt-file", promptFile}); rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0", rc)
 	}
+	if !s.ran(goClaimBinary + " acquire example--stream--07") {
+		t.Error("the Go claim binary was not preferred when both it and the legacy script resolve")
+	}
+	if s.ran("dispatch-claim.sh") {
+		t.Error("the legacy script was invoked although the Go binary was on PATH")
+	}
+	body, _ := os.ReadFile(promptFile)
+	if !strings.Contains(string(body), goClaimBinary+" release") {
+		t.Errorf("the release hint does not name the Go claim binary:\n%s", string(body))
+	}
+}
+
+// The legacy script is the FALLBACK: with the Go binary absent from PATH, a tree that carries
+// tools/dispatch-claim.sh keeps dispatching through it, and the release hint is the
+// repo-relative script path.
+func TestLegacyScriptIsTheFallbackWhenTheGoBinaryIsAbsent(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t) // install's default lookPath finds no binary
+	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
+
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	if rc := run([]string{"example--stream--07", "--root", root, "--repo", allowedRepo, "--prompt-file", promptFile}); rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0", rc)
+	}
 	if !s.ran("dispatch-claim.sh acquire example--stream--07") {
-		t.Error("the legacy script was not preferred when present")
+		t.Error("the legacy script did not run as the fallback with the Go binary absent")
 	}
 	if s.ran(goClaimBinary + " acquire") {
-		t.Error("the Go binary was invoked despite the legacy script being present")
+		t.Error("the Go binary was invoked although it is not on PATH")
 	}
 	body, _ := os.ReadFile(promptFile)
 	if !strings.Contains(string(body), claimScriptRel+" release") {

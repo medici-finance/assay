@@ -482,6 +482,7 @@ var (
 	gitTree            = gitTreeReal
 	deskToolsPin       = deskToolsPinReal
 	deskToolsSourcePin = deskToolsSourcePinReal
+	originPin          = originPinReal
 )
 
 func staleState() (state string, stale bool, detail string) {
@@ -501,9 +502,18 @@ func staleState() (state string, stale bool, detail string) {
 				return staleStateInSync, false,
 					"in sync with " + pinFile + " (" + pinArtifact + " " + pinTag + ")"
 			}
-			return staleStateDrift, true,
-				"installed desk-tools releaseTag " + running + " differs from the " + pinArtifact +
-					" pin " + pinTag + " in " + pinFile + " — reinstall the pinned release (sudo make desk-install)"
+			top, originTag, _, originFound := originPin(pinRoot, pinArtifact)
+			return staleStateDrift, true, driftDetail(driftSides{
+				kind:        "releaseTag",
+				artifact:    pinArtifact,
+				installed:   running,
+				worktree:    pinTag,
+				origin:      originTag,
+				originFound: originFound,
+				pinFile:     pinFile,
+				top:         top,
+				same:        func(a, b string) bool { return normalizeTag(a) == normalizeTag(b) },
+			})
 		}
 		// Pinned by sourceSHA/builtAt but carrying no releaseTag stamp (an older
 		// stamped binary): the tag comparison cannot run. Fall through to the
@@ -527,9 +537,23 @@ func staleState() (state string, stale bool, detail string) {
 				return staleStateInSync, false,
 					"in sync with " + pinFile + " (desk-tools-source " + pinCommit + ")"
 			}
-			return staleStateDrift, true,
-				"installed desk-tools sourceSHA " + src + " differs from the pinned desk-tools-source commit " +
-					pinCommit + " in " + pinFile + " — reinstall the pinned release (sudo make desk-install)"
+			top, originTag, originSHA, originFound := originPin(pinRoot, "desk-tools-source")
+			originCommit := originSHA
+			if !isFullCommitSHA(originCommit) && isFullCommitSHA(originTag) {
+				originCommit = originTag // the channel-D `<commit> channel-D` column layout
+			}
+			return staleStateDrift, true, driftDetail(driftSides{
+				kind:        "sourceSHA",
+				artifact:    "desk-tools-source",
+				installed:   src,
+				worktree:    pinCommit,
+				origin:      originCommit,
+				originFound: originFound && isFullCommitSHA(originCommit),
+				pinFile:     pinFile,
+				top:         top,
+				// The installed stamp is a SHORT sha; a pin holds the full commit.
+				same: func(installed, pin string) bool { return installed != "" && strings.HasPrefix(pin, installed) },
+			})
 		}
 		// A source line whose commit is not a full 40-hex SHA cannot bind the
 		// stamp; do not invent a verdict from it. Fall through to the in-tree ref,
@@ -559,6 +583,94 @@ func staleState() (state string, stale bool, detail string) {
 			"installed sourceSHA " + src + " tools/desk tree differs from origin/main — reinstall (sudo make desk-install)"
 	}
 	return staleStateInSync, false, "in sync with origin/main"
+}
+
+// driftSides is one measured drift, all three sides named: the release the running
+// binary carries, the pin in THIS worktree's `.assay-versions`, and the pin on
+// origin/main. `same` is the equality the kind uses (tag normalisation for a release
+// tag, short-sha prefix for a source commit); originFound=false is origin/main's side
+// reported as could-not-check, never as agreement with either.
+type driftSides struct {
+	kind, artifact      string
+	installed, worktree string
+	origin              string
+	originFound         bool
+	pinFile, top        string
+	same                func(installed, pin string) bool
+}
+
+// driftDetail renders a drift verdict that says WHICH side is stale (#1157).
+//
+// Two sides are never enough. "installed vs this worktree's pin" is a true statement
+// about a role worktree three days behind main and about a binary nobody reinstalled,
+// and the old message answered both with `sudo make desk-install` — which, in the live
+// case, told the operator to reinstall the CURRENT side while the stale side (the
+// worktree) stayed stale and the loop refused every flip for a day. So the message names
+// all three, and the shim reinstall is recommended ONLY when the installed release is the
+// one behind main's pin. A worktree behind main gets the merge line; a three-way
+// disagreement gets the merge FIRST, then the reinstall; an unreadable origin/main is
+// reported as could-not-check with no reinstall recommended, because a recommendation
+// with no evidence for which side it repairs is the message this replaces.
+func driftDetail(d driftSides) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "installed desk-tools %s %s; this worktree's %s pin %s (%s); origin/main's %s pin ",
+		d.kind, d.installed, d.artifact, d.worktree, d.pinFile, d.artifact)
+	merge := "git -C " + d.top + " merge refs/remotes/origin/main"
+	if d.top == "" {
+		merge = "git merge refs/remotes/origin/main"
+	}
+	switch {
+	case !d.originFound:
+		fmt.Fprintf(&b, "could-not-check (no readable refs/remotes/origin/main:%s) — which side is stale cannot "+
+			"be established from two sides: `git fetch origin` and re-run; if this worktree is then behind, "+
+			"`%s` (merge, never rebase)", deskkit.AssayVersionsFile, merge)
+	case d.same(d.installed, d.origin):
+		fmt.Fprintf(&b, "%s — the installed release IS main's pin, so this WORKTREE is the stale side (behind "+
+			"origin/main). Bring it current: `%s` (merge, never rebase). Do not reinstall.", d.origin, merge)
+	case normalizeTag(d.worktree) == normalizeTag(d.origin):
+		fmt.Fprintf(&b, "%s — this worktree carries main's pin, so the INSTALLED release is the stale side: "+
+			"reinstall the pinned release (sudo make desk-install)", d.origin)
+	default:
+		fmt.Fprintf(&b, "%s — all three differ: the installed release matches neither pin. Bring this worktree "+
+			"current first, `%s` (merge, never rebase), then reinstall to main's pin (sudo make desk-install)",
+			d.origin, merge)
+	}
+	return b.String()
+}
+
+// originPinReal reads artifact's pin line from `refs/remotes/origin/main:.assay-versions`
+// in the repo pinRoot lives in, so a drift verdict can name main's side alongside the
+// worktree's. Fully-qualified ref, never the bare `origin/main` (#885: a stray local
+// branch of that name would answer instead). found=false for anything that cannot be
+// read — no repo, no ref, no file at that ref, no line — which the caller reports as
+// could-not-check, never as a verdict. top is the worktree's toplevel (for the merge
+// line the caller prints), or pinRoot when there is no repo to ask.
+func originPinReal(pinRoot, artifact string) (top, tag, sha string, found bool) {
+	top, err := gitcore.Toplevel(pinRoot)
+	if err != nil {
+		return pinRoot, "", "", false
+	}
+	repo, err := gitcore.Open(top)
+	if err != nil {
+		return top, "", "", false
+	}
+	rel, err := filepath.Rel(top, pinRoot)
+	if err != nil {
+		return top, "", "", false
+	}
+	path := deskkit.AssayVersionsFile
+	if rel != "." {
+		path = filepath.ToSlash(filepath.Join(rel, deskkit.AssayVersionsFile))
+	}
+	raw, err := repo.FileAt("refs/remotes/origin/main", path)
+	if err != nil {
+		return top, "", "", false
+	}
+	tag, sha, ok, perr := deskkit.ArtifactPinFrom([]byte(raw), "refs/remotes/origin/main:"+path, artifact)
+	if perr != nil || !ok {
+		return top, "", "", false
+	}
+	return top, tag, sha, true
 }
 
 // normalizeTag strips an optional `<component>/` prefix so the two legitimate pin-tag
@@ -648,9 +760,8 @@ func deskToolsPlatformArtifact() string {
 // job, matching deskToolsPinReal). The trailing-space prefix match inside
 // ArtifactPin keeps `desk-tools-source ` from matching `desk-tools-source-notes`.
 //
-// TWO LEGITIMATE COLUMN LAYOUTS (#795 §3). ArtifactPin returns field 2 as `tag`
-// and field 3 as `sha`, but a `desk-tools-source` line can carry its 40-hex
-// commit in EITHER column:
+// TWO LEGITIMATE COLUMN LAYOUTS (#795 §3). A `desk-tools-source` line can carry
+// its 40-hex commit in EITHER column:
 //
 //   - `desk-tools-source <tag> <40-hex-commit>` — commit in field 3 (the shape
 //     the #776 tests and CheckPins' `-source` rule assume);
@@ -658,27 +769,27 @@ func deskToolsPlatformArtifact() string {
 //     literal `channel-D` channel marker in field 3, the shape a real adopter's
 //     `.assay-versions` (and `desksourceguard`) actually writes.
 //
-// Prefer field 3 when it is a full commit (no regression for the #776 shape),
-// otherwise use field 2 when THAT is the full commit. When NEITHER column holds a
-// 40-hex commit, return field 3 unchanged so staleState's own isFullCommitSHA
-// guard falls the run through to the in-tree ref / could-not-check exactly as
-// before — a malformed pin never manufactures a verdict here.
+// That interpretation is deskkit.SourcePin's and is not restated here (#1122): it
+// is the ONE reader of a source line, shared with the statusgen pin the board's
+// Next-up selection resolves, so the two can never drift into disagreeing about
+// what the same line says. Field 3 is preferred when it is a full commit (no
+// regression for the #776 shape), then field 2. When NEITHER column holds a 40-hex
+// commit, field 3 is returned unchanged so staleState's own isFullCommitSHA guard
+// falls the run through to the in-tree ref / could-not-check exactly as before —
+// a malformed pin never manufactures a verdict here.
 func deskToolsSourcePinReal() (root, commit string, found bool) {
 	dir := nearestPinRoot()
 	if dir == "" {
 		return "", "", false
 	}
-	if field2, field3, perr := deskkit.ArtifactPin(dir, "desk-tools-source"); perr == nil {
-		switch {
-		case isFullCommitSHA(field3):
-			return dir, field3, true
-		case isFullCommitSHA(field2):
-			return dir, field2, true
-		default:
-			return dir, field3, true
-		}
+	ref, hit, err := deskkit.SourcePin(dir, deskToolsArtifact)
+	if err != nil || !hit {
+		return "", "", false // pin file present but no usable desk-tools-source line
 	}
-	return "", "", false // pin file present but no usable desk-tools-source line
+	if ref.Commit != "" {
+		return dir, ref.Commit, true
+	}
+	return dir, ref.Field3, true
 }
 
 // nearestPinRoot walks up from the working directory and returns the first

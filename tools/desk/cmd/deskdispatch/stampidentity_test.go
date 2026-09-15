@@ -12,10 +12,22 @@ package main
 // strong-tier PR, while an UNSTAMPED PR sailed through on the absent-attestation NOTICE.
 // Present-but-untrusted was worse than absent, and the stamp the dispatcher itself wrote
 // was the untrusted one.
+//
+// WHY THE HARNESS IS AN HTTP SERVER (#1154). The step used to reach the forge by launching
+// `gh`, so these tests wrapped execCommand and asserted on the constructed argv
+// ("pr edit 77 --add-label …"). Every read and write now goes through the resolved
+// deskkit.Forge — an HTTP client bound to the lane's own dispatcher credential — so the argv
+// recorder has nothing left to record. The successor records the same facts one layer down:
+// the METHOD and PATH of every request the step actually emits, plus the role the custody
+// minter was asked for. Nothing about the code path under test is stubbed out — the resolver
+// constructs a real GitHubForge, the custody hook hands it the stub token, and the API base
+// points it at this server. Only the far side of the wire is fake.
 
 import (
+	"encoding/json"
 	"errors"
-	"os/exec"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,24 +35,148 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// stubMint replaces the App-token seam and records what identity was asked for.
+// ghStampServer is the fake GitHub the stamp step is driven against. It serves the two
+// reads the re-stamp needs — the change (with its CURRENT labels) and its label timeline —
+// and accepts the ensure/apply/remove writes, recording each request.
+type ghStampServer struct {
+	srv      *httptest.Server
+	requests []ghStampReq
+
+	labels   []string     // the labels currently on PR 77
+	timeline []ghStampEvt // its label timeline, in order
+	failPR   bool         // the change read answers 500
+	failTL   bool         // the timeline read answers 500
+	minted   []mintCall   // every custody request the resolver made
+	mintErr  error        // when set, the custody minter refuses
+}
+
+type ghStampReq struct {
+	Method string
+	Path   string
+	Body   string
+	Auth   string
+}
+
+// ghStampEvt is one `labeled`/`unlabeled` timeline event as the wire renders it.
+type ghStampEvt struct {
+	Event string
+	Label string
+	Actor string
+}
+
 type mintCall struct{ role, repo string }
 
-func stubMint(t *testing.T, token string, err error) *[]mintCall {
+const ghStampToken = "example-installation-token"
+
+// installGHStamp stands the fake forge up and routes the resolver's GitHub custody to it:
+// the minter returns the stub token AND this server's URL as the API base, which is the one
+// documented hook for both (deskkit.SetGitHubCustodyMinter).
+func installGHStamp(t *testing.T) *ghStampServer {
 	t.Helper()
-	var calls []mintCall
-	old := mintTokenFn
-	mintTokenFn = func(role, repo string) (string, string, error) {
-		calls = append(calls, mintCall{role: role, repo: repo})
-		return token, "/tmp/example-token-path", err
-	}
-	oldTok := dispatcherToken
-	dispatcherToken = ""
-	t.Cleanup(func() {
-		mintTokenFn = old
-		dispatcherToken = oldTok
+	s := &ghStampServer{}
+	s.srv = httptest.NewServer(http.HandlerFunc(s.handle))
+	t.Cleanup(s.srv.Close)
+	deskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (string, string, error) {
+		s.minted = append(s.minted, mintCall{role: role, repo: repo.Slug()})
+		if s.mintErr != nil {
+			return "", "", s.mintErr
+		}
+		return ghStampToken, s.srv.URL, nil
 	})
-	return &calls
+	t.Cleanup(func() { deskkit.SetGitHubCustodyMinter(nil) })
+	return s
+}
+
+func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
+	var body strings.Builder
+	if r.Body != nil {
+		b := make([]byte, 1<<16)
+		n, _ := r.Body.Read(b)
+		body.Write(b[:n])
+	}
+	s.requests = append(s.requests, ghStampReq{Method: r.Method, Path: r.URL.Path, Body: body.String(),
+		Auth: r.Header.Get("Authorization")})
+	enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
+	path := r.URL.Path
+	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/pulls/77"):
+		if s.failPR {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		labels := make([]map[string]any, 0, len(s.labels))
+		for _, l := range s.labels {
+			labels = append(labels, map[string]any{"name": l})
+		}
+		enc(map[string]any{
+			"number": 77, "state": "open", "draft": true, "node_id": "PR_example_node",
+			"labels": labels, "head": map[string]any{"sha": "abc123", "ref": "feat/x"},
+			"base": map[string]any{"ref": "main"}, "user": map[string]any{"login": "example-bot[bot]", "id": 1},
+		})
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/issues/77/timeline"):
+		if s.failTL {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.URL.Query().Get("page") != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		evs := make([]map[string]any, 0, len(s.timeline))
+		for _, e := range s.timeline {
+			evs = append(evs, map[string]any{
+				"event": e.Event, "label": map[string]any{"name": e.Label},
+				"actor": map[string]any{"login": e.Actor},
+			})
+		}
+		enc(evs)
+	case r.Method == http.MethodPost && strings.HasSuffix(path, "/labels"):
+		// Both the repo-level ensure (POST /labels) and the apply (POST /issues/77/labels).
+		w.WriteHeader(http.StatusCreated)
+		enc([]map[string]any{})
+	case r.Method == http.MethodDelete && strings.Contains(path, "/issues/77/labels/"):
+		w.WriteHeader(http.StatusOK)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// removed reports whether the step took label l OFF the PR.
+func (s *ghStampServer) removed(l string) bool {
+	for _, r := range s.requests {
+		if r.Method == http.MethodDelete && strings.HasSuffix(r.Path, "/issues/77/labels/"+l) {
+			return true
+		}
+	}
+	return false
+}
+
+// applied reports whether the step's apply write named label l.
+func (s *ghStampServer) applied(l string) bool {
+	for _, r := range s.requests {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/issues/77/labels") && strings.Contains(r.Body, l) {
+			return true
+		}
+	}
+	return false
+}
+
+// wrote reports whether ANY label write (apply or remove) reached the forge.
+func (s *ghStampServer) wrote() bool {
+	for _, r := range s.requests {
+		if r.Method == http.MethodDelete || (r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/issues/77/labels")) {
+			return true
+		}
+	}
+	return false
+}
+
+func stampArgs(t *testing.T, root string, extra ...string) []string {
+	t.Helper()
+	args := []string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")}
+	return append(args, extra...)
 }
 
 // The stamp is applied as the App that DISPATCHED this lane — the identity the floor's reader
@@ -54,66 +190,68 @@ func TestStampAppliedAsDispatcherApp(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 	t.Setenv("DESK_LOOP", "pr-review-desk")
-	calls := stubMint(t, "example-installation-token", nil)
+	gh := installGHStamp(t)
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	rc := run(stampArgs(t, root))
 	if rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	if len(*calls) == 0 {
-		t.Fatal("no App token was minted for the stamp — the labels were applied under the ambient " +
+	if len(gh.minted) == 0 {
+		t.Fatal("no App credential was resolved for the stamp — the labels were applied under the ambient " +
 			"credential, which is exactly the applier the floor refuses")
 	}
-	for _, c := range *calls {
+	for _, c := range gh.minted {
 		if c.role != deskkit.DispatcherRole {
 			t.Errorf("the stamp authenticated as the %q App; the floor accepts only the dispatcher role %q",
 				c.role, deskkit.DispatcherRole)
 		}
 		if c.repo != allowedRepo {
-			t.Errorf("token minted for %q, want the target repo %q (an installation token is per account)",
+			t.Errorf("credential resolved for %q, want the target repo %q (an installation token is per account)",
 				c.repo, allowedRepo)
 		}
 	}
-	if dispatcherToken != "example-installation-token" {
-		t.Errorf("dispatcherToken = %q — the minted token never reached the gh calls", dispatcherToken)
+	model := deskkit.DispatchedModelPrefix + "example-model-1"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	if !gh.applied(model) {
+		t.Errorf("the model half was not applied to the PR: %+v", gh.requests)
 	}
-	edit := "pr edit 77 -R " + allowedRepo + " --add-label "
-	if !s.ran(edit + "dispatched-model:example-model-1") {
-		t.Errorf("the model half was not applied to the PR: %v", s.calls)
+	if !gh.applied(tier) {
+		t.Errorf("the tier half was not applied to the PR: %+v", gh.requests)
 	}
-	if !s.ran(edit + "dispatched-tier:strong") {
-		t.Errorf("the tier half was not applied to the PR: %v", s.calls)
+	// Every request carried the resolved token — the identity the forge records for the label.
+	// Asserting the resolution alone would pass while the token sat in a variable nothing read.
+	for _, r := range gh.requests {
+		if !strings.Contains(r.Auth, ghStampToken) {
+			t.Errorf("%s %s reached the forge without the dispatcher token (Authorization=%q) — the label "+
+				"would be applied under the ambient identity", r.Method, r.Path, r.Auth)
+		}
 	}
 }
 
-// The REVIEW lane is dispatched by the reviewer App, so its stamp must be minted under the
+// The REVIEW lane is dispatched by the reviewer App, so its stamp must be resolved under the
 // reviewer role — not the desk role. Before this, a review dispatch either carried no stamp at
 // all or carried one whose applier was not the identity that launched the session, and either
 // way a correctly-run review could never present a floor-trusted attestation. Dispatcher and
-// applier are the same identity again exactly when this mint asks for the lane's own role.
+// applier are the same identity again exactly when this resolution asks for the lane's own role.
 func TestReviewKitStampsAsTheReviewerApp(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 	t.Setenv("DESK_LOOP", "pr-review-desk")
-	calls := stubMint(t, "example-installation-token", nil)
-	// A review dispatch now also applies the review-lane queue label through the resolved
-	// forge; stub that seam so this token-identity test stays hermetic (no real forge/network).
+	gh := installGHStamp(t)
+	// The review-lane queue label is a separate step with its own seam; stub it so this
+	// identity test asserts the STAMP's credential only.
 	stubQueueLabel(t, nil)
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--kit", "review", "--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	rc := run(stampArgs(t, root, "--kit", "review"))
 	if rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	if len(*calls) == 0 {
-		t.Fatal("no App token was minted for the stamp on a review dispatch")
+	if len(gh.minted) == 0 {
+		t.Fatal("no App credential was resolved for the stamp on a review dispatch")
 	}
-	for _, c := range *calls {
+	for _, c := range gh.minted {
 		if c.role != deskkit.ReviewDispatcherRole {
 			t.Errorf("the review lane's stamp authenticated as the %q App; it must be the lane's own "+
 				"dispatcher %q, or applier and dispatcher are different identities again",
@@ -147,72 +285,46 @@ func TestStampRoleForKitStaysInsideTheTrustedSet(t *testing.T) {
 // A stamp that cannot be applied under the dispatcher identity is NOT applied at all. An
 // untrusted stamp is worse than no stamp: absent reads UNKNOWN and proceeds with a NOTICE,
 // while present-but-untrusted refuses every authority-bearing write on that PR. So a
-// failed mint stops before the first label, and says so.
+// credential the resolver cannot read stops before the first label, and says so.
 func TestStampNeverUsesAmbientIdentity(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
-	stubMint(t, "", errors.New("no credential"))
+	gh := installGHStamp(t)
+	gh.mintErr = errors.New("no credential")
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	rc := run(stampArgs(t, root))
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d (a stamp whose identity cannot be established is could-not-check)",
 			rc, deskkit.ExitUnverifiable)
 	}
-	if s.ran("gh pr edit") || s.ran("gh label create") {
-		t.Fatalf("a label was applied without the dispatcher token: %v", s.calls)
+	if len(gh.requests) != 0 {
+		t.Fatalf("the forge was reached without a dispatcher credential: %+v", gh.requests)
 	}
 }
 
-// The fail-closed backstop, independent of the step that is supposed to mint first: a `gh`
-// invocation with no dispatcher token does not happen at all. Without this, a future code
-// path that reaches the forge before the mint silently re-creates the defect.
-func TestForgeCallNeedsDeskToken(t *testing.T) {
-	var ran bool
-	old := execCommand
-	execCommand = func(name string, args ...string) *exec.Cmd {
-		ran = true
-		return exec.Command("/bin/sh", "-c", "exit 0")
-	}
-	oldTok := dispatcherToken
-	dispatcherToken = ""
-	t.Cleanup(func() { execCommand = old; dispatcherToken = oldTok })
+// THE FORGE-CLI BAN, at the verb (#1154). The stamp step was the last place in this verb
+// that launched `gh`; on a GitLab-served project that CLI cannot address the change at all,
+// so a stamped dispatch failed closed here before the forge-neutral queue label was reached.
+// Every forge read and write now goes through the resolved backend, and this pins that no
+// forge CLI is launched on a stamped dispatch — the argv recorder that used to be the
+// harness is now the guard.
+func TestStampLaunchesNoForgeCLI(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
+	installGHStamp(t)
 
-	r := runCmd("", "gh", "pr", "edit", "1", "--add-label", "dispatched-tier:strong")
-	if r.err == nil {
-		t.Fatal("gh ran with no dispatcher token — the ambient credential is never a fallback for the stamp")
+	if rc := run(stampArgs(t, root)); rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	if ran {
-		t.Fatal("the child process was started before the token check")
-	}
-	// A non-gh command is unaffected: the guard is about the identity a forge WRITE carries.
-	if r := runCmd("", "git", "status"); r.err != nil {
-		t.Fatalf("the token guard blocked a non-forge command: %v", r.err)
-	}
-}
-
-// The token reaches the child process's environment, which is what actually decides the
-// identity GitHub records for the label. Asserting the mint alone would pass while the
-// token sat in a variable nothing read.
-func TestChildEnvCarriesTheToken(t *testing.T) {
-	old := execCommand
-	execCommand = func(name string, args ...string) *exec.Cmd {
-		return exec.Command("/bin/sh", "-c", `printf %s "$GH_TOKEN"`)
-	}
-	oldTok := dispatcherToken
-	dispatcherToken = "example-installation-token"
-	t.Cleanup(func() { execCommand = old; dispatcherToken = oldTok })
-
-	r := runCmd("", "gh", "pr", "edit", "1")
-	if r.err != nil {
-		t.Fatalf("gh: %v", r.err)
-	}
-	if strings.TrimSpace(r.stdout) != "example-installation-token" {
-		t.Fatalf("GH_TOKEN in the child environment = %q, want the dispatcher token — the label would be "+
-			"applied under the ambient identity", r.stdout)
+	for _, c := range s.calls {
+		if len(c) > 0 && (c[0] == "gh" || c[0] == "glab") {
+			t.Fatalf("a stamped dispatch launched the forge CLI (%s) — the stamp must go through the "+
+				"resolved Forge, or a GitLab project fails closed before the queue label: %v", c[0], c)
+		}
 	}
 }
 
@@ -227,46 +339,54 @@ func dispatcherAppLogin(t *testing.T) string {
 	return login
 }
 
-// stampReplies serves the two reads the re-stamp needs: the PR's CURRENT labels (one name
-// per line, as the `--jq '.[].name'` filter emits them) and its label timeline (one
-// `event\tlabel\tactor` line per event, in order).
-func stampReplies(worktree, labelNames, timelineTSV string) []reply {
-	return append(happyReplies(worktree),
-		reply{match: "issues/77/labels", stdout: labelNames},
-		reply{match: "issues/77/timeline", stdout: timelineTSV},
-	)
+func labeled(label, actor string) ghStampEvt {
+	return ghStampEvt{Event: "labeled", Label: label, Actor: actor}
+}
+func unlabeled(label, actor string) ghStampEvt {
+	return ghStampEvt{Event: "unlabeled", Label: label, Actor: actor}
 }
 
-// THE NO-OP THIS PINS. Labels are a SET: `--add-label` over a label the PR already carries
-// changes nothing. So a PR stamped by some other login — the pre-fix dispatch path, or a
-// human — stayed stamped by that login no matter how often the dispatcher re-ran, and every
-// authority-bearing write on it kept refusing. A GitHub timeline is append-only, so the only
-// repair the forge offers is to REMOVE the label and re-apply it as the dispatcher.
+// THE NO-OP THIS PINS. Labels are a SET: applying a label the PR already carries changes
+// nothing. So a PR stamped by some other login — the pre-fix dispatch path, or a human —
+// stayed stamped by that login no matter how often the dispatcher re-ran, and every
+// authority-bearing write on it kept refusing. A forge's label history is append-only, so the
+// only repair it offers is to REMOVE the label and re-apply it as the dispatcher.
 func TestStampReplacesAForeignAppliedStamp(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
 	model := deskkit.DispatchedModelPrefix + "example-model-1"
 	tier := deskkit.DispatchedTierPrefix + "strong"
-	s.replies = stampReplies("/private/tmp/worker-home",
-		model+"\n"+tier+"\n",
-		"labeled\t"+model+"\tsome-other-login\nlabeled\t"+tier+"\tsome-other-login\n")
-	stubMint(t, "example-installation-token", nil)
+	gh := installGHStamp(t)
+	gh.labels = []string{model, tier}
+	gh.timeline = []ghStampEvt{labeled(model, "some-other-login"), labeled(tier, "some-other-login")}
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
-	if rc != deskkit.ExitOK {
+	if rc := run(stampArgs(t, root)); rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	edit := "pr edit 77 -R " + allowedRepo + " "
 	for _, l := range []string{model, tier} {
-		if !s.ran(edit + "--remove-label " + l) {
-			t.Errorf("the foreign application of %s was never removed — re-applying it on top is a no-op: %v", l, s.calls)
+		if !gh.removed(l) {
+			t.Errorf("the foreign application of %s was never removed — re-applying it on top is a no-op: %+v", l, gh.requests)
 		}
-		if !s.ran(edit + "--add-label " + l) {
-			t.Errorf("%s was not re-applied as the dispatcher: %v", l, s.calls)
+		if !gh.applied(l) {
+			t.Errorf("%s was not re-applied as the dispatcher: %+v", l, gh.requests)
 		}
+	}
+	// ORDER: the removal precedes the application, or the re-apply lands first and the
+	// removal then strips the dispatcher's own stamp.
+	firstRemove, firstApply := -1, -1
+	for i, r := range gh.requests {
+		if firstRemove < 0 && r.Method == http.MethodDelete {
+			firstRemove = i
+		}
+		if firstApply < 0 && r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/issues/77/labels") {
+			firstApply = i
+		}
+	}
+	if firstRemove < 0 || firstApply < 0 || firstRemove > firstApply {
+		t.Errorf("the removal (request %d) must precede the application (request %d): %+v",
+			firstRemove, firstApply, gh.requests)
 	}
 }
 
@@ -280,111 +400,120 @@ func TestStampClearsADispatcherAppliedConflictingStamp(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
 	d := dispatcherAppLogin(t)
 	model := deskkit.DispatchedModelPrefix + "example-model-1"
 	staleModel := deskkit.DispatchedModelPrefix + "example-model-2"
 	tier := deskkit.DispatchedTierPrefix + "strong"
-	s.replies = stampReplies("/private/tmp/worker-home",
-		model+"\n"+staleModel+"\n"+tier+"\n",
-		"labeled\t"+model+"\t"+d+"\n"+
-			"labeled\t"+staleModel+"\t"+d+"\n"+
-			"labeled\t"+tier+"\t"+d+"\n")
-	stubMint(t, "example-installation-token", nil)
+	gh := installGHStamp(t)
+	gh.labels = []string{model, staleModel, tier}
+	gh.timeline = []ghStampEvt{labeled(model, d), labeled(staleModel, d), labeled(tier, d)}
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
-	if rc != deskkit.ExitOK {
+	if rc := run(stampArgs(t, root)); rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	edit := "pr edit 77 -R " + allowedRepo + " "
-	if !s.ran(edit + "--remove-label " + staleModel) {
+	if !gh.removed(staleModel) {
 		t.Errorf("the stale dispatcher-applied slug %s was not removed — the conflicting stamp survives "+
-			"and the floor keeps refusing: %v", staleModel, s.calls)
+			"and the floor keeps refusing: %+v", staleModel, gh.requests)
 	}
 	// The intended pair, already standing under the dispatcher, must NOT be churned.
-	if s.ran(edit + "--remove-label " + model) {
-		t.Errorf("the wanted model half was removed — re-stamp must not churn a correct standing label: %v", s.calls)
+	if gh.removed(model) {
+		t.Errorf("the wanted model half was removed — re-stamp must not churn a correct standing label: %+v", gh.requests)
 	}
-	if s.ran(edit + "--remove-label " + tier) {
-		t.Errorf("the wanted tier half was removed — re-stamp must not churn a correct standing label: %v", s.calls)
+	if gh.removed(tier) {
+		t.Errorf("the wanted tier half was removed — re-stamp must not churn a correct standing label: %+v", gh.requests)
 	}
 }
 
-// A stamp already standing under the DISPATCHER is left alone: no removal, no label churn on
-// every re-dispatch. Without this the step would remove and re-apply the labels on every run,
-// filling the timeline with noise and briefly leaving the PR unstamped.
+// A stamp already standing under the DISPATCHER is left alone: no removal, no re-application,
+// no label churn on every re-dispatch. Without this the step would remove and re-apply the
+// labels on every run, filling the history with noise and briefly leaving the PR unstamped.
+// An identical existing stamp is a NO-OP, and the step says so.
 func TestStampLeavesItsOwnStampAlone(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
 	d := dispatcherAppLogin(t)
 	model := deskkit.DispatchedModelPrefix + "example-model-1"
 	tier := deskkit.DispatchedTierPrefix + "strong"
-	s.replies = stampReplies("/private/tmp/worker-home",
-		model+"\n"+tier+"\n",
-		"labeled\t"+model+"\t"+d+"\nlabeled\t"+tier+"\t"+d+"\n")
-	stubMint(t, "example-installation-token", nil)
+	gh := installGHStamp(t)
+	gh.labels = []string{model, tier}
+	gh.timeline = []ghStampEvt{labeled(model, d), labeled(tier, d)}
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
-	if rc != deskkit.ExitOK {
+	if rc := run(stampArgs(t, root)); rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	if s.ran("--remove-label") {
-		t.Errorf("the dispatcher removed its OWN standing stamp — re-dispatch must not churn labels: %v", s.calls)
+	if gh.wrote() {
+		t.Errorf("the dispatcher rewrote its OWN standing stamp — an identical stamp is a no-op: %+v", gh.requests)
 	}
 }
 
 // A SUPERSEDED foreign application is not a reason to remove anything: the dispatcher already
-// repaired this PR, and removing the label again would undo its own repair.
+// repaired this PR, and removing the label again would undo its own repair. The forge's
+// label-event read serves applications only, in order, so the LAST application of each label
+// is the standing one — here the dispatcher's.
 func TestStampDoesNotRemoveAnAlreadyRepairedStamp(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
 	d := dispatcherAppLogin(t)
 	model := deskkit.DispatchedModelPrefix + "example-model-1"
 	tier := deskkit.DispatchedTierPrefix + "strong"
-	s.replies = stampReplies("/private/tmp/worker-home",
-		model+"\n"+tier+"\n",
-		"labeled\t"+model+"\tsome-other-login\n"+
-			"labeled\t"+tier+"\tsome-other-login\n"+
-			"unlabeled\t"+model+"\t"+d+"\n"+
-			"unlabeled\t"+tier+"\t"+d+"\n"+
-			"labeled\t"+model+"\t"+d+"\n"+
-			"labeled\t"+tier+"\t"+d+"\n")
-	stubMint(t, "example-installation-token", nil)
+	gh := installGHStamp(t)
+	gh.labels = []string{model, tier}
+	gh.timeline = []ghStampEvt{
+		labeled(model, "some-other-login"), labeled(tier, "some-other-login"),
+		unlabeled(model, d), unlabeled(tier, d),
+		labeled(model, d), labeled(tier, d),
+	}
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
-	if rc != deskkit.ExitOK {
+	if rc := run(stampArgs(t, root)); rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	if s.ran("--remove-label") {
-		t.Errorf("a PR the dispatcher had already re-stamped was stripped again: %v", s.calls)
+	if gh.removed(model) || gh.removed(tier) {
+		t.Errorf("a PR the dispatcher had already re-stamped was stripped again: %+v", gh.requests)
 	}
 }
 
 // A read the step cannot complete is UNVERIFIABLE, and NO label is written. Stamping blind
-// would report success while adding over a foreign label — the exact no-op this step now
+// would report success while adding over a foreign label — the exact no-op this step
 // exists to defeat.
 func TestStampRefusesWhenTheLabelReadFails(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
-	s.replies = append(happyReplies("/private/tmp/worker-home"),
-		reply{match: "issues/77/labels", code: 1, stderr: "labels unreadable"})
-	stubMint(t, "example-installation-token", nil)
+	s.replies = happyReplies("/private/tmp/worker-home")
+	gh := installGHStamp(t)
+	gh.failPR = true
 
-	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
-		"--model", "example-model-1", "--tier", "strong",
-		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	rc := run(stampArgs(t, root))
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d (an unreadable label set is could-not-check)", rc, deskkit.ExitUnverifiable)
 	}
-	if s.ran("--add-label") || s.ran("--remove-label") {
-		t.Errorf("a label was written on an unverifiable read: %v", s.calls)
+	if gh.wrote() {
+		t.Errorf("a label was written on an unverifiable read: %+v", gh.requests)
+	}
+}
+
+// The history read is the other half of the same rule: the present labels alone cannot say
+// WHO applied them, so an unreadable history means a foreign application could not be told
+// from the dispatcher's own — and the step must not guess.
+func TestStampRefusesWhenTheHistoryReadFails(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
+	gh := installGHStamp(t)
+	gh.labels = []string{deskkit.DispatchedModelPrefix + "example-model-1"}
+	gh.failTL = true
+
+	rc := run(stampArgs(t, root))
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("rc = %d, want %d (an unreadable label history is could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if gh.wrote() {
+		t.Errorf("a label was written on an unverifiable history read: %+v", gh.requests)
 	}
 }

@@ -437,6 +437,11 @@ type forgeHookSet struct {
 	labelEvents   func(repo string, num int) ([]deskkit.LabelEvent, error)
 	compare       func(repo, base, head string) (*deskkit.RefComparison, error)
 	getPR         func(repo string, num int) (*deskkit.PullRequest, error)
+	// changedFiles independently forces ListChangedFiles to fail, distinct from getPR
+	// (GetPullRequest) — fetchChangedFiles calls both, and before this hook existed only
+	// GetPullRequest could be failed programmatically, so no test could isolate a
+	// ListChangedFiles-only failure on the risk-classification call.
+	changedFiles func(repo string, num int) ([]deskkit.ChangedFile, error)
 }
 
 var forgeHooks forgeHookSet
@@ -534,7 +539,10 @@ func (f *fakeForge) ReviewsAtHead(_ deskkit.ForgeRepo, num int) ([]deskkit.Revie
 	return out, nil
 }
 
-func (f *fakeForge) ListChangedFiles(_ deskkit.ForgeRepo, _ int) ([]deskkit.ChangedFile, error) {
+func (f *fakeForge) ListChangedFiles(_ deskkit.ForgeRepo, num int) ([]deskkit.ChangedFile, error) {
+	if forgeHooks.changedFiles != nil {
+		return forgeHooks.changedFiles(f.repo, num)
+	}
 	var raw []struct {
 		Filename         string `json:"filename"`
 		PreviousFilename string `json:"previous_filename"`

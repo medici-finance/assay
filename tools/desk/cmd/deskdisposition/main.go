@@ -19,12 +19,19 @@
 // the previous "fix" for this class was workers stating close intent and nobody executing,
 // which is how #1439 sat stated-but-unclosed from 2026-08-09.
 //
-// IDENTITY: `set` and `sweep` shell to `gh` under the caller's AMBIENT credential — the
-// worker App token a worker-desk session has already minted, or the human's gh login.
-// This tool gates WHETHER and WHERE (allowed repos, closed vocabulary, evidence
-// required), never WHO on those two verbs; it mints no token for them.
+// IDENTITY: `set` shells to `gh` under the caller's AMBIENT credential — the worker App
+// token a worker-desk session has already minted, or the human's gh login. This tool gates
+// WHETHER and WHERE (allowed repos, closed vocabulary, evidence required), never WHO on
+// that verb; it mints no token for it.
 //
-// `read` is the one exception (#984): it is the verb deskclose's superseded lane shells
+// The two READ verbs are both on the forge seam. `sweep` reads the repo's open changes
+// through the RESOLVED forge (ListOpenChanges) rather than `gh pr list` (#1123): the forge
+// is a property of the repo, so on a GitLab project the sweep reads MERGE REQUESTS and a
+// GitLab adopter's queue is readable at all — shelling `gh` there answered "Could not
+// resolve to a Repository" and reported the whole queue UNKNOWN. Being a read under the
+// session's own minted token, it moves no token-custody question the way a write would.
+//
+// `read` is on the seam for a different reason (#984): it is the verb deskclose's superseded lane shells
 // out TO, as a child process of an already-minted desk session whose environment carries
 // no usable ambient `gh` identity — shelling to `gh` there produced a bare `HTTP 401:
 // Requires authentication` that read as a target disagreement rather than an identity
@@ -65,8 +72,9 @@ set    — writes the label AND the marker comment, in that order. Idempotent: a
 
 read   — the FULL record for one PR (label + marker comment), for deskclose.
 
-sweep  — the CHEAP read the orphan sweep runs before dispatch: one API call per repo,
-         labels only. Prints one line per open PR:
+sweep  — the CHEAP read the orphan sweep runs before dispatch: one bounded forge read per
+         repo, labels only, through the forge that SERVES the repo (GitHub pull requests,
+         GitLab merge requests). Prints one line per open change:
              <number>\t<state>\t<verdict>\t<dispatch-eligible>\t<title>
          State is three-state: checked-clean (no record — a real candidate) /
          checked-failed (a record exists) / could-not-check. A could-not-check PR is

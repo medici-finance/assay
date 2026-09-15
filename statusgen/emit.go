@@ -328,6 +328,14 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		w("%s", b)
 		w("")
 	}
+	// A claim set that was read but never DECAYED is the other way these rows
+	// mislead (#1111) — not a superset this time but a subset, with real backlog
+	// held behind merged/closed corpses. Same placement, same reason: a reader who
+	// takes the rows at face value is exactly the failure the banner stops.
+	if b := nu.Claims.DecayBanner(); b != "" {
+		w("%s", b)
+		w("")
+	}
 	// Drive banners (methodology-metrics/45). The fail-neutral "DRIVE NOT APPLIED"
 	// banner leads (a rejected manifest changed nothing, and the reader must know
 	// the board is un-steered), then the ACTIVE DRIVE honesty banner, then any

@@ -24,10 +24,27 @@ import (
 // is a live in-flight claim and is KEPT, so genuine parallelism is still
 // serialized.
 //
-// PR state is not something a git-ref view can answer, so this reaches GitHub
-// via `gh` — the same dependency the `--issues` metrics path already shells out
-// to (ghIssueMetricLister). It is injected as a package var so the whole decay is
-// exercised offline in tests.
+// Change state is not something a git-ref view can answer, so the decay reads it
+// from the FORGE — and which forge that is decides the reader:
+//
+//   - GitHub (and an unclassifiable remote, where GitHub is the historical
+//     fallback): `gh pr list`, the same dependency the `--issues` metrics path
+//     already shells out to (ghIssueMetricLister).
+//   - GitLab: the project's merge requests over REST v4 (claimdecay_gitlab.go).
+//     `gh` does not exist there and a GitLab project has no pull requests to
+//     list, so routing the read by forge is the only way the pass can run at all
+//     — before this, a GitLab-hosted adopter's claims never decayed and the board
+//     silently held their briefs forever.
+//
+// Both readers are injected as package vars so the whole decay is exercised
+// offline in tests.
+//
+// When neither reader can look — no `gh`, no token, an API error — the pass is
+// LOUD and says so in its own words: `could-not-check: claims not decayed`, with
+// the reason, carried out of the decay as a string so `--lint` and the emitted
+// board can wear it too. A stderr-only NOTICE while the artifact still reads
+// clean is a TWO-state instrument (docs/three-state-instrument-rule.md), and that
+// is precisely what hid the GitLab gap.
 
 // listMergedClosedBranches returns the set of head branch names whose PR is
 // MERGED or CLOSED, for the repo rooted at `root`. It lists PRs in every state
@@ -75,44 +92,54 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 	return dead, nil
 }
 
-// decayDeadClaims removes, from an open-branch list, the branches whose PR has
-// already merged or closed — the corpses that `git ls-remote --heads` still
-// reports and that would otherwise keep consuming their stream's dispatch cap.
+// decayReader picks the change-state reader for the forge behind root's `origin`
+// remote, and names it for the could-not-check message.
 //
-// Fail direction (load-bearing): the decay can only SHRINK the claim set, so a
-// failed PR-state read falls back to the full open-branch set — exactly the
+// forgeUnknown (a self-hosted host naming neither forge, or no remote at all)
+// keeps the historical `gh` attempt: "could not tell" is not "confirmed not
+// GitHub", and a GitHub Enterprise host that names neither word still answers
+// `gh`. Its failure then reports as an ordinary could-not-check with the reason,
+// which is the honest answer for a forge we could not identify.
+func decayReader(root string) (read func(string) (map[string]bool, error), what string) {
+	if detectForge(root) == forgeGitLab {
+		return listMergedClosedBranchesGitLab, "merge-request state over the GitLab REST v4 API"
+	}
+	return listMergedClosedBranches, "PR state through `gh pr list`"
+}
+
+// decayDeadClaims removes, from an open-branch list, the branches whose PR or
+// merge request has already merged or closed — the corpses that
+// `git ls-remote --heads` still reports and that would otherwise keep consuming
+// their stream's dispatch cap.
+//
+// It returns the surviving branches AND the could-not-check reason: empty when
+// the decay actually ran, and otherwise the reason the change-state read failed.
+// The caller carries that reason onto ClaimSource so `--lint` and the emitted
+// board wear it (claims.go). A stderr NOTICE alone left the artifact reading
+// clean — a two-state instrument — and that is how a forge on which the pass
+// could NEVER run went six days unnoticed.
+//
+// Fail direction (load-bearing, unchanged): the decay can only SHRINK the claim
+// set, so a failed read falls back to the full open-branch set — exactly the
 // pre-decay behaviour. That is the safe direction: the worst case is the old
 // over-holding (a corpse still counts), never a NEW under-holding that drops a
-// live open-PR claim and lets two sessions pick the same brief. The failure is
-// announced on stderr rather than swallowed, so an operator knows corpses may
-// still be inflating the caps and can regenerate once `gh` is reachable/authed.
-func decayDeadClaims(root string, branches []string) []string {
+// live open-change claim and lets two sessions pick the same brief.
+func decayDeadClaims(root string, branches []string) ([]string, string) {
 	if len(branches) == 0 {
-		return branches
+		return branches, ""
 	}
-	// Forge gate (#349): the decay reads PR state through `gh`, a
-	// GitHub-only client. On a remote that is DEFINITIVELY not GitHub (a GitLab
-	// host), shelling `gh` would fail every single run — that is not
-	// "unavailable this run", it is a pass that does not apply to this forge. Say
-	// so with a DISTINCT message and return the branch set unchanged, so a
-	// three-state instrument never dresses a permanent not-applicable as a
-	// transient could-not-check. forgeUnknown (self-hosted, no remote) is left to
-	// the `gh` attempt below: "could not tell" is not "confirmed not GitHub".
-	if detectForge(root) == forgeGitLab {
-		fmt.Fprintf(os.Stderr, "NOTICE: dead-claim decay NOT APPLICABLE on this forge — the `origin` remote is a GitLab host, "+
-			"and PR-state decay reads GitHub through `gh`. This pass does not run here and will not until statusgen reads merge-request state through the forge seam; "+
-			"it is not \"unavailable this run\". Open branches of merged/closed merge requests are not decayed, so they may still consume their stream's dispatch cap.\n")
-		return branches
-	}
-	dead, err := listMergedClosedBranches(root)
+	read, what := decayReader(root)
+	dead, err := read(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "NOTICE: dead-claim decay unavailable — %v. "+
-			"Open branches of already merged/closed PRs may still be consuming their stream's dispatch cap; "+
-			"regenerate with `gh` reachable and authenticated to release them.\n", err)
-		return branches
+		reason := fmt.Sprintf("%s could not be read: %v", what, err)
+		fmt.Fprintf(os.Stderr, "could-not-check: claims not decayed — %s. "+
+			"Open branches of already merged/closed changes are still counted as claims, so they may be consuming their "+
+			"stream's dispatch cap and silently holding its briefs back; regenerate once the forge read is available to release them.\n",
+			reason)
+		return branches, reason
 	}
 	if len(dead) == 0 {
-		return branches
+		return branches, ""
 	}
 	live := make([]string, 0, len(branches))
 	for _, b := range branches {
@@ -121,5 +148,5 @@ func decayDeadClaims(root string, branches []string) []string {
 		}
 		live = append(live, b)
 	}
-	return live
+	return live, ""
 }

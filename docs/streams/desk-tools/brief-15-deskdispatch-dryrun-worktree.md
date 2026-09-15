@@ -104,6 +104,20 @@ Pre-mortem → detection map:
 ## Evidence
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
+| # | Command | Expect | Observed | Date / Runner |
+|---|---------|--------|----------|---------------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, no output | 2026-09-15 sonnet-5-verifier |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRendersVerifiedPath$' -count=1` | exit 0 — path at both sites, no placeholder, banner says "operator-supplied, verified" | exit 0 — `--- PASS: TestDryRunWorktreeRendersVerifiedPath (0.21s)` | 2026-09-15 sonnet-5-verifier |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRefusesUnverifiablePaths$' -count=1` | exit 0 — four negative cases each exit 5 with own reason, no prompt printed | exit 0 — all four subtests PASS: outside-prefix, not-a-worktree, other-repo, shared-checkout | 2026-09-15 sonnet-5-verifier |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeFlagRefusedOnRealDispatch$' -count=1` | exit 0 — exit 5, zero child processes recorded | exit 0 — `--- PASS: TestWorktreeFlagRefusedOnRealDispatch (0.19s)` | 2026-09-15 sonnet-5-verifier |
+| 5 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | exit 0, including unchanged placeholder test | exit 0 — `ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 10.627s` | 2026-09-15 sonnet-5-verifier |
+| 6 | `gofmt -l tools/desk/cmd/deskdispatch > /tmp/dd-fmt.out; test ! -s /tmp/dd-fmt.out` | exit 0 | **exit 1** — `gofmt -l` lists `phantom_test.go` only; this brief's own touched files (dispatch.go, main.go, worktree.go, worktreedryrun_test.go) are independently confirmed gofmt-clean. The drift predates this brief's merge by two days (introduced by an unrelated commit, confirmed by checking the parent commit's copy of the file) and trips this package-wide row for any brief touching this package. Already filed and open: medici-finance/assay#1119. Not a change-failure of this deliverable. | 2026-09-15 sonnet-5-verifier |
+| 7 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | exit 0 — `LINT: PASS` (repo-wide NOTICEs present, none fatal) | 2026-09-15 sonnet-5-verifier |
+
+RISK-VALUE: DERIVED — worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdispatch/worktree.go:30 — matches the canonical sanctioned-prefix value already pinned in tools/desk/cmd/deskwt/deskwt.go:26 (`tmpBaseDir = "/private/tmp"`), which this brief's own Deliverables required duplicating "no looser" from deskwt's pathGuard rule. Confirmed identical, not a fabricated or independently-chosen value.
+RISK-VALUE: DERIVED — the "tracker-" worktree-name prefix check @ tools/desk/cmd/deskdispatch/worktree.go:100 and the `.claude/worktrees` sanctioned-suffix path @ worktree.go:103 both match deskwt.go's own literals (`"tracker-"` prefix test and `filepath.Join(root, ".claude", "worktrees")`) byte-for-byte — the duplicated isolation-floor allowlist is faithful to its source, not loosened.
+
+VERIFY: HELD — deliverable sound; stays `implemented`. Rows 1-5 and 7 PASS. Row 6 fails on an EXTERNAL, pre-existing, unrelated cause (medici-finance/assay#1119) — not a defect in this brief's diff. Not advanced to `verified` per the row-6 fail; no new bug filed since #1119 already covers it.
 
 ## Review
 

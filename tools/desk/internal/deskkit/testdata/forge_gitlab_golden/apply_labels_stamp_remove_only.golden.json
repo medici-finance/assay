@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7",
+      "body": {
+        "remove_labels": "dispatched-model:example-model-2,dispatched-tier:strong"
+      }
+    }
+  ],
+  "result": {
+    "Added": [],
+    "Removed": [
+      "dispatched-model:example-model-2",
+      "dispatched-tier:strong"
+    ]
+  }
+}

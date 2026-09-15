@@ -395,12 +395,17 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   the claim tool `deskdispatch` resolved. **That tool is `deskclaim-ref` by default** — the
   cross-platform claim binary installed with desk-tools (`tools/desk/cmd/deskclaim-ref`), verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The override:
+  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The fallback:
   a repo may ship its own `tools/dispatch-claim.sh`, and `deskdispatch`'s claim-acquire step
-  **prefers that script when the resolved root carries it** (`--claim-root` when given, else
-  `--root`), falling back to `deskclaim-ref` on PATH when it does not — and refusing fail-closed,
-  naming both, only when NEITHER is available. Both speak the same wire protocol, so which one runs
-  never changes where the claim lands or whether two dispatchers collide.
+  **prefers `deskclaim-ref` whenever it is on PATH**, falling back to that script when the binary
+  is absent and the resolved root (`--claim-root` when given, else `--root`) carries it — and
+  refusing fail-closed, naming both, only when NEITHER is available. The `claim-acquire OK` line
+  names which one ran. Both speak the same wire protocol, so which one runs never changes where
+  the claim lands or whether two dispatchers collide. Either way the claim child runs as the
+  DISPATCHING role: `deskdispatch` mints (or reuses) that role's App token and hands it over
+  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script); an
+  exported `GH_TOKEN` wins; a mint refusal is exit 6 with no claim attempted, never a fall-back to
+  the ambient `gh` login.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body lacks
