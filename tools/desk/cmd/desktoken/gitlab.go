@@ -67,6 +67,20 @@ package main
 // Writing through the link keeps ONE file holding the live credential, whichever name is used
 // to reach it. The read-back verification then reads back through the CUSTODY PATH rather than
 // the target, so a rotation that broke the link fails at mint time instead of at the next read.
+//
+// SELF-CHECK. The rotation endpoint's 200 says the forge ISSUED the successor; it does not say
+// the forge will ACCEPT it on the very next request. In the field (#1142) a verb's first API
+// read right after its own rotation returned 401 while the on-disk token answered 200 to a
+// direct probe seconds later — the shape of server-side propagation lag after self-rotation,
+// which the mint path used to assume away. So after the rotated value is persisted, and before
+// the path is printed, the command performs ONE live, read-only GET with the new token
+// (gitlabSelfCheckPath). A 200 is the only result that returns the path as good. Anything else
+// exits non-zero naming the endpoint, the status the NEW token got, and whether the forge still
+// accepted the PREVIOUS token — one further read-only GET, so the operator can tell lag (old
+// still accepted) from a lockout (neither accepted) without guessing. There is no retry loop
+// and no sleep: a re-run is one rotation, costs the caller nothing it did not already spend on
+// the failed first read, and keeps the mint path free of a timing heuristic tuned to one
+// instance.
 
 import (
 	"encoding/json"
@@ -280,6 +294,68 @@ func rotateGitLabToken(base, current string) (*gitlabRotateResult, error) {
 	return &result, nil
 }
 
+// gitlabSelfCheckPath is the endpoint the post-rotation self-check reads: the current-user
+// read, the cheapest authenticated GET GitLab has and the one the pilot used to prove a rotated
+// token live (and a captured one dead). It is on every tier, it needs no project coordinate
+// (a role is minted before any --repo is known), and its response is a small account record —
+// never a token.
+const gitlabSelfCheckPath = "/user"
+
+// gitlabSelfCheck performs ONE read-only GET of gitlabSelfCheckPath authenticated with token
+// and returns the HTTP status the forge answered. It never retries, never sleeps and never
+// reads the body: the caller decides on the status alone. A transport failure is returned as
+// an error (the check could not be made — not a rejection, not an acceptance).
+//
+// The token is never placed in an error string — an error from this function is printed.
+func gitlabSelfCheck(base, token string) (int, error) {
+	url := strings.TrimRight(base, "/") + gitlabSelfCheckPath
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create self-check request: %w", err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("GET %s: %w", gitlabSelfCheckPath, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, nil
+}
+
+// gitlabSelfCheckFailure builds the non-zero verdict for a self-check the NEW token did not
+// pass. It probes the PREVIOUS token once, read-only, on the same endpoint so the line names
+// which token the forge accepted: previous accepted + new rejected is the propagation-lag
+// shape (#1142) and a re-run is the remedy; neither accepted is a lockout only a group owner
+// can recover. It never restores the previous token to custody — the rotation endpoint has
+// reported it invalidated, and a custody that holds a token the forge is about to reject is
+// worse than one that holds the successor the forge has not yet caught up with.
+//
+// Neither token value reaches the message.
+func gitlabSelfCheckFailure(role, base, path, previous string, newStatus int) error {
+	prev := ""
+	prevStatus, perr := gitlabSelfCheck(base, previous)
+	switch {
+	case perr != nil:
+		prev = "could not be checked (" + perr.Error() + ")"
+	case prevStatus == 200:
+		prev = "still ACCEPTED (HTTP 200)"
+	default:
+		prev = fmt.Sprintf("rejected (HTTP %d)", prevStatus)
+	}
+	return deskkit.Unverifiable(fmt.Sprintf(
+		"post-rotation self-check FAILED for role %s: GET %s with the NEW token answered HTTP %d; "+
+			"the PREVIOUS token was %s. The rotation endpoint reported success and the new token is "+
+			"persisted at %s, but the forge did not accept it on a live read, so that path is NOT "+
+			"returned as good. If the previous token was still accepted this is the forge propagating "+
+			"the rotation — re-run the mint once and it rotates from the persisted value. If NEITHER "+
+			"token is accepted the role is locked out: a group owner must re-issue the role's PAT "+
+			"(Group > Settings > Access Tokens) and write it 0600 to %s.",
+		role, gitlabSelfCheckPath, newStatus, prev, path, path), nil)
+}
+
 // gitlabCustodyWriteTarget resolves WHICH file a rotation's bytes must land in so that the
 // custody PATH keeps the shape the deployment provisioned. For an ordinary regular-file
 // custody the answer is the path itself. For a SYMLINK custody — the documented layout, see
@@ -425,7 +501,8 @@ func readGitLabCustody(path string) (string, error) {
 }
 
 // cmdGitLabRotate implements `desktoken --forge gitlab <role>`: read the current token file,
-// rotate via the API, write-verify the new value 0600 in place, and print the path.
+// rotate via the API, write-verify the new value 0600 in place, self-check it with one live
+// read, and print the path.
 //
 // With rotate=false (`--no-rotate`) it performs the SAME custody checks and prints the same
 // path, but makes no network contact and leaves the credential untouched. That is the shape a
@@ -544,12 +621,28 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 				"is NOT printed.", path, werr, path), nil)
 	}
 
+	// SELF-CHECK. The new token is persisted; now prove the forge ACCEPTS it before the path
+	// is handed to a caller that will present it on its very next request. One read-only GET,
+	// no retry, no sleep (file header, SELF-CHECK). A status other than 200 — or no status at
+	// all — never returns the path as good.
+	status, serr := gitlabSelfCheck(base, result.Token)
+	if serr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"post-rotation self-check for role %s could not be completed: the rotated token is persisted "+
+				"at %s but its acceptance by the forge is unverified, so that path is NOT returned as good. "+
+				"Re-run the mint once the forge is reachable.", role, path), serr)
+	}
+	if status != 200 {
+		return gitlabSelfCheckFailure(role, base, path, current, status)
+	}
+
 	// Success: print the PATH only.
 	fmt.Println(path)
 	exp := result.ExpiresAt
 	if exp == "" {
 		exp = "per group policy"
 	}
-	ac.detail = fmt.Sprintf("rotated gitlab %s token in place (expires %s)", role, exp)
+	ac.detail = fmt.Sprintf("rotated gitlab %s token in place (expires %s; self-check GET %s %d)",
+		role, exp, gitlabSelfCheckPath, status)
 	return nil
 }
