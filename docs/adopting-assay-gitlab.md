@@ -577,6 +577,51 @@ asymmetry is exactly why the rule is "write no source pin line", not "write it c
 Prove the binary that ran from `statusgen --version` / desk-tools' `sourceSHA=<shortsha>`,
 never from a fabricated `.assay-versions` entry.
 
+## 2e. Dead-claim decay credential — `CI_JOB_TOKEN`, or `STATUSGEN_GITLAB_TOKEN`
+
+statusgen builds its claim set from open `origin` branch heads: a branch that looks like a
+brief's branch is treated as in-flight work and subtracts from that stream's dispatch cap.
+`git ls-remote` is a pure ref view, so it still reports the head of a branch whose change
+already landed. **Dead-claim decay** is the pass that drops those corpses, and to run it
+statusgen has to ask the forge one question per branch — has this change already merged or
+closed?
+
+On GitLab that question is answered by the project's **merge-request listing over REST v4**
+(`GET /projects/:id/merge_requests?state=all`). No `gh` is involved, and none is needed: a
+GitLab project has no pull requests to list, which is why an earlier statusgen simply
+declined to run this pass on a GitLab remote and a GitLab adopter's claims never decayed at
+all (issue #1111).
+
+- **In CI, nothing to configure.** Every GitLab job carries the predefined `CI_API_V4_URL`,
+  `CI_PROJECT_ID` and `CI_JOB_TOKEN`, and the scaffolded `statusgen-regen` job uses them as
+  they are.
+- **Override — `STATUSGEN_GITLAB_TOKEN`.** Some instances do not expose the
+  `merge_requests` endpoint to the job token. Where yours does not, create a **project
+  access token with the `read_api` scope** and set it as a masked CI/CD variable named
+  `STATUSGEN_GITLAB_TOKEN`; statusgen prefers it over the job token. `GITLAB_TOKEN` is
+  accepted under the same rule, for a local run outside CI. This is a **read** credential
+  and is a different variable from `STATUSGEN_PUSH_TOKEN` (§2c, `write_repository`) — do not
+  reuse one for the other.
+- **Outside CI**, with neither variable set in the environment, statusgen derives the API
+  base and project path from the `origin` remote but still **requires** a token: an
+  unauthenticated listing of a private project answers `404`, whose empty body would decode
+  as "nothing is dead" and decay nothing while reading exactly like a clean run.
+
+**What an unreadable listing does — could-not-check, not a pass and not a failure.** When
+the read cannot happen (no token, a refused endpoint, an API error), the run prints
+
+```
+could-not-check: claims not decayed — merge-request state over the GitLab REST v4 API could not be read: <reason>
+```
+
+and the generated `STATUS.md` carries the matching banner at the head of its Next-up
+section. The job is **not** failed over it. The direction is why: an undecayed claim set is a
+*superset of claims*, so the board is a **subset** — briefs held behind already-merged
+branches are missing from it. That hides work; it never hands the same brief to two
+sessions, which is the failure the claim read's own `--require-claims` flag exists to stop.
+Read the banner as *some backlog may be hidden*, and regenerate once the listing is
+readable to release it.
+
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 
 For the reviewer verifying this script, or an operator without shell access, the table

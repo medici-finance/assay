@@ -715,6 +715,24 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 			return 1
 		}
 	}
+	// Dead-claim decay that could not look is the SECOND way this read goes blind
+	// (#1111): a distinct could-not-check line in the run's own output, plus the
+	// banner nu.Claims carries into the emitted board. It is NOT folded into the
+	// line above — that one says the board is an unfiltered SUPERSET, this one
+	// says it is a SUBSET holding real backlog behind corpses, and a reader who
+	// confuses them draws the opposite conclusion.
+	//
+	// Deliberately NOT escalated by --require-claims, and not a PROBLEM: that flag
+	// exists for the superset case, where dispatching off the board risks two
+	// sessions on one brief. An undecayed claim set is the opposite and is SAFE to
+	// dispatch from — it merely hides work. Making it exit 1 would redden every
+	// adopter lint that runs without a forge credential (the merge-request half of
+	// a GitLab pipeline has none by design), which is the failure mode that trains
+	// a desk to ignore its own instrument. The artifact wearing the
+	// could-not-check is what makes this three-state; the exit code is not.
+	if d := claimSource.DecayNotice(); d != "" {
+		notices = append(notices, d)
+	}
 	// Span-of-control overflow is a WIP-pressure alarm, surfaced as a --lint
 	// NOTICE as well as an in-STATUS line.
 	if nu.Overflow() {
