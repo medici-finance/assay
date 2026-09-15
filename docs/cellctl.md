@@ -13,6 +13,9 @@ script is the only place those stay fixed.
 `cellctl` is **optional**, in the same sense as the desk-tools binaries: it automates a pipeline you
 can also stand up by hand. Nothing else in Assay depends on it.
 
+For an existing container deployment, the **container** kind provides registration and lifecycle
+delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
+
 ---
 
 ## What a cell is, on a laptop
@@ -54,6 +57,9 @@ its own Apps, its own `deskd` port, and its own tmux session. They share nothing
 ---
 
 ## Why the session keeps the real `HOME`
+
+This section applies to the **house** and **k8s** host launch paths. A container launcher assigns
+the harness its own container home and supplies that environment's authentication separately.
 
 This is the one design rule worth reading before anything else, because getting it wrong looks like a
 harness bug rather than a configuration mistake.
@@ -858,3 +864,75 @@ a `MISS`, because a provider is opt-in.
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
+
+## Container cells
+
+Register an existing container launcher to make the cell visible to `cellctl ls`
+and start it through the same command entry point:
+
+```sh
+cellctl new sample --kind container --repo example-org/example-repo \
+  --launcher /absolute/path/to/container-launcher
+cellctl ls
+cellctl check sample
+cellctl up sample
+cellctl desk sample the-desk --model sonnet
+cellctl down sample
+```
+
+Registration creates only `<cells-root>/sample/cell.env`, mode 0600. It records
+`CELL_KIND=container`, `CELL_REPO`, `CELL_CONTAINER_LAUNCHER`, `CELL_HARNESS`, model
+pins and `ROLES`. It does not clone a host checkout, link a config home, copy keys,
+contact Docker, or log into a model provider. The repo value identifies the
+container's repository; it need not name a directory on the host.
+
+The launcher must already exist at an absolute executable path. `cellctl` invokes
+it directly as an argument vector, never as a shell command string:
+
+| Command | Launcher receives |
+| --- | --- |
+| `check sample` | `check` |
+| `desk sample the-desk` | `desk the-desk --harness claude --model <resolved-pin>` |
+| `up sample` | The same coordinator launch as `desk sample the-desk` |
+| `down sample` | `down` |
+
+The default role list is `the-desk`. This first integration supports `up` only
+when that is the sole configured role. For additional roles, register them with
+`--roles` and use explicit `desk` commands. Multi-role container cockpits,
+`--no-attach`, scheduling and host `deskd` are outside this integration; those
+options refuse instead of falling through to host launches. Whether an already
+running container is attached or reported as running belongs to the launcher.
+
+Model resolution, the coordinator's Opus refusal, `--model`, `--harness`, and
+`desk --set` use the existing `cellctl` rules. Unsupported host config-directory
+and provider arguments refuse: model credentials belong to the container
+launcher. `DRY_RUN=1` prints the intended call without invoking the launcher or
+persisting a model override. A nonzero launcher exit is preserved.
+
+The launcher receives a clean environment containing only `HOME`, `PATH`,
+`TERM`, `CELL`, `CELL_KIND`, `CELL_DIR`, `CELL_REPO`, `CELL_ROOTS`, `CELL_HARNESS`
+and `ROLES`. For `desk`, the argument vector's harness and model are authoritative,
+including per-invocation overrides. Forge tokens, model tokens, SSH-agent settings
+and the operator's `CLAUDE_CONFIG_DIR` are not forwarded from the parent shell.
+The launcher is trusted **host code**, not sandboxed by this environment cleanup.
+It can read host files with the operator's authority; this contract does not
+establish isolation from another unrestricted host process.
+
+The deployment launcher owns the remaining checks and actions:
+
+- `check`: validate the local engine target, pinned image, own-cell volumes,
+  credential-file presence/mode and supported harness. Report unavailable state
+  as a failure, not as an empty or stopped cell. Keep this check free of model
+  execution and forge credential minting.
+- `desk`: ensure the selected role uses its own writable workspace, roster and
+  credential mounts; verify container ownership before attaching; pass the
+  supplied model to the harness and invoke the selected role's Assay skill.
+  Enforce the runtime credential contract before opening the agent.
+- `down`: stop only containers verified to belong to this cell. Preserve working
+  volumes and refuse ambiguous ownership.
+
+No container runtime implementation is bundled by this registration change.
+The existing [container credential contract](../containers/secrets.md) still
+applies to deployments using the published desk images. A container launcher
+must not mount the operator's whole home, credentials directory or engine socket
+into an agent merely because those paths are available on its host.
