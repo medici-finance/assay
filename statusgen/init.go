@@ -391,7 +391,8 @@ Gate: model (from frontmatter).
 `
 
 // initAssayVersions is a PLACEHOLDER pin file in the channel-E shape
-// (statusgen-<platform> <tag> <sha256>). It is deliberately not a live pin: init
+// (statusgen-<platform> <tag> <sha256>, plus the bare `statusgen <tag> <sha256>`
+// line the desk tools read). It is deliberately not a live pin: init
 // is baked into the statusgen binary, so a hardcoded digest here would go stale
 // every release and show stale in the very tool that emits it. The adopter fills
 // a real tag + per-platform digest once, consciously, from a release's
@@ -414,6 +415,13 @@ const initAssayVersions = `# statusgen pin for this repo's lint/regen CI — cha
 statusgen-darwin-arm64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 statusgen-darwin-amd64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 statusgen-linux-amd64   REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
+#
+# The BARE line is the one the desk tools (deskboard and friends) read first: same
+# tag as the platform lines, and the digest of the platform the desk runs on. CI
+# selects with the trailing space (grep '^statusgen-<platform> '), so this line is
+# additive and changes no CI behaviour. When it is absent the desk tools fall back
+# to this host's platform line above; keep it so every reader agrees on one tag.
+statusgen               REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 `
 
 const initWorkflow = `# statusgen CI — the two-half single-writer shape (medici-finance/assay

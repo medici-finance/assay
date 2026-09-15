@@ -59,6 +59,22 @@ func (a CompositionArtifact) ArtifactName() string {
 type Composition struct {
 	Umbrella  string                `yaml:"umbrella"`
 	Artifacts []CompositionArtifact `yaml:"artifacts"`
+
+	// Derived is true when the composition was derived from the release's
+	// checksums.txt rather than read from a hand-authored manifest
+	// (compositionsource.go). A derived composition names EVERY component the
+	// release ships, not the subset an adopter chose to install, which is why the
+	// version marker treats an un-pinned component differently under it.
+	Derived bool `yaml:"-"`
+	// AssetSHA256 maps a pin-line name (`statusgen-darwin-arm64`,
+	// `desk-tools-linux-amd64`, `statusgen-windows-amd64.exe`) to that asset's
+	// published sha256 — the digest channel E pins. Populated only for derived
+	// compositions; a hand-authored manifest carries at most one `sha256:` per
+	// component, which upgrade-assay reads separately.
+	AssetSHA256 map[string]string `yaml:"-"`
+	// Origin records where a derived composition came from (a local file path or
+	// the release-home URL), for the report. Empty for a hand-authored manifest.
+	Origin string `yaml:"-"`
 }
 
 // TagFor returns the tag this composition names for artifact, and whether it names
