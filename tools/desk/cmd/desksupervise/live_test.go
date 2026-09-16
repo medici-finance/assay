@@ -86,7 +86,7 @@ func basicAuthOf(t *testing.T, opts gitcore.ListOpts) *githttp.BasicAuth {
 // origin — here a fixture host that is NOT github.com, so a hardcoded SaaS host cannot pass.
 func TestClaimListOptsForPrivateSlugCarriesAuthAndResolvedHost(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
-	withFixtureGitHubMinter(t, "ghs_fixture_token", nil)
+	withFixtureGitHubMinter(t, "fixture-installation-token", nil)
 
 	opts, err := claimListOptsWithHost("example-org/private", "git.example.test")
 	if err != nil {
@@ -99,7 +99,7 @@ func TestClaimListOptsForPrivateSlugCarriesAuthAndResolvedHost(t *testing.T) {
 	if ba.Username != gitcore.GitHubGitUsername {
 		t.Fatalf("git username = %q, want %q for a github-resolved repo", ba.Username, gitcore.GitHubGitUsername)
 	}
-	if ba.Password != "ghs_fixture_token" {
+	if ba.Password != "fixture-installation-token" {
 		t.Fatalf("the credential is not the session role's token")
 	}
 }
@@ -146,7 +146,7 @@ func TestClaimListOptsMissingTokenIsCouldNotCheck(t *testing.T) {
 // SOFTWARE, never WHERE it is.
 func TestClaimListOptsNoOriginHostIsCouldNotCheck(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
-	withFixtureGitHubMinter(t, "ghs_fixture_token", nil)
+	withFixtureGitHubMinter(t, "fixture-installation-token", nil)
 
 	opts, err := claimListOptsWithHost("example-org/private", "")
 	if err == nil {

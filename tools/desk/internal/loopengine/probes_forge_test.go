@@ -74,7 +74,7 @@ func withFixtureGitHubMinter(t *testing.T, token string, err error) {
 // hardcoded SaaS host cannot pass.
 func TestHouseBranchListOpts_PrivateSlugCarriesAuthAndResolvedHost(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
-	withFixtureGitHubMinter(t, "ghs_fixture_token", nil)
+	withFixtureGitHubMinter(t, "fixture-installation-token", nil)
 
 	opts, err := houseBranchListOptsWithHost("example-org/private", "git.example.test")
 	if err != nil {
@@ -90,7 +90,7 @@ func TestHouseBranchListOpts_PrivateSlugCarriesAuthAndResolvedHost(t *testing.T)
 	if !ok {
 		t.Fatalf("ListOpts.Auth is %T, want *githttp.BasicAuth", opts.Auth)
 	}
-	if ba.Username != gitcore.GitHubGitUsername || ba.Password != "ghs_fixture_token" {
+	if ba.Username != gitcore.GitHubGitUsername || ba.Password != "fixture-installation-token" {
 		t.Fatalf("git credential = %q:<%d bytes>, want %q:<the session role's token>", ba.Username, len(ba.Password), gitcore.GitHubGitUsername)
 	}
 }

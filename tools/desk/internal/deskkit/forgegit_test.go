@@ -15,6 +15,11 @@ import (
 // forgegit_test.go — ForgeGitEndpointFor (#1197): the ONE builder the live claim listing and
 // the BranchMoved probe dial through. Fixture forge, fixture custody, no network.
 
+// fixtureGitHubToken is a clearly-fake credential value. It deliberately carries NO real
+// GitHub token prefix: the outward-write secret scan reads the branch diff, so a literal
+// prefixed string anywhere in a test (or a comment) would trip it (assay#1197's own PR did).
+const fixtureGitHubToken = "fixture-installation-token"
+
 func withFixtureMinter(t *testing.T, token string, err error) {
 	t.Helper()
 	SetGitHubCustodyMinter(func(role string, repo ForgeRepo) (string, string, error) { return token, "", err })
@@ -25,7 +30,7 @@ func TestForgeGitEndpointFor_GitHubCarriesRoleTokenOnResolvedHost(t *testing.T) 
 	roster := goldenRoster()
 	roster[EnvRepoForges] = "example-org/private=github"
 	withRoster(t, roster)
-	withFixtureMinter(t, "ghs_fixture", nil)
+	withFixtureMinter(t, fixtureGitHubToken, nil)
 
 	ep, err := ForgeGitEndpointFor("example-org/private", "desk", "ghe.example.test")
 	if err != nil {
@@ -38,7 +43,7 @@ func TestForgeGitEndpointFor_GitHubCarriesRoleTokenOnResolvedHost(t *testing.T) 
 		t.Fatalf("URL = %q, want %q", ep.Opts.URL, want)
 	}
 	ba, ok := ep.Opts.Auth.(*githttp.BasicAuth)
-	if !ok || ba.Username != gitcore.GitHubGitUsername || ba.Password != "ghs_fixture" {
+	if !ok || ba.Username != gitcore.GitHubGitUsername || ba.Password != fixtureGitHubToken {
 		t.Fatalf("Auth = %#v, want github username with the fixture token", ep.Opts.Auth)
 	}
 }
@@ -76,7 +81,7 @@ func TestForgeGitEndpointFor_FailsClosed(t *testing.T) {
 	withRoster(t, roster)
 
 	t.Run("no origin host is never a SaaS default", func(t *testing.T) {
-		withFixtureMinter(t, "ghs_fixture", nil)
+		withFixtureMinter(t, fixtureGitHubToken, nil)
 		ep, err := ForgeGitEndpointFor("example-org/private", "desk", "")
 		if err == nil {
 			t.Fatalf("expected a refusal, got %+v", ep)
@@ -96,13 +101,13 @@ func TestForgeGitEndpointFor_FailsClosed(t *testing.T) {
 		}
 	})
 	t.Run("unresolvable forge", func(t *testing.T) {
-		withFixtureMinter(t, "ghs_fixture", nil)
+		withFixtureMinter(t, fixtureGitHubToken, nil)
 		if _, err := ForgeGitEndpointFor("example-org/unlisted", "desk", "ghe.example.test"); err == nil {
 			t.Fatal("expected a refusal for a repo neither the roster nor the host table resolves")
 		}
 	})
 	t.Run("bad slug", func(t *testing.T) {
-		withFixtureMinter(t, "ghs_fixture", nil)
+		withFixtureMinter(t, fixtureGitHubToken, nil)
 		for _, slug := range []string{"", "nameonly", "a/b/c", "/x", "x/"} {
 			if _, err := ForgeGitEndpointFor(slug, "desk", "ghe.example.test"); err == nil {
 				t.Errorf("slug %q: expected a refusal", slug)
