@@ -1,0 +1,120 @@
+---
+brief: assay:assay:auto-triage:03
+title: "Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes"
+why: >-
+  For the judgement class of ambient red (a timing flake #612, a duplicated abstraction
+  #536) and for opaque reds whose culprit CI withholds (leak-sweep), there is no
+  deterministic fix to draft — but the red still must not sit silent. This brief files the
+  bug and ROUTES it with a recommended default, so a human gets a named next-step instead
+  of a bare stack trace, without the automation ever guessing a fix or a withheld token.
+wave: 2
+depends: ["auto-triage/01"]
+unblocks: ["auto-triage/04"]
+effort: M
+gate: human
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+gate-why: >-
+  This brief WIDENS the automation's standing authority to file issues and post routing
+  recommendations autonomously on a red gate, without a fresh human act. That is an
+  authority-boundary decision (cf. desk-tools/17: gate is `human` by authority, all four
+  risk answers honestly `no` because filing/routing is reversible at zero cost to `main`).
+  The human confirms two things: (1) the responder ROUTES only — it never drafts a fix,
+  never merges, never flips ready; and (2) for an opaque red (leak-sweep) the routed body
+  NEVER contains a withheld token or reconstructed culprit — on a PUBLIC repo a routing
+  message that leaked the detail would be the exact harm leak-sweep exists to prevent.
+design: DR-auto-triage
+issues: [612, 536]
+schema: brief-v2
+authored: 2026-09-16 by the-desk auto-triage authoring session
+sources:
+  - "docs/streams/auto-triage/spec.md — §2 step 4 (judgement → file + route with default); §5 leak-sweep is opaque and always routes; §6 non-goals"
+  - "docs/streams/decisions/DR-auto-triage.md — the design record this brief is gated on (PROPOSED)"
+  - "medici-finance/assay#612 — load-induced timing flake (judgement: re-run/quarantine, not a code fix)"
+  - "medici-finance/assay#536 — duplicated reducer (judgement: a consolidation design call)"
+  - "freshness-checked 2026-09-16 @ e9fa19d3 (origin/main) — no tools/autotriage/ router exists; leak-sweep status carries only 'withheld content detected'"
+exec-tier: strong
+exec-tier-why: >-
+  (c) autonomous-action code acting publicly, and (b) the opaque-red path must reason across
+  the boundary between what CI exposes and what it withholds — a wrong call there leaks a
+  withheld token onto a public issue.
+consumers:
+  - "tools/autotriage/ (the Classify seam from brief 01): follow-up auto-triage/03 (this brief; consumes 01's output schema, flips to fixed-here when the router implementation reads it)"
+version: 1
+id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
+---
+
+# Brief 03 — judgement responder
+
+## Context
+
+single-point-of-failure: this responder's routing message is the one artifact a human acts
+on for a judgement/opaque red — but it takes no fixing action, so its worst failure is a
+misleading recommendation (a closed/re-labelled issue), not a bad change to `main`. Two
+layers stand behind the single control: the responder NEVER drafts a fix or merges (it only
+files + routes), and the opaque-red path is content-blind by construction (it routes
+leak-sweep by CHECK identity and never reads or echoes the withheld detail).
+
+files:
+- `tools/autotriage/` — the judgement router (over brief 01's `Classify`), plus tests.
+- `tools/autotriage/testdata/` — judgement (#612 flake, #536 duplication) and leak-sweep
+  culprit fixtures.
+
+facts:
+- Input: a `Culprit` from brief 01 with `class == judgement`, OR any culprit brief 02
+  refused (non-mechanical, leak-sweep, gate-config).
+- Output: file a bug issue naming the check + `file:line` (when known) + the problem, and
+  attach a RECOMMENDED DEFAULT next-step — e.g. a flake → "re-run once; if it re-fails,
+  quarantine the test and file a fix brief"; a duplication → "route to a consolidation
+  brief"; leak-sweep → "a human reads the private gate log; do not guess from the diff".
+- **Opaque-red rule:** for `check == leak-sweep` the routed body carries `file: null`,
+  names NO token, and echoes NO file content — it routes by check identity only. The
+  withheld detail lives in a private channel a human reads; this responder never reproduces
+  it on a public surface.
+- Every routed issue carries a default — "needs a human" with no recommended action is a
+  defect, not a route. The default is a RECOMMENDATION a human overrides, never an action
+  the responder takes.
+- `--dry-run` prints the issue body + the routing recommendation and writes nothing.
+- Hard bound: this responder NEVER drafts a fix, opens a non-issue PR, merges, or flips
+  ready. It files and routes; that is all.
+
+## Ground rules
+- NEVER draft a fix, merge, ready-flip, or self-approve — file + route only; the human acts.
+- NEVER echo a withheld/opaque-red token or file content onto any surface (public repo).
+- File issues ONLY through the sanctioned desk write path; never a hand-rolled mint; live
+  writes only when armed (default `--dry-run`).
+- Stop at `implemented`. Feature branch + draft PR only. Never commit `STATUS.md`/`FINDINGS.md`.
+- If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
+
+## Task
+1. Build the judgement router over brief 01's `Classify`: on `class == judgement` (or a
+   brief-02 refusal), compose the issue body and a recommended-default next-step.
+2. Implement the opaque-red (leak-sweep) path: route by check identity, `file: null`, no
+   token and no file content in the body; recommend the private-log path for a human.
+3. Enforce "every route carries a default" — a route with no recommended next-step is a
+   hard error in the router, not an emitted issue.
+4. Implement `--dry-run` (print, write nothing) as default; live writes only when armed.
+5. Assert in tests that no code path drafts a fix, merges, or flips ready.
+
+## Verify (executable — no prose-only DoD items)
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | `cd tools/autotriage && go build ./... && go vet ./...` | exit 0 |
+| 2 | `cd tools/autotriage && go test ./...` | exit 0; all green |
+| 3 | `cd tools/autotriage && go test -run TestJudgementRoutesWithDefault -v` | exit 0; the #612 flake culprit yields an issue body naming the check + `file:line` AND a concrete recommended default (re-run/quarantine) — dereferences the route content, not a presence count |
+| 4 | `cd tools/autotriage && go test -run TestNeverDraftsFixNeverMerges -v` | exit 0; asserts NO code path drafts a fix, merges, or flips ready (mutation/negative row) |
+| 5 | `cd tools/autotriage && go test -run TestLeakSweepRoutedWithoutLeakingDetail -v` | exit 0; the leak-sweep fixture routes with `file` null and a body containing NO token and NO fixture file content — the public-repo safety row, proven by asserting the withheld synthetic marker is absent from the routed body |
+| 6 | `cd tools/autotriage && go test -run TestRouteWithoutDefaultIsError -v` | exit 0; a route constructed with no recommended default is rejected by the router (proves "every route carries a default") |
+
+## Evidence
+<!-- appended at implementation time by a NON-implementer: one row per Verify item.
+     gate: human — green rows are INPUT to the human review (route-only; no detail leak),
+     not a substitute. Status stays `implemented` until the human confirms and
+     DR-auto-triage is approved. -->
+
+## Review
+Gate: human (autonomous outbound action; authority widening — see gate-why; design:
+DR-auto-triage). Reviewer answers both core-control questions: (1) the single control is the
+routing message; the layers making it acceptable are route-only (no fix/merge) and
+content-blind opaque-red handling — confirm both; (2) row 5 proves the lower, content-blind
+layer holds with the happy path bypassed (a leak-sweep red routes with zero withheld detail
+on a public surface). Verdict + date in the stream README table.
