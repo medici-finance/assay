@@ -220,7 +220,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | done | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #831 @ ab2b73a6065dd206ec7d65c78346a45880c64a29) |
 | 13 | [Write verbs C — deskpr, deskfile and deskclose onto the resolver](brief-13-write-verbs-c-deskpr-deskfile-deskclose.md) | 3 | M | implemented | — | — |
 | 14 | [Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver](brief-14-run-and-gate-approval-verbs-deskrun.md) | 2 | M | todo | — | — |
-| 15 | [desklabel — a role-keyed label verb](brief-15-desklabel-role-keyed.md) | 2 | M | todo | — | — |
+| 15 | [desklabel — a role-keyed label verb](brief-15-desklabel-role-keyed.md) | 2 | M | implemented | — | — |
 | 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | implemented | — | — |
 | 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | todo | — | — |
 | 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
