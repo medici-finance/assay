@@ -1,0 +1,3 @@
+### Fixed
+- `issueboard` no longer retires a placeholder because its issue was merely absent from the open-issue listing: `RETIRE` now rests on a positive per-issue `closed` read, an unreadable state is could-not-check (exit 6, issue named), and an absent issue that reads open proves the listing partial and refuses the whole sweep. A slow/partial third sweep had flipped ~236 still-open issues `NONE→RETIRE`. (#1032)
+- The GitHub forge backend never hands back a shorter open-issue listing with a nil error: a body cut off mid-transfer or a zero-byte body is an error, and the page walk follows the forge's own `Link: rel="next"` instead of stopping on any short page. (#1032)

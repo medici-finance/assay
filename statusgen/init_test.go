@@ -361,3 +361,43 @@ func TestInitIsIdempotentAndNeverClobbers(t *testing.T) {
 		t.Errorf("re-init clobbered an existing file; README.md = %q, want the user edit preserved", got)
 	}
 }
+
+// TestInitWorkflowPassesNonSecretRosterVariables pins the GitHub half of #1110.
+// Under GitHub Actions statusgen reads the roster from the ENVIRONMENT (CI
+// class), and the scaffolded workflow passed no ASSAY_* variable to either
+// statusgen step, so the Evidence-actor check was could-not-check on every
+// regen and every PR lint — silently, because the job stayed green. The
+// workflow now passes the five non-secret roster variables through from
+// repository Actions VARIABLES (never secrets) and prints a notice naming them
+// when the verifier binding is absent.
+func TestInitWorkflowPassesNonSecretRosterVariables(t *testing.T) {
+	wf := initWorkflow
+	for _, k := range []string{
+		"ASSAY_BLESS_LOGIN",
+		"ASSAY_TRUSTED_LOGINS",
+		"ASSAY_TRUSTED_BOT_SLUGS",
+		"ASSAY_ALLOWED_REPOS",
+		"ASSAY_HUMAN_LOGIN_MAP",
+	} {
+		want := k + ": ${{ vars." + k + " }}"
+		if !strings.Contains(wf, want) {
+			t.Errorf("workflow missing the roster passthrough %q (#1110)", want)
+		}
+		if strings.Contains(wf, "secrets."+k) {
+			t.Errorf("workflow reads %s from secrets — the roster is the NON-secret half and lives in repository VARIABLES (#1110)", k)
+		}
+	}
+	for _, want := range []string{
+		"::notice::ASSAY_TRUSTED_BOT_SLUGS is not set",
+		"could-not-check",
+	} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("workflow missing the loud absent-roster line %q (#1110)", want)
+		}
+	}
+	// Both jobs report roster presence: once for the PR --lint half, once for
+	// the regen half.
+	if n := strings.Count(wf, "name: Report trust-roster presence"); n != 2 {
+		t.Errorf("workflow carries %d roster-presence step(s), want 2 (lint + regen) (#1110)", n)
+	}
+}

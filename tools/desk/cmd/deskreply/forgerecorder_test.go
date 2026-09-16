@@ -43,6 +43,11 @@ type forgeRecorder struct {
 	// comments is what ListComments serves (the --workpad path). Each entry is one comment
 	// node: id, databaseId, body, isMinimized, author login.
 	comments []map[string]any
+
+	// visibility is what GET /repos/{owner}/{repo} answers as `.visibility` — the
+	// public-repo gate's live-visibility read (assay#1066's regression coverage, see
+	// gatewired_test.go). Defaults to "private" when unset.
+	visibility string
 }
 
 func newForgeRecorder(t *testing.T) *forgeRecorder {
@@ -95,6 +100,16 @@ func newForgeRecorder(t *testing.T) *forgeRecorder {
 				"html_url": "https://github.com/" + env("FAKEGH_PR_REPO", "example-org/tracker") +
 					"/pull/7#issuecomment-123",
 			})
+		case r.Method == http.MethodGet && strings.Count(strings.Trim(r.URL.Path, "/"), "/") == 2 &&
+			strings.HasPrefix(r.URL.Path, "/repos/"):
+			// GET /repos/{owner}/{repo} — the public-repo gate's live-visibility read
+			// (GitHubForge.RepoVisibility). Exactly two slashes after trimming distinguishes
+			// this from the PR-view and comment-post paths below, which carry more segments.
+			vis := f.visibility
+			if vis == "" {
+				vis = "private"
+			}
+			enc(map[string]any{"visibility": vis})
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pulls/"):
 			enc(map[string]any{
 				"number": 7, "state": strings.ToLower(env("FAKEGH_PR_STATE", "OPEN")),

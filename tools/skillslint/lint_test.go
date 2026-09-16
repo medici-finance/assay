@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -147,6 +148,88 @@ func TestLintSkills_QualifiedUnforgeableClaimPasses(t *testing.T) {
 	}
 	if len(issues) != 0 {
 		t.Errorf("expected no issues on qualified phrasing, got %v", issues)
+	}
+}
+
+// TestLintSkills_UnparseableFrontmatterFails is the regression test for #1115.
+// A plain (unquoted) scalar containing a colon-space is a NESTED MAPPING to
+// every YAML loader, so the frontmatter document does not parse at all and a
+// harness that loads the skill roster through a YAML parser sees no name and no
+// description — the skill silently never surfaces. The lint used to read the
+// header line-by-line and reported PASS on exactly this shape; it must now fail.
+func TestLintSkills_UnparseableFrontmatterFails(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "s", "---\nname: s\ndescription: a: b\n---\n\nbody\n")
+
+	_, issues, err := LintSkills(root)
+	if err != nil {
+		t.Fatalf("unexpected structural error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("want 1 issue for frontmatter that does not parse as YAML, got %d: %v", len(issues), issues)
+	}
+	if !strings.Contains(issues[0].Msg, "does not parse as YAML") {
+		t.Errorf("issue message %q does not name the parse failure", issues[0].Msg)
+	}
+}
+
+// TestLintSkills_ColonInFoldedScalarPasses is the other half of #1115: the FIX
+// for an unparseable description is a folded block scalar, and the lint must
+// accept one whose text contains the same colon-space that broke the plain
+// scalar. Without this the rule would push authors to reword adopter-facing
+// trigger text the harness matches on, which is the wrong repair.
+func TestLintSkills_ColonInFoldedScalarPasses(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "s", "---\nname: s\ndescription: >-\n  Load on an explicit request: the user types /s.\n---\n\nbody\n")
+
+	checked, issues, err := LintSkills(root)
+	if err != nil {
+		t.Fatalf("unexpected structural error: %v", err)
+	}
+	if checked != 1 {
+		t.Errorf("checked = %d, want 1", checked)
+	}
+	if len(issues) != 0 {
+		t.Errorf("a folded scalar carrying a colon-space must pass, got %v", issues)
+	}
+}
+
+// TestLintSkills_NonMappingFrontmatterFails covers the wider rule the parse
+// check exists to pin: the frontmatter must be a MAPPING. A block that parses
+// as a sequence or a bare scalar has no keys to read, so every downstream
+// consumer sees an unnamed, undescribed skill.
+func TestLintSkills_NonMappingFrontmatterFails(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "s", "---\n- name: s\n- description: x\n---\n\nbody\n")
+
+	_, issues, err := LintSkills(root)
+	if err != nil {
+		t.Fatalf("unexpected structural error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("want 1 issue for non-mapping frontmatter, got %d: %v", len(issues), issues)
+	}
+	if !strings.Contains(issues[0].Msg, "mapping") {
+		t.Errorf("issue message %q does not say the frontmatter is not a mapping", issues[0].Msg)
+	}
+}
+
+// TestLintSkills_NonStringDescriptionFails pins the TYPE half of the rule: a
+// `description:` that parses as a number or a list is present and non-empty but
+// is not the trigger string the harness matches on.
+func TestLintSkills_NonStringDescriptionFails(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "s", "---\nname: s\ndescription:\n  - one\n  - two\n---\n\nbody\n")
+
+	_, issues, err := LintSkills(root)
+	if err != nil {
+		t.Fatalf("unexpected structural error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("want 1 issue for a non-string description, got %d: %v", len(issues), issues)
+	}
+	if !strings.Contains(issues[0].Msg, "string") {
+		t.Errorf("issue message %q does not name the type failure", issues[0].Msg)
 	}
 }
 

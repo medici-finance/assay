@@ -102,6 +102,23 @@ Pre-mortem → detection map:
 ## Evidence
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | build + vet | exit 0 | exit 0 both | 2026-09-15 | sonnet-5-verifier |
+| 2 | equivalent-block-is-noop | exit 0, noop, no PUT | exit 0, 0 PUTs recorded, ResultNoop, "noop: Evidence block already present" | 2026-09-15 | sonnet-5-verifier |
+| 3 | line-endings/trailing-space survives equivalence | exit 0 | exit 0, CRLF+trailing-space fresh block still resolves to noop with 0 PUTs | 2026-09-15 | sonnet-5-verifier |
+| 4 | near-equivalent blocks still land (negative control) | exit 0, all 3 cases land | exit 0, one-char-diff / prefix / superset subtests all PASS, each records exactly 1 PUT | 2026-09-15 | sonnet-5-verifier |
+| 5 | full package suite | exit 0 | exit 0, 58 tests all PASS incl. file-level noop + shrink-guard tests | 2026-09-15 | sonnet-5-verifier |
+| 6 | gofmt clean | exit 0 | exit 0, empty output | 2026-09-15 | sonnet-5-verifier |
+| 7 | pinned lint | exit 0 | exit 0, LINT: PASS | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- the equivalence-comparison logic (normalize line-endings/trailing-whitespace only, never content; suffix-anchored match, strictly MORE restrictive than substring-anywhere) was independently enumerated at file:line and confirmed by execution (not just code reading) to sit on the safe side: row 4's three negative-control subtests each independently exercised the real comparison code path and confirmed a genuinely-different block always lands rather than being silently dropped -- the irreversible failure direction (data loss) is the one proven not to occur.
+
+**VERIFY: PASS** -- all 7 rows checked-clean, no could-not-check, no blocks. Implementing commit independently confirmed as an ancestor of the target SHA, scoped to exactly the files the brief named.
 
 ## Review
 

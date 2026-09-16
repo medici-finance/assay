@@ -140,6 +140,68 @@ offline). The drift comparator's three-state honesty is pinned by
 change the implementing App cannot push); the online drift-NOTICE lane and the
 schedule/PR path activate when a human lands the workflow change described in the
 PR body. A could-not-check is not a pass.
+### Non-implementer verifier run — VERIFY: HELD (rows 1-4,7,8 PASS; rows 5-6 FAIL on the still-unlanded human-gated workflow half) — 2026-09-15 sonnet-5-verifier (verify-desk dispatch), merged main `0bf1166`
+
+Runner ≠ implementer. Isolated worktree off `origin/main` (HEAD == `origin/main`
+exactly, confirmed `git merge-base --is-ancestor HEAD origin/main`). Offline;
+statusgen built from source, not PATH. `gate: model`, `risk: {regulatory: no,
+customer: no, irreversible: no, sensitive-data: no}` (risk-clear). This is the
+third non-implementer pass; the two prior passes (2026-09-04 implementer,
+2026-09-06 verifier PR #570) both landed the same rows-1-4,7,8-PASS /
+rows-5-6-BLOCKED shape. Nine days later, rows 5-6 are unchanged: the
+`.github/workflows/assay-statusgen.yml` diff the brief's task 3 calls for
+(`schedule:` trigger + `pull-requests: read`/`issues: read` on the regen job)
+still has not been pushed by a human. Row 4, could-not-check in the prior pass
+(env writeguard blocked `sed -i ''` from a shared-homed session), is a full
+PASS this run: this worktree's `sed` is GNU sed 4.10 (not BSD/macOS sed), so the
+brief's literal `sed -i ''` invocation fails on argument parsing in this
+environment — not a guard block. Re-running the same edit with GNU-compatible
+`sed -i 's/.../.../ '` syntax (same edit, same file, same intent) executed
+cleanly and exercised the real lint path end-to-end.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | `cd statusgen && go test . -run ReadmeTable -count=1` | `ok` | exit 0 — `ok  	github.com/medici-finance/assay/statusgen	0.420s` | 2026-09-15 | sonnet-5-verifier |
+| 2 | `regen --readmes --offline`; non-table diff lines → 0 | table region rewritten; non-table diff = 0 | exit 0 — `git diff --stat` empty (README already canonical on main); non-table diff line count = `0` | 2026-09-15 | sonnet-5-verifier |
+| 3 | two consecutive `regen --readmes --offline`; porcelain count | 0 | exit 0 — `git status --porcelain docs/streams` = `0` (idempotent) | 2026-09-15 | sonnet-5-verifier |
+| 4 | MUTATION: hand-edit row 01's title cell inside the markers, `--lint --root ..` → rc=1 naming hand-edit + derived-board | rc=1, output names both | exit 1 (full run, not a mechanism-only corroboration) — `PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells (title/wave/effort) differ from the brief frontmatter; regenerate with \`statusgen regen --readmes\`` (1 match); file restored via `git checkout --` after | 2026-09-15 | sonnet-5-verifier |
+| 5 | workflow has `schedule:` trigger (`python3 -c "import yaml;w=yaml.safe_load(open('.github/workflows/assay-statusgen.yml'));assert 'schedule' in w[True] or 'schedule' in w['on'];print('ok')"`) | `ok` | **FAIL** — `KeyError: 'on'` (YAML's bare `on:` key parses as boolean `True` under PyYAML, and neither `w[True]` nor a `schedule` key exists — no `schedule:` trigger anywhere in the workflow, confirmed by direct read of the file); unchanged since the 2026-09-06 pass | 2026-09-15 | sonnet-5-verifier |
+| 6 | `grep -c -E -e 'pull-requests: read' -e 'issues: read' .github/workflows/assay-statusgen.yml` | `2` | **FAIL** — `0`; the regen job's `permissions:` block still declares only `contents: read` (job-scoped) / `contents: write` is job-scoped on push; no PR/issues read scope anywhere in the file | 2026-09-15 | sonnet-5-verifier |
+| 7 | `grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md` | `1` | exit 0 — `1` | 2026-09-15 | sonnet-5-verifier |
+| 8 | `cd statusgen && go run . init --dry-run /tmp/adopter-x \| grep -c 'reconcile'` | ≥ 1 | exit 0 — `1` | 2026-09-15 | sonnet-5-verifier |
+
+**Risk-bearing value.** Enumeration of literal constants this item's diff introduces (merged main, `statusgen/readmetable.go`):
+- `briefsMarkerBegin = "<!-- statusgen:briefs:begin -->"` @ `statusgen/readmetable.go:45`
+- `briefsMarkerEnd = "<!-- statusgen:briefs:end -->"` @ `statusgen/readmetable.go:46`
+- `board: "generated"` opt-in frontmatter value @ `statusgen/parse.go:27`
+- `[skip-status-regen]` loop-guard marker — reused unchanged from the pre-existing regen job (`statusgen/init.go:560,772` scaffold; matched by the workflow's own skip regex), not new to this brief.
+
+Ranked by irreversibility: the `[skip-status-regen]` marker is the only one whose
+value, if wrong, has a systemic blast radius (a mismatch loops CI on every push to
+main) — the other three are inert opt-in/marker strings whose failure mode is a
+`PROBLEM`/NOTICE, not a loop or a write to the wrong place.
+
+`RISK-VALUE: DERIVED — the [skip-status-regen] loop-guard marker (statusgen/init.go:560, matched by the skip regex the workflow's own \`if:\` evaluates) is reused unchanged from the pre-existing single-writer STATUS.md job; a mismatched string would re-trigger the regen job on its own commit and loop CI. Confirmed unchanged and matched on merged main. Reversible (a string literal, not a destructive default).`
+
+`RISK-VALUE: N/A — enumeration over statusgen/readmetable.go + parse.go found no other bound/threshold; briefsMarkerBegin/End and the board:generated opt-in are inert marker/opt-in strings, fail-safe by construction (absence of the markers is a hard error at render time, not a silent no-op; absence of board:generated leaves the README on the pre-existing hand-table path).`
+
+The `pull-requests: read` / `issues: read` reconcile-job scope named in the prior
+pass's risk analysis is **not present on merged main** to derive a value from —
+it is part of the still-unlanded workflow-file half (rows 5-6).
+
+**VERIFY: HELD.** Unchanged verdict shape from the 2026-09-06 pass (PR #570):
+every row attributable to this brief's shipped code (1,2,3,4,7,8) PASSES — row 4
+now checked directly rather than mechanism-corroborated. Rows 5 and 6 FAIL
+because the `.github/workflows/assay-statusgen.yml` `schedule:` trigger +
+read-only reconcile-job permissions are the documented BLOCKED-ON-HUMAN half (an
+App cannot push `.github/workflows/**`; the brief itself holds at `implemented`
+for exactly this reason, task 3's intended diff described in PR #428's body).
+This is a human-activation wait, not a shipped-code defect — no CFR row. Status
+stays `implemented`; no flip to `verified`. Nine days elapsed since the last
+verify pass with no change to the blocking file: escalating as a `help wanted`
+issue on this repo (the human hand-off was previously described only in PR
+bodies, never durably filed) so this stops silently recurring across verify
+passes.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

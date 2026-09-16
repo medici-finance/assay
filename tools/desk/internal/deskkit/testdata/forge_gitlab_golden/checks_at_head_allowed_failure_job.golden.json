@@ -1,0 +1,48 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123/statuses",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/78/jobs",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "CombinedState": "success",
+    "StatusTotalCount": 1,
+    "Statuses": [
+      {
+        "State": "success",
+        "Context": "pipeline",
+        "CreatedAt": "2026-09-15T10:00:00Z"
+      }
+    ],
+    "CheckRunsTotalCount": 2,
+    "CheckRuns": [
+      {
+        "ID": "9201",
+        "Name": "statusgen-lint",
+        "Status": "completed",
+        "Conclusion": "success",
+        "StartedAt": "",
+        "CompletedAt": ""
+      },
+      {
+        "ID": "9202",
+        "Name": "flaky-probe",
+        "Status": "completed",
+        "Conclusion": "neutral",
+        "StartedAt": "",
+        "CompletedAt": ""
+      }
+    ]
+  }
+}

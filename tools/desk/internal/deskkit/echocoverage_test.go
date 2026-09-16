@@ -29,9 +29,13 @@ const cmdDir = "../../cmd"
 // surface. Each is listed with the reason, so adding a name here is a decision
 // someone has to write down rather than a silent opt-out.
 var exemptFromRoster = map[string]string{
-	"muhar":           "harvest/report utility; consults no roster",
-	"deskpushguard":   "PR-state guard; consults no roster",
-	"repohardenguard": "GET-only hardening checker; reads the checklist doc + the repo's own live settings, deliberately NOT the roster (see its main.go § write-authorisation set)",
+	"muhar":         "harvest/report utility; consults no roster",
+	"deskpushguard": "PR-state guard; consults no roster",
+	"repohardenguard": "GET-only hardening checker; reads the checklist doc + the repo's own live settings, and " +
+		"(the forge-gitlab guard-read-custody brief) the roster's forge MAP (ASSAY_REPO_FORGES, resolved inside deskkit.ForgeFor to pick a " +
+		"backend) — never the write-authorisation set (AllowedRepos) and never a trust binding (its identity " +
+		"line reads deskkit.AppBinding, not the roster's role-bot slugs, since the auditor role never posts and " +
+		"needs none). See its main.go/forge.go.",
 }
 
 func TestEveryRosterReadingMainDeclaresClassAndEchoes(t *testing.T) {

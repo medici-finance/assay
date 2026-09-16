@@ -31,6 +31,15 @@ type postBackend interface {
 	getPR(pr int) (*prInfo, error)
 	getPRHead(pr int) (string, error)
 	getIssue(n int) (*issueInfo, error)
+	// getIssueTyped is getIssue for a caller that has STATED which kind `n` names (#1091 /
+	// the sibling of assay#1087's deskfile attach --kind). It exists so `deskpost comment
+	// --kind issue` can force the ISSUE-only typed read (deskkit.Forge.GetIssueTyped on a
+	// GitLab-resolved repo) instead of the ambiguous bare-number resolution, which on
+	// GitLab silently prefers whichever of #N / !N its own probe order finds first. Only
+	// deskkit.TargetIssue is ever passed by this binary's one caller (resolveTargetKind);
+	// the kind parameter is carried for parity with the Forge-level op it wraps, not
+	// because a second value is exercised here.
+	getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error)
 	listReviews(pr int) ([]reviewInfo, error)
 	listFiles(pr int) ([]prFile, error)
 	stampTimeline(pr int) (deskkit.StampTimeline, error)
@@ -40,8 +49,18 @@ type postBackend interface {
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
 	combinedStatusAt(sha string) (*combinedStatus, error)
 	checkRunsAt(sha string) (*checkRunsResp, error)
-	postReview(pr int, head, event, body string) error
+	// postReview lands the verdict. A non-empty note on success says the verdict is in force
+	// by a route other than the plain POST (GitLab: the App's approval already stood, #1106);
+	// it is empty on the ordinary path and never accompanies an error.
+	postReview(pr int, head, event, body string) (note string, err error)
 	markReadyForReview(nodeID string) error
+	// readMergeHold / setMergeHold: the forge-gitlab merge-hold brief. GitHub's ghClient path
+	// is the typed not-applicable, unconditionally — its server-side twin is branch
+	// protection. postVerdictReview's correctness lane reads and writes the hold AFTER the
+	// verdict itself lands (release on approve, re-arm on request-changes or a resolve found
+	// stale at this head); the security lane never touches it.
+	readMergeHold(pr int) (*deskkit.MergeHold, error)
+	setMergeHold(pr int, in deskkit.MergeHoldUpdate) error
 	// verdictLabels applies the mechanical, ADVISORY verdict-time labels (size + surface). It
 	// is post-write and gates nothing; a backend that cannot compute them returns a note, not
 	// an error (see forgeBackend.verdictLabels).
@@ -159,6 +178,26 @@ func (b *forgeBackend) getIssue(n int) (*issueInfo, error) {
 	return out, nil
 }
 
+// getIssueTyped mirrors getIssue's mapping, sourced from the typed forge op
+// (deskkit.Forge.GetIssueTyped) instead of the ambiguous GetIssue. On the GitLab backend
+// this reads exactly ONE endpoint for the stated kind, so a number carrying both an issue
+// and a merge request no longer refuses — see GetIssueTyped's own doc comment (forge.go).
+func (b *forgeBackend) getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error) {
+	iss, err := b.fg.GetIssueTyped(b.repo, n, kind)
+	if err != nil {
+		return nil, err
+	}
+	out := &issueInfo{Number: iss.Number, State: iss.State}
+	out.User.Login = iss.Author.Login
+	out.User.ID = iss.Author.ID
+	if iss.IsPullRequest {
+		out.PullRequest = &struct {
+			URL string `json:"url"`
+		}{URL: iss.URL}
+	}
+	return out, nil
+}
+
 func (b *forgeBackend) listReviews(pr int) ([]reviewInfo, error) {
 	rs, err := b.fg.ReviewsAtHead(b.repo, pr)
 	if err != nil {
@@ -254,17 +293,31 @@ func (b *forgeBackend) checkRunsAt(sha string) (*checkRunsResp, error) {
 	return cr, nil
 }
 
-func (b *forgeBackend) postReview(pr int, head, event, body string) error {
+func (b *forgeBackend) postReview(pr int, head, event, body string) (string, error) {
 	// The shipping consumer of the typed reviewer verdict-write op on the GitLab backend: the
 	// forge-neutral event (APPROVE / REQUEST_CHANGES / COMMENT) maps to a head-pinned approval +
 	// verdict note that ReviewsAtHead reads at head (brief 02). No `glab` shell, no
 	// arbitrary-endpoint method — the write goes through the enumerated Forge op or it does not
 	// ship (brief 08's ban / no-passthrough test).
-	return b.fg.PostReview(b.repo, pr, deskkit.ReviewInput{HeadSHA: head, Event: event, Body: body})
+	var note string
+	err := b.fg.PostReview(b.repo, pr, deskkit.ReviewInput{HeadSHA: head, Event: event, Body: body,
+		Report: func(n string) { note = n }})
+	if err != nil {
+		return "", err
+	}
+	return note, nil
 }
 
 func (b *forgeBackend) markReadyForReview(nodeID string) error {
 	return b.fg.MarkReadyForReview(nodeID)
+}
+
+func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {
+	return b.fg.ReadMergeHold(b.repo, pr)
+}
+
+func (b *forgeBackend) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return b.fg.SetMergeHold(b.repo, pr, in)
 }
 
 func (b *forgeBackend) RepoVisibility(owner, repo string) (string, error) {

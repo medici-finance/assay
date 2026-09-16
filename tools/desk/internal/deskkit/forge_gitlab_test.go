@@ -56,13 +56,22 @@ type glServer struct {
 	versions     []map[string]any
 	approvals    map[string]any
 	notes        []map[string]any
-	diffs        []map[string]any
-	commit       map[string]any
-	commits      []map[string]any
-	statuses     []map[string]any
-	jobs         []map[string]any
-	awards       []map[string]any
-	users        map[string]map[string]any
+	// issueNotes is the ISSUE-side notes fixture. It is separate from `notes` (the
+	// merge-request side) on purpose: a project carrying both an issue and a merge request
+	// at one number is the case the typed reads exist for, and a shared fixture could not
+	// tell an issue-thread read from a merge-request one.
+	issueNotes []map[string]any
+	diffs      []map[string]any
+	commit     map[string]any
+	commits    []map[string]any
+	statuses   []map[string]any
+	jobs       []map[string]any
+	// pipelines is the project-pipelines LIST payload, served by SHA: an entry is returned only
+	// when its "sha" equals the request's ?sha=, so a fixture cannot answer for a head it does
+	// not belong to. Empty/absent → the instance ran no pipeline at that head.
+	pipelines []map[string]any
+	awards    []map[string]any
+	users     map[string]map[string]any
 	// userSearch is the users LIST payload (`GET /users?search=<term>`), keyed by the search
 	// term; a term with no entry answers an empty list (the instance found nobody).
 	userSearch map[string][]map[string]any
@@ -86,6 +95,15 @@ type glServer struct {
 	// branch is the Branches-API GET payload (RefExists); branchMissing → 404 (ref absent).
 	branch        map[string]any
 	branchMissing bool
+	// discussions is the MR discussions LIST payload (ReadMergeHold's walk); nil serves an
+	// empty list. createDiscussion is the create-discussion POST response (OpenMergeHold).
+	// discussionResolveResp / discussionNoteResp are the PUT-resolve and POST-note
+	// responses (SetMergeHold); nil defaults to a stock non-empty object so the client
+	// library's decode never sees a bare `null`.
+	discussions           []map[string]any
+	createDiscussion      map[string]any
+	discussionResolveResp map[string]any
+	discussionNoteResp    map[string]any
 	// labelCreateStatus, when set, is the status the project-label create route returns
 	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
 	// both of which mean the ensure's post-condition already holds.
@@ -106,6 +124,20 @@ type glServer struct {
 	// NEGATIVE value serves an ENDLESS chain that never stops advertising a next page — the
 	// runaway a page ceiling exists to bound.
 	issuePages int
+	// protectedBranches / protectedTags are the protected-branches and protected-tags LIST
+	// payloads (op 40's two list kinds). protectedBranchPages, when N>0, serves N one-entry
+	// pages chained by X-Next-Page instead of the canned list, and a NEGATIVE value serves an
+	// ENDLESS chain — the runaway the hardening page ceiling exists to bound.
+	protectedBranches    []map[string]any
+	protectedTags        []map[string]any
+	protectedBranchPages int
+	// pushRule is the project push-rule payload (`GET /projects/:id/push_rule`, Premium). A
+	// nil value encodes as the literal `null` GitLab answers for a Premium project with no
+	// push rule configured. pushRuleStatus, when set, is the status the route answers
+	// instead of 200 — Community Edition has no such route (404), and a locked-down instance
+	// answers 403.
+	pushRule       any
+	pushRuleStatus int
 	// forceStatus maps an escaped-path suffix to the HTTP status to return instead.
 	forceStatus map[string]int
 }
@@ -136,11 +168,27 @@ var (
 	lCommitList   = regexp.MustCompile(`/repository/commits$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
-	lBranch       = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
-	lMRLabelEvts  = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
-	lMRNote1      = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
-	lProjLabels   = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
-	lRepoFile     = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
+	// lPipelines is the project PIPELINES collection (ListOpenChanges' per-change head-pipeline
+	// read, addressed by ?sha=). It is anchored so it cannot also match lPipelineJobs' path.
+	lPipelines   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines$`)
+	lBranch      = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
+	lMRLabelEvts = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
+	lMRNote1     = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
+	lProjLabels  = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
+	lRepoFile    = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
+	// the forge-gitlab merge-hold brief adds the merge-hold marker thread's discussion endpoints. lMRDiscNote
+	// (the note sub-resource) is matched BEFORE lMRDisc1 (the discussion resource) and
+	// lMRDiscussions (the list/create collection), same ordering discipline lMRNote1 already
+	// keeps ahead of lMR/lMRNotes.
+	lMRDiscussions = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions$`)
+	lMRDisc1       = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions/[^/]+$`)
+	lMRDiscNote    = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions/[^/]+/notes$`)
+	// op 40's GitLab kinds (the forge-gitlab GitLab-hardening-reads brief): the protected-branch
+	// and protected-tag lists and the Premium push-rule document. `project` and `approvals`
+	// reuse lProject / lProjApproval.
+	lProtBranches = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_branches$`)
+	lProtTags     = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_tags$`)
+	lPushRule     = regexp.MustCompile(`^/api/v4/projects/[^/]+/push_rule$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +231,32 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
+	case r.Method == http.MethodPost && lMRDiscNote.MatchString(path):
+		// the forge-gitlab merge-hold brief's SetMergeHold reply note (released/re-armed).
+		w.WriteHeader(http.StatusCreated)
+		if s.discussionNoteResp != nil {
+			enc(s.discussionNoteResp)
+			return
+		}
+		enc(map[string]any{"id": 950, "body": string(body)})
+	case r.Method == http.MethodPut && lMRDisc1.MatchString(path):
+		// the forge-gitlab merge-hold brief's SetMergeHold resolve/unresolve toggle.
+		if s.discussionResolveResp != nil {
+			enc(s.discussionResolveResp)
+			return
+		}
+		enc(map[string]any{"id": "disc-1", "notes": []map[string]any{{"id": 900, "resolvable": true}}})
+	case r.Method == http.MethodGet && lMRDiscussions.MatchString(path):
+		// the forge-gitlab merge-hold brief's ReadMergeHold walk.
+		if s.discussions == nil {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.discussions)
+	case r.Method == http.MethodPost && lMRDiscussions.MatchString(path):
+		// the forge-gitlab merge-hold brief's OpenMergeHold.
+		w.WriteHeader(http.StatusCreated)
+		enc(s.createDiscussion)
 	case r.Method == http.MethodGet && lMRLabelEvts.MatchString(path):
 		enc(s.labelEvents)
 	case r.Method == http.MethodPut && lMRNote1.MatchString(path):
@@ -258,6 +332,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		enc(u)
+	case r.Method == http.MethodGet && lIssueNotes.MatchString(path):
+		enc(s.issueNotes)
 	case r.Method == http.MethodPost && lIssueNotes.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(map[string]any{"id": 901})
@@ -294,6 +370,42 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.commit)
 	case r.Method == http.MethodGet && lPipelineJobs.MatchString(path):
 		enc(s.jobs)
+	case r.Method == http.MethodGet && lPipelines.MatchString(path):
+		// Served BY SHA, as the real endpoint is: only a pipeline stamped with the requested
+		// sha comes back, so a fixture can never answer for a head it does not belong to.
+		want := r.URL.Query().Get("sha")
+		hits := []map[string]any{}
+		for _, p := range s.pipelines {
+			if sha, _ := p["sha"].(string); sha == want {
+				hits = append(hits, p)
+			}
+		}
+		enc(hits)
+	case r.Method == http.MethodGet && lProtBranches.MatchString(path):
+		if s.protectedBranchPages != 0 {
+			n := 1
+			if page != "" {
+				_, _ = fmt.Sscanf(page, "%d", &n)
+			}
+			if s.protectedBranchPages < 0 || n < s.protectedBranchPages {
+				w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
+			}
+			enc([]map[string]any{{
+				"id": n, "name": fmt.Sprintf("release/%d", n), "allow_force_push": false,
+				"push_access_levels": []map[string]any{{"access_level": 0, "access_level_description": "No one"}},
+			}})
+			return
+		}
+		enc(s.protectedBranches)
+	case r.Method == http.MethodGet && lProtTags.MatchString(path):
+		enc(s.protectedTags)
+	case r.Method == http.MethodGet && lPushRule.MatchString(path):
+		if s.pushRuleStatus != 0 {
+			w.WriteHeader(s.pushRuleStatus)
+			enc(map[string]any{"message": "404 Not Found"})
+			return
+		}
+		enc(s.pushRule)
 	case r.Method == http.MethodGet && lProjApproval.MatchString(path):
 		if s.projApprovalStatus != 0 {
 			w.WriteHeader(s.projApprovalStatus)
@@ -427,6 +539,36 @@ func glIssue(overrides map[string]any) map[string]any {
 	return base
 }
 
+// glMergeHoldMarkerNote is the marker discussion's own first note — glMergeHoldMarker's
+// resolved/resolvedBy state, exactly the shape ReadMergeHold parses.
+func glMergeHoldMarkerNote(resolved bool, resolvedByUsername string) map[string]any {
+	n := map[string]any{
+		"id": 800, "body": mergeHoldMarkerBody, "resolvable": true, "resolved": resolved,
+		"author": map[string]any{"id": 42, "username": "worker-bot"},
+	}
+	if resolved && resolvedByUsername != "" {
+		n["resolved_by"] = map[string]any{"id": 42, "username": resolvedByUsername}
+	}
+	return n
+}
+
+// glMergeHoldReleasedReply is the reply note SetMergeHold posts on a release, authored by
+// author — real released replies are always authored by whoever actually resolved the
+// discussion (SetMergeHold posts the reply as the same caller that then resolves it), so
+// every non-attack call site names that same actor.
+func glMergeHoldReleasedReply(id int, head string, author string) map[string]any {
+	return map[string]any{
+		"id":     id,
+		"body":   mergeHoldReleasedMarker + "\n" + mergeHoldHeadPrefix + head,
+		"author": map[string]any{"id": 42, "username": author},
+	}
+}
+
+// glDiscussion wraps notes into one discussion object, the shape ReadMergeHold walks.
+func glDiscussion(id string, notes ...map[string]any) map[string]any {
+	return map[string]any{"id": id, "individual_note": false, "notes": notes}
+}
+
 // glCase is one golden-pinned operation. `method` names the Forge method it exercises and is
 // what TestForgeGitlabCoverage reconciles against the committed inventory.
 type glCase struct {
@@ -449,6 +591,18 @@ func glCases() []glCase {
 			// change set that is larger than either number.
 			name: "get_pull_request_truncated_changes_count", method: "GetPullRequest",
 			setup: func(s *glServer) { s.mr = glMR(map[string]any{"changes_count": "1000+"}) },
+			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
+		},
+		{
+			// #1091 / the forge-gitlab merge-hold brief (assay#1096). `draft_status` maps to
+			// UNKNOWN here, same as every other named policy hold — gitlabMergeableState's own
+			// doc comment explains why an interim mapping change (#1099) was reverted rather
+			// than kept: the leniency the universal draft starting state needs belongs to
+			// deskflip's `mergeable` condition alone, reading the RAW status this case carries
+			// forward on GitLabMergeStatus, never the shared three-value mapping every other
+			// PullRequest reader consumes.
+			name: "get_pull_request_draft_status_reads_unknown_but_carries_raw_status", method: "GetPullRequest",
+			setup: func(s *glServer) { s.mr = glMR(map[string]any{"detailed_merge_status": "draft_status"}) },
 			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
 		},
 		{
@@ -477,6 +631,35 @@ func glCases() []glCase {
 				s.mr = glMR(map[string]any{"iid": 9})
 			},
 			run: func(f *GitLabForge) (any, error) { return f.GetIssue(glRepo, 9) },
+		},
+		{
+			// The typed read the both-kinds refusal points at: #9 and !9 both exist, the caller
+			// has STATED the kind, so exactly ONE endpoint is probed and the other kind's
+			// presence is irrelevant.
+			name: "get_issue_typed_issue_both_kinds", method: "GetIssueTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssueTyped(glRepo, 9, TargetIssue) },
+		},
+		{
+			name: "get_issue_typed_change_both_kinds", method: "GetIssueTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssueTyped(glRepo, 9, TargetChange) },
+		},
+		{
+			// The stated kind is absent: a 404 for THAT kind (IsForgeNotFound), never the other
+			// kind handed back under the wrong name.
+			name: "get_issue_typed_issue_missing", method: "GetIssueTyped",
+			setup: func(s *glServer) {
+				s.issueMissing = true
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssueTyped(glRepo, 9, TargetIssue) },
 		},
 		{
 			name: "get_issue_neither_kind", method: "GetIssue",
@@ -539,8 +722,10 @@ func glCases() []glCase {
 			// two things at once: the request footprint still reaches the MR approvals AND the
 			// notes route after the 404 (so the board can classify CE queues), and the mapped
 			// result carries the approval with an empty CommitID and no error. Contrast
-			// error_forbidden_approval_config_tier below, where a 403 on the same route IS a
-			// whole-read could-not-check.
+			// reviews_at_head_gitlab_free_403_degrades and error_forbidden_approval_config_tier
+			// below: a 403 (not 404) on this same route degrades exactly like this case
+			// PROVIDED the per-MR approvals read also succeeds, but is a whole-read
+			// could-not-check when that second read also 403s (the credential-rejection shape).
 			name: "reviews_at_head_ce_404_degrades", method: "ReviewsAtHead",
 			setup: func(s *glServer) {
 				s.mr = glMR(nil)
@@ -548,6 +733,34 @@ func glCases() []glCase {
 					{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"},
 				}
 				s.projApprovalStatus = http.StatusNotFound
+				s.approvals = map[string]any{"approved_by": []map[string]any{
+					{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
+				}}
+				s.notes = []map[string]any{
+					{"id": 2, "body": "Verdict: APPROVE", "system": false,
+						"created_at": "2026-08-30T11:00:01Z",
+						"author":     map[string]any{"id": 42, "username": "reviewer-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReviewsAtHead(glRepo, 7) },
+		},
+		{
+			// gitlab.com Free tier answers the SAME Premium-gated project route with 403,
+			// not 404 (measured directly against the live API). This is not a tier gate to
+			// fail closed on by itself: it degrades exactly like the CE 404 case above, but
+			// ONLY because the per-MR approvals read immediately below — the route a bad
+			// credential would ALSO 403 — comes back 200 here. Contrast the direct
+			// could-not-check assertions in TestForgeGitlabReviewsAtHead, where the SAME
+			// project-route 403 is paired with a per-MR 403 and the whole read stays
+			// could-not-check: the degrade is conditioned on the per-MR read succeeding,
+			// never on the project route's status alone.
+			name: "reviews_at_head_gitlab_free_403_degrades", method: "ReviewsAtHead",
+			setup: func(s *glServer) {
+				s.mr = glMR(nil)
+				s.versions = []map[string]any{
+					{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"},
+				}
+				s.projApprovalStatus = http.StatusForbidden
 				s.approvals = map[string]any{"approved_by": []map[string]any{
 					{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
 				}}
@@ -608,6 +821,58 @@ func glCases() []glCase {
 					{"id": 9002, "name": "lint", "status": "failed"},
 					{"name": "deploy", "status": "manual"},
 				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// issue #1125 — the shape a GitLab adopter actually runs: ONE `merge_request_event`
+			// pipeline at the head, one job, everything green. The golden pins the two facts the
+			// flip gate depends on: the head PIPELINE arrives as a status context named
+			// `pipeline` — the very context RequiredStatusChecks names on a pipeline-gated
+			// project, so the required verdict is one the rollup carries — and the job arrives
+			// alongside it as a green check run. Before the fix nothing in this rollup was ever
+			// named `pipeline`, so the gate read a green MR as "a required check that did not
+			// report on this head at all" and refused every flip.
+			name: "checks_at_head_green_mr_pipeline", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success",
+					"last_pipeline": map[string]any{"id": 77, "sha": "abc123", "status": "success",
+						"source": "merge_request_event", "created_at": "2026-09-15T10:00:00Z"}}
+				s.statuses = []map[string]any{}
+				s.jobs = []map[string]any{
+					{"id": 9101, "name": "statusgen-lint", "status": "success",
+						"finished_at": "2026-09-15T10:04:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// A job declared `allow_failure: true` that FAILED does not block the merge — the
+			// pipeline it belongs to still reports success — so it maps to the neutral
+			// conclusion rather than a failure. Mapping it `failure` would make the job entry
+			// contradict the pipeline entry inside ONE rollup, which is the same
+			// two-readings-of-one-fact defect #1125 is about.
+			name: "checks_at_head_allowed_failure_job", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success",
+					"last_pipeline": map[string]any{"id": 78, "sha": "abc123", "status": "success",
+						"created_at": "2026-09-15T10:00:00Z"}}
+				s.jobs = []map[string]any{
+					{"id": 9201, "name": "statusgen-lint", "status": "success"},
+					{"id": 9202, "name": "flaky-probe", "status": "failed", "allow_failure": true},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// A pipeline stamped with a DIFFERENT sha is not a verdict on this head: it is not
+			// mapped, so the rollup carries no `pipeline` context and a pipeline-gated project
+			// reads the head as could-not-check rather than borrowing an older head's green.
+			name: "checks_at_head_pipeline_off_head", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success",
+					"last_pipeline": map[string]any{"id": 79, "sha": "deadbee", "status": "success"}}
+				s.jobs = []map[string]any{}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
 		},
@@ -776,6 +1041,24 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.PostComment(glRepo, 7, "hello") },
 		},
 		{
+			// The typed write: #9 and !9 both exist, and the note lands on the STATED kind's
+			// endpoint with NO resolving read — the golden's single request is the assertion.
+			name: "post_comment_typed_issue_both_kinds", method: "PostCommentTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PostCommentTyped(glRepo, 9, TargetIssue, "hello") },
+		},
+		{
+			name: "post_comment_typed_change_both_kinds", method: "PostCommentTyped",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 9})
+				s.mr = glMR(map[string]any{"iid": 9})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.PostCommentTyped(glRepo, 9, TargetChange, "hello") },
+		},
+		{
 			// The note is posted BEFORE the approval. The request sequence in the golden is
 			// the assertion: a failure between the two must leave reasoning-without-a-grant,
 			// never a grant-without-reasoning.
@@ -852,6 +1135,14 @@ func glCases() []glCase {
 			name: "close_issue", method: "CloseIssue",
 			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "closed"}) },
 			run:   func(f *GitLabForge) (any, error) { return nil, f.CloseIssue(glRepo, 33, "not_planned") },
+		},
+		{
+			// CloseIssue's inverse: ONE request, `state_event=reopen` on the ISSUE endpoint, and no
+			// note — there is no reason to record on a reopen. Pinned so the op can never grow a
+			// second request or drift onto the merge-request sequence.
+			name: "reopen_issue", method: "ReopenIssue",
+			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "opened"}) },
+			run:   func(f *GitLabForge) (any, error) { return nil, f.ReopenIssue(glRepo, 33) },
 		},
 		{
 			name: "close_issue_no_reason", method: "CloseIssue",
@@ -939,6 +1230,79 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListComments(glRepo, 7) },
 		},
 		{
+			// The typed read of an ISSUE thread. The endpoint is the whole point: GitLab keeps
+			// issue notes and merge-request notes under separate sequences, so the untyped
+			// ListComments — which walks /merge_requests/:iid/notes — reads another object's
+			// thread at the same number. The golden pins that this one touches /issues/:iid/notes
+			// and nothing else. An issue note carries NO opaque id (the opaque id addresses
+			// merge-request notes, so handing one back would route a later edit at the wrong
+			// endpoint); its numeric id is still reported.
+			name: "list_comments_typed_issue", method: "ListCommentsTyped",
+			setup: func(s *glServer) {
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "note on the issue", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+					{"id": 951, "body": "changed the description", "system": true,
+						"created_at": "2026-08-30T12:01:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+				s.notes = []map[string]any{
+					{"id": 900, "body": "note on the MERGE REQUEST sharing the number", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommentsTyped(glRepo, 7, TargetIssue) },
+		},
+		{
+			// The typed read of a CHANGE thread is the same walk ListComments makes — the same
+			// endpoint, the same system-note drop, the same opaque id — so a caller that states
+			// the kind loses nothing by stating it.
+			name: "list_comments_typed_change", method: "ListCommentsTyped",
+			setup: func(s *glServer) {
+				s.notes = []map[string]any{
+					{"id": 900, "body": "note on the merge request", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "note on the ISSUE sharing the number", "system": false,
+						"created_at": "2026-08-30T12:00:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommentsTyped(glRepo, 7, TargetChange) },
+		},
+		{
+			// The typed close of a CHANGE. CloseIssue reaches only /issues/:iid, so on a project
+			// carrying both kinds at one number it closes the OTHER object; the golden pins that
+			// this one issues exactly one PUT, to /merge_requests/:iid, and writes no note.
+			name: "close_issue_typed_change", method: "CloseIssueTyped",
+			setup: func(s *glServer) { s.updateMR = glMR(map[string]any{"iid": 33, "state": "closed"}) },
+			run:   func(f *GitLabForge) (any, error) { return nil, f.CloseIssueTyped(glRepo, 33, TargetChange, "") },
+		},
+		{
+			// The typed close of an ISSUE is CloseIssue's behaviour unchanged, state-reason note
+			// included — stating the kind narrows what is reachable, it does not alter what the
+			// reachable half does.
+			name: "close_issue_typed_issue", method: "CloseIssueTyped",
+			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "closed"}) },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.CloseIssueTyped(glRepo, 33, TargetIssue, "not_planned")
+			},
+		},
+		{
+			// A state reason on a CHANGE is REFUSED, not dropped: no forge records one on a
+			// change, and a silent drop would tell the caller a distinction it asked for had
+			// been recorded. Zero requests are emitted.
+			name: "close_issue_typed_change_with_reason_refused", method: "CloseIssueTyped",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.CloseIssueTyped(glRepo, 33, TargetChange, "not_planned")
+			},
+		},
+		{
 			name: "edit_comment", method: "EditComment",
 			setup: func(s *glServer) {},
 			run: func(f *GitLabForge) (any, error) {
@@ -973,6 +1337,7 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target:         TargetChange,
 					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 					RemoveFamilies: []string{"size:"},
 				})
@@ -988,7 +1353,8 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				})
 			},
 		},
@@ -1005,7 +1371,54 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ApplyLabels(glRepo, 7, LabelChange{
-					Add: []LabelSpec{{Name: "authorization-needed", Color: "0e8a16"}},
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "authorization-needed", Color: "0e8a16"}},
+				})
+			},
+		},
+		{
+			// #1154 — the model stamp's RE-STAMP removal. deskdispatch takes a foreign or stale
+			// dispatched-* label OFF the MR as its own write, ahead of re-applying the intended
+			// pair, so the forge records two events and the standing applier changes. A
+			// remove-only change issues NO ensure (nothing is created) and NO object read (no
+			// family is named): one PUT carrying only remove_labels.
+			name: "apply_labels_stamp_remove_only", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.updateMR = glMR(map[string]any{"labels": []string{"keep-me"}})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target: TargetChange,
+					Remove: []string{"dispatched-model:example-model-2", "dispatched-tier:strong"},
+				})
+			},
+		},
+		{
+			// An ISSUE target: the same ensure step, then the reconciliation lands on
+			// `PUT /issues/:iid` — never on the merge request that shares the number. This is
+			// the `deskfile new` write (stamp + to:<role> on a freshly filed issue); before the
+			// target existed it went to the MR route and left the issue unlabelled.
+			name: "apply_labels_issue", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"to:desk", "keep-me"}})
+				s.mr = glMR(map[string]any{"labels": []string{"unrelated"}})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target:         TargetIssue,
+					Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}, {Name: "raised-by:desk"}},
+					RemoveFamilies: []string{"to:"},
+				})
+			},
+		},
+		{
+			// No target, no request: the golden's empty request list is the assertion that an
+			// unset target is refused rather than defaulted to either route.
+			name: "apply_labels_refuses_unset_target", method: "ApplyLabels",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Add: []LabelSpec{{Name: "to:reviewer"}},
 				})
 			},
 		},
@@ -1099,9 +1512,15 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
 		},
 		{
-			// The approval-configuration read is a Premium+ surface. A 403 there is a
-			// could-not-check for the WHOLE review read — never a licence to fall back to
-			// "assume approvals are head-pinned" or to report no reviews.
+			// forceStatus keys on a path SUFFIX, and "/approvals" is a suffix of BOTH the
+			// project approval-configuration route AND the per-MR
+			// "/merge_requests/:iid/approvals" route (see glServer.projApprovalStatus's doc
+			// comment) — so this case forces 403 on BOTH at once. That is deliberately the
+			// credential-rejection shape, not the gitlab.com-Free-tier shape: a 403 on the
+			// config route alone now degrades (reviews_at_head_gitlab_free_403_degrades
+			// above), but ONLY when the per-MR read that follows succeeds. Here it does not —
+			// the per-MR route 403s too — so the whole read still ends could-not-check,
+			// proving the degrade is conditioned on that second read rather than unconditional.
 			name: "error_forbidden_approval_config_tier", method: "ReviewsAtHead",
 			setup: func(s *glServer) {
 				s.mr = glMR(nil)
@@ -1116,14 +1535,33 @@ func glCases() []glCase {
 			// issue #686. The bulk open-change read is served in a DEGRADED shape: real change
 			// metadata (so the board's NEEDS-REVIEW/RE-REVIEW trigger works), with the two
 			// fields GitLab does not map 1:1 marked could-not-check PER CHANGE — MergeStateStatus
-			// left EMPTY (mergeVerdictUnknown → MERGE-NOW withheld) and the CI rollup a single
-			// GitLabRollupUnmapped entry (ciUnknown → CI-green, and thus MERGE-NOW/FLIP, withheld).
+			// left EMPTY (mergeVerdictUnknown → MERGE-NOW withheld) and, with NO pipeline at this
+			// head, the CI rollup a single GitLabRollupUnmapped entry (ciUnknown → CI-green, and
+			// thus MERGE-NOW/FLIP, withheld). The head-with-a-pipeline case is the next golden.
 			// LastEditedAt is likewise empty (GitLab exposes no title/body-edit timestamp).
 			name: "list_open_changes", method: "ListOpenChanges",
 			setup: func(s *glServer) {
 				s.mrList = []map[string]any{glMR(map[string]any{
 					"iid": 7, "created_at": "2026-09-01T09:00:00Z",
 				})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+		},
+		{
+			// issue #1125 — the board half. A head with a green pipeline is mapped for real:
+			// the change carries one StatusContext rollup node named `pipeline`, from the same
+			// mapping ChecksAtHead publishes, so the board reads CI green instead of the
+			// permanent CI-UNKNOWN the unconditional could-not-check sentinel produced. The
+			// golden also pins the per-change pipeline read (?sha=), addressed by head SHA.
+			name: "list_open_changes_head_pipeline_mapped", method: "ListOpenChanges",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{glMR(map[string]any{
+					"iid": 7, "created_at": "2026-09-01T09:00:00Z",
+				})}
+				s.pipelines = []map[string]any{
+					{"id": 77, "sha": "abc123", "status": "success", "source": "merge_request_event",
+						"created_at": "2026-09-15T10:00:00Z"},
+				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
 		},
@@ -1326,6 +1764,395 @@ func glCases() []glCase {
 			name: "change_diff_gap", method: "ChangeDiff",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.ChangeDiff(glRepo, 7) },
+		},
+		{
+			// The forge-gitlab guard-read-custody brief's op 40: every hardening-read kind is a NAMED could-not-check
+			// refusal on GitLab — the GitLab-hardening-reads brief serves the GitLab half of the
+			// vocabulary below and leaves the GITHUB half exactly this: refused BY NAME with ZERO
+			// requests, never an empty document and never GitLab's nearest document.
+			name: "hardening_read_github_kind_refused", method: "RepoHardeningRead",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadRepo) },
+		},
+		{
+			// The kind validator refuses BEFORE any request exists (and before the per-forge
+			// partition check): the empty `requests` array is the assertion.
+			name: "hardening_read_unknown_kind", method: "RepoHardeningRead",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.RepoHardeningRead(glRepo, HardeningReadKind("not-a-real-kind"))
+			},
+		},
+		// --- op 40 GitLab kinds (the forge-gitlab GitLab-hardening-reads brief) ---
+		{
+			// `project`: the project document as GitLab renders it, unparsed — the Free-tier
+			// merge-gate and CI-isolation settings (B5/B6/C6) and the preflight document.
+			name: "hardening_read_project", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.project = map[string]any{
+					"id": 12, "visibility": "private",
+					"only_allow_merge_if_pipeline_succeeds":            true,
+					"only_allow_merge_if_all_discussions_are_resolved": true,
+					"ci_config_path": ".gitlab-ci.yml@example-group/ci-config",
+					"ci_allow_fork_pipelines_to_run_in_parent_project": false,
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProject) },
+		},
+		{
+			// `protected-branches`: the list as rendered, with the CE role-level entries
+			// (`access_level: 0` = No one) — no user_id/group_id, which are Premium.
+			name: "hardening_read_protected_branches", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.protectedBranches = []map[string]any{{
+					"id": 1, "name": "main", "allow_force_push": false, "code_owner_approval_required": false,
+					"push_access_levels":  []map[string]any{{"access_level": 0, "access_level_description": "No one"}},
+					"merge_access_levels": []map[string]any{{"access_level": 40, "access_level_description": "Maintainers"}},
+				}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedBranches) },
+		},
+		{
+			// The list is WALKED: two X-Next-Page-chained pages come back as ONE array, so a rule
+			// on the second page is judged like one on the first. The golden pins per_page=100 and
+			// the page=2 request.
+			name: "hardening_read_protected_branches_two_pages", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.protectedBranchPages = 2 },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedBranches) },
+		},
+		{
+			// An endless chain hits the page ceiling and REFUSES — never a partial array a row
+			// would read a named entry's absence from.
+			name: "hardening_read_protected_branches_ceiling_refuses", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.protectedBranchPages = -1 },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedBranches) },
+		},
+		{
+			name: "hardening_read_protected_tags", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.protectedTags = []map[string]any{{
+					"name": "v*", "create_access_levels": []map[string]any{{"access_level": 40, "access_level_description": "Maintainers"}},
+				}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedTags) },
+		},
+		{
+			// `push-rules` on a Premium project WITH a rule: the document as rendered.
+			name: "hardening_read_push_rules_premium", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.pushRule = map[string]any{"id": 3, "project_id": 12, "reject_unsigned_commits": true,
+					"prevent_secrets": true, "commit_committer_check": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// A Premium project with NO push rule answers the literal `null` — handed back as
+			// the document it is (an absence the guard's Gated cell classifies), not as an error
+			// and not as `{}`.
+			name: "hardening_read_push_rules_unconfigured_null", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.pushRule = nil },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// THE tier-gate golden the brief names: a 403 on the Premium push-rule route is a
+			// could-not-check carrying a *ForgeAPIError (status 403, not_found=false) and naming
+			// the tier — never an empty document that a checklist row could read as a value.
+			name: "push_rules_premium_gated", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.pushRuleStatus = http.StatusForbidden },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// Community Edition has no push-rule route at all: 404 → could-not-check with
+			// not_found=true (the guard's Gated cell decides whether that means "absent").
+			name: "push_rules_ce_not_found", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.pushRuleStatus = http.StatusNotFound },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// `approvals`: the project approval configuration as rendered (200 on gitlab.com
+			// Free, where the settings are advisory).
+			name: "hardening_read_approvals", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.projApproval = map[string]any{"approvals_before_merge": 0, "reset_approvals_on_push": true,
+					"merge_requests_author_approval": false, "merge_requests_disable_committers_approval": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadApprovals) },
+		},
+		{
+			// Some self-managed CE instances answer 404 on the approval-configuration route:
+			// could-not-check naming the tier, never an empty configuration.
+			name: "hardening_read_approvals_ce_404", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.projApprovalStatus = http.StatusNotFound },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadApprovals) },
+		},
+		// --- the forge-gitlab merge-hold brief: the merge-hold marker thread ---
+		{
+			// A freshly opened marker thread comes back RESOLVABLE — the property that lets the
+			// server actually block the merge button on it.
+			name: "open_merge_hold", method: "OpenMergeHold",
+			setup: func(s *glServer) {
+				s.createDiscussion = glDiscussion("disc-1", glMergeHoldMarkerNote(false, ""))
+			},
+			run: func(f *GitLabForge) (any, error) { return f.OpenMergeHold(glRepo, 7) },
+		},
+		{
+			// A thread that comes back NOT resolvable can never block the merge button — the
+			// whole point of this op — so this is a could-not-check refusal, never a silent id.
+			name: "open_merge_hold_not_resolvable_refused", method: "OpenMergeHold",
+			setup: func(s *glServer) {
+				s.createDiscussion = glDiscussion("disc-2", map[string]any{
+					"id": 801, "body": mergeHoldMarkerBody, "resolvable": false, "resolved": false,
+				})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.OpenMergeHold(glRepo, 7) },
+		},
+		{
+			// No discussion at all carries the marker's fixed first line — a real answer, never
+			// an error.
+			name: "read_merge_hold_absent", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-human", map[string]any{
+					"id": 700, "body": "looks good to me", "resolvable": false, "resolved": false,
+				})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			name: "read_merge_hold_unresolved", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1", glMergeHoldMarkerNote(false, ""))}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// Resolved BY the reviewer, with a released reply naming the head — the shape
+			// deskflip's reviewer-approved condition accepts.
+			name: "read_merge_hold_resolved_at_head", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					glMergeHoldReleasedReply(950, "abc123", "reviewer-bot"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// A reply that is NOT the released marker must never be misread as one just because
+			// its second line happens to start with `Head: ` — only a reply whose FIRST line is
+			// the exact released marker names a head at all.
+			name: "read_merge_hold_ignores_non_released_reply_head_line", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					// Authored by the resolver itself: the guard this case pins is the
+					// FIRST-LINE marker-shape check in mergeHoldReleasedHead, independent of
+					// the author-identity check (read_merge_hold_ignores_released_reply_from_
+					// wrong_author pins that one) — the reply here would pass the author
+					// check, so an author-mismatch could never mask a marker-shape regression.
+					map[string]any{"id": 951, "body": "unrelated comment\nHead: spoofed-sha",
+						"author": map[string]any{"id": 42, "username": "reviewer-bot"}},
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// THE ATTACK: GitLab does not lock a resolved discussion against further replies,
+			// so a non-reviewer with ordinary comment rights (e.g. the change's own author, on
+			// a project where the `Draft:` prefix is just a title string) can push an
+			// unreviewed head B and then post a CORRECTLY-SHAPED released reply into the
+			// still-resolved thread claiming `Head: B`. The marker's own resolved_by is still
+			// the real reviewer, but the released-shaped reply that supplies the head is
+			// authored by someone else entirely — that reply must be ignored and the hold must
+			// report NO head (checkMergeHoldApproved already treats "" as a mismatch requiring
+			// re-arm/refusal), never the forged one. The previous suite covered "ignores a
+			// reply whose first line isn't the marker" and "resolved by hand" (via ResolvedBy
+			// alone) but had no case for a correctly-shaped released reply from the WRONG
+			// author.
+			name: "read_merge_hold_ignores_released_reply_from_wrong_author", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					glMergeHoldReleasedReply(951, "forged-unreviewed-sha", "attacker-dev"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// Resolved BY HAND — a Developer can resolve any thread on GitLab, so the forge's
+			// OWN resolved_by is the signal that lets a caller tell this apart from a reviewer's
+			// verdict, independent of whatever reply (if any) accompanies it.
+			name: "read_merge_hold_resolved_by_non_reviewer", method: "ReadMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "some-developer"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReadMergeHold(glRepo, 7) },
+		},
+		{
+			// Releasing an unresolved hold: the reply posts FIRST (the reasoning is recorded
+			// before the gate is weakened), then the resolve toggle.
+			name: "set_merge_hold_release", method: "SetMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1", glMergeHoldMarkerNote(false, ""))}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: true, Head: "abc123"})
+			},
+		},
+		{
+			// Re-arming a resolved hold: the resolve toggle goes FIRST (the gate is back up
+			// immediately), then the explanatory reply.
+			name: "set_merge_hold_rearm", method: "SetMergeHold",
+			setup: func(s *glServer) {
+				s.discussions = []map[string]any{glDiscussion("disc-1",
+					glMergeHoldMarkerNote(true, "reviewer-bot"),
+					glMergeHoldReleasedReply(950, "abc123", "reviewer-bot"),
+				)}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: false, Reason: "request-changes"})
+			},
+		},
+		{
+			// A change with no marker thread cannot be released or re-armed — a could-not-check
+			// refusal naming the change, never a silent no-op.
+			name: "set_merge_hold_absent_refused", method: "SetMergeHold",
+			setup: func(s *glServer) { s.discussions = []map[string]any{} },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.SetMergeHold(glRepo, 7, MergeHoldUpdate{Resolved: true, Head: "abc123"})
+			},
+		},
+
+		// ---- forge-gitlab review-tick conformance walk: the OFFLINE half ----
+		//
+		// The review tick's seven verbs (board read, review dispatch, verdict, escalation
+		// filing, workpad edit, Evidence landing, ready-flip) each call a handful of the
+		// operations above. The success path of every one of them is already pinned; the
+		// cases below pin, per verb, at least one REFUSAL the verb is built on — the negative
+		// row the finish line demands offline, so that a table of successes cannot be read
+		// as proof of the boundary. Each names the verb row it serves.
+		{
+			// deskboard actions — the sweep's first read. A forbidden project must surface
+			// as a classified read failure (exit 6 with a repo-named diagnosis), NEVER as an
+			// empty queue: an empty list is indistinguishable from an idle repo.
+			name: "list_open_changes_forbidden", method: "ListOpenChanges",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/merge_requests": http.StatusForbidden} },
+			run:   func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+		},
+		{
+			// deskpost review / deskreply --workpad / deskevidence — the public-repo gate's
+			// visibility read. A project payload with no visibility field is could-not-check,
+			// never "private": the gate fails closed on the missing field rather than letting
+			// a write through on an inference.
+			name: "repo_visibility_missing_field_refuses", method: "RepoVisibility",
+			setup: func(s *glServer) { s.project = map[string]any{"default_branch": "main"} },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoVisibility(glRepo) },
+		},
+		{
+			// deskdispatch --kit review --pr / deskfile new — the label write. A label with no
+			// name is refused before any request exists; the empty request list is the
+			// assertion (the ensure step would otherwise create a nameless project label).
+			name: "apply_labels_refuses_unnamed_label", method: "ApplyLabels",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "   "}},
+				})
+			},
+		},
+		{
+			// deskfile new — the dedupe search that runs before the issue is filed. A
+			// forbidden search is a classified failure the verb refuses on ("refuse rather
+			// than mint a possible duplicate"); it must not read as "no match found".
+			name: "search_issues_forbidden", method: "SearchIssues",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/issues": http.StatusForbidden} },
+			run: func(f *GitLabForge) (any, error) {
+				return f.SearchIssues(glRepo, SearchIssuesInput{Query: "flip race relabel"})
+			},
+		},
+		{
+			// deskfile new — the write itself, under a role that cannot create issues on the
+			// project. The refusal carries the route and status so the operator can tell a
+			// permission gap from a missing project; no phantom issue number comes back.
+			name: "file_issue_forbidden", method: "FileIssue",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/issues": http.StatusForbidden} },
+			run: func(f *GitLabForge) (any, error) {
+				return f.FileIssue(glRepo, IssueInput{Title: "bug", Body: "detail"})
+			},
+		},
+		{
+			// deskreply --workpad — the candidate listing that finds the comment to edit. A
+			// forbidden thread read is could-not-check; the verb refuses rather than treating
+			// "no candidate" as licence to create a duplicate workpad.
+			name: "list_comments_forbidden", method: "ListComments",
+			setup: func(s *glServer) { s.forceStatus = map[string]int{"/notes": http.StatusForbidden} },
+			run:   func(f *GitLabForge) (any, error) { return f.ListComments(glRepo, 7) },
+		},
+		{
+			// deskevidence — the up-front read of the Evidence target on the branch. An absent
+			// file is a classified NOT-FOUND (IsForgeNotFound true), which is what routes the
+			// verb to its create path; any other failure must not be mistaken for it.
+			name: "read_file_absent_not_found", method: "ReadFile",
+			setup: func(s *glServer) { s.repoFile = map[string]map[string]any{} },
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// deskevidence — the append-only shrink guard on the backend, the independent
+			// second layer behind the verb's own row-count check. A write that would reduce an
+			// append-only file's row count is refused after the idempotency read and before
+			// any write call: the request list ends at the read.
+			name: "write_file_shrink_refused", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"verify-outcomes.jsonl": {
+						"file_name": "verify-outcomes.jsonl", "file_path": "verify-outcomes.jsonl",
+						"content": glB64("{\"row\":1}\n{\"row\":2}\n{\"row\":3}\n"), "encoding": "base64",
+						"ref": "feat/x", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "verify-outcomes.jsonl", Branch: "feat/x", Content: []byte("{\"row\":1}\n"),
+					Message: "Evidence: verification row", AppendOnly: true,
+				})
+			},
+		},
+		{
+			// deskflip — the mutation, on a merge request whose title is nothing but the draft
+			// marker. Clearing it would leave the change untitled, so the flip is refused with
+			// no PUT: the request list carries only the read.
+			name: "mark_ready_for_review_refuses_marker_only_title", method: "MarkReadyForReview",
+			setup: func(s *glServer) { s.mr = glMR(map[string]any{"title": "Draft:"}) },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.MarkReadyForReview(gitlabNodeID(glRepo, 7))
+			},
+		},
+		{
+			// deskflip — the post-write check. A merge request that still reports draft after
+			// its marker was cleared is could-not-check, never a completed flip: the caller
+			// must not report the change ready on the strength of the PUT alone.
+			name: "mark_ready_for_review_still_draft_after_strip", method: "MarkReadyForReview",
+			setup: func(s *glServer) {
+				s.mr = glMR(nil)
+				s.updateMR = glMR(map[string]any{"draft": true, "title": "add the thing"})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.MarkReadyForReview(gitlabNodeID(glRepo, 7))
+			},
+		},
+		{
+			// deskflip — the required-checks read behind the empty-rollup branch. An empty
+			// branch name would address the project's default settings for no branch at all;
+			// it is refused before a request exists.
+			name: "required_status_checks_refuses_empty_branch", method: "RequiredStatusChecks",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "") },
 		},
 	}
 }
@@ -1616,6 +2443,11 @@ func TestForgeGitlabTierErrors(t *testing.T) {
 
 	// A tier failure on a LIST operation is the one most easily mistaken for an empty
 	// result, because the happy-path shape of "no approvals yet" is also empty.
+	//
+	// forceStatus keys on a path SUFFIX and "/approvals" is a suffix of BOTH the project
+	// approval-configuration route and the per-MR route, so this incidentally forces 403 on
+	// BOTH — the credential-rejection shape (gitlab_com_403_plus_bad_credential_still_refuses
+	// below exercises the same shape with the two routes targeted explicitly and separately).
 	t.Run("tier_failure_is_not_an_empty_list", func(t *testing.T) {
 		s := newGLServer(t)
 		s.mr = glMR(nil)
@@ -1633,6 +2465,64 @@ func TestForgeGitlabTierErrors(t *testing.T) {
 			t.Fatalf("tier refusal must say could-not-check, got %q", err.Error())
 		}
 		t.Logf("Premium-gated approval read 403 → could-not-check: %v", err)
+	})
+
+	// gitlab.com Free tier answers the SAME Premium-gated project-approvals route with 403,
+	// not 404 (measured directly against the live API — issue: gitlab-approvals-403). A 403
+	// there must degrade exactly like the CE 404 case below, PROVIDED the per-MR approvals
+	// read that follows still succeeds — never fail the whole review read closed the way an
+	// unqualified 403 does. Distinguishing "403 + per-MR 200" (real Free-tier gap) from
+	// "403 + per-MR 403" (bad credential, tested below) is the whole fix.
+	t.Run("gitlab_com_403_on_project_approvals_degrades_not_refuses", func(t *testing.T) {
+		s := newGLServer(t)
+		s.mr = glMR(nil)
+		s.versions = []map[string]any{{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"}}
+		s.projApprovalStatus = http.StatusForbidden // gitlab.com Free: same Premium gate, 403 not 404
+		s.approvals = map[string]any{"approved_by": []map[string]any{
+			{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
+		}}
+		s.notes = []map[string]any{}
+
+		rs, err := s.forge().ReviewsAtHead(glRepo, 7)
+		if err != nil {
+			t.Fatalf("a 403 on the gitlab.com-Free project approval route must degrade when the per-MR read succeeds, not refuse: %v", err)
+		}
+		if len(rs) != 1 {
+			t.Fatalf("the MR approval must still be read and reported after the project-route 403, got %d reviews", len(rs))
+		}
+		if rs[0].State != "APPROVED" || rs[0].Author.ID != 42 {
+			t.Fatalf("expected the reviewer-bot approval, got %+v", rs[0])
+		}
+		if rs[0].CommitID != "" {
+			t.Fatalf("a degraded (unpinned) approval must not be stamped with a head it cannot claim, got CommitID %q", rs[0].CommitID)
+		}
+		t.Logf("gitlab.com project-approval 403 (per-MR read OK) → degraded: 1 unpinned review")
+	})
+
+	// The inverse of the case above: the SAME project-route 403 this time paired with a 403
+	// on the per-MR approvals route too — the shape a genuinely bad credential produces. This
+	// must NOT silently land on the degraded-but-continuing path; the whole read stays
+	// could-not-check. The two routes are targeted separately (rather than relying on
+	// forceStatus's "/approvals" suffix collision, as tier_failure_is_not_an_empty_list does)
+	// so the intent — both routes independently denied — is unambiguous.
+	t.Run("gitlab_com_403_plus_bad_credential_still_refuses", func(t *testing.T) {
+		s := newGLServer(t)
+		s.mr = glMR(nil)
+		s.versions = []map[string]any{{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"}}
+		s.projApprovalStatus = http.StatusForbidden
+		s.forceStatus["/merge_requests/7/approvals"] = http.StatusForbidden
+
+		rs, err := s.forge().ReviewsAtHead(glRepo, 7)
+		if err == nil {
+			t.Fatalf("a 403 on BOTH the project AND per-MR approval routes must be could-not-check, not %d reviews", len(rs))
+		}
+		if rs != nil {
+			t.Fatalf("a could-not-check must yield a nil list, got %d entries", len(rs))
+		}
+		if !strings.Contains(err.Error(), "could-not-check") {
+			t.Fatalf("credential-rejection refusal must say could-not-check, got %q", err.Error())
+		}
+		t.Logf("project 403 + per-MR 403 (bad credential) → could-not-check: %v", err)
 	})
 
 	// issue #697. The 404 on the PROJECT approval-configuration route is NOT a tier gate: it
@@ -1747,6 +2637,36 @@ func TestForgeGitlabAuth(t *testing.T) {
 			t.Fatalf("an unset token must never reach the network, but the server saw %d request(s)", hits)
 		}
 	})
+}
+
+// TestGitlabMergeableStateDraftStatus pins that `draft_status` stays in the UNKNOWN bucket
+// with every other named policy hold (#1091 / the forge-gitlab merge-hold brief, assay#1096;
+// Verify row 7). An interim fix (#1099) briefly carved it out to MERGEABLE here; this test
+// pins the REVERT — see gitlabMergeableState's doc comment for why the leniency moved to
+// deskflip's `mergeable` condition instead, which reads PullRequest.GitLabMergeStatus rather
+// than this shared mapping. A mutation that reopened the carve-out reddens this test.
+func TestGitlabMergeableStateDraftStatus(t *testing.T) {
+	cases := map[string]string{
+		"mergeable":                Mergeable,
+		"draft_status":             MergeableUnknown, // NOT a carve-out — see above
+		"DRAFT_STATUS":             MergeableUnknown, // case-insensitive, like every other status
+		"broken_status":            MergeableConflicting,
+		"conflict":                 MergeableConflicting,
+		"checking":                 MergeableUnknown,
+		"unchecked":                MergeableUnknown,
+		"not_approved":             MergeableUnknown,
+		"blocked_status":           MergeableUnknown,
+		"discussions_not_resolved": MergeableUnknown,
+		"ci_still_running":         MergeableUnknown,
+		"ci_must_pass":             MergeableUnknown,
+		"":                         MergeableUnknown,
+		"some_future_status_this_tree_has_never_seen": MergeableUnknown,
+	}
+	for detailed, want := range cases {
+		if got := gitlabMergeableState(detailed); got != want {
+			t.Errorf("gitlabMergeableState(%q) = %q, want %q", detailed, got, want)
+		}
+	}
 }
 
 // TestForgeGitlabPushTransportHint pins the two properties of the transport hint that are

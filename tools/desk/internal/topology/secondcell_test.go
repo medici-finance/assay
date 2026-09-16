@@ -252,6 +252,11 @@ func compiledTopologyCapSites() []runtimeCapSite {
 			what:  "the default repo `deskrelease` cuts a release from",
 		},
 		{
+			file:  "tools/desk/cmd/desklabel/vocabulary.go",
+			calls: 1,
+			what:  "the decision-owed label set that forms `desklabel`'s shared (any-role) escalation rows",
+		},
+		{
 			file:  "tools/desk/internal/deskkit/riskpath.go",
 			calls: 1,
 			what:  "per-repo visibility and risk-path triggers, which decide a diff's risk class",

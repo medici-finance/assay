@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"strings"
@@ -229,14 +232,18 @@ func TestSetRefusesWhenItCannotReadCurrentState(t *testing.T) {
 	}
 }
 
+// TestSweepClassifiesFromTheIndex is the GitHub regression: the same three-state
+// classification, now read through the resolved forge's ListOpenChanges rather than
+// `gh pr list` (#1123).
 func TestSweepClassifiesFromTheIndex(t *testing.T) {
-	list := `[
-      {"number":829,"title":"stale tracker work","labels":[{"name":"disposition:superseded"}]},
-      {"number":900,"title":"live work","labels":[{"name":"bug"}]},
-      {"number":901,"title":"blocked work","labels":[{"name":"disposition:needs-rebase"}]}
-    ]`
-	s := &ghStub{replies: []stubReply{{match: "pr list", stdout: list}}}
+	s := &ghStub{}
 	s.install(t)
+	sf := &stubForge{openChanges: &deskkit.OpenChanges{Cap: 100, Changes: []deskkit.OpenChange{
+		{Number: 829, Title: "stale tracker work", Labels: []string{"disposition:superseded"}},
+		{Number: 900, Title: "live work", Labels: []string{"bug"}},
+		{Number: 901, Title: "blocked work", Labels: []string{"disposition:needs-rebase"}},
+	}}}
+	installStubForge(t, sf)
 
 	code, out := runVerb(t, "sweep", "-R", allowedRepo)
 	if code != deskkit.ExitOK {
@@ -258,25 +265,110 @@ func TestSweepClassifiesFromTheIndex(t *testing.T) {
 	if got := s.mutating(); len(got) != 0 {
 		t.Errorf("a sweep is read-only; got writes %v", got)
 	}
-	// One API call per repo: a per-PR comment fetch across ~80 open PRs is the
+	// One bounded forge read per repo: a per-PR comment fetch across ~80 open PRs is the
 	// fan-out that trips GitHub's secondary rate limit.
-	if len(s.calls) != 1 {
-		t.Errorf("sweep must be ONE call per repo, got %d: %v", len(s.calls), s.calls)
+	if sf.listCalls != 1 {
+		t.Errorf("sweep must be ONE open-change read per repo, got %d", sf.listCalls)
+	}
+	// And NO forge CLI at all: the whole defect (#1123) was that this read went out as
+	// `gh pr list` regardless of which forge served the repo.
+	if len(s.calls) != 0 {
+		t.Errorf("sweep must not shell out at all; got %v", s.calls)
 	}
 }
 
-// TestSweepFailureIsCouldNotCheckNotEmpty — the #777 empty-board failure, guarded.
+// TestSweepReadsGitLabMergeRequests is #1123's reproduction. `sweep -R <gitlab project>`
+// shelled `gh pr list -R <owner/name>`, which asks GITHUB about a slug that is not a GitHub
+// repository: the answer was `Could not resolve to a Repository with the name …` and the
+// verb reported the project's WHOLE queue as could-not-check (exit 6). A GitLab adopter's
+// orphan sweep could therefore never look at all.
+//
+// The forge here is a REAL deskkit.GitLabForge pointed at an httptest instance serving the
+// project merge-requests endpoint, so the case exercises the backend's own mapping (MR iid →
+// number, flat GitLab labels, draft-prefix strip) rather than a double that would pass
+// whatever the code asked for. Pre-fix this test fails: the ambient-gh stub below stands in
+// for the GitHub resolution failure and the sweep exits 6 on an empty queue.
+func TestSweepReadsGitLabMergeRequests(t *testing.T) {
+	const glProject = "medici-finance/assay"
+	var gotPaths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/merge_requests") {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `[`+
+				`{"iid":7,"state":"opened","title":"Draft: supersede the thing","sha":"abc123",`+
+				`"source_branch":"feat/x","target_branch":"main","created_at":"2026-09-01T09:00:00Z",`+
+				`"labels":["disposition:superseded"],"author":{"id":99,"username":"worker-bot"}},`+
+				`{"iid":9,"state":"opened","title":"live work","sha":"def456",`+
+				`"source_branch":"feat/y","target_branch":"main","created_at":"2026-09-02T09:00:00Z",`+
+				`"labels":["bug"],"author":{"id":99,"username":"worker-bot"}}]`)
+			return
+		}
+		http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	// The ambient-gh shape a GitLab slug produced: `gh pr list` cannot resolve the project.
+	s := &ghStub{replies: []stubReply{{match: "pr list", fail: true}}}
+	s.install(t)
+	installForge(t, func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, _ := strings.Cut(repo, "/")
+		return &deskkit.GitLabForge{Token: "test-injected-token-0000", BaseURL: srv.URL, Client: srv.Client()},
+			deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+	})
+
+	code, out := runVerb(t, "sweep", "-R", glProject)
+	if code != deskkit.ExitOK {
+		t.Fatalf("a GitLab project's queue must be READABLE, not UNKNOWN (#1123); got exit %d: %s", code, out)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want one line per open merge request, got %d: %q", len(lines), out)
+	}
+	if !strings.HasPrefix(lines[0], "7\t") || !strings.Contains(lines[0], "checked-failed") ||
+		!strings.Contains(lines[0], "false") || !strings.Contains(lines[0], "supersede the thing") {
+		t.Errorf("!7 carries SUPERSEDED and must not be dispatch-eligible; got %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "9\t") || !strings.Contains(lines[1], "checked-clean") ||
+		!strings.Contains(lines[1], "true") {
+		t.Errorf("!9 has no record and must stay dispatchable; got %q", lines[1])
+	}
+	// The read went to GitLab's merge-request endpoint, not to any forge CLI.
+	if len(gotPaths) == 0 || !strings.HasSuffix(gotPaths[0], "/merge_requests") {
+		t.Errorf("want the project merge-requests read; got %v", gotPaths)
+	}
+	for _, c := range s.calls {
+		if strings.Contains(strings.Join(c, " "), "pr list") {
+			t.Fatalf("sweep shelled `gh pr list` against a GitLab project — the #1123 defect: %v", c)
+		}
+	}
+	if got := s.mutating(); len(got) != 0 {
+		t.Errorf("a sweep is read-only; got writes %v", got)
+	}
+}
+
+// TestSweepFailureIsCouldNotCheckNotEmpty — the #777 empty-board failure, guarded. Both
+// halves of the read can fail: resolving the forge for the repo, and the open-change read
+// itself. Neither may be reported as an empty queue.
 func TestSweepFailureIsCouldNotCheckNotEmpty(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		reply stubReply
+		name    string
+		install func(t *testing.T)
 	}{
-		{"list read fails", stubReply{match: "pr list", fail: true}},
-		{"list read is unparseable", stubReply{match: "pr list", stdout: "not json"}},
+		{"the forge cannot be resolved", func(t *testing.T) {
+			installForgeError(t, deskkit.Unverifiable("no forge resolved for this repo", nil))
+		}},
+		{"the open-change read fails", func(t *testing.T) {
+			installStubForge(t, &stubForge{failChanges: errors.New("HTTP 403: forbidden")})
+		}},
+		{"the forge returns no result", func(t *testing.T) {
+			installStubForge(t, &stubForge{})
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := &ghStub{replies: []stubReply{tc.reply}}
+			s := &ghStub{}
 			s.install(t)
+			tc.install(t)
 			code, out := runVerb(t, "sweep", "-R", allowedRepo)
 			if code != deskkit.ExitUnverifiable {
 				t.Fatalf("want exit 6, got %d: %s", code, out)

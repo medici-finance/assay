@@ -206,6 +206,26 @@ func TestVerifierFloor(t *testing.T) {
 			}
 		}
 	})
+	// The PROBLEM names the two-stamp remedy (#1170): a local-tier drain may
+	// flip `verified`, but a floor-tier re-verify stamp lands before the human
+	// done close. Every floor problem — cell-keyed or Evidence-keyed — carries it.
+	t.Run("error text names the two-stamp remedy", func(t *testing.T) {
+		n := 0
+		for _, p := range problems {
+			if !strings.Contains(p, "verifier floor") {
+				continue
+			}
+			n++
+			for _, want := range []string{"two-stamp", "re-verif", "re-stamp the Verified cell", "close the card again"} {
+				if !strings.Contains(p, want) {
+					t.Errorf("floor error text missing remedy fragment %q; got %q", want, p)
+				}
+			}
+		}
+		if n == 0 {
+			t.Fatalf("no floor problems to inspect; got:\n%s", strings.Join(problems, "\n"))
+		}
+	})
 	// The error must not teach the price framing that caused this bug.
 	t.Run("error text does not frame the floor as a price tier", func(t *testing.T) {
 		for _, p := range problems {

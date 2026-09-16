@@ -288,7 +288,21 @@ func (h staticHandle) Item() loopengine.Item          { return h.item }
 // this brief: it synthesizes the PASS result directly for every tier, spawning nothing.
 // "No session fired" stays true for every message landing this way, whether the router
 // even ran or not.
+//
+// MAILBOX DELIVERY IS THE ALWAYS-ON PATH (#1166). Independently of the executor leg
+// — and BEFORE it, so the gate above is unchanged — every message reaching Dispatch is
+// placed in the ADDRESSEE role's mailbox (commsqueue.DeliverToMailbox), the mailbox
+// `deskcomms poll` reads as that role and `deskcomms ack <id>` clears. Dispatch is the
+// right seam because the engine only calls it for a DISPATCHABLE tier: a message the
+// routing-boundary ACL re-check refused, or the router quarantined/escalated, resolves
+// to TierHuman and lands without ever reaching here — so a refused message is never
+// delivered. A delivery that cannot be made refuses the dispatch (could-not-deliver,
+// unverifiable) rather than synthesizing a PASS for a message nobody can poll; the
+// item stays in the accepted-queue for the engine's retry.
 func (l *Loop) Dispatch(item loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
+	if err := l.deliverToAddressee(item); err != nil {
+		return nil, err
+	}
 	if l.Native {
 		return l.dispatchNative(item, tier)
 	}
@@ -296,6 +310,37 @@ func (l *Loop) Dispatch(item loopengine.Item, tier loopengine.Tier) (loopengine.
 	ch <- loopengine.Result{Item: item, Verdict: loopengine.VerdictPass, RunnerID: "commsloop"}
 	close(ch)
 	return staticHandle{item: item, done: ch}, nil
+}
+
+// deliverToAddressee places the item's envelope in (To.Cell, To.Role)'s mailbox as a
+// Notice — the wire shape `deskcomms poll` returns, field-for-field from the envelope
+// (Class normalised exactly as TierPolicy routed it). The write is atomic and keyed by
+// message id, so a retried Dispatch re-places the SAME unacked notice (idempotent); a
+// notice the addressee has already acked is left acked, never resurrected.
+func (l *Loop) deliverToAddressee(item loopengine.Item) error {
+	env, err := envelopeFromItem(item)
+	if err != nil {
+		return err
+	}
+	acked, err := commsqueue.IsAcked(l.Root, env.To.Cell, env.To.Role, env.ID)
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("commsloop: could-not-deliver %s to %s/%s mailbox", env.ID, env.To.Cell, env.To.Role), err)
+	}
+	if acked {
+		return nil
+	}
+	notice := commsqueue.Notice{
+		ID:      env.ID,
+		From:    env.From,
+		Verb:    env.Verb,
+		Class:   normalizeClass(env.Class),
+		Payload: env.Payload,
+		Sent:    env.Sent,
+	}
+	if err := commsqueue.DeliverToMailbox(l.Root, env.To.Cell, env.To.Role, notice); err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("commsloop: could-not-deliver %s to %s/%s mailbox (item stays queued, nothing landed)", env.ID, env.To.Cell, env.To.Role), err)
+	}
+	return nil
 }
 
 // Land implements loopengine.Loop: exactly ONE tracked exit per accepted

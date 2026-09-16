@@ -33,6 +33,7 @@ import (
 const (
 	workerLogin   = "assay-worker-app[bot]"
 	reviewerLogin = "assay-reviewer-app[bot]"
+	verifierLogin = "assay-verifier-app[bot]"
 	deskAppLogin  = "assay-desk-app[bot]"
 )
 

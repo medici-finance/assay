@@ -1,0 +1,12 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/permissions/workflow"
+    }
+  ],
+  "result": {
+    "can_approve_pull_request_reviews": false,
+    "default_workflow_permissions": "read"
+  }
+}

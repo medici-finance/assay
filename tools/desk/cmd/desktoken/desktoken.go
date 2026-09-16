@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,7 +26,11 @@ import (
 // validRoles is the fixed set of desk roles. A role's config is parameterised
 // by the role name: ~/.config/assay/<role>-app.pem, <ROLE>_APP_ID, etc.
 // cell-issues is the write-issues App identity — selectable only by name, never a loop's
-// default.
+// default. auditor (the forge-gitlab guard-read-custody brief) is a dedicated READ-ONLY identity for
+// cmd/repohardenguard's hardening reads — it carries no write permission of any kind on
+// either forge and is never bound in ASSAY_TRUSTED_BOT_SLUGS/`--raised-by` (it never posts,
+// files, or writes anything), so its custody is minted/read through the SAME
+// role-parameterised paths as every other role with no further change.
 var validRoles = map[string]bool{
 	"reviewer":    true,
 	"verifier":    true,
@@ -34,6 +39,7 @@ var validRoles = map[string]bool{
 	"issue-loop":  true,
 	"intake-loop": true,
 	"cell-issues": true,
+	"auditor":     true,
 }
 
 const (
@@ -351,6 +357,12 @@ type tokenResult struct {
 	Permissions map[string]string `json:"permissions"`
 }
 
+// errInstallationGone is the sentinel wrapped into a 404 from the access-tokens exchange:
+// the installation id this run used names an installation GitHub no longer has. It exists
+// so the one caller that may have supplied that id from a local cache can invalidate the
+// cache — and so that every other failure keeps its existing, untyped shape.
+var errInstallationGone = errors.New("installation not found")
+
 // exchangeJWT POSTs the signed JWT to GitHub's installation access_tokens
 // endpoint and returns the result. The token value is the response's `token`
 // field; it is written to the cache file and never printed.
@@ -373,6 +385,12 @@ func exchangeJWT(jwt, installID string) (*tokenResult, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode == 404 {
+		// Typed so a CACHED installation id can be told from a wrong one: 404 here means
+		// the installation this id names is gone, which is the only way one of the local
+		// caches can be wrong. Every other status stays a plain error.
+		return nil, fmt.Errorf("%w: access_tokens HTTP %d: %s", errInstallationGone, resp.StatusCode, string(body))
 	}
 	if resp.StatusCode != 201 {
 		return nil, fmt.Errorf("access_tokens HTTP %d: %s", resp.StatusCode, string(body))
@@ -602,6 +620,19 @@ func run(args []string) int {
 		return deskkit.ExitOK
 	}
 
+	// TIER ONE of the help retrofit (deskkit/helprequest.go). A SUBCOMMAND help request —
+	// `desktoken <sub> --help` — is a request for a help screen, not an invocation of the verb, and
+	// until this it was recorded as `refused: bad flags: flag: help requested`: exit 5 plus one
+	// row appended to a ledger the write budget counts and nothing rotates (1,043 such rows
+	// measured on one operating desk host over 32 days). It returns HERE, before Guard, and
+	// writes nothing. HelpOnly matches only the unambiguous single-token shape, so a `--help`
+	// that is another flag's VALUE cannot be mistaken for one; every wider spelling falls
+	// through to the subcommand's own parse, where flag.ErrHelp is recognised instead.
+	if deskkit.HelpOnly(args) {
+		fmt.Fprintln(os.Stderr, usage)
+		return deskkit.ExitOK
+	}
+
 	// kill-switch check is the FIRST action of the tool. Guard writes its
 	// own result=disabled audit line and maps to exit 3.
 	if err := deskkit.Guard(); err != nil {
@@ -638,7 +669,7 @@ func cmdToken(args []string) (err error) {
 	repo := fs.String("repo", "", "repo slug (owner/name) for install auto-pick")
 	forge := fs.String("forge", "", "forge backend: empty/github (default) mints a GitHub App installation token; gitlab rotates the role's PAT in place (rotate-on-mint custody)")
 	ttl := fs.Bool("ttl", false, "print remaining TTL of cached token (does not mint)")
-	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms sidecar before minting — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
+	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms/.owner sidecars before minting, and bypass the install-id caches — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
 	noRotate := fs.Bool("no-rotate", false, "read-only credential lookup: verify the role's existing custody and print its PATH without performing a destructive rotation. GitLab: skips the self-rotation (and its network contact) entirely — the shape a read-only or dry-run verb asks for. GitHub: no effect, the App mint is cached and non-destructive already, so the flag is accepted for callers that do not know the forge before they ask")
 
 	positionals, perr := parseInterspersed(fs, args)
@@ -720,9 +751,23 @@ func cmdToken(args []string) (err error) {
 	// user. The tool provides audit trail, not access control.
 	var installID string
 	var prebuiltJWT string
+	// mintOwner is the account this mint is for, "" when it could not be resolved. It is
+	// carried past the resolution block so the owner sidecar and the install-id cache can
+	// be written and invalidated by the same (App, account) key the probe reads.
+	var mintOwner string
+	// installIDFromCache records that the id below came from one of the two caches rather
+	// than from the installations endpoint or the environment. It scopes the 404
+	// invalidation route: only a CACHED id is removed when the exchange rejects it.
+	var installIDFromCache bool
 
 	if override := os.Getenv(prefix + "_INSTALL_ID"); override != "" {
 		installID = override
+		// The override answers WHICH installation; the account is still resolved (a local
+		// read, no network) so the owner sidecar can be recorded beside the cache. A
+		// failure here is not fatal to an override mint — it only means no sidecar.
+		if o, oerr := resolveMintOwner(*repo); oerr == nil {
+			mintOwner = o
+		}
 	} else {
 		// Resolve install ID at runtime: build JWT, query GitHub
 		// /app/installations, match account.login against repo owner. With --repo
@@ -733,6 +778,29 @@ func cmdToken(args []string) (err error) {
 		if oerr != nil {
 			return oerr
 		}
+		mintOwner = owner
+
+		// CACHE BEFORE RESOLUTION (#1036). Until this block existed, every call below —
+		// including one whose only outcome was "the token on disk is 5 minutes old, reuse
+		// it" — read the App key, signed a JWT and spent a GET /app/installations round
+		// trip, because the cache path is keyed by the id that call returns. Both probes
+		// are local, both are positive identity matches on (App, account), and both fall
+		// through to the unchanged resolution below on any doubt.
+		//
+		// --fresh skips both. It means "the App or its permissions may have changed", and
+		// a fast path that honoured a cache would make it a no-op for the rest of the
+		// reuse window — the exact defect --fresh was added to fix for the token cache.
+		if !*fresh {
+			if id, ok := probeCachedInstallID(role, appName, owner); ok {
+				installID, installIDFromCache = id, true
+			} else if id, ok := readInstallIDCache(appName, owner); ok {
+				installID, installIDFromCache = id, true
+			}
+		}
+	}
+
+	if installID == "" {
+		owner := mintOwner
 
 		// Must read PEM, sign JWT before we know the install ID.
 		// The key is READ here, so a deferred not-found from resolvePEMPath is
@@ -772,6 +840,8 @@ func cmdToken(args []string) (err error) {
 			return deskkit.Unverifiable("resolve installation for owner "+owner, rerr)
 		}
 		installID = resolvedID
+		// Record the answer so the NEXT cold token cache costs no installations call.
+		writeInstallIDCache(appName, owner, installID)
 	}
 	ac.installID = installID
 
@@ -806,6 +876,11 @@ func cmdToken(args []string) (err error) {
 		if rmErr := os.Remove(permsPath(tokenPath)); rmErr != nil && !os.IsNotExist(rmErr) {
 			return deskkit.Unverifiable("cannot remove token .perms sidecar for --fresh: "+permsPath(tokenPath), rmErr)
 		}
+		// The owner sidecar goes with the token it describes: leaving it behind would
+		// leave the cache probe naming a file that no longer exists.
+		if rmErr := os.Remove(ownerSidecarPath(tokenPath)); rmErr != nil && !os.IsNotExist(rmErr) {
+			return deskkit.Unverifiable("cannot remove token .owner sidecar for --fresh: "+ownerSidecarPath(tokenPath), rmErr)
+		}
 	}
 
 	// Reuse cached token if < 50 min old.
@@ -816,6 +891,14 @@ func cmdToken(args []string) (err error) {
 		}
 		age := time.Since(fi.ModTime())
 		if age < cacheMaxAge {
+			// ADOPT this cache file for the probe, if it is not adopted already. Writing a
+			// separate file does not touch the token's own mtime, so adopting a cache
+			// never extends its life by a second — it only means the NEXT invocation can
+			// recognise it without resolving an installation id first. This is what lets
+			// a cache minted before the sidecar existed join the fast path.
+			if mintOwner != "" && !sidecarMatches(tokenPath, appName, mintOwner) {
+				writeOwnerSidecar(tokenPath, appName, mintOwner)
+			}
 			// Output only the token file path — never the token value.
 			printTokenPath(tokenPath)
 			ac.detail = fmt.Sprintf("reused cached %s token [app=%s install %s] (%dm old)", role, appName, installID, int(age.Minutes()))
@@ -870,6 +953,18 @@ func cmdToken(args []string) (err error) {
 	// Exchange for an installation access token.
 	result, xerr := exchangeJWT(jwt, installID)
 	if xerr != nil {
+		// A 404 on an id that came from a CACHE is the one failure the caches can cause:
+		// the installation was removed or replaced while an entry still named it. Drop the
+		// entry and say so, rather than leaving every call for the rest of the TTL to fail
+		// the same way. Only a cached id is invalidated — an id from <PREFIX>_INSTALL_ID is
+		// the operator's own statement and is never second-guessed here.
+		if installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != "" {
+			invalidateInstallIDCache(appName, mintOwner)
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"installation %s (cached for app=%s owner=%s) is no longer valid: %v. The cached "+
+					"installation id has been removed; re-run and it will be resolved again.",
+				installID, appName, mintOwner, xerr), xerr)
+		}
 		return deskkit.Unverifiable("exchange JWT for installation token", xerr)
 	}
 
@@ -887,6 +982,11 @@ func cmdToken(args []string) (err error) {
 		return deskkit.Unverifiable("chmod token cache", err)
 	}
 	writePerms(tokenPath, result.Permissions)
+	// Record WHICH App and WHICH account this file belongs to, so the next invocation can
+	// find it without resolving an installation id first (#1036).
+	if mintOwner != "" {
+		writeOwnerSidecar(tokenPath, appName, mintOwner)
+	}
 
 	// Output only the token file path — never the token value.
 	printTokenPath(tokenPath)

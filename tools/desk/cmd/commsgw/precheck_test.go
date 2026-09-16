@@ -97,15 +97,18 @@ func (f *testFixture) envelope(t *testing.T, id string, mutate func(*wireEnvelop
 // the RAW wire bytes PreCheck consumes without depending on unexported parse
 // internals).
 type wireEnvelope struct {
-	Schema string          `json:"schema"`
-	ID     string          `json:"id"`
-	Cell   string          `json:"cell"`
-	From   comms.SenderID  `json:"from"`
-	To     comms.Lane      `json:"to"`
-	Verb   string          `json:"verb"`
-	Class  string          `json:"class"`
-	Sent   time.Time       `json:"sent"`
-	Sig    comms.Assertion `json:"sig"`
+	Schema string         `json:"schema"`
+	ID     string         `json:"id"`
+	Cell   string         `json:"cell"`
+	From   comms.SenderID `json:"from"`
+	To     comms.Lane     `json:"to"`
+	Verb   string         `json:"verb"`
+	Class  string         `json:"class"`
+	// Payload is the structured body; omitted when empty (bypass_test.go's
+	// positive-path drills carry a shape-specific body, the earlier rows none).
+	Payload json.RawMessage `json:"payload,omitempty"`
+	Sent    time.Time       `json:"sent"`
+	Sig     comms.Assertion `json:"sig"`
 }
 
 // --- Verify row 2: PeerAuth -------------------------------------------------

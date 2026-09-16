@@ -23,6 +23,884 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.10 — 2026-09-16
+
+### Added
+- **`forge-neutral` brief 19 — human-only surfaces made server-side (the closing brief of
+  #992's five-brief series).** For each surface a human currently performs by hand — merge
+  to a protected branch, a workflow-file push, ruleset/branch-protection edits, repo/CI
+  variables, and App/OAuth installation — states plainly whether it is genuinely
+  server-side-enforced today or held up by convention alone. Finds merge-to-protected-branch
+  is the latter: this repo's role Apps hold `contents: write` + `pull_requests: write`,
+  which is sufficient to merge outright, and the live ruleset read confirms
+  `required_approving_review_count: 1` carries no restriction on which identity supplies the
+  approval. Proposes a `human-approved` required status check (triggered on
+  `pull_request_review`, checking the reviewing login against a trusted-human allow-list at
+  the PR's head SHA) to close the gap server-side, and specifies fixture-only Verify rows
+  that must never be pointed at this repo's own `main`. Doc only; no tool or workflow
+  behaviour changes in this PR — the workflow file and the ruleset edit are named follow-on
+  work for a human to land.
+- A shared typed-reference parser (`deskkit.ParseItemRef`) and two typed forge operations
+  (`ListCommentsTyped`, `CloseIssueTyped`) alongside the existing `GetIssueTyped` /
+  `PostCommentTyped`, so a reference that resolves for one desk verb resolves for all of them
+  rather than each growing its own spelling.
+- Cell-gateway bypass battery (`go test ./cmd/commsgw/ ./cmd/commsloop/ -run Bypass`): cross-layer negative-path drills that inject a fault above one guard with the layer above it bypassed or fooled — client preflight skipped, unauthenticated / rogue-CA / forged / replayed / expired peers on the real mTLS + A2A transport, rate-limit breach, kill switch armed (real `deskkit.Guard`), prose injection on both directions, mis-routed dispatch against the role fence, budget exhaustion, containment escapes by a real ACP decider child, and violations planted past every inline layer for the sweep — each asserting the distinct refusal and the signal it leaves.
+- Positive-path drills for the eight cross-desk hand-off shapes (advise, request-act flip, blocked, finding, request-act verify, routine relay, liveness, depends): delivered, pre-checks pass, queued for the right role's lane, the right role's fired session is allowed to act while the wrong role's is refused by its own profile.
+- The commsloop fake ACP agent gains `act` and `contain` modes (a real `rawInput.command` tool call; a decider that attempts an fs read and a tool permission before answering).
+- The review-tick conformance walk's OFFLINE half: the GitLab contract corpus
+  (`TestForgeGitlabGolden`) now pins, per tick verb — board read, review dispatch, verdict,
+  escalation filing, workpad edit, Evidence landing, ready-flip — at least one refusal the verb
+  is built on, next to the success path it already pinned: a forbidden open-changes list, a
+  project payload with no visibility field, an unnamed label, a forbidden dedupe search and
+  issue create, a forbidden thread read, an absent Evidence target, an append-only shrink, a
+  marker-only draft title, a merge request still draft after its marker is cleared, and an
+  empty required-checks branch. Three mutation entries prove the new refusals are load-bearing.
+- The stream's pilot report gains the per-verb conformance table (§7) with every LIVE cell
+  left `could-not-check — live walk not yet run` and the offline column filled from the
+  goldens; the issue → brief map covers the 2026-09-15 field reports.
+- `CELL_FF_ROOTS=1` in `cell.env` makes `cellctl desk` fast-forward, at boot, every stream root that can move without a decision: on a branch, that branch has an upstream, the tree is clean, and it is 0 commits ahead. Off by default, because the roots are the operator's own checkouts rather than cell-managed worktrees. A root that is dirty, ahead, detached, or has no upstream is never moved and is named on stderr.
+- `Forge.ReopenIssue(repo, number)` on both backends (inventory op 46) — `CloseIssue`'s inverse, one request on the issue endpoint, no state reason; golden-pinned on GitHub and GitLab.
+- `cellctl check` now reports CELL_ROOTS stream-root drift: one row per root naming the branch, its upstream, and how far behind it is. Nothing in cellctl has ever advanced the roots, so a root sitting behind its upstream degrades every desk verb that reads it while raising no error anywhere. Reported as a non-fatal `warn` — staying current is an operator step, not a precondition cellctl can assert — so it does not change `check`'s exit code. Roots that are ahead or dirty are named too.
+- `cellctl new --kind container` registers an existing container launcher for `ls`, `check`, `desk`, coordinator-only `up`, and `down`. Calls retain model-pin checks and exclude inherited forge/model credentials from the launcher's environment; no host worktrees or credential symlinks are created.
+- `commsgw` journals every refused inbound — on both the loopback socket and the A2A transport — as one `kind:"refused"` line on the queue's `journal.log`: the distinct refusal kind, the lane pair and sender identity as presented, the gateway cell, a timestamp and a digest of the raw bytes; never the payload (#1165).
+- `commsloop sweep` counts gateway refusals per presented sender and per presented destination lane and reports a `refusal-threshold` finding at or over `--refusal-threshold` (default 10 per sweep window; negative disables); the report line now carries `refused=N` (#1165).
+- `deskclose self-withdraw` — the authoring App closes its OWN open draft (`--because abandoned`, or `--because superseded --by <ref>` recorded not verified), pinned by login AND roster bot id; refuses a non-draft, another author's change, a login-only match, an unpinned roster id, and anything carrying `needs-decision`. Cites no ruling and consults no disposition record: an author's own withdrawal, nothing wider.
+- `deskclose verify-gate-refire` — the verifier session reopens, comments on, and re-closes a CLOSED issue carrying `verify-gate` (`--reason` mandatory) so the card's close event fires again; refuses every other role by name, an unlabelled item, and a pull request. Explicitly not the human sign-off: a bot's close of a verify-gate issue is reopened by the repository's verify-gate close workflow regardless.
+- `desklabel add|rm <owner/repo> <number> <label>` — a role-keyed one-label verb. Every
+  label-carrying write in the desk was bundled into a bigger verb's fixed set (deskflip's queue
+  swap, deskclose's `superseded?` proposal, deskdisposition's `disposition:*` record), so a stale
+  marker — the `superseded?` a dispute leaves behind — could only be cleared by a raw, unscoped
+  forge call. `desklabel` sets or clears ONE label through the resolved forge under the session's
+  own App role, against a closed vocabulary: the topology decision-owed labels (`needs-decision` /
+  `question` / `needs-human`, read from the topology loader, never restated) plus `help wanted`
+  for any role; `superseded?` and the `disposition:*` family for the worker; `authorization-needed` /
+  `approval-needed` for the reviewer; `human-decided` refused for every role; anything else
+  refused (exit 5) naming the label, its owner and the session's role. The check runs BEFORE any
+  forge call; the role is read from the session (`DESK_LOOP`), never from a flag. The target
+  kind comes from the seam's own read (`GetIssue`, or `GetIssueTyped` under `--kind issue|mr`
+  for a GitLab project carrying both `#N` and `!N`); a present/absent label is a no-op with no
+  write; `--dry-run` stops before the write; `vocabulary` prints the table. Both forges are
+  covered end to end through the real backends, and the role-ownership guard carries a
+  mutation map (`cmd/desklabel/mutations.json`).
+- `docs/adopting-assay-gitlab.md` §5a: the GitLab hardening-checklist template (Community
+  Edition rows, the `not available — Premium` / `— Ultimate` divergences, the Premium and
+  Ultimate swaps) and the auditor's minimum project role per kind.
+- `repohardenguard` now checks a GitLab project: the hardening-read operation serves five
+  GitLab kinds — `project`, `protected-branches`, `protected-tags`, `push-rules`,
+  `approvals` — each a fixed endpoint returning GitLab's own settings document (the two lists
+  are walked page by page and refuse at the ceiling rather than hand back a partial array).
+  A Premium-only route on Community Edition (`push-rules`, and `approvals` on some
+  self-managed instances) arrives as a typed could-not-check naming the tier, never an empty
+  document; the GitHub backend refuses the GitLab kinds by name and GitLab refuses the GitHub
+  kinds, with zero requests either way. The guard's preflight reads the resolved forge's own
+  document (`project` on GitLab) instead of the GitHub `repo` kind, and a checklist Field may
+  index into a list (`push_access_levels.0.access_level`).
+
+### Fixed
+- A GitLab job declared `allow_failure: true` that fails no longer reddens a head whose
+  pipeline succeeded: it maps to the neutral conclusion the forge-neutral reducers already read
+  as non-blocking, so a job entry cannot contradict the pipeline entry beside it. A blocking
+  job's failure still reddens.
+- A `deskevidence` scan refusal now names the origin of the offending bytes — `added by --evidence-file:<line>` — and a landing whose branch copy already carries a secret-shaped run says so on stderr as `pre-existing in <path>:<line>`, so the operator no longer isolates the trigger by hand. Neither message carries the span (#1161).
+- A degraded row's RENDERED text now carries the could-not-check reason that produced the
+  degrade, not just a line on stderr — so an operator reading the board can see which row
+  degraded and why.
+- A source pin that genuinely names nothing — neither a release tag nor a 40-hex commit in either
+  column — is refused with a reason that says which line it read and that the lane is channel D
+  ("build from source and pin the commit, or install a release and pin `statusgen <tag> <sha256>`").
+  The one verdict it can no longer give is "no statusgen pin", which sent an adopter looking for a
+  missing line instead of at the unreadable one in front of them. The genuine no-pin refusal now
+  names every shape it looked for, the source line included (#1122).
+- Alternate object directories are now resolved through go-git's own
+  `AlternatesFS` option. The filesystem it is given is rooted at the nearest
+  common parent of the directories the repository itself declares it borrows
+  from — not at the filesystem root — so the reach grows by exactly the subtree
+  the repository names and no further.
+- Dead-claim decay now runs on a GitLab-hosted project. The pass drops branches whose change
+  has already merged or closed so they stop consuming their stream's dispatch cap, but it read
+  change state only through `gh pr list` — a client a GitLab project has nothing to answer — so
+  statusgen declined to run it there and a GitLab adopter's claims never decayed at all: every
+  landed-but-undeleted branch held its brief off the board forever. The read is now routed by
+  the forge behind `origin`: `gh` on GitHub (and on a remote that names neither forge, where
+  "could not tell" is still not "confirmed not GitHub"), and the project's merge-request
+  listing over the GitLab REST v4 API on GitLab. In a pipeline it needs no wiring — the
+  predefined `CI_API_V4_URL`, `CI_PROJECT_ID` and `CI_JOB_TOKEN` are enough — and
+  `STATUSGEN_GITLAB_TOKEN` (or `GITLAB_TOKEN`) overrides where an instance will not let the job
+  token list merge requests (#1111).
+- Dead-claim decay's GitHub reader no longer lets a fork's branch name decay a live claim. The
+  pass drops branches whose pull request has merged or closed, and it keyed that on the bare
+  `headRefName` of every PR `gh pr list` returned — forks included. A fork's head branch is named
+  inside the fork and names nothing in the tracked repository, so a throwaway fork PR named after
+  a live dispatch branch, then closed, decayed that live claim and a second worker was dispatched
+  onto work already in flight. The reader now asks `gh` for `isCrossRepository`, `headRepository`
+  and `headRepositoryOwner` and admits a PR as a decay candidate only when its head repository IS
+  the tracked repository, with the same fail direction the GitLab arm took in #1135: a PR whose
+  head repository cannot be read is not read as same-repo, and each such skip is counted and
+  reported as a `could-not-check` line. Under-decay that says so, never over-decay (#1147).
+- GitLab merge requests are readable as checks-green again: the GitLab backend now publishes
+  the head **pipeline** into the check rollup as the status context the pipeline-gating project
+  setting requires, so a successful merge-request pipeline satisfies `deskflip`'s checks-green
+  condition instead of being refused as "a required check that did not report on this head at
+  all". The required name and the published entry come from one constant, so the gate can no
+  longer demand a verdict the backend never serves (#1125).
+- GitLab: `ReviewsAtHead` returns reviews in ascending submitted order, approvals interleaved with notes, matching the GitHub backend and the order the `Forge` interface now documents. GitLab's notes endpoint answers newest-first, and every consumer reduces the slice as "the last decisive verdict governs" — so the reversed stream let the OLDEST verdict govern: an approval at a newer head never cleared an earlier request-changes, and an ordinary approve-then-reject at one head was reported as a suspected forged no-op approval. The notes walk is now pinned newest-first on the wire as well, so a thread that exceeds the page cap loses its oldest notes rather than the governing verdict.
+- GitLab: `deskpost review --verdict approve` no longer reports a rejected credential when the reviewer identity has already approved the merge request (#1106). GitLab's `POST /projects/:id/merge_requests/:iid/approve` answers a bodyless HTTP 401 whenever the acting user "cannot approve" — and a user who has already approved cannot approve again — so the generic 401 handler sent operators off to rotate a healthy token while the verdict they wanted was already in force, and `deskboard` kept re-dispatching reviewers onto a change the App had already approved. The backend now disproves the credential story with reads it can make: `GET /user` and `GET …/merge_requests/:iid/approvals`. An approval this identity already holds is success-with-note (exit 0, the note names both endpoints, nothing is re-posted); a 401 on either read confirms the credential really is rejected and keeps the fail-closed refusal, now naming the confirming endpoint; a valid credential whose user is simply not an eligible approver refuses naming eligibility and the acting identity instead of the credential. A classification read that fails some other way stays could-not-check and says it could not be classified.
+- GitLab: a reviewer's `request-changes` verdict is now a standing rejection the board and the flip gate can read (#1124). The merge-request NOTE is the verdict object on GitLab — the forge has no native request-changes object — and the read path reduced only the CORRECTNESS verdict line to a review state. A `deskpost security-review --verdict fail`, which submits REQUEST_CHANGES and whose body may carry only `Security-Review: fail`, therefore came back as an ordinary comment: `deskboard` reported "no bot APPROVED/CHANGES_REQUESTED at head", left the merge request at NEEDS-REVIEW, and kept re-dispatching a reviewer onto a change its own reviewer had already rejected. Both lanes now reduce to the state their GitHub twin produces, with `Security-Review: pass` deliberately staying COMMENTED so a security all-clear cannot erase a standing correctness rejection.
+- Removed the stale STAGED/PENDING-PROMOTION banner comment from windows-ci-leg.yml.
+- Step 5's Action also named the retired `dailies` skill as a dispatch-bearing fan-out
+  example — the same stale-roster defect, one instance the initial pass missed. Swapped
+  for `pr-review-desk`, consistent with the two skills already named earlier in the same
+  sentence. (#938)
+- The CI templates `statusgen init` scaffolds now carry the NON-secret half of the trust roster
+  into both statusgen jobs, so the Evidence-actor check (which identity committed each
+  verified brief's Evidence lines) no longer reports could-not-check on every board regen while
+  the job stays green. On GitLab there is no environment transport for the roster, so the
+  `.gitlab-ci.yml` template materialises the new CI/CD variable `STATUSGEN_ROSTER_ENV`
+  (Variable or File type; logins, ids and role bindings only — a secret-shaped key makes the
+  job refuse) into `$HOME/.config/assay/roster.env` with owner-only permissions before
+  `statusgen` runs, and prints a `NOTICE` naming the variable when it is unset. The GitHub
+  workflow template passes the five roster variables through from repository Actions
+  variables (`vars.ASSAY_*`, never secrets) and reports roster presence in each job with a
+  `::notice::` when `ASSAY_TRUSTED_BOT_SLUGS` is unset. The adopter docs name the variable on
+  each forge and what it carries (#1110).
+- The `the-desk` and `intake-desk` skills carry frontmatter a YAML parser can load. Both
+  `description:` values were plain scalars containing a colon-space (`… on an explicit desk-boot
+  request: the user types …`, `… one of five tracked exits: spec/brief …`), which YAML reads as a
+  nested mapping, so the whole frontmatter document failed to load and a harness that builds its
+  skill roster by loading it saw no name and no description — those two skills never surfaced.
+  Each is now a folded block scalar (`description: >-`) with the description text unchanged
+  byte-for-byte, because it is adopter-facing trigger text the harness matches on (#1115).
+- The forge-CLI ban's permit register drops `deskdispatch`'s last `gh` row; the ratchet ceiling comes down to 5.
+- The gitlab arm's token row is renamed from "deskd GitLab read token" to "GitLab cell token (deskd read + boot fetch credential)". Despite the `DESKD_` prefix, `DESKD_GITLAB_TOKEN_FILE` is also the credential `gitlab_cred_args` feeds to the boot fetch in `cellctl desk` and to the `gitlab_fetch_reachable` probe, both of which run with `DESKD=0`. The old name invited gating the row on `DESKD`, which would have broken the fetch on every `DESKD=0` gitlab cell.
+- The staged-changes check now proves it can read the whole HEAD tree before it
+  reports an answer, and returns an explicit could-not-check (`deskpr` exits
+  unverifiable, naming `git repack -a` as the local repair) when it cannot. This
+  closes the quieter half of the same defect: a truncated walk could also HIDE a
+  genuinely staged deletion, so an unreadable object store could have produced a
+  false CLEAN as easily as a false refusal. Real staged changes are still
+  refused exactly as before.
+- `cellctl check` no longer demands the deskd GitHub App key and `ORGS` on a cell running `DESKD=0`. Both exist solely to mint deskd's per-org installation tokens in `deskd_mint_github`, which is reachable only from `cellctl deskd`, so on a `DESKD=0` cell they were failing `check` over credentials nothing reads. They are now reported `n/a` there, and remain a MISS whenever `DESKD=1`. The gitlab arm is deliberately left ungated — see below.
+- `cellctl check`'s no-deskd row said "not required on a house cell" for any cell reaching it, so a k8s cell with `DESKD=0` was told it was a house cell — directly contradicting the `kind=k8s` line in the same report. It now names the cell's own kind.
+- `cellctl desk`: an existing role worktree is now **merged** up to the fetched `origin/main` at boot (a real two-parent merge when it carries local commits — never a rebase), instead of `--ff-only`-then-"left as is". Generated single-writer files (`STATUS.md`, `docs/streams/FINDINGS.md`; `CELLCTL_GENERATED_FILES`) are taken from main on conflict; any other conflict **stops the boot** with the paths named and nothing launched (#1157).
+- `commsloop` now delivers every accepted, in-lane, routed message to the addressee role's mailbox (`commsqueue.DeliverToMailbox`), so `deskcomms poll` as that role sees it and `deskcomms ack <id>` clears it; other roles poll empty, a message refused at the routing boundary or quarantined by the router is never delivered, and the executor leg stays exactly as gated before (#1166).
+- `containers/scripts/layer-secret-scan.sh` no longer flags toolchain material
+  it never wrote as a secret: Go's own stdlib test fixtures, npm's bundled
+  docs, and PEM-shaped strings compiled into `gpgv`/`libssh2`/`libgnutls` are
+  now excluded by a narrow, commented path allowlist, the generic `sk-` key
+  shape is gated to text-shaped content (no longer checked against compiled
+  binaries), and each layer-filesystem hit is reported once instead of twice.
+  Verified clean (`exit 0`) against a real build of the desk base image, with
+  a new mutation-test fixture proving no bypass for a real secret at an
+  ordinary path.
+- `deskboard actions`' classifier (`classifyPR`) no longer fails the WHOLE sweep when a single
+  open PR carries one unreadable change-level field. Four per-change reads — the PR's own
+  reviews, the non-commit-resolution label probe, the own-files read and the reviewed-sha
+  compare feeding the benign-merge check, and the changed-files read feeding risk
+  classification — used to propagate a per-PR read failure as a whole-sweep error (exit 6,
+  empty board, one line of diagnosis). Each now degrades only its OWN row, landing on the
+  safe side (never the benign/cleared outcome), the same contract the changed-files
+  truncation guard already documented for itself.
+- `deskboard dispatch` / `awaiting`, and the dispatch stage of `throughput`, read a
+  `statusgen-source` line as the pin it is. The resolver asked only for a bare `statusgen ` line
+  and then this host's `statusgen-<os>-<arch>` line, so a source-channel adopter — one who builds
+  from a pinned commit because no release binary is published for their platform or forge, and
+  whose `.assay-versions` therefore carries `statusgen-source <40-hex-commit> channel-D` — was
+  reported as having **no pin** and the verb exited 6. Next-up came back could-not-check on a pin
+  file that pins statusgen. A source line now resolves: it reports the release tag it names when it
+  has one (so the running-vs-pinned skew comparison still works), else the pinned commit. A release
+  line still wins when a file carries both shapes, and a present-but-malformed release line still
+  fails closed rather than being quietly replaced by a source line (#1122).
+- `deskboard` reads a GitLab change's CI for real rather than classifying every merge request
+  CI-UNKNOWN: the bulk board read maps the change's head pipeline — looked up by head SHA,
+  through the same mapping the per-change read uses — so the board and the flip gate cannot
+  reach different verdicts about one pipeline, and `reviewloop` emits a FLIP-VERB where it
+  previously surfaced an uninterpretable rollup. A head with no pipeline, or a pipeline stamped
+  with a different SHA, stays could-not-check and never a pass.
+- `deskboard`'s `STALE:drift` banner names all three sides — the installed release, this worktree's pin, and origin/main's pin — and recommends the shim reinstall (`sudo make desk-install`) only when the installed release is the one behind main's pin; a worktree behind main gets the merge line instead, and an unreadable origin/main is reported as could-not-check (#1157).
+- `deskboot` gains an eighth step, `worktree-current`, after `board-fetch`: HEAD must contain `FETCH_HEAD` and the worktree's `.assay-versions` must equal `FETCH_HEAD`'s, else exit 6 naming the one-line self-heal (`git merge refs/remotes/origin/main` in the worktree). A desk on a tree behind main is loud at boot, not blind an hour later (#1157).
+- `deskclose` accepts **typed item references** on both the item it acts on and the target of
+  `--of` / `--by`: `!N` names a merge request or pull request, `#N` and a bare `N` state no kind
+  and leave the resolution to the forge, and a web URL states the kind in its own path — with
+  `--kind` / `--of-kind` / `--by-kind` as the equivalent flags. On a project that numbers issues
+  and merge requests in separate sequences, a bare number could name two different objects, so
+  the read failed closed and told the caller to "use the typed operation for the kind you mean"
+  — an operation `deskclose` did not expose, which left the whole supersession lane unreachable
+  in both the proposing and the confirming role. Bare numbers keep that fail-closed behaviour,
+  and the refusal now names the forms that exist (#1109).
+- `deskclose` routes every read and write of a lane at the kind of object it actually read: the
+  item read, the pre-close comment, the proposal-thread read, the back-reference and the close.
+  The untyped close addressed only the issue sequence, so on a project carrying both an issue
+  and a merge request at one number it would have closed the object the caller never named, and
+  the untyped thread read returned another object's notes — or, on a single-sequence forge, an
+  empty thread for any issue, which reads as "no proposal stands".
+- `deskdispatch` claim-acquire now runs the claim child as the dispatching role: it mints (or reuses) that role's App token through the same seam its model-stamp step uses and hands it over as `--token-file <0600 path>` to `deskclaim-ref` or as `GH_TOKEN` in the child environment for the legacy `tools/dispatch-claim.sh`. An exported `GH_TOKEN` still wins; a mint refusal is exit 6 with no claim attempted — the claim tool is never run on the ambient `gh` login (#1151).
+- `deskdispatch`'s model-stamp step (`--model`) now reads the change's present labels and its label history and writes the `dispatched-model:` / `dispatched-tier:` stamps through the resolved Forge under the lane's own dispatcher credential, on GitHub and GitLab alike — it no longer shells to the GitHub CLI, so a stamped review dispatch on a GitLab project completes and reaches the forge-neutral `authorization-needed` queue label instead of failing closed before it (#1154). The fail-closed semantics are unchanged (an unanswered read is could-not-check; a foreign stamp is removed and re-applied, never stamped over) and an identical stamp already standing under the dispatcher is now a stated no-op rather than a re-apply.
+- `deskdisposition sweep` reads a repo's open changes through the forge that SERVES that repo
+  instead of shelling `gh pr list`. On a GitLab project the old path asked GitHub about a slug
+  that is not a GitHub repository, so the answer was "Could not resolve to a Repository with the
+  name …" and the verb reported the project's whole PR queue as could-not-check (exit 6) — a
+  GitLab adopter's orphan sweep could never look at all, and an unreadable queue is the one thing
+  that must not read as an empty one. The read is now the enumerated `ListOpenChanges` op, which
+  serves GitHub pull requests and GitLab merge requests alike; number, title and labels are the
+  only fields the sweep classifies on, and GitLab's degraded open-change shape serves all three
+  for real. Truncation is still reported, now from whichever ceiling clipped the page — the
+  forge read's own cap or `--limit` (#1123).
+- `deskevidence` now scopes its secret scan to the bytes the landing ADDS on every path, `--brief-path` included: the scan diffs the content about to be committed against the branch copy, so an Evidence block that re-quotes a line the brief already carries verbatim (a Verify row's own command, a fingerprint named in prose) no longer refuses on text that predates the landing — the failure that stalled a PASSED human-gated brief at `implemented` (#1161, completing #901 and #966).
+- `deskpr` no longer refuses a clean shared-object checkout as
+  "staged-but-uncommitted changes — commit them first". A checkout made with
+  `git clone --shared` or `--reference` stores almost no objects of its own: it
+  borrows them from the directory its `objects/info/alternates` names. The
+  in-process git layer handed go-git a filesystem rooted at the checkout's own
+  `.git`, which cannot see outside itself, so every borrowed object read as "not
+  found" — and go-git's tree walk does not report that as an error. It turns a
+  failed subtree read into an end-of-walk, so the walk stops early and the index
+  entries whose HEAD-side counterparts vanished with it look like staged
+  additions. A checkout `git status` called spotless was refused.
+- `deskpushguard`'s register-id and foreign-commit pre-push checks no longer peg one CPU
+  core indefinitely on a checkout with several remotes pointing at the same upstream repo.
+  Both checks called `gitcore.Repo.IsAncestor` once per candidate remote branch (register-id
+  check: once per push that touches a new register entry, regardless of the push's own
+  size; foreign-commit check: once per commit ahead of `origin/main`) — that call resolves
+  to go-git's native, unmemoized `Commit.IsAncestor`, which re-walks `origin/main`'s entire
+  history from scratch on every single invocation. A checkout with N literal-duplicate
+  remotes for the same repo multiplies the candidate-branch count by N directly, and a
+  large main-catch-up merge multiplies the commit count on the foreign-commit side —
+  together this could run for minutes without deciding. Both checks now walk
+  `origin/main`'s ancestry exactly once per push and answer every subsequent
+  "already merged?" question with an O(1) set-membership lookup instead. Measured on a
+  synthetic fixture (800-commit `origin/main`, 20 never-merged sibling branches visible
+  under 5 remote names): 5.1s+ before the fix, 129ms after.
+- `desktoken --forge gitlab <role>` now SELF-CHECKS the rotated PAT with one live, read-only
+  `GET /user` before printing the custody path. The rotation endpoint's 200 only says the forge
+  issued the successor; in the field the caller's first read with it answered 401 while the
+  on-disk token was valid seconds later (server-side propagation lag after self-rotation), and
+  the mint path assumed that away. A self-check the forge does not answer 200 now exits 6
+  naming the endpoint, the status the NEW token got and whether the PREVIOUS token was still
+  accepted (lag: re-run the mint once) or rejected too (lockout: a group owner re-issues the
+  PAT); the persisted path is not printed as good. One read per token, no retry loop, no
+  sleep; rotate-on-mint custody is unchanged (#1142).
+- `desktoken --forge gitlab <role>` now rotates THROUGH a symlinked custody path instead of over it: the new token is written to the link's resolved target and the link survives, so the provisioned token file is never left holding the invalidated value for a later re-link to hand back — the source of intermittent `401`s on the first API read after a successful rotation. The rotated value is also fsync'd before the command prints the custody path, and the read-back verification now reads back through the custody path so a rotation that broke the layout fails at mint time rather than at the next read (#1112).
+- `docs/codex-smoke-protocol.md`'s preamble and Steps 1/3 named a stale nine-skill roster
+  (including two skills — `dailies`, `market-intelligence` — no longer in the bundle) while
+  the packaged bundle ships thirteen. The preamble, Step 1's `Expect:` line, Step 3's
+  Action/Expect, and the run-log skeleton now name the correct count and the full current
+  roster (`adopt`, `ask-decision`, `author-brief`, `human-runsheet`, `install`,
+  `intake-desk`, `pdfingest`, `pr-review-desk`, `pr-shepherd`, `the-desk`, `upgrade-assay`,
+  `verify-desk`, `worker-desk`), matching `plugins/assay/codex/packaging.md`'s
+  `assay:codex-packaging` roster and `plugins/assay/skills/`. (#938)
+- `docs/streams/forge-gitlab/brief-17-resolved-thread-merge-gate.md` cites its consumed changelog fragment through the `CHANGELOG.md` v1.0.9 section instead of the fragment file the release roll deleted, so the board regen on `main` no longer reds on a dangling backticked path (the lint-side question stays open on #722).
+- `statusgen --close-verify` (the flip `verify-gate-close.yml` runs on a human close) now reads the Verified cell the `done` row would carry — the README cell, or on the implemented→done path the cell it stamps from the brief file's Evidence — plus the brief's Evidence rows, BEFORE it writes, and refuses when a runner is below the methodology/19 verifier floor. The refusal names the runner, the floor and the two-stamp remedy; a red `done` no longer lands on main after the human has signed (#1170).
+- `statusgen` per-entry intake files (`docs/streams/intake/*.md`) now match their frontmatter keys case-insensitively — `Disposition:` / `DISPOSITION:` and every other `intakeEntry` field — instead of silently leaving the field empty and counting the entry as untriaged `new`; an owned key repeated in differing case is now a parse error naming the file rather than a silent first-wins. Sibling of the legacy-path fix in #920. (#931) — thanks @teddyvj
+- `verify-gate-close.yml` relays a verifier-floor refusal onto the card as a comment (runner + floor + remedy) and REOPENS the card so the same human closes it again once the floor-tier re-verify stamp has landed; a bot close is reopened exactly as before, and every other refusal still leaves the card closed (#1170).
+
+### Changed
+- A dead-claim decay that could not look now says so where a reader will see it. It reported a
+  stderr `NOTICE` while the board it wrote read perfectly clean — a two-state instrument, and
+  the reason a forge on which the pass could never run went unnoticed. The run now prints
+  `could-not-check: claims not decayed` with the reason that names which read failed, and the
+  generated `STATUS.md` carries the matching banner at the head of its Next-up section, stating
+  that those rows are a **subset**: briefs held behind already-merged branches are missing from
+  the board, not absent from the backlog. The exit code is deliberately unchanged — an undecayed
+  claim set hides work rather than handing one brief to two sessions, and failing every adopter
+  run that has no forge credential would only train a desk to stop reading the instrument. The
+  load-bearing fail direction is unchanged too: decay may only ever SHRINK the claim set, so an
+  unreadable listing keeps the full open-branch set and never drops a live claim (#1111).
+- Desk-role skills (the-desk, intake-desk, worker-desk, pr-review-desk, verify-desk, pr-shepherd) now name the `deskcomms send` / `poll` / `ack` lane verbs for every cross-desk hand-off, with five hand-off kinds (advise / request-act / blocked / finding / depends) mapped onto the shipped lane vocabulary, as one derived guardrail block (`comms-verbs`); the same-box session channel is documented as the pre-cutover fallback only.
+- New fixture test `.github/scripts/verify-gate-close-floor.test.sh` mirrors the close workflow's refusal classification and runs it, with a statusgen built from the tree, against `statusgen/testdata/verifyfloor`; migration `migrations/0003-v1.0.9-to-v1.0.10-verify-gate-close-verifier-floor.md` records the workflow patch an adopter's copy needs (#1170).
+- The `--lint` verifier-floor PROBLEMs name the two-stamp remedy instead of only the rule (#1170).
+- The `verify-desk` skill states the two-stamp model for `gate: human` briefs: the routine drain runs at the local tier and lands the first stamp; ONE floor-tier re-verify (the single sanctioned pass above the local tier) re-runs the table, appends its Evidence rows and re-stamps the Verified cell with that pass leading the cell; only then is the sign-off card ready for the human. Model-gated briefs are unchanged (#1170).
+- The shared body check's PGP-fingerprint exemption now also admits a 40-uppercase-hex run whose OWN line names it as a fingerprint (`fingerprint`, `fpr`, `pgp` or `gpg`, case-insensitive, as a standalone word — before or after the run), alongside the existing `pgp:`/`fp:` recipient-field anchor. The bound is unchanged in every other direction: exactly 40 uppercase hex, the word on the SAME line, and no annotation launders a mixed-case run (#1161).
+- The two column layouts a `-source` pin line is written in — `<tag> <40-hex-commit>` and
+  `<40-hex-commit> channel-D` — are interpreted in ONE place, `deskkit.SourcePin`, which selects
+  through the same trailing-space prefix match every other pin reader uses. The drift banner's
+  `desk-tools-source` reader now calls it instead of carrying its own copy, so the two readers of
+  a source line cannot drift into disagreeing about what the same line says. `PlatformPinLookup`
+  exposes the release-line read as its three real states (present / absent / fail-closed), which is
+  what lets a caller fall through to another pin shape on absence ALONE (#1122).
+- `deskclose manifest` is documented as the sanctioned human-ruled BATCH lane: the human's own ruling comment is the manifest's `authorized-by`, and the digest binds it to exactly the rows they saw. No behaviour change.
+- `deskdispatch` prefers `deskclaim-ref` on PATH over the legacy `tools/dispatch-claim.sh` when both resolve; the script stays the fallback for a tree that predates the binary, and the `claim-acquire OK` line names which tool ran and how it authenticated (#1151).
+- `deskdisposition`'s two READ verbs (`read`, `sweep`) are both on the forge seam, under the
+  session-role App token the tool already minted for `read`; `set`'s writes still go out under
+  the caller's ambient `gh` identity, unchanged, because routing a write through the seam changes
+  WHO performs it. The forge-CLI register row for the tool is now write-only (#1123).
+- `docs/adopting-assay-gitlab.md`: the `issue-loop` and `intake-loop` service accounts need **Developer (30)** with `api` + `write_repository`, not Reporter (20) — both lanes land their exits as draft merge requests, and GitLab refuses MR creation below Developer (medici-finance/assay#1107; first seen on an adopter's first intake MR as a bare HTTP 403). The `auditor` row stays at Reporter: it only reads.
+- `references/desk-shell.md` gains the comms-lane transport section (markers, exit codes, the one-send form); house values (cell name, gateway address) stay deferred to the project layer.
+- `skillslint` reads skill frontmatter with a real YAML parser instead of scanning lines, and
+  fails a `SKILL.md` whose `---` block does not load, does not load as a mapping, or whose `name:`
+  / `description:` is not a non-empty string. The line scan reported PASS on both broken skills
+  above, so the defect shipped and an adopter refresh would have reintroduced it; the lint now
+  reads the header the way a consumer does and names the repair (quote the value, or make it a
+  folded block scalar, keeping the text unchanged) in the failure message (#1115).
+
+## v1.0.9 — 2026-09-15
+
+### Added
+- **A tick contract for the five desk roles** — `plugins/assay/references/tick-contract.md`.
+  When the harness passes `--tick`, or the environment carries `ASSAY_TICK=1` (compared
+  exactly), a desk role runs ONE bounded pass — boot, one fresh sweep, act up to its width,
+  wait bounded for what it dispatched, print a summary line, exit — arming no durable wake,
+  scheduling no cadence and waiting in line for no answer. Absent both spellings every run is
+  a standing window and behaves exactly as before, so the contract is inert until a caller
+  asks for it. The five desk bodies each gain a short `## Tick mode` section, derived from one
+  declared guardrail block rather than hand-copied, so the gating plugin-tree lint keeps all
+  five byte-identical.
+- **`desk-skills` brief 05 — standing-note reference.** Adds
+  `plugins/assay/references/standing-note.md`, naming the nine-section schema
+  (Boot · Monitors · Hands-off · Merged · Flipped · In-flight · Filed · Teammates · Board) for
+  the loop-continuity note a desk-role session writes at each iteration boundary and before any
+  long wait. The load-bearing rule: every row names the primary state to re-probe on resume,
+  never the value it last observed, so a returning session re-checks live state instead of
+  acting on a stale cache. Each of the five loop-role skill bodies (`the-desk`, `worker-desk`,
+  `pr-review-desk`, `verify-desk`, `intake-desk`) gains one pointer line to the new reference;
+  in `pr-review-desk` the pointer resolves the body's existing standing-note sentence instead of
+  leaving it unanchored.
+- **`deskread`** — a read-only desk verb that serves forge reads as versioned JSON, so a consumer
+  outside the desk-tools module can reach the forge seam by running a process rather than shelling
+  a forge CLI. It adds **no operation** to the frozen `Forge` interface: `deskread issues` is
+  `ListOpenIssues`, which both backends already implement and golden-pin. `--repo` is repeatable
+  and **one invocation serves the whole repo set**, read concurrently. A repo that could not be
+  read lands in `partial` with its reason and is absent from `repos`, with the exit code still 0 —
+  so a caller can always tell "no open issues" from "could not look"; only an all-unreadable set
+  is could-not-check (exit 6).
+- **`forge-neutral` brief 15 — `desklabel`, a role-keyed label verb, on the forge resolver.**
+  Specifies a new verb that sets or clears one label at a time: any role may touch the shared
+  escalation vocabulary (`question`, `help wanted`, `needs-decision`), a role may touch only
+  the disposition markers its own lane already applies (worker: `superseded?` and the
+  `disposition:*` family; reviewer: `authorization-needed`/`approval-needed`), and every other
+  label — including `human-decided`, refused for every role — is refused outright (exit 5).
+  Adds one new `Forge` operation, `ApplyIssueLabels`, because GitLab's existing `ApplyLabels`
+  reconciles only a merge request's labels and a plain issue is a separate resource there
+  (GitHub already serves both kinds from one endpoint, so its side is unchanged). Cites a real
+  gap the design closes: `deskclose superseded --dispute` never removes the worker's
+  `superseded?` proposal marker, and before this brief only a raw, unscoped label write could
+  clear it. Doc only; no tool behaviour changes in this PR.
+- **`plugins/assay/scripts/tick-summary.sh`** — the one executable form of the summary-line
+  grammar (`tick role=… outcome=… swept=… acted=… filed=… duration=…`), with `regexp`,
+  `validate` and `check` verbs, plus its hermetic case suite. Its cross-field rules are what
+  keep the line honest: `could-not-check` requires `swept=-` and `noop` forbids it, so a pass
+  that could not read its queue cannot produce a well-formed "queue was empty" line.
+- **`statusgen --forge`** — the opt-in for forge-backed checks. Without it statusgen is **offline**:
+  it starts no forge process and makes no network call, and a forge-backed check reports
+  could-not-check as itself rather than reading green. The default reader answers could-not-check
+  for every repo and returns no data entry for it, so there is no shape in which "did not look" is
+  indistinguishable from "looked and found nothing".
+- A **prune singleton**, so N desk windows booting together run ONE sweep. A non-blocking
+  advisory lock (released by the kernel when its holder exits, so there is nothing to time
+  out) plus a `--singleton-ttl` recency debounce, default 10m; `--singleton-ttl 0` /
+  `--no-singleton` disable the debounce only. The lock fails closed and the TTL fails open:
+  a missing, truncated, unparseable or future-dated stamp means SWEEP, so no leftover stamp
+  can wedge prune. The `--interval` supervisor takes and releases it per tick, never for its
+  lifetime.
+- A **sequencing note** recording why this stream is planned rather than fanned out: its fixes
+  uncover the next latent defect in sequence, so discovering that sequence one field report at a
+  time costs an adopter round trip per link. It carries two standing rules — a GitLab review-desk
+  issue routes to the plan's map before it is dispatched, and a code read is never a field verdict.
+- A GitLab merge request now opens with a resolvable "merge-hold" discussion thread that
+  blocks the merge button on every GitLab tier (`only_allow_merge_if_all_discussions_are_resolved`)
+  until the reviewer's approve verdict releases it at the current head; a request-changes
+  verdict or a new head re-arms it. `deskflip`'s reviewer-approved condition on GitLab now
+  reads this thread directly and never consults the Premium approval-configuration route that
+  answers 403 on GitLab Free.
+- An **issue → brief map** placing every open GitLab review-desk, adopter-path and stream issue
+  against exactly one brief, or out of scope with a reason.
+- Four briefs: **13** (board reads degrade per row, never per sweep), **14** (the public-repo gate
+  reads the forge that serves the repo, at every site), **15** (the three keys the GitLab runbook
+  never names — forge binding, board-push credential, source-pin lane), and **16** (the human-gated
+  live review-tick conformance walk and adopter-backlog close-out).
+- The `forge-gitlab` stream board now states an explicit **finish line** for "the review desk works
+  on GitLab" — which verbs, on which tier, under which credentials, and with which two instruments
+  (a live per-verb conformance table carrying at least one refusal row, plus the offline fixture
+  goldens) — so the claim can be checked rather than felt.
+- The brief's performance half, measured rather than asserted: on this repository (24 streams,
+  165 briefs) a `--lint` spends **16.7 s of its 23.7 s** inside 11 forge-CLI subprocesses — 13.9 s
+  of that fetching every issue ever opened across ten configured repos to print one advisory line
+  whose inputs are open issues only — and makes **254 git subprocesses**, of which one whole-tree
+  authorship walk (0.03 s) replaces 144 `git log` plus 62 `git blame` invocations. A memo closes
+  the 3,351 brief parses that re-read 172 files up to 23 times each. Target: zero forge-CLI calls,
+  100 git subprocesses or fewer, and a 60 % or better wall-clock cut on a 400-brief tree.
+- `.github/workflows/docker-publish.yml` now also builds and publishes the
+  shared `desk-base` image and the five per-desk images (`intake-desk`,
+  `worker-desk`, `pr-review-desk`, `verify-desk`, `the-desk`), version-locked
+  to a single build's tags and gated by `containers/scripts/layer-secret-scan.sh`
+  before any push (brief desk-containers/03 Task 2). This content had been
+  parked at `docs/streams/desk-containers/pending-docker-publish.yml` since
+  the worker App's token cannot push a `.github/workflows/*` change; applied
+  by hand onto the live workflow file (which carries no other changes since
+  the content was parked) and the parked file removed.
+- `Forge.GetIssueTyped(repo, number, kind)` and `Forge.PostCommentTyped(repo, number, kind, body)`
+  — the typed read/write pair the bare `GetIssue` both-kinds refusal points at, implemented on
+  both backends, with `TargetKind` (`issue` | `change`) and `ParseTargetKind` (accepts `issue`,
+  `mr`, `pr`, `change`). Additive: the existing untyped methods keep their behaviour.
+- `RepoHardeningRead` (op 40) on the `Forge` seam: a closed hardening-read kind vocabulary
+  (`repo`, `rulesets`, `actions-workflow-permissions`, `actions-fork-pr-approval`,
+  `actions-private-fork-pr`, `vulnerability-reporting`), validated before any request exists.
+  GitHub implements all six; GitLab refuses each by name until forge-gitlab/12.
+- `desk-containers/08` — a brief for a **tick contract**: when the harness passes `--tick`
+  (or the environment carries `ASSAY_TICK=1`), a desk role runs ONE bounded pass — boot, one
+  fresh sweep, act up to its width, wait bounded for what it dispatched, print a
+  fixed-grammar summary line, exit — arming no durable wake and asking no human anything.
+  The five desk skills are standing loops with no second mode, so a scheduled one-shot run
+  of one can only ever end in its own `timeout`, with an empty log; the brief adds the
+  missing mode as a contract stated once in a shared reference and derived into all five
+  bodies, with the summary-line grammar as its machine-readable verdict channel. The
+  standing-window behaviour is unchanged.
+- `deskaudit tail [N]` — print the newest N ledger entries (default 10) across the daily
+  segments, as the raw lines they are on disk.
+- `deskfile new`'s per-session budget accounting (`chargedNewEntry`) now carries an explicit
+  citation and regression tests (`TestBudgetBodyCheckRefusalDoesNotConsumeSlot`,
+  `TestBudgetDedupeRefusalDoesNotConsumeSlot`) proving that a REFUSED `new` — a BodyCheck
+  secret-scan hit or a dedupe match — is audited but does not consume the 3-per-24h
+  session budget slot: only a write that reaches `gh issue create` may charge it. The
+  existing `ResultRefused` exclusion in `chargedNewEntry` already implemented this; these
+  tests close the coverage gap end-to-end and pin the behaviour against regression. (#955)
+- `desktoken --no-rotate` — a read-only credential lookup that makes the same custody checks and
+  prints the same path, but performs no rotation and no network contact. `deskfile check`, a dry run
+  that files nothing, now uses it, so a parallel sweep of checks no longer drives one destructive
+  rotation per call. Rotate-on-mint is unchanged for verbs that write.
+- `desktoken` records an owner sidecar (`<token cache>.owner`) naming which App and which
+  account a cached token belongs to, and caches a resolved installation id per (App, account)
+  for 24 hours. Every fast path is a positive match on both halves; absence, ambiguity, a
+  non-0600 file or a malformed account name falls through to full resolution. `--fresh` and
+  `<PREFIX>_INSTALL_ID` are unaffected, and a 404 from the token exchange invalidates a cached
+  installation id instead of failing for the rest of its TTL.
+- `desktoken`'s `auditor` role: a dedicated, read-only identity (no write permission of any
+  kind) minted/read through the existing per-role custody paths.
+- `docs/streams/forge-gitlab/brief-17-resolved-thread-merge-gate.md` — a new brief giving the review desk an enforceable merge gate on GitLab Free: a marker discussion thread the draft-change verb opens on every new merge request, the reviewer's at-head approve verdict resolves, a request-changes verdict or a new head re-opens, and `deskflip` keys on — behind the Free-tier project setting `only_allow_merge_if_all_discussions_are_resolved`, never the Premium approval-rules route that answered 403 to a GitLab adopter cell on 2026-09-14 (#1091). The `Draft:` prefix stays as the human-facing signal; the human merge stays the outer gate.
+- `forge-neutral/18` — a brief for taking **statusgen off the forge CLI**. statusgen is the last
+  tool in the suite that reaches a forge on its own: a separate Go module that does not import
+  `deskkit`, carrying 26 of its own forge-CLI shell-outs, so the enumerated operation set, the
+  refusal-instead-of-fallback rule and the per-forge backend all stop at its module boundary. The
+  brief adds to desk-tools exactly the read statusgen needs — `deskread`, a read-only verb over
+  operations the seam ALREADY enumerates, so the frozen `Forge` surface is consumed rather than
+  widened — and makes `--lint` offline by default, with every forge-backed check reporting
+  could-not-check as itself rather than reading green because it stopped looking.
+- `gitcore.OpenWith(dir, cache)` and `gitcore.NewObjectCache()` — open a repository through
+  a caller-supplied object cache, so a pass over many worktrees of one repository decodes
+  each object once. `gitcore.Open` is unchanged for every existing caller.
+- desk-tools brief 23 is authored: an opt-in, local-only usage-and-timing record written by
+  the shared desk substrate at one place, kept as a 7-day UTC history under
+  `~/.config/assay/perf/` and pruned on write, with a closed non-PII field set and no
+  free-text field at all — plus a `deskperf` read verb for per-tool p50/p90/max wall time,
+  refusal ratios and `deskboot` per-step cost. It inherits `docs/telemetry.md`'s promise and
+  its exact `ASSAY_TELEMETRY` switch, leaves the append-only audit ledger untouched, and
+  ships no sender: a remote sink is named as follow-up, so only the on-disk shape is fixed.
+- desk-tools brief 24 — the audit ledger's read cost: a bounded tail read for `Guard`'s
+  last-entry question, a bounded reverse read for the rate limiter that falls back to the full
+  parse whenever its answer is not yet determined, no audit row for a `desktoken` cache reuse,
+  daily `audit.jsonl.<date>` rotation that deletes nothing and carries the counter and the
+  idempotency store forward, and a `deskaudit tail` read verb (#1035).
+- desk-tools brief 25 — one token lookup per owner per process: a memo in front of the role-token
+  minter, and `desktoken` consulting its token cache BEFORE it resolves the installation id
+  (#1036). Authored only; the implementation lands separately.
+- desk-tools brief 26 is authored, from the measurement in #1037: `deskwt prune` — a boot step
+  every desk window runs — spent 8–12 minutes at ~100 % CPU on a checkout with ~657 registered
+  worktrees because it asks one question of one history once per candidate and shares nothing
+  between the answers. The brief hoists a single `origin/main` walk into a per-sweep
+  ancestor-hash set, moves the merge gate ahead of the full-worktree `Status()` it currently
+  runs first, shares one object cache across the sweep, drops a commit count that was walked
+  twice per candidate to render a skip string nothing parses, batches the per-removal
+  `git worktree prune` + full worktree listing into one pass, makes `--dry-run` genuinely
+  read-only, and adds a prune singleton whose lock fails closed while its TTL debounce fails
+  open — so N windows booting together run one sweep, and no leftover stamp can wedge the next
+  one. Every removal gate is preserved: the brief changes the order and the sharing of the
+  work, never which worktrees are eligible for removal.
+
+### Fixed
+- **The public-repo write gate reads the forge that actually serves the repo, at every call
+  site.** `deskreply` and `deskevidence` each resolved the correct forge backend for every
+  other operation on a repo, then built a second, hardcoded GitHub-only client for the gate's
+  live-visibility read — so on a GitLab-resolved project that read went to a host that had
+  never heard of the project, and the gate failed closed for a reason unrelated to the repo's
+  real authorization. Both sites now route the gate's read through the already-resolved
+  backend (`deskkit.ForgeRepoInfoFetcher`), the same pattern the draft-change verb already
+  used. The release verb's tag-cut gate is ruled to stay single-forge (it never resolves a
+  forge backend at all) with the reasoning recorded at its call site. The superseded
+  single-forge GitLab adapter this replaced is deleted, and a cross-command enumeration test
+  now fails if any future call site builds a hardcoded fetcher outside the one ruled
+  exception.
+- A label write that names NO target is refused on both forges rather than defaulted to the
+  merge-request route. A caller that forgot the target would otherwise reproduce this exact
+  defect on GitLab while passing every GitHub test; the refusal is what makes the omission loud
+  on the forge most contributors run.
+- A mint that cannot take that lock **refuses before a second rotation is in flight** (exit 6) and
+  names the recovery path, instead of rotating unserialised. A custody directory that cannot be
+  written is now detected *before* the rotation rather than after it, so the role's existing token
+  survives a misconfiguration instead of being spent on a rotation that could never have been saved.
+- A subcommand `--help` is no longer charged to the append-only audit ledger as a refusal.
+  `deskpr`, `deskwt`, `deskfile`, `desktoken`, `deskpost` and `deskreply` print usage and exit
+  0, writing no row; a genuinely bad flag in the same position still refuses and still audits.
+- An unestablished sha is now treated as what it is: a could-not-check that degrades ONE ROW to
+  `RE-REVIEW`, the same safe side a truncated diff already degrades to, and the sweep carries on.
+  "The change's own files are unchanged since the last review" is a claim nobody can make
+  without both endpoints, so the benign classification is never the fallback.
+- Generated GitLab CI scaffold (`statusgen/init.go`): the `STATUSGEN_PUSH_TOKEN` comment now
+  points at the new board-push-credential subsection by name.
+- GitHub behaviour is unchanged: a GitHub App still renders `<slug>[bot]`, and a bare App slug is
+  still not a role login — the fail-close that stops a user named after an App slug from
+  satisfying a role comparison.
+- GitLab `ReviewsAtHead` no longer aborts the whole review read when the project
+  approval-configuration route (`GET /projects/:id/approvals`, Premium+) answers 403 instead of
+  404 — the shape gitlab.com's Free tier actually returns. A 403 there now degrades head-pinning
+  only (same as the documented CE/Free 404 gap), but only when the per-MR approvals read that
+  follows still succeeds, so a genuinely rejected credential (which 403s that read too) still
+  fails the whole read closed. Previously every `deskpost review` / `security-review` on a
+  gitlab.com Free-tier project aborted outright.
+- GitLab `draft_status` now maps to MERGEABLE instead of UNKNOWN in the PR/MR mergeable-state
+  read. `deskflip` re-evaluates its `mergeable` condition against a change that is still a
+  draft (it un-drafts only once every other condition has held), and every change this desk
+  opens starts life as a draft — so with the old mapping, the condition could never pass for
+  the ordinary starting state of a fresh GitLab change. Every other policy-hold status keeps
+  its existing UNKNOWN mapping unchanged.
+- GitLab runbook (`docs/adopting-assay-gitlab.md`): named the `ASSAY_REPO_FORGES` forge-binding
+  key beside the existing boot-time keys, added a dedicated board-push-credential subsection for
+  `STATUSGEN_PUSH_TOKEN` (token kind, scope, minimum role, variable visibility) and corrected the
+  runners section's pointer, which previously sent readers to the wrong section for the wrong
+  credential, and added a source-pin-lane subsection cross-referencing the other forge's runbook
+  for GitLab-plus-native-Windows adopters.
+- Obtaining an App installation token no longer costs a process and an API round trip per
+  forge read. `deskkit.RoleTokenForOwner` now memoises per `(role, account)` for the life of
+  one process, bounded at 45 minutes — strictly inside `desktoken`'s own 50-minute reuse
+  window — so a board read over N repositories forks `desktoken` once per ACCOUNT rather than
+  once per read, and `deskflip` mints once per run instead of twice (#1036).
+- Planned in the same brief: the drift self-check resolves only the bare `desk-tools` pin name,
+  so a consumer pinning the per-platform `desk-tools-<os>-<arch>` line the distribution contract
+  specifies reports a permanent could-not-check as STALE; body/schema refusals in `deskpost`,
+  `deskpr` and `deskreply` never name the offline check that would have caught them; and a
+  subcommand `--help` is charged to the append-only audit ledger as a refusal.
+- The GitLab CI template `statusgen init --forge gitlab` emits, and `docs/adopting-assay-gitlab.md`,
+  now require the regen job's push credential `STATUSGEN_PUSH_TOKEN` to be a **masked and
+  protected** CI/CD variable; both previously said masked only. A masked-only variable is still
+  injected into merge-request pipelines, which run the MR branch's own CI file, so a member who
+  could open an MR could read the token and push to the default branch past the merge gate.
+  Protected limits it to pipelines on protected refs — the default branch the regen job runs on,
+  which the adopting doc's provisioning step already protects. The template's guidance comment and
+  stop message, and the doc's UI and API creation forms (`protected=true`), carry the requirement;
+  the scaffold test pins it. Found by a GitLab adopter cell's review.
+- The GitLab forge backend now serves the bulk open-issue read, so `issueboard` and
+  `deskboard queue` work on a GitLab-backed project instead of failing closed with
+  could-not-check. The read was withheld on the ground that its summary is only ever
+  consumed paired with the issue trust-events read — but that read has since been served
+  on GitLab, so the pairing the refusal protected is exactly what was already available,
+  and withholding the list was all that kept the issue lane blind. A GitLab adopter no
+  longer has a working merge-request board next to a permanently blind issue lane.
+- The `deskclose` mutation gate (`cmd/deskclose/mutations.json`) is load-bearing again. Its
+  "the dispute posts its reason but never applies needs-decision" plant matched the old
+  `addLabel(repo, n, spec)` call; when the label write started carrying the item's kind
+  (`addLabel(repo, n, it, spec)`, so a GitLab issue is never labelled as the merge request
+  sharing its number) the plant's text stopped resolving, muhar reported it could-not-mutate,
+  and the truth-suite's `mutation-gate (cmd/deskclose/mutations.json)` leg went red on main —
+  not because a guard failed, but because that one guard was no longer being tested. The plant
+  now names the current call; the gate's baseline and control were green throughout.
+- The benign keep-current classification still runs, and is still reachable, wherever both shas
+  ARE established — pinned by a test alongside the two degrade cases, so a future change cannot
+  quietly retire it in the name of never comparing.
+- The cause was a seam between two correct halves. The review reduction deliberately folds "the
+  head advanced past the review" and "one of the two shas was never established" into a single
+  not-at-head answer, so an unread sha can never be mistaken for an at-head one. The
+  benign-merge (`MERGE-CURR`) arm then read that one answer as if it always meant the first, and
+  asked for a diff between the reviewed sha and the head — which, in the second case, has no
+  endpoints to span.
+- The drift self-check resolved only the bare `desk-tools` pin name, so a consumer pinning
+  the per-platform `desk-tools-<os>-<arch>` line reported a permanent could-not-check as
+  STALE. It now tries the per-platform artifact name as a second EXACT lookup — the bare line
+  still wins when both are present, and the trailing-space prefix match is untouched.
+- The label reconciliation now carries WHAT it is labelling: `LabelChange` names its target as
+  an issue or a change (PR/MR), and every caller states it — `deskfile new` and `deskclose`'s
+  issue arm label the issue, `deskflip`, `deskpost` and `deskdispatch` label the change. On
+  GitLab an issue target goes to `PUT /projects/:id/issues/:iid` with the same
+  `add_labels`/`remove_labels` reconciliation the MR route uses (and the same ensure-label
+  step). GitHub shares one number space and one labels endpoint for both kinds, so its requests
+  are unchanged.
+- The login a desk ROLE is expected to act under is now resolved from the forge its roster entry
+  declares, instead of always rendering GitHub's `<slug>[bot]`. On GitLab a service account is
+  attributed by its bare username, so the expected reviewer login never matched an actual one —
+  and because the actor comparison carries an is-an-App flag as well as a name, the two could not
+  match even when the slug was identical. Every gate keyed on that comparison read "no verdict"
+  for approvals that were really there.
+- The open-issue walk follows GitLab's page-continuation header to exhaustion and
+  **refuses** rather than truncating if a project is still paginating at the page ceiling.
+  The issue summary carries no truncation field and the issue lane reads an issue's absence
+  from the list as *closed*, so a silently short read would have retired tracking rows for
+  issues that are still open.
+- The review board reduced the same approval to no-verdict, classifying an approved merge request
+  as NEEDS-REVIEW and firing its UNREVIEWED alarm on it indefinitely. The board and the flip gate
+  share the expected login, so both surfaces are fixed by the same resolution rather than
+  separately.
+- The row's diagnostic now names WHICH sha was missing and on which change, instead of a bare
+  `compare needs both base and head` that identified neither.
+- This is a fix to the CONSUMER, not to any forge backend. On GitLab an approval carries no
+  commit sha and — unless the project resets approvals on push — survives a push, so the GitLab
+  backend reports no sha rather than stamping the current head; doing otherwise would
+  manufacture exactly the at-head evidence the ready-flip gate exists to require. That reading
+  is correct and is unchanged. GitLab verdicts only began reaching this code path once a desk
+  role's expected login started resolving per-forge, which is why the arm had never been
+  exercised there before.
+- `--lint` got **much faster, without checking less**. Two changes account for it: the attribution
+  cross-check now builds the first/last author of every path in **one** `git log --name-only` walk
+  instead of a `git log` pair per brief, and `parseBriefFile` is memoised on (path, mtime, size)
+  so the thirty-odd checks that each walk the brief tree stop re-parsing the same file. Measured on
+  this repository (24 streams, 165 briefs): git subprocesses per `--lint` **254 → 131**, offline
+  wall **6.05 s → 3.90 s**, and with the forge reads gone the same lint that took **23.66 s** now
+  takes **3.90 s**. A path the walk cannot account for falls back to the per-path read and a file
+  that changes mid-run is re-parsed, so neither is allowed to change a check's answer — only its
+  cost.
+- `GitLabForge.ReadMergeHold` no longer trusts a released reply's `Head` unless that specific
+  reply's own author matches the discussion's resolver. GitLab does not lock a resolved
+  discussion against further replies, so any project member with ordinary comment rights
+  could previously post a correctly-shaped `assay-merge-hold: released` reply naming an
+  unreviewed head into an already-resolved thread and have it read as "approved at current
+  head." A released reply from anyone but the resolver is now ignored, reporting `Head: ""`,
+  which the reviewer-approved condition already treats as a mismatch requiring re-arm/refusal.
+- `cellctl check` on the `gitlab` arm gains a row proving `git ls-remote` succeeds against
+  `CELL_REPO` with prompts disabled, using the same helper, so a broken or missing token is
+  caught at check time rather than as a boot hang.
+- `cellctl desk`'s claude-harness boot no longer prints a misleading "could not enable
+  assay@assay — reinstall it" NOTICE when `claude plugin enable` fails only because the
+  plugin is already enabled; the NOTICE is still printed for a genuine enable failure.
+- `cellctl up --cockpit orca` registers and selects the cell's git CHECKOUT with Orca (`CELL_REPO`) instead of the cell directory, which Orca refuses (`Not a valid git repository`); every `orca terminal create --worktree path:<cell dir>` used to 404 with `selector_not_found` and the operator was told to open the role windows by hand. The `--cwd`-only orca fallback keeps working (the selected path is declared before either branch).
+- `cellctl`'s boot fetch on a `gitlab` cell now runs with `GIT_TERMINAL_PROMPT=0` and an inline
+  credential helper reading `DESKD_GITLAB_TOKEN_FILE`, instead of hanging on an interactive
+  `Username for 'https://gitlab.com':` prompt (or failing with `fatal: could not read Username`)
+  — the `github` arm is unchanged, since the operator's `gh` credential helper already answers
+  for it.
+- `deskboard actions` no longer fails the WHOLE sweep when one change carries a review verdict
+  the forge could not pin to a commit. A single such change exited the command 6 with an empty
+  stdout and the message `compare needs both base and head`, so a review desk lost sight of its
+  entire queue — not just the affected row.
+- `deskboard` / the desk tools' `StatusgenPin` reader no longer refuses "no statusgen pin" on a pin file written per `docs/adopting-assay.md` (per-platform `statusgen-<os>-<arch>` lines only): the bare `statusgen` line stays preferred, and when it is absent the reader falls back to the host platform's line (`.exe` on Windows). A malformed bare line still fails closed. `statusgen init` now scaffolds the bare `statusgen` line alongside the per-platform lines so a new adopter gets both (#1088).
+- `deskdispatch --kit verifier` now emits a verifier-shaped Assignment header instead of the
+  implementer's: no "Open the draft PR" scaffold, no `export DESK_LOOP=worker-desk`, and the
+  dispatch claim is released once the verdict lands rather than on a branch push. Before the
+  fix, `assemblePrompt` recognized only `--kit review` as non-worker, so `verifier` fell into
+  the worker `else` branch and inherited its scaffold wholesale — a verifier agent following
+  the prompt literally would have opened a spurious draft PR under the worker App's identity
+  for a plain verify pass. (#1029)
+- `deskfile attach` can now target a GitLab **issue** whose project also carries a merge request
+  with the same number. GitLab numbers issues and merge requests in separate sequences, so `#4`
+  and `!4` routinely both exist; the bare-number target read refused that case ("carries BOTH
+  issue #N and merge request !N") and, with no way to state the kind, every such number was
+  un-attachable (seen on a GitLab adopter cell: `--to 4` and `--to 5` both refused). The verb
+  gains `--kind issue|mr` (default `issue` — attach is an observation on an issue; `pr` is an
+  alias of `mr`), and the kind drives BOTH the target's state read and the note's endpoint
+  (issue notes ↔ merge-request notes), so the check and the write address the same object.
+  On GitHub (one number sequence) the kind is only validated against what the number is —
+  asking for an issue at a pull request's number is could-not-check (exit 6), never a comment
+  on the other kind. An unknown kind is refused (exit 5); the bare-number behaviour of other
+  callers is unchanged.
+- `deskfile new` on a GitLab project no longer stamps its labels on the MERGE REQUEST that
+  happens to share the new issue's number, leaving the issue itself unlabelled. GitLab numbers
+  issues and merge requests in two separate sequences, and the label write behind `deskfile`
+  only knew how to address a merge request — so `to:<role>` addressing and the label-keyed
+  dedupe both silently missed every issue it filed. Field evidence from a GitLab adopter cell:
+  three `deskfile new` runs each labelled an unrelated, already-merged MR and left the issue
+  unstamped.
+- `deskflip` therefore refused `reviewer-approved` on a GitLab merge request that the rostered
+  reviewer had APPROVED at the current head, so no GitLab change could ever be flipped
+  ready-for-human.
+- `deskflip`'s `mergeable` condition on GitLab no longer refuses forever on a brand-new draft
+  merge request: `draft_status` and `discussions_not_resolved` are treated as non-blocking
+  there, with the reviewer-approved condition immediately after doing the real gating. This
+  supersedes an interim same-day fix that mapped `draft_status` to `MERGEABLE` in the shared
+  GitLab merge-status mapping — that mapping is reverted to what it was, and the leniency
+  moves to the one condition it belongs to.
+- `deskflip`'s checks-green could-not-check, when a branch is protected but the admin-free
+  rules API names no required contexts (the tell of CLASSIC branch protection, invisible to
+  that API), now names the exact permission gap: the calling App token lacks
+  `administration: read`, the permission the legacy branch-protection endpoint requires to see
+  classic protection's required-checks list. Before the fix the message described only the
+  mechanism and never the fix, so every draft PR on any classically-protected repo in the
+  fleet read as an ordinary could-not-check and was re-litigated by a human on every flip
+  attempt instead of being
+  escalated once as a permission grant. `RequiredStatusChecks` itself was already correct —
+  it tries the legacy endpoint first and uses it directly whenever it is readable (#760); a
+  new fixture pins that direct-success path so a future change cannot regress it once the
+  permission is granted. (#1020)
+- `deskpost comment` gains `--kind issue|mr`, reusing the `TargetKind` / `GetIssueTyped` /
+  `PostCommentTyped` typed forge operations, so it can target a GitLab merge request or issue
+  explicitly when the same number names both (GitLab numbers the two in separate sequences).
+- `deskpost review` now refuses a body that carries a `Security-Review:` line, mirroring the
+  refusal `deskpost security-review` already applied to a body carrying a `Verdict:` line. The
+  guard was one-directional: handed a security-lane body — which happened when two reviewer
+  lanes dispatched to one PR shared a scratchpad and one lane's default body filename was read
+  by the other — `review --verdict approve` submitted a `Security-Review: pass` as an
+  **APPROVED** review. That is the exact same-head APPROVE shape the verb split exists to keep a
+  security pass out of (a pass posts as COMMENTED so the flip gate can read it while GitHub's
+  review roll-up, and any standing CHANGES_REQUESTED from the shared App, are left alone). The
+  stray review had to be dismissed by hand. The refusal is exit 5 before any network call and
+  names the verb to use; `--verdict request-changes` with a security body is refused the same
+  way. The refusal uses the same emphasis-tolerant reader the flip gate uses, so a body carrying
+  `Verdict: approve` plus `**Security-Review: pass**` — invisible to the strict write-side parse
+  but read downstream as a security pass — is refused too; a `> `-quoted citation of the other
+  lane's line still posts. Existing tests that posted security verdicts through `review` now use
+  `security-review`.
+- `deskpost`'s two largest refusal classes — a review body with no `## ` heading and one with
+  no verdict line — now name the offline rehearsal (`--dry-run`) that would have caught them.
+- `deskpr create`/`update`/`edit` now ask the public-repo gate's visibility read through the
+  SAME resolved forge backend used for every other operation on the change, instead of a
+  hardcoded GitHub-only client — a GitLab-resolved repo's visibility is now read from GitLab's
+  own API rather than failing closed on a GitHub 401 for a project GitHub has never heard of
+  (#1054).
+- `deskpushguard`'s pre-push foreign-commit check no longer takes minutes on a checkout with many
+  remote-tracking refs. `gitcore.RefsContaining` (the in-process port of `git for-each-ref
+  --contains`) walked every ref's entire history independently — ~1000 refs over ~17k commits cost
+  ~108s per commit ahead of `origin/main`, enough to blow the desk preflight's 45s write-transport
+  probe and keep the review desk from booting. All refs now share one memoised walk, and when the
+  repository carries a commit-graph file its generation numbers cut that walk off exactly (a
+  topological invariant, never a date). Measured on that checkout: the full pre-push run dropped
+  from ~194s to ~1.4s, and the call itself to well under a second. The answer is unchanged and
+  still checked against real git's, now including annotated-tag peeling; an unanswerable question
+  (target is not a readable commit, broken object store) is reported as an error rather than an
+  empty list, so the guard hears could-not-check instead of "no ref contains it". A shallow
+  clone's boundary commits are treated as parentless, exactly as git treats `.git/shallow`, so a
+  push from a `--depth` checkout still gets a real answer rather than a could-not-check.
+- `deskroster width --role <loop>` (the plain, non-`--verbose` read) no longer prints
+  `(source=default, expires=n/a)` while a live width override is in force. The trailer was
+  describing only the RESERVE field of the stored entry, so a plain `deskroster set --role
+  <loop> --width N` — which stores no reserve — read as "default" on the very next read, while
+  `--verbose` correctly reported `source="set by <session> at <time>"`; a coordinator reading
+  the plain line took a live width for a lapsed one. The plain line now renders the same
+  resolved source and expiry the verbose path computes: `(source=set-by:<session>,
+  expires=<RFC3339>)` whenever the stored entry is fresh (width and reserve share that one
+  TTL), and `(source=default, expires=n/a)` only when nothing is stored or the entry has
+  decayed. `--verbose` output is unchanged.
+- `desktoken --forge gitlab <role>` now **serialises** rotate-on-mint per role. Two mints for one
+  role previously both called the GitLab self-rotation endpoint, which invalidates the token the
+  caller presents — the loser got `401 invalid_token`, and the custody file could be left holding a
+  revoked value with no live successor, recoverable only by a group owner re-issuing the PAT.
+  Overlapping mints now queue on a per-role advisory lock held across read-current → rotate →
+  write-verify, so each rotates from the value its predecessor persisted.
+- `desktoken` consults its token cache before it resolves the installation id, so a warm cache
+  hit makes no network call at all. Previously every "reuse cached token" still read the App
+  key, signed a JWT and called `GET /app/installations` to rediscover an installation that
+  changes only on install or uninstall.
+- `deskwt prune --dry-run` is now genuinely read-only. It ran `git worktree prune` — and,
+  with `--reclaim-stale-locks`, unlocked worktrees — before it ever reached the dry-run
+  check. It now uses git's own `--dry-run` for the bookkeeping count, reports the locks it
+  would retire without retiring them, and writes no singleton stamp.
+- `docs/streams/forge-gitlab/brief-11-guard-read-custody.md` cites its consumed changelog fragment through the `CHANGELOG.md` v1.0.8 section instead of the fragment file the release roll deleted, so the board regen on `main` no longer reds on a dangling backticked path (the lint-side question stays open on #722).
+- `fanoutloop plan` no longer offers Next-up rows whose own stream README Status cell has already
+  moved past `todo`/`in-progress` (implemented/verified/done/blocked): `readNextUp` now
+  cross-checks each row against its own stream README before offering it, closing the gap where
+  STATUS.md's rendered `## Next up` table could lag a row's live status (medici-finance/assay#1028).
+- `repohardenguard` no longer shells out to `gh api <endpoint>` — it reads through the typed
+  `RepoHardeningRead`/`ReadFile` ops under the `auditor` identity, closing forge-gitlab/08's
+  Verify row 3 (the whole-tree forge-CLI grep) to 0. The checklist's `Read` cell grammar moves
+  from `gh api <endpoint>` to `read <kind>` / `read file <path>`; the old form is refused by
+  name at parse time.
+- `upgrade-assay` and `deskversion` no longer require a hand-materialised `releases/<vX.Y.Z>.yaml` composition manifest that no release publishes: when the manifest is absent they derive the umbrella's composition from the release's published `checksums.txt` — read from `releases/<vX.Y.Z>.checksums.txt` when materialised (offline), else — only under `--fetch` (opt-in, default off; the tools never reach the network without it and refuse naming the flag when neither local file exists), with `fetching <url>` printed to stderr before every contact — fetched from the release home for exactly that tag (`--release-home` re-points it). A hand-authored manifest still wins when present, and a present-but-unreadable one still refuses. Re-pinning now rewrites `<artifact>-<platform>` lines with that asset's own digest from `checksums.txt`, so an adopter pinned per platform can run the sanctioned re-pin verb at all (#1088).
+
+### Changed
+- **`deskboard` now applies the same author-trust bar on every repo, private or public**
+  (desk-tools/17, #808). The board's PR classifier previously swapped in a STRICTER bar
+  (`role App or mapped human only`) on any public/internal/unknown repo, diverging from
+  `deskpost`'s gate — a trusted shared automation login authoring a PR on a public repo was
+  invisible to the review loop even though `deskpost` would happily post a verdict on it.
+  Both tools now answer "may this PR enter the review loop?" with the same predicate
+  (`TrustedAuthor`); an unlisted author is still quarantined unless blessed, and merge
+  authority is unchanged — a human still merges every PR.
+- Brief 10's board row corrected from `todo` to `implemented`: its work merged on 2026-09-11 and
+  the hand-maintained row never moved.
+- The adopter docs now record the permission `deskflip`'s ready-flip actually needs: the
+  **reviewer App requires `Administration: Read-only`**. `deskflip` reads a branch's required status
+  checks through the legacy branch-protection endpoint first, and that endpoint is the only one that
+  can read a required set the **rules API cannot express** — the rules API surfaces rulesets only,
+  and within a ruleset only a `required_status_checks` rule carries contexts. Two different
+  configurations therefore look identical to the gate (`protected: true`, no contexts named): a
+  branch under **classic** protection, and a branch under a **ruleset that carries no
+  `required_status_checks` rule** — say, one whose rules are only `deletion` and `non_fast_forward`.
+  The second is the easier one to have by accident. In both, the gate fails closed to
+  could-not-check by design and no PR on that repo is ever flipped ready.
+  `docs/adopting-assay.md` gains a *Required checks a ruleset does not express* subsection under
+  `setup-reviewer-app` — the mechanism, why failing closed is right, and **both** human remedies
+  stated neutrally: grant the reviewer App `Administration: Read-only` (the durable fix, and the
+  only one that works for a branch genuinely under classic protection), or add a
+  `required_status_checks` rule to the branch's ruleset (no permission change needed, but it fixes
+  only the ruleset case and changes what the forge enforces at merge time). The grant's sequence is
+  spelled out — toggle, accept on each installation, then re-mint, since an issued token keeps its
+  old scopes for `desktoken`'s 50-minute cache window. Every place that enumerated the reviewer
+  App's grant now names the permission: the App inventory table, the post-install checklist, the
+  primitive, the Verify read-back, and Scenario 2's fleet-wide install step.
+  `docs/enforcement-model.md` records that role-scoped **reads** sit outside `requiredDuties`, so a
+  missing one costs no boot, only every flip. Which roles: the reviewer App REQUIRES it (each
+  instance separately — the grant is per App installation, so a cell's own reviewer twin needs its
+  own); the desk App SHOULD have it for board reads of the required set; worker, verifier and the
+  inbound-lane Apps do not. The `deskapps` tier manifests gain it too, so a future install is not
+  born blocked. `docs/adopting-assay-gitlab.md` states the GitLab equivalent honestly: there is no
+  toggle of that shape, the equivalent reads are protected-branch + external-status-check API calls
+  under the plain `api` scope, and whether the reviewer's Developer level can make them is
+  **could-not-check** until read back on the instance. (#1020)
+- The audit ledger is no longer parsed whole to answer questions that need one line.
+  `Guard()` reads the last entry by a bounded tail read, and the rate limiter reads
+  backwards only as far as its own meters would have read — falling back to the full parse
+  whenever its answer is not provably identical, so no budget, breaker or idempotency
+  verdict changes. Measured on a 109 MB / 460,000-row ledger: the guard's p50 goes from
+  883 ms to 0.09 ms (#1035).
+- The critical path is re-cut into three tracks, with the open one first. **Its verified head is
+  brief 14**: two of the seven verbs in a review tick still send the public-repo gate's live
+  visibility read to a hardcoded GitHub client instead of the backend they already resolved, so
+  on a GitLab project the desk's workpad and its Evidence landing have no working path.
+  Two tempting-but-wrong heads are recorded with what was checked to rule each out.
+- The desk-role bodies now say what a scheduled, one-shot invocation should do. Previously
+  they described only the standing window, so a role invoked as a bounded job could end only
+  in its own deadline, with nothing printed.
+- The head moved while the plan was being written, and the plan says so. It started at brief 13 —
+  on GitLab a review approval carries no commit sha, the board's benign-merge arm asked for a diff
+  against that empty sha, and the per-change refusal came back as a whole-sweep error, blanking
+  the queue. That arm was fixed mid-pass and the board is visible again, so the blocker moved one
+  step down the ceremony within the hour. Brief 13 stays on the plan re-baselined onto what
+  landed: the instance is closed, the class of four further unguarded whole-sweep returns is not.
+- The ledger rotates daily into `audit.jsonl.<YYYY-MM-DD>` segments. Nothing is deleted and
+  no state is reset: every reader — including `deskaudit recover` — spans the segments, so
+  the rate-limit counter and the idempotency store see exactly the history they saw before.
+- The stale-issue alarm on the `--lint` gate is now opt-in and reads **open issues only**, through
+  the seam. It previously shelled one list-every-issue-ever call per configured repo, serially,
+  under every `--lint` — measured at 13.9 s across ten repos on this repository — to print one
+  advisory line whose inputs were open issues all along. It is also withheld entirely when any
+  repo in the set could not be read: a debt count assembled from a subset understates the debt,
+  and an understated alarm reads as "we looked and it is fine".
+- `deskboard` brief 27 is authored: the plan to put `prs`, `stalled` and the always-on
+  policy-drift probe onto the bounded worker pool `actions` and `health` already use, to make
+  `throughput` resolve its roots once instead of re-running three whole verbs, and to evaluate
+  `deskflip`'s conditions cheapest-first so the commonest refusal (`checks-green`) stops being
+  the most expensive one to reach.
+- `deskboard`'s last three serial repo loops run on the bounded worker pool `actions` and
+  `health` already used: `prs`, `stalled` (repos AND, inside each, that repo's PRs) and the
+  always-on policy-drift probe that rides inside `actions`. Measured back to back on one
+  operating desk host with a ten-repo roster, structurally identical output: `stalled`
+  84.82s → 12.63s, `prs` 19.82s → 6.63s, `actions` 33.59s → 24.04s.
+- `deskflip` evaluates its conditions cheapest-first, as far as a recorded diagnostic rule
+  allows: `mergeable` moves from seventh to fourth (it costs no forge read at all) and
+  `model-floor` from fourth to seventh (it buys a paginated label-event timeline). A refusal
+  on a CONFLICTING PR now costs one forge read instead of four. The check rollup at head,
+  previously fetched twice by two conditions in the same run, is fetched once — each still
+  reporting a failure under its own condition's name.
+- `desktoken` no longer appends an audit row when it serves a cached token. One row per
+  real mint, and every refusal and failure still recorded.
+- `deskwt prune` removals are **batched**: one `git worktree prune` and one
+  `git worktree list --porcelain` after the loop, instead of both per removal. The positive
+  deregistration check is kept, not dropped — every removed path is verified against that
+  single listing, and one that is still registered is reported by name and not counted as
+  removed.
+- `deskwt prune` — the boot-step sweep every desk window runs — no longer asks one question
+  of one history once per candidate. It walks `origin/main` **once per sweep** into an
+  ancestor-hash set (the per-candidate merge test becomes a HEAD resolve plus a map lookup,
+  replacing go-git's unmemoized ancestor walk, which ran to exhaustion for the 19-in-20
+  candidates that are genuinely unmerged); runs the merge gate **before** the full-worktree
+  `Status()` it used to run first, so that walk happens only for candidates that can still
+  be removed; shares **one object cache** across the sweep instead of building a fresh one
+  on each of the 3–4 repository opens per worktree; and drops the commit COUNT from the
+  "unpushed" skip string, which cost two full history walks per held worktree to render a
+  number nothing parses. Measured on a synthetic repository with a 5,000-commit mainline:
+  the per-candidate ancestry work alone was ~372 ms/candidate before; a whole sweep over
+  600 worktrees is now ~2.8 s, with `origin/main` walked exactly once.
+- `dispatch` and `awaiting` resolve their stream roots through one shared resolver and read
+  them concurrently, and `throughput` resolves them once for the whole run instead of twice:
+  47.65s → 29.10s, identical output. A failed shared resolution blinds BOTH stages it fed,
+  each naming it — never a counted zero.
+- `docs/adopting-assay.md` and `docs/adopting-assay-gitlab.md` document the new `auditor`
+  identity (GitHub App permissions, GitLab role/token) per the #857 ruling's docs half, and
+  also close a pre-existing gap where the `cell-issues` role was undocumented on both pages.
+
 ## v1.0.8 — 2026-09-14
 
 ### Added

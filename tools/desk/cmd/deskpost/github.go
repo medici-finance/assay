@@ -585,6 +585,31 @@ func (c *ghClient) getIssue(n int) (*issueInfo, error) {
 	return &i, nil
 }
 
+// getIssueTyped is getIssue with the caller's stated kind VALIDATED against what the
+// number is — GitHub's own GitHubForge.GetIssueTyped does the identical check, but this
+// binary's GitHub path runs its own hand-rolled REST client (this file), not deskkit.Forge,
+// so the validation is repeated here rather than shared. GitHub numbers issues and pull
+// requests in ONE sequence, so there is nothing to ROUTE on (unlike GitLab) — the one
+// /issues/{n} read answers both — but a caller that said "issue" and got a pull request
+// (or the reverse) would go on to act on the wrong kind of object, so a mismatch is
+// reported as a could-not-check naming both, never a silent hand-back of the other kind.
+func (c *ghClient) getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, error) {
+	iss, err := c.getIssue(n)
+	if err != nil {
+		return nil, err
+	}
+	isPR := iss.PullRequest != nil
+	if isPR && kind == deskkit.TargetIssue {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: #%d is a pull request, not an issue — state the kind you mean (--kind mr)", n), nil)
+	}
+	if !isPR && kind == deskkit.TargetChange {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: #%d is an issue, not a pull request — state the kind you mean (--kind issue)", n), nil)
+	}
+	return iss, nil
+}
+
 // isNotFound reports whether err is a 404 from the REST layer. A 404 is the ONLY status
 // that licenses the kind re-resolution below: every other failure (403, 5xx, transport)
 // says nothing about what the number IS, and must propagate unchanged.
@@ -834,10 +859,10 @@ func (c *ghClient) checkRunsAt(sha string) (*checkRunsResp, error) {
 
 // postReview submits a head-pinned review AS THE APP. event is APPROVE or
 // REQUEST_CHANGES; commit_id pins the verdict to the reviewed head.
-func (c *ghClient) postReview(pr int, head, event, body string) error {
+func (c *ghClient) postReview(pr int, head, event, body string) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", c.owner, c.repo, pr)
 	in := map[string]any{"commit_id": head, "event": event, "body": body}
-	return c.doJSON(http.MethodPost, path, in, nil)
+	return "", c.doJSON(http.MethodPost, path, in, nil)
 }
 
 // postComment posts a plain issue comment AS THE APP.
@@ -1035,6 +1060,17 @@ func (c *ghClient) markReadyForReview(nodeID string) error {
 		return deskkit.Unverifiable("markPullRequestReadyForReview GraphQL error: "+out.Errors[0].Message, nil)
 	}
 	return nil
+}
+
+// readMergeHold / setMergeHold: the ghClient path is GitHub-only (branch protection is
+// GitHub's server-side twin — the forge-gitlab merge-hold brief), so both are the typed
+// not-applicable, unconditionally, and issue no request.
+func (c *ghClient) readMergeHold(pr int) (*deskkit.MergeHold, error) {
+	return &deskkit.MergeHold{State: deskkit.MergeHoldNotApplicable}, nil
+}
+
+func (c *ghClient) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return deskkit.ErrMergeHoldNotApplicable
 }
 
 // RepoVisibility implements deskkit.RepoInfoFetcher for the App-authenticated client.

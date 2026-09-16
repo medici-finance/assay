@@ -370,3 +370,79 @@ checkout by redirecting from the 0600 token file, and `git` reached GitLab throu
 helper that reads that same file. The rotate-on-mint check in §4 row 3 required holding the
 superseded token for one call; it was held in a 0600 scratch file and deleted in the same step
 that read it. The group-owner credential was used for reads only.
+
+## 7. Review-tick appendix — `forge-gitlab/16`, the conformance table
+
+**Status (2026-09-15): the OFFLINE half is recorded; the LIVE half has not run.** The walk
+itself — one review window completing a full tick on a GitLab-resolved Community Edition project
+under per-role service-account credentials — is human-gated (decision issue #1150: which project,
+which credentials, how much the walk may write) and is still owed. Every cell in the LIVE columns
+below reads `could-not-check — live walk not yet run` until that window runs and its operator
+fills the cell from the run. Nothing in this appendix was observed on a live project.
+
+**Reading rule, stated once.** A live row counts as a pass only when the step completed
+*through the verb* — exit code and forge-side effect both recorded, no forge CLI on the
+executing path. A row whose step was completed by a hand-built API call or a forge-CLI
+invocation is recorded as `could-not-check`, never as a pass, whatever the outcome on the
+project: it proves the forge worked, not that the verb did (§2 is the counter-example this
+table exists to not repeat). The tier claim (Community Edition) is a LIVE cell and is empty
+for the same reason.
+
+**What the OFFLINE column is.** For each verb, the forge operations it calls on a
+GitLab-resolved project were enumerated from the verb's source and matched against the GitLab
+contract corpus (`tools/desk/internal/deskkit/forge_gitlab_test.go`, `TestForgeGitlabGolden`,
+fixtures under `tools/desk/internal/deskkit/testdata/forge_gitlab_golden/`). A golden pins the
+full request footprint (method, escaped path, body) and the mapped result or error
+classification for one operation against a recorded fixture, so a later reader can re-establish
+the mechanical fact with no project: `cd tools/desk && go test ./internal/deskkit/ -run
+TestForgeGitlabGolden -v`. Every verb's success path was already pinned; the walk's offline
+half added, per verb, at least one REFUSAL the verb is built on (the `negative` rows), and
+three entries in `tools/desk/internal/deskkit/forge-gitlab-mutations.json` that redden them.
+The offline column verifies the *backend's* contract for each operation, not the verb's own
+guard ladder above it — that ladder is what the live row measures.
+
+### 7.1 Per-verb table (ceremony order)
+
+| Kind | Command | Forge operations on a GitLab-resolved project | Live exit | Live forge evidence | Live verdict | Offline goldens (success · refusal) | Offline verdict |
+|---|---|---|---|---|---|---|---|
+| verb | `deskboard actions` | `ListOpenChanges`, `PRTrustEvents`, `ReviewsAtHead`, `ListLabelEvents`, `GetPullRequest`, `ListChangedFiles`, `ChecksAtHead`, `ReadFile`, `ListRecentCommits`, `RepoVisibility`; `CompareRefs` and `ListWorkflowFiles` hit the backend's declared gaps and degrade their own row | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `list_open_changes` · `list_open_changes_forbidden`; `pr_trust_events` · `pr_trust_events_forbidden`; `reviews_at_head_approvals_pinned` · `reviews_at_head_ce_404_degrades`, `reviews_at_head_gitlab_free_403_degrades`; `list_label_events`; `get_pull_request` · `error_forbidden_tier`; `list_changed_files`; `checks_at_head`, `checks_at_head_no_pipeline`; `read_file`; `list_recent_commits`; `repo_visibility`; `compare_refs_gap`, `list_workflow_files_gap` | PASS — every operation pinned; the forbidden list is a classified failure with one request, never an empty queue |
+| verb | `deskdispatch --kit review --pr <N>` | `ApplyLabels` (target `change`, the `authorization-needed` queue label: ensure-then-apply in one PUT). The model-stamp step that precedes it now stamps through the resolved Forge on both backends (#1158, merged 2026-09-15) | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `apply_labels_authorization_needed`, `apply_labels_existing_label_ok` · `apply_labels_refuses_unset_target`, `apply_labels_refuses_unnamed_label` | PASS — queue-label apply pinned both when the project label must be created and when it already exists; the model-stamp step is now on the seam too (#1158) and unproven live like every other row |
+| verb | `deskpost review` | `GetPullRequest`, `ListLabelEvents`, `RefExists`, `ReviewsAtHead`, `PRTrustEvents`, `RepoVisibility`, `GetCommit`, `PostReview`, `ReadMergeHold`, `SetMergeHold` | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `post_review_approve`, `post_review_request_changes`, `post_review_comment` · `post_review_unknown_event`; `repo_visibility` · `repo_visibility_missing_field_refuses`; `ref_exists_present`, `ref_exists_absent` · `ref_exists_non_branch_namespace_refused`; `pr_trust_events` · `pr_trust_events_not_visible`, `pr_trust_events_forbidden`; `get_commit` · `get_commit_user_lookup_forbidden`; `read_merge_hold_*`; `set_merge_hold_release`, `set_merge_hold_rearm` · `set_merge_hold_absent_refused` | PASS — the verdict write is pinned per event (note-then-approve for APPROVE, so a failure between the two leaves reasoning without a grant); an unknown event is refused before any request |
+| verb | `deskfile new` | `SearchIssues` (dedupe), `ListLabels` (stamp probe), `FileIssue`, `ApplyLabels` (target `issue`) | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `search_issues` · `search_issues_forbidden`; `list_labels`; `file_issue` · `file_issue_forbidden`; `apply_labels_issue` · `apply_labels_refuses_unset_target` | PASS — the dedupe read's failure is classified (the verb refuses rather than mint a duplicate); the stamp lands on `/issues/:iid`, never the same-numbered merge request |
+| verb | `deskreply --workpad` | `RepoVisibility` (public-repo gate through the resolved backend), `GetPullRequest`, `ListComments`, `EditComment` (edit in place) or `PostComment` (first workpad) | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `repo_visibility` · `repo_visibility_missing_field_refuses`; `get_pull_request`; `list_comments` · `list_comments_forbidden`; `edit_comment` · `edit_comment_refuses_a_foreign_id`, `edit_comment_refuses_a_project_swap`; `post_comment_on_merge_request` | PASS — the edit is pinned to the note id's own project; a foreign or project-swapped id is refused with no request |
+| verb | `deskevidence` | `ReadFile`, `RepoVisibility`, `WriteFile` (direct, or on a side branch with `StartBranch` when the default branch answers the `DefaultBranchNotWritable` sentinel), `CreateDraftChange` | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `read_file` · `read_file_absent_not_found`; `write_file_updates_existing`, `write_file_creates_with_start_branch` · `write_file_default_branch_closed`, `write_file_shrink_refused`; `create_draft_change` · `create_draft_change_not_marked_draft` | PASS — the protected default branch is detected from the project read with no write call; an append-only shrink is refused after the idempotency read and before any write |
+| verb | `deskflip` | `GetPullRequest`, `ReadMergeHold`, `ReviewsAtHead`, `ChecksAtHead`, `RequiredStatusChecks`, `ListLabelEvents`, `ListChangedFiles`, `SetMergeHold` (re-arm on a stale head), `MarkReadyForReview`, `ApplyLabels` (post-flip label swap) | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run (the pipeline check the flip requires, #1125, was fixed by PR #1134 merged 2026-09-15 and is unproven live) | `mark_ready_for_review`, `mark_ready_for_review_already_ready` · `mark_ready_for_review_foreign_id`, `mark_ready_for_review_refuses_marker_only_title`, `mark_ready_for_review_still_draft_after_strip`; `checks_at_head`, `checks_at_head_no_pipeline`; `required_status_checks_pipeline_gated`, `required_status_checks_none` · `required_status_checks_refuses_empty_branch`; `read_merge_hold_resolved_at_head` · `read_merge_hold_unresolved`, `read_merge_hold_resolved_by_non_reviewer` | PASS — the flip is idempotent (already-ready emits no write) and refuses both a marker-only title and a change still draft after the PUT |
+| negative | any write verb, with the write the verbs are built to REFUSE | the walk performs at least one refused write through a verb and records the refusal and the control that fired | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | every `*_refuses_*` / `*_refused` / `*_forbidden` golden named above: eleven added by this half, each with the request list ending before the write | PASS — offline only: the backend refuses on the recorded input with no write emitted; the live negative row is the one that proves the VERB's guard fires |
+| tier | Community Edition, the two disclosed degradations recorded as degradations | — | — | could-not-check — live walk not yet run | could-not-check — live walk not yet run | `reviews_at_head_ce_404_degrades`, `reviews_at_head_gitlab_free_403_degrades`, `error_forbidden_approval_config_tier` | PASS — the CE/Free approval-configuration route's 404 and 403 both degrade head-pinning rather than failing the read closed |
+
+### 7.2 Close-out — the standing adopter reports
+
+The brief's close-out set. Each report gets exactly one of `delivered` (with the row that
+proves it), `still-open` (with what was observed), or `could-not-check` (with what prevented
+the observation). A code read is not the instrument; until the live walk runs, every verdict is
+could-not-check and the pointer names the row that will decide it.
+
+| Report | Verdict | What prevented the observation / the row that will decide it |
+|---|---|---|
+| #655 | could-not-check | live walk not yet run; a boot-path report, decided by the walk's boot (mint + roster) preceding row 1 |
+| #667 | could-not-check | live walk not yet run; boot path, same as above |
+| #668 | could-not-check | live walk not yet run; boot path, same as above |
+| #671 | could-not-check | live walk not yet run; boot path, same as above |
+| #676 | could-not-check | live walk not yet run; boot path, same as above |
+| #677 | could-not-check | live walk not yet run; boot path, same as above |
+| #678 | could-not-check | live walk not yet run; boot path, same as above |
+| #642 | could-not-check | live walk not yet run; boot path, same as above |
+| #651 | could-not-check | live walk not yet run; the GitLab-side confirmation of the front-door docs is the whole tick |
+| #896 | could-not-check | live walk not yet run; its runbook half landed under `forge-gitlab/15`, its field half is the walk's board row |
+| #798 | could-not-check | live walk not yet run; verdict row and escalation row (served on the tree), queue-label row (recorded by the reporter as unproven in production — the `deskdispatch` row above) |
+
+### 7.3 What is still owed, and by whom
+
+The live half: one review window, booted per the GitLab runbook under per-role service-account
+credentials, on a Community Edition project chosen and authorized through #1150, running the
+seven verbs in ceremony order plus the negative row, with no forge CLI on the executing path.
+Its operator fills the LIVE columns of 7.1 from the run and the verdicts of 7.2 from the rows,
+and updates the stream board's finish-line "proven on" line. The review dispatch's model-stamp
+step (#1154) was fixed by PR #1158, merged 2026-09-15 after this appendix was drafted, and is
+unproven live like every other row. The flip's pipeline check (#1125) was fixed by PR #1134,
+merged 2026-09-15 after this appendix was drafted, and is likewise unproven live.

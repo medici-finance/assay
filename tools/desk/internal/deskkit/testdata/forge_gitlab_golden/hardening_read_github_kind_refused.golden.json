@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: gitlab serves no hardening read of kind \"repo\" — it is a github kind; the gitlab kinds are: project, protected-branches, protected-tags, push-rules, approvals",
+  "not_found": false
+}

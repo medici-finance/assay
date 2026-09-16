@@ -62,18 +62,54 @@ func containsBackfillForm(text, stream, num string) bool {
 	return false
 }
 
-// briefStreamNum extracts the (stream, num) pair a backfill match is keyed on,
-// from either a brief-v2 hierarchical id (<cell>:<repo>:<stream>:<NN>) or a
-// legacy "<stream>/<NN>" id.
+// briefStreamNum extracts the (stream, num) pair both the backfill match and
+// the normal PR-trailer join (lifecycle.go's DeriveLifecycle) are keyed on. It
+// accepts every shape either side of the PR<->brief edge can carry: a brief-v2
+// hierarchical id (<cell>:<repo>:<stream>:<NN>, briefv2.go's parseBriefV2ID), a
+// shorter colon form (<repo>:<stream>:<NN> or <stream>:<NN>), or the short
+// "<stream>/<NN>" form a `Brief:` trailer actually carries (deskpr/trailer.go's
+// grammar — every trailer observed on real PRs is this form, never the
+// hierarchical one). For any colon form the LAST two segments are stream and
+// num, mirroring the reduction deskkit.SplitBriefTrailer performs on the
+// PR-body side of this same edge, so a hierarchical brief id and its PR's short
+// trailer always reduce to the same key.
 func briefStreamNum(id string) (stream, num string, ok bool) {
-	if _, _, stream, num, ok := parseBriefV2ID(id); ok {
-		return stream, num, true
+	if strings.Contains(id, ":") {
+		parts := strings.Split(id, ":")
+		if len(parts) < 2 {
+			return "", "", false
+		}
+		stream, num = parts[len(parts)-2], parts[len(parts)-1]
+	} else {
+		parts := strings.SplitN(id, "/", 2)
+		if len(parts) != 2 {
+			return "", "", false
+		}
+		stream, num = parts[0], parts[1]
 	}
-	parts := strings.SplitN(id, "/", 2)
-	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-		return parts[0], parts[1], true
+	if stream == "" || num == "" {
+		return "", "", false
 	}
-	return "", "", false
+	for _, c := range num {
+		if c < '0' || c > '9' {
+			return "", "", false
+		}
+	}
+	return stream, num, true
+}
+
+// canonicalBriefKey reduces a brief id or a PR's `Brief:` trailer value to the
+// same lower-cased "<stream>/<NN>" join key via briefStreamNum, so
+// DeriveLifecycle can match a brief-v2 hierarchical id against the short
+// trailer form a PR body actually carries (see briefStreamNum's doc comment).
+// A value briefStreamNum cannot parse falls back to itself, trimmed and
+// lower-cased, so a malformed id/trailer still gets a stable (if unmatchable)
+// key rather than panicking or vanishing.
+func canonicalBriefKey(id string) string {
+	if stream, num, ok := briefStreamNum(id); ok {
+		return strings.ToLower(stream) + "/" + num
+	}
+	return strings.ToLower(strings.TrimSpace(id))
 }
 
 // matchBackfillPR returns the highest-numbered MERGED pull among pulls whose

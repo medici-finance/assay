@@ -200,12 +200,19 @@ finished `assay:install` run hands you a checklist rather than the impression th
    on it, plus **`administration: read`** so `deskflip` can read the required checks of a protected
    branch whose required set is not expressed in a ruleset; if you run the full desk pipeline, grant those same three
    read scopes to the worker + desk Apps, never to a verifier / inbound-lane App, and grant
-   `administration: read` to the desk App too); the **board-writer App** *only if you turn on branch protection* (`contents: write`
+   `administration: read` to the desk App too); an **auditor App** *only if you run
+   `repohardenguard`* (`Metadata: read`, `Contents: read`, `Administration: read`, and **no write
+   permission of any kind** — a dedicated READ-ONLY identity for the hardening-checklist reads;
+   the rows GitHub shows only to a write-capable caller — `security_and_analysis.*`, a ruleset's
+   `bypass_actors` — report `could-not-check` under this identity and are re-run by a repository
+   admin, and the grant is **never** widened to make them readable); the **board-writer App**
+   *only if you turn on branch protection* (`contents: write`
    only, added to the ruleset bypass — §3 `add-statusgen-ci`); and the **automation identity** the
    fleet runs as. For **each** App: generate the private key (PEM), store it at the config-home
-   (`~/.config/assay/`, mode `0600`) — **never in the repo tree or a committed env file** — install
-   the App, and record its App ID + install IDs where the token minter reads them. See the §2 App
-   inventory rows and `setup-reviewer-app` for the per-App detail.
+   (`~/.config/assay/`, mode `0600` — the auditor's is `auditor-app.pem`) — **never in the repo
+   tree or a committed env file** — install the App, and record its App ID + install IDs where the
+   token minter reads them. The auditor is **not** added to any `--raised-by` attribution role —
+   it never files. See the §2 App inventory rows and `setup-reviewer-app` for the per-App detail.
 3. **Choose the roster VALUES** — naming who the tools obey is a human act, never autonomous: the
    **bless login** (must be your human account), the trusted logins, the allowed repos, and the
    risk-path triggers. Write them to the config-home roster file **and** set the org/repo Actions
@@ -318,6 +325,8 @@ of these is done. Until they are, the honest sentence above is the whole of the 
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
 | **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
 | **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write`, `issues: write`, `contents: write` (the desk tools' required duty set — a reviewer without all three fails the boot preflight) plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it, plus **`administration: read`** so `deskflip` can read required checks a ruleset does not express — classic protection, or a ruleset with no `required_status_checks` rule (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
+| **auditor GitHub App** | A dedicated **READ-ONLY** identity for `repohardenguard`'s repo-hardening reads (op 40 `RepoHardeningRead`) — `Metadata: read`, `Contents: read`, `Administration: read`, and **no write permission of any kind**. A write attempted with its token is refused by GitHub itself; the admin-gated rows it cannot see (`security_and_analysis.*`, ruleset `bypass_actors`) report `could-not-check` and are re-run by a repository admin — never bought back with a wider grant. Optional: only needed if you run `repohardenguard` | operator-provisioned (GitHub org/account), PEM at the config-home as `auditor-app.pem` | GitHub org/account settings — **not a repo file** |
+| **cell-issues GitHub App** | A narrower, per-purpose "write-issues" identity (`issues: write`) — the model the auditor role above follows (inventory delta D2: a per-purpose identity carries the narrowest grant that serves the purpose). Selectable only by NAME (`desktoken cell-issues --repo …`); it is never a loop's default identity. Optional: only needed if a cell files issues under a narrower identity than its loop's own role | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
@@ -344,6 +353,12 @@ the one an adopting team should actually run:
   above; the load-bearing rules are: match the **full** platform (os *and* arch, per the Verify
   below), refuse rather than guess when the line is absent, keep each pinned artifact name distinct
   from any CI-job name, and re-pin (never edit in place) on an upgrade so the bump shows in a diff.
+  **Also carry the bare line** — `statusgen <tag> <sha256>` (same tag; the digest of the platform
+  the desk runs on). It is the line the desk tools (`deskboard` and friends) read first; `statusgen
+  init` scaffolds it alongside the per-platform lines. When it is absent the desk tools fall back to
+  the host platform's `statusgen-<os>-<arch>` line (`.exe` on Windows), so a per-platform-only file
+  still resolves — but a malformed bare line refuses rather than falling back. CI keeps selecting
+  by platform with the trailing space, so the bare line changes no CI behaviour.
 
 **Verify:** the pin line for the **fully detected platform** exists — match os *and* arch, not the
 os family, or a `darwin-amd64`-only pin file passes on a `darwin-arm64` host while the install
@@ -504,7 +519,26 @@ identity* — plan for it before you turn protection on, not after the board sil
 > or rename that accidentally WIPES `docs/streams/`, so keeping the flag permanently would
 > silence that guard.
 
-**Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint.
+> **TRUST ROSTER — both halves need the NON-secret half, or the Evidence-actor check is
+> could-not-check on every run (#1110).** Under GitHub Actions `statusgen` reads its roster from
+> the **environment** (repository/organization Actions **variables**, never secrets). A workflow
+> that passes no `ASSAY_*` variable — which is what the scaffold did before #1110 — regenerates
+> a board that *looks* clean while every roster-backed check (the Evidence-actor check on
+> `verified`/`done` rows: which identity committed each brief's Evidence lines; the trust gates)
+> reports could-not-check, and the job stays green. The scaffolded workflow now carries a
+> workflow-level `env:` block passing the five roster variables through from `vars.*` —
+> `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`, `ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`,
+> `ASSAY_HUMAN_LOGIN_MAP` — and a **Report trust-roster presence** step in each job that prints a
+> `::notice::` naming the variables when `ASSAY_TRUSTED_BOT_SLUGS` is unset, so the gap is loud in
+> the job log. Set them as Actions **Variables** (Settings > Secrets and variables > Actions >
+> Variables) with the values from `configure-roster`; `ASSAY_TRUSTED_BOT_SLUGS` must bind
+> `verifier=<slug>:<bot-user-id>` or the Evidence-actor check has nothing to compare against.
+> They carry logins, numeric ids and role bindings **only** — a token or key never belongs in
+> them. A GitLab adopter has the same gap and a different transport: one CI/CD variable,
+> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — see
+> [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster for CI".
+
+**Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint. Roster: `grep -c 'vars.ASSAY_' …/statusgen.yml` is 5, and the regen job's log shows `role-bindings=` naming your `verifier=` binding rather than `(none bound)` — a `::notice::ASSAY_TRUSTED_BOT_SLUGS is not set` line in that log means the variables are not set yet.
 
 ### PRIMITIVE: install-desk-plugin
 Install the methodology plugin so the skills surface namespaced (`assay:<name>`):
@@ -669,8 +703,13 @@ chmod 600 ~/.config/assay/roster.env
 
 The mode is enforced, not advisory: a group- or world-writable file **or directory**, or one owned
 by another user, is refused with the mode printed. Anything that can write that file names the
-accounts the tools trust. Then set the Actions variables for the reporting half, and add the `env:`
-passthrough to your `statusgen --lint` step.
+accounts the tools trust. Then set the Actions variables for the reporting half, and make sure
+the `env:` passthrough reaches **both** `statusgen` steps — the PR `--lint` half **and** the
+push-to-main regen half (the scaffolded workflow carries it at workflow level; a hand-written one
+that passes it only to `--lint` leaves every regen's Evidence-actor check could-not-check, #1110).
+On GitLab the same five values travel as one CI/CD variable, `STATUSGEN_ROSTER_ENV`, that the
+scaffolded jobs write to this file — see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md),
+section "Trust roster for CI".
 
 **Verify:** every surface is present — the configured-check covers only two of them, so assert all
 five yourself:
@@ -1132,10 +1171,23 @@ from `.assay-versions`.** `statusgen --version` on this lane prints only the bar
 CI-pinned commit, and statusgen cannot be sha-pinned on a source lane this way. The desk-tools'
 `--version` prints `sourceSHA=<shortsha>` — a **short** git SHA (`git rev-parse --short HEAD` at
 build time) — which prefix-matches the 40-hex commit your CI clones and rebuilds (step 1); that
-comparison is what establishes what ran, for desk-tools. Delete any `-source` / `channel-D`
-lines you find in a source-lane `.assay-versions`; they satisfy no check and mislead the next
-operator. (Whether the board tools should additionally *accept* a source pin, rather than only a
-release pin, is an open follow-up — #896; do not fabricate a release pin line to work around it.)
+comparison is what establishes what ran, for desk-tools. A `-source` / `channel-D` line you find
+in a source-lane `.assay-versions` still satisfies no `deskpins --check` rule, and it is not what
+proves this lane — so prefer the CI-pinned commit of step 1 and do not fabricate a release pin
+line to work around anything.
+
+**The board tools no longer read a source-only pin file as "no pin" (#1122).** #896 asked whether
+they should *accept* a source pin rather than only a release pin; for the statusgen pin the answer
+is now yes. `deskboard dispatch` / `awaiting`, and the dispatch stage of `throughput`, look for the
+bare `statusgen ` line, then this host's `statusgen-<os>-<arch>` line, and then a
+`statusgen-source` line — so a pin file carrying only source lines resolves a pin and the board
+runs, instead of exiting 6 and leaving Next-up could-not-check. The source line reports the release
+tag it names when it has one (comparable against `statusgen --version`), else the 40-hex commit;
+one that carries neither is refused with a reason that says so and names channel D, never with
+"no statusgen pin". Two things this does **not** change: a release line still wins when the file
+carries both, and a present-but-malformed release line still fails closed rather than being
+quietly replaced by a source line. Nor does it move the provenance: on this lane the running
+binary is still what you prove, per the paragraph above.
 
 > **Never treat a `deskboard` pin-drift as an all-clear board.** A source-lane install can print
 > `sourceSHA=<newer>` from a binary built more recently than the commit a role worktree was
@@ -1562,6 +1614,7 @@ These are the surfaces frozen at build time — what your cell cannot change wit
 | `tools/desk/cmd/issueboard/board.go` | the system-state and decision-owed label sets the board excludes and escalates on |
 | `tools/desk/cmd/deskroster/sets.go` | the cell name, per-repo relationship and App roles `deskroster repos` prints |
 | `tools/desk/cmd/deskrelease/cut.go` | the default repo `deskrelease` cuts a release from |
+| `tools/desk/cmd/desklabel/vocabulary.go` | the decision-owed label set that forms `desklabel`'s shared (any-role) escalation rows |
 | `tools/desk/internal/deskkit/riskpath.go` | per-repo visibility and risk-path triggers, which decide a diff's risk class |
 | `tools/desk/internal/deskkit/roots.go` | the repo → local checkout root map the multi-repo board walks |
 
@@ -1756,6 +1809,33 @@ downgrade, and cached prior versions are pruned after about 14 days. Moving to a
 version re-points and re-resolves; it is **not a rollback**, and an artifact older than roughly two
 weeks may be unavailable. With no rollback to fall back on, `assay:upgrade-assay` refuses cleanly
 rather than pretending otherwise.
+
+**Where the composition comes from.** Both verbs need each umbrella's *composition* — which
+components at which tag, and each asset's sha256. A release publishes no manifest for it; it
+publishes `checksums.txt`, and that is what the tools read. In order:
+
+1. `<repo>/releases/<vX.Y.Z>.yaml` — a **hand-authored** composition manifest, if you keep one. It
+   wins when present; one that is present but unreadable **refuses** (never a silent fall-through).
+2. `<repo>/releases/<vX.Y.Z>.checksums.txt` — the release's own `checksums.txt`, **materialised**
+   locally. This is the offline / air-gapped path:
+   `gh release download vX.Y.Z --repo medici-finance/assay --pattern checksums.txt -O
+   releases/vX.Y.Z.checksums.txt`.
+3. the release home — `https://github.com/medici-finance/assay/releases/download/vX.Y.Z/checksums.txt`,
+   fetched for exactly that tag, **only when you pass `--fetch`**. Fetching is opt-in: without the
+   flag neither tool touches the network, and when neither local source exists they refuse with a
+   message naming `--fetch` (or materialise the file per step 2). Every fetch prints its exact URL
+   to stderr immediately before contact, whatever the outcome. `--release-home <owner/repo>`
+   re-points it at a mirror. Nothing fetched is cached or written into your repo.
+
+A derived composition names every component the release ships at the umbrella tag, with the
+per-asset digests channel E pins — the same values you would copy from `checksums.txt` by hand, so
+the trust boundary is unchanged (the download is still hash-verified against the pin at install).
+Components you never installed (say, the quality report pack) are reported as *not pinned here*,
+not as a disagreement. Re-pinning rewrites your `<artifact>-<platform>` lines with **that asset's**
+digest, and the bare `statusgen` line with this host's; a line the composition cannot digest is
+carried forward with a warning, never fabricated. "Latest stable" resolves from what is
+materialised under `releases/`, or — under `--fetch` — from the release the release home marks
+latest.
 
 **Verify:** after an upgrade, `deskversion --root <repo>` reports **known** at the new umbrella and
 `deskpins --check` still passes.

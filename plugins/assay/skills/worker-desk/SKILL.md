@@ -299,9 +299,18 @@ could-not-check, never "no repos".
   the target, and STOPS — it cannot close, cannot confirm and cannot dispute, whatever flags it is
   handed, because the role is read from the token's roster binding, not from the caller. The close
   is pr-review-desk's confirm (once the target has merged); a `needs-decision` on the PR means the
-  reviewer disputed it and the item is human:<name>'s. A worker that closes its own PR as superseded
+  reviewer disputed it and the item is human:<name>'s. A dispute leaves the `superseded?` marker in
+  place; it is the WORKER's label, and `desklabel rm <repo> <N> 'superseded?'` under the worker
+  token clears it (any other role is refused, exit 5) — never a raw label write. A worker that closes its own PR as superseded
   by hand has skipped the only independent check on "the other PR carries my scope" — the class of
   error the lane exists to catch. A `superseded?` PR is parked, not orphaned: never re-dispatch it.
+- **A worker's OWN unreviewed draft is the one thing it may withdraw itself**: `deskclose
+  self-withdraw -R <repo> <N> --because abandoned` (or `--because superseded --by <target>`, the
+  target recorded, not verified). The tool closes only a DRAFT whose author is the acting App —
+  pinned by login AND roster bot id — and refuses a PR out for review, another author's item, or
+  anything carrying `needs-decision`. It cites no ruling and needs no disposition record: it is the
+  authority a human already has over their own pull request, nothing wider. A PR that has left
+  draft is the reviewers' to retire through the ruled lanes above.
 - A red default branch is work: where the fix is mechanical this desk dispatches it like any other
   item; where it is not, it is filed (§Output contract) and named in the tick's line.
 - The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick.
@@ -395,12 +404,17 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   the claim tool `deskdispatch` resolved. **That tool is `deskclaim-ref` by default** — the
   cross-platform claim binary installed with desk-tools (`tools/desk/cmd/deskclaim-ref`), verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The override:
+  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The fallback:
   a repo may ship its own `tools/dispatch-claim.sh`, and `deskdispatch`'s claim-acquire step
-  **prefers that script when the resolved root carries it** (`--claim-root` when given, else
-  `--root`), falling back to `deskclaim-ref` on PATH when it does not — and refusing fail-closed,
-  naming both, only when NEITHER is available. Both speak the same wire protocol, so which one runs
-  never changes where the claim lands or whether two dispatchers collide.
+  **prefers `deskclaim-ref` whenever it is on PATH**, falling back to that script when the binary
+  is absent and the resolved root (`--claim-root` when given, else `--root`) carries it — and
+  refusing fail-closed, naming both, only when NEITHER is available. The `claim-acquire OK` line
+  names which one ran. Both speak the same wire protocol, so which one runs never changes where
+  the claim lands or whether two dispatchers collide. Either way the claim child runs as the
+  DISPATCHING role: `deskdispatch` mints (or reuses) that role's App token and hands it over
+  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script); an
+  exported `GH_TOKEN` wins; a mint refusal is exit 6 with no claim attempted, never a fall-back to
+  the ambient `gh` login.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body lacks
@@ -410,7 +424,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
-  escalate-durably, one-workpad-per-PR) ahead of `references/worker-prompt.md` (security-gate refusal,
+  escalate-durably, one-workpad-per-PR — the workpad body file is written fresh with `>`, never
+  appended with `>>`, and the old workpad is never re-read into the new body) ahead of
+  `references/worker-prompt.md` (security-gate refusal,
   per-invocation `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
   fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —
@@ -546,9 +562,10 @@ issue list. Two states:
    is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
    concerns one), then act. It is the ONE acknowledgement line the floor above permits — not
    narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
-   quote, so a misread is corrected on your next turn. To hand work to another desk, address it —
-   `deskfile new --to <role> …` files a durable message that desk's own sweep leads with — never a
-   typed relay through the human.
+   quote, so a misread is corrected on your next turn. To hand work to another desk, address its
+   LANE — `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk
+   hand-offs), `deskfile new --to <role> …` for the durable tracker state that desk's own sweep
+   leads with — never a typed relay through the human, and never a message to its session.
 
 **A question never stops the window.** `question`, `help wanted` and `needs-decision` are filings, not
 console stops: label + comment the item saying what is needed and from whom, then **carry on with the
@@ -660,12 +677,62 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 
+## Cross-desk hand-offs — the lane verbs
+
+Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
+window", never a typed relay through the driver, and never the harness's own same-box session
+channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
+payload on stdin, every issue / PR / brief id it concerns carried as a `--ref`:
+
+    deskcomms send --to <role> [--to-cell <cell>] --verb <verb> [--class routine|sensitive] [--ref <id>]... < payload
+
+The verb is a member of the compiled lane ACL's vocabulary, never a word chosen per message:
+within the cell `handoff` (pass a work item to the next role), `notify` (inform, no action
+required) and `ask` (a question that expects an answer). Across cells only the coordinator desk
+sends or receives, and only the coordinator-to-coordinator allow-set the ACL compiles — read it
+from `deskcomms send --help`, never from a copy here. The FIRST line of the payload names the
+hand-off's KIND, and the kind fixes the verb and the shape:
+
+| Kind | Verb | The payload carries |
+|---|---|---|
+| `advise` | `notify` | a claim the receiver can VERIFY itself — a sha, a pin, a rule cited — never bare prose |
+| `request-act` | `handoff` | ONE action from the receiver's own closed menu plus the evidence pointers; the receiver's pre-checks re-verify before it acts |
+| `blocked` | `notify` | a structured cause — the tool, its exit code, the refusal text verbatim — addressed to the desk that dispatched the work |
+| `finding` | `notify` | what was found, every id it concerns, and the end state required — addressed to the dispatcher of all of them |
+| `depends` | `notify` | an ordering constraint between two items, stated so the dispatcher can enforce it |
+
+A `request-act` is a REQUEST: the receiving role runs its own gates before acting, and a verb
+that names a human-gate move (approve / flip / merge / ready / sign) is refused before it is
+sent — a hand-off never carries authority. Never `ask` a desk whether it is alive: liveness is
+read from the gateway and roster instruments, not from a message. The lane is the mailbox for
+ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
+issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
+relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
+every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+an unacked item is still owed). The sender's cell and role come from the session context, never
+from a flag; the gateway address and signing key resolve from the project's house layer by NAME
+(the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
+verb's preflight is fail-fast convenience, and every check — identity, lane ACL, content scan,
+rate limit, kill switch, the prose gate on every send — is re-run at the gateway for every
+participant, including an agent on another harness that never runs these verbs and integrates
+through the gateway API directly. The verbs run silent inside this desk's noise floor — one line
+per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
+unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
+resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
+driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
+comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
+session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
+every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
+recorded. It is never the sanctioned path.
+
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
 self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
 the window; every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over) is acknowledged or filed, never assumed delivered.
+cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
+assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped
 batch drains, note the transition in the hand-off note and widen back to the

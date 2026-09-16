@@ -31,6 +31,24 @@ var (
 	// isPGPFingerprint (exactly 40 UPPERCASE hex) before the anchor is even consulted.
 	rePGPFingerprintAnchor = regexp.MustCompile(`(?is)(?:^|[\s"'{,\[-])(?:pgp|fp)"?\s*:[\s>|"'\[\],-]*(?:[0-9A-F]{40}[\s,"']+)*$`)
 
+	// rePGPFingerprintLineTag is the SAME-LINE annotation arm of Rule 3 (#1161): one of the
+	// words `fingerprint`, `fpr`, `pgp` or `gpg`, case-insensitively, standing at the start
+	// of the line or behind a non-alphanumeric — so `key_fingerprint`, `--gpg-sign`,
+	// `(pgp key)` and gpg's own `fpr:` colon record all count, while a word glued to a
+	// letter or digit on its left (`keyfpr`, `x9gpg`) does not. It is applied to the ONE
+	// line the run sits on, never the surrounding surface, and it admits nothing on its
+	// own: isPGPFingerprint has already required the run to be EXACTLY 40 UPPERCASE hex
+	// before this is consulted.
+	rePGPFingerprintLineTag = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:fingerprint|fpr|pgp|gpg)`)
+
+	// rePGPFingerprintAssignment is the assignment-glued form of the same arm: `=` is in
+	// reBase64ish's class, so `FPR=<fingerprint>` reaches the loop as ONE run of 44 chars
+	// (`FPR=` plus the 40 hex) rather than the bare 40-hex isPGPFingerprint measures. The
+	// run is admitted only when the WHOLE of it is exactly one annotation word, one `=`,
+	// and exactly 40 uppercase hex — `keyfpr=<hex>` (a glued word) and `fpr=<39 hex>` both
+	// fail the anchors and keep the loop's own verdict.
+	rePGPFingerprintAssignment = regexp.MustCompile(`^(?i:fingerprint|fpr|pgp|gpg)=[0-9A-F]{40}$`)
+
 	// reDocExtension matches a DOC-file extension immediately after a run — the ".md",
 	// ".txt", ".json", ".yaml" or ".yml" a doc PATH ends on, bounded so ".md" matches but
 	// ".mdx"/".markdown" do not. It is the forward half of isDocPathHexSegment (Rule 1's
@@ -522,12 +540,14 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isEnumSlashList(run) || isK8sUIDHexSegment(raw, loc[0], loc[1]) {
 			continue
 		}
-		// Rule 3 (PGP-recipient-fingerprint arm). NARROWER than the class it clears and
-		// bounded by paired positive fixtures (TestPGPFingerprintExemption): isPGPFingerprint
-		// admits a 40-char UPPERCASE-hex OpenPGP key fingerprint ONLY when a `pgp:`/`fp:`
-		// recipient key anchors it — a `.sops.yaml` creation-rules recipient and a sops `fp:`
-		// field both take that shape. A bare uppercase-hex run, a lowercase/mixed 40-char run,
-		// and a genuine secret wearing the same field all stay refused.
+		// Rule 3 (PGP-key-fingerprint arm). NARROWER than the class it clears and bounded by
+		// paired positive fixtures (TestPGPFingerprintExemption,
+		// TestBodyCheckPGPFingerprintAnnotatedLine): isPGPFingerprint admits a 40-char
+		// UPPERCASE-hex OpenPGP key fingerprint ONLY when a `pgp:`/`fp:` recipient key anchors
+		// it — a `.sops.yaml` creation-rules recipient and a sops `fp:` field both take that
+		// shape — or when the SAME LINE names it as one (`fingerprint`, `fpr`, `pgp`, `gpg`;
+		// #1161). A bare uppercase-hex run, a lowercase/mixed 40-char run, and a genuine
+		// secret wearing the same field or word all stay refused.
 		if isPGPFingerprint(raw, loc[0], loc[1]) {
 			continue
 		}
@@ -544,8 +564,9 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments (optionally behind one leading '+' quantifier or "+
 				"diff marker), bare word-shaped identifiers, key=<path> shell "+
-				"assignments, all-'=' banner separators, a PGP recipient fingerprint (40 "+
-				"uppercase hex after a pgp:/fp: field), a slash-list of short ALL-CAPS "+
+				"assignments, all-'=' banner separators, a PGP key fingerprint (40 "+
+				"uppercase hex after a pgp:/fp: field, or on a line that names it with "+
+				"fingerprint/fpr/pgp/gpg), a slash-list of short ALL-CAPS "+
 				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
 				"prefix and hyphen (pvc-<uid>…), and the marker-anchored digest fields "+
 				"of a recognised structured format (go.sum h1:, SRI integrity, a "+
@@ -561,32 +582,67 @@ func isGitSHA(run string) bool {
 	return (len(run) == 40 || len(run) == 64) && reLowerHex.MatchString(run)
 }
 
-// isPGPFingerprint is Rule 3, the PGP-recipient-fingerprint arm. It admits a run that is
+// isPGPFingerprint is Rule 3, the PGP-key-fingerprint arm. It admits a run that is
 // EXACTLY 40 UPPERCASE hex characters — the canonical OpenPGP v4 key-fingerprint shape —
-// but ONLY when a `pgp:` or `fp:` recipient key precedes it in the surrounding surface,
-// separated by nothing but the scaffolding a YAML/JSON scalar or a comma-list of
-// fingerprints puts there (rePGPFingerprintAnchor). That is the shape a `.sops.yaml`
-// creation-rules `pgp:` recipient and a sops metadata `fp:` field both take, and it is the
-// shape isGitSHA structurally misses: isGitSHA requires LOWERCASE hex, so an uppercase
-// fingerprint fell straight through to the high-entropy refusal.
+// but ONLY when the surface NAMES it as one, in one of two ways:
+//
+//   - a `pgp:` or `fp:` recipient key precedes it in the surrounding surface, separated by
+//     nothing but the scaffolding a YAML/JSON scalar or a comma-list of fingerprints puts
+//     there (rePGPFingerprintAnchor). That is the shape a `.sops.yaml` creation-rules
+//     `pgp:` recipient and a sops metadata `fp:` field both take;
+//   - the SAME LINE carries one of the words `fingerprint`, `fpr`, `pgp` or `gpg`,
+//     case-insensitively, as a standalone word (rePGPFingerprintLineTag) — before or after
+//     the run. That is the shape a brief takes when it names a signing key in prose ("the
+//     key fingerprint is …") and again inside a Verify-row command (`gpg --fingerprint …`),
+//     neither of which wears a recipient field (#1161). The assignment-glued spelling
+//     `FPR=<fingerprint>` reaches the loop as one 44-char run because `=` is in the base64
+//     class; rePGPFingerprintAssignment admits exactly that spelling and nothing wider.
+//
+// Either way it is the shape isGitSHA structurally misses: isGitSHA requires LOWERCASE
+// hex, so an uppercase fingerprint fell straight through to the high-entropy refusal.
 //
 // It is bounded HARD, the same way Rules 1 and 2 are:
 //   - the run must be EXACTLY 40 UPPERCASE hex — a 40-char lowercase run is a git SHA and
 //     already exempt; a mixed-case or non-hex 40-char run is not a fingerprint and keeps the
-//     loop's own verdict (an AWS secret key is 40 mixed-case base64, so it never qualifies);
-//     a 39/41-char run fails on length;
-//   - a `pgp:`/`fp:` recipient key must PRECEDE it — a bare 40-uppercase-hex run with no key
-//     in front of it stays refused, since an uppercase token in prose is exactly that shape.
+//     loop's own verdict (an AWS secret key is 40 mixed-case base64, so it never qualifies,
+//     and no annotation word launders it); a 39/41-char run fails on length;
+//   - a `pgp:`/`fp:` recipient key must PRECEDE it, or a fingerprint word must share ITS
+//     line — a bare 40-uppercase-hex run with neither stays refused, since an uppercase
+//     token in prose is exactly that shape, and a word on a NEIGHBOURING line does not
+//     reach: the annotation is read from the one line the run sits on, never from the
+//     surrounding surface.
 //
-// The anchor is what keeps this from loosening the check: an uppercase-hex run is admitted
-// only when it wears a recipient field it did not earn, which is not a shape a pasted
-// credential takes. TestPGPFingerprintExemption pins both directions.
+// The anchor and the same-line word are what keep this from loosening the check: an
+// uppercase-hex run is admitted only when it wears a name it did not earn, which is not a
+// shape a pasted credential takes. TestPGPFingerprintExemption and
+// TestBodyCheckPGPFingerprintAnnotatedLine pin both directions.
 func isPGPFingerprint(raw string, start, end int) bool {
 	run := raw[start:end]
+	if rePGPFingerprintAssignment.MatchString(run) {
+		return true
+	}
 	if len(run) != 40 || !reUpperHex.MatchString(run) {
 		return false
 	}
-	return rePGPFingerprintAnchor.MatchString(raw[:start])
+	if rePGPFingerprintAnchor.MatchString(raw[:start]) {
+		return true
+	}
+	return rePGPFingerprintLineTag.MatchString(lineAround(raw, start, end))
+}
+
+// lineAround returns the ONE line of raw that the byte span [start, end) sits on — from the
+// character after the previous newline (or the start of raw) to the character before the
+// next one (or the end of raw). It is the surface Rule 3's same-line arm reads, and its
+// bound IS the arm's bound: a neighbouring line's words are outside it by construction.
+func lineAround(raw string, start, end int) string {
+	ls := strings.LastIndexByte(raw[:start], '\n') + 1
+	le := strings.IndexByte(raw[end:], '\n')
+	if le < 0 {
+		le = len(raw)
+	} else {
+		le += end
+	}
+	return raw[ls:le]
 }
 
 // isQuantifierGluedPath is Rule 4, the quantifier-glued-path arm. It admits a run that is

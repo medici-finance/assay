@@ -172,6 +172,14 @@ func cmdReply(args []string) (err error) {
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)
 
+	// #1195: a body over the forge's comment limit, or carrying the workpad marker more
+	// than once (a body that re-embedded its predecessor), is refused on BOTH paths before
+	// any preflight/mint/gate work — the plain path here, the workpad path again inside
+	// cmdWorkpadUpsert for callers that enter it with a body already in hand.
+	if cerr := checkCommentBody(body); cerr != nil {
+		return cerr
+	}
+
 	// --workpad posts/edits ONE marked comment; a body without the marker is a caller
 	// error (the body was meant for `deskreply <owner/repo> <pr> --body-file F`, the plain
 	// reply path) and is refused BEFORE any preflight/mint/gate work runs, exactly like
@@ -219,8 +227,12 @@ func cmdReply(args []string) (err error) {
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
 	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// The gate's visibility read goes through the SAME forge backend already resolved
+	// above (fg) — never a second, hardcoded GitHub-only client (assay#1054): a
+	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not
+	// GitHub's, and fg is already whichever backend the resolver picked.
 	owner, name := splitOwnerRepo(repo)
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
@@ -399,15 +411,33 @@ func normRepoPath(p string) (string, error) {
 	return owner + "/" + repo, nil
 }
 
+// readBody reads the --body-file, refusing one over the cap. The size is decided from the
+// file's metadata BEFORE a byte of it is read: the cap used to be checked on the bytes after
+// os.ReadFile had already loaded them, which for the 115 GB workpad body #1195 found meant
+// reading 115 GB to refuse it. The post-read check stays for a file that grows between
+// the two calls.
 func readBody(bodyFile string) ([]byte, error) {
+	st, err := os.Stat(bodyFile)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot read --body-file", err)
+	}
+	if st.Size() > maxBodyBytes {
+		return nil, deskkit.Refused(oversizedBodyMessage(st.Size()))
+	}
 	b, err := os.ReadFile(bodyFile)
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot read --body-file", err)
 	}
 	if len(b) > maxBodyBytes {
-		return nil, deskkit.Refused(fmt.Sprintf("refused: body exceeds %d bytes (%d)", maxBodyBytes, len(b)))
+		return nil, deskkit.Refused(oversizedBodyMessage(int64(len(b))))
 	}
 	return b, nil
+}
+
+func oversizedBodyMessage(size int64) string {
+	return fmt.Sprintf("refused: body is %d bytes, over deskreply's %d-byte cap (the forge itself caps a comment "+
+		"at %d characters) — write the body file fresh each time (`>`), never by appending the previous "+
+		"workpad to it (`>>`)", size, maxBodyBytes, maxCommentChars)
 }
 
 func urlSuffix(url string) string {
