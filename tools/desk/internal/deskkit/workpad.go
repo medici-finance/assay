@@ -142,12 +142,21 @@ func Render(w Workpad) string {
 // exact-line-match rule is what keeps documentation and prose describing this feature from
 // ever being misread as a real workpad.
 func HasWorkpadMarker(body string) bool {
+	return WorkpadMarkerCount(body) > 0
+}
+
+// WorkpadMarkerCount is HasWorkpadMarker's counting form: how many lines of body are,
+// trimmed, exactly the marker. One workpad carries exactly one (Render writes it once); a
+// count above one is a body that embedded a previous workpad — the shape deskreply refuses
+// (#1195).
+func WorkpadMarkerCount(body string) int {
+	n := 0
 	for _, line := range strings.Split(body, "\n") {
 		if strings.TrimSpace(line) == WorkpadMarker {
-			return true
+			n++
 		}
 	}
-	return false
+	return n
 }
 
 // Parse reports whether body carries the workpad marker (HasWorkpadMarker) and, when it
