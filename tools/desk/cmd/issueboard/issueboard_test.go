@@ -31,10 +31,16 @@ type forgeCall struct {
 
 // repoFixture is one repo's canned data.
 type repoFixture struct {
-	issues  []deskkit.IssueSummary
-	titles  map[int]string                // issue number → title, for GetIssue (RETIRE rows)
+	issues  []deskkit.IssueSummary        // the OPEN listing as the forge returned it — may be PARTIAL (see openUnlisted)
+	titles  map[int]string                // issue number → title of an issue that positively reads CLOSED on GetIssue (RETIRE rows)
 	trust   map[int]*deskkit.TrustPayload // issue number → trust events, for IssueTrustEvents
 	listErr error
+	// openUnlisted are issues GetIssue reports OPEN that are ABSENT from `issues` — the
+	// partial/truncated-listing shape of #1032 (number → title).
+	openUnlisted map[int]string
+	// getErr makes GetIssue FAIL for that issue number (a rate limit, a 5xx, a timeout) —
+	// the state could not be positively read.
+	getErr map[int]error
 }
 
 type fakeForge struct {
@@ -55,13 +61,30 @@ func (f *fakeForge) ListOpenIssues(deskkit.ForgeRepo) ([]deskkit.IssueSummary, e
 	return f.data.issues, nil
 }
 
+// GetIssue answers with a POSITIVE state, the way the real forge does: an issue in the open
+// listing (or in openUnlisted) reads open, one in titles reads closed, one in getErr fails,
+// and a number the fixture never seeded is an unverifiable read — never a stateless answer
+// the board could mistake for closed (#1032).
 func (f *fakeForge) GetIssue(_ deskkit.ForgeRepo, n int) (*deskkit.Issue, error) {
 	*f.calls = append(*f.calls, forgeCall{op: "GetIssue", repo: f.repo, num: n})
-	title := ""
-	if f.data != nil {
-		title = f.data.titles[n]
+	if f.data == nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("no GetIssue fixture for %s#%d", f.repo, n), nil)
 	}
-	return &deskkit.Issue{Number: n, Title: title}, nil
+	if err, ok := f.data.getErr[n]; ok {
+		return nil, err
+	}
+	for _, is := range f.data.issues {
+		if is.Number == n {
+			return &deskkit.Issue{Number: n, Title: is.Title, State: "open"}, nil
+		}
+	}
+	if title, ok := f.data.openUnlisted[n]; ok {
+		return &deskkit.Issue{Number: n, Title: title, State: "open"}, nil
+	}
+	if title, ok := f.data.titles[n]; ok {
+		return &deskkit.Issue{Number: n, Title: title, State: "closed"}, nil
+	}
+	return nil, deskkit.Unverifiable(fmt.Sprintf("no GetIssue fixture for %s#%d", f.repo, n), nil)
 }
 
 func (f *fakeForge) IssueTrustEvents(_ deskkit.ForgeRepo, n int) (*deskkit.TrustPayload, error) {
