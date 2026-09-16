@@ -87,7 +87,9 @@ func main() {
 	if repo := flagVal("--repo"); repo != "" {
 		o = owner(repo)
 	}
-	f, err := os.CreateTemp("", "fake-worker-token-*")
+	// The token lands under FAKE_TOKEN_DIR (set by the TestMain, removed with the fake's
+	// own directory), never loose in the real temp dir.
+	f, err := os.CreateTemp(os.Getenv("FAKE_TOKEN_DIR"), "fake-worker-token-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create temp token: %v\n", err)
 		os.Exit(1)
@@ -112,37 +114,53 @@ var (
 	origPATH  string
 )
 
+// TestMain installs the roster fixture, runs the suite through runTests (whose defers
+// fire, unlike anything deferred here), then hands the exit code through
+// finishFixtureRoster so the fixture HOME is removed and proven gone before os.Exit (#1195).
 func TestMain(m *testing.M) {
 	rosterCleanup, rerr := installFixtureRoster()
 	if rerr != nil {
 		panic("cannot install the test-fixture roster: " + rerr.Error())
 	}
-	defer rosterCleanup()
+	os.Exit(finishFixtureRoster(rosterCleanup, runTests(m)))
+}
+
+func runTests(m *testing.M) int {
 	origPATH = os.Getenv("PATH")
 	dir, err := os.MkdirTemp("", "deskreply-fakegh")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	defer os.RemoveAll(dir)
 	if werr := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fakegh\n\ngo 1.25\n"), 0o644); werr != nil {
 		fmt.Fprintln(os.Stderr, werr)
-		os.Exit(1)
+		return 1
 	}
 	if werr := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeDesktokenSource), 0o644); werr != nil {
 		fmt.Fprintln(os.Stderr, werr)
-		os.Exit(1)
+		return 1
 	}
 	buildDT := exec.Command("go", "build", "-o", filepath.Join(dir, "desktoken"), ".")
 	buildDT.Dir = dir
-	buildDT.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+	buildDT.Env = fakeBuildEnv()
 	if out, berr := buildDT.CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "build fake desktoken: %v\n%s\n", berr, out)
-		os.Exit(1)
+		return 1
+	}
+	// The fake desktoken's token files land here, inside the directory this function
+	// removes — never in the real temp dir, where nothing would ever remove them.
+	tokens := filepath.Join(dir, "tokens")
+	if merr := os.Mkdir(tokens, 0o700); merr != nil {
+		fmt.Fprintln(os.Stderr, merr)
+		return 1
+	}
+	if serr := os.Setenv("FAKE_TOKEN_DIR", tokens); serr != nil {
+		fmt.Fprintln(os.Stderr, serr)
+		return 1
 	}
 	fakeGHDir = dir
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
+	return m.Run()
 }
 
 // --- fixtures -------------------------------------------------------------------
