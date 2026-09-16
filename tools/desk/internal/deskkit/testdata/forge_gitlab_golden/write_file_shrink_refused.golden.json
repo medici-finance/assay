@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/verify-outcomes%2Ejsonl",
+      "query": "ref=feat%2Fx"
+    }
+  ],
+  "result": null,
+  "err": "refusing an append-only write to verify-outcomes.jsonl on feat/x that would SHRINK it from 3 to 1 row(s) — almost always a stale-base or wrong-file write; pass AllowShrink when the reduction is intended",
+  "not_found": false
+}

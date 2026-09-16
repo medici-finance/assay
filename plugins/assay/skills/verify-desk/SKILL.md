@@ -22,6 +22,8 @@ hand-edits a board cell, and the board follows the witness.
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+
 **House rules live in the repo's own house-rules doc (`CLAUDE.md`)** — git/PR discipline, identity and
 posting, trust gate, filing and escalation, refresh-don't-remember, board hygiene, the console
 noise-floor pointer, and worktree-sprawl ownership (the `deskwt` prune supervisor). This skill points at
@@ -72,6 +74,32 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
    git -C "$WT" fetch origin && git -C "$WT" reset --hard origin/main
    ```
 
+## Tick mode
+
+A run is a TICK when the harness passes the literal argument `--tick`, or the environment
+carries `ASSAY_TICK` compared EXACTLY to `1`. Absent both, the run is a standing WINDOW and
+every rule in this body holds unchanged — so the contract is inert until a caller asks for it,
+and a loose truthiness test on that variable is what would silently convert a live window into
+a one-pass run.
+
+A tick is ONE bounded pass: boot, ONE fresh sweep of this desk's own queue with the instrument
+this body already names, act on what that sweep made actionable up to this role's declared
+width, wait bounded for what it dispatched, print the summary line, exit. In tick mode this
+desk arms no `capability:durable-monitor`, schedules no wake-up, sleeps for no cadence, runs no
+second sweep, and never waits in line for an answer — an escalation is a FILED issue and the
+pass continues. It never claims idle or caught up: one fresh sweep supports a verdict about the
+pass that ran, never a standing claim about the queue. **A tick narrows the LOOP, never a
+GATE** — gates, budgets, stop flags, identity rules and escalation obligations are unchanged,
+and a tick short of budget drops WORK, never a CHECK. Its last line of output is the summary
+line, in which a pass that could not read its queue says so and is never reported as an empty
+one.
+
+The trigger predicate, the bounded pass, the budget arithmetic (`ASSAY_TICK_DEADLINE` and the
+exit reserve) and the summary-line grammar are stated once in
+[`../../references/tick-contract.md`](../../references/tick-contract.md), whose grammar has one
+executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
+not own.
+
 ## The loop
 
 1. **`verifyloop plan --root <repo>`** from `$WT`: the deterministic scheduler prints the Awaiting
@@ -120,11 +148,15 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
-- **Tier: the LOCAL SESSION MODEL. Never a stronger external/paid tier** (human:<name>, 2026-07-15 —
-  overrides any `opus+` default in an older copy). A risk-clear brief (gate `model`, all risk answers
-  `no`) is the normal path and most of the queue. A **risk-flagged** brief (`gate: human` or any `yes`)
+- **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
+  stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
+  copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
+  queue, and the local tier is its only stamp. A **risk-flagged** brief (`gate: human` or any `yes`)
   may have its Verify table RUN for the Evidence but **cannot be signed off by a model** — route it to
-  the human gate. Read each brief's own frontmatter; never default the queue to one treatment.
+  the human gate — and a `gate: human` brief carries TWO stamps before the human closes it: the drain's
+  local-tier PASS (first stamp), then ONE floor-tier re-verify (second stamp), the single sanctioned
+  pass above the local tier, one per human-gated brief — see "`gate: human` — the two stamps" below.
+  Read each brief's own frontmatter; never default the queue to one treatment.
 - **The prompt is a KIT, not prose written here.** `deskdispatch --kit verifier` emits the common-clauses
   kit (isolation floor, no-evasion, offline envelope, three-state instruments, escalate-durably) plus the
   verifier kit — Evidence format, run-every-row, and the **risk-bearing value ENUMERATE → rank → derive**
@@ -292,6 +324,43 @@ wave of Evidence PRs to the end of the pass is the same defect as buffering push
 not on a branch within one landing cycle is phantom verification debt. One brief = one branch = one
 draft PR, as everywhere else in the fleet.
 
+## `gate: human` — the two stamps: local-tier drain, floor-tier re-verify, THEN the sign-off card
+
+A human `done` close on a `gate: human` brief needs TWO stamps, in this order (operator ruling, the
+two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp, CI flips `done`.
+
+1. **First stamp — the routine drain, at the local tier.** The dispatched non-implementer verifier
+   runs the full Verify table at the local session model and lands the Evidence (dated,
+   runner-attributed, one row per Verify item) through the sanctioned landing above; its PASS flips
+   `implemented → verified`. The Verified cell and every Evidence row name the local-tier runner that
+   actually ran the rows — never a runner that did not. (An `irreversible: yes` brief stops short of
+   the flip and stays at `implemented` with Evidence, next section; its first stamp is the Evidence.)
+   The `--lint` verifier floor (methodology/19) reads risk-flagged rows at `verified` as well as at
+   `done`, so a below-floor stamp landed at `verified` is a lint PROBLEM naming this same remedy: the
+   row is not wrong, it is WAITING on the second stamp, and the second stamp is what clears it.
+2. **Second stamp — ONE floor-tier re-verify, BEFORE the card is filed.** A verify-gate card whose
+   Verified cell names a runner below the verifier floor is a card the human will close and
+   `verify-gate-close.yml` will REFUSE: `statusgen --close-verify` reads the cell the `done` row would
+   carry — the README cell, or on the implemented→done path the cell it stamps from the brief file's
+   Evidence — plus the brief's Evidence rows, before it writes; the workflow relays the refusal (runner,
+   floor, remedy) onto the card and REOPENS it, and nothing lands. So do not hand the human that card
+   yet: dispatch one more non-implementer verifier at a runner that clears the floor (a strong-tier
+   model, or a confirmed human), re-run the table, append its rows to the Evidence under their own
+   dated table, and re-stamp the Verified cell `YYYY-MM-DD <runner>` with that pass LEADING the cell
+   (the earlier local-tier stamp may trail it after `;`, the same `; prior` shape the Reviewed cell
+   already uses). The floor reads the FIRST runner in the cell and each row's LATEST runner in the
+   Evidence, so a re-stamped cell with no re-run rows behind it is refused too. Land it exactly as the
+   first stamp was landed. This is the one sanctioned pass above the local tier — one per
+   human-gated brief, never a routine tier for the drain.
+3. **Only then the card.** `statusgen --verify-issues` files the verify-gate issue (the Verify table +
+   Evidence lifted into the body as the review packet) and the allowlisted human closing it IS the
+   review: `verify-gate-close.yml` writes the `human:<name>` Reviewed stamp and flips `done` on main.
+   Where the project's `verify-gate-open` emitter files cards on every push, the card may exist before
+   the second stamp has landed — it is not ready for the human until the stamp is on the cell. A card
+   the close workflow refused and reopened is THIS desk's work item: land the second stamp, then the
+   human closes it again. Never hand-edit the cell to a runner that did not run the rows — the
+   Evidence-actor and runner-agreement checks read that as a forgery, not a fix.
+
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 
 The broad gate blocks any `irreversible: yes` brief from `verified`/`done` unless Reviewed names a
@@ -312,9 +381,19 @@ fail `--lint` and redden main CI directly. So the model path STOPS short of the 
    the human is being asked to settle** (burying it is the F-28 miss) — `statusgen --verify-issues` files
    a verify-gate issue lifting the Verify table + Evidence into its body as the review packet, and **the
    allowlisted human closing that issue IS the review**: `verify-gate-close.yml` writes the `human:<name>`
-   stamp to main and advances `implemented → verified → done` in one step. Surface the open wait in the
+   stamp to main and advances `implemented → verified → done` in one step — stamping the Verified cell
+   FROM the Evidence's recorded runner, which is why the second stamp (the floor-tier re-verify rows,
+   previous section) must be in the Evidence before the human closes: the close refuses a below-floor
+   runner rather than landing it. Surface the open wait in the
    report. Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
    documented wait state, never a checkpoint PR.
+   **Re-firing a cycle.** When a CLOSED verify-gate card must fire its close event again (the
+   Evidence row it lifted was corrected; the flip did not land), this desk runs
+   `deskclose verify-gate-refire -R <repo> <N> --reason "<why>"` under its own verifier token:
+   the tool reopens, comments (the reason, and that this is NOT the sign-off), and re-closes, and
+   refuses any other role, any issue without `verify-gate`, and any pull request. It does not and
+   cannot complete the human sign-off — `verify-gate-close.yml` reopens a bot's close
+   unconditionally — so the wait it re-arms is still the human's.
 4. `gate: human` is a hint; the authoritative trigger is **`irreversible: yes` alone** (human:<name>'s
    broad-scope call) — `regulatory` / `customer` do not change it.
 
@@ -405,9 +484,10 @@ human ruling re-derived from scratch each time.
   `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it concerns
   one), then act. It is the ONE acknowledgement line the silent output floor permits — not narration,
   and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a quote, so a
-  misread is corrected on your next turn. To hand work to another desk, address it — `deskfile new
-  --to <role> …` files a durable message that desk's own sweep leads with — never a typed relay
-  through the human.
+  misread is corrected on your next turn. To hand work to another desk, address its LANE —
+  `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk hand-offs),
+  `deskfile new --to <role> …` for the durable tracker state that desk's own sweep leads with —
+  never a typed relay through the human, and never a message to its session.
 - **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
@@ -481,6 +561,55 @@ The same cadence tick reads the per-claim **armed stops** across in-flight dispa
 `desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
 stop armed on a claim it is verifying, not only the global loop flags above.
 
+## Cross-desk hand-offs — the lane verbs
+
+Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
+window", never a typed relay through the driver, and never the harness's own same-box session
+channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
+payload on stdin, every issue / PR / brief id it concerns carried as a `--ref`:
+
+    deskcomms send --to <role> [--to-cell <cell>] --verb <verb> [--class routine|sensitive] [--ref <id>]... < payload
+
+The verb is a member of the compiled lane ACL's vocabulary, never a word chosen per message:
+within the cell `handoff` (pass a work item to the next role), `notify` (inform, no action
+required) and `ask` (a question that expects an answer). Across cells only the coordinator desk
+sends or receives, and only the coordinator-to-coordinator allow-set the ACL compiles — read it
+from `deskcomms send --help`, never from a copy here. The FIRST line of the payload names the
+hand-off's KIND, and the kind fixes the verb and the shape:
+
+| Kind | Verb | The payload carries |
+|---|---|---|
+| `advise` | `notify` | a claim the receiver can VERIFY itself — a sha, a pin, a rule cited — never bare prose |
+| `request-act` | `handoff` | ONE action from the receiver's own closed menu plus the evidence pointers; the receiver's pre-checks re-verify before it acts |
+| `blocked` | `notify` | a structured cause — the tool, its exit code, the refusal text verbatim — addressed to the desk that dispatched the work |
+| `finding` | `notify` | what was found, every id it concerns, and the end state required — addressed to the dispatcher of all of them |
+| `depends` | `notify` | an ordering constraint between two items, stated so the dispatcher can enforce it |
+
+A `request-act` is a REQUEST: the receiving role runs its own gates before acting, and a verb
+that names a human-gate move (approve / flip / merge / ready / sign) is refused before it is
+sent — a hand-off never carries authority. Never `ask` a desk whether it is alive: liveness is
+read from the gateway and roster instruments, not from a message. The lane is the mailbox for
+ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
+issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
+relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
+every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+an unacked item is still owed). The sender's cell and role come from the session context, never
+from a flag; the gateway address and signing key resolve from the project's house layer by NAME
+(the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
+verb's preflight is fail-fast convenience, and every check — identity, lane ACL, content scan,
+rate limit, kill switch, the prose gate on every send — is re-run at the gateway for every
+participant, including an agent on another harness that never runs these verbs and integrates
+through the gateway API directly. The verbs run silent inside this desk's noise floor — one line
+per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
+unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
+resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
+driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
+comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
+session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
+every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
+recorded. It is never the sanctioned path.
+
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
@@ -488,7 +617,8 @@ self-scheduled loop (`capability:durable-monitor` — best-effort, never the sol
 wake signal; the fixed-cadence board sweep is the real liveness backstop and the
 always-on observability service its durable home) BEFORE the first sweep and keep
 it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over) is acknowledged or filed, never assumed delivered.
+cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
+assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped
 batch drains, note the transition in the hand-off note and widen back to the

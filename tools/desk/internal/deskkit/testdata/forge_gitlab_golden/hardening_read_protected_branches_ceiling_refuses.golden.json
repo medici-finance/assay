@@ -1,0 +1,57 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=2\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=3\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=4\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=5\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=6\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=7\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=8\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=9\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=10\u0026per_page=100"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: medici-finance/assay still reports more protected-branches entries after 10 pages of 100 — refusing to hand back a PARTIAL list, because a checklist row reads a named entry's absence from it as unprotected",
+  "not_found": false
+}

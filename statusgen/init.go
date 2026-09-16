@@ -391,7 +391,8 @@ Gate: model (from frontmatter).
 `
 
 // initAssayVersions is a PLACEHOLDER pin file in the channel-E shape
-// (statusgen-<platform> <tag> <sha256>). It is deliberately not a live pin: init
+// (statusgen-<platform> <tag> <sha256>, plus the bare `statusgen <tag> <sha256>`
+// line the desk tools read). It is deliberately not a live pin: init
 // is baked into the statusgen binary, so a hardcoded digest here would go stale
 // every release and show stale in the very tool that emits it. The adopter fills
 // a real tag + per-platform digest once, consciously, from a release's
@@ -414,6 +415,13 @@ const initAssayVersions = `# statusgen pin for this repo's lint/regen CI — cha
 statusgen-darwin-arm64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 statusgen-darwin-amd64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 statusgen-linux-amd64   REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
+#
+# The BARE line is the one the desk tools (deskboard and friends) read first: same
+# tag as the platform lines, and the digest of the platform the desk runs on. CI
+# selects with the trailing space (grep '^statusgen-<platform> '), so this line is
+# additive and changes no CI behaviour. When it is absent the desk tools fall back
+# to this host's platform line above; keep it so every reader agrees on one tag.
+statusgen               REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 `
 
 const initWorkflow = `# statusgen CI — the two-half single-writer shape (medici-finance/assay
@@ -427,6 +435,19 @@ const initWorkflow = `# statusgen CI — the two-half single-writer shape (medic
 # source is retired: a vendored copy is an unpinned fork that rots silently. Fill
 # .assay-versions with a real tag + per-platform digest before the first run; the
 # install step refuses rather than guesses on a placeholder/absent pin line.
+#
+# TRUST ROSTER — the NON-secret half, from repository (or organization) Actions
+# VARIABLES, never secrets. Under Actions statusgen reads the roster from the
+# environment, so without the env block below every roster-backed check (the
+# Evidence-actor check on verified/done rows — which identity committed each
+# brief's Evidence lines — and the trust gates) reports could-not-check on every
+# run while the job stays green: a silent gap, not a pass. Set the five variables
+# under Settings > Secrets and variables > Actions > Variables. They carry logins,
+# numeric ids and role bindings only (ASSAY_TRUSTED_BOT_SLUGS must bind
+# verifier=<slug>:<bot-user-id> for the Evidence-actor check to run); a token or
+# key never belongs in any of them. Each job below reports whether the roster was
+# present, so an unset roster is LOUD in the job log. See
+# docs/adopting-assay.md, section: configure-roster.
 name: statusgen
 on:
   pull_request:
@@ -434,6 +455,12 @@ on:
     branches: [main]
 permissions:
   contents: write
+env:
+  ASSAY_BLESS_LOGIN: ${{ vars.ASSAY_BLESS_LOGIN }}
+  ASSAY_TRUSTED_LOGINS: ${{ vars.ASSAY_TRUSTED_LOGINS }}
+  ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+  ASSAY_ALLOWED_REPOS: ${{ vars.ASSAY_ALLOWED_REPOS }}
+  ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
 jobs:
   lint:
     if: github.event_name == 'pull_request'
@@ -461,6 +488,15 @@ jobs:
       # delete the example before authoring your own stream, add --allow-empty-root
       # to the line below for that transitional window ONLY — do not leave it on, or
       # the empty-root PROBLEM can never fire for a genuine regression.
+      # LOUD, not silent: an unset roster is reported here by name, because
+      # statusgen itself only echoes configured=false and role-bindings=(none bound).
+      - name: Report trust-roster presence
+        run: |
+          if [ -z "${ASSAY_TRUSTED_BOT_SLUGS:-}" ]; then
+            echo "::notice::ASSAY_TRUSTED_BOT_SLUGS is not set — no trust roster for this run. Every roster-backed statusgen check (the Evidence-actor check on verified/done rows) reports could-not-check, which is NOT a pass. Set the repository Actions VARIABLES ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS (with its verifier= binding), ASSAY_ALLOWED_REPOS and ASSAY_HUMAN_LOGIN_MAP — the NON-secret roster, never a token or key."
+          else
+            echo "trust roster present: ASSAY_TRUSTED_BOT_SLUGS is set (statusgen echoes the effective role-bindings= below)"
+          fi
       - name: statusgen --lint
         run: statusgen --lint
   regen:
@@ -485,6 +521,15 @@ jobs:
           gh release download "$tag" --repo medici-finance/assay --pattern "statusgen-$plat" -O /tmp/statusgen
           echo "${sha}  /tmp/statusgen" | shasum -a 256 -c -
           sudo install -m 0755 /tmp/statusgen /usr/local/bin/statusgen
+      # LOUD, not silent: an unset roster is reported here by name, because
+      # statusgen itself only echoes configured=false and role-bindings=(none bound).
+      - name: Report trust-roster presence
+        run: |
+          if [ -z "${ASSAY_TRUSTED_BOT_SLUGS:-}" ]; then
+            echo "::notice::ASSAY_TRUSTED_BOT_SLUGS is not set — no trust roster for this run. Every roster-backed statusgen check (the Evidence-actor check on verified/done rows) reports could-not-check, which is NOT a pass. Set the repository Actions VARIABLES ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS (with its verifier= binding), ASSAY_ALLOWED_REPOS and ASSAY_HUMAN_LOGIN_MAP — the NON-secret roster, never a token or key."
+          else
+            echo "trust roster present: ASSAY_TRUSTED_BOT_SLUGS is set (statusgen echoes the effective role-bindings= below)"
+          fi
       - name: Regenerate STATUS.md
         run: statusgen --root .
       # Regenerate every board: generated stream README's Briefs table (its
@@ -527,12 +572,30 @@ jobs:
 //     them over plain HTTPS and sha256-verifies, rather than shelling `gh`.
 //   - GitLab's default CI job token cannot push back to the repo. The regen job
 //     therefore uses a project/group access token the adopter sets as the masked
-//     CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear message rather
-//     than pushing when it is unset — the same refuse-don't-guess shape as the
-//     pin line.
+//     AND protected CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear
+//     message rather than pushing when it is unset — the same refuse-don't-guess
+//     shape as the pin line. Protected is load-bearing, not cosmetic: a
+//     masked-only variable is still injected into merge_request_event pipelines,
+//     which run the MR branch's own CI file, so any member who can open an MR
+//     could read the token and push to the default branch past the merge gate.
 //   - A push by the regen job would itself trigger a pipeline; the [skip-status-regen]
 //     commit marker is matched by a `when: never` rule so the board write does not
 //     loop.
+//   - There is no GITHUB_ACTIONS on a GitLab runner, so statusgen is in its
+//     file-only roster class and reads `$HOME/.config/assay/roster.env` — which no
+//     step wrote (#1110): the Evidence-actor check was could-not-check on every
+//     regen while the job stayed green. Both jobs now materialise the NON-secret
+//     half of the roster from the CI/CD variable STATUSGEN_ROSTER_ENV into that
+//     path (owner-only permissions, the mode the loader enforces) before statusgen
+//     runs, and print a NOTICE naming the variable when it is unset. A token never
+//     belongs in it; a secret-shaped key refuses.
+//   - The dead-claim decay reads merge-request state over REST v4 (#1111). Every
+//     GitLab job already carries CI_API_V4_URL, CI_PROJECT_ID and CI_JOB_TOKEN, so
+//     the read needs no wiring in the common case; where an instance does not let
+//     the job token list merge requests, STATUSGEN_GITLAB_TOKEN (read_api) is the
+//     override. Either way an unreadable listing is a could-not-check the board
+//     itself wears, never a silent pass — the job is not failed over it, because
+//     an undecayed claim set holds work back rather than double-dispatching it.
 const initGitlabCI = `# statusgen CI — the two-half single-writer shape on GitLab, mirroring the GitHub
 # workflow (medici-finance/assay docs/adopting-assay.md, section: add-statusgen-ci).
 # The merge-request half runs --lint only; the default-branch half regenerates
@@ -548,9 +611,45 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 #
 # The regen job pushes STATUS.md back to the default branch. GitLab's default CI
 # job token cannot push, so create a project (or group) access token with the
-# write_repository scope and set it as a MASKED CI/CD variable named
-# STATUSGEN_PUSH_TOKEN. Until it is set the regen job stops with a clear message
-# rather than pushing.
+# write_repository scope and set it as a MASKED and PROTECTED CI/CD variable named
+# STATUSGEN_PUSH_TOKEN. Protected means only pipelines on protected refs receive
+# it, so the default branch this job runs on must be a protected branch. A
+# masked-only variable is still injected into merge-request pipelines, which run
+# the MR branch's own CI file — anyone who can open an MR could then read the
+# token and push to the default branch past the merge gate. Until it is set the
+# regen job stops with a clear message rather than pushing. See
+# docs/adopting-assay-gitlab.md, section "Board-push credential" for the token
+# kind, minimum role, and variable visibility.
+#
+# TRUST ROSTER — the NON-secret half, as the CI/CD variable STATUSGEN_ROSTER_ENV.
+# On a GitLab runner statusgen reads its roster from ${HOME}/.config/assay/roster.env
+# (there is no GITHUB_ACTIONS environment transport here), and nothing writes that
+# file on a fresh runner — so without this variable every roster-backed check (the
+# Evidence-actor check on verified/done rows: which identity committed each brief's
+# Evidence lines; the trust gates) reports could-not-check on every run while the
+# job stays green: a silent gap, not a pass. Set STATUSGEN_ROSTER_ENV to the
+# roster.env CONTENTS (Variable type, multi-line) or as a File-type variable; both
+# jobs materialise it into that path with owner-only permissions before statusgen
+# runs, and print a NOTICE naming the variable when it is unset. It holds logins,
+# numeric ids, and role bindings ONLY (ASSAY_TRUSTED_BOT_SLUGS must bind
+# verifier=<forge>:<slug>[:<id>] for the Evidence-actor check to run) — never a
+# token, key, or password: it is NOT masked and NOT protected, so the merge-request
+# --lint half receives it too, and a secret-shaped key makes the job refuse. See
+# docs/adopting-assay-gitlab.md, section "Trust roster for CI".
+#
+# DEAD-CLAIM DECAY — the regen job also decays dead claims: a branch whose merge
+# request has already merged or closed is dropped before it can consume its
+# stream's dispatch cap. That read is the project's merge-request listing over the
+# v4 API, and it uses the predefined CI_API_V4_URL, CI_PROJECT_ID and CI_JOB_TOKEN
+# every job already has — nothing to configure. If your instance does not expose
+# the merge_requests endpoint to the job token, set a project access token with the
+# read_api scope as the CI/CD variable STATUSGEN_GITLAB_TOKEN and it is used
+# instead. When the listing cannot be read, the run prints
+# "could-not-check: claims not decayed" and the generated board carries the same
+# line: the job still succeeds, because an undecayed claim set holds briefs back
+# rather than handing the same brief to two sessions. Read it as work possibly
+# hidden, never as a clean board. See docs/adopting-assay-gitlab.md, section
+# "Dead-claim decay credential".
 #
 # RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
 # neither installs nor configures one for you. Unlike GitHub's hosted
@@ -586,6 +685,37 @@ stages: [statusgen]
     echo "${sha}  /tmp/statusgen" | sha256sum -c -
     install -m 0755 /tmp/statusgen /usr/local/bin/statusgen
 
+# Materialise the NON-secret trust roster (see TRUST ROSTER above). LOUD when
+# absent: statusgen itself only echoes configured=false / role-bindings=(none
+# bound), which reads as a clean board unless you know to look.
+.statusgen-roster: &statusgen-roster
+  - |
+    set -euo pipefail
+    if [ -z "${STATUSGEN_ROSTER_ENV:-}" ]; then
+      echo "NOTICE: STATUSGEN_ROSTER_ENV is not set — no trust roster for this job."
+      echo "statusgen reads the roster from ${HOME}/.config/assay/roster.env, which nothing has written, so every roster-backed check (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass; the board below is generated without it."
+      echo "Set a CI/CD variable named STATUSGEN_ROSTER_ENV holding the NON-secret roster lines (ASSAY_TRUSTED_BOT_SLUGS with its verifier= binding, ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP) — never a token, key, or password. See docs/adopting-assay-gitlab.md, section Trust roster for CI."
+    else
+      install -d -m 700 "${HOME}/.config/assay"
+      umask 077
+      if [ -f "${STATUSGEN_ROSTER_ENV}" ]; then
+        # File-type variable: the value is the path of a temp file holding the contents.
+        cp "${STATUSGEN_ROSTER_ENV}" "${HOME}/.config/assay/roster.env"
+      else
+        # Variable-type variable: the value IS the contents.
+        printf '%s\n' "${STATUSGEN_ROSTER_ENV}" > "${HOME}/.config/assay/roster.env"
+      fi
+      chmod 600 "${HOME}/.config/assay/roster.env"
+      # The roster is the NON-secret half. A secret-shaped key means a credential was
+      # pasted where logins and ids belong: refuse rather than let it near a job log.
+      if grep -Eiq '^[[:space:]]*(export[[:space:]]+)?[A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|PRIVATE_KEY)[A-Za-z0-9_]*=' "${HOME}/.config/assay/roster.env"; then
+        echo "STATUSGEN_ROSTER_ENV carries a secret-shaped key (TOKEN/SECRET/PASSWORD/PRIVATE_KEY). The roster is the NON-secret half — logins, ids, role bindings — never a token, key, or password. Refusing rather than guessing."
+        rm -f "${HOME}/.config/assay/roster.env"
+        exit 1
+      fi
+      echo "trust roster materialised from STATUSGEN_ROSTER_ENV: $(grep -c '^ASSAY_' "${HOME}/.config/assay/roster.env" || true) ASSAY_ key(s) at ${HOME}/.config/assay/roster.env"
+    fi
+
 statusgen-lint:
   stage: statusgen
   # ADOPTER: runner — this job is UNTAGGED, so a runner with run_untagged = true
@@ -602,6 +732,7 @@ statusgen-lint:
     # delete the example before authoring your own stream, add --allow-empty-root
     # to the line below for that transitional window ONLY — do not leave it on, or
     # the empty-root PROBLEM can never fire for a genuine regression.
+    - *statusgen-roster
     - statusgen --lint
 
 statusgen-regen:
@@ -623,9 +754,10 @@ statusgen-regen:
     - |
       if [ -z "${STATUSGEN_PUSH_TOKEN:-}" ]; then
         echo "STATUSGEN_PUSH_TOKEN is not set — cannot push the regenerated board."
-        echo "Create a project access token with the write_repository scope and set it as a masked CI/CD variable named STATUSGEN_PUSH_TOKEN. Refusing rather than guessing."
+        echo "Create a project access token with the write_repository scope and set it as a masked and protected CI/CD variable named STATUSGEN_PUSH_TOKEN (protected: the default branch must be a protected branch). Refusing rather than guessing."
         exit 1
       fi
+    - *statusgen-roster
     - statusgen --root .
     - |
       set -euo pipefail

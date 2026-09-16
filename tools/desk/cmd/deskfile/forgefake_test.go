@@ -29,7 +29,20 @@ type dfForge struct {
 	getNums      []int
 	filed        *deskkit.IssueInput
 	appliedLabel []string // labels ApplyLabels added after a filing
-	comments     []int    // PostComment target numbers
+	comments     []int    // PostComment / PostCommentTyped target numbers
+	// getKinds / commentKinds record the TargetKind each typed read / typed write was
+	// asked for, in call order — the observable that proves `--kind` reached the forge.
+	getKinds     []deskkit.TargetKind
+	commentKinds []deskkit.TargetKind
+	// labelTarget is the LabelChange.Target the filing's label write carried. The real
+	// backends refuse an unset one; on GitLab an unset/change target lands on the MR sharing
+	// the issue's number, so the fake pins the ISSUE target the same way.
+	labelTarget deskkit.TargetKind
+
+	// readOnlyCustody records the readOnly argument the verb passed to forgeForFn — i.e.
+	// whether it asked for a NON-rotating credential lookup. It is the observable that
+	// distinguishes a dry-run's custody request from a writing verb's.
+	readOnlyCustody bool
 }
 
 func (f *dfForge) SearchIssues(repo deskkit.ForgeRepo, in deskkit.SearchIssuesInput) ([]deskkit.IssueSearchResult, error) {
@@ -103,6 +116,22 @@ func (f *dfForge) GetIssue(repo deskkit.ForgeRepo, number int) (*deskkit.Issue, 
 	return &deskkit.Issue{Number: number, State: state, URL: url}, nil
 }
 
+// GetIssueTyped records the stated kind and answers the same canned object as GetIssue; a
+// FAKEGH_ISSUE_IS_PR=1 environment models a GitHub number that is a pull request, so a
+// test can drive the kind-mismatch path (asked for an issue, got a change).
+func (f *dfForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	f.getKinds = append(f.getKinds, kind)
+	iss, err := f.GetIssue(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	iss.IsPullRequest = os.Getenv("FAKEGH_ISSUE_IS_PR") != ""
+	if iss.IsPullRequest && kind == deskkit.TargetIssue {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s#%d is a pull request, not an issue", repo.Slug(), number), nil)
+	}
+	return iss, nil
+}
+
 func (f *dfForge) FileIssue(repo deskkit.ForgeRepo, in deskkit.IssueInput) (*deskkit.IssueRef, error) {
 	// Record the ATTEMPT (before any failure), so the synthesised `issue create` argv reflects
 	// that the create was reached even when the forge refuses it (FAKEGH_CREATE_FAIL).
@@ -115,6 +144,10 @@ func (f *dfForge) FileIssue(repo deskkit.ForgeRepo, in deskkit.IssueInput) (*des
 }
 
 func (f *dfForge) ApplyLabels(repo deskkit.ForgeRepo, number int, change deskkit.LabelChange) (*deskkit.LabelOutcome, error) {
+	if change.Target != deskkit.TargetIssue {
+		return nil, deskkit.Refused(fmt.Sprintf("refusing to apply labels: target %s, want issue — deskfile labels the ISSUE it filed", change.Target))
+	}
+	f.labelTarget = change.Target
 	for _, l := range change.Add {
 		f.appliedLabel = append(f.appliedLabel, l.Name)
 	}
@@ -127,6 +160,12 @@ func (f *dfForge) PostComment(repo deskkit.ForgeRepo, number int, body string) (
 	}
 	f.comments = append(f.comments, number)
 	return &deskkit.CommentRef{URL: fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-1", repo.Slug(), number)}, nil
+}
+
+// PostCommentTyped records the stated kind and otherwise behaves as PostComment.
+func (f *dfForge) PostCommentTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
+	f.commentKinds = append(f.commentKinds, kind)
+	return f.PostComment(repo, number, body)
 }
 
 // synthGH renders the forge ops as canonical gh-shaped pseudo-argvs so the suite's
@@ -175,9 +214,10 @@ func installFakeForge(t *testing.T) *dfForge {
 	oldTok := ghToken
 	ghToken = "fake-token"
 	old := forgeForFn
-	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+	forgeForFn = func(repo string, readOnly bool) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 		owner, name, _ := cutSlug(repo)
 		f.fr = deskkit.ForgeRepo{Owner: owner, Name: name}
+		f.readOnlyCustody = readOnly
 		// The kind mirrors what production's resolver would answer from the planted roster
 		// (plantRosterWithForges → ASSAY_REPO_FORGES), defaulting to GitHub when the roster is
 		// silent — so a GitLab-configured test sees the GitLab label-create hint (#887 item 2).

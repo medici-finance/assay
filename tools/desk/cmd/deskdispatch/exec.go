@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -26,25 +24,27 @@ var execCommand = exec.Command
 // happens to be installed on the test runner's PATH.
 var lookPath = exec.LookPath
 
-// mintTokenFn is the seam the DISPATCHER App-token lookup runs through, so the stamp step
-// can be exercised without a real App credential. Production binds it to the shared
-// deskkit resolver, which shells out to the token minter and reads the file it names.
+// mintTokenFn is the seam the CLAIM step's role-token mint runs through (resolveClaimAuth,
+// issue 1151), so a full-run dispatch test hands the claim child a stub token without a real
+// App credential. Production binds it to the shared deskkit resolver, which shells out to the
+// token minter and reads the file it names. The model stamp does NOT use it: its credential
+// is read inside deskkit.ResolveForge, under the resolver's own custody hook.
 var mintTokenFn = deskkit.RoleTokenForRepo
 
-// dispatcherToken is the DISPATCHER App installation token every `gh` invocation from this
-// verb authenticates with. It is set by the stamp step, from the role deskkit declares as
-// the dispatcher, before the first label is applied.
+// NO FORGE CLI. Every forge read and write this verb makes — the model stamp's label
+// reads and writes, the review-lane queue label — goes through the resolved deskkit.Forge
+// under an explicitly minted role credential (deskkit.ResolveForge), never through `gh` or
+// `glab`. The children that DO flow through runCmd are the consumer claim/decision scripts,
+// deskwt, deskroster and git. The forge-CLI ban (internal/forgeban) reads this file's exec
+// site as an unresolved argv[0] and this package carries no permit row, so a `gh` reaching
+// this seam again is a red test, not a silent regression.
 //
-// WHY AN EMPTY VALUE IS A REFUSAL AND NEVER A FALLBACK. The only thing this verb writes to
-// the forge is the dispatch attestation — two labels whose whole value is WHO applied
-// them. With no token in the child's environment `gh` authenticates as whatever credential
-// the calling shell holds (another role's App, or the operator's own login), and the
-// capability floor's applier-aware reader then sees a dispatched-* label from a
-// non-dispatcher: the exact shape it exists to refuse. The result is worse than not
-// stamping at all — an unstamped PR reads UNKNOWN and proceeds with a NOTICE, while a
-// PR stamped under the wrong identity refuses every authority-bearing write made on it.
-// So the ambient credential is never a fallback here.
-var dispatcherToken string
+// WHY THERE IS NO AMBIENT FALLBACK. The only thing this verb writes to the forge is the
+// dispatch attestation — two labels whose whole value is WHO applied them. Both Forge
+// backends refuse to construct a client without an explicitly minted token, and the resolver
+// reads the lane's own dispatcher credential; a stamp written under whatever credential the
+// calling shell holds is the shape the capability floor's applier-aware reader exists to
+// refuse, and worse than not stamping at all.
 
 type runResult struct {
 	stdout string
@@ -59,18 +59,16 @@ type runResult struct {
 }
 
 func runCmd(dir, name string, args ...string) runResult {
-	// The fail-closed backstop for the rule above: even if a future code path reached a
-	// forge call before the token was minted, the call does not happen. The stamp step's
-	// own mint is the check a caller sees; this is the one that cannot be forgotten.
-	if name == "gh" && dispatcherToken == "" {
-		return runResult{err: errors.New(
-			"refusing to run gh with no dispatcher App installation token — the dispatch stamp is an " +
-				"attestation about WHO applied it, so it is never written under the ambient gh identity")}
-	}
-	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Start: execCommand}
-	if name == "gh" {
-		call.Env = append(os.Environ(), "GH_TOKEN="+dispatcherToken)
-	}
+	return runCmdEnv(dir, nil, name, args...)
+}
+
+// runCmdEnv is runCmd with an explicit child environment. env follows the os/exec contract:
+// nil inherits this process's environment, non-nil REPLACES it (so a caller that means to add
+// one variable passes append(os.Environ(), "K=V")). It exists for the claim child (issue
+// 1151), which the legacy claim script authenticates through GH_TOKEN in its environment;
+// every other call site passes nil through runCmd.
+func runCmdEnv(dir string, env []string, name string, args ...string) runResult {
+	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Env: env, Start: execCommand}
 	// The capture, the exit-status recovery and the preamble strip are the shared runner's
 	// (deskkit/runtool.go). The recording seam stays LOCAL — ToolCall.Start is execCommand —
 	// so every argv assertion in this package's tests still runs against the real

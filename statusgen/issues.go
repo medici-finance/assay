@@ -754,27 +754,53 @@ func runIssues(root string, asJSON, series bool, staleDays int, teamLoginsCSV st
 
 // --- stale-issue alarm (the --lint gate line) --------------
 
-// openIssueDebtNotice is the gh-guarded stale-issue alarm that rides the --lint
-// gate, mirroring issue-loop/07's intake-debt alarm applied to issues. It is a
-// NOTICE only (never a hard problem) and is gh-GUARDED: absent gh, or any gh
-// failure, degrades to "" (skipped) so the offline --lint gate never gains a hard
-// network dependency. Returns the one board line
+// openIssueDebtNotice is the stale-issue alarm that rides the --lint gate,
+// mirroring issue-loop/07's intake-debt alarm applied to issues. It is a NOTICE
+// only (never a hard problem) and it is now OPT-IN: it reads through the run's
+// forgeReader, whose DEFAULT is offline, so a plain --lint neither starts a
+// process nor reaches a network and the line is simply absent. `--lint --forge`
+// wires the desk-tools-backed reader and the line returns.
+//
+// It reads OPEN issues only, which is all it ever consumed: the stale computation
+// iterates openIssues alone and Stale.Open is set from rep.Open, so the previous
+// list-every-issue-ever read transferred every closed issue in the configured set
+// and discarded all of it. Returns the one board line
 // `issue debt: N open, K over <days>d, oldest #<n> at <age>` when at least one
 // open issue is over the threshold, else "".
-func openIssueDebtNotice(staleDays int) string {
+func openIssueDebtNotice(staleDays int, reader forgeReader) string {
 	if staleDays <= 0 {
 		staleDays = defaultStaleIssueDays
 	}
-	if _, err := exec.LookPath("gh"); err != nil {
-		return "" // skipped (no gh) — offline discipline
+	if reader == nil {
+		return "" // no reader wired → skipped, never a zero-debt claim
 	}
-	var records []issueMetricRecord
-	for _, r := range reposForIssues() {
-		recs, err := ghIssueMetricLister(r)
-		if err != nil {
-			return "" // gh present but failed → skip, never fail the lint
+	repos := reposForIssues()
+	data, unavailable, err := reader.OpenIssues(repos)
+	if err != nil {
+		return "" // reader fault → skip, never fail the lint
+	}
+	// ANY repo unread and the line is withheld entirely. A debt count assembled from a SUBSET
+	// of the configured set understates the debt, and an understated alarm is worse than an
+	// absent one: it reads as "we looked and it is fine". Offline (the default reader) every
+	// repo is unavailable, so the line is simply not emitted — which is exactly what makes it
+	// opt-in rather than silently degraded.
+	if len(unavailable) > 0 {
+		return ""
+	}
+	records := make([]issueMetricRecord, 0, 64)
+	for _, r := range repos {
+		for _, is := range data[r] {
+			records = append(records, issueMetricRecord{
+				Number:    is.Number,
+				Repo:      r,
+				OwnerRepo: r,
+				Title:     is.Title,
+				State:     "OPEN",
+				CreatedAt: is.CreatedAt,
+				Author:    is.Author,
+				Labels:    is.Labels,
+			})
 		}
-		records = append(records, recs...)
 	}
 	rep := computeIssueMetrics(records, issueMetricConfig{Now: nowFunc(), StaleDays: staleDays, OldestN: 1})
 	if rep.Stale.Over == 0 {

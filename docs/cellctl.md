@@ -13,6 +13,9 @@ script is the only place those stay fixed.
 `cellctl` is **optional**, in the same sense as the desk-tools binaries: it automates a pipeline you
 can also stand up by hand. Nothing else in Assay depends on it.
 
+For an existing container deployment, the **container** kind provides registration and lifecycle
+delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
+
 ---
 
 ## What a cell is, on a laptop
@@ -33,7 +36,7 @@ operator's config home and are reached by symlink.
     .gitconfig         symlink to the operator's real gitconfig
   bin/                 deskd + deskcli for this cell
   index/               the persistent deskd index (survives restarts)
-  worktrees/<role>/    one worktree per role, fast-forwarded to origin/main at every boot
+  worktrees/<role>/    one worktree per role, merged up to origin/main at every boot
   shim/                generated — every desk verb wrapped to run with HOME=<cell>/home
 ```
 
@@ -54,6 +57,9 @@ its own Apps, its own `deskd` port, and its own tmux session. They share nothing
 ---
 
 ## Why the session keeps the real `HOME`
+
+This section applies to the **house** and **k8s** host launch paths. A container launcher assigns
+the harness its own container home and supplies that environment's authentication separately.
 
 This is the one design rule worth reading before anything else, because getting it wrong looks like a
 harness bug rather than a configuration mistake.
@@ -321,7 +327,8 @@ switches the model **endpoint and credential** (`--model` alone only changes the
 still talks to Anthropic) — see *Providers* below. `--harness` is the same per-run-override shape
 for the harness — see *Harnesses* below.
 
-Each window gets: its own worktree under `worktrees/<role>` fast-forwarded to `origin/main` and
+Each window gets: its own worktree under `worktrees/<role>` **merged up to `origin/main`** (see
+*Worktree currency* below) and
 **locked** (`git worktree lock`, so a worktree prune never takes a live window's tree); the real
 `HOME` with `shim/` first on `PATH`; `DESK_LOOP` and `DESK_SESSION` set, and `DESK_ROOTS` when
 `cell.env` carries `CELL_ROOTS` (a cell without one boots with a notice that the desk verbs are on
@@ -334,9 +341,23 @@ first prompt.
 When the installed desk-tools ship a `deskwt role-init` that supports the role (probe: `deskwt
 role-init --help` exits 0), `cellctl desk` lets **it** create the role worktree on first boot — its
 last output line is the path — and links `worktrees/<role>` to that tree, so cellctl and the desk
-skills agree on the worktree's name and the next boot fast-forwards the same tree. A `deskwt` that
-is absent or refuses the probe leaves cellctl's own worktree path in charge; `CELLCTL_DESKWT=0`
+skills agree on the worktree's name and the next boot merges the same tree up to main. A `deskwt`
+that is absent or refuses the probe leaves cellctl's own worktree path in charge; `CELLCTL_DESKWT=0`
 forces that path.
+
+**Worktree currency.** An existing role worktree is brought up to the fetched `origin/main` with a
+real merge — a fast-forward when the tree carries nothing of its own, a two-parent merge commit
+when it does — never a rebase, and never left behind. (The earlier `--ff-only`-or-notice arm booted
+the desk on whatever the tree was: a role worktree that had ever carried a local commit could never
+fast-forward again, so every later boot ran days behind main, silently, until the desk's first
+board read said `STALE:drift` and its loop refused every flip — #1157.) On a conflict the generated
+single-writer files — `STATUS.md` and `docs/streams/FINDINGS.md`, overridable as the
+space-separated `CELLCTL_GENERATED_FILES` — are taken from main outright, never hand-merged; any
+**other** conflict **stops the boot**: the merge is aborted, the tree is left exactly as it was,
+the conflicting paths are named, and nothing is launched. Resolve by hand (`git -C <worktree>
+merge <sha>` — merge, never rebase), then re-run. Inside the session, `deskboot`'s own
+`worktree-current` step re-proves the same thing against the same `FETCH_HEAD` and refuses a tree
+that is behind, so a hand boot that skipped the launcher is caught too.
 
 Each window is named **`<cell>-<short role>`** — the role without its `-desk` suffix, except
 `the-desk`, which keeps its full name (`<cell>-the-desk`, `<cell>-pr-review`, `<cell>-verify`,
@@ -858,3 +879,75 @@ a `MISS`, because a provider is opt-in.
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
+
+## Container cells
+
+Register an existing container launcher to make the cell visible to `cellctl ls`
+and start it through the same command entry point:
+
+```sh
+cellctl new sample --kind container --repo example-org/example-repo \
+  --launcher /absolute/path/to/container-launcher
+cellctl ls
+cellctl check sample
+cellctl up sample
+cellctl desk sample the-desk --model sonnet
+cellctl down sample
+```
+
+Registration creates only `<cells-root>/sample/cell.env`, mode 0600. It records
+`CELL_KIND=container`, `CELL_REPO`, `CELL_CONTAINER_LAUNCHER`, `CELL_HARNESS`, model
+pins and `ROLES`. It does not clone a host checkout, link a config home, copy keys,
+contact Docker, or log into a model provider. The repo value identifies the
+container's repository; it need not name a directory on the host.
+
+The launcher must already exist at an absolute executable path. `cellctl` invokes
+it directly as an argument vector, never as a shell command string:
+
+| Command | Launcher receives |
+| --- | --- |
+| `check sample` | `check` |
+| `desk sample the-desk` | `desk the-desk --harness claude --model <resolved-pin>` |
+| `up sample` | The same coordinator launch as `desk sample the-desk` |
+| `down sample` | `down` |
+
+The default role list is `the-desk`. This first integration supports `up` only
+when that is the sole configured role. For additional roles, register them with
+`--roles` and use explicit `desk` commands. Multi-role container cockpits,
+`--no-attach`, scheduling and host `deskd` are outside this integration; those
+options refuse instead of falling through to host launches. Whether an already
+running container is attached or reported as running belongs to the launcher.
+
+Model resolution, the coordinator's Opus refusal, `--model`, `--harness`, and
+`desk --set` use the existing `cellctl` rules. Unsupported host config-directory
+and provider arguments refuse: model credentials belong to the container
+launcher. `DRY_RUN=1` prints the intended call without invoking the launcher or
+persisting a model override. A nonzero launcher exit is preserved.
+
+The launcher receives a clean environment containing only `HOME`, `PATH`,
+`TERM`, `CELL`, `CELL_KIND`, `CELL_DIR`, `CELL_REPO`, `CELL_ROOTS`, `CELL_HARNESS`
+and `ROLES`. For `desk`, the argument vector's harness and model are authoritative,
+including per-invocation overrides. Forge tokens, model tokens, SSH-agent settings
+and the operator's `CLAUDE_CONFIG_DIR` are not forwarded from the parent shell.
+The launcher is trusted **host code**, not sandboxed by this environment cleanup.
+It can read host files with the operator's authority; this contract does not
+establish isolation from another unrestricted host process.
+
+The deployment launcher owns the remaining checks and actions:
+
+- `check`: validate the local engine target, pinned image, own-cell volumes,
+  credential-file presence/mode and supported harness. Report unavailable state
+  as a failure, not as an empty or stopped cell. Keep this check free of model
+  execution and forge credential minting.
+- `desk`: ensure the selected role uses its own writable workspace, roster and
+  credential mounts; verify container ownership before attaching; pass the
+  supplied model to the harness and invoke the selected role's Assay skill.
+  Enforce the runtime credential contract before opening the agent.
+- `down`: stop only containers verified to belong to this cell. Preserve working
+  volumes and refuse ambiguous ownership.
+
+No container runtime implementation is bundled by this registration change.
+The existing [container credential contract](../containers/secrets.md) still
+applies to deployments using the published desk images. A container launcher
+must not mount the operator's whole home, credentials directory or engine socket
+into an agent merely because those paths are available on its host.

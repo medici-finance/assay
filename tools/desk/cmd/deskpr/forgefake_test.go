@@ -30,11 +30,28 @@ type envForge struct {
 	openCalls    int
 	openBranches []string // the source branch of each OpenChangeForBranch, for the `pr list` synth
 	getCalls     int
-	getNums     []int // the PR number of each GetPullRequest, for the synthesised `pr view` argv
-	edited      *deskkit.EditChangeInput
-	editedNum   int
-	comments    []string
-	commentNums []int // the PR number of each PostComment ATTEMPT (recorded before any failure)
+	getNums      []int // the PR number of each GetPullRequest, for the synthesised `pr view` argv
+	edited       *deskkit.EditChangeInput
+	editedNum    int
+	comments     []string
+	commentNums  []int // the PR number of each PostComment ATTEMPT (recorded before any failure)
+
+	// visibilityCalls/visibilityRepo/visibility record the public-repo gate's RepoVisibility
+	// read when the production fetcher is routed through THIS fake (assay#1054's regression
+	// coverage — see gatewired_test.go's TestCreateGateFetcherRoutesThroughResolvedForge).
+	// visibility defaults to "private" (the gate's no-op case) when unset.
+	visibilityCalls int
+	visibilityRepo  deskkit.ForgeRepo
+	visibility      string
+
+	// openMergeHoldCalls / openMergeHoldNum record every OpenMergeHold call this fake sees.
+	// openMergeHoldErr, when set, is returned instead of the default typed not-applicable —
+	// the GitHub-shaped default every existing test implicitly relies on, so a case that does
+	// not touch this field sees byte-identical behaviour to before the merge-hold op set
+	// existed.
+	openMergeHoldCalls int
+	openMergeHoldNum   int
+	openMergeHoldErr   error
 }
 
 // synthGH renders the forge ops this fake recorded as canonical gh-shaped pseudo-argvs, so the
@@ -101,6 +118,18 @@ func (f *envForge) CreateDraftChange(repo deskkit.ForgeRepo, in deskkit.DraftCha
 	}, nil
 }
 
+// OpenMergeHold defaults to the GitHub-shaped typed not-applicable — byte-identical to how
+// this fake behaved before the merge-hold op set existed, for every test that does not set
+// openMergeHoldErr.
+func (f *envForge) OpenMergeHold(repo deskkit.ForgeRepo, number int) (string, error) {
+	f.openMergeHoldCalls++
+	f.openMergeHoldNum = number
+	if f.openMergeHoldErr != nil {
+		return "", f.openMergeHoldErr
+	}
+	return "", deskkit.ErrMergeHoldNotApplicable
+}
+
 func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
 	f.getCalls++
 	f.getNums = append(f.getNums, number)
@@ -150,6 +179,19 @@ func (f *envForge) mergeable() string {
 	default:
 		return deskkit.MergeableUnknown
 	}
+}
+
+// RepoVisibility answers the public-repo gate's live-visibility read from THIS fake — the
+// resolved forge backend — rather than any hardcoded GitHub-only client. Defaults to
+// "private" (the gate's no-write-authorization-needed case) so tests that never set
+// f.visibility keep sailing through the gate exactly as before this method existed.
+func (f *envForge) RepoVisibility(repo deskkit.ForgeRepo) (string, error) {
+	f.visibilityCalls++
+	f.visibilityRepo = repo
+	if f.visibility != "" {
+		return f.visibility, nil
+	}
+	return "private", nil
 }
 
 func (f *envForge) EditChange(repo deskkit.ForgeRepo, number int, in deskkit.EditChangeInput) error {

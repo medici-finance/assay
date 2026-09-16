@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -84,6 +85,12 @@ func (a *auditCtx) log(result, detail string) {
 
 // finalize maps the terminal error (or success) to exactly one audit result.
 func (a *auditCtx) finalize(err error) {
+	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
+	// would land in is append-only, never rotated, and counted per tool for the write budget
+	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
+	if deskkit.IsHelpRequest(err) {
+		return
+	}
 	if err == nil {
 		result := a.successResult
 		if result == "" {
@@ -132,6 +139,12 @@ func cmdCreate(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	defer func() { explainScanRefusal(*explain, err) }()
@@ -273,7 +286,11 @@ func cmdCreate(args []string) (err error) {
 	// resolved above for the trailer/self-containment hint; it is simply no longer passed
 	// to the gate.
 	owner, name := splitOwnerRepo(facts.repo)
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	// The gate's visibility read goes through the SAME forge backend already resolved above
+	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
+	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not
+	// GitHub's, and fg is already whichever backend the resolver picked.
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
@@ -298,6 +315,20 @@ func cmdCreate(args []string) (err error) {
 	if ref.Number > 0 {
 		n := ref.Number
 		ac.pr = &n
+		// Open the desk's merge-hold marker thread (the forge-gitlab merge-hold brief): a
+		// resolvable discussion thread that blocks GitLab's merge button
+		// (only_allow_merge_if_all_discussions_are_resolved) until the reviewer's approve
+		// verdict releases it at the current head. GitHub returns the typed not-applicable
+		// (its twin control is server-side branch protection) and this is a no-op there.
+		// Failure to open is LOUD: the change already exists, and an operator who is not
+		// told it is missing its gate would not find out until a ready-flip refuses for a
+		// reason that reads like a different problem.
+		if hErr := openMergeHoldFn(fg, fr, n); hErr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"%s was created, but opening its merge-hold marker thread failed: %v — the change exists "+
+					"WITHOUT its server-side merge gate armed. Open one by hand (or re-run this step) before "+
+					"the PR is reviewed.", url, hErr), hErr)
+		}
 		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero
 		// pull_request runs at its head — indistinguishable, on the audit line or any
 		// board, from "checks still pending" until something names the mergeable state
@@ -307,6 +338,18 @@ func cmdCreate(args []string) (err error) {
 	}
 	ac.detail = detail
 	fmt.Println(url)
+	return nil
+}
+
+// openMergeHoldFn is the seam for deskpr create's merge-hold open step, a package var so
+// tests can observe the call without a live GitLab instance. Production calls
+// deskkit.Forge.OpenMergeHold directly and treats the typed not-applicable (GitHub: the twin
+// control is server-side branch protection) as success — there is nothing to open there.
+var openMergeHoldFn = func(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) error {
+	_, err := fg.OpenMergeHold(fr, number)
+	if err != nil && !deskkit.IsMergeHoldNotApplicable(err) {
+		return err
+	}
 	return nil
 }
 
@@ -377,6 +420,12 @@ func cmdUpdate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	defer func() { explainScanRefusal(*explain, err) }()
@@ -466,7 +515,11 @@ func cmdUpdate(args []string) (err error) {
 	// Public-repo gate: refuse an outward write unless the repo is authorized
 	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	// The gate's visibility read goes through the SAME forge backend already resolved above
+	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
+	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not
+	// GitHub's, and fg is already whichever backend the resolver picked.
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
@@ -542,6 +595,17 @@ func preflight(dir, base string) (*gitFacts, error) {
 	// No staged-but-uncommitted changes: exits 1 (Refused) when the index has content
 	// not yet committed, matching `git diff --cached --quiet`'s exit code.
 	if staged, serr := gitRepo.HasStagedChanges(); serr != nil {
+		// An object this checkout's own history references could not be read — most often
+		// a `git clone --shared`/`--reference` checkout whose borrowed object store has
+		// moved, gone, or is declared in a form that cannot be resolved. That is
+		// COULD-NOT-CHECK, and it is reported as itself: the index may or may not be
+		// clean, and neither answer may be guessed from a partially readable repository.
+		if errors.Is(serr, gitcore.ErrObjectStoreIncomplete) {
+			return nil, deskkit.Unverifiable(
+				"cannot check staged changes: part of this checkout's object store is unreadable — "+
+					"if it borrows objects from another repository (`git clone --shared`/`--reference`), "+
+					"materialise them with `git repack -a` in this checkout, or use a full clone", serr)
+		}
 		return nil, deskkit.Unverifiable("cannot check staged changes", serr)
 	} else if staged {
 		return nil, deskkit.Refused("refused: staged-but-uncommitted changes — commit them first")

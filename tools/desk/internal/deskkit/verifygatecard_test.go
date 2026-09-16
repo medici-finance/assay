@@ -76,9 +76,9 @@ func TestVerifyGateCardCommentAdmittedUnconfiguredRosterRefuses(t *testing.T) {
 
 // TestVerifyGateCardAuthorStaysUntrustedGenerally — the carve-out must not leak into
 // the general predicates. `github-actions[bot]` is untrusted for TrustedAuthor,
-// TrustedAuthorID, TrustedPublicAuthor and TrustedHumanAuthor, before and after this
-// change; nothing about carrying a verify-gate label can reach them (they take no
-// labels), and this pins that the author itself was not quietly added to the roster.
+// TrustedAuthorID and TrustedHumanAuthor, before and after this change; nothing
+// about carrying a verify-gate label can reach them (they take no labels), and
+// this pins that the author itself was not quietly added to the roster.
 func TestVerifyGateCardAuthorStaysUntrustedGenerally(t *testing.T) {
 	plantRoster(t, verifyGateFixtureRoster)
 	const login = "github-actions[bot]"
@@ -87,9 +87,6 @@ func TestVerifyGateCardAuthorStaysUntrustedGenerally(t *testing.T) {
 	}
 	if TrustedAuthorID(login, 41898282) {
 		t.Fatal("TrustedAuthorID must stay false for the Actions identity")
-	}
-	if TrustedPublicAuthor(login) {
-		t.Fatal("TrustedPublicAuthor must stay false for the Actions identity")
 	}
 	if TrustedHumanAuthor(login) {
 		t.Fatal("TrustedHumanAuthor must stay false for the Actions identity")

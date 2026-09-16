@@ -342,62 +342,82 @@ func TestAutoFlipReviewerLoginFromRoster(t *testing.T) {
 
 // ---- claim decay: three distinct states, never a not-applicable dressed as a fail -
 
-// TestClaimDecayThreeStates (Verify row 9 — NEGATIVE). ran / failed-this-run /
-// not-applicable-on-this-forge produce three distinct messages; the test fails if
-// any two are identical or if not-applicable reuses the transient
-// "authenticate and regenerate" wording.
+// TestClaimDecayThreeStates (Verify row 9 — NEGATIVE). The decay must be
+// DISTINGUISHABLE across its outcomes: it ran on GitHub, it ran on GitLab, it
+// could not look. #1111 retired the state this test used to pin as the third one
+// — "NOT APPLICABLE on this forge" — because a GitLab remote now routes to the
+// merge-request reader instead of declining to run, so a permanent
+// not-applicable is no longer a truthful thing for this pass to say anywhere. The
+// two forges now share ONE outcome (decayed, silent) and could-not-check is the
+// state that must stand apart from both.
 func TestClaimDecayThreeStates(t *testing.T) {
 	branches := []string{"main", "feat/x-merged"}
 
-	// State 1 — RAN. GitHub remote, gh reachable, a merged corpse dropped, NO notice.
+	// State 1 — RAN ON GITHUB. gh reachable, a merged corpse dropped, no complaint.
 	stubRemoteOriginURL(t, "https://github.com/acme/repo.git", nil)
 	stubMergedClosedBranches(t, map[string]bool{"feat/x-merged": true}, nil)
 	var ranGot []string
-	ran := captureStderr(t, func() { ranGot = decayDeadClaims("/repo", branches) })
+	var ranReason string
+	ran := captureStderr(t, func() { ranGot, ranReason = decayDeadClaims("/repo", branches) })
 	if len(ranGot) != 1 || ranGot[0] != "main" {
-		t.Errorf("RAN: expected the corpse dropped, got %v", ranGot)
+		t.Errorf("RAN/github: expected the corpse dropped, got %v", ranGot)
 	}
-	if strings.Contains(ran, "NOTICE") {
-		t.Errorf("RAN: a successful decay must emit no NOTICE; got:\n%s", ran)
+	if ranReason != "" {
+		t.Errorf("RAN/github: a successful decay must report no could-not-check reason; got %q", ranReason)
+	}
+	if strings.Contains(ran, "could-not-check") || strings.Contains(ran, "NOTICE") {
+		t.Errorf("RAN/github: a successful decay must say nothing; got:\n%s", ran)
 	}
 
-	// State 2 — FAILED THIS RUN. gh unreadable on a non-gitlab remote -> transient
-	// "unavailable ... regenerate with gh" wording, the full branch set kept.
+	// State 2 — RAN ON GITLAB. A GitLab remote routes to the merge-request reader
+	// (never the gh lister) and decays the same corpse.
+	stubRemoteOriginURL(t, "git@gitlab.com:g/p.git", nil)
+	ghCalled := false
+	prevGH := listMergedClosedBranches
+	listMergedClosedBranches = func(string) (map[string]bool, error) { ghCalled = true; return nil, nil }
+	t.Cleanup(func() { listMergedClosedBranches = prevGH })
+	stubMergedClosedBranchesGitLab(t, map[string]bool{"feat/x-merged": true}, nil)
+	var glGot []string
+	var glReason string
+	gl := captureStderr(t, func() { glGot, glReason = decayDeadClaims("/repo", branches) })
+	if ghCalled {
+		t.Error("RAN/gitlab: must not shell the gh lister on a gitlab remote")
+	}
+	if len(glGot) != 1 || glGot[0] != "main" {
+		t.Errorf("RAN/gitlab: expected the corpse dropped by the merge-request reader, got %v", glGot)
+	}
+	if glReason != "" {
+		t.Errorf("RAN/gitlab: a successful decay must report no could-not-check reason; got %q", glReason)
+	}
+	if strings.Contains(gl, "could-not-check") || strings.Contains(gl, "NOT APPLICABLE") {
+		t.Errorf("RAN/gitlab: a decay that RAN must not report could-not-check or not-applicable; got:\n%s", gl)
+	}
+
+	// State 3 — COULD NOT LOOK. The reader errored; the full branch set is kept and
+	// the run says could-not-check with the reason.
 	stubRemoteOriginURL(t, "https://github.com/acme/repo.git", nil)
 	stubMergedClosedBranches(t, nil, errors.New("gh: not authenticated"))
-	var failedGot []string
-	failed := captureStderr(t, func() { failedGot = decayDeadClaims("/repo", branches) })
-	if !reflect.DeepEqual(failedGot, branches) {
-		t.Errorf("FAILED: must keep the full set; got %v", failedGot)
+	var blindGot []string
+	var blindReason string
+	blind := captureStderr(t, func() { blindGot, blindReason = decayDeadClaims("/repo", branches) })
+	if !reflect.DeepEqual(blindGot, branches) {
+		t.Errorf("COULD-NOT-CHECK: must keep the full set; got %v", blindGot)
 	}
-	if !strings.Contains(failed, "decay unavailable") || !strings.Contains(failed, "regenerate") {
-		t.Errorf("FAILED: must use the transient 'unavailable ... regenerate' wording; got:\n%s", failed)
+	if !strings.Contains(blindReason, "gh: not authenticated") {
+		t.Errorf("COULD-NOT-CHECK: the reason must name the underlying failure; got %q", blindReason)
 	}
-
-	// State 3 — NOT APPLICABLE ON THIS FORGE. GitLab remote -> distinct wording, the
-	// gh lister never shelled, the full set kept.
-	stubRemoteOriginURL(t, "git@gitlab.com:g/p.git", nil)
-	called := false
-	prev := listMergedClosedBranches
-	listMergedClosedBranches = func(string) (map[string]bool, error) { called = true; return nil, nil }
-	t.Cleanup(func() { listMergedClosedBranches = prev })
-	var naGot []string
-	na := captureStderr(t, func() { naGot = decayDeadClaims("/repo", branches) })
-	if called {
-		t.Error("NOT-APPLICABLE: must not shell the gh lister on a gitlab remote")
-	}
-	if !reflect.DeepEqual(naGot, branches) {
-		t.Errorf("NOT-APPLICABLE: must keep the full set; got %v", naGot)
-	}
-	if !strings.Contains(na, "NOT APPLICABLE") {
-		t.Errorf("NOT-APPLICABLE: must say NOT APPLICABLE; got:\n%s", na)
-	}
-	if strings.Contains(na, "regenerate with") {
-		t.Errorf("NOT-APPLICABLE must not reuse the transient 'regenerate' wording; got:\n%s", na)
+	if !strings.Contains(blind, "could-not-check: claims not decayed") {
+		t.Errorf("COULD-NOT-CHECK: must use the could-not-check wording; got:\n%s", blind)
 	}
 
-	// The three states must be pairwise distinct.
-	if ran == failed || ran == na || failed == na {
-		t.Errorf("the three decay states must produce distinct stderr; ran=%q failed=%q na=%q", ran, failed, na)
+	// The states must be DISTINGUISHABLE. A run that decayed is silent on both
+	// forges (same state, same output — that is the point: the GitLab adopter now
+	// gets the GitHub adopter's outcome, not a special one); a run that could not
+	// look is loud and carries a reason no clean run carries.
+	if ran != "" || gl != "" {
+		t.Errorf("a decay that RAN must be silent on both forges; github=%q gitlab=%q", ran, gl)
+	}
+	if blind == ran || blind == gl {
+		t.Errorf("could-not-check must be distinguishable from a run that decayed; blind=%q", blind)
 	}
 }

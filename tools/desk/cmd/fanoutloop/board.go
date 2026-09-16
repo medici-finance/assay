@@ -202,6 +202,43 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	// liveStatus re-verifies a Next-up row against its OWN stream README Status cell, at the
+	// SAME already-fetched refs/remotes/origin/main ref STATUS.md itself was read from (#1028).
+	//
+	// STATUS.md's `## Next up` table is statusgen's RENDERED output, not a live view: it is
+	// correct as of whatever commit last regenerated it, but a row can advance past todo/
+	// in-progress on a LATER commit (a merged PR flips the brief's README Status cell) without a
+	// further regen commit landing before something reads the board — and a caller invoking
+	// `fanoutloop plan` directly (the documented interim-mode debug surface) has no guarantee a
+	// fresh `git fetch origin` preceded it either, so the local origin/main ref itself can already
+	// be behind. Either way the symptom is identical: the Next-up table still lists a row whose
+	// own Status cell has already moved on, and nothing about reading the table ever notices.
+	//
+	// This is NOT the separate, already-tracked stale-board-row class (a merged PR that never
+	// flipped its row — there the README itself is wrong). Here the README is the trustworthy
+	// answer and the Next-up TABLE is the one that can lag it, so the fix cross-checks every row
+	// against its own stream README before offering it, rather than trusting the table's mere
+	// inclusion of the row. A stream/brief the cross-check cannot resolve (no README, no matching
+	// row, unparseable table) is COULD-NOT-CHECK, not a reason to drop the row — resolveBrief's own
+	// missing-brief-file case sets the same precedent (degrade, never silently drop).
+	readmeCache := map[string]readmeCacheEntry{}
+	liveStatus := func(stream, num string) (string, bool) {
+		entry, cached := readmeCache[stream]
+		if !cached {
+			content, cerr := streamReadmeContent(root, stream)
+			entry = readmeCacheEntry{content: content, ok: cerr == nil}
+			readmeCache[stream] = entry
+		}
+		if !entry.ok {
+			return "", false
+		}
+		for _, cells := range briefsTableRows(entry.content) {
+			if strings.EqualFold(strings.TrimSpace(cells["#"]), num) {
+				return strings.TrimSpace(cells["status"]), true
+			}
+		}
+		return "", false
+	}
 	var rows []BoardRow
 	for _, cells := range nextUpTableRows(raw) {
 		stream := strings.TrimSpace(cells["stream"])
@@ -215,11 +252,38 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 		}
 		num := strings.TrimSpace(m[1])
 		title := strings.TrimSpace(m[2])
+		if live, ok := liveStatus(stream, num); ok && !isDispatchableStatus(live) {
+			fmt.Fprintf(os.Stderr,
+				"fanoutloop: NOTE: dropping %s/%s from Next-up — its own README Status cell reads %q, not todo/in-progress (the Next-up table lagged the row's live status, #1028)\n",
+				stream, num, live)
+			continue
+		}
 		br := BoardRow{Stream: stream, Num: num, Title: title}
 		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
 		rows = append(rows, br)
 	}
 	return rows, nil
+}
+
+// readmeCacheEntry memoizes one stream's README content (and whether it could be read at all)
+// across the many Next-up rows readNextUp's liveStatus re-check may ask about the same stream —
+// one git-show per stream per readNextUp call, not one per row.
+type readmeCacheEntry struct {
+	content string
+	ok      bool
+}
+
+// isDispatchableStatus reports whether a bare lifecycle token is one `plan` may still offer as
+// fresh dispatch — exactly `todo` and `in-progress`, case/whitespace-insensitively, per the
+// worker-desk skill's own description of what Next-up returns. Every other token (implemented,
+// verified, done, blocked, or anything malformed) is NOT dispatchable.
+func isDispatchableStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "todo", "in-progress":
+		return true
+	default:
+		return false
+	}
 }
 
 // statusMDContent returns STATUS.md's content for root, preferring the fetched origin/main ref
@@ -288,7 +352,20 @@ func readAwaitingRework(root string) ([]BoardRow, error) {
 // caller can fall back to the working-tree read and report the could-not-check, never rounding a
 // value it did not read up to a confident answer.
 func statusFromOriginMain(root string) (string, bool) {
-	cmd := exec.Command("git", "-C", root, "show", "refs/remotes/origin/main:STATUS.md")
+	return fileFromOriginMain(root, "STATUS.md")
+}
+
+// fileFromOriginMain reads relPath from root's already-fetched refs/remotes/origin/main ref —
+// statusFromOriginMain's underlying mechanism, generalized to any repo-relative file so
+// streamReadmeContent can apply the SAME ref-over-working-tree policy to a stream README (#1028)
+// that statusMDContent already applies to STATUS.md. relPath is always "/"-joined (never
+// filepath.Join): `git show <ref>:<path>` is a git pathspec, not a filesystem path, and must stay
+// "/"-separated even on a platform whose filesystem uses "\\".
+//
+// OFFLINE ENVELOPE. Exactly like statusFromOriginMain: only the LOCAL ref is read, never
+// `git fetch` / `git ls-remote` — no network is contacted.
+func fileFromOriginMain(root, relPath string) (string, bool) {
+	cmd := exec.Command("git", "-C", root, "show", "refs/remotes/origin/main:"+relPath)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
 	out, err := cmd.Output()
 	if err != nil {
@@ -297,9 +374,48 @@ func statusFromOriginMain(root string) (string, bool) {
 	return string(out), true
 }
 
+// streamReadmeContent returns stream's docs/streams/<stream>/README.md content, preferring the
+// fetched origin/main ref (mirrors statusMDContent's STATUS.md policy) and falling back to the
+// working tree with a stderr NOTE. This is the independent source readNextUp's liveStatus
+// re-check reads — a Next-up row is trusted only as far as this file agrees with it (#1028).
+func streamReadmeContent(root, stream string) (string, error) {
+	rel := "docs/streams/" + stream + "/README.md"
+	raw, fromRef := fileFromOriginMain(root, rel)
+	if fromRef {
+		return raw, nil
+	}
+	b, err := os.ReadFile(filepath.Join(root, "docs", "streams", stream, "README.md"))
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(os.Stderr, "fanoutloop: NOTE: could not read %s from refs/remotes/origin/main under %s — falling back to the working-tree file, which may be stale (#1674)\n", rel, root)
+	return string(b), nil
+}
+
 // nextUpTableRows extracts the rows of the `## Next up` pipe table as column-name maps. It reads
 // by header name (like statusgen/parse.go) so column order or extra columns do not matter.
 func nextUpTableRows(content string) []map[string]string {
+	return pipeTableRowsUnder(content, func(trimmedHeading string) bool {
+		return strings.EqualFold(trimmedHeading, "## Next up")
+	})
+}
+
+// briefsTableRows extracts a stream README's `## Briefs` pipe table rows as column-name maps —
+// the same header-name-keyed convention nextUpTableRows applies to STATUS.md's `## Next up`,
+// pointed at a stream's own Status/# columns instead. This is what lets readNextUp's liveStatus
+// re-check ask a stream README directly "what does THIS brief's own Status cell say" (#1028),
+// independent of whatever the Next-up table happened to render.
+func briefsTableRows(content string) []map[string]string {
+	return pipeTableRowsUnder(content, func(trimmedHeading string) bool {
+		return strings.EqualFold(trimmedHeading, "## Briefs")
+	})
+}
+
+// pipeTableRowsUnder is nextUpTableRows'/briefsTableRows' shared machinery: it extracts an H2
+// section's pipe table as column-name maps, scoped to the section whose trimmed heading line
+// satisfies isHeading. Reading by header name (like statusgen/parse.go) means column order or
+// extra columns never matter to either caller.
+func pipeTableRowsUnder(content string, isHeading func(trimmedHeadingLine string) bool) []map[string]string {
 	lines := strings.Split(content, "\n")
 	inSection := false
 	var header map[string]int
@@ -307,7 +423,7 @@ func nextUpTableRows(content string) []map[string]string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "## ") {
-			inSection = strings.EqualFold(trimmed, "## Next up")
+			inSection = isHeading(trimmed)
 			header = nil
 			continue
 		}

@@ -86,6 +86,25 @@ facts:
 
 ## Evidence
 <!-- filled by a non-implementer at verify time -->
+Verified against merged main at SHA `4fdfde1fb3f1843ce58f021fb709e282b236a718`.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `statusgen --root . --issues --self-improvement` | exit 0; self-healed vs human-touched counts + rate | exit 0. Printed: Resolved=1013, self-healed=44, human-touched=835, rate=0.05, unclassified=134, by-type breakdown (raised 581 / steered-by-comment 359 / decided 134 / reopened-or-manual-close 360 / fixed-by-human 56), plus the merge-gate caveat banner. Zero could-not-check entries. | 2026-09-15 | sonnet-5-verifier |
+| 2 | `... \| grep -iE -e 'self-healed' -e 'human-touched' -e 'merge.*not.*touch'` | ≥1 match | exit 0, 5 matching lines — both segment headers and "THE STANDING HUMAN MERGE GATE IS NOT A TOUCH" caveat rendered | 2026-09-15 | sonnet-5-verifier |
+| 3 | `... --json \| jq -e '.selfHealed,.humanTouched,.selfImprovementRate,.humanTouchedByType'` | exit 0, JSON carries the cut | exit 0. Returned 44, 835, "0.05", and humanTouchedByType (raised 581, steeredByComment 359, decided 134, reopened 360, fixedByHuman 56) | 2026-09-15 | sonnet-5-verifier |
+| 4 | `cd statusgen && GOWORK=off go test . -run SelfImprovement -count=1` | exit 0, classifier tests pass | exit 0. All 16 TestSelfImprovement* tests PASS in 0.261s, including TestSelfImprovementMergeIsNotATouch | 2026-09-15 | sonnet-5-verifier |
+| 5 | `statusgen --root . --lint` | exit 0 | exit 0, LINT: PASS, 0 PROBLEM-level findings | 2026-09-15 | sonnet-5-verifier |
+
+**Risk-bearing-value analysis.** Classification rule literals are at `statusgen/selfimprovement.go`
+lines 106, 135-144, 146-151, 154, 382-388, 437-443. The merge-gate exclusion is structural: the
+fetch layer never reads a "merged-by" field at all, so a human merge cannot be counted as a touch
+by construction. Of the two easy gaming routes for this metric — a bare self-close, and a
+merge-gate false-positive — both are structurally closed by the classifier design. The residual
+gaming surface (an empty-but-linked fix PR counted as agent-fixed) is an inherent, disclosed,
+out-of-brief-scope limitation, not a defect.
+
+VERIFY: PASS
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

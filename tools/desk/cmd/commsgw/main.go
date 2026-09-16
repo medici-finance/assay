@@ -57,8 +57,8 @@ func run(getenv func(string) string) int {
 		return exitCodeOf(err)
 	}
 
-	agent := GatewayAgent{Root: cfg.QueueDir, Deps: deps, Emitter: NoOpInboxEmitter{}, Filer: filer}
-	sock := SocketServer{Root: cfg.QueueDir, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate}
+	agent := GatewayAgent{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: NoOpInboxEmitter{}, Filer: filer}
+	sock := SocketServer{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

@@ -59,7 +59,18 @@ var mintTokenFn = mintSessionToken
 // deskkit.SessionTokenRole, worker by default), calls `desktoken <role> --repo <slug>`, and sets
 // the returned token as ghToken. --repo is not optional: an App installed on more than one
 // account mints for the wrong installation when it is omitted (mirrors deskpr/deskevidence/#565).
-func mintSessionToken(repoSlug string) error {
+//
+// readOnly passes --no-rotate, which a verb that WRITES NOTHING asks for. It matters on the
+// GitLab custody path, where a mint is a destructive self-rotation: the endpoint invalidates
+// the presented token as it issues the successor. Every deskfile invocation against a GitLab
+// repo therefore spent one rotation, `check` included — and `check` files nothing. A window
+// issuing several checks in parallel raced its own rotations, and the loser's 401 could leave
+// the custody file holding a dead value that only a group owner can replace.
+//
+// It is passed rather than inferred from the forge, because the forge is not known here: the
+// mint happens before the resolver runs (the GitHub branch of the resolver consumes the token
+// this mints). The caller knows whether it is going to write; the minter does not.
+func mintSessionToken(repoSlug string, readOnly bool) error {
 	role := "worker"
 	if r, _, rerr := deskkit.SessionTokenRole("deskfile"); rerr == nil {
 		role = r
@@ -67,13 +78,17 @@ func mintSessionToken(repoSlug string) error {
 		fmt.Fprintf(os.Stderr, "deskfile: no App role resolved for this session — defaulting to the worker App token (%v)\n", rerr)
 	}
 	mintedRole = role
-	cmd := execCommand("desktoken", role, "--repo", repoSlug)
+	args := []string{role, "--repo", repoSlug}
+	if readOnly {
+		args = append(args, "--no-rotate")
+	}
+	cmd := execCommand("desktoken", args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken %s --repo %s: %v (%s)",
-			role, repoSlug, err, strings.TrimSpace(errb.String())), err)
+		return deskkit.Unverifiable(fmt.Sprintf("desktoken %s: %v (%s)",
+			strings.Join(args, " "), err, strings.TrimSpace(errb.String())), err)
 	}
 	tokenPath := strings.TrimSpace(out.String())
 	b, rerr := os.ReadFile(tokenPath)
@@ -101,11 +116,17 @@ var forgeForFn = forgeFor
 // label-missing NOTICE names a forge-specific remedy command (`gh label create` on GitHub,
 // `glab label create` on GitLab — #887 item 2), and a second resolver read could drift from
 // the one that picked the backend (deskkit.ResolveForge's provenance contract).
-func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+//
+// readOnly says whether the verb about to use this forge WRITES. It is threaded to the mint
+// (as --no-rotate) rather than decided here, because only the caller knows: `check` reaches
+// the forge exactly as `new` and `attach` do, and the difference between them is not visible
+// at this level. On the GitLab custody path a mint is a destructive rotation, so a dry-run
+// that mints spends a credential rotation to produce nothing — see mintSessionToken.
+func forgeFor(repo string, readOnly bool) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 	owner, name, _ := strings.Cut(repo, "/")
 	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
 	if ghToken == "" {
-		if merr := mintTokenFn(repo); merr != nil {
+		if merr := mintTokenFn(repo, readOnly); merr != nil {
 			return nil, fr, "", merr
 		}
 	}

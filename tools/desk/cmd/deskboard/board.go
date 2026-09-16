@@ -700,6 +700,40 @@ func sameHead(reviewSHA, head string) bool {
 	return reviewSHA != "" && head != "" && reviewSHA == head
 }
 
+// shasComparable reports whether BOTH endpoints of the benign-merge compare were actually
+// established, which is that compare's precondition.
+//
+// It is sameHead's other half, and separating them is the whole point: sameHead answers
+// "are these the same commit", and answers NO both for two different known shas and for a
+// sha nobody could read. Those two noes want opposite handling downstream — one is a real
+// interval to compare, the other has no interval at all — so the caller needs a second
+// question, and asking it inline is what let the distinction go missing.
+//
+// Pure and named rather than a condition inside the classify loop for the reason
+// ownFilesChanged is: a predicate a test cannot reach is a predicate that silently stops
+// holding.
+func shasComparable(reviewedSHA, head string) bool {
+	return reviewedSHA != "" && head != ""
+}
+
+// unreadableSHAFields names which endpoints of the benign-merge compare could not be
+// established, for the row's diagnostic. A degrade that does not say WHICH field is
+// missing sends its reader to the wrong forge surface — the reported symptom was a bare
+// `compare needs both base and head` with no way to tell a missing review sha from a
+// missing head. Returns "" when both are present, so the string is only ever built for a
+// row that is actually degrading.
+func unreadableSHAFields(reviewedSHA, head string) string {
+	switch {
+	case reviewedSHA == "" && head == "":
+		return "either (no reviewed sha, no head sha)"
+	case reviewedSHA == "":
+		return "the reviewed sha (the forge did not pin the verdict to a commit)"
+	case head == "":
+		return "the head sha"
+	}
+	return ""
+}
+
 func reduceReviews(reviews []review, head string) reviewState {
 	var st reviewState
 	var decisive []review
@@ -1552,6 +1586,79 @@ type prsReport struct {
 	External []externalRow `json:"external"`
 }
 
+// prsPartial is one repo's contribution to the `prs` board: its own rows, its own
+// quarantine rows, the ids it saw open, whether its PR list came back at the cap, and — the
+// one carve-out — whether the repo was unreadable in the specific, expected way that must
+// not fail the sweep. Like actionsPartial it is built entirely inside one repo's worker and
+// is never touched by another goroutine.
+type prsPartial struct {
+	rows       []prRow
+	external   []externalRow
+	openList   []string
+	truncated  bool
+	unreadable *unreadableRepo // non-nil = the out-of-installation carve-out fired
+}
+
+// sweepPRsRepo is one repo's worth of the `prs` sweep, as a function so it can run in a
+// pool worker.
+//
+// THE CARVE-OUT MOVES INSIDE THE WORKER, AND ONLY THE CARVE-OUT. In the serial form the
+// out-of-installation case was a `continue`; a worker has no loop to continue, so it returns
+// a partial carrying the unreadable entry and a NIL error, and the merge appends it. The
+// predicate (`outOfInstallation`) and the reasoning behind it are unchanged, and every other
+// error — 401, rate limit, timeout, parse — is still returned, which under sweepRepos still
+// fails the whole run closed with this repo named. Nothing about which errors are tolerated
+// changed; only where the decision is expressed.
+func sweepPRsRepo(repo string, now time.Time) (prsPartial, error) {
+	var part prsPartial
+	prs, truncated, err := fetchOpenPRs(repo)
+	if err != nil {
+		// A watched repo OUTSIDE this App installation is a per-repo could-not-check,
+		// not a dead board: it fails identically on every run, so failing the sweep
+		// closed on it costs the coverage the rule exists to protect. Every other
+		// error — 401, rate limit, timeout, parse — still fails the whole run closed.
+		if outOfInstallation(err) {
+			part.unreadable = &unreadableRepo{
+				Repo:   repo,
+				Reason: "outside this App installation",
+			}
+			return part, nil
+		}
+		return prsPartial{}, err // exit 6, repo named — never a partial board
+	}
+	part.truncated = truncated
+	for _, p := range prs {
+		// Trust gate: untrusted author → the bounded blessing read; unblessed →
+		// quarantine (visible, excluded from the actionable list and the open= set).
+		if !deskkit.TrustedAuthor(p.Author.Login) {
+			blessed, berr := prBlessed(repo, p.Number)
+			if berr != nil {
+				return prsPartial{}, berr
+			}
+			if !blessed {
+				part.external = append(part.external, externalRow{Repo: repo, Number: p.Number, Title: p.Title, Author: p.Author.Login})
+				continue
+			}
+		}
+		pass, pending, fail, unknown := ciState(p)
+		row := prRow{
+			Repo: repo, Number: p.Number, Title: p.Title, Draft: p.IsDraft,
+			HeadSHA: p.HeadRefOid, MergeState: p.MergeStateStatus,
+			CIPass: pass, CIPending: pending, CIFail: fail, CIUnknown: unknown,
+			OpenAge: openAgeOf(p, now),
+		}
+		// #1652: a zero rollup is ambiguous until probed — never render it bare.
+		// A rollup with unreadable (#268) entries is a DIFFERENT absence and is never
+		// probed as a zero — CIUnknown already says the CI verdict was not established.
+		if pass == 0 && pending == 0 && fail == 0 && unknown == 0 {
+			row.CIZero, row.CIZeroDetail = probeZeroCI(repo, p)
+		}
+		part.rows = append(part.rows, row)
+		part.openList = append(part.openList, fmt.Sprintf("%s#%d", repo, p.Number))
+	}
+	return part, nil
+}
+
 func cmdPRs(hdr Header) (*Report, error) {
 	hdr.Scope = boardScope() // #359: a sweeping verb states its coverage
 	rep := prsReport{Header: hdr, PRs: []prRow{}, External: []externalRow{}}
@@ -1559,55 +1666,32 @@ func cmdPRs(hdr Header) (*Report, error) {
 	var open []string
 	var truncatedRepos []string // #400 T2: which repos came back at the cap
 	coverage := &repoCoverage{}
-	for _, repo := range deskkit.AllowedRepos() {
-		prs, truncated, err := fetchOpenPRs(repo)
-		if err != nil {
-			// A watched repo OUTSIDE this App installation is a per-repo could-not-check,
-			// not a dead board: it fails identically on every run, so failing the sweep
-			// closed on it costs the coverage the rule exists to protect. Every other
-			// error — 401, rate limit, timeout, parse — still fails the whole run closed.
-			if outOfInstallation(err) {
-				coverage.Unreadable = append(coverage.Unreadable, unreadableRepo{
-					Repo:   repo,
-					Reason: "outside this App installation",
-				})
-				continue
-			}
-			return nil, err // exit 6, repo named — never a partial board
+
+	// Bounded-concurrency sweep, the same pool `actions` and `health` already use. Each
+	// repo's work runs in one of sweepConcurrency workers and returns its own partial; a
+	// repo error fails the whole run, deterministically named (sweep.go). The merge below
+	// runs in ROSTER order and the report is re-sorted to a total order after it, so the
+	// output is byte-identical to the old serial sweep whatever order the workers finished in.
+	repos := deskkit.AllowedRepos()
+	partials, err := sweepRepos(repos, sweepConcurrency, func(repo string) (prsPartial, error) {
+		return sweepPRsRepo(repo, now)
+	})
+	if err != nil {
+		return nil, err
+	}
+	for i := range repos {
+		p := partials[i]
+		if p.unreadable != nil {
+			coverage.Unreadable = append(coverage.Unreadable, *p.unreadable)
+			continue
 		}
 		coverage.Read++
-		if truncated {
-			truncatedRepos = append(truncatedRepos, repo)
+		if p.truncated {
+			truncatedRepos = append(truncatedRepos, repos[i])
 		}
-		for _, p := range prs {
-			// Trust gate: untrusted author → the bounded blessing read; unblessed →
-			// quarantine (visible, excluded from the actionable list and the open= set).
-			if !deskkit.TrustedAuthor(p.Author.Login) {
-				blessed, berr := prBlessed(repo, p.Number)
-				if berr != nil {
-					return nil, berr
-				}
-				if !blessed {
-					rep.External = append(rep.External, externalRow{Repo: repo, Number: p.Number, Title: p.Title, Author: p.Author.Login})
-					continue
-				}
-			}
-			pass, pending, fail, unknown := ciState(p)
-			row := prRow{
-				Repo: repo, Number: p.Number, Title: p.Title, Draft: p.IsDraft,
-				HeadSHA: p.HeadRefOid, MergeState: p.MergeStateStatus,
-				CIPass: pass, CIPending: pending, CIFail: fail, CIUnknown: unknown,
-				OpenAge: openAgeOf(p, now),
-			}
-			// #1652: a zero rollup is ambiguous until probed — never render it bare.
-			// A rollup with unreadable (#268) entries is a DIFFERENT absence and is never
-			// probed as a zero — CIUnknown already says the CI verdict was not established.
-			if pass == 0 && pending == 0 && fail == 0 && unknown == 0 {
-				row.CIZero, row.CIZeroDetail = probeZeroCI(repo, p)
-			}
-			rep.PRs = append(rep.PRs, row)
-			open = append(open, fmt.Sprintf("%s#%d", repo, p.Number))
-		}
+		rep.PRs = append(rep.PRs, p.rows...)
+		rep.External = append(rep.External, p.external...)
+		open = append(open, p.openList...)
 	}
 	sort.SliceStable(rep.PRs, func(i, j int) bool {
 		if rep.PRs[i].Repo != rep.PRs[j].Repo {
@@ -1840,6 +1924,9 @@ type prOutcome struct {
 // (lowest-index PR first).
 func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
 	var part actionsPartial
+	// repo-level: fetchOpenPRs lists ALL open PRs for the repo in one read — nothing about
+	// the repo can be classified without it, so failing the whole run here is correct
+	// (contrast classifyPR below, whose five per-change reads are the opposite kind).
 	prs, truncated, err := fetchOpenPRs(repo)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
@@ -1877,19 +1964,22 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// Quarantined PRs get NO ACTION row and stay out of the open= audit set (they are not
 	// on anyone's work list), but keep their id so a prior run's row tombstones cleanly.
 	//
-	// On a PUBLIC (risk-classed) repo the author bar is HIGHER (#943): only role Apps
-	// (ASSAY_TRUSTED_BOT_SLUGS) and mapped humans (ASSAY_HUMAN_LOGIN_MAP) qualify — NEVER
-	// a shared machine account that ASSAY_TRUSTED_LOGINS admits as a human, and never a
-	// fork author. Public repos accept fork PRs from any account, so
-	// auto-reviewing an untrusted diff would spend the reviewer App's identity on hostile
-	// input and blur the fork-PR trust boundary. VisibilityRiskClassed is fail-closed:
-	// only a KNOWN-private repo keeps the plain TrustedAuthor bar; public/internal/unknown
-	// all get the tighter gate. The blessing authority can still admit any single PR by
-	// commenting (the manual override, unchanged on either path).
+	// ONE trust bar on every repo, private or public (ruled in #808): the
+	// author bar is `deskkit.TrustedAuthor(p.Author.Login)` — the same predicate
+	// `deskpost`'s trustGate applies before posting a verdict — with no stricter branch
+	// for a risk-classed (public/internal/unknown) repo. A login the configured roster
+	// trusts is a reviewable author everywhere; an unlisted author is still quarantined
+	// unless blessed (the manual override below, unchanged).
+	//
+	// WHY THIS IS SAFE ON A PUBLIC REPO: review-trust is not merge-authority. The layers
+	// behind this gate are independent of it and unchanged by this rule — (1) the
+	// outward-write gate refuses any write to a repo the operator did not configure into
+	// the allowed-repo set; (2) every PR on a public repo is unconditionally risk-classed
+	// and needs a `Security-Review: pass` at head before any flip, whatever the diff
+	// touches; (3) branch protection and a human merge — a posted verdict is not a merge,
+	// and no desk tool merges. A widened author set still cannot reach an unlisted repo,
+	// still cannot flip past a failing Security-Review, and still cannot merge itself in.
 	authorTrusted := deskkit.TrustedAuthor(p.Author.Login)
-	if deskkit.VisibilityRiskClassed(repo) {
-		authorTrusted = deskkit.TrustedPublicAuthor(p.Author.Login)
-	}
 	if !authorTrusted {
 		blessed, berr := prBlessed(repo, p.Number)
 		if berr != nil {
@@ -1900,11 +1990,32 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 		}
 	}
 
+	// degradeReasons collects the could-not-check reason from every read below that
+	// degrades THIS row rather than failing the whole sweep: each is folded into the
+	// row's own Note at the end (this brief's task 2/6), so an operator reading the board
+	// sees not just THAT a row degraded but WHY — the rendering is the second, independent
+	// layer behind the degrade decision itself (see this brief's single-point-of-failure
+	// note: the classifier's own choice, and the row text an operator actually reads).
+	var degradeReasons []string
+	degrade := func(reason string) {
+		degradeReasons = append(degradeReasons, reason)
+		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s#%d — %s\n", repo, p.Number, reason)
+	}
+
+	// change-level: this PR's own reviews. A read failure here is a fact about ONE PR, not
+	// the repo, so it degrades to "no verdict established" — reviewState{}'s zero value
+	// (ever=false) — rather than failing the sweep. That routes through classify()'s
+	// existing !ever arm to NEEDS-REVIEW (or HUMAN-OWNED for a trusted human author,
+	// #177 — also not a cleared state), reusing the existing contract instead of a second
+	// degrade mechanism.
+	var rs reviewState
 	reviews, err := fetchReviews(repo, p.Number)
 	if err != nil {
-		return prOutcome{}, err
+		degrade(fmt.Sprintf("could not read reviews (%v) — degrading to no verdict "+
+			"established rather than failing the sweep", err))
+	} else {
+		rs = reduceReviews(reviews, p.HeadRefOid)
 	}
-	rs := reduceReviews(reviews, p.HeadRefOid)
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly
 	// zero rollup (pass==pending==fail==unknown==0) and never errors — every failure is a
@@ -1928,28 +2039,84 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// body/title edited) after the last review re-flags the row RE-REVIEW instead of
 	// leaving it BLOCKED where the head-sha trigger can never see the fix.
 	if rs.blocking && rs.atHead && !rs.suspectNoOp {
-		ncr, note, err := detectNonCommitResolution(repo, p, rs.lastReviewAt)
-		if err != nil {
-			return prOutcome{}, err
+		// change-level: the label-timeline probe for this one PR. A read failure here
+		// leaves nonCommitResolution unset (false), which keeps the row on the plain
+		// `case in.blocking` arm below — already BLOCKED, already the safe side (never
+		// this signal's RE-REVIEW, and never a cleared state) — rather than failing the
+		// sweep to probe a signal that can only ever WIDEN which rows get re-flagged.
+		ncr, ncrNote, ncrErr := detectNonCommitResolution(repo, p, rs.lastReviewAt)
+		if ncrErr != nil {
+			degrade(fmt.Sprintf("could not read the non-commit-resolution signal (%v) — "+
+				"staying BLOCKED rather than probing further", ncrErr))
+		} else {
+			in.nonCommitResolution = ncr
+			in.nonCommitResolutionNote = ncrNote
 		}
-		in.nonCommitResolution = ncr
-		in.nonCommitResolutionNote = note
 	}
 
 	// MERGE-CURR needs the PR's own files vs the changes since the reviewed
 	// sha; both are fetched only when actually needed (head advanced).
 	if rs.ever && !rs.atHead {
-		own, complete, err := fetchChangedFiles(repo, p.Number)
-		if err != nil {
-			return prOutcome{}, err
+		// `!atHead` is TWO different facts wearing one bool, and the compare below is
+		// only defined for one of them. sameHead reports not-at-head when the reviewed
+		// sha is KNOWN and DIFFERENT from head — the head genuinely advanced, and the
+		// compare answers a real question — AND when either sha was never established,
+		// which sameHead deliberately folds in ("either side empty is could-not-check,
+		// and could-not-check is NOT at head"). In the second case there is no interval
+		// to compare, and asking for one used to return Unverifiable from
+		// changedFilesBetween, which this loop propagates — so ONE row that could not be
+		// pinned exited the WHOLE sweep 6 with an empty stdout and the message `compare
+		// needs both base and head`. That is the board-scope fail-close the row-scope
+		// degrade next to it exists to avoid (fetchChangedFiles: "complete=false is not
+		// an error — the caller degrades CLOSED per-PR … so one enormous PR cannot brick
+		// the desk's sweep").
+		//
+		// It is reachable on any forge and routine on GitLab, which cannot always pin a
+		// verdict to a head and says so by leaving CommitID EMPTY rather than stamping
+		// the current sha (forge_gitlab.ReviewsAtHead: an approval carries no sha and
+		// survives a push unless the project resets approvals, so stamping it would
+		// manufacture the at-head evidence the flip gate exists to require). The empty
+		// sha is therefore the CORRECT reading, not a gap to fill in the backend — it is
+		// this consumer that had no arm for it. GitLab reviewer verdicts only became
+		// visible to this reduction once the role's expected login resolved per-forge
+		// (#1058), which is what first made this branch reachable there at all: before
+		// that, no GitLab verdict matched isReviewerBot, `ever` stayed false, and the
+		// rows classified NEEDS-REVIEW instead.
+		//
+		// So an unpinnable sha degrades the ROW the same way a truncated diff does —
+		// RE-REVIEW, never the benign MERGE-CURR, because "the PR's own files are
+		// unchanged since last review" is a claim no one can make without both endpoints
+		// — and the sweep carries on.
+		if !shasComparable(rs.lastSHA, p.HeadRefOid) {
+			in.ownFilesChanged = true
+			degrade(fmt.Sprintf("the benign-merge compare needs the reviewed sha and the PR head "+
+				"sha; could not establish %s, so this row degrades to RE-REVIEW rather than "+
+				"MERGE-CURR (on GitLab a verdict the forge cannot pin to a head reports no sha by "+
+				"design)", unreadableSHAFields(rs.lastSHA, p.HeadRefOid)))
+		} else {
+			// change-level: this PR's own changed files, for the benign-merge compare. A
+			// read failure here is a fact about ONE PR — reuse fetchChangedFiles' own
+			// truncation contract (degrade to RE-REVIEW) rather than a second mechanism.
+			own, complete, ownErr := fetchChangedFiles(repo, p.Number)
+			if ownErr != nil {
+				in.ownFilesChanged = true
+				degrade(fmt.Sprintf("could not read this PR's own changed files for the "+
+					"benign-merge compare (%v) — degrading to RE-REVIEW rather than MERGE-CURR", ownErr))
+			} else {
+				// change-level: the interval between the reviewed sha and head, for the same
+				// compare. Same treatment: a could-not-check for this row, not the repo.
+				changed, cmpErr := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
+				if cmpErr != nil {
+					in.ownFilesChanged = true
+					degrade(fmt.Sprintf("could not compare the reviewed sha to head (%v) — "+
+						"degrading to RE-REVIEW rather than MERGE-CURR", cmpErr))
+				} else {
+					// A truncated own-files set cannot prove the intersection is empty, so it
+					// degrades to RE-REVIEW (the safe side) rather than the benign MERGE-CURR.
+					in.ownFilesChanged = ownFilesChanged(own, complete, changed)
+				}
+			}
 		}
-		changed, err := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
-		if err != nil {
-			return prOutcome{}, err
-		}
-		// A truncated own-files set cannot prove the intersection is empty, so it
-		// degrades to RE-REVIEW (the safe side) rather than the benign MERGE-CURR.
-		in.ownFilesChanged = !complete || intersects(own, changed)
 	}
 
 	// Risk classification (#216) only matters at the FLIP decision: bot
@@ -1963,9 +2130,16 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	riskClassed := false
 	riskReason := ""
 	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
-		files, complete, err := fetchChangedFiles(repo, p.Number)
-		if err != nil {
-			return prOutcome{}, err
+		// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
+		// EXISTING changed-files degrade shape rather than a second one — a hard read
+		// failure gets the same fail-closed treatment the `!complete` case below already
+		// gives a truncated diff, because both mean the same thing to this gate: the
+		// trigger it exists to catch might be in the part that could not be read.
+		files, complete, rcErr := fetchChangedFiles(repo, p.Number)
+		if rcErr != nil {
+			complete = false
+			degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
+				"fail closed to risk-classed", rcErr))
 		}
 		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
 		// A diff we could not read in full — the trigger we did not see is exactly the one this
@@ -1990,6 +2164,13 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	in.riskReason = riskReason
 
 	action, note := classify(in)
+	if len(degradeReasons) > 0 {
+		// The row's RENDERED text carries the could-not-check reason(s) that produced the
+		// degrade, whether or not the classify() arm it landed on would otherwise have
+		// mentioned one — the second, independent layer this brief's single-point-of-failure
+		// note asks for: a row that degraded silently is visible as a row that degraded.
+		note += " — DEGRADED: " + strings.Join(degradeReasons, "; ")
+	}
 
 	// The owning brief is the trailer's; branch-as-claim is the fallback for a body that
 	// names none.
@@ -2922,24 +3103,55 @@ type policyDriftAlarm struct {
 	Drift []string `json:"drift,omitempty"`
 }
 
+// visibilityObservation is one repo's contribution to the drift probe: the visibility the
+// forge reported, and whether it was read at all. It is built entirely inside that repo's
+// sweep worker and touched by no other goroutine, so the concurrent probe shares no mutable
+// state — the `observed` map is assembled after the sweep, in roster order.
+type visibilityObservation struct {
+	repo     string
+	vis      string
+	observed bool
+}
+
 // assessPolicyDrift probes every allowed repo's real visibility (GET-only) and compares it
 // to the compiled-in table, exactly like cmdPolicyDrift, but never returns an error — see
 // the doc comment above.
+//
+// IT RUNS ON THE POOL, AND IT IS THE ONE CALLER THAT IS NOT FAIL-CLOSED. This probe rides
+// inside `actions`, the desk's primary read and by a wide margin its most-invoked verb, so
+// its per-repo reads used to be a serial chain running alongside a six-wide pool that was
+// idle for the duration. It now uses the same pool. The FAIL-CLOSED rule sweepRepos enforces
+// for every other caller is deliberately not reached here: the worker returns a nil error for
+// every outcome, because an unreadable repo must be left OUT of `observed` — where
+// VisibilityDrift reports it NOT OBSERVED, which is drift and therefore loud — rather than
+// killing the board. That is the same judgement #295's branch-health probe already makes, and
+// it is stated here rather than inferred from the absence of an error return.
 func assessPolicyDrift() policyDriftAlarm {
 	scope := deskkit.AllowedRepos()
 	alarm := policyDriftAlarm{Scope: scope}
-	observed := make(map[string]string, len(scope))
 
-	for _, repo := range scope {
+	// Never errors, by construction: every arm below returns a nil error, so the pool's
+	// fail-closed path is unreachable from here and the discarded error cannot hide one.
+	obs, _ := sweepRepos(scope, sweepConcurrency, func(repo string) (visibilityObservation, error) {
 		f, fr, ferr := forgeFor(repo)
 		if ferr != nil {
-			continue // left out of `observed` → VisibilityDrift reports it NOT OBSERVED
+			return visibilityObservation{repo: repo}, nil // unobserved → reported NOT OBSERVED
 		}
 		vis, err := f.RepoVisibility(fr)
 		if err != nil {
-			continue // could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass
+			// could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass
+			return visibilityObservation{repo: repo}, nil
 		}
-		observed[repo] = vis
+		return visibilityObservation{repo: repo, vis: vis, observed: true}, nil
+	})
+
+	// Merge in roster order. sweepRepos returns results in INPUT order, so this map is
+	// built identically however the workers finished.
+	observed := make(map[string]string, len(scope))
+	for _, o := range obs {
+		if o.observed {
+			observed[o.repo] = o.vis
+		}
 	}
 
 	alarm.Drift = deskkit.VisibilityDrift(observed)

@@ -35,12 +35,7 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	t.Setenv("DESK_SESSION", "deskdispatch-test")
 	t.Setenv("CLAUDE_SESSION_ID", "deskdispatch-test")
 
-	// By default the pure-Go claim binary is NOT on PATH, so a test that plants no
-	// tools/dispatch-claim.sh fails closed deterministically rather than depending on whatever
-	// is installed on the test runner. A test that exercises the Go fallback overrides this.
-	oldLook := lookPath
-	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
-	t.Cleanup(func() { lookPath = oldLook })
+	isolateClaimTool(t, home)
 
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
@@ -65,6 +60,51 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	}
 	t.Cleanup(func() { execCommand = old })
 	return home, root
+}
+
+// isolateClaimTool pins everything the claim step resolves from the host, so a full-run test
+// never depends on what the test runner has installed or exported:
+//
+//   - the pure-Go claim binary is NOT on PATH by default, so a test that plants no
+//     tools/dispatch-claim.sh fails closed deterministically (a test that exercises the Go
+//     binary overrides lookPath);
+//   - the claim step's mint (issue 1151 — the same seam the stamp step uses) is bound to a stub
+//     that hands back a fixture token and a 0600 file under home, so no test forks the real
+//     minter (stubMint overrides it);
+//   - GH_TOKEN is cleared, so the explicit-export precedence is never inherited from the
+//     developer's shell (a test that wants it sets it).
+//
+// Every harness that runs a real dispatch — install, and the hand-rolled ones — calls this.
+func isolateClaimTool(t *testing.T, home string) {
+	t.Helper()
+	oldLook := lookPath
+	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { lookPath = oldLook })
+
+	t.Setenv("GH_TOKEN", "")
+	oldMint := mintTokenFn
+	mintTokenFn = func(role, repo string) (string, string, error) {
+		return stubMintedToken, stubMintedTokenPath(t, home), nil
+	}
+	t.Cleanup(func() { mintTokenFn = oldMint })
+}
+
+// stubMintedToken is the token value the harness's default mint hands the claim step. It is
+// a fixture literal, never a credential.
+const stubMintedToken = "example-stub-installation-token"
+
+// stubMintedTokenPath returns the path of a 0600 file under home holding stubMintedToken —
+// the shape the real minter's cache file has, so a claim child handed it as --token-file can
+// read it the way deskclaim-ref would. Written once per home.
+func stubMintedTokenPath(t *testing.T, home string) string {
+	t.Helper()
+	p := filepath.Join(home, "example-role.token")
+	if _, err := os.Stat(p); err != nil {
+		if err := os.WriteFile(p, []byte(stubMintedToken+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return p
 }
 
 func itoa(n int) string {

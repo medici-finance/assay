@@ -12,9 +12,13 @@
     {
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/approvals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/approvals"
     }
   ],
   "result": null,
-  "err": "could-not-check: GET /projects/medici-finance%2Fassay/approvals — permission or tier gate (HTTP 403): the token's role, or the instance's GitLab tier, does not expose this endpoint: forge API GET /projects/medici-finance%2Fassay/approvals returned HTTP 403",
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/merge_requests/7/approvals — permission or tier gate (HTTP 403): the token's role, or the instance's GitLab tier, does not expose this endpoint: forge API GET /projects/medici-finance%2Fassay/merge_requests/7/approvals returned HTTP 403",
   "not_found": false
 }

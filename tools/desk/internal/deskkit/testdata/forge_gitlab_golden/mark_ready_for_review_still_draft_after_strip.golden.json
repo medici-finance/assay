@@ -1,0 +1,17 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7",
+      "body": {
+        "title": "add the thing"
+      }
+    }
+  ],
+  "err": "could-not-check: merge request !7 in medici-finance/assay is still marked draft after clearing its title marker",
+  "not_found": false
+}

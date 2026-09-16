@@ -86,9 +86,9 @@ type reviewShape struct {
 func correctnessShapeFor(verdictFlag string) (reviewShape, bool) {
 	switch verdictFlag {
 	case "approve":
-		return reviewShape{flag: "approve", event: "APPROVE", state: "APPROVED"}, true
+		return reviewShape{flag: "approve", event: "APPROVE", state: "APPROVED", wantKind: bodycheck.KindCorrectness}, true
 	case "request-changes":
-		return reviewShape{flag: "request-changes", event: "REQUEST_CHANGES", state: "CHANGES_REQUESTED"}, true
+		return reviewShape{flag: "request-changes", event: "REQUEST_CHANGES", state: "CHANGES_REQUESTED", wantKind: bodycheck.KindCorrectness}, true
 	}
 	return reviewShape{}, false
 }
@@ -145,24 +145,62 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if kerr != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", kerr), dig)
 		}
-		// The security verb declares BOTH the kind and the marker its body must carry, and
-		// refuses a body that disagrees — before any network call. `review` declares
-		// neither, so a correctness body and a security body both still go out through it
-		// exactly as before.
+		// EACH verdict verb declares the kind its body must carry, and refuses a body
+		// from the other lane — before any network call. The two refusals are symmetric
+		// on purpose, and neither is decoration:
 		//
-		// This is not decoration. `security-review --verdict pass` submits the COMMENT
-		// event; handed a `Security-Review: fail` body it would post a RETRACTION as a
-		// review that blocks nothing on GitHub's side. Gate (e0) would still read the fail
-		// and block the flip, so nothing fails open — but the artifact would misrepresent
-		// itself to every human reading the thread, and a refusal costs one exit 5 while a
-		// submitted review cannot be retracted.
-		if shape.wantKind != "" {
-			if kind != shape.wantKind {
-				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
-					"refused: `security-review` posts the SECURITY verdict, but this body carries a "+
-						"%s verdict line — post a correctness verdict with `deskpost review --verdict approve|request-changes`",
-					kind))), dig)
+		//   - `security-review --verdict pass` submits the COMMENT event; handed a
+		//     `Security-Review: fail` body it would post a RETRACTION as a review that
+		//     blocks nothing on GitHub's side. Gate (e0) would still read the fail and
+		//     block the flip, so nothing fails open — but the artifact would misrepresent
+		//     itself to every human reading the thread.
+		//   - `review --verdict approve` submits the APPROVE event; handed a
+		//     `Security-Review: pass` body it posts the security lane's all-clear as an
+		//     APPROVED review — the exact same-head APPROVE shape the verb split exists to
+		//     keep a security pass OUT of (a COMMENTED pass is readable by gate (e) while
+		//     leaving GitHub's review roll-up alone; an APPROVED one erases a standing
+		//     CHANGES_REQUESTED from the shared App). This happened for real when two
+		//     lanes dispatched to one PR shared a scratchpad and one lane's default body
+		//     filename was read by the other's `review --verdict approve`; before this
+		//     guard the verb let it through and the stray APPROVE had to be dismissed by
+		//     hand.
+		//
+		// A refusal costs one exit 5; a submitted review cannot be retracted.
+		if shape.wantKind != "" && kind != shape.wantKind {
+			var msg string
+			if shape.wantKind == bodycheck.KindSecurity {
+				msg = fmt.Sprintf("refused: `security-review` posts the SECURITY verdict, but this body carries a "+
+					"%s verdict line — post a correctness verdict with `deskpost review --verdict approve|request-changes`",
+					kind)
+			} else {
+				msg = fmt.Sprintf("refused: `review` posts the CORRECTNESS verdict, but this body carries a "+
+					"%s verdict line — post a security verdict with `deskpost security-review --verdict pass|fail` "+
+					"(a security PASS must land as a COMMENTED review, never APPROVED)", kind)
 			}
+			return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(msg)), dig)
+		}
+		// The kind check above parses STRICTLY (VerdictKind: whole-line anchored, no
+		// Markdown-emphasis unwrapping — the write gate's rule). The flip gate and the
+		// board read with the TOLERANT reader (#232/#238: `**Security-Review: pass**`
+		// counts, because live artifacts wrap markers in emphasis). So a body carrying a
+		// bare `Verdict: approve` PLUS an emphasised security marker parses as pure
+		// correctness here, would post as APPROVED, and would then be READ as a security
+		// pass at that head — the strict/tolerant split reopening the exact shape the
+		// kind check closes. `review` therefore also refuses whatever the tolerant reader
+		// would call a security verdict. A line quoted with a leading `> ` is a citation
+		// to that reader too, so citing the other lane stays possible.
+		if shape.wantKind == bodycheck.KindCorrectness {
+			if got := classifySecurityBody(string(body)); got != secNone {
+				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
+					"refused: `review` posts the CORRECTNESS verdict, but this body also carries a "+
+						"'Security-Review: %s' marker that the flip gate reads as a security verdict "+
+						"(emphasis such as `**Security-Review: pass**` counts) — a review posts exactly ONE "+
+						"verdict kind: post the security verdict with `deskpost security-review --verdict pass|fail`, "+
+						"or quote the other lane's line (prefix '> ') when citing it",
+					secVerdictName(got)))), dig)
+			}
+		}
+		if shape.wantKind == bodycheck.KindSecurity {
 			if got := classifySecurityBody(string(body)); got != shape.wantSec {
 				return withDigest(fromReadErr(preVerb, repo, pr, "", deskkit.Refused(fmt.Sprintf(
 					"refused: --verdict %s does not match the body, which reads as %s — the flag and the "+
@@ -307,8 +345,23 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 					"), --head matches the current head "+short(head)+", trust gate passed, public-repo "+
 					"gate passed, no equivalent verdict already at head — stopped before POST"), dig)
 		}
-		if err := client.postReview(pr, head, shape.event, string(body)); err != nil {
+		postNote, err := client.postReview(pr, head, shape.event, string(body))
+		if err != nil {
 			return withDigest(fromErr(verb, repo, pr, head, err), dig)
+		}
+		if postNote != "" {
+			// The verdict is in force by a route other than the plain POST (GitLab's
+			// already-approved 401, #1106): success, but say which route it was.
+			fmt.Fprintln(stderr, "deskpost: NOTE: "+postNote)
+		}
+		// Merge-hold release/re-arm (the forge-gitlab merge-hold brief, task 3): the CORRECTNESS
+		// verdict's own gate — the security lane (wantKind == KindSecurity) touches it not at
+		// all, and keeps its own gate (deskflip's security-verdict). A GitHub-resolved repo's
+		// readMergeHold answers the typed not-applicable and this is a no-op.
+		if shape.wantKind == bodycheck.KindCorrectness {
+			if hErr := applyMergeHoldForVerdict(client, pr, shape.event, head); hErr != nil {
+				return withDigest(fromErr(verb, repo, pr, head, hErr), dig)
+			}
 		}
 		// Mechanical, ADVISORY verdict-time labels (diff size class + surface tier) for
 		// merge-queue triage. This runs AFTER the verdict has landed and NEVER changes its
@@ -320,7 +373,11 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		} else if s := lo.String(); s != "no label change" {
 			fmt.Fprintln(stderr, "deskpost: verdict-time labels: "+s)
 		}
-		return done(verb, repo, pr, head, dig, "posted "+verdictFlag+" review as "+reviewerBotDisplay()+" at "+short(head))
+		detail := "posted " + verdictFlag + " review as " + reviewerBotDisplay() + " at " + short(head)
+		if postNote != "" {
+			detail += " (" + postNote + ")"
+		}
+		return done(verb, repo, pr, head, dig, detail)
 	})
 }
 
@@ -547,4 +604,54 @@ func reviewAlreadyPostedIn(entries []deskkit.Entry, repo string, pr int, head, v
 		}
 	}
 	return false
+}
+
+// applyMergeHoldForVerdict is `review`'s task-3 half of the forge-gitlab merge-hold brief,
+// run AFTER postReview has already landed the verdict itself: an approve releases the
+// change's merge-hold at head; a request-changes re-arms it; and a verdict that lands
+// against a hold RESOLVED AT A DIFFERENT HEAD re-arms it FIRST (the stale resolution is never
+// left standing), before applying its own release or re-arm. GitHub's readMergeHold answers
+// the typed not-applicable and this is a no-op there.
+//
+// A verdict that posted but whose hold write fails returns a non-zero error naming which half
+// landed — never a silent success that leaves the server-side gate out of step with the
+// verdict that was just recorded.
+func applyMergeHoldForVerdict(client postBackend, pr int, event, head string) error {
+	hold, err := client.readMergeHold(pr)
+	if err != nil {
+		if deskkit.IsMergeHoldNotApplicable(err) {
+			return nil
+		}
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"the %s verdict posted, but reading PR #%d's merge-hold to release/re-arm it failed: %v — "+
+				"the verdict landed; the server-side gate may be out of step with it", event, pr, err), err)
+	}
+	if hold.State == deskkit.MergeHoldNotApplicable {
+		return nil
+	}
+	if hold.State == deskkit.MergeHoldResolved && hold.Head != "" && hold.Head != head {
+		if rerr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{
+			Reason: fmt.Sprintf("new head %s", head),
+		}); rerr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"the %s verdict posted, but re-arming PR #%d's merge-hold — resolved at %s, now at %s — "+
+					"failed: %v — the verdict landed; the server-side gate is still resolved at the STALE head",
+				event, pr, short(hold.Head), short(head), rerr), rerr)
+		}
+	}
+	switch strings.ToUpper(event) {
+	case "APPROVE":
+		if serr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{Resolved: true, Head: head}); serr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"the approve verdict posted on PR #%d, but releasing its merge-hold at %s failed: %v — the "+
+					"verdict landed; the server-side gate is still UP", pr, short(head), serr), serr)
+		}
+	case "REQUEST_CHANGES":
+		if serr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{Reason: "request-changes"}); serr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"the request-changes verdict posted on PR #%d, but re-arming its merge-hold failed: %v — the "+
+					"verdict landed; the server-side gate may still read released", pr, serr), serr)
+		}
+	}
+	return nil
 }

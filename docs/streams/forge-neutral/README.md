@@ -220,8 +220,11 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | done | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #831 @ ab2b73a6065dd206ec7d65c78346a45880c64a29) |
 | 13 | [Write verbs C — deskpr, deskfile and deskclose onto the resolver](brief-13-write-verbs-c-deskpr-deskfile-deskclose.md) | 3 | M | implemented | — | — |
 | 14 | [Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver](brief-14-run-and-gate-approval-verbs-deskrun.md) | 2 | M | todo | — | — |
-| 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | todo | — | — |
+| 15 | [desklabel — a role-keyed label verb](brief-15-desklabel-role-keyed.md) | 2 | M | implemented | — | — |
+| 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | implemented | — | — |
 | 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | todo | — | — |
+| 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
+| 19 | [Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs](brief-19-human-only-surfaces-server-side.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -230,16 +233,37 @@ unresolved-argv rows (`allowlist.go:227,240`).
                                                               ┌─> forge-neutral/10
 forge-neutral/01 ─> forge-neutral/02 ─> forge-neutral/07 ─> 08 ┤   (verbs-only round trip)
  (resolver +         (forge-qualified     (Evidence-actor +  │ │
-  custody +           roster + review      verifyrun name    │ └─> forge-neutral/11
-  refusal)            corroboration)       who acted)        │     (install on a box
-                                          (08 = init scaffold +    with no `gh`)
+  custody +           roster + review      verifyrun name    │ ├─> forge-neutral/11
+  refusal)            corroboration)       who acted)        │ │   (install on a box
+                                          (08 = init scaffold +   with no `gh`)
                                            auto-flip corroboration)
+                                                             │ └─> forge-neutral/18
+                                                             │     (statusgen off `gh`
+                                                             │      onto `deskread`)
 ```
 
 One chain, forking only at the last hop. **10** is the pacing item for the *fleet* claim; **11**
 is the pacing item for the *adopter* claim. Neither may be pre-credited from the other: a fleet
 that round-trips a brief on GitLab still leaves a GitLab-only adopter unable to install, and an
 install that completes proves nothing about whether the verbs then work.
+
+**18 is the third fork, and it is the one that closes the stream's last self-reaching tool.**
+Every other fork consumer reaches a forge through a verb; statusgen is a separate Go module
+that does not import `deskkit` and still carries its own forge CLI shell-outs, so the
+enumerated surface, the refusal-instead-of-fallback rule and the per-forge backend all stop at
+its module boundary. 18 closes that by adding to desk-tools exactly the read statusgen needs —
+`deskread`, a read-only verb over operations the seam already enumerates, so the frozen surface
+is CONSUMED rather than widened — and by making `--lint` offline by default, so the check that
+gates every change stops reaching a forge at all unless asked. Re-measured 2026-09-14 on this
+repository at `e428134c` (24 streams, 165 briefs): a `--lint` spends 16.7 s of its 23.7 s inside
+11 forge-CLI subprocesses, 13.9 s of that fetching every issue ever opened across ten configured
+repos to print one advisory line whose inputs are open issues only; with the CLI simply absent
+from `PATH` the same run reaches the same verdict in 6.05 s. The remaining 6 s is 254 git
+subprocesses over 165 briefs, which is 18's second half: one whole-tree authorship walk (0.03 s,
+replacing 144 `git log` plus 62 `git blame` invocations), a memo over the 3,351 brief parses
+that today re-read 172 files up to 23 times each, and a batched object read. Forge-neutrality
+and speed are the same change here, not two asks: the reads that belong to a forge leave, and
+what is left is local.
 
 The chain is real, not conventional. 08's auto-flip has to recognise a reviewer identity on the
 configured forge, which is 07's roster-parity deliverable inside statusgen; 07's actor matching
@@ -330,9 +354,13 @@ scaffold and silently-degraded claim decay) is brief 08. `#346` (provisioner def
 - **Wave 4** — `forge-neutral/08` (statusgen's CI scaffold and auto-flip; depends on 01, 02
   and 07, whose roster parity inside statusgen it consumes).
 - **Wave 5** — `forge-neutral/10` (conformance round trip; depends on 03, 04, 05, 06, 07, 08,
-  09) and `forge-neutral/11` (install without `gh`; depends on 01, 02, 08).
+  09), `forge-neutral/11` (install without `gh`; depends on 01, 02, 08), and
+  `forge-neutral/18` (statusgen off `gh`; depends on 08, whose forge-aware read path it
+  re-homes onto the desk-tools read verb). 18 sits in wave 5 rather than 4 by the tree's own
+  derivation rule — a brief's `depends:` must point to strictly-earlier waves
+  (`statusgen/brieffile.go:1492-1522`), and 08 is wave 4.
 
-One-line path: `01 → 02 → 07 → 08 → {10, 11}`.
+One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`.
 
 ## Shared conventions the briefs inherit
 

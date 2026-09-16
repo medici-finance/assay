@@ -100,6 +100,7 @@ func TestDispatch_OverlapWarnsAndProceeds(t *testing.T) {
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("DESK_SESSION", "deskdispatch-test")
 	t.Setenv("CLAUDE_SESSION_ID", "deskdispatch-test")
+	isolateClaimTool(t, home)
 
 	// root is a REAL git repo (InFlightClaimScopes reads its local refs directly), carrying the
 	// consumer scripts, the candidate brief, and an in-flight claim ref it overlaps.
@@ -117,6 +118,12 @@ func TestDispatch_OverlapWarnsAndProceeds(t *testing.T) {
 		s.calls = append(s.calls, append([]string{name}, args...))
 		if strings.Contains(joined, "deskwt add") {
 			return exec.Command("/bin/sh", "-c", "echo /private/tmp/worker-home")
+		}
+		if strings.Contains(joined, "remote get-url origin") {
+			// The claim step resolves WHICH forge serves the target repo to pick the claim
+			// child's credential custody (issue 1203); a GitHub-shaped origin keeps this worker
+			// dispatch on the App-mint path.
+			return exec.Command("/bin/sh", "-c", "echo git@github.com:medici-finance/assay.git")
 		}
 		return exec.Command("/bin/sh", "-c", "exit 0") // claim acquire, roster, etc.
 	}

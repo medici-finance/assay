@@ -1,0 +1,38 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/protected_branches",
+      "query": "page=2\u0026per_page=100"
+    }
+  ],
+  "result": [
+    {
+      "allow_force_push": false,
+      "id": 1,
+      "name": "release/1",
+      "push_access_levels": [
+        {
+          "access_level": 0,
+          "access_level_description": "No one"
+        }
+      ]
+    },
+    {
+      "allow_force_push": false,
+      "id": 2,
+      "name": "release/2",
+      "push_access_levels": [
+        {
+          "access_level": 0,
+          "access_level_description": "No one"
+        }
+      ]
+    }
+  ]
+}

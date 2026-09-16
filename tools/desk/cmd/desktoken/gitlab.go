@@ -21,19 +21,77 @@ package main
 // gitlab-<role>.token on the App-credential search path, and this command prints the PATH
 // only — never the token value, never to env or argv.
 //
-// Roles are single-window by convention; a second concurrent invocation for the same role
-// rotates the first's token out from under it BY DESIGN (the first's token is invalidated the
-// moment the second rotates). Parallel actors get per-actor service accounts, never a shared
-// token. This is stated in the command help rather than defended with a lock.
+// CONCURRENCY. Rotate-on-mint is destructive by construction: the endpoint invalidates the
+// presented token as it issues the successor. Two rotations that overlap therefore race for
+// one credential — the loser presents a token the winner already killed, gets 401
+// invalid_token, and the custody file can be left holding a value that is already dead, with
+// no live successor anywhere. Self-rotation cannot recover from that: reaching the endpoint
+// at all requires a live token. Only a group owner re-issuing the PAT does.
+//
+// The original design accepted that race, on the reading that roles are single-window and
+// parallel ACTORS should hold per-actor service accounts. That reading does not cover the
+// case that actually bites: ONE window issuing several tool calls in parallel, each of which
+// mints. Two independent layers close it, each failing for a different reason in a different
+// component:
+//
+//   - SERIALISATION (this file). A per-role advisory lock on gitlab-<role>.token.lock spans
+//     read-current → rotate → write-verify, so overlapping mints for one role run in
+//     sequence instead of racing. Each then reads the live token its predecessor persisted
+//     and the custody file always holds a credential that works. A lock that cannot be taken
+//     is a REFUSAL before the second rotate is in flight — never an unserialised rotation.
+//   - NOT MINTING WHERE NOTHING IS SPENT (callers). A read-only or dry-run verb asks for the
+//     custody PATH with --no-rotate and performs no rotation at all, so a parallel sweep of
+//     reads no longer spends N rotations on work that writes nothing. That removes most of
+//     the contention the lock then has to serialise.
+//
+// The lock is a separate file, never the custody file itself: writeVerifyGitLabToken lands the
+// rotated value by rename, so a lock taken on the custody inode would be orphaned by the very
+// write it is meant to guard. The lock file is created once and never renamed, so its inode is
+// stable for the life of the custody directory.
+//
+// CUSTODY LAYOUT. The custody path may be a SYMLINK to the file the provisioning step actually
+// wrote — that is the documented layout (docs/adopting-assay-gitlab.md §2 links
+// gitlab-<role>.token at the provisioned <prefix>-<role>-bot.token), not an exotic
+// deployment. A rotation therefore writes THROUGH the link: it renames onto the link's
+// resolved target and leaves the link itself in place. Renaming onto the LINK PATH instead
+// would replace the link with a regular file, which has two consequences that only show up
+// later:
+//
+//   - the provisioned file the link pointed at keeps the PRE-ROTATION value forever, so any
+//     step that re-creates the documented link (an idempotent re-run of the provisioning
+//     step, a re-issue script) silently re-points custody at a token the rotation already
+//     invalidated — the next API read then presents a dead credential and 401s, with nothing
+//     in the rotate path itself having failed;
+//   - the layout the operator provisioned is gone, so the next `ln -s` is not a no-op.
+//
+// Writing through the link keeps ONE file holding the live credential, whichever name is used
+// to reach it. The read-back verification then reads back through the CUSTODY PATH rather than
+// the target, so a rotation that broke the link fails at mint time instead of at the next read.
+//
+// SELF-CHECK. The rotation endpoint's 200 says the forge ISSUED the successor; it does not say
+// the forge will ACCEPT it on the very next request. In the field (#1142) a verb's first API
+// read right after its own rotation returned 401 while the on-disk token answered 200 to a
+// direct probe seconds later — the shape of server-side propagation lag after self-rotation,
+// which the mint path used to assume away. So after the rotated value is persisted, and before
+// the path is printed, the command performs ONE live, read-only GET with the new token
+// (gitlabSelfCheckPath). A 200 is the only result that returns the path as good. Anything else
+// exits non-zero naming the endpoint, the status the NEW token got, and whether the forge still
+// accepted the PREVIOUS token — one further read-only GET, so the operator can tell lag (old
+// still accepted) from a lockout (neither accepted) without guessing. There is no retry loop
+// and no sleep: a re-run is one rotation, costs the caller nothing it did not already spend on
+// the failed first read, and keeps the mint path free of a timing heuristic tuned to one
+// instance.
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -59,6 +117,97 @@ func gitlabAPIBase() (string, bool) {
 // gitlabTokenFileName is the per-role custody file: gitlab-<role>.token, resolved across the
 // same App-credential search path the GitHub path uses.
 func gitlabTokenFileName(role string) string { return "gitlab-" + role + ".token" }
+
+// gitlabRotateLockPath is the per-role serialisation file that guards one custody file's
+// read→rotate→write-verify sequence: the custody path plus a .lock suffix, so it sits beside
+// the credential it guards and is per-ROLE by construction (two roles never contend).
+//
+// It is deliberately NOT the custody file. writeVerifyGitLabToken lands the new token by
+// rename, which puts a different inode at the custody path; a lock held on the old inode is
+// released into a file nothing will ever open again, and the next caller locks the NEW inode
+// without contention — a lock that silently stops locking at exactly the moment it matters.
+// A dedicated file is created once and never replaced, so every caller contends on one inode.
+func gitlabRotateLockPath(tokenPath string) string { return tokenPath + ".lock" }
+
+// gitlabRotateLockWait bounds how long a mint waits for another mint's rotation to finish. A
+// rotation is one HTTP round trip plus a small local write, so a wait beyond this is a hung
+// or very slow rotation rather than ordinary queueing. It is the same order as the outward
+// write lock the posting verbs hold (60s), for the same reason: long enough that a normal
+// parallel sweep queues through it without an operator ever seeing a refusal, short enough
+// that a genuinely stuck peer surfaces as an error instead of an indefinite hang.
+//
+// A var, not a const, so the contention tests can assert the REFUSAL branch without spending
+// a minute of wall clock proving it. Nothing in production writes it, and no flag or
+// environment variable exposes it — a deployment cannot lengthen the window into an
+// indefinite hang or shorten it into spurious refusals.
+var gitlabRotateLockWait = 60 * time.Second
+
+// gitlabRotateLock is an acquired per-role rotation lock. release() is idempotent-safe for a
+// single deferred call and never masks the command's own error.
+type gitlabRotateLock struct{ f *os.File }
+
+func (l *gitlabRotateLock) release() {
+	if l == nil || l.f == nil {
+		return
+	}
+	_ = deskkit.UnlockFile(l.f)
+	_ = l.f.Close()
+}
+
+// acquireGitLabRotateLock takes the per-role rotation lock, waiting up to gitlabRotateLockWait
+// for a peer to finish.
+//
+// It FAILS CLOSED in every non-acquisition case. There is no "proceed anyway" branch: an
+// unserialised rotation is precisely the operation that can leave the role with no live
+// credential, and a refusal costs a retry whereas a lost race costs a group owner's
+// intervention. That asymmetry is why the lock cannot be advisory-in-practice.
+//
+// Both refusals name the recovery path, because the operator reading them may be reading them
+// AFTER the lockout rather than before it.
+func acquireGitLabRotateLock(role, tokenPath string) (*gitlabRotateLock, error) {
+	lockPath := gitlabRotateLockPath(tokenPath)
+	f, oerr := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if oerr != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"cannot open the per-role gitlab rotation lock at %s (%v) — REFUSING to rotate unserialised. "+
+				"Two overlapping rotations for role %s invalidate each other's token and can leave %s holding "+
+				"a dead value with no live successor. Make the directory writable by this user and re-run.",
+			lockPath, oerr, role, tokenPath), nil)
+	}
+	deadline := time.Now().Add(gitlabRotateLockWait)
+	for {
+		lerr := deskkit.TryLockExclusive(f)
+		if lerr == nil {
+			return &gitlabRotateLock{f: f}, nil
+		}
+		if !errors.Is(lerr, deskkit.ErrLockBusy) {
+			_ = f.Close()
+			return nil, deskkit.Unverifiable(fmt.Sprintf(
+				"cannot acquire the per-role gitlab rotation lock at %s (%v) — REFUSING to rotate unserialised "+
+					"for role %s. A rotation that is not serialised can invalidate a peer's token and leave %s "+
+					"holding a dead value.", lockPath, lerr, role, tokenPath), nil)
+		}
+		if time.Now().After(deadline) {
+			_ = f.Close()
+			// Note what a leftover lock FILE does and does not mean: the advisory lock is
+			// released by the OS when the holding process exits, so a file left on disk by a
+			// crashed mint holds nothing. Waiting this long means a peer rotation is genuinely
+			// still in flight — deleting the file would not help and would only remove the
+			// serialisation from under the peer.
+			return nil, deskkit.Unverifiable(fmt.Sprintf(
+				"another gitlab rotation for role %s has held %s for >%s — REFUSING to start a second, "+
+					"overlapping rotation: the two would invalidate each other's token and could leave %s "+
+					"holding a dead value with no live successor. Re-run once the other mint finishes, and "+
+					"issue mints for one role SEQUENTIALLY rather than in parallel. (The lock is released by "+
+					"the OS when its holder exits, so a leftover lock file is never itself the cause — do not "+
+					"delete it.) If the role's PAT is ALREADY dead (desk verbs failing 401 invalid_token), "+
+					"self-rotation cannot recover it: a group owner must re-issue the role's PAT "+
+					"(Group > Settings > Access Tokens) and write it 0600 to %s.",
+				role, lockPath, gitlabRotateLockWait, tokenPath, tokenPath), nil)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
 
 // gitlabRepoResolved reports whether --repo AFFIRMATIVELY resolves to the GitLab forge, so a
 // bare `desktoken <role> --repo <gitlab-slug>` with NO explicit --forge takes the GitLab PAT
@@ -145,18 +294,124 @@ func rotateGitLabToken(base, current string) (*gitlabRotateResult, error) {
 	return &result, nil
 }
 
-// writeVerifyGitLabToken persists token to path 0600 and reads it back to confirm the bytes
-// landed. A write that reports success but does not durably persist the new token is a
+// gitlabSelfCheckPath is the endpoint the post-rotation self-check reads: the current-user
+// read, the cheapest authenticated GET GitLab has and the one the pilot used to prove a rotated
+// token live (and a captured one dead). It is on every tier, it needs no project coordinate
+// (a role is minted before any --repo is known), and its response is a small account record —
+// never a token.
+const gitlabSelfCheckPath = "/user"
+
+// gitlabSelfCheck performs ONE read-only GET of gitlabSelfCheckPath authenticated with token
+// and returns the HTTP status the forge answered. It never retries, never sleeps and never
+// reads the body: the caller decides on the status alone. A transport failure is returned as
+// an error (the check could not be made — not a rejection, not an acceptance).
+//
+// The token is never placed in an error string — an error from this function is printed.
+func gitlabSelfCheck(base, token string) (int, error) {
+	url := strings.TrimRight(base, "/") + gitlabSelfCheckPath
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create self-check request: %w", err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("GET %s: %w", gitlabSelfCheckPath, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, nil
+}
+
+// gitlabSelfCheckFailure builds the non-zero verdict for a self-check the NEW token did not
+// pass. It probes the PREVIOUS token once, read-only, on the same endpoint so the line names
+// which token the forge accepted: previous accepted + new rejected is the propagation-lag
+// shape (#1142) and a re-run is the remedy; neither accepted is a lockout only a group owner
+// can recover. It never restores the previous token to custody — the rotation endpoint has
+// reported it invalidated, and a custody that holds a token the forge is about to reject is
+// worse than one that holds the successor the forge has not yet caught up with.
+//
+// Neither token value reaches the message.
+func gitlabSelfCheckFailure(role, base, path, previous string, newStatus int) error {
+	prev := ""
+	prevStatus, perr := gitlabSelfCheck(base, previous)
+	switch {
+	case perr != nil:
+		prev = "could not be checked (" + perr.Error() + ")"
+	case prevStatus == 200:
+		prev = "still ACCEPTED (HTTP 200)"
+	default:
+		prev = fmt.Sprintf("rejected (HTTP %d)", prevStatus)
+	}
+	return deskkit.Unverifiable(fmt.Sprintf(
+		"post-rotation self-check FAILED for role %s: GET %s with the NEW token answered HTTP %d; "+
+			"the PREVIOUS token was %s. The rotation endpoint reported success and the new token is "+
+			"persisted at %s, but the forge did not accept it on a live read, so that path is NOT "+
+			"returned as good. If the previous token was still accepted this is the forge propagating "+
+			"the rotation — re-run the mint once and it rotates from the persisted value. If NEITHER "+
+			"token is accepted the role is locked out: a group owner must re-issue the role's PAT "+
+			"(Group > Settings > Access Tokens) and write it 0600 to %s.",
+		role, gitlabSelfCheckPath, newStatus, prev, path, path), nil)
+}
+
+// gitlabCustodyWriteTarget resolves WHICH file a rotation's bytes must land in so that the
+// custody PATH keeps the shape the deployment provisioned. For an ordinary regular-file
+// custody the answer is the path itself. For a SYMLINK custody — the documented layout, see
+// the file header — it is the link's fully resolved target, so the rename swaps the file the
+// link points AT and the link survives the rotation.
+//
+// linked reports whether path was a symlink, so the caller can assert afterwards that it still
+// is one. A link that cannot be resolved is an ERROR, never a silent fall-back to writing at
+// the link path: resolving is how the rotation learns where the live credential actually
+// lives, and guessing would strand the rotated value somewhere nothing reads.
+func gitlabCustodyWriteTarget(path string) (target string, linked bool, err error) {
+	fi, lerr := os.Lstat(path)
+	if lerr != nil {
+		// No entry to inspect. cmdGitLabRotate has already stat'd and refused on a missing or
+		// non-regular custody, so this is only reachable for a path that vanished between the
+		// two calls; write where we were told and let the rename surface the failure.
+		return path, false, nil
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return path, false, nil
+	}
+	resolved, rerr := filepath.EvalSymlinks(path)
+	if rerr != nil {
+		return "", true, fmt.Errorf("resolve custody symlink %s: %w", path, rerr)
+	}
+	return resolved, true, nil
+}
+
+// writeVerifyGitLabToken persists token 0600 through path and reads it back to confirm the
+// bytes landed. A write that reports success but does not durably persist the new token is a
 // lockout waiting to happen, because rotation has already invalidated the old one; the
 // read-back turns that into an observed failure at mint time instead.
 //
-// The write is temp-file-then-rename in the same directory, so the credential swap is atomic:
-// a crash or an error mid-write never leaves a torn file that holds neither the old nor a
-// whole new token — path either still holds the old bytes or holds the whole new token, never
-// a fragment. When the directory is not writable, creating the temp file fails here, and that
-// surfaces as the lockout the caller reports (rather than a silently torn custody file).
+// The write is temp-file-then-rename in the TARGET's own directory, so the credential swap is
+// atomic: a crash or an error mid-write never leaves a torn file that holds neither the old nor
+// a whole new token — the custody path either still resolves to the old bytes or to the whole
+// new token, never a fragment. When the directory is not writable, creating the temp file fails
+// here, and that surfaces as the lockout the caller reports (rather than a silently torn
+// custody file).
+//
+// The target is resolved rather than assumed to be path: on a symlinked custody layout the
+// rename must land on the link's target so the link survives (file header, CUSTODY LAYOUT).
+//
+// It is also DURABLE before it returns: the temp file is fsync'd before the rename and the
+// containing directory afterwards. The caller prints the custody path the moment this returns
+// and the verb that invoked it immediately re-reads that path to obtain the credential it will
+// present, so "written" has to mean written — not merely queued behind a rename the operating
+// system has not committed. The directory fsync is best-effort: not every platform lets a
+// directory handle be synced, and a platform that refuses it is not a reason to fail a rotation
+// whose bytes are already on disk.
 func writeVerifyGitLabToken(path, token string) error {
-	dir := filepath.Dir(path)
+	target, linked, terr := gitlabCustodyWriteTarget(path)
+	if terr != nil {
+		return terr
+	}
+	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".gitlab-token-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp in %s: %w", dir, err)
@@ -174,13 +429,20 @@ func writeVerifyGitLabToken(path, token string) error {
 		_ = tmp.Close()
 		return fmt.Errorf("chmod temp: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temp: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("rename temp over %s: %w", path, err)
+	if err := os.Rename(tmpName, target); err != nil {
+		return fmt.Errorf("rename temp over %s: %w", target, err)
 	}
+	syncDir(dir)
 
+	// Read back through the CUSTODY PATH, not the target: on a linked layout that proves both
+	// that the bytes landed AND that the path the verbs read still resolves to them.
 	got, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read-back %s: %w", path, err)
@@ -188,17 +450,78 @@ func writeVerifyGitLabToken(path, token string) error {
 	if string(got) != token {
 		return fmt.Errorf("read-back mismatch: persisted token does not match the rotated value")
 	}
+	// A custody link must still be a link. If it is not, the rotation has just converted the
+	// layout the deployment provisioned into a regular file, and the file the link pointed at
+	// is now stranded holding the invalidated token — the condition that makes a later re-link
+	// hand a dead credential to the next read.
+	//
+	// This is a BACKSTOP under the target resolution above, not a second implementation of it:
+	// with the resolver correct nothing reaches it, which is why it carries no mutation entry
+	// (a mutant that disables it survives by construction). It is kept because the cost of a
+	// silently converted layout is a lockout an operator only discovers at the next read.
+	if linked {
+		fi, lerr := os.Lstat(path)
+		if lerr != nil || fi.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("custody symlink at %s did not survive the rotation (it is now a regular file); "+
+				"the rotated token must be written THROUGH the link, never over it", path)
+		}
+	}
 	return nil
 }
 
+// syncDir best-effort fsyncs a directory so a rename into it is durable. Failures are ignored:
+// syncing a directory handle is not supported everywhere (notably Windows), and a platform that
+// refuses it must not turn a completed rotation into a reported lockout.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
+}
+
+// readGitLabCustody reads the role's current PAT from an already-mode-verified custody file.
+// It is shared by the rotating and the --no-rotate paths so both refuse identically on an
+// unreadable or empty custody file — a read-only verb that accepted an empty credential would
+// report a usable path for a role that has none.
+//
+// The token VALUE never reaches an error string: an error from this function is printed.
+func readGitLabCustody(path string) (string, error) {
+	raw, rerr := os.ReadFile(path)
+	if rerr != nil {
+		return "", deskkit.Unverifiable("cannot read gitlab token file at "+path, rerr)
+	}
+	current := strings.TrimSpace(string(raw))
+	if current == "" {
+		return "", deskkit.Unverifiable(
+			"gitlab token file at "+path+" is empty — re-provision the role's PAT (0600) via a group owner", nil)
+	}
+	return current, nil
+}
+
 // cmdGitLabRotate implements `desktoken --forge gitlab <role>`: read the current token file,
-// rotate via the API, write-verify the new value 0600 in place, and print the path.
+// rotate via the API, write-verify the new value 0600 in place, self-check it with one live
+// read, and print the path.
+//
+// With rotate=false (`--no-rotate`) it performs the SAME custody checks and prints the same
+// path, but makes no network contact and leaves the credential untouched. That is the shape a
+// read-only or dry-run verb asks for: it needs to know WHERE the role's credential is, not to
+// spend a rotation it will not use. Skipping the rotation does not weaken the rotate-on-mint
+// property — at most one credential per role is still ever valid, and it still dies at the
+// next rotation — it only stops verbs that write nothing from driving that rotation.
 //
 // Refusal behaviors mirror the GitHub key path: a missing custody file, a non-regular-file
 // custody, and a wrong file mode each refuse (exit 6) with a named remedy, and no token-shaped
 // value ever reaches stdout, stderr, env, or argv.
-func cmdGitLabRotate(role string, ac *auditCtx) error {
+func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
+	// The audit verb records what was actually DONE. A no-rotate lookup logged as "rotate"
+	// would put rotations in the trail that never happened, which is exactly the kind of
+	// audit line an incident reconstruction cannot trust.
 	ac.verb = "rotate"
+	if !rotate {
+		ac.verb = "custody-read"
+	}
 	ac.role = role
 
 	name := gitlabTokenFileName(role)
@@ -232,14 +555,38 @@ func cmdGitLabRotate(role string, ac *auditCtx) error {
 		return deskkit.Unverifiable(err.Error(), nil)
 	}
 
-	raw, rerr := os.ReadFile(path)
-	if rerr != nil {
-		return deskkit.Unverifiable("cannot read gitlab token file at "+path, rerr)
+	// READ-ONLY LOOKUP (--no-rotate). Custody has been verified above; report the path and
+	// stop. No lock is taken: this reads and writes nothing that a concurrent rotation could
+	// tear, because the rotation lands its new value by rename, so a reader sees either the
+	// whole old token or the whole new one and never a fragment. Taking the rotation lock
+	// here would queue reads behind a rotation's network round trip, reintroducing exactly
+	// the contention this path exists to remove.
+	if !rotate {
+		// The custody VALUE is read only to assert the credential is actually there — an
+		// empty file would otherwise hand back a path for a role that has no token. It is
+		// discarded immediately: like the rotating path, only the PATH is printed.
+		if _, cerr := readGitLabCustody(path); cerr != nil {
+			return cerr
+		}
+		fmt.Println(path)
+		ac.detail = fmt.Sprintf("read gitlab %s custody path (--no-rotate: no rotation performed)", role)
+		return nil
 	}
-	current := strings.TrimSpace(string(raw))
-	if current == "" {
-		return deskkit.Unverifiable(
-			"gitlab token file at "+path+" is empty — re-provision the role's PAT (0600) via a group owner", nil)
+
+	// SERIALISE THE WHOLE DESTRUCTIVE SEQUENCE. The lock must be held across read→rotate→
+	// write-verify, not merely across the rotate call: a token read BEFORE a peer's rotation
+	// and presented AFTER it is already dead, which is the losing half of the original race.
+	// Reading only once the lock is held guarantees the value presented to the endpoint is
+	// the one the previous holder persisted.
+	lock, lerr := acquireGitLabRotateLock(role, path)
+	if lerr != nil {
+		return lerr
+	}
+	defer lock.release()
+
+	current, cerr := readGitLabCustody(path)
+	if cerr != nil {
+		return cerr
 	}
 
 	// Resolve the network target BEFORE first contact. With no default (see gitlabAPIBase), an
@@ -274,12 +621,28 @@ func cmdGitLabRotate(role string, ac *auditCtx) error {
 				"is NOT printed.", path, werr, path), nil)
 	}
 
+	// SELF-CHECK. The new token is persisted; now prove the forge ACCEPTS it before the path
+	// is handed to a caller that will present it on its very next request. One read-only GET,
+	// no retry, no sleep (file header, SELF-CHECK). A status other than 200 — or no status at
+	// all — never returns the path as good.
+	status, serr := gitlabSelfCheck(base, result.Token)
+	if serr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"post-rotation self-check for role %s could not be completed: the rotated token is persisted "+
+				"at %s but its acceptance by the forge is unverified, so that path is NOT returned as good. "+
+				"Re-run the mint once the forge is reachable.", role, path), serr)
+	}
+	if status != 200 {
+		return gitlabSelfCheckFailure(role, base, path, current, status)
+	}
+
 	// Success: print the PATH only.
 	fmt.Println(path)
 	exp := result.ExpiresAt
 	if exp == "" {
 		exp = "per group policy"
 	}
-	ac.detail = fmt.Sprintf("rotated gitlab %s token in place (expires %s)", role, exp)
+	ac.detail = fmt.Sprintf("rotated gitlab %s token in place (expires %s; self-check GET %s %d)",
+		role, exp, gitlabSelfCheckPath, status)
 	return nil
 }

@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/discussions",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "err": "!7 in medici-finance/assay carries no merge-hold marker thread to release or re-arm — OpenMergeHold never ran, or the change predates this control",
+  "not_found": false
+}

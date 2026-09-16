@@ -104,37 +104,42 @@ var (
 	origPATH  string
 )
 
+// TestMain installs the roster fixture, runs the suite through runTests (whose defers
+// fire, unlike anything deferred here), then hands the exit code through
+// finishFixtureRoster so the fixture HOME is removed and proven gone before os.Exit (#1195).
 func TestMain(m *testing.M) {
 	rosterCleanup, rerr := installFixtureRoster()
 	if rerr != nil {
 		panic("cannot install the test-fixture roster: " + rerr.Error())
 	}
-	defer rosterCleanup()
+	os.Exit(finishFixtureRoster(rosterCleanup, runTests(m)))
+}
+
+func runTests(m *testing.M) int {
 	origPATH = os.Getenv("PATH")
 	dir, err := os.MkdirTemp("", "deskfile-fakegh")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	defer os.RemoveAll(dir)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fakegh\n\ngo 1.25\n"), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeGHSource), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	build := exec.Command("go", "build", "-o", filepath.Join(dir, "gh"), ".")
 	build.Dir = dir
-	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+	build.Env = fakeBuildEnv()
 	if out, berr := build.CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "build fake gh: %v\n%s\n", berr, out)
-		os.Exit(1)
+		return 1
 	}
 	fakeGHDir = dir
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
+	return m.Run()
 }
 
 // --- fixtures ---------------------------------------------------------------------
@@ -169,6 +174,9 @@ func withEnv(t *testing.T) *[][]string {
 		"FAKEGH_SEARCH_HITS", "FAKEGH_SEARCH_FAIL", "FAKEGH_SEARCH_EMPTY",
 		"FAKEGH_ISSUE_STATE", "FAKEGH_ISSUE_URL", "FAKEGH_CREATE_FAIL",
 		"FAKEGH_STDERR_PAYLOAD", "FAKEGH_LABELS", "FAKEGH_LABEL_FAIL", "FAKEGH_LABEL_EMPTY",
+		// The new-issue rate/window env knobs (assay#1204): an ambient value would otherwise
+		// change the cap under a test that means to exercise the shipped default.
+		"ASSAY_DESKFILE_NEW_RATE", "ASSAY_DESKFILE_NEW_WINDOW",
 	} {
 		t.Setenv(k, "")
 	}
@@ -451,7 +459,7 @@ func TestClassLabelBoost(t *testing.T) {
 func TestBudgetFourthNewRefuses(t *testing.T) {
 	calls := withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // no dupes
-	seedNewAudit(t, defaultNewBudgetPerSession, allowedRepo, "test")
+	seedNewAudit(t, defaultNewRate, allowedRepo, "test")
 	body := bodyFileWith(t, "one new too many")
 
 	rc, _ := runCapture([]string{"new", "-R", allowedRepo,
@@ -467,7 +475,7 @@ func TestBudgetFourthNewRefuses(t *testing.T) {
 func TestBudgetThirdNewOK(t *testing.T) {
 	calls := withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
-	seedNewAudit(t, defaultNewBudgetPerSession-1, allowedRepo, "test")
+	seedNewAudit(t, defaultNewRate-1, allowedRepo, "test")
 	body := bodyFileWith(t, "within budget")
 
 	rc, _ := runCapture([]string{"new", "-R", allowedRepo,
@@ -495,7 +503,7 @@ func TestBudgetAttachUnbudgeted(t *testing.T) {
 	// Many prior attaches on ANOTHER issue — and a full `new` budget — must NOT block this
 	// attach.
 	seedAttachAudit(t, deskkit.RateLimitPerPRPerHour+5, allowedRepo, "test")
-	seedNewAudit(t, defaultNewBudgetPerSession, allowedRepo, "test")
+	seedNewAudit(t, defaultNewRate, allowedRepo, "test")
 	body := bodyFileWith(t, "instance of the class issue")
 
 	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "11", "--body-file", body})
@@ -514,7 +522,7 @@ func TestBudgetUnknownSessionBucket(t *testing.T) {
 	calls := withEnv(t)
 	t.Setenv("CLAUDE_SESSION_ID", "") // → SessionTag() returns "unknown"
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
-	seedNewAudit(t, defaultNewBudgetPerSession, allowedRepo, "unknown")
+	seedNewAudit(t, defaultNewRate, allowedRepo, "unknown")
 	body := bodyFileWith(t, "another unset-session filing")
 
 	rc, _ := runCapture([]string{"new", "-R", allowedRepo,
@@ -531,7 +539,7 @@ func TestBudgetUnknownSessionBucket(t *testing.T) {
 func TestBudgetSessionScoped(t *testing.T) {
 	calls := withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
-	seedNewAudit(t, defaultNewBudgetPerSession, allowedRepo, "session-A")
+	seedNewAudit(t, defaultNewRate, allowedRepo, "session-A")
 	t.Setenv("CLAUDE_SESSION_ID", "session-B") // different bucket
 	body := bodyFileWith(t, "different session")
 
@@ -922,7 +930,7 @@ func TestFailClosedOutageKeepsHatchUsable(t *testing.T) {
 	body := bodyFileWith(t, "urgent filing during an outage")
 
 	t.Setenv("FAKEGH_SEARCH_FAIL", "1")
-	for i := 1; i <= defaultNewBudgetPerSession; i++ {
+	for i := 1; i <= defaultNewRate; i++ {
 		rc, _ := runCapture([]string{"new", "-R", allowedRepo,
 			"--title", fmt.Sprintf("urgent thing number %d", i), "--body-file", body})
 		if rc != deskkit.ExitUnverifiable {
@@ -937,7 +945,7 @@ func TestFailClosedOutageKeepsHatchUsable(t *testing.T) {
 		"--force-new", "--reason", "search API is down, urgent filing"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("escape hatch after %d outage refusals rc = %d, want 0 — the outage consumed "+
-			"the budget the hatch needs; out=%s", defaultNewBudgetPerSession, rc, out)
+			"the budget the hatch needs; out=%s", defaultNewRate, rc, out)
 	}
 	if !anyCall(ghCalls(*calls), "issue", "create") {
 		t.Fatalf("escape hatch made no `gh issue create`; gh calls: %v", ghCalls(*calls))
@@ -948,7 +956,7 @@ func TestFailClosedOutageKeepsHatchUsable(t *testing.T) {
 // seeded pre-write Unverifiable lines (no createSentMarker) leave the budget untouched.
 func TestBudgetUnsentCreateNoCharge(t *testing.T) {
 	calls := withEnv(t)
-	seedNewAuditResult(t, defaultNewBudgetPerSession, allowedRepo, "test",
+	seedNewAuditResult(t, defaultNewRate, allowedRepo, "test",
 		deskkit.ResultUnverifiable, "dedupe search failed — refuse rather than mint a possible duplicate")
 	body := bodyFileWith(t, "a filing after three outages")
 
@@ -968,7 +976,7 @@ func TestBudgetUnsentCreateNoCharge(t *testing.T) {
 // the marker check from chargedNewEntry and this test goes red.
 func TestBudgetSentCreateCharges(t *testing.T) {
 	calls := withEnv(t)
-	seedNewAuditResult(t, defaultNewBudgetPerSession, allowedRepo, "test",
+	seedNewAuditResult(t, defaultNewRate, allowedRepo, "test",
 		deskkit.ResultUnverifiable, createSentMarker+"gh issue create failed: timeout")
 	body := bodyFileWith(t, "a fourth filing")
 
@@ -1014,7 +1022,7 @@ func TestNewStampsSentMarkerOnFailedCreate(t *testing.T) {
 func TestBudgetBodyFileFailureNoCharge(t *testing.T) {
 	calls := withEnv(t)
 	missing := filepath.Join(t.TempDir(), "does-not-exist.md")
-	for i := 1; i <= defaultNewBudgetPerSession; i++ {
+	for i := 1; i <= defaultNewRate; i++ {
 		rc, _ := runCapture([]string{"new", "-R", allowedRepo,
 			"--title", fmt.Sprintf("typo attempt %d", i), "--body-file", missing})
 		if rc != deskkit.ExitUnverifiable {
@@ -1414,7 +1422,7 @@ func TestUntokenizableTitleRefuses(t *testing.T) {
 // TestPolicyConstantsPinned asserts the literal values, which is the only thing that
 // catches a change to the policy itself. The behavioural tests all derive their fixtures
 // from these constants (`strings.Repeat("a", maxBodyBytes+1)`, `seedNewAudit(t,
-// defaultNewBudgetPerSession, ...)`), so they scale with whatever the constant becomes and
+// defaultNewRate, ...)`), so they scale with whatever the constant becomes and
 // stay GREEN against 16 MiB or a budget of 9999. deskkit's ratelimit_test.go carries the
 // same counter-pattern for RateLimitPerPRPerHour.
 //
@@ -1424,12 +1432,12 @@ func TestPolicyConstantsPinned(t *testing.T) {
 	if maxBodyBytes != 16*1024 {
 		t.Errorf("maxBodyBytes = %d, want %d (body cap is 16 KiB)", maxBodyBytes, 16*1024)
 	}
-	if defaultNewBudgetPerSession != 3 {
-		t.Errorf("defaultNewBudgetPerSession = %d, want 3 (the default per-session filing cap)",
-			defaultNewBudgetPerSession)
+	if defaultNewRate != 3 {
+		t.Errorf("defaultNewRate = %d, want 3 (the shipped default new-issue filing rate per window)",
+			defaultNewRate)
 	}
-	if budgetWindow != 24*time.Hour {
-		t.Errorf("budgetWindow = %v, want 24h", budgetWindow)
+	if defaultNewWindow != 24*time.Hour {
+		t.Errorf("defaultNewWindow = %v, want 24h (the shipped default rate window)", defaultNewWindow)
 	}
 	if matchThreshold != 0.5 {
 		t.Errorf("matchThreshold = %v, want 0.5", matchThreshold)
@@ -1603,7 +1611,7 @@ func TestBudgetChargedToFilingAgentNotTheDispatcher(t *testing.T) {
 
 	// Agent A spends its whole budget.
 	t.Setenv("DESK_SESSION", "dispatched-agent-a")
-	for i := 0; i < defaultNewBudgetPerSession; i++ {
+	for i := 0; i < defaultNewRate; i++ {
 		if rc := fileOne(t, fmt.Sprintf("agent a filing %d", i+1)); rc != deskkit.ExitOK {
 			t.Fatalf("agent A filing %d rc = %d, want 0 (within its own budget)", i+1, rc)
 		}
@@ -1625,9 +1633,9 @@ func TestBudgetChargedToFilingAgentNotTheDispatcher(t *testing.T) {
 			counts[e.SessionTag]++
 		}
 	}
-	if counts["dispatched-agent-a"] != defaultNewBudgetPerSession {
+	if counts["dispatched-agent-a"] != defaultNewRate {
 		t.Errorf("audit charged %d `new` to dispatched-agent-a, want %d: %v",
-			counts["dispatched-agent-a"], defaultNewBudgetPerSession, counts)
+			counts["dispatched-agent-a"], defaultNewRate, counts)
 	}
 	if counts["dispatched-agent-b"] != 1 {
 		t.Errorf("audit charged %d `new` to dispatched-agent-b, want 1: %v", counts["dispatched-agent-b"], counts)
@@ -1647,17 +1655,187 @@ func TestBudgetStillCapsOneAgentAtThree(t *testing.T) {
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("CLAUDE_SESSION_ID", "the-dispatching-session")
 	t.Setenv("DESK_SESSION", "dispatched-agent-a")
-	seedNewAudit(t, defaultNewBudgetPerSession, allowedRepo, "dispatched-agent-a")
+	seedNewAudit(t, defaultNewRate, allowedRepo, "dispatched-agent-a")
 	body := bodyFileWith(t, "the fourth filing from one agent")
 
 	rc, errOut := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "agent a fourth filing", "--body-file", body})
 	if rc != deskkit.ExitRateLimited {
 		t.Fatalf("one agent's 4th new rc = %d, want %d — the per-actor cap must stay at %d",
-			rc, deskkit.ExitRateLimited, defaultNewBudgetPerSession)
+			rc, deskkit.ExitRateLimited, defaultNewRate)
 	}
 	if !strings.Contains(errOut, "dispatched-agent-a") {
 		t.Errorf("the refusal does not name the session it charged:\n%s", errOut)
 	}
 	assertNoIssueCreate(t, *calls)
+}
+
+// --- assay#955: a REFUSED `new` must not consume the session budget slot ----------
+
+// TestBudgetBodyCheckRefusalDoesNotConsumeSlot is the assay#955 repro: BodyCheck refuses
+// three consecutive `new` attempts (a secret-shaped token in the body), none of which ever
+// reached `gh issue create`. Before the fix these three ResultRefused lines were
+// nonetheless charged against the 3-per-24h session budget, so the FOURTH attempt — a
+// genuinely clean filing — was itself refused with exit 4 (rate-limited) having filed
+// nothing at all: the session burned its whole budget on refusals and had no slot left to
+// file the legitimate finding the refusals were about.
+//
+// After the fix a refusal is audited (the ResultRefused lines are still on the log) but
+// FREE: only a write that actually reaches `gh issue create` may charge the budget, so the
+// clean filing right after three refusals must still succeed.
+func TestBudgetBodyCheckRefusalDoesNotConsumeSlot(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // no dupes — isolate the BodyCheck refusal path
+	secretBody := bodyFileWith(t, "token ghp_"+strings.Repeat("a", 36))
+
+	for i := 1; i <= defaultNewRate; i++ {
+		rc, out := runCapture([]string{"new", "-R", allowedRepo,
+			"--title", fmt.Sprintf("secret-tripping filing attempt %d", i), "--body-file", secretBody})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("BodyCheck refusal attempt %d rc = %d, want %d (refused); out=%s",
+				i, rc, deskkit.ExitRefused, out)
+		}
+	}
+	// None of the three refused attempts ever reached the remote.
+	assertNoIssueCreate(t, *calls)
+
+	// The refusals must be on the audit log (audited, not silent) but marked as NOT
+	// charging the session budget.
+	for _, e := range auditEntriesFor(t, "new") {
+		if e.Result != deskkit.ResultRefused {
+			continue
+		}
+		if chargedNewEntry(e) {
+			t.Fatalf("a BodyCheck refusal charged the session budget: %+v", e)
+		}
+	}
+
+	// The budget slot must still be available: a clean, non-duplicate filing right after
+	// the three refusals must succeed and actually create the issue.
+	cleanBody := bodyFileWith(t, "a clean, unique observation with no secrets in it")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a genuinely new, clean filing after three refusals", "--body-file", cleanBody})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("clean filing after 3 BodyCheck refusals rc = %d, want 0 — a REFUSED new must not "+
+			"consume the budget a legitimate filing needs (assay#955); out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestBudgetDedupeRefusalDoesNotConsumeSlot is the same assay#955 repro through the OTHER
+// named refusal path: a dedupe match (not BodyCheck). Three attempts against a
+// near-duplicate title are refused, then a clean, unrelated filing must still be admitted.
+func TestBudgetDedupeRefusalDoesNotConsumeSlot(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", searchHitsJSON(t, "oracle price feed goes stale"))
+	dupeBody := bodyFileWith(t, "the oracle price feed is going stale under load")
+
+	for i := 1; i <= defaultNewRate; i++ {
+		rc, out := runCapture([]string{"new", "-R", allowedRepo,
+			"--title", "oracle price feed goes stale", "--body-file", dupeBody})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("dedupe refusal attempt %d rc = %d, want %d (refused); out=%s",
+				i, rc, deskkit.ExitRefused, out)
+		}
+	}
+	assertNoIssueCreate(t, *calls)
+
+	for _, e := range auditEntriesFor(t, "new") {
+		if e.Result != deskkit.ResultRefused {
+			continue
+		}
+		if chargedNewEntry(e) {
+			t.Fatalf("a dedupe refusal charged the session budget: %+v", e)
+		}
+	}
+
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]") // the clean filing has no near-duplicate
+	cleanBody := bodyFileWith(t, "a fresh unrelated observation")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a brand new unrelated topic", "--body-file", cleanBody})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("clean filing after 3 dedupe refusals rc = %d, want 0 — a REFUSED new must not "+
+			"consume the budget a legitimate filing needs (assay#955); out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected the clean filing to make a `gh issue create` call; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// --- attach --kind (a GitLab adopter cell: #N and !N both exist) ---------------------------
+
+// TestAttachKindDefaultsToIssue: without --kind, both the target read and the note write are
+// typed ISSUE — attach is an observation on an issue — so a GitLab number that also names a
+// merge request resolves to the issue instead of the bare-number refusal.
+func TestAttachKindDefaultsToIssue(t *testing.T) {
+	calls := withEnv(t)
+	body := bodyFileWith(t, "observation as the worker")
+
+	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--body-file", body})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("attach rc = %d, want 0", rc)
+	}
+	if got := curForge.getKinds; len(got) != 1 || got[0] != deskkit.TargetIssue {
+		t.Fatalf("target read kinds = %v, want [issue]", got)
+	}
+	if got := curForge.commentKinds; len(got) != 1 || got[0] != deskkit.TargetIssue {
+		t.Fatalf("comment kinds = %v, want [issue]", got)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "comment") {
+		t.Fatalf("expected the comment write; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestAttachKindMRTypesBothReadAndWrite: --kind mr (and its alias pr) types the read AND the
+// write as CHANGE, so the state check and the note address the same object.
+func TestAttachKindMRTypesBothReadAndWrite(t *testing.T) {
+	for _, kind := range []string{"mr", "pr", "MR"} {
+		withEnv(t)
+		body := bodyFileWith(t, "observation on the change")
+		rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--kind", kind, "--body-file", body})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("attach --kind %s rc = %d, want 0", kind, rc)
+		}
+		if got := curForge.getKinds; len(got) != 1 || got[0] != deskkit.TargetChange {
+			t.Fatalf("--kind %s: target read kinds = %v, want [change]", kind, got)
+		}
+		if got := curForge.commentKinds; len(got) != 1 || got[0] != deskkit.TargetChange {
+			t.Fatalf("--kind %s: comment kinds = %v, want [change]", kind, got)
+		}
+	}
+}
+
+// TestAttachKindUnknownRefusedBeforeAnyForgeCall: an unparseable kind is exit 5 with nothing
+// read or written — the kind was meant to be STATED, so a typo must not become "issue".
+func TestAttachKindUnknownRefusedBeforeAnyForgeCall(t *testing.T) {
+	withEnv(t)
+	body := bodyFileWith(t, "x")
+	rc, out := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--kind", "merge", "--body-file", body})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("attach --kind merge rc = %d, want 5; out=%s", rc, out)
+	}
+	if len(curForge.getKinds) != 0 || len(curForge.comments) != 0 {
+		t.Fatalf("unknown kind must reach no forge call; reads=%v comments=%v", curForge.getKinds, curForge.comments)
+	}
+	if !strings.Contains(out, "issue, mr") {
+		t.Fatalf("refusal must name the accepted kinds; out=%s", out)
+	}
+}
+
+// TestAttachKindMismatchIsUnverifiable: on a one-sequence forge the typed read reports a kind
+// mismatch (asked for an issue, the number is a pull request); attach fails CLOSED (exit 6)
+// and writes nothing rather than commenting on the other kind.
+func TestAttachKindMismatchIsUnverifiable(t *testing.T) {
+	withEnv(t)
+	t.Setenv("FAKEGH_ISSUE_IS_PR", "1")
+	body := bodyFileWith(t, "x")
+	rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", "4", "--body-file", body})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("attach on a kind mismatch rc = %d, want 6", rc)
+	}
+	if len(curForge.comments) != 0 {
+		t.Fatalf("a kind mismatch must write nothing; comments=%v", curForge.comments)
+	}
 }

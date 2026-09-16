@@ -1,17 +1,53 @@
 {
   "test": "go test ./cmd/desktoken/... -count=1",
   "control": {
-    "name": "CONTROL — invert the 0600 custody-mode check (a world-readable token file becomes the only acceptable one)",
-    "file": "cmd/desktoken/gitlab.go",
-    "old": "\tif fi.Mode().Perm() != 0o600 {",
-    "new": "\tif fi.Mode().Perm() == 0o600 {"
+    "name": "CONTROL — invert the 0600 custody-mode check on the token cache (a 0600 cache becomes the only UNACCEPTABLE one)",
+    "file": "cmd/desktoken/desktoken.go",
+    "old": "\t\tif fi.Mode().Perm() != 0o600 {",
+    "new": "\t\tif fi.Mode().Perm() == 0o600 {"
   },
   "mutations": [
+    {
+      "name": "grant the per-role rotation lock unconditionally (concurrent mints for one role stop being serialised and race for the credential again)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\t\tlerr := deskkit.TryLockExclusive(f)\n\t\tif lerr == nil {",
+      "new": "\t\tlerr := deskkit.TryLockExclusive(f)\n\t\tif true {"
+    },
+    {
+      "name": "drop the lock acquisition from the rotate path entirely (read-rotate-write runs unserialised)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tlock, lerr := acquireGitLabRotateLock(role, path)\n\tif lerr != nil {\n\t\treturn lerr\n\t}\n\tdefer lock.release()",
+      "new": "\t_ = acquireGitLabRotateLock"
+    },
+    {
+      "name": "ignore --no-rotate and rotate anyway (a read-only/dry-run lookup resumes spending a destructive rotation)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif !rotate {\n\t\t// The custody VALUE is read only to assert",
+      "new": "\tif false {\n\t\t// The custody VALUE is read only to assert"
+    },
+    {
+      "name": "log a --no-rotate lookup as a rotation (the audit trail records rotations that never happened)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tac.verb = \"rotate\"\n\tif !rotate {\n\t\tac.verb = \"custody-read\"\n\t}",
+      "new": "\tac.verb = \"rotate\""
+    },
     {
       "name": "print the rotated token beside the path on the success route (the leak assertion must fire, with --forge still wired)",
       "file": "cmd/desktoken/gitlab.go",
       "old": "\tfmt.Println(path)\n\texp := result.ExpiresAt",
       "new": "\tfmt.Println(path, result.Token)\n\texp := result.ExpiresAt"
+    },
+    {
+      "name": "rename the rotated token over the custody PATH instead of the link's resolved target (a symlinked custody layout is replaced by a regular file and the provisioned file is stranded holding the invalidated token)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif err := os.Rename(tmpName, target); err != nil {",
+      "new": "\ttarget = path\n\tif err := os.Rename(tmpName, target); err != nil {"
+    },
+    {
+      "name": "make the write-target resolver report every custody as unlinked (a symlinked layout is written over instead of through)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif fi.Mode()&os.ModeSymlink == 0 {\n\t\treturn path, false, nil\n\t}",
+      "new": "\tif fi.Mode()&os.ModeSymlink == 0 || true {\n\t\treturn path, false, nil\n\t}"
     },
     {
       "name": "leak the new token as a recovery hint on the LOCKOUT route (persistence failed, so the operator is 'helpfully' handed the value)",
@@ -36,6 +72,24 @@
       "file": "cmd/desktoken/gitlab.go",
       "old": "\treturn v, v != \"\"",
       "new": "\tif v == \"\" {\n\t\treturn \"https://gitlab.example.invalid/api/v4\", true\n\t}\n\treturn v, v != \"\""
+    },
+    {
+      "name": "skip the post-rotation self-check (a rotated token the forge does not yet accept is returned as good, the first-read 401 comes back)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {",
+      "new": "\tstatus, serr := 200, error(nil)\n\tif serr != nil {"
+    },
+    {
+      "name": "accept any self-check status as verified (a 401 on the new token still prints the path as good)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif status != 200 {\n\t\treturn gitlabSelfCheckFailure(role, base, path, current, status)\n\t}",
+      "new": "\tif status != 200 && false {\n\t\treturn gitlabSelfCheckFailure(role, base, path, current, status)\n\t}"
+    },
+    {
+      "name": "treat a self-check the transport could not make as a pass (an unreachable forge returns the path as good)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {",
+      "new": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {\n\t\tstatus, serr = 200, nil\n\t}\n\tif serr != nil {"
     },
     {
       "name": "drop the group/other-WRITE refusal from the private-key mode rule (a 0660/0620 key becomes acceptable)",
@@ -90,6 +144,60 @@
       "file": "cmd/desktoken/desktoken.go",
       "old": "\treturn deskkit.AppBinding(role)",
       "new": "\treturn role + \"-app\""
+    },
+    {
+      "name": "drop the App-name half of the owner-sidecar comparison (two Apps on one account start sharing a token cache file)",
+      "file": "cmd/desktoken/installidcache.go",
+      "old": "\treturn a == appName && strings.EqualFold(o, owner)",
+      "new": "\treturn strings.EqualFold(o, owner)"
+    },
+    {
+      "name": "relax the cache probe's single-match rule to first-match (two distinct fresh candidates stop being ambiguous and one is picked)",
+      "file": "cmd/desktoken/installidcache.go",
+      "old": "\tif len(found) != 1 {",
+      "new": "\tif len(found) == 0 {"
+    },
+    {
+      "name": "drop the 0600 custody check on a probe candidate (a world-readable token file becomes reusable)",
+      "file": "cmd/desktoken/installidcache.go",
+      "old": "\t\t\tif serr != nil || fi.IsDir() || fi.Mode().Perm() != 0o600 {",
+      "new": "\t\t\tif serr != nil || fi.IsDir() {"
+    },
+    {
+      "name": "drop the reuse-window check on a probe candidate (a token past its 50-minute window is adopted)",
+      "file": "cmd/desktoken/installidcache.go",
+      "old": "\t\t\tif time.Since(fi.ModTime()) >= cacheMaxAge {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "remove the account character-set check (a malformed account name is interpolated into a cache path)",
+      "file": "cmd/desktoken/installidcache.go",
+      "old": "\t\tdefault:\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
+      "new": "\t\tdefault:\n\t\t}\n\t}\n\treturn true\n}"
+    },
+    {
+      "name": "widen the install-id cache TTL tenfold (a stale installation id is trusted for ten days)",
+      "file": "cmd/desktoken/installidcache.go",
+      "old": "const installIDMaxAge = 24 * time.Hour",
+      "new": "const installIDMaxAge = 240 * time.Hour"
+    },
+    {
+      "name": "let --fresh honour the caches (a re-mint after a permission change becomes a no-op for the rest of the reuse window)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\t\tif !*fresh {\n\t\t\tif id, ok := probeCachedInstallID(role, appName, owner); ok {",
+      "new": "\t\tif true {\n\t\t\tif id, ok := probeCachedInstallID(role, appName, owner); ok {"
+    },
+    {
+      "name": "drop the 404 invalidation route (a stale cached installation id fails every call for its whole TTL)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
+      "new": "\t\tif false && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+    },
+    {
+      "name": "unscope the 404 invalidation from cached ids (an operator's <PREFIX>_INSTALL_ID failure deletes a cache it never used)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
+      "new": "\t\tif errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
     }
   ]
 }

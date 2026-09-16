@@ -11,73 +11,75 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-13 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 1/6 | 2026-09-13 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-13 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-13 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-13 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-13 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/22 | 2026-09-13 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 3/8 | 2026-09-13 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 7/12 | 2026-09-13 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/13 | 2026-09-13 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-13 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-13 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-13 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 9/13 | 2026-09-13 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/10 | 2026-09-13 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-16 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 1/6 | 2026-09-16 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-16 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-16 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 1/8 | 2026-09-16 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-16 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 7/27 | 2026-09-16 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-16 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 11/17 | 2026-09-16 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/19 | 2026-09-16 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-16 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-16 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-16 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-16 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 4/10 | 2026-09-16 |  |
 
 ## Next up
 
+> **COULD-NOT-CHECK — dead-claim decay did not run.** PR state through `gh pr list` could not be read: gh pr list: exec: "gh": executable file not found in $PATH
+> Open branches whose PR/merge request has already **merged or closed** are still counted as claims, so they keep consuming their stream's dispatch cap. The rows below are a **subset**: briefs held behind those dead claims are missing from this board, not absent from the backlog.
+
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| contributor-trust | 01 — Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card [exec:strong] | 0 | 2500 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
-| composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2000 |
+| forge-neutral | 19 — Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs [exec:strong] | 1 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
-| desktools-go-git | 04 — migrate deskpushguard detection reads to gitcore (parity + mutation test) | 3 | 1500 |
-| desktools-go-git | 07 — deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest | 3 | 1500 |
-| desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
-| desk-tools | 22 — Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (46 desk-actionable of 56 total — 56 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (50 desk-actionable of 62 total — 62 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (46)
+### Desk-actionable (50)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
-| windows-port | 00 | implemented | 4000 | 6 | — | — | — |
-| derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| forge-neutral | 07 [exec:strong] | implemented | 3500 | 3 | — | — | — |
+| forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
+| forge-neutral | 08 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| windows-port | 00 | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
-| forge-neutral | 04 [exec:strong] | implemented | 3000 | 2 | — | — | — |
-| forge-neutral | 08 [exec:strong] | implemented | 3000 | 2 | — | — | — |
+| contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
-| forge-gitlab | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| forge-neutral | 13 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| forge-gitlab | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | composability | 04 | implemented | 1500 | 1 | — | — | — |
+| desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| windows-port | 06 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -86,19 +88,20 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 13 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 15 | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 16 | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 21 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 22 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 24 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 25 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| quality | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
@@ -107,18 +110,20 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 6000 | 8 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 8500 | 13 | — | — | — |
+| forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
-| forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| windows-port | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| windows-port | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 
-### Awaiting implementer rework (6)
+### Awaiting implementer rework (8)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
-| windows-port | 01 | implemented | 3000 | 4 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| windows-port | 01 | implemented | 2500 | 3 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
@@ -137,6 +142,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | desk-containers | — | — |
 | desk-supervision | — | — |
 | desk-tools | — | — |
+| desktools-go-git | — | — |
 | forge-gitlab | — | — |
 | forge-neutral | — | — |
 | harness-portability | — | — |
@@ -168,7 +174,7 @@ _None._
 
 ### contributor-trust (9 open)
 
-- 01 Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card — todo (wave 0)
+- 01 Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card — implemented (wave 0)
 - 02 Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets — implemented (wave 0)
 - 03 `deskbless` — a structured blessing act with a machine marker, a scope, a reason and an audit row — todo (wave 1)
 - 04 Review depth by tier — an unknown author's pull request gets a claims-versus-diff fact check and a fail-first reproduction — todo (wave 1)
@@ -187,13 +193,13 @@ _None._
 
 ### desk-containers (7 open)
 
-- 01 base image — toolchains, desk-tools, assay skills, persistent-volume layout — implemented (wave 1)
 - 02 runtime credential contract (PEM + model env) + image layer-secret scan — implemented (wave 1)
 - 03 per-desk images (named by desk) + build matrix + publish wiring — implemented (wave 2)
 - 04 interactive desktop launch script (desk-run.sh) — todo (wave 3)
 - 05 docker-compose definition for the five desks — todo (wave 3)
 - 06 Kubernetes manifests for the five desks — todo (wave 3)
 - 07 multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config — todo (wave 4)
+- 08 A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish — implemented (wave 3)
 
 ### desk-supervision (3 open)
 
@@ -201,7 +207,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (17 open)
+### desk-tools (20 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -212,32 +218,35 @@ _None._
 - 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — implemented (wave 1)
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
-- 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — implemented (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — implemented (wave 1)
-- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — implemented (wave 1)
-- 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — todo (wave 1)
+- 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — implemented (wave 1)
 - 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — implemented (wave 1)
 - 19 `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so — implemented (wave 1)
 - 21 `DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read — implemented (wave 1)
-- 22 Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict — todo (wave 1)
+- 22 Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict — implemented (wave 1)
+- 23 Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it — todo (wave 2)
+- 24 Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb — implemented (wave 2)
+- 25 One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id — implemented (wave 2)
+- 26 `deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton — implemented (wave 2)
+- 27 `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check — in-progress (wave 2)
 
-### desktools-go-git (5 open)
+### desktools-go-git (4 open)
 
-- 04 migrate deskpushguard detection reads to gitcore (parity + mutation test) — todo (wave 3)
+- 02 gitcore package + in-process transport/auth (BasicAuth) + go-git pin — implemented (wave 2)
 - 05 migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) — todo (wave 4)
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — todo (wave 4)
-- 07 deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
-### forge-gitlab (5 open)
+### forge-gitlab (6 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
-- 10 GitLab trust-events + commit author-login for the deskpost trust read — todo (wave 5)
-- 11 Guard-read custody — the last gh shell-outs onto the Forge seam — todo (wave 4)
-- 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — todo (wave 5)
+- 11 Guard-read custody — the last gh shell-outs onto the Forge seam — implemented (wave 4)
+- 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — implemented (wave 5)
+- 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
+- 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 
-### forge-neutral (9 open)
+### forge-neutral (15 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -248,6 +257,12 @@ _None._
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
 - 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — implemented (wave 3)
+- 14 Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver — todo (wave 2)
+- 15 desklabel — a role-keyed label verb — implemented (wave 2)
+- 16 deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane — implemented (wave 4)
+- 17 deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch — todo (wave 2)
+- 18 statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk — in-progress (wave 5)
+- 19 Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs — todo (wave 1)
 
 ### harness-portability (11 open)
 
@@ -270,23 +285,17 @@ _None._
 - 04 Record the authorizing human in the release itself — todo (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
-### quality (1 open)
+### statusgen (3 open)
 
-- 15 learned riskscore graduation — JIT defect-prediction model with heuristic fallback — implemented (wave 3)
-
-### statusgen (4 open)
-
-- 03 Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched — implemented (wave 2)
 - 05 Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable) — implemented (wave 1)
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 
-### windows-port (7 open)
+### windows-port (6 open)
 
 - 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
-- 06 Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH — implemented (wave 3)
 - 07 deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings — implemented (wave 3)
 - 08 Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency — todo (wave 1)
 - 09 Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew — todo (wave 4)
@@ -312,6 +321,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 02 `Brief:` trailer — the PR→brief link, required by deskpr create, linted on main — done (wave 0)
 - 05 desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies) — done (wave 1)
 
+### desk-containers (1 done)
+
+- 01 base image — toolchains, desk-tools, assay skills, persistent-volume layout — done (wave 1)
+
 ### desk-supervision (6 done)
 
 - 01 Observable probes + the `desksupervise` observer — liveness that bites — done (wave 0)
@@ -321,21 +334,24 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 06 Workpad — one upserted progress comment per PR — done (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — done (wave 1)
 
-### desk-tools (5 done)
+### desk-tools (7 done)
 
 - 04 Deterministic runner: execute rows, batch ~5 min, sign, file verdict issues — done (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — enum-bounded agent consults for deterministic loops — done (wave 1)
 - 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — done (wave 1)
+- 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — done (wave 1)
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — done (wave 1)
+- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — done (wave 1)
 - 20 Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is — done (wave 1)
 
-### desktools-go-git (3 done)
+### desktools-go-git (4 done)
 
 - 01 inventory freeze + gitexec single-seam contract + golden harness + counting CI gate — done (wave 1)
-- 02 gitcore package + in-process transport/auth (BasicAuth) + go-git pin — done (wave 2)
 - 03 migrate read/plumbing verbs (read-heavy tools) to gitcore — done (wave 3)
+- 04 migrate deskpushguard detection reads to gitcore (parity + mutation test) — done (wave 3)
+- 07 deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest — done (wave 3)
 
-### forge-gitlab (7 done)
+### forge-gitlab (11 done)
 
 - 01 Forge interface extraction in deskkit — github impl pinned by goldens — done (wave 1)
 - 02 gitlab forge implementation — MRs, notes, approvals, statuses over REST v4 — done (wave 2)
@@ -344,6 +360,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — done (wave 5)
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — done (wave 2)
 - 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — done (wave 4)
+- 10 GitLab trust-events + commit author-login for the deskpost trust read — done (wave 5)
+- 14 The public-repo gate reads the forge that serves the repo — every verb, not one — done (wave 3)
+- 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — done (wave 4)
+- 17 An enforceable merge gate on GitLab Free — the unresolved review thread — done (wave 5)
 
 ### forge-neutral (4 done)
 
@@ -363,7 +383,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 02 Align three shipped disclosures with the code they describe — done (wave 0)
 - 05 Records control and retention, stated once — done (wave 1)
 
-### quality (15 done)
+### quality (16 done)
 
 - 01 qualgen miner skeleton — go-git extraction, incremental mine, three-state plumbing — done (wave 0)
 - 02 M1 line-operation taxonomy + churn / rework rate (GitClear-aligned) — done (wave 1)
@@ -379,12 +399,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 12 M4 gate-yield accounting + ritual-effectiveness natural-experiment joins — done (wave 4)
 - 13 M4 session forensics — pluggable telemetry-source interface + file reference adapter — done (wave 3)
 - 14 closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed — done (wave 5)
+- 15 learned riskscore graduation — JIT defect-prediction model with heuristic fallback — done (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — done (wave 1)
 
-### statusgen (9 done)
+### statusgen (10 done)
 
 - 01 30-day statusgen check-firing audit — retire cold --lint rules — done (wave 1)
 - 02 Issue metrics — statusgen --issues: standard counts + age/sitting-time + internal-vs-external + by-raising-desk — done (wave 1)
+- 03 Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched — done (wave 2)
 - 04 Ladder-position indicator — one computed adoption-step number (behavioral axes, never tooling) on the board + roadmap deck — done (wave 1)
 - 07 New brief-flow metrics in statusgen — done (wave 1)
 - 08 Composite AssayScore computation — done (wave 2)
@@ -393,12 +415,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 12 `homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
 - 13 Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand — done (wave 1)
 
-### windows-port (3 done)
+### windows-port (4 done)
 
 - 02 Portability audit — enumerate + triage the shell-assuming surfaces — done (wave 0)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — done (wave 2)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — done (wave 3)
+- 06 Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH — done (wave 3)
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **63/160** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **74/177** briefs done · completed initiatives: see `docs/archive/`

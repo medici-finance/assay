@@ -4,6 +4,11 @@
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
       "query": "page=1\u0026per_page=100\u0026state=opened"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines",
+      "query": "per_page=1\u0026sha=abc123"
     }
   ],
   "result": {

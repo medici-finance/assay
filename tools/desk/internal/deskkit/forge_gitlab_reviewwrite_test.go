@@ -30,6 +30,12 @@ type glStatefulServer struct {
 	mu       sync.Mutex
 	notes    []map[string]any
 	approved bool
+	// approvers, when set, is served as approved_by INSTEAD of the state-derived list — the
+	// #1106 "someone else approved, not me" fixture.
+	approvers []map[string]any
+	// status maps an escaped-path suffix to a BODYLESS status to answer instead of the route
+	// (the shape GitLab's `unauthorized!` produces: no `message` field to read).
+	status map[string]int
 }
 
 // glVersionTime is the current diff-version arrival time. A note is head-pinned by the backend
@@ -42,7 +48,7 @@ const (
 
 func newGLStatefulServer(t *testing.T) *glStatefulServer {
 	t.Helper()
-	s := &glStatefulServer{}
+	s := &glStatefulServer{status: map[string]int{}}
 	s.srv = httptest.NewServer(http.HandlerFunc(s.handler))
 	t.Cleanup(s.srv.Close)
 	return s
@@ -53,6 +59,9 @@ func (s *glStatefulServer) forge() *GitLabForge {
 }
 
 func (s *glStatefulServer) approvedBy() []map[string]any {
+	if s.approvers != nil {
+		return s.approvers
+	}
 	if !s.approved {
 		return []map[string]any{}
 	}
@@ -65,7 +74,17 @@ func (s *glStatefulServer) handler(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	for suffix, code := range s.status {
+		if strings.HasSuffix(path, suffix) {
+			w.WriteHeader(code)
+			return
+		}
+	}
+
 	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/api/v4/user"):
+		// The token's own identity — what classifyApprove401 compares against approved_by.
+		enc(map[string]any{"id": 42, "username": "reviewer-bot"})
 	case r.Method == http.MethodPost && lMRNotes.MatchString(path):
 		var in struct {
 			Body string `json:"body"`
@@ -82,6 +101,13 @@ func (s *glStatefulServer) handler(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && lMRNotes.MatchString(path):
 		enc(s.notes)
 	case r.Method == http.MethodPost && lMRApprove.MatchString(path):
+		if s.approved {
+			// Measured GitLab behaviour (#1106): an approver who ALREADY approved "cannot
+			// approve", and the route answers that with `unauthorized!` — a bodyless 401,
+			// byte-identical to a rejected credential.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		s.approved = true
 		w.WriteHeader(http.StatusCreated)
 		enc(map[string]any{"approved_by": s.approvedBy()})
@@ -269,4 +295,130 @@ func TestForgeGitlabVerdictNoteState(t *testing.T) {
 			t.Fatalf("the request-changes verdict is not readable as CHANGES_REQUESTED at head %s; reviews: %+v", glHead, reviews)
 		}
 	})
+}
+
+// TestForgeGitlabApproveAlreadyApproved is the #1106 regression. GitLab's approve route
+// answers a BODYLESS 401 when the acting user has already approved the merge request — the
+// same bytes a rejected credential produces — and the backend reported it as "credential
+// rejected ... re-mint". The approval was already in force. A second APPROVE at the same
+// head must therefore SUCCEED, with a note (via ReviewInput.Report) naming the endpoint that
+// answered 401 and the endpoint that proved the approval stands — never a refusal, and never
+// a silent nil either.
+func TestForgeGitlabApproveAlreadyApproved(t *testing.T) {
+	s := newGLStatefulServer(t)
+	f := s.forge()
+	const body = "Verdict: correctness APPROVE — looks good"
+
+	if err := f.PostReview(glRepo, 7, ReviewInput{HeadSHA: glHead, Event: "APPROVE", Body: body}); err != nil {
+		t.Fatalf("first PostReview APPROVE: %v", err)
+	}
+	var note string
+	err := f.PostReview(glRepo, 7, ReviewInput{HeadSHA: glHead, Event: "APPROVE", Body: body,
+		Report: func(n string) { note = n }})
+	if err != nil {
+		t.Fatalf("second APPROVE by the same identity must be success-with-note, got a refusal: %v", err)
+	}
+	for _, want := range []string{"already approved by reviewer-bot (id 42)", "POST /projects/", "/merge_requests/7/approve",
+		"HTTP 401", "GET /projects/", "/merge_requests/7/approvals", "credential is valid"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("success note must carry %q; got %q", want, note)
+		}
+	}
+	if strings.Contains(note, "could-not-check") || strings.Contains(note, "rejected") {
+		t.Errorf("success note must not read like a refusal: %q", note)
+	}
+	// The approval still stands on the read path.
+	reviews, rerr := f.ReviewsAtHead(glRepo, 7)
+	if rerr != nil {
+		t.Fatalf("ReviewsAtHead: %v", rerr)
+	}
+	if got := findReview(reviews, func(r Review) bool { return r.State == "APPROVED" && r.CommitID == glHead }); got == nil {
+		t.Fatalf("the standing APPROVED at head %s vanished; reviews: %+v", glHead, reviews)
+	}
+	t.Logf("already-approved 401 → success-with-note: %s", note)
+}
+
+// TestForgeGitlabApprove401Classification pins the other three outcomes of a 401 on the
+// approve route (#1106): a credential that is genuinely rejected — proven by a 401 on the
+// identity read or on the approvals read — stays the fail-closed refusal it always was, with
+// the confirming endpoint named; a valid credential whose user is simply not an eligible
+// approver is a refusal that names ELIGIBILITY and the acting identity, not the credential;
+// and a classification read that fails some other way leaves the 401 a could-not-check that
+// says it could not be classified. None of the three ever reads as success.
+func TestForgeGitlabApprove401Classification(t *testing.T) {
+	const approvals = "/merge_requests/7/approvals"
+	cases := []struct {
+		name    string
+		setup   func(s *glStatefulServer)
+		want    []string // substrings the refusal must carry
+		forbid  []string // substrings it must not carry
+		wantSts int      // the *ForgeAPIError status the refusal must still unwrap to
+	}{
+		{
+			name:    "credential_confirmed_by_user_read",
+			setup:   func(s *glStatefulServer) { s.status["/api/v4/user"] = http.StatusUnauthorized },
+			want:    []string{"could-not-check", "credential rejected (HTTP 401)", "/merge_requests/7/approve", "confirmed: GET /user also returned HTTP 401"},
+			forbid:  []string{"eligible approver"},
+			wantSts: http.StatusUnauthorized,
+		},
+		{
+			name:    "credential_confirmed_by_approvals_read",
+			setup:   func(s *glStatefulServer) { s.status[approvals] = http.StatusUnauthorized },
+			want:    []string{"could-not-check", "credential rejected (HTTP 401)", "/merge_requests/7/approve", "confirmed: GET /projects/", approvals + " also returned HTTP 401"},
+			forbid:  []string{"eligible approver"},
+			wantSts: http.StatusUnauthorized,
+		},
+		{
+			name: "valid_credential_not_an_eligible_approver",
+			setup: func(s *glStatefulServer) {
+				s.approvers = []map[string]any{{"user": map[string]any{"id": 99, "username": "someone-else"}}}
+			},
+			want:    []string{"could-not-check", "not an eligible approver (HTTP 401)", "/merge_requests/7/approve", "GET /user answered 200 as reviewer-bot (id 42)", "rotating the token will not change this"},
+			forbid:  []string{"credential rejected"},
+			wantSts: http.StatusUnauthorized,
+		},
+		{
+			name:    "classification_read_failed_otherwise",
+			setup:   func(s *glStatefulServer) { s.status["/api/v4/user"] = http.StatusForbidden },
+			want:    []string{"could-not-check", "/merge_requests/7/approve", "returned HTTP 401", "could not be classified", "GET /user", "HTTP 403"},
+			forbid:  []string{"credential rejected", "eligible approver"},
+			wantSts: http.StatusUnauthorized,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			s := newGLStatefulServer(t)
+			s.approved = true // every case starts from "the route answers 401" (see the approve handler)
+			tc.setup(s)
+			f := s.forge()
+			reported := false
+			err := f.PostReview(glRepo, 7, ReviewInput{HeadSHA: glHead, Event: "APPROVE", Body: "reasoning",
+				Report: func(string) { reported = true }})
+			if err == nil {
+				t.Fatalf("a 401 that is not a standing approval by this identity must refuse, got nil")
+			}
+			if reported {
+				t.Fatalf("Report must never fire on an error path")
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("refusal must carry %q; got %q", w, err.Error())
+				}
+			}
+			for _, fb := range tc.forbid {
+				if strings.Contains(err.Error(), fb) {
+					t.Errorf("refusal must not carry %q; got %q", fb, err.Error())
+				}
+			}
+			var fae *ForgeAPIError
+			if !errors.As(err, &fae) || fae.Status != tc.wantSts || fae.Method != http.MethodPost {
+				t.Fatalf("refusal must unwrap to the approve route's *ForgeAPIError (POST, %d); got %T %v", tc.wantSts, err, err)
+			}
+			if code := ExitCodeOf(err); code != ExitUnverifiable {
+				t.Fatalf("exit = %d, want ExitUnverifiable (%d)", code, ExitUnverifiable)
+			}
+			t.Logf("%s → %v", tc.name, err)
+		})
+	}
 }

@@ -39,7 +39,8 @@ it on day one.
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` reports which without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
-| `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
+| `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
+| `desklabel` | `add`, `rm` — set or clear ONE label on an issue or change as the session's own App role, against a closed role-keyed vocabulary (shared escalation set for any role — the topology decision-owed labels read from the topology loader, plus `help wanted`; `superseded?`/`disposition:*` worker-owned; `authorization-needed`/`approval-needed` reviewer-owned; `human-decided` refused for every role; anything else refused, exit 5). The check runs before any forge call; the target kind comes from the seam's own read (`--kind issue|mr` for a GitLab both-resolve); present/absent = no-op; `--dry-run` stops before the write. `vocabulary` prints the table | outward write | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
@@ -325,6 +326,20 @@ At runtime the tools read/write, under `~/.config/assay/`:
 - `audit.jsonl` — append-only audit log (dir 0700, file 0600 on first use). On
   corruption a tool refuses (exit 6) and prints the recovery: a **human** moves the
   file to `audit.jsonl.corrupt-<ts>` (tools never truncate/rewrite it).
+- `audit.jsonl.<YYYY-MM-DD>` — a ROTATED ledger segment. On the first append of a new
+  UTC day the live file is renamed to the day it covers and a fresh `audit.jsonl` is
+  started, so the file every append and every tail read touches stays one day long
+  (#1035). **Nothing is deleted and nothing is reset.** Every reader spans the segments
+  — `LoadEntries`, the rate-limit counter, the circuit breaker, the idempotency store,
+  and `deskaudit recover` — so the history they see is identical, row for row and in
+  order, to the history they saw before rotation existed. That is what distinguishes it
+  from a plain file move, which resets the counter and empties the idempotency store.
+  Retention is deliberately NOT a policy here: no tool removes a segment.
+- `deskaudit tail [N]` prints the newest N entries (default 10) across the segments, as
+  the raw lines they are on disk. It reads only, locks nothing, and costs a bounded read
+  whatever the ledger's size. An absent ledger says so and exits 0; an unreadable one is
+  exit 6; a malformed line is printed with a note naming `deskaudit recover`, never
+  dropped.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.
@@ -443,7 +458,7 @@ work queue or steer a desk action.
   other bodies are not generated from the tree; the label is how the card says which
   one it is, and putting it there takes write access to the repo's workflows.
   `github-actions[bot]` stays **untrusted** for every general predicate
-  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedPublicAuthor`, `TrustedHumanAuthor`) —
+  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedHumanAuthor`) —
   this is a narrower read alongside them, not an addition to the roster. **What it
   fixes:** before it, no desk could annotate a card at all — not to mark one an inert
   duplicate, not to warn that closing it will not flip the brief's row — so the human
@@ -1757,6 +1772,38 @@ also runs a one-shot `deskwt prune` at boot so a session starts on a pruned work
 repos, `scripts/deskwt-prune-all.sh` invokes `deskwt prune --repo <path>` per existing repo
 (one-shot; safe with no session active).
 
+### The prune singleton — N windows booting together run ONE sweep
+
+Because every desk loop runs a one-shot prune at boot, N windows starting inside a minute
+used to run N identical full sweeps over the same repository at once. The singleton makes
+that one sweep. It is two mechanisms over one stamp file under `~/.config/assay/prune/`
+(never inside the target repository, so `--dry-run` can promise it writes nothing there):
+
+- **A non-blocking exclusive advisory lock.** A sweep that cannot take it prints
+  `deskwt prune: held by pid <pid>, running <age> — skipping this sweep`, exits **0** (a
+  held sweep is a clean no-op, not a failure), and removes nothing. The kernel releases an
+  advisory lock when its holder exits — however it exits — so there is no liveness question
+  to answer and nothing to time out. The lock cannot be disabled; there is no `--force`.
+- **A recency debounce, `--singleton-ttl` (default `10m`).** A sweep that takes the lock and
+  finds one COMPLETED less than the TTL ago skips with `swept <age> ago`. `--singleton-ttl 0`
+  or `--no-singleton` disables the debounce only — both still take the lock. A sweep started
+  by the SAME process as the recorded one is never debounced (an operator re-running after a
+  change, or the `--interval` supervisor's next tick, whose cadence the operator already set).
+
+The lock fails **closed** and the TTL fails **open**, deliberately. A stamp that is missing,
+truncated, not JSON, of an unknown schema, or carrying a future timestamp is treated as no
+stamp and the sweep PROCEEDS — so a corrupt or abandoned stamp can delay one sweep by at
+most the TTL and can never wedge prune. The `--interval` supervisor takes and releases the
+singleton **per tick**, never for its lifetime, so it cannot lock out a boot-time or manual
+sweep.
+
+### `--dry-run` is read-only
+
+`deskwt prune --dry-run` writes nothing, anywhere: it uses git's own `worktree prune
+--dry-run` for the bookkeeping count, reports the locks `--reclaim-stale-locks` would
+retire without unlocking any of them, deletes no worktree, and writes no singleton stamp.
+It still REPORTS everything a real sweep would do.
+
 ## clusterguard — the cluster-CLI exec boundary
 
 A permission rule that matches on command TEXT cannot see a cluster call made from inside a
@@ -1927,6 +1974,37 @@ review or write an Evidence commit from a cold shell, with the App **ID** resolv
 the search path, so the failure read as a broken key rather than a wrong directory.
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
+
+#### What a token lookup costs, and the two caches that make it nearly free
+
+A desk verb obtains an App installation token through one function —
+`deskkit.RoleTokenForOwner`, which shells out to `desktoken` — and a board read calls it once
+per repository per read. Two caches keep that from costing a process and an API round trip
+every time (#1036). Both are local, both are safe to delete, and deleting either costs one
+network call, never a wrong answer.
+
+| | What it holds | Where | Good for | Cleared by |
+|---|---|---|---|---|
+| **The memo** | the token for one `(role, account)` pair | in memory, one process | 45 min, or the process's life, whichever is shorter | the process exiting |
+| **The token cache** | the installation token | `<config home>/<role>-token-<install id>` (0600) | 50 min | `desktoken <role> --fresh` |
+| **The owner sidecar** | which App and which account the cache file belongs to | `<token cache>.owner` (0600) | as long as its token | `--fresh`, with the token |
+| **The install-id cache** | the resolved installation id for one `(App, account)` | `<config home>/<App>-install-<account>` (0600) | 24 h | `--fresh`, or a 404 from the exchange |
+
+The memo is bounded at **45 minutes deliberately**: `desktoken` reuses its own token cache
+for 50, and GitHub's installation tokens live about 60, so the in-memory layer always expires
+first and can never hand back a token the minter would have replaced.
+
+`desktoken` consults the **owner sidecar and the install-id cache BEFORE it resolves an
+installation id**, which is what makes a warm cache hit cost no network at all. Every fast
+path is a positive match on BOTH the App name and the account; absence, ambiguity (two
+candidates), a file that is not 0600, or an account name outside `[A-Za-z0-9._-]` all fall
+through to the full resolution — read the key, sign a JWT, `GET /app/installations`.
+`<PREFIX>_INSTALL_ID` remains the authoritative short-circuit and is unaffected, and
+`--fresh` bypasses every cache above.
+
+If a cached installation id ever goes stale (the App was uninstalled and reinstalled), the
+token exchange returns 404, `desktoken` removes that cache entry and says so — the next run
+re-resolves.
 
 #### Role→App binding — running fewer Apps than roles
 
@@ -2460,11 +2538,36 @@ close lanes executable — and makes every other close impossible rather than me
 forbidden.
 
 ```bash
-deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
-deskclose review-request -R <owner/repo> <N>
+deskclose duplicate      -R <owner/repo> <item> --of <ref> --mined <summary> [--kind K] [--of-kind K]
+deskclose superseded     -R <owner/repo> <item> --by <ref> [--kind K] [--by-kind K] [--dispute <reason>]
+deskclose review-request -R <owner/repo> <item> [--kind K]
 deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>] [--max-wait <dur>]
+deskclose self-withdraw  -R <owner/repo> <item> --because {superseded|abandoned} [--by <ref>] [--kind K]
+deskclose verify-gate-refire -R <owner/repo> <item> --reason <text> [--kind K]
 ```
+
+### Typed item references
+
+`<item>` and every `<ref>` take a number that may STATE which kind of object it names:
+
+| Form | Means |
+|---|---|
+| `N` · `#N` · `owner/repo#N` | kind unstated — the forge resolves it |
+| `!N` · `owner/repo!N` | a merge request / pull request |
+| the object's web URL | the kind the URL's own path states (`…/issues/N`, `…/pull/N`, `…/-/merge_requests/N`) |
+
+`#N` is **neutral, not "an issue"**: on a forge with ONE number sequence it is the ordinary
+way to write a pull-request reference, and it keeps that meaning here. Where a project
+numbers issues and merge requests **separately**, one number can name two different objects,
+and reading it would be a guess — so a bare number stays a could-not-check refusal there, and
+the kind is stated instead: `!N`, or the kind flag (`--kind` for `<item>`; `--of-kind` /
+`--by-kind` for that mode's target; `K` is `issue` or `mr`, with `pr` an alias of `mr`). A
+sigil and a kind flag that disagree are refused, never resolved in favour of one of them.
+
+The stated kind selects the endpoint for every read and write the lane makes — the item read,
+the comment, the proposal-thread read and the close. Without it the close addresses the issue
+sequence, so on a project carrying both kinds at one number it closes the object the caller
+never named.
 
 ### The superseded lane is two-role, keyed on the token
 
@@ -2487,6 +2590,54 @@ manifest row is authorized by a human whose comment carries the row set's digest
 a stronger authority than a reviewer's confirmation. The design note (`superseded-confirmation.md`
 in the desk-tools planning stream) carries the flow, the pros/cons and the brief-level semantics;
 the mutation sweep is `cmd/deskclose/mutations.json`.
+
+### Two identity+structure lanes — no artifact cited, because nothing of anyone else's is closed
+
+Every ruled lane above authorizes on a FETCHED HUMAN ARTIFACT because it closes OTHER
+people's items. Two lanes close nothing that belongs to another party, so neither consults the
+R-1 ruling gate (`gateFor` is never called — a test runs each with R-1 unsigned and the rulings
+file absent and asserts the grant cache is still nil) and neither is a manifest row mode.
+Neither adds a `--force`, a `--yes` or an environment override; the same source scan covers
+them.
+
+| Lane | Who | Acts on | The single control | Its independent second layer |
+|---|---|---|---|---|
+| `self-withdraw` | the **authoring App**'s own session (the DESK_LOOP-selected role) | its OWN open **draft** change | the **authorship pin** — `SameActor(pr.Author.Login, RoleAppLogin(role))` AND `pr.Author.ID == RoleBotIdentity(role).ID`, id nonzero. Login alone is the same-named-account spoof the id refuses; an unpinned roster id is could-not-check, never a login-only pass | the installation token's own write scope (a repo the App is not installed on 404s before the pin matters), and the unchanged decision-label absolute refusal |
+| `verify-gate-refire` | the **verifier** session only (`verify-desk` loop → `verifier` role) | a **closed issue** carrying `verify-gate` | the **role+label pin** — any other resolved role (worker, reviewer, desk) is refused by name; no `verify-gate` label is refused naming it; a change is refused; an already-open card is a no-op | **not in this codebase**: the repository's `verify-gate-close.yml` reopens ANY close of a `verify-gate` issue whose sender is not an allowlisted human, on a signal (`sender.type`) the forge reports for the token that made the call — so a bot's close can never complete the human sign-off, whatever this lane decides |
+
+**`self-withdraw`** reads the change once (`GetPullRequest`: draft flag, author, labels), then in
+order: already closed → no-op; decision label → refused (before any lane check); not a draft →
+refused ("a PR out for review is not this lane's business"); authorship pin, each half refusing
+by name; comment, then close. `--because superseded` requires `--by <ref>` (recorded in the
+comment, **not verified merged** — the author's own statement about its own item, as a human
+closing their own PR needs no second party to confirm the reason); `--because abandoned`
+refuses a `--by`. No disposition record is consulted: the finding-then-execution split is for
+lanes that act on someone else's work. `--kind issue` is refused pre-flight — the item is a
+change by construction, so on a two-sequence forge write `!N` (or nothing).
+
+**`verify-gate-refire`** exists for a verifier re-running a `verify-gate` cycle: the card's
+close event has to fire again. In order: role gate; read; a pull request → refused; already open
+→ no-op (a retried cycle must not fail on the second call); decision label → refused; no
+`verify-gate` label → refused; then **reopen → comment → close**, three charged writes on the
+one item, the comment stating `--reason` (mandatory) under both the reopen and the re-close
+line and stating explicitly that this is **not the human sign-off**. The close carries no state
+reason. `--kind mr` is refused pre-flight — a card is an issue. This is the only reopen in the
+package: `reopenItem` has one caller, is always followed by a close in the same invocation, and
+is scoped to a surface the desk cannot unilaterally complete a sign-off on regardless.
+
+### `manifest` is the documented human-ruled BATCH lane
+
+Many items, one recorded ruling, one digest-bound authorization. The generic shape: a human
+ruling retires N stale-or-duplicate items in one sitting (a naming migration is superseded by
+its final PR; a batch of watch-and-reject entries expires together). The human states the
+ruling **once, in a single forge comment**, and that SAME comment becomes the manifest's
+`authorized-by:` — its permalink names the ruling, and `deskclose manifest`'s own digest check
+(`Digest()` over issue/mode/target/mined per row) binds it to exactly the row set the human
+saw. There is no second "ruling URL" field to add: the authorizing comment already IS the
+ruling's own artifact when the human writes it as one, and `authorizeManifest` already refuses
+a batch whose digest does not match what that comment carries — a row added, retargeted or
+re-moded after the human looked invalidates the authorization outright. Nothing about this
+lane changed; this paragraph is the sanctioned shape written down.
 
 ### The authorization gate is the whole tool
 
@@ -2531,6 +2682,9 @@ package sources and fails on any of them, or on any `os.Getenv` call. The escape
 | repo (or a cross-repo target) outside `deskkit.IsAllowedRepo` | 5 | no second repo list, no widening flag |
 | PR target recorded `NEEDS-REBASE` | 5 | the disposition record says live work |
 | PR target with no disposition record | 5 | `deskclose` executes a finding; it does not make one |
+| `self-withdraw` on a non-draft, another author's change, a login match with the wrong bot id, or a `needs-decision` draft | 5 | the lane is the App's own unreviewed proposal and nothing wider; login AND id, never login alone |
+| `self-withdraw` with an unpinned roster bot id, or an item that is not a pull request | 6 | could-not-check is never a login-only pass |
+| `verify-gate-refire` under a worker / reviewer / any non-verifier role, on an item without `verify-gate`, or on a pull request | 5 | role+label pin; not a general reopen tool |
 | record Evidence naming a different target than the caller | 5 | the tool does not pick a winner between them |
 | rulings file / label set / PR state / authorization / record **unreadable** | 6 | could-not-check is never authorization, and never "clean" |
 | write budget spent | 4 | wait-and-resume — see below |
@@ -3671,15 +3825,23 @@ internals (and even its module home) change without a rewrite anywhere else.
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
-worktree to `deskwt add` and invokes the consumer scripts `tools/dispatch-claim.sh` and
+worktree to `deskwt add` and invokes the claim tool and the consumer decision script
 `tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
 a claim protocol is two claim protocols, and two claim protocols dispatch the same item
-twice. Both scripts already speak the deskkit exit-code contract, so their verdicts pass
-straight through. The scripts are resolved under `--claim-root` when given, else under
-`--root`: the scripts were centralized out of the consumer repos, so on a cross-repo
-dispatch `--claim-root` names the checkout that carries the tools while `--root` stays the
-item's own repo — the worktree is always cut from `--root`, and the claim itself is a ref
-in the target repo (`--repo`) regardless of where the script file sits.
+twice. The claim tool is `deskclaim-ref` whenever it is on PATH (installed with desk-tools),
+else the legacy `tools/dispatch-claim.sh` when the resolved root carries it; both speak the
+deskkit exit-code contract and the same `refs/dispatch/<id>` wire protocol, so their verdicts
+pass straight through and the `claim-acquire OK` line names which one ran. The claim child
+runs as the DISPATCHING role, never on the ambient `gh` login: `deskdispatch` mints (or
+reuses) that role's App token through the same seam its model-stamp step uses and hands it
+over in the tool's own shape — `--token-file <0600 path>` for `deskclaim-ref`, `GH_TOKEN` in
+the child's environment for the script — printing neither; an exported `GH_TOKEN` wins and
+nothing is minted; a mint refusal is exit 6 with no claim attempted. The scripts are resolved
+under `--claim-root` when given, else under `--root`: the scripts were centralized out of the
+consumer repos, so on a cross-repo dispatch `--claim-root` names the checkout that carries
+the tools while `--root` stays the item's own repo — the worktree is always cut from
+`--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
+script file sits.
 
 **Fail closed, with the step or condition NAMED.** Exit 0 means the whole ceremony
 completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`

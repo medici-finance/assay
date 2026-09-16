@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,19 +113,62 @@ const (
 // having filed nothing. The cap is per ACTOR — one agent still gets 3, and gets no more by
 // being dispatched alongside others.
 //
-// The budget cannot be reset by varying the session id without a trace: every `new` audit
+// The rate cannot be reset by varying the session id without a trace: every `new` audit
 // line carries the sessionTag it charged (deskkit.SessionTag()), so a caller that rotates
 // the env var to reset its bucket leaves a forensic trail of which sessions filed what.
 // Rotating the ID does reset the bucket (a new session is a new session) — the audit trace
 // is the control, not a hard block.
+//
+// assay#1204 reframed the cap from a per-session TALLY to a per-window RATE (N filings per
+// window). The counting fields are UNCHANGED (session+tool+verb+repo over the audit log),
+// so the anti-evasion property above is preserved verbatim; what changed is that the KNOB is
+// the window, both are env-fixable (envNewRate / envNewWindow), and a `--force-file --reason`
+// override raises the rate for one filing (see cmdNew) — while still recording a charged,
+// session-tagged audit line, so the override can never erase the trail either.
 const (
-	// defaultNewBudgetPerSession is the per-session, per-repo cap on `new` writes in a
-	// rolling 24h window. 3 is the default — enough for a productive session,
-	// low enough to stop a runaway filer.
-	defaultNewBudgetPerSession = 3
-	// budgetWindow is the rolling window the budget counts over.
-	budgetWindow = 24 * time.Hour
+	// defaultNewRate is the shipped fallback for the per-session, per-repo cap on `new`
+	// writes within one window: at most this many filings per defaultNewWindow. 3 is
+	// enough for a productive session, low enough to stop a runaway filer. Overridable at
+	// runtime with envNewRate.
+	defaultNewRate = 3
+	// defaultNewWindow is the shipped fallback for the rolling window the rate counts over.
+	// Overridable at runtime with envNewWindow.
+	defaultNewWindow = 24 * time.Hour
+
+	// envNewRate / envNewWindow make the pace env-fixable with no recompile: an integer
+	// rate and a Go time.ParseDuration string respectively. Unset → the shipped fallback,
+	// silently. SET-but-unparseable → the shipped fallback AND a NOTICE to stderr naming the
+	// bad value; an unparseable value must never silently DISABLE the cap. See newBudgetConfig.
+	envNewRate   = "ASSAY_DESKFILE_NEW_RATE"
+	envNewWindow = "ASSAY_DESKFILE_NEW_WINDOW"
 )
+
+// newBudgetConfig resolves the new-issue filing rate and window, reading envNewRate /
+// envNewWindow with the shipped defaults (defaultNewRate / defaultNewWindow) as the
+// fallback. An unset var takes the fallback silently. A SET var that does not parse to a
+// POSITIVE value takes the fallback AND prints a NOTICE to stderr naming the bad value: the
+// cap must never be silently disabled by a typo. It is resolved ONCE per invocation in
+// cmdNew so the NOTICE prints at most once.
+func newBudgetConfig() (rate int, window time.Duration) {
+	rate, window = defaultNewRate, defaultNewWindow
+	if v := strings.TrimSpace(os.Getenv(envNewRate)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			rate = n
+		} else {
+			fmt.Fprintf(os.Stderr, "NOTICE: %s=%q is not a positive integer — using the shipped default rate of %d filings per window\n",
+				envNewRate, v, defaultNewRate)
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv(envNewWindow)); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			window = d
+		} else {
+			fmt.Fprintf(os.Stderr, "NOTICE: %s=%q is not a valid positive Go duration (e.g. 24h) — using the shipped default window of %s\n",
+				envNewWindow, v, defaultNewWindow)
+		}
+	}
+	return rate, window
+}
 
 // createSentMarker is stamped at the head of the audit detail of every `new` line whose
 // `gh issue create` was ACTUALLY INVOKED. It is set on auditCtx immediately before the
@@ -156,6 +200,18 @@ const createSentMarker = "create-sent | "
 //     remote, and counting RateLimited/Refused re-creates the livelock deskkit's design
 //     exists to avoid (a budget refusal must not inflate the budget).
 //   - Anything unclassified charges (fail closed).
+//
+// assay#955 asked whether a REFUSED `new` — the pre-write gates (BodyCheck's secret scan,
+// the dedupe search finding a likely duplicate, or a self-containment-style refusal) —
+// still consumes this budget. It does not: every one of those gates returns a
+// *deskkit.DeskError with Code == ExitRefused, cmdNew's finalize maps that to
+// ResultRefused (never reaching the createSent-marking line, since all of them run BEFORE
+// checkSessionBudget in cmdNew's flow), and the ResultRefused case above excludes it from
+// the count. The refusal is still logged — chargedNewEntry only decides what COUNTS, not
+// what gets audited — so it is audited but free, per the ruling. See
+// TestBudgetBodyCheckRefusalDoesNotConsumeSlot and TestBudgetDedupeRefusalDoesNotConsumeSlot
+// for the end-to-end regression proof (three consecutive refusals, then a clean `new` that
+// must still succeed).
 func chargedNewEntry(e deskkit.Entry) bool {
 	switch e.Result {
 	case deskkit.ResultRefused, deskkit.ResultNoop,
@@ -168,18 +224,20 @@ func chargedNewEntry(e deskkit.Entry) bool {
 	}
 }
 
-// checkSessionBudget applies the per-session new-issue budget. It returns RateLimited
-// (exit 4) when this session+repo has already charged defaultNewBudgetPerSession `new`
-// writes in the last 24h, Unverifiable (exit 6) on a corrupt/unreadable audit file
-// (fail closed — corruption must not masquerade as an empty budget), and nil when one
-// more `new` is within budget. The retry-after is the expiry of the oldest charged write
-// in the window (ts + 24h + 1s), so a caller waking on it is certainly past the boundary.
-func checkSessionBudget(repo, session string, now time.Time) error {
+// checkSessionBudget applies the per-window new-issue filing rate. It returns RateLimited
+// (exit 4) when this session+repo has already charged `rate` `new` writes within `window`,
+// Unverifiable (exit 6) on a corrupt/unreadable audit file (fail closed — corruption must
+// not masquerade as an empty count), and nil when one more `new` is within the rate. The
+// retry-after is the expiry of the oldest charged write in the window (ts + window + 1s), so
+// a caller waking on it is certainly past the boundary. rate/window are resolved by
+// newBudgetConfig (env-fixable, shipped defaults otherwise); the counting fields
+// (session+tool+verb+repo) are unchanged, so the anti-evasion trail is preserved.
+func checkSessionBudget(repo, session string, now time.Time, rate int, window time.Duration) error {
 	entries, err := deskkit.LoadEntries()
 	if err != nil {
 		return err // already an Unverifiable *DeskError (exit 6)
 	}
-	cutoff := now.Add(-budgetWindow)
+	cutoff := now.Add(-window)
 	var charged []time.Time
 	for _, e := range entries {
 		if e.Tool != "deskfile" || e.Verb != "new" {
@@ -201,26 +259,28 @@ func checkSessionBudget(repo, session string, now time.Time) error {
 		}
 		charged = append(charged, ts)
 	}
-	if len(charged) < defaultNewBudgetPerSession {
+	if len(charged) < rate {
 		return nil
 	}
-	// The oldest charged write's expiry is when the count drops to cap-1, admitting one
+	// The oldest charged write's expiry is when the count drops to rate-1, admitting one
 	// more. Sort oldest-first (stable on RFC3339 ts) to find it deterministically.
 	sortTimesAscending(charged)
-	freeAt := charged[0].Add(budgetWindow).Add(time.Second)
+	freeAt := charged[0].Add(window).Add(time.Second)
 	retryAfter := freeAt.Sub(now)
 	if retryAfter <= 0 {
 		retryAfter = time.Second
 	}
 	return deskkit.RateLimitedAfter(fmt.Sprintf(
-		"refused: deskfile session budget exhausted (%d `new` on %s in the last 24h for session %q; max %d) — "+
-			"retry-after: %ds (free at %s). Attach further observations to an existing issue instead of filing "+
-			"new ones, or wait for the 24h window to roll. This is YOUR agent's budget, not the whole "+
-			"fan-out's. DO NOT retry-loop by varying $DESK_SESSION (or the harness session id): each `new` "+
-			"audit line records the sessionTag it charged, so rotating the ID leaves a trail, it does not "+
-			"erase one.",
-		len(charged), repo, session, defaultNewBudgetPerSession,
-		int(retryAfter/time.Second), freeAt.UTC().Format(time.RFC3339)),
+		"refused: deskfile new-issue rate exhausted (%d `new` on %s within the last %s for session %q; "+
+			"rate %d per %s) — retry-after: %ds (free at %s). Attach further observations to an existing "+
+			"issue instead of filing new ones, or wait for the window to roll. This is YOUR agent's rate, not "+
+			"the whole fan-out's. Raise the pace with %s / %s, or file one issue now with `--force-file "+
+			"--reason <r>` (audit-logged, does not reset the count). DO NOT retry-loop by varying $DESK_SESSION "+
+			"(or the harness session id): each `new` audit line records the sessionTag it charged, so rotating "+
+			"the ID leaves a trail, it does not erase one.",
+		len(charged), repo, window, session, rate, window,
+		int(retryAfter/time.Second), freeAt.UTC().Format(time.RFC3339),
+		envNewRate, envNewWindow),
 		retryAfter)
 }
 
@@ -240,14 +300,15 @@ func sortTimesAscending(ts []time.Time) {
 // branch returns. Verb is set by each cmd; repo/title/bodyDigest/target/detail are filled
 // in as the flow progresses so a refusal mid-flow still records what was attempted.
 type auditCtx struct {
-	verb           string
-	repo           string
-	title          string
-	bodyDigest     string
-	target         *int
-	detail         string
-	forceNewReason string // non-empty when --force-new bypassed the dedupe search
-	successResult  string // ResultOK unless a noop set it otherwise
+	verb            string
+	repo            string
+	title           string
+	bodyDigest      string
+	target          *int
+	detail          string
+	forceNewReason  string // non-empty when --force-new bypassed the dedupe search
+	forceFileReason string // non-empty when --force-file raised the new-issue rate for this filing
+	successResult   string // ResultOK unless a noop set it otherwise
 
 	// raisedBy records WHICH of the four stamp outcomes this filing took (see the
 	// raised-by block at the head of this file). It is APPENDED to the audit detail,
@@ -318,6 +379,12 @@ func (a *auditCtx) log(result, detail string) {
 
 // finalize maps the terminal error (or success) to exactly one audit result.
 func (a *auditCtx) finalize(err error) {
+	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
+	// would land in is append-only, never rotated, and counted per tool for the write budget
+	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
+	if deskkit.IsHelpRequest(err) {
+		return
+	}
 	// A read-only verb's every outcome is a dry run — see auditCtx.readOnly. The EXIT CODE
 	// is unaffected (check still exits 5 on a duplicate, 6 on an unanswered search); only
 	// the meters' view of the line changes, and they are write meters.
@@ -374,11 +441,14 @@ func newFlagSet(name string) *flag.FlagSet {
 // --- verbs -------------------------------------------------------------------------
 
 // cmdNew implements `deskfile new -R <repo> --title <t> --body-file <f> [--label ...]
-// [--force-new --reason <r>]`. Flow: repo allowed → body+title scan
-// → dedupe search (refuse exit 5 on a likely dup; fail closed exit 6 on a search
-// API error unless --force-new) → session budget (exit 4 over) → outward-write budget
-// → `gh issue create` → audit. --force-new bypasses the dedupe search entirely and
-// is audit-logged with its reason (the escape hatch for urgent filings during API outages).
+// [--force-new --reason <r>] [--force-file --reason <r>]`. Flow: repo allowed → body+title
+// scan → dedupe search (refuse exit 5 on a likely dup; fail closed exit 6 on a search
+// API error unless --force-new) → new-issue rate (exit 4 over, env-fixable) → outward-write
+// budget → `gh issue create` → audit. --force-new bypasses the dedupe search entirely; the
+// DISTINCT --force-file raises the per-window rate for this one filing (without touching
+// dedupe). Both require --reason and are audit-logged with it (the escape hatches for urgent
+// filings during API outages / a spent rate); --force-file's line is still charged, so the
+// override never resets or erases the rate count.
 func cmdNew(args []string) (err error) {
 	ac := &auditCtx{verb: "new"}
 	defer func() { ac.finalize(err) }()
@@ -394,9 +464,18 @@ func cmdNew(args []string) (err error) {
 	toRole := fs.String(toFlag, "", "desk role this issue is ADDRESSED TO — stamps `to:<role>` so that desk's "+
 		"sweep leads with it (same role vocabulary as --"+raisedByFlag+"; omitting it is normal and silent). "+
 		"NOTE: on `new` --to takes a ROLE; on `attach` --to takes an issue NUMBER")
-	forceNew := fs.Bool("force-new", false, "bypass the dedupe search (escape hatch; requires --reason)")
-	reason := fs.String("reason", "", "stated reason for --force-new (required with --force-new)")
+	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search (escape hatch; requires --reason)")
+	forceFile := fs.Bool("force-file", false, "raise the new-issue RATE for this ONE filing so it files even when the "+
+		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
+		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
+	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
@@ -411,8 +490,8 @@ func cmdNew(args []string) (err error) {
 	if strings.TrimSpace(*bodyFile) == "" {
 		return deskkit.Refused("refused: --body-file is required (no stdin/inline body)")
 	}
-	if *forceNew && strings.TrimSpace(*reason) == "" {
-		return deskkit.Refused("refused: --force-new requires a non-empty --reason (the escape hatch is audit-logged)")
+	if (*forceNew || *forceFile) && strings.TrimSpace(*reason) == "" {
+		return deskkit.Refused("refused: --force-new/--force-file require a non-empty --reason (the escape hatch is audit-logged)")
 	}
 	if !deskkit.IsAllowedRepo(*repo) {
 		return deskkit.Refused("refused: " + *repo + " is not in the desk-tools repo set")
@@ -425,7 +504,7 @@ func cmdNew(args []string) (err error) {
 	// entry and an absent/unmapped origin), and now SERVES GitLab through the backend — the #691
 	// interim named-refusal is superseded. Minting the token here is the identity change the #781
 	// ruling confirmed; --raised-by stays a body/label attribution below.
-	fg, fr, kind, ferr := forgeForFn(*repo)
+	fg, fr, kind, ferr := forgeForFn(*repo, false)
 	if ferr != nil {
 		return ferr
 	}
@@ -504,9 +583,18 @@ func cmdNew(args []string) (err error) {
 		ac.forceNewReason = *reason
 	}
 
-	// Per-session new-issue budget (this tool's own accounting; see checkSessionBudget).
-	if berr := checkSessionBudget(*repo, deskkit.SessionTag(), time.Now()); berr != nil {
-		return berr
+	// Per-window new-issue filing rate (this tool's own accounting; see checkSessionBudget).
+	// The rate/window are env-fixable (newBudgetConfig, resolved once so its NOTICE prints at
+	// most once). --force-file raises the rate for THIS one filing: it skips the gate but is
+	// still charged below, so it never resets or erases the count. It is audit-logged with its
+	// reason and the filing session so the override leaves a trail (anti-evasion is preserved).
+	rate, window := newBudgetConfig()
+	if *forceFile {
+		ac.forceFileReason = *reason
+	} else {
+		if berr := checkSessionBudget(*repo, deskkit.SessionTag(), time.Now(), rate, window); berr != nil {
+			return berr
+		}
 	}
 
 	// Standard outward-write budget. `new` creates a target whose number is not
@@ -571,27 +659,63 @@ func cmdNew(args []string) (err error) {
 	// Apply the resolved labels. Every label in applyLabels was confirmed to EXIST above (user
 	// labels refuse if missing; stamp/to labels resolve to "" if missing), so ApplyLabels'
 	// ensure step no-ops (the create returns already-exists) and NO label is minted.
+	// The target is the ISSUE just filed, stated explicitly: on GitLab the same number also
+	// names an unrelated merge request, and a write that left the kind implicit stamped that
+	// MR and left the issue unaddressed (no to:<role>, no dedupe key).
 	if len(applyLabels) > 0 {
-		if _, lerr := fg.ApplyLabels(fr, ref.Number, deskkit.LabelChange{Add: applyLabels}); lerr != nil {
+		change := deskkit.LabelChange{Target: deskkit.TargetIssue, Add: applyLabels}
+		if _, lerr := fg.ApplyLabels(fr, ref.Number, change); lerr != nil {
 			return deskkit.Unverifiable("apply labels to the filed issue failed", lerr)
 		}
 	}
 	url := deskkit.StripControl(ref.URL)
+	// Record any override(s) ahead of the created-URL, so the audit line names WHICH escape
+	// hatch was used, its reason, and (for --force-file) the identity that raised the rate.
+	// The SessionTag field on the entry also carries that identity; naming it inline makes the
+	// override self-describing in the detail too. chargedNewEntry keys on createSentMarker
+	// being the PREFIX of the FINAL detail (added by log()), so these lead the string but not
+	// the whole line — the override still CHARGES the rate, it does not un-charge it.
+	//
+	// The caller-controlled strings that land in Detail (the --reason and the SessionTag) are
+	// StripControl'd the same way the URL and Title are: they must not carry control bytes that
+	// could corrupt or forge the audit line they are appended to.
+	var parts []string
 	if ac.forceNewReason != "" {
-		ac.detail = "force-new: " + ac.forceNewReason + " | created " + url
-	} else {
-		ac.detail = "created " + url
+		parts = append(parts, "force-new: "+deskkit.StripControl(ac.forceNewReason))
 	}
+	if ac.forceFileReason != "" {
+		parts = append(parts, "force-file (rate override) by "+deskkit.StripControl(deskkit.SessionTag())+": "+deskkit.StripControl(ac.forceFileReason))
+	}
+	parts = append(parts, "created "+url)
+	// When the rate/window were RAISED (or otherwise changed) from the shipped defaults by the
+	// env knobs, the effective values are APPENDED to the audit Detail. Without this an entry
+	// filed under ASSAY_DESKFILE_NEW_RATE=100 is byte-identical to one filed under the shipped 3,
+	// so the env path would launder over-filing as ordinary activity and defeat the anti-evasion
+	// property that IS the control. Appended (never prepended): chargedNewEntry keys on
+	// createSentMarker being the PREFIX of Detail, so nothing may go in front of it.
+	if rate != defaultNewRate || window != defaultNewWindow {
+		parts = append(parts, fmt.Sprintf("rate-config: %d per %s (env)", rate, window))
+	}
+	ac.detail = strings.Join(parts, " | ")
 	fmt.Println(url)
 	return nil
 }
 
-// cmdAttach implements `deskfile attach -R <repo> --to <N> --body-file <f>`. Posts the
-// observation as a comment on issue N (a class issue or a duplicate target). Never
+// cmdAttach implements `deskfile attach -R <repo> --to <N> --body-file <f> [--kind issue|mr]`.
+// Posts the observation as a comment on issue N (a class issue or a duplicate target). Never
 // budgeted (attach is the motion the gate encourages). Refuses (exit 5) if N is CLOSED
 // with the reopen-or-new guidance. Flow: repo allowed → body scan → verify target
 // OPEN (fail closed exit 6 on an API error; refuse exit 5 if closed) → outward-write
 // budget → `gh issue comment` → audit.
+//
+// --kind states WHICH object N names. It exists for GitLab, which numbers issues and merge
+// requests in SEPARATE sequences: `#4` and `!4` routinely both exist, and the bare-number
+// read (GetIssue) refuses that case rather than pick one — so without a stated kind every
+// low number an adopter's project carries in both sequences was un-attachable. The default
+// is `issue`, because attach is by definition an observation on an issue; `mr` (alias
+// `pr`) is for the rarer observation on a change. The kind drives BOTH the target read and
+// the note's endpoint (GetIssueTyped / PostCommentTyped), so the state check and the write
+// address the same object. On GitHub the kind is validated against what N is, nothing more.
 func cmdAttach(args []string) (err error) {
 	ac := &auditCtx{verb: "attach"}
 	defer func() { ac.finalize(err) }()
@@ -600,8 +724,19 @@ func cmdAttach(args []string) (err error) {
 	repo := fs.String("R", "", "target repo, owner/name (required, must be in the desk-tools set)")
 	to := fs.Int("to", 0, "target issue number (required)")
 	bodyFile := fs.String("body-file", "", "path to a file containing the comment body (required)")
+	kindFlag := fs.String("kind", "issue", "which object --to names: issue (default) or mr (pr is an alias)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
+	}
+	kind, kerr := deskkit.ParseTargetKind(*kindFlag)
+	if kerr != nil {
+		return kerr
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: unexpected extra arguments")
@@ -624,8 +759,8 @@ func cmdAttach(args []string) (err error) {
 
 	// Resolve the forge under the session-role App's custody (write-verbs-C). Retains the
 	// could-not-check refusal on an unresolvable forge; serves GitLab (the #691 refusal is
-	// superseded).
-	fg, fr, _, ferr := forgeForFn(*repo)
+	// superseded). attach WRITES a comment, so it takes the ordinary (rotating) mint.
+	fg, fr, _, ferr := forgeForFn(*repo, false)
 	if ferr != nil {
 		return ferr
 	}
@@ -641,7 +776,7 @@ func cmdAttach(args []string) (err error) {
 
 	// Verify the target is OPEN before posting. An API/parse failure is unverifiable
 	// (exit 6); a non-OPEN target is refused (exit 5) with reopen-or-new guidance.
-	view, verr := viewIssue(fg, fr, target)
+	view, verr := viewIssue(fg, fr, target, kind)
 	if verr != nil {
 		return deskkit.Unverifiable("cannot read issue state — refuse rather than guess", verr)
 	}
@@ -659,12 +794,17 @@ func cmdAttach(args []string) (err error) {
 		return werr
 	}
 
-	ref, cerr := fg.PostComment(fr, target, string(body))
+	ref, cerr := fg.PostCommentTyped(fr, target, kind, string(body))
 	if cerr != nil {
 		return deskkit.Unverifiable("post comment failed", cerr)
 	}
+	// A forge whose note reference carries no page URL (a GitLab issue note reports only its
+	// numeric id) still gets the TARGET's URL printed, so the caller can find what it wrote.
 	url := deskkit.StripControl(ref.URL)
-	ac.detail = "commented " + url
+	if url == "" {
+		url = view.URL
+	}
+	ac.detail = "commented " + url + " kind=" + string(kind)
 	fmt.Println(url)
 	return nil
 }
@@ -685,6 +825,12 @@ func cmdCheck(args []string) (err error) {
 	repo := fs.String("R", "", "target repo, owner/name (required, must be in the desk-tools set)")
 	title := fs.String("title", "", "title to check (required)")
 	if perr := fs.Parse(args); perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
+		// A help screen is not a refusal and writes no audit row — the finalizer
+		// skips it (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
@@ -702,10 +848,15 @@ func cmdCheck(args []string) (err error) {
 	ac.repo = *repo
 	ac.title = *title
 
-	// Resolve the forge under the session-role App's custody (write-verbs-C). check is a READ,
-	// but it reaches the forge, so it mints the session token like the other verbs; the
+	// Resolve the forge under the session-role App's custody (write-verbs-C). check is a READ:
+	// it reaches the forge to run the dedupe search, but it files nothing. So it asks for
+	// READ-ONLY custody (--no-rotate) rather than the ordinary mint. On the GitLab custody
+	// path the ordinary mint is a destructive self-rotation, and a window running several
+	// checks in parallel raced its own rotations — the loser got 401 invalid_token and the
+	// custody file could be left holding a dead value only a group owner can replace. A verb
+	// that writes nothing has no business spending a credential rotation. The
 	// unresolvable-forge could-not-check refusal is retained, GitLab is served (#691 superseded).
-	fg, fr, _, ferr := forgeForFn(*repo)
+	fg, fr, _, ferr := forgeForFn(*repo, true)
 	if ferr != nil {
 		return ferr
 	}
@@ -873,17 +1024,19 @@ type ghIssueView struct {
 	URL   string
 }
 
-// viewIssue reads an issue's state and url through the resolved forge (GetIssue, which now
-// carries the URL — #691). The state comes back in the forge-neutral open|closed vocabulary; the
-// caller compares it case-insensitively against "OPEN". Both fields are remote-authored text
-// rendered into the CLOSED-target refusal, so they are control-stripped at ingest.
-func viewIssue(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) (*ghIssueView, error) {
-	iss, err := fg.GetIssue(fr, number)
+// viewIssue reads the target's state and url through the resolved forge (GetIssueTyped, which
+// carries the URL — #691 — and reads exactly the STATED kind, so a GitLab number that is both
+// an issue and a merge request resolves to the one the caller meant). The state comes back in
+// the forge-neutral open|closed vocabulary; the caller compares it case-insensitively against
+// "OPEN". Both fields are remote-authored text rendered into the CLOSED-target refusal, so they
+// are control-stripped at ingest.
+func viewIssue(fg deskkit.Forge, fr deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*ghIssueView, error) {
+	iss, err := fg.GetIssueTyped(fr, number, kind)
 	if err != nil {
 		return nil, err
 	}
 	if iss.State == "" {
-		return nil, fmt.Errorf("forge GetIssue returned no state for %s#%d", fr.Slug(), number)
+		return nil, fmt.Errorf("forge GetIssueTyped returned no state for %s#%d", fr.Slug(), number)
 	}
 	return &ghIssueView{
 		State: deskkit.StripControl(iss.State),

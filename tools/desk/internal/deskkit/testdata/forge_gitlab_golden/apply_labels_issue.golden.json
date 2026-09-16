@@ -1,0 +1,40 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/labels",
+      "body": {
+        "name": "to:reviewer",
+        "color": "#0e8a16"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/labels",
+      "body": {
+        "name": "raised-by:desk"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/7"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/7",
+      "body": {
+        "add_labels": "to:reviewer,raised-by:desk",
+        "remove_labels": "to:desk"
+      }
+    }
+  ],
+  "result": {
+    "Added": [
+      "to:reviewer",
+      "raised-by:desk"
+    ],
+    "Removed": [
+      "to:desk"
+    ]
+  }
+}
