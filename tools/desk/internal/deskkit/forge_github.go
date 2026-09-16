@@ -1731,6 +1731,13 @@ func (g *GitHubForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKin
 	return g.CloseIssue(repo, number, stateReason)
 }
 
+// ReopenIssue reopens an issue (`PATCH /repos/{o}/{r}/issues/{n}` with `state: open`). No
+// state reason travels: GitHub records one at close time only, and reopening clears it.
+func (g *GitHubForge) ReopenIssue(repo ForgeRepo, number int) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d", repo.Owner, repo.Name, number)
+	return g.doJSON(http.MethodPatch, path, map[string]any{"state": "open"}, nil)
+}
+
 // EditChange replaces a change's OWN title/body (`PATCH /repos/{o}/{r}/pulls/{n}`) — the change
 // description, not a comment. An empty field is not sent, so a body-only edit does not blank the
 // title (deskpr edit's case) and vice versa; asking to change NEITHER is a could-not-check

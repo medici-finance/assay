@@ -39,7 +39,7 @@ it on day one.
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` reports which without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
-| `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
+| `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
@@ -2541,6 +2541,8 @@ deskclose duplicate      -R <owner/repo> <item> --of <ref> --mined <summary> [--
 deskclose superseded     -R <owner/repo> <item> --by <ref> [--kind K] [--by-kind K] [--dispute <reason>]
 deskclose review-request -R <owner/repo> <item> [--kind K]
 deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>] [--max-wait <dur>]
+deskclose self-withdraw  -R <owner/repo> <item> --because {superseded|abandoned} [--by <ref>] [--kind K]
+deskclose verify-gate-refire -R <owner/repo> <item> --reason <text> [--kind K]
 ```
 
 ### Typed item references
@@ -2588,6 +2590,54 @@ a stronger authority than a reviewer's confirmation. The design note (`supersede
 in the desk-tools planning stream) carries the flow, the pros/cons and the brief-level semantics;
 the mutation sweep is `cmd/deskclose/mutations.json`.
 
+### Two identity+structure lanes — no artifact cited, because nothing of anyone else's is closed
+
+Every ruled lane above authorizes on a FETCHED HUMAN ARTIFACT because it closes OTHER
+people's items. Two lanes close nothing that belongs to another party, so neither consults the
+R-1 ruling gate (`gateFor` is never called — a test runs each with R-1 unsigned and the rulings
+file absent and asserts the grant cache is still nil) and neither is a manifest row mode.
+Neither adds a `--force`, a `--yes` or an environment override; the same source scan covers
+them.
+
+| Lane | Who | Acts on | The single control | Its independent second layer |
+|---|---|---|---|---|
+| `self-withdraw` | the **authoring App**'s own session (the DESK_LOOP-selected role) | its OWN open **draft** change | the **authorship pin** — `SameActor(pr.Author.Login, RoleAppLogin(role))` AND `pr.Author.ID == RoleBotIdentity(role).ID`, id nonzero. Login alone is the same-named-account spoof the id refuses; an unpinned roster id is could-not-check, never a login-only pass | the installation token's own write scope (a repo the App is not installed on 404s before the pin matters), and the unchanged decision-label absolute refusal |
+| `verify-gate-refire` | the **verifier** session only (`verify-desk` loop → `verifier` role) | a **closed issue** carrying `verify-gate` | the **role+label pin** — any other resolved role (worker, reviewer, desk) is refused by name; no `verify-gate` label is refused naming it; a change is refused; an already-open card is a no-op | **not in this codebase**: the repository's `verify-gate-close.yml` reopens ANY close of a `verify-gate` issue whose sender is not an allowlisted human, on a signal (`sender.type`) the forge reports for the token that made the call — so a bot's close can never complete the human sign-off, whatever this lane decides |
+
+**`self-withdraw`** reads the change once (`GetPullRequest`: draft flag, author, labels), then in
+order: already closed → no-op; decision label → refused (before any lane check); not a draft →
+refused ("a PR out for review is not this lane's business"); authorship pin, each half refusing
+by name; comment, then close. `--because superseded` requires `--by <ref>` (recorded in the
+comment, **not verified merged** — the author's own statement about its own item, as a human
+closing their own PR needs no second party to confirm the reason); `--because abandoned`
+refuses a `--by`. No disposition record is consulted: the finding-then-execution split is for
+lanes that act on someone else's work. `--kind issue` is refused pre-flight — the item is a
+change by construction, so on a two-sequence forge write `!N` (or nothing).
+
+**`verify-gate-refire`** exists for a verifier re-running a `verify-gate` cycle: the card's
+close event has to fire again. In order: role gate; read; a pull request → refused; already open
+→ no-op (a retried cycle must not fail on the second call); decision label → refused; no
+`verify-gate` label → refused; then **reopen → comment → close**, three charged writes on the
+one item, the comment stating `--reason` (mandatory) under both the reopen and the re-close
+line and stating explicitly that this is **not the human sign-off**. The close carries no state
+reason. `--kind mr` is refused pre-flight — a card is an issue. This is the only reopen in the
+package: `reopenItem` has one caller, is always followed by a close in the same invocation, and
+is scoped to a surface the desk cannot unilaterally complete a sign-off on regardless.
+
+### `manifest` is the documented human-ruled BATCH lane
+
+Many items, one recorded ruling, one digest-bound authorization. The generic shape: a human
+ruling retires N stale-or-duplicate items in one sitting (a naming migration is superseded by
+its final PR; a batch of watch-and-reject entries expires together). The human states the
+ruling **once, in a single forge comment**, and that SAME comment becomes the manifest's
+`authorized-by:` — its permalink names the ruling, and `deskclose manifest`'s own digest check
+(`Digest()` over issue/mode/target/mined per row) binds it to exactly the row set the human
+saw. There is no second "ruling URL" field to add: the authorizing comment already IS the
+ruling's own artifact when the human writes it as one, and `authorizeManifest` already refuses
+a batch whose digest does not match what that comment carries — a row added, retargeted or
+re-moded after the human looked invalidates the authorization outright. Nothing about this
+lane changed; this paragraph is the sanctioned shape written down.
+
 ### The authorization gate is the whole tool
 
 `deskclose` closes other people's work in bulk. The single property that makes that safe is
@@ -2631,6 +2681,9 @@ package sources and fails on any of them, or on any `os.Getenv` call. The escape
 | repo (or a cross-repo target) outside `deskkit.IsAllowedRepo` | 5 | no second repo list, no widening flag |
 | PR target recorded `NEEDS-REBASE` | 5 | the disposition record says live work |
 | PR target with no disposition record | 5 | `deskclose` executes a finding; it does not make one |
+| `self-withdraw` on a non-draft, another author's change, a login match with the wrong bot id, or a `needs-decision` draft | 5 | the lane is the App's own unreviewed proposal and nothing wider; login AND id, never login alone |
+| `self-withdraw` with an unpinned roster bot id, or an item that is not a pull request | 6 | could-not-check is never a login-only pass |
+| `verify-gate-refire` under a worker / reviewer / any non-verifier role, on an item without `verify-gate`, or on a pull request | 5 | role+label pin; not a general reopen tool |
 | record Evidence naming a different target than the caller | 5 | the tool does not pick a winner between them |
 | rulings file / label set / PR state / authorization / record **unreadable** | 6 | could-not-check is never authorization, and never "clean" |
 | write budget spent | 4 | wait-and-resume — see below |

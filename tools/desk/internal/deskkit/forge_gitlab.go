@@ -2896,6 +2896,20 @@ func (g *GitLabForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKin
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 
+// ReopenIssue reopens an issue via `state_event=reopen` (`PUT /projects/:id/issues/:iid`).
+// CloseIssue's inverse, minus the reason note: there is no reason to record on a reopen, and
+// GitLab keeps no state-reason field to clear.
+func (g *GitLabForge) ReopenIssue(repo ForgeRepo, number int) error {
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/projects/%s/issues/%d", g.projectPath(repo), number)
+	_, _, uerr := cl.Issues.UpdateIssue(repo.Slug(), int64(number),
+		&gitlab.UpdateIssueOptions{StateEvent: gitlab.Ptr("reopen")})
+	return g.mapErr(http.MethodPut, path, uerr)
+}
+
 // EditChange replaces a merge request's OWN title/description
 // (`PUT /projects/:id/merge_requests/:iid`). An empty field is not sent, so a body-only edit
 // (deskpr edit's case) leaves the title — and therefore the `Draft:` prefix that IS GitLab's

@@ -235,6 +235,13 @@ every caller not yet converted.
 | 43 | `SetMergeHold(repo, number, in)` | release (resolved, at head) or re-arm (unresolved, with reason) a merge-hold | typed not-applicable (`ErrMergeHoldNotApplicable`) | release: `POST …/discussions/:id/notes` (the `released`+`Head:` reply) then `PUT …/discussions/:id?resolved=true`; re-arm: the same PUT with `resolved=false` FIRST, then the `re-armed` reply note — the order in each direction is the one that fails safe (see the backend's own doc comment) | implemented |
 | 44 | `ListCommentsTyped(repo, number, kind)` | read the comment thread of ONE stated kind | `POST /graphql` with `issue(number:)` or `pullRequest(number:)` — the two noteables are separate GraphQL selections, so one query cannot serve both; the node selection is identical, and a noteable that resolves NULL is could-not-check, never an empty thread | `GET /projects/:id/issues/:iid/notes` OR `…/merge_requests/:iid/notes` — op 17 walks the merge-request endpoint only, so an issue's thread reads as another object's notes at the same number without the kind. Same system-note drop, same requested `created_at asc` order, same page bound; an ISSUE note carries no opaque id (the opaque id addresses merge-request notes) | implemented |
 | 45 | `CloseIssueTyped(repo, number, kind, reason)` | close the object of ONE stated kind | `PATCH /repos/{o}/{r}/issues/{n}` — one sequence, one state endpoint for both kinds, so the kind selects no different request and makes the intent explicit at the seam instead | `PUT /projects/:id/issues/:iid` OR `…/merge_requests/:iid` with `state_event:close`. Op 13 addresses the ISSUE endpoint only, so on a project carrying both kinds at one number it closes the OTHER object — a wrong write, not a failed one. A state reason is recorded as a note for an issue (as op 13 does) and REFUSED for a change, since no forge records one there | implemented |
+| 46 | `ReopenIssue(repo, number)` | reopen ONE closed issue — `CloseIssue`'s inverse, minus the state reason (a close-time field on GitHub, absent on GitLab; reopening clears it on both) | `PATCH /repos/{o}/{r}/issues/{n}` `state:open` — ONE request, no `state_reason` | `PUT /projects/:id/issues/:iid` `state_event:reopen` — ONE request on the ISSUE sequence, no note. Untyped by design: its only consumer (`deskclose verify-gate-refire`, forge-neutral brief 16) acts on issues carrying `verify-gate` and refuses a change before any write, and the reopen is always paired with a close in the same invocation — never a free-standing reopen capability | implemented |
+
+**Op 46 (`ReopenIssue`) was added by forge-neutral brief 16** (`deskclose` widened lanes) under the same
+freeze rule, with its consuming call site in the same change: `deskclose verify-gate-refire` reopens a
+closed `verify-gate` card through op 46, comments, and closes it again through op 45 — the seam's first
+and only reopen, scoped by that lane's role+label gate. The goldens `reopen_issue` on both backends pin
+one request, the issue endpoint, and no state reason.
 
 **Ops 44–45 (`ListCommentsTyped`, `CloseIssueTyped`) were added for `deskclose`'s typed item
 references** (`medici-finance/assay#1109`), under the same freeze rule and with their consuming
@@ -286,7 +293,7 @@ shared `gitlabMergeableState` mapping (which stays exactly as it was — Verify 
 |------|------|--------------|------------------|
 | `deskpr` | `tools/desk/cmd/deskpr/deskpr.go` | `gh pr create --draft`, `gh pr view/list` | `CreateDraftChange` (+ reads via `GetPullRequest`) |
 | `deskfile` | `tools/desk/cmd/deskfile/deskfile.go` | `gh issue create`, `gh issue comment`, `gh issue view` | `FileIssue`, `PostComment`, `CloseIssue` |
-| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `GetIssueTyped`, `PostCommentTyped`, `ListCommentsTyped`, `CloseIssueTyped` |
+| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `GetIssueTyped`, `GetPullRequest`, `PostCommentTyped`, `ListCommentsTyped`, `CloseIssueTyped`, `ReopenIssue` (verify-gate-refire only) |
 | `deskreply` | `tools/desk/cmd/deskreply/deskreply.go` | `gh pr/issue comment` | `PostComment` |
 | `deskflip` | `tools/desk/cmd/deskflip/flip.go` | `gh pr ready` | `MarkReadyForReview` |
 

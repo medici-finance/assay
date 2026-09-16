@@ -1092,6 +1092,14 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return nil, f.CloseIssue(glRepo, 33, "not_planned") },
 		},
 		{
+			// CloseIssue's inverse: ONE request, `state_event=reopen` on the ISSUE endpoint, and no
+			// note — there is no reason to record on a reopen. Pinned so the op can never grow a
+			// second request or drift onto the merge-request sequence.
+			name: "reopen_issue", method: "ReopenIssue",
+			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "opened"}) },
+			run:   func(f *GitLabForge) (any, error) { return nil, f.ReopenIssue(glRepo, 33) },
+		},
+		{
 			name: "close_issue_no_reason", method: "CloseIssue",
 			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "closed"}) },
 			run:   func(f *GitLabForge) (any, error) { return nil, f.CloseIssue(glRepo, 33, "") },
