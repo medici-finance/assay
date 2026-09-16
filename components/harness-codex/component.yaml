@@ -23,10 +23,10 @@ apply:
   - id: plugin-manifest
     effect: install plugins/assay/.codex-plugin/plugin.json (tools/harnessgen codex)
     boundary: inside
-    inverse: remove the plugin manifest (TODO composability/02 makes the reverse real)
+    inverse: remove the installed plugins/assay/.codex-plugin/plugin.json
   - id: agents-fragment
     effect: install the generated plugins/assay/codex/AGENTS-assay.md fragment at the adopter's root AGENTS.md
     boundary: inside
-    inverse: remove the installed AGENTS.md fragment (TODO composability/02 makes the reverse real)
+    inverse: remove the installed AGENTS-assay.md fragment content from the adopter's root AGENTS.md
 intercept: []
 config: {}

@@ -113,11 +113,16 @@ func TestBriefPathRefusesFingerprintAddedByEvidence(t *testing.T) {
 func TestDirectWriteRefusalNamesEvidenceFileLine(t *testing.T) {
 	f, errBuf := setupFake(t)
 	remote := "# Brief\n\n## Evidence\n| 1 | a | b |\n"
-	evidencePath := writeRepoFile(t, "docs/streams/x/brief.md",
+	// A repo-relative docs/streams/ target resolved via --root: deskevidence's docs/streams
+	// scoping guard (assay#1078) refuses an absolute target, which would shadow the
+	// secret-scan refusal this test exercises. The local file content — and so the reported
+	// line number — is unchanged; the offending row is still line 6 of the file.
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath,
 		remote+"| 2 | clean | PASS |\n| 3 | key is "+fixtureFingerprint+" | PASS |\n")
 	f.setFile(evidencePath, remote)
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitRefused {
 		t.Fatalf("exit = %d, want %d", code, deskkit.ExitRefused)
 	}

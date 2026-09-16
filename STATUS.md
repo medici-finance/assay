@@ -35,6 +35,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
+| composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2000 |
 | forge-neutral | 19 — Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs [exec:strong] | 1 | 2000 |

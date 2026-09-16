@@ -28,7 +28,13 @@ import (
 func TestPublicRepoGateFetcherRoutesThroughResolvedForge(t *testing.T) {
 	f, _ := setupFake(t)
 	f.visibility = "private"
-	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
+	// A repo-relative docs/streams/ path resolved via --root: deskevidence's docs/streams
+	// scoping guard (assay#1078) refuses a target outside that tree — including the bare
+	// absolute path this test used before that guard landed — so it must land under
+	// docs/streams/ like every real Evidence commit. The path is incidental to what this
+	// test proves (the public-repo gate routing); the forge is the fake either way.
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
 	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
 
 	var captured deskkit.RepoInfoFetcher
@@ -39,7 +45,7 @@ func TestPublicRepoGateFetcherRoutesThroughResolvedForge(t *testing.T) {
 	}
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitOK {
 		t.Fatalf("run exit = %d, want 0", code)
 	}
