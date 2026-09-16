@@ -46,20 +46,19 @@ import (
 // clean is a TWO-state instrument (docs/three-state-instrument-rule.md), and that
 // is precisely what hid the GitLab gap.
 
-// listMergedClosedBranches returns the set of head branch names whose PR is
-// MERGED or CLOSED, for the repo rooted at `root`. It lists PRs in every state
-// and keeps only the dead ones — an OPEN PR is deliberately absent from the set,
-// because its branch is a live claim that must still be honoured. A `gh` failure
-// is returned as an error; decayDeadClaims degrades to "decay nothing" so the
-// board is never WORSE than the pre-decay superset (and never drops a live claim
-// it could not verify, which would risk two sessions converging on one brief).
-//
-// A package-level var so tests substitute a fake lister without a network call,
-// exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
-var listMergedClosedBranches = func(root string) (map[string]bool, error) {
+// ghPRListJSONFields is the `--json` field set the GitHub reader asks `gh pr list`
+// for: headRefName and state are what the decay keys on.
+const ghPRListJSONFields = "headRefName,state"
+
+// ghPRListJSON runs `gh pr list` for the repo rooted at root and returns its raw
+// JSON. A package-level var so tests substitute recorded output and the parse is
+// exercised with no `gh` and no network — the GitHub twin of the GitLab arm's
+// gitlabHTTPDoer seam. A `gh` failure is returned as an error, never as an empty
+// list an empty list would read as "no dead pull requests".
+var ghPRListJSON = func(root string) ([]byte, error) {
 	cmd := exec.Command("gh", "pr", "list",
 		"--state", "all", "--limit", "1000",
-		"--json", "headRefName,state")
+		"--json", ghPRListJSONFields)
 	// gh resolves the repo from its working directory; point it at the board's
 	// root (the same repo listRemoteBranches read), mirroring `git -C root`.
 	cmd.Dir = root
@@ -71,10 +70,31 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 		}
 		return nil, fmt.Errorf("gh pr list: %v %s", err, detail)
 	}
-	var raw []struct {
-		HeadRefName string `json:"headRefName"`
-		State       string `json:"state"`
+	return out, nil
+}
+
+// ghPR is the subset of a `gh pr list` row the GitHub reader needs.
+type ghPR struct {
+	HeadRefName string `json:"headRefName"`
+	State       string `json:"state"`
+}
+
+// listMergedClosedBranches returns the set of head branch names whose PR is
+// MERGED or CLOSED, for the repo rooted at `root`. It lists PRs in every state
+// and keeps only the dead ones — an OPEN PR is deliberately absent from the set,
+// because its branch is a live claim that must still be honoured. A `gh` failure
+// is returned as an error; decayDeadClaims degrades to "decay nothing" so the
+// board is never WORSE than the pre-decay superset (and never drops a live claim
+// it could not verify, which would risk two sessions converging on one brief).
+//
+// A package-level var so tests substitute a fake lister without a network call,
+// exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
+var listMergedClosedBranches = func(root string) (map[string]bool, error) {
+	out, err := ghPRListJSON(root)
+	if err != nil {
+		return nil, err
 	}
+	var raw []ghPR
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("parsing gh pr list output: %w", err)
 	}
