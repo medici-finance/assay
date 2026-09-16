@@ -883,6 +883,17 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 		},
 		{
+			// A GITLAB kind is refused BY NAME on GitHub with ZERO requests — the symmetric twin
+			// of the GitLab backend's `hardening_read_github_kind_refused`. The vocabulary is one
+			// closed set partitioned per forge; the GitHub backend never answers `project` with
+			// its own repo document.
+			name:  "hardening_read_gitlab_kind_refused",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadProject)
+			},
+		},
+		{
 			name:  "error_not_found",
 			setup: func(s *goldenServer) { s.forceStatus["/issues/404"] = http.StatusNotFound },
 			run:   func(f *GitHubForge) (any, error) { return f.GetIssue(forgeTestRepo, 404) },

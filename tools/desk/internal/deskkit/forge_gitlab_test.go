@@ -124,6 +124,20 @@ type glServer struct {
 	// NEGATIVE value serves an ENDLESS chain that never stops advertising a next page — the
 	// runaway a page ceiling exists to bound.
 	issuePages int
+	// protectedBranches / protectedTags are the protected-branches and protected-tags LIST
+	// payloads (op 40's two list kinds). protectedBranchPages, when N>0, serves N one-entry
+	// pages chained by X-Next-Page instead of the canned list, and a NEGATIVE value serves an
+	// ENDLESS chain — the runaway the hardening page ceiling exists to bound.
+	protectedBranches    []map[string]any
+	protectedTags        []map[string]any
+	protectedBranchPages int
+	// pushRule is the project push-rule payload (`GET /projects/:id/push_rule`, Premium). A
+	// nil value encodes as the literal `null` GitLab answers for a Premium project with no
+	// push rule configured. pushRuleStatus, when set, is the status the route answers
+	// instead of 200 — Community Edition has no such route (404), and a locked-down instance
+	// answers 403.
+	pushRule       any
+	pushRuleStatus int
 	// forceStatus maps an escaped-path suffix to the HTTP status to return instead.
 	forceStatus map[string]int
 }
@@ -169,6 +183,12 @@ var (
 	lMRDiscussions = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions$`)
 	lMRDisc1       = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions/[^/]+$`)
 	lMRDiscNote    = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/discussions/[^/]+/notes$`)
+	// op 40's GitLab kinds (the forge-gitlab GitLab-hardening-reads brief): the protected-branch
+	// and protected-tag lists and the Premium push-rule document. `project` and `approvals`
+	// reuse lProject / lProjApproval.
+	lProtBranches = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_branches$`)
+	lProtTags     = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_tags$`)
+	lPushRule     = regexp.MustCompile(`^/api/v4/projects/[^/]+/push_rule$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -361,6 +381,31 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		enc(hits)
+	case r.Method == http.MethodGet && lProtBranches.MatchString(path):
+		if s.protectedBranchPages != 0 {
+			n := 1
+			if page != "" {
+				_, _ = fmt.Sscanf(page, "%d", &n)
+			}
+			if s.protectedBranchPages < 0 || n < s.protectedBranchPages {
+				w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
+			}
+			enc([]map[string]any{{
+				"id": n, "name": fmt.Sprintf("release/%d", n), "allow_force_push": false,
+				"push_access_levels": []map[string]any{{"access_level": 0, "access_level_description": "No one"}},
+			}})
+			return
+		}
+		enc(s.protectedBranches)
+	case r.Method == http.MethodGet && lProtTags.MatchString(path):
+		enc(s.protectedTags)
+	case r.Method == http.MethodGet && lPushRule.MatchString(path):
+		if s.pushRuleStatus != 0 {
+			w.WriteHeader(s.pushRuleStatus)
+			enc(map[string]any{"message": "404 Not Found"})
+			return
+		}
+		enc(s.pushRule)
 	case r.Method == http.MethodGet && lProjApproval.MatchString(path):
 		if s.projApprovalStatus != 0 {
 			w.WriteHeader(s.projApprovalStatus)
@@ -1722,11 +1767,123 @@ func glCases() []glCase {
 		},
 		{
 			// The forge-gitlab guard-read-custody brief's op 40: every hardening-read kind is a NAMED could-not-check
-			// refusal on GitLab until the forge-gitlab GitLab-hardening-reads follow-up, with ZERO requests emitted — never an
-			// empty document standing in for "not yet served".
-			name: "repo_hardening_read_gap", method: "RepoHardeningRead",
+			// refusal on GitLab — the GitLab-hardening-reads brief serves the GitLab half of the
+			// vocabulary below and leaves the GITHUB half exactly this: refused BY NAME with ZERO
+			// requests, never an empty document and never GitLab's nearest document.
+			name: "hardening_read_github_kind_refused", method: "RepoHardeningRead",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadRepo) },
+		},
+		{
+			// The kind validator refuses BEFORE any request exists (and before the per-forge
+			// partition check): the empty `requests` array is the assertion.
+			name: "hardening_read_unknown_kind", method: "RepoHardeningRead",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.RepoHardeningRead(glRepo, HardeningReadKind("not-a-real-kind"))
+			},
+		},
+		// --- op 40 GitLab kinds (the forge-gitlab GitLab-hardening-reads brief) ---
+		{
+			// `project`: the project document as GitLab renders it, unparsed — the Free-tier
+			// merge-gate and CI-isolation settings (B5/B6/C6) and the preflight document.
+			name: "hardening_read_project", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.project = map[string]any{
+					"id": 12, "visibility": "private",
+					"only_allow_merge_if_pipeline_succeeds":            true,
+					"only_allow_merge_if_all_discussions_are_resolved": true,
+					"ci_config_path": ".gitlab-ci.yml@example-group/ci-config",
+					"ci_allow_fork_pipelines_to_run_in_parent_project": false,
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProject) },
+		},
+		{
+			// `protected-branches`: the list as rendered, with the CE role-level entries
+			// (`access_level: 0` = No one) — no user_id/group_id, which are Premium.
+			name: "hardening_read_protected_branches", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.protectedBranches = []map[string]any{{
+					"id": 1, "name": "main", "allow_force_push": false, "code_owner_approval_required": false,
+					"push_access_levels":  []map[string]any{{"access_level": 0, "access_level_description": "No one"}},
+					"merge_access_levels": []map[string]any{{"access_level": 40, "access_level_description": "Maintainers"}},
+				}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedBranches) },
+		},
+		{
+			// The list is WALKED: two X-Next-Page-chained pages come back as ONE array, so a rule
+			// on the second page is judged like one on the first. The golden pins per_page=100 and
+			// the page=2 request.
+			name: "hardening_read_protected_branches_two_pages", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.protectedBranchPages = 2 },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedBranches) },
+		},
+		{
+			// An endless chain hits the page ceiling and REFUSES — never a partial array a row
+			// would read a named entry's absence from.
+			name: "hardening_read_protected_branches_ceiling_refuses", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.protectedBranchPages = -1 },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedBranches) },
+		},
+		{
+			name: "hardening_read_protected_tags", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.protectedTags = []map[string]any{{
+					"name": "v*", "create_access_levels": []map[string]any{{"access_level": 40, "access_level_description": "Maintainers"}},
+				}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadProtectedTags) },
+		},
+		{
+			// `push-rules` on a Premium project WITH a rule: the document as rendered.
+			name: "hardening_read_push_rules_premium", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.pushRule = map[string]any{"id": 3, "project_id": 12, "reject_unsigned_commits": true,
+					"prevent_secrets": true, "commit_committer_check": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// A Premium project with NO push rule answers the literal `null` — handed back as
+			// the document it is (an absence the guard's Gated cell classifies), not as an error
+			// and not as `{}`.
+			name: "hardening_read_push_rules_unconfigured_null", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.pushRule = nil },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// THE tier-gate golden the brief names: a 403 on the Premium push-rule route is a
+			// could-not-check carrying a *ForgeAPIError (status 403, not_found=false) and naming
+			// the tier — never an empty document that a checklist row could read as a value.
+			name: "push_rules_premium_gated", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.pushRuleStatus = http.StatusForbidden },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// Community Edition has no push-rule route at all: 404 → could-not-check with
+			// not_found=true (the guard's Gated cell decides whether that means "absent").
+			name: "push_rules_ce_not_found", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.pushRuleStatus = http.StatusNotFound },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadPushRules) },
+		},
+		{
+			// `approvals`: the project approval configuration as rendered (200 on gitlab.com
+			// Free, where the settings are advisory).
+			name: "hardening_read_approvals", method: "RepoHardeningRead",
+			setup: func(s *glServer) {
+				s.projApproval = map[string]any{"approvals_before_merge": 0, "reset_approvals_on_push": true,
+					"merge_requests_author_approval": false, "merge_requests_disable_committers_approval": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadApprovals) },
+		},
+		{
+			// Some self-managed CE instances answer 404 on the approval-configuration route:
+			// could-not-check naming the tier, never an empty configuration.
+			name: "hardening_read_approvals_ce_404", method: "RepoHardeningRead",
+			setup: func(s *glServer) { s.projApprovalStatus = http.StatusNotFound },
+			run:   func(f *GitLabForge) (any, error) { return f.RepoHardeningRead(glRepo, HardeningReadApprovals) },
 		},
 		// --- the forge-gitlab merge-hold brief: the merge-hold marker thread ---
 		{
