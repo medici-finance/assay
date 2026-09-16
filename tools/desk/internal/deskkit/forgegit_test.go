@@ -48,7 +48,7 @@ func TestForgeGitEndpointFor_GitHubCarriesRoleTokenOnResolvedHost(t *testing.T) 
 	}
 }
 
-func TestForgeGitEndpointFor_GitLabUsesOAuth2AndProvisionedPAT(t *testing.T) {
+func TestForgeGitEndpointFor_GitLabUsesOauthUsernameAndToken(t *testing.T) {
 	roster := goldenRoster()
 	roster[EnvRepoForges] = "example-org/gitlab-pilot=gitlab"
 	home := withRoster(t, roster)
