@@ -95,6 +95,9 @@ desk's state directory only.
 | 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #352 @ 496796982b573be17a032163cd3f6423e58be239) |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | todo | — | — |
 | 09 | [Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build](brief-09-ci-fanout-per-push.md) | 0 | S | implemented | — | — |
+| 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | todo | — | — |
+| 11 | [The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it](brief-11-workflow-only-pr-contract.md) | 1 | M | todo | — | — |
+| 12 | [Retire the staged-copy hand-landing once the workflow App PR path is proven](brief-12-retire-staged-copy-landing.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -122,15 +125,26 @@ what each of their pushes then costs on a runner pool two runners wide. Neither 
 other — 09 touches no engine code and no desk verb, only which CI workflows a given diff
 shape asks a question of — so it is wave 0 with no `depends:` and no `unblocks:`.
 
+**Briefs 10 → 11 → 12 are a second, self-contained chain — the workflow-landing lane.** They
+fix the reason 09 cannot reach `verified` today: 09's workflow edits are delivered as a staged
+copy a human must hand-land, and #1185 is that hand-copy still not landed. The chain wires the
+**workflow App** (the single `workflows: write` identity) to author a workflow-only PR, so a
+workflow change lands on its own reviewable PR instead of a staged copy that stalls and drifts.
+All three cite [`DR-workflow-app-landing`](../decisions/DR-workflow-app-landing.md) and are
+`gate: human`: the DR proposes the rule and each brief's human gate confirms a piece of it.
+The chain touches no engine code and is independent of the `01 → 02 → 03` supervision path —
+its head, brief 10, is the App's ground truth (installed? correctly scoped?), which is a
+provisioning question a human may have to answer before 11 and 12 can proceed.
+
 ## Dependency waves
 
 ```
-Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]
-Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06
-Wave 2: [03 reconcile] ← 01, 02
+Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]
+Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10
+Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11
 ```
 
-Critical path: `01 → 02 → 03`.
+Critical paths: `01 → 02 → 03` (supervision) and `10 → 11 → 12` (workflow landing) — independent chains.
 
 ## Shared conventions
 
