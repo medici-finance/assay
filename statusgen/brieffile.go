@@ -18,6 +18,16 @@ import (
 // Validation is OPT-IN: only files whose frontmatter carries the `schema: brief-v1`
 // marker are parsed here. Legacy briefs (no frontmatter, or a different schema)
 // are exempt and produce no output — see parseBriefFile.
+// floorLintRemedy is the two-stamp remedy the verifier-floor PROBLEMs name
+// (#1170): the routine verify drain may run at a local tier and flip a
+// human-gated brief `verified`, but ONE floor-tier re-verify stamp lands before
+// the human done close — the close workflow refuses without it. Spelled once
+// here and once in closeVerifyFloorRemedy (verifyissues.go), the refusal the
+// close relays onto the card; the two must keep saying the same thing.
+const floorLintRemedy = "remedy (two-stamp model): the routine drain may verify at a local tier, but before the human done close " +
+	"a floor-tier runner re-verifies — re-run the Verify table, append its Evidence rows, re-stamp the Verified cell " +
+	"\"YYYY-MM-DD <runner>\" with that pass leading the cell — then close the card again"
+
 type BriefFile struct {
 	Path     string
 	Brief    string // "<stream>/<NN>", e.g. "example-app/01"
@@ -1506,12 +1516,12 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				if (bf.Gate == "human" || anyYes) && bf.Risk["irreversible"] != "yes" &&
 					(row.Status == "verified" || row.Status == "done") {
 					if reason, failed := verifierFloorFailure(row.Verified); failed {
-						add("%s: risk-flagged brief marked %s but the Verified cell %q does not clear the verifier floor — %s — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, row.Verified, reason)
+						add("%s: risk-flagged brief marked %s but the Verified cell %q does not clear the verifier floor — %s — risk-flagged briefs verify at a strong-tier runner or a human; %s — methodology/19", path, row.Status, row.Verified, reason, floorLintRemedy)
 					} else if reason, failed := evidenceFloorFailure(bf.Evidence); failed {
 						// The cell clears, but Evidence — the record of who actually
 						// ran each row — shows the floor is not truly met. The floor
 						// reads the complete signal, not just the one-line cell.
-						add("%s: risk-flagged brief marked %s but its ## Evidence records rows run below the verifier floor with no strong-tier re-run curing them (%s) — the Verified cell %q names a clearing runner but does not speak for those rows — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, reason, row.Verified)
+						add("%s: risk-flagged brief marked %s but its ## Evidence records rows run below the verifier floor with no strong-tier re-run curing them (%s) — the Verified cell %q names a clearing runner but does not speak for those rows — risk-flagged briefs verify at a strong-tier runner or a human; %s — methodology/19", path, row.Status, reason, row.Verified, floorLintRemedy)
 					}
 				}
 

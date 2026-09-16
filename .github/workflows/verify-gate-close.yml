@@ -16,6 +16,15 @@ name: verify-gate-close
 #     actor on that ruleset's bypass list; the default token's push is rejected
 #     (GH013). Same mechanism, same App, same secrets as the board workflow.
 #
+# Verifier-floor guard (two-stamp model, #1170; see the "Advance ..." step):
+# the routine verify drain may run at a local model tier and flip a human-gated
+# brief `verified`; the human done close needs ONE floor-tier re-verify stamp
+# in the Verified cell first. `statusgen --close-verify` reads that cell (and
+# the brief file's Evidence) BEFORE it writes and refuses below the
+# methodology/19 floor; this workflow relays the refusal onto the card, names
+# the runner + floor + remedy, and REOPENS the card so the human closes it
+# again once the re-verify stamp has landed. A red `done` never reaches main.
+#
 # Human-not-bot guard (see the "Enforce ..." step): GitHub sets
 # `github.event.sender.type` to `User` for a person and `Bot` for a GitHub App /
 # Actions token, so any automated close is rejected. The FULL guard (type == User
@@ -262,9 +271,38 @@ jobs:
                 echo "close-verify refused on retry $attempt — a prior attempt already advanced $brief; treating as success"
                 exit 0
               fi
-              # First attempt refusal, not already-done: genuine bad state (never
-              # verified / not gate:human). Leave the issue closed, comment the
-              # reason, commit nothing.
+              # Verifier-floor refusal (two-stamp model, #1170). statusgen read
+              # the Verified cell the done row would carry — the README cell,
+              # or on the implemented→done path the cell it stamps from the
+              # brief file's Evidence — plus the brief's Evidence rows, and
+              # found a runner below the methodology/19 floor. Landing that flip
+              # would put a red `done` on main AFTER the human signed. So:
+              # relay statusgen's own line (it names the runner, the floor and
+              # the remedy) onto the card, REOPEN the card so the same human
+              # can close it again once the floor-tier re-verify stamp has
+              # landed, and commit nothing. The keyed phrase is the literal
+              # "verifier floor" that closeVerifyFloorRefusal always emits (a
+              # Go test pins it). A bot close is still reopened by the enforce
+              # step above; this branch only ever sees an allowlisted human.
+              #
+              # $out is statusgen's stderr over content already on main; it is
+              # written to a body FILE via printf '%s' (never interpolated into
+              # a script line) and posted with --body-file.
+              if printf '%s' "$out" | grep -q 'verifier floor'; then
+                body_file="${RUNNER_TEMP}/verify-gate-floor-refusal.md"
+                {
+                  printf '%s\n\n' "verify-gate close REFUSED for \`$brief\` — its Verified cell is below the verifier floor (methodology/19, two-stamp model). Reopened; no change committed."
+                  printf '%s\n%s\n%s\n\n' '```' "$out" '```'
+                  printf '%s\n' "Remedy: re-verify at a floor-tier runner (a strong-tier model or a confirmed human), append its Evidence rows, re-stamp the Verified cell \`YYYY-MM-DD <runner>\` with that pass leading the cell, then close this card again."
+                } > "$body_file"
+                gh issue reopen "$ISSUE" --repo "$REPO"
+                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$body_file"
+                echo "::error::close-verify refused for $brief — Verified cell below the verifier floor; card reopened, nothing committed"
+                exit 1
+              fi
+              # First attempt refusal, not already-done, not the floor: genuine
+              # bad state (never verified / not gate:human). Leave the issue
+              # closed, comment the reason, commit nothing.
               gh issue comment "$ISSUE" --repo "$REPO" \
                 --body "Could not advance \`$brief\` to done — statusgen refused (it is not currently \`verified\` / \`gate: human\`). Left closed; no change committed."
               echo "::error::close-verify refused for $brief"
