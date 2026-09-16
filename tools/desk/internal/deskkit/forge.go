@@ -864,6 +864,41 @@ const (
 	// HardeningReadVulnerabilityReporting reads the private-vulnerability-reporting setting
 	// (admin read).
 	HardeningReadVulnerabilityReporting HardeningReadKind = "vulnerability-reporting"
+
+	// --- GitLab kinds (the forge-gitlab GitLab-hardening-reads brief). Each is ONE fixed
+	// endpoint literal returning GitLab's OWN settings document — never a synthesised
+	// GitHub-shaped view — so a checklist is written per forge. The GitHub backend refuses
+	// every one of them by name, exactly as GitLab refuses the GitHub kinds above.
+
+	// HardeningReadProject reads the project document (`GET /projects/:id`, Free):
+	// `.visibility`, `.only_allow_merge_if_pipeline_succeeds`,
+	// `.only_allow_merge_if_all_discussions_are_resolved`, `.ci_config_path`,
+	// `.ci_allow_fork_pipelines_to_run_in_parent_project` (Owner/admin-visible only — absent at
+	// any lower role, so a row on it is could-not-check there), `.secret_push_protection_enabled`
+	// (Ultimate). It is also the GitLab preflight document (ForgeResolution.HardeningRepoDocumentKind).
+	HardeningReadProject HardeningReadKind = "project"
+	// HardeningReadProtectedBranches reads the protected-branches LIST
+	// (`GET /projects/:id/protected_branches`, Free at role level; `user_id`/`group_id` entries
+	// are Premium) as one ARRAY, every page walked, so a caller's `[name=main].field` selector
+	// resolves inside it. `.push_access_levels.0.access_level == 0` ("No one") is the
+	// CE-expressible form of an empty bypass list.
+	HardeningReadProtectedBranches HardeningReadKind = "protected-branches"
+	// HardeningReadProtectedTags reads the protected-tags LIST (`GET /projects/:id/protected_tags`,
+	// Free at role level) as one ARRAY, every page walked.
+	HardeningReadProtectedTags HardeningReadKind = "protected-tags"
+	// HardeningReadPushRules reads the project push rule (`GET /projects/:id/push_rule`,
+	// PREMIUM). On Community Edition the route answers 404/403, which arrives as a
+	// could-not-check carrying a *ForgeAPIError — never an empty document; the CE checklist
+	// records the row as `not available — Premium` and makes no request at all. On Premium a
+	// project with no push rule configured answers the literal document `null`, handed back
+	// as-is (an absence, which the guard's Gated cell classifies).
+	HardeningReadPushRules HardeningReadKind = "push-rules"
+	// HardeningReadApprovals reads the project approval configuration
+	// (`GET /projects/:id/approvals`): `.reset_approvals_on_push`,
+	// `.merge_requests_author_approval`, `.merge_requests_disable_committers_approval`. The read
+	// answers 200 on gitlab.com Free but 404 on some self-managed CE; ENFORCEMENT of the
+	// settings is Premium, so a CE checklist's Required cell records the advisory meaning.
+	HardeningReadApprovals HardeningReadKind = "approvals"
 )
 
 // hardeningReadKinds is the closed vocabulary op 40 serves, in a stable declared order — the
@@ -875,6 +910,30 @@ var hardeningReadKinds = []HardeningReadKind{
 	HardeningReadActionsForkPRApproval,
 	HardeningReadActionsPrivateForkPR,
 	HardeningReadVulnerabilityReporting,
+	HardeningReadProject,
+	HardeningReadProtectedBranches,
+	HardeningReadProtectedTags,
+	HardeningReadPushRules,
+	HardeningReadApprovals,
+}
+
+// hardeningKindForge records WHICH forge serves each kind. The vocabulary is one closed set
+// and the per-forge halves are disjoint: a backend handed the other forge's kind refuses it
+// BY NAME (zero requests), never answers with its own nearest document. Every entry of
+// hardeningReadKinds has exactly one row here (TestForgeGitlabGolden's refusal cases and
+// TestHardeningKindsPartitionByForge pin the partition).
+var hardeningKindForge = map[HardeningReadKind]ForgeKind{
+	HardeningReadRepo:                       ForgeGitHub,
+	HardeningReadRulesets:                   ForgeGitHub,
+	HardeningReadActionsWorkflowPermissions: ForgeGitHub,
+	HardeningReadActionsForkPRApproval:      ForgeGitHub,
+	HardeningReadActionsPrivateForkPR:       ForgeGitHub,
+	HardeningReadVulnerabilityReporting:     ForgeGitHub,
+	HardeningReadProject:                    ForgeGitLab,
+	HardeningReadProtectedBranches:          ForgeGitLab,
+	HardeningReadProtectedTags:              ForgeGitLab,
+	HardeningReadPushRules:                  ForgeGitLab,
+	HardeningReadApprovals:                  ForgeGitLab,
 }
 
 // HardeningReadKinds returns the closed vocabulary op 40 serves, as strings, in a stable
@@ -886,6 +945,70 @@ func HardeningReadKinds() []string {
 		out[i] = string(k)
 	}
 	return out
+}
+
+// hardeningReadKindsFor returns the half of the vocabulary the named forge serves, as strings,
+// in declared order — what a backend's by-name refusal lists so a checklist author sees the
+// kinds THIS forge answers rather than the whole set. Unexported on purpose: no exported
+// function in this package takes a forge selector (TestForgeForRejectsCallerSuppliedForge) —
+// a backend names its OWN kind here, never a caller.
+func hardeningReadKindsFor(served ForgeKind) []string {
+	var out []string
+	for _, k := range hardeningReadKinds {
+		if hardeningKindForge[k] == served {
+			out = append(out, string(k))
+		}
+	}
+	return out
+}
+
+// HardeningReadKindForge reports which forge serves kind. An unknown kind reports "" — a
+// caller validates with ValidateHardeningReadKind first.
+func HardeningReadKindForge(kind HardeningReadKind) ForgeKind {
+	return hardeningKindForge[kind]
+}
+
+// HardeningRepoDocumentKind returns the kind that reads the repository's own top-level
+// document on the RESOLVED forge — `repo` on GitHub, `project` on GitLab. It is the guard's
+// PREFLIGHT read (the read that proves the token can see the repo at all before any
+// per-row absence is allowed to mean "unset"), read off the resolution ResolveForge handed
+// back rather than hard-coded, so a GitLab-resolved run is not refused at the door by a
+// GitHub kind. It hangs off ForgeResolution rather than taking a ForgeKind argument: no
+// exported function in this package accepts a forge selector
+// (TestForgeForRejectsCallerSuppliedForge), and the backend re-validates the kind by name
+// regardless, so a resolution a caller fabricated buys a zero-request refusal from the
+// forge that actually answers — never the other forge's document. A forge this package
+// cannot name is a could-not-check refusal, never a guessed kind.
+func (r ForgeResolution) HardeningRepoDocumentKind() (HardeningReadKind, error) {
+	return hardeningRepoDocumentKind(r.Kind)
+}
+
+// hardeningRepoDocumentKind is the per-forge table behind
+// ForgeResolution.HardeningRepoDocumentKind.
+func hardeningRepoDocumentKind(served ForgeKind) (HardeningReadKind, error) {
+	switch served {
+	case ForgeGitHub:
+		return HardeningReadRepo, nil
+	case ForgeGitLab:
+		return HardeningReadProject, nil
+	default:
+		return "", Unverifiable(fmt.Sprintf(
+			"could-not-check: no hardening preflight document is defined for forge %q", served), nil)
+	}
+}
+
+// refuseHardeningKindForForge is the by-name refusal both backends share for a kind the
+// OTHER forge serves: validated (so an unknown kind still fails on ValidateHardeningReadKind's
+// grounds, never confused with this one), then refused naming this forge, the kind, the
+// forge that does serve it, and the kinds this forge answers — with ZERO requests emitted.
+func refuseHardeningKindForForge(this ForgeKind, kind HardeningReadKind) error {
+	serving := hardeningKindForge[kind]
+	if serving == this {
+		return nil
+	}
+	return Unverifiable(fmt.Sprintf(
+		"could-not-check: %s serves no hardening read of kind %q — it is a %s kind; the %s kinds are: %s",
+		this, kind, serving, this, strings.Join(hardeningReadKindsFor(this), ", ")), nil)
 }
 
 // ValidateHardeningReadKind checks kind against the closed vocabulary BEFORE any request is
@@ -1104,10 +1227,16 @@ type Forge interface {
 	// (TestForgeNoPassthrough's no-endpoint-argument check keys on parameter names, and `kind`
 	// is a closed enum, never a path). The `rulesets` kind performs the list→detail walk
 	// internally and returns the ARRAY of full detail documents, so a caller's `[name=X].field`
-	// selector resolves inside the returned array without a second op on this seam. A kind the
-	// resolved backend does not serve is a could-not-check REFUSAL naming the forge and the
-	// kind — GitLab refuses every kind by name until the forge-gitlab GitLab-hardening-reads follow-up. Consumer:
-	// cmd/repohardenguard's Checker (freeze rule: this op lands with its consumer).
+	// selector resolves inside the returned array without a second op on this seam. The
+	// vocabulary is ONE closed set partitioned per forge (HardeningReadKindForge): GitHub
+	// serves `repo`/`rulesets`/the Actions and vulnerability-reporting kinds, GitLab serves
+	// `project`/`protected-branches`/`protected-tags`/`push-rules`/`approvals` — each a fixed
+	// endpoint literal returning that forge's OWN document. A kind the resolved backend does
+	// not serve is a could-not-check REFUSAL naming the forge, the kind and the forge that
+	// does serve it, emitting zero requests. A tier-gated kind on an edition without it
+	// (`push-rules` on Community Edition) is a could-not-check carrying the *ForgeAPIError,
+	// never an empty document. Consumer: cmd/repohardenguard's Checker (freeze rule: this op
+	// lands with its consumer).
 	RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)
 	// ReadMergeHold reads the current state of a change's merge-hold marker thread (see
 	// MergeHold; the forge-gitlab merge-hold brief). GitHub returns MergeHoldNotApplicable and issues no
@@ -1182,6 +1311,14 @@ type Forge interface {
 	// asked for had been recorded. Consumer: cmd/deskclose (freeze rule: it lands with that
 	// call site). An unknown kind is refused rather than defaulted.
 	CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error
+	// ReopenIssue reopens ONE closed issue. It is CloseIssue's inverse and mirrors its shape
+	// minus the state reason: a state reason is a close-time field on GitHub and has no
+	// GitLab field at all, and reopening clears it on both. It addresses the ISSUE sequence
+	// only — there is no typed twin, because its single consumer (cmd/deskclose's
+	// verify-gate-refire lane) acts on issues carrying the verify-gate label and refuses a
+	// change before any write. Consumer: cmd/deskclose (freeze rule: it lands with that call
+	// site). Reversible by construction: a close undoes it.
+	ReopenIssue(repo ForgeRepo, number int) error
 	// WriteFile writes a file's whole content at a path on a branch (GitHub Contents API ↔
 	// GitLab Repository Files API), as the minted identity the backend holds. It folds three
 	// properties into the one op (see WriteFileInput/WriteFileResult): an idempotency read

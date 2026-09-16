@@ -8,9 +8,14 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// github.go — every remote READ deskclose performs, plus the only two WRITES it can
-// emit (`issue comment` / `issue close`, and their `pr` equivalents). There is no
-// merge verb, no reopen verb and no edit verb anywhere in this package.
+// github.go — every remote READ deskclose performs, plus the WRITES it can emit: a comment
+// and a close (issue or change), and ONE narrow reopen. There is no merge verb and no edit
+// verb anywhere in this package. The reopen (reopenItem) is not a general capability: it
+// has exactly one caller, the verify-gate-refire lane (lanes.go), which is role-scoped to
+// the verifier session and label-scoped to issues already carrying verify-gate, and which
+// always follows the reopen with a close in the SAME invocation — on a surface (the
+// verify-gate sign-off card) the desk cannot unilaterally complete a sign-off on
+// regardless, because the repository's verify-gate close workflow reopens any bot close.
 
 // decisionLabels are the labels that put an item on a human's decision queue.
 //
@@ -184,6 +189,21 @@ func postComment(repo string, n int, kind deskkit.TargetKind, body string) error
 	if _, err := fg.PostCommentTyped(fr, n, kind, body); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: the pre-close comment on %s#%d may or may not have posted", repo, n), err)
+	}
+	return nil
+}
+
+// reopenItem reopens ONE issue through the seam's ReopenIssue. One caller: the
+// verify-gate-refire lane, which has already read the item, refused a change, and required
+// the verify-gate label before reaching this — so the untyped op (issue sequence only) is
+// the right one, not a guess. See the package doc above for why this is not a reopen verb.
+func reopenItem(repo string, n int) error {
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return ferr
+	}
+	if err := fg.ReopenIssue(fr, n); err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: reopening %s#%d did not confirm", repo, n), err)
 	}
 	return nil
 }

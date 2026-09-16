@@ -718,7 +718,16 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 }
 
 // closeVerify flips a brief's README row verified → done and stamps the Reviewed
-// cell with a dated human sign-off. For ANY gate:human brief at `implemented`
+// cell with a dated human sign-off.
+//
+// Two-stamp model (#1170): before it writes, it reads the Verified cell the done
+// row would carry — the README cell on the `verified` path, or the cell it would
+// stamp from the brief file's Evidence on the `implemented` path — and the
+// brief's Evidence rows, and REFUSES (no write) when either is below the
+// methodology/19 verifier floor. The routine drain may verify a human-gated
+// brief at a local tier and flip it `verified`; the human done close needs ONE
+// floor-tier re-verify stamp landed first. Without this read the flip lands on
+// main and its own --lint reddens it after the human has already signed. For ANY gate:human brief at `implemented`
 // whose Evidence records a model verify pass, it accepts `implemented` and advances
 // in one step: Verified cell stamped from the recorded model verifier + its date,
 // Reviewed cell stamped `human:<closer>` + the close date — the recorded independent
@@ -784,7 +793,11 @@ func closeVerify(root, briefID string, now time.Time) error {
 
 	switch row.Status {
 	case "verified":
-		// Standard path: verified → done.
+		// Standard path: verified → done — after the floor read on the cell
+		// the done row will carry (two-stamp model).
+		if err := closeVerifyFloorRefusal(briefID, bf, row.Verified); err != nil {
+			return err
+		}
 		updated, err := flipRowToDone(string(raw), num, reviewedStamp, "")
 		if err != nil {
 			return fmt.Errorf("%s: %w", readme, err)
@@ -807,6 +820,11 @@ func closeVerify(root, briefID string, now time.Time) error {
 			return fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
 		}
 		verifiedStamp := date + " " + runner
+		// The cell this path is about to WRITE comes from the brief file's
+		// Evidence, so the floor read is on that computed stamp (two-stamp model).
+		if err := closeVerifyFloorRefusal(briefID, bf, verifiedStamp); err != nil {
+			return err
+		}
 		updated, err := flipRowToDone(string(raw), num, reviewedStamp, verifiedStamp)
 		if err != nil {
 			return fmt.Errorf("%s: %w", readme, err)
@@ -816,6 +834,46 @@ func closeVerify(root, briefID string, now time.Time) error {
 	default:
 		return fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
 	}
+}
+
+// closeVerifyFloorRemedy is the two-stamp remedy every floor refusal names, so
+// the card comment the close workflow relays tells the human exactly what lands
+// before the card is closed again. It is spelled once here and once in the
+// --lint PROBLEM text (brieffile.go); the two must keep saying the same thing.
+const closeVerifyFloorRemedy = "a human done close needs a floor-tier re-verify stamp first (two-stamp model, methodology/19): " +
+	"re-run the Verify table at a floor-tier runner (a strong-tier model or a confirmed human), append its " +
+	"Evidence rows, re-stamp the Verified cell \"YYYY-MM-DD <runner>\" with that pass leading the cell, then " +
+	"close the card again"
+
+// closeVerifyFloorRefusal is the verifier-floor read a human done close makes
+// BEFORE it writes (two-stamp model, #1170). verifiedCell is the Verified cell
+// the done row would carry; bf.Evidence is the brief file's own record of who
+// ran each row. It applies the SAME two predicates --lint applies at done
+// (verifierFloorFailure on the cell, evidenceFloorFailure on the rows), so a
+// flip this accepts is one the lint on main accepts too. The error text names
+// the runner, the floor, and the remedy, and always carries the phrase
+// "verifier floor" — the close workflow keys its reopen-and-comment branch on
+// that phrase, so it must not be reworded away.
+//
+// Scope is every gate:human brief closeVerify handles, the ruling's literal
+// scope: one floor-tier stamp before the human close. That is deliberately ONE
+// step wider than the lint, which exempts an irreversible brief from the floor
+// because the human-at-verified rule already governs it — a wider refusal here
+// can only send a brief back for a re-verify, never land a red flip.
+func closeVerifyFloorRefusal(briefID string, bf *BriefFile, verifiedCell string) error {
+	if reason, failed := verifierFloorFailure(verifiedCell); failed {
+		runner := ""
+		if m := verifiedTokenRe.FindStringSubmatch(verifiedCell); m != nil {
+			runner = m[1]
+		}
+		return fmt.Errorf("refusing: brief %s is gate: human but its Verified cell %q names runner %q, which does not clear the verifier floor (%s) — %s",
+			briefID, verifiedCell, runner, reason, closeVerifyFloorRemedy)
+	}
+	if reason, failed := evidenceFloorFailure(bf.Evidence); failed {
+		return fmt.Errorf("refusing: brief %s is gate: human but its ## Evidence records rows run only below the verifier floor with no floor-tier re-run curing them (%s) — the Verified cell %q does not speak for those rows — %s",
+			briefID, reason, verifiedCell, closeVerifyFloorRemedy)
+	}
+	return nil
 }
 
 // runCloseVerify is the --close-verify entrypoint. Returns a process exit code;

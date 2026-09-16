@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1 -run 'TestForgeGitlab|TestGitLab'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ ./cmd/repohardenguard/ -count=1 -run 'TestForgeGitlab|TestGitLab|TestHardening'",
   "control": {
     "name": "CONTROL — stop normalising GitLab's lifecycle vocabulary (an MR reports state \"opened\" instead of \"open\")",
     "file": "internal/deskkit/forge_gitlab.go",
@@ -240,6 +240,36 @@
       "file": "cmd/deskdispatch/dispatch.go",
       "old": "\tif len(stale) == 0 && labelsPresent(change.Labels, labels) {",
       "new": "\tif len(stale) == 0 {"
+    },
+    {
+      "name": "swallow a tier-gated 403/404 on the push-rule route into an empty document (a Premium row reads as a value on Community Edition; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tmapped := g.mapErr(http.MethodGet, \"/\"+path, derr)\n\t\tvar fae *ForgeAPIError",
+      "new": "\t\treturn json.RawMessage(\"{}\"), nil, nil\n\t\tmapped := g.mapErr(http.MethodGet, \"/\"+path, derr)\n\t\tvar fae *ForgeAPIError"
+    },
+    {
+      "name": "serve a GitHub kind on the GitLab backend instead of refusing it by name (the partition collapses; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif err := refuseHardeningKindForForge(ForgeGitLab, kind); err != nil {",
+      "new": "\tif err := refuseHardeningKindForForge(ForgeGitLab, kind); false && err != nil {"
+    },
+    {
+      "name": "stop following X-Next-Page on the protected-branches/tags walk (a rule on page 2 is never checked; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn json.Marshal(all)",
+      "new": "\t\tif true {\n\t\t\treturn json.Marshal(all)"
+    },
+    {
+      "name": "hand back a PARTIAL protected-branches list at the page ceiling instead of refusing (GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn nil, Unverifiable(fmt.Sprintf(\n\t\t\"could-not-check: %s still reports more %s entries after %d pages of %d",
+      "new": "\treturn json.Marshal(all)\n\treturn nil, Unverifiable(fmt.Sprintf(\n\t\t\"could-not-check: %s still reports more %s entries after %d pages of %d"
+    },
+    {
+      "name": "refuse GitLab kinds on the GitHub backend no longer (GitHub answers `project` with its own repo document; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif err := refuseHardeningKindForForge(ForgeGitHub, kind); err != nil {",
+      "new": "\tif err := refuseHardeningKindForForge(ForgeGitHub, kind); false && err != nil {"
     }
   ]
 }

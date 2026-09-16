@@ -118,7 +118,7 @@ token (PAT):
 | issue-loop | service account | Developer (30) | `api`, `write_repository` | files/triages issues AND lands its exits (placeholders, closes) as draft MRs on a branch — GitLab refuses MR creation below Developer |
 | intake-loop | service account | Developer (30) | `api`, `write_repository` | files/triages issues AND lands intake entries, specs and brief rows as draft MRs on a branch — GitLab refuses MR creation below Developer |
 | board-writer | service account | Developer (30) + allowed-to-push entry on protected `main` | `api`, `write_repository` | the ruleset-bypass analog |
-| auditor | service account | Reporter (20) | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope |
+| auditor | service account | Reporter (20) for the `project` and `file` reads; **Maintainer (40)** for the protected-branches, protected-tags, approvals and push-rules reads — see §5a | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope (the `read_api` scope is the forge-enforced read-only boundary whatever the role) |
 | cell-issues | not yet mapped on GitLab | — | — | GitHub-only "write-issues" identity today (a narrower, per-purpose issues-filing role, selectable only by name); no GitLab consumer is wired to it yet |
 | promote | usually **no identity at all** — see §3 | — | — | workflow promotion is a human-merged MR into the ci-config project, not a bot act |
 
@@ -822,6 +822,105 @@ Carried verbatim in spirit from spec.md §5 — this doc does not relax any of i
   cannot return the pre-rotation token. A rotation that finds the link gone after its write
   fails at mint time rather than leaving a layout that reads stale later. (#1112)
 - **Audit events** (Premium+) should be reviewed periodically for rotation/use anomalies.
+
+## 5a. Hardening checklist — `repohardenguard` on GitLab
+
+`repohardenguard` compares a project's LIVE settings against a checklist document and reports
+three states per row — `checked-ok`, `checked-wrong`, `could-not-check` — plus
+`not available` for a setting the edition does not offer. It reads through the `auditor`
+identity (§1) and ONE enumerated forge operation over a closed kind vocabulary; a checklist
+row's Read cell is `read <kind>` or `read file <path>`, never an endpoint. **A checklist is
+written per forge**: each GitLab kind is a fixed endpoint returning GitLab's own settings
+document, and the GitHub kinds (`repo`, `rulesets`, …) are refused by name on a GitLab
+project — a GitHub row copied into a GitLab checklist reads `could-not-check` naming both
+forges, never GitLab's nearest document.
+
+### The GitLab kinds, their tier, and the auditor's minimum project role
+
+| Kind | Reads | Tier | Minimum role for the auditor PAT |
+|---|---|---|---|
+| `project` | `GET /projects/:id` — `.visibility`, `.only_allow_merge_if_pipeline_succeeds`, `.only_allow_merge_if_all_discussions_are_resolved`, `.ci_config_path`; `.ci_allow_fork_pipelines_to_run_in_parent_project` (Owner/admin-visible only); `.secret_push_protection_enabled` (Ultimate) | Free | Reporter (20) |
+| `file <path>` | the file's presence on the default branch (SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md) | Free | Reporter (20) |
+| `protected-branches` | `GET /projects/:id/protected_branches`, every page, as one list — `[name=main].allow_force_push`, `[name=main].push_access_levels.0.access_level`, `[name=main].merge_access_levels.0.access_level` | Free at role level; `user_id` / `group_id` entries are Premium | Maintainer (40) — see the note below |
+| `protected-tags` | `GET /projects/:id/protected_tags`, every page — `[name=v*].create_access_levels.0.access_level` | Free at role level | Maintainer (40) — see the note below |
+| `approvals` | `GET /projects/:id/approvals` — `.reset_approvals_on_push`, `.merge_requests_author_approval`, `.merge_requests_disable_committers_approval` | the read answers 200 on gitlab.com Free (404 on some self-managed CE); enforcement is Premium | Maintainer (40) — see the note below |
+| `push-rules` | `GET /projects/:id/push_rule` — `.reject_unsigned_commits`, `.prevent_secrets` | **Premium** — on Community Edition the route answers 404/403 | Maintainer (40) — see the note below |
+
+**The Maintainer rows are a stated minimum, not a measured one.** GitLab's API pages for
+protected branches, protected tags, push rules and project approvals (dereferenced
+2026-09-15) state no minimum role for the GET, and GitLab has historically gated the
+protected-branch settings reads at Maintainer. Before you rely on a checklist, read the
+document back with the auditor PAT itself — `curl -sS -o /dev/null -w '%{http_code}'
+-H "PRIVATE-TOKEN: <auditor PAT>" "$GITLAB_API_BASE/projects/<group>%2F<project>/protected_branches"`
+— and treat `200` as the proof and `403` as "raise the auditor's project role", the same
+edition + read-back rule §0 applies to everything else on this profile. Raising the auditor to
+Maintainer does NOT widen what it can write: the PAT carries only `read_api`, which the forge
+enforces on every request regardless of role. The identity table in §1 records both levels.
+
+### How the `Gated` cell reads on GitLab
+
+`Gated` decides what an ABSENT value means. `public`: the document was read and the field is
+not there, so the setting is off — `checked-wrong`. `admin`: an absence is indistinguishable
+from a permission or tier wall, so it is `could-not-check`, never a pass and never a failure.
+On GitLab that makes `admin` the right cell for every row a tier or role can hide:
+
+- the `push-rules` rows — on Community Edition the route is 404/403, and even on Premium a
+  project with no push rule answers the literal document `null`;
+- the `approvals` rows — some self-managed Community Edition instances answer 404;
+- the Owner-visible project field `ci_allow_fork_pipelines_to_run_in_parent_project`, which
+  is simply missing from the document at any lower role.
+
+A 403 is `could-not-check` on every row whatever the cell says: a permission wall says nothing
+about the value behind it. And the `not available — <tier>` Required cell makes the guard
+issue **no request at all** for that row: on a plan that lacks the feature, asking would only
+produce a wall-shaped error that muddies the two states that matter. Two independent layers
+therefore stand between a Premium endpoint on CE and a false pass — the backend's own
+three-state classification of the 403/404, and the checklist's `not available` short-circuit
+that never asks.
+
+### The Community Edition template
+
+Copy this block into your project's hardening checklist document (the directive names every
+project the document covers; the guard refuses a row naming any other) and point
+`repohardenguard --repo <group>/<project> --checklist <that file>` at it. Required cells are
+the profile's values for a private project; a public project sets `visibility` to `public`.
+Cells that name your CI-config project (§4) are placeholders to replace.
+
+<!-- repohardenguard:repos: example-group/example-project -->
+<!-- repohardenguard:rows:begin -->
+| ID | Repo | Setting | Gated | Read | Field | Required | Set |
+|---|---|---|---|---|---|---|---|
+| visibility | example-group/example-project | project visibility | public | `read project` | visibility | private | Settings → General → Visibility, or `PUT /projects/:id` `visibility` |
+| merge-pipeline | example-group/example-project | pipelines must succeed before merge (B5) | public | `read project` | only_allow_merge_if_pipeline_succeeds | true | `PUT /projects/:id` `only_allow_merge_if_pipeline_succeeds=true` (§3) |
+| merge-threads | example-group/example-project | all threads resolved before merge (B6, the merge-hold gate's server half) | public | `read project` | only_allow_merge_if_all_discussions_are_resolved | true | `PUT /projects/:id` `only_allow_merge_if_all_discussions_are_resolved=true` (§3) |
+| ci-config-path | example-group/example-project | CI definition lives outside the writable project (C6) | public | `read project` | ci_config_path | .gitlab-ci.yml@example-group/ci-config | `PUT /projects/:id` `ci_config_path=.gitlab-ci.yml@<group>/<ci-config project>` (§4) |
+| fork-pipelines | example-group/example-project | fork pipelines cannot run in the parent project (Owner-visible field) | admin | `read project` | ci_allow_fork_pipelines_to_run_in_parent_project | false | Owner: `PUT /projects/:id` `ci_allow_fork_pipelines_to_run_in_parent_project=false` |
+| main-no-force | example-group/example-project | main: force push closed (B1) | public | `read protected-branches` | [name=main].allow_force_push | false | `POST /projects/:id/protected_branches` `name=main&allow_force_push=false` (§3) |
+| main-push-no-one | example-group/example-project | main: Allowed to push = No one (B2 — role-level on CE) | public | `read protected-branches` | [name=main].push_access_levels.0.access_level | 0 | `push_access_level=0` on the same call |
+| main-merge-maintainers | example-group/example-project | main: Allowed to merge = Maintainers | public | `read protected-branches` | [name=main].merge_access_levels.0.access_level | 40 | `merge_access_level=40` on the same call |
+| release-tags | example-group/example-project | v* tags: Allowed to create = Maintainers (B12) | public | `read protected-tags` | [name=v*].create_access_levels.0.access_level | 40 | `POST /projects/:id/protected_tags` `name=v*&create_access_level=40` |
+| approvals-reset | example-group/example-project | approvals reset when commits are added (advisory on CE — B3) | admin | `read approvals` | reset_approvals_on_push | true | `POST /projects/:id/approvals` `reset_approvals_on_push=true` |
+| approvals-no-author | example-group/example-project | the author cannot approve (advisory on CE — B4) | admin | `read approvals` | merge_requests_author_approval | false | `POST /projects/:id/approvals` `merge_requests_author_approval=false` (§3) |
+| approvals-no-committer | example-group/example-project | committers cannot approve (advisory on CE — B4) | admin | `read approvals` | merge_requests_disable_committers_approval | true | `POST /projects/:id/approvals` `merge_requests_disable_committers_approval=true` (§3) |
+| push-rules-signed | example-group/example-project | push rules: reject unsigned commits (C5) | admin | `read push-rules` | reject_unsigned_commits | not available — Premium | n/a on Community Edition |
+| push-rules-secrets | example-group/example-project | push rules: prevent secrets (C5) | admin | `read push-rules` | prevent_secrets | not available — Premium | n/a on Community Edition; the CI leak sweep (§4a) is the layer that does not depend on tier |
+| secret-push-protection | example-group/example-project | secret push protection (C5) | admin | `read project` | secret_push_protection_enabled | not available — Ultimate | n/a below Ultimate |
+| doc-security | example-group/example-project | SECURITY.md present | public | `read file SECURITY.md` | - | present | add the file |
+| doc-contributing | example-group/example-project | CONTRIBUTING.md present | public | `read file CONTRIBUTING.md` | - | present | add the file |
+<!-- repohardenguard:rows:end -->
+
+**On Premium**, swap the two push-rules rows for real requirements — `reject_unsigned_commits`
+Required `true` and `prevent_secrets` Required `true`, `Gated` still `admin` — and, if you
+provisioned the board-writer as an identity-level push entry (§2, the B2 remediation), require
+that entry rather than `access_level` `0`: the identity appears as a `user_id` field in
+`[name=main].push_access_levels`, which Community Edition never renders. **Do not require a
+`user_id` in the CE template** — it fails every CE project. **On Ultimate**, the
+`secret-push-protection` row becomes `secret_push_protection_enabled` Required `true`.
+
+The three `not available` rows above are the profile's existing disclosed degradations
+(§0.1: B2's role-level allowlist and B3/B4's advisory approvals, plus C5's tier note) written
+as rows the guard records on every run — they add no new degradation, and a run that shows
+them is honest, not red.
 
 ## 6. Parity statement
 

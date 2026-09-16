@@ -2224,17 +2224,133 @@ func (g *GitLabForge) ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, e
 		repo.Slug(), ref), nil)
 }
 
-// RepoHardeningRead is a NAMED could-not-check REFUSAL on GitLab for every kind, until
-// the forge-gitlab GitLab-hardening-reads follow-up lands the GitLab kinds (protected branches, protected tags, push rules,
-// approvals). kind is still validated first — an unknown kind refuses on the SAME grounds it
-// would on GitHub (ValidateHardeningReadKind), so the "unknown kind" and "not yet served on
-// GitLab" refusals are never confused with each other in a caller's error text.
+// --- Repo-hardening reads (op 40, the forge-gitlab GitLab-hardening-reads brief) ---
+
+// hardeningGitlabObjectPaths maps each single-DOCUMENT GitLab kind to its ONE fixed endpoint
+// literal (the `%s` is the URL-escaped project path, never a caller-supplied segment).
+// hardeningGitlabListPaths is the same for the two LIST kinds, which are walked page by page
+// (gitlabPerPage per page, gitlabMaxHardeningPage pages) and returned as one array. There is
+// exactly one literal per kind — the two maps together are the proof this is not a
+// passthrough in a different shape.
+var hardeningGitlabObjectPaths = map[HardeningReadKind]string{
+	HardeningReadProject:   "projects/%s",
+	HardeningReadPushRules: "projects/%s/push_rule",
+	HardeningReadApprovals: "projects/%s/approvals",
+}
+
+var hardeningGitlabListPaths = map[HardeningReadKind]string{
+	HardeningReadProtectedBranches: "projects/%s/protected_branches",
+	HardeningReadProtectedTags:     "projects/%s/protected_tags",
+}
+
+// gitlabMaxHardeningPage bounds the protected-branches / protected-tags walk (1000 entries).
+// Reaching it is a REFUSAL, never a truncated array: a checklist row selects an entry by
+// name and reads its absence from the array as "unprotected", so a partial array would turn
+// a rule on page 11 into a checked-wrong the project does not deserve.
+const gitlabMaxHardeningPage = 10
+
+// gitlabTierGatedHardeningKinds are the kinds whose endpoint EXISTS only on a paid tier.
+// A 403/404 on one of these is still a *ForgeAPIError could-not-check (the guard's Gated
+// cell classifies it), but its message additionally names the tier so an operator reading
+// the verdict sees "Community Edition has no push rules" rather than a bare status.
+var gitlabTierGatedHardeningKinds = map[HardeningReadKind]string{
+	HardeningReadPushRules: "push rules are a Premium feature — on Community Edition the route " +
+		"does not exist; record the row as `not available — Premium`",
+	HardeningReadApprovals: "the approval-configuration route answers 404 on some self-managed " +
+		"Community Edition instances (enforcement of these settings is Premium)",
+}
+
+// RepoHardeningRead implements op 40 on GitLab. kind is validated against the closed
+// vocabulary before any request exists (an unknown kind emits ZERO requests), then a GitHub
+// kind (`repo`, `rulesets`, …) is refused BY NAME with zero requests — the symmetric twin of
+// the GitHub backend's refusal of the GitLab kinds. Each GitLab kind is one fixed endpoint
+// literal returning GitLab's OWN document unparsed, so the CALLER'S field selector
+// (repohardenguard's checklist, never this package) decides what inside it matters. A
+// tier-gated route on an edition without it arrives as a could-not-check carrying the
+// *ForgeAPIError (mapErr) — never an empty document standing in for "not available".
 func (g *GitLabForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
 	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
 		return nil, err
 	}
+	if err := refuseHardeningKindForForge(ForgeGitLab, kind); err != nil {
+		return nil, err
+	}
+	if tmpl, ok := hardeningGitlabListPaths[kind]; ok {
+		return g.hardeningWalk(repo, kind, fmt.Sprintf(tmpl, g.projectPath(repo)))
+	}
+	tmpl, ok := hardeningGitlabObjectPaths[kind]
+	if !ok {
+		// Unreachable: the partition check above admitted only a GitLab kind, and every GitLab
+		// kind is in one of the two maps. Kept as could-not-check, never a panic.
+		return nil, Unverifiable(fmt.Sprintf(
+			"RepoHardeningRead: kind %q passed validation but has no GitLab path mapping", kind), nil)
+	}
+	path := fmt.Sprintf(tmpl, g.projectPath(repo))
+	raw, _, err := g.hardeningGetRaw(kind, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// hardeningGetRaw performs ONE GET of a fixed hardening path and returns the body unparsed.
+// opt, when non-nil, is the page selector for a list walk. The error is mapErr's
+// three-state shape, with the tier note appended for a tier-gated kind that answered
+// 403/404 — the *ForgeAPIError stays reachable through errors.As either way, which is what
+// the guard's status classification reads.
+func (g *GitLabForge) hardeningGetRaw(kind HardeningReadKind, path string, opt any) (json.RawMessage, *gitlab.Response, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, nil, err
+	}
+	req, rerr := cl.NewRequest(http.MethodGet, path, opt, nil)
+	if rerr != nil {
+		return nil, nil, Unverifiable(fmt.Sprintf("could-not-check: GET %s could not be built", path), rerr)
+	}
+	var raw json.RawMessage
+	resp, derr := cl.Do(req, &raw)
+	if derr != nil {
+		mapped := g.mapErr(http.MethodGet, "/"+path, derr)
+		var fae *ForgeAPIError
+		if note, gated := gitlabTierGatedHardeningKinds[kind]; gated && errors.As(mapped, &fae) &&
+			(fae.Status == http.StatusForbidden || fae.Status == http.StatusNotFound) {
+			return nil, nil, Unverifiable(fmt.Sprintf("could-not-check: GET /%s — %s — %s",
+				path, gitlabStatusReason(fae.Status), note), fae)
+		}
+		return nil, nil, mapped
+	}
+	if len(raw) == 0 {
+		// A 2xx with no body is not a document. Refuse rather than hand back nothing a
+		// caller could mistake for "empty settings".
+		return nil, nil, Unverifiable(fmt.Sprintf("could-not-check: GET /%s answered with an empty body", path), nil)
+	}
+	return raw, resp, nil
+}
+
+// hardeningWalk reads a LIST kind page by page and returns ONE array of the entries as the
+// forge rendered them. NextPage == 0 is GitLab's authoritative end-of-walk signal; a walk
+// that still has pages after gitlabMaxHardeningPage refuses (see the constant).
+func (g *GitLabForge) hardeningWalk(repo ForgeRepo, kind HardeningReadKind, path string) (json.RawMessage, error) {
+	all := make([]json.RawMessage, 0, gitlabPerPage)
+	for page := 1; page <= gitlabMaxHardeningPage; page++ {
+		raw, resp, err := g.hardeningGetRaw(kind, path, &gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)})
+		if err != nil {
+			return nil, err
+		}
+		var chunk []json.RawMessage
+		if uerr := json.Unmarshal(raw, &chunk); uerr != nil {
+			return nil, Unverifiable(fmt.Sprintf(
+				"could-not-check: GET /%s answered with a document that is not a list", path), uerr)
+		}
+		all = append(all, chunk...)
+		if resp == nil || resp.NextPage == 0 {
+			return json.Marshal(all)
+		}
+	}
 	return nil, Unverifiable(fmt.Sprintf(
-		"could-not-check: gitlab serves no hardening read of kind %q — deferred to the forge-gitlab GitLab-hardening-reads follow-up", kind), nil)
+		"could-not-check: %s still reports more %s entries after %d pages of %d — refusing to hand back a "+
+			"PARTIAL list, because a checklist row reads a named entry's absence from it as unprotected",
+		repo.Slug(), kind, gitlabMaxHardeningPage, gitlabPerPage), nil)
 }
 
 // ChangeDiff is a could-not-check REFUSAL on GitLab, naming the gap. It returns a change's raw
@@ -2893,6 +3009,20 @@ func (g *GitLabForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKin
 	path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), number)
 	_, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number),
 		&gitlab.UpdateMergeRequestOptions{StateEvent: gitlab.Ptr("close")})
+	return g.mapErr(http.MethodPut, path, uerr)
+}
+
+// ReopenIssue reopens an issue via `state_event=reopen` (`PUT /projects/:id/issues/:iid`).
+// CloseIssue's inverse, minus the reason note: there is no reason to record on a reopen, and
+// GitLab keeps no state-reason field to clear.
+func (g *GitLabForge) ReopenIssue(repo ForgeRepo, number int) error {
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/projects/%s/issues/%d", g.projectPath(repo), number)
+	_, _, uerr := cl.Issues.UpdateIssue(repo.Slug(), int64(number),
+		&gitlab.UpdateIssueOptions{StateEvent: gitlab.Ptr("reopen")})
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 

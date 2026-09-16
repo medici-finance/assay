@@ -304,6 +304,13 @@ could-not-check, never "no repos".
   token clears it (any other role is refused, exit 5) — never a raw label write. A worker that closes its own PR as superseded
   by hand has skipped the only independent check on "the other PR carries my scope" — the class of
   error the lane exists to catch. A `superseded?` PR is parked, not orphaned: never re-dispatch it.
+- **A worker's OWN unreviewed draft is the one thing it may withdraw itself**: `deskclose
+  self-withdraw -R <repo> <N> --because abandoned` (or `--because superseded --by <target>`, the
+  target recorded, not verified). The tool closes only a DRAFT whose author is the acting App —
+  pinned by login AND roster bot id — and refuses a PR out for review, another author's item, or
+  anything carrying `needs-decision`. It cites no ruling and needs no disposition record: it is the
+  authority a human already has over their own pull request, nothing wider. A PR that has left
+  draft is the reviewers' to retire through the ruled lanes above.
 - A red default branch is work: where the fix is mechanical this desk dispatches it like any other
   item; where it is not, it is filed (§Output contract) and named in the tick's line.
 - The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick.

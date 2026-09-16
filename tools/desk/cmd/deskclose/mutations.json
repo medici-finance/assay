@@ -96,6 +96,96 @@
       "file": "cmd/deskclose/verbs.go",
       "old": "\tkind, kerr := deskkit.ResolveStatedKind(\"the item number\", ref, flagKind)",
       "new": "\tkind, kerr := flagKind, error(nil)"
+    },
+    {
+      "name": "self-withdraw: the ID half of the authorship pin is disabled (a login-only match closes a draft the App did not author)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif pr.Author.ID != self.id {",
+      "new": "\tif false && pr.Author.ID != self.id {"
+    },
+    {
+      "name": "self-withdraw: the LOGIN half of the authorship pin is disabled (another role's session withdraws the worker's draft)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif !deskkit.SameActor(pr.Author.Login, self.login) {",
+      "new": "\tif false && !deskkit.SameActor(pr.Author.Login, self.login) {"
+    },
+    {
+      "name": "self-withdraw: an UNPINNED roster id is rounded up to a match (could-not-check becomes a login-only pass)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif !ok || ident.ID == 0 {",
+      "new": "\tif !ok {"
+    },
+    {
+      "name": "self-withdraw: the draft gate is disabled (a PR out for review becomes self-closeable — a general self-close tool)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif !pr.Draft {",
+      "new": "\tif false && !pr.Draft {"
+    },
+    {
+      "name": "self-withdraw: the decision-label refusal is skipped on the new code path",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif err := refuseDecisionItem(r.repo, it); err != nil {",
+      "new": "\tif err := refuseDecisionItem(r.repo, it); err != nil && false {"
+    },
+    {
+      "name": "self-withdraw: --because superseded no longer requires --by (the replacing item goes unrecorded)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\t\tif target == \"\" {",
+      "new": "\t\tif false && target == \"\" {"
+    },
+    {
+      "name": "self-withdraw: a stated ISSUE kind is no longer refused pre-flight",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif c.kind == deskkit.TargetIssue {",
+      "new": "\tif false && c.kind == deskkit.TargetIssue {"
+    },
+    {
+      "name": "verify-gate-refire: the role gate falls through to accept (a worker or reviewer session re-fires a card)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif mintedRole != roleVerifier {",
+      "new": "\tif false && mintedRole != roleVerifier {"
+    },
+    {
+      "name": "verify-gate-refire: the label gate is disabled (the lane becomes the general reopen tool the package doc says does not exist)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif !hasLabel(it, deskkit.VerifyGateLabel) {",
+      "new": "\tif false && !hasLabel(it, deskkit.VerifyGateLabel) {"
+    },
+    {
+      "name": "verify-gate-refire: a pull request is no longer refused as a card",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif it.isPR() {",
+      "new": "\tif false && it.isPR() {"
+    },
+    {
+      "name": "verify-gate-refire: a stated CHANGE kind is no longer refused pre-flight",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif c.kind == deskkit.TargetChange {",
+      "new": "\tif false && c.kind == deskkit.TargetChange {"
+    },
+    {
+      "name": "verify-gate-refire: --reason becomes optional (the trail no longer states why the cycle ran)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif why == \"\" {",
+      "new": "\tif false && why == \"\" {"
+    },
+    {
+      "name": "verify-gate-refire: the reopen leg is dropped (comment + close on an already-closed card, no re-fire)",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif err := reopenItem(c.repo, n); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "verify-gate-refire: the decision-label refusal is skipped on the new code path",
+      "file": "cmd/deskclose/lanes.go",
+      "old": "\tif err := refuseDecisionItem(c.repo, it); err != nil {",
+      "new": "\tif err := refuseDecisionItem(c.repo, it); err != nil && false {"
+    },
+    {
+      "name": "self-withdraw leaks into the manifest row modes (a human-ruled batch could invoke a lane the ruling never named)",
+      "file": "cmd/deskclose/verbs.go",
+      "old": "func rowModes() []string { return []string{modeDuplicate, modeSuperseded, modeReviewRequest} }",
+      "new": "func rowModes() []string {\n\treturn []string{modeDuplicate, modeSuperseded, modeReviewRequest, modeSelfWithdraw}\n}"
     }
   ]
 }

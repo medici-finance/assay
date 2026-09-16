@@ -1731,6 +1731,13 @@ func (g *GitHubForge) CloseIssueTyped(repo ForgeRepo, number int, kind TargetKin
 	return g.CloseIssue(repo, number, stateReason)
 }
 
+// ReopenIssue reopens an issue (`PATCH /repos/{o}/{r}/issues/{n}` with `state: open`). No
+// state reason travels: GitHub records one at close time only, and reopening clears it.
+func (g *GitHubForge) ReopenIssue(repo ForgeRepo, number int) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d", repo.Owner, repo.Name, number)
+	return g.doJSON(http.MethodPatch, path, map[string]any{"state": "open"}, nil)
+}
+
 // EditChange replaces a change's OWN title/body (`PATCH /repos/{o}/{r}/pulls/{n}`) — the change
 // description, not a comment. An empty field is not sent, so a body-only edit does not blank the
 // title (deskpr edit's case) and vice versa; asking to change NEITHER is a could-not-check
@@ -1810,11 +1817,16 @@ var hardeningGithubPaths = map[HardeningReadKind]string{
 }
 
 // RepoHardeningRead implements op 40 on GitHub: kind is validated against the closed
-// vocabulary before any request exists, so an unknown kind emits ZERO requests. Every kind
+// vocabulary before any request exists, so an unknown kind emits ZERO requests, and a
+// GitLab kind (`project`, `protected-branches`, …) is refused BY NAME with zero requests —
+// the symmetric twin of the GitLab backend's refusal of the GitHub kinds. Every kind
 // but `rulesets` is one fixed GET; `rulesets` performs the list→detail walk and returns the
 // ARRAY of detail documents (hardeningRulesets).
 func (g *GitHubForge) RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error) {
 	if _, err := ValidateHardeningReadKind(string(kind)); err != nil {
+		return nil, err
+	}
+	if err := refuseHardeningKindForForge(ForgeGitHub, kind); err != nil {
 		return nil, err
 	}
 	if kind == HardeningReadRulesets {

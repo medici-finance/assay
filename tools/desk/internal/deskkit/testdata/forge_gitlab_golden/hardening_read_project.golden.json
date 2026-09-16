@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    }
+  ],
+  "result": {
+    "ci_allow_fork_pipelines_to_run_in_parent_project": false,
+    "ci_config_path": ".gitlab-ci.yml@example-group/ci-config",
+    "id": 12,
+    "only_allow_merge_if_all_discussions_are_resolved": true,
+    "only_allow_merge_if_pipeline_succeeds": true,
+    "visibility": "private"
+  }
+}

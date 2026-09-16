@@ -30,8 +30,16 @@ type stubIssueWire struct {
 
 type stubPullWire struct {
 	Number int    `json:"number"`
+	Title  string `json:"title"`
 	State  string `json:"state"`
 	Merged bool   `json:"merged"`
+	Draft  bool   `json:"draft"`
+	User   struct {
+		Login string `json:"login"`
+		ID    int64  `json:"id"`
+		Type  string `json:"type"`
+	} `json:"user"`
+	Labels []struct{ Name string } `json:"labels"`
 }
 
 type stubCommentWire struct {
@@ -172,7 +180,30 @@ func (s *stubRemote) GetPullRequest(fr deskkit.ForgeRepo, n int) (*deskkit.PullR
 	if err := json.Unmarshal([]byte(j), &w); err != nil {
 		return nil, err
 	}
-	return &deskkit.PullRequest{Number: w.Number, State: w.State, Merged: w.Merged}, nil
+	labels := make([]string, 0, len(w.Labels))
+	for _, l := range w.Labels {
+		labels = append(labels, l.Name)
+	}
+	return &deskkit.PullRequest{
+		Number: w.Number, Title: w.Title, State: w.State, Merged: w.Merged, Draft: w.Draft,
+		Author: deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
+		Labels: labels,
+	}, nil
+}
+
+// ReopenIssue records the reopen as a gh-shaped `issue reopen` argv — counted by writes(),
+// so a refusal path that reopened anything shows up as a write — and flips the fixture back
+// to open, so the re-close that follows in the same invocation sees an open item.
+func (s *stubRemote) ReopenIssue(fr deskkit.ForgeRepo, n int) error {
+	key := fr.Slug() + "#" + strconv.Itoa(n)
+	if s.stubIsPRAt(key) {
+		return fmt.Errorf("reopen addressed %s, which is a pull request — ReopenIssue is the issue sequence only", key)
+	}
+	s.calls = append(s.calls, []string{"issue", "reopen", strconv.Itoa(n), "-R", fr.Slug()})
+	if v, ok := s.items[key]; ok {
+		s.items[key] = strings.Replace(v, `"state":"closed"`, `"state":"open"`, 1)
+	}
+	return nil
 }
 
 // commentItem parses a comment fixture's issue_url into "owner/name#N".

@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/approvals"
+    }
+  ],
+  "result": {
+    "approvals_before_merge": 0,
+    "merge_requests_author_approval": false,
+    "merge_requests_disable_committers_approval": true,
+    "reset_approvals_on_push": true
+  }
+}
