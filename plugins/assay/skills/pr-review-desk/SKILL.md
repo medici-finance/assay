@@ -458,12 +458,19 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
 - **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
   (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
   never a judgment call — no reviewer edits the board itself:
-  1. **The diff touches a generated-table region** — any hunk inside a stream README's
-     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers →
-     `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." Never fix the table in review, and
-     never waive this for a "substantively correct" edit — correctness there is `statusgen`'s to
-     certify, not the reviewer's.
+  1. **The diff touches a generated-table region** — a hunk inside a stream README's
+     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is ADMITTED only
+     when it is byte-identical to what `statusgen regen --readmes` produces on the PR's tree and the
+     PR body states that; otherwise → `--request-changes`, one line: "hand edit inside the generated
+     table — statusgen derives this row from the PR's own trailer + state; drop the hunk." The
+     carve-out is mechanical, not a judgment call: check out the PR tree, run
+     `statusgen regen --readmes`, and admit the hunk when the tree is then clean (empty diff); bounce
+     any hunk that does not reproduce that way. It exists because an authoring PR that adds a brief
+     MUST carry the regenerated rows or `statusgen --lint` fails on the PR head — the new row's
+     depends/unblocks/consumers references dangle — so a flat bounce made a compliant, CI-green state
+     unreachable. This never licenses fixing the table in review: correctness there is `statusgen`'s
+     to certify, not the reviewer's, and the carve-out only lets an authoring PR carry the tool's own
+     unmodified output.
   2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
      line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
      can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
