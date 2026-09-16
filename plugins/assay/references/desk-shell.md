@@ -17,7 +17,8 @@ narrowed by it. Where a neutral `capability:<name>` already names a mechanism, t
 that vocabulary and names a harness only where the mechanism genuinely is harness-specific.
 
 **House values never appear in this file.** Account slugs and bot user ids, absolute checkout
-paths, the roster/config path, the stream-root map, and the driver's name are all deferred to
+paths, the roster/config path, the stream-root map, the cell name and comms gateway address, and the
+driver's name are all deferred to
 the consuming project's own house-rules doc (`CLAUDE.md`) — this reference states the mechanism
 and the shape, never a concrete value. That deferral is the whole point of the file: one neutral
 reference the dispatch kit loads, with the values resolved by the project layer.
@@ -147,3 +148,43 @@ verb's output shape here — it belongs to that brief.
 installed where you are aiming it.
 
 **Correct form.** `desktoken coverage <role>`.
+
+## Cross-desk transport — the comms lane
+
+**Mechanism.** A hand-off to another desk is addressed to that role's LANE at the cell gateway,
+through the client verbs `deskcomms send` (payload on stdin; `--to <role>`, `--verb <verb>`,
+`--ref <id>` repeatable, `--class routine|sensitive`, `--to-cell <cell>` for the coordinator's
+cross-cell sends only), `deskcomms poll` (this session's own per-role mailbox) and
+`deskcomms ack <id>` (moves, never deletes). The sender's `{cell, role}` come from the session
+context the launcher exports — the cell marker and the role marker `deskcomms --help` names —
+never from an argument: a caller says who a message is FOR, never who it is FROM. The gateway's
+loopback address and the per-role signing key are read from the environment variables that same
+help text names; their VALUES are the project's cell config (the key file is mode 0600, never
+committed). The client preflight (reserved-verb → identity → parse → lane ACL → content scan →
+rate limit → mint → submit) calls the same functions the gateway re-runs authoritatively, so a
+refusal here is behaviour-identical to the gateway's — and an agent that never runs the client
+verb meets the whole stack at the gateway anyway. There is no local-spool fallback: an
+unreachable gateway is a refusal, not a queue. Which verb a hand-off uses, and the five hand-off
+kinds, are stated once in the "Cross-desk hand-offs — the lane verbs" section every desk-role
+skill carries; this file owns only the transport.
+
+**Signal.** `refused: reserved-verb …` (a human-gate move named as a verb); `refused:
+cross-cell-verb …` or an out-of-lane refusal (the lane ACL); `session identity is not
+established` (the cell or role marker is missing from THIS shell); a gateway-unreachable refusal
+(the plane is not enabled here, or the address is unset). Exit **3** disabled · **4**
+rate-limited · **5** refused · **6** unverifiable.
+
+**Correct form.** Export the markers in the SAME chain as the verb (§Loop and session markers),
+then ONE send with the kind on the payload's first line:
+
+```
+printf '%s\n' 'request-act' '<the one action, plus its evidence pointers>' \
+  | deskcomms send --to <role> --verb handoff --ref <issue-or-pr-id>
+deskcomms poll            # every sweep: read your own lane
+deskcomms ack <id>        # once acted on
+```
+
+Before the cell's comms plane is enabled (a human-gated cutover; config-off until then) every
+verb refuses, and the harness's same-box session channel is the pre-cutover fallback only: a
+hand-off it carried is recorded in the hand-off note, and the channel is retired the moment the
+cutover is recorded.

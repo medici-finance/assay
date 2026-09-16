@@ -73,6 +73,38 @@ The mirror-image INBOUND prose layer — a peer's message arriving over the A2A
 server — is the symmetric inbound router's concern, a separate layer landing
 elsewhere; this gate is the outbound half only.
 
+## Refusal journal (#1165)
+
+Every refused inbound — on either transport — writes **one line** to the same
+`<queue-dir>/journal.log` the drain's landings go to and the daily
+`commsloop sweep` reads. Before this, a refusal was visible only on the
+client receipt, so a sustained probe against the gateway (forged peers,
+out-of-lane submits, replayed nonces) left no out-of-band trace and the
+sweep's "no violations" was could-not-check rather than a measurement.
+
+- **Shape** (`internal/commsqueue` `RefusalRecord`, the one definition both
+  binaries share): `kind:"refused"`, the distinct **refusal kind** (one per
+  typed refusal: `peer-unauthenticated`, `carrier-malformed`,
+  `envelope-parse`, `unknown-cell`, `bad-signature`, `expired`,
+  `not-yet-valid`, `replay`, `identity-mismatch`, `assertion-invalid`,
+  `lane-denied`, `cross-cell-pair`, `cross-cell-verb`, `duplicate`,
+  `budget-exhausted`, `rate-limiter-unconfigured`, `kill-switch`, `other`),
+  the **lane pair and sender identity as presented** (unverified — a refused
+  message has by definition not passed verification), this gateway's own
+  cell, the gateway clock's timestamp, and a sha256 digest of the raw bytes.
+- **Never the payload.** No payload bytes, no assertion, no free-text error
+  detail (which can echo untrusted field values) — the digest-only ruling
+  that binds a prose consult binds a refusal. The record type has no such
+  field by construction and a test pins it.
+- **The refusal never depends on the write.** A journal write failure is
+  appended to the receipt detail (`…; commsgw: refusal journal write
+  failed: …`) so the sender sees the gateway refused AND could not record
+  it; the refusal itself stands unchanged.
+- **The sweep counts them** per presented sender and per presented
+  destination lane; at or over `--refusal-threshold` (default 10 per sweep
+  window) it reports a `refusal-threshold` finding — see
+  `../commsloop/sweep.go`.
+
 ## Replay window and clock skew (#1951)
 
 This gateway's assertion verification runs against two values from

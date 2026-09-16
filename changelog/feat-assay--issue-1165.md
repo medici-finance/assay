@@ -1,0 +1,3 @@
+### Added
+- `commsgw` journals every refused inbound — on both the loopback socket and the A2A transport — as one `kind:"refused"` line on the queue's `journal.log`: the distinct refusal kind, the lane pair and sender identity as presented, the gateway cell, a timestamp and a digest of the raw bytes; never the payload (#1165).
+- `commsloop sweep` counts gateway refusals per presented sender and per presented destination lane and reports a `refusal-threshold` finding at or over `--refusal-threshold` (default 10 per sweep window; negative disables); the report line now carries `refused=N` (#1165).

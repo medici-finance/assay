@@ -1,0 +1,12 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues",
+      "query": "page=1\u0026per_page=100\u0026search=flip+race+relabel"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/issues?search=flip+race+relabel — permission or tier gate (HTTP 403): the token's role, or the instance's GitLab tier, does not expose this endpoint: forge API GET /projects/medici-finance%2Fassay/issues?search=flip+race+relabel returned HTTP 403",
+  "not_found": false
+}

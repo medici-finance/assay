@@ -551,9 +551,10 @@ issue list. Two states:
    is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
    concerns one), then act. It is the ONE acknowledgement line the floor above permits — not
    narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
-   quote, so a misread is corrected on your next turn. To hand work to another desk, address it —
-   `deskfile new --to <role> …` files a durable message that desk's own sweep leads with — never a
-   typed relay through the human.
+   quote, so a misread is corrected on your next turn. To hand work to another desk, address its
+   LANE — `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk
+   hand-offs), `deskfile new --to <role> …` for the durable tracker state that desk's own sweep
+   leads with — never a typed relay through the human, and never a message to its session.
 
 **A question never stops the window.** `question`, `help wanted` and `needs-decision` are filings, not
 console stops: label + comment the item saying what is needed and from whom, then **carry on with the
@@ -665,12 +666,62 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 
+## Cross-desk hand-offs — the lane verbs
+
+Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
+window", never a typed relay through the driver, and never the harness's own same-box session
+channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
+payload on stdin, every issue / PR / brief id it concerns carried as a `--ref`:
+
+    deskcomms send --to <role> [--to-cell <cell>] --verb <verb> [--class routine|sensitive] [--ref <id>]... < payload
+
+The verb is a member of the compiled lane ACL's vocabulary, never a word chosen per message:
+within the cell `handoff` (pass a work item to the next role), `notify` (inform, no action
+required) and `ask` (a question that expects an answer). Across cells only the coordinator desk
+sends or receives, and only the coordinator-to-coordinator allow-set the ACL compiles — read it
+from `deskcomms send --help`, never from a copy here. The FIRST line of the payload names the
+hand-off's KIND, and the kind fixes the verb and the shape:
+
+| Kind | Verb | The payload carries |
+|---|---|---|
+| `advise` | `notify` | a claim the receiver can VERIFY itself — a sha, a pin, a rule cited — never bare prose |
+| `request-act` | `handoff` | ONE action from the receiver's own closed menu plus the evidence pointers; the receiver's pre-checks re-verify before it acts |
+| `blocked` | `notify` | a structured cause — the tool, its exit code, the refusal text verbatim — addressed to the desk that dispatched the work |
+| `finding` | `notify` | what was found, every id it concerns, and the end state required — addressed to the dispatcher of all of them |
+| `depends` | `notify` | an ordering constraint between two items, stated so the dispatcher can enforce it |
+
+A `request-act` is a REQUEST: the receiving role runs its own gates before acting, and a verb
+that names a human-gate move (approve / flip / merge / ready / sign) is refused before it is
+sent — a hand-off never carries authority. Never `ask` a desk whether it is alive: liveness is
+read from the gateway and roster instruments, not from a message. The lane is the mailbox for
+ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
+issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
+relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
+every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+an unacked item is still owed). The sender's cell and role come from the session context, never
+from a flag; the gateway address and signing key resolve from the project's house layer by NAME
+(the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
+verb's preflight is fail-fast convenience, and every check — identity, lane ACL, content scan,
+rate limit, kill switch, the prose gate on every send — is re-run at the gateway for every
+participant, including an agent on another harness that never runs these verbs and integrates
+through the gateway API directly. The verbs run silent inside this desk's noise floor — one line
+per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
+unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
+resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
+driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
+comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
+session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
+every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
+recorded. It is never the sanctioned path.
+
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
 self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
 the window; every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over) is acknowledged or filed, never assumed delivered.
+cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
+assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped
 batch drains, note the transition in the hand-off note and widen back to the

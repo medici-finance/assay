@@ -163,6 +163,24 @@ disclosed or removed.
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — 2026-09-15 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline (KUBECONFIG=/dev/null). No live GitLab/GitHub API calls.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | build + package tests | exit 0 | exit 0, all packages ok | 2026-09-15 | sonnet-5-verifier |
+| 2 | fetcher routes through resolved forge (evidence verb) | exit 0 PASS, resolved not asserted | exit 0, PASS -- test actually calls RepoVisibility against the in-memory fake and checks call count/arg, not just a type assertion | 2026-09-15 | sonnet-5-verifier |
+| 3 | same for reply verb | exit 0 PASS | exit 0, PASS | 2026-09-15 | sonnet-5-verifier |
+| 4 | cross-command exhaustive enumeration | exit 0 PASS | exit 0, PASS; independently confirmed via direct repo traversal that the test's glob depth covers every gate site in the current tree (one latent depth-limitation noted below, not a live defect) | 2026-09-15 | sonnet-5-verifier |
+| 5 | anti-vacuity: fails pre-swap | exit non-zero at a type assertion, no network call | exit 1, exact expected failure at the type-assertion line, 0.01s runtime -- confirmed via a scratch-dir revert of just the one production line (test files didn't exist pre-swap, so a parent-commit checkout wasn't possible; used the brief's own documented alternative) | 2026-09-15 | sonnet-5-verifier |
+| 6 | superseded adapter fully removed | count 0 | count 0, only prose mentions remain in test comments | 2026-09-15 | sonnet-5-verifier |
+| 7 | consumers routing | exit 0 | exit 0 | 2026-09-15 | sonnet-5-verifier |
+| 8 | pinned lint | exit 0 | exit 0, LINT: PASS | 2026-09-15 | sonnet-5-verifier |
+
+RISK-VALUE: DERIVED -- enumerated every gate-fetcher construction site fleet-wide (not diff-scoped): two pre-existing sites out of scope, two fixed by this brief (verified), and one (deskrelease/cut.go) deliberately ruled to stay single-forge with the reasoning recorded in-code AND pinned as a named exception in the enumeration test itself -- satisfying the brief's route-or-record requirement. Independently confirmed via full-tree grep that today's tree has no other HTTPRepoInfoFetcher construction site anywhere. Noted (not filed by the verifier, correctly deferred to this desk): the enumeration test's glob only scans one level under cmd/, a latent gap for a hypothetical future nested-package gate site -- currently inert since no such site exists today.
+
+**VERIFY: PASS** -- all 8 rows pass exactly as specified, including a genuine anti-vacuity proof and an exhaustive fleet-wide site enumeration.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
