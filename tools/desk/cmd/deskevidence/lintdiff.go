@@ -116,10 +116,25 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte) (introduced []st
 // (os.TempDir(), exactly as deskpreflight's runStatusgenLint does — cmd/deskpreflight/main.go
 // — so statusgen scans exactly root and never the calling process's own cwd) and returns the
 // PROBLEM: lines it printed. statusgen not being on PATH is Unverifiable (could-not-check,
-// never a silent pass — C-4 of the three-state instrument rule, docs/three-state-instrument-rule.md);
-// any other nonzero exit is the normal "problems found" outcome, not a runner failure —
-// mirroring statusgen's own self-shell in statusgen/difflint.go (productionDiffLintRunner),
-// which draws the same *exec.ExitError-is-not-an-error line.
+// never a silent pass — C-4 of the three-state instrument rule, docs/three-state-instrument-rule.md).
+//
+// A nonzero exit is read against the PROBLEM: lines it carries:
+//
+//   - exit 0                    → the tree linted clean; return no problems.
+//   - exit nonzero, ≥1 PROBLEM: → the normal "problems found" outcome, not a runner
+//     failure; return those PROBLEM lines. Mirrors statusgen's own self-shell in
+//     statusgen/difflint.go (productionDiffLintRunner), which draws the same
+//     *exec.ExitError-is-not-an-error line.
+//   - exit nonzero, 0 PROBLEM:  → statusgen could not EVALUATE this root at all. It printed
+//     a structural diagnostic (`statusgen: reading …/docs/streams: no such file or
+//     directory`, `statusgen: stream directory x has no README.md`, …) and `LINT: FAIL`,
+//     but no board PROBLEM — the lint never ran over an evaluable board. This is
+//     could-not-check (Unverifiable), NOT "0 problems / clean": folding it into a clean
+//     report is the exact silent-pass #1078 caught, where a landing run against a root that
+//     is not a full, current checkout of the target repo (the scratchpad / bare-cwd
+//     invocation verify-desk's own skill documents) would sail EVERY landing through,
+//     including the sibling-path bug this guard exists to catch. Reporting it Unverifiable
+//     makes cmdEvidence refuse the landing (exit 6) rather than trust an un-evaluable lint.
 func statusgenLintAt(root string) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot check this landing for introduced PROBLEMs", err)
@@ -127,16 +142,34 @@ func statusgenLintAt(root string) ([]string, error) {
 	cmd := exec.Command("statusgen", "--root", root, "--lint")
 	cmd.Dir = os.TempDir()
 	out, cerr := cmd.CombinedOutput()
+	exitedNonZero := false
 	if cerr != nil {
 		if _, ok := cerr.(*exec.ExitError); !ok {
 			return nil, deskkit.Unverifiable("could not run statusgen --lint at "+root, cerr)
 		}
+		exitedNonZero = true
 	}
 	var problems []string
+	var diag string // first structural/summary line, for the could-not-evaluate message
 	for _, ln := range strings.Split(string(out), "\n") {
-		if t := strings.TrimSpace(ln); strings.HasPrefix(t, "PROBLEM:") {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, "PROBLEM:") {
 			problems = append(problems, t)
+			continue
 		}
+		if diag == "" && (strings.HasPrefix(t, "statusgen:") || strings.HasPrefix(t, "LINT: FAIL")) {
+			diag = t
+		}
+	}
+	if exitedNonZero && len(problems) == 0 {
+		msg := "statusgen --lint could not evaluate " + root +
+			" for the landing PROBLEM-diff — it exited nonzero with no PROBLEM lines, " +
+			"meaning the root has no evaluable docs/streams tree (an incomplete or absent " +
+			"checkout of the target repo), so a clean report cannot be trusted"
+		if diag != "" {
+			msg += ": " + diag
+		}
+		return nil, deskkit.Unverifiable(msg, nil)
 	}
 	return problems, nil
 }

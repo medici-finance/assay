@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -248,6 +249,93 @@ exit 0`)
 	}
 	if len(got) != 0 {
 		t.Fatalf("problems = %v, want none", got)
+	}
+}
+
+// TestStatusgenLintAtStructuralFailureIsUnverifiable: the case the correctness review of
+// #1083 caught. When the root is NOT a full, current checkout of the target repo (the
+// scratchpad / bare-cwd invocation verify-desk's own skill documents), `statusgen --lint`
+// exits nonzero on a STRUCTURAL failure — it cannot even read docs/streams, or a stream dir
+// has no README.md — printing a `statusgen: …` diagnostic and `LINT: FAIL N problem(s)` but
+// NO `PROBLEM:` line. The old parser folded that into "0 problems / clean", so the whole
+// PROBLEM-diff guard silently no-opped on exactly the roots production hands it. It must be
+// could-not-check (Unverifiable), never a silent pass.
+//
+// The scripts below reproduce the REAL statusgen v-on-this-branch output VERBATIM (captured
+// by building the binary from this tree and running it against a root with no docs/streams
+// and against a stream dir with no README) — not a hand-shaped stub that already prints in
+// the wanted form, which is the stub-validation trap the review named: proving the parser
+// accepts well-formed PROBLEM input never proves the real tool's structural-failure path.
+func TestStatusgenLintAtStructuralFailureIsUnverifiable(t *testing.T) {
+	cases := []struct {
+		name   string
+		script string
+	}{
+		{
+			name: "no docs/streams tree",
+			// Real output shape: `statusgen: reading <root>/docs/streams: open <root>/docs/streams: no such file or directory`
+			script: `echo "assay-config: class=write source=config file /some/roster.env configured=true"
+echo "statusgen: reading /scratch/root/docs/streams: open /scratch/root/docs/streams: no such file or directory" 1>&2
+echo "LINT: FAIL 1 problem(s)" 1>&2
+exit 1`,
+		},
+		{
+			name: "stream dir has no README",
+			// Real output shape: `statusgen: stream directory x has no README.md`
+			script: `echo "assay-config: class=write source=config file /some/roster.env configured=true"
+echo "statusgen: stream directory x has no README.md" 1>&2
+echo "LINT: FAIL 1 problem(s)" 1>&2
+exit 1`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeStatusgenOnPath(t, tc.script)
+			got, err := statusgenLintAt(t.TempDir())
+			if err == nil {
+				t.Fatalf("statusgenLintAt on a structural failure returned (problems=%v, nil err) — "+
+					"want could-not-check; a nonzero exit with no PROBLEM lines must not fold into a clean report", got)
+			}
+			var de *deskkit.DeskError
+			if !asDeskError(err, &de) || de.Code != deskkit.ExitUnverifiable {
+				t.Fatalf("error = %v, want an Unverifiable DeskError (exit %d)", err, deskkit.ExitUnverifiable)
+			}
+			// The structural diagnostic must be carried through so the operator sees WHY
+			// the landing could not be verified, not just that it could not.
+			if !strings.Contains(de.Msg, "statusgen:") {
+				t.Fatalf("Unverifiable message %q does not carry the statusgen structural diagnostic", de.Msg)
+			}
+		})
+	}
+}
+
+// TestStatusgenLintAtRealBinaryStructuralFailure exercises the ACTUAL statusgen binary
+// (not a fake script) against an incomplete root, closing the stub-validation trap end to
+// end: it proves the real tool's structural-failure exit is read as could-not-check. It is
+// SKIPPED when statusgen is not on PATH — the fake-script cases above are the always-run
+// coverage; this is the belt-and-braces real-tool check when a statusgen happens to be
+// installed in the environment.
+func TestStatusgenLintAtRealBinaryStructuralFailure(t *testing.T) {
+	if _, err := exec.LookPath("statusgen"); err != nil {
+		t.Skip("statusgen not on PATH — fake-script cases cover the structural-failure parse")
+	}
+	// A root with a stream dir but no README.md — a structural failure statusgen reports
+	// without any PROBLEM: line, exactly the shape production hands this guard.
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "x"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "x", "brief-01.md"), []byte("body\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := statusgenLintAt(root)
+	if err == nil {
+		t.Fatalf("statusgenLintAt against the real statusgen on an incomplete root returned (problems=%v, nil err) — "+
+			"want could-not-check", got)
+	}
+	var de *deskkit.DeskError
+	if !asDeskError(err, &de) || de.Code != deskkit.ExitUnverifiable {
+		t.Fatalf("error = %v, want an Unverifiable DeskError (exit %d)", err, deskkit.ExitUnverifiable)
 	}
 }
 
