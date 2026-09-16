@@ -104,37 +104,42 @@ var (
 	origPATH  string
 )
 
+// TestMain installs the roster fixture, runs the suite through runTests (whose defers
+// fire, unlike anything deferred here), then hands the exit code through
+// finishFixtureRoster so the fixture HOME is removed and proven gone before os.Exit (#1195).
 func TestMain(m *testing.M) {
 	rosterCleanup, rerr := installFixtureRoster()
 	if rerr != nil {
 		panic("cannot install the test-fixture roster: " + rerr.Error())
 	}
-	defer rosterCleanup()
+	os.Exit(finishFixtureRoster(rosterCleanup, runTests(m)))
+}
+
+func runTests(m *testing.M) int {
 	origPATH = os.Getenv("PATH")
 	dir, err := os.MkdirTemp("", "deskfile-fakegh")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	defer os.RemoveAll(dir)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fakegh\n\ngo 1.25\n"), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeGHSource), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	build := exec.Command("go", "build", "-o", filepath.Join(dir, "gh"), ".")
 	build.Dir = dir
-	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+	build.Env = fakeBuildEnv()
 	if out, berr := build.CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "build fake gh: %v\n%s\n", berr, out)
-		os.Exit(1)
+		return 1
 	}
 	fakeGHDir = dir
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
+	return m.Run()
 }
 
 // --- fixtures ---------------------------------------------------------------------

@@ -53,6 +53,9 @@ Owned → report and stand down (or take the next PR in discovery mode). Unowned
 adoption by upserting the PR's workpad: `deskreply <owner/repo> <N> --workpad --body-file
 <file>` so the next shepherd sees YOUR claim, current state and plan in the ONE place —
 never a fresh plain comment for this (`## Notes` is where the hand-off note belongs).
+Write that body file fresh every time (`>`), never by appending (`>>`), and never re-read
+the old workpad into the new body — `deskreply` refuses a body over the forge's 65,536
+character comment limit or carrying the marker line more than once.
 
 ## 2. Get on the branch, current with main
 
