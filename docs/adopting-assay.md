@@ -1614,6 +1614,7 @@ These are the surfaces frozen at build time — what your cell cannot change wit
 | `tools/desk/cmd/issueboard/board.go` | the system-state and decision-owed label sets the board excludes and escalates on |
 | `tools/desk/cmd/deskroster/sets.go` | the cell name, per-repo relationship and App roles `deskroster repos` prints |
 | `tools/desk/cmd/deskrelease/cut.go` | the default repo `deskrelease` cuts a release from |
+| `tools/desk/cmd/desklabel/vocabulary.go` | the decision-owed label set that forms `desklabel`'s shared (any-role) escalation rows |
 | `tools/desk/internal/deskkit/riskpath.go` | per-repo visibility and risk-path triggers, which decide a diff's risk class |
 | `tools/desk/internal/deskkit/roots.go` | the repo → local checkout root map the multi-repo board walks |
 

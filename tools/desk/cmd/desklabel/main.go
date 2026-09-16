@@ -13,16 +13,18 @@
 // raw, unscoped label write reached it. This is that verb.
 //
 // THE CONTROL. A closed vocabulary table (vocabulary.go) says which role owns which label:
-// the shared escalation vocabulary (`question`, `help wanted`, `needs-decision`) is any
-// role's; `superseded?` and the `disposition:*` family are the WORKER's (they are
+// the shared escalation vocabulary — the labels topology.yaml declares decision-owed
+// (`needs-decision`, `question`, `needs-human`), read from the topology loader rather than
+// restated, plus `help wanted` — is any role's; `superseded?` and the `disposition:*` family are the WORKER's (they are
 // worker-authored findings); `authorization-needed` / `approval-needed` are the REVIEWER's
 // (deskflip's queue-state pair); `human-decided` is NOBODY's — it asserts a recorded human
 // act, and a role self-applying it is the forgery class the two-role superseded lane exists
 // to prevent. Anything not in the table is refused (exit 5). The check runs BEFORE any forge
 // read or write, and the acting role is read from the SESSION (DESK_LOOP → App role via
 // deskkit.SessionTokenRole), never from a flag: a `--as <role>` flag would be a claim; the
-// session's minted role is a fact. The table is a Go literal with no runtime extension —
-// no flag, environment variable or config file widens it.
+// session's minted role is a fact. The table is closed at build time with no runtime
+// extension — no flag, environment variable or config file widens it; its shared rows come
+// from the compiled-in topology derivation, which is itself diffed against topology.yaml.
 //
 // THE TARGET KIND. GitHub numbers issues and pull requests in one sequence and labels both
 // through one endpoint; GitLab numbers issues and merge requests in SEPARATE sequences with
@@ -61,12 +63,14 @@ add    — ensures <label> is on the target. Already present: no-op (exit 0), no
 rm     — takes <label> off the target. Already absent: no-op (exit 0), no write.
 
 VOCABULARY (closed; the acting role is read from the session, never from a flag):
-  shared — any role may set or clear:   question · help wanted · needs-decision
+  shared — any role may set or clear:   the topology decision-owed labels (read from the
+                                         topology loader) · help wanted
   worker-owned:                          superseded? · disposition:superseded ·
                                          disposition:resolved-elsewhere · disposition:needs-rebase
   reviewer-owned:                        authorization-needed · approval-needed
   refused for EVERY role:                human-decided (it records a human act)
   anything else:                         refused — no desklabel vocabulary entry
+  (desklabel vocabulary prints the live table, one row per label.)
 
 --kind   states whether <number> is an issue or a change (mr; pr is an alias). Needed only
          where a bare number is ambiguous: a GitLab project carrying BOTH issue #N and

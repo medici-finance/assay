@@ -4,11 +4,18 @@ package main
 // labels belong to every role, and which belong to none.
 //
 // THIS TABLE IS THE CONTROL. It is the one thing standing between "a role writes a label"
-// and "a role forges another role's marker", so it is a closed Go literal with no runtime
+// and "a role forges another role's marker", so it is closed at build time with no runtime
 // mutation path: no flag, no environment variable, no config file extends it. A defect here
 // is a code-review question over a handful of lines, not a live surface an operator's
 // misconfiguration could widen. Every entry names the code that already APPLIES the label at
 // its own call site — ownership is read from that code, never assumed.
+//
+// TWO CLOSED INPUTS, ONE TABLE. The shared escalation rows are the labels topology.yaml
+// declares under labels.decision_owed, read from the topology loader (the desk module's
+// compiled-in derivation, itself diffed against the source by TestTopologyDriftRegistry)
+// rather than restated here — a second hand copy of a declared set is the drift the
+// registry test exists to catch. The role-owned and refused rows are desklabel's own
+// vocabulary: no topology category declares them, so they live here as a literal.
 //
 // A label is matched CASE-INSENSITIVELY against the table (forge labels are
 // case-insensitive) and always written in its canonical case, so `Approval-Needed` and
@@ -21,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 // The two role names the table keys on. They are the App roles deskkit's loop → role map
@@ -34,13 +42,19 @@ const (
 // may set or clear the label.
 const (
 	// ownerShared — ANY resolved role may set or clear it. The escalation vocabulary:
-	// only the human-only-CLOSE gate on `needs-decision` is absolute (deskclose's
+	// only the human-only-CLOSE gate on the decision class is absolute (deskclose's
 	// decision-label gate reads the label fresh on its own next call); the LABEL itself is
 	// not role-exclusive, because any role may need to escalate.
 	ownerShared = "shared"
 	// ownerNone — refused for EVERY role, explicitly rather than by omission.
 	ownerNone = "no role"
 )
+
+// helpWantedLabel is the one shared escalation label that topology.yaml declares in NO
+// category — it is neither system_state nor decision_owed — so it is desklabel's own row,
+// not a restatement of the declared source. Everything else in the shared set is READ
+// from the topology loader (see sharedRows).
+const helpWantedLabel = "help wanted"
 
 // vocabEntry is one row of the table.
 type vocabEntry struct {
@@ -52,16 +66,48 @@ type vocabEntry struct {
 	Why string
 }
 
-// vocabulary is the closed table. Order is presentation only; lookup is by name.
-var vocabulary = []vocabEntry{
-	// --- shared escalation vocabulary: any role may set or clear -------------------------
-	{Canonical: "question", Owner: ownerShared,
-		Why: "escalation: the model needs an answer (deskfile --label filing convention)"},
-	{Canonical: "help wanted", Owner: ownerShared,
-		Why: "escalation: needs hands (deskfile --label filing convention)"},
-	{Canonical: "needs-decision", Owner: ownerShared,
-		Why: "escalation: a human fork (deskclose's decisionLabels; the CLOSE gate is human-only, the label is not)"},
+// vocabulary is the closed table, assembled ONCE at init from two closed inputs: the
+// topology loader's compiled decision-owed set (the shared escalation rows) and the
+// desklabel-owned rows below. Neither input is runtime state — topology.Compiled() is the
+// desk module's compiled-in derivation of topology.yaml (bound to the source by
+// TestTopologyDriftRegistry), not a file read — so the table is still a build-time
+// literal with no flag, environment variable or config file extending it. Order is
+// presentation only; lookup is by name.
+var vocabulary = buildVocabulary(topology.Compiled())
 
+// buildVocabulary assembles the table from a topology. It takes the topology as a
+// parameter so a test can hand it a DIFFERENT declared set and prove the shared rows
+// follow it — the derivation is checked, not assumed.
+func buildVocabulary(top topology.Topology) []vocabEntry {
+	rows := sharedRows(top)
+	rows = append(rows, desklabelOwnedRows...)
+	return rows
+}
+
+// sharedRows derives the shared escalation rows: every label topology.yaml declares under
+// labels.decision_owed (the SLA escalation scope — needs-decision, question and the
+// human-decision-queue class), read from the loader rather than restated here so a change
+// to the declared set cannot leave this table silently disagreeing with it; plus
+// helpWantedLabel, the escalation label no topology category carries.
+func sharedRows(top topology.Topology) []vocabEntry {
+	names := top.DecisionOwedLabelNames() // sorted; a copy
+	out := make([]vocabEntry, 0, len(names)+1)
+	for _, name := range names {
+		out = append(out, vocabEntry{Canonical: name, Owner: ownerShared,
+			Why: "escalation: topology.yaml labels.decision_owed, read via the topology loader (any role may " +
+				"need to escalate; only deskclose's human-only-CLOSE gate on the decision class is absolute, " +
+				"the label itself is not role-exclusive)"})
+	}
+	out = append(out, vocabEntry{Canonical: helpWantedLabel, Owner: ownerShared,
+		Why: "escalation: needs hands (deskfile --label filing convention; declared in no topology category, " +
+			"so this is desklabel's own row)"})
+	return out
+}
+
+// desklabelOwnedRows are the rows that are desklabel's OWN vocabulary — role-owned
+// markers and the refused-for-everyone marker. None of them is a topology label; each
+// names the code that already applies it at its own call site.
+var desklabelOwnedRows = []vocabEntry{
 	// --- worker-owned: worker-authored findings ---------------------------------------------
 	{Canonical: "superseded?", Owner: roleWorker,
 		Why: "deskclose superseded: the WORKER proposes (labelProposed); the reviewer only confirms or disputes"},

@@ -66,6 +66,12 @@
       "file": "cmd/desklabel/verbs.go",
       "old": "\trole, err := roleFn()\n\tif err != nil {\n\t\treturn err\n\t}",
       "new": "\trole, err := roleFn()\n\tif err != nil {\n\t\trole = roleWorker\n\t}"
+    },
+    {
+      "name": "the shared rows stop following the topology loader (buildVocabulary ignores the declared decision-owed set — a hand copy by another route)",
+      "file": "cmd/desklabel/vocabulary.go",
+      "old": "\tnames := top.DecisionOwedLabelNames() // sorted; a copy",
+      "new": "\tnames := topology.Compiled().DecisionOwedLabelNames() // sorted; a copy"
     }
   ]
 }

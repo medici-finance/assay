@@ -18,12 +18,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 const allowedRepo = "example-org/tracker"
@@ -264,8 +266,12 @@ func TestDesklabelRefusesRepoOutsideSet(t *testing.T) {
 // TestDesklabelSharedVocabularyAnyRole is Verify row 8: the escalation trio succeeds under
 // BOTH a worker-role and a reviewer-role session — no role check fires on the shared set.
 func TestDesklabelSharedVocabularyAnyRole(t *testing.T) {
+	shared := ownedBy(ownerShared)
+	if len(shared) < 3 {
+		t.Fatalf("the shared set has %d rows (%v) — fewer than the escalation vocabulary the brief names; the loop below would prove little", len(shared), shared)
+	}
 	for _, role := range []string{roleWorker, roleReviewer} {
-		for _, label := range []string{"question", "help wanted", "needs-decision"} {
+		for _, label := range shared {
 			t.Run(role+"/add/"+label, func(t *testing.T) {
 				fg := &fakeForge{issue: issueWith()}
 				plantWorld(t, role, fg)
@@ -643,19 +649,29 @@ func TestDesklabelNoRoleOverrideFlag(t *testing.T) {
 	}
 }
 
-// TestDesklabelVocabularyIsClosed pins the table's shape: exactly the entries the brief
-// names, each with an owner the roster's role map recognises (or a sentinel), and
-// human-decided owned by nobody.
+// TestDesklabelVocabularyIsClosed pins the table's shape: the desklabel-owned entries the
+// brief names, each with an owner the roster's role map recognises (or a sentinel), plus
+// the shared rows the topology loader's decision-owed set declares (and `help wanted`),
+// and human-decided owned by nobody. The shared expectation is READ from the loader, not
+// restated, so this test cannot itself become the hand table the drift registry forbids.
 func TestDesklabelVocabularyIsClosed(t *testing.T) {
 	want := map[string]string{
-		"question": ownerShared, "help wanted": ownerShared, "needs-decision": ownerShared,
-		"superseded?": roleWorker, "disposition:superseded": roleWorker,
+		helpWantedLabel: ownerShared,
+		"superseded?":   roleWorker, "disposition:superseded": roleWorker,
 		"disposition:resolved-elsewhere": roleWorker, "disposition:needs-rebase": roleWorker,
 		"authorization-needed": roleReviewer, "approval-needed": roleReviewer,
 		"human-decided": ownerNone,
 	}
+	decisionOwed := topology.Compiled().DecisionOwedLabelNames()
+	if len(decisionOwed) == 0 {
+		t.Fatal("COULD-NOT-CHECK: the topology loader serves an EMPTY decision-owed set — the shared rows cannot be derived from nothing")
+	}
+	for _, name := range decisionOwed {
+		want[name] = ownerShared
+	}
 	if len(vocabulary) != len(want) {
-		t.Fatalf("the table has %d entries, the brief names %d — an entry was added or dropped", len(vocabulary), len(want))
+		t.Fatalf("the table has %d entries, want %d (%d loader-declared shared + help wanted + 7 desklabel-owned) — an entry was added or dropped",
+			len(vocabulary), len(want), len(decisionOwed))
 	}
 	for _, e := range vocabulary {
 		if want[e.Canonical] != e.Owner {
@@ -669,5 +685,46 @@ func TestDesklabelVocabularyIsClosed(t *testing.T) {
 	printVocabulary(&buf)
 	if !strings.Contains(buf.String(), "human-decided\tno role") {
 		t.Errorf("the vocabulary print must show human-decided as no role's; got %s", buf.String())
+	}
+}
+
+// TestDesklabelSharedRowsAreTheLoadersEscalationSet is the fix for the drift-registry
+// finding: the shared rows are DERIVED from the topology loader's decision-owed set, not
+// restated. Three assertions: (1) the live shared set equals the loader's decision-owed
+// names plus `help wanted` — no more, no fewer; (2) `help wanted` is the ONLY shared row
+// the loader does not declare (it is in no topology category, which is why it is
+// desklabel's own row); (3) POSITIVE CONTROL — handing buildVocabulary a topology with a
+// different decision-owed set moves the shared rows with it, so the equality in (1) is a
+// derivation and not a coincidence of two literals.
+func TestDesklabelSharedRowsAreTheLoadersEscalationSet(t *testing.T) {
+	top := topology.Compiled()
+	want := append(top.DecisionOwedLabelNames(), helpWantedLabel)
+	sort.Strings(want)
+	if got := ownedBy(ownerShared); !reflect.DeepEqual(got, want) {
+		t.Fatalf("shared rows %v, want the loader's decision-owed set plus %q: %v", got, helpWantedLabel, want)
+	}
+	loaderSet := top.DecisionOwedLabelSet()
+	for _, name := range ownedBy(ownerShared) {
+		if !loaderSet[strings.ToLower(name)] && name != helpWantedLabel {
+			t.Errorf("shared row %q is neither loader-declared nor the help-wanted row — a hand-added escalation label", name)
+		}
+	}
+	// Positive control: a different declared set → different shared rows.
+	bent := topology.Topology{DecisionOwedLabels: []topology.Label{{Name: "example-escalation-a"}, {Name: "example-escalation-b"}}}
+	var shared []string
+	for _, e := range buildVocabulary(bent) {
+		if e.Owner == ownerShared {
+			shared = append(shared, e.Canonical)
+		}
+	}
+	sort.Strings(shared)
+	if wantBent := []string{"example-escalation-a", "example-escalation-b", helpWantedLabel}; !reflect.DeepEqual(shared, wantBent) {
+		t.Fatalf("POSITIVE CONTROL FAILED: buildVocabulary did not follow the topology it was given; shared rows %v, want %v", shared, wantBent)
+	}
+	// The desklabel-owned rows never move with topology.
+	for _, e := range buildVocabulary(bent) {
+		if e.Owner != ownerShared && loaderSet[strings.ToLower(e.Canonical)] {
+			t.Errorf("desklabel-owned row %q is also a loader-declared label — it would be a second copy", e.Canonical)
+		}
 	}
 }

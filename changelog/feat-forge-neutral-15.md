@@ -4,8 +4,9 @@
   swap, deskclose's `superseded?` proposal, deskdisposition's `disposition:*` record), so a stale
   marker — the `superseded?` a dispute leaves behind — could only be cleared by a raw, unscoped
   forge call. `desklabel` sets or clears ONE label through the resolved forge under the session's
-  own App role, against a closed vocabulary: `question` / `help wanted` / `needs-decision` for any
-  role; `superseded?` and the `disposition:*` family for the worker; `authorization-needed` /
+  own App role, against a closed vocabulary: the topology decision-owed labels (`needs-decision` /
+  `question` / `needs-human`, read from the topology loader, never restated) plus `help wanted`
+  for any role; `superseded?` and the `disposition:*` family for the worker; `authorization-needed` /
   `approval-needed` for the reviewer; `human-decided` refused for every role; anything else
   refused (exit 5) naming the label, its owner and the session's role. The check runs BEFORE any
   forge call; the role is read from the session (`DESK_LOOP`), never from a flag. The target
