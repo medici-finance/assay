@@ -154,18 +154,25 @@ func openRepo(dir string) (*gitcore.Repo, error) {
 // reachable from base), so walking both full ancestries and subtracting is exact, not an
 // approximation — unlike Repo.AheadCount's early-stop technique (valid only for the simple
 // fast-forward-descendant case), this handles a head that merged unrelated history too.
-func logRangeHashes(repo *gitcore.Repo, base, head string) ([]string, error) {
+//
+// It also returns baseSet — base's own full ancestry (base included) — to its caller.
+// checkForeignCommits needs exactly this set a second time (as the membership test behind
+// every "is candidate branch b already merged into origin/main" question below), and
+// walking base's history is the expensive half of this function; handing the set back
+// once here means that walk happens exactly ONCE per push, not once per candidate branch
+// per commit (see the duplicate-remote hang fix at branchIsAncestorOfMain's old call site).
+func logRangeHashes(repo *gitcore.Repo, base, head string) (rangeHashes []string, baseSet map[string]bool, err error) {
 	baseAncestors, err := repo.Log(base)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	baseSet := make(map[string]bool, len(baseAncestors))
+	baseSet = make(map[string]bool, len(baseAncestors))
 	for _, h := range baseAncestors {
 		baseSet[h] = true
 	}
 	headAncestors, err := repo.Log(head)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []string
 	for _, h := range headAncestors {
@@ -173,7 +180,7 @@ func logRangeHashes(repo *gitcore.Repo, base, head string) ([]string, error) {
 			out = append(out, h)
 		}
 	}
-	return out, nil
+	return out, baseSet, nil
 }
 
 // resolveOriginMain resolves the base this check compares against, spelled FULLY QUALIFIED
@@ -281,22 +288,10 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	// (all of trueBase's ancestors minus all of localSHA's), which is correct across
 	// merge-commit-bearing history too.
 	behind := -1
-	if hashes, cerr := logRangeHashes(repo, localSHA, trueBase); cerr == nil {
+	if hashes, _, cerr := logRangeHashes(repo, localSHA, trueBase); cerr == nil {
 		behind = len(hashes)
 	}
 	out.strayBases = append(out.strayBases, strayBase{strayTip: strayTip, trueBase: trueBase, behind: behind})
-}
-
-// branchIsAncestorOfMain reports whether remote branch b is an ancestor of originMain,
-// matching `git merge-base --is-ancestor`. determinate=false means the check itself could
-// not be resolved (b or originMain doesn't resolve) — the caller must then skip rather
-// than guess, per this file's fail-open contract.
-func branchIsAncestorOfMain(repo *gitcore.Repo, b, originMain string) (isAncestor, determinate bool) {
-	ok, err := repo.IsAncestor(b, originMain)
-	if err != nil {
-		return false, false
-	}
-	return ok, true
 }
 
 // checkForeignCommits inspects the commits unique to localSHA relative to origin/main (the
@@ -356,7 +351,7 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 
 	checkStrayBase(dir, localSHA, originMain, &out)
 
-	shas, err := logRangeHashes(repo, originMain, localSHA)
+	shas, baseAncestors, err := logRangeHashes(repo, originMain, localSHA)
 	if err != nil {
 		out.cannotCheck("could not enumerate refs/remotes/origin/main..%s (%v) — foreign-commit "+
 			"and masquerade checks NOT performed", shortSHA(localSHA), err)
@@ -364,6 +359,17 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 	}
 	if len(shas) == 0 {
 		return out, nil // determinate: nothing ahead of the true base
+	}
+
+	// refHashes backs the "is candidate branch b already merged into origin/main" test
+	// below with a single map lookup per candidate instead of a fresh unmemoized ancestor
+	// walk per candidate PER COMMIT (the duplicate-remote hang: deskpushguard pegged one CPU core
+	// indefinitely on a branch carrying a 524-commit main-catch-up merge, in a checkout
+	// with duplicate remotes for the same repo). Read once here, reused for every sha.
+	refHashes, err := repo.Refs()
+	if err != nil {
+		out.cannotCheck("could not list refs (%v) — foreign-commit checks NOT performed", err)
+		return out, nil
 	}
 
 	ownRemote := "origin/" + ownBranch
@@ -402,13 +408,24 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 			if b == "" || b == ownRemote || b == "origin/main" || strings.HasSuffix(b, "HEAD") {
 				continue
 			}
-			isAnc, determinate := branchIsAncestorOfMain(repo, b, originMain)
-			if !determinate {
-				out.cannotCheck("could not determine whether %s is already merged into "+
-					"refs/remotes/origin/main — %s was NOT cleared against it", b, shortSHA(sha))
+			// "b is already merged into origin/main" is exactly "b's tip is in origin/main's
+			// own ancestry (or is origin/main itself)" — baseAncestors already IS that set,
+			// walked once above. This replaces a per-candidate, per-commit call into
+			// gitcore's IsAncestor (itself an unmemoized, non-shared go-git
+			// object.Commit.IsAncestor preorder walk of origin/main's ENTIRE history every
+			// single call — see plumbing/object/merge_base.go) with an O(1) lookup: the
+			// duplicate-remote hang fix.
+			tipHash, ok := refHashes[ref]
+			if !ok {
+				// The ref existed a moment ago (RefsContaining just returned it) but is
+				// gone from this second Refs() read — a concurrent ref update mid-scan.
+				// Report it as could-not-check rather than silently skipping (this file's
+				// fail-open-but-never-silent contract).
+				out.cannotCheck("ref %s vanished mid-scan — %s was NOT cleared against it",
+					ref, shortSHA(sha))
 				continue
 			}
-			if !isAnc {
+			if !baseAncestors[tipHash] {
 				out.foreign = append(out.foreign, foreignCommit{sha: sha, subject: subject, sourceBranch: b})
 				break
 			}

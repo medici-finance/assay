@@ -310,6 +310,27 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 	if berr != nil {
 		return nil, nil
 	}
+	// originAncestors backs the "is b already merged into origin/main" test below with an
+	// O(1) set-membership lookup instead of a fresh gitcore.IsAncestor call per branch — the
+	// same fix as foreigncommit.go's checkForeignCommits (the duplicate-remote hang:
+	// gitcore.Repo.IsAncestor resolves to go-git's unmemoized, non-shared
+	// object.Commit.IsAncestor, an uncached preorder walk of origin/main's ENTIRE history on
+	// every call). This function runs the walk once per push rather than once per sha, so it
+	// was never the dominant contributor to the reported hang, but it is the exact same
+	// primitive and would become one on a repo whose origin/main history is large enough on
+	// its own — fixed alongside rather than left as a known-identical latent case.
+	originAncestorHashes, oerr := repo.Log(originMain)
+	if oerr != nil {
+		return nil, nil // cannot walk origin/main's ancestry — fail open, per this file's contract
+	}
+	originAncestors := make(map[string]bool, len(originAncestorHashes))
+	for _, h := range originAncestorHashes {
+		originAncestors[h] = true
+	}
+	refs, rerr := repo.Refs()
+	if rerr != nil {
+		return nil, nil
+	}
 	ownRemote := "origin/" + ownBranch
 	livenessCache := map[string]refLiveness{} // #189: probe each source ref's liveness at most once
 	var collisions []registerIDCollision
@@ -323,11 +344,11 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 		if b == "" || b == ownRemote || b == "origin/main" || b == "origin/HEAD" || strings.Contains(b, "->") {
 			continue
 		}
-		isAnc, determinate := branchIsAncestorOfMain(repo, b, originMain)
-		if !determinate || isAnc {
-			// Already merged into origin/main (or unresolvable) — its ids are already
-			// covered by the origin/main-relative diff above via a fresh checkout, or we
-			// simply can't say anything useful; either way, skip.
+		tipHash, ok := refs["refs/remotes/"+b]
+		if !ok || originAncestors[tipHash] {
+			// Already merged into origin/main (or the ref vanished mid-scan) — its ids are
+			// already covered by the origin/main-relative diff above via a fresh checkout,
+			// or we simply can't say anything useful; either way, skip.
 			continue
 		}
 
