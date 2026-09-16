@@ -60,7 +60,11 @@ type socketNotice struct {
 // socket, dispatching accepted "submit"s through the same PreCheck pipeline
 // a2a.go's cross-cell path uses.
 type SocketServer struct {
-	Root    string
+	Root string
+	// Cell is this gateway's own cell, stamped on every refusal journal line
+	// (refusal.go) so the cell's sweep scopes a refusal even when the
+	// presented from/to are empty or forged.
+	Cell    string
 	Deps    PreCheckDeps
 	Emitter InboxEmitter
 	Filer   IssueFiler
@@ -111,7 +115,12 @@ func (s SocketServer) handle(conn net.Conn) {
 	var req gwRequest
 	resp := gwResponse{}
 	if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
-		resp.Error = fmt.Sprintf("commsgw: undecodable request: %v", err)
+		// A carrier that does not even decode is still a refused inbound:
+		// journalled (digest only) so a flood of garbage on the socket is
+		// visible to the sweep like any other refusal.
+		carrierErr := fmt.Errorf("commsgw: undecodable request: %w", err)
+		jerr := journalRefusal(s.Root, s.Cell, sc.Bytes(), fmt.Errorf("%w: %w", errCarrierMalformed, carrierErr), s.clock())
+		resp.Error = refusalDetail(carrierErr, jerr)
 		writeLine(conn, resp)
 		return
 	}
@@ -137,7 +146,10 @@ func (s SocketServer) handleSubmit(req gwRequest) gwResponse {
 	res := RunOutbound(context.Background(),
 		PreCheckInput{PeerAuthenticated: true, Raw: []byte(req.Message), Now: now}, s.Deps, s.Gate)
 	if res.PrecheckErr != nil {
-		return gwResponse{Receipt: &socketReceipt{Accepted: false, Detail: res.PrecheckErr.Error()}}
+		// ONE journal line per refusal (refusal.go, #1165) — the refusal
+		// stands regardless; a journal write failure rides on the detail.
+		jerr := journalRefusal(s.Root, s.Cell, []byte(req.Message), res.PrecheckErr, now)
+		return gwResponse{Receipt: &socketReceipt{Accepted: false, Detail: refusalDetail(res.PrecheckErr, jerr)}}
 	}
 	if !res.Deliver {
 		// Held by the prose gate — held mailbox + a filed issue carrying the

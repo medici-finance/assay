@@ -45,7 +45,10 @@ import (
 // stores) is this brief's concern; NewHandler's defaults (an in-memory task
 // store) are unused because every reply here is a single terminal Message.
 type GatewayAgent struct {
-	Root    string
+	Root string
+	// Cell is this gateway's own cell, stamped on every refusal journal line
+	// (refusal.go) — see SocketServer.Cell.
+	Cell    string
 	Deps    PreCheckDeps
 	Emitter InboxEmitter
 	Filer   IssueFiler
@@ -76,16 +79,23 @@ type wireReply struct {
 // created for this thin per-message exchange.
 func (g GatewayAgent) Execute(_ context.Context, ec *a2asrv.ExecutorContext) iter.Seq2[a2a.Event, error] {
 	return func(yield func(a2a.Event, error) bool) {
+		now := g.clock()
 		raw, err := rawEnvelopeBytes(ec)
 		if err != nil {
-			yield(replyMessage(wireReply{Accepted: false, Detail: err.Error()}), nil)
+			// A malformed A2A carrier is a refused inbound too: journalled
+			// (digest of whatever bytes the carrier did hand over — none, for
+			// a part-less message) so the sweep sees it.
+			jerr := journalRefusal(g.Root, g.Cell, raw, fmt.Errorf("%w: %w", errCarrierMalformed, err), now)
+			yield(replyMessage(wireReply{Accepted: false, Detail: refusalDetail(err, jerr)}), nil)
 			return
 		}
 
-		now := g.clock()
 		env, err := PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw, Now: now}, g.Deps)
 		if err != nil {
-			yield(replyMessage(wireReply{Accepted: false, Detail: err.Error()}), nil)
+			// ONE journal line per refusal (refusal.go, #1165) — the refusal
+			// stands regardless; a journal write failure rides on the detail.
+			jerr := journalRefusal(g.Root, g.Cell, raw, err, now)
+			yield(replyMessage(wireReply{Accepted: false, Detail: refusalDetail(err, jerr)}), nil)
 			return
 		}
 
