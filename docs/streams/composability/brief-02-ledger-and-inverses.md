@@ -232,10 +232,10 @@ decision — fabricating one to pass this gate would be exactly the self-atteste
 §4.4 exists to prevent). **Open question, not resolved here**: does a human "not planned"
 closure on the decision issue actually SATISFY §4.4 (i.e. should the row go back to
 `implemented` since Ian effectively said no formal DR is needed for already-shipped work), or
-does the gate strictly require the frontmatter/record regardless of how the issue closed? Routed
-to the-desk for a standing ruling — it would apply to any risk-gated brief whose decision issue
-closes "not planned." The row stays at `todo` — the lint-compliant state — until that's
-answered. This is a real, standing gap:
+does the gate strictly require the frontmatter/record regardless of how the issue closed? Filed
+as #1139 (`question`/`needs-decision`) for a standing ruling — it would apply to any risk-gated
+brief whose decision issue closes "not planned." The row stays at `todo` — the lint-compliant
+state — until that's answered. This is a real, standing gap:
 the underlying code has been on `main` since PR #953 (2026-09-12) without ever having passed
 this gate, because the rule did not yet exist/enforce at that time; grandfathering in
 `spec/lifecycle-v1.md` §4.4 is by `authored:` date only, so this brief does not qualify for
