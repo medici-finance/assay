@@ -340,7 +340,11 @@ func humanDecidedAuthority(r triageReq) (string, error) {
 				"decision must be ON the issue being closed, never a ruling from elsewhere reused here.",
 			deskkit.StripControl(owner+"/"+repo), deskkit.StripControl(itemStr), r.repo, r.number))
 	}
-	c, err := fetchComment(strings.TrimSpace(r.decision))
+	// TargetIssue, never the untyped fetch: the decision comment lives on an ISSUE, whose
+	// thread the untyped ListComments cannot read (it uses the change/pullRequest selection on
+	// both backends), so an untyped fetch would return could-not-check at every real issue and
+	// the lane could never execute.
+	c, err := fetchCommentTyped(strings.TrimSpace(r.decision), deskkit.TargetIssue)
 	if err != nil {
 		return "", err
 	}
