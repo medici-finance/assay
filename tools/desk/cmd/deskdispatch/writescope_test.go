@@ -119,6 +119,12 @@ func TestDispatch_OverlapWarnsAndProceeds(t *testing.T) {
 		if strings.Contains(joined, "deskwt add") {
 			return exec.Command("/bin/sh", "-c", "echo /private/tmp/worker-home")
 		}
+		if strings.Contains(joined, "remote get-url origin") {
+			// The claim step resolves WHICH forge serves the target repo to pick the claim
+			// child's credential custody (issue 1203); a GitHub-shaped origin keeps this worker
+			// dispatch on the App-mint path.
+			return exec.Command("/bin/sh", "-c", "echo git@github.com:medici-finance/assay.git")
+		}
 		return exec.Command("/bin/sh", "-c", "exit 0") // claim acquire, roster, etc.
 	}
 	t.Cleanup(func() { execCommand = old })

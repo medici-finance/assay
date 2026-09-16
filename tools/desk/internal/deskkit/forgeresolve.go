@@ -336,12 +336,26 @@ func githubCustody(role string, repo ForgeRepo) (string, string, error) {
 func gitlabTokenFileName(role string) string { return "gitlab-" + role + ".token" }
 
 func gitlabCustody(role string) (string, string, error) {
+	tok, _, err := gitlabRoleTokenFile(role)
+	if err != nil {
+		return "", "", err
+	}
+	return tok, gitlabAPIBaseOverride(), nil
+}
+
+// gitlabRoleTokenFile resolves the role's already-provisioned GitLab PAT custody file: it
+// returns the token value AND the 0600 file path it was read from, having verified the file's
+// mode. It is the shared core behind gitlabCustody (which pairs the token with the API base a
+// GitLabForge dials) and the exported GitLabRoleToken (which a caller that hands the raw token
+// to a git-basic-auth child — not a GitLabForge — needs the PATH for). ForgeFor never rotates
+// or mints a GitLab credential; both callers only READ an already-provisioned custody file.
+func gitlabRoleTokenFile(role string) (token, path string, err error) {
 	if strings.TrimSpace(role) == "" {
 		return "", "", Refused("no App role named for the GitLab custody lookup — a token cannot be " +
 			"obtained for an identity this process cannot name")
 	}
 	name := gitlabTokenFileName(role)
-	path, searched, found := FindConfigFile(name)
+	p, searched, found := FindConfigFile(name)
 	if !found {
 		return "", "", Refused(fmt.Sprintf(
 			"gitlab token file not found: no %s on the App-credential search path. Searched: %s. "+
@@ -350,18 +364,30 @@ func gitlabCustody(role string) (string, string, error) {
 				"only reads an already-provisioned custody file.",
 			name, strings.Join(searched, ", "), EnvConfigHome))
 	}
-	if verr := verifyCustodyFileMode(path); verr != nil {
+	if verr := verifyCustodyFileMode(p); verr != nil {
 		return "", "", verr
 	}
-	b, rerr := os.ReadFile(path)
+	b, rerr := os.ReadFile(p)
 	if rerr != nil {
-		return "", "", Refused(fmt.Sprintf("cannot read gitlab token file at %s: %v", path, rerr))
+		return "", "", Refused(fmt.Sprintf("cannot read gitlab token file at %s: %v", p, rerr))
 	}
 	tok := strings.TrimSpace(string(b))
 	if tok == "" {
-		return "", "", Refused(fmt.Sprintf("the gitlab token file at %s is empty", path))
+		return "", "", Refused(fmt.Sprintf("the gitlab token file at %s is empty", p))
 	}
-	return tok, gitlabAPIBaseOverride(), nil
+	return tok, p, nil
+}
+
+// GitLabRoleToken returns the role's already-provisioned GitLab PAT and the custody file path
+// it was read from. It is the GitLab twin of the GitHub App minter (RoleTokenForRepo) for the
+// callers that hand the raw token to a NON-GitLabForge child that speaks its own transport —
+// deskdispatch's claim child (issue 1203), which authenticates git-over-HTTPS to the dispatch
+// refs and, on a GitLab-served repo, must run under the same role PAT custody deskpost/deskflip
+// use rather than a GitHub App installation token there is no App to mint. It reads only an
+// already-provisioned custody file (0600 on the App-credential search path); it never mints or
+// rotates. A missing/loose/empty file is Refused (exit 5) — a precondition an operator fixes.
+func GitLabRoleToken(role string) (token, path string, err error) {
+	return gitlabRoleTokenFile(role)
 }
 
 // gitlabAPIBaseOverride reads GITLAB_API_BASE at call time (never cached), the same
