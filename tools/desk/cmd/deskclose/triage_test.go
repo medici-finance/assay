@@ -1,13 +1,20 @@
 package main
 
-// triage_test.go — the triage-close lane (issue #1207).
+// triage_test.go — the triage-close lane (issue #1207), authority model per the security
+// review of PR #1211 (S1/S2/S3):
 //
-// Every refusal ships with a positive control beside it: "the lane refused" is proved by
-// the absence of a write (assertNoWrites), and "the lane closed" by exactly [comment, close]
-// on the one item, carrying the not_planned state reason (assertClosedWith). The two
-// authorities are tested apart: not-planned authorizes on a RECORDED disposition (a marker
-// comment or --tracker), human-decided on the SAME fetched-and-verified R-1 sign-off the
-// ruled lanes use plus a named tracker.
+//   - not-planned authorizes ONLY on a triage-disposition marker comment on issue N that is
+//     (a) authored by a roster-trusted account and (b) not minimized. A bare marker string
+//     any commenter could paste, a minimized marker, or a marker by an untrusted author do
+//     NOT authorize (S2). --tracker is never authority and, when given, must name a FETCHED
+//     existing item (S3).
+//   - human-decided authorizes ONLY on a FETCHED, author-verified, per-issue human artifact:
+//     the human's own ruling comment ON issue N (--decision <url>), verified via fetchComment
+//     + verifyHumanAuthor against the roster-pinned blessing authority (S1). A blanket ruling
+//     grant and a caller-typed --tracker never stand in for it.
+//
+// Every refusal ships with a positive control beside it, and "the lane refused" is proved by
+// the absence of a write (assertNoWrites).
 
 import (
 	"fmt"
@@ -19,9 +26,7 @@ import (
 
 const triageIssue = 120 // an open, undecided idea-issue — the triage subject
 
-// triageWorld is baseWorld plus an open, unlabelled idea-issue at triageIssue. baseWorld's
-// signed rulings register and planted R-1 sign-off (by the blessing authority) are what the
-// human-decided disposition verifies against.
+// triageWorld is baseWorld plus an open, unlabelled idea-issue at triageIssue.
 func triageWorld(t *testing.T) (*stubRemote, string) {
 	t.Helper()
 	s, rul := baseWorld(t)
@@ -29,16 +34,38 @@ func triageWorld(t *testing.T) (*stubRemote, string) {
 	return s, rul
 }
 
+// plantCom= plant a comment on issue n via the id-bearing s.comment path, so its author
+// login+id, minimized flag and permalink are all set the way a real ListComments read carries
+// them (the threads path used by plantComment/plantProposal sets neither id nor minimized).
+func plantMarkerComment(s *stubRemote, n int, cid, login string, id int64, typ string, minimized bool, body string) {
+	issueURL := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d", testRepo, n)
+	html := fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-%s", testRepo, n, cid)
+	s.comment[cid] = fmt.Sprintf(
+		`{"id":%s,"html_url":%q,"issue_url":%q,"body":%q,"minimized":%t,"user":{"login":%q,"id":%d,"type":%q}}`,
+		cid, html, issueURL, body, minimized, login, id, typ)
+}
+
+// a trusted disposition marker (shared-agent is a roster-trusted automation login, id-pinned).
+func plantTrustedMarker(s *stubRemote, n int) {
+	plantMarkerComment(s, n, "6001", sharedLogin, sharedID, "User", false,
+		triageDispositionMarker+"\nrejected — out of scope for this stream\n")
+}
+
+// the human's ruling comment ON issue n, authored by the blessing authority.
+func plantDecision(s *stubRemote, n int, cid string) string {
+	plantMarkerComment(s, n, cid, blessLogin, blessID, "User", false,
+		"Decision: not pursuing this; the residual work is tracked in #40. — human ruling\n")
+	return fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-%s", testRepo, n, cid)
+}
+
 // ---------------------------------------------------------------- (a) not-planned, recorded
 
-// TestTriageNotPlannedCloses — #1207 test (a): not-planned closes when the triage
-// disposition is already on the record (the marker comment) OR a --tracker names the
-// residual work. Either signal → exactly [comment, close] as not planned.
+// TestTriageNotPlannedCloses — a trusted, non-minimized disposition marker authorizes the
+// close; a --tracker naming an existing item is recorded alongside it (never as authority).
 func TestTriageNotPlannedCloses(t *testing.T) {
-	t.Run("recorded triage-disposition marker comment", func(t *testing.T) {
+	t.Run("trusted marker comment authorizes", func(t *testing.T) {
 		s, rul := triageWorld(t)
-		s.plantComment(testRepo, triageIssue, blessLogin,
-			triageDispositionMarker+"\nrejected — out of scope for this stream\n")
+		plantTrustedMarker(s, triageIssue)
 		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
 			"--disposition", dispositionNotPlanned, "--rulings", rul)
 		if code != deskkit.ExitOK {
@@ -46,12 +73,13 @@ func TestTriageNotPlannedCloses(t *testing.T) {
 		}
 		assertClosedWith(t, s, reasonNotPlanned)
 		if !strings.Contains(strings.ToLower(commentBody(t, s)), "recorded triage disposition") {
-			t.Fatalf("close comment should name the recorded disposition:\n%s", commentBody(t, s))
+			t.Fatalf("close comment should cite the recorded disposition:\n%s", commentBody(t, s))
 		}
 	})
 
-	t.Run("--tracker names the residual work", func(t *testing.T) {
+	t.Run("trusted marker + existing --tracker", func(t *testing.T) {
 		s, rul := triageWorld(t)
+		plantTrustedMarker(s, triageIssue)
 		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
 			"--disposition", dispositionNotPlanned, "--tracker", "#40", "--rulings", rul)
 		if code != deskkit.ExitOK {
@@ -66,8 +94,7 @@ func TestTriageNotPlannedCloses(t *testing.T) {
 
 // ---------------------------------------------------------------- (b) not-planned, unrecorded
 
-// TestTriageNotPlannedRefusedWithoutRecord — #1207 test (b): not-planned with neither a
-// disposition record nor a tracker is refused exit 5, and writes nothing.
+// TestTriageNotPlannedRefusedWithoutRecord — no marker → refused, writes nothing.
 func TestTriageNotPlannedRefusedWithoutRecord(t *testing.T) {
 	s, rul := triageWorld(t)
 	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
@@ -78,34 +105,27 @@ func TestTriageNotPlannedRefusedWithoutRecord(t *testing.T) {
 	assertNoWrites(t, s)
 }
 
-// ---------------------------------------------------------------- (c) human-decided, no ruling
-
-// TestTriageHumanDecidedRefusedWithoutRuling — #1207 test (c): human-decided is refused
-// when the R-1 sign-off is not a VERIFIED human ruling. Two shapes, both refused, both write
-// nothing: a sign-off authored by a trusted-but-not-blessing-authority account (the shared
-// automation login that reports type=User exactly as a person does), and an unsigned register.
-func TestTriageHumanDecidedRefusedWithoutRuling(t *testing.T) {
-	t.Run("sign-off authored by a non-authority (trusted automation)", func(t *testing.T) {
+// TestTriageNotPlannedMarkerAuthor — S2: a marker does not authorize unless its author is
+// roster-trusted and the comment is not minimized.
+func TestTriageNotPlannedMarkerAuthor(t *testing.T) {
+	t.Run("untrusted author's marker does not authorize", func(t *testing.T) {
 		s, rul := triageWorld(t)
-		// Replace the blessing-authority sign-off with one from the shared automation login.
-		s.comment[signOffCID] = commentJSON(sharedLogin, sharedID, "User",
-			"accepted.", "https://api.github.com/repos/"+testRepo+"/issues/297")
+		plantMarkerComment(s, triageIssue, "6002", "drive-by-nobody", 999, "User", false,
+			triageDispositionMarker+"\nrejected\n")
 		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionHumanDecided, "--tracker", "#40", "--rulings", rul)
+			"--disposition", dispositionNotPlanned, "--rulings", rul)
 		if code != deskkit.ExitRefused {
 			t.Fatalf("want exit 5 refused, got %d\n%s", code, out)
 		}
 		assertNoWrites(t, s)
 	})
 
-	t.Run("unsigned register", func(t *testing.T) {
-		s, _ := triageWorld(t)
-		// A register present but with a non-URL sign-off is UNSIGNED — a positive "the human
-		// has not granted this" determination, refused exit 5 (an empty PATH would instead be
-		// could-not-check, exit 6, a different epistemic state).
-		unsigned := signedRulings(t, "_(not yet signed)_")
+	t.Run("minimized marker by a trusted author does not authorize", func(t *testing.T) {
+		s, rul := triageWorld(t)
+		plantMarkerComment(s, triageIssue, "6003", sharedLogin, sharedID, "User", true,
+			triageDispositionMarker+"\nrejected\n")
 		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionHumanDecided, "--tracker", "#40", "--rulings", unsigned)
+			"--disposition", dispositionNotPlanned, "--rulings", rul)
 		if code != deskkit.ExitRefused {
 			t.Fatalf("want exit 5 refused, got %d\n%s", code, out)
 		}
@@ -113,30 +133,113 @@ func TestTriageHumanDecidedRefusedWithoutRuling(t *testing.T) {
 	})
 }
 
-// TestTriageHumanDecidedCloses is the positive control for (c): a verified R-1 sign-off AND a
-// named tracker close the item as not planned, citing the ruling.
-func TestTriageHumanDecidedCloses(t *testing.T) {
+// TestTriageNotPlannedBareTrackerRefused — reviewer Probe C: --tracker alone (no marker) must
+// NOT authorize. Non-existent tracker AND existing tracker both refuse when no marker is on
+// the issue.
+func TestTriageNotPlannedBareTrackerRefused(t *testing.T) {
+	t.Run("non-existent tracker, no marker", func(t *testing.T) {
+		s, rul := triageWorld(t)
+		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+			"--disposition", dispositionNotPlanned, "--tracker", "#999999", "--rulings", rul)
+		if code == deskkit.ExitOK {
+			t.Fatalf("a bare --tracker must not authorize a close; got exit 0\n%s", out)
+		}
+		assertNoWrites(t, s)
+	})
+	t.Run("existing tracker, no marker", func(t *testing.T) {
+		s, rul := triageWorld(t)
+		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+			"--disposition", dispositionNotPlanned, "--tracker", "#40", "--rulings", rul)
+		if code != deskkit.ExitRefused {
+			t.Fatalf("want exit 5 refused (no disposition record), got %d\n%s", code, out)
+		}
+		assertNoWrites(t, s)
+	})
+}
+
+// TestTriageNotPlannedTrackerMustExist — S3: when a marker DOES authorize, a --tracker that
+// names a non-existent item is still refused; a tracker is a fetched existing item.
+func TestTriageNotPlannedTrackerMustExist(t *testing.T) {
+	s, rul := triageWorld(t)
+	plantTrustedMarker(s, triageIssue)
+	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+		"--disposition", dispositionNotPlanned, "--tracker", "#999999", "--rulings", rul)
+	if code == deskkit.ExitOK {
+		t.Fatalf("a non-existent --tracker must be refused; got exit 0\n%s", out)
+	}
+	assertNoWrites(t, s)
+}
+
+// ---------------------------------------------------------------- (c) human-decided
+
+// TestTriageHumanDecidedNoArtifactRefused — reviewer Probe B: human-decided with no per-issue
+// human artifact (no --decision) is refused, even with a signed rulings register and a valid
+// --tracker. A blanket grant is not a decision about issue N.
+func TestTriageHumanDecidedNoArtifactRefused(t *testing.T) {
 	s, rul := triageWorld(t)
 	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
 		"--disposition", dispositionHumanDecided, "--tracker", "#40", "--rulings", rul)
+	if code != deskkit.ExitRefused {
+		t.Fatalf("want exit 5 refused (no per-issue human artifact), got %d\n%s", code, out)
+	}
+	assertNoWrites(t, s)
+}
+
+// TestTriageHumanDecidedArtifactChecks — the per-issue artifact must be authored by the
+// blessing authority and be ON the issue being closed.
+func TestTriageHumanDecidedArtifactChecks(t *testing.T) {
+	t.Run("decision by a non-authority (trusted automation) is refused", func(t *testing.T) {
+		s, rul := triageWorld(t)
+		plantMarkerComment(s, triageIssue, "7001", sharedLogin, sharedID, "User", false,
+			"Decision: skip. — not the blessing authority\n")
+		url := fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-7001", testRepo, triageIssue)
+		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+			"--disposition", dispositionHumanDecided, "--decision", url, "--tracker", "#40", "--rulings", rul)
+		if code != deskkit.ExitRefused {
+			t.Fatalf("want exit 5 refused, got %d\n%s", code, out)
+		}
+		assertNoWrites(t, s)
+	})
+
+	t.Run("decision on a DIFFERENT issue is refused", func(t *testing.T) {
+		s, rul := triageWorld(t)
+		// A genuine blessing-authority ruling, but on issue subjectIssue (55), not triageIssue.
+		url := plantDecision(s, subjectIssue, "7002")
+		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+			"--disposition", dispositionHumanDecided, "--decision", url, "--tracker", "#40", "--rulings", rul)
+		if code != deskkit.ExitRefused {
+			t.Fatalf("want exit 5 refused, got %d\n%s", code, out)
+		}
+		assertNoWrites(t, s)
+	})
+}
+
+// TestTriageHumanDecidedCloses — positive control: a fetched, author-verified decision ON the
+// issue plus a named existing tracker closes as not planned, citing the decision (not R-1).
+func TestTriageHumanDecidedCloses(t *testing.T) {
+	s, rul := triageWorld(t)
+	url := plantDecision(s, triageIssue, "7003")
+	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+		"--disposition", dispositionHumanDecided, "--decision", url, "--tracker", "#40", "--rulings", rul)
 	if code != deskkit.ExitOK {
 		t.Fatalf("want exit 0, got %d\n%s", code, out)
 	}
 	assertClosedWith(t, s, reasonNotPlanned)
 	body := commentBody(t, s)
-	for _, want := range []string{rulingID, testRepo + "#40"} {
-		if !strings.Contains(body, want) {
+	for _, want := range []string{"issuecomment-7003", testRepo + "#40", "recorded human decision"} {
+		if !strings.Contains(strings.ToLower(body), strings.ToLower(want)) {
 			t.Fatalf("close comment should cite %q:\n%s", want, body)
 		}
 	}
 }
 
-// TestTriageHumanDecidedRequiresTracker — human-decided with a verified ruling but no tracker
-// is refused: the recorded-decision close must NAME the remaining work, never assert it.
+// TestTriageHumanDecidedRequiresTracker — human-decided with a verified decision but no
+// tracker is refused: the close must NAME the continuing work.
 func TestTriageHumanDecidedRequiresTracker(t *testing.T) {
 	s, rul := triageWorld(t)
+	url := plantDecision(s, triageIssue, "7004")
 	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-		"--disposition", dispositionHumanDecided, "--rulings", rul)
+		"--disposition", dispositionHumanDecided, "--decision", url, "--rulings", rul)
 	if code != deskkit.ExitRefused {
 		t.Fatalf("want exit 5 refused, got %d\n%s", code, out)
 	}
@@ -145,13 +248,12 @@ func TestTriageHumanDecidedRequiresTracker(t *testing.T) {
 
 // ---------------------------------------------------------------- (d) already closed
 
-// TestTriageAlreadyClosedIsNoop — #1207 test (d): an already-closed issue is an idempotent
-// no-op success, and writes nothing.
 func TestTriageAlreadyClosedIsNoop(t *testing.T) {
 	s, rul := triageWorld(t)
+	plantTrustedMarker(s, triageIssue)
 	s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = issueJSON(triageIssue, "closed", nil, "")
 	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-		"--disposition", dispositionNotPlanned, "--tracker", "#40", "--rulings", rul)
+		"--disposition", dispositionNotPlanned, "--rulings", rul)
 	if code != deskkit.ExitOK || !strings.Contains(out, "noop") {
 		t.Fatalf("want exit 0 noop, got %d\n%s", code, out)
 	}
@@ -160,13 +262,11 @@ func TestTriageAlreadyClosedIsNoop(t *testing.T) {
 
 // ---------------------------------------------------------------- (e) PR target
 
-// TestTriagePRTargetRefused — #1207 test (e): a pull-request target is refused. A PR is
-// retired through the finding-based lanes, never as a plain triage skip.
 func TestTriagePRTargetRefused(t *testing.T) {
 	s, rul := triageWorld(t)
 	// mergedPRNum (40) is registered by baseWorld as a pull request.
 	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(mergedPRNum),
-		"--disposition", dispositionNotPlanned, "--tracker", "#55", "--rulings", rul)
+		"--disposition", dispositionNotPlanned, "--rulings", rul)
 	if code != deskkit.ExitRefused {
 		t.Fatalf("want exit 5 refused, got %d\n%s", code, out)
 	}
@@ -175,16 +275,14 @@ func TestTriagePRTargetRefused(t *testing.T) {
 
 // ---------------------------------------------------------------- decision-label control
 
-// TestTriageDecisionLabelControl is the worker §2 control: triage never closes a
-// needs-decision issue (both dispositions), and not-planned also refuses a human-decided
-// item; human-decided PERMITS a human-decided-labelled item (that is what it closes).
 func TestTriageDecisionLabelControl(t *testing.T) {
 	t.Run("needs-decision refused under not-planned", func(t *testing.T) {
 		s, rul := triageWorld(t)
+		plantTrustedMarker(s, triageIssue)
 		s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] =
 			issueJSON(triageIssue, "open", []string{"needs-decision"}, "")
 		code, _ := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionNotPlanned, "--tracker", "#40", "--rulings", rul)
+			"--disposition", dispositionNotPlanned, "--rulings", rul)
 		if code != deskkit.ExitRefused {
 			t.Fatalf("want exit 5 refused, got %d", code)
 		}
@@ -193,10 +291,11 @@ func TestTriageDecisionLabelControl(t *testing.T) {
 
 	t.Run("needs-decision refused under human-decided", func(t *testing.T) {
 		s, rul := triageWorld(t)
+		url := plantDecision(s, triageIssue, "7005")
 		s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] =
 			issueJSON(triageIssue, "open", []string{"needs-decision"}, "")
 		code, _ := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionHumanDecided, "--tracker", "#40", "--rulings", rul)
+			"--disposition", dispositionHumanDecided, "--decision", url, "--tracker", "#40", "--rulings", rul)
 		if code != deskkit.ExitRefused {
 			t.Fatalf("want exit 5 refused, got %d", code)
 		}
@@ -205,10 +304,11 @@ func TestTriageDecisionLabelControl(t *testing.T) {
 
 	t.Run("human-decided label refused under not-planned", func(t *testing.T) {
 		s, rul := triageWorld(t)
+		plantTrustedMarker(s, triageIssue)
 		s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] =
 			issueJSON(triageIssue, "open", []string{"human-decided"}, "")
 		code, _ := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionNotPlanned, "--tracker", "#40", "--rulings", rul)
+			"--disposition", dispositionNotPlanned, "--rulings", rul)
 		if code != deskkit.ExitRefused {
 			t.Fatalf("want exit 5 refused, got %d", code)
 		}
@@ -217,10 +317,11 @@ func TestTriageDecisionLabelControl(t *testing.T) {
 
 	t.Run("human-decided label PERMITTED under human-decided", func(t *testing.T) {
 		s, rul := triageWorld(t)
+		url := plantDecision(s, triageIssue, "7006")
 		s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] =
 			issueJSON(triageIssue, "open", []string{"human-decided"}, "")
 		code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionHumanDecided, "--tracker", "#40", "--rulings", rul)
+			"--disposition", dispositionHumanDecided, "--decision", url, "--tracker", "#40", "--rulings", rul)
 		if code != deskkit.ExitOK {
 			t.Fatalf("want exit 0, got %d\n%s", code, out)
 		}
@@ -230,7 +331,6 @@ func TestTriageDecisionLabelControl(t *testing.T) {
 
 // ---------------------------------------------------------------- arg surface + dry-run
 
-// TestTriageArgSurface pins the closed disposition set and the required flag.
 func TestTriageArgSurface(t *testing.T) {
 	s, rul := triageWorld(t)
 	t.Run("missing --disposition refused", func(t *testing.T) {
@@ -250,7 +350,24 @@ func TestTriageArgSurface(t *testing.T) {
 	})
 	t.Run("stated change kind refused", func(t *testing.T) {
 		code, _ := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-			"--disposition", dispositionNotPlanned, "--kind", "mr", "--tracker", "#40", "--rulings", rul)
+			"--disposition", dispositionNotPlanned, "--kind", "mr", "--rulings", rul)
+		if code != deskkit.ExitRefused {
+			t.Fatalf("want exit 5, got %d", code)
+		}
+		assertNoWrites(t, s)
+	})
+	t.Run("--decision with not-planned refused", func(t *testing.T) {
+		code, _ := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+			"--disposition", dispositionNotPlanned, "--decision",
+			fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-1", testRepo, triageIssue), "--rulings", rul)
+		if code != deskkit.ExitRefused {
+			t.Fatalf("want exit 5, got %d", code)
+		}
+		assertNoWrites(t, s)
+	})
+	t.Run("human-decided without --decision refused", func(t *testing.T) {
+		code, _ := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
+			"--disposition", dispositionHumanDecided, "--tracker", "#40", "--rulings", rul)
 		if code != deskkit.ExitRefused {
 			t.Fatalf("want exit 5, got %d", code)
 		}
@@ -258,11 +375,13 @@ func TestTriageArgSurface(t *testing.T) {
 	})
 }
 
-// TestTriageDryRunWritesNothing — --dry-run validates and reads, writes nothing.
+// TestTriageDryRunWritesNothing — --dry-run validates and reads (authority included), writes
+// nothing.
 func TestTriageDryRunWritesNothing(t *testing.T) {
 	s, rul := triageWorld(t)
+	plantTrustedMarker(s, triageIssue)
 	code, out := execCLI(modeTriage, "-R", testRepo, fmt.Sprint(triageIssue),
-		"--disposition", dispositionNotPlanned, "--tracker", "#40", "--dry-run", "--rulings", rul)
+		"--disposition", dispositionNotPlanned, "--dry-run", "--rulings", rul)
 	if code != deskkit.ExitOK || !strings.Contains(out, "dry-run") {
 		t.Fatalf("want exit 0 dry-run, got %d\n%s", code, out)
 	}

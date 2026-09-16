@@ -43,10 +43,11 @@ type stubPullWire struct {
 }
 
 type stubCommentWire struct {
-	HTMLURL  string `json:"html_url"`
-	IssueURL string `json:"issue_url"`
-	Body     string `json:"body"`
-	User     struct {
+	HTMLURL   string `json:"html_url"`
+	IssueURL  string `json:"issue_url"`
+	Body      string `json:"body"`
+	Minimized bool   `json:"minimized"`
+	User      struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 		Type  string `json:"type"`
@@ -263,6 +264,7 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			DatabaseID: id,
 			Body:       w.Body,
 			URL:        w.HTMLURL,
+			Minimized:  w.Minimized,
 			Author:     deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}

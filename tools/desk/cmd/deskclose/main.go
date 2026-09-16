@@ -73,18 +73,22 @@ USAGE:
       by name; no verify-gate label → refused; a change → refused; already open →
       no-op. NOT the human sign-off: a bot's close of a verify-gate issue is reopened
       by the repository's verify-gate close workflow, whatever this lane decides.
-  deskclose triage         -R <owner/repo> <item> --disposition {not-planned|human-decided}
+  deskclose triage         -R <owner/repo> <item> --disposition not-planned
                                                   [--tracker <ref>] [--kind K]
-      the intake front door's "close, no fix PR" exit for an ISSUE — the plain
-      rejected/watching (not-planned) skip, and the recorded-human-decision close.
-      --disposition not-planned closes on a triage disposition ALREADY recorded on the
-      issue (the ` + "`" + triageDispositionMarker + "`" + ` marker comment intake posts) OR a --tracker naming
-      where any residual work lives; neither present → refused. --disposition
-      human-decided closes on the SAME fetched-and-verified R-1 sign-off every ruled
-      lane uses, and requires --tracker naming the work that continues — a flag can
-      never manufacture that authority. A needs-decision item (still on the human's
-      queue) is refused in both dispositions; not-planned also refuses a human-decided
-      item; a pull-request target is refused; already-closed is a no-op.
+  deskclose triage         -R <owner/repo> <item> --disposition human-decided
+                                                  --decision <url> --tracker <ref> [--kind K]
+      the intake front door's "close, no fix PR" exit for an ISSUE. Each disposition
+      authorizes on an artifact deskclose FETCHES and VERIFIES, never a caller flag:
+      --disposition not-planned closes only on a ` + "`" + triageDispositionMarker + "`" + ` marker
+      comment ON the issue authored by a roster-trusted account and not minimized (a
+      bare marker string, a minimized one, or one by an untrusted author does NOT
+      authorize). --disposition human-decided closes only on the human's OWN ruling
+      comment on the issue (--decision <url>), fetched and its author verified as the
+      blessing authority — a blanket ruling grant never stands in for it. --tracker is
+      never authority: when given it must name an EXISTING item (verified by a read),
+      and it is required for human-decided (the close NAMES the continuing work). A
+      needs-decision item is refused in both dispositions; not-planned also refuses a
+      human-decided item; a pull-request target is refused; already-closed is a no-op.
   deskclose --version
 
 Every mode accepts --dry-run (validate + read the remote, write nothing) and
