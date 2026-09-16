@@ -84,8 +84,13 @@ facts:
   on claude `CLAUDE_CONFIG_DIR=<cell>/home/.claude` (only the active harness's var is set) ·
   `DESK_LOOP=<role>` · `DESK_SESSION=<cell>-<role>-<UTC boot stamp>[-codex]` · `DESK_ROOTS`
   from `CELL_ROOTS` when set · `TERM` and `LANG` passed through from the parent (the only two
-  pass-throughs; a TUI harness needs them). Nothing else: no `SSH_AUTH_SOCK`, no `GH_TOKEN`,
-  no `ANTHROPIC_*`, no `AWS_*`, no parent `PATH`.
+  value pass-throughs; a TUI harness needs them). The composed `PATH` has EXACTLY seven
+  elements in order — `<cell>/shim`, the desk-tools bindir, `dirname` of the resolved harness
+  binary, then `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`. The harness dir is the ONE
+  parent-derived `PATH` element (resolving the harness is how it is found), so it is NAMED and
+  PINNED rather than treated as a leak; every other element is fixed. No wholesale parent
+  `PATH` is inherited, and nothing else crosses: no `SSH_AUTH_SOCK`, no `GH_TOKEN`, no
+  `ANTHROPIC_*`, no `AWS_*`.
 - **The App PEM reaches the tools through the cell, never the parent shell.** The desk tools
   resolve a role's key from the config home (`<config-home>/<role>-app.pem`, and the
   `<ROLE>_PEM=` entries of `apps.env`), so exporting `ASSAY_CONFIG_HOME` into the cell is the
@@ -94,6 +99,11 @@ facts:
   file** (`stat -f '%Lp'` on BSD, `stat -c '%a'` on GNU; the row tries both, exactly as the
   existing codex rows try two spellings). A house-style symlink into the operator's real
   config home is a MISS on this kind by design.
+- **Config-home directory mode.** The directory the PEMs live in carries a custody claim of its
+  own: `check` requires `<cell>/home/.config/assay` be mode **0700** (`stat -f '%Lp'` / `stat -c
+  '%a'`, the same two-spelling row shape as the PEM row) — a group- or world-readable directory
+  holding 0600 PEMs still exposes their names and mtimes, so the 0600 file row does not carry
+  the directory claim. `new` creates it 0700; `check` fails closed on a widened mode.
 - **Roster scope row:** the cell's `roster.env` must carry an `ASSAY_ALLOWED_REPOS=` line whose
   value is exactly `CELL_REPO_SLUG` (a new cell.env key, `<owner>/<repo>`, written by `new`
   from `--repo-slug`; `CELL_REPO` stays the checkout path). More than one entry, a different
@@ -112,6 +122,13 @@ facts:
   claude arm: `claude -p --model <resolved model> "<prompt>"` (`-p/--print` verified in
   `claude --help`, 2026-09-16). `DRY_RUN=1 cellctl smoke` prints the plan and the argv and
   runs nothing. Live `smoke` is NEVER a Verify row: every row runs a stub harness.
+  **Arm asymmetry, stated so it is a decision not a gap:** on codex, "tool-free, read-only" is
+  enforced in the argv (`--sandbox read-only`); on claude it rests on `-p` (non-interactive,
+  no session) plus the tool-free prompt, because `claude -p` has no argv sandbox equal to
+  codex's. If the installed `claude` build offers a tool/permission-restriction flag, the
+  implementer adds it and row 5 asserts it — verify at pickup rather than assuming one exists.
+  Both arms print their resolved model before first contact so the plan is auditable; neither
+  contacts a model on any Verify row.
 - **`status <cell>`** prints exactly one of `running <session-name>` / `stopped` (plus
   `stale-lock <pid>` when a lock dir names a dead pid — reported, and cleared only by
   `down`), exit 0 in every case that is not a load error — it is a read, not a check.
@@ -148,10 +165,11 @@ facts:
   need a live model is not a row.
 
 single-point-of-failure: the `env -i` allowlist in the scrubbed arm of `cmd_desk` — behind it: the
-stub-harness test records the FULL environment it received and row 3 asserts a parent-shell canary
-is absent (fails in a different component — the recorded env file — for a different reason than
-the allowlist itself), and `check`'s PEM/roster rows fail closed on a cell whose custody was wired
-house-style even when the launch env is right.
+stub-harness test records the FULL environment it received and row 3 asserts the composed `PATH` is
+exactly the seven named elements and every parent-shell canary (env var AND `PATH` dir) is absent
+(fails in a different component — the recorded env file — for a different reason than the allowlist
+itself), and `check`'s PEM/roster/config-home-mode rows fail closed on a cell whose custody was
+wired house-style even when the launch env is right.
 
 ## Ground rules
 - NEVER git push to main / trigger workflows / run mutating infra commands. Feature branch +
@@ -172,8 +190,8 @@ house-style even when the launch env is right.
    `home/.gitconfig` (empty), `tmp/` 0700, `run/`. Print the hand steps (copy the role PEMs in
    as regular 0600 files; log the harness in under the cell home) — nothing is copied from the
    operator's config home. Refuse an existing cell of the same name.
-3. `check_scrubbed`: the rows in facts — config home is a real directory (not a symlink); every
-   PEM regular/non-symlink/0600; `ASSAY_ALLOWED_REPOS` exactly the slug; harness login under
+3. `check_scrubbed`: the rows in facts — config home is a real directory (not a symlink) AND
+   mode 0700; every PEM regular/non-symlink/0600; `ASSAY_ALLOWED_REPOS` exactly the slug; harness login under
    the cell home; roster parses under the cell home (`deskroster repos --scope scan`, as house
    does); `CELL_ROOTS` rows when set; desk verbs installed; `tmux` on PATH; lock/run dir
    writable. Wire it in `cmd_check`'s kind case.
@@ -188,8 +206,8 @@ house-style even when the launch env is right.
    `cmd_up` scrubbed arm: refuse when `status` is not `stopped`; attach on a tty.
 8. Add `smoke` and `status` to the dispatch table and the header usage block.
 9. `tools/cellctl/tests/scrubbed-cell.test.sh` (planned) with `--case` selection; cases: `new`,
-   `check-pass`, `check-pem`, `check-roster`, `env-scrub`, `plan-grammar`, `smoke-ready`,
-   `smoke-not-ready`, `lock`, `status`, `down`, `legacy-kinds`. Each case prints `ok`/`FAIL`
+   `check-pass`, `check-pem`, `check-roster`, `check-home-mode`, `env-scrub`, `plan-grammar`,
+   `smoke-ready`, `smoke-not-ready`, `lock`, `status`, `down`, `legacy-kinds`. Each case prints `ok`/`FAIL`
    rows in the existing suites' format and exits non-zero on any FAIL.
 10. `docs/cellctl.md`: the new section, the env table (one row per exported var, generated
     from the same list the code holds — state the list ONCE in the script as a variable the
@@ -201,7 +219,7 @@ house-style even when the launch env is right.
 |---|---------|--------|-------|
 | 1 | `shellcheck tools/cellctl/cellctl` | exit 0 (red on the merge-base is not expected here — this row guards the edit) | check:ci |
 | 2 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pass` | exit 0; a scrubbed fixture cell with regular 0600 PEMs, an exact `ASSAY_ALLOWED_REPOS`, a stub `codex` whose `login status` exits 0, passes every row. Red on the merge-base: the script does not exist (exit 127) and `cellctl check` on the fixture dies `CELL_KIND=scrubbed is not a known kind` (exit 3) | check:ci |
-| 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub` | exit 0; the case exports `GH_TOKEN=canary-parent`, `SSH_AUTH_SOCK=/nonexistent`, `ANTHROPIC_API_KEY=canary` and a parent `PATH` into the parent shell, launches `desk` against a stub harness that dumps its environment, and asserts none of the three canaries and no parent-PATH element is present, while every allowlisted KEY is present with its cell-relative value (the flow: parent shell → `cellctl desk` → composed env → what the harness process actually receives). Red on the merge-base: exit 127 | check:ci +mutation +flow |
+| 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub` | exit 0; the case exports `GH_TOKEN=canary-parent`, `SSH_AUTH_SOCK=/nonexistent`, `ANTHROPIC_API_KEY=canary` AND a canary directory on the parent `PATH`, launches `desk` against a stub harness that dumps its environment, and asserts: (i) none of the three env canaries is present; (ii) every allowlisted KEY is present with its cell-relative value; (iii) the composed `PATH` equals EXACTLY `<cell>/shim`, the desk-tools bindir, `dirname` of the resolved stub harness, `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` — in that order and with no other element, so the harness dir is the one permitted parent-derived element and the injected canary dir does NOT appear. A leak of any additional parent-`PATH` element is still red. (the flow: parent shell → `cellctl desk` → composed env → what the harness process actually receives). Red on the merge-base: exit 127 | check:ci +mutation +flow |
 | 4 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case plan-grammar` | exit 0; `DRY_RUN=1 cellctl desk <fixture> the-desk` prints the existing `[dry-run]` line THEN `[plan] env` lines in sorted KEY order, then `[plan] argv`, `[plan] cwd`, `[plan] lock`; the set of `[plan] env` KEYs equals the allowlist variable in the script (dereferencing: the plan is generated from the list, so a KEY added to one and not the other fails here). Red on the merge-base: exit 127 | check:ci +dereference |
 | 5 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-ready` | exit 0; a stub harness printing `READY` makes `cellctl smoke` exit 0 and print `READY`; the stub records it was invoked with `exec --ephemeral --sandbox read-only` (codex) / `-p` (claude) and under `HOME=<cell>/home`. Red on the merge-base: exit 127 | check:ci |
 | 6 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-not-ready` | exit 0; a stub printing `READY` but exiting 2, and a stub exiting 0 printing `I cannot`, each make `smoke` exit 1 with `smoke: not ready:` on stdout — the verb cannot pass on a wrong-but-well-formed answer | check:ci +mutation |
@@ -213,6 +231,7 @@ house-style even when the launch env is right.
 | 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | exit 0 — the docs env table (first column the bare variable name) carries a row per exported variable. Red on the merge-base: exits 1 at `ZDOTDIR` | check |
 | 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | exit 0; prints `1` | check |
 | 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | exit 0 — every `consumers:` routing above is corroborated or deferred by the diff | check:ci |
+| 15 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode` | exit 0; a cell whose `home/.config/assay` is mode 0755 → `check` prints a `MISS` naming `0700` and exits 1; the same cell at 0700 → `ok` — the directory holding the PEMs carries its own custody row, not only the 0600 file row. Red on the merge-base: `--case check-home-mode` is unknown to the suite (exit 2) | check:ci +mutation |
 
 ## Definition of Done
 - Verify rows green, recorded in Evidence by a non-implementer.
@@ -232,5 +251,8 @@ house-style even when the launch env is right.
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;
 it composes an environment with STRICTLY LESS of the operator's authority than the existing
 house kind grants, adds no credential path, and every row runs against stubs). Reviewer
-confirms rows 3, 6, 7, 8 and 10 are NEGATIVE-path (a wrong-but-well-formed cell must go red)
+confirms rows 3, 6, 7, 8, 10 and 15 are NEGATIVE-path (a wrong-but-well-formed cell must go red)
 and that the allowlist in the script is the single source both the plan and the docs table read.
+Row 3 in particular pins the composed `PATH` to exactly seven elements — the one parent-derived
+element (the harness dir) named, every other leak red — so its isolation assertion is
+satisfiable rather than self-contradictory.

@@ -68,6 +68,9 @@ files:
   allowlist from desk-containers/09, stated once), `plan.go` (the `[dry-run]`/`[plan]`
   grammar), `check.go`, `desk.go`, `up.go`, `down.go`, `new.go`, `set.go`, `smoke.go`,
   `status.go`, `cockpit.go`, `lock.go` (mkdir lock; a build-tagged `flock` is NOT introduced),
+  `deskd.go` (the App-JWT mint, ported ONTO `deskkit.RoleTokenForRepo` — never a re-derivation
+  of the bash's hand-built RS256 flow; see the deskd-exclusion fact and row 15), any
+  `CELLCTL_PARITY_MUTATE` code carrying `//go:build parity` so a release build omits it,
   `*_test.go` beside each.
 - `tools/cellctl/tests/parity.test.sh` (planned) — the parity harness; §Parity below.
 - `tools/cellctl/tests/*.test.sh` — each gains `CELLCTL="${CELLCTL:-$HERE/../cellctl}"` so the
@@ -87,7 +90,9 @@ facts:
   (`tools/cellctl/cellctl:2168-2176`) plus `smoke status` from desk-containers/09; kinds
   `k8s house container scrubbed`; harnesses `claude codex`; cockpits `auto tmux herdr orca`
   (`resolve_cockpit`, :376-405, with the herdr/orca fall-through rules docs §Cockpits
-  states); forges `github gitlab` (:237-256). Every one of these is a parity-matrix axis.
+  states); forges `github gitlab` (:237-256). Every one of these is a parity-matrix axis
+  EXCEPT `deskd` — see the deskd-exclusion fact below, which states why and how it is covered
+  instead.
 - **deskkit reuse is a requirement, not a preference** (#1193): forge resolution →
   `deskkit.ResolveForge` / `ForgeKindForRepoRemote` (forgeresolve.go:425 / :193) replaces the
   `CELL_FORGE`/`FORGE_API_BASE` derivation; role-token custody → `deskkit.RoleTokenForRepo`
@@ -113,12 +118,35 @@ facts:
   `herdr`/`orca` binaries answering `--help` the way `resolve_cockpit`'s `help_has` probes
   (:366-374). The harness honours `PARITY_ONLY=<kind>/<harness>/<cockpit>/<verb>` for a
   single cell.
+- **`deskd` is excluded from the parity matrix DELIBERATELY, and covered by a dedicated row
+  instead — not an oversight.** The matrix verb axis is `{check, desk, up, down, set, ls, smoke,
+  status}`; `deskd` is absent because it has no `DRY_RUN` plan path in the bash oracle (sources:
+  dry-run output exists on `desk`, `up` and `container_run` only), so the plan-diff harness has
+  nothing to compare — and giving `deskd` a dry-run path would mean editing the bash oracle,
+  which this brief forbids (the oracle stays unmodified). `deskd` is also the single most
+  credential-sensitive verb: it signs an RS256 App JWT with the PEM and exchanges it for per-org
+  installation tokens it exports into the process env. Its port is therefore proven by **row
+  15**, a source-level assertion that the Go `deskd` mints only through
+  `deskkit.RoleTokenForRepo` (row 10) and contains no JWT-signing or `openssl` shellout of its
+  own — i.e. it does not re-derive the bash `deskd_mint_github` flow. A live-mint behavioural
+  row is out of scope for an offline authoring PR and named as the online-lane hand-off in the
+  DoD, not stretched to fit an offline stub here.
 - **Divergence detection must itself be proven** (row 5): the Go binary honours an
   undocumented, test-only `CELLCTL_PARITY_MUTATE=<key>` that drops the named `[plan] env`
   line; the harness run under it MUST go red naming the cell. This is the negative control on
   the oracle diff — without it a harness that diffs nothing (a normalisation bug, an empty
   matrix) is a green lamp wired to nothing. The variable is read only when the binary was
-  built with the `parity` build tag, so a release build cannot carry it.
+  built with the `parity` build tag, so a release build cannot carry it — and that claim is
+  itself PROVEN, not merely asserted, by two rows a fail-open guard demands: **row 13**
+  (behavioural) builds the binary with NO `-tags parity` and shows `CELLCTL_PARITY_MUTATE` is
+  inert there — the mutated and unmutated dry-run plans are byte-identical AND the
+  `KUBECONFIG=/dev/null` isolation line the mutation would have dropped is still present; **row
+  14** (source) shows every file naming `CELLCTL_PARITY_MUTATE` carries `//go:build parity`, so
+  a tagless compile contains none of that code. Row 5 proves the mutation WORKS (a `parity`
+  build); rows 13-14 prove it is absent from what ships. (Row 5 deliberately drops
+  `KUBECONFIG=/dev/null`, the cluster-isolation control, as its canary line precisely because
+  that is the most damaging line to lose silently — which is why row 13 re-checks that exact
+  line is intact in a release build.)
 - **Fifteen suites re-pointed (row 4):** `CELLCTL=<go binary> bash tools/cellctl/tests/
   <suite>.test.sh` for every suite; these assert BEHAVIOUR (files written, env recorded by
   stubs, exit codes), so they fail for different reasons than the parity diff and are the
@@ -144,7 +172,11 @@ single-point-of-failure: the parity harness's dry-run diff (row 3) — behind it
 behavioural suites re-pointed at the Go binary (row 4; fail in a different component, on
 recorded stub behaviour, not on a textual diff), the divergence-detection negative control (row
 5; proves the diff can go red at all), and the human cutover gate (the tarball entry does not
-flip until a human reads rows 3-5 at the shipped SHA).
+flip until a human reads rows 3-5 at the shipped SHA). The `deskd` credential-mint path sits
+OUTSIDE this matrix by construction (no dry-run plan to diff); its single control is row 15's
+source assertion that the mint runs only through `deskkit.RoleTokenForRepo` with no self-baked
+JWT, plus the online-lane live-mint check named in the DoD — the fail-open guard
+(`CELLCTL_PARITY_MUTATE`) is held closed in a release build by rows 13-14.
 
 ## Human decision
 The shell launcher every cell on the operator's machines boots through is being replaced by a
@@ -219,6 +251,9 @@ Default if no answer: none — blocks until answered (the cutover is the irrever
 | 10 | `for f in ResolveForge RoleTokenForRepo LoadConfig; do grep -rq --exclude='*_test.go' "deskkit\.$f(" tools/desk/cmd/cellctl/ \|\| { echo "seam not called: $f"; exit 1; }; done` | exit 0 — each of the three deskkit seams is CALLED from a non-test file, not re-implemented (dereferencing: a port that copies the bash JWT/roster logic exits 1 at the first missing call) | check +dereference |
 | 11 | `grep -c '^## .*Parity' docs/cellctl.md` | exit 0; prints `1` | check |
 | 12 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | exit 0 | check:ci |
+| 13 | `d=$(mktemp -d); mkdir -p "$d/s/home/.config/assay"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/s/cell.env"; ( cd tools/desk && go build -o "$d/cellctl-rel" ./cmd/cellctl ); a=$(CELLS_ROOT="$d" DRY_RUN=1 "$d/cellctl-rel" desk s the-desk 2>&1); b=$(CELLS_ROOT="$d" CELLCTL_PARITY_MUTATE=KUBECONFIG DRY_RUN=1 "$d/cellctl-rel" desk s the-desk 2>&1); test "$a" = "$b" && case "$a" in *KUBECONFIG=/dev/null*) true;; *) false;; esac` | exit 0 — a binary built with NO `-tags parity` IGNORES `CELLCTL_PARITY_MUTATE` entirely (mutated and unmutated dry-run plans byte-identical) and still emits the `KUBECONFIG=/dev/null` isolation line the mutation would have dropped. Proves the fail-open guard is inert in what ships. Red on the merge-base: the package does not build (non-zero) | check:ci +mutation |
+| 14 | `for f in $(grep -rl 'CELLCTL_PARITY_MUTATE' tools/desk/cmd/cellctl/); do grep -q '//go:build parity' "$f" \|\| { echo "unguarded: $f"; exit 1; }; done` | exit 0 — every source file naming `CELLCTL_PARITY_MUTATE` carries the `//go:build parity` constraint, so a release compile (no tag) contains none of that code. Red on the merge-base: the package does not exist, the `for` iterates nothing, exit 0 — so this row is paired with row 13, which fails to build on the merge-base | check:ci +dereference |
+| 15 | `! grep -rnE --exclude='*_test.go' -e 'crypto/rsa' -e 'crypto/x509' -e '[Jj][Ww][Tt]' -e 'openssl' tools/desk/cmd/cellctl/` | exit 0 — no file in the Go `cellctl` package signs an App JWT or shells to `openssl`; the `deskd` mint runs only through `deskkit.RoleTokenForRepo` (row 10), never a re-derivation of the bash `deskd_mint_github` RS256 flow. Red on the merge-base: the package does not exist, grep matches nothing, `!` makes it exit 0 — paired with row 10, which fails on the merge-base (no such package) | check:ci +dereference |
 
 ## Definition of Done
 - Verify rows green, recorded in Evidence by a non-implementer; row 8's value recorded.
@@ -226,6 +261,11 @@ Default if no answer: none — blocks until answered (the cutover is the irrever
   forge; the bash oracle untouched by this brief.
 - The four deskkit seams called (row 10); no bash logic for JWT minting, forge derivation,
   roster parsing or write guarding survives in the Go package.
+- `deskd` mint proven at the source level (row 15) offline; the live-mint behavioural check
+  (a real stub-forge token exchange) is named here as the ONLINE-LANE hand-off, since this repo
+  runs no live mint offline — it is not stretched into a fake offline row.
+- The `CELLCTL_PARITY_MUTATE` fail-open guard is proven inert in a release build (rows 13-14),
+  not merely asserted.
 - `release.yml` hunk pushed by a human (named on the PR until it is), the script no longer
   in the tarball, the binary under the same `cellctl` filename.
 - Windows hand-off line present in `docs/cellctl.md` §Install and in Evidence (row 8).

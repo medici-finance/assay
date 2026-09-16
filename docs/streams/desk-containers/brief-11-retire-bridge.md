@@ -82,7 +82,13 @@ facts:
   `warn` (visible, non-fatal — `check` from a checkout is legitimate) naming both paths and
   both `--version` outputs. On the bash oracle the running path is `SELF`
   (`tools/cellctl/cellctl:169`); on the Go binary it is `os.Executable()` resolved through
-  symlinks.
+  symlinks. **The `warn` class here is accepted residual risk, chosen deliberately, not a
+  weak-by-accident row.** The shadowed-`cellctl` condition it observes is exactly the one that
+  let the out-of-tree bridge exist, so it is worth surfacing — but a legitimate run from a
+  checkout trips it too, so making it fatal would break a normal workflow. The ENFORCING
+  control is the pin (one sha256-pinned install location), not this row; the row is the visible
+  detector that tells an operator a second copy has appeared. Recorded as acceptance so a later
+  reviewer does not read the `warn` as an oversight to escalate to fatal.
 - **Docs §Install changes one sentence's meaning:** the `~/.local/bin` two-liner stays as
   the checkout/tarball fallback but is preceded by the rule that a machine with a pinned
   desk-tools install has exactly one `cellctl`, the pinned one, and that `cellctl check`'s
