@@ -50,6 +50,12 @@ import (
 // install step puts there from the pinned release.
 const statusgenBinEnv = "STATUSGEN_BIN"
 
+// statusgenArtifact is the artifact name statusgen is pinned under in a
+// `.assay-versions` — the base name every pin shape is spelled from: the bare
+// line, the per-platform `statusgen-<os>-<arch>` line, and the `statusgen-source`
+// channel-D line.
+const statusgenArtifact = "statusgen"
+
 // gateScoreRow is the shape `statusgen --gate-scores` emits. `repo` arrived with
 // multi-root statusgen and is absent from older releases;
 // when absent the configured repo key is used instead.
@@ -201,16 +207,58 @@ func gateScoresForRoot(bin, absRoot, repo string) ([]gateScoreRow, error) {
 // SOURCE repo, never carries one — but a root whose pin file IS present and
 // unreadable or malformed fails closed immediately, naming that root, rather
 // than silently falling through to the next one.
+// CHANNEL D (#1122). A release line is not the only shape a statusgen pin takes.
+// An adopter on a platform or forge the release publishes no binary for pins the
+// SOURCE line instead — `statusgen-source <40-hex-commit> channel-D`, the same
+// shape `desksourceguard` reads and the drift banner already honours for
+// `desk-tools`. This resolver only ever asked for a bare `statusgen ` line and
+// then this host's `statusgen-<os>-<arch>` line, so such a pin file read as NO
+// PIN and the whole verb exited 6: Next-up came back could-not-check for every
+// channel-D adopter, on a pin file that is valid and that `statusgen --lint`
+// passes. A source line IS a pin, so it is read as one here; the interpretation
+// of its two column layouts is deskkit.SourcePin's, not a second copy.
 func resolveStatusgenPin(resolved []deskkit.RootConfig) (tag, repo string, err error) {
 	for _, r := range resolved {
-		if _, statErr := os.Stat(filepath.Join(r.Path, ".assay-versions")); statErr != nil {
+		pinFile := filepath.Join(r.Path, deskkit.AssayVersionsFile)
+		if _, statErr := os.Stat(pinFile); statErr != nil {
 			continue
 		}
-		pinnedTag, _, perr := deskkit.StatusgenPin(r.Path)
+		// The release line first, and its MALFORMED verdict is still terminal: only
+		// ABSENCE falls through to the source line, so a broken `statusgen ` line is
+		// never skipped in favour of another shape (pins.go's fail-closed rule).
+		pinnedTag, _, found, perr := deskkit.PlatformPinLookup(r.Path, statusgenArtifact)
 		if perr != nil {
 			return "", "", perr // fail-closed: a present-but-bad pin is never skipped
 		}
-		return pinnedTag, r.Repo, nil
+		if found {
+			return pinnedTag, r.Repo, nil
+		}
+		src, srcFound, serr := deskkit.SourcePin(r.Path, statusgenArtifact)
+		if serr != nil {
+			return "", "", serr // fail-closed, exactly as for the release line
+		}
+		if srcFound {
+			if !src.Usable() {
+				// A source pin that genuinely cannot serve gets a NAMED reason. The one
+				// verdict this must never give is "no pin": the adopter's file pins
+				// statusgen, and being told it does not sends them looking for a missing
+				// line instead of at the unreadable one they have.
+				return "", "", deskkit.Unverifiable(fmt.Sprintf(
+					"channel D: the statusgen pin in %s is a `%s` line (%s %s %s) whose columns carry "+
+						"neither a release tag nor a 40-hex commit, so it names no statusgen to run — "+
+						"build from source and pin the commit (`%s <40-hex-commit> channel-D`), "+
+						"or install a release and pin `%s <tag> <sha256>`",
+					pinFile, src.Artifact, src.Artifact, src.Field2, src.Field3,
+					src.Artifact, statusgenArtifact), nil)
+			}
+			return src.Ref(), r.Repo, nil
+		}
+		return "", "", deskkit.Unverifiable(fmt.Sprintf(
+			"no %s pin in %s (looked for a bare `%s ` line, this host's platform line %s, and a "+
+				"`%s%s` channel-D source line)",
+			statusgenArtifact, pinFile, statusgenArtifact,
+			strings.Join(deskkit.HostPlatformAssets(statusgenArtifact), " / "),
+			statusgenArtifact, deskkit.SourcePinSuffix), nil)
 	}
 	names := make([]string, len(resolved))
 	for i, r := range resolved {
@@ -225,33 +273,28 @@ func resolveStatusgenPin(resolved []deskkit.RootConfig) (tag, repo string, err e
 // cmdAwaiting renders the cross-repo awaiting-verification queue. verbUsed is the
 // spelling the caller invoked — `awaiting` (canonical) or `nextup` (deprecated alias).
 func cmdAwaiting(hdr Header, verbUsed string) (*Report, error) {
-	roots, err := deskkit.ConfiguredRoots()
+	// The root/pin/version preamble is resolved ONCE, by the shared resolver (roots.go),
+	// which performs exactly the steps this function used to perform inline and in the same
+	// fail-closed order. `throughput` calls that resolver once for the whole run instead of
+	// paying for it here and again in cmdDispatch.
+	rs, err := resolveRootsOnce()
 	if err != nil {
 		return nil, err
 	}
-	bin, err := resolveStatusgen()
+	rep, err := awaitingFromRoots(hdr, verbUsed, rs)
 	if err != nil {
 		return nil, err
 	}
+	return renderAwaiting(hdr, *rep), nil
+}
 
-	// Resolve EVERY configured root up front, before reading any of them. Two
-	// reasons: fail-closed stays fail-closed (a bad root aborts before a single
-	// row is collected), and the report can carry the resolved absolute path, so
-	// the coverage lines name the directory the rows actually came from instead
-	// of the configured spelling.
-	resolved := make([]deskkit.RootConfig, 0, len(roots))
-	for _, r := range roots {
-		abs, rerr := deskkit.ResolveRoot(r)
-		if rerr != nil {
-			return nil, rerr // fail-closed: never a partial board
-		}
-		resolved = append(resolved, deskkit.RootConfig{Repo: r.Repo, Path: abs})
-	}
-	pinnedTag, pinRepo, err := resolveStatusgenPin(resolved)
-	if err != nil {
-		return nil, err
-	}
-	running := statusgenVersionOf(bin)
+// awaitingFromRoots is the DEPTH-producing half of the awaiting verb: given an
+// already-resolved root set it reads every root and returns the merged report. It is split
+// out so `throughput`, which reads one integer out of it, can obtain that integer from a
+// root set resolved once for the whole run rather than by re-running the whole verb.
+func awaitingFromRoots(hdr Header, verbUsed string, rs rootSet) (*nextupReport, error) {
+	resolved, bin := rs.roots, rs.bin
+	pinnedTag, pinRepo, running := rs.pinnedTag, rs.pinRepo, rs.running
 
 	rep := nextupReport{
 		Header:             hdr,
@@ -269,11 +312,18 @@ func cmdAwaiting(hdr Header, verbUsed string) (*Report, error) {
 		rep.AliasUsed = "nextup"
 	}
 
-	for _, r := range resolved {
-		rows, rerr := gateScoresForRoot(bin, r.Path, r.Repo)
-		if rerr != nil {
-			return nil, rerr // fail-closed
-		}
+	// Read every root CONCURRENTLY under the per-root pool (roots.go), fail-closed on any
+	// root's error — the lowest-index root's error wins, so which failure surfaces does not
+	// depend on which subprocess finished first. Results come back in configured order, so
+	// the attribution loop below sees exactly the sequence it saw when this was serial.
+	perRoot, rerr := runPerRoot(rs, func(r deskkit.RootConfig) ([]gateScoreRow, error) {
+		return gateScoresForRoot(bin, r.Path, r.Repo)
+	})
+	if rerr != nil {
+		return nil, rerr // fail-closed
+	}
+	for i, r := range resolved {
+		rows := perRoot[i]
 		for _, row := range rows {
 			repo := row.Repo
 			switch {
@@ -319,6 +369,13 @@ func cmdAwaiting(hdr Header, verbUsed string) (*Report, error) {
 		return a.Brief < b.Brief
 	})
 
+	return &rep, nil
+}
+
+// renderAwaiting wraps the merged awaiting report in the Report the verb returns. It is the
+// RENDERING half of the split described on awaitingFromRoots; nothing about the output
+// changed when the depth half was lifted out.
+func renderAwaiting(hdr Header, rep nextupReport) *Report {
 	return &Report{value: rep, render: func(w io.Writer) {
 		fmt.Fprintf(w, "asOf %s  (AWAITING-VERIFICATION queue across %d root(s); statusgen %s, pinned %s from %s)\n",
 			hdr.AsOf, len(rep.Roots), rep.StatusgenVersion, rep.StatusgenPinned, shortRepo(rep.StatusgenPinRepo))
@@ -350,5 +407,5 @@ func cmdAwaiting(hdr Header, verbUsed string) (*Report, error) {
 			fmt.Fprintf(w, "%-8s %-24s %-6d %-14s %s\n",
 				shortRepo(r.Repo), trunc(r.Stream, 24), r.Score, r.Status, r.Brief)
 		}
-	}}, nil
+	}}
 }

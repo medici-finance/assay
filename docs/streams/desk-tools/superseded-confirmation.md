@@ -39,8 +39,18 @@ carry my scope" before the close happened. The driver's ask (2026-08-30):
 
 ### 3.1 Two halves, one verb
 
-`deskclose superseded -R <repo> <N> --by <target> [--dispute <reason>]` — the flags are the same
-for both roles. **Which half runs is decided by the token in use, never by a flag.**
+`deskclose superseded -R <repo> <item> --by <target> [--kind K] [--by-kind K] [--dispute <reason>]`
+— the flags are the same for both roles. **Which half runs is decided by the token in use,
+never by a flag.**
+
+`<item>` and `<target>` are TYPED references: `!N` names a merge request / pull request, `#N`
+and a bare `N` state no kind and leave the resolution to the forge, and a web URL states the
+kind in its own path. `--kind` / `--by-kind` (`issue` | `mr`) say the same thing as a flag.
+On a project that numbers issues and merge requests separately, a bare number can name two
+different objects — that stays a could-not-check refusal, now naming the typed forms. The
+stated kind then selects the endpoint for the item read, the proposal-thread read, every
+comment and the close, so no half of the lane can land on the object at the same number that
+the caller did not name.
 
 | Token role | Half | Preconditions (all fail-closed) | Writes | Closes |
 |---|---|---|---|---|

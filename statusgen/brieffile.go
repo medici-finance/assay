@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"gopkg.in/yaml.v3"
@@ -16,6 +18,16 @@ import (
 // Validation is OPT-IN: only files whose frontmatter carries the `schema: brief-v1`
 // marker are parsed here. Legacy briefs (no frontmatter, or a different schema)
 // are exempt and produce no output — see parseBriefFile.
+// floorLintRemedy is the two-stamp remedy the verifier-floor PROBLEMs name
+// (#1170): the routine verify drain may run at a local tier and flip a
+// human-gated brief `verified`, but ONE floor-tier re-verify stamp lands before
+// the human done close — the close workflow refuses without it. Spelled once
+// here and once in closeVerifyFloorRemedy (verifyissues.go), the refusal the
+// close relays onto the card; the two must keep saying the same thing.
+const floorLintRemedy = "remedy (two-stamp model): the routine drain may verify at a local tier, but before the human done close " +
+	"a floor-tier runner re-verifies — re-run the Verify table, append its Evidence rows, re-stamp the Verified cell " +
+	"\"YYYY-MM-DD <runner>\" with that pass leading the cell — then close the card again"
+
 type BriefFile struct {
 	Path     string
 	Brief    string // "<stream>/<NN>", e.g. "example-app/01"
@@ -386,6 +398,94 @@ func expectedBriefID(path string) (id, num string, ok bool) {
 //
 // Callers MUST test err before ok.
 func parseBriefFile(path string) (*BriefFile, bool, error) {
+	// Memo on (path, mtime, size). Measured before this cache: one --lint made 3,351
+	// parseBriefFile calls over 172 distinct paths — up to 23 re-parses of a single file —
+	// because the thirty-odd checks that walk the brief tree each walk it independently and
+	// none of them shared a result.
+	//
+	// The key is a STAMP, not just the path: a file edited mid-run is re-read, so the memo can
+	// never serve content that is no longer on disk. Speed bought with a stale answer is not
+	// speed, and this is the one way a cache here could change a lint's verdict.
+	key, keyed := briefParseKey(path)
+	if keyed {
+		if hit, ok := briefParseMemoGet(key); ok {
+			return hit.value(), hit.found, hit.err
+		}
+	}
+	bf, found, err := parseBriefFileUncached(path)
+	if keyed {
+		briefParseMemoPut(key, bf, found, err)
+	}
+	return bf, found, err
+}
+
+// briefParseKey stamps a path with its mtime and size. A file that cannot be stat-ed is NOT
+// memoised (keyed=false) — an unstampable file is re-read every time rather than cached under a
+// key that cannot detect a change.
+func briefParseKey(path string) (string, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s|%d|%d", path, fi.ModTime().UnixNano(), fi.Size()), true
+}
+
+// briefParseEntry is one memoised parse. The BriefFile is stored by value and handed back as a
+// pointer to a fresh COPY, so a caller that assigns to a field of the result cannot reach into
+// the cache and change what every later caller sees.
+type briefParseEntry struct {
+	bf    BriefFile
+	has   bool // a BriefFile was produced (nil result otherwise)
+	found bool
+	err   error
+}
+
+func (e briefParseEntry) value() *BriefFile {
+	if !e.has {
+		return nil
+	}
+	cp := e.bf
+	return &cp
+}
+
+var (
+	briefParseMemoMu sync.RWMutex
+	briefParseMemo   = map[string]briefParseEntry{}
+)
+
+func briefParseMemoGet(key string) (briefParseEntry, bool) {
+	briefParseMemoMu.RLock()
+	defer briefParseMemoMu.RUnlock()
+	e, ok := briefParseMemo[key]
+	return e, ok
+}
+
+func briefParseMemoPut(key string, bf *BriefFile, found bool, err error) {
+	e := briefParseEntry{found: found, err: err}
+	if bf != nil {
+		e.bf, e.has = *bf, true
+	}
+	briefParseMemoMu.Lock()
+	briefParseMemo[key] = e
+	briefParseMemoMu.Unlock()
+	briefParseCount.Add(1)
+}
+
+// briefParseCount counts DISTINCT (path, stamp) parses actually performed — the instrument the
+// memo's Verify row asserts against. It is not the call count: that is the number the memo
+// exists to decouple from the work.
+var briefParseCount atomic.Int64
+
+// resetBriefParseMemo clears the memo and its instrument. Tests use it so one test's parses do
+// not satisfy another's assertions.
+func resetBriefParseMemo() {
+	briefParseMemoMu.Lock()
+	briefParseMemo = map[string]briefParseEntry{}
+	briefParseMemoMu.Unlock()
+	briefParseCount.Store(0)
+}
+
+func parseBriefFileUncached(path string) (*BriefFile, bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false, err
@@ -1416,12 +1516,12 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				if (bf.Gate == "human" || anyYes) && bf.Risk["irreversible"] != "yes" &&
 					(row.Status == "verified" || row.Status == "done") {
 					if reason, failed := verifierFloorFailure(row.Verified); failed {
-						add("%s: risk-flagged brief marked %s but the Verified cell %q does not clear the verifier floor — %s — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, row.Verified, reason)
+						add("%s: risk-flagged brief marked %s but the Verified cell %q does not clear the verifier floor — %s — risk-flagged briefs verify at a strong-tier runner or a human; %s — methodology/19", path, row.Status, row.Verified, reason, floorLintRemedy)
 					} else if reason, failed := evidenceFloorFailure(bf.Evidence); failed {
 						// The cell clears, but Evidence — the record of who actually
 						// ran each row — shows the floor is not truly met. The floor
 						// reads the complete signal, not just the one-line cell.
-						add("%s: risk-flagged brief marked %s but its ## Evidence records rows run below the verifier floor with no strong-tier re-run curing them (%s) — the Verified cell %q names a clearing runner but does not speak for those rows — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, reason, row.Verified)
+						add("%s: risk-flagged brief marked %s but its ## Evidence records rows run below the verifier floor with no strong-tier re-run curing them (%s) — the Verified cell %q names a clearing runner but does not speak for those rows — risk-flagged briefs verify at a strong-tier runner or a human; %s — methodology/19", path, row.Status, reason, row.Verified, floorLintRemedy)
 					}
 				}
 

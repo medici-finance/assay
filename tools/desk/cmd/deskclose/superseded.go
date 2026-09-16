@@ -160,12 +160,16 @@ type threadComment struct {
 // readThread fetches every comment on the item through the resolved forge (ListComments, which
 // paginates to exhaustion internally). A read failure is could-not-check — a proposal that could
 // not be read is not an absent one.
-func readThread(repo string, n int) ([]threadComment, error) {
+func readThread(repo string, n int, kind deskkit.TargetKind) ([]threadComment, error) {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return nil, ferr
 	}
-	comments, err := fg.ListComments(fr, n)
+	// ListCommentsTyped, never the untyped read: the untyped one reads a CHANGE's thread on
+	// both backends, so an ISSUE's proposal thread comes back empty (GitHub) or as another
+	// object's notes (GitLab) — and an empty thread reads as "no proposal stands", which is
+	// an unread precondition presented as a satisfied one.
+	comments, err := fg.ListCommentsTyped(fr, n, kind)
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read the comment thread on %s#%d — whether a proposal stands is "+
@@ -229,8 +233,8 @@ func parseProposalMarker(body string) (proposal, bool) {
 // findProposal returns the standing proposal on the item: the LAST proposal marker in
 // the thread, with its forge-attested author. A worker may re-propose against a
 // different target, and comments arrive in submission order, so last wins.
-func findProposal(repo string, n int) (proposal, bool, error) {
-	thread, err := readThread(repo, n)
+func findProposal(repo string, n int, kind deskkit.TargetKind) (proposal, bool, error) {
+	thread, err := readThread(repo, n, kind)
 	if err != nil {
 		return proposal{}, false, err
 	}
@@ -259,7 +263,7 @@ func itemHasLabel(it item, want string) bool {
 // runSupersededLane is the item verb's entry: resolve the caller, then run that role's
 // half. There is no path from a worker token to a close and no path from a reviewer
 // token to a proposal; the role selects the half and the flags cannot override it.
-func runSupersededLane(c common, n int, target, dispute string, out io.Writer) error {
+func runSupersededLane(c common, n int, target string, targetKind deskkit.TargetKind, dispute string, out io.Writer) error {
 	who, err := resolveCaller(c.repo)
 	if err != nil {
 		return err
@@ -271,12 +275,12 @@ func runSupersededLane(c common, n int, target, dispute string, out io.Writer) e
 					"disputing a supersession belong to the %s role — drop --dispute; the review desk answers "+
 					"the proposal.", roleWorker, roleReviewer))
 		}
-		return propose(c, n, target, who, out)
+		return propose(c, n, target, targetKind, who, out)
 	}
 	if strings.TrimSpace(dispute) != "" {
-		return disputeProposal(c, n, target, dispute, who, out)
+		return disputeProposal(c, n, target, targetKind, dispute, who, out)
 	}
-	return confirm(c, n, target, who, out)
+	return confirm(c, n, target, targetKind, who, out)
 }
 
 // propose is the worker's half. It writes the label and the marker comment and STOPS.
@@ -287,10 +291,10 @@ func runSupersededLane(c common, n int, target, dispute string, out io.Writer) e
 // superseding target exists, is in an allowed repo, and is not dead (a closed-unmerged
 // PR or a closed issue). A standing proposal for the same target is an idempotent
 // no-op, so a worker pass may re-run it freely.
-func propose(c common, n int, target string, who caller, out io.Writer) error {
+func propose(c common, n int, target string, targetKind deskkit.TargetKind, who caller, out io.Writer) error {
 	a := &auditCtx{verb: modeSuperseded, repo: c.repo, number: n}
 
-	it, err := fetchItem(c.repo, n)
+	it, err := fetchItem(c.repo, n, c.kind)
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
@@ -316,12 +320,12 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 		disp = d
 	}
 
-	tRepo, tN, err := resolveRef(c.repo, target)
+	tr, err := resolveRef(c.repo, target, targetKind)
 	if err != nil {
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
-	tItem, err := fetchItem(tRepo, tN)
+	tItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
@@ -330,7 +334,7 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 		if tItem.closed() {
 			// Closed AND merged is the strongest evidence there is; closed-unmerged is
 			// work that never landed and can supersede nothing.
-			if merr := requireMergedPR(tRepo, tN); merr != nil {
+			if merr := requireMergedPR(tr.repo, tr.number); merr != nil {
 				a.log(resultFor(merr), merr.Error())
 				return merr
 			}
@@ -338,12 +342,12 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 	} else if tItem.closed() {
 		err := deskkit.Refused(fmt.Sprintf(
 			"refused: the superseding target %s#%d is a closed issue — proposing that a live item is "+
-				"superseded by a retired one retires both", tRepo, tN))
+				"superseded by a retired one retires both", tr.repo, tr.number))
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
 
-	existing, found, err := findProposal(c.repo, n)
+	existing, found, err := findProposal(c.repo, n, labelTargetOf(it))
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
@@ -370,10 +374,10 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
 	}
-	if err := addLabel(c.repo, n, deskkit.LabelSpec{
+	if err := addLabel(c.repo, n, it, deskkit.LabelSpec{
 		Name:        labelProposed,
 		Color:       "FBCA04",
-		Description:  "worker proposes this item is superseded; the review desk owes it a confirm or dispute",
+		Description: "worker proposes this item is superseded; the review desk owes it a confirm or dispute",
 	}); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
@@ -382,7 +386,7 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, "label applied, proposal comment deferred: "+err.Error())
 		return err
 	}
-	if err := postComment(c.repo, n, body); err != nil {
+	if err := postComment(c.repo, n, labelTargetOf(it), body); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
@@ -397,10 +401,10 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 // gate, disposition record, merged target, comment, close — with two additions: the
 // verdict block in the close comment, and a back-reference posted on the target BEFORE
 // the close so the record is bidirectional even if the close itself fails.
-func confirm(c common, n int, target string, who caller, out io.Writer) error {
+func confirm(c common, n int, target string, targetKind deskkit.TargetKind, who caller, out io.Writer) error {
 	a := &auditCtx{verb: modeSuperseded, repo: c.repo, number: n}
 
-	it, err := fetchItem(c.repo, n)
+	it, err := fetchItem(c.repo, n, c.kind)
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
@@ -415,7 +419,7 @@ func confirm(c common, n int, target string, who caller, out io.Writer) error {
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
-	p, err := standingProposal(c.repo, n, target, who, "confirm")
+	p, err := standingProposal(c.repo, n, labelTargetOf(it), target, who, "confirm")
 	if err != nil {
 		a.log(resultFor(err), err.Error())
 		return err
@@ -428,16 +432,16 @@ func confirm(c common, n int, target string, who caller, out io.Writer) error {
 	// string: standingProposal has already proven the two agree once normalized, and
 	// the marker's form is always fully qualified (`owner/repo#N`), so it resolves
 	// cleanly even when the caller's own spelling was a bare number.
-	tRepo, tN, err := resolveRef(c.repo, p.Target)
+	tr, err := resolveRef(c.repo, p.Target, targetKind)
 	if err != nil {
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
 	return applyClose(closeReq{
-		repo: c.repo, number: n, mode: modeSuperseded,
-		target: strings.TrimSpace(p.Target), dryRun: c.dryRun, g: g,
+		repo: c.repo, number: n, mode: modeSuperseded, kind: labelTargetOf(it),
+		target: strings.TrimSpace(p.Target), targetKind: tr.kind, dryRun: c.dryRun, g: g,
 		verdict:  &supersedeVerdict{kind: verdictConfirmed, proposal: p, by: who.login},
-		crossRef: &crossRef{repo: tRepo, number: tN, body: crossRefBody(c.repo, n, p, who)},
+		crossRef: &crossRef{repo: tr.repo, number: tr.number, body: crossRefBody(c.repo, n, p, who)},
 	}, out)
 }
 
@@ -445,10 +449,11 @@ func confirm(c common, n int, target string, who caller, out io.Writer) error {
 // then applies `needs-decision` — after which refuseDecisionItem refuses every close in
 // every mode, including a manifest row. The item is the human's from here; this tool
 // has no verb that takes it back.
-func disputeProposal(c common, n int, target, reason string, who caller, out io.Writer) error {
+func disputeProposal(c common, n int, target string, targetKind deskkit.TargetKind, reason string, who caller, out io.Writer) error {
 	a := &auditCtx{verb: modeSuperseded, repo: c.repo, number: n}
+	_ = targetKind // the dispute half acts on the standing proposal's target, never re-resolves it
 
-	it, err := fetchItem(c.repo, n)
+	it, err := fetchItem(c.repo, n, c.kind)
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
@@ -471,7 +476,7 @@ func disputeProposal(c common, n int, target, reason string, who caller, out io.
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
-	p, err := standingProposal(c.repo, n, target, who, "dispute")
+	p, err := standingProposal(c.repo, n, labelTargetOf(it), target, who, "dispute")
 	if err != nil {
 		a.log(resultFor(err), err.Error())
 		return err
@@ -492,7 +497,7 @@ func disputeProposal(c common, n int, target, reason string, who caller, out io.
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
 	}
-	if err := postComment(c.repo, n, body); err != nil {
+	if err := postComment(c.repo, n, labelTargetOf(it), body); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
@@ -500,7 +505,7 @@ func disputeProposal(c common, n int, target, reason string, who caller, out io.
 		a.log(deskkit.ResultRateLimited, "dispute posted, needs-decision label deferred: "+err.Error())
 		return err
 	}
-	if err := addLabel(c.repo, n, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {
+	if err := addLabel(c.repo, n, it, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {
 		// The label is not this tool's to provision: it is the human decision queue's,
 		// shipped by the adoption guide. Say exactly what is missing.
 		a.log(deskkit.ResultUnverifiable, err.Error())
@@ -518,8 +523,8 @@ func disputeProposal(c common, n int, target, reason string, who caller, out io.
 // standingProposal is the reviewer-side precondition shared by confirm and dispute: a
 // proposal exists, it was made by someone other than the caller, and it names the
 // target the caller declares.
-func standingProposal(repo string, n int, target string, who caller, half string) (proposal, error) {
-	p, found, err := findProposal(repo, n)
+func standingProposal(repo string, n int, kind deskkit.TargetKind, target string, who caller, half string) (proposal, error) {
+	p, found, err := findProposal(repo, n, kind)
 	if err != nil {
 		return proposal{}, err
 	}
@@ -582,7 +587,10 @@ type supersedeVerdict struct {
 type crossRef struct {
 	repo   string
 	number int
-	body   string
+	// kind is the kind of the object the back-reference is posted on, filled in by
+	// verifyLane from the object it READ — never from what the caller declared.
+	kind deskkit.TargetKind
+	body string
 }
 
 func (v *supersedeVerdict) block() string {
@@ -629,6 +637,14 @@ func disputeBody(p proposal, who caller, reason string) string {
 	return b.String()
 }
 
+// labelTargetOf maps a fetched item's kind onto the label seam's target.
+func labelTargetOf(it item) deskkit.TargetKind {
+	if it.isPR() {
+		return deskkit.TargetChange
+	}
+	return deskkit.TargetIssue
+}
+
 func crossRefBody(repo string, n int, p proposal, who caller) string {
 	return fmt.Sprintf("Supersedes %s#%d — %s by %s (proposed by %s). The superseded item's close comment "+
 		"carries the verdict record; this note is the back-reference so the record reads in both directions.\n",
@@ -642,12 +658,16 @@ func crossRefBody(repo string, n int, p proposal, who caller) string {
 // already exists). This folds the old three-call `label list` → `label create` → `edit
 // --add-label` sequence — including the separate ensureProposalLabel create — into the one
 // declarative reconcile.
-func addLabel(repo string, n int, spec deskkit.LabelSpec) error {
+//
+// The item's KIND comes from the fetched item, never from the number: on GitLab an issue and a
+// merge request can share a number, and the label write has to say which one it means.
+func addLabel(repo string, n int, it item, spec deskkit.LabelSpec) error {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return ferr
 	}
-	if _, err := fg.ApplyLabels(fr, n, deskkit.LabelChange{Add: []deskkit.LabelSpec{spec}}); err != nil {
+	change := deskkit.LabelChange{Target: labelTargetOf(it), Add: []deskkit.LabelSpec{spec}}
+	if _, err := fg.ApplyLabels(fr, n, change); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: applying %q to %s#%d did not confirm", spec.Name, repo, n), err)
 	}

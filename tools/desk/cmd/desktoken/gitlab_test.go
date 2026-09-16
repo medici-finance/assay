@@ -29,10 +29,17 @@ const (
 // old one); any other token is rejected 401 — modelling GitLab's own invalidation so a test
 // can assert that a captured old token is dead after a mint. calls counts requests reaching
 // the rotate endpoint.
+//
+// It also serves the post-rotation self-check (GET /user, #1142) against the same *valid, so
+// the token a rotation just issued is accepted on the very next read — the no-lag forge.
 func makeRotateServer(t *testing.T, valid *string, newToken, expiresAt string) (*httptest.Server, *int) {
 	t.Helper()
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, gitlabSelfCheckPath) {
+			serveSelfCheck(w, r, *valid)
+			return
+		}
 		if r.Method != "POST" || !strings.HasSuffix(r.URL.Path, "/personal_access_tokens/self/rotate") {
 			http.Error(w, "not found", 404)
 			return
@@ -49,6 +56,19 @@ func makeRotateServer(t *testing.T, valid *string, newToken, expiresAt string) (
 		_ = json.NewEncoder(w).Encode(map[string]any{"token": newToken, "expires_at": expiresAt, "active": true})
 	}))
 	return srv, &calls
+}
+
+// serveSelfCheck answers the self-check read the way GitLab does: 200 with a small account
+// record for the one live token, 401 for anything else. Never a token in the body.
+func serveSelfCheck(w http.ResponseWriter, r *http.Request, valid string) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Header.Get("PRIVATE-TOKEN") != valid {
+		w.WriteHeader(401)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_token", "error_description": "Token was revoked."})
+		return
+	}
+	w.WriteHeader(200)
+	_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "username": "example-bot", "bot": true, "state": "active"})
 }
 
 // pointHTTPClientAt routes the package httpClient at srv (keeping request paths) and restores
@@ -151,6 +171,23 @@ func TestGitLabWriteFailureLockout(t *testing.T) {
 	homeDir := setupTest(t)
 	tokPath := gitlabTokenPath(homeDir, "worker")
 	writeTokenCache(t, tokPath, glOldWorker)
+
+	// Create the per-role rotation lock file while the directory is still writable. The
+	// rotation now serialises on it, and O_CREATE against an ALREADY-EXISTING file needs no
+	// write permission on the directory — so the lock is still acquired once the chmod below
+	// lands, and this test reaches the persistence failure it is about.
+	//
+	// Without this the chmod would stop the LOCK from being created and the command would
+	// refuse BEFORE rotating. That refusal is the better outcome for an operator (the live
+	// token survives instead of being revoked into a lockout) and is pinned by
+	// TestGitLabRotateRefusesBeforeRotatingWhenCustodyDirIsUnwritable. It is not this test's
+	// subject: the LOCKOUT branch still has to work for every OTHER way persistence can fail
+	// (a full disk, a failing rename), which is what is exercised here.
+	lf, lerr := os.OpenFile(gitlabRotateLockPath(tokPath), os.O_CREATE|os.O_RDWR, 0o600)
+	if lerr != nil {
+		t.Fatalf("pre-create rotation lock: %v", lerr)
+	}
+	_ = lf.Close()
 
 	// Make the custody directory non-writable so the atomic temp-file write cannot land,
 	// after the file itself is already readable (mode check + read succeed; the write fails).

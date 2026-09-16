@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestForgeGitlab'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ ./cmd/repohardenguard/ -count=1 -run 'TestForgeGitlab|TestGitLab|TestHardening'",
   "control": {
     "name": "CONTROL — stop normalising GitLab's lifecycle vocabulary (an MR reports state \"opened\" instead of \"open\")",
     "file": "internal/deskkit/forge_gitlab.go",
@@ -56,9 +56,9 @@
       "new": "\tcase \"canceled\", \"canceling\":\n\t\treturn \"success\""
     },
     {
-      "name": "fail the whole review read closed on a CE 404 project-approvals route instead of degrading head-pinning (issue #697 regression)",
+      "name": "fail the whole review read closed on a CE 404 OR gitlab.com-Free 403 project-approvals route instead of degrading head-pinning (issue #697 / #1091 regression)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\t\tif !IsForgeNotFound(mapped) {",
+      "old": "\t\tif !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {",
       "new": "\t\tif true {"
     },
     {
@@ -84,6 +84,192 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\treturn Refused(fmt.Sprintf(\"unsupported review event %q — expected APPROVE, REQUEST_CHANGES or COMMENT\",\n\t\t\tStripControl(in.Event)))",
       "new": "\t\treturn nil"
+    },
+    {
+      "name": "route a typed ISSUE note at the merge-request notes endpoint (deskfile attach --kind issue lands on !N, the wrong object)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tpath := fmt.Sprintf(\"/projects/%s/issues/%d/notes\", g.projectPath(repo), number)\n\t\tnote, _, perr := cl.Notes.CreateIssueNote(repo.Slug(), int64(number),\n\t\t\t&gitlab.CreateIssueNoteOptions{Body: gitlab.Ptr(body)})\n\t\tif perr != nil {\n\t\t\treturn nil, g.mapErr(http.MethodPost, path, perr)\n\t\t}\n\t\treturn &CommentRef{DatabaseID: note.ID}, nil\n\tcase TargetChange:",
+      "new": "\t\tfallthrough\n\tcase TargetChange:"
+    },
+    {
+      "name": "resolve a typed ISSUE read through the bare both-kinds probe (a number that carries #N and !N is refused again, the field defect)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase TargetIssue:\n\t\tpath := fmt.Sprintf(\"/projects/%s/issues/%d\", g.projectPath(repo), number)\n\t\tiss, _, ierr := cl.Issues.GetIssue(repo.Slug(), int64(number))\n\t\tif ierr != nil {\n\t\t\treturn nil, g.mapErr(http.MethodGet, path, ierr)\n\t\t}\n\t\treturn gitlabIssueAsIssue(iss), nil",
+      "new": "\tcase TargetIssue:\n\t\treturn g.GetIssue(repo, number)"
+    },
+    {
+      "name": "read the merge request for a typed CHANGE read but report it as an issue (IsPullRequest false)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\treturn gitlabMRAsIssue(mr), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped",
+      "new": "\t\treturn gitlabIssueAsIssue(&gitlab.Issue{IID: mr.IID, Title: mr.Title, State: mr.State, WebURL: mr.WebURL}), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped"
+    },
+    {
+      "name": "open a merge-hold marker thread that came back not resolvable as if it were armed (the server would never block the merge on it)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif len(disc.Notes) == 0 || !disc.Notes[0].Resolvable {",
+      "new": "\tif false && (len(disc.Notes) == 0 || !disc.Notes[0].Resolvable) {"
+    },
+    {
+      "name": "match ANY discussion as the merge-hold marker instead of the fixed marker body (a human thread would be read as the desk's own hold)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif strings.TrimSpace(marker.Body) != mergeHoldMarkerBody {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "read a resolved marker thread's resolved_by as empty (a hand-resolved thread would pass reviewer-approved's actor check)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\t\tResolvedBy: marker.ResolvedBy.Username,",
+      "new": "\t\t\t\tResolvedBy: \"\","
+    },
+    {
+      "name": "extract a released reply's head from a body that is not the released marker (a re-armed reply's text would be misread as a head)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif len(lines) < 2 || strings.TrimSpace(lines[0]) != mergeHoldReleasedMarker {",
+      "new": "\tif len(lines) < 2 {"
+    },
+    {
+      "name": "let SetMergeHold act on an ABSENT hold instead of refusing (nothing to release or re-arm, so nothing would actually be resolved)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase MergeHoldAbsent:\n\t\treturn Refused(fmt.Sprintf(\n\t\t\t\"!%d in %s carries no merge-hold marker thread to release or re-arm — OpenMergeHold never ran, \"+\n\t\t\t\t\"or the change predates this control\", number, repo.Slug()))",
+      "new": "\tcase MergeHoldAbsent:\n\t\tbreak"
+    },
+    {
+      "name": "release a merge-hold by resolving the discussion BEFORE posting the reply (a resolve that succeeds and a reply that fails would silently lift the gate with no recorded head)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tbody := mergeHoldReleasedMarker + \"\\n\" + mergeHoldHeadPrefix + head\n\t\tif _, _, nerr := cl.Discussions.AddMergeRequestDiscussionNote(repo.Slug(), int64(number), hold.ID,\n\t\t\t&gitlab.AddMergeRequestDiscussionNoteOptions{Body: gitlab.Ptr(body)}); nerr != nil {\n\t\t\treturn g.mapErr(http.MethodPost, notePath, nerr)\n\t\t}\n\t\tif _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,\n\t\t\t&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(true)}); rerr != nil {",
+      "new": "\t\tif _, _, rerr := cl.Discussions.ResolveMergeRequestDiscussion(repo.Slug(), int64(number), hold.ID,\n\t\t\t&gitlab.ResolveMergeRequestDiscussionOptions{Resolved: gitlab.Ptr(true)}); rerr != nil {"
+    },
+    {
+      "name": "reopen the #1099 draft_status carve-out in the shared mapping instead of leaving it to deskflip's mergeable condition alone (every PullRequest reader, not just the one condition the leniency is sound for, would see a draft as MERGEABLE)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase \"mergeable\":\n\t\treturn Mergeable",
+      "new": "\tcase \"mergeable\", \"draft_status\":\n\t\treturn Mergeable"
+    },
+    {
+      "name": "trust a released reply's Head regardless of who authored it (a non-reviewer forges \"approved at current head\" by replying into an already-resolved thread — GitLab does not lock a resolved discussion against further replies)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\t\th, ok := mergeHoldReleasedHead(n.Body)\n\t\t\t\tif !ok {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif !SameActor(n.Author.Username, marker.ResolvedBy.Username) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\thead = h",
+      "new": "\t\t\t\tif h, ok := mergeHoldReleasedHead(n.Body); ok {\n\t\t\t\t\thead = h\n\t\t\t\t}"
+    },
+    {
+      "name": "stop publishing the head pipeline into the rollup (a green MR pipeline reports no verdict any instrument can read — issue #1125)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p == nil {\n\t\treturn StatusContext{}, false\n\t}",
+      "new": "\tif true {\n\t\treturn StatusContext{}, false\n\t}"
+    },
+    {
+      "name": "map the head pipeline without reconciling its SHA (an older head's green is borrowed by this one)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p.SHA != \"\" && sha != \"\" && !strings.EqualFold(strings.TrimSpace(p.SHA), strings.TrimSpace(sha)) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "count the mapped pipeline entry outside the asserted status total (the caller's short-read reconcile misreads the rollup)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tout.StatusTotalCount++",
+      "new": "\t\tout.StatusTotalCount += 0"
+    },
+    {
+      "name": "redden an allow_failure job's failure (a job the forge does not gate on contradicts the green pipeline it belongs to)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif !allowFailure {\n\t\treturn conclusion\n\t}",
+      "new": "\tif true {\n\t\treturn conclusion\n\t}"
+    },
+    {
+      "name": "require a context name the backend does not publish (the phantom required check that refused every GitLab flip)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\treturn []string{GitLabPipelineContext}, nil",
+      "new": "\t\treturn []string{\"pipeline-succeeds\"}, nil"
+    },
+    {
+      "name": "serve the could-not-check sentinel for every change regardless of the head pipeline (the board reads CI-UNKNOWN on a green MR)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif !ok {",
+      "new": "\tsc, ok := gitlabPipelineStatusAt(headPipeline, sha)\n\tif true {"
+    },
+    {
+      "name": "apply a label with no name instead of refusing (the ensure step creates a nameless project label and the queue/escalation stamp lands as an empty string) — pinned by apply_labels_refuses_unnamed_label",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif strings.TrimSpace(l.Name) == \"\" {\n\t\t\treturn nil, Refused(\"refusing to apply an unnamed label — the label NAME is the load-bearing part\")\n\t\t}",
+      "new": "\t\tif false && strings.TrimSpace(l.Name) == \"\" {\n\t\t\treturn nil, Refused(\"refusing to apply an unnamed label — the label NAME is the load-bearing part\")\n\t\t}"
+    },
+    {
+      "name": "report a merge request as flipped ready on the strength of the PUT alone, ignoring that it still reads draft — pinned by mark_ready_for_review_still_draft_after_strip",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif updated.Draft {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: merge request !%d in %s is still marked draft after clearing its title marker\",",
+      "new": "\tif false && updated.Draft {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: merge request !%d in %s is still marked draft after clearing its title marker\","
+    },
+    {
+      "name": "treat a project payload with no visibility field as a readable visibility (the public-repo gate then decides on an empty string instead of failing closed) — pinned by repo_visibility_missing_field_refuses",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}",
+      "new": "\tif false && p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}"
+    },
+    {
+      "name": "#1106: treat EVERY 401 from POST /approve as an approval that already stands (the not-eligible and rejected-credential cases become success)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif a.User.ID == me.ID {",
+      "new": "\t\t\tif true {"
+    },
+    {
+      "name": "#1106: stop classifying the approve route's 401 (an approval that already stands is reported as a rejected credential again)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif mapped == nil || !isForgeUnauthorized(mapped) {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "skip the re-stamp removal (a foreign dispatched-* stamp stays standing on the MR and the floor keeps refusing; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif len(stale) > 0 {\n\t\t// The removal is its OWN write",
+      "new": "\tif false {\n\t\t// The removal is its OWN write"
+    },
+    {
+      "name": "stamp blind when the label history cannot be read (WHO applied the present stamp is unknown, yet the step writes; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tevents, eerr := fg.ListLabelEvents(fr, o.pr)\n\tif eerr != nil {",
+      "new": "\tevents, eerr := fg.ListLabelEvents(fr, o.pr)\n\tif eerr != nil && false {"
+    },
+    {
+      "name": "stamp blind when the present labels cannot be read (an unreadable change is treated as unlabelled; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tchange, perr := fg.GetPullRequest(fr, o.pr)\n\tif perr != nil {",
+      "new": "\tchange, perr := fg.GetPullRequest(fr, o.pr)\n\tif perr != nil {\n\t\tchange = &deskkit.PullRequest{}\n\t}\n\tif false {"
+    },
+    {
+      "name": "report an ABSENT stamp as already standing (nothing stale means nothing written, so a fresh MR is never stamped; #1154)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif len(stale) == 0 && labelsPresent(change.Labels, labels) {",
+      "new": "\tif len(stale) == 0 {"
+    },
+    {
+      "name": "swallow a tier-gated 403/404 on the push-rule route into an empty document (a Premium row reads as a value on Community Edition; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tmapped := g.mapErr(http.MethodGet, \"/\"+path, derr)\n\t\tvar fae *ForgeAPIError",
+      "new": "\t\treturn json.RawMessage(\"{}\"), nil, nil\n\t\tmapped := g.mapErr(http.MethodGet, \"/\"+path, derr)\n\t\tvar fae *ForgeAPIError"
+    },
+    {
+      "name": "serve a GitHub kind on the GitLab backend instead of refusing it by name (the partition collapses; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif err := refuseHardeningKindForForge(ForgeGitLab, kind); err != nil {",
+      "new": "\tif err := refuseHardeningKindForForge(ForgeGitLab, kind); false && err != nil {"
+    },
+    {
+      "name": "stop following X-Next-Page on the protected-branches/tags walk (a rule on page 2 is never checked; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn json.Marshal(all)",
+      "new": "\t\tif true {\n\t\t\treturn json.Marshal(all)"
+    },
+    {
+      "name": "hand back a PARTIAL protected-branches list at the page ceiling instead of refusing (GitLab hardening reads)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn nil, Unverifiable(fmt.Sprintf(\n\t\t\"could-not-check: %s still reports more %s entries after %d pages of %d",
+      "new": "\treturn json.Marshal(all)\n\treturn nil, Unverifiable(fmt.Sprintf(\n\t\t\"could-not-check: %s still reports more %s entries after %d pages of %d"
+    },
+    {
+      "name": "refuse GitLab kinds on the GitHub backend no longer (GitHub answers `project` with its own repo document; GitLab hardening reads)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif err := refuseHardeningKindForForge(ForgeGitHub, kind); err != nil {",
+      "new": "\tif err := refuseHardeningKindForForge(ForgeGitHub, kind); false && err != nil {"
     }
   ]
 }

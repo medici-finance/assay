@@ -83,6 +83,17 @@ type goldenServer struct {
 	forceStatus map[string]int
 	// bigReviewPages: when true, /reviews returns 100 entries on page 1, 1 on page 2.
 	bigReviewPages bool
+	// rulesetsList / rulesetDetails are op 40's `rulesets` kind two-hop fixtures: the LIST
+	// response (id + name only, no rules/bypass_actors) and, keyed by id as a string, each
+	// entry's DETAIL response.
+	rulesetsList   []map[string]any
+	rulesetDetails map[string]map[string]any
+	// actionsWorkflowPerm / actionsForkPRApproval / actionsPrivateForkPR / vulnReporting are
+	// op 40's four remaining fixed-endpoint kinds.
+	actionsWorkflowPerm   map[string]any
+	actionsForkPRApproval map[string]any
+	actionsPrivateForkPR  map[string]any
+	vulnReporting         map[string]any
 }
 
 var (
@@ -106,6 +117,14 @@ var (
 	gRepoLabel = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
 	gContents  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/`)
 	gSearchIss = regexp.MustCompile(`^/search/issues$`)
+
+	// op 40's routes: the ruleset two-hop plus the four fixed-endpoint hardening kinds.
+	gRulesetDetail        = regexp.MustCompile(`^/repos/[^/]+/[^/]+/rulesets/[0-9]+$`)
+	gRulesets             = regexp.MustCompile(`^/repos/[^/]+/[^/]+/rulesets$`)
+	gActionsWorkflowPerm  = regexp.MustCompile(`/actions/permissions/workflow$`)
+	gActionsForkPRApprove = regexp.MustCompile(`/actions/permissions/fork-pr-contributor-approval$`)
+	gActionsPrivateForkPR = regexp.MustCompile(`/actions/permissions/fork-pr-workflows-private-repos$`)
+	gVulnReporting        = regexp.MustCompile(`/private-vulnerability-reporting$`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -243,6 +262,24 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		// Single-reference read (RefExists). Present → 200 with the ref object; an absent ref is
 		// driven via forceStatus (404), handled at the top of this handler.
 		enc(map[string]any{"ref": "refs/heads/dispatch/item--01", "object": map[string]any{"sha": "abc123"}})
+	case r.Method == http.MethodGet && gRulesetDetail.MatchString(path):
+		id := path[strings.LastIndex(path, "/")+1:]
+		d, ok := s.rulesetDetails[id]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		enc(d)
+	case r.Method == http.MethodGet && gRulesets.MatchString(path):
+		enc(s.rulesetsList)
+	case r.Method == http.MethodGet && gActionsWorkflowPerm.MatchString(path):
+		enc(s.actionsWorkflowPerm)
+	case r.Method == http.MethodGet && gActionsForkPRApprove.MatchString(path):
+		enc(s.actionsForkPRApproval)
+	case r.Method == http.MethodGet && gActionsPrivateForkPR.MatchString(path):
+		enc(s.actionsPrivateForkPR)
+	case r.Method == http.MethodGet && gVulnReporting.MatchString(path):
+		enc(s.vulnReporting)
 	case r.Method == http.MethodGet && gRepo.MatchString(path):
 		enc(s.repo)
 	default:
@@ -546,6 +583,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Target:         TargetChange,
 					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 					RemoveFamilies: []string{"size:"},
 				})
@@ -561,7 +599,8 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
-					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+					Target: TargetChange,
+					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				})
 			},
 		},
@@ -574,8 +613,25 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) {
 				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Target: TargetChange,
 					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 					Remove: []string{"authorization-needed"},
+				})
+			},
+		},
+		{
+			// An ISSUE target on GitHub issues the SAME requests as a change: one number space,
+			// one labels endpoint. The golden pins that the target changes nothing here — it is
+			// GitLab where the two kinds are separate routes.
+			name: "apply_labels_issue",
+			setup: func(s *goldenServer) {
+				s.prLabels = []map[string]any{{"name": "to:desk"}, {"name": "keep-me"}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Target:         TargetIssue,
+					Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}, {Name: "raised-by:desk"}},
+					RemoveFamilies: []string{"to:"},
 				})
 			},
 		},
@@ -592,6 +648,15 @@ func TestForgeGithubGolden(t *testing.T) {
 			name:  "close_issue",
 			setup: func(s *goldenServer) { s.issue = map[string]any{"number": 33, "state": "closed"} },
 			run:   func(f *GitHubForge) (any, error) { return nil, f.CloseIssue(forgeTestRepo, 33, "completed") },
+		},
+		{
+			// CloseIssue's inverse (forge-neutral brief 16, consumed by deskclose's
+			// verify-gate-refire lane). The golden pins ONE request, `state: open` and NO
+			// state_reason — a reason is a close-time field, and sending one on a reopen would be
+			// a claim the forge silently drops.
+			name:  "reopen_issue",
+			setup: func(s *goldenServer) { s.issue = map[string]any{"number": 33, "state": "open"} },
+			run:   func(f *GitHubForge) (any, error) { return nil, f.ReopenIssue(forgeTestRepo, 33) },
 		},
 		{
 			// The typed replacement for fanoutloop's `gh api -X DELETE repos/…/git/refs/…`
@@ -744,6 +809,88 @@ func TestForgeGithubGolden(t *testing.T) {
 					File: "EVIDENCE.md", Branch: "feat/x", Content: []byte("row one\n"),
 					Message: "Evidence: verification row",
 				})
+			},
+		},
+		{
+			name: "hardening_read_repo",
+			setup: func(s *goldenServer) {
+				s.repo = map[string]any{"visibility": "public",
+					"security_and_analysis": map[string]any{"secret_scanning": map[string]any{"status": "enabled"}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RepoHardeningRead(forgeTestRepo, HardeningReadRepo) },
+		},
+		{
+			// The two-hop kind: the list carries no rules/bypass_actors, so the golden proves
+			// the backend fetched EACH entry's own detail and returned the array of details,
+			// not the list.
+			name: "hardening_read_rulesets",
+			setup: func(s *goldenServer) {
+				s.rulesetsList = []map[string]any{
+					{"id": 1, "name": "protect-main"},
+					{"id": 2, "name": "protect-release-tags"},
+				}
+				s.rulesetDetails = map[string]map[string]any{
+					"1": {"id": 1, "name": "protect-main", "bypass_actors": []any{},
+						"rules": []any{map[string]any{"type": "pull_request"}}},
+					"2": {"id": 2, "name": "protect-release-tags", "bypass_actors": []any{},
+						"rules": []any{map[string]any{"type": "update"}, map[string]any{"type": "deletion"}}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RepoHardeningRead(forgeTestRepo, HardeningReadRulesets) },
+		},
+		{
+			name: "hardening_read_actions_workflow_permissions",
+			setup: func(s *goldenServer) {
+				s.actionsWorkflowPerm = map[string]any{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadActionsWorkflowPermissions)
+			},
+		},
+		{
+			name: "hardening_read_actions_fork_pr_approval",
+			setup: func(s *goldenServer) {
+				s.actionsForkPRApproval = map[string]any{"approval_policy": "first_time_contributors"}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadActionsForkPRApproval)
+			},
+		},
+		{
+			name: "hardening_read_actions_private_fork_pr",
+			setup: func(s *goldenServer) {
+				s.actionsPrivateForkPR = map[string]any{"run_workflows_from_fork_pull_requests": false}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadActionsPrivateForkPR)
+			},
+		},
+		{
+			name:  "hardening_read_vulnerability_reporting",
+			setup: func(s *goldenServer) { s.vulnReporting = map[string]any{"enabled": true} },
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadVulnerabilityReporting)
+			},
+		},
+		{
+			// The kind validator refuses BEFORE any request exists. The fixture sets nothing a
+			// route could serve, so a captured request here would itself prove the validator ran
+			// too late — the golden's empty `requests` array is the assertion (Verify row 5).
+			name:  "hardening_read_unknown_kind",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadKind("not-a-real-kind"))
+			},
+		},
+		{
+			// A GITLAB kind is refused BY NAME on GitHub with ZERO requests — the symmetric twin
+			// of the GitLab backend's `hardening_read_github_kind_refused`. The vocabulary is one
+			// closed set partitioned per forge; the GitHub backend never answers `project` with
+			// its own repo document.
+			name:  "hardening_read_gitlab_kind_refused",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadProject)
 			},
 		},
 		{

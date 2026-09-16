@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/9/notes",
+      "body": {
+        "body": "hello"
+      }
+    }
+  ],
+  "result": {
+    "ID": "gitlab:medici-finance/assay!9#note900",
+    "DatabaseID": 900,
+    "URL": ""
+  }
+}

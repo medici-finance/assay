@@ -196,6 +196,37 @@ func (f *HTTPRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error)
 	return repoInfo.Visibility, nil
 }
 
+// ForgeRepoInfoFetcher adapts an ALREADY-RESOLVED Forge backend — whichever one
+// deskkit.ForgeFor picked for the repo (GitHubForge, GitLabForge, or a test fake) — to the
+// (owner, repo string) RepoInfoFetcher signature PublicRepoGate consumes.
+//
+// It exists because a caller that already resolved the forge for its OTHER operations
+// (OpenChangeForBranch, CreateDraftChange, GetPullRequest, …) must ask the public-repo gate's
+// visibility read through the SAME backend, not a second, independently-constructed client.
+// Before this type existed, cmd/deskpr built `&HTTPRepoInfoFetcher{Token: ghToken}` for the
+// gate regardless of which forge the resolver had actually picked, so a GitLab-resolved repo's
+// visibility read went out over GitHub's REST API — which cannot answer for a project that
+// does not live there, and the gate failed closed (could-not-check) reporting a GitHub error
+// for a repo GitHub has never heard of (assay#1054). The GitLab backend's OWN RepoVisibility
+// (forge_gitlab.go) was already correct and already reachable through Forge — nothing
+// downstream of the resolver was broken; the gate simply never asked it.
+//
+// This is a THIN adapter, not a second implementation: it delegates to fg.RepoVisibility
+// (part of the frozen Forge interface, backed by the golden-pinned per-forge reads), so it
+// adds no fall-open path of its own — a read error propagates unchanged, and the gate still
+// fails closed on an unreadable visibility surface, exactly as it did before.
+type ForgeRepoInfoFetcher struct {
+	Forge Forge
+}
+
+// RepoVisibility delegates to the resolved backend's ForgeRepo-signature read.
+func (f ForgeRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error) {
+	return f.Forge.RepoVisibility(ForgeRepo{Owner: owner, Name: repo})
+}
+
+// ForgeRepoInfoFetcher satisfies the public-repo gate's fetcher contract.
+var _ RepoInfoFetcher = ForgeRepoInfoFetcher{}
+
 // stubRepoInfoFetcher is a test-only implementation of RepoInfoFetcher.
 type stubRepoInfoFetcher struct {
 	visibility    string

@@ -242,48 +242,40 @@ func mergeDispatch(hdr Header, verbUsed string, resolved []deskkit.RootConfig, v
 	return &rep, nil
 }
 
-// cmdDispatch renders the cross-repo dispatch queue. verbUsed is the spelling the
-// caller invoked (dispatch / todo / next / next-up).
-func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
-	roots, err := deskkit.ConfiguredRoots()
-	if err != nil {
-		return nil, err
-	}
-	bin, err := resolveStatusgen()
-	if err != nil {
-		return nil, err
-	}
-	// Resolve EVERY configured root up front, before reading any of them — same
-	// discipline as cmdAwaiting: fail-closed stays fail-closed, and the report can
-	// carry the resolved absolute path so the coverage lines name the directory the
-	// rows actually came from.
-	resolved := make([]deskkit.RootConfig, 0, len(roots))
-	for _, r := range roots {
-		abs, rerr := deskkit.ResolveRoot(r)
-		if rerr != nil {
-			return nil, rerr // fail-closed: never a partial board
-		}
-		resolved = append(resolved, deskkit.RootConfig{Repo: r.Repo, Path: abs})
-	}
-	pinnedTag, pinRepo, err := resolveStatusgenPin(resolved)
-	if err != nil {
-		return nil, err
-	}
-	running := statusgenVersionOf(bin)
-
-	// IO half: run the pinned statusgen once per root, fail-closed on any error.
-	views := make([]dispatchView, 0, len(resolved))
-	for _, r := range resolved {
-		v, rerr := nextUpForRoot(bin, r.Path, r.Repo)
-		if rerr != nil {
-			return nil, rerr // fail-closed
-		}
-		views = append(views, v)
+// dispatchFromRoots is the DEPTH-producing half of the dispatch verb: given an
+// already-resolved root set it reads each root and merges the views into the report. It is
+// split out so `throughput`, which reads one integer out of this report, can obtain it from
+// a root set it resolved once for the whole run rather than by re-running the whole verb.
+func dispatchFromRoots(hdr Header, verbUsed string, rs rootSet) (*dispatchReport, error) {
+	// IO half: run the pinned statusgen once per root, CONCURRENTLY under the per-root pool
+	// (roots.go), fail-closed on any error — the lowest-index root's error wins, so which
+	// failure surfaces does not depend on which subprocess finished first. Results come back
+	// in configured order, so views[i] is still the view read from rs.roots[i], which is the
+	// invariant mergeDispatch requires.
+	views, rerr := runPerRoot(rs, func(r deskkit.RootConfig) (dispatchView, error) {
+		return nextUpForRoot(rs.bin, r.Path, r.Repo)
+	})
+	if rerr != nil {
+		return nil, rerr // fail-closed
 	}
 
 	// Pure half: merge/attribute/sum. Split out so the merge, repo-attribution
 	// fail-closed rule, and held-back accounting are unit-testable without a binary.
-	rep, err := mergeDispatch(hdr, verbUsed, resolved, views, pinnedTag, pinRepo, running)
+	return mergeDispatch(hdr, verbUsed, rs.roots, views, rs.pinnedTag, rs.pinRepo, rs.running)
+}
+
+// cmdDispatch renders the cross-repo dispatch queue. verbUsed is the spelling the
+// caller invoked (dispatch / todo / next / next-up).
+func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
+	// The root/pin/version preamble is resolved ONCE, by the shared resolver (roots.go),
+	// which performs exactly the steps this function used to perform inline and in the same
+	// fail-closed order. `throughput` calls that resolver once for the whole run instead of
+	// paying for it here and again in cmdAwaiting.
+	rs, err := resolveRootsOnce()
+	if err != nil {
+		return nil, err
+	}
+	rep, err := dispatchFromRoots(hdr, verbUsed, rs)
 	if err != nil {
 		return nil, err
 	}

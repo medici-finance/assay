@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: \"not-a-real-kind\" is not a known hardening-read kind — the enumerated kinds are: repo, rulesets, actions-workflow-permissions, actions-fork-pr-approval, actions-private-fork-pr, vulnerability-reporting, project, protected-branches, protected-tags, push-rules, approvals",
+  "not_found": false
+}

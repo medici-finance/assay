@@ -99,7 +99,7 @@ func TestStale_ThreeStates_236(t *testing.T) {
 	// could-not-check, regardless of any pin file above the test's working dir.
 	oldPin, oldSrc := deskToolsPin, deskToolsSourcePin
 	t.Cleanup(func() { deskToolsPin, deskToolsSourcePin = oldPin, oldSrc })
-	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskToolsPin = func() (string, string, string, bool) { return "", "", "", false }
 	// Same for the #776 channel-D source pin: force it OFF so the fallback and its
 	// could-not-check are what these subtests reach, regardless of any pin file above.
 	deskToolsSourcePin = func() (string, string, bool) { return "", "", false }
@@ -787,7 +787,7 @@ func withStaleSeams(t *testing.T, pinned bool, trees map[string]string, fail boo
 	// tests deterministically exercise the in-tree ref FALLBACK (the branch they were
 	// written for), independent of whether any `.assay-versions` happens to sit above
 	// the test's working dir. Neither pin: found here.
-	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskToolsPin = func() (string, string, string, bool) { return "", "", "", false }
 	deskToolsSourcePin = func() (string, string, bool) { return "", "", false }
 	isPinned = func() bool { return pinned }
 	gitTree = func(ref string) (string, error) {
@@ -886,11 +886,11 @@ func withPinSeams(t *testing.T, pinFound bool, pinTag, runningTag string) {
 	gitTree = func(string) (string, error) {
 		return "", fmt.Errorf("simulated consumer checkout: origin/main:tools/desk does not resolve")
 	}
-	deskToolsPin = func() (string, string, bool) {
+	deskToolsPin = func() (string, string, string, bool) {
 		if !pinFound {
-			return "", "", false
+			return "", "", "", false
 		}
-		return "/consumer/repo", pinTag, true
+		return "/consumer/repo", pinTag, deskToolsArtifact, true
 	}
 	// The #185 tests exercise the releaseTag primary and the in-tree fallback only;
 	// keep the #776 channel-D source pin OFF so a stray `.assay-versions` above the
@@ -1009,7 +1009,7 @@ func withSourcePinSeams(t *testing.T, srcFound bool, pinCommit string) {
 	gitTree = func(string) (string, error) {
 		return "", fmt.Errorf("simulated consumer checkout: origin/main:tools/desk does not resolve")
 	}
-	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskToolsPin = func() (string, string, string, bool) { return "", "", "", false }
 	deskkit.ReleaseTag = "" // a channel-D adopter's release line is absent
 	deskToolsSourcePin = func() (string, string, bool) {
 		if !srcFound {
@@ -1179,7 +1179,7 @@ func TestStale_ChannelDSourcePin_795_EndToEnd(t *testing.T) {
 	gitTree = func(string) (string, error) {
 		return "", fmt.Errorf("simulated consumer checkout: origin/main:tools/desk does not resolve")
 	}
-	deskToolsPin = func() (string, string, bool) { return "", "", false }
+	deskToolsPin = func() (string, string, string, bool) { return "", "", "", false }
 	deskToolsSourcePin = deskToolsSourcePinReal // the REAL on-disk reader, not a stub
 	deskkit.ReleaseTag = ""
 	deskkit.SourceSHA, deskkit.BuiltAt = shortSHA, "2026-08-25T22:57:16Z"

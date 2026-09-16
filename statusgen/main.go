@@ -394,11 +394,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		notices = append(notices, hn...)
 		// Stale-issue alarm (methodology-metrics/28): a NOTICE + board line when
 		// an open issue has been sitting past the threshold, mirroring the intake-
-		// debt alarm applied to issues. gh-GUARDED: skipped (no NOTICE) when gh is
-		// absent or fails, so the offline --lint gate never gains a hard network
-		// dependency. Advisory only — never a hard problem. Gated to --lint mode so
-		// the STATUS.md regen path stays offline/deterministic.
-		if n := openIssueDebtNotice(staleIssueDaysCfg); n != "" {
+		// debt alarm applied to issues. OPT-IN: it reads through the run's
+		// forgeReader, whose DEFAULT is offline, so a plain --lint starts no
+		// process and reaches no network and the line is absent. `--lint --forge`
+		// wires the desk-tools-backed reader. Advisory only — never a hard problem.
+		// Gated to --lint mode so the STATUS.md regen path stays deterministic.
+		if n := openIssueDebtNotice(staleIssueDaysCfg, forgeReaderForRun); n != "" {
 			notices = append(notices, n)
 		}
 		// Drive-plan honesty: PROBLEM a drive-plan .md whose
@@ -713,6 +714,24 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 			finalVerdict(mode, 1)
 			return 1
 		}
+	}
+	// Dead-claim decay that could not look is the SECOND way this read goes blind
+	// (#1111): a distinct could-not-check line in the run's own output, plus the
+	// banner nu.Claims carries into the emitted board. It is NOT folded into the
+	// line above — that one says the board is an unfiltered SUPERSET, this one
+	// says it is a SUBSET holding real backlog behind corpses, and a reader who
+	// confuses them draws the opposite conclusion.
+	//
+	// Deliberately NOT escalated by --require-claims, and not a PROBLEM: that flag
+	// exists for the superset case, where dispatching off the board risks two
+	// sessions on one brief. An undecayed claim set is the opposite and is SAFE to
+	// dispatch from — it merely hides work. Making it exit 1 would redden every
+	// adopter lint that runs without a forge credential (the merge-request half of
+	// a GitLab pipeline has none by design), which is the failure mode that trains
+	// a desk to ignore its own instrument. The artifact wearing the
+	// could-not-check is what makes this three-state; the exit code is not.
+	if d := claimSource.DecayNotice(); d != "" {
+		notices = append(notices, d)
 	}
 	// Span-of-control overflow is a WIP-pressure alarm, surfaced as a --lint
 	// NOTICE as well as an in-STATUS line.
@@ -1309,6 +1328,7 @@ func main() {
 	flag.Var(&roots, "root", `repository root (default "."; repeatable — one STATUS.md per root)`)
 	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it")
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
+	forgeMode := flag.Bool("forge", false, "opt in to the forge-backed checks. WITHOUT it statusgen is OFFLINE: it starts no forge process and makes no network call, and every forge-backed check reports could-not-check as itself rather than reading green. WITH it those checks read through the desk-tools `deskread` verb on the forge seam. The default is offline because a check that quietly stopped looking is indistinguishable from one that looked and found nothing")
 	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
@@ -1986,6 +2006,14 @@ func main() {
 	// rule itself and never gates CI.
 	if *lintAuditMode {
 		os.Exit(runLintAudit(*root))
+	}
+
+	// Wire the run's forge reader. The default (set at forgeReaderForRun's
+	// declaration) is OFFLINE: no process start, no network, every repo
+	// could-not-check. --forge is the ONLY thing that replaces it, so there is no
+	// path by which a check reaches a forge from a run that did not ask for one.
+	if *forgeMode {
+		forgeReaderForRun = newDeskreadReader()
 	}
 
 	mode := "write"

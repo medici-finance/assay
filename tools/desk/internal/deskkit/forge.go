@@ -21,6 +21,9 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -141,6 +144,19 @@ type PullRequest struct {
 	// MergedAt != ""`. Consumer: cmd/deskboard's fetchPRState. omitempty keeps a non-merged
 	// change byte-identical in the forge golden corpus.
 	Merged bool `json:",omitempty"`
+	// GitLabMergeStatus is the forge's OWN raw merge-status string (GitLab
+	// `detailed_merge_status`) where the forge reports one FINER-GRAINED than the tri-state
+	// Mergeable above. It exists for exactly one consumer: cmd/deskflip's `mergeable`
+	// condition, which on GitLab must tell a genuine "not computed yet" (`checking`,
+	// `unchecked`, an empty string) apart from the two NAMED policy holds this brief's
+	// merge-hold op set is about to release (`draft_status`, `discussions_not_resolved`) —
+	// a distinction the three-value Mergeable enum, BY DESIGN, collapses away
+	// (gitlabMergeableState's own doc comment says so, and Verify row 7 pins that mapping
+	// unchanged). EMPTY on GitHub, and on every GitLab read this field predates; omitempty
+	// keeps every existing golden fixture byte-identical. Consumer: cmd/deskflip's
+	// `mergeable` condition (the forge-gitlab merge-hold brief; freeze rule binds METHODS, not fields, so this
+	// addition changes no method count).
+	GitLabMergeStatus string `json:",omitempty"`
 }
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
@@ -152,6 +168,86 @@ const (
 	MergeableConflicting = "CONFLICTING"
 	MergeableUnknown     = "UNKNOWN"
 )
+
+// --- Merge-hold marker thread (the forge-gitlab merge-hold brief) ---
+//
+// On GitLab Free neither half of GitHub's server-side verdict-before-merge gate exists: the
+// `Draft:` prefix is a title string any Developer can strip, and required approvals are
+// Premium. GitLab DOES enforce, on every tier, that a merge request with an unresolved
+// discussion thread cannot be merged (`only_allow_merge_if_all_discussions_are_resolved`,
+// a plain project setting). This op set makes a resolvable discussion thread the desk's own
+// merge hold: opened with the change, released only by the reviewer's approve verdict at the
+// current head, re-armed by a request-changes verdict or a new head. GitHub's twin of this
+// control is server-side branch protection, already stronger, so its implementation of every
+// op here is the typed not-applicable a caller skips.
+
+// MergeHold is the read of a change's merge-hold marker thread. See Forge.ReadMergeHold.
+type MergeHold struct {
+	// State is one of the MergeHold* constants below.
+	State string
+	// ID is the hold's opaque id (the GitLab discussion id) — "" unless State is RESOLVED or
+	// UNRESOLVED.
+	ID string
+	// ResolvedBy is the login the FORGE records as having resolved the marker note itself
+	// (GitLab Note.ResolvedBy) — populated only when State is RESOLVED. This is a signal
+	// independent of who authored the RELEASED reply below: a Developer who resolves the
+	// thread by hand (GitLab lets any Developer resolve any thread) sets THIS field to their
+	// own login without ever posting a reply, which is exactly the hand-resolve
+	// cmd/deskflip's reviewer-approved condition must refuse.
+	ResolvedBy string
+	// Head is the full commit sha named on the RELEASED reply's `Head:` line — populated
+	// only when State is RESOLVED, and EMPTY when a resolved thread carries no such reply (a
+	// hand resolve, never touched by SetMergeHold). Consumer: cmd/deskflip's
+	// reviewer-approved condition, which refuses a resolved thread whose Head does not equal
+	// the change's CURRENT head — a resolve that never named a head can never equal one.
+	Head string
+}
+
+const (
+	// MergeHoldNotApplicable is ReadMergeHold's answer on a forge whose server-side twin of
+	// this control is something else entirely (GitHub: branch protection's required
+	// reviewer-App review) — never a lack of data, a genuine typed "there is nothing here to
+	// read". Consumer: cmd/deskflip's reviewer-approved condition, which reads this as "run
+	// the original note/approval-based correctness lane instead", never as an absent hold on
+	// a forge that does have a real one.
+	MergeHoldNotApplicable = "NOT_APPLICABLE"
+	// MergeHoldAbsent means the forge HAS the concept but this change carries no marker
+	// thread — CreateDraftChange's caller never opened one (task 2 makes that a loud,
+	// non-zero failure rather than a silent gap), or the change predates this brief.
+	MergeHoldAbsent = "ABSENT"
+	// MergeHoldUnresolved means the marker thread exists and is still open — no reviewer has
+	// released it at the current head.
+	MergeHoldUnresolved = "UNRESOLVED"
+	// MergeHoldResolved means the marker thread is resolved; ResolvedBy and Head narrow
+	// further whether THIS resolution is the one a caller may act on.
+	MergeHoldResolved = "RESOLVED"
+)
+
+// MergeHoldUpdate is SetMergeHold's argument: release (Resolved:true, at Head) or re-arm
+// (Resolved:false, naming Reason) a change's merge-hold, with the reply body text the hold's
+// next Read finds again (see the marker-reply shapes in forge_gitlab.go).
+type MergeHoldUpdate struct {
+	// Resolved selects release (true) or re-arm (false).
+	Resolved bool
+	// Head is the full commit sha the release names on the reply's `Head:` line. Required
+	// (and validated non-empty by the implementation) when Resolved is true; ignored
+	// otherwise.
+	Head string
+	// Reason is the re-arm reply's own second line — "request-changes" or "new head <sha>"
+	// (see the brief's marker-reply facts). Required when Resolved is false; ignored
+	// otherwise.
+	Reason string
+}
+
+// ErrMergeHoldNotApplicable is OpenMergeHold's and SetMergeHold's typed not-applicable — the
+// write-side twin of MergeHoldNotApplicable, needed because neither returns a MergeHold value
+// with a State field to carry it. Test with IsMergeHoldNotApplicable, never errors.Is
+// directly — the same indirection every other typed sentinel on this seam uses (IsForgeNotFound,
+// IsForgeEmptyRepo).
+var ErrMergeHoldNotApplicable = errors.New("merge-hold: not applicable on this forge")
+
+// IsMergeHoldNotApplicable reports whether err is, or wraps, ErrMergeHoldNotApplicable.
+func IsMergeHoldNotApplicable(err error) bool { return errors.Is(err, ErrMergeHoldNotApplicable) }
 
 // Issue is the subset of an issue the desk tools read. IsPullRequest is the discriminator:
 // GitHub serves issues and PRs from one number sequence and the issues endpoint carries a
@@ -287,6 +383,13 @@ type ReviewInput struct {
 	HeadSHA string // pins the verdict to the reviewed head
 	Event   string // APPROVE | REQUEST_CHANGES | COMMENT
 	Body    string
+	// Report, when set, receives a human-readable note about a write that SUCCEEDED by a
+	// route other than the plain one — the verdict is in force, nothing is refused, but the
+	// caller should say what the forge actually did. It is never called on an error path:
+	// a note accompanies a nil return only. The GitLab backend uses it when POST /approve
+	// answers 401 for an approval this identity already holds (#1106); the GitHub backend
+	// never calls it. A nil Report drops the note.
+	Report func(note string)
 }
 
 // IssueInput is the request to file an issue.
@@ -359,7 +462,19 @@ type LabelSpec struct {
 // family the caller has no definite value for is simply not named, so nothing in it is
 // touched — an absent signal removes nothing.
 type LabelChange struct {
-	// Add is ensured to exist on the repo/project and to be present on the change.
+	// Target says WHAT is being labelled — an issue or a change (PR/MR) — and is REQUIRED:
+	// a change that leaves it unset is refused by every backend before any request is
+	// issued. The seam cannot infer it from the number. GitHub numbers issues and pull
+	// requests in one sequence and labels both through the issues endpoint, so there the
+	// distinction costs nothing; GitLab numbers issues and merge requests in two SEPARATE
+	// sequences with two separate endpoints, so a label write that assumed "change" landed
+	// on whichever merge request happened to share the new issue's iid — the defect that
+	// left every `deskfile new` issue on a GitLab project unstamped. Refusing an unset
+	// target on BOTH forges is deliberate: a caller that forgot it would otherwise pass
+	// every GitHub test and reproduce that defect only on GitLab. The type is the same
+	// TargetKind the typed reads/comments take, so one stated kind serves every op.
+	Target TargetKind
+	// Add is ensured to exist on the repo/project and to be present on the target.
 	Add []LabelSpec
 	// Remove is taken off the change when present. A name that is not on the change is not
 	// an error: removal is idempotent by construction.
@@ -367,6 +482,19 @@ type LabelChange struct {
 	// RemoveFamilies are label-name prefixes whose stale members are removed. A label
 	// matching one of these prefixes that is ALSO in Add is kept.
 	RemoveFamilies []string
+}
+
+// requireTarget is the shared refusal every backend issues BEFORE its first request when a
+// LabelChange names no target. One helper rather than two copies so the two backends cannot
+// drift on which values are accepted.
+func (c LabelChange) requireTarget() error {
+	switch c.Target {
+	case TargetChange, TargetIssue:
+		return nil
+	default:
+		return Refused(fmt.Sprintf("refusing to apply labels with no target kind (LabelChange.Target=%q) — "+
+			"say whether the number is an issue or a change; on GitLab the two are separate sequences", string(c.Target)))
+	}
 }
 
 // LabelOutcome reports what the reconciliation actually changed, so a caller can report the
@@ -663,6 +791,37 @@ type ChangeSearchResult struct {
 	CreatedAt string // RFC3339
 }
 
+// TargetKind names WHICH kind of numbered object a typed forge operation addresses: an
+// ISSUE, or a CHANGE (pull request ↔ merge request). It exists for the forges that number
+// the two kinds in separate sequences (GitLab), where a bare number resolves to nothing
+// without it; on a single-sequence forge (GitHub) it is validated against what the number
+// actually is. The zero value is deliberately NOT a kind: a caller that has not stated one
+// gets a refusal from ParseTargetKind, never a default guessed on its behalf.
+type TargetKind string
+
+const (
+	// TargetIssue addresses an issue.
+	TargetIssue TargetKind = "issue"
+	// TargetChange addresses a change — a pull request on GitHub, a merge request on GitLab.
+	TargetChange TargetKind = "change"
+)
+
+// ParseTargetKind reduces a user-facing kind word to a TargetKind. It accepts the
+// forge-neutral names (issue, change) and both forges' own words for a change (pr, mr),
+// case-insensitively, so a flag can be spelled in whichever vocabulary the operator thinks
+// in. Anything else — the empty string included — is refused (ExitRefused) naming the
+// accepted set: the whole point of the type is that the kind was STATED, so an unparseable
+// one must not quietly become an issue.
+func ParseTargetKind(s string) (TargetKind, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "issue":
+		return TargetIssue, nil
+	case "change", "pr", "mr":
+		return TargetChange, nil
+	}
+	return "", Refused(fmt.Sprintf("refused: unknown target kind %q (want one of: issue, mr; pr is an alias of mr)", s))
+}
+
 // ChangeSearchResults is the result of an owner-wide open-change search: the rows plus whether
 // the read came back exactly at the page cap (TruncatedAtCap), so a caller can state a
 // possibly-incomplete reconciliation in-band rather than treating a capped read as complete.
@@ -671,6 +830,201 @@ type ChangeSearchResults struct {
 	Results        []ChangeSearchResult
 	TruncatedAtCap bool
 	Cap            int
+}
+
+// HardeningReadKind names one closed hardening-read kind for op 40, RepoHardeningRead — the
+// enumerated replacement for repohardenguard's former arbitrary `gh api <endpoint>` reads
+// (the forge-gitlab guard-read-custody brief). It is a named enum validated BEFORE any request exists
+// (ValidateHardeningReadKind), never a path, the same DeleteRef/ValidateRefPath shape applied
+// to a fixed vocabulary instead of a ref namespace: a kind the backend does not serve is a
+// could-not-check REFUSAL naming the forge and the kind, never a guess and never the other
+// forge's document.
+type HardeningReadKind string
+
+const (
+	// HardeningReadRepo reads the repo document itself: `.visibility`,
+	// `.security_and_analysis.*` (admin-visible only — a `null` here is could-not-check,
+	// exactly as an unauthenticated/non-admin read reports today).
+	HardeningReadRepo HardeningReadKind = "repo"
+	// HardeningReadRulesets reads every ruleset's DETAIL document (the list→detail walk
+	// happens inside the backend) as an ARRAY, so a caller's `[name=X].field` selector
+	// resolves inside the returned array. `bypass_actors` is present only for a caller with
+	// write access to the ruleset, so under a read-only identity those rows are
+	// could-not-check.
+	HardeningReadRulesets HardeningReadKind = "rulesets"
+	// HardeningReadActionsWorkflowPermissions reads the default Actions workflow permissions
+	// (admin-gated).
+	HardeningReadActionsWorkflowPermissions HardeningReadKind = "actions-workflow-permissions"
+	// HardeningReadActionsForkPRApproval reads the fork-PR contributor-approval setting
+	// (admin-gated).
+	HardeningReadActionsForkPRApproval HardeningReadKind = "actions-fork-pr-approval"
+	// HardeningReadActionsPrivateForkPR reads the fork-PR-workflows-on-private-repos setting
+	// (admin-gated).
+	HardeningReadActionsPrivateForkPR HardeningReadKind = "actions-private-fork-pr"
+	// HardeningReadVulnerabilityReporting reads the private-vulnerability-reporting setting
+	// (admin read).
+	HardeningReadVulnerabilityReporting HardeningReadKind = "vulnerability-reporting"
+
+	// --- GitLab kinds (the forge-gitlab GitLab-hardening-reads brief). Each is ONE fixed
+	// endpoint literal returning GitLab's OWN settings document — never a synthesised
+	// GitHub-shaped view — so a checklist is written per forge. The GitHub backend refuses
+	// every one of them by name, exactly as GitLab refuses the GitHub kinds above.
+
+	// HardeningReadProject reads the project document (`GET /projects/:id`, Free):
+	// `.visibility`, `.only_allow_merge_if_pipeline_succeeds`,
+	// `.only_allow_merge_if_all_discussions_are_resolved`, `.ci_config_path`,
+	// `.ci_allow_fork_pipelines_to_run_in_parent_project` (Owner/admin-visible only — absent at
+	// any lower role, so a row on it is could-not-check there), `.secret_push_protection_enabled`
+	// (Ultimate). It is also the GitLab preflight document (ForgeResolution.HardeningRepoDocumentKind).
+	HardeningReadProject HardeningReadKind = "project"
+	// HardeningReadProtectedBranches reads the protected-branches LIST
+	// (`GET /projects/:id/protected_branches`, Free at role level; `user_id`/`group_id` entries
+	// are Premium) as one ARRAY, every page walked, so a caller's `[name=main].field` selector
+	// resolves inside it. `.push_access_levels.0.access_level == 0` ("No one") is the
+	// CE-expressible form of an empty bypass list.
+	HardeningReadProtectedBranches HardeningReadKind = "protected-branches"
+	// HardeningReadProtectedTags reads the protected-tags LIST (`GET /projects/:id/protected_tags`,
+	// Free at role level) as one ARRAY, every page walked.
+	HardeningReadProtectedTags HardeningReadKind = "protected-tags"
+	// HardeningReadPushRules reads the project push rule (`GET /projects/:id/push_rule`,
+	// PREMIUM). On Community Edition the route answers 404/403, which arrives as a
+	// could-not-check carrying a *ForgeAPIError — never an empty document; the CE checklist
+	// records the row as `not available — Premium` and makes no request at all. On Premium a
+	// project with no push rule configured answers the literal document `null`, handed back
+	// as-is (an absence, which the guard's Gated cell classifies).
+	HardeningReadPushRules HardeningReadKind = "push-rules"
+	// HardeningReadApprovals reads the project approval configuration
+	// (`GET /projects/:id/approvals`): `.reset_approvals_on_push`,
+	// `.merge_requests_author_approval`, `.merge_requests_disable_committers_approval`. The read
+	// answers 200 on gitlab.com Free but 404 on some self-managed CE; ENFORCEMENT of the
+	// settings is Premium, so a CE checklist's Required cell records the advisory meaning.
+	HardeningReadApprovals HardeningReadKind = "approvals"
+)
+
+// hardeningReadKinds is the closed vocabulary op 40 serves, in a stable declared order — the
+// order HardeningReadKinds() renders and ValidateHardeningReadKind walks.
+var hardeningReadKinds = []HardeningReadKind{
+	HardeningReadRepo,
+	HardeningReadRulesets,
+	HardeningReadActionsWorkflowPermissions,
+	HardeningReadActionsForkPRApproval,
+	HardeningReadActionsPrivateForkPR,
+	HardeningReadVulnerabilityReporting,
+	HardeningReadProject,
+	HardeningReadProtectedBranches,
+	HardeningReadProtectedTags,
+	HardeningReadPushRules,
+	HardeningReadApprovals,
+}
+
+// hardeningKindForge records WHICH forge serves each kind. The vocabulary is one closed set
+// and the per-forge halves are disjoint: a backend handed the other forge's kind refuses it
+// BY NAME (zero requests), never answers with its own nearest document. Every entry of
+// hardeningReadKinds has exactly one row here (TestForgeGitlabGolden's refusal cases and
+// TestHardeningKindsPartitionByForge pin the partition).
+var hardeningKindForge = map[HardeningReadKind]ForgeKind{
+	HardeningReadRepo:                       ForgeGitHub,
+	HardeningReadRulesets:                   ForgeGitHub,
+	HardeningReadActionsWorkflowPermissions: ForgeGitHub,
+	HardeningReadActionsForkPRApproval:      ForgeGitHub,
+	HardeningReadActionsPrivateForkPR:       ForgeGitHub,
+	HardeningReadVulnerabilityReporting:     ForgeGitHub,
+	HardeningReadProject:                    ForgeGitLab,
+	HardeningReadProtectedBranches:          ForgeGitLab,
+	HardeningReadProtectedTags:              ForgeGitLab,
+	HardeningReadPushRules:                  ForgeGitLab,
+	HardeningReadApprovals:                  ForgeGitLab,
+}
+
+// HardeningReadKinds returns the closed vocabulary op 40 serves, as strings, in a stable
+// order — for a caller (repohardenguard's checklist parser, an error message) that needs to
+// name every valid kind without restating the enum.
+func HardeningReadKinds() []string {
+	out := make([]string, len(hardeningReadKinds))
+	for i, k := range hardeningReadKinds {
+		out[i] = string(k)
+	}
+	return out
+}
+
+// hardeningReadKindsFor returns the half of the vocabulary the named forge serves, as strings,
+// in declared order — what a backend's by-name refusal lists so a checklist author sees the
+// kinds THIS forge answers rather than the whole set. Unexported on purpose: no exported
+// function in this package takes a forge selector (TestForgeForRejectsCallerSuppliedForge) —
+// a backend names its OWN kind here, never a caller.
+func hardeningReadKindsFor(served ForgeKind) []string {
+	var out []string
+	for _, k := range hardeningReadKinds {
+		if hardeningKindForge[k] == served {
+			out = append(out, string(k))
+		}
+	}
+	return out
+}
+
+// HardeningReadKindForge reports which forge serves kind. An unknown kind reports "" — a
+// caller validates with ValidateHardeningReadKind first.
+func HardeningReadKindForge(kind HardeningReadKind) ForgeKind {
+	return hardeningKindForge[kind]
+}
+
+// HardeningRepoDocumentKind returns the kind that reads the repository's own top-level
+// document on the RESOLVED forge — `repo` on GitHub, `project` on GitLab. It is the guard's
+// PREFLIGHT read (the read that proves the token can see the repo at all before any
+// per-row absence is allowed to mean "unset"), read off the resolution ResolveForge handed
+// back rather than hard-coded, so a GitLab-resolved run is not refused at the door by a
+// GitHub kind. It hangs off ForgeResolution rather than taking a ForgeKind argument: no
+// exported function in this package accepts a forge selector
+// (TestForgeForRejectsCallerSuppliedForge), and the backend re-validates the kind by name
+// regardless, so a resolution a caller fabricated buys a zero-request refusal from the
+// forge that actually answers — never the other forge's document. A forge this package
+// cannot name is a could-not-check refusal, never a guessed kind.
+func (r ForgeResolution) HardeningRepoDocumentKind() (HardeningReadKind, error) {
+	return hardeningRepoDocumentKind(r.Kind)
+}
+
+// hardeningRepoDocumentKind is the per-forge table behind
+// ForgeResolution.HardeningRepoDocumentKind.
+func hardeningRepoDocumentKind(served ForgeKind) (HardeningReadKind, error) {
+	switch served {
+	case ForgeGitHub:
+		return HardeningReadRepo, nil
+	case ForgeGitLab:
+		return HardeningReadProject, nil
+	default:
+		return "", Unverifiable(fmt.Sprintf(
+			"could-not-check: no hardening preflight document is defined for forge %q", served), nil)
+	}
+}
+
+// refuseHardeningKindForForge is the by-name refusal both backends share for a kind the
+// OTHER forge serves: validated (so an unknown kind still fails on ValidateHardeningReadKind's
+// grounds, never confused with this one), then refused naming this forge, the kind, the
+// forge that does serve it, and the kinds this forge answers — with ZERO requests emitted.
+func refuseHardeningKindForForge(this ForgeKind, kind HardeningReadKind) error {
+	serving := hardeningKindForge[kind]
+	if serving == this {
+		return nil
+	}
+	return Unverifiable(fmt.Sprintf(
+		"could-not-check: %s serves no hardening read of kind %q — it is a %s kind; the %s kinds are: %s",
+		this, kind, serving, this, strings.Join(hardeningReadKindsFor(this), ", ")), nil)
+}
+
+// ValidateHardeningReadKind checks kind against the closed vocabulary BEFORE any request is
+// built — the DeleteRef/ValidateRefPath shape, applied to a fixed enum rather than a ref
+// namespace. An unrecognised kind is a could-not-check REFUSAL naming the kind and the
+// vocabulary; RepoHardeningRead calls this first on both backends, so an unknown kind emits
+// ZERO requests on either.
+func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
+	for _, k := range hardeningReadKinds {
+		if string(k) == kind {
+			return k, nil
+		}
+	}
+	return "", Unverifiable(fmt.Sprintf(
+		"could-not-check: %q is not a known hardening-read kind — the enumerated kinds are: %s",
+		kind, strings.Join(HardeningReadKinds(), ", ")), nil)
 }
 
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
@@ -684,6 +1038,17 @@ type Forge interface {
 	GetPullRequest(repo ForgeRepo, number int) (*PullRequest, error)
 	// GetIssue reads an issue and answers whether the number is in fact a pull request.
 	GetIssue(repo ForgeRepo, number int) (*Issue, error)
+	// GetIssueTyped reads the object of ONE stated kind at `number` (see TargetKind). It
+	// exists because a bare number is ambiguous on a forge that numbers issues and changes
+	// in SEPARATE sequences: GitLab's `#7` and `!7` routinely both exist, and GetIssue
+	// REFUSES that case rather than pick one. A caller that knows which kind it means —
+	// `deskfile attach` is an observation on an issue — states it and gets that object, or
+	// a 404 (IsForgeNotFound) when that kind does not exist at the number. On a forge with
+	// ONE number sequence (GitHub) the kind is VALIDATED, never used to route: an issue
+	// number read as a change, or a change read as an issue, is a could-not-check error
+	// naming the mismatch, never the other object handed back under the wrong name.
+	// Consumer: cmd/deskfile's attach target read (freeze rule).
+	GetIssueTyped(repo ForgeRepo, number int, kind TargetKind) (*Issue, error)
 	// OpenChangeForBranch resolves the single OPEN change (PR ↔ MR) whose SOURCE branch is
 	// `branch`, returning (nil, nil) when NONE is open. It exists because every other change
 	// read on this seam is keyed by NUMBER, and deskpr's existing-PR-for-branch check and
@@ -731,7 +1096,22 @@ type Forge interface {
 	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate and
 	// escalation clock, cmd/scanloop's queueing trust gate (freeze rule).
 	IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
-	// ReviewsAtHead returns every review on a change (paginated to exhaustion).
+	// ReviewsAtHead returns every review on a change (paginated to exhaustion), in
+	// ASCENDING SUBMITTED ORDER — oldest first.
+	//
+	// The order is part of the contract, not an incidental property of whichever endpoint
+	// a backend happens to read. Every consumer reduces this slice by walking it and
+	// letting the LAST decisive verdict win (deskboard's reduceReviews, deskpost's
+	// latestAppVerdict, deskflip's ReduceAppVerdict), because that is what "the standing
+	// verdict" means. Handed the reversed stream those reductions silently invert: the
+	// oldest verdict governs, an approval at a newer head never clears an earlier
+	// request-changes, and an ordinary approve-then-reject reads as a forged no-op
+	// approval. GitHub's reviews endpoint is chronological and satisfies this for free;
+	// GitLab's notes endpoint defaults to newest-first and its backend re-orders (#1124).
+	//
+	// A review whose submitted time could not be established sorts FIRST — an undatable
+	// verdict may be superseded by any dated one and may never supersede one, which is the
+	// fail-closed placement.
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The
 	// caller reconciles len against PullRequest.ChangedFiles before trusting it complete.
@@ -761,6 +1141,18 @@ type Forge interface {
 	ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
 	// ListComments returns the comments/notes on a change or issue, oldest first.
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
+	// ListCommentsTyped is ListComments for a caller that has STATED which kind of object
+	// `number` names (see TargetKind, GetIssueTyped). ListComments reads a CHANGE's thread
+	// on BOTH backends — GitHub's read is the `pullRequest` GraphQL connection and GitLab's
+	// is `/merge_requests/:iid/notes` — so an ISSUE's own thread is unreachable through it
+	// on either forge: on GitHub it comes back EMPTY (the `pullRequest` selection resolves
+	// to null at an issue's number) and on GitLab it comes back as the notes of whichever
+	// merge request shares the number. An empty thread reads as "nobody has commented",
+	// which is exactly how an unread precondition becomes a satisfied one. This op routes
+	// on the stated kind, so an issue's thread is read from the issue. Consumer:
+	// cmd/deskclose's two-role superseded lane (freeze rule: it lands with that call site).
+	// An unknown kind is refused rather than defaulted.
+	ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error)
 	// RepoVisibility returns the repo's visibility (private | public | internal | ...).
 	RepoVisibility(repo ForgeRepo) (string, error)
 	// ReadFile reads a file's content at a ref (GitHub Contents API ↔ GitLab Repository Files
@@ -828,11 +1220,49 @@ type Forge interface {
 	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
 	// changes nothing (freeze rule: this read lands with the call site that consumes it).
 	RefExists(repo ForgeRepo, ref string) (bool, error)
+	// RepoHardeningRead reads ONE closed hardening-read kind's document(s) for repo (see
+	// HardeningReadKind) — the enumerated replacement for repohardenguard's former arbitrary
+	// `gh api <endpoint>` reads. kind is validated by ValidateHardeningReadKind BEFORE any
+	// request is built, so this cannot be steered at an arbitrary endpoint
+	// (TestForgeNoPassthrough's no-endpoint-argument check keys on parameter names, and `kind`
+	// is a closed enum, never a path). The `rulesets` kind performs the list→detail walk
+	// internally and returns the ARRAY of full detail documents, so a caller's `[name=X].field`
+	// selector resolves inside the returned array without a second op on this seam. The
+	// vocabulary is ONE closed set partitioned per forge (HardeningReadKindForge): GitHub
+	// serves `repo`/`rulesets`/the Actions and vulnerability-reporting kinds, GitLab serves
+	// `project`/`protected-branches`/`protected-tags`/`push-rules`/`approvals` — each a fixed
+	// endpoint literal returning that forge's OWN document. A kind the resolved backend does
+	// not serve is a could-not-check REFUSAL naming the forge, the kind and the forge that
+	// does serve it, emitting zero requests. A tier-gated kind on an edition without it
+	// (`push-rules` on Community Edition) is a could-not-check carrying the *ForgeAPIError,
+	// never an empty document. Consumer: cmd/repohardenguard's Checker (freeze rule: this op
+	// lands with its consumer).
+	RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)
+	// ReadMergeHold reads the current state of a change's merge-hold marker thread (see
+	// MergeHold; the forge-gitlab merge-hold brief). GitHub returns MergeHoldNotApplicable and issues no
+	// request — its twin control is server-side branch protection. Any other error is
+	// could-not-check, never a silent ABSENT. Consumer: cmd/deskflip's reviewer-approved
+	// condition (freeze rule: this read lands with the call site that consumes it).
+	ReadMergeHold(repo ForgeRepo, number int) (*MergeHold, error)
 
 	// --- Writes ---
 
 	// CreateDraftChange opens a draft change (draft PR ↔ Draft: MR).
 	CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*PullRef, error)
+	// OpenMergeHold opens the desk's merge-hold marker thread on a change, returning the
+	// hold's opaque id. GitHub returns ErrMergeHoldNotApplicable (test with
+	// IsMergeHoldNotApplicable) and issues no request. Consumer: cmd/deskpr create, which
+	// opens the hold immediately after CreateDraftChange succeeds on a GitLab-resolved repo
+	// (the forge-gitlab merge-hold brief, task 2; freeze rule).
+	OpenMergeHold(repo ForgeRepo, number int) (string, error)
+	// SetMergeHold releases (MergeHoldUpdate.Resolved true, at Head) or re-arms (Resolved
+	// false, naming Reason) a change's merge-hold, posting the reply body text ReadMergeHold
+	// finds again. GitHub returns ErrMergeHoldNotApplicable and issues no request.
+	// Consumers: cmd/deskpost review (release on approve at head, re-arm on
+	// request-changes or a stale-head resolve) and cmd/deskflip's reviewer-approved
+	// condition (re-arm on a resolve found stale at the flip) — the forge-gitlab merge-hold
+	// brief's tasks 3-4; freeze rule.
+	SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdate) error
 	// EditChange replaces a change's OWN title/body text (see EditChangeInput) — the change's
 	// description, not a comment on it, and NOT a lifecycle transition (that is
 	// MarkReadyForReview). A field left empty is not written, so a body-only edit does not blank
@@ -846,15 +1276,23 @@ type Forge interface {
 	// IssueRef. A write whose only output is "no error" leaves its caller re-reading the
 	// listing to find out what it just did.
 	PostComment(repo ForgeRepo, number int, body string) (*CommentRef, error)
+	// PostCommentTyped is PostComment for a caller that has STATED which kind of object
+	// `number` names (see TargetKind, GetIssueTyped). PostComment resolves the kind itself
+	// and so inherits GetIssue's both-kinds refusal on GitLab; this write takes the kind
+	// from the caller and posts to that kind's endpoint (issue notes ↔ merge-request
+	// notes) without a resolving read. On GitHub both kinds share one comments endpoint,
+	// so the kind changes nothing there. Consumer: cmd/deskfile attach (freeze rule).
+	PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error)
 	// PostReview submits a head-pinned review/approval on a change.
 	PostReview(repo ForgeRepo, number int, in ReviewInput) error
 	// MarkReadyForReview flips a draft change to ready (the only transition this seam
 	// exposes — there is no un-ready, merge, or edit).
 	MarkReadyForReview(nodeID string) error
-	// ApplyLabels reconciles a change's labels in one operation (see LabelChange). It is
-	// idempotent: applying an already-present label and removing an already-absent one are
-	// both no-ops, so a re-run REPLACES rather than stacks and never fails for having
-	// already succeeded.
+	// ApplyLabels reconciles the labels of ONE issue or change in one operation (see
+	// LabelChange; change.Target says which kind number names, and an unset target is
+	// refused before any request). It is idempotent: applying an already-present label and
+	// removing an already-absent one are both no-ops, so a re-run REPLACES rather than
+	// stacks and never fails for having already succeeded.
 	ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error)
 	// EditComment replaces the body of ONE existing comment. commentID is the opaque id a
 	// prior ListComments returned (Comment.ID) — never a locally composed one.
@@ -863,6 +1301,24 @@ type Forge interface {
 	FileIssue(repo ForgeRepo, in IssueInput) (*IssueRef, error)
 	// CloseIssue closes an issue with an optional state reason.
 	CloseIssue(repo ForgeRepo, number int, stateReason string) error
+	// CloseIssueTyped is CloseIssue for a caller that has STATED which kind of object
+	// `number` names (see TargetKind). CloseIssue addresses an ISSUE on GitLab
+	// (`PUT /issues/:iid`), so a merge request is unreachable through it — and on a project
+	// carrying both at one number the close lands on the OTHER object, which is worse than
+	// not closing at all. This op routes on the stated kind. A non-empty stateReason with
+	// TargetChange is REFUSED rather than dropped: neither forge records a state reason on a
+	// change, and silently discarding one would leave a caller believing a distinction it
+	// asked for had been recorded. Consumer: cmd/deskclose (freeze rule: it lands with that
+	// call site). An unknown kind is refused rather than defaulted.
+	CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error
+	// ReopenIssue reopens ONE closed issue. It is CloseIssue's inverse and mirrors its shape
+	// minus the state reason: a state reason is a close-time field on GitHub and has no
+	// GitLab field at all, and reopening clears it on both. It addresses the ISSUE sequence
+	// only — there is no typed twin, because its single consumer (cmd/deskclose's
+	// verify-gate-refire lane) acts on issues carrying the verify-gate label and refuses a
+	// change before any write. Consumer: cmd/deskclose (freeze rule: it lands with that call
+	// site). Reversible by construction: a close undoes it.
+	ReopenIssue(repo ForgeRepo, number int) error
 	// WriteFile writes a file's whole content at a path on a branch (GitHub Contents API ↔
 	// GitLab Repository Files API), as the minted identity the backend holds. It folds three
 	// properties into the one op (see WriteFileInput/WriteFileResult): an idempotency read

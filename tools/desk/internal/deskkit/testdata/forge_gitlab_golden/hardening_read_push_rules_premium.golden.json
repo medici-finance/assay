@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/push_rule"
+    }
+  ],
+  "result": {
+    "commit_committer_check": true,
+    "id": 3,
+    "prevent_secrets": true,
+    "project_id": 12,
+    "reject_unsigned_commits": true
+  }
+}

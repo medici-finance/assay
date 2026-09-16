@@ -80,25 +80,34 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	}
 
 	review := reviewKit(o.kit)
+	verifier := verifierKit(o.kit)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Assignment — %s\n\n", o.item)
 	fmt.Fprintf(&b, "- **Item key:** `%s`\n", o.item)
-	if review {
+	switch {
+	case review:
 		// A reviewer opens no PR, so the "the PR opens THERE" framing is not just noise here —
 		// it is the very scaffold that leads a reviewer to open a spurious draft PR. The repo
 		// is named as the tree the PR under review belongs to, which is the value the review
 		// clauses require path claims to be resolved against.
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the repository the PR under review belongs to; resolve every path claim there.\n", repo)
-	} else {
+	case verifier:
+		// A verifier opens no PR either — its deliverable is a written verdict against MERGED
+		// main, never an implementer's branch. Naming the repo as where a PR "opens" would be
+		// exactly the scaffold #1029 reported leaking into a verifier's Assignment.
+		fmt.Fprintf(&b, "- **Target repo:** `%s` — the repository whose MERGED MAIN your Verify table runs against; resolve every path claim there.\n", repo)
+	default:
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
 	}
 	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source your worktree is cut FROM. It is not your writable root.\n", base)
 	fmt.Fprintf(&b, "- **Your home worktree:** `%s` — every file operation stays under it.\n", home)
 	// The auto-cut worktree branch is the IMPLEMENTER's output surface. A reviewer produces
-	// no branch and must review the PR's HEAD, not this fresh branch off main, so naming it
-	// here would only invite a reviewer to work on the wrong tree.
-	if !review {
+	// no branch and must review the PR's HEAD, not this fresh branch off main, and a verifier's
+	// worktree is a TEMPORARY one cut off origin/main at the merged head and removed when the
+	// pass ends — so naming a branch here would only invite either class to work on, or push,
+	// the wrong tree.
+	if !review && !verifier {
 		fmt.Fprintf(&b, "- **Branch:** `%s`\n", branch)
 	}
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
@@ -116,11 +125,17 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		"anywhere but your home worktree.\n\n")
 	// The assignment's action half is the ONE thing that differs by class: an implementer
 	// OPENS a PR and stops at `implemented`; a reviewer opens nothing, produces a VERDICT,
-	// and reviews the PR's head. Emitting the implementer scaffold to a reviewer is the
-	// defect this split fixes — a reviewer handed "open the draft PR" opens a spurious one.
-	if review {
+	// and reviews the PR's head; a verifier opens nothing either, and produces a VERDICT
+	// against merged main. Emitting the implementer scaffold to a reviewer or a verifier is
+	// the defect this split fixes — a reviewer or verifier handed "open the draft PR" (and,
+	// for a verifier, the worker's own `DESK_LOOP=worker-desk` identity) can open a spurious
+	// PR under the wrong App identity (#1029).
+	switch {
+	case review:
 		writeReviewAssignment(&b, o, plan, repo, home)
-	} else {
+	case verifier:
+		writeVerifierAssignment(&b, o, plan, repo)
+	default:
 		writeWorkerAssignment(&b, o, plan, repo)
 	}
 
@@ -143,6 +158,14 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 // read-only and PR-head-shaped rather than the implementer's open-a-PR scaffold, so the one
 // place the assignment differs by class turns on this.
 func reviewKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "review") }
+
+// verifierKit reports whether this dispatch is a VERIFIER dispatch. A verifier's assignment
+// is read-only against MERGED main and produces a written verdict, never a PR — it must not
+// receive the implementer's open-a-PR scaffold or adopt the worker's own `DESK_LOOP=worker-desk`
+// identity, which is exactly the defect #1029 reported: `--kit verifier` fell into the same
+// `else` branch as every kit that is not `review`, so it inherited the WORKER assignment
+// wholesale.
+func verifierKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "verifier") }
 
 // worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create
 // step, SELECTED BY KIT (#851). The two lanes fail for different reasons and the wrong hint
@@ -243,6 +266,30 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 			home, head, home)
 	}
 	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+	writeReleaseClaim(b, o, plan, repo)
+}
+
+// writeVerifierAssignment emits the VERIFIER's action half. A verifier is READ-ONLY against
+// the item's own deliverable: it runs the item's Verify table against MERGED main and records
+// what it observed, producing a written VERDICT — never a PR, never a pushed branch, and never
+// `implemented`/`verified`/`done` self-certified. This is the split #1029 reported missing:
+// before this, `--kit verifier` fell into the same `else` branch as the worker and inherited
+// "Open the draft PR in that repo" plus `export DESK_LOOP=worker-desk` wholesale, which would
+// have had a verifier agent open a spurious draft PR for a plain verify pass under the WORKER
+// App's identity. Neither belongs to this class: the verifier's own loop identity (if any) is
+// carried by the standing verifier clauses below, never minted here, and its dispatch claim is
+// released once the verdict LANDS (Evidence recorded, per the verifier-prompt kit's own
+// contract), not on a branch push — a verifier does not push a branch as its ordinary output.
+func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+	b.WriteString("## Run the Verify table against merged main — READ-ONLY, no PR\n\n")
+	fmt.Fprintf(b, "You are VERIFYING `%s` in `%s`. This is a VERIFY pass, not an implementation: you run "+
+		"the item's Verify table against MERGED main and produce a written VERDICT (Evidence rows plus "+
+		"`VERIFY: PASS` or `VERIFY: FAIL`), never a change. Do not create a pull request, do not push a "+
+		"branch, and do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
+		"worker kit, not this one. A verifier never sets verified/done itself and never flips a PR ready "+
+		"(per the standing verifier clauses below).\n\n", o.item, repo)
+	b.WriteString("Release the dispatch claim once your verdict has LANDED — Evidence recorded and the item " +
+		"advanced or routed to the human gate — not on a branch push, which is not this class's output:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
 }
 

@@ -21,6 +21,14 @@ package main
 //     landed/quarantined message it claims to answer AND a legal
 //     (action, class, risk) row in the compiled assign table. A session with
 //     no accountable routing decision behind it is an "orphan spawn".
+//   - refusal pressure (#1165): how many inbound attempts the gateway
+//     REFUSED, per presented sender and per presented lane pair, within the
+//     sweep window. The gateway journals one `kind:"refused"` line per
+//     refusal (cmd/commsgw refusal.go, shape in commsqueue.RefusalRecord —
+//     kind, lane pair, sender as presented, timestamp, digest; never the
+//     payload). A count at or over the threshold is a finding: a sustained
+//     probe that every inline stage correctly refused is still an incident,
+//     and before those lines existed it was invisible out of band.
 //
 // THREE-STATE, FAIL CLOSED (C4). Every run reports exactly one of
 // checked-clean / checked-failed / could-not-check; an unreadable or
@@ -78,6 +86,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -104,7 +113,23 @@ const (
 	SweepKindLanded      SweepRecordKind = "landed"
 	SweepKindQuarantined SweepRecordKind = "quarantined"
 	SweepKindSpawn       SweepRecordKind = "spawn"
+	// SweepKindRefused is the gateway's refusal line (#1165) — the SAME
+	// string commsqueue.JournalKindRefused names, pinned here so a reader
+	// of this vocabulary sees all four kinds in one place.
+	SweepKindRefused SweepRecordKind = SweepRecordKind(commsqueue.JournalKindRefused)
 )
+
+// DefaultRefusalThreshold is the number of gateway refusals from ONE
+// presented sender, or on ONE presented lane pair, within the sweep window
+// at which the sweep reports a refusal-pressure finding. Ten is deliberately
+// far above the noise a healthy desk produces (a clock-skewed peer retrying
+// a handful of times, a one-off out-of-lane send from a misconfigured
+// client) and far below what a probe needs to enumerate anything — the
+// gateway admits 120/minute/sender before its own budget stage trips, so
+// ten REFUSALS in a day is a sender that keeps trying after being told no.
+// Override per run with `commsloop sweep --refusal-threshold N`; a negative
+// value disables the check (never the default).
+const DefaultRefusalThreshold = 10
 
 // SweepRecord is one structured journal.log line this sweep can fully
 // reconcile — a superset of what loop.go/commsgw journal today (see file
@@ -130,6 +155,22 @@ type SweepRecord struct {
 	// and the session's own id.
 	MsgID     string `json:"msgId,omitempty"`
 	SessionID string `json:"sessionId,omitempty"`
+	// Refusal is refused-only: the distinct refusal kind
+	// (commsqueue.RefusalKind vocabulary). A refused line whose kind is
+	// outside that vocabulary is corrupt (could-not-check), never counted
+	// under another label.
+	Refusal commsqueue.RefusalKind `json:"refusal,omitempty"`
+}
+
+// refusalRecord projects a refused SweepRecord onto the shared
+// commsqueue.RefusalRecord so the per-sender / per-lane keys are computed by
+// the ONE definition the writer uses (SenderKey / LaneKey) — never a second
+// key format here that could drift from the gateway's.
+func (r SweepRecord) refusalRecord() commsqueue.RefusalRecord {
+	return commsqueue.RefusalRecord{
+		Time: r.Time, Kind: string(r.Kind), ID: r.ID, Cell: r.Cell,
+		Refusal: r.Refusal, From: r.From, To: r.To, Verb: r.Verb,
+	}
 }
 
 // legacyLandedRe matches loop.go's Land (VerdictPass) free-text line:
@@ -216,6 +257,15 @@ const (
 	FindingLaneViolation    FindingKind = "lane-violation"
 	FindingInvalidAssertion FindingKind = "invalid-assertion"
 	FindingOrphanSpawn      FindingKind = "orphan-spawn"
+	// FindingRefusalThreshold — one presented sender, or one presented lane
+	// pair, was refused at the gateway at least the threshold number of
+	// times within the window (#1165). It is this sweep's lane-violation
+	// class for REFUSED traffic: the inline stages held, and the sweep
+	// reports the pressure they held against. Distinct from
+	// FindingLaneViolation (which names a message that LANDED out of lane)
+	// so an incident review never confuses "the gate leaked" with "the gate
+	// was probed".
+	FindingRefusalThreshold FindingKind = "refusal-threshold"
 )
 
 // Finding is one violation this sweep detected.
@@ -239,9 +289,13 @@ const (
 // verdict of either other kind (C4: could-not-check is never clean, and is
 // never silently downgraded to a plain "failed" either).
 type SweepReport struct {
-	State                string
-	Cell                 string
-	Checked              int
+	State   string
+	Cell    string
+	Checked int
+	// Refused is how many gateway refusal lines were in scope for this run
+	// — reported even when no threshold breached, so "zero refusals" is a
+	// measurement the operator can read, not an absence.
+	Refused              int
 	Findings             []Finding
 	CouldNotCheckReasons []string
 }
@@ -277,6 +331,18 @@ type SweepDeps struct {
 	// original receipt window" — that window has necessarily closed by the
 	// time a periodic sweep reaches the record.
 	Trust comms.TrustStore
+	// RefusalThreshold is the per-sender / per-lane refusal count at which
+	// a FindingRefusalThreshold is reported. 0 means DefaultRefusalThreshold;
+	// a negative value disables the check (the CLI's `--refusal-threshold`
+	// documents the same contract).
+	RefusalThreshold int
+}
+
+func (d SweepDeps) refusalThreshold() int {
+	if d.RefusalThreshold == 0 {
+		return DefaultRefusalThreshold
+	}
+	return d.RefusalThreshold
 }
 
 func inScope(cell, a, b string) bool {
@@ -297,6 +363,18 @@ func Sweep(root, cell string, since time.Time, deps SweepDeps) SweepReport {
 	report := SweepReport{Cell: cell}
 	knownMsgIDs := map[string]bool{}
 	var spawns []SweepRecord
+	// Refusal tallies (#1165), keyed by the shared commsqueue.RefusalRecord
+	// SenderKey / LaneKey so the count attribution can never drift from the
+	// gateway's own line shape. Each key also keeps a per-kind breakdown for
+	// the finding detail.
+	refusalsBySender := map[string]map[commsqueue.RefusalKind]int{}
+	refusalsByLane := map[string]map[commsqueue.RefusalKind]int{}
+	tally := func(m map[string]map[commsqueue.RefusalKind]int, key string, kind commsqueue.RefusalKind) {
+		if m[key] == nil {
+			m[key] = map[commsqueue.RefusalKind]int{}
+		}
+		m[key][kind]++
+	}
 
 	checkOne := func(id string, from comms.SenderID, to comms.Lane, verb string, assertion *comms.Assertion) {
 		report.Checked++
@@ -380,6 +458,26 @@ func Sweep(root, cell string, since time.Time, deps SweepDeps) SweepReport {
 				continue
 			}
 			spawns = append(spawns, rec)
+		case SweepKindRefused:
+			// In scope when the GATEWAY cell matches OR either presented
+			// endpoint does — a refusal whose bytes never parsed far enough
+			// to present a from/to is still this gateway's refusal, and a
+			// flood of those must never fall out of every cell's scope.
+			if !(inScope(cell, rec.Cell, rec.Cell) || inScope(cell, rec.From.Cell, rec.To.Cell)) {
+				continue
+			}
+			if !commsqueue.KnownRefusalKinds[rec.Refusal] {
+				report.CouldNotCheckReasons = append(report.CouldNotCheckReasons,
+					fmt.Sprintf("journal.log: refusal record %s carries unrecognised refusal kind %q", rec.ID, rec.Refusal))
+				continue
+			}
+			// A refused record is NOT lane-re-checked: it never landed, so
+			// there is no landing to re-verify — it is COUNTED instead.
+			report.Checked++
+			report.Refused++
+			rr := rec.refusalRecord()
+			tally(refusalsBySender, rr.SenderKey(), rec.Refusal)
+			tally(refusalsByLane, rr.LaneKey(), rec.Refusal)
 		default:
 			report.CouldNotCheckReasons = append(report.CouldNotCheckReasons,
 				fmt.Sprintf("journal.log: record %s carries unrecognised kind %q", rec.ID, rec.Kind))
@@ -416,8 +514,54 @@ func Sweep(root, cell string, since time.Time, deps SweepDeps) SweepReport {
 		}
 	}
 
+	// Refusal-pressure reconciliation (#1165): any presented sender or lane
+	// pair refused at least threshold times in the window is a finding. Keys
+	// are visited in sorted order so the report and the filed issues are
+	// deterministic run to run.
+	if threshold := deps.refusalThreshold(); threshold > 0 {
+		breach := func(axis string, m map[string]map[commsqueue.RefusalKind]int) {
+			keys := make([]string, 0, len(m))
+			for k := range m {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				total := 0
+				for _, n := range m[k] {
+					total += n
+				}
+				if total < threshold {
+					continue
+				}
+				report.Findings = append(report.Findings, Finding{
+					Kind: FindingRefusalThreshold,
+					ID:   axis + ":" + k,
+					Detail: fmt.Sprintf("%d gateway refusal(s) for %s %s in the sweep window (threshold %d): %s",
+						total, axis, k, threshold, refusalBreakdown(m[k])),
+				})
+			}
+		}
+		breach("sender", refusalsBySender)
+		breach("lane", refusalsByLane)
+	}
+
 	report.resolveState()
 	return report
+}
+
+// refusalBreakdown renders a per-kind count map as a stable
+// "kind=n, kind=n" list, sorted by kind.
+func refusalBreakdown(m map[commsqueue.RefusalKind]int) string {
+	kinds := make([]string, 0, len(m))
+	for k := range m {
+		kinds = append(kinds, string(k))
+	}
+	sort.Strings(kinds)
+	parts := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		parts = append(parts, fmt.Sprintf("%s=%d", k, m[commsqueue.RefusalKind(k)]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // --- CLI wiring: `commsloop sweep --cell <slug> [--since <dur>]` --------
@@ -481,8 +625,8 @@ func loadSweepTrustStore(path string) (comms.Ed25519TrustStore, error) {
 }
 
 func printSweepReport(w io.Writer, r SweepReport) {
-	fmt.Fprintf(w, "commsloop sweep: cell=%s state=%s checked=%d findings=%d could-not-check=%d\n",
-		r.Cell, r.State, r.Checked, len(r.Findings), len(r.CouldNotCheckReasons))
+	fmt.Fprintf(w, "commsloop sweep: cell=%s state=%s checked=%d refused=%d findings=%d could-not-check=%d\n",
+		r.Cell, r.State, r.Checked, r.Refused, len(r.Findings), len(r.CouldNotCheckReasons))
 	for _, f := range r.Findings {
 		fmt.Fprintf(w, "  FINDING %s id=%s: %s\n", f.Kind, f.ID, f.Detail)
 	}
@@ -501,6 +645,8 @@ func cmdSweep(args []string, getenv func(string) string, stdout io.Writer) error
 	fs := flag.NewFlagSet("commsloop sweep", flag.ContinueOnError)
 	cell := fs.String("cell", "", "the cell slug to sweep (required)")
 	since := fs.Duration("since", 0, "only reconcile records/held items newer than this duration ago (0 = no floor)")
+	refusalThreshold := fs.Int("refusal-threshold", DefaultRefusalThreshold,
+		"gateway refusals from one sender, or on one lane pair, within the window at which a refusal-threshold finding is reported (negative disables)")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("commsloop sweep: " + err.Error())
 	}
@@ -531,7 +677,10 @@ func cmdSweep(args []string, getenv func(string) string, stdout io.Writer) error
 		sinceTime = now.Add(-*since)
 	}
 
-	report := Sweep(root, *cell, sinceTime, SweepDeps{Trust: trust})
+	// A flag value of 0 would mean "default" to SweepDeps; the CLI's own
+	// default already IS the constant, so pass the flag through as-is and
+	// let a negative value disable (documented on both surfaces).
+	report := Sweep(root, *cell, sinceTime, SweepDeps{Trust: trust, RefusalThreshold: *refusalThreshold})
 	printSweepReport(stdout, report)
 
 	var filer sweepIssueFiler = deskfileSweepFiler{Repo: repo}

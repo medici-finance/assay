@@ -39,6 +39,7 @@ func labelScenarios() []labelScenario {
 			// label stays, the current one is applied.
 			name: "replaces_a_stale_family_member",
 			change: LabelChange{
+				Target:         TargetChange,
 				Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
 				RemoveFamilies: []string{"size:"},
 			},
@@ -57,7 +58,8 @@ func labelScenarios() []labelScenario {
 			// three-state surface label depends on.
 			name: "an_unnamed_family_is_left_alone",
 			change: LabelChange{
-				Add: []LabelSpec{{Name: "size:s", Color: "c5def5"}},
+				Target: TargetChange,
+				Add:    []LabelSpec{{Name: "size:s", Color: "c5def5"}},
 			},
 			ghSetup: func(s *goldenServer) {
 				s.prLabels = []map[string]any{{"name": "surface:core"}, {"name": "size:xl"}}
@@ -72,6 +74,7 @@ func labelScenarios() []labelScenario {
 			// The queue-label swap deskflip makes: one named removal, one addition.
 			name: "swaps_one_named_label_for_another",
 			change: LabelChange{
+				Target: TargetChange,
 				Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
 				Remove: []string{"authorization-needed"},
 			},
@@ -89,6 +92,7 @@ func labelScenarios() []labelScenario {
 			// neither backend may remove a label it is also applying.
 			name: "a_label_in_both_halves_is_not_churned",
 			change: LabelChange{
+				Target:         TargetChange,
 				Add:            []LabelSpec{{Name: "size:s", Color: "c5def5"}},
 				Remove:         []string{"size:s"},
 				RemoveFamilies: []string{"size:"},
@@ -131,6 +135,104 @@ func TestLabelOpBothBackends(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestLabelTargetRoutes is the fix for the defect a GitLab adopter cell hit: `deskfile new`
+// filed an issue and its label write landed on the MERGE REQUEST sharing the issue's number,
+// because the seam only knew how to address a merge request. The assertion is on the
+// TRANSPORT — which object route the write hit — not on the outcome, since the outcome was
+// already "Added: [...]" while the wrong object was being labelled. Both targets run against
+// both backends: GitLab must split the two routes, and GitHub must keep issuing the same
+// `/issues/{n}/labels` call for both (one number space, one endpoint).
+func TestLabelTargetRoutes(t *testing.T) {
+	change := func(target TargetKind) LabelChange {
+		return LabelChange{
+			Target:         target,
+			Add:            []LabelSpec{{Name: "to:reviewer", Color: "0e8a16"}},
+			RemoveFamilies: []string{"to:"},
+		}
+	}
+	t.Run("gitlab_issue_target_writes_the_issue_route", func(t *testing.T) {
+		srv := newGLServer(t)
+		srv.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"to:desk"}})
+		// An MR with the SAME number is served too — the trap the defect fell into.
+		srv.mr = glMR(map[string]any{"labels": []string{"unrelated"}})
+		srv.updateMR = glMR(nil)
+		got, err := srv.forge().ApplyLabels(glRepo, 7, change(TargetIssue))
+		assertLabelOutcome(t, "gitlab", got, err, LabelOutcome{Added: []string{"to:reviewer"}, Removed: []string{"to:desk"}})
+		assertObjectRoutes(t, glRequestLines(srv), "/issues/7", "/merge_requests/7")
+	})
+	t.Run("gitlab_change_target_writes_the_mr_route", func(t *testing.T) {
+		srv := newGLServer(t)
+		srv.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"unrelated"}})
+		srv.mr = glMR(map[string]any{"labels": []string{"to:desk"}})
+		srv.updateMR = glMR(nil)
+		got, err := srv.forge().ApplyLabels(glRepo, 7, change(TargetChange))
+		assertLabelOutcome(t, "gitlab", got, err, LabelOutcome{Added: []string{"to:reviewer"}, Removed: []string{"to:desk"}})
+		assertObjectRoutes(t, glRequestLines(srv), "/merge_requests/7", "/issues/7")
+	})
+	t.Run("github_both_targets_share_the_issues_route", func(t *testing.T) {
+		for _, target := range []TargetKind{TargetIssue, TargetChange} {
+			srv := newGoldenServer(t)
+			srv.prLabels = []map[string]any{{"name": "to:desk"}}
+			got, err := srv.forge().ApplyLabels(forgeTestRepo, 7, change(target))
+			assertLabelOutcome(t, "github/"+string(target), got, err,
+				LabelOutcome{Added: []string{"to:reviewer"}, Removed: []string{"to:desk"}})
+			assertObjectRoutes(t, ghRequestLines(srv), "/issues/7/labels", "/pulls/7")
+		}
+	})
+	t.Run("an_unset_target_is_refused_before_any_request_on_both_forges", func(t *testing.T) {
+		gl := newGLServer(t)
+		gl.mr, gl.updateMR = glMR(nil), glMR(nil)
+		if _, err := gl.forge().ApplyLabels(glRepo, 7, change(TargetKind(""))); err == nil || ExitCodeOf(err) != ExitRefused {
+			t.Fatalf("gitlab: ApplyLabels(unset target) = %v, want a refusal", err)
+		}
+		if n := len(gl.requests); n != 0 {
+			t.Fatalf("gitlab: the refusal issued %d request(s): %v — an unset target defaulted to SOME route", n, glRequestLines(gl))
+		}
+		gh := newGoldenServer(t)
+		if _, err := gh.forge().ApplyLabels(forgeTestRepo, 7, change(TargetKind(""))); err == nil || ExitCodeOf(err) != ExitRefused {
+			t.Fatalf("github: ApplyLabels(unset target) = %v, want a refusal", err)
+		}
+		if n := len(gh.requests); n != 0 {
+			t.Fatalf("github: the refusal issued %d request(s): %v — a caller that forgot the target must be caught here, not only on GitLab", n, ghRequestLines(gh))
+		}
+	})
+}
+
+// assertObjectRoutes checks that every non-label-ensure request went to the wanted object
+// route and NONE went to the other kind's route. The ensure step (`/labels`) is target-neutral
+// and is skipped; the write and, when a family is named, the read are what must agree.
+func assertObjectRoutes(t *testing.T, lines []string, want, never string) {
+	t.Helper()
+	hit := 0
+	for _, l := range lines {
+		if strings.Contains(l, never) {
+			t.Errorf("request %q addressed the OTHER kind's route %q", l, never)
+		}
+		if strings.Contains(l, want) {
+			hit++
+		}
+	}
+	if hit == 0 {
+		t.Fatalf("no request addressed %q; requests were %v", want, lines)
+	}
+}
+
+func glRequestLines(s *glServer) []string {
+	out := make([]string, 0, len(s.requests))
+	for _, r := range s.requests {
+		out = append(out, r.Method+" "+r.Path)
+	}
+	return out
+}
+
+func ghRequestLines(s *goldenServer) []string {
+	out := make([]string, 0, len(s.requests))
+	for _, r := range s.requests {
+		out = append(out, r.Method+" "+r.Path)
+	}
+	return out
 }
 
 func assertLabelOutcome(t *testing.T, backend string, got *LabelOutcome, err error, want LabelOutcome) {
@@ -265,6 +367,67 @@ func TestFlipRefusesUnsupportedForge(t *testing.T) {
 		err := ReadyFlip(res, f, nil)
 		if err == nil || ExitCodeOf(err) != ExitUnverifiable {
 			t.Fatalf("ReadyFlip(nil change) = %v, want a could-not-check refusal", err)
+		}
+	})
+}
+
+// TestApplyIssueLabelsBothBackends pins the ISSUE-target wire for the exact change shape
+// `desklabel` emits — ONE named label, no families (so no pre-read) — on both backends. It
+// is the brief's row-4 control for the role-keyed label verb: GitHub serves issues and pull
+// requests through the same `/issues/{n}/labels` endpoint, so the issue-target request is
+// byte-for-byte the change-target one (the shared helper, not a duplicate REST sequence);
+// GitLab's issue is a different resource from its merge request, so the write is
+// `PUT /projects/:id/issues/:iid` carrying `add_labels`/`remove_labels` and never touches
+// `/merge_requests/:iid`. TestLabelTargetRoutes covers the family-reconciling shape; this
+// covers the one-label add and the one-label remove, the two calls desklabel makes.
+func TestApplyIssueLabelsBothBackends(t *testing.T) {
+	add := LabelChange{Target: TargetIssue, Add: []LabelSpec{{Name: "needs-decision"}}}
+	rm := LabelChange{Target: TargetIssue, Remove: []string{"superseded?"}}
+
+	t.Run("github", func(t *testing.T) {
+		for name, change := range map[string]LabelChange{"add": add, "rm": rm} {
+			issue := newGoldenServer(t)
+			issue.prLabels = []map[string]any{{"name": "superseded?"}}
+			gotIssue, err := issue.forge().ApplyLabels(forgeTestRepo, 7, change)
+			if err != nil {
+				t.Fatalf("github/%s issue-target: %v", name, err)
+			}
+			assertObjectRoutes(t, ghRequestLines(issue), "/issues/7/labels", "/pulls/7")
+
+			// The SAME change addressed as a change hits the identical route: one helper.
+			asChange := change
+			asChange.Target = TargetChange
+			pr := newGoldenServer(t)
+			pr.prLabels = []map[string]any{{"name": "superseded?"}}
+			gotChange, err := pr.forge().ApplyLabels(forgeTestRepo, 7, asChange)
+			if err != nil {
+				t.Fatalf("github/%s change-target: %v", name, err)
+			}
+			if strings.Join(ghRequestLines(issue), "\n") != strings.Join(ghRequestLines(pr), "\n") {
+				t.Errorf("github/%s: issue-target and change-target must issue IDENTICAL requests (one helper):\nissue:\n%s\nchange:\n%s",
+					name, strings.Join(ghRequestLines(issue), "\n"), strings.Join(ghRequestLines(pr), "\n"))
+			}
+			assertLabelOutcome(t, "github/"+name, gotIssue, nil, *gotChange)
+		}
+	})
+
+	t.Run("gitlab", func(t *testing.T) {
+		for name, change := range map[string]LabelChange{"add": add, "rm": rm} {
+			srv := newGLServer(t)
+			srv.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"superseded?"}})
+			// An MR with the SAME iid is served too — the same-number trap.
+			srv.mr = glMR(map[string]any{"labels": []string{"superseded?"}})
+			srv.updateMR = glMR(nil)
+			got, err := srv.forge().ApplyLabels(glRepo, 7, change)
+			if err != nil {
+				t.Fatalf("gitlab/%s: %v", name, err)
+			}
+			assertObjectRoutes(t, glRequestLines(srv), "/issues/7", "/merge_requests/7")
+			want := LabelOutcome{Added: []string{"needs-decision"}}
+			if name == "rm" {
+				want = LabelOutcome{Removed: []string{"superseded?"}}
+			}
+			assertLabelOutcome(t, "gitlab/"+name, got, nil, want)
 		}
 	})
 }

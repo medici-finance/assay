@@ -184,3 +184,129 @@ escalation vocabulary; the desks own the default-forward call.
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
 ```
+
+## guardrail: tick-mode
+
+The five desk roles are STANDING loops, and until this block they had no second
+mode: every body arms its self-scheduled loop before the first sweep and keeps it
+ticking for the life of the window. A SCHEDULED run — one non-interactive call
+under an outer time limit, printing at completion — can only end that loop one
+way, with the kill and an empty log. This block is the missing mode: when the
+caller asks for a tick, the role runs one bounded pass and exits.
+
+It is a site for all five desk roles and for none of the others: a worker-side
+role is already invoked as a bounded job with a definite end, so it has no
+standing loop to bound. The mechanism itself — the trigger predicate, the pass,
+the budget arithmetic and the summary-line grammar — lives in
+`plugins/assay/references/tick-contract.md`; this block is the resident pointer
+each loop needs in hand, not a second statement of the contract.
+
+- site: plugins/assay/skills/the-desk/SKILL.md
+- site: plugins/assay/skills/worker-desk/SKILL.md
+- site: plugins/assay/skills/pr-review-desk/SKILL.md
+- site: plugins/assay/skills/verify-desk/SKILL.md
+- site: plugins/assay/skills/intake-desk/SKILL.md
+
+```text
+## Tick mode
+
+A run is a TICK when the harness passes the literal argument `--tick`, or the environment
+carries `ASSAY_TICK` compared EXACTLY to `1`. Absent both, the run is a standing WINDOW and
+every rule in this body holds unchanged — so the contract is inert until a caller asks for it,
+and a loose truthiness test on that variable is what would silently convert a live window into
+a one-pass run.
+
+A tick is ONE bounded pass: boot, ONE fresh sweep of this desk's own queue with the instrument
+this body already names, act on what that sweep made actionable up to this role's declared
+width, wait bounded for what it dispatched, print the summary line, exit. In tick mode this
+desk arms no `capability:durable-monitor`, schedules no wake-up, sleeps for no cadence, runs no
+second sweep, and never waits in line for an answer — an escalation is a FILED issue and the
+pass continues. It never claims idle or caught up: one fresh sweep supports a verdict about the
+pass that ran, never a standing claim about the queue. **A tick narrows the LOOP, never a
+GATE** — gates, budgets, stop flags, identity rules and escalation obligations are unchanged,
+and a tick short of budget drops WORK, never a CHECK. Its last line of output is the summary
+line, in which a pass that could not read its queue says so and is never reported as an empty
+one.
+
+The trigger predicate, the bounded pass, the budget arithmetic (`ASSAY_TICK_DEADLINE` and the
+exit reserve) and the summary-line grammar are stated once in
+[`../../references/tick-contract.md`](../../references/tick-contract.md), whose grammar has one
+executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
+not own.
+```
+
+## guardrail: comms-verbs
+
+Cross-desk hand-offs ride the cell comms lane through the `deskcomms` client verbs
+(send / poll / ack), addressed by role — never "a message to that role's window",
+never a typed relay through the driver, and never the harness's own same-box
+session channel, which a desk on another harness or box cannot receive. The block
+names the shipped verbs and the five hand-off KINDS (advise / request-act /
+blocked / finding / depends), the send-versus-file rule, refusal-is-STOP, the
+held-send flow, cross-cell reach, the noise floor, and that enforcement is
+gateway-side for every participant. The transport mechanics (markers, exit
+codes, the one-send form) are stated once in
+`plugins/assay/references/desk-shell.md`, which is therefore NOT a site.
+
+Every desk role is a site, intake-desk included (a new neutral rule authored once
+here, as with default-forward-reversibility). pr-shepherd IS a site: it is
+worker-side, but its `blocked` / `finding` hand-backs to the desk that dispatched
+it are exactly the cross-desk hand-offs this block governs.
+
+- site: plugins/assay/skills/the-desk/SKILL.md
+- site: plugins/assay/skills/worker-desk/SKILL.md
+- site: plugins/assay/skills/pr-review-desk/SKILL.md
+- site: plugins/assay/skills/verify-desk/SKILL.md
+- site: plugins/assay/skills/intake-desk/SKILL.md
+- site: plugins/assay/skills/pr-shepherd/SKILL.md
+
+```text
+## Cross-desk hand-offs — the lane verbs
+
+Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
+window", never a typed relay through the driver, and never the harness's own same-box session
+channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
+payload on stdin, every issue / PR / brief id it concerns carried as a `--ref`:
+
+    deskcomms send --to <role> [--to-cell <cell>] --verb <verb> [--class routine|sensitive] [--ref <id>]... < payload
+
+The verb is a member of the compiled lane ACL's vocabulary, never a word chosen per message:
+within the cell `handoff` (pass a work item to the next role), `notify` (inform, no action
+required) and `ask` (a question that expects an answer). Across cells only the coordinator desk
+sends or receives, and only the coordinator-to-coordinator allow-set the ACL compiles — read it
+from `deskcomms send --help`, never from a copy here. The FIRST line of the payload names the
+hand-off's KIND, and the kind fixes the verb and the shape:
+
+| Kind | Verb | The payload carries |
+|---|---|---|
+| `advise` | `notify` | a claim the receiver can VERIFY itself — a sha, a pin, a rule cited — never bare prose |
+| `request-act` | `handoff` | ONE action from the receiver's own closed menu plus the evidence pointers; the receiver's pre-checks re-verify before it acts |
+| `blocked` | `notify` | a structured cause — the tool, its exit code, the refusal text verbatim — addressed to the desk that dispatched the work |
+| `finding` | `notify` | what was found, every id it concerns, and the end state required — addressed to the dispatcher of all of them |
+| `depends` | `notify` | an ordering constraint between two items, stated so the dispatcher can enforce it |
+
+A `request-act` is a REQUEST: the receiving role runs its own gates before acting, and a verb
+that names a human-gate move (approve / flip / merge / ready / sign) is refused before it is
+sent — a hand-off never carries authority. Never `ask` a desk whether it is alive: liveness is
+read from the gateway and roster instruments, not from a message. The lane is the mailbox for
+ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
+issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
+relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
+every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+an unacked item is still owed). The sender's cell and role come from the session context, never
+from a flag; the gateway address and signing key resolve from the project's house layer by NAME
+(the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
+verb's preflight is fail-fast convenience, and every check — identity, lane ACL, content scan,
+rate limit, kill switch, the prose gate on every send — is re-run at the gateway for every
+participant, including an agent on another harness that never runs these verbs and integrates
+through the gateway API directly. The verbs run silent inside this desk's noise floor — one line
+per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
+unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
+resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
+driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
+comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
+session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
+every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
+recorded. It is never the sanctioned path.
+```

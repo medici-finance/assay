@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/9/notes",
+      "body": {
+        "body": "hello"
+      }
+    }
+  ],
+  "result": {
+    "ID": "",
+    "DatabaseID": 901,
+    "URL": ""
+  }
+}

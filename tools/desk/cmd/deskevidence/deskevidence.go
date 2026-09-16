@@ -224,36 +224,50 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	appendOnly := *appendOnlyFlag || strings.HasSuffix(targetRepoPath, ".jsonl")
 
 	// Secret-scan only the bytes THIS commit ADDS relative to what is already on the branch
-	// (#966). With --brief-path that is exactly localContent — mergeEvidenceContent never
-	// touches a pre-existing byte of the brief, so the evidence being merged in already IS the
-	// added bytes, never commitContent (which is the whole MERGED file: every pre-existing byte
-	// of the brief plus the new block). WITHOUT --brief-path the caller hands over the whole
-	// target file (it merged the row into a local working copy itself before calling this tool),
-	// so localContent can legitimately be almost entirely PRE-EXISTING text — scanning it whole
-	// reads a Verify row's own quoted secret-shaped material (a slash-list of stream
-	// identifiers, a Kubernetes PVC uid, a fingerprint quoted in prose — all of it already
-	// reviewed and merged through the normal PR path) as if this commit had just typed it, and a
-	// brief carrying either shape could never receive another Evidence append through the
-	// sanctioned tool at all. addedLines diffs localContent against the remote content fetched
-	// above and hands the scanner only the lines that are actually new — the same "what did THIS
-	// commit add" question already answered for the --brief-path merge, now judged against the
-	// real remote base instead of an implicit empty one. A brand-new file (remoteExists false)
-	// has no base to diff against, so the whole thing is genuinely new and is scanned whole,
-	// exactly as before.
+	// (#901, #966, #1161) — on EVERY landing path, by ONE rule: addedLines(remoteContent,
+	// commitContent), the multiset line-diff of what is about to be committed against what
+	// the branch already carries.
+	//
+	// Scanning anything wider re-refuses, forever, on secret-shaped material the brief
+	// already carried through the normal PR scan: a Verify row's own quoted command, a slash-
+	// list of stream identifiers, a Kubernetes PVC uid, a fingerprint named in prose. That
+	// is what stalled a PASSED human-gated brief at `implemented` in #1161. Two earlier
+	// fixes narrowed the scan one path at a time — #901 scoped the --brief-path merge to the
+	// evidence file, #966 scoped the direct write to addedLines(remote, local) — and left the
+	// two paths answering the same question ("what does THIS commit add?") on two different
+	// surfaces. On the --brief-path path the evidence file is NOT the added bytes when it
+	// re-quotes a line the brief already carries verbatim (an Evidence row that repeats the
+	// Verify row it proves is the everyday case): mergeEvidenceContent appends the whole
+	// block, but a line already on the branch is not a byte this landing adds, and scanning
+	// it as one refused the landing on text that predated it by weeks. Diffing the MERGED
+	// content against the remote gives the answer the direct-write path already had.
+	//
+	// A brand-new file (remoteExists false) has no base to diff against, so the whole thing
+	// is genuinely new and is scanned whole; with --brief-path the brief must already exist
+	// (a not-found was propagated above), so that path always diffs.
 	scanTarget := localContent
-	if *briefPath == "" && remoteExists {
-		scanTarget = addedLines(remoteContent, localContent)
+	if remoteExists {
+		scanTarget = addedLines(remoteContent, commitContent)
 	}
+	// A refusal names the ORIGIN of the offending bytes — `added by --evidence-file:<line>`,
+	// the line of the file the caller wrote — and the branch copy's own secret-shaped runs,
+	// which this landing does not own and never refuses on, are NAMED on stderr as
+	// `pre-existing in <target>:<line>` (#1161). Neither message carries the span.
 	if berr := deskkit.BodyCheck(scanTarget); berr != nil {
-		return berr
+		return withAddedOrigin(berr, scanTarget, localContent)
+	}
+	if remoteExists {
+		preexistingNotice(stderr, targetRepoPath, remoteContent)
 	}
 
 	// Public-repo write gate. deskevidence writes a file directly to a remote branch — an
 	// outward write. A public/internal target is authorized only by a listed `:public`
 	// allowed-repos entry (deskkit.PublicRepoGate); private/internal-without-entry refuse.
-	// The fetcher uses the minted verifier token and the backend's own default host (this tool
-	// no longer binds a GitHub API host literal of its own).
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	// The gate's visibility read goes through the SAME forge backend already resolved above
+	// (fg) — never a second, hardcoded GitHub-only client (assay#1054): a GitLab-resolved
+	// repo must have its visibility answered by GitLab's own API, not GitHub's, and fg is
+	// already whichever backend the resolver picked.
+	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
@@ -452,33 +466,35 @@ func rowDelta(older, newer []byte) (added, removed int) {
 	return added, removed
 }
 
-// addedLines returns the lines of newer that are NOT already accounted for by older, as a
-// MULTISET diff — the same "how many rows changed" comparison rowDelta already makes for the
-// audit trail (+N/-M rows), applied here to recover the literal TEXT of what changed rather than
-// just its count. It is the #966 fix's scanning base for an Evidence commit made WITHOUT
-// --brief-path: deskevidence has no other way to know what a caller-supplied whole-file body
-// actually adds relative to the branch, and scanning the whole thing re-refuses on any
-// secret-shaped run the file already carried, forever (see cmdEvidence's secret-scan comment).
+// addedLines returns the lines of newer that older does NOT already carry, as a SET diff:
+// a line that stands ANYWHERE in older, byte-for-byte, is not a byte this landing adds,
+// however many times newer repeats it. It is the secret scan's base on every landing path
+// (#966 without --brief-path, #1161 with it): deskevidence has no other way to know what a
+// body actually adds relative to the branch, and scanning anything wider re-refuses on any
+// secret-shaped run the file already carried, forever (see cmdEvidence's secret-scan
+// comment).
 //
-// A line repeated in newer beyond how many times older carried it is added only for the SURPLUS
-// occurrences, exactly like rowDelta's own counting — so an unchanged line does not get counted
-// as "new" just because some OTHER unchanged line further down happens to read the same. Order
-// follows newer's own line order, which keeps the result readable; reBase64ish (the scanner's
-// high-entropy run detector) never matches across a newline, so nothing a line-oriented diff
-// could split a run across is lost by joining the added lines back with "\n".
+// SET, not multiset, is the deliberate difference from rowDelta's counting. rowDelta answers
+// "how many rows changed" for the audit trail, where a duplicated row IS a row added. The
+// scan answers "does this landing put a byte on the branch the branch does not already
+// publish", and a line the branch copy already carries — an Evidence row that re-quotes the
+// Verify-row command it proves is the everyday case — adds nothing the branch does not
+// already say, whichever line of the file it lands on (#1161). Order follows newer's own
+// line order, which keeps the result readable; reBase64ish (the scanner's high-entropy run
+// detector) never matches across a newline, so nothing a line-oriented diff could split a
+// run across is lost by joining the added lines back with "\n".
 //
 // Unlike rowDelta this does NOT trim or drop blank lines: a blank line carries no secret, so
 // including it costs the scanner nothing, and dropping it would risk gluing two unrelated lines'
 // characters together across what was a line boundary in the original file.
 func addedLines(older, newer []byte) []byte {
-	remaining := map[string]int{}
+	present := map[string]bool{}
 	for _, ln := range strings.Split(string(older), "\n") {
-		remaining[ln]++
+		present[ln] = true
 	}
 	var out strings.Builder
 	for _, ln := range strings.Split(string(newer), "\n") {
-		if remaining[ln] > 0 {
-			remaining[ln]--
+		if present[ln] {
 			continue
 		}
 		out.WriteString(ln)

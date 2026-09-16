@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "cannot read the required status checks without a branch name — undetermined is could-not-check",
+  "not_found": false
+}

@@ -96,6 +96,24 @@
       "file": "internal/deskkit/prstate.go",
       "old": "\t\tif recencyKey(e) > recencyKey(out[pos]) {",
       "new": "\t\tif recencyKey(e) < recencyKey(out[pos]) {"
+    },
+    {
+      "name": "move `mergeable` back behind the paginated model-floor read (the cost-ordering undone; the pinned condition list must catch it)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tcondPROpenDraft,\n\tcondMergeable,\n\tcondReviewerApproved,",
+      "new": "\tcondPROpenDraft,\n\tcondReviewerApproved,\n\tcondMergeable,"
+    },
+    {
+      "name": "make the shared rollup reader re-read the forge on every call (the de-duplication undone)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif !done {\n\t\t\tdone = true\n\t\t\tchecks, err = fg.ChecksAtHead(fr, head)\n\t\t}\n\t\treturn checks, err",
+      "new": "\t\tdone = true\n\t\t_ = done\n\t\tchecks, err = fg.ChecksAtHead(fr, head)\n\t\treturn checks, err"
+    },
+    {
+      "name": "make readChecks report its could-not-check under the OTHER condition's name (an operator sent to the wrong gate)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\t\t\"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never green.\",\n\t\t\tcondChecksGreen, short(head), firstLine(err.Error())), err)",
+      "new": "\t\t\t\"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never green.\",\n\t\t\tcondReviewerApproved, short(head), firstLine(err.Error())), err)"
     }
   ]
 }

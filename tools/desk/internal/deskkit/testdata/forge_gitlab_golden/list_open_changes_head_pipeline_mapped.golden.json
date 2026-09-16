@@ -1,0 +1,53 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "page=1\u0026per_page=100\u0026state=opened"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines",
+      "query": "per_page=1\u0026sha=abc123"
+    }
+  ],
+  "result": {
+    "Changes": [
+      {
+        "Number": 7,
+        "Title": "add the thing",
+        "Body": "",
+        "State": "open",
+        "Draft": true,
+        "CreatedAt": "2026-09-01T09:00:00Z",
+        "LastEditedAt": "",
+        "Author": {
+          "Login": "worker-bot",
+          "ID": 99
+        },
+        "Labels": [
+          "authorization-needed"
+        ],
+        "HeadSHA": "abc123",
+        "HeadRef": "feat/x",
+        "BaseRef": "main",
+        "MergeStateStatus": "",
+        "Rollup": [
+          {
+            "Typename": "StatusContext",
+            "Name": "",
+            "Status": "",
+            "Conclusion": "",
+            "StartedAt": "",
+            "CompletedAt": "",
+            "Context": "pipeline",
+            "State": "success",
+            "CreatedAt": "2026-09-15T10:00:00Z"
+          }
+        ]
+      }
+    ],
+    "TruncatedAtCap": false,
+    "Cap": 100
+  }
+}

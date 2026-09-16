@@ -819,6 +819,81 @@ func TestReadNextUp_FallsBackToWorkingTreeWhenNoOriginMain(t *testing.T) {
 	}
 }
 
+// TestReadNextUp_DropsRowsWhoseOwnReadmeStatusHasMovedOn is the fail-first regression proof for
+// medici-finance/assay#1028: STATUS.md's `## Next up` table is statusgen's RENDERED output as of
+// whatever commit last regenerated it — it can still list a row after a LATER commit flips that
+// row's own stream README Status cell past todo/in-progress (a regen race), or after whatever read
+// origin/main did so against a local ref that was never re-fetched. Either mechanism produces the
+// same symptom seen in the field (13 phantom rows across one day's dispatch sweep, #1028's
+// evidence table): the table offers a row whose own README already reads `implemented`/`done`.
+//
+// readNextUp must cross-check every row against its OWN stream README and drop exactly the ones
+// that have moved on — while never dropping a row it cannot independently verify (orphanstream/03
+// below, whose stream carries no README at all: could-not-check is not a licence to drop).
+func TestReadNextUp_DropsRowsWhoseOwnReadmeStatusHasMovedOn(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	// The Next-up table (statusgen's rendered output) lists THREE rows: a genuine todo row, a row
+	// whose own stream README has since moved to `implemented` (the #1028 phantom), and a row from
+	// a stream with NO README at all (could-not-check — must survive on that account alone).
+	status := "# STATUS\n\n## Next up\n\n" +
+		"| Stream | Brief | Wave | Score |\n" +
+		"|---|---|---|---|\n" +
+		"| fixture | 01 — genuine todo row | 1 | 2000 |\n" +
+		"| fixture | 02 — Next-up table lagged this row | 1 | 1900 |\n" +
+		"| orphanstream | 03 — no README to cross-check against | 1 | 1800 |\n"
+	if err := os.WriteFile(filepath.Join(root, "STATUS.md"), []byte(status), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	readme := "## Briefs\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | genuine todo row | 1 | M | todo | — | — |\n" +
+		"| 02 | Next-up table lagged this row | 1 | M | implemented | — | — |\n"
+	briefDir := filepath.Join(root, "docs", "streams", "fixture")
+	if err := os.MkdirAll(briefDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(briefDir, "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	git("init", "-q")
+	git("add", "STATUS.md", "docs")
+	git("commit", "-qm", "board")
+	// Publish that commit as the already-fetched origin/main ref — no network, exactly what
+	// `git fetch origin` would have left behind (same technique as #1674's regression test above).
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+
+	rows, err := readNextUp(root, "sha")
+	if err != nil {
+		t.Fatalf("readNextUp: %v", err)
+	}
+	var ids []string
+	for _, r := range rows {
+		ids = append(ids, r.ID())
+	}
+	if !contains(ids, "fixture/01") {
+		t.Errorf("genuine todo row (fixture/01) missing from the queue: %v", ids)
+	}
+	if contains(ids, "fixture/02") {
+		t.Errorf("fixture/02 leaked into Next-up despite its own README Status cell reading `implemented` (#1028): %v", ids)
+	}
+	if !contains(ids, "orphanstream/03") {
+		t.Errorf("orphanstream/03 (no README to cross-check against — could-not-check) was wrongly dropped: %v", ids)
+	}
+}
+
 // TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens is the direct, engine-free proof of the
 // dispatch-selection fix: an unclaimed `todo` `issue-<NN>` work placeholder SURVIVES SelectQueue (it
 // is this loop's work — worker-desk dispatch spec, Procedure 2), a normal brief row survives, and a

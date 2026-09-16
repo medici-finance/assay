@@ -57,6 +57,7 @@ const usage = `desktoken — mint or reuse a per-role forge credential.
 USAGE:
   desktoken <role> [--repo <slug>] [--ttl]           # GitHub: mint/reuse App token
   desktoken --forge gitlab <role>                     # GitLab: rotate PAT in place
+  desktoken --no-rotate <role> --repo <slug>          # read-only: print custody PATH, rotate nothing
   desktoken coverage <role> [--repo <slug>] [--json]  # GitHub: list repos the role's App sees
   desktoken --version
 
@@ -79,18 +80,41 @@ naming the installation — never a short list read as complete. GitHub-only:
 --forge selects the backend: empty or github (default) mints a GitHub App
 installation token as below; gitlab rotates the role's PAT in place.
 
+--no-rotate asks for the role's credential PATH without a destructive
+rotation. On the GitLab path it makes the SAME custody checks (file present,
+regular file, owner-only mode, non-empty) and prints the same path, but
+performs no rotation and no network contact — GITLAB_API_BASE is not consulted
+because nothing is transmitted. It is what a READ-ONLY or DRY-RUN verb asks
+for: such a verb needs to know where the credential is, not to spend a
+rotation it never uses, and a parallel sweep of reads would otherwise drive one
+rotation per call. On the GitHub path it has no effect: mint-or-reuse is
+already non-destructive, and the flag is accepted so a caller that does not yet
+know which forge serves a repo can ask for read-only custody either way.
+It does NOT weaken rotate-on-mint: at most one credential per role is still
+ever valid and it still dies at the next rotation.
+
 GitLab (--forge gitlab) — rotate-on-mint token custody:
   Reads the role's current PAT from gitlab-<role>.token (0600) on the
   App-credential search path, calls the GitLab self-rotation endpoint (which
   returns a NEW token and atomically INVALIDATES the current one), write-verifies
-  the new value 0600 back to the same file, and prints the PATH only — never the
-  token value. At most one credential per role is ever valid; a captured token
-  dies at the next mint. The new token's expiry is set by the GROUP
+  the new value 0600 back to the same file, SELF-CHECKS it with ONE live
+  read-only GET /user (no retry, no sleep), and only then prints the PATH —
+  never the token value. A self-check the forge does not answer 200 exits 6
+  naming the endpoint, the status the NEW token got and whether the PREVIOUS
+  token was still accepted (propagation lag: re-run once) or rejected too
+  (lockout: a group owner re-issues the PAT); the persisted path is NOT
+  printed as good. At most one credential per role is ever valid; a captured
+  token dies at the next mint. The new token's expiry is set by the GROUP
   token-lifetime policy (7 days RECOMMENDED, configured on the group, not here) —
   the expiry backstop that retires an idle fleet's credential on its own.
-  Roles are single-window: a second concurrent rotation for the same role
-  invalidates the first's token BY DESIGN — give parallel actors per-actor
-  service accounts, never a shared token. A missing file, a non-regular-file
+  Concurrent mints for ONE role are SERIALISED by a per-role advisory lock on
+  gitlab-<role>.token.lock, held across read-current -> rotate -> write-verify,
+  so overlapping mints queue instead of invalidating each other's token. A lock
+  that cannot be taken within 60s REFUSES (exit 6) naming the recovery path —
+  it never rotates unserialised. Parallel ACTORS should still hold per-actor
+  service accounts rather than sharing one role's token; the lock covers the
+  case that bites in practice, ONE window issuing several mints at once.
+  A missing file, a non-regular-file
   custody, or a wrong file mode each refuses with a named remedy. GITLAB_API_BASE
   is REQUIRED and sets the REST v4 base (self-hosted:
   https://gitlab.example.com/api/v4; gitlab.com SaaS:

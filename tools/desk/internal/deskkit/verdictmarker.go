@@ -305,3 +305,49 @@ func CorrectnessNoteState(body string) string {
 	}
 	return ""
 }
+
+// VerdictNoteState is CorrectnessNoteState widened to EVERY verdict lane: it maps the
+// verdict line a note carries to the review STATE the SAME verdict produces on GitHub,
+// where the state comes from the submit EVENT rather than from the body.
+//
+// It exists because CorrectnessNoteState answers only half the question, and the half it
+// leaves out blocks (#1124). Both deskpost verdict verbs submit through one write path,
+// and TWO of the three verdicts they submit are REQUEST_CHANGES:
+//
+//	deskpost review          --verdict approve         → APPROVE          → APPROVED
+//	deskpost review          --verdict request-changes → REQUEST_CHANGES  → CHANGES_REQUESTED
+//	deskpost security-review --verdict fail            → REQUEST_CHANGES  → CHANGES_REQUESTED
+//	deskpost security-review --verdict pass            → COMMENT          → COMMENTED
+//
+// The security FAIL is the one that went missing. Its body may carry ONLY
+// `Security-Review: fail` — `deskpost` REFUSES a correctness `Verdict:` line in that lane,
+// so there is no body shape that carries both — and a reader that recognised the
+// correctness line alone reduced it to COMMENTED. On GitHub the same write lands a
+// CHANGES_REQUESTED review, so the two backends disagreed about whether a security
+// rejection is a rejection: `deskboard` reported "no bot APPROVED/CHANGES_REQUESTED at
+// head" and NEEDS-REVIEW over a live blocking verdict, and the review desk re-dispatched a
+// reviewer onto a change its own reviewer had already rejected.
+//
+// A security PASS deliberately maps to "" (COMMENTED), not APPROVED: `security-review
+// --verdict pass` submits the COMMENT event precisely so an all-clear in the security lane
+// never erases a standing correctness CHANGES_REQUESTED from the shared reviewer identity.
+// Rendering it APPROVED here would reintroduce that laundering at the READ.
+//
+// Lane identity is unaffected. This function answers "what STATE did this verdict submit
+// as", never "which lane spoke" — the lane is read from the body markers by the consumers
+// that need it (deskpost's classifyLane, deskflip's lane filter), so a security fail
+// reported as CHANGES_REQUESTED still does not satisfy or block the CORRECTNESS gate.
+//
+// Fence and emphasis handling, and the block-before-grant order, are inherited unchanged
+// from the two readers this composes: a rejection in either lane is checked first, so a
+// body carrying a rejection and a grant reduces to the rejection.
+func VerdictNoteState(body string) string {
+	if HasVerdictMarkerLine(body, correctnessRequestChanges, ReadFenced) ||
+		HasSecurityReviewFail(body) {
+		return "CHANGES_REQUESTED"
+	}
+	if HasVerdictMarkerLine(body, correctnessApprove, SkipFenced) {
+		return "APPROVED"
+	}
+	return ""
+}

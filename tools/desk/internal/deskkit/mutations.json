@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestGitLabRepoInfoFetcher|TestForgeGithubGolden|TestForgeGitlabGolden'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -7,6 +7,18 @@
     "new": "\tcase false && reGitHubToken.MatchString(s):"
   },
   "mutations": [
+    {
+      "name": "route an ISSUE label target to the merge-request write on GitLab (the deskfile-new defect: same iid, wrong object)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase TargetIssue:\n\t\topts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}",
+      "new": "\tcase TargetKind(\"\"):\n\t\topts := &gitlab.UpdateIssueOptions{AddLabels: addOpt, RemoveLabels: removeOpt}"
+    },
+    {
+      "name": "accept an UNSET label target (a caller that forgot the kind silently takes the merge-request route)",
+      "file": "internal/deskkit/forge.go",
+      "old": "\tcase TargetChange, TargetIssue:\n\t\treturn nil",
+      "new": "\tcase TargetChange, TargetIssue, \"\":\n\t\treturn nil"
+    },
     {
       "name": "unanchor the go.sum digest exemption (any 32+ run behind h1: passes)",
       "file": "internal/deskkit/structured.go",
@@ -162,6 +174,60 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tif p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}",
       "new": "\tif p.Visibility == \"\" {\n\t\treturn \"private\", nil\n\t}"
+    },
+    {
+      "name": "GitLab ReviewsAtHead fails the whole review read closed on a 403 approval-config gate instead of degrading (gitlab.com Free tier reads as unreviewable even though the per-MR approvals read still succeeds; reviews_at_head_gitlab_free_403_degrades reddens)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "if !IsForgeNotFound(mapped) && !IsForgeForbidden(mapped) {",
+      "new": "if !IsForgeNotFound(mapped) {"
+    },
+    {
+      "name": "key the role-token memo on the role alone (one account's installation token is handed to another account's read)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tkey := roleOwnerKey{role: role, owner: owner}",
+      "new": "\tkey := roleOwnerKey{role: role}"
+    },
+    {
+      "name": "key the role-token memo on the account alone (one role's App token is handed to another role)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tkey := roleOwnerKey{role: role, owner: owner}",
+      "new": "\tkey := roleOwnerKey{owner: owner}"
+    },
+    {
+      "name": "widen the memo's age guard past desktoken's own 50-minute reuse window",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "const roleTokenMemoMaxAge = 45 * time.Minute",
+      "new": "const roleTokenMemoMaxAge = 55 * time.Minute"
+    },
+    {
+      "name": "drop the memo's age guard entirely (a token is reused past its own lifetime)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tif roleTokenNow().Sub(e.at) >= roleTokenMemoMaxAge {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "memoise before the token file is read and validated (a transient failure is pinned for the life of the process)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tb, rerr := os.ReadFile(path)\n\tif rerr != nil {",
+      "new": "\tstoreRoleTokenMemo(key, roleTokenMemoEntry{path: path, at: roleTokenNow()})\n\tb, rerr := os.ReadFile(path)\n\tif rerr != nil {"
+    },
+    {
+      "name": "stop counting real minter forks (the fork-count assertions stop measuring anything)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\troleTokenMints++",
+      "new": "\troleTokenMints += 0"
+    },
+    {
+      "name": "narrow the GitLab verdict-note reducer back to the correctness lane (a `Security-Review: fail` REQUEST_CHANGES reads as an ordinary comment, so the rejection is invisible to the board and the flip gate — #1124)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif s := VerdictNoteState(n.Body); s != \"\" {",
+      "new": "\t\tif s := CorrectnessNoteState(n.Body); s != \"\" {"
+    },
+    {
+      "name": "drop the ascending re-order from the GitLab review read (the slice comes back newest-first, so every \"the last verdict governs\" reduction lands on the OLDEST one — #1124)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tsortReviewsAscending(out)\n\treturn out, nil",
+      "new": "\treturn out, nil"
     }
   ],
   "_not_mutated": {

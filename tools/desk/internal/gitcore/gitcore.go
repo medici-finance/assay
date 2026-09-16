@@ -58,6 +58,13 @@ type Repo struct {
 	repo *git.Repository
 	dir  string
 
+	// alternates is what this repository's objects/info/alternates resolved to at Open
+	// time: the filesystem go-git resolves borrowed object directories through, plus the
+	// diagnosis of any entry that could not be resolved (see alternates.go). The
+	// diagnosis is carried so a read that finds an object missing can SAY why instead of
+	// reporting a confidently wrong answer.
+	alternates alternates
+
 	// reachIdx is the lazily built, Repo-lifetime commit-reachability cache behind
 	// RefsContaining (see contains.go); reachMu guards its construction.
 	reachMu  sync.Mutex
@@ -80,6 +87,37 @@ type Repo struct {
 // and the workpad id via `git config --worktree`), so without this, Open would refuse
 // almost every real worktree here.
 func Open(dir string) (*Repo, error) {
+	return OpenWith(dir, NewObjectCache())
+}
+
+// ObjectCache is the object cache OpenWith routes reads through. It is an alias for
+// go-git's cache.Object so callers outside this package can hold one WITHOUT importing
+// go-git themselves — this package exists to be the one place that knows go-git.
+type ObjectCache = cache.Object
+
+// NewObjectCache returns a fresh object cache with go-git's default size bound — the exact
+// cache Open builds for itself. A caller opening many worktrees of one repository in one
+// pass makes one of these and hands it to every OpenWith; see OpenWith.
+func NewObjectCache() ObjectCache { return cache.NewObjectLRUDefault() }
+
+// OpenWith opens dir exactly as Open does, but routes every object read through the
+// CALLER-SUPPLIED object cache instead of a fresh one. Open is this function with a fresh
+// cache, so no existing caller changes behaviour.
+//
+// It exists for one shape: a caller that opens MANY worktrees OF THE SAME REPOSITORY in
+// one pass. Every linked worktree shares the main checkout's object store, so with Open's
+// per-call cache the same commits are decoded and inflated again for every worktree —
+// `deskwt prune` measured ~700 redundant inflations of one 5,779-commit history in a
+// single sweep. Handing one cache to every OpenWith in the pass makes that work happen
+// once, and it LOWERS the memory ceiling rather than raising it: one cache with go-git's
+// default cap, instead of one per Open.
+//
+// The cache is not synchronised by this package. A caller that shares one across
+// goroutines owns that question; the callers here are sequential.
+func OpenWith(dir string, objects ObjectCache) (*Repo, error) {
+	if objects == nil {
+		objects = NewObjectCache()
+	}
 	gitDir, worktreeDir, err := resolveGitDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
@@ -91,15 +129,26 @@ func Open(dir string) (*Repo, error) {
 	// `git.PlainOpenWithOptions(..., EnableDotGitCommonDir: true)` does internally
 	// (unexported there, so reproduced here rather than reused).
 	var repoFS billy.Filesystem = osfs.New(gitDir)
+	objectsDir := filepath.Join(gitDir, "objects")
 	if commonDir, cerr := commonDirOf(gitDir); cerr == nil && commonDir != "" && commonDir != gitDir {
 		repoFS = dotgit.NewRepositoryFilesystem(osfs.New(gitDir), osfs.New(commonDir))
+		// objects/ (and so objects/info/alternates) lives in the COMMON .git, never in
+		// the per-worktree admin dir.
+		objectsDir = filepath.Join(commonDir, "objects")
 	}
-	st := filesystem.NewStorage(repoFS, cache.NewObjectLRUDefault())
+	// A `git clone --shared`/`--reference` checkout stores no objects of its own: it
+	// borrows them from the directory its objects/info/alternates names. go-git resolves
+	// that file only through the filesystem it is handed, and the chroot above cannot see
+	// outside this repository — so without AlternatesFS every borrowed object reads as
+	// "not found" and callers silently get answers computed from half a repository. See
+	// readAlternates for the resolution rules and the boundary this keeps.
+	alt := readAlternates(objectsDir)
+	st := filesystem.NewStorageWithOptions(repoFS, objects, filesystem.Options{AlternatesFS: alt.fs})
 	r, err := git.Open(extensionTolerantStorer{st}, osfs.New(worktreeDir))
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
 	}
-	return &Repo{repo: r, dir: dir}, nil
+	return &Repo{repo: r, dir: dir, alternates: alt}, nil
 }
 
 // commonDirOf reads gitDir's own "commondir" pointer file (present only for a linked
@@ -787,7 +836,15 @@ func (r *Repo) CommitVerifyQuiet(rev string) (bool, error) {
 
 // HasStagedChanges reports whether the index holds content not yet committed, matching
 // `git diff --cached --quiet`'s exit code (1 = staged changes exist, 0 = none).
+//
+// It returns an error wrapping ErrObjectStoreIncomplete rather than a boolean when the
+// HEAD commit's tree cannot be read in full — see headTreeComplete for why a missing
+// object makes go-git's answer WRONG rather than absent, in both directions. A caller
+// must surface that as could-not-check; it is never a clean tree and never a dirty one.
 func (r *Repo) HasStagedChanges() (bool, error) {
+	if err := r.headTreeComplete(); err != nil {
+		return false, fmt.Errorf("gitcore: staged-changes: %w", err)
+	}
 	wt, err := r.repo.Worktree()
 	if err != nil {
 		return false, fmt.Errorf("gitcore: staged-changes: %w", err)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,15 +17,18 @@ import (
 // fixtures too is a separate, purely-cosmetic follow-up and is intentionally out of scope here.
 
 // regIDRunGitT runs git in dir and fails the test on error, returning trimmed stdout.
+//
+// It is a thin alias of foreigncommit_test.go's runGitT rather than its own exec call, so
+// that the auto-maintenance guard documented there (`gc.auto=0` / `maintenance.auto=false`,
+// set on the invocation AND written into every repo created) covers this file's fixtures
+// too. These fixtures run the identical `init --bare` / `commit` / `push`-to-a-local-bare
+// sequence that forks git's detached `maintenance run --auto` child into a `t.TempDir()`,
+// and that child races Go's cleanup the same way here as there — measured at 156 forks
+// across this file's tests before the alias, 0 after. Keeping the guard in ONE helper is
+// what stops the two fixture files drifting apart on it.
 func regIDRunGitT(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %s (dir=%s) failed: %v\n%s", strings.Join(args, " "), dir, err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return runGitT(t, dir, args...)
 }
 
 // regIDWriteFile writes content to relPath under dir, creating parent directories as

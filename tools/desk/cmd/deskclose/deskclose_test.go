@@ -74,6 +74,16 @@ type stubRemote struct {
 
 	calls     [][]string
 	dispCalls [][]string
+
+	// The TYPED trail: which kind deskclose stated on each typed read and write, as
+	// "repo#N:kind". A close or a thread read routed at the wrong kind of object is not
+	// visible in the gh-shaped argv above — both kinds render the same number — so the kind
+	// itself is recorded, and the assertions read it.
+	untypedGets   []string
+	typedGets     []string
+	typedThreads  []string
+	typedComments []string
+	typedCloses   []string
 }
 
 func newStub(t *testing.T) *stubRemote {
@@ -94,7 +104,7 @@ func newStub(t *testing.T) *stubRemote {
 func (s *stubRemote) writes() [][]string {
 	var out [][]string
 	for _, c := range s.calls {
-		if len(c) >= 2 && (c[0] == "issue" || c[0] == "pr") && (c[1] == "close" || c[1] == "comment" || c[1] == "edit") {
+		if len(c) >= 2 && (c[0] == "issue" || c[0] == "pr") && (c[1] == "close" || c[1] == "comment" || c[1] == "edit" || c[1] == "reopen") {
 			out = append(out, c)
 		}
 		if len(c) >= 2 && c[0] == "label" && c[1] == "create" {
@@ -177,6 +187,8 @@ func (s *stubRemote) install() {
 			mintedRole = roleWorker
 		case deskkit.SameActor(s.viewer, reviewerLogin):
 			mintedRole = roleReviewer
+		case deskkit.SameActor(s.viewer, verifierLogin):
+			mintedRole = roleVerifier
 		default:
 			mintedRole = "desk"
 		}

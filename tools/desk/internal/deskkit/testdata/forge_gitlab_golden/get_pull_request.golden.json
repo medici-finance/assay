@@ -24,6 +24,7 @@
     "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
     "HeadRef": "feat/x",
     "BaseRef": "main",
-    "UpdatedAt": "2026-09-01T12:00:00Z"
+    "UpdatedAt": "2026-09-01T12:00:00Z",
+    "GitLabMergeStatus": "mergeable"
   }
 }
