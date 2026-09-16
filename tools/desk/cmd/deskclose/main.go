@@ -73,6 +73,22 @@ USAGE:
       by name; no verify-gate label → refused; a change → refused; already open →
       no-op. NOT the human sign-off: a bot's close of a verify-gate issue is reopened
       by the repository's verify-gate close workflow, whatever this lane decides.
+  deskclose triage         -R <owner/repo> <item> --disposition not-planned
+                                                  [--tracker <ref>] [--kind K]
+  deskclose triage         -R <owner/repo> <item> --disposition human-decided
+                                                  --decision <url> --tracker <ref> [--kind K]
+      the intake front door's "close, no fix PR" exit for an ISSUE. Each disposition
+      authorizes on an artifact deskclose FETCHES and VERIFIES, never a caller flag:
+      --disposition not-planned closes only on a ` + "`" + triageDispositionMarker + "`" + ` marker
+      comment ON the issue authored by a roster-trusted account and not minimized (a
+      bare marker string, a minimized one, or one by an untrusted author does NOT
+      authorize). --disposition human-decided closes only on the human's OWN ruling
+      comment on the issue (--decision <url>), fetched and its author verified as the
+      blessing authority — a blanket ruling grant never stands in for it. --tracker is
+      never authority: when given it must name an EXISTING item (verified by a read),
+      and it is required for human-decided (the close NAMES the continuing work). A
+      needs-decision item is refused in both dispositions; not-planned also refuses a
+      human-decided item; a pull-request target is refused; already-closed is a no-op.
   deskclose --version
 
 Every mode accepts --dry-run (validate + read the remote, write nothing) and
@@ -166,6 +182,8 @@ func dispatch(args []string, out io.Writer) error {
 		err = cmdSelfWithdraw(rest, out)
 	case modeVerifyGateRefire:
 		err = cmdVerifyGateRefire(rest, out)
+	case modeTriage:
+		err = cmdTriage(rest, out)
 	default:
 		err = deskkit.Refused(fmt.Sprintf(
 			"refused: unknown mode %q — the mode set is CLOSED: %s. "+

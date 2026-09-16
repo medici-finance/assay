@@ -43,10 +43,11 @@ type stubPullWire struct {
 }
 
 type stubCommentWire struct {
-	HTMLURL  string `json:"html_url"`
-	IssueURL string `json:"issue_url"`
-	Body     string `json:"body"`
-	User     struct {
+	HTMLURL   string `json:"html_url"`
+	IssueURL  string `json:"issue_url"`
+	Body      string `json:"body"`
+	Minimized bool   `json:"minimized"`
+	User      struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 		Type  string `json:"type"`
@@ -223,7 +224,23 @@ func commentItem(j string) (string, bool) {
 }
 
 func (s *stubRemote) ListComments(fr deskkit.ForgeRepo, n int) ([]deskkit.Comment, error) {
-	return s.listCommentsAt(fr, n, fr.Slug()+"#"+strconv.Itoa(n))
+	key := fr.Slug() + "#" + strconv.Itoa(n)
+	// KIND-ACCURATE, matching production: GitHub's untyped ListComments uses the
+	// pullRequest(number:) selection (forge_github.go: ListComments → listCommentsGQL(...,
+	// TargetChange)), so at a number that names an ISSUE the noteable is null and the read is
+	// could-not-check — never the issue's own thread. Reproduce that here: a MODELLED
+	// issue-item at n comes back could-not-check through the untyped read, so reaching an
+	// issue's thread REQUIRES ListCommentsTyped(TargetIssue). A change, or a number with no
+	// modelled item (a bare sign-off / manifest host), serves the thread as before — which is
+	// why the ruling and manifest gates keep working while the human-decided lane, which reads
+	// an issue's own thread, does not until it routes through the typed call.
+	if _, ok := s.items[key]; ok && !s.stubIsPRAt(key) {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s names an issue; the untyped ListComments uses the change/pullRequest "+
+				"selection, so an issue's own thread is unreachable through it — use ListCommentsTyped(issue)",
+			key), nil)
+	}
+	return s.listCommentsAt(fr, n, key)
 }
 
 // listCommentsAt serves the thread registered under one fixture key. The key — not the
@@ -263,6 +280,7 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			DatabaseID: id,
 			Body:       w.Body,
 			URL:        w.HTMLURL,
+			Minimized:  w.Minimized,
 			Author:     deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}
