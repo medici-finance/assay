@@ -1,0 +1,6 @@
+### Fixed
+- `deskevidence` now scopes its secret scan to the bytes the landing ADDS on every path, `--brief-path` included: the scan diffs the content about to be committed against the branch copy, so an Evidence block that re-quotes a line the brief already carries verbatim (a Verify row's own command, a fingerprint named in prose) no longer refuses on text that predates the landing — the failure that stalled a PASSED human-gated brief at `implemented` (#1161, completing #901 and #966).
+- A `deskevidence` scan refusal now names the origin of the offending bytes — `added by --evidence-file:<line>` — and a landing whose branch copy already carries a secret-shaped run says so on stderr as `pre-existing in <path>:<line>`, so the operator no longer isolates the trigger by hand. Neither message carries the span (#1161).
+
+### Changed
+- The shared body check's PGP-fingerprint exemption now also admits a 40-uppercase-hex run whose OWN line names it as a fingerprint (`fingerprint`, `fpr`, `pgp` or `gpg`, case-insensitive, as a standalone word — before or after the run), alongside the existing `pgp:`/`fp:` recipient-field anchor. The bound is unchanged in every other direction: exactly 40 uppercase hex, the word on the SAME line, and no annotation launders a mixed-case run (#1161).
