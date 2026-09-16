@@ -1,3 +1,0 @@
-### Changed
-- Desk-role skills (the-desk, intake-desk, worker-desk, pr-review-desk, verify-desk, pr-shepherd) now name the `deskcomms send` / `poll` / `ack` lane verbs for every cross-desk hand-off, with five hand-off kinds (advise / request-act / blocked / finding / depends) mapped onto the shipped lane vocabulary, as one derived guardrail block (`comms-verbs`); the same-box session channel is documented as the pre-cutover fallback only.
-- `references/desk-shell.md` gains the comms-lane transport section (markers, exit codes, the one-send form); house values (cell name, gateway address) stay deferred to the project layer.
