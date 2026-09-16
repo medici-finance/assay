@@ -36,8 +36,8 @@ it on day one.
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
-| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
-| `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` reports which without writing | outward write | yes |
+| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection | outward write | yes |
+| `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
 | `desklabel` | `add`, `rm` — set or clear ONE label on an issue or change as the session's own App role, against a closed role-keyed vocabulary (shared escalation set for any role — the topology decision-owed labels read from the topology loader, plus `help wanted`; `superseded?`/`disposition:*` worker-owned; `authorization-needed`/`approval-needed` reviewer-owned; `human-decided` refused for every role; anything else refused, exit 5). The check runs before any forge call; the target kind comes from the seam's own read (`--kind issue|mr` for a GitLab both-resolve); present/absent = no-op; `--dry-run` stops before the write. `vocabulary` prints the table | outward write | yes |
@@ -1415,6 +1415,37 @@ audit line neither charges the budget nor feeds the non-progress breaker, so wai
 extend its own wait (#209).
 
 `--dry-run` and `--wait` are mutually exclusive (a rehearsal has no write to wait for).
+
+**`deskpr create/update/edit --check` and `deskreply --dry-run` — the same offline-first
+family, one flag apiece (brief 27).** Every measured top body/schema refusal class in
+`deskpost`, `deskpr` and `deskreply` now names the offline check that would have caught it,
+so an operator mid-refusal reads the pointer in the refusal text rather than finding it
+later in `--help`.
+
+- `deskpr create --check` is **offline by construction**, not a rehearsal of the real call:
+  it runs every LOCAL gate a real `create` runs — flag validity, branch state, the
+  `Brief:`/`Issue:` trailer, the secret scan, the public-repo self-containment scan, the
+  push-transport gate — and stops **before** minting a token or opening any connection.
+  Exit 0 only when every local gate passed; a failing gate returns its own refusal with its
+  own exit code, so `--check` is a gate run early, never a preview that can disagree with
+  the real write path. A category it cannot decide offline (chiefly a bare `#N` reference,
+  which needs a number from the forge to compare against) is reported as **not checked**, by
+  name, on stderr — never rounded up to a pass. `deskpr update --check` and
+  `deskpr edit --check` run the same LOCAL-gate subset each verb actually has before its own
+  forge dependency (`update`'s trailer check reads the *existing* PR's body, `edit`'s
+  trailer-immutability compare reads the *existing* PR's body and number — both live only on
+  the forge) and name the rest as not checked rather than skipping them silently.
+- `deskreply --dry-run` is a **rehearsal**, like `deskpost`'s: it now applies to the plain
+  reply path too (it used to refuse outright without `--workpad`, leaving that path with no
+  rehearsal at all). It runs every check a real reply runs — including the forge reads
+  (own-PR / open / head-branch verification) — and stops immediately before the one posting
+  call, exit 0, writing nothing.
+
+Why `--check` is offline and `--dry-run` is not: `deskpr create` can only refuse or open a
+PR — there is no live PR state to read a preview against — so every one of its gates is a
+property of the flags, the branch and the text, decidable with no network at all. `deskpost`
+and the plain `deskreply` path write onto an object that already exists (a PR), so their
+rehearsal legitimately reads that object's live state first.
 
 Why the App identity is load-bearing: a PR is authored by the `example-org` account, and
 GitHub blocks an author from approving its own PR. Only a holder of the App private key can
