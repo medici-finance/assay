@@ -1,8 +1,0 @@
-### Fixed
-- `statusgen --close-verify` (the flip `verify-gate-close.yml` runs on a human close) now reads the Verified cell the `done` row would carry — the README cell, or on the implemented→done path the cell it stamps from the brief file's Evidence — plus the brief's Evidence rows, BEFORE it writes, and refuses when a runner is below the methodology/19 verifier floor. The refusal names the runner, the floor and the two-stamp remedy; a red `done` no longer lands on main after the human has signed (#1170).
-- `verify-gate-close.yml` relays a verifier-floor refusal onto the card as a comment (runner + floor + remedy) and REOPENS the card so the same human closes it again once the floor-tier re-verify stamp has landed; a bot close is reopened exactly as before, and every other refusal still leaves the card closed (#1170).
-
-### Changed
-- The `verify-desk` skill states the two-stamp model for `gate: human` briefs: the routine drain runs at the local tier and lands the first stamp; ONE floor-tier re-verify (the single sanctioned pass above the local tier) re-runs the table, appends its Evidence rows and re-stamps the Verified cell with that pass leading the cell; only then is the sign-off card ready for the human. Model-gated briefs are unchanged (#1170).
-- The `--lint` verifier-floor PROBLEMs name the two-stamp remedy instead of only the rule (#1170).
-- New fixture test `.github/scripts/verify-gate-close-floor.test.sh` mirrors the close workflow's refusal classification and runs it, with a statusgen built from the tree, against `statusgen/testdata/verifyfloor`; migration `migrations/0003-v1.0.9-to-v1.0.10-verify-gate-close-verifier-floor.md` records the workflow patch an adopter's copy needs (#1170).
