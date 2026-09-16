@@ -213,12 +213,18 @@ func NewBranchProbe(list BranchLister, store BranchSHAStore) ObservableProbe {
 }
 
 // houseBranchLister is the production BranchLister: an in-process go-git remote listing
-// (gitcore.List), no external git binary, no credential helper. Anonymous (public) read —
-// a private repo surfaces as a lister error, which is correctly could-not-check, never
-// no-life. Assumes a GitHub-hosted remote (github.com/<repoSlug>.git); a forge-neutral
-// cutover is future work (see the forge-neutral stream), not this brief.
+// (gitcore.List), no external git binary, no credential helper. It lists AUTHENTICATED as
+// the session's role against the forge deskkit resolves for the repo (houseBranchListOpts)
+// — the anonymous, github.com-only read it replaced 404'd on every private repo, so on a
+// private board root a worker's liveness was seen only through the PR probe (#1197). A
+// missing credential, forge or host is a lister error, which NewBranchProbe reports as
+// could-not-check, never no-life.
 func houseBranchLister(repoSlug string) (map[string]string, error) {
-	refs, err := gitcore.List(gitcore.ListOpts{URL: "https://github.com/" + repoSlug + ".git"})
+	opts, oerr := houseBranchListOpts(repoSlug)
+	if oerr != nil {
+		return nil, oerr
+	}
+	refs, err := gitcore.List(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +233,27 @@ func houseBranchLister(repoSlug string) (map[string]string, error) {
 		out[string(r.Name())] = r.Hash().String()
 	}
 	return out, nil
+}
+
+// houseBranchListOpts builds houseBranchLister's ListOpts the way housePRReader builds its
+// forge: the session's token role from deskkit.SessionTokenRole, the forge kind from the roster
+// (ASSAY_REPO_FORGES), and the role's credential paired with the forge's git-basic username,
+// dialed at the RESOLVED KIND's canonical instance host (deskkit.ForgeGitEndpointFor). It
+// deliberately does NOT read this process's CWD origin: the repo being probed is the claim's
+// own slug, independent of whatever checkout the desk runs in, so that origin host names an
+// unrelated forge — binding the credential to it is a cross-forge credential leak (#1197
+// security review S1). No ambient-identity fallback and no SaaS-host default: either is a
+// silent could-not-check dressed as an answer.
+func houseBranchListOpts(repoSlug string) (gitcore.ListOpts, error) {
+	role, _, rerr := deskkit.SessionTokenRole("desksupervise")
+	if rerr != nil {
+		return gitcore.ListOpts{}, rerr
+	}
+	ep, err := deskkit.ForgeGitEndpointFor(repoSlug, role)
+	if err != nil {
+		return gitcore.ListOpts{}, err
+	}
+	return ep.Opts, nil
 }
 
 // --- PRProbe ---
