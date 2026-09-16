@@ -193,6 +193,37 @@ Fail-first (kit §9) — new guards shown red on a mutated build, then reverted:
 - Make the `--as` identity check always pass → row 4 red (`exit = 0, want 5`).
 - Skip `checkPushSafety` → row 7 red (force/delete/no-verify fall to generic `flag provided but not defined`, losing their named reason; `--receive-pack` still caught by the transport-exec guard — defence in depth).
 - Bypass `isProtectedBranch` in `cmdPush` → row 3 red (`push on main exit = 0, want 5`; mixed-case master likewise).
+### Non-implementer verifier run — 2026-09-16 verify-desk (desk-tools/08 dispatched verifier) — **VERIFY: PASS**
+
+Runner ≠ implementer (implementer's own Evidence table, dated 2026-09-04, was self-run — this is the first independent pass). Own detached temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Merged main `e9fa19d3`, `a9830656` (this brief's commit) confirmed ancestor.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, clean | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 2 | `go test ./cmd/deskgit/ -run '^TestPushAdvancesFixtureRemote$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 3 | `go test ./cmd/deskgit/ -run '^TestPushRefusesMainAndDetachedHead$' -count=1` | exit 0 | exit 0 — PASS (main/mixed-case master/detached HEAD all refused) | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 4 | `go test ./cmd/deskgit/ -run '^TestAsRoleMustMatchSessionIdentity$' -count=1` | exit 0 | exit 0 — PASS, refusal text: `refused: --as "reviewer" does not match this session's bound token role "worker"...` | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 5 | `go test ./cmd/deskgit/ -run '^TestAmbientCredentialHelperNeverConsulted$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 6 | `go test ./cmd/deskgit/ -run '^TestTokenNeverLeavesTheChild$' -count=1` | exit 0 | exit 0 — PASS (success + injected-failure paths) | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 7 | `go test ./cmd/deskgit/ -run '^TestPushOptionsRefusedByName$' -count=1` | exit 0 | exit 0 — PASS (force/delete/no-verify/receive-pack) | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 8 | `go test ./cmd/deskgit/ -run '^TestFetchAsRoleKeepsEveryFetchGuard$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 9 | `go test ./... -count=1` | exit 0 | exit 0 — 73 `ok` package results, zero FAIL/panic across the whole `tools/desk` module | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 10 | `gofmt -l tools/desk/cmd/deskgit` | empty | exit 0, empty output | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+| 11 | `cd statusgen && go run . --root .. --lint` | rc 0 | rc 0 — LINT: PASS (only pre-existing NOTICEs unrelated to this brief) | 2026-09-16 | verify-desk (desk-tools/08 dispatched verifier) |
+
+No invented scope, no unrun rows — every row is offline-executable (fixture-only bare repos), matching the brief's own Ground Rules (never push to a real remote from a Verify row). Spot-checked `cmdPush` (`tools/desk/cmd/deskgit/deskgit.go:360-465`): constructed argv is exactly `git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/<B>:refs/heads/<B>`, matching the brief's facts. README contract present at `tools/desk/README.md:3197-3223`.
+
+**Risk-bearing value.** Enumerated every literal the diff (`a9830656`) introduces: the `credential.helper=` argv prefix, the `--receive-pack=git-receive-pack` pin, the `x-access-token`/`GIT_ASKPASS`/`DESKGIT_TOKEN` credential channel, the ephemeral `0o700` askpass dir perms, and the `deniedPushOpts` named-refusal table. Ruled OUT as not new risk-bearing: `deskkit.AllowWrite("deskgit", repo, 0)`'s `0` (pre-existing "no PR number" convention, routes to the tightest rate-limit bucket per its own documented contract) and the `main`/`master` protected-branch list (pre-dates this brief, `git log -S` traces to `4d8e6682`).
+
+**RISK-VALUE: DERIVED** — `exec.go:135` `"-c credential.helper="` argv prefix — git's documented config precedence (command-line `-c` is highest-precedence, last-applied; an empty value resets the accumulated helper list) means this literal provably clears any ambient/repo-configured helper. Independently corroborated behaviorally, not just by test-passing: row 5 arms an ambient helper with a canary file and the canary never fires.
+
+**RISK-VALUE: DERIVED** — `deskgit.go:456` `"--receive-pack=git-receive-pack"` — the correct upstream git server-side program name for push (wire-protocol counterpart to the pre-existing `--upload-pack=git-upload-pack` fetch pin). Closes the #1555-class RCE vector (a caller substituting an arbitrary program name on a local-path "remote") while being the only value that keeps ordinary push working.
+
+**RISK-VALUE: DERIVED** — `exec.go:128,134` `"x-access-token"` username + `GIT_ASKPASS`/`DESKGIT_TOKEN` env names — byte-identical to the already-reviewed `deskadvisory` precedent (`advisory.go:482,491,511-512`, issue #1555's resolved pattern) except the token env-var name, a private internal channel name with no external contract to violate; `scrubbedEnv`'s allowlist excludes it and it's appended only after the scrub.
+
+`deniedPushOpts` (force/delete/prune/mirror/tags/no-verify) named but not top-ranked — defense-in-depth behind the fixed-argv guard (the option cannot reach git regardless), each directly exercised by row 7.
+
+**VERIFY: PASS** — all 11 rows pass exactly as written on merged main. No could-not-check rows, no invented scope.
 
 ## Review
 
