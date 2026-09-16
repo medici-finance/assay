@@ -14,3 +14,4 @@
 {"ts": "2026-09-11T00:20:00Z", "brief": "harness-portability/06", "outcome": "verify-fail", "rows_passed": 9, "rows_total": 10, "sha": "553dc2ae"}
 {"ts": "2026-09-11T00:10:00Z", "brief": "harness-portability/02", "outcome": "verified", "rows_passed": 10, "rows_total": 10, "sha": "553dc2ae"}
 {"ts": "2026-09-11T00:00:00Z", "brief": "harness-portability/01", "outcome": "verified", "rows_passed": 6, "rows_total": 6, "sha": "553dc2ae"}
+{"ts": "2026-09-16T21:05:00Z", "brief": "desk-tools/09", "outcome": "verified", "rows_passed": 9, "rows_total": 9, "sha": "e9fa19d3", "note": "prior FAIL 2026-09-06 row 7 (assay#555, unrelated internal/deskkit red) no longer reproduces"}
