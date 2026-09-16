@@ -464,13 +464,22 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      row from the PR's own trailer + state; drop the hunk." ONE narrow carve-out admits a hunk, and
      only when ALL of the following hold — it is mechanical, not a judgment call:
      - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
-       row; ANY change to an existing row — down to a single cell — bounces unconditionally. This
-       scoping is load-bearing, not caution: `statusgen regen --readmes` PRESERVES the cells
-       `Status`, `Verified` and `Reviewed` (it does not re-derive them, and it does not touch a
-       `done` row's `Status`), so "byte-identical to regen output" is NOT evidence about those cells
-       — a forged stamp in them (`2026-01-01 human:<name>` verified, a fabricated reviewer
-       approval) survives regen untouched and would otherwise sail through. The carve-out never
-       covers an edit that could reach them.
+       row; ANY change to an existing row — down to a single cell — bounces unconditionally.
+     - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
+       be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
+       ANY row inside the markers carrying a non-`todo` `Status`, or a non-empty `Verified` or
+       `Reviewed` cell, bounces unconditionally — added or not. This bullet is what actually blocks
+       the forgery, and it is load-bearing: `statusgen regen --readmes` PRESERVES the `Status`,
+       `Verified` and `Reviewed` cells for ANY row already present in the region (it does not
+       re-derive them, and it does not touch a `done` row's `Status`), and a row the PR ADDED is
+       present when regen runs — regen has no "added by this PR" notion — so a forged
+       `done | 2026-01-01 human:<name> | … (approved PR #… @ …)` on a brand-new row survives regen
+       byte-identical and "byte-identical to regen output" is NOT evidence about those three columns
+       for an added row either. A legitimately authored new brief row is ALWAYS `todo`/`—`/`—`: the
+       verified/reviewed stamps are written later, by the verifier/reviewer, via regen from Evidence,
+       never by the authoring PR. (Equivalent mechanical form: blank the `Status`/`Verified`/
+       `Reviewed` columns on both sides before the byte-compare, so a stamp in them cannot be
+       laundered by preservation.)
      - **Reproduces under regen.** In a throwaway worktree checked out at the PR head, run
        `statusgen regen --readmes --root <that worktree>` and admit the added rows only when the
        tree is then clean (empty diff); bounce any hunk that does not reproduce that way. Use the
