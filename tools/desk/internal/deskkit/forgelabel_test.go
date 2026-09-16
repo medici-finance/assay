@@ -370,3 +370,64 @@ func TestFlipRefusesUnsupportedForge(t *testing.T) {
 		}
 	})
 }
+
+// TestApplyIssueLabelsBothBackends pins the ISSUE-target wire for the exact change shape
+// `desklabel` emits — ONE named label, no families (so no pre-read) — on both backends. It
+// is the brief's row-4 control for the role-keyed label verb: GitHub serves issues and pull
+// requests through the same `/issues/{n}/labels` endpoint, so the issue-target request is
+// byte-for-byte the change-target one (the shared helper, not a duplicate REST sequence);
+// GitLab's issue is a different resource from its merge request, so the write is
+// `PUT /projects/:id/issues/:iid` carrying `add_labels`/`remove_labels` and never touches
+// `/merge_requests/:iid`. TestLabelTargetRoutes covers the family-reconciling shape; this
+// covers the one-label add and the one-label remove, the two calls desklabel makes.
+func TestApplyIssueLabelsBothBackends(t *testing.T) {
+	add := LabelChange{Target: TargetIssue, Add: []LabelSpec{{Name: "needs-decision"}}}
+	rm := LabelChange{Target: TargetIssue, Remove: []string{"superseded?"}}
+
+	t.Run("github", func(t *testing.T) {
+		for name, change := range map[string]LabelChange{"add": add, "rm": rm} {
+			issue := newGoldenServer(t)
+			issue.prLabels = []map[string]any{{"name": "superseded?"}}
+			gotIssue, err := issue.forge().ApplyLabels(forgeTestRepo, 7, change)
+			if err != nil {
+				t.Fatalf("github/%s issue-target: %v", name, err)
+			}
+			assertObjectRoutes(t, ghRequestLines(issue), "/issues/7/labels", "/pulls/7")
+
+			// The SAME change addressed as a change hits the identical route: one helper.
+			asChange := change
+			asChange.Target = TargetChange
+			pr := newGoldenServer(t)
+			pr.prLabels = []map[string]any{{"name": "superseded?"}}
+			gotChange, err := pr.forge().ApplyLabels(forgeTestRepo, 7, asChange)
+			if err != nil {
+				t.Fatalf("github/%s change-target: %v", name, err)
+			}
+			if strings.Join(ghRequestLines(issue), "\n") != strings.Join(ghRequestLines(pr), "\n") {
+				t.Errorf("github/%s: issue-target and change-target must issue IDENTICAL requests (one helper):\nissue:\n%s\nchange:\n%s",
+					name, strings.Join(ghRequestLines(issue), "\n"), strings.Join(ghRequestLines(pr), "\n"))
+			}
+			assertLabelOutcome(t, "github/"+name, gotIssue, nil, *gotChange)
+		}
+	})
+
+	t.Run("gitlab", func(t *testing.T) {
+		for name, change := range map[string]LabelChange{"add": add, "rm": rm} {
+			srv := newGLServer(t)
+			srv.issue = glIssue(map[string]any{"iid": 7, "labels": []string{"superseded?"}})
+			// An MR with the SAME iid is served too — the same-number trap.
+			srv.mr = glMR(map[string]any{"labels": []string{"superseded?"}})
+			srv.updateMR = glMR(nil)
+			got, err := srv.forge().ApplyLabels(glRepo, 7, change)
+			if err != nil {
+				t.Fatalf("gitlab/%s: %v", name, err)
+			}
+			assertObjectRoutes(t, glRequestLines(srv), "/issues/7", "/merge_requests/7")
+			want := LabelOutcome{Added: []string{"needs-decision"}}
+			if name == "rm" {
+				want = LabelOutcome{Removed: []string{"superseded?"}}
+			}
+			assertLabelOutcome(t, "gitlab/"+name, got, nil, want)
+		}
+	})
+}

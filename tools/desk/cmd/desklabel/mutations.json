@@ -1,0 +1,71 @@
+{
+  "test": "go test ./cmd/desklabel/... -count=1",
+  "control": {
+    "name": "CONTROL — disarm the shared set (an escalation label is refused for every role)",
+    "file": "cmd/desklabel/vocabulary.go",
+    "old": "\tcase ownerShared:\n\t\treturn true",
+    "new": "\tcase ownerShared:\n\t\treturn false"
+  },
+  "mutations": [
+    {
+      "name": "the ownership check always reports 'owned by the caller's own role' (a worker writes a reviewer-owned label) — the brief's row-13 mutant",
+      "file": "cmd/desklabel/vocabulary.go",
+      "old": "\tdefault:\n\t\treturn e.Owner == role",
+      "new": "\tdefault:\n\t\treturn true"
+    },
+    {
+      "name": "human-decided becomes settable (a role self-applies the marker of a recorded human act)",
+      "file": "cmd/desklabel/vocabulary.go",
+      "old": "\tcase ownerNone:\n\t\treturn false",
+      "new": "\tcase ownerNone:\n\t\treturn true"
+    },
+    {
+      "name": "a label with no vocabulary entry is treated as shared (the table stops being closed)",
+      "file": "cmd/desklabel/vocabulary.go",
+      "old": "\treturn vocabEntry{}, false\n}",
+      "new": "\treturn vocabEntry{Canonical: want, Owner: ownerShared}, true\n}"
+    },
+    {
+      "name": "the ownership refusal is computed but not acted on (the write proceeds past a refused check)",
+      "file": "cmd/desklabel/verbs.go",
+      "old": "\tif aerr != nil {\n\t\tauditLine(req.repo, req.number, string(o), deskkit.ResultRefused, req.label+\": \"+aerr.Error())\n\t\treturn aerr\n\t}",
+      "new": "\tif aerr != nil {\n\t\tauditLine(req.repo, req.number, string(o), deskkit.ResultRefused, req.label+\": \"+aerr.Error())\n\t\tcanonical = strings.TrimSpace(req.label)\n\t}"
+    },
+    {
+      "name": "the table is matched case-sensitively (a forge label written in another case escapes the vocabulary)",
+      "file": "cmd/desklabel/vocabulary.go",
+      "old": "\t\tif strings.EqualFold(e.Canonical, want) {",
+      "new": "\t\tif e.Canonical == want {"
+    },
+    {
+      "name": "--dry-run writes anyway (the rehearsal becomes the act)",
+      "file": "cmd/desklabel/verbs.go",
+      "old": "\tif req.dryRun {\n\t\tfmt.Fprintf(out, \"dry-run: would",
+      "new": "\tif req.dryRun && false {\n\t\tfmt.Fprintf(out, \"dry-run: would"
+    },
+    {
+      "name": "a present label is re-applied instead of no-op'd (the idempotent read is ignored)",
+      "file": "cmd/desklabel/verbs.go",
+      "old": "\tif (o == opAdd && present) || (o == opRm && !present) {",
+      "new": "\tif false && ((o == opAdd && present) || (o == opRm && !present)) {"
+    },
+    {
+      "name": "a pull request / merge request is labelled as an ISSUE (the GitLab same-iid defect, restated)",
+      "file": "cmd/desklabel/verbs.go",
+      "old": "\tif iss.IsPullRequest {\n\t\ttarget = deskkit.TargetChange\n\t}",
+      "new": "\tif false && iss.IsPullRequest {\n\t\ttarget = deskkit.TargetChange\n\t}"
+    },
+    {
+      "name": "--kind is parsed but the untyped read is taken anyway (a GitLab both-resolve cannot be disambiguated)",
+      "file": "cmd/desklabel/verbs.go",
+      "old": "\tif req.kind != \"\" {\n\t\tiss, rerr = fg.GetIssueTyped(fr, req.number, req.kind)",
+      "new": "\tif false && req.kind != \"\" {\n\t\tiss, rerr = fg.GetIssueTyped(fr, req.number, req.kind)"
+    },
+    {
+      "name": "an unresolved session role falls back to worker (the ambient/default identity the design forbids)",
+      "file": "cmd/desklabel/verbs.go",
+      "old": "\trole, err := roleFn()\n\tif err != nil {\n\t\treturn err\n\t}",
+      "new": "\trole, err := roleFn()\n\tif err != nil {\n\t\trole = roleWorker\n\t}"
+    }
+  ]
+}

@@ -299,7 +299,9 @@ could-not-check, never "no repos".
   the target, and STOPS — it cannot close, cannot confirm and cannot dispute, whatever flags it is
   handed, because the role is read from the token's roster binding, not from the caller. The close
   is pr-review-desk's confirm (once the target has merged); a `needs-decision` on the PR means the
-  reviewer disputed it and the item is human:<name>'s. A worker that closes its own PR as superseded
+  reviewer disputed it and the item is human:<name>'s. A dispute leaves the `superseded?` marker in
+  place; it is the WORKER's label, and `desklabel rm <repo> <N> 'superseded?'` under the worker
+  token clears it (any other role is refused, exit 5) — never a raw label write. A worker that closes its own PR as superseded
   by hand has skipped the only independent check on "the other PR carries my scope" — the class of
   error the lane exists to catch. A `superseded?` PR is parked, not orphaned: never re-dispatch it.
 - A red default branch is work: where the fix is mechanical this desk dispatches it like any other
