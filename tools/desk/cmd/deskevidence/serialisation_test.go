@@ -81,10 +81,11 @@ func TestAuditLockIsHeldAcrossTheRemoteCall(t *testing.T) {
 		}
 	}
 
-	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
 	f.setFile(evidencePath, "old")
 
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitOK {
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	if probeErr != nil {
@@ -139,14 +140,16 @@ func TestConcurrentInvocationsCannotBothSpendTheLastWrite(t *testing.T) {
 		})
 	}
 
-	pathA := writeRepoFile(t, "docs/brief-a.md", "# A\n\n## Evidence\n| 1 | a | a |\n")
-	pathB := writeRepoFile(t, "docs/brief-b.md", "# B\n\n## Evidence\n| 1 | b | b |\n")
+	pathA := "docs/streams/x/brief-a.md"
+	rootA := rootWithFile(t, pathA, "# A\n\n## Evidence\n| 1 | a | a |\n")
+	pathB := "docs/streams/x/brief-b.md"
+	rootB := rootWithFile(t, pathB, "# B\n\n## Evidence\n| 1 | b | b |\n")
 	f.setFile(pathA, "old-a")
 	f.setFile(pathB, "old-b")
 
 	aDone := make(chan int, 1)
 	go func() {
-		aDone <- run([]string{"example-org/tracker", "main", "--evidence-file", pathA})
+		aDone <- run([]string{"example-org/tracker", "main", "--evidence-file", pathA, "--root", rootA})
 	}()
 
 	select {
@@ -159,7 +162,7 @@ func TestConcurrentInvocationsCannotBothSpendTheLastWrite(t *testing.T) {
 
 	bDone := make(chan int, 1)
 	go func() {
-		bDone <- run([]string{"example-org/tracker", "main", "--evidence-file", pathB})
+		bDone <- run([]string{"example-org/tracker", "main", "--evidence-file", pathB, "--root", rootB})
 	}()
 
 	// Ample time for B to run to completion if nothing is holding it back. An in-process
