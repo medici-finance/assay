@@ -10,7 +10,7 @@ why: >-
   checklist every migration brief ticks against.
 wave: 1
 depends: []
-unblocks: ["desktools-v2/02", "desktools-v2/03", "desktools-v2/04", "desktools-v2/05", "desktools-v2/06"]
+unblocks: ["desktools-v2/02", "desktools-v2/03", "desktools-v2/04", "desktools-v2/05", "desktools-v2/06", "desktools-v2/07", "desktools-v2/08", "desktools-v2/09"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -18,10 +18,11 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
-  - "docs/streams/desktools-v2/spec.md §1 — the reach-around table this inventory makes file:line-accurate"
+  - "docs/streams/desktools-v2/spec.md §1 (the reach-past table) and §2 (the three design principles) — what this inventory makes file:line-accurate"
   - "tools/desk/internal/deskkit/forge.go — the seam whose bypasses are being counted"
   - "tools/desk/internal/forgeban/allowlist.go — the existing permit-register (const allowedInvocationCeiling now 5) whose rows are a subset of this inventory"
-  - "freshness-checked 2026-09-16 @ e9fa19d3 — `forge_github.go` runs on go-gh with a minted token (not a shelled gh); `forgeban` ceiling is 5 (down from 24); `grep -rn 'exec.Command(\"gh\"' tools/desk` returns a small set of Go sites — the shell/skills reach-arounds are NOT yet counted anywhere, which is what this brief fixes"
+  - "desk audit posted on the stream PR (2026-09-16, origin/main) — the statusgen file:lines and the 5 desk-verb gh exceptions this inventory adopts as its starting point"
+  - "freshness-checked 2026-09-16 @ e9fa19d3 — `forge_github.go` runs on go-gh with a minted token (not a shelled gh); `forgeban` ceiling is 5 (down from 24); the desk verbs are ~mostly migrated; `statusgen` shells gh directly (scanissues.go:114,:870 / issues.go:577 / autoflip.go:535,:615,:656,:666 / autonomy.go:451,:479, all `exec.Command(\"gh\"`) and is NOT under forgeban — verified present on origin/main this date"
 exec-tier: any
 domain: complicated
 version: 1
@@ -49,11 +50,26 @@ facts:
   attached only to a child named `gh`).
 - The existing `tools/desk/internal/forgeban/allowlist.go` permit-register already lists the
   surviving forge-CLI *Go* call sites (`const allowedInvocationCeiling` = 5 at
-  `e9fa19d3`). Its rows are a SUBSET of this inventory — this brief adds the shell and
-  skills sites it does not cover, and reconciles against it so no Go site is double-counted
-  or dropped.
-- Search surfaces: `tools/desk/**` (Go + `scripts/`), `tools/cellctl/**`, `plugins/assay/`
-  and `.claude/` skill bodies (shell that shells `gh`), and `.github/workflows/**`.
+  `e9fa19d3`). Its rows are a SUBSET of this inventory — this brief adds the shell, skills,
+  and **statusgen** sites it does not cover, and reconciles against it so no Go site is
+  double-counted or dropped.
+- **statusgen is the largest remaining dependency and it is NOT under `forgeban`.** It is a
+  separate binary with no native forge client, shelling `gh` directly. Adopt the desk audit's
+  file:lines (2026-09-16, `origin/main`) as the inventory's statusgen starting point:
+  `statusgen/scanissues.go:114,:870`, `statusgen/issues.go:577`,
+  `statusgen/autoflip.go:535,:615,:656,:666`, `statusgen/autonomy.go:451,:479`, plus a full
+  `grep` sweep of `statusgen/**` for `exec.Command("gh"` beyond these. Mark each statusgen row
+  a **PORT, not a call-site swap** (there is no go-gh client to route through — that is
+  `desktools-v2/07`/`08`), and mark `scanissues.go`/`issues.go` as the `scanloop`-blind root
+  (#628).
+- The five **desk-verb `gh` exceptions** are a separable, token-custody-gated follow-wave, not
+  transport gaps — record them as such, do not route them to the transport migrations:
+  `deskadvisory/advisory.go:183` (`gh auth token`, a custody read), `deskdigest/exec.go:47`,
+  `deskmerge/exec.go:114` (write-only), `deskdisposition/exec.go:30`,
+  `deskpushguard/main.go:409`.
+- Search surfaces: `statusgen/**`, `tools/desk/**` (Go + `scripts/`), `tools/cellctl/**`,
+  `plugins/assay/` and `.claude/` skill bodies (shell that shells `gh`), and
+  `.github/workflows/**`.
 - This brief asserts NO count in its own frontmatter or prose — the count is the
   deliverable's, produced by the run, not authored from memory.
 - Out of scope: any code change; migrating any site; writing the ban-lint (that is
@@ -79,10 +95,13 @@ facts:
 3. For each row, name the `Forge` op that should replace it, or write `GAP` where no
    enumerated op exists yet (a `GAP` is a signal the interface needs a method — recorded, not
    resolved here).
-4. Map each row to the migrating brief (`desktools-v2/03..06`) or `unrouted` if it belongs to
-   no wave-3 brief yet.
+4. Map each row to the migrating brief (`desktools-v2/03..09`) or `unrouted` if it belongs to
+   no brief yet. Route statusgen rows to `desktools-v2/08` (via the importable library
+   `desktools-v2/07`); route the five desk-verb `gh` exceptions to a `token-custody` follow-wave
+   (not to the transport migrations); route access-pattern candidates (N+1 read clusters) to
+   `desktools-v2/09`.
 5. Record the total site count and the per-shape counts in the PR body (produced by the run,
-   not asserted here).
+   not asserted here), broken out desk vs statusgen.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
@@ -91,7 +110,8 @@ facts:
 | 2 | `grep -cE -e 'file:line' -e 'reach-around shape' docs/streams/desktools-v2/inventory.md` | exit 0; count >= 1 (the table declares its shape columns) |
 | 3 | `grep -cE -e '#1145' -e '#1146' -e '#628' -e '#1019' -e '#1201' -e '#884' -e '#1223' docs/streams/desktools-v2/inventory.md` | exit 0; count >= 7 (every §1 issue is represented as at least one row) |
 | 4 | `grep -c 'Reconciled:' docs/streams/desktools-v2/inventory.md` | exit 0; count >= 1 (the forgeban reconciliation note is present) |
-| 5 | `bash -c 'for r in $(grep -oE "tools/desk/[A-Za-z0-9_./-]+\.go:[0-9]+" docs/streams/desktools-v2/inventory.md); do f=${r%%:*}; n=${r##*:}; if [ ! -f "$f" ]; then exit 1; fi; if [ "$(wc -l < "$f")" -lt "$n" ]; then exit 1; fi; done; echo ok'` | exit 0; prints `ok` (every cited Go file:line resolves to a real line in the tree — the dereferencing check; fails on an invented citation) |
+| 5 | `grep -cE -e 'statusgen/scanissues.go' -e 'statusgen/autoflip.go' -e 'statusgen/autonomy.go' docs/streams/desktools-v2/inventory.md` | exit 0; count >= 3 (the statusgen read sites — the higher-value target — are enumerated, not just the desk verbs) |
+| 6 | `bash -c 'for r in $(grep -oE "(tools/desk|statusgen)/[A-Za-z0-9_./-]+\.go:[0-9]+" docs/streams/desktools-v2/inventory.md); do f=${r%%:*}; n=${r##*:}; if [ ! -f "$f" ]; then exit 1; fi; if [ "$(wc -l < "$f")" -lt "$n" ]; then exit 1; fi; done; echo ok'` | exit 0; prints `ok` (every cited desk/statusgen file:line resolves to a real line in the tree — the dereferencing check; fails on an invented citation) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

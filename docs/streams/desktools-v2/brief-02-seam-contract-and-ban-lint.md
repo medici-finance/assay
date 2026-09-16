@@ -10,7 +10,7 @@ why: >-
   migration stick: once the count is zero and the gate is failing, the class cannot return.
 wave: 2
 depends: ["desktools-v2/01"]
-unblocks: ["desktools-v2/04", "desktools-v2/05", "desktools-v2/06"]
+unblocks: ["desktools-v2/04", "desktools-v2/05", "desktools-v2/06", "desktools-v2/09"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -68,8 +68,12 @@ facts:
   `forge.go` already documents as living in exactly one place (`GitHubAPIBase`).
 - The counter starts ADVISORY (prints `forge reach-around sites: N`, exits 0), exactly as
   `desktools-go-git`'s `count-git-exec.sh` did. It flips to failing (non-zero above zero)
-  only after the migrations (`desktools-v2/04..06`) drive N down — that flip is a separate,
+  only after the migrations (`desktools-v2/04..08`) drive N down — that flip is a separate,
   later brief, not this one.
+- **The counter's scope INCLUDES `statusgen/**`** (spec §2 Principle 2 / §3 commitment 2).
+  statusgen is a separate binary shelling `gh` directly and is NOT under `forgeban` today; the
+  ban-lint is the control that brings it under the same rule, so its `gh` reads
+  (`desktools-v2/08` migrates them) show up in the count and its removal is measured here.
 - This brief does NOT touch identity or token custody: WHICH forge and WHICH identity a write
   uses is `forge-neutral/01`'s resolver, which this brief cites and consumes. The ban only
   asserts that construction happens inside a backend; it does not decide which backend.

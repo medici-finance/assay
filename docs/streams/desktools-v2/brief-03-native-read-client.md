@@ -11,7 +11,7 @@ why: >-
   later write migration reuses.
 wave: 2
 depends: ["desktools-v2/01"]
-unblocks: ["desktools-v2/04", "desktools-v2/06"]
+unblocks: ["desktools-v2/04", "desktools-v2/06", "desktools-v2/08"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -19,8 +19,9 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
-  - "docs/streams/desktools-v2/spec.md §2 (commitment 3) and §4 — the native-client pilot"
-  - "docs/streams/desktools-v2/inventory.md (desktools-v2/01) — the exact read sites this brief migrates"
+  - "docs/streams/desktools-v2/spec.md §2 Principle 1 (CUSTODY) — the framing this brief's contract codifies: explicit minted-token only, key-presence is the custody boundary, desktop-as-locked-container"
+  - "docs/streams/desktools-v2/spec.md §5 — the audit reframe: desk verbs ~mostly migrated (5 token-custody exceptions); statusgen's read path is desktools-v2/08"
+  - "docs/streams/desktools-v2/inventory.md (desktools-v2/01) — the exact desk read sites and the 5 gh exceptions this brief dispositions"
   - "tools/desk/internal/deskkit/forge_github.go:16-40,68-72 — GitHubForge already runs on go-gh with an explicitly-minted token and REFUSES an empty one; this is the client foundation the reads route onto"
   - "tools/desk/internal/deskkit/forge.go — the seam op each migrated read should call"
   - "docs/streams/forge-neutral/README.md — forge-neutral owns token MINTING/custody (forge-neutral/01); this brief consumes a minted token and does not mint one"
@@ -67,6 +68,18 @@ catch two different faults — an unminted call and a wrong-installation call �
 path Verify row exercises each with the other bypassed.
 
 facts:
+- This brief codifies **Principle 1 (CUSTODY)** as the client's CONTRACT: (a) explicit
+  minted-token only, refuse-if-unminted, never resolve an ambient credential; (b) the
+  credential the environment holds and re-mints from is the App PEM + installation id, so
+  key presence — not token presence — is the custody boundary the client assumes; (c) the
+  client behaves identically on the desktop and in a container (no ambient fallback either
+  place), which is what makes the desktop "behave like a locked container".
+- The desk read foundation already EXISTS: `forge_github.go` is native and `forgeban` reddens
+  a new desk `gh` shell-out. So this brief's desk-side work is (i) codifying the custody
+  contract on the native read client and (ii) dispositioning the five sanctioned desk `gh`
+  exceptions (each a token-custody decision, listed in the inventory), NOT a wholesale desk
+  read rewrite. The higher-value read migration — statusgen — is `desktools-v2/08`, gated on
+  the importable library `desktools-v2/07`; this brief does not touch statusgen.
 - `forge_github.go`'s `restClient()` constructs the go-gh client with an explicit Host,
   AuthToken and Transport set, which makes go-gh's `optionsNeedResolution` false — it never
   consults gh's ambient keyring/config — and REFUSES an empty token. The native read client

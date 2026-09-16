@@ -20,7 +20,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
-  - "docs/streams/desktools-v2/spec.md §1 (#628/#1145/#1146 rows), §2 (commitment 3)"
+  - "docs/streams/desktools-v2/spec.md §2 Principle 1 (CUSTODY) — this brief IS the provisioning half of that principle: key presence is the custody boundary (b), one role's minting key per environment (c), and the desktop made to behave like a locked container"
+  - "docs/streams/desktools-v2/spec.md §1 (#628/#1145/#1146 rows), §3 (commitment 4)"
   - "docs/streams/desktools-v2/inventory.md (desktools-v2/01) — the ambient-credential rows (HOME override, GH_TOKEN inheritance, token-attaches-only-to-gh)"
   - "tools/desk/internal/deskkit/forge_github.go:16-40 — the client refuses an empty token and never consults the ambient keyring; this brief makes that the ONLY path"
   - "docs/streams/forge-neutral/README.md — forge-neutral/01 owns minting/custody; this brief scopes the minted token to the repo, it does not change how minting authenticates"
@@ -69,6 +70,14 @@ out-of-band layer is the ban-lint (desktools-v2/02), which reddens CI if a `gh`-
 that could inherit ambient identity is re-introduced. Three surfaces, three failure signals.
 
 facts:
+- **Principle 1 (CUSTODY) made concrete here.** (b) The credential an environment holds and
+  re-mints from is the App PEM + installation id, so KEY PRESENCE is the custody boundary —
+  scoping decides which installation the PEM mints a token FOR, per operation. (c) The safety
+  property is "each environment holds exactly one role's minting key and nothing else"; the
+  desktop is the most confused environment (a human ambient token plus possibly several role
+  PEMs), and the goal of this brief is to make it behave like a locked container: no path
+  falls back to the ambient token, every path mints explicitly from the role's own key scoped
+  to the target repo.
 - #628: an inherited `GH_TOKEN` must not determine the installation — the installation is
   resolved from the repo being operated on. The token is minted per-repo, not inherited whole.
 - #1145: cellctl's `gen_shims` `HOME` override hides `gh`'s ambient credential from a shimmed
