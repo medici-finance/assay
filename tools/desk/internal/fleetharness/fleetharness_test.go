@@ -152,6 +152,7 @@ func loadExpectations(t *testing.T) map[string]expectation {
 type fleetEnv struct {
 	bin           string // dir holding the built verbs + the gh/desktoken shims
 	home          string // private HOME (roster, audit log)
+	tokens        string // where the desktoken shim writes its token files (FAKE_TOKEN_DIR)
 	ownRepo       string // owner/name of the worker's own origin
 	otherRepo     string // owner/name of a DIFFERENT repo in the allowed set
 	detached      string // worktree created with --detach from refs/remotes/origin/<branch>
@@ -230,11 +231,13 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	e := &fleetEnv{
 		bin:       filepath.Join(root, "bin"),
 		home:      filepath.Join(root, "home"),
+		tokens:    filepath.Join(root, "tokens"),
 		ownRepo:   "example-org/tracker",
 		otherRepo: "example-org/agents",
 		branch:    "brief/fleet-acceptance",
 	}
 	mkdir(t, e.bin)
+	mkdir(t, e.tokens)
 	mkdir(t, filepath.Join(e.home, ".config", "assay"))
 	write(t, filepath.Join(e.home, ".config", "assay", "roster.env"), fixtureRoster)
 
@@ -480,6 +483,9 @@ func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string)
 		"PATH="+pathDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+e.home,
 		"XDG_CONFIG_HOME="+filepath.Join(e.home, ".config"),
+		// The desktoken shim writes its token file here (under the scenario's t.TempDir),
+		// so the real temp dir never accumulates one per mint (#1195).
+		"FAKE_TOKEN_DIR="+e.tokens,
 		"CLAUDE_SESSION_ID=fleet-harness",
 		"DESK_TOOLS_DISABLED=",
 		// The workflow these scenarios measure is a DISPATCHED WORKER's, and such a
@@ -640,7 +646,9 @@ import (
 )
 
 func main() {
-	f, err := os.CreateTemp("", "fleet-harness-token-*")
+	// The token lands under FAKE_TOKEN_DIR — a directory inside the scenario's t.TempDir
+	// (see fleetEnv.exec) — never loose in the real temp dir, where nothing removes it.
+	f, err := os.CreateTemp(os.Getenv("FAKE_TOKEN_DIR"), "fleet-harness-token-*")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

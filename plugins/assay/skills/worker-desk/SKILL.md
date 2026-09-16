@@ -424,7 +424,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
-  escalate-durably, one-workpad-per-PR) ahead of `references/worker-prompt.md` (security-gate refusal,
+  escalate-durably, one-workpad-per-PR — the workpad body file is written fresh with `>`, never
+  appended with `>>`, and the old workpad is never re-read into the new body) ahead of
+  `references/worker-prompt.md` (security-gate refusal,
   per-invocation `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
   fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —

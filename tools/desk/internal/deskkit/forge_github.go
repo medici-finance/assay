@@ -155,15 +155,30 @@ func IsForgeEmptyRepo(err error) bool {
 // whose restURL passes an absolute URL through unchanged — so path, query and body are emitted
 // exactly as constructed, which is what the golden corpus pins.
 func (g *GitHubForge) doJSON(method, path string, in, out any) error {
+	_, err := g.doJSONHeader(method, path, in, out)
+	return err
+}
+
+// doJSONHeader is doJSON returning the response headers too, for the ONE caller that needs
+// the forge's own pagination signal (ListOpenIssues reads `Link: rel="next"`).
+//
+// A degraded transport never yields a SHORTER answer with a nil error (#1032): the body
+// read's error is kept — a connection cut mid-transfer hands back whatever arrived, which
+// can still parse (`[]`), so discarding the error turns a truncated page into a complete,
+// empty one — and a ZERO-BYTE body where JSON was expected is an error, not an empty
+// result: the forge answers an empty collection as `[]`, never as nothing. cmd/issueboard
+// reads an issue's absence from the open-issue listing as evidence about that issue, so a
+// listing this seam hands back must be the whole listing or an error.
+func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Header, error) {
 	rc, err := g.restClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var bodyReader io.Reader
 	if in != nil {
 		b, merr := json.Marshal(in)
 		if merr != nil {
-			return Unverifiable("cannot marshal request body", merr)
+			return nil, Unverifiable("cannot marshal request body", merr)
 		}
 		bodyReader = bytes.NewReader(b)
 	}
@@ -171,18 +186,38 @@ func (g *GitHubForge) doJSON(method, path string, in, out any) error {
 	if rerr != nil {
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {
-			return &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path}
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path}
 		}
-		return Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
+		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if out != nil && len(raw) > 0 {
+	raw, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr)
+	}
+	if out != nil {
+		if len(raw) == 0 {
+			return nil, Unverifiable(fmt.Sprintf("%s %s returned HTTP %d with an empty body where a JSON answer was expected — an absent answer is not an empty one", method, path, resp.StatusCode), nil)
+		}
 		if uerr := json.Unmarshal(raw, out); uerr != nil {
-			return Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr)
+			return nil, Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr)
 		}
 	}
-	return nil
+	return resp.Header, nil
+}
+
+// hasNextLink reports whether a REST response's `Link` header advertises another page
+// (`rel="next"`) — the forge's own, authoritative more-pages signal, the twin of the GitLab
+// client's NextPage.
+func hasNextLink(h http.Header) bool {
+	for _, v := range h.Values("Link") {
+		for _, part := range strings.Split(v, ",") {
+			if strings.Contains(part, `rel="next"`) || strings.Contains(part, "rel=next") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // --- REST wire shapes (only the fields consumed) ---
@@ -533,6 +568,10 @@ func (g *GitHubForge) ListLabels(repo ForgeRepo) ([]string, error) {
 const (
 	forgeIssuePerPage   = 100
 	forgeOpenChangesCap = 100
+	// forgeMaxIssuePages bounds the open-issue walk (the GitLab arm's gitlabMaxIssuePage
+	// twin): a forge still advertising more pages past it is a could-not-check, never a
+	// silently truncated listing.
+	forgeMaxIssuePages = 100
 )
 
 // ghOpenChangesQuery is the bulk open-PR read, hand-authored so it requests EXACTLY the
@@ -657,9 +696,16 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	}, nil
 }
 
+// ListOpenIssues walks a repo's OPEN issues to exhaustion (per_page=100), PRs dropped.
+//
+// End-of-walk (#1032): the walk continues while EITHER the page came back full OR the
+// forge's own `Link: rel="next"` says there is more, and stops only when both say there is
+// not. Inferring the end from a short page alone let a page that came back short under
+// load (a slow, rate-limited or hiccuping upstream) end the walk early with a nil error —
+// and cmd/issueboard reads an issue's absence from this listing as evidence about it.
 func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 	var out []IssueSummary
-	for page := 1; ; page++ {
+	for page := 1; page <= forgeMaxIssuePages; page++ {
 		var chunk []struct {
 			Number int    `json:"number"`
 			Title  string `json:"title"`
@@ -676,7 +722,8 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 		}
 		path := fmt.Sprintf("/repos/%s/%s/issues?state=open&per_page=%d&page=%d",
 			repo.Owner, repo.Name, forgeIssuePerPage, page)
-		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		hdr, err := g.doJSONHeader(http.MethodGet, path, nil, &chunk)
+		if err != nil {
 			return nil, err
 		}
 		for _, is := range chunk {
@@ -697,11 +744,16 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				URL:       is.HTMLURL,
 			})
 		}
-		if len(chunk) < forgeIssuePerPage {
-			break
+		if len(chunk) < forgeIssuePerPage && !hasNextLink(hdr) {
+			return out, nil
 		}
 	}
-	return out, nil
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: %s still reports more open issues after %d pages of %d (the open-issue page "+
+			"ceiling) — refusing to hand back a PARTIAL open-issue set, because the issue lane reads an "+
+			"issue's absence from this list as evidence about it and would retire placeholders for issues "+
+			"that are still open",
+		repo.Slug(), forgeMaxIssuePages, forgeIssuePerPage), nil)
 }
 
 func (g *GitHubForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
