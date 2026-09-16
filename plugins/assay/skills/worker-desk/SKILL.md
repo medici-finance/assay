@@ -9,9 +9,9 @@ description: Run the work-dispatch role of the process desk — keep a standing 
 **pr-review-desk** (a separate window) reviews those PRs and flips them ready; **human:<name>** merges. Run it
 in its own window as a standing loop — ONE window at capacity replaces running two.
 
-**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
-desk opens the PR carrying `Brief: <stream>/<NN>`; it never hand-edits a stream README's Briefs
-table.
+**The stream board is a derived, generated surface** — this
+desk opens the PR carrying its link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` for
+issue-only work with no brief); it never hand-edits a stream README's Briefs table.
 
 **The invariants this loop assumes** (state them once wherever your repo keeps house rules, and do not
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
@@ -417,10 +417,11 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   the ambient `gh` login.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
-  `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body lacks
-  `Brief: <stream>/<NN>`, and that refusal at write time is the enforcement, not a follow-up edit
+  `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no
+  link trailer at all — exactly one `Brief: <stream>/<NN>`, or `Issue: #<N>` for issue-only work
+  that delivers no brief — and that refusal at write time is the enforcement, not a follow-up edit
   to the stream README. `implemented` appears the instant that PR merges. `statusgen` derives both
-  cells from the trailer plus the PR's own state (`docs/streams/derived-board/spec.md`) — this
+  cells from the trailer plus the PR's own state — this
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
