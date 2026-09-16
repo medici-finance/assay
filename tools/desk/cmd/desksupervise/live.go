@@ -35,7 +35,10 @@ const dispatchClaimScriptRel = "tools/dispatch-claim.sh"
 //     — never the git binary) to get the claim KEYS. The prefix is deskkit.ClaimRefsPrefix, the
 //     same constant the release path builds its ref from, so this listing and that delete cannot
 //     name different namespaces (the documented house convention: SKILL.md and the worker prompt
-//     both name `git ls-remote origin 'refs/heads/dispatch/*'` for this read);
+//     both name `git ls-remote origin 'refs/heads/dispatch/*'` for this read). The listing is
+//     AUTHENTICATED as the session's role against the forge the resolver names (claimListOpts):
+//     an anonymous read against a hardcoded github.com 404s on every private repo, which made
+//     this whole instrument could-not-check on every private board root (#1197);
 //  2. for each key, shell to the consumer's own tools/dispatch-claim.sh `show <key> --repo
 //     <repo>` — the SAME external script cmd/deskdispatch/dispatch.go already shells to for
 //     acquire/show, so this is a second, read-only caller of an existing external contract,
@@ -59,9 +62,13 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 				" — no live claim can be enumerated (point --root at the checkout that carries it, or use --claims-fixture)", err)
 	}
 
-	refs, lerr := gitcore.List(gitcore.ListOpts{URL: "https://github.com/" + repo + ".git"})
+	opts, oerr := claimListOpts(root, repo)
+	if oerr != nil {
+		return nil, oerr
+	}
+	refs, lerr := gitcore.List(opts)
 	if lerr != nil {
-		return nil, deskkit.Unverifiable("cannot list "+deskkit.ClaimRefsPattern+" on "+repo, lerr)
+		return nil, deskkit.Unverifiable("cannot list "+deskkit.ClaimRefsPattern+" on "+repo+" at "+opts.URL, lerr)
 	}
 	var keys []string
 	for _, r := range refs {
@@ -96,6 +103,37 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 		})
 	}
 	return claims, nil
+}
+
+// claimListOpts builds the ListOpts readLiveClaims lists the claim namespace with: the repo's
+// forge and instance host resolved by deskkit (the roster's ASSAY_REPO_FORGES, else the
+// well-known host table, on the origin host of the --root checkout — the checkout that carries
+// the claim script, so it is the one whose remote names the forge), the session's token role
+// resolved exactly as the reclaim leg does (actions.go's doReclaim → deskkit.SessionTokenRole),
+// and the role's credential paired with the forge's git-basic username. Same shape as
+// cmd/deskclaim-ref's newForgeStore, so this read and that tool's writes dial the same place
+// as the same identity. Every failure — no loop identity, no forge, no host, no token — is
+// could-not-check (exit 6), never an anonymous attempt whose empty answer could read as "no
+// claims held".
+func claimListOpts(root, repo string) (gitcore.ListOpts, error) {
+	originHost, _ := deskkit.OriginRemoteHost(root) // "" when unreadable: the resolver then refuses, never defaults
+	return claimListOptsWithHost(repo, originHost)
+}
+
+// claimListOptsWithHost is claimListOpts with the origin host supplied, so a test can drive
+// the resolver with a fixture host and no checkout.
+func claimListOptsWithHost(repo, originHost string) (gitcore.ListOpts, error) {
+	role, _, rerr := deskkit.SessionTokenRole("desksupervise")
+	if rerr != nil {
+		return gitcore.ListOpts{}, deskkit.Unverifiable(
+			"cannot list "+deskkit.ClaimRefsPattern+" on "+repo+": no session token role to list as", rerr)
+	}
+	ep, eerr := deskkit.ForgeGitEndpointFor(repo, role, originHost)
+	if eerr != nil {
+		return gitcore.ListOpts{}, deskkit.Unverifiable(
+			"cannot list "+deskkit.ClaimRefsPattern+" on "+repo+": no authenticated forge endpoint", eerr)
+	}
+	return ep.Opts, nil
 }
 
 // showClaim is the SINGLE exec site for the consumer repo's own tools/dispatch-claim.sh `show`

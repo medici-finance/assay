@@ -1,0 +1,2 @@
+### Fixed
+- `desksupervise` (`status --stops` / `tick` / `run`) and the `BranchMoved` liveness probe now list refs authenticated as the session's role against the forge the resolver names, instead of an anonymous read of a hardcoded `github.com` — so a private board root no longer fails with `authentication required: Repository not found`, and a self-hosted or GitLab forge is dialed with its own host and git username. A missing token, forge or origin host is could-not-check (exit 6), never an empty snapshot or a SaaS-host default. (#1197)
