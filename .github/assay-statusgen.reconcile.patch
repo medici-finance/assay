@@ -24,14 +24,26 @@ UNTIL IT IS APPLIED the authoring columns regenerate normally and the lifecycle
 columns are carried through unchanged rather than reconciled — the board stays
 correct, it simply does not yet fold in what the pull-request history says.
 
+REGENERATED 2026-09-16 (derived-board/07 rollout, this repo). The hunk below was
+previously a hand-written sketch with bare `@@` headers carrying no line-range
+info — not a diff `git apply`/`patch` can actually consume, so the "apply it"
+instruction above would have failed on the first try for whoever holds the
+workflows scope. This is a real unified diff, `git apply --check`-clean against
+the workflow file at HEAD of this change; regenerate it the same way
+(`git diff --no-index` a before/after copy of the file) if the surrounding
+workflow moves before this lands.
+
 --- a/.github/workflows/assay-statusgen.yml
 +++ b/.github/workflows/assay-statusgen.yml
-@@
+@@ -92,6 +92,7 @@ jobs:
+     # needs only read; the App token carries the write.
      permissions:
        contents: read
 +      pull-requests: read
      steps:
-@@
+       # Mint a token for the assay-board-writer App. This App is the sole actor
+       # on the protect-main + leak-sweep ruleset bypass lists, so its push to
+@@ -126,6 +127,11 @@ jobs:
        - name: Regenerate STATUS.md
          run: |
            "${RUNNER_TEMP}/statusgen" --root .
@@ -41,3 +53,5 @@ correct, it simply does not yet fold in what the pull-request history says.
 +        env:
 +          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
        - name: Commit STATUS.md if it changed
+         run: |
+           set -euo pipefail
