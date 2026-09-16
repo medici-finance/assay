@@ -174,7 +174,7 @@ refuse — that needs its own brief and its own reset rule.
 | 06 | [Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction)](brief-06-roster-from-deployment.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
 | 07 | [`clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in](brief-07-clusterguard-exec-shim.md) | 1 | M | implemented | — | — |
 | 08 | [`deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file](brief-08-deskgit-authenticated-push-fetch.md) | 1 | M | implemented | — | — |
-| 09 | [`desktoken coverage <role>` — list the repositories a role's App installations can see](brief-09-desktoken-coverage.md) | 1 | M | implemented | — | — |
+| 09 | [`desktoken coverage <role>` — list the repositories a role's App installations can see](brief-09-desktoken-coverage.md) | 1 | M | verified | 2026-09-16 verify-desk (desk-tools/09 dispatched verifier; 9/9 rows PASS; prior FAIL row-7 no longer reproduces; risk-value DERIVED on page-size) | — |
 | 10 | [`deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand](brief-10-deskclaim-stale-probe-and-branch-liveness.md) | 1 | M | implemented | — | — |
 | 11 | [`deskwt add` — a worktree whose directory is gone does not hold its branch](brief-11-deskwt-add-prunable-holder.md) | 1 | S | blocked | — | — |
 | 12 | [`statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON](brief-12-statusgen-brief-subcommand.md) | 1 | M | implemented | — | — |
