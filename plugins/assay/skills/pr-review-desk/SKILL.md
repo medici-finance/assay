@@ -458,19 +458,36 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
 - **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
   (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
   never a judgment call — no reviewer edits the board itself:
-  1. **The diff touches a generated-table region** — a hunk inside a stream README's
-     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is ADMITTED only
-     when it is byte-identical to what `statusgen regen --readmes` produces on the PR's tree and the
-     PR body states that; otherwise → `--request-changes`, one line: "hand edit inside the generated
-     table — statusgen derives this row from the PR's own trailer + state; drop the hunk." The
-     carve-out is mechanical, not a judgment call: check out the PR tree, run
-     `statusgen regen --readmes`, and admit the hunk when the tree is then clean (empty diff); bounce
-     any hunk that does not reproduce that way. It exists because an authoring PR that adds a brief
-     MUST carry the regenerated rows or `statusgen --lint` fails on the PR head — the new row's
-     depends/unblocks/consumers references dangle — so a flat bounce made a compliant, CI-green state
-     unreachable. This never licenses fixing the table in review: correctness there is `statusgen`'s
-     to certify, not the reviewer's, and the carve-out only lets an authoring PR carry the tool's own
-     unmodified output.
+  1. **The diff touches a generated-table region** — the default for any hunk inside a stream
+     README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
+     `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
+     row from the PR's own trailer + state; drop the hunk." ONE narrow carve-out admits a hunk, and
+     only when ALL of the following hold — it is mechanical, not a judgment call:
+     - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
+       row; ANY change to an existing row — down to a single cell — bounces unconditionally. This
+       scoping is load-bearing, not caution: `statusgen regen --readmes` PRESERVES the cells
+       `Status`, `Verified` and `Reviewed` (it does not re-derive them, and it does not touch a
+       `done` row's `Status`), so "byte-identical to regen output" is NOT evidence about those cells
+       — a forged stamp in them (`2026-01-01 human:<name>` verified, a fabricated reviewer
+       approval) survives regen untouched and would otherwise sail through. The carve-out never
+       covers an edit that could reach them.
+     - **Reproduces under regen.** In a throwaway worktree checked out at the PR head, run
+       `statusgen regen --readmes --root <that worktree>` and admit the added rows only when the
+       tree is then clean (empty diff); bounce any hunk that does not reproduce that way. Use the
+       pinned/installed `statusgen` the target repo's CI uses — built from the PR head only where the
+       repo vendors `statusgen/`, else the pinned release binary — NEVER a `statusgen` otherwise
+       built or resolved from the PR tree (never build an untrusted head), and NEVER run against a
+       desk's own checkout.
+     - **Not a statusgen-source PR.** A PR that modifies statusgen's own source is OUTSIDE the
+       carve-out and bounces — it would otherwise redefine its own admission test.
+
+     The PR body must state that the hunk is regenerated output, but that statement is a CLAIM to be
+     verified, never evidence — the regen run above is the only evidence. The carve-out exists
+     because an authoring PR that adds a brief MUST carry the regenerated rows or `statusgen --lint`
+     fails on the PR head — the new row's depends/unblocks/consumers references dangle — so a flat
+     bounce made a compliant, CI-green state unreachable. It never licenses fixing the table in
+     review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
+     authoring PR carry the tool's own unmodified output for newly added rows.
   2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
      line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
      can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
