@@ -458,12 +458,45 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
 - **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
   (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
   never a judgment call — no reviewer edits the board itself:
-  1. **The diff touches a generated-table region** — any hunk inside a stream README's
-     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers →
+  1. **The diff touches a generated-table region** — the default for any hunk inside a stream
+     README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." Never fix the table in review, and
-     never waive this for a "substantively correct" edit — correctness there is `statusgen`'s to
-     certify, not the reviewer's.
+     row from the PR's own trailer + state; drop the hunk." ONE narrow carve-out admits a hunk, and
+     only when ALL of the following hold — it is mechanical, not a judgment call:
+     - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
+       row; ANY change to an existing row — down to a single cell — bounces unconditionally.
+     - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
+       be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
+       ANY row inside the markers carrying a non-`todo` `Status`, or a non-empty `Verified` or
+       `Reviewed` cell, bounces unconditionally — added or not. This bullet is what actually blocks
+       the forgery, and it is load-bearing: `statusgen regen --readmes` PRESERVES the `Status`,
+       `Verified` and `Reviewed` cells for ANY row already present in the region (it does not
+       re-derive them, and it does not touch a `done` row's `Status`), and a row the PR ADDED is
+       present when regen runs — regen has no "added by this PR" notion — so a forged
+       `done | 2026-01-01 human:<name> | … (approved PR #… @ …)` on a brand-new row survives regen
+       byte-identical and "byte-identical to regen output" is NOT evidence about those three columns
+       for an added row either. A legitimately authored new brief row is ALWAYS `todo`/`—`/`—`: the
+       verified/reviewed stamps are written later, by the verifier/reviewer, via regen from Evidence,
+       never by the authoring PR. (Equivalent mechanical form: blank the `Status`/`Verified`/
+       `Reviewed` columns on both sides before the byte-compare, so a stamp in them cannot be
+       laundered by preservation.)
+     - **Reproduces under regen.** In a throwaway worktree checked out at the PR head, run
+       `statusgen regen --readmes --root <that worktree>` and admit the added rows only when the
+       tree is then clean (empty diff); bounce any hunk that does not reproduce that way. Use the
+       pinned/installed `statusgen` the target repo's CI uses — built from the PR head only where the
+       repo vendors `statusgen/`, else the pinned release binary — NEVER a `statusgen` otherwise
+       built or resolved from the PR tree (never build an untrusted head), and NEVER run against a
+       desk's own checkout.
+     - **Not a statusgen-source PR.** A PR that modifies statusgen's own source is OUTSIDE the
+       carve-out and bounces — it would otherwise redefine its own admission test.
+
+     The PR body must state that the hunk is regenerated output, but that statement is a CLAIM to be
+     verified, never evidence — the regen run above is the only evidence. The carve-out exists
+     because an authoring PR that adds a brief MUST carry the regenerated rows or `statusgen --lint`
+     fails on the PR head — the new row's depends/unblocks/consumers references dangle — so a flat
+     bounce made a compliant, CI-green state unreachable. It never licenses fixing the table in
+     review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
+     authoring PR carry the tool's own unmodified output for newly added rows.
   2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
      line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
      can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
