@@ -56,21 +56,24 @@ func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL stri
 	return ghToken, forgeAPIBase, nil
 }
 
-// forgeForFn resolves the forge serving repo, as the FIXED "auditor" role. Package var so a
-// test substitutes a stub Forge instead of a network call.
+// forgeForFn resolves the forge serving repo, as the FIXED "auditor" role, and reports WHICH
+// forge that is (the resolution's provenance, deskkit.ResolveForge) — the guard's preflight
+// document is chosen from it (deskkit.HardeningRepoDocumentKind: `repo` on GitHub, `project`
+// on GitLab), never hard-coded to one forge's kind. Package var so a test substitutes a stub
+// Forge instead of a network call.
 var forgeForFn = forgeFor
 
-func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
-		return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable("repohardenguard: bad repo "+repo, nil)
+		return nil, deskkit.ForgeRepo{}, "", deskkit.Unverifiable("repohardenguard: bad repo "+repo, nil)
 	}
 	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
-	fg, err := deskkit.ForgeFor(fr, "auditor")
+	fg, res, err := deskkit.ResolveForge(fr, "auditor")
 	if err != nil {
-		return nil, fr, err
+		return nil, fr, "", err
 	}
-	return fg, fr, nil
+	return fg, fr, res.Kind, nil
 }
 
 // mintTokenFn mints the auditor token for a repo and sets ghToken. Package var so a test

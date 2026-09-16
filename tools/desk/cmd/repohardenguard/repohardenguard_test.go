@@ -46,6 +46,9 @@ type stubForge struct {
 	hardening map[string]hardeningFixture
 	files     map[string]fileFixture
 	seen      []string // kinds/paths read, in call order
+	// kind is the forge this stub stands in for — what forgeForFn reports as the resolution,
+	// and therefore which preflight document the guard asks for. "" reads as GitHub.
+	kind deskkit.ForgeKind
 }
 
 type hardeningFixture struct {
@@ -120,9 +123,13 @@ func runGuard(t *testing.T, w *stubForge, path, repo string, extra ...string) (i
 	t.Helper()
 	origForgeFor := forgeForFn
 	t.Cleanup(func() { forgeForFn = origForgeFor })
-	forgeForFn = func(r string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	kind := w.kind
+	if kind == "" {
+		kind = deskkit.ForgeGitHub
+	}
+	forgeForFn = func(r string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 		owner, name, _ := strings.Cut(r, "/")
-		return w, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+		return w, deskkit.ForgeRepo{Owner: owner, Name: name}, kind, nil
 	}
 	var out, errb bytes.Buffer
 	args := append([]string{"--repo", repo, "--checklist", path}, extra...)

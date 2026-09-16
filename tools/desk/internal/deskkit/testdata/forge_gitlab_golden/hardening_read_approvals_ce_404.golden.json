@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/approvals"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/approvals — not visible (HTTP 404): the object does not exist, or the token cannot see it — the approval-configuration route answers 404 on some self-managed Community Edition instances (enforcement of these settings is Premium): forge API GET /projects/medici-finance%2Fassay/approvals returned HTTP 404",
+  "not_found": true
+}

@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/push_rule"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/push_rule — not visible (HTTP 404): the object does not exist, or the token cannot see it — push rules are a Premium feature — on Community Edition the route does not exist; record the row as `not available — Premium`: forge API GET /projects/medici-finance%2Fassay/push_rule returned HTTP 404",
+  "not_found": true
+}
