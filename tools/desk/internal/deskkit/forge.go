@@ -258,10 +258,11 @@ type Issue struct {
 	State         string // open | closed
 	Author        Account
 	IsPullRequest bool
-	// Title is the issue's title. Consumer: cmd/issueboard's RETIRE-row title read, which
-	// resolves the title of a now-CLOSED issue no longer in the open list (best-effort — the
-	// caller falls back to a placeholder string on error). omitempty keeps a change that
-	// carries no title byte-identical in the forge golden corpus.
+	// Title is the issue's title. Consumer: cmd/issueboard's RETIRE-row state read, which
+	// positively reads the State (and this title) of an issue absent from the open list —
+	// RETIRE rests on that `closed` read, never on the absence alone (#1032); the title is
+	// the only best-effort part (a placeholder string stands in for an empty one). omitempty
+	// keeps a change that carries no title byte-identical in the forge golden corpus.
 	Title string `json:",omitempty"`
 	// URL is the issue's human-facing page. Consumer: cmd/deskfile's attach path, which reads
 	// the target issue (GetIssue) and prints/records its location — and refuses attaching to a

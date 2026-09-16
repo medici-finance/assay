@@ -212,21 +212,33 @@ func fetchOpenIssues(repo string) ([]ghIssue, error) {
 	return out, nil
 }
 
-// fetchIssueTitle resolves a single issue's title (used for RETIRE rows, where the
-// issue is no longer in the open list so its title isn't otherwise known). Best
-// effort: the caller falls back to a placeholder string on error rather than failing
-// the whole board — RETIRE is already fully determined without the title. It reads the
-// title through the typed GetIssue op (never the `gh` CLI); a closed issue reads fine.
-func fetchIssueTitle(repo string, num int) (string, error) {
+// fetchIssueState positively reads ONE issue's current state (and title) through the typed
+// GetIssue op — the read every RETIRE row rests on (#1032). It is NOT best effort: an issue
+// absent from the open listing is only "closed" once THIS read says `closed`. Before #1032
+// this was a title-only read whose error the caller swallowed, so absence from the listing
+// alone decided RETIRE — and a listing that stopped early (a slow/partial page, a rate
+// limit, a timeout) retired every live placeholder it omitted. A read that fails, or that
+// reports a state other than open/closed, is could-not-check for the whole board (this
+// tool's contract: never a partial board), naming the issue.
+func fetchIssueState(repo string, num int) (state, title string, err error) {
 	f, fr, err := forgeFor(repo)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	iss, gerr := f.GetIssue(fr, num)
 	if gerr != nil {
-		return "", gerr
+		return "", "", deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is absent from the open-issue listing but its state could not be read — "+
+				"refusing to classify it (RETIRE needs a positive `closed` read for that issue, never its absence "+
+				"from a listing)", repo, num), gerr)
 	}
-	return iss.Title, nil
+	switch iss.State {
+	case "open", "closed":
+		return iss.State, iss.Title, nil
+	}
+	return "", "", deskkit.Unverifiable(fmt.Sprintf(
+		"could-not-check: %s#%d reported state %q, neither open nor closed — refusing to classify it",
+		repo, num, iss.State), nil)
 }
 
 // fetchIssueBlessed evaluates the blessing for an issue whose AUTHOR is
@@ -718,8 +730,14 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 			rows = append(rows, row)
 		}
 
-		for key, ph := range byKey {
-			if ph.Repo != repo || seen[key] {
+		// Placeholders whose issue is ABSENT from the open listing. Absence is not evidence
+		// of closure (#1032): RETIRE rests on a POSITIVE per-issue `closed` read, and an
+		// absent issue that reads OPEN proves the listing was PARTIAL — the sweep is then
+		// could-not-check as a whole, because a listing that omitted a live issue has also
+		// silently omitted CREATE-PLACEHOLDER / ESCALATE work this board cannot see. Rows
+		// are walked in placeholder order so the refusal names the same issue every run.
+		for _, ph := range placeholders {
+			if ph.Repo != repo || seen[repo+"#"+strconv.Itoa(ph.Issue)] {
 				continue
 			}
 			// The --to inbox view is scoped to open `to:<role>` items; a closed-issue
@@ -727,9 +745,24 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 			if toFilter != "" {
 				continue
 			}
-			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true, placeholderDone: ph.Status == "done"})
-			title, terr := fetchIssueTitle(repo, ph.Issue)
-			if terr != nil || title == "" {
+			if ph.Status == "done" {
+				// Already retired: NONE whatever the issue's state — no read is spent on it,
+				// so a forge that cannot answer for it cannot fail the sweep.
+				rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: "(placeholder already retired)", Action: actNone})
+				continue
+			}
+			state, title, serr := fetchIssueState(repo, ph.Issue)
+			if serr != nil {
+				return nil, nil, serr
+			}
+			if state == "open" {
+				return nil, nil, deskkit.Unverifiable(fmt.Sprintf(
+					"could-not-check: the open-issue listing for %s is partial — %s#%d reads open but was absent "+
+						"from it; refusing to classify the sweep (a truncated listing would retire live placeholders "+
+						"and hide un-briefed work) — re-run once the forge answers in full", repo, repo, ph.Issue), nil)
+			}
+			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true})
+			if title == "" {
 				title = "(title unavailable — issue closed)"
 			}
 			rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: title, Action: action})
