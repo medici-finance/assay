@@ -17,17 +17,19 @@ import (
 // so every pre-existing behavioural assertion keeps asserting the same verdict it did against the
 // former fake-gh binary — the behaviour-preservation evidence the fixture header describes.
 
+// TestMain installs the roster fixture and hands the exit code through finishFixtureRoster
+// so the fixture HOME is removed and proven gone before os.Exit — an explicit call, never a
+// defer, which os.Exit would skip (#1195).
 func TestMain(m *testing.M) {
 	rosterCleanup, rerr := installFixtureRoster()
 	if rerr != nil {
 		panic("cannot install the test-fixture roster: " + rerr.Error())
 	}
-	defer rosterCleanup()
 	origForgeFor := forgeFor
 	forgeFor = fakeRosterForgeFor
 	code := m.Run()
 	forgeFor = origForgeFor
-	os.Exit(code)
+	os.Exit(finishFixtureRoster(rosterCleanup, code))
 }
 
 // ---- test helpers ----

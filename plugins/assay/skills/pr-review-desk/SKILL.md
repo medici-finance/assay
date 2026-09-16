@@ -383,7 +383,12 @@ as the planner and acts on its rows.
   Disagree — the target lacks scope the PR carried, the target is not what the record names, or
   the close would launder one identity's work under another — and it is
   `--dispute "<why>"`: the tool posts `SUPERSEDED-DISPUTED: <why>` and applies `needs-decision`,
-  after which every close is refused and the item is human:<name>'s. The reviewer's work here is
+  after which every close is refused and the item is human:<name>'s. A dispute does NOT clear the
+  `superseded?` marker: it is the worker's own label, so the worker clears it with
+  `desklabel rm <repo> <N> 'superseded?'` and the reviewer token is refused (exit 5) — `desklabel`
+  is the one-label verb, role-keyed (any role sets or clears `question` / `help wanted` /
+  `needs-decision`; a role touches only the markers it owns), never a raw label write. The
+  reviewer's work here is
   the comparison, not the verb: read both PRs' file lists and the brief's DoD before confirming — a
   confirm with no comparison is the rubber stamp the two-role lane cannot detect. Never close a
   proposal by hand, and never propose one (a reviewer originating a supersession is the single

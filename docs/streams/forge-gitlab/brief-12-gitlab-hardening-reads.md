@@ -162,6 +162,21 @@ row on CE; secret push protection is Ultimate and is `not available — Ultimate
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Implementer offline self-run — 2026-09-15 (worker-desk implementer; NOT verification)
+
+Recorded so the verifier starts warm; the non-implementer run above this line is what
+advances the row. Offline (`KUBECONFIG=/dev/null`), no live GitLab or GitHub call; rows that
+need a live project are left for the verifier.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./...` + targeted package tests | exit 0 | build exit 0; `go test ./internal/deskkit/` restricted by `-run` to the `TestForgeGitlab`, `TestForgeGithubGolden`, `TestForgeNoPassthrough`, `TestNoForgeCLIShellout` and `TestHardening` families: ok; `go test ./cmd/repohardenguard/`: ok (26 tests, 1 skip). The whole-module `go test ./...` is CI's own run (check:ci) | 2026-09-15 | implementer (self-run) |
+| 2 | golden + coverage + no-passthrough | PASS; `push_rules_premium_gated` records a 403 could-not-check | exit 0, PASS ×3; golden `push_rules_premium_gated`: one GET `/api/v4/projects/…/push_rule`, `result: null`, `err: "could-not-check: … (HTTP 403) … record the row as \`not available — Premium\` …"`, `not_found: false`; `push_rules_ce_not_found` is the 404 twin with `not_found: true` | 2026-09-15 | implementer (self-run) |
+| 3 | `TestGitLabNotAvailableNoRequest` + `TestGitLabTierGateCouldNotCheck` | PASS; zero reads on a not-available row; tier-403 row could-not-check | exit 0, PASS; the not-available run's call log carries no `read push-rules` and the stub world holds no push-rules document at all (a read would have failed loudly); 403, 404 and the Premium `null` document each report `could-not-check`, exit 6 | 2026-09-15 | implementer (self-run) |
+| 4 | live `curl … /protected_branches` under the auditor PAT | `200` | left to the verifier: needs a live project and the provisioned auditor PAT; the adopter doc states Maintainer as the minimum role and says in the same breath that it is stated, not measured | — | — |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | ≥ 1 | `2` (the two push-rules rows of the CE template; the kind table and prose spell the `not available — <tier>` form) | 2026-09-15 | implementer (self-run) |
+| 6 | `statusgen --root . --consumers` | exit 0 | exit 0; `statusgen --lint` LINT: PASS | 2026-09-15 | implementer (self-run) |
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer answers: with the checklist's `not available` short-circuit removed, does the backend's

@@ -148,11 +148,15 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
-- **Tier: the LOCAL SESSION MODEL. Never a stronger external/paid tier** (human:<name>, 2026-07-15 —
-  overrides any `opus+` default in an older copy). A risk-clear brief (gate `model`, all risk answers
-  `no`) is the normal path and most of the queue. A **risk-flagged** brief (`gate: human` or any `yes`)
+- **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
+  stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
+  copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
+  queue, and the local tier is its only stamp. A **risk-flagged** brief (`gate: human` or any `yes`)
   may have its Verify table RUN for the Evidence but **cannot be signed off by a model** — route it to
-  the human gate. Read each brief's own frontmatter; never default the queue to one treatment.
+  the human gate — and a `gate: human` brief carries TWO stamps before the human closes it: the drain's
+  local-tier PASS (first stamp), then ONE floor-tier re-verify (second stamp), the single sanctioned
+  pass above the local tier, one per human-gated brief — see "`gate: human` — the two stamps" below.
+  Read each brief's own frontmatter; never default the queue to one treatment.
 - **The prompt is a KIT, not prose written here.** `deskdispatch --kit verifier` emits the common-clauses
   kit (isolation floor, no-evasion, offline envelope, three-state instruments, escalate-durably) plus the
   verifier kit — Evidence format, run-every-row, and the **risk-bearing value ENUMERATE → rank → derive**
@@ -320,6 +324,43 @@ wave of Evidence PRs to the end of the pass is the same defect as buffering push
 not on a branch within one landing cycle is phantom verification debt. One brief = one branch = one
 draft PR, as everywhere else in the fleet.
 
+## `gate: human` — the two stamps: local-tier drain, floor-tier re-verify, THEN the sign-off card
+
+A human `done` close on a `gate: human` brief needs TWO stamps, in this order (operator ruling, the
+two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp, CI flips `done`.
+
+1. **First stamp — the routine drain, at the local tier.** The dispatched non-implementer verifier
+   runs the full Verify table at the local session model and lands the Evidence (dated,
+   runner-attributed, one row per Verify item) through the sanctioned landing above; its PASS flips
+   `implemented → verified`. The Verified cell and every Evidence row name the local-tier runner that
+   actually ran the rows — never a runner that did not. (An `irreversible: yes` brief stops short of
+   the flip and stays at `implemented` with Evidence, next section; its first stamp is the Evidence.)
+   The `--lint` verifier floor (methodology/19) reads risk-flagged rows at `verified` as well as at
+   `done`, so a below-floor stamp landed at `verified` is a lint PROBLEM naming this same remedy: the
+   row is not wrong, it is WAITING on the second stamp, and the second stamp is what clears it.
+2. **Second stamp — ONE floor-tier re-verify, BEFORE the card is filed.** A verify-gate card whose
+   Verified cell names a runner below the verifier floor is a card the human will close and
+   `verify-gate-close.yml` will REFUSE: `statusgen --close-verify` reads the cell the `done` row would
+   carry — the README cell, or on the implemented→done path the cell it stamps from the brief file's
+   Evidence — plus the brief's Evidence rows, before it writes; the workflow relays the refusal (runner,
+   floor, remedy) onto the card and REOPENS it, and nothing lands. So do not hand the human that card
+   yet: dispatch one more non-implementer verifier at a runner that clears the floor (a strong-tier
+   model, or a confirmed human), re-run the table, append its rows to the Evidence under their own
+   dated table, and re-stamp the Verified cell `YYYY-MM-DD <runner>` with that pass LEADING the cell
+   (the earlier local-tier stamp may trail it after `;`, the same `; prior` shape the Reviewed cell
+   already uses). The floor reads the FIRST runner in the cell and each row's LATEST runner in the
+   Evidence, so a re-stamped cell with no re-run rows behind it is refused too. Land it exactly as the
+   first stamp was landed. This is the one sanctioned pass above the local tier — one per
+   human-gated brief, never a routine tier for the drain.
+3. **Only then the card.** `statusgen --verify-issues` files the verify-gate issue (the Verify table +
+   Evidence lifted into the body as the review packet) and the allowlisted human closing it IS the
+   review: `verify-gate-close.yml` writes the `human:<name>` Reviewed stamp and flips `done` on main.
+   Where the project's `verify-gate-open` emitter files cards on every push, the card may exist before
+   the second stamp has landed — it is not ready for the human until the stamp is on the cell. A card
+   the close workflow refused and reopened is THIS desk's work item: land the second stamp, then the
+   human closes it again. Never hand-edit the cell to a runner that did not run the rows — the
+   Evidence-actor and runner-agreement checks read that as a forgery, not a fix.
+
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 
 The broad gate blocks any `irreversible: yes` brief from `verified`/`done` unless Reviewed names a
@@ -340,9 +381,19 @@ fail `--lint` and redden main CI directly. So the model path STOPS short of the 
    the human is being asked to settle** (burying it is the F-28 miss) — `statusgen --verify-issues` files
    a verify-gate issue lifting the Verify table + Evidence into its body as the review packet, and **the
    allowlisted human closing that issue IS the review**: `verify-gate-close.yml` writes the `human:<name>`
-   stamp to main and advances `implemented → verified → done` in one step. Surface the open wait in the
+   stamp to main and advances `implemented → verified → done` in one step — stamping the Verified cell
+   FROM the Evidence's recorded runner, which is why the second stamp (the floor-tier re-verify rows,
+   previous section) must be in the Evidence before the human closes: the close refuses a below-floor
+   runner rather than landing it. Surface the open wait in the
    report. Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
    documented wait state, never a checkpoint PR.
+   **Re-firing a cycle.** When a CLOSED verify-gate card must fire its close event again (the
+   Evidence row it lifted was corrected; the flip did not land), this desk runs
+   `deskclose verify-gate-refire -R <repo> <N> --reason "<why>"` under its own verifier token:
+   the tool reopens, comments (the reason, and that this is NOT the sign-off), and re-closes, and
+   refuses any other role, any issue without `verify-gate`, and any pull request. It does not and
+   cannot complete the human sign-off — `verify-gate-close.yml` reopens a bot's close
+   unconditionally — so the wait it re-arms is still the human's.
 4. `gate: human` is a hint; the authoritative trigger is **`irreversible: yes` alone** (human:<name>'s
    broad-scope call) — `regulatory` / `customer` do not change it.
 

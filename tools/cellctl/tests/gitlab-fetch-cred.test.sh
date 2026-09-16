@@ -147,7 +147,9 @@ echo "[check: gitlab fetch-transport row — token unreadable]"
 mv "$T/gitlab-tokens/gitlab-deskd.token" "$T/gitlab-deskd.token.bak"
 out="$("$CELLCTL" check gl-cell 2>&1)" && rc=0 || rc=$?
 assert "check fails (exit 1) when the token file is gone" '[[ $rc -eq 1 ]]'
-assert "the existing readable-token row is the MISS named" 'grep -q "MISS  deskd GitLab read token" <<<"$out"'
+# The row is deliberately NOT named "deskd …": the token is also the boot-fetch credential, and
+# the old name invited gating it on DESKD (which would break every DESKD=0 gitlab cell's fetch).
+assert "the existing readable-token row is the MISS named" 'grep -q "MISS  GitLab cell token" <<<"$out"'
 mv "$T/gitlab-deskd.token.bak" "$T/gitlab-tokens/gitlab-deskd.token"
 
 echo "[check: gitlab fetch-transport row — remote unreachable]"

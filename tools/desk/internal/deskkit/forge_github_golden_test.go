@@ -650,6 +650,15 @@ func TestForgeGithubGolden(t *testing.T) {
 			run:   func(f *GitHubForge) (any, error) { return nil, f.CloseIssue(forgeTestRepo, 33, "completed") },
 		},
 		{
+			// CloseIssue's inverse (forge-neutral brief 16, consumed by deskclose's
+			// verify-gate-refire lane). The golden pins ONE request, `state: open` and NO
+			// state_reason — a reason is a close-time field, and sending one on a reopen would be
+			// a claim the forge silently drops.
+			name:  "reopen_issue",
+			setup: func(s *goldenServer) { s.issue = map[string]any{"number": 33, "state": "open"} },
+			run:   func(f *GitHubForge) (any, error) { return nil, f.ReopenIssue(forgeTestRepo, 33) },
+		},
+		{
 			// The typed replacement for fanoutloop's `gh api -X DELETE repos/…/git/refs/…`
 			// passthrough (the closed-forge-surface brief). The golden pins that the caller supplies a REF,
 			// and that the backend — not the caller — builds the one path it may address.
@@ -871,6 +880,17 @@ func TestForgeGithubGolden(t *testing.T) {
 			setup: func(s *goldenServer) {},
 			run: func(f *GitHubForge) (any, error) {
 				return f.RepoHardeningRead(forgeTestRepo, HardeningReadKind("not-a-real-kind"))
+			},
+		},
+		{
+			// A GITLAB kind is refused BY NAME on GitHub with ZERO requests — the symmetric twin
+			// of the GitLab backend's `hardening_read_github_kind_refused`. The vocabulary is one
+			// closed set partitioned per forge; the GitHub backend never answers `project` with
+			// its own repo document.
+			name:  "hardening_read_gitlab_kind_refused",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RepoHardeningRead(forgeTestRepo, HardeningReadProject)
 			},
 		},
 		{

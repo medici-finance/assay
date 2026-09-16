@@ -11,7 +11,9 @@
 // The single property that makes that safe is that every closure traces back to a
 // human-authored artifact that deskclose FETCHED and VERIFIED — not to a flag the
 // caller set, not to a login the caller claims, and not to a file the caller wrote.
-// Two gates, both fail-closed, both applied before any write:
+// Two gates, both fail-closed, both applied before any write — and, beside them (never
+// inside them), two IDENTITY+STRUCTURE lanes that close nothing belonging to another
+// party and so cite no fetched artifact at all (lanes.go: self-withdraw, verify-gate-refire).
 //
 //  1. THE RULING GATE (every mode). R-1 in docs/streams/issue-flow/rulings.md must
 //     carry a Sign-off URL, and that URL must resolve to a comment authored by the
@@ -56,6 +58,21 @@ USAGE:
   deskclose review-request -R <owner/repo> <item> [--kind K]
   deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>]
                                                                  [--max-wait <dur>]
+      manifest is the documented human-ruled BATCH lane — many items, one recorded
+      ruling, one digest-bound authorization: the human's own ruling comment IS the
+      manifest's authorized-by, and its digest binds it to exactly the rows they saw.
+  deskclose self-withdraw  -R <owner/repo> <item> --because {superseded|abandoned}
+                                                  [--by <ref>] [--kind K]
+      the authoring App closes its OWN DRAFT — pinned by login AND roster bot id;
+      no ruling, no disposition record; --because superseded requires --by (recorded,
+      not verified), --because abandoned refuses it. Not a draft → refused; another
+      author → refused; needs-decision → refused.
+  deskclose verify-gate-refire -R <owner/repo> <item> --reason <text> [--kind K]
+      the VERIFIER session reopens, comments on, and re-closes a CLOSED issue carrying
+      the verify-gate label, so its close event fires again. Any other role → refused
+      by name; no verify-gate label → refused; a change → refused; already open →
+      no-op. NOT the human sign-off: a bot's close of a verify-gate issue is reopened
+      by the repository's verify-gate close workflow, whatever this lane decides.
   deskclose --version
 
 Every mode accepts --dry-run (validate + read the remote, write nothing) and
@@ -145,6 +162,10 @@ func dispatch(args []string, out io.Writer) error {
 		err = cmdReviewRequest(rest, out)
 	case modeManifest:
 		err = cmdManifest(rest, out)
+	case modeSelfWithdraw:
+		err = cmdSelfWithdraw(rest, out)
+	case modeVerifyGateRefire:
+		err = cmdVerifyGateRefire(rest, out)
 	default:
 		err = deskkit.Refused(fmt.Sprintf(
 			"refused: unknown mode %q — the mode set is CLOSED: %s. "+

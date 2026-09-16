@@ -115,13 +115,20 @@ var blockingIssueLabels = map[string]bool{
 // deterministic: the same input yields byte-identical output (the fixtures assert
 // this), and briefs come back in the input order.
 func DeriveLifecycle(in LifecycleInput) []BriefCell {
+	// Keyed on canonicalBriefKey (reconcilebackfill.go), not the raw BriefRef/ID:
+	// a brief-v2 `brief:` id is the hierarchical <cell>:<repo>:<stream>:<NN> form,
+	// but a PR's `Brief:` trailer is always the short <stream>/<NN> form
+	// (deskpr/trailer.go) — a bare-string join between the two sides of this edge
+	// can never match, which left every PR-derived cell stuck at `todo` on a
+	// brief-v2 tree regardless of how many trailer-carrying PRs merged.
 	prsByBrief := map[string][]PRRecord{}
 	for _, pr := range in.PRs {
-		prsByBrief[pr.BriefRef] = append(prsByBrief[pr.BriefRef], pr)
+		key := canonicalBriefKey(pr.BriefRef)
+		prsByBrief[key] = append(prsByBrief[key], pr)
 	}
 	out := make([]BriefCell, 0, len(in.Briefs))
 	for _, b := range in.Briefs {
-		out = append(out, deriveOne(b, prsByBrief[b.ID], in))
+		out = append(out, deriveOne(b, prsByBrief[canonicalBriefKey(b.ID)], in))
 	}
 	return out
 }

@@ -299,9 +299,18 @@ could-not-check, never "no repos".
   the target, and STOPS — it cannot close, cannot confirm and cannot dispute, whatever flags it is
   handed, because the role is read from the token's roster binding, not from the caller. The close
   is pr-review-desk's confirm (once the target has merged); a `needs-decision` on the PR means the
-  reviewer disputed it and the item is human:<name>'s. A worker that closes its own PR as superseded
+  reviewer disputed it and the item is human:<name>'s. A dispute leaves the `superseded?` marker in
+  place; it is the WORKER's label, and `desklabel rm <repo> <N> 'superseded?'` under the worker
+  token clears it (any other role is refused, exit 5) — never a raw label write. A worker that closes its own PR as superseded
   by hand has skipped the only independent check on "the other PR carries my scope" — the class of
   error the lane exists to catch. A `superseded?` PR is parked, not orphaned: never re-dispatch it.
+- **A worker's OWN unreviewed draft is the one thing it may withdraw itself**: `deskclose
+  self-withdraw -R <repo> <N> --because abandoned` (or `--because superseded --by <target>`, the
+  target recorded, not verified). The tool closes only a DRAFT whose author is the acting App —
+  pinned by login AND roster bot id — and refuses a PR out for review, another author's item, or
+  anything carrying `needs-decision`. It cites no ruling and needs no disposition record: it is the
+  authority a human already has over their own pull request, nothing wider. A PR that has left
+  draft is the reviewers' to retire through the ruled lanes above.
 - A red default branch is work: where the fix is mechanical this desk dispatches it like any other
   item; where it is not, it is filed (§Output contract) and named in the tick's line.
 - The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick.
@@ -415,7 +424,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
-  escalate-durably, one-workpad-per-PR) ahead of `references/worker-prompt.md` (security-gate refusal,
+  escalate-durably, one-workpad-per-PR — the workpad body file is written fresh with `>`, never
+  appended with `>>`, and the old workpad is never re-read into the new body) ahead of
+  `references/worker-prompt.md` (security-gate refusal,
   per-invocation `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
   fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —

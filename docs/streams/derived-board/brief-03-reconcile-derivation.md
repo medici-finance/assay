@@ -163,6 +163,47 @@ Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFI
 `RISK-VALUE: DERIVED` — the fail-closed three-state guard `if status != http.StatusOK { return nil, false, httpReason(status, body) }` @ `statusgen/ghfetch.go:111` (paired at `:157`): any non-200 yields `lookedAt=false` + the HTTP status, never an empty "nothing found" — derived from the brief's three-state invariant, proven by `TestGHFetchAuthFailure` (the machinery behind row 3). Secondary hard-bound literal `const maxPages = 20` @ `statusgen/ghfetch.go:104` (page-loop cap).
 
 **VERIFY: BLOCKED (offline→online hand-off)** — all six offline rows (1,2,5,6,7,8) checked-clean by a non-implementer; rows 3 and 4 are live-forge could-not-check and stay for the online/live-forge verify lane (exact commands recorded above). **Status held at `implemented`** — a could-not-check is not a pass; the online lane owns rows 3/4 and the completion flip.
+### Non-implementer verifier run — VERIFY: FAIL (row 4 — reconcile engine defect, PR-witness matching broken by the brief-v2 id flag-day) — 2026-09-15 sonnet-5-verifier (verify-desk dispatch), merged main `0bf1166`
+
+Runner ≠ implementer. Isolated worktree off `origin/main` (HEAD == `origin/main` == `0bf1166`).
+statusgen built from this worktree's source, not PATH. Envelope: `KUBECONFIG=/dev/null`; rows
+3+4 run ONLINE read-only (verifier read token) — the sanctioned online lane for read-only
+forge reads used by the two prior verifier runs on this brief; no mutating/cluster call.
+`gate: model`, all risk `no`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | `go test . -run 'Lifecycle'\|'BriefV2'\|'GHFetch' -count=1 -v \| grep -c '^--- PASS'` (3 calls) | ≥14 | exit 0 — Lifecycle=16, BriefV2=12, GHFetch=5, total=33 | 2026-09-15 | sonnet-5-verifier |
+| 2 | `reconcile --root . --offline --json` → all pr-source cells `unknown` | exit 0, `ok` | exit 0, `ok` — no offline PR-derived cell is `todo` | 2026-09-15 | sonnet-5-verifier |
+| 3 | `GITHUB_TOKEN=invalid reconcile --repo medici-finance/assay --json` → `lookedAt==False`, reason starts `HTTP` | exit 0, `ok` | exit 0, `ok` — `lookedAt=false`, reason `HTTP 401: Bad credentials` | 2026-09-15 | sonnet-5-verifier |
+| 4 | `reconcile --repo medici-finance/assay --json` (valid read token) → `derived-board/02`'s cell in (implemented,verified,done), witness startswith `PR #` | rc=0 | **FAIL — rc=1, `IndexError: list index out of range`.** Token accepted, `lookedAt=true`, 176 briefs read. Root cause: on `bb2079bd` (`flag day: migrate every brief brief-v1 -> brief-v2 (derived-board/07)`, #736, 2026-09-10) every brief's `brief:` id was rewritten hierarchical (`assay:assay:derived-board:02`), but `lifecycle.go`'s `prsByBrief[pr.BriefRef]` (`lifecycle.go:120`) keys by the PR body's literal `Brief:` trailer text verbatim (`ghfetch.go:238-256`, `singleBriefTrailer` — no normalization), and every merged PR in this repo's history (including this brief's OWN deliverable, PR #199, body: `Brief: derived-board/03`, confirmed via a live read) still carries the pre-flag-day flat trailer. Exact-string match against the new hierarchical id therefore never succeeds: **all 176/176 briefs in the current tree derive `cell=todo`, `witness=""`, reason "PR search ran; no open or merged PR carries this brief's trailer"** — including briefs independently confirmed `done`/merged in the README (`derived-board/02`, witness PR #80, merged, body confirmed to carry `Brief: derived-board/02`) and this brief's own PR #199. This is not the prior FAIL's stale-anchor class (2026-09-06, superseded) — the engine itself now returns a false `todo` for the entire PR-witnessed corpus, the exact failure mode ("a board that lies with more authority than before") `exec-tier-why` names. Bug filed: see below. | 2026-09-15 | sonnet-5-verifier |
+| 5 | `printf … > testdata/tmp-v2.md && --lint --root testdata/v2-smoke` | rc=0, contains `gates: 1 edge (reserved, not gating)` | exit 0 — `LINT: PASS`; output contains `gates: 1 edge (reserved, not gating)` | 2026-09-15 | sonnet-5-verifier |
+| 6 | `go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥3 | exit 0 — 12 | 2026-09-15 | sonnet-5-verifier |
+| 7 | `grep -c 'reconcile' statusgen/README.md` | ≥1 | exit 0 — 5 | 2026-09-15 | sonnet-5-verifier |
+| 8 | `go vet ./... && ! grep -rn 'graphql' … ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 | exit 0 — `go vet` clean; no `graphql` match in the 4 brief-scoped files | 2026-09-15 | sonnet-5-verifier |
+
+`RISK-VALUE: DERIVED — maxPages = 20 @ statusgen/ghfetch.go:106 (paired perPage = 100 @ :105)` —
+hard cap against a malformed Link-header page loop; 20×100 = 2000 PRs bounds
+`medici-finance/assay`'s real PR count with headroom (largest observed PR # in this run: 199),
+so no witness is silently truncated; wrong value truncates but is reversible by edit+redeploy.
+`RISK-VALUE: DERIVED — fail-closed guard `status != http.StatusOK` @ statusgen/ghfetch.go:113`
+(paired `:173`) — the literal is the HTTP 200 protocol constant, not a tunable; re-proven live
+by row 3 of this run (`GITHUB_TOKEN=invalid` → clean `lookedAt=false`, `HTTP 401: Bad
+credentials`). `version = 1` legacy default @ `statusgen/reconcile.go:207` is reversible and
+ranks last — unrelated to the row-4 defect, which is a match-logic bug, not a wrong literal.
+
+**VERIFY: FAIL — row 4, a live engine defect, not a stale test anchor.** Rows 1,2,3,5,6,7,8
+PASS clean. Row 4 fails because `reconcile`'s PR→brief witness matching does not resolve
+legacy flat-form `Brief:` trailers (every merged PR in this repo's history, written before
+the `derived-board/07` flag-day migration) against the post-migration hierarchical brief
+`id`s — an exact-string match that can now never succeed, so **100% of PR-derived cells
+(176/176) read `todo`**, masking every real completion the tree has, including this brief's
+own deliverable (PR #199). This is worse than a cosmetic regression: it is precisely the
+"board that lies with more authority than before" failure this brief's own `exec-tier-why`
+flags as the highest-severity outcome for a derivation-engine bug. Status stays `implemented`
+— no flip. Bug filed on `medici-finance/assay` (the repo the defect lives in) per the
+verify-desk escalation contract; see the filed issue for the reproduction and root-cause
+detail above.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

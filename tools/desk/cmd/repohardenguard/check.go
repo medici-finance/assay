@@ -121,11 +121,11 @@ func (c Checker) checkKindRow(r Row, kindStr string) Result {
 		}
 		entry, found := findRuleset(arr, name)
 		if !found {
-			// The list read succeeded and the ruleset is not in it. That is a real absence at
-			// any permission level — ruleset NAMES are visible to anyone who can read the repo,
-			// unlike their bypass lists.
+			// The list read succeeded and the named entry is not in it. That is a real absence
+			// at any permission level — ruleset NAMES (GitHub) and protected branch/tag names
+			// (GitLab) are visible to anyone who can read the list, unlike their bypass lists.
 			return Result{Row: r, State: StateWrong,
-				Detail: fmt.Sprintf("read %s: no ruleset named %q (want %s)", kindStr, name, r.Required)}
+				Detail: fmt.Sprintf("read %s: no entry named %q in the list (want %s)", kindStr, name, r.Required)}
 		}
 		doc = entry
 		field = rest
@@ -138,8 +138,9 @@ func (c Checker) checkKindRow(r Row, kindStr string) Result {
 	return compare(r, field, v)
 }
 
-// findRuleset locates the entry in arr (op 40's `rulesets` array of detail documents) whose
-// "name" field equals name.
+// findRuleset locates the entry in arr whose "name" field equals name — op 40's `rulesets`
+// array of detail documents on GitHub, and the `protected-branches` / `protected-tags`
+// arrays on GitLab (a protected branch or tag is addressed by its `name` the same way).
 func findRuleset(arr []any, name string) (any, bool) {
 	for _, el := range arr {
 		m, ok := el.(map[string]any)
@@ -201,6 +202,13 @@ func rulesetSelector(field string) (name, rest string, ok bool) {
 
 // resolve walks a dotted path. A nil at any step is an absence, not a value:
 // `security_and_analysis: null` must never satisfy a row about the field beneath it.
+//
+// A segment that is a non-negative integer indexes into a LIST at that step
+// (`push_access_levels.0.access_level` — the GitLab protected-branch entries are lists of
+// access-level objects, and on Community Edition each carries exactly one, role-level entry).
+// An index past the end is an absence, exactly like a missing key; a numeric segment against
+// an object is an ordinary key lookup, so a document that happens to use "0" as a key still
+// resolves.
 func resolve(doc any, path string) (any, bool) {
 	cur := doc
 	if path == "" || path == "." {
@@ -210,12 +218,20 @@ func resolve(doc any, path string) (any, bool) {
 		return cur, true
 	}
 	for _, seg := range strings.Split(path, ".") {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		cur, ok = m[seg]
-		if !ok || cur == nil {
+		switch t := cur.(type) {
+		case map[string]any:
+			var ok bool
+			cur, ok = t[seg]
+			if !ok || cur == nil {
+				return nil, false
+			}
+		case []any:
+			i, err := strconv.Atoi(seg)
+			if err != nil || i < 0 || i >= len(t) || t[i] == nil {
+				return nil, false
+			}
+			cur = t[i]
+		default:
 			return nil, false
 		}
 	}
