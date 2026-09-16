@@ -174,6 +174,9 @@ func withEnv(t *testing.T) *[][]string {
 		"FAKEGH_SEARCH_HITS", "FAKEGH_SEARCH_FAIL", "FAKEGH_SEARCH_EMPTY",
 		"FAKEGH_ISSUE_STATE", "FAKEGH_ISSUE_URL", "FAKEGH_CREATE_FAIL",
 		"FAKEGH_STDERR_PAYLOAD", "FAKEGH_LABELS", "FAKEGH_LABEL_FAIL", "FAKEGH_LABEL_EMPTY",
+		// The new-issue rate/window env knobs (assay#1204): an ambient value would otherwise
+		// change the cap under a test that means to exercise the shipped default.
+		"ASSAY_DESKFILE_NEW_RATE", "ASSAY_DESKFILE_NEW_WINDOW",
 	} {
 		t.Setenv(k, "")
 	}

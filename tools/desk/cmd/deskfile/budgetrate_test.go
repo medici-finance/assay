@@ -99,6 +99,54 @@ func TestNewRateEnvRaisesCap(t *testing.T) {
 	}
 }
 
+// (F1, security lane) an env-RAISED rate must leave a trace on the audit line: without it an
+// entry filed under a raised rate is byte-identical to one filed under the shipped default, so
+// the env path would launder over-filing as ordinary activity and defeat the anti-evasion
+// property. RED on the code before the F1 fix (the env values leave no mark on Detail).
+func TestNewRateEnvRaisedIsTracedInAudit(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("ASSAY_DESKFILE_NEW_RATE", "100") // differs from the shipped default of 3
+	body := bodyFileWith(t, "a filing under a raised env rate")
+
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "filing that must record its raised rate", "--body-file", body})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("new under a raised env rate rc = %d, want 0; out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected an `gh issue create`; gh calls: %v", ghCalls(*calls))
+	}
+	e := lastAudit(t)
+	if !strings.Contains(e.Detail, "rate-config: 100 per") {
+		t.Fatalf("audit detail must record the effective raised rate (rate-config: 100 per ... (env)); got %q", e.Detail)
+	}
+	if !strings.Contains(e.Detail, "(env)") {
+		t.Fatalf("audit detail must mark the raised rate as env-sourced; got %q", e.Detail)
+	}
+}
+
+// (F1) the shipped default must NOT tack a rate-config trace onto every line — the marker's
+// signal is that the pace was RAISED from the default, so a default-config filing carries none.
+// Green before and after (a guard on the marker's signal, not fail-first).
+func TestNewRateDefaultLeavesNoRateConfigTrace(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	body := bodyFileWith(t, "a filing under the shipped default rate")
+
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "default-rate filing carries no rate-config", "--body-file", body})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("new under the default rate rc = %d, want 0; out=%s", rc, out)
+	}
+	if !anyCall(ghCalls(*calls), "issue", "create") {
+		t.Fatalf("expected an `gh issue create`; gh calls: %v", ghCalls(*calls))
+	}
+	if e := lastAudit(t); strings.Contains(e.Detail, "rate-config:") {
+		t.Fatalf("a default-config filing must carry no rate-config trace; got %q", e.Detail)
+	}
+}
+
 // (a) unset → shipped fallback: with no env override the cap is the shipped default (3), so
 // the 4th filing is refused. Green before and after — it guards that the fallback is the
 // shipped default, not "no cap".

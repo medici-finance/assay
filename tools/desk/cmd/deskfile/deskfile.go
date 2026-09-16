@@ -675,14 +675,27 @@ func cmdNew(args []string) (err error) {
 	// override self-describing in the detail too. chargedNewEntry keys on createSentMarker
 	// being the PREFIX of the FINAL detail (added by log()), so these lead the string but not
 	// the whole line — the override still CHARGES the rate, it does not un-charge it.
+	//
+	// The caller-controlled strings that land in Detail (the --reason and the SessionTag) are
+	// StripControl'd the same way the URL and Title are: they must not carry control bytes that
+	// could corrupt or forge the audit line they are appended to.
 	var parts []string
 	if ac.forceNewReason != "" {
-		parts = append(parts, "force-new: "+ac.forceNewReason)
+		parts = append(parts, "force-new: "+deskkit.StripControl(ac.forceNewReason))
 	}
 	if ac.forceFileReason != "" {
-		parts = append(parts, "force-file (rate override) by "+deskkit.SessionTag()+": "+ac.forceFileReason)
+		parts = append(parts, "force-file (rate override) by "+deskkit.StripControl(deskkit.SessionTag())+": "+deskkit.StripControl(ac.forceFileReason))
 	}
 	parts = append(parts, "created "+url)
+	// When the rate/window were RAISED (or otherwise changed) from the shipped defaults by the
+	// env knobs, the effective values are APPENDED to the audit Detail. Without this an entry
+	// filed under ASSAY_DESKFILE_NEW_RATE=100 is byte-identical to one filed under the shipped 3,
+	// so the env path would launder over-filing as ordinary activity and defeat the anti-evasion
+	// property that IS the control. Appended (never prepended): chargedNewEntry keys on
+	// createSentMarker being the PREFIX of Detail, so nothing may go in front of it.
+	if rate != defaultNewRate || window != defaultNewWindow {
+		parts = append(parts, fmt.Sprintf("rate-config: %d per %s (env)", rate, window))
+	}
 	ac.detail = strings.Join(parts, " | ")
 	fmt.Println(url)
 	return nil
