@@ -73,6 +73,18 @@ USAGE:
       by name; no verify-gate label → refused; a change → refused; already open →
       no-op. NOT the human sign-off: a bot's close of a verify-gate issue is reopened
       by the repository's verify-gate close workflow, whatever this lane decides.
+  deskclose triage         -R <owner/repo> <item> --disposition {not-planned|human-decided}
+                                                  [--tracker <ref>] [--kind K]
+      the intake front door's "close, no fix PR" exit for an ISSUE — the plain
+      rejected/watching (not-planned) skip, and the recorded-human-decision close.
+      --disposition not-planned closes on a triage disposition ALREADY recorded on the
+      issue (the ` + "`" + triageDispositionMarker + "`" + ` marker comment intake posts) OR a --tracker naming
+      where any residual work lives; neither present → refused. --disposition
+      human-decided closes on the SAME fetched-and-verified R-1 sign-off every ruled
+      lane uses, and requires --tracker naming the work that continues — a flag can
+      never manufacture that authority. A needs-decision item (still on the human's
+      queue) is refused in both dispositions; not-planned also refuses a human-decided
+      item; a pull-request target is refused; already-closed is a no-op.
   deskclose --version
 
 Every mode accepts --dry-run (validate + read the remote, write nothing) and
@@ -166,6 +178,8 @@ func dispatch(args []string, out io.Writer) error {
 		err = cmdSelfWithdraw(rest, out)
 	case modeVerifyGateRefire:
 		err = cmdVerifyGateRefire(rest, out)
+	case modeTriage:
+		err = cmdTriage(rest, out)
 	default:
 		err = deskkit.Refused(fmt.Sprintf(
 			"refused: unknown mode %q — the mode set is CLOSED: %s. "+

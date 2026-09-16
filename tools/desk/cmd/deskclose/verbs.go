@@ -23,7 +23,7 @@ const (
 
 func modes() []string {
 	return []string{modeDuplicate, modeSuperseded, modeReviewRequest, modeManifest,
-		modeSelfWithdraw, modeVerifyGateRefire}
+		modeSelfWithdraw, modeVerifyGateRefire, modeTriage}
 }
 
 func modeList() string { return strings.Join(modes(), " | ") }
@@ -47,6 +47,7 @@ var valueFlags = map[string]bool{
 	"-R": true, "--of": true, "--by": true, "--file": true, "--rulings": true,
 	"--resume-from": true, "--max-wait": true, "--mined": true, "--dispute": true,
 	"--kind": true, "--by-kind": true, "--of-kind": true, "--because": true, "--reason": true,
+	"--disposition": true, "--tracker": true,
 }
 
 // numTokenRe recognises the positional item number in its accepted spellings: a bare number,
