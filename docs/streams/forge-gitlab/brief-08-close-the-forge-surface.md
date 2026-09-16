@@ -168,12 +168,14 @@ CLOSED, not reproduced; see "Divergence from the 2026-09-10 run" below.
 
 **Divergence from the 2026-09-10 run — the row-3 gap in the known finding appears closed, not
 re-baselined.** The prior FAIL (Evidence entry above, filed as a known open verifier finding —
-see the coordinator's dispatch note) cited 3 real `gh` invocations at `repohardenguard/check.go:46`
-and `deskroster/roster.go:229,246`. On this merged main: `repohardenguard/check.go` now carries a
+see the coordinator's dispatch note) cited 3 real `gh` invocations at
+`tools/desk/cmd/repohardenguard/check.go:46`
+and `tools/desk/cmd/deskroster/roster.go:229,246`. On this merged main:
+`tools/desk/cmd/repohardenguard/check.go` now carries a
 header comment reading "The forge-gitlab guard-read-custody brief moved the fetcher from a shelled
-`gh api <endpoint>` onto the [Forge seam]"; `deskroster/roster.go`'s `ghViewPR`/`ghListOpenPRs` are
+`gh api <endpoint>` onto the [Forge seam]"; `tools/desk/cmd/deskroster/roster.go`'s `ghViewPR`/`ghListOpenPRs` are
 now doc-commented as reading "via the Forge seam" with no `exec.Command` call in either function.
-`internal/forgeban/allowlist.go`'s own header confirms both migrations explicitly: "deskroster's
+`tools/desk/internal/forgeban/allowlist.go`'s own header confirms both migrations explicitly: "deskroster's
 two READ rows… are also gone… REPO-HARDENING READS are no longer in that list either — the
 forge-gitlab guard-read-custody brief gave them their own enumerated op (`RepoHardeningRead`, op
 40)… the ceiling came down by one more." The ceiling dropped 9 → 5, and the remaining 5
