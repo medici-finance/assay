@@ -82,6 +82,12 @@ statusgen --scan-issues, which NOTICEs and skips.
 trust gate: issues authored outside the configured trusted set (humans + desk Apps)
 with no blessing comment are quarantined under EXTERNAL / UNBLESSED — visible,
 never actionable. A comment from the configured blessing authority admits it.
+
+retire: a placeholder whose issue is absent from the open-issue listing is RETIRE
+only once a direct per-issue read positively says closed. A read that fails is
+COULD-NOT-CHECK (exit 6, issue named), and an absent issue that reads OPEN proves the
+listing came back partial — the whole sweep is then refused (exit 6) rather than
+retiring the live placeholders the listing omitted (#1032).
 `
 
 func main() {
