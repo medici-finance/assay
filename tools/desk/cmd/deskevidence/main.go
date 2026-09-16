@@ -66,6 +66,12 @@ When --brief-path is given, the evidence content (from --evidence-file) is appen
 to the brief file at --brief-path in the Evidence section, and THAT file is committed.
 Otherwise the file at --evidence-file is committed as-is.
 
+The target path (--brief-path when set, --evidence-file otherwise) must resolve under
+docs/streams/, and the landing must not introduce any statusgen PROBLEM (checked via
+statusgen --root <dir> --lint against the landing worktree, before vs. after the pending
+write) — both refused before the write, a pre-existing red elsewhere in the repo never
+blocks a clean landing.
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {
