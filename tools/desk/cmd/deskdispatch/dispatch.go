@@ -230,7 +230,7 @@ func dispatch(o dispatchOpts) error {
 	// before it runs (resolveClaimAuth): the claim is a forge write, and the stamp step's mint
 	// comes four steps too late to serve it — so the claim step mints on demand, from the
 	// same seam, and fails closed on the same refusal. Issue 1151.
-	auth, aerr := resolveClaimAuth(o, repo, plan.claimToolIsScript)
+	auth, aerr := resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
 	if aerr != nil {
 		return aerr
 	}
@@ -517,7 +517,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// forge-shaped ref, so this is skipped for one and the worker path stays byte-for-byte
 	// unchanged — including its executed-process count.
 	if reviewKit(o.kit) {
-		kind, ferr := o.resolveForgeKindForReview(repo)
+		kind, ferr := o.resolveTargetForgeKind(repo)
 		if ferr != nil {
 			return plan, ferr
 		}
@@ -859,11 +859,36 @@ type claimAuth struct {
 // runs. The alternative — letting the child fall back to whatever `gh` is logged in as — is
 // the field defect: nothing (401) in a sandboxed window, or a human OAuth login with no write
 // on the target (404), and in the worst case a claim ref minted under a human's identity.
-func resolveClaimAuth(o dispatchOpts, repo string, isScript bool) (claimAuth, error) {
+//
+// FORGE (issue 1203). The GitHub App mint above is a GitHub-only custody. On a repo whose
+// forge resolves to GitLab (ASSAY_REPO_FORGES=<slug>=gitlab) there is no App to mint against,
+// and requiring a GitHub App ID there failed closed at claim-acquire even though deskboot had
+// already cached the GitLab role PAT and every other write verb (deskpost/deskflip via
+// deskkit.ResolveForge) uses it. So the claim child's credential FOLLOWS the resolved forge:
+// GitLab-resolved repos hand the child the same role PAT custody the other verbs use, GitHub
+// keeps the App mint unchanged. The explicit-GH_TOKEN override and the fail-closed direction
+// hold for both — a forge that cannot be resolved refuses here, before any claim, rather than
+// guessing.
+func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
 	if strings.TrimSpace(os.Getenv("GH_TOKEN")) != "" {
 		return claimAuth{source: "the GH_TOKEN already exported in this environment"}, nil
 	}
 	role := stampRoleForKit(o.kit)
+	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
+	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
+	// caller-flag precondition has passed, so a flag-mistake refusal never pays for this git
+	// read (the "nothing durable before the flags are good" contract the zero-process tests pin).
+	kind := forgeKind
+	if strings.TrimSpace(string(kind)) == "" {
+		var ferr error
+		kind, ferr = o.resolveTargetForgeKind(repo)
+		if ferr != nil {
+			return claimAuth{}, ferr
+		}
+	}
+	if kind == deskkit.ForgeGitLab {
+		return resolveClaimAuthGitLab(role, repo, isScript)
+	}
 	tok, tokPath, err := mintTokenFn(role, repo)
 	if err != nil {
 		return claimAuth{}, deskkit.Unverifiable(fmt.Sprintf(
@@ -889,6 +914,43 @@ func resolveClaimAuth(o dispatchOpts, repo string, isScript bool) (claimAuth, er
 	return claimAuth{
 		args:   []string{"--token-file", tokPath},
 		source: fmt.Sprintf("the %s App token (--token-file, %s)", role, tokenPathForMessage(tokPath)),
+	}, nil
+}
+
+// resolveClaimAuthGitLab is resolveClaimAuth's GitLab branch: it reads the role's already-
+// provisioned GitLab PAT custody file (deskkit.GitLabRoleToken — the same custody
+// deskpost/deskflip act under, NEVER the GitHub App minter) and hands it to the claim child in
+// the tool's own shape. The Go binary (deskclaim-ref) resolves the forge itself and picks the
+// GitLab git-basic-auth username (oauth2), so it needs only the right token file via
+// --token-file; the legacy script reads GH_TOKEN/GITLAB_TOKEN from its environment, so both are
+// set. A missing/loose/empty custody file is Refused (exit 5) — a precondition an operator
+// fixes — and stops the dispatch before any claim child runs, the same fail-closed direction
+// the GitHub mint takes. The token VALUE never appears in a message; the PATH and role do.
+func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error) {
+	tok, tokPath, err := deskkit.GitLabRoleToken(role)
+	if err != nil {
+		return claimAuth{}, deskkit.RefusedWithCause(fmt.Sprintf(
+			"step %s: the %s GitLab role PAT for %s could not be read (%s) — so the identity the claim "+
+				"would be taken under cannot be established. NO claim was attempted: the claim tool is never "+
+				"run on the ambient credential. Provision the role's GitLab PAT custody file, or export "+
+				"GH_TOKEN to override deliberately.",
+			stepClaimAcquire, role, deskkit.OwnerOf(repo), err), err)
+	}
+	if isScript {
+		return claimAuth{
+			env:    append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok),
+			source: fmt.Sprintf("the %s GitLab role PAT (GH_TOKEN/GITLAB_TOKEN in the child environment, %s)", role, tokenPathForMessage(tokPath)),
+		}, nil
+	}
+	if strings.TrimSpace(tokPath) == "" {
+		return claimAuth{}, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the %s GitLab role PAT for %s was read but named no custody file, so it cannot be "+
+				"handed to %s as --token-file. NO claim was attempted.",
+			stepClaimAcquire, role, deskkit.OwnerOf(repo), goClaimBinary), nil)
+	}
+	return claimAuth{
+		args:   []string{"--token-file", tokPath},
+		source: fmt.Sprintf("the %s GitLab role PAT (--token-file, %s)", role, tokenPathForMessage(tokPath)),
 	}, nil
 }
 
@@ -1398,20 +1460,21 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 	return slug, nil
 }
 
-// resolveForgeKindForReview resolves WHICH forge serves the target repo, for the ONE place
-// the emitted prompt is forge-shaped: the review kit's head-fetch refspec. It reads the
-// TARGET repo's origin remote from o.root — the same checkout resolveRepo reads — through the
-// runCmd seam, and hands the raw URL to deskkit, which owns the roster-first/host-map
+// resolveTargetForgeKind resolves WHICH forge serves the target repo, for the two places
+// this verb branches on the answer: the review kit's forge-shaped head-fetch refspec, and the
+// claim child's credential custody (GitHub App mint vs GitLab role PAT — issue 1203). It reads
+// the TARGET repo's origin remote from o.root — the same checkout resolveRepo reads — through
+// the runCmd seam, and hands the raw URL to deskkit, which owns the roster-first/host-map
 // resolution and the well-known host table; deskdispatch re-derives neither. A repo the
 // roster configures (ASSAY_REPO_FORGES) resolves even with an unreadable remote; otherwise
 // the origin host decides. Unresolvable is deskkit's own could-not-check (exit 6), returned
-// verbatim so the review dispatch fails closed rather than guessing a forge.
-func (o dispatchOpts) resolveForgeKindForReview(repo string) (deskkit.ForgeKind, error) {
+// verbatim so the dispatch fails closed rather than guessing a forge.
+func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved for the "+
-				"review head-fetch refspec.", stepClaimAcquire, repo), nil)
+			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
+			stepClaimAcquire, repo), nil)
 	}
 	originURL := ""
 	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
