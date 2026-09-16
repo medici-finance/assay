@@ -650,6 +650,15 @@ func TestForgeGithubGolden(t *testing.T) {
 			run:   func(f *GitHubForge) (any, error) { return nil, f.CloseIssue(forgeTestRepo, 33, "completed") },
 		},
 		{
+			// CloseIssue's inverse (forge-neutral brief 16, consumed by deskclose's
+			// verify-gate-refire lane). The golden pins ONE request, `state: open` and NO
+			// state_reason — a reason is a close-time field, and sending one on a reopen would be
+			// a claim the forge silently drops.
+			name:  "reopen_issue",
+			setup: func(s *goldenServer) { s.issue = map[string]any{"number": 33, "state": "open"} },
+			run:   func(f *GitHubForge) (any, error) { return nil, f.ReopenIssue(forgeTestRepo, 33) },
+		},
+		{
 			// The typed replacement for fanoutloop's `gh api -X DELETE repos/…/git/refs/…`
 			// passthrough (the closed-forge-surface brief). The golden pins that the caller supplies a REF,
 			// and that the backend — not the caller — builds the one path it may address.

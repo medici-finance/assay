@@ -343,6 +343,13 @@ fail `--lint` and redden main CI directly. So the model path STOPS short of the 
    stamp to main and advances `implemented → verified → done` in one step. Surface the open wait in the
    report. Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
    documented wait state, never a checkpoint PR.
+   **Re-firing a cycle.** When a CLOSED verify-gate card must fire its close event again (the
+   Evidence row it lifted was corrected; the flip did not land), this desk runs
+   `deskclose verify-gate-refire -R <repo> <N> --reason "<why>"` under its own verifier token:
+   the tool reopens, comments (the reason, and that this is NOT the sign-off), and re-closes, and
+   refuses any other role, any issue without `verify-gate`, and any pull request. It does not and
+   cannot complete the human sign-off — `verify-gate-close.yml` reopens a bot's close
+   unconditionally — so the wait it re-arms is still the human's.
 4. `gate: human` is a hint; the authoritative trigger is **`irreversible: yes` alone** (human:<name>'s
    broad-scope call) — `regulatory` / `customer` do not change it.
 

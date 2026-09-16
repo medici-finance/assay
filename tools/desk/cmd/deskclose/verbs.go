@@ -22,14 +22,17 @@ const (
 )
 
 func modes() []string {
-	return []string{modeDuplicate, modeSuperseded, modeReviewRequest, modeManifest}
+	return []string{modeDuplicate, modeSuperseded, modeReviewRequest, modeManifest,
+		modeSelfWithdraw, modeVerifyGateRefire}
 }
 
 func modeList() string { return strings.Join(modes(), " | ") }
 
 // rowModes are the modes a manifest ROW may carry. `manifest` is not one of them: a
 // manifest that could contain a manifest row is a recursion with a human authorization
-// at only one level of it.
+// at only one level of it. Neither identity+structure lane (lanes.go: self-withdraw,
+// verify-gate-refire) is one either: neither is a human-ruled batch primitive, so a
+// manifest row cannot invoke one under a ruling that never named it as a granted lane.
 func rowModes() []string { return []string{modeDuplicate, modeSuperseded, modeReviewRequest} }
 
 // GitHub state_reason values.
@@ -43,7 +46,7 @@ const (
 var valueFlags = map[string]bool{
 	"-R": true, "--of": true, "--by": true, "--file": true, "--rulings": true,
 	"--resume-from": true, "--max-wait": true, "--mined": true, "--dispute": true,
-	"--kind": true, "--by-kind": true,
+	"--kind": true, "--by-kind": true, "--of-kind": true, "--because": true, "--reason": true,
 }
 
 // numTokenRe recognises the positional item number in its accepted spellings: a bare number,

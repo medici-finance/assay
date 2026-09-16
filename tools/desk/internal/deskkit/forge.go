@@ -1182,6 +1182,14 @@ type Forge interface {
 	// asked for had been recorded. Consumer: cmd/deskclose (freeze rule: it lands with that
 	// call site). An unknown kind is refused rather than defaulted.
 	CloseIssueTyped(repo ForgeRepo, number int, kind TargetKind, stateReason string) error
+	// ReopenIssue reopens ONE closed issue. It is CloseIssue's inverse and mirrors its shape
+	// minus the state reason: a state reason is a close-time field on GitHub and has no
+	// GitLab field at all, and reopening clears it on both. It addresses the ISSUE sequence
+	// only — there is no typed twin, because its single consumer (cmd/deskclose's
+	// verify-gate-refire lane) acts on issues carrying the verify-gate label and refuses a
+	// change before any write. Consumer: cmd/deskclose (freeze rule: it lands with that call
+	// site). Reversible by construction: a close undoes it.
+	ReopenIssue(repo ForgeRepo, number int) error
 	// WriteFile writes a file's whole content at a path on a branch (GitHub Contents API ↔
 	// GitLab Repository Files API), as the minted identity the backend holds. It folds three
 	// properties into the one op (see WriteFileInput/WriteFileResult): an idempotency read

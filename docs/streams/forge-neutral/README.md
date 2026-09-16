@@ -221,7 +221,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 13 | [Write verbs C — deskpr, deskfile and deskclose onto the resolver](brief-13-write-verbs-c-deskpr-deskfile-deskclose.md) | 3 | M | implemented | — | — |
 | 14 | [Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver](brief-14-run-and-gate-approval-verbs-deskrun.md) | 2 | M | todo | — | — |
 | 15 | [desklabel — a role-keyed label verb](brief-15-desklabel-role-keyed.md) | 2 | M | todo | — | — |
-| 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | todo | — | — |
+| 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | implemented | — | — |
 | 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | todo | — | — |
 | 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
 <!-- statusgen:briefs:end -->

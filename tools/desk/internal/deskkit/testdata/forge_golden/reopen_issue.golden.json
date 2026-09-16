@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "PATCH",
+      "path": "/repos/medici-finance/assay/issues/33",
+      "body": {
+        "state": "open"
+      }
+    }
+  ]
+}
