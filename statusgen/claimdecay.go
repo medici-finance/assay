@@ -47,8 +47,12 @@ import (
 // is precisely what hid the GitLab gap.
 
 // ghPRListJSONFields is the `--json` field set the GitHub reader asks `gh pr list`
-// for: headRefName and state are what the decay keys on.
-const ghPRListJSONFields = "headRefName,state"
+// for. headRefName and state are what the decay keys on; isCrossRepository,
+// headRepository and headRepositoryOwner are what tell a pull request opened from
+// THIS repository from one opened from a fork — see sameRepoPR. A test pins the
+// set so it cannot be trimmed back to the bare pair that let a fork's branch name
+// decay a live claim.
+const ghPRListJSONFields = "headRefName,state,isCrossRepository,headRepository,headRepositoryOwner"
 
 // ghPRListJSON runs `gh pr list` for the repo rooted at root and returns its raw
 // JSON. A package-level var so tests substitute recorded output and the parse is
@@ -74,9 +78,96 @@ var ghPRListJSON = func(root string) ([]byte, error) {
 }
 
 // ghPR is the subset of a `gh pr list` row the GitHub reader needs.
+//
+// IsCrossRepository, HeadRepository and HeadRepositoryOwner are not decoration:
+// they are what tells a pull request opened from THIS repository from one opened
+// from a fork. Only the former's headRefName names a branch of this repository,
+// so only the former may ever contribute a corpse. They are pointers so that a
+// field `gh` did not answer (an older `gh`, a head repository that no longer
+// exists) is distinguishable from one it answered false or empty — sameRepoPR is
+// the predicate; its doc carries the reasoning and the fail direction.
 type ghPR struct {
-	HeadRefName string `json:"headRefName"`
-	State       string `json:"state"`
+	HeadRefName       string `json:"headRefName"`
+	State             string `json:"state"`
+	IsCrossRepository *bool  `json:"isCrossRepository"`
+	HeadRepository    *struct {
+		Name string `json:"name"`
+	} `json:"headRepository"`
+	HeadRepositoryOwner *struct {
+		Login string `json:"login"`
+	} `json:"headRepositoryOwner"`
+}
+
+// headRepo returns the pull request's head repository as "owner/name", or "" when
+// either half is unreadable.
+func (pr ghPR) headRepo() string {
+	if pr.HeadRepository == nil || pr.HeadRepositoryOwner == nil {
+		return ""
+	}
+	owner := strings.TrimSpace(pr.HeadRepositoryOwner.Login)
+	name := strings.TrimSpace(pr.HeadRepository.Name)
+	if owner == "" || name == "" {
+		return ""
+	}
+	return owner + "/" + name
+}
+
+// trackedGitHubRepo returns the "owner/name" of the repository behind root's
+// `origin` remote, or "" when it cannot be read. It is the GitHub twin of the
+// GitLab arm's numeric projectID: where it IS known, sameRepoPR checks each pull
+// request's head against it, and where it is not the reader falls back to
+// isCrossRepository alone.
+func trackedGitHubRepo(root string) string {
+	raw, err := remoteOriginURL(root)
+	if err != nil {
+		return ""
+	}
+	return remoteProjectPath(raw)
+}
+
+// sameRepoPR reports whether pr was opened FROM the tracked repository — the only
+// case in which its headRefName names a branch of that repository — and whether
+// the reader could attribute it at all.
+//
+// `gh pr list` returns every pull request TARGETING the repository, forks
+// included, and a fork's headRefName is a name chosen inside the fork — unscoped
+// to this repository entirely. Anyone who can fork and open a pull request (the
+// ordinary contribution bar; no elevated access) could otherwise open and close a
+// throwaway PR named after a live claim branch and have the decay drop that live
+// claim, letting a second worker be dispatched onto a brief already in flight.
+// That is a direct breach of the pass's load-bearing invariant: decay may only
+// ever shrink the claim set to what it VERIFIED is dead. The GitLab arm closed
+// this with sameProjectMR; this is the same guard on the same fail direction.
+//
+// Two signals, either of which is enough to REFUSE and both of which must agree
+// to ADMIT: isCrossRepository (the forge's own verdict) and the head repository's
+// owner/name against the tracked repository (belt and braces, where the tracked
+// name is known). A pull request carrying neither signal — or only a head name
+// with no tracked name to compare it to — is one this reader cannot attribute,
+// and an unattributable PR is indistinguishable from a fork's. It is NOT read as
+// same-repo: attributed is false so the caller counts and reports the skip.
+// Under-decay is the safe direction; over-decay is the one that loses work.
+func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
+	head := pr.headRepo()
+	cross := pr.IsCrossRepository
+	if head == "" && cross == nil {
+		return false, false
+	}
+	if cross != nil && *cross {
+		return false, true
+	}
+	if head != "" && tracked != "" && !strings.EqualFold(head, tracked) {
+		// The forge says same-repo (or did not say) but the head names another
+		// repository: a row we do not understand, so no conclusion is drawn.
+		return false, true
+	}
+	if cross != nil {
+		return true, true
+	}
+	if tracked == "" {
+		return false, false
+	}
+	return true, true
 }
 
 // listMergedClosedBranches returns the set of head branch names whose PR is
@@ -86,6 +177,11 @@ type ghPR struct {
 // is returned as an error; decayDeadClaims degrades to "decay nothing" so the
 // board is never WORSE than the pre-decay superset (and never drops a live claim
 // it could not verify, which would risk two sessions converging on one brief).
+//
+// Only a pull request opened from THIS repository may contribute a corpse (see
+// sameRepoPR): a fork's headRefName may collide with a live claim here, and a PR
+// whose head repository cannot be read at all is one this reader did not verify.
+// Rows skipped for want of attribution are counted and reported, once.
 //
 // A package-level var so tests substitute a fake lister without a network call,
 // exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
@@ -98,16 +194,32 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("parsing gh pr list output: %w", err)
 	}
+	tracked := trackedGitHubRepo(root)
 	dead := map[string]bool{}
+	unattributable := 0
 	for _, pr := range raw {
 		name := strings.TrimSpace(pr.HeadRefName)
 		if name == "" {
+			continue
+		}
+		if same, attributed := sameRepoPR(pr, tracked); !same {
+			if !attributed {
+				unattributable++
+			}
 			continue
 		}
 		switch strings.ToUpper(strings.TrimSpace(pr.State)) {
 		case "MERGED", "CLOSED":
 			dead[name] = true
 		}
+	}
+	// Skipping a PR we could not attribute is the safe direction, but a floor
+	// presented as a total is still a lie (three-state rule 2) — so if any row was
+	// skipped for want of a head repository, say how many, once.
+	if unattributable > 0 {
+		fmt.Fprintf(os.Stderr, "could-not-check: dead-claim decay skipped %d pull request(s) whose head repository could not be read, "+
+			"so their branches were NOT decayed and may still be consuming their stream's dispatch cap; an unattributable pull request "+
+			"cannot be told from a fork's, and a fork's branch name does not name a branch of this repository\n", unattributable)
 	}
 	return dead, nil
 }
