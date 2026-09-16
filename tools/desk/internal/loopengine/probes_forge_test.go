@@ -95,9 +95,9 @@ func TestHouseBranchListOpts_PrivateSlugCarriesAuthAndResolvedHost(t *testing.T)
 	}
 }
 
-// TestHouseBranchListOpts_GitLabUsesOAuth2Username: a gitlab-resolved slug pairs the role's
+// TestHouseBranchListOpts_GitLabPairsPATWithOAuthUsername: a gitlab-resolved slug pairs the role's
 // provisioned PAT with GitLab's required "oauth2" username — the forge-neutral half.
-func TestHouseBranchListOpts_GitLabUsesOAuth2Username(t *testing.T) {
+func TestHouseBranchListOpts_GitLabPairsPATWithOAuthUsername(t *testing.T) {
 	dir := withForgeFixture(t, "example-org/gitlab-pilot", "gitlab")
 	if err := os.WriteFile(filepath.Join(dir, "gitlab-desk.token"), []byte("glpat-fixture\n"), 0o600); err != nil {
 		t.Fatal(err)
