@@ -149,6 +149,10 @@
 #                         cell; optional on k8s, where a boot without it leaves the verbs on their compiled
 #                         placeholder topology.
 #   DESKD=1               on a house cell: require and stand a deskd as a k8s cell does (default: no deskd)
+#   CELL_FF_ROOTS=1       at `cellctl desk` boot, fast-forward every CELL_ROOTS stream root that can move
+#                         without a decision (on a branch with an upstream, clean tree, 0 ahead). Off by
+#                         default: the roots are the OPERATOR's checkouts, not cell-managed worktrees.
+#                         `cellctl check` reports root drift either way, as a non-fatal `warn` row.
 #   CELL_COCKPIT=auto|tmux|herdr|orca   the surface `up` opens the role windows in (default auto: herdr if on
 #                         PATH, else orca if on PATH AND its desktop app answers, else tmux). Only the surface
 #                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
@@ -432,6 +436,54 @@ roots_valid(){
   done
 }
 
+# roots_state prints "<branch> <upstream> <ahead> <behind> <dirty>" for one stream-root path, or
+# nothing (rc 1) when the root cannot be compared: not a checkout, detached HEAD, or no upstream
+# configured. It NEVER fetches — it compares the local branch against the remote-tracking ref as
+# it already stands, which is exactly the drift that presents as a permanently stale board (a
+# current origin/main while the local branch sits behind it). A stale remote-tracking ref means
+# this under-reports, never over-reports.
+roots_state(){
+  local p="$1" b up ahead behind dirty
+  [[ -e "$p/.git" ]] || return 1
+  b="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null)" || return 1
+  up="$(git -C "$p" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || return 1
+  ahead="$(git -C "$p" rev-list --count "$up..HEAD" 2>/dev/null || echo 0)"
+  behind="$(git -C "$p" rev-list --count "HEAD..$up" 2>/dev/null || echo 0)"
+  dirty="$(git -C "$p" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  printf '%s %s %s %s %s\n' "$b" "$up" "$ahead" "$behind" "$dirty"
+}
+
+# ff_roots fast-forwards every stream root that can move WITHOUT a decision: on a branch, that
+# branch has an upstream, the tree is clean, and it is 0 ahead. Anything else is left alone and
+# named — a root the operator is working in is never moved under them.
+#
+# Opt-in (CELL_FF_ROOTS=1) because the roots are the OPERATOR's own checkouts, not cell-managed
+# worktrees: cellctl merges the role worktrees at boot, but nothing has ever refreshed the roots,
+# so a root can sit behind its upstream indefinitely while every desk verb reads it. That is how a
+# board goes stale with no error anywhere (the drift check resolves no pin, and an unverifiable
+# drift check is reported stale, not fresh).
+ff_roots(){
+  local e p name st b up ahead behind dirty
+  for e in ${CELL_ROOTS//,/ }; do
+    name="${e%%=*}"; p="${e#*=}"
+    if ! st="$(roots_state "$p")"; then
+      echo "[roots] $name: not a comparable checkout (missing, detached HEAD, or no upstream) — left as is" >&2; continue
+    fi
+    read -r b up ahead behind dirty <<<"$st"
+    # Refresh the remote-tracking ref first; without it "behind" only reflects the last fetch.
+    git -C "$p" fetch --no-tags --quiet "${up%%/*}" "${up#*/}" 2>/dev/null || true
+    read -r b up ahead behind dirty <<<"$(roots_state "$p")"
+    [[ "$dirty" == "0" ]] || { echo "[roots] $name: $dirty uncommitted change(s) — left as is" >&2; continue; }
+    [[ "$ahead" == "0" ]] || { echo "[roots] $name: $b is $ahead ahead of $up — left as is (merge it yourself)" >&2; continue; }
+    [[ "$behind" != "0" ]] || { echo "[roots] $name: $b already current with $up"; continue; }
+    if git -C "$p" merge --ff-only "$up" >/dev/null 2>&1; then
+      echo "[roots] $name: $b fast-forwarded $behind commit(s) to $(git -C "$p" rev-parse --short HEAD)"
+    else
+      echo "[roots] $name: $b did not fast-forward — left as is" >&2
+    fi
+  done
+}
+
 # is_opus_pin: true when a resolved model value is the `opus` alias or a `claude-opus…` id,
 # case-insensitive (an operator could type Opus, OPUS, or a full id in any case). Any other
 # value — including another full id or a different alias — is not an Opus pin.
@@ -701,6 +753,10 @@ cmd_check(){
   # A precondition that belongs to the OTHER kind or forge is reported n/a — it is stated, not
   # silently skipped, so a half-provisioned or mis-kinded cell reads as such rather than clean.
   na(){ echo "  n/a   $1"; }
+  # warn is VISIBLE but non-fatal: it names a condition that will degrade the desks without being
+  # a precondition cellctl can assert. Staying current with an upstream is an operator step (or
+  # CELL_FF_ROOTS=1 at boot), so it must not decide `check`'s exit code.
+  warn(){ echo "  warn  $1"; }
   echo "[check] cell=$CELL dir=$CELL_DIR kind=$CELL_KIND forge=$CELL_FORGE"
   chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
   chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
@@ -756,6 +812,27 @@ cmd_check(){
     house) check_house "${2:-}" ;;
     *) check_k8s ;;
   esac
+  # Stream-root drift. The roots are what the desk verbs READ, and nothing in cellctl advances
+  # them, so a root behind its upstream is the failure that presents as a permanently stale board
+  # rather than as an error anywhere. Reported per root, and never fatal (see warn above).
+  if [[ -n "${CELL_ROOTS:-}" ]]; then
+    local _e _p _name _st _b _up _ahead _behind _dirty
+    for _e in ${CELL_ROOTS//,/ }; do
+      _name="${_e%%=*}"; _p="${_e#*=}"
+      if ! _st="$(roots_state "$_p")"; then
+        na "root $_name — not comparable (missing, detached HEAD, or no upstream); drift unknown"
+        continue
+      fi
+      read -r _b _up _ahead _behind _dirty <<<"$_st"
+      if [[ "$_behind" != "0" ]]; then
+        warn "root $_name: $_b is $_behind commit(s) BEHIND $_up — the desks read this tree (fix: git -C $_p merge --ff-only $_up, or CELL_FF_ROOTS=1 in cell.env)"
+      else
+        chk "root $_name current with $_up (branch $_b)" 'true'
+      fi
+      [[ "$_ahead" == "0" ]] || warn "root $_name: $_b is $_ahead commit(s) ahead of $_up (unpushed work)"
+      [[ "$_dirty" == "0" ]] || warn "root $_name: $_dirty uncommitted change(s) in $_p"
+    done
+  fi
   chk "tmux (the always-works cockpit, and every other cockpit's fallback)" 'command -v tmux >/dev/null'
   # The COCKPIT row resolves exactly as `up` will and says why, so "which surface will my role
   # windows appear in" is answerable before booting. An explicit CELL_COCKPIT that is not
@@ -780,7 +857,7 @@ cmd_check(){
     chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
     chk "deskd up on $DESKD_ADDR" 'deskd_up'
   else
-    na "deskd — not required on a house cell (set DESKD=1 in cell.env to require one)"
+    na "deskd — not required on this $CELL_KIND cell with DESKD=0 (set DESKD=1 in cell.env to require one)"
   fi
   if [[ "$ok" == "1" ]]; then echo "[check] all preconditions met"; else echo "[check] fix the MISS rows first"; return 1; fi
 }
@@ -799,14 +876,24 @@ check_k8s(){
     github)
       chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
       chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
-      chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
-      chk "orgs to mint tokens for: ${ORGS:-unset}" '[[ -n "${ORGS:-}" ]]'
+      # The App key and the org list exist to mint deskd's per-org tokens, so they are
+      # preconditions only when this cell requires a deskd. Same gating as the gitlab arm.
+      if [[ "$DESKD" == "1" ]]; then
+        chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
+        chk "orgs to mint tokens for: ${ORGS:-unset}" '[[ -n "${ORGS:-}" ]]'
+      else
+        na "deskd read App key / orgs to mint — not applicable with DESKD=0 (no deskd on this cell)"
+      fi
       na  "GitLab role token store — not applicable on a github cell"
       ;;
     gitlab)
       chk "GitLab group: ${GITLAB_GROUP:-unset}" '[[ -n "${GITLAB_GROUP:-}" ]]'
       chk "GitLab role token store: ${GITLAB_TOKEN_STORE:-unset}" '[[ -d "${GITLAB_TOKEN_STORE:-/nonexistent}" ]]'
-      chk "deskd GitLab read token (0600, hand-provisioned): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
+      # NOT gated on DESKD, unlike the github arm's App key. Despite the deskd- prefix,
+      # DESKD_GITLAB_TOKEN_FILE is ALSO the credential gitlab_cred_args feeds to the boot fetch in
+      # cmd_desk and to gitlab_fetch_reachable below — both run with DESKD=0. A gitlab cell needs
+      # this token to fetch CELL_REPO at all, so it is a precondition at every DESKD setting.
+      chk "GitLab cell token (0600, hand-provisioned; deskd read + boot fetch credential): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
       # CELL_REPO's own fetch transport, not just the API token: probes the SAME credential helper
       # the boot fetch in cmd_desk uses, so a broken/missing token is a MISS here rather than a
       # boot-time hang at an interactive Username prompt (issue-1080 sibling defect).
@@ -1212,6 +1299,12 @@ cmd_desk(){
   local desk_roots="${CELL_ROOTS:-}"
   if [[ -n "$desk_roots" ]]; then
     roots_valid "$desk_roots" || die "cell.env: CELL_ROOTS is malformed"
+    # Opt-in: advance the roots the desks are about to read. Off by default — see ff_roots.
+    # Written as a full `if`, never `[[ … ]] && ff_roots`: under `set -e` that one-liner returns
+    # non-zero whenever the flag is unset (the default) and would abort the boot it guards.
+    if [[ "${CELL_FF_ROOTS:-0}" == "1" && "${DRY_RUN:-0}" != "1" ]]; then
+      ff_roots
+    fi
   else
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
