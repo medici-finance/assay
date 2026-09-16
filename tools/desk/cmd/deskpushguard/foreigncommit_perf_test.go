@@ -86,7 +86,7 @@ func TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded(t *te
 	const (
 		mainCommits  = 800 // stands in for a repository's accumulated origin/main history
 		siblingCount = 20  // long-lived, never-merged sibling branches
-		dupRemotes   = 4   // + origin = 5 remotes for the SAME upstream, matching #2527
+		dupRemotes   = 4   // + origin = 5 remotes for the SAME upstream, matching the duplicate-remote hang
 	)
 
 	remoteDir := t.TempDir()
@@ -142,9 +142,9 @@ func TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded(t *te
 	// the reported hang's dependency is on the REMOTE COUNT, not the push's own size.
 	runGitT(t, victimDir, "checkout", "-b", "mine", "origin/main")
 	regIDWriteFile(t, victimDir, "docs/streams/findings/2026-09-14-perf-fixture.md",
-		"---\nid: F-2527-perf\ndate: \"2026-09-14\"\ntitle: \"perf fixture\"\n---\n\nBody.\n")
+		"---\nid: F-example-perf\ndate: \"2026-09-14\"\ntitle: \"perf fixture\"\n---\n\nBody.\n")
 	runGitT(t, victimDir, "add", "docs/streams/findings/2026-09-14-perf-fixture.md")
-	runGitT(t, victimDir, "commit", "-m", "docs(findings): add F-2527-perf")
+	runGitT(t, victimDir, "commit", "-m", "docs(findings): add F-example-perf")
 	head := runGitT(t, victimDir, "rev-parse", "HEAD")
 
 	start := time.Now()
