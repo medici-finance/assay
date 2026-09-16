@@ -136,6 +136,22 @@ func PollMailbox(root, cell, role string) ([]Notice, error) {
 	return listJSON[Notice](MailboxDir(root, cell, role))
 }
 
+// IsAcked reports whether id has already been acknowledged out of (cell,
+// role)'s mailbox — i.e. it sits in the acked partition. A deliverer that may
+// be asked to place the same notice twice (the drain's Dispatch is retried by
+// the engine) consults this so an acknowledgement is never undone by a
+// re-delivery. A missing acked partition is simply "not acked".
+func IsAcked(root, cell, role, id string) (bool, error) {
+	_, err := os.Stat(filepath.Join(MailboxAckedDir(root, cell, role), safeSeg(id)+".json"))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("commsqueue: cannot stat acked notice %s (%s/%s): %w", id, cell, role, err)
+}
+
 // AckMailbox moves id from (cell, role)'s mailbox to its acked partition.
 // Acknowledgement MOVES, it never deletes.
 func AckMailbox(root, cell, role, id string) error {

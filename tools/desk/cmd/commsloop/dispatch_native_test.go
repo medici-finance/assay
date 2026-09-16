@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/acp"
+	"github.com/medici-finance/assay/tools/desk/internal/comms"
+	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
@@ -218,15 +220,23 @@ func executorTestHome(t *testing.T) string {
 	return filepath.Join(home, ".config", "assay")
 }
 
+// executorItem builds the item exactly as SelectQueue does (toLoopItem over a real
+// envelope), so it carries the envelope payload Dispatch needs to deliver the message
+// to the addressee's mailbox (#1166) as well as the from/to/verb fields; the caller's
+// id is kept verbatim.
 func executorItem(id, toRole string) loopengine.Item {
-	return loopengine.Item{
-		ID: id,
-		Payload: map[string]string{
-			"from": "cell-a/the-desk",
-			"to":   "cell-a/" + toRole,
-			"verb": "handoff",
-		},
+	env := comms.Envelope{
+		Schema: comms.Schema, ID: strings.TrimPrefix(id, "commsmsg/"), Cell: "cell-a",
+		From: comms.SenderID{Cell: "cell-a", Role: "the-desk"},
+		To:   comms.Lane{Cell: "cell-a", Role: toRole},
+		Verb: "handoff",
 	}
+	it, err := toLoopItem(commsqueue.AcceptedItem{Envelope: env})
+	if err != nil {
+		panic("executorItem: " + err.Error())
+	}
+	it.ID = id
+	return it
 }
 
 func nativeExecutorLoop(t *testing.T, mode, toRole string, extraEnv ...string) (*Loop, loopengine.Item) {
@@ -455,8 +465,11 @@ func TestBudgetNoFireOnExhaustedBudget(t *testing.T) {
 // dispatchNative's resolveRunner would refuse loudly ("no runner configured") rather
 // than this test silently accepting whatever it does.
 func TestDispatchZeroValueNativeStaysInertForSessionTier(t *testing.T) {
-	l := &Loop{}
-	item := loopengine.Item{ID: "commsmsg/inert-check"}
+	// Root is the only field set: mailbox delivery (#1166) is the always-on half of
+	// Dispatch and needs a queue root to write the addressee's notice into; the executor
+	// leg's own fields stay unset so the inert branch is what this test proves.
+	l := &Loop{Root: t.TempDir()}
+	item := executorItem("commsmsg/inert-check", "worker-desk")
 
 	handle, err := l.Dispatch(item, loopengine.TierSession)
 	if err != nil {
