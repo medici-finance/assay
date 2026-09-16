@@ -312,7 +312,7 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 	}
 	// originAncestors backs the "is b already merged into origin/main" test below with an
 	// O(1) set-membership lookup instead of a fresh gitcore.IsAncestor call per branch — the
-	// same fix as foreigncommit.go's checkForeignCommits (assay-toolkit#2527:
+	// same fix as foreigncommit.go's checkForeignCommits (the duplicate-remote hang:
 	// gitcore.Repo.IsAncestor resolves to go-git's unmemoized, non-shared
 	// object.Commit.IsAncestor, an uncached preorder walk of origin/main's ENTIRE history on
 	// every call). This function runs the walk once per push rather than once per sha, so it

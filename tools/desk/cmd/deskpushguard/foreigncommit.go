@@ -160,7 +160,7 @@ func openRepo(dir string) (*gitcore.Repo, error) {
 // every "is candidate branch b already merged into origin/main" question below), and
 // walking base's history is the expensive half of this function; handing the set back
 // once here means that walk happens exactly ONCE per push, not once per candidate branch
-// per commit (see the fix for assay-toolkit#2527 at branchIsAncestorOfMain's old call site).
+// per commit (see the duplicate-remote hang fix at branchIsAncestorOfMain's old call site).
 func logRangeHashes(repo *gitcore.Repo, base, head string) (rangeHashes []string, baseSet map[string]bool, err error) {
 	baseAncestors, err := repo.Log(base)
 	if err != nil {
@@ -363,7 +363,7 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 
 	// refHashes backs the "is candidate branch b already merged into origin/main" test
 	// below with a single map lookup per candidate instead of a fresh unmemoized ancestor
-	// walk per candidate PER COMMIT (assay-toolkit#2527: deskpushguard pegged one CPU core
+	// walk per candidate PER COMMIT (the duplicate-remote hang: deskpushguard pegged one CPU core
 	// indefinitely on a branch carrying a 524-commit main-catch-up merge, in a checkout
 	// with duplicate remotes for the same repo). Read once here, reused for every sha.
 	refHashes, err := repo.Refs()
@@ -414,7 +414,7 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 			// gitcore's IsAncestor (itself an unmemoized, non-shared go-git
 			// object.Commit.IsAncestor preorder walk of origin/main's ENTIRE history every
 			// single call — see plumbing/object/merge_base.go) with an O(1) lookup: the
-			// fix for assay-toolkit#2527.
+			// duplicate-remote hang fix.
 			tipHash, ok := refHashes[ref]
 			if !ok {
 				// The ref existed a moment ago (RefsContaining just returned it) but is

@@ -43,7 +43,7 @@ func buildMainHistoryFastImport(t *testing.T, remoteDir string, n int) {
 }
 
 // TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded is the regression
-// test for assay-toolkit#2527: deskpushguard pegged one CPU core indefinitely (never
+// test for the duplicate-remote hang: deskpushguard pegged one CPU core indefinitely (never
 // deciding) on a branch carrying a large main-catch-up merge, in a checkout with duplicate
 // remotes pointing at the same upstream repo.
 //
@@ -162,7 +162,7 @@ func TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded(t *te
 	if elapsed > bound {
 		t.Fatalf("checkRegisterIDCollisions took %s (> %s) scanning %d remote branches "+
 			"(%d siblings x %d remote spellings, plus main's own %d copies) against a "+
-			"%d-commit origin/main — assay-toolkit#2527 regression: the old per-branch "+
+			"%d-commit origin/main — duplicate-remote hang regression: the old per-branch "+
 			"gitcore.Repo.IsAncestor call re-walks origin/main's whole history on every "+
 			"call and does not finish in a bounded window as either dimension grows",
 			elapsed, bound, siblingCount*(dupRemotes+1)+(dupRemotes+1), siblingCount, dupRemotes+1,
