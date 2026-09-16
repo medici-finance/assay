@@ -151,8 +151,8 @@ const homeRepo = "example-org/tracker"
 // seam: it runs the default board command through a recorded fake Forge, then asserts every
 // op the board issued is one of the three READ ops (ListOpenIssues / GetIssue /
 // IssueTrustEvents) — the fake embeds the interface, so a write op would panic rather than be
-// recorded — and that both the issue-list read and the single-issue title read (GetIssue, only
-// on a RETIRE row) were actually exercised. The board reaching NO forge CLI at all is proven
+// recorded — and that both the issue-list read and the single-issue state read (GetIssue, only
+// for a placeholder absent from the listing) were actually exercised. The board reaching NO forge CLI at all is proven
 // structurally by the forge-surface ban (internal/forgeban), a stronger guarantee than
 // enumerating argv.
 func TestReadsOnly(t *testing.T) {
@@ -169,8 +169,8 @@ func TestReadsOnly(t *testing.T) {
 	root := t.TempDir()
 	// #1 is open with no placeholder and no excluded label → CREATE-PLACEHOLDER.
 	// #2 is open with no placeholder but an excluded (verify-gate) label → NONE.
-	// #3 has a placeholder but is NOT in the open-issues fixture above → RETIRE,
-	// which triggers a GetIssue read for its title.
+	// #3 has a placeholder but is NOT in the open-issues fixture above → its GetIssue
+	// read positively says closed (titles fixture) → RETIRE, title from that same read.
 	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), placeholderFixture(homeRepo, "todo", ""))
 	writeFile(t, filepath.Join(root, intakeDir, "2026-01-01-old-one.md"), intakeFixture("I-old", "2026-01-01", "new"))
 
