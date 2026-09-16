@@ -875,7 +875,7 @@ const (
 	// `.only_allow_merge_if_all_discussions_are_resolved`, `.ci_config_path`,
 	// `.ci_allow_fork_pipelines_to_run_in_parent_project` (Owner/admin-visible only — absent at
 	// any lower role, so a row on it is could-not-check there), `.secret_push_protection_enabled`
-	// (Ultimate). It is also the GitLab preflight document (HardeningRepoDocumentKind).
+	// (Ultimate). It is also the GitLab preflight document (ForgeResolution.HardeningRepoDocumentKind).
 	HardeningReadProject HardeningReadKind = "project"
 	// HardeningReadProtectedBranches reads the protected-branches LIST
 	// (`GET /projects/:id/protected_branches`, Free at role level; `user_id`/`group_id` entries
@@ -947,13 +947,15 @@ func HardeningReadKinds() []string {
 	return out
 }
 
-// HardeningReadKindsFor returns the half of the vocabulary the named forge serves, as strings,
+// hardeningReadKindsFor returns the half of the vocabulary the named forge serves, as strings,
 // in declared order — what a backend's by-name refusal lists so a checklist author sees the
-// kinds THIS forge answers rather than the whole set.
-func HardeningReadKindsFor(forge ForgeKind) []string {
+// kinds THIS forge answers rather than the whole set. Unexported on purpose: no exported
+// function in this package takes a forge selector (TestForgeForRejectsCallerSuppliedForge) —
+// a backend names its OWN kind here, never a caller.
+func hardeningReadKindsFor(served ForgeKind) []string {
 	var out []string
 	for _, k := range hardeningReadKinds {
-		if hardeningKindForge[k] == forge {
+		if hardeningKindForge[k] == served {
 			out = append(out, string(k))
 		}
 	}
@@ -967,20 +969,31 @@ func HardeningReadKindForge(kind HardeningReadKind) ForgeKind {
 }
 
 // HardeningRepoDocumentKind returns the kind that reads the repository's own top-level
-// document on the named forge — `repo` on GitHub, `project` on GitLab. It is the guard's
+// document on the RESOLVED forge — `repo` on GitHub, `project` on GitLab. It is the guard's
 // PREFLIGHT read (the read that proves the token can see the repo at all before any
-// per-row absence is allowed to mean "unset"), chosen from the resolved forge rather than
-// hard-coded, so a GitLab-resolved run is not refused at the door by a GitHub kind. A forge
-// this package cannot name is a could-not-check refusal, never a guessed kind.
-func HardeningRepoDocumentKind(forge ForgeKind) (HardeningReadKind, error) {
-	switch forge {
+// per-row absence is allowed to mean "unset"), read off the resolution ResolveForge handed
+// back rather than hard-coded, so a GitLab-resolved run is not refused at the door by a
+// GitHub kind. It hangs off ForgeResolution rather than taking a ForgeKind argument: no
+// exported function in this package accepts a forge selector
+// (TestForgeForRejectsCallerSuppliedForge), and the backend re-validates the kind by name
+// regardless, so a resolution a caller fabricated buys a zero-request refusal from the
+// forge that actually answers — never the other forge's document. A forge this package
+// cannot name is a could-not-check refusal, never a guessed kind.
+func (r ForgeResolution) HardeningRepoDocumentKind() (HardeningReadKind, error) {
+	return hardeningRepoDocumentKind(r.Kind)
+}
+
+// hardeningRepoDocumentKind is the per-forge table behind
+// ForgeResolution.HardeningRepoDocumentKind.
+func hardeningRepoDocumentKind(served ForgeKind) (HardeningReadKind, error) {
+	switch served {
 	case ForgeGitHub:
 		return HardeningReadRepo, nil
 	case ForgeGitLab:
 		return HardeningReadProject, nil
 	default:
 		return "", Unverifiable(fmt.Sprintf(
-			"could-not-check: no hardening preflight document is defined for forge %q", forge), nil)
+			"could-not-check: no hardening preflight document is defined for forge %q", served), nil)
 	}
 }
 
@@ -995,7 +1008,7 @@ func refuseHardeningKindForForge(this ForgeKind, kind HardeningReadKind) error {
 	}
 	return Unverifiable(fmt.Sprintf(
 		"could-not-check: %s serves no hardening read of kind %q — it is a %s kind; the %s kinds are: %s",
-		this, kind, serving, this, strings.Join(HardeningReadKindsFor(this), ", ")), nil)
+		this, kind, serving, this, strings.Join(hardeningReadKindsFor(this), ", ")), nil)
 }
 
 // ValidateHardeningReadKind checks kind against the closed vocabulary BEFORE any request is

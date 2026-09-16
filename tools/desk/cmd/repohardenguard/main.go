@@ -97,7 +97,7 @@ func run(args []string, out, errW io.Writer) int {
 		return deskkit.ExitUnverifiable
 	}
 
-	fg, fr, forgeKind, ferr := forgeForFn(*repo)
+	fg, fr, res, ferr := forgeForFn(*repo)
 	if ferr != nil {
 		fmt.Fprintf(errW, "repohardenguard: cannot resolve a forge for %s: %v\n", *repo, ferr)
 		return deskkit.ExitCodeOf(ferr)
@@ -113,7 +113,7 @@ func run(args []string, out, errW io.Writer) int {
 	// The document read is the RESOLVED forge's own (`repo` on GitHub, `project` on GitLab):
 	// each backend refuses the other's kind by name, so a preflight pinned to one forge's
 	// kind would refuse every run on the other forge at the door.
-	preflightKind, kerr := deskkit.HardeningRepoDocumentKind(forgeKind)
+	preflightKind, kerr := res.HardeningRepoDocumentKind()
 	if kerr != nil {
 		fmt.Fprintf(errW, "repohardenguard: %v — nothing below could be established, so no row is reported\n", kerr)
 		return deskkit.ExitUnverifiable

@@ -20,8 +20,8 @@ func TestHardeningKindsPartitionByForge(t *testing.T) {
 	if len(all) == 0 {
 		t.Fatal("HardeningReadKinds is empty — a partition over nothing proves nothing")
 	}
-	gh := HardeningReadKindsFor(ForgeGitHub)
-	gl := HardeningReadKindsFor(ForgeGitLab)
+	gh := hardeningReadKindsFor(ForgeGitHub)
+	gl := hardeningReadKindsFor(ForgeGitLab)
 	if len(gh) == 0 || len(gl) == 0 {
 		t.Fatalf("both halves must be non-empty: github=%v gitlab=%v", gh, gl)
 	}
@@ -60,14 +60,16 @@ func TestHardeningKindsPartitionByForge(t *testing.T) {
 	}
 }
 
+// The preflight document is read off the RESOLUTION ResolveForge hands back, never off a
+// ForgeKind a caller supplies — the package's exported surface carries no forge selector.
 func TestHardeningRepoDocumentKindPerForge(t *testing.T) {
-	if k, err := HardeningRepoDocumentKind(ForgeGitHub); err != nil || k != HardeningReadRepo {
+	if k, err := (ForgeResolution{Kind: ForgeGitHub}).HardeningRepoDocumentKind(); err != nil || k != HardeningReadRepo {
 		t.Fatalf("github preflight kind = %q, %v; want %q", k, err, HardeningReadRepo)
 	}
-	if k, err := HardeningRepoDocumentKind(ForgeGitLab); err != nil || k != HardeningReadProject {
+	if k, err := (ForgeResolution{Kind: ForgeGitLab}).HardeningRepoDocumentKind(); err != nil || k != HardeningReadProject {
 		t.Fatalf("gitlab preflight kind = %q, %v; want %q", k, err, HardeningReadProject)
 	}
-	k, err := HardeningRepoDocumentKind(ForgeKind("bitkeeper"))
+	k, err := (ForgeResolution{Kind: ForgeKind("bitkeeper")}).HardeningRepoDocumentKind()
 	if err == nil || k != "" {
 		t.Fatalf("an unknown forge must refuse, got kind %q err %v", k, err)
 	}
@@ -83,7 +85,7 @@ func TestHardeningKindRefusedByTheOtherForge(t *testing.T) {
 	t.Run("gitlab_refuses_every_github_kind", func(t *testing.T) {
 		s := newGLServer(t)
 		f := s.forge()
-		for _, k := range HardeningReadKindsFor(ForgeGitHub) {
+		for _, k := range hardeningReadKindsFor(ForgeGitHub) {
 			raw, err := f.RepoHardeningRead(glRepo, HardeningReadKind(k))
 			if err == nil || raw != nil {
 				t.Fatalf("gitlab answered github kind %q: raw=%s err=%v", k, raw, err)
@@ -100,7 +102,7 @@ func TestHardeningKindRefusedByTheOtherForge(t *testing.T) {
 	t.Run("github_refuses_every_gitlab_kind", func(t *testing.T) {
 		s := newGoldenServer(t)
 		f := s.forge()
-		for _, k := range HardeningReadKindsFor(ForgeGitLab) {
+		for _, k := range hardeningReadKindsFor(ForgeGitLab) {
 			raw, err := f.RepoHardeningRead(forgeTestRepo, HardeningReadKind(k))
 			if err == nil || raw != nil {
 				t.Fatalf("github answered gitlab kind %q: raw=%s err=%v", k, raw, err)
