@@ -62,7 +62,7 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 				" — no live claim can be enumerated (point --root at the checkout that carries it, or use --claims-fixture)", err)
 	}
 
-	opts, oerr := claimListOpts(root, repo)
+	opts, oerr := claimListOpts(repo)
 	if oerr != nil {
 		return nil, oerr
 	}
@@ -106,29 +106,23 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 }
 
 // claimListOpts builds the ListOpts readLiveClaims lists the claim namespace with: the repo's
-// forge and instance host resolved by deskkit (the roster's ASSAY_REPO_FORGES, else the
-// well-known host table, on the origin host of the --root checkout — the checkout that carries
-// the claim script, so it is the one whose remote names the forge), the session's token role
+// forge resolved by deskkit from the roster (ASSAY_REPO_FORGES), the session's token role
 // resolved exactly as the reclaim leg does (actions.go's doReclaim → deskkit.SessionTokenRole),
-// and the role's credential paired with the forge's git-basic username. Same shape as
-// cmd/deskclaim-ref's newForgeStore, so this read and that tool's writes dial the same place
-// as the same identity. Every failure — no loop identity, no forge, no host, no token — is
-// could-not-check (exit 6), never an anonymous attempt whose empty answer could read as "no
-// claims held".
-func claimListOpts(root, repo string) (gitcore.ListOpts, error) {
-	originHost, _ := deskkit.OriginRemoteHost(root) // "" when unreadable: the resolver then refuses, never defaults
-	return claimListOptsWithHost(repo, originHost)
-}
-
-// claimListOptsWithHost is claimListOpts with the origin host supplied, so a test can drive
-// the resolver with a fixture host and no checkout.
-func claimListOptsWithHost(repo, originHost string) (gitcore.ListOpts, error) {
+// and the role's credential paired with the forge's git-basic username, dialed at the RESOLVED
+// KIND's canonical instance host. It deliberately does NOT read the --root checkout's origin:
+// the repo being listed is independent of that checkout (a desk sweeping another repo's claims),
+// so its origin host names an unrelated forge, and binding the credential to it is a
+// cross-forge credential leak (#1197 security review S1). deskkit.ForgeGitEndpointFor derives
+// the host from the forge kind instead. Every failure — no loop identity, no forge, no
+// instance host, no token — is could-not-check (exit 6), never an anonymous attempt whose empty
+// answer could read as "no claims held".
+func claimListOpts(repo string) (gitcore.ListOpts, error) {
 	role, _, rerr := deskkit.SessionTokenRole("desksupervise")
 	if rerr != nil {
 		return gitcore.ListOpts{}, deskkit.Unverifiable(
 			"cannot list "+deskkit.ClaimRefsPattern+" on "+repo+": no session token role to list as", rerr)
 	}
-	ep, eerr := deskkit.ForgeGitEndpointFor(repo, role, originHost)
+	ep, eerr := deskkit.ForgeGitEndpointFor(repo, role)
 	if eerr != nil {
 		return gitcore.ListOpts{}, deskkit.Unverifiable(
 			"cannot list "+deskkit.ClaimRefsPattern+" on "+repo+": no authenticated forge endpoint", eerr)

@@ -14,14 +14,16 @@ import (
 )
 
 // probes_forge_test.go — the offline tests behind #1197 for the production BranchLister:
-// houseBranchLister must list AUTHENTICATED against the forge the resolver names, never an
+// houseBranchLister must list AUTHENTICATED against the forge the roster names, never an
 // anonymous read against a hardcoded github.com (which 404s on a private repo, so on a
-// private board root a dispatched worker's liveness was seen only through the PR probe).
+// private board root a dispatched worker's liveness was seen only through the PR probe). The
+// credential is dialed at the resolved kind's canonical instance host, never a host read from
+// the checkout this process runs in (#1197 security review S1).
 
 // TestHouseBranchListerNeverHardcodesGitHubHost is the source-level guard: probes.go must
-// not carry a `https://github.com/` literal in a git URL. The host is the forge resolver's
-// answer (deskkit.ForgeKindFromSlugAndHost), the same way cmd/deskclaim-ref's newForgeStore
-// builds its URL — a compiled-in SaaS host is the self-hosted-adopter failure #727 retired.
+// not carry a `https://github.com/` literal in a git URL. The host comes from deskkit's forge
+// resolution (deskkit.ForgeGitEndpointFor), never a compiled-in literal — a hardcoded SaaS
+// host is the self-hosted-adopter failure #727 retired.
 func TestHouseBranchListerNeverHardcodesGitHubHost(t *testing.T) {
 	src, err := os.ReadFile("probes.go")
 	if err != nil {
@@ -30,14 +32,16 @@ func TestHouseBranchListerNeverHardcodesGitHubHost(t *testing.T) {
 	for i, line := range strings.Split(string(src), "\n") {
 		if strings.Contains(line, `"https://github.com/`) {
 			t.Fatalf("probes.go:%d hardcodes the GitHub host in a git URL: %s\n"+
-				"— the host must come from the forge resolver (deskkit.ForgeKindFromSlugAndHost), never a literal", i+1, strings.TrimSpace(line))
+				"— the host must come from the forge resolver (deskkit.ForgeGitEndpointFor), never a literal", i+1, strings.TrimSpace(line))
 		}
 	}
 }
 
 // withForgeFixture installs a roster naming slug's forge into a private config home (the
 // REAL loader, file + permissions + parse), pins the session loop to the-desk (role "desk"),
-// and reloads. No git checkout and no network: the origin host is what the test passes in.
+// and reloads. No git checkout and no network: WHICH forge comes from the roster, and WHERE
+// the instance lives comes from the forge kind's canonical host (github.com) or, for GitLab,
+// GITLAB_API_BASE — never a checkout origin.
 func withForgeFixture(t *testing.T, slug, forge string) string {
 	t.Helper()
 	home := t.TempDir()
@@ -67,21 +71,20 @@ func withFixtureGitHubMinter(t *testing.T, token string, err error) {
 	t.Cleanup(func() { deskkit.SetGitHubCustodyMinter(nil) })
 }
 
-// TestHouseBranchListOpts_PrivateSlugCarriesAuthAndResolvedHost is the issue's Verify row
-// for the production BranchLister: the ListOpts built for a non-public slug carries a
-// non-nil Auth (the session role's token as the forge's git-basic credential) and a host
-// the forge resolver derived from the origin — a fixture host that is NOT github.com, so a
-// hardcoded SaaS host cannot pass.
-func TestHouseBranchListOpts_PrivateSlugCarriesAuthAndResolvedHost(t *testing.T) {
+// TestHouseBranchListOpts_PrivateSlugCarriesAuthAndCanonicalHost is the issue's Verify row
+// for the production BranchLister: the ListOpts built for a non-public GitHub slug carries a
+// non-nil Auth (the session role's token as the forge's git-basic credential) and the GitHub
+// canonical host — never anonymous, never a checkout origin.
+func TestHouseBranchListOpts_PrivateSlugCarriesAuthAndCanonicalHost(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
 	withFixtureGitHubMinter(t, "fixture-installation-token", nil)
 
-	opts, err := houseBranchListOptsWithHost("example-org/private", "git.example.test")
+	opts, err := houseBranchListOpts("example-org/private")
 	if err != nil {
-		t.Fatalf("houseBranchListOptsWithHost: %v", err)
+		t.Fatalf("houseBranchListOpts: %v", err)
 	}
-	if want := "https://git.example.test/example-org/private.git"; opts.URL != want {
-		t.Fatalf("ListOpts.URL = %q, want %q (host from the resolver, never a literal)", opts.URL, want)
+	if want := "https://github.com/example-org/private.git"; opts.URL != want {
+		t.Fatalf("ListOpts.URL = %q, want %q (kind-canonical host, never a checkout origin)", opts.URL, want)
 	}
 	if opts.Auth == nil {
 		t.Fatal("ListOpts.Auth is nil — the listing would go out anonymous, which is the #1197 404 on every private repo")
@@ -95,17 +98,19 @@ func TestHouseBranchListOpts_PrivateSlugCarriesAuthAndResolvedHost(t *testing.T)
 	}
 }
 
-// TestHouseBranchListOpts_GitLabPairsTokenWithOauthUsername: a gitlab-resolved slug pairs the role's
-// provisioned PAT with GitLab's required "oauth2" username — the forge-neutral half.
+// TestHouseBranchListOpts_GitLabPairsTokenWithOauthUsername: a gitlab-resolved slug pairs the
+// role's provisioned PAT with GitLab's required "oauth2" username, dialed at the
+// GITLAB_API_BASE instance host — never a checkout origin, never a gitlab.com default.
 func TestHouseBranchListOpts_GitLabPairsTokenWithOauthUsername(t *testing.T) {
 	dir := withForgeFixture(t, "example-org/gitlab-pilot", "gitlab")
 	if err := os.WriteFile(filepath.Join(dir, "gitlab-desk.token"), []byte("glpat-fixture\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("GITLAB_API_BASE", "https://gitlab.example.test")
 
-	opts, err := houseBranchListOptsWithHost("example-org/gitlab-pilot", "gitlab.example.test")
+	opts, err := houseBranchListOpts("example-org/gitlab-pilot")
 	if err != nil {
-		t.Fatalf("houseBranchListOptsWithHost: %v", err)
+		t.Fatalf("houseBranchListOpts: %v", err)
 	}
 	if want := "https://gitlab.example.test/example-org/gitlab-pilot.git"; opts.URL != want {
 		t.Fatalf("ListOpts.URL = %q, want %q", opts.URL, want)

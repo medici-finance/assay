@@ -16,12 +16,13 @@ import (
 // live_test.go — the offline tests behind #1197: readLiveClaims' ref listing must be
 // AUTHENTICATED and FORGE-RESOLVED, never an anonymous read against a hardcoded github.com
 // (which 404s on every private board root as "authentication required: Repository not
-// found" and makes the whole stop/blocked-timeout/reclaim instrument could-not-check).
+// found" and makes the whole stop/blocked-timeout/reclaim instrument could-not-check). The
+// credential is dialed at the RESOLVED KIND's canonical instance host, never a host read from
+// the checkout the desk runs in or was pointed at (#1197 security review S1).
 
 // TestLiveClaimListNeverHardcodesGitHubHost is the source-level guard: live.go must not
-// carry a `https://github.com/` literal. The host is the forge resolver's answer
-// (deskkit.ForgeKindFromSlugAndHost, fed the --root checkout's origin host), the same way
-// cmd/deskclaim-ref's newForgeStore builds its URL — a compiled-in SaaS host is exactly the
+// carry a `https://github.com/` literal. The host comes from deskkit's forge resolution
+// (ForgeGitEndpointFor), never a compiled-in literal — a hardcoded SaaS host is the
 // self-hosted-adopter failure #727 retired from the claim layer.
 func TestLiveClaimListNeverHardcodesGitHubHost(t *testing.T) {
 	src, err := os.ReadFile("live.go")
@@ -31,14 +32,16 @@ func TestLiveClaimListNeverHardcodesGitHubHost(t *testing.T) {
 	for i, line := range strings.Split(string(src), "\n") {
 		if strings.Contains(line, `"https://github.com/`) {
 			t.Fatalf("live.go:%d hardcodes the GitHub host in a git URL: %s\n"+
-				"— the host must come from the forge resolver (deskkit.ForgeKindFromSlugAndHost), never a literal", i+1, strings.TrimSpace(line))
+				"— the host must come from the forge resolver (deskkit.ForgeGitEndpointFor), never a literal", i+1, strings.TrimSpace(line))
 		}
 	}
 }
 
 // withForgeFixture installs a roster naming slug's forge into a private config home (the
 // REAL loader, file + permissions + parse), pins the session loop to the-desk (role "desk"),
-// and reloads. No git checkout and no network: the origin host is what the test passes in.
+// and reloads. No git checkout and no network: WHICH forge comes from the roster, and WHERE
+// the instance lives comes from the forge kind's canonical host (github.com) or, for GitLab,
+// GITLAB_API_BASE — never a checkout origin.
 func withForgeFixture(t *testing.T, slug, forge string) string {
 	t.Helper()
 	home := t.TempDir()
@@ -80,20 +83,20 @@ func basicAuthOf(t *testing.T, opts gitcore.ListOpts) *githttp.BasicAuth {
 	return ba
 }
 
-// TestClaimListOptsForPrivateSlugCarriesAuthAndResolvedHost is the issue's Verify row: the
-// ListOpts built for a non-public slug carries a non-nil Auth (the session role's token as
-// the forge's git-basic credential) and a host the forge resolver derived from the checkout's
-// origin — here a fixture host that is NOT github.com, so a hardcoded SaaS host cannot pass.
-func TestClaimListOptsForPrivateSlugCarriesAuthAndResolvedHost(t *testing.T) {
+// TestClaimListOptsForPrivateSlugCarriesAuthAndCanonicalHost is the issue's Verify row: the
+// ListOpts built for a non-public GitHub slug carries a non-nil Auth (the session role's token
+// as the forge's git-basic credential) and the GitHub canonical host — never an anonymous or
+// hardcoded endpoint.
+func TestClaimListOptsForPrivateSlugCarriesAuthAndCanonicalHost(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
 	withFixtureGitHubMinter(t, "fixture-installation-token", nil)
 
-	opts, err := claimListOptsWithHost("example-org/private", "git.example.test")
+	opts, err := claimListOpts("example-org/private")
 	if err != nil {
-		t.Fatalf("claimListOptsWithHost: %v", err)
+		t.Fatalf("claimListOpts: %v", err)
 	}
-	if want := "https://git.example.test/example-org/private.git"; opts.URL != want {
-		t.Fatalf("ListOpts.URL = %q, want %q (host from the resolver, never a literal)", opts.URL, want)
+	if want := "https://github.com/example-org/private.git"; opts.URL != want {
+		t.Fatalf("ListOpts.URL = %q, want %q (kind-canonical host, never a checkout origin)", opts.URL, want)
 	}
 	ba := basicAuthOf(t, opts)
 	if ba.Username != gitcore.GitHubGitUsername {
@@ -105,17 +108,18 @@ func TestClaimListOptsForPrivateSlugCarriesAuthAndResolvedHost(t *testing.T) {
 }
 
 // TestClaimListOptsGitLabPairsTokenWithOauthUsername: a gitlab-resolved slug pairs the role's
-// provisioned PAT with GitLab's required "oauth2" username — the forge-neutral half of the
-// fix, read from custody exactly as ForgeFor's GitLab branch does (a 0600 token file).
+// provisioned PAT with GitLab's required "oauth2" username, dialed at the GITLAB_API_BASE
+// instance host — never a checkout origin, never a gitlab.com default.
 func TestClaimListOptsGitLabPairsTokenWithOauthUsername(t *testing.T) {
 	dir := withForgeFixture(t, "example-org/gitlab-pilot", "gitlab")
 	if err := os.WriteFile(filepath.Join(dir, "gitlab-desk.token"), []byte("glpat-fixture\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("GITLAB_API_BASE", "https://gitlab.example.test")
 
-	opts, err := claimListOptsWithHost("example-org/gitlab-pilot", "gitlab.example.test")
+	opts, err := claimListOpts("example-org/gitlab-pilot")
 	if err != nil {
-		t.Fatalf("claimListOptsWithHost: %v", err)
+		t.Fatalf("claimListOpts: %v", err)
 	}
 	if want := "https://gitlab.example.test/example-org/gitlab-pilot.git"; opts.URL != want {
 		t.Fatalf("ListOpts.URL = %q, want %q", opts.URL, want)
@@ -126,13 +130,35 @@ func TestClaimListOptsGitLabPairsTokenWithOauthUsername(t *testing.T) {
 	}
 }
 
+// TestClaimListOptsGitLabWithoutInstanceHostIsCouldNotCheck: a gitlab-resolved slug with no
+// GITLAB_API_BASE configured must refuse (exit 6), never default to gitlab.com and present the
+// PAT to a host the repo may not live on (#727 / #1197 security review S1).
+func TestClaimListOptsGitLabWithoutInstanceHostIsCouldNotCheck(t *testing.T) {
+	dir := withForgeFixture(t, "example-org/gitlab-pilot", "gitlab")
+	if err := os.WriteFile(filepath.Join(dir, "gitlab-desk.token"), []byte("glpat-fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GITLAB_API_BASE", "")
+
+	opts, err := claimListOpts("example-org/gitlab-pilot")
+	if err == nil {
+		t.Fatalf("expected a could-not-check refusal with no GITLAB_API_BASE, got ListOpts %+v", opts)
+	}
+	if code := deskkit.ExitCodeOf(err); code != deskkit.ExitUnverifiable {
+		t.Fatalf("exit code = %d, want %d (Unverifiable): %v", code, deskkit.ExitUnverifiable, err)
+	}
+	if strings.Contains(opts.URL, "gitlab.com") {
+		t.Fatalf("a SaaS host was defaulted into the URL: %q", opts.URL)
+	}
+}
+
 // TestClaimListOptsMissingTokenIsCouldNotCheck: no token means no listing — exit 6, never an
 // anonymous attempt whose empty/404 answer could read as "no claims held".
 func TestClaimListOptsMissingTokenIsCouldNotCheck(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
 	withFixtureGitHubMinter(t, "", errors.New("no App credential provisioned in this fixture"))
 
-	opts, err := claimListOptsWithHost("example-org/private", "git.example.test")
+	opts, err := claimListOpts("example-org/private")
 	if err == nil {
 		t.Fatalf("expected a could-not-check refusal, got ListOpts %+v", opts)
 	}
@@ -141,21 +167,17 @@ func TestClaimListOptsMissingTokenIsCouldNotCheck(t *testing.T) {
 	}
 }
 
-// TestClaimListOptsNoOriginHostIsCouldNotCheck: with no readable origin host the resolver
-// refuses rather than defaulting to the SaaS instance (#727) — the roster names the forge
-// SOFTWARE, never WHERE it is.
-func TestClaimListOptsNoOriginHostIsCouldNotCheck(t *testing.T) {
+// TestClaimListOptsUnlistedRepoIsCouldNotCheck: a slug the roster does not name has no
+// resolvable forge — refuse (exit 6), never guess from an unrelated origin.
+func TestClaimListOptsUnlistedRepoIsCouldNotCheck(t *testing.T) {
 	withForgeFixture(t, "example-org/private", "github")
 	withFixtureGitHubMinter(t, "fixture-installation-token", nil)
 
-	opts, err := claimListOptsWithHost("example-org/private", "")
+	opts, err := claimListOpts("example-org/not-in-roster")
 	if err == nil {
-		t.Fatalf("expected a could-not-check refusal for an unknown instance host, got ListOpts %+v", opts)
+		t.Fatalf("expected a could-not-check refusal for an unlisted repo, got ListOpts %+v", opts)
 	}
 	if code := deskkit.ExitCodeOf(err); code != deskkit.ExitUnverifiable {
 		t.Fatalf("exit code = %d, want %d (Unverifiable): %v", code, deskkit.ExitUnverifiable, err)
-	}
-	if strings.Contains(opts.URL, "github.com") {
-		t.Fatalf("a SaaS host was defaulted into the URL: %q", opts.URL)
 	}
 }

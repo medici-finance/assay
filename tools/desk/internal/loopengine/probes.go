@@ -236,26 +236,20 @@ func houseBranchLister(repoSlug string) (map[string]string, error) {
 }
 
 // houseBranchListOpts builds houseBranchLister's ListOpts the way housePRReader builds its
-// forge: the session's token role from deskkit.SessionTokenRole, the forge kind and instance
-// host from the resolver (roster ASSAY_REPO_FORGES, else the well-known host table, on the
-// origin host of the checkout this process runs in — the same CWD read housePRReader's
-// ForgeFor makes), and the role's credential paired with the forge's git-basic username
-// (deskkit.ForgeGitEndpointFor, the shape cmd/deskclaim-ref's newForgeStore uses). No
-// ambient-identity fallback and no SaaS-host default: either is a silent could-not-check
-// dressed as an answer.
+// forge: the session's token role from deskkit.SessionTokenRole, the forge kind from the roster
+// (ASSAY_REPO_FORGES), and the role's credential paired with the forge's git-basic username,
+// dialed at the RESOLVED KIND's canonical instance host (deskkit.ForgeGitEndpointFor). It
+// deliberately does NOT read this process's CWD origin: the repo being probed is the claim's
+// own slug, independent of whatever checkout the desk runs in, so that origin host names an
+// unrelated forge — binding the credential to it is a cross-forge credential leak (#1197
+// security review S1). No ambient-identity fallback and no SaaS-host default: either is a
+// silent could-not-check dressed as an answer.
 func houseBranchListOpts(repoSlug string) (gitcore.ListOpts, error) {
-	originHost, _ := deskkit.OriginRemoteHost(".") // "" when unreadable: the resolver then refuses, never defaults
-	return houseBranchListOptsWithHost(repoSlug, originHost)
-}
-
-// houseBranchListOptsWithHost is houseBranchListOpts with the origin host supplied, so a
-// test can drive the resolver with a fixture host and no checkout.
-func houseBranchListOptsWithHost(repoSlug, originHost string) (gitcore.ListOpts, error) {
 	role, _, rerr := deskkit.SessionTokenRole("desksupervise")
 	if rerr != nil {
 		return gitcore.ListOpts{}, rerr
 	}
-	ep, err := deskkit.ForgeGitEndpointFor(repoSlug, role, originHost)
+	ep, err := deskkit.ForgeGitEndpointFor(repoSlug, role)
 	if err != nil {
 		return gitcore.ListOpts{}, err
 	}
