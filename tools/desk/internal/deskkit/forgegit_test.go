@@ -143,3 +143,44 @@ func TestOriginRemoteHost(t *testing.T) {
 		t.Fatal("a directory with no repository must not yield a host")
 	}
 }
+
+// --- #1197 security review (S1/S2): the credential's DESTINATION host ---------------------
+
+// TestForgeGitEndpointFor_HostIsKindCanonicalNotCheckoutOrigin is S1, fail-first: the URL
+// host — where the custody credential is presented as an HTTP Basic password — must be the
+// RESOLVED KIND's own canonical instance, NOT the host of the (possibly unrelated) checkout
+// the caller read its origin from. A desk sweeping a GitHub repo's claims from a GitLab
+// checkout must send the GitHub App token to github.com, never to the GitLab host (the #1206
+// crossing shape re-introduced via the host).
+func TestForgeGitEndpointFor_HostIsKindCanonicalNotCheckoutOrigin(t *testing.T) {
+	roster := goldenRoster()
+	roster[EnvRepoForges] = "example-org/private=github"
+	withRoster(t, roster)
+	withFixtureMinter(t, fixtureGitHubToken, nil)
+
+	// The host argument stands in for the UNRELATED checkout's origin the caller read.
+	ep, err := ForgeGitEndpointFor("example-org/private", "desk", "gitlab-checkout.example")
+	if err != nil {
+		t.Fatalf("ForgeGitEndpointFor: %v", err)
+	}
+	if ep.Host != "github.com" {
+		t.Fatalf("Host = %q, want github.com — the credential must be dialed at the kind's canonical host, not the checkout origin", ep.Host)
+	}
+	if want := "https://github.com/example-org/private.git"; ep.Opts.URL != want {
+		t.Fatalf("URL = %q, want %q", ep.Opts.URL, want)
+	}
+}
+
+// TestForgeGitEndpointFor_RejectsAuthorityInjectionHost is S2, fail-first: a host carrying
+// URL-authority metacharacters (an scp-like `user@a@evil.test`) must be refused before it is
+// interpolated into the URL authority — else the credential is presented to the injected host.
+func TestForgeGitEndpointFor_RejectsAuthorityInjectionHost(t *testing.T) {
+	roster := goldenRoster()
+	roster[EnvRepoForges] = "example-org/private=github"
+	withRoster(t, roster)
+	withFixtureMinter(t, fixtureGitHubToken, nil)
+
+	if ep, err := ForgeGitEndpointFor("example-org/private", "desk", "git@a.example@evil.test"); err == nil {
+		t.Fatalf("expected a refusal for an authority-injection host, got URL %q", ep.Opts.URL)
+	}
+}
