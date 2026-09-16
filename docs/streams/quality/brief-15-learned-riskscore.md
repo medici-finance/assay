@@ -154,11 +154,12 @@ the repo's stated constraints licenses 40 specifically — it is the implementer
 undocumented as a derivation. The green Verify table does not settle this: row 5's
 under-corpus test only exercises the below-threshold PATH (any threshold would pass it), and
 row 3's held-out win is measured on a fixture corpus of 300 examples, well clear of the
-40-example boundary, so it says nothing about whether 40 itself is sound. Recommend a
-follow-up brief/comment deriving MinCorpus from the actual feature count (or citing a
-specific EPV target) rather than the current unexplained 40 — flagging for reviewer
-attention, not blocking this PASS since the value is reversible, advisory-only, and the
-item's own risk block is all-no / gate:model.
+40-example boundary, so it says nothing about whether 40 itself is sound. Per the `gate:
+model, irreversible: no` risk-value protocol, filed as a question rather than left as an
+unlinked recommendation: **medici-finance/assay#1171** — derive MinCorpus from the actual
+feature count (or cite a specific EPV target) rather than the current unexplained 40. Not
+blocking this PASS: the value is reversible, advisory-only, and the item's own risk block is
+all-no / gate:model.
 
 - w1..w4, kDensity, kCoupling: reversible heuristic tuning knobs, unchanged in kind from the
   existing §9.1 hand-weighted design (spec §9.1 explicitly reserves the tuning judgment to
