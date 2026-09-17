@@ -5,9 +5,10 @@
 **Base read:** `c67cc371` (origin/main)
 
 No code lands against this document until its status is `approved`. Approval is a human act.
-Every design fork is a lettered question in [§10](#10-questions-and-rulings) — all but one now
-ruled by the driver (2026-09-17, recorded on the pull request that carries this spec); the briefs that
-implement this spec ([20–25, 28–31](README.md#briefs)) are written on the rulings recorded in §10.
+Every design fork is a lettered question in [§10](#10-questions-and-rulings) — all now ruled
+by the driver (2026-09-17, recorded on #1267 and on the pull request that first carried this
+spec); the briefs that implement this spec ([20–25, 28–32](README.md#briefs)) are written on
+the rulings recorded in §10.
 Briefs 26 and 27 were withdrawn with the forge-ref store (§10 D); the numbering gap is kept.
 
 ## 1. Problem
@@ -102,8 +103,8 @@ window (§7).
 | # | Claim | Status | How checked |
 |---|---|---|---|
 | S1 | Exclusive create plus a directory lock gives mutual exclusion between processes on one host's local filesystem | established — in-tree | T6: the primitive and its race tests ship in this tree and gate the non-dispatch claim kinds today |
-| S2 | The same guarantees hold on a network filesystem (NFS, SMB) or a cluster read-write-many volume | **could-not-check** | not measured; not asserted from memory. It matters only if a host process points `file` at such a path, which §6 guards against. Brief 20 measures what it can reach; anything unmeasured stays unsupported |
-| S4 | The tool can reliably detect that a directory is on a network filesystem, on every supported OS | **could-not-check** | not investigated. Brief 20; it decides how much of §6's filesystem guard can be a refusal rather than a notice |
+| S2 | The same guarantees hold on a network filesystem (NFS, SMB) or a cluster read-write-many volume | **could-not-check** | not measured; not asserted from memory. It matters only if a host process points `file` at such a path, which §6 answers with a NOTICE on every boot and never a refusal (§10 L). Brief 20 measures what it can reach; anything unmeasured stays unsupported |
+| S4 | The tool can reliably detect that a directory is on a network filesystem, on every supported OS | **could-not-check** | not investigated. Brief 20. It decides no refusal — the filesystem guard is a NOTICE in every case (§10 L) — but it fixes the NOTICE's wording: whether the tool can name the filesystem type it found, or can only say the type was not determined |
 
 (S3 — a Docker volume shared between containers — was withdrawn: containers use `service`,
 §10 H, so the question no longer decides anything.)
@@ -140,7 +141,8 @@ cannot be read or is torn, is `unverifiable` (exit 6) — never "free".
 **What it does not give.** It is invisible to any machine that does not share the directory.
 Two machines each running their own `file` store for the same repo will both acquire the same
 item and neither will know (T7 is this exact failure). It carries no guarantee on a network
-filesystem (S2). The guards are §6.
+filesystem (S2), and by ruling the tool does not refuse one — it prints a NOTICE on every boot
+(§6, §10 L). The guards are §6.
 
 ### 4.2 The same store, served — `service`
 
@@ -172,6 +174,12 @@ Properties, stated because each one is load-bearing:
 - **Accept set.** Only the six verbs; only keys that pass the claim key grammar
   (`deskdispatch/dispatch.go:94-98`); only repos in the roster's allowed set. Each request
   writes one audit line: member-declared role, verb, key, outcome.
+- **The contract stands alone, independent of its carrier.** The six-verb contract — inputs,
+  three-state results, typed refusals, byte-exact `show` / `list` lines — MUST be specified
+  and tested without reference to the transport that carries it, so that one conformance
+  suite, unmodified, passes against the in-process store and against the served store
+  (§10 M; brief 24). The serve mode ships stand-alone in this repository; it is not carried
+  by the cross-desk message layer (T11), and nothing here plans to fold it into one.
 - **Unreachable → fail closed.** No dispatch. A connection failure, a timeout, a lost or
   malformed reply is `unverifiable` (exit 6) — never "acquired", never "free", and never a
   silent fall-back to another store.
@@ -238,13 +246,26 @@ cross-store fallback anywhere.
 `file` and names `service` (§10 H). Where detection is not possible the rule still binds the
 scaffolds and the docs; the tool says what it could not determine rather than guessing.
 
-**Filesystem guard (`file`).** A host process might point `ASSAY_CLAIM_DIR` at a network
-filesystem, where S2 is could-not-check. Proposed, and the one fork not yet ruled
-([§10 L](#10-questions-and-rulings)): **refuse** when the directory is positively identified
-as a network filesystem; print a **NOTICE on every boot** when the filesystem type cannot be
-determined ("filesystem type not determined — the file store is supported on local disks
-only"). Refusing on "cannot tell" would stop legitimate single-host cells on any OS where
-detection is unimplemented (S4); staying silent would hide an unsupported setup.
+**Filesystem guard (`file`) — a notice, never a refusal.** A host process might point
+`ASSAY_CLAIM_DIR` at a network filesystem, where S2 is could-not-check. Ruled
+([§10 L](#10-questions-and-rulings), 2026-09-17, answer C): the process gets a **NOTICE on
+every boot in every case** and is **never refused on that ground** —
+
+- directory positively identified as a network filesystem → resolve, with a NOTICE naming the
+  filesystem type found: "the file store is supported on local disks only";
+- filesystem type cannot be determined → resolve, with a NOTICE: "filesystem type not
+  determined — the file store is supported on local disks only".
+
+Staying silent is the one outcome excluded. Which wording an OS can print is brief 20's S4
+measurement.
+
+**How the two `file` guards sit together.** The single-host declaration (the cross-host guard
+above) **remains the refusing guard**: without `ASSAY_CLAIM_SINGLE_HOST=yes`, `file` does not
+resolve, on a local disk or a network one. The filesystem guard only ever prints. **What the
+ruling accepts, stated plainly:** a claims directory on a mount shared by two machines is
+stopped by the declaration and the notice only — not by the tool. An operator who declares
+single-host and then shares that directory with a second machine will see the notice on every
+boot and nothing else; S2 remains could-not-check for that setup and it stays unsupported.
 
 **Mixed-store refusal — during the window.** While forge-ref still exists (release N), a cell
 half-way through its drain must not double-dispatch. A `file` / `service` resolver that finds
@@ -271,7 +292,7 @@ under every store.
 - **Per cell, during the window: a drain, not a merge.** Quiesce dispatch, let live claims
   release or expire, set the key on **every** dispatching process of the cell, resume. The
   mixed-store refusal makes a half-done change loud instead of silent.
-- **Release N+1.** Deletes the forge-ref store and the forge-side mixed-store read; an unset
+- **Release N+1** (brief 32, its own human gate). Deletes the forge-ref store and the forge-side mixed-store read; an unset
   key is a refusal printing the two valid values. An install that ignored the NOTICE for a
   whole window stops at boot with the remedy in front of it — it does not double-dispatch.
 - One cell, one store. Two cells sharing a repo is already outside the cell model (a cell is
@@ -322,8 +343,9 @@ still exists:
 
 ## 10. Questions and rulings
 
-Rulings are the driver's, relayed by the desk and recorded on the pull request that carries
-this spec, all dated **2026-09-17**. None of them approves the spec.
+Rulings are the driver's, relayed by the desk, all dated **2026-09-17**. Those through the
+removal schedule are recorded on the pull request that first carried this spec; L, the shape
+of brief 30, and M are recorded on #1267. None of them approves the spec.
 
 | # | Question | Ruling |
 |---|---|---|
@@ -335,11 +357,13 @@ this spec, all dated **2026-09-17**. None of them approves the spec.
 | **F** | Which forge-ref namespace the server-side bound assumes | **MOOT** — there is no server-side bound; forge-ref is removed (D) |
 | **G** | Fail or NOTICE when the forge-ref bound is unaudited | **MOOT** — same reason |
 | **H** | Container desks on one host: claims volume or `service`? | **RULED: `service` for anything in a container or pod, permanently**; `file` is for plain host processes only. Departs from the first draft's default; the shared-volume measurement is dropped |
-| **I** | Do roles other than the reviewer get narrowed duties? | **RULED: yes — every role is audited and narrowed, as a follow-on wave after the reviewer change is live** (§12). Briefs 20–30 keep reviewer-only scope. Departs from the first draft's default |
+| **I** | Do roles other than the reviewer get narrowed duties? | **RULED: yes — every role is audited and narrowed, as a follow-on wave after the reviewer change is live** (§12). Briefs 20–30 and 32 keep reviewer-only scope. Departs from the first draft's default |
 | **J** | How the GitLab tier is known for the Free notice | **MOOT** — there is no Free notice; the tradeoff disappears with forge-ref (§9) |
 | **K** | Is the step back in §2 recorded on #1267? | **SATISFIED** — recorded there as a desk relay, 2026-09-17 |
 | **—** | Removal schedule (asked after D) | **RULED: one release window.** N ships `file` + serve mode, unset key → forge-ref under a NOTICE naming the removal release; N+1 deletes the store and refuses an unset key |
-| **L** | **OPEN.** `file` pointed at a network filesystem by a host process | Recommended default: **refuse** when positively identified as a network filesystem; **NOTICE every boot** when the type cannot be determined (§6). Brief 23 is written on this default |
+| **L** | `file` pointed at a network filesystem by a host process. Asked as: A — refuse when positively identified, NOTICE when undetermined; B — refuse on both; C — NOTICE only, never refuse | **RULED 2026-09-17: C.** A NOTICE on every boot in every case — positively identified, or type undetermined — and never a refusal on that ground (§6). The single-host declaration (C above) remains the refusing guard. Accepted with it: a claims directory on a mount shared by two machines is stopped by the declaration and the notice only. Brief 20's filesystem-type measurement stays; the NOTICE wording depends on it. Departs from the default brief 23 was first written on (A); brief 23 is amended |
+| **—** | Shape of brief 30, the cutover across two releases (asked after the removal schedule). Asked as: A — split: brief 30 is the release-N cutover, and a new brief is the release-N+1 deletion, human-gated, depending on 30, with its own Verify table; B — one brief, two slices | **RULED 2026-09-17: A — split.** Brief 30 is the release-N cutover only (ship, prove on a live cell, then the operator narrows the grant — a human act). [Brief 32](brief-32-forge-store-deletion.md) is the release-N+1 deletion. One brief stays one pull request, and the deletion is signed off after a release of evidence |
+| **M** | The serve mode and a cell's message gateway (T11). Asked as: A — the serve mode stands alone in this repository, with a transport-neutral six-verb contract; B — carried by the gateway; C — A now, plus a follow-on brief to fold it into the gateway | **RULED 2026-09-17: A.** Stand-alone here; the six-verb contract is specified independently of its transport (§4.2) and brief 24 proves it with one conformance suite passing against the in-process store and the served store. No follow-on gateway brief is authored — that option was not chosen |
 
 ## 11. Order of operations
 
@@ -352,15 +376,21 @@ through release N, and the grant changes last.
    onto the seam** (22) — before any writer can switch — and **store-aware duties** (25).
 4. **File store and guards** (23); then the **served store** (24).
 5. **Scaffold defaults** (28), then **docs and store-neutral skills** (29).
-6. **Release N**; adopters **re-pin**. Existing human-gated processes.
+6. **Release N ships**; adopters **re-pin**. Existing human-gated processes.
 7. **Per cell: drain, set the store key, resume** (§7).
-8. **Prove on a fixture** (brief 30): a reviewer at repository read boots clean and
+8. **Prove on a live cell** (brief 30 — the release-N cutover, and only that): on a throwaway
+   cell pinned to the published release N, a reviewer at repository read boots clean and
    dispatches under `file` and under `service`; with the same credential a branch push is
-   refused by the forge for lack of write access.
-9. **The operator narrows the grant.** A human act, per installation: reduce the reviewer to
-   repository read. Re-mint fresh afterwards (`preflight.go:835-838`). No tool performs or
-   prompts it.
-10. **Release N+1** removes forge-ref (brief 30's second half) once the window has run.
+   refused by the forge for lack of write access. Brief 30 also records the release the
+   removal NOTICE names.
+9. **The operator narrows the grant.** A human act, per installation, not a brief step: reduce
+   the reviewer to repository read. Re-mint fresh afterwards (`preflight.go:835-838`). No tool
+   performs or prompts it.
+10. **The other roles' audit may start** (brief 31; §12) — it waits on step 8, not on step 11.
+11. **Release N+1 removes forge-ref** — [brief 32](brief-32-forge-store-deletion.md), its own
+    brief behind its own human gate, depending on brief 30. It starts once the window has run
+    and the release named at step 8 is the one being cut. It does not wait on any operator
+    having performed step 9.
 
 Rollback during the window is restoring the grant and reversing the drain. After N+1 there is
 no forge-ref to return to; rollback is re-pinning N.
@@ -369,7 +399,10 @@ no forge-ref to return to; rollback is re-pinning N.
 
 Ruled (§10 I): every remaining role — desk, worker, verifier, issue-loop, intake-loop — is
 audited for the repository writes it actually performs and narrowed to them. This is a
-**follow-on wave behind brief 30**, so the reviewer change does not wait on it.
+**follow-on wave behind brief 30** — the release-N cutover, which is when the reviewer change
+is live — so the reviewer change does not wait on it. It does **not** wait on brief 32: the
+deletion a release later changes nothing the audit measures except one window-only write
+(the `desk` role's legacy claim ref, T3), which brief 31 records as removed by brief 32.
 
 - One measurement brief, [31](brief-31-remaining-roles-write-audit.md), inventories each
   role's real forge writes with the same method brief 20 uses for the reviewer.
@@ -404,11 +437,12 @@ built with them in view; none is designed here.
 | V4 | During the window: a live forge claim present while resolving `file` → refused before any worktree; and the reverse | 23 |
 | V5 | A reviewer credential with **no repository write** dispatches a review under `file` and under `service`; the supervisor and the verdict-stamp liveness read see that claim | 22, 23, 24 |
 | V6 | Service down → dispatch exits 6 before any worktree; lost reply → unverifiable, no fallback | 24 |
-| V7 | `file` inside a container → refused naming `service`; `file` on a positively identified network filesystem → refused; undetermined filesystem → NOTICE every boot | 23 |
-| V8 | Release N: unset key → legacy resolution plus the removal NOTICE on every boot, and `forge-ref` as an explicit value is refused. Release N+1: unset key → refused printing the two valid values, and no forge-ref code remains | 21, 30 |
+| V7 | `file` inside a container → refused naming `service`; `file` on a positively identified network filesystem → resolves with a NOTICE every boot naming the type; undetermined filesystem → resolves with a NOTICE every boot; neither is refused, and with the single-host declaration absent both are still refused on the declaration | 23 |
+| V8 | Release N: unset key → legacy resolution plus the removal NOTICE on every boot, and `forge-ref` as an explicit value is refused. Release N+1: unset key → refused printing the two valid values, no forge-ref code path remains, and the claim readers are unaffected | 21, 32 |
 | V9 | The boot check names the store; a reviewer at repository read is clean under `file` / `service` and refused under the legacy resolution | 25 |
 | V10 | No skill body names a store, a claim namespace, or a per-store grant | 29 |
 | V11 | With the narrowed reviewer credential and plain git, a branch push is **refused by the forge** for lack of write access | 30 |
+| V12 | One conformance table, unmodified and naming no transport, passes against the in-process store and against the served store — the six-verb contract does not depend on its carrier | 24 |
 
 ## 15. Documents that change
 
@@ -419,7 +453,7 @@ built with them in view; none is designed here.
 | `docs/adopting-assay-gitlab.md` | reviewer row: no repository write needed once the store key is set, on every tier. **No Free-tier tradeoff text is added** — the tradeoff is removed, not documented (§9) | 29 |
 | `docs/enforcement-model.md` — *The identity set* | "one list, identically" becomes store-aware; the write boundary described as a layer | 29 |
 | `docs/cellctl.md`, `docs/docker.md`, `containers/README.md` | the claim store per cell kind — host processes `file`, containers and pods `service`; supported topologies stated for the first time (closes A7) | 28, 29 |
-| `docs/UPGRADING.txt`, release notes for N and N+1 | the removal window, the drain, the refusal in N+1 | 30 |
+| `docs/UPGRADING.txt`, release notes for N and N+1 | the removal window and the drain (N); the refusal and what is no longer supported (N+1) | 29 (N), 32 (N+1) |
 | `tools/desk/README.md` | claim tool, resolver, keys, preflight row | 21, 23, 24, 25 |
 | `plugins/assay/skills/` — pr-review-desk, worker-desk, pr-shepherd, the-desk | remove grant lists, claim namespaces and `git ls-remote` claim reads; point at the claim tool's `show` / `list` and the boot check. Store-neutral | 29 |
 | the public website's Apps and adoption pages | mirror the adopter guides; they live in the site's own repository and the companion change is tracked there | — |
@@ -431,4 +465,5 @@ tree's brief generator could not produce this stream's brief shape (#1280 tracks
 so the first eleven rows were added by hand in the exact shape the generator prints. They have
 since been replaced by tool output: the table as committed is what
 `statusgen regen --readmes --root .`, built from this tree, writes from the briefs'
-frontmatter.
+frontmatter. Brief 32, added later, was written by hand in the same shape for the same reason
+(#1280 was still open); its table row is tool output like the rest.
