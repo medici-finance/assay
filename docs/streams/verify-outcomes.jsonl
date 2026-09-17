@@ -15,3 +15,4 @@
 {"ts": "2026-09-11T00:10:00Z", "brief": "harness-portability/02", "outcome": "verified", "rows_passed": 10, "rows_total": 10, "sha": "553dc2ae"}
 {"ts": "2026-09-11T00:00:00Z", "brief": "harness-portability/01", "outcome": "verified", "rows_passed": 6, "rows_total": 6, "sha": "553dc2ae"}
 {"ts": "2026-09-16T20:35:00Z", "brief": "desk-containers/03", "outcome": "verified", "rows_passed": 2, "rows_total": 7, "sha": "e9fa19d3", "note": "row 5 now PASS given assay#1025 (was FAIL 2026-09-06); rows 1-4/7 could-not-check offline-docker-lane; risk-value NAMED-NOT-DERIVED filed assay#1218"}
+{"ts": "2026-09-16T21:35:00Z", "brief": "desk-tools/12", "outcome": "verified", "rows_passed": 9, "rows_total": 9, "sha": "a4700d2b", "note": "corrects a prior over-broad row-8 HELD (whole-dir gofmt sweep vs the briefs own scoped command)"}
