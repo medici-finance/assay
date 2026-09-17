@@ -143,7 +143,61 @@ facts:
 | 12 | `statusgen --root . --consumers --brief apps-installer/02` | exit 0 (routing claims corroborated against the diff) |
 
 ## Evidence
-<!-- appended at implementation time -->
+
+Implemented on branch `feat/apps-installer-02`. All twelve Verify rows run locally (offline —
+every conversion/`gh` call is a test double; `KUBECONFIG=/dev/null`, no live GitHub contact from
+this session).
+
+| # | Result |
+|---|--------|
+| 1 | PASS — `go build ./...` clean; `go test ./cmd/deskapps/ -count=1` exit 0 |
+| 2 | PASS — `deskapps init --tier team --org example --no-browser --dry-run` prints the loopback URL and both `example-read`/`example-act` rows; grep count 3 |
+| 3 | PASS — `TestManifest*` (`-v`) logs `family tier: 6 manifests`, `team tier: 2 manifests`, `requiredDuties covered`; grep count 3 (≥3) |
+| 4 | PASS — `TestNoSecretInPage` drives a real (fake) conversion carrying unmistakable fake pem/client-secret/webhook-secret and checks every served route (`/`, `/tier`, `/setup`, `/run`) for them |
+| 5 | PASS — `TestNoSecretInLogs` checks the injected console writer, the REAL `os.Stdout` (captured via `os.Pipe`, not just the injectable writer — see the fail-first note below), and the `deskkit` audit line; all three carry `app=`/`state=`, none carry the secret material |
+| 6 | PASS — `TestCallbackBadState`: a callback with a state matching no pending row is refused 403, `convertCodeFn` is never called, and the row is untouched |
+| 7 | PASS — `TestBindLoopbackOnly`: the listener address always starts `127.0.0.1:`, on both the direct-bind and the bind-fails-take-next-free-port paths; `0.0.0.0`/`::` never appear |
+| 8 | PASS — `TestPemMode`: the written key is mode 0600 and byte-equal to the fake conversion's `pem` |
+| 9 | PASS — `TestBindingsWritten` (`-v`) logs the merged `apps.env`; grep count 3 (≥3) for `REVIEWER_APP=example-act`, `WORKER_APP=example-act`, `READ_APP=example-read` |
+| 10 | PASS — `docs/desk-tools/deskapps.md` carries `## Measured` (count 1) and `throttle`/`org owner`/`Enterprise Server` (count 8, ≥3) |
+| 11 | PASS — `TestMutationCorpus*` confirm both `mutations.json` mutants are present verbatim against the real source; independently **hand-applied both mutants** (see fail-first below) and confirmed the named guard tests genuinely fail, then reverted |
+| 12 | PASS (exit 0) once this Evidence edit puts the brief file itself in the diff — `--consumers` is diff-scoped by design (its own `--help`: "corroborate ... against its own diff") and reports `no brief files in the diff — nothing to corroborate` for a diff that never touches a `docs/streams/*/brief-*.md` file, which was true before this edit landed. Both id forms accepted (`apps-installer/02` and the frontmatter's own `assay:assay:apps-installer:02`) — the `#822` slash-form rejection brief 01's Evidence records did not reproduce here. The four `consumers:` entries print **UNCHECKED**, not corroborated: statusgen's own diff-corroboration heuristic did not match the claimed file edits to a recognizable pattern in this diff, even though `git diff refs/remotes/origin/main -- tools/desk/README.md docs/desk-tools/deskapps.md` shows both were genuinely added/extended. Per the tool's own text ("UNCHECKED entries are NOT passes — each one's truth is the reviewer's call") and the row's literal Expect column (exit 0), this is recorded as PASS on the exit code with the UNCHECKED nuance named for the reviewer. |
+
+**Fail-first (Task 7 / mutations.json).** Hand-applied both required mutants directly against
+the built package (not just corpus presence):
+- **State-check drop** (`if row == nil { … }` → `_ = row` in `server.go`'s `handleCallback`):
+  `TestCallbackBadState` goes from PASS to FAIL — the request panics (nil `row` dereference,
+  recovered by `net/http` into a connection reset) instead of a clean 403, which the test
+  correctly reads as a failure (not a 403, and — had the panic not fired — `convertCodeFn` would
+  have been reached, which the test also checks for).
+- **Response-body log** (append `fmt.Println("deskapps: conversion response", string(body))` in
+  `convert.go`'s `convertCode`): `TestNoSecretInLogs` goes from PASS to FAIL — the fake
+  `client_secret`/`webhook_secret`/`pem` are printed to stdout and the test's real-`os.Stdout`
+  capture catches it. (An earlier draft of this test only checked the server's *injectable*
+  console writer, which a bare `fmt.Println` bypasses entirely — the test was strengthened to
+  capture real `os.Stdout` via `os.Pipe` before this evidence was recorded, specifically because
+  the first hand-applied mutation run exposed the gap.)
+
+Reverting both restores all-green; `git diff` clean afterwards.
+
+**Design decisions (frontmatter question (a) — decisions the facts do not fix).**
+- **`--prefix` default.** Undocumented by design.md; Verify row 2 (`--org example`, no
+  `--prefix`) expects `example-read`/`example-act`, which fixes the default as: explicit
+  `--prefix` first, else `--org`'s value, else `assay`. Recorded in `docs/desk-tools/deskapps.md`.
+- **Create button, not a JS auto-submit.** Design.md §3 describes an "auto-submitting form"; this
+  brief renders a manual Create button (`target="_blank"`) that still costs the person exactly one
+  GitHub click, keeps `/run` open in the original tab so the state-nonce-scoped
+  `POST /mark-posted` `onsubmit` fetch can mark the row `posted` before the tab navigates, and
+  avoids a page-load side effect that fires GitHub's throttle without the person having acted.
+- **§9 "Measured" facts.** Could not be measured from this offline session (no live GitHub
+  account access) — recorded as `BLOCKED-ON-HUMAN` in `docs/desk-tools/deskapps.md`'s Measured
+  section, with the conservative assumption `deskapps init` currently codes to, named for each of
+  the three questions.
+- **`gh`/GitHub calls are test-hook seams**, never real network from a test: `runGH` (identity.go)
+  and `githubAPIBase`/`conversionHTTPClient` (convert.go) are package vars every test in this
+  package overrides; `--dry-run` additionally never calls either, so Verify row 2 — the one row
+  that runs the compiled binary directly rather than through `go test` — stays offline by
+  construction.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table. Reviewer answers the two
