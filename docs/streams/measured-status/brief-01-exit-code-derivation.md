@@ -58,7 +58,7 @@ facts:
 4. **Fail-first (rule 9).** Add one entry to `tools/desk/internal/deskkit/mutations.json`
    that flips the new convention (e.g. reorders two adjacent refusal-class values so the
    stated convention and the table disagree), and extend that spec's `"test"` field to
-   include `TestExitCodeTableMatchesDerivation` — the field is a fixed allow-list `-run`
+   include `TestExitCodeTableMatchesDerivation` (planned) — the field is a fixed allow-list `-run`
    pattern consumed by `muhar`, and a new test the pattern does not name is invisible to it,
    so the mutant cannot be caught until the field is widened. Confirm the corpus's own guard
    catches it — run `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json`
@@ -73,7 +73,7 @@ facts:
 | 2 | `cd tools/desk && go vet ./internal/deskkit/` | exit 0 |
 | 3 | `cd tools/desk && grep -q 'Derivation:' internal/deskkit/exitcodes.go` | exit 0 (the derivation block is present) |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (the pinning assertions actually ran and passed) |
-| 5 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, and every mutation CAUGHT, including the new exit-code-convention mutant (only reachable once the `"test"` field names `TestExitCodeTableMatchesDerivation`) |
+| 5 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, and every mutation CAUGHT, including the new exit-code-convention mutant (only reachable once the `"test"` field names `TestExitCodeTableMatchesDerivation` (planned)) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->
