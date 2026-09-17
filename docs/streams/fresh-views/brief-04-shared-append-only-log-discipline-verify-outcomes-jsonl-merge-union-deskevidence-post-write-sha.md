@@ -47,7 +47,7 @@ files:
 
 facts:
 - #882: every verify-Evidence PR appends one line to the shared `docs/streams/verify-outcomes.jsonl`; whichever merges first advances main, and every other open Evidence PR goes CONFLICTING on that one file. The appends are semantically independent (distinct lines), so `merge=union` keeps both with no conflict — the same remedy already used for the shared blog index.
-- spec §5 Q3 / #882 caveat: union-merge is safe ONLY if no consumer of the jsonl needs strict line ORDERING or DEDUP. Task step 1 is to confirm this against the file's readers before setting the attribute. Union-merge can also duplicate a line present on both sides — confirm any reader tolerates duplicates or dedups on read.
+- spec §5 Q3 / #882 caveat: union-merge is safe ONLY if no consumer of the jsonl needs strict line ORDERING or DEDUP, and only if no consumer relies on the file as an ordered/tamper-evident record such that a duplicated or interleaved line could cause it to double-count an outcome. Task step 1 is to confirm this against the file's readers before setting the attribute. Union-merge can also duplicate a line present on both sides — confirm any reader tolerates duplicates or dedups on read.
 - #806: `deskevidence` PRINTED `f5a8a22f3a98` while the commit actually on main was `c48d8d427`; the printed sha resolves to no commit reachable from main. Cause: a push race / Contents-API rebase between the sha the verb computed and the commit GitHub created. The verb must report the forge's returned sha, or re-read the ref after the write, and fail loudly when its prediction disagrees.
 - single point of failure (rule 10): for #806 the ONE control is "report only the forge-returned sha". The independent second layer is the loud FAIL when predicted != returned — a different signal (a mismatch assertion) than the read itself, so a silently-wrong read still trips the guard rather than propagating a phantom sha.
 
@@ -57,7 +57,7 @@ facts:
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. **#882:** confirm no consumer of `verify-outcomes.jsonl` depends on line ordering or uniqueness (grep the tree for readers; record the finding in the PR). Then add `docs/streams/verify-outcomes.jsonl merge=union` to `.gitattributes`.
+1. **#882:** confirm no consumer of `verify-outcomes.jsonl` depends on line ordering or uniqueness (grep the tree for readers; record the finding in the PR). Also confirm no consumer treats the file as an ORDERED or TAMPER-EVIDENT record of verification outcomes, and that a duplicated or interleaved line (union-merge's known side effect) cannot cause a consumer to double-count an outcome — this is a recorded decision about an evidence artifact, not a side effect of the conflict-reduction fix. Then add `docs/streams/verify-outcomes.jsonl merge=union` to `.gitattributes`.
 2. **#806:** change `deskevidence` to report the commit sha the forge RETURNED for the created commit (Contents-API `commit.sha`, or a post-write `GET .../commits/{branch}`). Assert the returned sha resolves on the branch; if the verb also computed a predicted sha, FAIL LOUDLY (non-zero, named diagnostic) when predicted != returned rather than printing either silently.
 3. Tests: (a) a git-level union-merge test — two branches each append a distinct line to the jsonl, a two-parent merge produces no conflict and both lines are present; (b) deskevidence reports the forge-returned sha; (c) deskevidence exits non-zero with a clear message when the predicted and returned shas differ.
 

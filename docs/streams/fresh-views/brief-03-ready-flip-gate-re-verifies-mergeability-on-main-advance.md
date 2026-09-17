@@ -20,7 +20,7 @@ sources:
   - "docs/streams/fresh-views/spec.md §2 (stamp + refuse), §5 Q2"
   - "medici-finance/assay#339 — ready-flip gate doesn't re-verify mergeability on main-advance; event monitor blind (no head-sha/state change), cadence sweep filter OMITS CONFLICTING"
   - "tools/desk/cmd/deskpost (the ready-flip verb), tools/desk/cmd/deskboard (the cadence board sweep + its delta filter), fresh-views/01 (helper)"
-  - "MEMORY: deskpost ready no merge-state gate / flips CONFLICTING PRs; check mergeStateStatus (corroborating prior observations)"
+  - "medici-finance/assay#339 (corroborating prior observations: deskpost ready has no merge-state gate / flips CONFLICTING PRs; check mergeStateStatus)"
   - "freshness-checked 2026-09-16 @ e9fa19d3 (origin/main): #339 confirmed OPEN; deskpost + deskboard present"
 exec-tier: strong
 exec-tier-why: (c) the flip is a control on the human merge queue; a subtly wrong re-check (e.g. trusting GitHub's async null `mergeable`) leaves the exact regression #339 describes and survives a happy-path test
@@ -49,6 +49,7 @@ facts:
 - GitHub's async `mergeable` can read `null` right after a main-advance; a correct re-check must not treat `null` as "mergeable". Prefer a `git merge-tree` against current `origin/main` (deterministic) as the ground-truth signal, with the API `mergeStateStatus` as corroboration — do not trust a single async field.
 - mergeability at head H is a derived view: `readyAt(sha=H)` is only valid while `origin/main == H`. When main advances to H', the view must be re-derived. The fresh-views/01 stamp records H at flip; the cadence sweep is the re-derivation trigger.
 - single point of failure (rule 10): the ONE control is the re-check at the cadence sweep. Second, independent layer: the flip verb ITSELF refuses to flip (or retracts) when its stamped head is behind current main at the moment of any subsequent flip/status write — a different component (deskpost vs deskboard) tripping on the same class, so a gap in the sweep cadence does not leave the regression completely unguarded.
+- direction constraint: the re-check is a NARROWING-only control. It may refuse to flip or retract an already-ready PR; it must NEVER flip a PR TO ready on its own. Ready-flip is a gate in front of a human merge queue — a re-check that could restore ready from a stale stamp would turn this hardening change into a bypass. Any subsequent re-flip to ready must re-assert the FULL flip preconditions (approval at the current head, checks green) rather than reuse the verdict stamped at an earlier head.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
@@ -56,7 +57,7 @@ facts:
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. **deskpost:** stamp the mergeability verdict with the head at flip time. Add a `--recheck` (or equivalent) path that re-reads mergeability against current `origin/main` via `git merge-tree` (ground truth) + `mergeStateStatus` (corroboration), treating `null`/unknown as NOT-mergeable (fail-closed), and retracts a ready PR that regressed to CONFLICTING. The flip verb refuses to (re)flip when its stamped head is behind current main.
+1. **deskpost:** stamp the mergeability verdict with the head at flip time. Add a `--recheck` (or equivalent) path that re-reads mergeability against current `origin/main` via `git merge-tree` (ground truth) + `mergeStateStatus` (corroboration), treating `null`/unknown as NOT-mergeable (fail-closed), and retracts a ready PR that regressed to CONFLICTING. The flip verb refuses to (re)flip when its stamped head is behind current main. The recheck path is narrowing-only: it may refuse or retract, and must never flip a PR TO ready by itself; a subsequent re-flip to ready re-asserts the full flip preconditions (approval at the current head, checks green) rather than reusing the stamp from the earlier head.
 2. **deskboard:** add `CONFLICTING` to the cadence delta filter so a ready PR gone dirty on main-advance surfaces as an actionable delta the review loop acts on.
 3. Both use `freshview.CheckFresh` to detect the stamped-head-behind-current-main condition; do not re-implement the comparison.
 4. Add a table test: a PR flipped ready at head H, then an unrelated commit advances main to H' producing a `git merge-tree` conflict → the re-check retracts/flags it, and the deskboard filter admits the CONFLICTING delta.

@@ -21,7 +21,7 @@ sources:
   - "docs/streams/fresh-views/spec.md §2 (the design principle: stamp the input, refuse when stale)"
   - "medici-finance/assay#334 (verifyloop plan staleness), #339 (ready-flip mergeability staleness) — the two consumers this helper unblocks"
   - "tools/desk/internal/deskkit (existing origin/main read + sha helpers this composes), tools/desk/internal/loopengine (the loop drivers that will call it)"
-  - "CLAUDE.md §Context & board hygiene — \"Refresh, don't remember\" (the discipline this makes mechanical)"
+  - "plugins/assay/skills/the-desk/SKILL.md, plugins/assay/skills/intake-desk/SKILL.md, plugins/assay/skills/pr-review-desk/SKILL.md — \"Refresh, don't remember\" (the discipline this makes mechanical)"
   - "freshness-checked 2026-09-16 @ e9fa19d3 (origin/main): #334/#339 confirmed OPEN; no freshview helper exists under tools/desk/internal"
 exec-tier: strong
 exec-tier-why: (a) the stamp/refuse API is a design decision the facts do not fully pre-specify; (c) a concurrency helper whose refuse-check is subtly wrong ships a green lamp wired to nothing
