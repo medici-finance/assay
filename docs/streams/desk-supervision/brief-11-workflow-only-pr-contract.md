@@ -22,6 +22,7 @@ gate-why: >-
   is acceptable, and the merge-authority posture (App-merges vs human-merges) the DR left open.
 design: DR-workflow-app-landing
 decision-trigger: creation
+decision-issue: 1246
 issues: [1175, 1185]
 schema: brief-v2
 version: 1
@@ -61,6 +62,10 @@ files:
   mode or a sibling guard tool run from `ci.yml`), NOT a brand-new workflow file — so installing
   the guard does not itself require `workflows: write` and cannot bootstrap-block on the very rule
   it enforces.
+- **register** the guard's CI job as a REQUIRED status check in branch protection / a repository
+  ruleset, with the workflow App absent from any bypass list — a repo-settings change, not a
+  workflow file, and the placement that keeps the guard outside the one identity's own write
+  surface (see the DR's branch-protection `accepted:` entry).
 - **edit** `docs/adopting-assay.md` — reference the contract from the PR-discipline section.
 
 facts:
@@ -70,13 +75,28 @@ facts:
   ambient human credential.
 - the guard runs in the EXISTING CI job, not a new `.github/workflows/*` file — avoids the
   bootstrap where the guard-installing PR would itself need the workflow App.
+- guard placement: the CI job's own definition lives under `.github/workflows/**` — exactly the
+  surface the workflow App can rewrite. Independence therefore does NOT come from where the guard
+  runs; it comes from the guard's REQUIRED-ness being a branch-protection/ruleset setting the App
+  cannot write (it holds no `administration` grant — DR `accepted:` #1) and from the App being
+  absent from that ruleset's bypass list. A workflow-only PR that edits the guard's own CI step
+  still cannot merge past the required check without a human, because required-ness is enforced
+  from outside the diff entirely.
+- credential boundary: the verb's authoring/merging mode runs only under a human-initiated
+  invocation (an operator/desk run or `workflow_dispatch`); its `--check` classification mode is
+  credential-free and offline, and is the only mode reachable from an ordinary `pull_request`-
+  triggered CI run on this public repository (DR `accepted:` credential-boundary entry).
 - single-point-of-failure: the workflow-only invariant — if a workflow change and a code change
   ride one PR, the coupling that causes drift is back. TWO INDEPENDENT LAYERS hold it:
   (1) the verb CONSTRUCTS a workflow-only diff by only ever staging the allowed paths — it cannot
-  emit a mixed diff; (2) an INDEPENDENT guard in CI FAILS any PR whose diff mixes
-  `.github/workflows/**` with a disallowed path, regardless of who authored it or how. They fail
-  for different reasons (construction vs inspection) in different components (the verb vs CI), so a
-  hand-made mixed PR that never touched the verb is still caught.
+  emit a mixed diff; (2) an INDEPENDENT guard, required at merge time from branch protection —
+  not merely present in CI — FAILS any PR whose diff mixes `.github/workflows/**` with a
+  disallowed path, regardless of who authored it or how, and regardless of whether the same PR
+  also edited the guard's own CI step. They fail for different reasons (construction vs
+  merge-time-required inspection) in different components (the verb vs the forge's branch
+  protection), so a hand-made mixed PR that never touched the verb is still caught, AND a
+  workflow-only PR that tries to neuter the guard from inside its own write surface still cannot
+  merge past it.
 
 ## Human decision
 <!-- decision-trigger: creation — options enumerable now; filed as the brief lands. Self-contained. -->
@@ -100,13 +120,19 @@ Options:
    the pull request; a human merges it. Removes the drift and most of the stall; keeps a human
    merge gate. (Recommended for the first cutover.)
 2. **Adopt, identity-merges** — as option 1, but the workflow identity also merges its own
-   workflow-only pull request after checks pass, removing the human step entirely.
+   workflow-only pull request after checks pass, removing the human step entirely. Wider than
+   today's status quo (today's direct-to-default-branch promote route needs a maintainer
+   credential): admissible only once Verify rows 11/12 (required-check membership and bypass-list
+   absence) are green, AND paired with a rule that any diff touching the guard's own CI job still
+   requires a human merge regardless of merge-authority mode.
 3. **Do not adopt** — keep the staged-copy hand-landing. Briefs 11 and 12 do not proceed.
 
 Recommendation: **option 1** — prove the path end to end with a human merge gate first; revisit
 identity-merges once the guard has caught real mixed pull requests in practice.
 
-Default if no answer: none — blocks until answered.
+Default if no answer: none — blocks until answered. This brief's README row is `blocked`
+(`lifecycle-v1.md` §2.0) via its own `depends: [desk-supervision/10]` and via
+desk-supervision/10 not yet being ruled — it stays `blocked` until 10 reaches `done`.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. The deliverable is a draft PR
@@ -124,7 +150,9 @@ Default if no answer: none — blocks until answered.
    per the merge-authority decision.
 3. Wire the `--check` guard into the existing CI job so every PR touching `.github/workflows/**` is
    classified, and a mixed diff reddens.
-4. Reference the contract from `docs/adopting-assay.md`.
+4. Register the guard's check as REQUIRED in branch protection / a ruleset, and confirm the
+   workflow App carries no bypass entry.
+5. Reference the contract from `docs/adopting-assay.md`.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
@@ -139,11 +167,18 @@ Default if no answer: none — blocks until answered.
 | 8 | FLOW (end to end): for a prepared change the workflow App opens a workflow-only PR, the CI guard passes, and the PR lands per the merge-authority decision — the change reaches `.github/workflows/` with no staged copy anywhere in the flow | the workflow is live via the PR path; no staging directory was touched | gate:human +flow |
 | 9 | `statusgen --consumers --root . --brief desk-supervision/11` | exit 0 (consumers routing corroborated against the diff) | check:ci |
 | 10 | `statusgen --root . --lint` | exit 0 (only pre-existing PROBLEMs) | check:ci |
+| 11 | READ FROM THE FORGE, not the tool: the guard's check name appears in the repository's required-status-checks list (branch protection / ruleset API) | exit 0; the guard is REQUIRED, not merely present in CI | gate:human +dereference |
+| 12 | READ FROM THE FORGE: the workflow App's identity does not appear in that ruleset's bypass-actors list | exit 0; no bypass entry names the workflow App | gate:human +dereference |
+| 13 | CREDENTIAL BOUNDARY, negative: `tools/workflowpr --check <fixture>` run with no token in the environment | exit 0 as specified — the check mode makes no forge call and needs no credential | check +neighbour |
+| 14 | CREDENTIAL BOUNDARY, refusal: the authoring/merge mode invoked without an explicit human-initiated dispatch (i.e. as if from a `pull_request`-triggered run) | exit non-zero; refuses rather than acting | check +mutation |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). Rows 5 and 7 are the negative /
-     independence proofs — a table that only walks rows 4 and 6 has verified one layer, not two. -->
+     independence proofs — a table that only walks rows 4 and 6 has verified one layer, not two.
+     Rows 11/12 prove the guard's required-check placement and the App's bypass-list absence; rows
+     13/14 prove the credential boundary. All four are read from the forge or exercised directly —
+     never inferred from the doc. -->
 
 ## Review
 Gate: human (from frontmatter — sensitive-data is yes). Human gate is MANDATORY.

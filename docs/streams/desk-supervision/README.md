@@ -95,9 +95,9 @@ desk's state directory only.
 | 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #352 @ 496796982b573be17a032163cd3f6423e58be239) |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | todo | — | — |
 | 09 | [Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build](brief-09-ci-fanout-per-push.md) | 0 | S | implemented | — | — |
-| 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | todo | — | — |
-| 11 | [The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it](brief-11-workflow-only-pr-contract.md) | 1 | M | todo | — | — |
-| 12 | [Retire the staged-copy hand-landing once the workflow App PR path is proven](brief-12-retire-staged-copy-landing.md) | 2 | M | todo | — | — |
+| 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | blocked | — | — |
+| 11 | [The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it](brief-11-workflow-only-pr-contract.md) | 1 | M | blocked | — | — |
+| 12 | [Retire the staged-copy hand-landing once the workflow App PR path is proven](brief-12-retire-staged-copy-landing.md) | 2 | M | blocked | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

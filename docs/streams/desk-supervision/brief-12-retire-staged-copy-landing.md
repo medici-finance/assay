@@ -22,6 +22,7 @@ gate-why: >-
   is landed verbatim in a way that reverts an intervening fix.
 design: DR-workflow-app-landing
 decision-trigger: creation
+decision-issue: 1247
 issues: [1187, 722]
 schema: brief-v2
 version: 1
@@ -52,13 +53,21 @@ consumers:
 
 files:
 - **remove or reduce to a pointer** `tools/ci-load/activation/` and `ci/staged-workflows/` — the
-  two staging areas. Any live-and-current staged delta is first carried through the workflow App PR
-  path (desk-supervision/11), never landed verbatim (verbatim landing of a stale copy reverts fixes
-  — #1187).
+  two staging areas. If reduced rather than removed, the pointer file is named `POINTER.md` at
+  each staging area's root (`tools/ci-load/activation/POINTER.md` (planned),
+  `ci/staged-workflows/POINTER.md` (planned)) — pinned here so Verify rows 2/3 name a real deliverable
+  rather than an unenumerated "a pointer". Any live-and-current staged delta is first carried
+  through the workflow App PR path (desk-supervision/11), never landed verbatim (verbatim landing
+  of a stale copy reverts fixes — #1187).
 - **edit** the READMEs and `docs/adopting-assay.md` sections that instruct the `cp <staged>
   .github/workflows/` hand-copy step — rewrite them to the workflow-only-PR path.
 - **verify (not edit here)** that the release/changelog-fragment handling (#722) is not re-stranded
   by the removal.
+- **out of scope, named so it is not silently assumed** — the existing direct-to-default-branch
+  promote route (today's human-dispatched job) is NOT retired by this brief; only the staging
+  *directories* are. If closing that route is wanted, it is a branch-protection change (who may
+  push to the default branch) tracked separately, not implied by this removal (DR
+  "What is explicitly NOT decided here").
 
 facts:
 - precondition: the workflow App PR path (desk-supervision/11) is proven to carry a workflow change
@@ -98,7 +107,9 @@ Options:
 Recommendation: **option 1** (or **2** if history-in-place is preferred), only after
 desk-supervision/11 is verified.
 
-Default if no answer: none — blocks until answered.
+Default if no answer: none — blocks until answered. This brief's README row is `blocked`
+(`lifecycle-v1.md` §2.0) via its own `depends: [desk-supervision/11]` chain back to 10's
+unruled DR — it stays `blocked` until 11 reaches `done`.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. The deliverable is a draft PR
@@ -123,7 +134,7 @@ Default if no answer: none — blocks until answered.
 | 2 | `test ! -d tools/ci-load/activation -o -f tools/ci-load/activation/POINTER.md` | exit 0 (removed, or reduced to a pointer) | check |
 | 3 | `test ! -d ci/staged-workflows -o -f ci/staged-workflows/POINTER.md` | exit 0 | check |
 | 4 | `grep -rEn -e 'cp tools/ci-load/activation' -e 'cp ci/staged-workflows' docs/ ci/ tools/ 2>/dev/null \| wc -l` | 0 (no hand-copy runbook remains) | check +dereference |
-| 5 | `git diff $(git merge-base origin/main HEAD)..HEAD -- .github/workflows/leaksweep-control.yml .github/workflows/leaksweep-pattern.yml` | empty (security/required workflows untouched) | check +neighbour |
+| 5 | `git diff $(git merge-base refs/remotes/origin/main HEAD)..HEAD -- .github/workflows/leaksweep-control.yml .github/workflows/leaksweep-pattern.yml` | empty (security/required workflows untouched) — base spelled `refs/remotes/origin/main` in full: git resolves `refs/heads/` before `refs/remotes/`, so a checkout that ever acquired a local branch literally named `origin/main` would silently compare against the stale one | check +neighbour |
 | 6 | `tools/workflowpr --check` on a fixture mixing a workflow file with a source file (the brief-11 guard) | exit non-zero (the guard still fires mid/post cutover) | check:ci +mutation |
 | 7 | `statusgen --consumers --root . --brief desk-supervision/12` | exit 0 (consumers routing corroborated against the diff) | check:ci |
 | 8 | `statusgen --root . --lint` | exit 0 (only pre-existing PROBLEMs — covers the #722 lint-red class) | check:ci |

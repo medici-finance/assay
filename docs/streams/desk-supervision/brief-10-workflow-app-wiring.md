@@ -23,6 +23,7 @@ gate-why: >-
   GitHub reserves for a signed-in human.
 design: DR-workflow-app-landing
 decision-trigger: creation
+decision-issue: 1245
 issues: [1185, 1187]
 schema: brief-v2
 version: 1
@@ -53,15 +54,24 @@ files:
 - **edit** `docs/adopting-assay.md` — record the **workflow App** in the App inventory as a
   capability that stands beside the desk-role Apps (it is not one of the desk roles and not a
   tier): the single identity holding `workflows: write`, scoped to `contents: write` +
-  `workflows: write` + `metadata: read`, subscribing to zero webhook events.
+  `workflows: write` + `pull_requests: write` + `metadata: read`, subscribing to zero webhook
+  events, with `administration`, `actions`, `checks`/`statuses: write`, `members`, and
+  secrets/variables withheld.
 - **create** `docs/streams/desk-supervision/workflow-app-scope.md` (planned) — a short scope-and-duties
-  note: the exact permission set, the duties it discharges (author a workflow-only PR; optionally
-  land it — see the DR's deferred merge-authority sub-decision), and the invariant that NO other
-  App holds `workflows: write`.
+  note: the exact permission set (granted AND withheld), the duties it discharges (author a
+  workflow-only PR; optionally land it — see the DR's deferred merge-authority sub-decision), and
+  the invariant that NO other App holds `workflows: write`.
 
 facts:
 - workflows-write-holders-should-be: exactly one (the workflow App). Every desk-role App: none.
-- required-scope: `contents: write` + `workflows: write` + `metadata: read`, zero events.
+- required-scope: `contents: write` + `workflows: write` + `pull_requests: write` +
+  `metadata: read`, zero events; `pull_requests: write` is required because the App's duty is to
+  open (and, only under identity-merges, merge) the workflow-only PR — a forge action
+  `contents`/`workflows` do not cover. Withheld, and checked as absent: `administration`,
+  `actions`, `checks`/`statuses: write`, `members`, secrets/variables.
+- sole-holder-invariant: binds `workflows: write` ALONE — the scope is a four-permission granted
+  set plus a named withheld set, not "nothing else" read literally (a `pull_requests`-less App
+  could not discharge the duty this record assigns it).
 - constraint: GitHub hard-rejects any App push that creates or updates a `.github/workflows/*`
   file unless the App holds `workflows: write` — established in `ci/staged-workflows/README.md`.
 - ground-truth-unknown-at-authoring: whether such an App is installed on this repo with the
@@ -86,8 +96,10 @@ must confirm that identity's ground truth and authorise any provisioning.
 What is being decided:
 
 1. Whether the workflow App exists, is installed on this repository, and holds exactly
-   `contents: write` + `workflows: write` + `metadata: read` and no wider scope, with no other
-   identity holding workflow-write.
+   `contents: write` + `workflows: write` + `pull_requests: write` + `metadata: read` — the set
+   its duty (open, and optionally merge, the workflow-only PR) actually requires — with
+   `administration`, `actions`, `checks`/`statuses: write`, `members`, and secrets/variables all
+   withheld, and no other identity holding `workflows: write`.
 2. If it does not — whether to provision it now (create or adjust the App, set that exact scope,
    install it), which is an act only a signed-in human can perform.
 3. The merge-authority posture to carry into the next brief: may the workflow App also merge its
@@ -105,8 +117,11 @@ Options:
 Recommendation: **option 1 or 2** (whichever the ground truth requires) with merge-authority set
 to **human-merges** for the first cutover, revisiting once the path is proven.
 
-Default if no answer: none — blocks until answered (the design-approval gate holds briefs 11 and
-12 at `todo` regardless).
+Default if no answer: none — blocks until answered. Mechanically, this brief's README row (and
+briefs 11/12's) stays at status `blocked` (`lifecycle-v1.md` §2.0 — excluded from Next-up) while
+this record is `proposed`; the design-approval gate alone does not hold a `todo` row out of
+Next-up, so `blocked` is the control this brief and its siblings actually rely on until a ruling
+flips them back to `todo`.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only the docs this
@@ -129,11 +144,14 @@ Default if no answer: none — blocks until answered (the design-approval gate h
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `test -f docs/streams/desk-supervision/workflow-app-scope.md` | exit 0 | check |
-| 2 | `grep -cE -e 'workflows: write' -e 'contents: write' -e 'metadata: read' docs/streams/desk-supervision/workflow-app-scope.md` | exit 0; ≥ 3 (the exact scope is documented) | check |
+| 2a | `grep -q -E 'workflows: write' docs/streams/desk-supervision/workflow-app-scope.md` | exit 0 (one dedicated pattern per invocation — `grep -c` counts matching LINES not matching patterns, so a single correctly-phrased scope sentence false-fails a `≥3` line-count threshold; #1228 review) | check |
+| 2b | `grep -q -E 'contents: write' docs/streams/desk-supervision/workflow-app-scope.md` | exit 0 | check |
+| 2c | `grep -q -E 'pull_requests: write' docs/streams/desk-supervision/workflow-app-scope.md` | exit 0 | check |
+| 2d | `grep -q -E 'metadata: read' docs/streams/desk-supervision/workflow-app-scope.md` | exit 0 | check |
 | 3 | `grep -n -i 'workflow App' docs/adopting-assay.md` | ≥ 1 match | check |
 | 4 | `statusgen --consumers --root . --brief desk-supervision/10` | exit 0 (consumers routing corroborated against the diff) | check:ci |
-| 5 | (with the workflow App's own token) `gh api /installation/permissions` — read the granted permission set | exit 0; permissions are exactly `contents=write`, `workflows=write`, `metadata=read`, no others | gate:human +dereference |
-| 6 | for each desk-role App token, `gh api /installation/permissions` | exit 0; NONE reports `workflows=write` — the workflow App is the sole holder | gate:human +dereference |
+| 5 | (with the workflow App's own token) `gh api /installation/permissions` — read the granted permission set | exit 0; permissions are exactly `contents=write`, `workflows=write`, `pull_requests=write`, `metadata=read` — the set the duty requires — AND none of `administration`, `actions`, `checks`/`statuses=write`, `members`, secrets/variables is present | gate:human +dereference |
+| 6 | for each desk-role App token, `gh api /installation/permissions` | exit 0; NONE reports `workflows=write` — the workflow App is the sole holder of that one permission (the other three in row 5 are not sole-holder-checked; only `workflows: write` is) | gate:human +dereference |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
