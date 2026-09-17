@@ -67,8 +67,8 @@ the login.
 | `PrincipalAttended` | Resolved to the bless login; the calling session has a live roster beacon. |
 | `PrincipalUnattended` | Resolved to the **same** bless login; no live session beacon was found. |
 
-**Why both resolved states name the same login today.** Per the ruling this brief relays
-(`medici-finance/assay-toolkit#2454`, C3=C): until a second human joins the roster, the
+**Why both resolved states name the same login today.** Per the 2026-09-12 driver ruling
+this brief relays: until a second human joins the roster, the
 principal resolves to the roster's single blessing authority (`ASSAY_BLESS_LOGIN`)
 regardless of who or what is driving the session. The session-beacon read exists so that
 when a second human's attach-time handshake lands (deferred to roster v2), attended
@@ -106,7 +106,13 @@ flip was on behalf of survives in the one place every other `deskflip` decision 
 stdout, which the desk's audit capture already retains.
 
 `--dry-run` on every verb runs every other check, resolves the principal (refusing if
-unresolvable), and prints the trailer it would have written before stopping.
+unresolvable), and prints the trailer it would have written before stopping. **This
+changes the dry-run contract**: a dry run can no longer be used to check a write verb's
+*other* preconditions in an environment with no roster configured — `deskflip --dry-run`
+in particular now exits 5 on an unresolvable principal even when every other precondition
+it checks would have passed. That is deliberate (the principal is a real precondition of
+the mutation, not a preview-only concern), but it is a behavior change worth knowing about
+before scripting against `--dry-run` in an unconfigured environment.
 
 ## The witness annotation
 
@@ -122,16 +128,29 @@ left unannotated rather than refusing the whole witness write. The write-side re
 ## The lint
 
 `statusgen --lint` (`principalAttributionProblems`, `statusgen/attribution.go`) reads
-every brief's `## Evidence` section and flags, as a hard **PROBLEM** (not a notice):
+every brief's `## Evidence` section and checks two DISTINCT shapes, which are gated
+differently — read both before assuming either governs the other:
 
-- an Evidence row run by an App/bot identity with **no** on-behalf-of annotation at all;
-- an Evidence row whose on-behalf-of annotation names a login **not** in this repo's
-  roster human map (`ASSAY_HUMAN_LOGIN_MAP` / the bless login's own entry).
+- **Missing annotation.** An Evidence row run by an App/bot identity with **no**
+  on-behalf-of annotation at all. This check is **cutover-gated, not roster-gated**: a
+  row dated at or after `principalAttributionCutoverDate` (the date this write path
+  landed) is a hard **PROBLEM** — the write path could have stamped it and did not. A
+  row dated *before* the cutover is a **NOTICE** — no write path existed yet to stamp
+  it, so it is grandfathered rather than condemned. This check runs **regardless of
+  whether a roster is configured**: an unconfigured repo still gets the
+  missing-annotation signal (as PROBLEM or NOTICE per the row's own date), because
+  detecting the *absence* of an annotation needs no human map to check against.
+- **Unrecognised annotation.** An Evidence row whose on-behalf-of annotation names a
+  login **not** in this repo's roster human map (`ASSAY_HUMAN_LOGIN_MAP` / the bless
+  login's own entry). This check IS roster-gated: with **no roster configured at all**,
+  it has no human map to validate against and says nothing (a repo that has not adopted
+  the roster gets no signal from a check it cannot answer, rather than a manufactured
+  problem). It carries no cutover — an annotation that exists at all was written by a
+  stamping path, so the retroactive-history problem the cutover solves does not apply
+  here.
 
-A human-run row (`human:<name>`) is never checked — it already names its principal
-directly. With **no roster configured at all**, the human-map check has nothing to
-validate against and says nothing (a repo that has not adopted the roster gets no signal
-from a check it cannot answer, rather than a manufactured problem).
+A human-run row (`human:<name>`) is never checked by either shape — it already names its
+principal directly.
 
 ## What this does *not* prove
 

@@ -517,27 +517,56 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 	return problems, notices
 }
 
+// principalAttributionCutoverDate is the date the on-behalf-of write path landed
+// (this PR's own head, tools/desk/internal/deskkit/principal.go's six writers). It is
+// the ONE place that boundary is spelled — never re-derived from a commit sha or a
+// feature flag — because the question the cutover answers ("could this row's write
+// path have stamped an annotation at all") is decided by calendar time, not by which
+// commit a particular checkout happens to have.
+//
+// WHY A CUTOVER, NOT A HARD PROBLEM FROM DAY ONE (reviewer findings, both lanes:
+// "the new check is retroactive with no grandfathering"). A repo's `## Evidence`
+// history predates this feature by construction — no write path before this landing
+// could have stamped an annotation — so treating every missing-annotation row as a
+// hard PROBLEM condemns history the moment the check ships, with the only greens
+// being "hand-edit closed briefs" (manufacturing the exact attribution the annotation
+// exists to record — rejected, same reasoning as the EXECUTION WITNESS NOTICE below)
+// or "weaken/drop the check" (rejected explicitly by the security lane: that erases
+// the enforcement this PR exists to add). A cutover is the third option neither
+// review rejected: a row from BEFORE the write path existed could not have carried an
+// annotation and is reported as a NOTICE (visible, not silently dropped); a row from
+// AT OR AFTER the cutover COULD have gone through a stamping write path, so a missing
+// annotation there is a hard PROBLEM — exactly the enforcement the feature is for,
+// scoped to the window it can actually apply to.
+//
+// This mirrors witnessNotices' (main.go) own transition rule for the identical shape
+// ("a brief closed before the witness existed cannot have one, and hand-writing
+// witnesses into closed briefs to green the gate would manufacture exactly the
+// evidence the witness exists to replace") — NOT a blanket downgrade to NOTICE, which
+// the security lane's review explicitly named as a route that weakens the control.
+const principalAttributionCutoverDate = "2026-09-17"
+
 // principalAttributionProblems is multi-principal/01's lint half (Task item 4): an
 // App-authored Evidence row carries the on-behalf-of annotation verifyrun.go's row()
 // renders (`on-behalf-of human:<login>`, inside the Runner cell's trailing
-// parenthetical), or the row is a PROBLEM.
+// parenthetical), or the row is flagged.
 //
-// TWO shapes, both hard problems (never a notice — this is the same "an unattributed
-// witness is not a witness" stance verifyrun.go's own write-time refusal takes, applied
-// at read time to whatever already landed):
-//
-//   - an App/bot Runner (isAppRunnerToken — the `<slug>[bot]` convention) with NO
-//     on-behalf-of annotation at all: the write path that landed it predates this
-//     feature, or its own resolution refused and something bypassed that refusal.
-//   - an App/bot Runner WITH an on-behalf-of annotation naming a login this repo's own
-//     roster does not recognise as human (onBehalfOfPrincipalLogin's Humans check):
-//     the annotation exists but names nobody the roster can corroborate.
+// TWO shapes. The unknown-principal shape is always a hard PROBLEM (an annotation that
+// names an unrecognised login was written by a stamping path and is simply wrong — no
+// cutover question applies, because the row IS annotated). The missing-annotation shape
+// is cutover-gated (principalAttributionCutoverDate, above): a PROBLEM for a row dated
+// at or after the cutover (the write path could have stamped it and did not), a NOTICE
+// for a row dated before it (no write path could have). A row with no readable Date cell
+// is treated as pre-cutover (NOTICE, not PROBLEM) — a malformed date is a different
+// check's concern (attributionProblems' verifiedCellRe family), not a reason to fail
+// this one closed against a row this feature could not have touched.
 //
 // A HUMAN Runner (`human:<name>`) needs no annotation at all and is never checked here
 // — the runner already names the acting human directly, which is the whole property
 // on-behalf-of exists to recover for a SHARED App identity.
-func principalAttributionProblems(streams []*Stream) (problems []string) {
+func principalAttributionProblems(streams []*Stream) (problems, notices []string) {
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	addNotice := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
 	cfg := scanEffectiveConfig()
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
@@ -558,9 +587,19 @@ func principalAttributionProblems(streams []*Stream) (problems []string) {
 					}
 					login, hasAnnotation := onBehalfOfPrincipalOf(r.Runner)
 					if !hasAnnotation {
-						add("%s: Evidence row #%s was run by an App identity (%s) with no on-behalf-of "+
-							"principal — every App-authored Evidence row must carry the on-behalf-of "+
-							"annotation the write path stamps (see docs/on-behalf-of.md)", label, id, r.Runner)
+						msg := fmt.Sprintf("%s: Evidence row #%s was run by an App identity (%s) with no "+
+							"on-behalf-of principal — every App-authored Evidence row must carry the "+
+							"on-behalf-of annotation the write path stamps (see docs/on-behalf-of.md)",
+							label, id, r.Runner)
+						if strings.TrimSpace(r.Date) != "" && r.Date >= principalAttributionCutoverDate {
+							problems = append(problems, msg)
+						} else {
+							addNotice("%s", msg+fmt.Sprintf(" — NOTICE, not a PROBLEM: dated %q, before the "+
+								"on-behalf-of write path landed (%s); no write path could have stamped this "+
+								"row, so it is grandfathered rather than condemned (flip to PROBLEM applies "+
+								"automatically once the row's own date reaches the cutover)",
+								strings.TrimSpace(r.Date), principalAttributionCutoverDate))
+						}
 						continue
 					}
 					if cfg.Configured() {
@@ -575,7 +614,8 @@ func principalAttributionProblems(streams []*Stream) (problems []string) {
 		}
 	}
 	sort.Strings(problems)
-	return problems
+	sort.Strings(notices)
+	return problems, notices
 }
 
 // sortedEvidenceRowIDs returns rows' keys sorted numerically-then-lexically, so

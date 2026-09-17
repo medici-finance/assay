@@ -77,9 +77,15 @@ func onBehalfOfSuffix(token string) string {
 // `on-behalf-of human:<login>` annotation, wherever it appears in the cell text (it is
 // rendered inside a trailing parenthetical, alongside RunnerSource — see verifyrun.go's
 // row()). ok=false when the cell carries no such annotation at all.
+//
+// Takes the LAST occurrence, not the first, if the cell somehow carries more than one
+// (defensive: verifyrun.go's row() only ever renders one, and the write-side
+// AppendOnBehalfOf strips any caller-planted line before appending its own — see that
+// function's comment — so this cell should never legitimately carry two; taking the
+// last is the reading that cannot be shadowed by an earlier, spoofed occurrence).
 func onBehalfOfPrincipalOf(cell string) (login string, ok bool) {
 	const marker = "on-behalf-of human:"
-	idx := strings.Index(strings.ToLower(cell), marker)
+	idx := strings.LastIndex(strings.ToLower(cell), marker)
 	if idx < 0 {
 		return "", false
 	}

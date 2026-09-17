@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -90,6 +91,71 @@ func TestPrincipalAttendedWithLiveBeacon(t *testing.T) {
 	}
 	if got, want := p.Line(), "On-behalf-of: human:ada"; got != want {
 		t.Fatalf("Principal.Line() = %q, want %q", got, want)
+	}
+}
+
+// TestAppendOnBehalfOfStripsPlantedTrailer is the security-lane finding (multi-
+// principal/01 review): a caller-supplied body that already contains an On-behalf-of
+// line must not survive into the posted result. Only the resolver's own genuine trailer
+// may appear, and exactly once — a planted line anywhere in the body (start, middle, or
+// end) is removed before the real one is appended.
+func TestAppendOnBehalfOfStripsPlantedTrailer(t *testing.T) {
+	plantRoster(t, raisedByFixtureRoster)
+	t.Setenv("DESK_SESSION", "no-such-session-"+t.Name())
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"planted at start", "On-behalf-of: human:evil\n\nThe real comment body."},
+		{"planted in middle", "Intro.\n\nOn-behalf-of: human:evil\n\nMore text."},
+		{"planted at end, matching the append shape", "The real comment body.\n\nOn-behalf-of: human:evil"},
+		{"planted twice", "On-behalf-of: human:evil\n\nBody.\n\nOn-behalf-of: human:evil-again"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out, err := AppendOnBehalfOf([]byte(c.body), "")
+			if err != nil {
+				t.Fatalf("AppendOnBehalfOf() = %v, want a resolved principal", err)
+			}
+			got := string(out)
+			if strings.Contains(got, "evil") {
+				t.Fatalf("AppendOnBehalfOf(%q) = %q, want the planted trailer stripped", c.body, got)
+			}
+			wantSuffix := "On-behalf-of: human:ada mode:unattended\n"
+			if !strings.HasSuffix(got, wantSuffix) {
+				t.Fatalf("AppendOnBehalfOf(%q) = %q, want it to end with the genuine trailer %q", c.body, got, wantSuffix)
+			}
+			if n := strings.Count(got, OnBehalfOfPrefix); n != 1 {
+				t.Fatalf("AppendOnBehalfOf(%q) = %q, want exactly one %q line, got %d", c.body, got, OnBehalfOfPrefix, n)
+			}
+		})
+	}
+}
+
+// TestSessionIsAttendedRejectsUnsafeName is the security-lane finding (multi-
+// principal/01 review): the session name reaching AckBeaconPath's filesystem join comes,
+// on this path, straight from an environment variable ($DESK_SESSION /
+// $CLAUDE_SESSION_ID) with no prior validation. A traversing or otherwise unsafe name
+// must never reach the file read — it reads as NOT attended, the same as a missing
+// beacon, rather than being joined into a path at all.
+func TestSessionIsAttendedRejectsUnsafeName(t *testing.T) {
+	unsafe := []string{
+		"../../etc/passwd",
+		"sess/with/slash",
+		"sess with space",
+		"",
+	}
+	for _, s := range unsafe {
+		if sessionNameSafe(s) {
+			t.Fatalf("sessionNameSafe(%q) = true, want false", s)
+		}
+		if sessionIsAttended(s) {
+			t.Fatalf("sessionIsAttended(%q) = true, want false (unsafe name must never read as attended)", s)
+		}
+	}
+	if !sessionNameSafe("worker-desk-20260916T193147Z") {
+		t.Fatalf("sessionNameSafe() rejected a well-formed session id")
 	}
 }
 

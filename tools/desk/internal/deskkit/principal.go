@@ -36,8 +36,8 @@ package deskkit
 //	                     verifyloop, …). The trailer carries `mode:unattended` so a
 //	                     reader can tell the two apart without a second lookup.
 //
-// WHY BOTH RESOLVED STATES NAME THE SAME LOGIN TODAY. Per the ruling this brief relays
-// (medici-finance/assay-toolkit#2454, 2026-09-12, C3=C): until a second human joins the
+// WHY BOTH RESOLVED STATES NAME THE SAME LOGIN TODAY. Per the 2026-09-12 driver ruling
+// this brief relays: until a second human joins the
 // roster, the principal resolves to the roster's SINGLE blessing authority regardless of
 // who or what is driving the session. The session-beacon read exists so that when a
 // second human's attach-time handshake lands (deferred to roster v2), ATTENDED sessions
@@ -62,6 +62,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // PrincipalState is the three-state answer to "on behalf of which human is this write?".
@@ -158,14 +159,39 @@ func resolveSessionName(session string) string {
 	return strings.TrimSpace(session)
 }
 
+// sessionNameSafeRe is the character set a session name must stay within before this
+// file will pass it to AckBeaconPath, which joins it directly into a filesystem path.
+// On THIS path the name is attacker-influenced in a way AckBeaconPath's other callers'
+// names are not: it comes straight from $DESK_SESSION / $CLAUDE_SESSION_ID, two
+// environment variables any process sharing this one's environment controls, with no
+// prior validation. A traversing value ("../../etc/passwd" and friends) would otherwise
+// reach os.ReadFile via an ordinary path.Join. The impact is already bounded — the
+// result feeds only a bool, and this process already has whatever filesystem access its
+// own environment implies — but the identity path is the wrong place to accept an
+// unvalidated path component, so the name is constrained to the shape deskroster itself
+// ever writes (an ASCII session id: letters, digits, `-`, `_`, `.`) before it is used.
+func sessionNameSafe(session string) bool {
+	if session == "" {
+		return false
+	}
+	for _, r := range session {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // sessionIsAttended reports whether the named session carries a live roster beacon with
 // a non-empty role — the file deskroster writes for an interactive desk/worker session.
-// A missing, empty, or unparsable beacon reads as NOT attended (never an error): a cron
-// loop with no beacon is exactly the unattended case this resolver exists to tag, and a
-// malformed beacon is no stronger a signal than a missing one for this purpose (the
-// statusgen witness/lint paths are the ones that police malformed state, not this file).
+// A missing, empty, unparsable, or unsafely-named (sessionNameSafe) beacon reads as NOT
+// attended (never an error): a cron loop with no beacon is exactly the unattended case
+// this resolver exists to tag, and a malformed or suspicious name is no stronger a
+// signal than a missing beacon for this purpose (the statusgen witness/lint paths are
+// the ones that police malformed state, not this file).
 func sessionIsAttended(session string) bool {
-	if session == "" {
+	if !sessionNameSafe(session) {
 		return false
 	}
 	path, err := AckBeaconPath(session)
@@ -233,16 +259,50 @@ func OnBehalfOfLine(session string) (string, error) {
 	return p.Line(), nil
 }
 
+// stripPlantedOnBehalfOfLines removes every line in s whose trimmed text starts with
+// OnBehalfOfPrefix, wherever it sits — not just the exact trailing shape
+// StripOnBehalfOfSuffix matches. It exists solely so AppendOnBehalfOf can guarantee the
+// body it posts carries AT MOST ONE On-behalf-of line: the resolver's own genuine one.
+//
+// WHY THIS IS NEEDED (security-lane finding, multi-principal/01 review). Every write
+// verb that appends this trailer takes a CALLER-supplied body (`--body-file`), and
+// AppendOnBehalfOf previously appended unconditionally, never inspecting or rejecting a
+// caller body that already contained an `On-behalf-of:` line. A caller could therefore
+// plant an arbitrary `On-behalf-of: human:<anyone>` line, and the posted result carried
+// TWO such lines — the planted one and the genuine appended one — with nothing marking
+// which was authoritative. A first-match reader (as onBehalfOfPrincipalOf's witness-cell
+// counterpart on the statusgen side used to be) would resolve to the planted one. This
+// function removes the ambiguity at the source: whatever the caller wrote, at most one
+// On-behalf-of line survives into the posted body, and it is always the one this
+// resolver just computed.
+func stripPlantedOnBehalfOfLines(s string) string {
+	lines := strings.Split(s, "\n")
+	out := lines[:0]
+	for _, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), OnBehalfOfPrefix) {
+			continue
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
 // AppendOnBehalfOf appends the on-behalf-of trailer to body as a new, blank-line-
 // separated final line — the shape a git trailer block and a PR/issue comment's closing
 // line share. Refuses (does not modify body) when the principal cannot be resolved, so a
 // caller that ignores the error can never post a body silently missing its trailer.
+//
+// Any On-behalf-of line the caller-supplied body already contains — anywhere in it, not
+// only at the end — is stripped first (stripPlantedOnBehalfOfLines), so the posted
+// result never carries more than the one this call resolves. A caller cannot pre-seed or
+// shadow the annotation the later author-never-flipper / segregation-of-duties checks
+// are built to trust.
 func AppendOnBehalfOf(body []byte, session string) ([]byte, error) {
 	line, err := OnBehalfOfLine(session)
 	if err != nil {
 		return nil, err
 	}
-	s := strings.TrimRight(string(body), "\n")
+	s := strings.TrimRight(stripPlantedOnBehalfOfLines(string(body)), "\n")
 	if s == "" {
 		return []byte(line + "\n"), nil
 	}
