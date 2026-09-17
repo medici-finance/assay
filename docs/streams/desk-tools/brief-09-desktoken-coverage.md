@@ -152,6 +152,29 @@ Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=
 
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
+### Non-implementer verifier re-run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch), after `assay#555` closed — **VERIFY: PASS**
+
+Runner ≠ implementer. Prior existing Evidence already attributed to a distinct non-implementer identity (`opus-4.8[1m]-verifier`) — valid, not self-reported, but independently re-run from scratch anyway.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go vet ./...` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 2 | `TestCoverageListsEveryInstallation` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestCoverageRepoFilterExitCodes` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestCoveragePageFailureIsUnverifiable` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestCoverageWritesNoCacheAndPrintsNoToken` | exit 0 | exit 0, dir-snapshot equal, no token substring on stdout/stderr | 2026-09-17 | sonnet-5-verifier |
+| 6 | `TestCoverageRefusesGitLabForge` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 7 | `go test ./... -count=1` (whole module) | exit 0 | first attempt exit 1 — sole failure `internal/loopengine`, a documented OPEN load-timing flake (`medici-finance/assay#612`); `internal/deskkit` (the #555 package) PASSED clean. Isolated re-runs of `./cmd/desktoken/...` and `./internal/loopengine/...` alone: 100% PASS. Per #612's own citation rule, reporting the first-attempt result, not a laundered re-run | 2026-09-17 | sonnet-5-verifier |
+| 8 | `gofmt -l tools/desk/cmd/desktoken` | empty | exit 0, empty | 2026-09-17 | sonnet-5-verifier |
+| 9 | `statusgen --lint` | exit 0 | exit 0, LINT: PASS, 0 PROBLEM | 2026-09-17 | sonnet-5-verifier |
+
+**`assay#555` disposition — confirmed genuinely landed, not just closed.** It tracked two `deskkit` reds: (1) `deskinstall` unregistered in `canonicalToolKeys` — fixed by #547; (2) restamp-recovery floor test — re-based per an explicit human ruling (#505/#548 Option A) — landed by #550. `internal/deskkit` passes clean (78.2s) at current main. Row 7's failure is a DIFFERENT, already-separately-tracked, still-open flake (`internal/loopengine`, #612) — not a recurrence of #555 and not caused by this brief (which touches only `cmd/desktoken`).
+
+**RISK-VALUE: DERIVED** — `coveragePerPage = 100` (`coverage.go:58`) matches GitHub REST's documented `/installation/repositories` per-page maximum; the completion test (`coverage.go:323`) is only sound at/under 100 — confirms the prior verifier's finding at the same lines. Token-redaction is N/A as a literal (the control is structural absence of token bytes from output, confirmed by row 5).
+
+**Non-blocking observation (not in Task scope):** `listInstallations` (`coverage.go:257`) hits `/app/installations?per_page=100` as a single, non-paginated request — unlike `listInstallationRepos`, which paginates. If an App ever exceeds 100 installations this would silently truncate. In-spec as written (the brief only specifies pagination for the repositories endpoint); flagging for awareness, not blocking.
+
+**VERIFY: PASS** — rows 1-6, 8, 9 clean; row 7's first-attempt failure is the documented, unrelated, still-open `internal/loopengine` flake (#612), not this brief's defect and not a recurrence of #555.
 
 ## Review
 
