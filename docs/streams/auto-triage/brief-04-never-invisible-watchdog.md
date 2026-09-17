@@ -54,8 +54,21 @@ WHY the responders were silent, and of the classifier), and the watchdog's own l
 surfaced out-of-band — an absent/failed scheduled watchdog run is itself visible through the
 platform's workflow-failure notification, a signal the watchdog does not produce for itself.
 
+risk-answer disposition: all four `risk:` answers are honestly `no` — the deliverable is a
+scheduled trigger file, reversible at zero cost to `main` — and `gate: human` is carried by
+*authority boundary* (arming an autonomous outbound escalation), which is a stricter gate
+than the four `no`s alone would derive. This is not a contradiction with brief 02, which
+refuses to auto-fix a culprit whose `file` is under `.github/workflows/`: 02's refusal is
+about *auto-fixing* a workflow-config culprit unattended, while this brief's own deliverable
+is a human-gated *authoring* act that adds a new trigger file — different act, different
+control, both intact.
+
 files:
-- `.github/workflows/` — the scheduled watchdog trigger (planned).
+- `.github/workflows/` — the scheduled watchdog trigger (planned). If open PR #1228's
+  workflow-only-PR contract (a single PR touching ONLY `.github/workflows/**` plus its own
+  changelog fragment) lands first, this trigger file travels as its own PR, separate from the
+  `tools/autotriage/` logic below — cheap to split now, a blocked implementer later if not
+  noted.
 - `tools/autotriage/` — the watchdog logic reading gate state + brief 02/03 action records.
 - `tools/autotriage/testdata/` — fixtures: a red gate with no responder record; a red gate
   with a responder record; a red gate of an unclassifiable check.
@@ -96,15 +109,16 @@ facts:
 5. `--dry-run` prints intended escalations and writes nothing (test default).
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/autotriage && go build ./... && go vet ./...` | exit 0 |
-| 2 | `cd tools/autotriage && go test ./...` | exit 0; all green |
-| 3 | `cd tools/autotriage && go test -run TestEscalatesRedWithNoResponderAction -v` | exit 0; a red gate with no action record within N minutes produces exactly one escalation naming the check — dereferences the core behaviour |
-| 4 | `cd tools/autotriage && go test -run TestNoDoubleEscalationWhenResponderActed -v` | exit 0; a red gate WITH a responder action record in-window produces NO escalation (negative row: proves it observes responder action, not just gate redness) |
-| 5 | `cd tools/autotriage && go test -run TestEscalatesUnclassifiableRedRegardlessOfCause -v` | exit 0; a red of an unclassifiable check with no responder record still escalates — proves cause-independence (the failure mode #611-class automation would miss) |
-| 6 | `cd tools/autotriage && go test -run TestEscalationNamesCheckNotWithheldDetail -v` | exit 0; a leak-sweep-red escalation body names the check and contains NO withheld token/detail (public-repo safety) |
-| 7 | `cd tools/autotriage && go test -run TestWatchdogAbsenceIsSurfaced -v` | exit 0; asserts the watchdog run emits a failure/heartbeat signal such that its own absence is detectable out-of-band (who-watches-the-watchdog layer) |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `cd tools/autotriage && go build ./... && go vet ./...` | exit 0 | check |
+| 2 | `cd tools/autotriage && go test ./...` | exit 0; all green | check |
+| 3 | `cd tools/autotriage && go test -run TestEscalatesRedWithNoResponderAction -v` | exit 0; a red gate with no action record within N minutes produces exactly one escalation naming the check — dereferences the core behaviour | check +dereference |
+| 4 | `cd tools/autotriage && go test -run TestNoDoubleEscalationWhenResponderActed -v` | exit 0; a red gate WITH a responder action record in-window produces NO escalation (negative row: proves it observes responder action, not just gate redness) | check |
+| 5 | `cd tools/autotriage && go test -run TestEscalatesUnclassifiableRedRegardlessOfCause -v` | exit 0; a red of an unclassifiable check with no responder record still escalates — proves cause-independence (the failure mode #611-class automation would miss) | check |
+| 6 | `cd tools/autotriage && go test -run TestEscalationNamesCheckNotWithheldDetail -v` | exit 0; a leak-sweep-red escalation body names the check and contains NO withheld token/detail (public-repo safety) | check |
+| 7 | `cd tools/autotriage && go test -run TestWatchdogAbsenceIsSurfaced -v` | exit 0; asserts the watchdog run emits a failure/heartbeat signal such that its own absence is detectable out-of-band (who-watches-the-watchdog layer) | check |
+| 8 | `cd tools/autotriage && go test -run TestScheduledTriggerJoinsGateStateAndResponderRecordsThenEscalates -v` | exit 0; drives the path end to end on fixtures — a simulated scheduled-trigger invocation reads the current gate-state fixture AND the brief-02/03 action-record fixture through the same entry point the real trigger calls, and produces exactly one escalation naming the check. Fails if the trigger's entry point is stubbed, or if the join is exercised only through direct calls into the escalation function (rows 3–7) rather than through the wiring the schedule actually invokes | check +flow |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item.

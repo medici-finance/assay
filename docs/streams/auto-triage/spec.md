@@ -24,9 +24,14 @@ somewhere is wrong*, and the all-stop is what makes the signal impossible to ign
 
 **The direction that commissioned this stream is explicit on that point.** Faced with the
 seam where one unrelated nit reddens every open PR (a gofmt drift in one file failing
-Verify-table rows across unrelated PRs), the ruling was: *do not scope the gate down to
-the PR's own diff.* The all-stop is desired. What is missing is not a narrower gate — it
-is an **automated response** to the gate the moment it fires.
+Verify-table rows across unrelated PRs), the authoring direction states: *do not scope the
+gate down to the PR's own diff.* That is the direction this stream was commissioned under,
+not a ruling on record elsewhere in this repository — a sweep of the issues this stream
+cites (#611, #1119, #612, #880, #536) found no comment recording it as a ruling, so it is
+cited here as the commissioning direction, checkable on its own merits (the DR below argues
+it independently), not as an appeal to a prior authority. The all-stop is desired. What is
+missing is not a narrower gate — it is an **automated response** to the gate the moment it
+fires.
 
 Today that response is manual. Each time a whole-tree gate reddens on ambient churn,
 a human or a desk hand-triages it: reads the failing log, finds the culprit check and the
