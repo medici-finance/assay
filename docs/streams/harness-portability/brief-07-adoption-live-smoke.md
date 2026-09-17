@@ -57,10 +57,12 @@ facts:
   minimum coverage: (1) fresh install per the adopt path; (2) session start → resident
   rules present WITHOUT manual pasting (probe: ask the session to state rule 3's
   neutral-dispatch wording); (3) invoke each of the seven skills by name → body loads;
-  (4) auto-trigger probe per 01's `auto-trigger` verdict; (5) dispatch-claim probe →
-  spawn tools confirmed PRESENT under `multi_agent=true` (positive-presence check),
-  with fan-out gated by the desk's own claim-before-dispatch ceremony, not by tool
-  absence — **re-baselined per `#939` (ratified)**, see the established-fact note below;
+  (4) auto-trigger probe per 01's `auto-trigger` verdict; (5) serial-dispatch floor probe →
+  force `[agents] max_concurrent_threads_per_session=1` and observe the desk pool
+  degrade to SERIAL fan-out with every guarantee intact (no item silently dropped,
+  non-overlapping child lifetimes in the `--json` event log, each item still receiving
+  its own isolated worktree / command evidence / review) — **re-baselined per `#939`
+  (ratified)**, see the established-fact note below;
   (6) isolation probe → refusal fires where ruled; (7) evidence discipline probe → a
   Verify row executed and recorded. Each step's evidence is a transcript excerpt pasted
   into the protocol's run log.
@@ -72,8 +74,13 @@ facts:
   Step 5's original precondition ("dispatch unavailable, so the ruled serial-degradation
   must be observed") is therefore unfalsifiable on this CLI version; the run log merged
   via `#937` recorded it `BLOCKED` for exactly this reason. The step is re-baselined
-  (see `docs/codex-smoke-protocol.md` Step 5) to assert what 0.154.0 actually exposes:
-  tool presence plus claim-gated (not absence-gated) fan-out.
+  (see `docs/codex-smoke-protocol.md` Step 5) to a trigger the current CLI can genuinely
+  be put into: the concurrency cap. `[agents] max_concurrent_threads_per_session` remains
+  a recognised config key (verified via `codex exec --strict-config`; legacy alias
+  `max_threads`), and setting it to `1` forces the desk pool to run serially — the
+  reachable form of the `capability:dispatch-worker` convenience-degradation floor. The
+  step now judges that floor's guarantee (every item completed, non-overlapping child
+  lifetimes, no guarantee weakened), not a verbal degradation statement.
 - The first executed run log is committed under
   `docs/codex-smoke-runs/<date>-<codex-version>.md` — the run log is the artifact the
   human gate signs.
@@ -214,6 +221,43 @@ blocks the roster path) — the step's intent (no spawn without the ceremony) is
 demonstrated; a sandbox permitting the roster write would additionally exercise the
 claim-acquire branch (b), a natural follow-up, not a blocker. **Step 5 now reads
 PASS/PASS; hp/07 is 7/7, pending the driver's sign-off on this PR.**
+
+### Step 5 re-baseline — 2026-09-17 (worker-desk, per `#939` ratified)
+
+`docs/codex-smoke-protocol.md` Step 5 re-based a second time, and this brief's Context
+above updated to match in the same motion. The 2026-09-13 claim-gated form (spawn-tool
+presence under `multi_agent=true` plus fan-out held by the claim-before-dispatch
+ceremony) is superseded by the **concurrency-cap serial-dispatch floor**: force `[agents]
+max_concurrent_threads_per_session=1` and observe the desk pool degrade to serial
+fan-out.
+
+Ruling: on `#939`, `human:ian`'s 2026-09-17 disposition — "re-baseline Step 5 to a
+trigger the current CLI can genuinely be put into; the fallback is permanent BLOCKED" —
+was relayed and ratified on the human's own account. The claim-gated form was not a
+reachable *trigger* the CLI could be placed into (the claim ceremony is a house rule, not
+a CLI state), so it could not by itself falsify the degradation floor. The concurrency
+cap is a real config key (`codex exec --strict-config` accepts
+`agents.max_concurrent_threads_per_session`; legacy alias `max_threads`) the harness
+genuinely honours, so setting it to `1` puts a current Codex into a state whose serial
+behaviour is directly observable.
+
+New Step 5 form (see `docs/codex-smoke-protocol.md` Step 5): the probe FORCES the cap to
+`1` and PASSES only when the fan-out degrades to serial **without dropping any
+guarantee** — every one of N ≥ 2 items completed (none silently skipped), the children's
+lifetimes in the `--json` event log non-overlapping, and each item still receiving its
+full guarantee set (own isolated worktree, own command evidence, own review). A run that
+drops/skips an item, or weakens isolation / evidence / gate to keep up under the cap, is
+the FAIL (the "ran anyway, quietly, with less" fourth-cell bug), routed to
+harness-portability/04. The step judges the floor's *guarantee*, not a verbal degradation
+statement — the cap is transparent to the skill, so a capped session may serialize
+without emitting a notice, which is exactly what made the retired flag-based form
+unfalsifiable. Restore condition: if a future codex-cli re-gates the subagent tools
+behind a config a session can be put into, the stated-degradation form becomes available
+again and should be restored.
+
+Live re-run of this new form: not executed by this session — the live run needs an
+environment Ian provides or sanctions (frontmatter `gate: human`); this entry records the
+protocol + Context re-baseline only, ready for that run.
 
 ## Review
 
