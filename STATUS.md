@@ -46,14 +46,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (50 desk-actionable of 62 total — 62 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 62 total — 61 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (50)
+### Desk-actionable (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -66,6 +66,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | windows-port | 00 | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
+| desk-containers | 03 | verified | 3000 | 4 | — | 2026-09-16 verify-desk (desk-containers/03 dispatched verifier; row 5 now PASS given assay#1025, rows 1-4/7 could-not-check offline-docker-lane, risk-value NAMED-NOT-DERIVED filed assay#1218) | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
@@ -117,13 +118,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 
-### Awaiting implementer rework (8)
+### Awaiting implementer rework (7)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2500 | 3 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -196,7 +196,7 @@ _None._
 ### desk-containers (10 open)
 
 - 02 runtime credential contract (PEM + model env) + image layer-secret scan — implemented (wave 1)
-- 03 per-desk images (named by desk) + build matrix + publish wiring — implemented (wave 2)
+- 03 per-desk images (named by desk) + build matrix + publish wiring — verified (wave 2)
 - 04 interactive desktop launch script (desk-run.sh) — todo (wave 3)
 - 05 docker-compose definition for the five desks — todo (wave 3)
 - 06 Kubernetes manifests for the five desks — todo (wave 3)
