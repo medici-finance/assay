@@ -19,7 +19,7 @@ authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
   - "docs/streams/forge-neutral/reviewer-write-boundary.md — the scoping doc this brief implements; section numbers below refer to it"
-  - "the ruling of 2026-09-17 on the spec's §10 I, and the spec's §12 — every remaining role is audited and narrowed as a follow-on wave behind brief 30; the per-role duties briefs are authored later, from this brief's findings"
+  - "the ruling of 2026-09-17 on the spec's §10 I, and the spec's §12 — every remaining role is audited and narrowed as a follow-on wave behind brief 30 (the release-N cutover — not behind brief 32, the release-N+1 deletion); the per-role duties briefs are authored later, from this brief's findings"
   - "docs/streams/forge-neutral/brief-20-claim-store-measurements.md — the inventory method reused here (Task 1 and Verify row 4)"
   - "tools/desk/internal/deskkit/preflight.go — `dutiesFor(role, store)` as left by brief 25: already role-keyed, so a narrowed role is a row change"
   - "routed here from assay:assay:forge-neutral:25 (duties of the roles other than the reviewer)"
@@ -44,13 +44,20 @@ duty change. The per-role duties briefs are authored **after** it, one per findi
 
 facts:
 - Roles in scope: desk, worker, verifier, issue-loop, intake-loop. The reviewer is out of
-  scope — briefs 20–30 cover it.
+  scope — briefs 20–30 and 32 cover it.
 - A role's forge calls are findable by the role argument of the forge resolver and of the
   token mint, as in brief 20.
 - For each role the question is per permission: `pull_requests`, `issues`, repository write —
   which operations need it, on which forge, and is there any the role never performs.
-- Depends on brief 30 by ruling: it starts once the reviewer change is live, so that the
-  claim-step mint it would otherwise have to account for is already gone.
+- Depends on brief 30 — the release-N cutover — and **not** on brief 32, the release-N+1
+  deletion. The ruling sequences this audit "once it is live": the reviewer change is live
+  when a cell has switched store and the narrowed reviewer is proven, which is brief 30.
+  Waiting on the deletion would hold the audit a further release for nothing it measures.
+- Consequence, accounted for rather than assumed away: until brief 32 lands, an install still
+  on the legacy resolution takes its non-review dispatch claims as the `desk` role by writing
+  a forge ref (`tools/desk/cmd/deskdispatch/dispatch.go:872-918`). The desk role's inventory
+  records that write as **window-only — removed by brief 32**, and it is never counted as a
+  lasting need for repository write.
 
 ## Ground rules
 - Stop at `implemented` — you do not set verified/done.
