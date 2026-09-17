@@ -21,8 +21,10 @@ never silently disarm the others):
    refuses to serve; there is no partially-enabled state.
 3. The gateway process actually deployed and reachable for that cell.
 
-As of the 2026-09-17 human ruling on this key's decision-gate issue (Option 2,
-"Interim rung first", over the recorded full-enable target), the recorded mode
+As of a 2026-09-17 human ruling (Option 2, "Interim rung first", over the
+recorded full-enable target — the ruling itself is recorded outside this
+public repo; tracked publicly as #1289, which states the interim-rung scope
+but does not itself carry the ruling text), the recorded mode
 is `comms: interim` — receive-and-route live, but
 every execution lands as a proposed dispatch a person fires, never an
 autonomous session-firing (`../commsloop`'s `Loop.Native` stays at its zero

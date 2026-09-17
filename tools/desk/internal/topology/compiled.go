@@ -36,11 +36,12 @@ var compiled = Topology{
 	// parse metadata the diff does not compare (see Repo.RelationshipStated).
 	Cell: "assay",
 	// Comms — the assay cell's own stated message-plane mode. `interim` mirrors
-	// topology.yaml's worked-example value (the 2026-09-17 human ruling on this
-	// key's decision-gate issue chose the interim rung, not full enablement):
-	// declarative only, and INERT for this cell regardless — the assay cell has
-	// no ASSAY_COMMS_* env set and runs no gateway deployment, the other two
-	// independent off-switches this one value cannot substitute for.
+	// topology.yaml's worked-example value (a 2026-09-17 human ruling chose the
+	// interim rung, not full enablement — the ruling itself is recorded outside
+	// this public repo; tracked publicly as #1289): declarative only, and INERT
+	// for this cell regardless — the assay cell has no ASSAY_COMMS_* env set and
+	// runs no gateway deployment, the other two independent off-switches this
+	// one value cannot substitute for.
 	Comms: CommsInterim,
 	Repos: []Repo{
 		{

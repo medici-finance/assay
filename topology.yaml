@@ -131,8 +131,9 @@ cell: assay
 # does not, by itself, turn anything on; see tools/desk/cmd/commsgw/config.go
 # and tools/desk/internal/topology/topology.go's CommsMode doc.
 #
-# This file states `interim`: the ruled cutover rung (2026-09-17 human ruling,
-# Option 2 — "Interim rung first"), not the recorded full-enable target. It is
+# This file states `interim`: the ruled cutover rung (a 2026-09-17 human
+# ruling, Option 2 — "Interim rung first" — recorded outside this public repo;
+# tracked publicly as #1289), not the recorded full-enable target. It is
 # illustrative here — the assay cell runs no gateway deployment and sets no
 # ASSAY_COMMS_* env, so this value is inert regardless of its setting; it
 # demonstrates the schema the way every other field in this worked example does.

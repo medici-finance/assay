@@ -6,9 +6,10 @@
   only and wires nothing on its own.
 
 ### Changed
-- `commsgw`'s README documents the full three-part enablement contract and records the
+- `commsgw`'s README documents the full three-part enablement contract and reflects a
   2026-09-17 human ruling on this cutover decision (Option 2, "Interim rung first", over
-  the recorded full-enable target): receive-and-route live, every execution a proposed
+  the recorded full-enable target — the ruling itself is recorded outside this public
+  repo; tracked publicly as #1289): receive-and-route live, every execution a proposed
   dispatch a person fires, full autonomous enablement not implemented by this change.
 
 ### Tests

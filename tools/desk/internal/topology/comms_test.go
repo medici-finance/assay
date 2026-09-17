@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-// comms_test.go — the `comms:` key half of the loader contract: the
-// 2026-09-17 human ruling on this key's decision-gate issue chose Option 2,
-// "Interim rung first", over the recorded full-enable target.
+// comms_test.go — the `comms:` key half of the loader contract: a 2026-09-17
+// human ruling chose Option 2, "Interim rung first", over the recorded
+// full-enable target. (The ruling itself is recorded outside this public
+// repo; tracked publicly as #1289.)
 //
 // THE KEY DECISIONS THIS FILE PINS, mirroring cellmodel_test.go's own structure
 // for the sibling `relationship:` key:
@@ -22,9 +23,10 @@ import (
 //
 // THIS KEY IS INERT BY ITSELF. Nothing in this package (or in this test file)
 // wires CommsMode into commsgw/commsloop's own execution — that independence
-// is the point (CommsMode's doc, docs/acp-cell-comms-spec.md §8/§9): a defect
-// in this loader can misparse the topology file, but it can never, by itself,
-// cause a message to autonomously fire a session. That would need a SECOND,
+// is the point (CommsMode's doc in topology.go, which cites cmd/commsgw's own
+// config.go doc comment for the full three-part contract): a defect in this
+// loader can misparse the topology file, but it can never, by itself, cause a
+// message to autonomously fire a session. That would need a SECOND,
 // independent defect in the ASSAY_COMMS_* env gate or the deployment step.
 
 // commsFixture is a minimal but COMPLETE topology-v1 document carrying an

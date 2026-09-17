@@ -121,13 +121,13 @@ func (r Relationship) String() string {
 // CommsMode is a cell's stated inter-desk message-plane enablement mode — one
 // of the THREE independent off-switches the enablement contract requires (a
 // topology `comms:` key, ASSAY_COMMS_* env, and the gateway process actually
-// deployed — see docs/acp-cell-comms-spec.md §8 and cmd/commsgw/config.go's own
-// doc comment, which already names this key as its sibling gate). This package
-// reads and validates the key ONLY: it never reaches into commsgw/commsloop to
-// wire anything, by design — each of the three gates is checked by a DIFFERENT
-// component so a defect in one does not silently disarm the others (the same
-// independent-layers posture docs/acp-cell-comms-spec.md §9 documents for the
-// gateway's own defense-in-depth stack). A CommsMode value is therefore INERT
+// deployed — see cmd/commsgw/config.go's own doc comment, which already names
+// this key as its sibling gate and states the full three-part contract). This
+// package reads and validates the key ONLY: it never reaches into
+// commsgw/commsloop to wire anything, by design — each of the three gates is
+// checked by a DIFFERENT component so a defect in one does not silently
+// disarm the others (the same independent-layers posture cmd/commsgw's own
+// defense-in-depth stack relies on). A CommsMode value is therefore INERT
 // by itself: stating `comms: full` here fires nothing on its own.
 type CommsMode int
 
@@ -139,9 +139,10 @@ const (
 	// CommsInterim — receive-and-route is live (messages flow, are checked and
 	// judged, routed and logged) but every execution lands as a PROPOSED
 	// dispatch a person fires; no autonomous session-firing. This is the
-	// 2026-09-17 human ruling's chosen rung (Option 2, over the recorded
-	// full-enable target) and matches commsloop's own Loop.Native=false
-	// "interim/rollback position" default.
+	// chosen rung of a 2026-09-17 human ruling (Option 2, over the recorded
+	// full-enable target — the ruling itself is recorded outside this public
+	// repo; tracked publicly as #1289) and matches commsloop's own
+	// Loop.Native=false "interim/rollback position" default.
 	CommsInterim
 	// CommsFull — full autonomous enablement: desks act on each other's
 	// messages and start worker sessions without a person relaying each step
