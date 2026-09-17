@@ -79,7 +79,7 @@ or removing any human gate (spec §5 states the divergence).
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Eligibility evaluator — gates and feathers become gating, with a reason](brief-01-eligibility-evaluator.md) | 0 | L | todo | — | — |
+| 01 | [Eligibility evaluator — gates and feathers become gating, with a reason](brief-01-eligibility-evaluator.md) | 0 | L | implemented | — | — |
 | 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | todo | — | — |
 | 03 | [Evidence coverage rule and the observe evidence kind](brief-03-evidence-coverage-rule.md) | 1 | L | todo | — | — |
 | 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 1 | L | todo | — | — |

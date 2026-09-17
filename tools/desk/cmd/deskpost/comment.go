@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/cmd/deskpost/internal/bodycheck"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -63,6 +64,16 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 		if err := deskkit.SelfContainCheck("comment body", body,
 			deskkit.SelfContainOpts{Repo: repo, NumberHint: num}); err != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
+		}
+		// On-behalf-of trailer (multi-principal/01): resolved BEFORE any network call, and
+		// refuses (exit 5) rather than post without one. Appended to the POSTED body only —
+		// `dig` above (and every idempotency/rate-limit key derived from it) stays keyed on
+		// the CALLER-supplied body, so the same semantic comment retried from a different
+		// session still dedupes; the trailer would otherwise make an identical retry look
+		// like a new write.
+		postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+		if oerr != nil {
+			return withDigest(fromReadErr(preVerb, repo, num, "", oerr), dig)
 		}
 
 		client, err := newPostBackend(owner, name)
@@ -152,7 +163,8 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 			return withDigest(dryRun(verb, repo, num, tgt.head,
 				"DRY RUN: comment body passed the size cap and secret scan, repo is in the desk set, "+
 					"author-trust gate cleared (enforced on issue comments only), public-repo gate passed, "+
-					"no identical comment on "+describe(tgt)+" — stopped before POST"), dig)
+					"no identical comment on "+describe(tgt)+" — stopped before POST — trailer: "+
+					lastLine(postBody)), dig)
 		}
 		// The actual mutating call is routed through deskkit.ForgeFor rather than
 		// client.postComment directly — deskpost's proof-of-reachability wiring for the
@@ -171,15 +183,28 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 		// to route around — so leaving the write untyped would silently defeat --kind
 		// exactly when it matters (both #N and !N exist).
 		if forcedKind != nil {
-			if _, err := fg.PostCommentTyped(deskkit.ForgeRepo{Owner: owner, Name: name}, num, *forcedKind, string(body)); err != nil {
+			if _, err := fg.PostCommentTyped(deskkit.ForgeRepo{Owner: owner, Name: name}, num, *forcedKind, string(postBody)); err != nil {
 				return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
 			}
-		} else if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
+		} else if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(postBody)); err != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
 		}
 		return done(verb, repo, num, tgt.head, dig,
 			"posted comment as "+reviewerBotDisplay()+" on "+describe(tgt))
 	})
+}
+
+// lastLine returns the final non-empty line of body — used by the dry-run detail so the
+// on-behalf-of trailer AppendOnBehalfOf added is visible in the rehearsal output (multi-
+// principal/01, Verify row 5) without echoing the whole body.
+func lastLine(body []byte) string {
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			return lines[i]
+		}
+	}
+	return ""
 }
 
 // describe renders the target for the human-readable detail line (which also lands in the
