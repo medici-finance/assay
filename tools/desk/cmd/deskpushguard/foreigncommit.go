@@ -31,7 +31,7 @@
 //     pushed, or whose remote ref this repo has not fetched, is invisible. Consulting LOCAL
 //     branches instead was considered and rejected: in a worktree-per-worker checkout the
 //     pushed branch's own commits are reachable from several local refs, so it cry-wolfs.
-//   - The remote-tracking base is read, not fetched (see resolveOriginMain's KNOWN CAP).
+//   - The remote-tracking base is read, not fetched (see resolveRemoteMain's KNOWN CAP).
 //
 // FAIL-OPEN, BUT NEVER SILENT. This is a client-side pre-push hook with a documented
 // Fail-OPEN contract (brief-10): it refuses only on a POSITIVE finding, never on an inability
@@ -183,11 +183,30 @@ func logRangeHashes(repo *gitcore.Repo, base, head string) (rangeHashes []string
 	return out, baseSet, nil
 }
 
-// resolveOriginMain resolves the base this check compares against, spelled FULLY QUALIFIED
-// as `refs/remotes/origin/main`.
+// resolveOriginMain is resolveRemoteMain pinned to the literal remote name "origin" — kept
+// as its own entry point because registerid.go's register-id-collision check (a DIFFERENT
+// check from the one #1201 fixes) still compares against the checkout's own configured
+// `origin` deliberately; it is not derived from any particular push's target remote the way
+// checkForeignCommits' base now is.
+func resolveOriginMain(dir string) (string, error) {
+	return resolveRemoteMain(dir, "origin")
+}
+
+// resolveRemoteMain resolves the base this check compares against, spelled FULLY QUALIFIED
+// as `refs/remotes/<remoteName>/main`.
 //
-// The bare spelling `origin/main` is NOT safe here, and this tool's own subject is why. A
-// checkout that has ever run `git branch origin/main` (or `git worktree add ... -b
+// remoteName MUST be the actual remote the current `git push` is going to — not assumed to
+// be "origin" (#1201). A worktree's `origin` remote can legitimately point at a DIFFERENT
+// repository than the one a given push targets (e.g. a worktree cut from a shared
+// board-dispatch checkout whose own `origin` is a different repo, with the real target added
+// under a second remote name); resolving `refs/remotes/origin/main` unconditionally in that
+// shape compares the pushed branch against the WRONG repo's history, and every real commit on
+// the branch reads as "foreign" against it. The pre-push hook is invoked as
+// `<hook> <remote-name> <remote-url>` (see main.go's package doc), so the real remote name is
+// already known to the caller without guessing — main.go threads it down as remoteName.
+//
+// The bare spelling `<remoteName>/main` is NOT safe here either, and this tool's own subject
+// is why. A checkout that has ever run `git branch origin/main` (or `git worktree add ... -b
 // origin/main`) carries a real local branch literally named `refs/heads/origin/main`
 // alongside the remote-tracking `refs/remotes/origin/main`. Bare `origin/main` is then
 // AMBIGUOUS, and git's rev-parse precedence resolves it to `refs/heads/` FIRST — the local
@@ -197,22 +216,22 @@ func logRangeHashes(repo *gitcore.Repo, base, head string) (rangeHashes []string
 // behind the real main and find nothing — silently passing the wrong-base worktree it
 // exists to catch. Measured in this repo, where such a stray branch exists.
 //
-// A remote-tracking ref cannot collide this way (`refs/remotes/origin/main` is one name for
-// one ref), so the qualified form is unambiguous by construction. In a checkout WITHOUT the
-// stray branch this resolves to the identical sha, so the qualification changes nothing for
-// the normal case.
+// A remote-tracking ref cannot collide this way (`refs/remotes/<remoteName>/main` is one name
+// for one ref), so the qualified form is unambiguous by construction. In a checkout WITHOUT
+// the stray branch this resolves to the identical sha, so the qualification changes nothing
+// for the normal case.
 //
 // KNOWN CAP (not covered here): this resolves the local remote-tracking ref and does NOT
 // fetch. If that ref is itself stale — the repo has not fetched recently — the comparison
 // base is still behind the true remote head, and a worktree cut from it is not detected.
 // Fetching inside a pre-push hook is a separate contract decision (it would break offline
 // pushes), so it is named as a limitation rather than silently assumed away.
-func resolveOriginMain(dir string) (string, error) {
+func resolveRemoteMain(dir, remoteName string) (string, error) {
 	repo, err := openRepo(dir)
 	if err != nil {
 		return "", err
 	}
-	hash, err := repo.Resolve("refs/remotes/origin/main")
+	hash, err := repo.Resolve("refs/remotes/" + remoteName + "/main")
 	if err != nil {
 		return "", err
 	}
@@ -294,11 +313,11 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	out.strayBases = append(out.strayBases, strayBase{strayTip: strayTip, trueBase: trueBase, behind: behind})
 }
 
-// checkForeignCommits inspects the commits unique to localSHA relative to origin/main (the
-// range a git pre-push hook is given) and reports:
+// checkForeignCommits inspects the commits unique to localSHA relative to the actual push
+// target's main (the range a git pre-push hook is given) and reports:
 //
 //   - foreign commits: also reachable from another remote branch not itself an ancestor of
-//     origin/main (a sibling PR still in flight — #22's laundering failure mode).
+//     that main (a sibling PR still in flight — #22's laundering failure mode).
 //
 //   - merge masquerades: subject claims "merge"/"merged" but has < 2 parents (#72's fake
 //     single-parent "merge").
@@ -306,31 +325,41 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 //   - stray-base cut: the ref's branch point is the tip of a stray local branch named
 //     `origin/main` (see checkStrayBase).
 //
-// dir is the repository to run git in (empty = process cwd). ownBranch's own remote-tracking
+// dir is the repository to run git in (empty = process cwd). remoteName is the ACTUAL remote
+// the current push is going to (#1201) — never assumed to be "origin"; see resolveRemoteMain's
+// doc comment for why a hardcoded literal misfires whenever a worktree's `origin` remote
+// points at a different repo than the one being pushed to. ownBranch's own remote-tracking
 // ref (if already pushed) is excluded from the "other branch" search so an UPDATE push never
 // flags itself against its own prior state.
 //
-// Fails open — but never silently. Every "cannot determine" path (origin/main unresolvable,
-// localSHA not a well-formed object id or not present in this repo, a git error mid-walk)
-// records a could-not-check reason in the returned baseFindings instead of returning an empty
-// result. The push is still allowed on indeterminacy alone (brief-10's documented Fail-OPEN
-// contract for a client-side hook), but the caller prints and audits the reason, so
+// Fails open — but never silently. Every "cannot determine" path (the remote's main
+// unresolvable, localSHA not a well-formed object id or not present in this repo, a git error
+// mid-walk) records a could-not-check reason in the returned baseFindings instead of returning
+// an empty result. The push is still allowed on indeterminacy alone (brief-10's documented
+// Fail-OPEN contract for a client-side hook), but the caller prints and audits the reason, so
 // "could not check the base" can never be mistaken for "the base is fine".
-func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) {
+func checkForeignCommits(dir, remoteName, ownBranch, localSHA string) (baseFindings, error) {
+	if remoteName == "" {
+		// Defensive default only — main.go always resolves a real remote name (falling back
+		// to "origin" itself when the hook's own args[0] is absent) before calling here. Kept
+		// so a caller that omits it still gets the pre-#1201 behaviour rather than a broken
+		// "refs/remotes//main" resolution attempt.
+		remoteName = "origin"
+	}
 	var out baseFindings
 	if !shaRe.MatchString(localSHA) {
 		out.cannotCheck("local sha %q is not a well-formed object id — base checks NOT performed", localSHA)
 		return out, nil
 	}
-	originMain, err := resolveOriginMain(dir)
+	originMain, err := resolveRemoteMain(dir, remoteName)
 	if err != nil || originMain == "" {
-		reason := "refs/remotes/origin/main does not resolve (not fetched, or no origin remote)"
+		reason := fmt.Sprintf("refs/remotes/%s/main does not resolve (not fetched, or no %s remote)", remoteName, remoteName)
 		if err != nil {
-			reason = fmt.Sprintf("refs/remotes/origin/main does not resolve: %v", err)
+			reason = fmt.Sprintf("refs/remotes/%s/main does not resolve: %v", remoteName, err)
 		}
-		// Deliberately NO fallback to the bare `origin/main` spelling: in a checkout carrying
-		// the stray local branch, that fallback would silently substitute a stale base and
-		// hand back a confident "nothing found". Report could-not-check instead.
+		// Deliberately NO fallback to the bare `<remoteName>/main` spelling: in a checkout
+		// carrying the stray local branch, that fallback would silently substitute a stale
+		// base and hand back a confident "nothing found". Report could-not-check instead.
 		if strayTip, present := strayLocalOriginMain(dir); present {
 			reason += fmt.Sprintf(" — and a stray local branch refs/heads/origin/main (%s) IS present, "+
 				"so the bare spelling would resolve to it; refusing to guess", shortSHA(strayTip))
@@ -372,7 +401,7 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 		return out, nil
 	}
 
-	ownRemote := "origin/" + ownBranch
+	ownRemote := remoteName + "/" + ownBranch
 	for _, sha := range shas {
 		subject, serr := repo.CommitSubject(sha)
 		if serr != nil {
@@ -405,7 +434,7 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 		}
 		for _, ref := range refNames {
 			b := strings.TrimPrefix(ref, "refs/remotes/")
-			if b == "" || b == ownRemote || b == "origin/main" || strings.HasSuffix(b, "HEAD") {
+			if b == "" || b == ownRemote || b == remoteName+"/main" || strings.HasSuffix(b, "HEAD") {
 				continue
 			}
 			// "b is already merged into origin/main" is exactly "b's tip is in origin/main's
