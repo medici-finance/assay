@@ -9,9 +9,9 @@ The **review half** of the process-desk pipeline: **intake-desk** turns the inbo
 placeholder briefs; **worker-desk** dispatches workers that implement them behind draft PRs;
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
-**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
-desk reviews the diff and the PR body's `Brief:` trailer that feed it; it never edits a board row
-itself.
+**The stream board is a derived, generated surface** — this
+desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>` or `Issue: #<N>`) that
+feed it; it never edits a board row itself.
 
 Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
 double-dispatches reviewers. Role window, no persona (Bob belongs to the-desk only).
@@ -455,20 +455,59 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   a local stub does not; when they disagree CI wins and the reviewer investigates *why*.
   **Stub-validation trap:** proving a script emits the right argv is NOT proving the tool accepts
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
-- **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
-  (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
+- **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer.**
+  Two mechanical checks, either one a one-line bounce,
   never a judgment call — no reviewer edits the board itself:
-  1. **The diff touches a generated-table region** — any hunk inside a stream README's
-     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers →
+  1. **The diff touches a generated-table region** — the default for any hunk inside a stream
+     README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." Never fix the table in review, and
-     never waive this for a "substantively correct" edit — correctness there is `statusgen`'s to
-     certify, not the reviewer's.
-  2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
-     line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
-     can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
-     with no trailer; a trailer-less PR reaching review means the refusal was routed around, and
-     this bounce is the second layer.)
+     row from the PR's own trailer + state; drop the hunk." ONE narrow carve-out admits a hunk, and
+     only when ALL of the following hold — it is mechanical, not a judgment call:
+     - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
+       row; ANY change to an existing row — down to a single cell — bounces unconditionally.
+     - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
+       be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
+       ANY row inside the markers carrying a non-`todo` `Status`, or a non-empty `Verified` or
+       `Reviewed` cell, bounces unconditionally — added or not. This bullet is what actually blocks
+       the forgery, and it is load-bearing: `statusgen regen --readmes` PRESERVES the `Status`,
+       `Verified` and `Reviewed` cells for ANY row already present in the region (it does not
+       re-derive them, and it does not touch a `done` row's `Status`), and a row the PR ADDED is
+       present when regen runs — regen has no "added by this PR" notion — so a forged
+       `done | 2026-01-01 human:<name> | … (approved PR #… @ …)` on a brand-new row survives regen
+       byte-identical and "byte-identical to regen output" is NOT evidence about those three columns
+       for an added row either. A legitimately authored new brief row is ALWAYS `todo`/`—`/`—`: the
+       verified/reviewed stamps are written later, by the verifier/reviewer, via regen from Evidence,
+       never by the authoring PR. (Equivalent mechanical form: blank the `Status`/`Verified`/
+       `Reviewed` columns on both sides before the byte-compare, so a stamp in them cannot be
+       laundered by preservation.)
+     - **Reproduces under regen.** In a throwaway worktree checked out at the PR head, run
+       `statusgen regen --readmes --root <that worktree>` and admit the added rows only when the
+       tree is then clean (empty diff); bounce any hunk that does not reproduce that way. Use the
+       pinned/installed `statusgen` the target repo's CI uses — built from the PR head only where the
+       repo vendors `statusgen/`, else the pinned release binary — NEVER a `statusgen` otherwise
+       built or resolved from the PR tree (never build an untrusted head), and NEVER run against a
+       desk's own checkout.
+     - **Not a statusgen-source PR.** A PR that modifies statusgen's own source is OUTSIDE the
+       carve-out and bounces — it would otherwise redefine its own admission test.
+
+     The PR body must state that the hunk is regenerated output, but that statement is a CLAIM to be
+     verified, never evidence — the regen run above is the only evidence. The carve-out exists
+     because an authoring PR that adds a brief MUST carry the regenerated rows or `statusgen --lint`
+     fails on the PR head — the new row's depends/unblocks/consumers references dangle — so a flat
+     bounce made a compliant, CI-green state unreachable. It never licenses fixing the table in
+     review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
+     authoring PR carry the tool's own unmodified output for newly added rows.
+  2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer, EITHER
+     `Brief: <stream>/<NN>` (the brief this PR delivers) **OR** `Issue: #<N>` (issue-only work that
+     delivers no brief — e.g. a pin bump / re-pin PR, which by construction carries no brief). Both
+     forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s `requireTrailer` enforce, so an
+     `Issue: #<N>`-only body is fully compliant and must NOT be bounced for lacking a `Brief:` line.
+     Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
+     link trailer — add exactly one `Brief: <stream>/<NN>` or `Issue: #<N>` line; the board can't
+     link this PR to its work item without it." (`deskpr create` already refuses to open a PR with
+     no trailer, so this bounce is the second layer for the no-trailer class only. A PR that carries
+     `Issue: #<N>` satisfied that gate legitimately — it is NOT evidence a refusal was routed
+     around.)
   On a tree not yet migrated to a generated table (no `board: generated` in the stream README
   frontmatter), the hand-maintained Status cell must still be a BARE lifecycle token — the
   recurring worker-authoring break — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the

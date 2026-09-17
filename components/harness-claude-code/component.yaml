@@ -21,10 +21,10 @@ apply:
   - id: plugin-manifest
     effect: install plugins/assay/.claude-plugin/plugin.json and the root .claude-plugin/marketplace.json listing
     boundary: inside
-    inverse: remove the plugin manifest and marketplace listing (TODO composability/02 makes the reverse real)
+    inverse: remove plugins/assay/.claude-plugin/plugin.json and the root .claude-plugin/marketplace.json listing
   - id: hook-wiring
     effect: wire plugins/assay/hooks/hooks.json (SessionStart) into the Claude Code plugin cache
     boundary: inside
-    inverse: remove the hook wiring (TODO composability/02 makes the reverse real)
+    inverse: remove the wired plugins/assay/hooks/hooks.json entries from the Claude Code plugin cache
 intercept: []
 config: {}
