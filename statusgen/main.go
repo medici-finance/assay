@@ -1231,6 +1231,19 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen patterns --lint [--root DIR]` — validate every
+	// spec/workflow-patterns/*.yaml workflow-pattern-v1 file against
+	// schemas/workflow-pattern-v1.json and the cross-field MUST rules a schema
+	// cannot express (graph-execution/02, patterns.go).
+	//
+	// Intercepted before flag parsing for conform's reason: it owns --root and
+	// its own --lint verb flag, and it is a DISTINCT artifact-class surface
+	// (pattern files, not briefs) from the board `--lint`, so it is a subcommand
+	// rather than a `--lint` leg — same shape as `conform`.
+	if len(os.Args) > 1 && os.Args[1] == "patterns" {
+		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
 	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
 	// before flag parsing for verifyrun's reason: it owns its own target
