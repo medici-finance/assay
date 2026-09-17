@@ -59,6 +59,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"commsgw":           {},
 	"commsloop":         {},
 	"deskadvisory":      {},
+	"deskapps":          {},
 	"deskaudit":         {},
 	"deskavatar":        {},
 	"deskboard":         {},
