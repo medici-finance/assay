@@ -22,7 +22,10 @@ Rules (derived-board/02):
 - `edit` checks the REPLACEMENT body before any network call, and additionally refuses
   (exit 5) when the replacement's trailer differs from the one the PR's current body
   already carries: the link is not editable after the fact. A current body carrying NO
-  trailer may gain one — that is exactly the `update` migration above.
+  trailer may gain one — that is exactly the `update` migration above. But a PR that opened
+  with the WRONG form (e.g. a `Brief:` line where the work delivers no brief, or vice
+  versa) cannot be corrected in place: `edit` refuses the differing trailer, so the fix is
+  a fresh branch and a new PR carrying the right link trailer, not an edit to this one.
 - `Brief: <stream>/<NN>` must resolve to a brief file under `--root`
   (`docs/streams/<stream>/brief-<NN>-*.md`); a value that resolves to nothing refuses
   with the unresolved pattern.

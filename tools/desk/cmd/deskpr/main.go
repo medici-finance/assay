@@ -26,10 +26,22 @@ var version string
 const usage = `deskpr — push a feature branch and open (or update) its pull request.
 
 USAGE:
-  deskpr create --title T (--body-file F | --body-min B) [--base main]
-  deskpr update
-  deskpr edit --body-file F [--title T]
+  deskpr create --title T (--body-file F | --body-min B) [--base main] [--check]
+  deskpr update [--check]
+  deskpr edit --body-file F [--title T] [--check]
   deskpr --version
+
+--check runs every LOCAL gate the write path runs — flag validity, branch state, the
+Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
+push-transport gate — and stops BEFORE minting a token or opening any connection: exit 0
+only when every local gate passed, a failing gate returns its own refusal with its own
+exit code, so --check is a gate run early, never a preview that can disagree with the real
+write path. It mints no token and opens no connection. A category it cannot decide
+offline (chiefly a bare #N reference, which needs a number from the forge to compare
+against) is reported as NOT CHECKED, by name, rather than passing silently — update's
+--check cannot check the trailer (it lives on the EXISTING PR's forge-held body) and
+edit's cannot check trailer-immutability or the self-containment scan's bare-#N hint (both
+need the existing PR's body/number); each names what it skipped.
 
 deskpr create is draft-only by construction: it can only open a DRAFT PR on a
 non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on the
