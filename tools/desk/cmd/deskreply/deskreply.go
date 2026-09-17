@@ -114,7 +114,7 @@ func cmdReply(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file containing the reply body (required)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, body digest, reason, identity)")
 	workpad := fs.Bool("workpad", false, "upsert ONE workpad comment per PR instead of always posting a new reply — find the newest unresolved workpad comment authored by the worker identity and edit it in place, or create the first one")
-	dryRun := fs.Bool("dry-run", false, "with --workpad, report what would happen (WORKPAD: would edit #<id> / WORKPAD: would create) without posting or editing anything")
+	dryRun := fs.Bool("dry-run", false, "report what would happen without posting or editing anything: with --workpad, WORKPAD: would edit #<id> / WORKPAD: would create; on the plain reply path, run every check (including the forge reads a real reply performs) and stop before the post")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args[2:]); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
@@ -131,9 +131,12 @@ func cmdReply(args []string) (err error) {
 			return verr
 		}
 	}
-	if *dryRun && !*workpad {
-		return deskkit.Refused("refused: --dry-run only applies to --workpad")
-	}
+	// --dry-run used to refuse outright without --workpad, so the plain reply path had no
+	// rehearsal at all. It is now widened: on the plain path it runs every check a real
+	// reply runs — including the forge reads (viewPR, the write-budget gate) — and stops
+	// immediately before PostComment, exactly as --workpad's own dry-run already stops
+	// before its write. It is NOT an offline check (unlike deskpr --check): it is a
+	// rehearsal of the real call, so a network hiccup a real reply would hit, this hits too.
 
 	pr, prErr := strconv.Atoi(prArg)
 	if prErr != nil || pr <= 0 {
@@ -185,8 +188,8 @@ func cmdReply(args []string) (err error) {
 	// reply path) and is refused BEFORE any preflight/mint/gate work runs, exactly like
 	// every other cheap body check above it.
 	if *workpad && !deskkit.HasWorkpadMarker(string(body)) {
-		return deskkit.Refused("refused: --workpad body does not carry the exact-match workpad marker " +
-			"line (" + deskkit.WorkpadMarker + ") — render it with deskkit.Render before posting")
+		return deskkit.SchemaRefusal("deskreply", "--dry-run", "refused: --workpad body does not carry the exact-match workpad marker "+
+			"line ("+deskkit.WorkpadMarker+") — render it with deskkit.Render before posting")
 	}
 
 	// This must be the worker's OWN PR. Establish the worktree facts, then
@@ -282,6 +285,18 @@ func cmdReply(args []string) (err error) {
 	// rolling hour, checked immediately before the post.
 	if werr := deskkit.AllowWrite("deskreply", repo, pr); werr != nil {
 		return werr
+	}
+
+	// --dry-run (plain path): every check above already ran — the secret scan, the
+	// self-containment scan, the own-PR/open/head-branch verification (a real forge
+	// read), the idempotency check, and the write-budget gate just above. Stop here,
+	// immediately before the one mutating call, exactly where --workpad's own dry-run
+	// stops before its write.
+	if *dryRun {
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = fmt.Sprintf("dry-run: would post on PR #%d%s", pr, urlSuffix(view.URL))
+		fmt.Printf("DRY-RUN: would post on PR #%d\n", pr)
+		return nil
 	}
 
 	// The post. PostComment is the ONLY mutating forge operation deskreply can reach: the
