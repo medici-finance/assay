@@ -85,10 +85,14 @@ facts:
 4. **S4 — what the tool can know.** On each supported OS you can reach, record whether a Go
    process can (a) determine the filesystem type of a directory and (b) determine that it is
    running inside a container or pod, and by what read. "Cannot be determined on this OS" is a
-   result. These decide how much of the spec's §6 filesystem and container guards can be a
-   refusal rather than a notice.
-5. Update the spec's §3.3 status column. Where a result contradicts the recommended default
-   for the spec's open question L, say so at the top of the PR body — do not edit the default.
+   result. (b) decides where the spec's §6 container guard can refuse. (a) decides no refusal:
+   by ruling (spec §10 L) a network filesystem is a NOTICE on every boot, never a refusal, and
+   (a) fixes which of the two NOTICE wordings — type named, or type not determined — each OS
+   can print.
+5. Update the spec's §3.3 status column. Where a result bears on the ruling recorded at the
+   spec's §10 L — for example a network filesystem on which the race probe does not yield
+   exactly one success — say so at the top of the PR body. Do not edit the ruling; a measured
+   contradiction is the driver's to weigh.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |

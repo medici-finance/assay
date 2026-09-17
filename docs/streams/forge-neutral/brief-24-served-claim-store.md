@@ -17,7 +17,7 @@ issues: [1267]
 schema: brief-v2
 authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
-  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them (D: the minimal serve mode ships in this repository's desk tools; H: anything in a container or pod uses this store, permanently)"
+  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them (D: the minimal serve mode ships in this repository's desk tools; H: anything in a container or pod uses this store, permanently; M: the serve mode stands alone here and the six-verb contract is specified independently of its transport)"
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
   - "docs/streams/forge-neutral/reviewer-write-boundary.md — the scoping doc this brief implements; section numbers below refer to it"
   - "the spec's §4.2 — the properties this brief implements: member-initiated only, one-way reachability, the placement rule, no forge credential, cell token, loopback default, fail closed"
@@ -63,6 +63,13 @@ is not reachable from another host at all). Different components, different fail
 facts:
 - One claim logic. The serve mode is a listener in front of a `file` store on its own disk;
   the client is a `ClaimStore` whose methods are HTTP calls. Both pass the conformance table.
+- **The contract does not depend on its carrier** (ruled, spec §10 M; the requirement sentence
+  is in the spec's §4.2). The serve mode stands alone in this repository: it is not carried
+  by, and does not import, the cross-desk message layer (spec T11). The six verbs — their
+  inputs, their three-state results, their typed refusals and the byte-exact `show` / `list`
+  lines — are specified in the API document without reference to HTTP; the HTTP binding is a
+  separate section of the same document. The proof is that ONE conformance table, unmodified,
+  passes against the in-process store and against the served store (row 11).
 - Six operations: acquire, progress, release, steal, show, list. JSON bodies, strict parsing:
   unknown field, unknown verb, oversize field or a key outside the grammar is a typed refusal.
 - **Member-initiated only.** The service never opens a connection to a member and keeps no
@@ -117,10 +124,15 @@ Default if no answer: none — blocks until answered.
 - No token value, address or key path enters the tree, a fixture, a log line or a message. Tests generate their own token in a temp dir.
 
 ## Task
-1. API document first: operations, bodies, typed refusals, status codes, the four properties.
+1. API document first, in two parts: the six-verb contract stated transport-neutrally
+   (operations, inputs, three-state results, typed refusals, the four properties), then the
+   HTTP binding (bodies, status codes, the bearer credential). The first part names no status
+   code, header or URL.
 2. Serve mode over the `file` store; token check before parse; accept set; audit line; bind
    rules.
-3. Client backend; outcome mapping per the facts; add to the conformance table.
+3. Client backend; outcome mapping per the facts; add to the conformance table. The table's
+   cases are written against `ClaimStore` only — no case reaches for a status code, a header
+   or the listener — so the same cases run against the in-process store and the served one.
 4. Resolver preconditions for `service`: both keys set, token file 0600, service answering a
    list call. Unmet → exit 6 before any worktree.
 5. Mutation entries: (a) token check after parse and ignored on `show`; (b) timeout mapped to
@@ -140,6 +152,7 @@ Default if no answer: none — blocks until answered.
 | 8 | check +flow | Start the serve mode on loopback with a temp token; with a config home whose reviewer grant records repository **read**: run a review dispatch against a fixture repository; then stop the service and repeat | first run: `store service`, claim visible to `deskclaim-ref show` and `desksupervise status`, no ref written to the fixture (spec V5); second run: exit 6 before any worktree, message names the service as unreachable, no other store used (spec V6) |
 | 9 | check +dereference | Compare each operation and refusal in `docs/desk-tools/claim-service-api.md` (planned) with a real request to the running serve mode | every documented status code and refusal token matches what the service returns |
 | 10 | check | `(cd statusgen && go build -o /tmp/statusgen-fn24 .) && /tmp/statusgen-fn24 --root . --consumers --brief forge-neutral/24` | exit 0 |
+| 11 | check:ci +neighbour | `cd tools/desk && go test ./internal/deskkit/ -run 'TestClaimStoreConformance' -count=1 -timeout 300s -v 2>&1 \| grep -c -e '^=== RUN   TestClaimStoreConformance/file/' -e '^=== RUN   TestClaimStoreConformance/service/'` and `cd tools/desk && ! grep -n -i -e 'http' -e 'net/' internal/deskkit/claimstore_conformance_test.go` (planned) | the count is twice the number of table cases — every case ran once per carrier, the in-process `file` store and the served store, from one table; the second command exits 0 and prints nothing — the table itself names no transport, so the six-verb contract is proven independent of its carrier (spec §4.2, §10 M) |
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |
@@ -150,6 +163,7 @@ Default if no answer: none — blocks until answered.
 | The service grows a forge credential "to be helpful" | row 7 |
 | An outage silently moves dispatch to another store | row 8, second half |
 | The API document drifts from the service, and an external implementation follows the document | row 9 |
+| The contract quietly takes on its carrier's shape — a case that only passes over HTTP, or a result only a status code can express | row 11 |
 | The service is placed where some members cannot reach it | review-only — placement is an operator decision; the README states the rule and row 8's refusal is what the operator sees |
 
 ## Evidence
