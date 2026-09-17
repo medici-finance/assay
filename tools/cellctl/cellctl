@@ -750,7 +750,7 @@ gen_shims(){
   body="$(cat <<'SHIM_TEMPLATE'
 #!/usr/bin/env bash
 # cellctl shim (__CELL__): run this desk verb with the CELL config-home; the session keeps the
-# real HOME. gh's ambient credential is keyed to the real HOME, so it is resolved HERE (before
+# real HOME. the ambient gh credential is keyed to the real HOME, so it is resolved HERE (before
 # HOME is swapped below) and threaded through as GH_TOKEN — a `gh` subprocess the verb shells out
 # to then still authenticates (assay#1145) without widening the HOME swap itself.
 gh_token=""
