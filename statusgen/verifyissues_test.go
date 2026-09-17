@@ -995,6 +995,92 @@ func TestHasVerifyPass(t *testing.T) {
 	}
 }
 
+// TestVerifyMarkerRegex pins the ratified marker regex: a qualifier INSIDE
+// the bold span still matches, in either of the two surface forms that
+// motivated the ruling, and BLOCKED never matches — the bold span's own
+// token must read PASS or FAIL, nothing else.
+func TestVerifyMarkerRegex(t *testing.T) {
+	cases := []struct {
+		name  string
+		text  string
+		match bool
+		verb  string // "" when match is false
+	}{
+		{"bare pass", "**VERIFY: PASS**", true, "PASS"},
+		{"bare fail", "**VERIFY: FAIL**", true, "FAIL"},
+		{"parenthetical qualifier", "**VERIFY: PASS (4/4 offline-runnable rows)**", true, "PASS"},
+		{"em-dash qualifier", "**VERIFY: PASS — all 6 rows green.**", true, "PASS"},
+		{"fail with qualifier", "**VERIFY: FAIL (2 rows red)**", true, "FAIL"},
+		{"blocked never matches", "**VERIFY: BLOCKED (human-gate)**", false, ""},
+		{"blocked with pass nearby does not itself match", "**VERIFY: BLOCKED**", false, ""},
+		{"no marker at all", "no marker here", false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := verifyPassMarkerRe.FindStringSubmatch(tc.text)
+			got := m != nil
+			if got != tc.match {
+				t.Fatalf("verifyPassMarkerRe.MatchString(%q) = %v, want %v", tc.text, got, tc.match)
+			}
+			if tc.match && m[1] != tc.verb {
+				t.Errorf("verb = %q, want %q", m[1], tc.verb)
+			}
+		})
+	}
+}
+
+// TestHasVerifyPassRefusesHeldEntry pins the ratified rule: a **VERIFY:
+// PASS** line is NOT a flip signal when its OWN Evidence entry also carries
+// HELD or could-not-check on a non-deferred row; a named deferral clause
+// clears the refusal; an unrelated entry's HELD text must not contaminate a
+// later, clean entry (append-only log, last writer is not poisoned by an
+// earlier one).
+func TestHasVerifyPassRefusesHeldEntry(t *testing.T) {
+	cases := []struct {
+		name     string
+		evidence string
+		want     bool
+	}{
+		{
+			"held co-occurs with pass in the same entry — refused",
+			"**VERIFY: PASS** — offline rows pass; row 6 is HELD pending another brief's human flip.",
+			false,
+		},
+		{
+			"could-not-check co-occurs with pass in the same entry — refused",
+			"**VERIFY: PASS** — row 4 could-not-check: no cluster runner available.",
+			false,
+		},
+		{
+			"a named deferral clause clears the refusal",
+			"**VERIFY: PASS** — offline rows 4/4 PASS; online rows deferred per ref#42.",
+			true,
+		},
+		{
+			"an earlier HELD entry does not poison a later clean entry",
+			"Row 6 is HELD pending review.\n\n**VERIFY: PASS** — all rows green.",
+			true,
+		},
+		{
+			"ordinary lowercase prose 'held' is not the marker",
+			"**VERIFY: PASS** — the fixture is held in a temp dir for the run.",
+			true,
+		},
+		{
+			"clean pass, no held text anywhere",
+			"**VERIFY: PASS** (model) — done",
+			true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasVerifyPass(tc.evidence); got != tc.want {
+				t.Errorf("hasVerifyPass(%q) = %v, want %v", tc.evidence, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestUnrunRowsText confirms unrunRowsText extracts UNRUN rows.
 func TestUnrunRowsText(t *testing.T) {
 	evidence := `| # | Command | Exit | Result | Date | Runner |

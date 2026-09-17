@@ -200,6 +200,23 @@ func TestRunVerifyCommandPipefailSurfacesLeftHandFailure(t *testing.T) {
 	}
 }
 
+// TestVerifyrunPipelineExit is a regression test for a specific reported
+// pipeline-scoring command shape: `<bad cmd> 2>/dev/null \| head -c1` must
+// record the WORST pipeline stage (the failed left-hand command), not
+// `head`'s trailing `pass exit=0`. Same guard as
+// TestRunVerifyCommandPipefailSurfacesLeftHandFailure above, with the exact
+// command shape reported against this checker.
+func TestVerifyrunPipelineExit(t *testing.T) {
+	root := t.TempDir()
+	// `false` is a real command that ran and reported failure — exit 1, not
+	// the 126/127 "the shell never ran this" signal — so this exercises the
+	// pipeline-exit fold, not the could-not-run path those two codes take.
+	got := runVerifyCommand(root, `false 2>/dev/null \| head -c1`, 30*time.Second)
+	if got.couldNotRun || got.exit == 0 {
+		t.Fatalf("pipeline command = %+v, want fail (non-zero exit) — a failed left-hand stage must surface through the trailing reader", got)
+	}
+}
+
 // TestRunVerifyCommandFreshShellPerRow pins the isolation claim: a row cannot
 // leave shell state behind for the next one.
 func TestRunVerifyCommandFreshShellPerRow(t *testing.T) {

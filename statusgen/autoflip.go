@@ -459,6 +459,19 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 			}
 
 			res := decideModelFlip(root, s, path, bf.Brief, src, rev)
+			if res.Outcome == flipDone {
+				// A reviewer App APPROVED the merged head, but that
+				// corroborates the CODE, not the Evidence's own claim. If the
+				// brief's Evidence carries a **VERIFY: PASS** entry that is
+				// itself HELD or could-not-check on a non-deferred row, the
+				// PASS is not a flip signal — the same refusal hasVerifyPass
+				// applies for the verify-gate card, so a held claim cannot be
+				// flipped through the other lane either.
+				if reason := heldPassReason(bf.Evidence); reason != "" {
+					res.Outcome = flipRefused
+					res.Reason = "Evidence carries a **VERIFY: PASS** entry marked HELD or could-not-check on a non-deferred row — not a flip signal: " + reason
+				}
+			}
 			if res.Outcome != flipDone {
 				results = append(results, res)
 				continue

@@ -73,11 +73,17 @@ with main. Merging to main does NOT set this state; verified is a distinct, owne
 step.
 
 **What `verified` does and does not attest.** `verified` records that an Evidence
-section exists, is dated, and *attributes* an independent runner. It does NOT attest
-that the Verify commands were executed, nor that they exited as reported: there is no
-execution witness — no recorded command, exit code, or output hash — so a green Verify
-table is **self-reported**. A conforming implementation MUST NOT describe `verified` as
-proof of execution. See `spec/README.md` § "Known divergences from the reference
+section exists, is dated, and *attributes* an independent runner. Before statusgen
+v1.0.13, it did not attest that the Verify commands were executed, nor that they
+exited as reported: there was no execution witness — no recorded command, exit code,
+or output hash — so a green Verify table was **self-reported**. From v1.0.13, the
+reference implementation MAY record an execution witness (`statusgen verifyrun`:
+command, exit code, output hash, date, runner) alongside the Evidence row, and a
+closure made after that pin with no witness table is flagged (`statusgen --lint`);
+a closure that predates the pin, or an implementation that has not adopted the
+witness mechanism, still carries no such attestation. A conforming implementation
+MUST NOT describe a `verified` cell with no execution witness behind it as proof of
+execution. See `spec/README.md` § "Known divergences from the reference
 implementation".
 
 ### 2.5 `done`

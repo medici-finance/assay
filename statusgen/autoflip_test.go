@@ -76,6 +76,7 @@ const (
 	afIntHeadSHA  = "5555555555555555555555555555555555555555" // merged head of PR 107 (approval here)
 	afIntMergeSHA = "6666666666666666666666666666666666666666" // the merge commit of PR 107
 	afIntMidSHA   = "7777777777777777777777777777777777777777" // the intermediate commit that touched brief-07
+	afHeldPassSHA = "8888888888888888888888888888888888888888" // merged head of PR 108 (af/08 — App approved, but Evidence is HELD)
 )
 
 const afReviewer = "rev-app[bot]"
@@ -143,6 +144,8 @@ func (f *fakeFlipSource) ReviewState(repo string, pr int) (prReviewState, error)
 //	af/03 -> PR 103, App APPROVED at the merged head, gate:human -> never reached
 //	af/04 -> PR 104, no App review (a human APPROVED instead)   -> refused
 //	af/06 -> no commit maps to a merged PR                      -> could-not-check
+//	af/08 -> PR 108, App APPROVED at the merged head, Evidence's own
+//	         **VERIFY: PASS** entry is HELD                     -> refused
 func afSource() *fakeFlipSource {
 	approvedAtHead := prReviewState{Merged: true, HeadSHA: afHeadSHA, Reviews: []ghReview{
 		{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afHeadSHA, Id: "PRR_head"},
@@ -155,12 +158,14 @@ func afSource() *fakeFlipSource {
 			"brief-04-model-no-approval.md":         {"aaa0000000000000000000000000000000000004"},
 			"brief-06-model-no-pr.md":               {"aaa0000000000000000000000000000000000006"},
 			"brief-07-model-intermediate-commit.md": {afIntMidSHA},
+			"brief-08-model-held-pass.md":           {"aaa0000000000000000000000000000000000008"},
 		},
 		prs: map[string]int{
 			"aaa0000000000000000000000000000000000001": 101,
 			"aaa0000000000000000000000000000000000002": 102,
 			"aaa0000000000000000000000000000000000003": 103,
 			"aaa0000000000000000000000000000000000004": 104,
+			"aaa0000000000000000000000000000000000008": 108,
 			// ...0006 deliberately absent: no merged PR resolves.
 			// afIntMidSHA deliberately absent here: it must resolve through the
 			// REAL resolver (assoc/prCommits), not this direct short-circuit.
@@ -191,6 +196,11 @@ func afSource() *fakeFlipSource {
 			// PR 107 merged as a real merge commit; the App approved its head.
 			107: {Merged: true, HeadSHA: afIntHeadSHA, Reviews: []ghReview{
 				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afIntHeadSHA, Id: "PRR_int"},
+			}},
+			// PR 108: App APPROVED at the merged head — corroboration alone
+			// would flip it. af/08's own Evidence is what must refuse it.
+			108: {Merged: true, HeadSHA: afHeldPassSHA, Reviews: []ghReview{
+				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afHeldPassSHA, Id: "PRR_held"},
 			}},
 		},
 		errs: map[int]error{},
@@ -323,6 +333,78 @@ func TestAutoFlipNoApproval(t *testing.T) {
 	row := afRow(t, afReadme(t, root), "04")
 	if !strings.Contains(row, "| verified |") {
 		t.Errorf("af/04 must stay verified:\n%s", row)
+	}
+}
+
+// ---- a held PASS is not a flip signal, even with App approval ---------------------
+
+// TestAutoflipRefusesHeldPass pins the ratified marker rule on the model-flip
+// lane: af/08's PR is App-APPROVED at the merged head — corroboration alone
+// would flip it exactly like af/01 — but its own Evidence entry marks the
+// PASS HELD (`row 4 is HELD pending a runner slot`), which is not a flip
+// signal. The row must stay `verified`, and clearing the hold (a named
+// deferral clause) must let the SAME PR flip.
+func TestAutoflipRefusesHeldPass(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	src := afSource()
+
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/08")
+	if got.Outcome != flipRefused {
+		t.Fatalf("af/08 outcome = %v (%s), want flipRefused — App approval must not override a HELD Evidence entry", got.Outcome, got.Reason)
+	}
+	if !strings.Contains(got.Reason, "HELD") {
+		t.Errorf("refusal reason does not mention %q: %s", "HELD", got.Reason)
+	}
+	row := afRow(t, afReadme(t, root), "08")
+	if !strings.Contains(row, "| verified |") {
+		t.Errorf("af/08 must stay verified — a held claim is not a flip signal:\n%s", row)
+	}
+}
+
+// TestAutoflipHeldEntryClearsWithDeferralClause exercises the with-deferral
+// side of the same ratification: an entry that names a deferral clause flips
+// even though it also reads HELD/could-not-check for the deferred rows.
+func TestAutoflipHeldEntryClearsWithDeferralClause(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	briefPath := filepath.Join(root, "docs", "streams", "af", "brief-08-model-held-pass.md")
+	raw, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared := strings.Replace(string(raw),
+		"**VERIFY: PASS** — offline rows pass; row 4 is HELD pending a runner slot.",
+		"**VERIFY: PASS** — offline rows 3/3 PASS; row 4 (online) deferred per ref#42.",
+		1)
+	if cleared == string(raw) {
+		t.Fatal("fixture text to replace was not found — the source fixture changed")
+	}
+	if err := os.WriteFile(briefPath, []byte(cleared), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Reload so the parsed Evidence reflects the rewritten fixture.
+	streams, _, err = loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := afSource()
+
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/08")
+	if got.Outcome != flipDone {
+		t.Fatalf("af/08 with a deferral clause outcome = %v (%s), want flipDone", got.Outcome, got.Reason)
+	}
+	row := afRow(t, afReadme(t, root), "08")
+	if !strings.Contains(row, "| done |") {
+		t.Errorf("af/08 must flip to done once its held rows are properly deferred:\n%s", row)
 	}
 }
 

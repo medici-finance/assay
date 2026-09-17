@@ -17,3 +17,4 @@ repo: example-org/tracker
 | 05 | [Model done — already flipped](./brief-05-model-done.md) | 0 | S | done | 2026-07-08 rev | 2026-07-09 rev-app[bot] |
 | 06 | [Model verified — no merged PR resolves](./brief-06-model-no-pr.md) | 0 | S | verified | 2026-07-08 rev | — |
 | 07 | [Model verified — touched in a merge-committed PR's intermediate commit](./brief-07-model-intermediate-commit.md) | 0 | S | verified | 2026-07-08 rev | — |
+| 08 | [Model verified — App approved at head, but Evidence's PASS entry is HELD](./brief-08-model-held-pass.md) | 0 | S | verified | 2026-09-16 rev | — |

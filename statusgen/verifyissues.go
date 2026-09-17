@@ -192,18 +192,106 @@ func extractSectionByPrefix(body, prefix string) string {
 	return strings.Join(out, "\n")
 }
 
-// hasVerifyPass reports whether evidence contains the **VERIFY: PASS** marker
-// indicating a model verifier has run and passed the brief's Verify table.
+// verifyPassMarkerRe is the ratified marker regex — a bold VERIFY token whose
+// PASS/FAIL is followed only by non-`*` text before the closing `**`.
+// Accepted spellings that motivated
+// it: `**VERIFY: PASS**`, `**VERIFY: PASS (4/4 offline-runnable rows)**`,
+// `**VERIFY: PASS — all 6 rows green.**`. `BLOCKED` never matches — the token
+// inside the bold span must read PASS or FAIL, nothing else, and a table-driven
+// test (TestVerifyMarkerRegex) pins the accepted/rejected spellings so a later
+// edit cannot loosen `\b` into matching a prefix like `PASSING`.
+var verifyPassMarkerRe = regexp.MustCompile(`\*\*VERIFY: (PASS|FAIL)\b[^*]*\*\*`)
+
+// verifyHeldRe / verifyCouldNotCheckRe are the two "nothing is established
+// here" tokens the marker ratification names: a PASS marker is NOT a flip
+// signal when its own Evidence entry also carries one of these on a row that
+// is not explicitly deferred. HELD is matched as a whole, all-caps word (the
+// marker convention) — ordinary lowercase prose ("stays held with its
+// reason") is not the marker and must not trip this.
+var (
+	verifyHeldRe          = regexp.MustCompile(`\bHELD\b`)
+	verifyCouldNotCheckRe = regexp.MustCompile(`could-not-check`)
+	// verifyDeferredClauseRe is the ratified online-lane deferral clause: an
+	// entry that explicitly defers named rows this way still flips even
+	// though it also reads HELD/could-not-check for those rows.
+	verifyDeferredClauseRe = regexp.MustCompile(`(?i)deferred per [a-z]+#\d+`)
+	// blankLineRe splits an Evidence body into its append-only log entries.
+	blankLineRe = regexp.MustCompile(`\r?\n[ \t]*\r?\n`)
+)
+
+// verifyEvidenceEntries splits an Evidence body into its blank-line-separated
+// log entries, so a HELD/could-not-check co-occurrence check reads only the
+// entry the PASS marker itself belongs to — never an unrelated earlier or
+// later entry in the same accumulated (append-only) section.
+func verifyEvidenceEntries(evidence string) []string {
+	var entries []string
+	for _, block := range blankLineRe.Split(evidence, -1) {
+		if strings.TrimSpace(block) != "" {
+			entries = append(entries, block)
+		}
+	}
+	return entries
+}
+
+// entryIsHeld reports whether entry carries a HELD or could-not-check token on
+// a row the SAME entry does not also mark deferred by name (verifyDeferredClauseRe).
+func entryIsHeld(entry string) bool {
+	if !verifyHeldRe.MatchString(entry) && !verifyCouldNotCheckRe.MatchString(entry) {
+		return false
+	}
+	return !verifyDeferredClauseRe.MatchString(entry)
+}
+
+// hasVerifyPass reports whether Evidence carries a recorded, UNHELD model
+// verify pass — the ratified **VERIFY: PASS** marker (verifyPassMarkerRe, any of
+// its accepted surface forms) in an entry that is not itself HELD or
+// could-not-check on a non-deferred row.
 //
 // DELIBERATELY STRICT, and deliberately NOT the same test as
 // lastVerifyVerdict below. This one is a GATE: it decides whether a gate:human
 // brief at `implemented` may advance to a human sign-off and whether a verify
-// issue is emitted. A gate must fail CLOSED — an Evidence body whose
-// pass is written in some looser form is refused, and the fix is to write the
-// canonical marker, not to loosen the gate. The two live side by side so the
-// asymmetry is visible rather than discovered.
+// issue is emitted (and, via the shared predicate, whether the gate:model
+// autoflip may treat the entry as a flip signal at all). A gate must fail
+// CLOSED — an Evidence body whose pass is written in some unrecognised form,
+// or whose own entry says the run was HELD, is refused, and the fix is either
+// to write the canonical marker or to resolve the hold, not to loosen the
+// gate. The two functions live side by side so the asymmetry is visible
+// rather than discovered.
 func hasVerifyPass(evidence string) bool {
-	return strings.Contains(evidence, "**VERIFY: PASS**")
+	for _, entry := range verifyEvidenceEntries(evidence) {
+		hasPass := false
+		for _, m := range verifyPassMarkerRe.FindAllStringSubmatch(entry, -1) {
+			if m[1] == "PASS" {
+				hasPass = true
+			}
+		}
+		if hasPass && !entryIsHeld(entry) {
+			return true
+		}
+	}
+	return false
+}
+
+// heldPassReason returns the first Evidence entry that carries a **VERIFY:
+// PASS** marker but is itself HELD or could-not-check on a non-deferred row —
+// the shape hasVerifyPass refuses to treat as eligibility — or "" when no
+// such entry exists. Shared by the verify-gate card (via hasVerifyPass) and
+// the gate:model autoflip (autoFlipModel), so BOTH refuse the same
+// unsupported claim rather than one silently trusting what the other
+// declines.
+func heldPassReason(evidence string) string {
+	for _, entry := range verifyEvidenceEntries(evidence) {
+		hasPass := false
+		for _, m := range verifyPassMarkerRe.FindAllStringSubmatch(entry, -1) {
+			if m[1] == "PASS" {
+				hasPass = true
+			}
+		}
+		if hasPass && entryIsHeld(entry) {
+			return strings.TrimSpace(entry)
+		}
+	}
+	return ""
 }
 
 // verifyVerdictRe matches a VERIFY verdict marker anywhere in a line of an
