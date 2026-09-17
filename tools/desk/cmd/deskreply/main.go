@@ -28,7 +28,7 @@ const usage = `deskreply — post a plain reply comment, or upsert a workpad com
 open pull request.
 
 USAGE:
-  deskreply <owner/repo> <pr> --body-file F
+  deskreply <owner/repo> <pr> --body-file F [--dry-run]
   deskreply <owner/repo> <pr> --workpad --body-file F [--dry-run]
   deskreply --version
 
@@ -40,8 +40,13 @@ second). Neither verb reviews, verdicts, readies, or merges. Before writing, it
 re-verifies in-tool that the PR is OPEN and that the branch checked out in this worktree
 matches the PR's head branch. On any state it cannot positively verify it refuses.
 
---dry-run (only with --workpad) prints "WORKPAD: would edit #<id>" or
-"WORKPAD: would create" and writes nothing.
+--dry-run runs every check the real call runs — including the forge reads (the PR's
+open/head-branch state, and with --workpad, the candidate comment list) — and stops
+immediately before the one mutating call, exit 0, writing nothing. On the plain path it
+prints "DRY-RUN: would post on PR #<n>"; with --workpad it prints "WORKPAD: would edit
+#<id>" or "WORKPAD: would create". It is a REHEARSAL, not an offline check: it still
+opens a connection to the forge, so a network outage a real reply would hit, this hits
+too — rehearse the shape, not the reachability.
 
 The body is read from --body-file only (no stdin / inline body), is capped at 16 KiB, and
 is secret-scanned; there is no override flag.

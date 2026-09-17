@@ -60,6 +60,7 @@ func cmdEdit(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -134,6 +135,26 @@ func cmdEdit(args []string) (err error) {
 	}
 	ac.repo, ac.head = facts.repo, facts.head
 
+	// --check stops HERE, before the token mint and before any forge call. Every gate
+	// above it is local: flags, the secret scan of the replacement body/title, the
+	// replacement body's own Brief:/Issue: trailer grammar (requireTrailer), and branch
+	// state (preflight). edit pushes no git command, so there is no push-transport gate
+	// to run. Two things this verb checks are NOT decided here, because both need the
+	// PR's CURRENT body/number from the forge: trailer-IMMUTABILITY (the replacement
+	// must match the existing link, if any) and the self-containment scan's bare-#N
+	// hint (which uses the PR's own number). Both are named rather than silently
+	// skipped.
+	if *check {
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "check: every local gate passed"
+		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
+			"Not checked (needs the forge, not run here): trailer-immutability against the existing " +
+			"PR's current body, the self-containment scan's bare-#N hint (which uses the PR's own " +
+			"number), whether an open PR exists for this branch, the outward-write rate limit, and " +
+			"the public-repo authorization gate.")
+		return nil
+	}
+
 	if merr := mintWorkerToken(facts.repo); merr != nil {
 		return deskkit.Unverifiable("cannot mint the App token", merr)
 	}
@@ -207,7 +228,10 @@ func cmdEdit(args []string) (err error) {
 	// already there. Identical body and (when asked for) identical title → noop, exit 0,
 	// and in particular no second re-review comment on a PR nothing changed on.
 	titleUnchanged := *title == "" || *title == cur.Title
-	if cur.Body == string(body) && titleUnchanged {
+	// The live body carries a PRIOR edit/create's on-behalf-of trailer (multi-principal/01);
+	// strip it from both sides before the noop compare so an edit that is otherwise
+	// byte-for-byte identical still noops instead of re-posting for a trailer-only delta.
+	if deskkit.StripOnBehalfOfSuffix(cur.Body) == string(body) && titleUnchanged {
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = "body/title already match " + pr.URL
 		fmt.Printf("noop: %s already carries this body/title\n", pr.URL)
@@ -233,8 +257,15 @@ func cmdEdit(args []string) (err error) {
 	// EditChange replaces the body and, when --title is given, the title. Only the surfaces
 	// this verb edits are sent — the body always, the title only when asked for — so an
 	// omitted --title leaves the current title (and the `Draft:` prefix it may carry) untouched.
+	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
+	// only — the trailer grammar/self-contain scans above and the noop compare just above
+	// both ran against the caller-supplied body.
+	editBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
 	changed := []string{"body"}
-	editIn := deskkit.EditChangeInput{Body: string(body)}
+	editIn := deskkit.EditChangeInput{Body: string(editBody)}
 	if *title != "" {
 		editIn.Title = *title
 		changed = append(changed, "title")

@@ -13,8 +13,8 @@ description: >-
 
 # Author Brief
 
-**A stream board's Briefs table is a derived, generated surface once `statusgen` is wired up
-(`docs/streams/derived-board/spec.md`)** — a brief states the authoring facts and the edges
+**A stream board's Briefs table is a derived, generated surface once `statusgen` is wired up** — a
+brief states the authoring facts and the edges
 (`why:`, `depends`, `unblocks`, `gate`, `risk`); it never states the lifecycle cell, and no one
 hand-edits the generated table.
 
@@ -99,7 +99,7 @@ effort: S | M | L                   # closed scale — L is the CEILING (rule 12
 gate: model | human                # from the four risk questions below
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []                         # GH issue numbers this brief closes
-schema: brief-v2                    # required in a v2 tree (docs/streams/derived-board/spec.md §5);
+schema: brief-v2                    # required in a v2 tree;
                                     # --lint PROBLEMs a tree of v2 briefs missing it. Reserved,
                                     # OPTIONAL keys parsed under brief-v2 (shape-validated only,
                                     # gating behaviour deferred to the graph stream): id (uuid,
@@ -468,6 +468,7 @@ it is an authoring convention only.
 | `consumers-out-of-scope-no-reason` | an `out-of-scope` routing with no substantive reason for the reviewer who must weigh the exclusion | advisory |
 | `consumers-prose` | a `consumers:` written as a prose paragraph rather than a routed list, so nothing can corroborate it | advisory |
 | `consumers-unrouted` | a `consumers:` entry that names no routing token (`fixed-here` / `follow-up` / `out-of-scope`) | advisory |
+| `eligibility-could-not-check` | a gates: edge (or unsatisfied depends:) the eligibility evaluator could not resolve offline — an unregistered/unpublished alias, an absent sibling checkout, or a forge-backed target — which HOLDS the brief out of Next-up | advisory |
 | `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind | advisory |
 | `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on | advisory |
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
@@ -606,8 +607,8 @@ could-not-check runs serial.
 
 `docs/<phase>/README.md` ties the briefs together:
 
-1. **Briefs table — generated, not hand-written, once `statusgen` is wired up**
-   (`docs/streams/derived-board/spec.md`). The table lives between
+1. **Briefs table — generated, not hand-written, once `statusgen` is wired up.**
+   The table lives between
    `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers, and the README's
    own frontmatter carries `board: generated`; `statusgen` writes the Status / Verified / Reviewed
    cells from PR trailers, `verifyrun` witnesses and App approvals — a hand edit inside the markers
@@ -651,8 +652,8 @@ layer; the floor does not wait on one.)
    outlive the conversation.
 6. **Author the facts and the edges, not the cell.** Status is DERIVED, not chosen: write `why:`,
    `depends`, `unblocks`, `gate`, `risk` accurately and let `statusgen` read the PR trailers,
-   witnesses and approvals into the Status / Verified / Reviewed cells
-   (`docs/streams/derived-board/spec.md`). A project not yet wired to `statusgen` keeps the honesty
+   witnesses and approvals into the Status / Verified / Reviewed cells.
+   A project not yet wired to `statusgen` keeps the honesty
    rule in spirit by hand — "⚠ Workaround" / "Blocked by #X" beats a green checkmark that isn't
    true — but once generation is live, a hand-edited cell is a lint PROBLEM, not a courtesy.
 7. **Handoff to execution**: a brief is a scope-and-DoD contract, not a step-by-step plan — don't

@@ -1,0 +1,9 @@
+# Minimal graph-repos-v1 registry for the eligibility-evaluator milestone
+# fixture (TestEligibilityDeclarationChangesDispatch, TestEligibilityCouldNotCheckHolds
+# — graph-execution/01). "unpub" is deliberately unpublished so the
+# could-not-check case has a real alias to exercise.
+schema: graph-repos-v1
+cell: example
+repos:
+  app:    {cell: example, repo: example-org/example-app}
+  unpub:  {cell: example, repo: null, unpublished: true}

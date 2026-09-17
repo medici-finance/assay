@@ -184,6 +184,62 @@ func TestEligibilityDepPrecise(t *testing.T) {
 	}
 }
 
+// TestEligibilityV2EscapesWholeWaveGate is the review-requested regression
+// (PR #1251, correctness lane, finding 1) for the arm of this change that
+// actually moves the live board: before this PR a brief-v2 brief fell
+// through to the legacy whole-wave rule (the schema check named only
+// "brief-v1"), so an unfinished earlier-wave sibling held it regardless of
+// its own `depends:`. After this PR a brief-v2 todo brief is gated by the
+// evaluator's verdict on `depends:`/`gates:` alone — a wave-0 sibling that
+// is merely `implemented` (not done/verified) no longer holds it. Modelled
+// on the real board delta this PR produced (apps-installer/02,
+// desk-supervision/08): a wave-1 brief-v2 brief with a satisfied `depends:`
+// on a brief in ANOTHER stream, next to a same-stream wave-0 sibling that is
+// not done.
+func TestEligibilityV2EscapesWholeWaveGate(t *testing.T) {
+	// --- subtest: depends satisfied → eligible despite the unfinished wave-0 sibling ---
+	blocker := mkStream("blocker", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "done"},
+	)
+	blocker.LastTouch = day(0)
+
+	target := mkStream("target", "active", "P1",
+		Brief{Num: "08", Wave: 0, Status: "implemented"}, // unfinished wave-0 sibling
+		Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v2", Depends: []string{"blocker/01"}},
+	)
+	target.LastTouch = day(0)
+
+	picks := nextUp([]*Stream{target, blocker}, ClaimView{}, nil).Picks
+	found02 := false
+	for _, p := range picks {
+		if p.Stream.Name == "target" && p.Brief.Num == "02" {
+			found02 = true
+		}
+	}
+	if !found02 {
+		t.Fatalf("brief-v2 02 with satisfied depends should be eligible despite the unfinished wave-0 sibling (legacy whole-wave rule must not apply to v2), got %+v", picks)
+	}
+
+	// --- subtest (converse): depends unsatisfied → held ---
+	blocker2 := mkStream("blocker", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "implemented"}, // not done/verified
+	)
+	blocker2.LastTouch = day(0)
+
+	target2 := mkStream("target", "active", "P1",
+		Brief{Num: "08", Wave: 0, Status: "done"}, // wave-0 sibling done — would pass the legacy rule
+		Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v2", Depends: []string{"blocker/01"}},
+	)
+	target2.LastTouch = day(0)
+
+	picks2 := nextUp([]*Stream{target2, blocker2}, ClaimView{}, nil).Picks
+	for _, p := range picks2 {
+		if p.Stream.Name == "target" && p.Brief.Num == "02" {
+			t.Fatalf("brief-v2 02 with unsatisfied depends should be HELD even though the wave-0 sibling is done, got %+v", picks2)
+		}
+	}
+}
+
 func TestNextUpClaimAware(t *testing.T) {
 	s := mkStream("hot", "active", "P0",
 		Brief{Num: "06", Wave: 0, Status: "todo"},
@@ -466,7 +522,7 @@ func nextUpAllScores(streams []*Stream) map[string]int {
 	out := map[string]int{}
 	for _, s := range streams {
 		for _, b := range s.Briefs {
-			if !eligible(streams, s, b, nil, wiredQueues(streams)) {
+			if !eligible(streams, s, b, nil, wiredQueues(streams), eligibilityForStreams(streams)) {
 				continue
 			}
 			days := int(now.Sub(s.LastTouch).Hours() / 24)

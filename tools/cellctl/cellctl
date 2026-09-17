@@ -2,7 +2,7 @@
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
 #   cellctl ls                                   cells under $CELLS_ROOT
-#   cellctl new   <cell> [--kind k8s|house|container] [--forge github|gitlab] --repo <checkout> ...
+#   cellctl new   <cell> [--kind k8s|house|container|scrubbed] [--forge github|gitlab] --repo <checkout> ...
 #                        --kind k8s   (default) a full cell: its own deskd, roster and App keys under home/
 #                                     --cells-yaml <file> [forge custody flags]
 #                                     scaffold <cell>/ (cell.env, home/, README) — then YOU fill
@@ -24,6 +24,19 @@
 #                                     registers an operator-owned container launcher; copies no credentials.
 #                                     check/desk/down delegate to it. up opens the coordinator only;
 #                                     multi-role up and host cockpit/provider flags are not supported yet.
+#                        --kind scrubbed --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles "..."]
+#                                     a host-local cell whose harness runs on THIS laptop but inside an
+#                                     environment `cellctl` fully COMPOSES (`env -i` plus an explicit
+#                                     allowlist) — nothing from the launching shell leaks in. One repo per
+#                                     cell (`CELL_REPO_SLUG`), its own config home (never a symlink into
+#                                     yours), its own harness login. See *Scrubbed cells* in docs/cellctl.md.
+#   cellctl smoke <cell> [--harness <claude|codex>] [--model <m>]
+#                                                scrubbed-cell only: a one-shot, tool-free, read-only
+#                                                readiness probe — the harness answers `READY` or the verb
+#                                                exits 1 naming what it said instead. Never a Verify row on a
+#                                                live harness; DRY_RUN=1 prints the plan and runs nothing.
+#   cellctl status <cell>                       scrubbed-cell only: `running <session>` / `stopped` /
+#                                                `stale-lock <pid>` — a read, exit 0 unless the cell fails to load.
 #   cellctl check <cell>                         preconditions per the cell's kind and forge (cell.env, roster,
 #                                                keys or token store, binaries, repo, roots, plugin) — a
 #                                                precondition for the OTHER kind/forge is reported n/a or MISS,
@@ -233,7 +246,20 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
       DESKD="${DESKD:-0}"
       [[ -n "${CELL_ROOTS:-}" ]] || die "cell.env: CELL_ROOTS (the <owner>/<repo>=<abs path>,... stream-root map) is not set — a house cell needs it"
       ;;
-    *) die "cell.env: CELL_KIND=$CELL_KIND is not a known kind (k8s|house|container)" ;;
+    scrubbed)
+      # A scrubbed cell runs the harness ON this host, but inside an environment cellctl fully
+      # composes (env -i plus an explicit allowlist) — the opposite of house's "keep the real
+      # HOME" design, so it is a KIND, not a flag on house (brief desk-containers/09). No deskd,
+      # same refusal shape container uses; CELL_REPO must be a real checkout (the worktree
+      # machinery below needs one to fetch/merge against); CELL_REPO_SLUG scopes the cell to
+      # exactly one repo (roster.env's ASSAY_ALLOWED_REPOS is checked against it — check_scrubbed).
+      [[ "${DESKD:-0}" == "0" ]] || die "scrubbed cells do not run host deskd"
+      DESKD=0
+      [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout the harness runs against) is not set"
+      git -C "$CELL_REPO" rev-parse --git-dir >/dev/null 2>&1 || die "cell.env: CELL_REPO is not a git checkout: $CELL_REPO"
+      [[ -n "${CELL_REPO_SLUG:-}" ]] || die "cell.env: CELL_REPO_SLUG (<owner>/<repo>) is not set — a scrubbed cell is scoped to one repo"
+      ;;
+    *) die "cell.env: CELL_KIND=$CELL_KIND is not a known kind (k8s|house|container|scrubbed)" ;;
   esac
   # Forge awareness. A cell provisioned before forge support carries no CELL_FORGE; it is a
   # GitHub cell by construction, so default there and keep every legacy cell working. The
@@ -576,7 +602,7 @@ resolve_provider(){
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
-CELL_HARNESS TMUX_SESSION CELL_PROVIDER \
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH \
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
 TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX"
 
@@ -758,7 +784,14 @@ cmd_check(){
   # CELL_FF_ROOTS=1 at boot), so it must not decide `check`'s exit code.
   warn(){ echo "  warn  $1"; }
   echo "[check] cell=$CELL dir=$CELL_DIR kind=$CELL_KIND forge=$CELL_FORGE"
-  chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
+  # A scrubbed cell's whole point is that it never touches the operator's real config home — this
+  # row is n/a there (check_scrubbed proves the cell's OWN config home instead), unlike k8s/house
+  # where the cell's custody IS (a copy of, or a symlink to) this directory.
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    na "operator config home — not applicable on a scrubbed cell (it never reads $REAL_CONFIG_HOME; see the config-home rows below)"
+  else
+    chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
+  fi
   chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
   chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
   chk "forge endpoint ($CELL_FORGE): $FORGE_API_BASE" '[[ -n "$FORGE_API_BASE" ]]'
@@ -810,6 +843,10 @@ cmd_check(){
   check_codex_harness
   case "$CELL_KIND" in
     house) check_house "${2:-}" ;;
+    scrubbed)
+      [[ -z "${2:-}" ]] || die "scrubbed check does not accept a host config directory"
+      check_scrubbed
+      ;;
     *) check_k8s ;;
   esac
   # Stream-root drift. The roots are what the desk verbs READ, and nothing in cellctl advances
@@ -936,6 +973,81 @@ check_house(){
   chk "claude on PATH" 'command -v claude >/dev/null'
   chk "plugin assay@assay enabled for $CELL_REPO (config $cfg)" 'plugin_enabled "$cfg"'
   na "cells config / apps.env / deskd App key — not applicable on a house cell (the operator's own config home is used as is)"
+}
+
+# scrubbed_mode_is <path> <octal-mode>: the two-spelling `stat` probe every custody row in this
+# file already uses (the codex/BSD-vs-GNU `stat -f`/`stat -c` split `check_codex_harness` and the
+# existing PEM-adjacent rows try) — never a third spelling.
+scrubbed_mode_is(){
+  local p="$1" want="$2" m
+  m="$(stat -f '%Lp' "$p" 2>/dev/null || stat -c '%a' "$p" 2>/dev/null)" || return 1
+  [[ "$m" == "$want" ]]
+}
+
+# check_scrubbed: what a hand-composed environment gets wrong. Unlike check_house (which proves a
+# SYMLINK resolves), a scrubbed cell's whole point is that nothing is shared with the operator's
+# real config — so this proves the config home is a REAL directory at 0700, every PEM under it (or
+# named by its own apps.env) is a regular 0600 file, the roster scopes the cell to exactly one
+# repo, the harness is logged in under the CELL's own home (not the operator's), the roster
+# parses, every CELL_ROOTS entry resolves, the desk verbs are installed, and the lock/run
+# directory is writable. See brief desk-containers/09's facts for the exact custody claims.
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+check_scrubbed(){
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" 'git -C "$CELL_REPO" rev-parse --git-dir >/dev/null 2>&1'
+  chk "config home is a REAL directory (never a symlink): $CELL_CONFIG" '[[ -d "$CELL_CONFIG" && ! -L "$CELL_CONFIG" ]]'
+  chk "config home mode 0700: $CELL_CONFIG" 'scrubbed_mode_is "$CELL_CONFIG" 700'
+  # Every PEM the cell's apps.env names (a <ROLE>_PEM= line), plus every *-app.pem file present
+  # directly under the cell config home — de-duplicated, so a PEM named in apps.env AND present as
+  # a *-app.pem is checked once. None present yet is a legitimate n/a (the hand step from `new`'s
+  # README has not run), never a MISS.
+  local -a pems=() f
+  for f in "$CELL_CONFIG"/*-app.pem; do [[ -e "$f" || -L "$f" ]] && pems+=("$f"); done
+  if [[ -f "$CELL_CONFIG/apps.env" ]]; then
+    local line val
+    while IFS= read -r line; do
+      case "$line" in *_PEM=*) val="${line#*_PEM=}"; [[ -n "$val" ]] && pems+=("$val") ;; esac
+    done < "$CELL_CONFIG/apps.env"
+  fi
+  if [[ ${#pems[@]} -eq 0 ]]; then
+    na "role App PEMs — none present yet under $CELL_CONFIG (copy them in as regular 0600 files, per the cell's README)"
+  else
+    local -A seen=() ; local uniq=()
+    for f in "${pems[@]}"; do [[ -n "${seen[$f]:-}" ]] && continue; seen[$f]=1; uniq+=("$f"); done
+    for f in "${uniq[@]}"; do
+      if [[ -L "$f" ]]; then
+        chk "PEM $f is a regular file (not a symlink)" 'false'
+      elif [[ ! -f "$f" ]]; then
+        chk "PEM $f exists" 'false'
+      else
+        chk "PEM $f is regular, mode 0600" 'scrubbed_mode_is "$f" 600'
+      fi
+    done
+  fi
+  local allowed=""
+  [[ -f "$CELL_CONFIG/roster.env" ]] && allowed="$(grep -E '^ASSAY_ALLOWED_REPOS=' "$CELL_CONFIG/roster.env" | tail -n1)"
+  allowed="${allowed#*=}"
+  chk "roster ASSAY_ALLOWED_REPOS is exactly $CELL_REPO_SLUG (a scrubbed cell is scoped to one repo)" '[[ "$allowed" == "$CELL_REPO_SLUG" ]]'
+  if [[ "$CELL_HARNESS" == "codex" ]]; then
+    chk "harness login under the cell home: codex login status (CODEX_HOME=$CELL_HOME/.codex)" \
+      'env CODEX_HOME="$CELL_HOME/.codex" codex login status >/dev/null 2>&1 || env CODEX_HOME="$CELL_HOME/.codex" codex login status --json >/dev/null 2>&1'
+  else
+    chk "harness login under the cell home: $CELL_HOME/.claude present, claude --version (CLAUDE_CONFIG_DIR=$CELL_HOME/.claude)" \
+      '[[ -d "$CELL_HOME/.claude" ]] && env CLAUDE_CONFIG_DIR="$CELL_HOME/.claude" claude --version >/dev/null 2>&1'
+  fi
+  chk "roster parses under the cell home: deskroster repos --scope scan" 'env HOME="$CELL_HOME" "$DESK_TOOLS_BIN/deskroster" repos --scope scan >/dev/null 2>&1'
+  if [[ -n "${CELL_ROOTS:-}" ]]; then
+    chk "CELL_ROOTS well-formed: $CELL_ROOTS" 'roots_valid "$CELL_ROOTS"'
+    local e p
+    for e in ${CELL_ROOTS//,/ }; do
+      p="${e#*=}"
+      chk "root ${e%%=*} exists: $p" '[[ -d "$p" ]]'
+      chk "root ${e%%=*} carries docs/streams/" '[[ -d "$p/docs/streams" ]]'
+    done
+  else
+    na "CELL_ROOTS — unset (role windows boot WITHOUT DESK_ROOTS)"
+  fi
+  local v; for v in $HOUSE_VERBS; do chk "desk verb: $DESK_TOOLS_BIN/$v" '[[ -x "$DESK_TOOLS_BIN/$v" ]]'; done
+  chk "lock/run dir writable: $CELL_DIR/run" 'mkdir -p "$CELL_DIR/run" 2>/dev/null && [[ -w "$CELL_DIR/run" ]]'
 }
 
 cmd_deskd(){
@@ -1203,6 +1315,163 @@ check_codex_harness(){
   chk "skills discoverable: marketplace plugin assay@assay, or .agents/skills/ placed" 'codex_skills_discoverable'
 }
 
+# ---------------------------------------------------------------- scrubbed cells (desk-containers/09)
+# A scrubbed cell's launch is COMPOSED, not filtered: `env -i` plus this exact allowlist — the
+# parent shell contributes nothing by default. This block is the SINGLE source the [plan] lines,
+# the live `env -i` launch, and docs/cellctl.md's env table all read (state it once; see the
+# brief's facts). The two harness-namespaced entries (CODEX_HOME / CLAUDE_CONFIG_DIR) are mutually
+# exclusive — only the active harness's var is ever exported — and DESK_ROOTS/TERM/LANG are
+# present only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries
+# one.
+SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
+
+# scrubbed_harness_path <harness>: resolves the harness binary ONCE, on the PARENT shell's PATH —
+# the one parent-derived element the composed PATH below keeps (named and pinned, never a bare
+# inherited PATH). Sets SCR_HARNESS_DIR; dies naming the harness when it cannot be found, since
+# nothing downstream can find it once the launch switches to `env -i`.
+scrubbed_harness_path(){
+  local h="$1" p
+  p="$(command -v "$h" 2>/dev/null)" || die "desk: '$h' not found on PATH — install it before booting a scrubbed cell"
+  SCR_HARNESS_DIR="$(cd "$(dirname "$p")" && pwd)"
+}
+
+# scrubbed_env_value <key> <role> <harness> <session> <composed_path>: the VALUE one allowlist KEY
+# resolves to for this launch, or the empty string when this key does not apply to this run (the
+# harness-conditional pair, or a source-dependent pass-through) — the caller skips an empty value
+# rather than exporting `KEY=`. This is the per-key half of scrubbed_compose_env's single source;
+# switching on $SCRUBBED_ENV_KEYS itself is what keeps the [plan] lines, the live launch and this
+# function from drifting apart (a KEY added to the list with no case arm here is a silent no-op,
+# caught by the plan-grammar Verify row diffing the two).
+scrubbed_env_value(){
+  local key="$1" role="$2" harness="$3" session="$4" composed_path="$5"
+  case "$key" in
+    HOME) printf '%s' "$CELL_HOME" ;;
+    ZDOTDIR) printf '%s' "$CELL_HOME" ;;
+    SHELL) printf '%s' "$BASH" ;;
+    PATH) printf '%s' "$composed_path" ;;
+    TMPDIR) printf '%s' "$CELL_DIR/tmp" ;;
+    KUBECONFIG) printf '%s' "/dev/null" ;;
+    ASSAY_CONFIG_HOME) printf '%s' "$CELL_CONFIG" ;;
+    GH_CONFIG_DIR) printf '%s' "$CELL_HOME/.config/gh" ;;
+    GIT_CONFIG_GLOBAL) printf '%s' "$CELL_HOME/.gitconfig" ;;
+    GIT_CONFIG_NOSYSTEM) printf '%s' "1" ;;
+    GIT_TERMINAL_PROMPT) printf '%s' "0" ;;
+    CODEX_HOME) [[ "$harness" == "codex" ]] && printf '%s' "$CELL_HOME/.codex" ;;
+    CLAUDE_CONFIG_DIR) [[ "$harness" == "claude" ]] && printf '%s' "$CELL_HOME/.claude" ;;
+    DESK_LOOP) printf '%s' "$role" ;;
+    DESK_SESSION) printf '%s' "$session" ;;
+    DESK_ROOTS) printf '%s' "${CELL_ROOTS:-}" ;;
+    TERM) printf '%s' "${TERM:-}" ;;
+    LANG) printf '%s' "${LANG:-}" ;;
+  esac
+  return 0
+}
+
+# scrubbed_compose_env <role> <harness> <session>: builds the composed-environment allowlist by
+# walking $SCRUBBED_ENV_KEYS — the single declared list the [plan] lines, the live `env -i`
+# launch and docs/cellctl.md's env table all trace back to. Sets SCR_ENV (KEY=VALUE pairs, the
+# array `env -i` is handed — order irrelevant there) and SCR_ENV_SORTED (the same entries,
+# KEY-sorted — what the [plan] lines print). CELL_PATH, when cell.env sets it, overrides only the
+# trailing system part of the composed PATH — the shim prefix and the resolved harness dir are
+# never overridden.
+scrubbed_compose_env(){
+  local role="$1" harness="$2" session="$3"
+  scrubbed_harness_path "$harness"
+  local tail="/usr/bin:/bin:/usr/sbin:/sbin"
+  [[ -n "${CELL_PATH:-}" ]] && tail="$CELL_PATH"
+  local composed_path="$CELL_DIR/shim:$DESK_TOOLS_BIN:$SCR_HARNESS_DIR:$tail"
+  SCR_ENV=()
+  local k v
+  for k in $SCRUBBED_ENV_KEYS; do
+    v="$(scrubbed_env_value "$k" "$role" "$harness" "$session" "$composed_path")"
+    [[ -n "$v" ]] && SCR_ENV+=("$k=$v")
+  done
+  local sorted; sorted="$(printf '%s\n' "${SCR_ENV[@]}" | sort)"
+  local IFS=$'\n'
+  # shellcheck disable=SC2206
+  SCR_ENV_SORTED=($sorted)
+}
+
+# scrubbed_print_plan <cwd> <argv...>: the [plan] lines — env (sorted), argv, cwd, lock. Printed
+# after the existing [dry-run] line under DRY_RUN=1, and this exact grammar is what
+# desk-containers/10's parity harness diffs, so it is part of the contract, not a courtesy.
+scrubbed_print_plan(){
+  local cwd="$1"; shift
+  local kv; for kv in "${SCR_ENV_SORTED[@]}"; do printf '[plan] env %s\n' "$kv"; done
+  local argv_q="" a
+  for a in "$@"; do argv_q="$argv_q $(printf '%q' "$a")"; done
+  printf '[plan] argv%s\n' "$argv_q"
+  printf '[plan] cwd %s\n' "$cwd"
+  printf '[plan] lock %s\n' "$CELL_DIR/run/lock.d"
+}
+
+# scrubbed_take_lock <lockdir> <session>: layer 2 of the session lock (mkdir, atomic; holds pid).
+# Refused with exit 4 and the exact message the brief pins ONLY when the held pid is still alive —
+# a stale lock (a dead pid, or an unreadable pid file) is taken over rather than left to wedge
+# every future boot; `status`/`down` are the tools that report/clear a stale lock explicitly for a
+# human who is just looking, not a precondition `desk` itself must wait on.
+scrubbed_take_lock(){
+  local lockdir="$1" session="$2"
+  if mkdir "$lockdir" 2>/dev/null; then
+    echo "$$" > "$lockdir/pid"
+    return 0
+  fi
+  local held; held="$(cat "$lockdir/pid" 2>/dev/null || true)"
+  if [[ -n "$held" ]] && kill -0 "$held" 2>/dev/null; then
+    echo "cellctl: cell $CELL is already running (pid $held, session $session); cellctl down $CELL to release" >&2
+    exit 4
+  fi
+  echo "$$" > "$lockdir/pid"
+  return 0
+}
+
+# scrubbed_desk_launch <role> <harness> <model> <session> <wt>: the live scrubbed launch. Takes
+# the session lock, then execs `env -i <allowlist> <harness argv>` as the sole command of a NEW
+# tmux session on this cell's PRIVATE SOCKET (`<cell>/run/tmux.sock`, session `<cell>-cell`) —
+# `env -i` inside that pane discards whatever ambient environment the private tmux SERVER itself
+# was started with, so nothing of the launching shell reaches the harness regardless. Attaches
+# when stdin is a tty; otherwise prints the attach line and returns (never blocks an unattended
+# caller).
+scrubbed_desk_launch(){
+  local role="$1" harness="$2" model="$3" session="$4" wt="$5"
+  command -v tmux >/dev/null || die "desk: tmux is required for a scrubbed cell (the private-socket session) and is not on PATH"
+  mkdir -p "$CELL_DIR/run"
+  local sockpath="$CELL_DIR/run/tmux.sock" sessname="${CELL}-cell" lockdir="$CELL_DIR/run/lock.d"
+  # Take the lock BEFORE the tmux new-session call — this is what a race between two concurrent
+  # `desk` invocations serialises on. The pid it holds is provisional ($$, this cellctl process)
+  # until the tmux pane exists, below, at which point it is rewritten to the PANE's pid — the
+  # process that actually outlives this invocation when it is not attaching.
+  scrubbed_take_lock "$lockdir" "$sessname"
+  if tmux -S "$sockpath" has-session -t "$sessname" 2>/dev/null; then
+    rm -rf "$lockdir"
+    die "desk: session $sessname is already running on the private socket ($sockpath) — cellctl down $CELL to release"
+  fi
+  scrubbed_compose_env "$role" "$harness" "$session"
+  local -a argv=()
+  if [[ "$harness" == "codex" ]]; then
+    argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now.")
+  else
+    argv=(claude --name "$session" --model "$model" "/assay:$role")
+  fi
+  # `env -i` inside the pane discards whatever ambient environment the private tmux SERVER itself
+  # started with — the scrub holds regardless of what launched the socket.
+  local cmdline="env -i"
+  local kv; for kv in "${SCR_ENV[@]}"; do cmdline="$cmdline $(printf '%q' "$kv")"; done
+  local a; for a in "${argv[@]}"; do cmdline="$cmdline $(printf '%q' "$a")"; done
+  echo "[launch] $CELL/$role kind=scrubbed model=$model harness=$harness session=$sessname cwd=$wt (env -i composed — see docs/cellctl.md Scrubbed cells)"
+  tmux -S "$sockpath" new-session -d -s "$sessname" -c "$wt" "$cmdline"
+  # The lock's pid is what `status`/a concurrent `desk` judge "alive" — this cellctl invocation
+  # may itself return below (unattended), so the pid held has to be the PANE's, not $$.
+  local pane_pid; pane_pid="$(tmux -S "$sockpath" list-panes -t "$sessname" -F '#{pane_pid}' 2>/dev/null | head -n1)"
+  [[ -n "$pane_pid" ]] && echo "$pane_pid" > "$lockdir/pid"
+  if [[ -t 0 ]]; then
+    exec tmux -S "$sockpath" attach -t "$sessname"
+  else
+    echo "[cell] attach: tmux -S $sockpath attach -t $sessname   ·   down: cellctl down $CELL"
+    return 0
+  fi
+}
+
 cmd_desk(){
   local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]"
   local cell="${1:?$usage_msg}"; shift || true
@@ -1235,6 +1504,12 @@ cmd_desk(){
     [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
       || die "container desks do not accept host config directories or providers; configure credentials in the container launcher"
     case " $ROLES " in *" $role "*) ;; *) die "role '$role' is not enabled in this container cell";; esac
+  elif [[ "$CELL_KIND" == "scrubbed" ]]; then
+    # A scrubbed cell's own config home is what CLAUDE_CONFIG_DIR/CODEX_HOME resolve to below —
+    # a host config dir or a provider from the launching shell would defeat the whole point.
+    [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
+      || die "scrubbed desks do not accept a host config directory or a provider — the cell composes its own"
+    case " $ROLES " in *" $role "*) ;; *) die "role '$role' is not enabled in this scrubbed cell";; esac
   else
     cfg="$(resolve_cfg "$cfg_in")"
   fi
@@ -1250,7 +1525,7 @@ cmd_desk(){
   # roster / claims should tell one boot from the next.
   local short="${role%-desk}"; [[ "$role" == "the-desk" ]] && short="the-desk"
   local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${short}"
-  [[ "$CELL_KIND" == "house" ]] && session="${CELL}-${role}-$(date -u +%Y%m%dT%H%M%SZ)"
+  [[ "$CELL_KIND" == "house" || "$CELL_KIND" == "scrubbed" ]] && session="${CELL}-${role}-$(date -u +%Y%m%dT%H%M%SZ)"
   # The harness is NOTED on the roster beacon/session name when it is not the claude default, so
   # "which harness is this window on" is answerable from the roster the same way the model is.
   [[ "$harness" == "codex" ]] && session="${session}-codex"
@@ -1311,15 +1586,29 @@ cmd_desk(){
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model_disp provider=${provider:-anthropic} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
     [[ "$persist" == "1" ]] && echo "[dry-run] --set: would persist $mvar=$model_override into $CELL_DIR/cell.env (not written — dry run)"
+    if [[ "$CELL_KIND" == "scrubbed" ]]; then
+      # The existing [dry-run] line above stays — this ADDS the plan grammar brief
+      # desk-containers/09 defines (and desk-containers/10 diffs against): one [plan] env line per
+      # exported variable (sorted by KEY), then argv, cwd, lock.
+      scrubbed_compose_env "$role" "$harness" "$session"
+      local -a scr_argv=()
+      if [[ "$harness" == "codex" ]]; then
+        scr_argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now.")
+      else
+        scr_argv=(claude --name "$session" --model "$model" "/assay:$role")
+      fi
+      scrubbed_print_plan "$wt" "${scr_argv[@]}"
+    fi
     return 0
   fi
   if [[ "$persist" == "1" ]]; then
     set_env_key "$CELL_DIR/cell.env" "$mvar" "$model_override" 0
   fi
   # Enabling the assay@assay plugin is a CLAUDE-specific action (it shells out to `claude plugin
-  # enable`) — skipped on the codex arm, where skills are discovered per Part 3's check block
-  # (marketplace plugin or .agents/skills/) rather than a Claude Code plugin enable.
-  if [[ "$harness" == "claude" ]]; then
+  # enable`) — skipped on the codex arm (skills are discovered per the codex harness check block)
+  # and on a scrubbed cell (there is no host $cfg here — the plugin state lives under the cell's
+  # own CLAUDE_CONFIG_DIR, which the operator enables during the cell's own hand-boot step).
+  if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
     # A non-zero exit here is not always a real failure: `claude plugin enable` also exits 1
     # when the plugin is already enabled (issue-1080's misleading-NOTICE bug), printing
     # `Failed to enable plugin "assay@assay": Plugin "assay@assay" is already enabled` — so the
@@ -1381,6 +1670,10 @@ cmd_desk(){
   # Codex has no SessionStart hook to carry the resident operating rules — on this arm they travel
   # in the worktree's AGENTS.md instead, appended idempotently at boot.
   [[ "$harness" == "codex" ]] && ensure_codex_resident_rules "$wt"
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    scrubbed_desk_launch "$role" "$harness" "$model" "$session" "$wt"
+    return $?
+  fi
   cd "$wt"
   echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp provider=${provider:-anthropic} harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
   if [[ "$harness" == "codex" ]]; then
@@ -1402,6 +1695,77 @@ cmd_desk(){
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       claude --name "$session" --model "$model" "/assay:$role"
   fi
+}
+
+# cmd_smoke <cell> [--harness <claude|codex>] [--model <m>]: a scrubbed-cell-only, one-shot,
+# tool-free, READ-ONLY readiness probe — the same composed environment `desk` uses, a prompt that
+# asks nothing of any tool, and a pass/fail on the harness's own literal answer. Never a Verify
+# row on a live harness (every row here runs a stub) — this is what an operator runs by hand to
+# prove a cell actually answers before trusting it with real work.
+cmd_smoke(){
+  local usage_msg="cellctl smoke <cell> [--harness <claude|codex>] [--model <m>]"
+  local cell="${1:?$usage_msg}"; shift || true
+  load_cell "$cell"
+  [[ "$CELL_KIND" == "scrubbed" ]] || die "smoke is only defined for a scrubbed cell (kind=$CELL_KIND, got '$cell')"
+  local harness="$CELL_HARNESS" model_override=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --*) die "smoke: unknown flag $1";;
+    *) die "smoke: unexpected argument '$1'";;
+  esac; done
+  case "$harness" in claude|codex) ;; *) die "smoke: --harness must be claude or codex, got '$harness'";; esac
+  local model
+  if [[ -n "$model_override" ]]; then
+    model="$model_override"
+  else
+    resolve_role_model "smoke" "$harness" || die "smoke: $RESOLVED_MODEL_SRC — pass --model explicitly"
+    model="$RESOLVED_MODEL"
+  fi
+  local prompt='Reply with the single word READY and nothing else.'
+  local session; session="${CELL}-smoke-$(date -u +%Y%m%dT%H%M%SZ)"; [[ "$harness" == "codex" ]] && session="${session}-codex"
+  scrubbed_compose_env "smoke" "$harness" "$session"
+  local -a argv=()
+  if [[ "$harness" == "codex" ]]; then
+    argv=(codex exec --ephemeral --sandbox read-only --skip-git-repo-check -m "$model" "$prompt")
+  else
+    argv=(claude -p --model "$model" "$prompt")
+  fi
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[dry-run] cell=$CELL kind=scrubbed smoke harness=$harness model=$model"
+    scrubbed_print_plan "$CELL_REPO" "${argv[@]}"
+    return 0
+  fi
+  echo "[smoke] resolved model=$model harness=$harness (read-only, tool-free, one shot)"
+  local out rc=0
+  out="$(cd "$CELL_REPO" && env -i "${SCR_ENV[@]}" "${argv[@]}" 2>&1)" || rc=$?
+  local last; last="$(printf '%s\n' "$out" | awk 'NF{l=$0} END{print l}')"
+  if [[ "$rc" -eq 0 && "$last" == "READY" ]]; then
+    echo "READY"
+    return 0
+  fi
+  echo "smoke: not ready: $last"
+  return 1
+}
+
+# cmd_status <cell>: a scrubbed-cell-only READ — `running <session>` / `stopped` /
+# `stale-lock <pid>` — never a precondition check (that is `check`'s job), exit 0 in every case
+# that is not a load error.
+cmd_status(){
+  load_cell "${1:?cell}"
+  [[ "$CELL_KIND" == "scrubbed" ]] || die "status is only defined for a scrubbed cell (kind=$CELL_KIND)"
+  local sessname="${CELL}-cell" lockdir="$CELL_DIR/run/lock.d"
+  if [[ -d "$lockdir" ]]; then
+    local pid; pid="$(cat "$lockdir/pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "running $sessname"
+    else
+      echo "stale-lock $pid"
+    fi
+  else
+    echo "stopped"
+  fi
+  return 0
 }
 
 # first_window sets FIRST_NAME / FIRST_CMD — the window that is NOT a role: the deskd watcher, the
@@ -1456,6 +1820,17 @@ cmd_up(){
   if [[ "$CELL_KIND" == "container" ]]; then
     [[ "$ROLES" == "the-desk" ]] || die "container up currently requires ROLES=the-desk; use desk for explicit roles"
     cmd_desk "$CELL" the-desk "$@"
+    return $?
+  fi
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    # A scrubbed cell is single-occupancy by construction (one tmux session on its private
+    # socket, one mkdir lock) — `up` refuses when the cell is not `stopped` and otherwise boots
+    # this cell's first configured role, exactly what `desk` itself would; the attach-on-a-tty
+    # behaviour lives in scrubbed_desk_launch, so every entry point gets it identically.
+    local st; st="$(cmd_status "$CELL")"
+    [[ "$st" == "stopped" ]] || die "up: cell '$CELL' is not stopped (status: $st) — cellctl down $CELL first"
+    local first_role; first_role="${ROLES%% *}"
+    cmd_desk "$CELL" "$first_role" "$@"
     return $?
   fi
   local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag=""
@@ -1777,6 +2152,20 @@ cmd_down(){
     container_run down
     return $?
   fi
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    [[ $# == 0 ]] || die "scrubbed down does not accept host cockpit or deskd flags"
+    local sockpath="$CELL_DIR/run/tmux.sock" sessname="${CELL}-cell"
+    if [[ -S "$sockpath" ]] && tmux -S "$sockpath" has-session -t "$sessname" 2>/dev/null; then
+      tmux -S "$sockpath" kill-session -t "$sessname"
+      echo "[cell] $sessname killed (private socket)"
+    else
+      echo "[cell] no session $sessname"
+    fi
+    # The lock is cleared here — never on the harness process's own exit — and the worktrees
+    # under <cell>/worktrees/ are kept, exactly like every other kind's `down`.
+    rm -rf "$CELL_DIR/run/lock.d"
+    return 0
+  fi
   local keep=0 cockpit_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --keep-deskd) keep=1; shift;;
@@ -1888,11 +2277,13 @@ cmd_new(){
   # not a cell name was given.
   local kind="k8s" forge="github" cell="" repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
   local group="" gitlab_api_base="" token_store="" roots="" roles="$ROLES_DEFAULT" launcher="" roles_set=0
+  local repo_slug=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --kind) kind="$2"; shift 2;;
     --launcher) launcher="${2:?--launcher needs an absolute executable}"; shift 2;;
     --forge) forge="$2"; shift 2;;
     --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
+    --repo-slug) repo_slug="${2:?--repo-slug needs a value (<owner>/<repo>)}"; shift 2;;
     --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
     --group) group="$2"; shift 2;; --gitlab-api-base) gitlab_api_base="$2"; shift 2;;
     --gitlab-token-store) token_store="$2"; shift 2;;
@@ -1906,8 +2297,13 @@ cmd_new(){
     new_container "$cell" "$repo" "$launcher" "$roles" "$roots"
     return
   fi
+  if [[ "$kind" == "scrubbed" ]]; then
+    [[ -z "$yaml$orgs$pem$group$token_store$launcher" ]] || die "scrubbed new does not accept host credential, deskd or container-launcher configuration"
+    new_scrubbed "$cell" "$repo" "$repo_slug" "$roots" "$roles"
+    return
+  fi
   [[ -z "$launcher" ]] || die "--launcher is only valid for --kind container"
-  case "$kind" in k8s) ;; house) new_house "$cell" "$repo" "$roots" "$roles" "$port"; return;; *) die "new: --kind must be k8s, house or container, got '$kind'";; esac
+  case "$kind" in k8s) ;; house) new_house "$cell" "$repo" "$roots" "$roles" "$port"; return;; *) die "new: --kind must be k8s, house, container or scrubbed, got '$kind'";; esac
   case "$forge" in github|gitlab) ;; *) die "new: --forge must be github or gitlab, got '$forge'";; esac
   # Common requirements on BOTH forges.
   [[ -n "$repo" && -n "$yaml" ]] || die "new: --repo and --cells-yaml are required (both forges)"
@@ -2157,6 +2553,79 @@ EOF
   echo "[new] scaffolded $d (house cell) — cellctl check $cell, then cellctl desk $cell <role>"
 }
 
+# new_scrubbed scaffolds a SCRUBBED cell: the opposite custody shape from a house cell (#new_house
+# above) — nothing is linked from the operator's real config home, because the whole point is that
+# nothing of it reaches the harness. What IS created is a REAL (never symlinked) config home, a
+# roster scoped to exactly one repo, and the directories the composed launch needs
+# (`tmp/`, `run/`). Two hand steps remain, printed in the README: copy the role PEM(s) in as
+# regular 0600 files, and log the harness in under the cell's own home.
+new_scrubbed(){
+  local cell="$1" repo="$2" slug="$3" roots="$4" roles="$5"
+  [[ -n "$repo" ]] || die "new: --kind scrubbed needs --repo <checkout>"
+  [[ -n "$slug" ]] || die "new: --kind scrubbed needs --repo-slug <owner/repo>"
+  [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] || die "new: --repo-slug must be <owner>/<repo>, got '$slug'"
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> --kind scrubbed …)"
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || die "new: --repo is not a git checkout: $repo"
+  [[ -z "$roots" ]] || roots_valid "$roots" || die "new: --roots is malformed"
+  local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)"
+  mkdir -p "$d/home/.config/assay" "$d/home/.config/gh" "$d/worktrees" "$d/tmp" "$d/run"
+  : > "$d/home/.gitconfig"
+  chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay" "$d/tmp"
+  cat > "$d/home/.config/assay/roster.env" <<EOF
+# scrubbed cell roster — this cell is scoped to exactly one repo; a different or additional
+# ASSAY_ALLOWED_REPOS entry is a MISS at \`cellctl check\` by design (desk-containers/09).
+ASSAY_ALLOWED_REPOS=$slug
+# Fill in by hand: ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_BOT_SLUGS (this cell's
+# own App bindings — never copied from another cell), ASSAY_REPO_FORGES, ASSAY_SCAN_REPOS.
+EOF
+  chmod 600 "$d/home/.config/assay/roster.env"
+  local roots_line="# CELL_ROOTS=<owner>/<repo>=<abs path>,...   (exported as DESK_ROOTS at boot; unset = placeholder topology)"
+  [[ -z "$roots" ]] || roots_line="CELL_ROOTS=$roots"
+  cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (scrubbed, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=scrubbed
+CELL_REPO=$repo
+CELL_REPO_SLUG=$slug
+$roots_line
+ROLES="$roles"
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`smoke\`
+# \`--harness\` overrides it for one run without touching this line.
+CELL_HARNESS=claude
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — absent
+# here, a role falls back to the tier map (docs/cellctl.md's Pinned models section):
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
+# Scrubbed cells never run a host deskd.
+DESKD=0
+EOF
+  cat > "$d/README.md" <<EOF
+# $cell cell (scrubbed) — scaffolded by cellctl
+
+A host-local harness cell whose environment is COMPOSED, not inherited: the launch runs
+\`env -i\` plus an explicit allowlist — nothing from your shell leaks in (no real \`HOME\`, no
+SSH agent, no forge/model credentials, no cluster access; \`KUBECONFIG=/dev/null\` is part of
+the composed set). Two hand steps remain before \`cellctl check $cell\`:
+
+1. Copy the role App PEM(s) you need into \`home/.config/assay/\` as REGULAR, mode-0600 files
+   (\`<role>-app.pem\`) — never a symlink into your real config home. If this cell mints tokens,
+   add a new \`home/.config/assay/apps.env\` naming the App ids and \`<ROLE>_PEM=\` paths.
+2. Log the harness in UNDER THE CELL HOME — nothing is copied from your real harness login:
+   - codex:  \`CODEX_HOME=$d/home/.codex codex login\`
+   - claude: \`CLAUDE_CONFIG_DIR=$d/home/.claude claude\` (log in inside that session)
+
+Then: \`cellctl check $cell\`, \`cellctl smoke $cell\` (a one-shot, tool-free, read-only readiness
+probe — the harness answers \`READY\` or the verb says what it said instead), \`cellctl desk $cell
+<role>\`, \`cellctl status $cell\`, \`cellctl down $cell\`. The cell is single-occupancy: one
+private-socket tmux session (\`run/tmux.sock\`) and one session lock (\`run/lock.d\`) at a time —
+a second \`desk\` while one is live is refused, naming the live pid and session.
+EOF
+  echo "[new] scaffolded $d (scrubbed cell) — see $d/README.md for the hand steps"
+}
+
 # Every verb below that can take more than one trailing token forwards with the `shift; ... "${@:2}"`
 # shape `up` originated: it hands the callee exactly the arguments given, never a phantom empty
 # positional. `desk` and `down` used to pass a fixed `"${3:-}"` (`down` also `"${4:-}"`) instead —
@@ -2170,6 +2639,8 @@ case "${1:-}" in
   check) cmd_check "${2:?cell}" "${3:-}" ;;
   deskd) cmd_deskd "${2:?cell}" ;;
   desk) shift; cmd_desk "${1:?cell}" "${@:2}" ;;
+  smoke) shift; cmd_smoke "${1:?cell}" "${@:2}" ;;
+  status) cmd_status "${2:?cell}" ;;
   up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
   down) shift; cmd_down "${1:?cell}" "${@:2}" ;;
   new) shift; cmd_new "$@" ;;
