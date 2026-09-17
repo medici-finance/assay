@@ -175,9 +175,23 @@ func renderBriefsRegion(s *Stream, preserved map[string]lifecycleCells) string {
 // columns, carried through verbatim after Reviewed. With no extras it is
 // byte-identical to renderBriefsRegion.
 func renderBriefsRegionWith(s *Stream, preserved map[string]lifecycleCells, extras preservedExtras) string {
+	return renderRowsRegion(streamBriefRows(s), preserved, extras)
+}
+
+// renderRowsRegion is the row-rendering CORE of renderBriefsRegionWith, factored
+// out so a caller that already has (or needs to synthesize) its row set — chiefly
+// `newbrief`, which must render a row for a brief it has not yet written to disk —
+// can produce the byte-IDENTICAL region text `regen --readmes` would, without a
+// disk round trip. Both callers share this one renderer so the two can never
+// drift into two different row formats for the same brief (mistake-proofing/05,
+// issue #1280: `newbrief`'s own prior row writer, insertBriefRow, rendered a
+// link target the generated renderer did not — `./brief-NN-slug.md` vs
+// `brief-NN-slug.md` — so a brief authored into a `board: generated` stream
+// tripped `--lint`'s "hand edit to a generated table" the moment it was created).
+func renderRowsRegion(rows []genRow, preserved map[string]lifecycleCells, extras preservedExtras) string {
 	var b strings.Builder
 	b.WriteString(briefTableHeadWith(extras.names))
-	for _, r := range streamBriefRows(s) {
+	for _, r := range rows {
 		lc, ok := preserved[r.num]
 		if !ok {
 			lc = lifecycleCells{status: "todo", verified: emptyCell, reviewed: emptyCell}
