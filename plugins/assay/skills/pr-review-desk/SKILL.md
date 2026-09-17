@@ -462,8 +462,8 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   an APPROVE verdict without a reviewer comment naming the protected path touched and why the
   edit is legitimate — an unexplained labelled PR is `--request-changes`, one line pointing at
   the label. This changes NOTHING about `deskflip`'s own conditions: the label forces the
-  brief's status transition to `gate: human`, never a ready-flip refusal (the at#2063
-  boundary — a human-gate block sits at the status transition, not the flip). A
+  brief's status transition to `gate: human`, never a ready-flip refusal — a human-gate
+  block sits at the status transition, not the flip. A
   `could-not-check` verdict (the diff could not be read) is treated as a blocker, same as any
   other could-not-check read this bar already refuses to wave through.
 - **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer.**

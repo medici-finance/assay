@@ -50,9 +50,8 @@ label is never applied on a could-not-check verdict.
 
 ## What this check does NOT do
 
-- It does not run the house ruleset / branch-protection half. Per the brief: "the house
-  ruleset half lands with at#2273 once applied" — that is a repo-admin change out of this
-  brief's scope, tracked separately.
+- It does not run the house ruleset / branch-protection half — that is a repo-admin change
+  out of this brief's scope, tracked separately, and lands once applied.
 - It does not itself change what `deskflip` requires. A `wrote-to-the-test`-labelled PR is
   forced to `gate: human` at the STATUS TRANSITION (the brief's own status-machine, not the
   ready-flip) — per the 2026-09-09 ruling that a human-gate block sits at the status
