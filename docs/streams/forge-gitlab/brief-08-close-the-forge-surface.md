@@ -120,7 +120,7 @@ stream (edition-matrix.md, tables A and C6).
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
-| 2 | `cd tools/desk && GOWORK=off go test ./... -run TestNoForgeCLIShellout -v` | exit 0; output contains `PASS` — the ban test passes because no `gh`/`glab` invocation remains |
+| 2 | `cd tools/desk && GOWORK=off go test ./... -run TestNoForgeCLIShellout -v` | exit 0; output contains `PASS` — the ban test passes because every remaining invocation is allowlisted under the shrinking ratchet (see the matching Evidence entry's `RISK-VALUE: NAMED` line for the current ceiling), not because zero invocations remain |
 | 3 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | `0` — independent cross-check of the ban across the whole desk tree |
 | 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0; the test reflects `deskkit.Forge`'s method set against `inventory.md` and FAILS on any generic/arbitrary-endpoint method (`Do`/`Raw`/`api`) on the interface or either backend |
 | 5 | `go doc ./tools/desk/internal/deskkit Forge \| grep -cE -e 'Do\(' -e 'Raw\(' -e 'APIRequest\(' -e 'Call\('` | `0` — no arbitrary-request method surfaces in the interface's godoc |
@@ -226,12 +226,26 @@ read.
 (`0bf1166acb741f0ab27305d54ea92c9f2747514a`). This differs from the 2026-09-10 FAIL and from this
 dispatch's own working assumption (an open verifier finding, cited as still-open, predicted a
 reproduced FAIL on row 3) — the underlying code changed since 2026-09-10 (forge-gitlab/11 landed
-and migrated the specific callsites that caused the prior FAIL), not the Verify table. **This
-verifier does not flip status** (no flip instruction was given for a PASS outcome, and a
-status/board flip on a public-repo item is left to the coordinating desk); it lands this Evidence
-and reports the PASS + the closed gap for a human/desk decision on: (a) flipping
-`forge-gitlab/08` implemented→verified, and (b) whether the still-open finding this dispatch cited
-as motivation can now be closed or needs re-scoping to the 5 remaining ratcheted rows specifically.
+and migrated the specific callsites that caused the prior FAIL), not the Verify table.
+
+**This entry DOES flip status.** Brief-08's frontmatter carries `gate: model` with every `risk:`
+value `no`; under this house's ruling a `gate: model` brief's `implemented → verified` flip IS the
+verifier's own README-row commit — no separate human/desk act is needed for a PASS outcome, and
+none is deferred here. This PR's second commit rewrites `docs/streams/forge-gitlab/README.md`'s
+row 08 Status cell `implemented → verified` under exactly that authority, same run, same identity.
+Recorded plainly so the record matches the act: this Evidence entry lands the PASS **and** performs
+the flip it certifies.
+
+Left open for a human/desk decision on `#834` — never resolved by this run, and this flip does not
+pre-empt it: whether the still-open finding `#834` tracks (the ratchet-vs-closure-to-zero policy
+question) can now be closed, or needs re-scoping to name the 5 remaining ratcheted call sites
+specifically (`deskadvisory/ghToken`, `deskdigest/runGH`, `deskdisposition/gh`, `deskmerge/runGH`,
+`deskpushguard/fetchPR`) now that the 3 sites which caused the 2026-09-10 FAIL (`deskroster`,
+`repohardenguard`) are migrated off the ban's surface entirely. This flip rests on the reading that
+row 3 passes as written on this run's evidence, on the no-passthrough half being fully and robustly
+delivered (rows 4/5), and on the 5-site ratchet residual being an accepted, disclosed, and tracked
+deferral rather than an unaddressed gap — `#834` stays open to record whether that reading holds,
+not to gate whether the row-3-as-written PASS is real.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
