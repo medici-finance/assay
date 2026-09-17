@@ -356,15 +356,36 @@ func evidenceFloorFailure(evidence string) (reason string, failed bool) {
 // independent signal — a committer-identity cross-check read from git — that
 // fails on different inputs than the token checks: it compares the git identity
 // of the brief's authoring commit against that of the commit that most recently
-// touched it (the Evidence-adding / status-flip commit). Because file-level git
-// attribution is best-effort (a brief is touched many times; a whole repo may
-// share one bot identity), that cross-check is reported as a loud NOTICE, never
-// a hard PROBLEM — it must never over-reject an honest verification whose
-// distinct runners happen to commit under one shared identity (the exact
-// no-over-rejection property the register's Verify table requires), and it must
-// degrade LOUDLY, never silently, when git cannot answer. Hard PROBLEMs stay the
-// province of the token/Evidence checks; the identity layer surfaces what the
-// tokens cannot corroborate.
+// touched it (the Evidence-adding / status-flip commit).
+//
+// SEVERITY (security-hardening/27 Task 2, assay#1116): same identity +
+// self-labeled independence = the selfVerification hard error — but ONLY when
+// identity is actually DISCRIMINATING in this repo, i.e. more than one git
+// identity appears across the checked briefs' history. A same-identity brief
+// is escalated to a hard PROBLEM when (a) this repo has more than one
+// committer identity in its brief history (so "same identity" is a genuine
+// signal, not an artifact of everything sharing one identity) and (b) the
+// brief's own tokens SELF-LABEL as independent — selfVerificationReason found
+// nothing and evidenceHasIndependentRow is true — meaning the token layer
+// alone would have passed it; the identity layer is precisely what catches
+// this case (hole-2: "authored: … by fable" then "verified: … opus" defeats
+// selfVerificationReason with no cross-check). A brief the token checks
+// already flagged (reason != "" or no independent Evidence row) is not
+// double-flagged here — it is already a hard PROBLEM from that layer.
+//
+// The single-identity-repo case stays a NOTICE, deliberately, and is not
+// escalated: when EVERY checked brief's authoring and Evidence commits sit
+// under one shared git identity (the common shape for a repo that commits
+// everything under one bot/App identity), commit metadata cannot discriminate
+// author from verifier at all — escalating there would fail closed against a
+// legitimate, common operating shape (a solo-maintainer or single-bot-identity
+// repo) rather than against a real independence gap, which is exactly the new
+// false-positive class this change must not introduce. That case remains a
+// loud, honest degradation: token-level attribution is the only independence
+// signal commit metadata can offer there.
+//
+// It must still degrade LOUDLY, never silently, when git cannot answer at all
+// (no .git, or a brief's own history unreadable) — those paths are unchanged.
 //
 // Returns (problems, notices): hard problems change the exit code; notices are
 // printed and do not.
@@ -378,7 +399,16 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 	// aggregate NOTICE) or several (a brief whose authoring and Evidence commits
 	// share one identity is not independently verified — surfaced, still a
 	// NOTICE, so an honest shared-identity re-run is never red-lined).
-	type identPair struct{ label, id string } // label + the shared identity
+	type identPair struct {
+		label, id string
+		// selfLabeledIndependent is true when this brief's TOKEN-level checks
+		// (selfVerificationReason, evidenceHasIndependentRow) found nothing wrong
+		// — i.e. the tokens alone read as independent. That is precisely the
+		// "self-labeled independence" half of the escalation condition: a brief
+		// the token layer already flagged is already a hard PROBLEM from that
+		// layer and is not re-flagged here.
+		selfLabeledIndependent bool
+	}
 	var sameIdentity []identPair
 	idents := map[string]bool{}
 	gitReadable := false // at least one brief yielded readable commit identity
@@ -420,13 +450,20 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 				continue // no dated runner to extract a token from
 			}
 
-			if reason := selfVerificationReason(bf.Authored, row.Verified); reason != "" {
+			reason := selfVerificationReason(bf.Authored, row.Verified)
+			if reason != "" {
 				add("%s: Verified runner looks like self-verification (%s)", label, reason)
 			}
 
-			if !evidenceHasIndependentRow(bf.Evidence) {
+			hasIndependentRow := evidenceHasIndependentRow(bf.Evidence)
+			if !hasIndependentRow {
 				add("%s: verified requires an independent (non-implementer) Evidence row", label)
 			}
+
+			// self-labeled independence: the token layer found nothing wrong —
+			// used below to gate the committer-identity escalation (security-
+			// hardening/27 Task 2, assay#1116).
+			selfLabeledIndependent := reason == "" && hasIndependentRow
 
 			// --- committer-identity cross-check (security-hardening ID-2, hole-2) ---
 			// A `git archive` export has no .git and nothing git can answer about
@@ -461,7 +498,7 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			idents[authoringID] = true
 			idents[evidenceID] = true
 			if authoringID == evidenceID {
-				sameIdentity = append(sameIdentity, identPair{label, authoringID})
+				sameIdentity = append(sameIdentity, identPair{label, authoringID, selfLabeledIndependent})
 			}
 		}
 	}
@@ -487,28 +524,59 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			// Multiple identities exist in this repo, so identity IS discriminating
 			// — yet these briefs' authoring and most-recent (Evidence-adding)
 			// commits are under ONE identity: the same actor both wrote and last
-			// touched the brief, so its verification is not corroborated as
-			// independent by commit metadata. Surfaced as a bounded NOTICE (not a
-			// hard PROBLEM: a legitimate re-run can leave the author as last
-			// committer, e.g. a post-verify typo fix — file-level attribution is
-			// best-effort), so an operator can confirm the Evidence was
-			// independently run.
-			labels := make([]string, 0, len(sameIdentity))
+			// touched the brief. Split by whether the TOKEN layer already caught
+			// it (security-hardening/27 Task 2, assay#1116):
+			//
+			//   - selfLabeledIndependent == true: the tokens alone read as
+			//     independent (selfVerificationReason found nothing, an
+			//     independent Evidence row exists) — exactly hole-2, the case the
+			//     token layer cannot see. With identity actually discriminating
+			//     in this repo, same authoring/Evidence identity is now positive
+			//     evidence of non-independence, not just an inconclusive
+			//     coincidence, so this escalates to a hard PROBLEM: the
+			//     selfVerification error the brief's Task 2/4(b) requires.
+			//   - selfLabeledIndependent == false: the token layer already
+			//     flagged this brief (self-verification reason, or no
+			//     independent Evidence row) — already a hard PROBLEM from that
+			//     layer. Not re-flagged as a second problem; surfaced instead as
+			//     a bounded corroborating NOTICE so the identity signal is still
+			//     visible without duplicating the failure.
+			var escalated, corroborating []identPair
 			for _, p := range sameIdentity {
-				labels = append(labels, fmt.Sprintf("%s (%s)", p.label, p.id))
+				if p.selfLabeledIndependent {
+					escalated = append(escalated, p)
+				} else {
+					corroborating = append(corroborating, p)
+				}
 			}
-			sort.Strings(labels)
-			const maxShown = 8
-			shown := labels
-			suffix := ""
-			if len(labels) > maxShown {
-				shown = labels[:maxShown]
-				suffix = fmt.Sprintf(", +%d more", len(labels)-maxShown)
+			sort.Slice(escalated, func(i, j int) bool { return escalated[i].label < escalated[j].label })
+			for _, p := range escalated {
+				add("%s: verification independence FAILS the committer-identity cross-check — the authoring "+
+					"commit and the most-recent (Evidence-adding) commit for this brief share one git identity "+
+					"(%q), even though the Verified/Evidence tokens self-label as independent; this repo's brief "+
+					"history carries more than one git identity, so identity IS discriminating here — this is "+
+					"the security-hardening/27 selfVerification failure (same identity + self-labeled "+
+					"independence): confirm the Evidence was genuinely run by someone other than the author, or "+
+					"correct the runner/author token", p.label, p.id)
 			}
-			addNotice("verification-independence: committer-identity cross-check — %d verified/done brief(s) "+
-				"have their authoring and most-recent (Evidence-adding) commit under one git identity, so commit "+
-				"metadata does not corroborate independent verification; confirm the Evidence was run by a "+
-				"non-implementer: %s%s", len(sameIdentity), strings.Join(shown, ", "), suffix)
+			if len(corroborating) > 0 {
+				labels := make([]string, 0, len(corroborating))
+				for _, p := range corroborating {
+					labels = append(labels, fmt.Sprintf("%s (%s)", p.label, p.id))
+				}
+				sort.Strings(labels)
+				const maxShown = 8
+				shown := labels
+				suffix := ""
+				if len(labels) > maxShown {
+					shown = labels[:maxShown]
+					suffix = fmt.Sprintf(", +%d more", len(labels)-maxShown)
+				}
+				addNotice("verification-independence: committer-identity cross-check — %d already-flagged "+
+					"verified/done brief(s) also have their authoring and most-recent (Evidence-adding) commit "+
+					"under one git identity, corroborating the token-level finding already reported as a "+
+					"PROBLEM above: %s%s", len(corroborating), strings.Join(shown, ", "), suffix)
+			}
 		}
 	}
 
