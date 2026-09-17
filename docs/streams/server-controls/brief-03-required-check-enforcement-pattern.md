@@ -135,8 +135,8 @@ cannot safely start without it.
    citing its ruleset entry (context `leak-sweep`, id 20872509) as the dereferenceable proof the
    pattern is real and not aspirational. Note that `leak-sweep`'s rule reads its input data — a
    private, withheld-token map — from custody held outside the policed party's reach (evaluated by
-   the same side that owns the runner, per this repo's own committed `leaksweep-pattern.yml` and
-   `leaksweep-control.yml` workflow headers), so it exercises all four conditions (a)-(d); it is the
+   a separate, privately-run process outside this repo's own runner, per this repo's own committed
+   `leaksweep-pattern.yml` workflow header), so it exercises all four conditions (a)-(d); it is the
    live exemplar for (d), not a gap needing one.
 3. State the **negative-path obligation** every application of this pattern inherits: its Verify
    table must carry a row that VIOLATES one condition (e.g. an author-posted status, a head-run
