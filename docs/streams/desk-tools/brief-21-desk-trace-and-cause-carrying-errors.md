@@ -268,6 +268,40 @@ run reported **4 NOT CAUGHT** — the three per-shape redactor mutations and the
 one — because the mutation spec's `-run` filter did not reach the tests that cover them. The
 tests were right; the spec was under-scoped. Widening the filter brought all four to CAUGHT with
 no change to any assertion.
+### Non-implementer verifier run — 2026-09-16 verify-desk (desk-tools/21 dispatched verifier) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Merged main `a4700d2b`.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, silent | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 2 | `TestToolRunSaidSkipsPreambleAndCarriesTheToolsOwnMessage` + `TestToolRunFailShapeAndCarriedDetail` | exit 0 | exit 0/0, both PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 3 | `TestReportErrorOffIsByteIdentical` + `TestReportErrorOnPrintsChainCommandsAndTimings` | exit 0 | exit 0/0, both PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 4 | `TestScrubRedactsEveryTransportShape` | exit 0 incl. negative control | exit 0; 7 subtests PASS, negative control confirmed | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 5 | `TestTraceNeverPrintsACredential` (SPOF row) | exit 0 | exit 0, PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 6 | `TestRefusedWithCauseStaysARefusal` + `TestTraceEnabledReadsTheEnvSpellings` | exit 0 | exit 0/0, both PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 7 | `TestClaimAcquireFailureNamesTheClaimToolsOwnMessage` + `TestGitOutFailureCarriesGitStderr` | exit 0 | exit 0/0, both PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 8 | `TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine` + `TestTraceIsOffByDefaultAndOutputIsUnchanged` | exit 0 | exit 0/0, both PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 9 | `TestRunGitFailureCarriesStderrCommandAndExitStatus` + `TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand` | exit 0 | exit 0/0, both PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 10 | `TestTokenPathNoticeIsPrintedOnStderrNotStdout` | exit 0 | exit 0, PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 11 | `TestDedupeSearchOutageNamesTheAPIStatus` + `TestGhStderrStripsControlBytes` (row's literal names) | exit 0 | exit 0 but "no tests to run" for BOTH — **neither name exists in the shipped `cmd/deskfile/` package** (false-green if trusted at face value). Actual shipped tests covering the same fact: `TestDedupeSearchPropagatesTheForgeDiagnosis` + `TestDedupeSearchControlBytesStrippedByBackend`, both run directly: PASS, satisfy the row's Expect column exactly. Documentation-currency drift (provisional names never updated post-merge), not a missing capability — filed as a light follow-up in this Evidence entry rather than a separate issue (session's per-repo new-issue budget already spent on this brief's own risk-value question) | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 12 | `go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1` | exit 0 | exit 0, all 6 packages `ok` | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 13 | `-run 'TestS2'` + `-run 'TestCorpus'` | exit 0 | exit 0/0; 9/10 S2 PASS, 1 SKIP by design (fixture absent, matches implementer's note); all 5 Corpus PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 14 | `gofmt -l` on brief-owned files + touched cmd dirs | empty | exit 1 whole-dir — a phantom_test.go file under cmd/deskdispatch is flagged, but that file predates this brief (commit 91a7f9208, unrelated), not in brief's `files:` list, untouched by this diff. Every brief-owned file independently confirmed gofmt-clean | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 15 | `cd statusgen && go run . --root .. --lint` | exit 0 | exit 0, LINT: PASS | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+| 16 | `go run ./cmd/muhar -spec internal/deskkit/trace-mutations.json` | exit 0, baseline GREEN, mutations CAUGHT | exit 0 — baseline GREEN; 10/10 named mutations CAUGHT, 0 not-caught, 0 could-not-mutate | 2026-09-16 | verify-desk (desk-tools/21 dispatched verifier) |
+
+No invented scope — every row maps to a real brief requirement. Row 11's finding (above) is the only anomaly, and is a documentation/test-name drift, not a functional gap.
+
+**Risk-bearing value.**
+
+**RISK-VALUE: DERIVED** — `reSecretEnvAssign` credential-name allowlist (`scrub.go:41-42`, matching `TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|PRIVATE_KEY|CREDENTIAL|PAT`) — cross-checked against every uppercase env-var assignment in `tools/desk`: the only credential-bearing child-env override actually set anywhere (`GH_TOKEN`) is caught; non-secrets (`ASSAY_RUN_KEY`, `ASSAY_VERIFIER_PUBKEY`) correctly fall outside. A heuristic, not closed-form, matching the brief's stated over-redact-not-exhaustive posture.
+
+**RISK-VALUE: DERIVED** — `reURLUserinfo` / `reAuthHeader` transport regexes (`scrub.go:31,36`) match exactly the two concrete leak shapes the brief names, verified against the actual `GH_TOKEN`-authenticated URL construction the codebase performs.
+
+**RISK-VALUE: NAMED, NOT DERIVED** — `traceStepCap = 200` @ `internal/deskkit/trace.go:54` — an arbitrary ledger-length bound, low irreversibility (truncation is announced, not silent; bounds output size, not a security/authority boundary). Filed as a question: medici-finance/assay#1240 — not a blocker to this brief's flip.
+
+**VERIFY: PASS** — all 16 rows pass on merged main (row 11's stale-name issue resolved by running the actual shipped tests, which satisfy the fact). No FAIL, no could-not-check.
 
 ## Review
 
