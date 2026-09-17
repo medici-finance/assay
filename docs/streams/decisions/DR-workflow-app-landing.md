@@ -103,7 +103,7 @@ The methodology assumes ONE narrowly-scoped `workflows: write` identity exists. 
 inspection, this project has no such App installed, or the installed App lacks the PR-authoring
 capability (it can only push a promote job to the default branch, say, not open a PR), then the
 model cannot be wired without a human provisioning step: create/adjust the App, set its
-permissions to exactly `contents: write` + `workflows: write` + `metadata: read`, install it on
-the repo, and record it in the App inventory. That provisioning ask is raised to the driver by
+permissions to exactly `contents: write` + `workflows: write` + `pull_requests: write` +
+`metadata: read`, install it on the repo, and record it in the App inventory. That provisioning ask is raised to the driver by
 the wiring brief (`desk-supervision/10`); it is a human-only act and is called out there as a
 `could-not-check` until performed.

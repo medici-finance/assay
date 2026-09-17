@@ -18,9 +18,11 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   The subject is a credential's permission scope: an identity holding workflows:write can rewrite
   what every CI check asserts, a supply-chain surface. The human is confirming that exactly ONE
-  identity holds that grant, that its scope is contents:write + workflows:write + metadata:read and
-  nothing wider, and — if provisioning is needed — authorising the App install/permission act, which
-  GitHub reserves for a signed-in human.
+  identity holds that grant, that its scope is contents:write + workflows:write +
+  pull_requests:write + metadata:read — the set the duty requires — with administration, actions,
+  checks/statuses:write, members, and secrets/variables all withheld, and — if provisioning is
+  needed — authorising the App install/permission act, which GitHub reserves for a signed-in
+  human.
 design: DR-workflow-app-landing
 decision-trigger: creation
 decision-issue: 1245
@@ -43,7 +45,7 @@ sources:
   - "freshness-checked 2026-09-16 @ e9fa19d3"
 consumers:
   - "docs/adopting-assay.md: follow-up desk-supervision/10 (this brief; flips to fixed-here when the implementation records the workflow App in the App inventory)"
-  - "the desk App-scopes-vs-duties preflight: out-of-scope (it reads the LIVE granted permission set from the forge, not this doc; Verify row 4 exercises it against the live App rather than this brief changing what it reads)"
+  - "the desk App-scopes-vs-duties preflight: out-of-scope (it reads the LIVE granted permission set from the forge, not this doc; Verify row 5 exercises it against the live App rather than this brief changing what it reads)"
 ---
 
 # Brief 10 — Confirm or repair the workflow App wiring
@@ -75,11 +77,11 @@ facts:
 - constraint: GitHub hard-rejects any App push that creates or updates a `.github/workflows/*`
   file unless the App holds `workflows: write` — established in `ci/staged-workflows/README.md`.
 - ground-truth-unknown-at-authoring: whether such an App is installed on this repo with the
-  PR-authoring capability is NOT verifiable from the brief; it is Verify row 4's job, and a
+  PR-authoring capability is NOT verifiable from the brief; it is Verify row 5's job, and a
   missing/mis-scoped result is a provisioning ask, not a defect in this brief.
 - single-point-of-failure: the App's permission GRANT itself — one mis-scope (too wide, or held
   by more than one App) defeats the concentration. Second layer: the app-scopes-vs-duties
-  preflight (row 4) reads the live grant and refuses on drift, and row 5 proves the negative —
+  preflight (row 5) reads the live grant and refuses on drift, and row 6 proves the negative —
   no other App holds the scope — so a widening is caught in a different component (the forge grant)
   from where it is declared (the doc).
 
@@ -137,7 +139,7 @@ flips them back to `todo`.
    not a desk role or a tier.
 2. Write `docs/streams/desk-supervision/workflow-app-scope.md` (planned): the permission set, the duties, and
    the no-other-holder invariant, cross-linking the DR.
-3. Record the ground-truth result of Verify rows 4 and 5 (confirmed / provisioning-required) in the
+3. Record the ground-truth result of Verify rows 5 and 6 (confirmed / provisioning-required) in the
    Evidence section, and if provisioning is required, name it as the ask to the driver.
 
 ## Verify (executable — no prose-only DoD items)
@@ -155,7 +157,7 @@ flips them back to `todo`.
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
-     (command, exit code, output line(s) or hash, date, runner). Rows 4 and 5 record the
+     (command, exit code, output line(s) or hash, date, runner). Rows 5 and 6 record the
      ground-truth outcome: confirmed, or provisioning-required (a could-not-check that names the
      human provisioning ask). -->
 
