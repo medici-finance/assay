@@ -138,6 +138,7 @@ func cmdCreate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -159,7 +160,7 @@ func cmdCreate(args []string) (err error) {
 		}
 	}
 	if strings.TrimSpace(*title) == "" {
-		return deskkit.Refused("refused: --title is required")
+		return deskkit.SchemaRefusal("deskpr", "--check", "refused: --title is required")
 	}
 	if (*bodyFile == "") == (*bodyMin == "") {
 		return deskkit.Refused("refused: provide exactly one of --body-file or --body-min")
@@ -236,6 +237,24 @@ func cmdCreate(args []string) (err error) {
 		}
 	}
 
+	// --check stops HERE, before the token mint and before any forge call. Every gate
+	// above it is local: flags, the secret scan (title/branch/diff, plus the body scan
+	// earlier), the Brief:/Issue: trailer, branch state (preflight), the push-transport
+	// gate, and the public-repo self-containment scan (its bare-#N category already
+	// reports itself "not checked" on stderr via SelfContainOpts.Notices when no local
+	// hint is available — see selfcontain.go — so nothing here rounds that up to a pass).
+	// It mints no token, opens no connection, and pushes nothing: a real `create` run
+	// past this point can still fail on remote state (an existing open PR, a red rate
+	// limit, a non-authorized public repo), which --check never claims to have checked.
+	if *check {
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "check: every local gate passed"
+		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
+			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
+			"the outward-write rate limit, and the public-repo authorization gate.")
+		return nil
+	}
+
 	// Mint the session-role App installation token and resolve the forge that serves this
 	// repo under that App's custody. Every change read and write below goes through the
 	// resolved backend; there is no ambient-identity fallback (the retired --as-app path).
@@ -301,11 +320,20 @@ func cmdCreate(args []string) (err error) {
 		return deskkit.Unverifiable("git push failed", pushErr)
 	}
 
+	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
+	// only — every gate above (the Brief:/Issue: trailer parse, the secret/self-contain
+	// scans) already ran against the caller-supplied body, so this cannot change what any
+	// of them saw.
+	prBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
+
 	// CreateDraftChange opens the change as a DRAFT — the frozen property of the seam; there
 	// is no path on which it opens ready. The body goes straight to the backend, so there is
 	// no temp file and no `--body-file` argv any more.
 	ref, cErr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
-		Title: *title, Body: string(body), Head: facts.branch, Base: *base,
+		Title: *title, Body: string(prBody), Head: facts.branch, Base: *base,
 	})
 	if cErr != nil {
 		return deskkit.Unverifiable("create draft change failed", cErr)
@@ -419,6 +447,7 @@ func cmdUpdate(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate) and stop BEFORE minting a token or opening any connection; the Brief:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -437,7 +466,6 @@ func cmdUpdate(args []string) (err error) {
 			return verr
 		}
 	}
-
 	dir, gerr := getwd()
 	if gerr != nil {
 		return deskkit.Unverifiable("cannot resolve working directory", gerr)
@@ -458,6 +486,23 @@ func cmdUpdate(args []string) (err error) {
 
 	if scanErr := scanWrite(facts, "", "update", *scanOverride); scanErr != nil {
 		return scanErr
+	}
+
+	// --check stops HERE, before the token mint and before any forge call. Every gate
+	// above it is local: flags, branch state (preflight), the push-transport gate, and
+	// the secret scan (branch name + diff). The Brief:/Issue: trailer check is NOT run:
+	// update pushes commits to an EXISTING PR and validates the trailer against that
+	// PR's CURRENT body, which lives on the forge — there is no local copy to check it
+	// against, so it is reported as not checked, by name, rather than silently skipped
+	// or (worse) rounded up to a pass.
+	if *check {
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "check: every local gate passed"
+		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
+			"Not checked (needs the forge, not run here): the Brief:/Issue: trailer on the existing " +
+			"PR's current body, whether an open PR exists for this branch, the outward-write rate " +
+			"limit, and the public-repo authorization gate.")
+		return nil
 	}
 
 	if merr := mintWorkerToken(facts.repo); merr != nil {
@@ -926,8 +971,8 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		return 0, deskkit.Refused("refused: " + err.Error())
 	}
 	if len(trs) == 0 {
-		return 0, deskkit.Refused("refused: PR body carries no trailer — add exactly one line " +
-			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), " +
+		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
+			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
