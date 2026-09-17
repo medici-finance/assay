@@ -133,9 +133,11 @@ cannot safely start without it.
    independence of each spelled out, and the self-attestation failure term.
 2. Record the `leak-sweep` check as the live exemplar (base-repo runner, non-author identity),
    citing its ruleset entry (context `leak-sweep`, id 20872509) as the dereferenceable proof the
-   pattern is real and not aspirational. Note that `leak-sweep`'s rule reads no input data beyond
-   the diff itself, so it exercises (a)-(c) but is not an exemplar for (d); a future application
-   that reads a roster or approver set is the first to need it.
+   pattern is real and not aspirational. Note that `leak-sweep`'s rule reads its input data — a
+   private, withheld-token map — from custody held outside the policed party's reach (evaluated by
+   the same side that owns the runner, per this repo's own committed `leaksweep-pattern.yml` and
+   `leaksweep-control.yml` workflow headers), so it exercises all four conditions (a)-(d); it is the
+   live exemplar for (d), not a gap needing one.
 3. State the **negative-path obligation** every application of this pattern inherits: its Verify
    table must carry a row that VIOLATES one condition (e.g. an author-posted status, a head-run
    workflow, or an edit to the check's own input data by the policed party) and proves the gate

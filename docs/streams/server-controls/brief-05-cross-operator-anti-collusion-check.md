@@ -164,7 +164,10 @@ Default if no answer: none — blocks until answered; the residual stays open an
 2. Apply brief 03's four trust conditions explicitly, including (d): name the independent-approver
    set's custody concretely — where it lives (e.g. a file on a protected path in a base-repo-only
    location, or an out-of-repo store) and who may change it — as part of this brief's own design,
-   not left to a future implementer to invent. Bind the rule's "distinct from history" half to
+   not left to a future implementer to invent. Cite brief 03's `leak-sweep` exemplar (its rule's
+   input data — a private, withheld-token map — held outside the policed party's reach, evaluated
+   by the same side that owns the runner) as the precedent for this custody shape, rather than
+   specifying one from scratch. Bind the rule's "distinct from history" half to
    platform-attested actors (the push event actor, the review submitter) explicitly, and exclude
    self-declared commit `author`/`committer` strings as rule inputs. Carry the inherited
    negative-path obligation into the reference check's own (specified) Verify table: a
