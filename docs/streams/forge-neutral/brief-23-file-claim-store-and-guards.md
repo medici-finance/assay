@@ -20,7 +20,7 @@ authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
   - "docs/streams/forge-neutral/reviewer-write-boundary.md — the scoping doc this brief implements; section numbers below refer to it"
-  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them (C: declaration required, notice every boot; E: rewrite in place under the lock, torn file unverifiable; H: containers never use this store)"
+  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them (C: declaration required, notice every boot; E: rewrite in place under the lock, torn file unverifiable; H: containers never use this store; L: a directory on a network filesystem is a notice on every boot, never a refusal)"
   - "tools/desk/internal/deskkit/claim.go:147-190 and 217-323 — the shipped directory lock and exclusive-create primitive this store reuses"
   - "tools/desk/cmd/deskclaim/main.go:30-35 — why dispatch claims left the machine-local directory on 2026-08-13; the failure the guards exist for"
   - "tools/desk/cmd/deskroster/main.go:1-10 — the roster is machine-local, so the tool cannot observe another host"
@@ -32,8 +32,8 @@ gate-why: >-
   sharing it — claim custody. The human confirms the store is refused without the operator's
   single-host declaration and inside a container, that the boot output says the declaration
   is not verified, that live claims on the forge make it refuse during the removal window,
-  and rules on the one open fork: what happens when the directory is on a network filesystem
-  or its filesystem cannot be determined.
+  and that a directory on a network filesystem — identified or undetermined — produces the
+  ruled notice on every boot and is never refused on that ground (spec §10 L, ruled).
 decision-trigger: start
 domain: complicated
 consumers:
@@ -42,7 +42,7 @@ consumers:
   - "tools/desk/README.md: follow-up forge-neutral/23 (this brief; flips to fixed-here when the implementation edits the path)"
   - "the boot check's store line and notices: follow-up forge-neutral/25"
   - "cell scaffolds that write the keys: follow-up forge-neutral/28"
-  - "deletion of the forge-side mixed-store read with the forge store: follow-up forge-neutral/30"
+  - "deletion of the forge-side mixed-store read with the forge store: follow-up forge-neutral/32"
 version: 1
 id: adab60fb-cc64-4c4f-95bf-11739ca9d449
 ---
@@ -63,7 +63,9 @@ different component) and branch-as-claim once the worker's branch is pushed, whi
 forge under every store. For the cross-host case the single control is the operator's
 declaration, and the layer behind it, during the removal window, is the forge-side mixed-store
 read; a second host that also runs a `file` store is NOT detectable (spec T12) — stated, not
-hidden.
+hidden. That includes two machines sharing one claims directory over a network mount: by
+ruling (spec §10 L) the tool does not refuse it, so the declaration and the every-boot notice
+are the only controls there.
 
 facts:
 - Shape: the spec's §4.1. One file per claim key under `ASSAY_CLAIM_DIR` (default
@@ -79,14 +81,20 @@ facts:
      `service`; cannot be determined → the resolver says so in its provenance string;
   3. the directory exists with owner-only permissions and a store marker (cell name, store
      kind) that agrees;
-  4. the filesystem guard — **the spec's open question L; this brief is written on its
-     recommended default**: directory positively identified as a network filesystem → refuse;
-     filesystem type cannot be determined → resolve, with a NOTICE on every boot saying the
-     file store is supported on local disks only. Brief 20's S4 result fixes which OSes can
-     refuse;
+  4. the filesystem guard — **ruled (spec §10 L, 2026-09-17, answer C): a NOTICE, never a
+     refusal.** Directory positively identified as a network filesystem → resolve, with a
+     NOTICE on every boot naming the filesystem type found and saying the file store is
+     supported on local disks only; filesystem type cannot be determined → resolve, with a
+     NOTICE on every boot saying the type was not determined and the same "local disks only"
+     sentence. This precondition never refuses. Brief 20's S4 result fixes which OSes can
+     name the type, and so which of the two wordings an operator sees;
   5. during the removal window only: a forge-side read of both claim namespaces shows no live
      claim for the repo. The read needs read access only; if it cannot be performed the result
-     is could-not-check → refuse. Brief 30 deletes this precondition with the forge store.
+     is could-not-check → refuse. Brief 32 deletes this precondition with the forge store.
+- Preconditions 1, 2, 3 and 5 refuse; precondition 4 only ever prints. The single-host
+  declaration (precondition 1) **remains the refusing guard** for the cross-host case. What
+  the ruling on L accepts, stated plainly: a claims directory on a mount shared by two
+  machines is stopped by the declaration and the notice only — not by the tool.
 - The reverse check, window only: the legacy resolution refuses while the default claims
   directory holds a live claim for the repo.
 - Supported: local disks. The README says so and says everything else is unsupported; a cell
@@ -100,15 +108,24 @@ computer also dispatches the same repository with its own folder, neither sees t
 the same work is started twice. The tools cannot see other computers. It has been ruled that
 the folder is refused unless the operator has declared this is the only computer, that every
 start repeats that this is declared and not verified, and that anything running in a container
-must use the claim service instead. One point is still open: what to do when the folder sits
-on a network drive, where its safety is unmeasured. The proposal is to refuse when the tools
-can tell it is a network drive, and to print a standing notice when they cannot tell.
+must use the claim service instead.
+
+**The network-drive question is ruled (2026-09-17; spec §10 L, answer C).** It was asked as:
+refuse when the tools can tell the folder is on a network drive and print a notice when they
+cannot tell; refuse in both cases; or print a notice only and never refuse. The answer is
+**notice only, never refuse**: whenever the folder is on a network drive, or the tools cannot
+tell what kind of drive it is on, every start prints a standing notice that the folder store
+is supported on local disks only, and the tools carry on. What that accepts: if two computers
+share one claims folder over a network drive, nothing in the tools stops them — only the
+operator's only-computer declaration, which is still required and still refused when absent,
+and the notice. The safety of such a folder remains unmeasured.
+
+What is left to decide is whether the store, built to these rulings, is approved to start.
 
 Options:
-1. **Approve with the proposed network-drive behaviour** — refuse when known, notice when not.
-2. **Refuse whenever the drive type cannot be determined** — strictest; stops legitimate
-   single-computer cells on any system where the type cannot be read.
-3. **Notice only, never refuse** — most permissive; an unsupported setup keeps running.
+1. **Approve as ruled** — declaration required and refused without it; containers refused;
+   network drive or unknown drive type is a standing notice, never a refusal.
+2. **Hold** — do not start; say what is missing.
 
 Default if no answer: none — blocks until answered.
 
@@ -127,11 +144,15 @@ Default if no answer: none — blocks until answered.
    the conformance table.
 2. Implement the five preconditions and the reverse check in the resolver; each refusal is
    exit 6 before any worktree, naming the key or the evidence found and the remedy (drain,
-   then switch — spec §7).
+   then switch — spec §7). Precondition 4 is the exception by ruling: it never refuses; it
+   returns the NOTICE text the boot check (brief 25) prints on every boot.
 3. Race test: N processes, one key, exactly one acquires, the rest exit 5. Torn-file test.
 4. Mutation entries: (a) replace the exclusive create with a plain create; (b) skip the
-   forge-side mixed-store read; (c) treat a torn file as absent.
-5. README: the store, the keys, "local disks only", the container rule, the drain.
+   forge-side mixed-store read; (c) treat a torn file as absent; (d) drop the filesystem
+   NOTICE (`filestore-network-fs-notice-dropped`).
+5. README: the store, the keys, "local disks only", the container rule, the drain — and, in
+   the spec's words, that a network filesystem is a notice and not a refusal, so a directory
+   shared by two machines is stopped by the declaration and the notice only.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -142,11 +163,13 @@ Default if no answer: none — blocks until answered.
 | 4 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestFileStoreTornFileIsUnverifiable' -count=1 -timeout 120s` | exit 0 — a truncated claim file yields exit 6 on read, acquire and release; never FREE |
 | 5 | check:ci +mutation | the `mutations.json` entries named `filestore-plain-create` and `filestore-torn-reads-as-absent` | rows 3 and 4 go RED respectively |
 | 6 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestFileStoreRefusedWithoutSingleHostDeclaration' -count=1 -timeout 120s` | exit 0 — refused, exit 6, message names `ASSAY_CLAIM_SINGLE_HOST` (spec V3) |
-| 7 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestFileStoreContainerAndFilesystemGuards' -count=1 -timeout 120s -v` | exit 0; subtests: container detected → refused naming `service`; network filesystem identified → refused; filesystem undetermined → resolves with the every-boot NOTICE (spec V7) |
+| 7 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestFileStoreContainerAndFilesystemGuards' -count=1 -timeout 120s -v` | exit 0; subtests: container detected → refused naming `service`; network filesystem identified → **resolves**, with the every-boot NOTICE naming the filesystem type; filesystem undetermined → resolves, with the every-boot NOTICE saying the type was not determined; in neither filesystem subtest is the exit code 6 (spec V7) |
 | 8 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestMixedStoresRefuse' -count=1 -timeout 120s -v` | exit 0; subtests: live forge claim while resolving `file` → refused; live file claim under the legacy resolution → refused; forge read impossible → refused as could-not-check (spec V4) |
 | 9 | check:ci +mutation | the `mutations.json` entry named `filestore-skips-mixed-store-read` | row 8's first subtest goes RED |
 | 10 | check +flow +dereference | With a config home whose reviewer grant records repository **read**, `ASSAY_CLAIM_STORE=file` and the declaration set: run a review dispatch against a fixture repository, then `deskclaim-ref show fixture--issue-1` and `desksupervise status` | dispatch reports `store file`; both readers show the holder; no ref was written to the fixture (spec V5) |
 | 11 | check | `(cd statusgen && go build -o /tmp/statusgen-fn23 .) && /tmp/statusgen-fn23 --root . --consumers --brief forge-neutral/23` | exit 0 |
+| 12 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestFileStoreNetworkFilesystemStillNeedsDeclaration' -count=1 -timeout 120s -v` | exit 0 — with the directory identified as a network filesystem and `ASSAY_CLAIM_SINGLE_HOST` unset: refused, exit 6, message names the declaration; the filesystem NOTICE does not stand in for it. The declaration remains the refusing guard |
+| 13 | check:ci +mutation | the `mutations.json` entry named `filestore-network-fs-notice-dropped` | row 7's two filesystem subtests go RED — a resolve with no NOTICE is the silent case the ruling did not accept |
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |
@@ -156,7 +179,8 @@ Default if no answer: none — blocks until answered.
 | A second host with forge-stored claims runs beside a file store during the window | rows 8, 9 |
 | A second host with its OWN file store runs beside this one | **no row** — not detectable (spec T12). Recorded review-only: the declaration, the every-boot notice (brief 25) and the adopter docs (brief 29) are the controls, and the spec says so in words |
 | The store is started inside a container | row 7 |
-| The store is pointed at a network filesystem | row 7 where identifiable; otherwise the standing NOTICE and the README's "local disks only" — the open question L is exactly this residue |
+| The store is pointed at a network filesystem | **not refused, by ruling** (spec §10 L). Rows 7 and 13 prove the NOTICE is printed on every boot in both cases and cannot be silently dropped; row 12 proves the declaration still refuses. Two machines sharing such a directory are stopped by the declaration and the notice only — accepted residue, stated in the README |
+| An implementer "tightens" the filesystem guard back into a refusal | row 7 asserts both filesystem subtests resolve; review |
 | Output differs from the other stores and breaks a parser | row 2 |
 
 ## Evidence
@@ -170,5 +194,5 @@ Gate: **human** (from frontmatter — `sensitive-data: yes`; where claims are ke
 verdict + date in the stream README table.
 
 Reviewer questions for an identity-chain brief, answered in the verdict:
-1. What single control stands between two hosts and a double dispatch? (The operator's declaration; beneath it, during the window, the forge-side mixed-store read — and nothing for a second file store, which the spec states.) Is that acceptable?
+1. What single control stands between two hosts and a double dispatch? (The operator's declaration; beneath it, during the window, the forge-side mixed-store read — and nothing for a second file store, nor for one directory shared over a network mount, where by ruling the tool prints a notice and does not refuse. The spec states both.) Is that acceptable?
 2. Does any row prove the lower layer with the upper bypassed? (Row 5 removes the atomic create and the torn-file rule; row 9 removes the mixed-store read; row 10 runs with a credential that cannot write to the forge.)

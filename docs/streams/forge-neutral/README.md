@@ -233,8 +233,9 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 25 | [Store-aware duties — the reviewer needs repository read once the cell's store is set, and the boot check names the store](brief-25-store-aware-duties.md) | 3 | M | todo | — | — |
 | 28 | [Scaffold defaults — a fresh host cell gets the file store and the declaration, a container cell gets the served store; existing cells are left alone](brief-28-scaffold-claim-store-defaults.md) | 5 | M | todo | — | — |
 | 29 | [Adopter docs and store-neutral skills — supported topologies, the reviewer at repository read, and the removal window](brief-29-docs-and-store-neutral-skills.md) | 6 | M | todo | — | — |
-| 30 | [Cutover and removal — release N proves the narrowed reviewer, the operator narrows the grant, release N+1 deletes the forge store](brief-30-cutover-and-lower-layer-proof.md) | 7 | L | todo | — | — |
+| 30 | [Release-N cutover — ship, prove the narrowed reviewer on a live cell, then the operator narrows the grant](brief-30-cutover-and-lower-layer-proof.md) | 7 | M | todo | — | — |
 | 31 | [Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live](brief-31-remaining-roles-write-audit.md) | 8 | M | todo | — | — |
+| 32 | [Release-N+1 deletion — the forge claim store is removed and an unset store key is refused](brief-32-forge-store-deletion.md) | 8 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -352,10 +353,10 @@ verbs by routing them through the resolver, and cites it. `#349` (statusgen's Gi
 scaffold and silently-degraded claim decay) is brief 08. `#346` (provisioner defects) and
 `#348` (adopter doc) are `forge-gitlab`'s and are not re-opened here.
 
-### Second path — the reviewer write boundary (briefs 20–25, 28–31, #1267)
+### Second path — the reviewer write boundary (briefs 20–25, 28–32, #1267)
 
 Spec: [`reviewer-write-boundary.md`](reviewer-write-boundary.md) — **Status: draft**. Its design
-questions were ruled by the driver on 2026-09-17 (spec §10); approval of the spec is still the
+questions were all ruled by the driver on 2026-09-17 (spec §10); approval of the spec is still the
 driver's own act. No brief on this path other than 20 starts until it is approved; every
 implementing brief's Verify row 1 checks that. Briefs 26 and 27 were withdrawn with the
 forge-ref claim store; the numbering gap is kept.
@@ -363,16 +364,31 @@ forge-ref claim store; the numbering gap is kept.
 ```
 spec approved ─> 20 ─> 21 ─┬─> 22 ───────────────┐
  (human)      (measure) (seam + │  (readers on the    │
-                        resolver)│   seam — BEFORE any ├─> 28 ─> 29 ─> 30 ─────────────> 31
-                                │   writer switches)  │ (scaffold (docs) (release N: prove;   (audit the
-                                ├─> 23 ─> 24 ─────────┘  defaults)       the operator narrows  other roles)
-                                │  (file   (served                        the grant — human;
-                                │  store)   store)                        release N+1: delete
-                                └─> 25 (store-aware duties) ────────────> the forge store)
+                        resolver)│   seam — BEFORE any ├─> 28 ─> 29 ─> 30 ──────────────┬─> 32
+                                │   writer switches)  │ (scaffold (docs) (release N:      │  (release N+1: delete
+                                ├─> 23 ─> 24 ─────────┘  defaults)       ship, prove on  │   the forge store —
+                                │  (file   (served                        a live cell;   │   its own human gate)
+                                │  store)   store)                        THEN the       │
+                                └─> 25 (store-aware duties) ────────────> operator       └─> 31
+                                                                          narrows the       (audit the
+                                                                          grant — human)     other roles)
 ```
 
-One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 31`, with 22 and 25 joining before 28, 29
-and 30.
+One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 22 and 25 joining before 28, 29
+and 30. 31 forks off 30 beside 32 and is not on the path to the deletion.
+
+**30 and 32 are two briefs by ruling (2026-09-17).** 30 is the release-N cutover only: the
+release ships, the narrowed reviewer is proven on a live cell pinned to it, and then the
+operator narrows the grant. 32 is the release-N+1 deletion of the forge store — `gate: human`,
+depending on 30, with its own Verify table — so the half that cannot be half-done is signed
+off after a release of evidence, and one brief stays one pull request. 32 is the pacing item
+for "no reviewer holds repository write on any forge": until it lands, a cell that has not
+switched still resolves to the forge store.
+
+**31 waits on 30, not on 32.** The ruling sequences the other roles' audit "once it is live",
+and the reviewer change is live at the release-N cutover. Holding the audit for the deletion
+would cost a release and change nothing it measures except one window-only write, which 31
+records as removed by 32.
 
 **The head is 20, and the reason is checked, not assumed.** The tempting first step is 25 —
 make the duty list role-keyed so the reviewer can drop repository write. It is a dead end on
@@ -391,7 +407,8 @@ rests on two inventories and on what the file store can know about where it runs
 
 **Two things on this path are not briefs.** Narrowing the reviewer's grant on a real
 installation is a human, admin-side act, performed during the release-N window after 30's
-proof and after that cell has switched store; no tool performs or prompts it. And cutting
+proof and after that cell has switched store; no tool performs or prompts it, and it is a
+step of no brief — 32 does not wait on it. And cutting
 releases N and N+1 is the existing human-gated release process.
 
 **31 is a placeholder head for a follow-on wave**, by ruling: every other role is audited and
@@ -418,7 +435,7 @@ findings and do not exist yet.
 
 One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`.
 
-**Reviewer write boundary (briefs 20–25, 28–31)** — waves are derived from `depends:` like
+**Reviewer write boundary (briefs 20–25, 28–32)** — waves are derived from `depends:` like
 every other brief here, so they interleave with the numbers above rather than restarting:
 
 - **Wave 1** — `forge-neutral/20` (measurements; may run while the spec is draft).
@@ -428,11 +445,13 @@ every other brief here, so they interleave with the numbers above rather than re
 - **Wave 4** — `forge-neutral/24` (served store; depends on 23).
 - **Wave 5** — `forge-neutral/28` (scaffold defaults; depends on 22, 23, 24).
 - **Wave 6** — `forge-neutral/29` (docs + store-neutral skills; depends on 25, 28).
-- **Wave 7** — `forge-neutral/30` (cutover and removal across releases N and N+1; depends on
-  22, 23, 24, 25, 29).
-- **Wave 8** — `forge-neutral/31` (the other roles' write audit; depends on 30).
+- **Wave 7** — `forge-neutral/30` (the release-N cutover: ship, prove on a live cell, then the
+  operator narrows the grant; depends on 22, 23, 24, 25, 29).
+- **Wave 8** — `forge-neutral/32` (the release-N+1 deletion of the forge store; human-gated;
+  depends on 30) and `forge-neutral/31` (the other roles' write audit; depends on 30, not on
+  32). Parallelizable: 31 changes documents only.
 
-One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 31`.
+One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 beside 32.
 
 ## Shared conventions the briefs inherit
 
