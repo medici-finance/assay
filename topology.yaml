@@ -114,6 +114,32 @@ schema: topology-v1
 cell: assay
 
 # ---------------------------------------------------------------------------
+# comms — this cell's stated inter-desk message-plane enablement mode.
+#
+#   (absent)  disabled — the default. Never a default-on guess.
+#   interim   receive-and-route is live (messages flow, are checked
+#             deterministically and judged by a sandboxed reviewer on send and
+#             receive, routed and logged) but every execution lands as a
+#             PROPOSED dispatch a person fires — no autonomous session-firing.
+#   full      full autonomous enablement — desks act on each other's messages
+#             and start worker sessions without a person relaying each step.
+#
+# An unrecognised value is a parse ERROR naming the line, never a best-effort
+# read. This key is ONE of three INDEPENDENT off-switches the message plane
+# requires — the others are ASSAY_COMMS_* environment configuration and the
+# gateway process actually deployed for this cell — so stating a mode here
+# does not, by itself, turn anything on; see tools/desk/cmd/commsgw/config.go
+# and tools/desk/internal/topology/topology.go's CommsMode doc.
+#
+# This file states `interim`: the ruled cutover rung (2026-09-17 human ruling,
+# Option 2 — "Interim rung first"), not the recorded full-enable target. It is
+# illustrative here — the assay cell runs no gateway deployment and sets no
+# ASSAY_COMMS_* env, so this value is inert regardless of its setting; it
+# demonstrates the schema the way every other field in this worked example does.
+# ---------------------------------------------------------------------------
+comms: interim
+
+# ---------------------------------------------------------------------------
 # repos — one entry per repo whose topology this tree states.
 #
 #   visibility:  public | private | unknown   (unknown is the FAIL-CLOSED zero

@@ -8,8 +8,27 @@ deterministic pre-check pipeline (`precheck.go`) before it is durably queued
 
 ## Enablement — config-off default
 
-Every key below (`config.go`) is REQUIRED. Absence of any one of them refuses
-to serve; there is no partially-enabled state.
+A cell's comms plane is enabled only when **all three** of the following are
+present; any one absent leaves the cell inert (independent off-switches by
+design — each is checked by a DIFFERENT component, so a defect in one can
+never silently disarm the others):
+
+1. A `comms:` key in that cell's `topology.yaml` (strict parse; absence reads
+   as disabled, an unrecognised value is a parse error —
+   `tools/desk/internal/topology`'s `CommsMode`). This key is declarative
+   only: this package never reads it, and it wires nothing here.
+2. Every key below (`config.go`) is REQUIRED. Absence of any one of them
+   refuses to serve; there is no partially-enabled state.
+3. The gateway process actually deployed and reachable for that cell.
+
+As of the 2026-09-17 human ruling on this key's decision-gate issue (Option 2,
+"Interim rung first", over the recorded full-enable target), the recorded mode
+is `comms: interim` — receive-and-route live, but
+every execution lands as a proposed dispatch a person fires, never an
+autonomous session-firing (`../commsloop`'s `Loop.Native` stays at its zero
+value; see `dispatch_native.go`'s doc and
+`TestDispatchZeroValueNativeStaysInertForSessionTier`). Full enablement
+(`comms: full`, `Loop.Native = true`) is NOT implemented by this change.
 
 | Key | Purpose |
 |---|---|
