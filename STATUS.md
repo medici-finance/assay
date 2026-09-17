@@ -52,7 +52,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (49 desk-actionable of 60 total — 60 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (49 desk-actionable of 60 total — 58 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -93,8 +93,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 08 [exec:strong] | verified | 1000 | 0 | — | 2026-09-16 verify-desk (desk-tools/08 dispatched verifier; 11/11 rows PASS; risk-values all DERIVED) | — |
+| desk-tools | 12 | verified | 1000 | 0 | — | 2026-09-16 verify-desk (desk-tools/12 dispatched verifier; 9/9 rows PASS, corrects a prior over-broad row-8 HELD; risk-value DERIVED on exit-code contract) | — |
 | desk-tools | 15 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -221,10 +221,10 @@ _None._
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
-- 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — implemented (wave 1)
+- 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — verified (wave 1)
 - 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — implemented (wave 1)
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
-- 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
+- 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — verified (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — implemented (wave 1)
 - 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — implemented (wave 1)
 - 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — implemented (wave 1)
