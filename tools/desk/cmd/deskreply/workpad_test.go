@@ -209,19 +209,34 @@ func TestWorkpadWithoutMarkerRefuses(t *testing.T) {
 	}
 }
 
-// TestWorkpadDryRunRequiresWorkpadFlag: --dry-run only means something alongside
-// --workpad; on its own it must refuse rather than silently behave like a live plain reply.
-func TestWorkpadDryRunRequiresWorkpadFlag(t *testing.T) {
+// TestPlainReplyDryRunRehearsesWithoutWriting: brief 27's ergonomics half widens --dry-run
+// to the plain reply path, which used to refuse outright without --workpad (leaving the
+// plain path with no rehearsal at all — one of the largest measured deskreply refusal
+// classes). --dry-run now runs every check a real reply runs, INCLUDING the forge reads
+// (own-PR/open/head-branch verification), and stops immediately before the one mutating
+// call — the same "run every check, stop before the write" shape --workpad's own dry-run
+// already had, and deskpost's --dry-run has always had. It is a REHEARSAL, not an offline
+// check: it reaches the forge for the reads a real reply performs.
+func TestPlainReplyDryRunRehearsesWithoutWriting(t *testing.T) {
 	work := newBaseFixture(t)
 	withEnv(t, work)
 
 	bf := bodyFileWith(t, "a plain reply body")
-	rc := run([]string{"example-org/tracker", "7", "--dry-run", "--body-file", bf})
-	if rc != deskkit.ExitRefused {
-		t.Fatalf("--dry-run without --workpad rc = %d, want 5 (refused)", rc)
+	out := captureStdout(t, func() {
+		rc := run([]string{"example-org/tracker", "7", "--dry-run", "--body-file", bf})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("--dry-run without --workpad rc = %d, want 0", rc)
+		}
+	})
+	if !strings.Contains(out, "DRY-RUN: would post on PR #7") {
+		t.Fatalf("dry-run stdout = %q, want it to report what would post", out)
 	}
-	if rec := forgeRec(t); len(rec.requests) != 0 {
-		t.Fatalf("the verb reached the forge on a refused --dry-run-without---workpad invocation: %v", rec.requests)
+	rec := forgeRec(t)
+	if len(rec.requests) == 0 {
+		t.Fatalf("--dry-run reached no forge read at all — it must still verify the PR is OPEN and its own")
+	}
+	if rec.posted() {
+		t.Fatalf("--dry-run posted a comment: %v", rec.requests)
 	}
 }
 

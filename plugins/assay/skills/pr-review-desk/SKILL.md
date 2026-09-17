@@ -9,9 +9,9 @@ The **review half** of the process-desk pipeline: **intake-desk** turns the inbo
 placeholder briefs; **worker-desk** dispatches workers that implement them behind draft PRs;
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
-**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
-desk reviews the diff and the PR body's `Brief:` trailer that feed it; it never edits a board row
-itself.
+**The stream board is a derived, generated surface** — this
+desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>` or `Issue: #<N>`) that
+feed it; it never edits a board row itself.
 
 Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
 double-dispatches reviewers. Role window, no persona (Bob belongs to the-desk only).
@@ -455,8 +455,8 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   a local stub does not; when they disagree CI wins and the reviewer investigates *why*.
   **Stub-validation trap:** proving a script emits the right argv is NOT proving the tool accepts
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
-- **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
-  (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
+- **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer.**
+  Two mechanical checks, either one a one-line bounce,
   never a judgment call — no reviewer edits the board itself:
   1. **The diff touches a generated-table region** — the default for any hunk inside a stream
      README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
@@ -497,11 +497,17 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      bounce made a compliant, CI-green state unreachable. It never licenses fixing the table in
      review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
      authoring PR carry the tool's own unmodified output for newly added rows.
-  2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
-     line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
-     can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
-     with no trailer; a trailer-less PR reaching review means the refusal was routed around, and
-     this bounce is the second layer.)
+  2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer, EITHER
+     `Brief: <stream>/<NN>` (the brief this PR delivers) **OR** `Issue: #<N>` (issue-only work that
+     delivers no brief — e.g. a pin bump / re-pin PR, which by construction carries no brief). Both
+     forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s `requireTrailer` enforce, so an
+     `Issue: #<N>`-only body is fully compliant and must NOT be bounced for lacking a `Brief:` line.
+     Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
+     link trailer — add exactly one `Brief: <stream>/<NN>` or `Issue: #<N>` line; the board can't
+     link this PR to its work item without it." (`deskpr create` already refuses to open a PR with
+     no trailer, so this bounce is the second layer for the no-trailer class only. A PR that carries
+     `Issue: #<N>` satisfied that gate legitimately — it is NOT evidence a refusal was routed
+     around.)
   On a tree not yet migrated to a generated table (no `board: generated` in the stream README
   frontmatter), the hand-maintained Status cell must still be a BARE lifecycle token — the
   recurring worker-authoring break — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the

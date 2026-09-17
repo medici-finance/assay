@@ -60,6 +60,7 @@ func cmdEdit(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -133,6 +134,26 @@ func cmdEdit(args []string) (err error) {
 		return perr
 	}
 	ac.repo, ac.head = facts.repo, facts.head
+
+	// --check stops HERE, before the token mint and before any forge call. Every gate
+	// above it is local: flags, the secret scan of the replacement body/title, the
+	// replacement body's own Brief:/Issue: trailer grammar (requireTrailer), and branch
+	// state (preflight). edit pushes no git command, so there is no push-transport gate
+	// to run. Two things this verb checks are NOT decided here, because both need the
+	// PR's CURRENT body/number from the forge: trailer-IMMUTABILITY (the replacement
+	// must match the existing link, if any) and the self-containment scan's bare-#N
+	// hint (which uses the PR's own number). Both are named rather than silently
+	// skipped.
+	if *check {
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "check: every local gate passed"
+		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
+			"Not checked (needs the forge, not run here): trailer-immutability against the existing " +
+			"PR's current body, the self-containment scan's bare-#N hint (which uses the PR's own " +
+			"number), whether an open PR exists for this branch, the outward-write rate limit, and " +
+			"the public-repo authorization gate.")
+		return nil
+	}
 
 	if merr := mintWorkerToken(facts.repo); merr != nil {
 		return deskkit.Unverifiable("cannot mint the App token", merr)
