@@ -106,6 +106,17 @@ type Brief struct {
 	StaleRef string
 	Depends  []string // typed deps from brief-v1 frontmatter ("<stream>/<NN>"); nil for legacy
 	Schema   string   // "brief-v1" from frontmatter; "" for legacy (non-brief-v1)
+	// Gates are the brief-v2 `gates:` reserved edges, wired from BriefFile
+	// (graph-execution/01) for the eligibility evaluator (eligibility.go) — nil
+	// for a brief-v1/legacy brief. GATING: an unsatisfied or could-not-check
+	// gates: edge HOLDS the brief (evaluateEligibility), consumed by
+	// eligibleBase (nextup.go) and briefFrontierState (drivefrontier.go)
+	// instead of either walking Depends alone.
+	Gates []GraphEdge
+	// Feathers are the brief-v2 `feathers:` reserved edges, wired the same way.
+	// NEVER a hold: an unsatisfied or could-not-check feathers: edge is
+	// reported as a NOTICE only (verdict eligible-with-notice).
+	Feathers []GraphEdge
 	// Value is the optional brief-v1 `value:` field — low | med | high, "" when
 	// absent (treated as med). A Next-up score input:
 	// the explicit worth of a brief, separate from priority and staleness.

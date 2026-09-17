@@ -293,10 +293,24 @@ func cmdReply(args []string) (err error) {
 	// immediately before the one mutating call, exactly where --workpad's own dry-run
 	// stops before its write.
 	if *dryRun {
+		obo, oerr := deskkit.OnBehalfOfLine("")
+		if oerr != nil {
+			return oerr
+		}
 		ac.successResult = deskkit.ResultDryRun
-		ac.detail = fmt.Sprintf("dry-run: would post on PR #%d%s", pr, urlSuffix(view.URL))
-		fmt.Printf("DRY-RUN: would post on PR #%d\n", pr)
+		ac.detail = fmt.Sprintf("dry-run: would post on PR #%d%s — trailer: %s", pr, urlSuffix(view.URL), obo)
+		fmt.Printf("DRY-RUN: would post on PR #%d (trailer: %s)\n", pr, obo)
 		return nil
+	}
+
+	// On-behalf-of trailer (multi-principal/01), appended to the POSTED body only — the
+	// idempotency key (ac.bodyDigest) above stays keyed on the caller-supplied body, so an
+	// identical retry from a different session still dedupes. Resolved this late
+	// (immediately before the one mutating call) so every check above it — including the
+	// write-budget gate — still runs on a body-shape refusal before this one is reached.
+	postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
 	}
 
 	// The post. PostComment is the ONLY mutating forge operation deskreply can reach: the
@@ -304,7 +318,7 @@ func cmdReply(args []string) (err error) {
 	// tool never calls, and there is no generic request method on the seam to reach them
 	// through. The body travels as a value, not as a file path in an argv, so there is no
 	// longer a temp file to stage or a flag position for anything to be injected into.
-	ref, cErr := fg.PostComment(fr, pr, string(body))
+	ref, cErr := fg.PostComment(fr, pr, string(postBody))
 	if cErr != nil {
 		return deskkit.Unverifiable("posting the reply comment failed", cErr)
 	}

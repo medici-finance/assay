@@ -233,6 +233,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// a worker past it. NOTICE severity this phase (§6.3 Phase A) — flips to
 	// PROBLEM once `gates:`/`feathers:` exist for authors to reach for.
 	notices = append(notices, orderingGateNotices(checkStreams)...)
+	// Eligibility evaluator could-not-check surface (graph-execution/01 Task
+	// item 4): a gates:/feathers: edge (or an unsatisfied depends:) the
+	// evaluator cannot resolve offline — an unregistered/unpublished alias, an
+	// absent sibling checkout, a forge-backed target — HOLDS the brief; this
+	// names the hold on a full lint so a registry or checkout gap that
+	// silently held work is visible here, not only in --eligibility/--next-up
+	// output. edgeStreams resolves cross-repo refs the same way checkBriefFiles
+	// does. Declared source: statusgen/eligibilitycli.go.
+	notices = append(notices, eligibilityCouldNotCheckNotices(edgeStreams)...)
 	// consumers: routing claims (brief-rule 9). Offline
 	// half only: a follow-up naming a brief that does not exist is DISPROVED by
 	// the stream tables and is a hard problem; anything needing a diff to settle
@@ -426,6 +435,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	attrProblems, attrNotices := attributionProblems(checkStreams)
 	problems = append(problems, attrProblems...)
 	notices = append(notices, attrNotices...)
+	// On-behalf-of principal attribution (multi-principal/01): an App-authored Evidence
+	// row with an unrecognised on-behalf-of principal, or with none at all dated at or
+	// after principalAttributionCutoverDate (the write path's own landing date), is a
+	// hard PROBLEM. A missing-annotation row dated BEFORE the cutover is a NOTICE — no
+	// write path existed yet to stamp it (see principalAttributionProblems' comment).
+	paProblems, paNotices := principalAttributionProblems(checkStreams)
+	problems = append(problems, paProblems...)
+	notices = append(notices, paNotices...)
 	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
 	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
 	// than the actor who ran a strict majority of its own Evidence rows — the drift
@@ -1433,7 +1450,7 @@ func main() {
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
 	teamLogins := flag.String("team-logins", "", "--issues/--self-improvement: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
-	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt")
+	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --eligibility")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
 	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --ladder / --issues")
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
@@ -1523,6 +1540,7 @@ func main() {
 	// plus the held-back decomposition. Reuses --span / --overflow-threshold /
 	// --require-claims.
 	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
+	eligibilityMode := flag.Bool("eligibility", false, "emit the eligibility evaluator's verdict for every brief (graph-execution/01): gates:/feathers:/depends: become gating, with a reason. One line per brief (`<id>  <verdict>  <holds…>`), or --json for the full {id,verdict,holds,notices} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction — a forge-backed gate reports could-not-check regardless of --forge")
 	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Read-only, STATUS.md-free")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
@@ -1616,6 +1634,7 @@ func main() {
 			"--graph":                 *graphMode != "",
 			"--gate-scores":           *gateScoresMode,
 			"--next-up":               *nextUpMode,
+			"--eligibility":           *eligibilityMode,
 			"--cluster-pending-queue": *clusterPendingQueueMode,
 			"--register-links":        *registerLinksFlag,
 			"--gate-telemetry":        *gateTelemetryMode,
@@ -1930,6 +1949,12 @@ func main() {
 	// and require-claims knobs are already wired above.
 	if *nextUpMode {
 		os.Exit(runNextUp(*root))
+	}
+	// Eligibility evaluator emitter (graph-execution/01): self-contained,
+	// STATUS.md-free, same discipline as --next-up / --gate-scores. Offline by
+	// construction — it never reads --forge.
+	if *eligibilityMode {
+		os.Exit(runEligibility(*root, *doraJSON))
 	}
 	// Cluster-pending queue (verdict-lane/07): self-contained JSON worklist for
 	// the pod verify runner — the briefs code-verified but cluster-pending. Same
