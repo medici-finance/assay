@@ -62,6 +62,11 @@ docker build -f containers/base/Dockerfile \
   -t assay-desk-base:dev .
 ```
 
+On an arm64 build host (e.g. Apple-silicon), a plain non-buildx build also needs
+`--build-arg TARGETARCH=arm64` — the Dockerfile's `TARGETARCH` defaults to `amd64`
+by design (see its header comment); a buildx build overrides this per platform
+automatically.
+
 ## The per-desk images
 
 Each desk is its own image, so "run the pr-review-desk" is a single image
