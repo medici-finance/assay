@@ -348,6 +348,36 @@ Planned test deliverables: `TestDesklabelRefusesUnownedLabel` (planned),
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PARTIAL (12/13 PASS)** — HELD at `implemented`
+
+Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` origin/main at `c67cc371f165a7b63e8b0a26d0a5afa40a95556b`. This brief's own file carries only its doc-only authoring commit (PR #998); the real implementation landed separately via PR #1180 with no Evidence ever appended — this is that missing non-implementer pass, verified against what actually shipped in `tools/desk/cmd/desklabel/`, not the (now partly stale) authoring prose.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go test ./...` | exit 0 | exit 0 — ~75 packages ok, incl. `cmd/desklabel` and `internal/deskkit` | 2026-09-17 | sonnet-5-verifier |
+| 2 | `go test ./cmd/desklabel/... -count=1` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | exit 0 | exit 0 both — ratchet ceiling 5, frozen surface 46 ops, all tabulated | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestApplyIssueLabelsBothBackends -v` | exit 0 | exit 0 — both backends PASS (see scope deviation below) | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestDesklabelAppliesOwnedLabelGitHub` + `...GitLab -v` | exit 0 | exit 0 both — GitHub + GitLab (issue-only, MR-only, both-resolve-refused) | 2026-09-17 | sonnet-5-verifier |
+| 6 | `TestDesklabelRefusesUnownedLabel -v` | exit 5, zero forge calls, names both roles | exit 0 (test PASS) — 14 subtests, all refuse exit 5 with 0 calls via a panicking recording fake | 2026-09-17 | sonnet-5-verifier |
+| 7 | `TestDesklabelRefusesHumanDecidedForEveryRole -v` | exit 5 for EVERY role | exit 0 (test PASS) — 20 subtests across 5 real roster roles × add/rm × case variants, all refused, all zero calls | 2026-09-17 | sonnet-5-verifier |
+| 8 | `TestDesklabelSharedVocabularyAnyRole -v` | exit 0 | exit 0 — shared set is 4-wide (topology also carries `needs-human`), worker+reviewer both succeed | 2026-09-17 | sonnet-5-verifier |
+| 9 | `grep -rn '"--as"' cmd/desklabel \| wc -l` | `0` | `0` | 2026-09-17 | sonnet-5-verifier |
+| 10 | `go test ./internal/forgeban/... -count=1` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/15` | exit 0, corroborated | **EXPLICITLY UNRUN (exit 2, could-not-check)** — structural: the brief's authoring PR (#998, doc-only) and its implementation PR (#1180) never share a single diff; traced both candidate bases, both refuse identically. Filed: `medici-finance/assay#1281` | 2026-09-17 | sonnet-5-verifier |
+| 12 | `grep -c 'desklabel' tools/desk/README.md` | ≥1 | `1` | 2026-09-17 | sonnet-5-verifier |
+| 13 | mutation: force the ownership check to always return true, re-run row 6, restore | mutant reddens row 6, restore green | **mutant exit 1** — `TestDesklabelRefusesUnownedLabel` reddened on 8/14 subtests (the role-mismatch cases; table-absent cases correctly unaffected — separate code path); `TestDesklabelDryRunWritesNothing` also reddened. Restored, md5-verified byte-identical, green again | 2026-09-17 | sonnet-5-verifier |
+
+**Scope deviation (Task item 1 / row 4), not a defect.** The brief's Task specified a new op `ApplyIssueLabels`; the shipped code instead reuses the existing `ApplyLabels` with a `Target` field (`TargetIssue`/`TargetChange`, added by an earlier, unrelated PR #1095) — achieving the same functional outcome without growing the frozen `Forge` interface. Confirmed functionally equivalent: GitHub's `ApplyLabels` documents Target doesn't change its request (one endpoint serves both); GitLab's already switches `/issues/:iid` vs `/merge_requests/:iid` on `Target`. Superior design, but the brief's own `consumers:` claim (which names `ApplyIssueLabels` as the new op) is now factually stale — covered by #1281.
+
+**RISK-VALUE: DERIVED — from `tools/desk/cmd/desklabel/vocabulary.go` source, not from the brief's prose:**
+- `human-decided` refused for EVERY role, unconditionally — `Owner: ownerNone` (`:128-129`); `permits()`'s `case ownerNone: return false` (`:147-156`) has no role reference at all, so no code path can flip it. Confirmed live (not decorative) by row 7's 20-subtest sweep and independently by row 13's mutation, which left this branch untouched and still-refusing while the role-owned branch reddened — proving it's a genuinely separate, independent code path (matches the brief's "two independent layers" SPOF claim).
+- `superseded?` + 3 `disposition:*` labels — `Owner: roleWorker` (`:112-119`).
+- `authorization-needed`, `approval-needed` — `Owner: roleReviewer` (`:122-125`).
+- Shared set (`question`, `needs-decision`, `needs-human`, `help wanted`) — derived live from `topology.Compiled()` (`:87-105`), not a hardcoded 3 as the brief's prose states — confirmed by row 8 observing 4, not 3.
+- Case-insensitive match / canonical-case write: `lookup()` uses `strings.EqualFold` (`:134-142`); `authorize()` returns the table's canonical spelling (`:163-186`), which `verbs.go:142` uses for every subsequent read/write/audit line — confirmed functionally via row 7's `Human-Decided` mixed-case variant refusing identically to lowercase.
+
+**VERIFY: PARTIAL** — 12/13 rows PASS, including all three security-critical rows (6, 7, 13) run with genuine rigor; row 13's mutation is the load-bearing proof and behaved exactly as predicted. Row 11 is EXPLICITLY UNRUN for a structural reason unrelated to the deliverable's correctness (filed #1281), not a defect. Held at `implemented` pending that row's resolution or an explicit waiver — the deliverable itself verifies clean.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
