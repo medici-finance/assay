@@ -1360,36 +1360,41 @@ their one home, exactly as the hook is on Claude.
    (neutral-dispatch wording) without pasting any rule text. Getting the substance back is the
    check; "no such rule", or a request to be handed the rules, means the fragment is not landing.
 
-##### 3. The `multi_agent` config step
+##### 3. The dispatch config step — `multi_agent` (graduated) and the concurrency cap
 
 Desk fan-out — `worker-desk`'s pool, `the-desk`'s dispatch, `pr-shepherd`'s discovery mode — binds
 `capability:dispatch-worker`, which on Codex CLI is the subagent tool set (`spawn_agent`,
-`wait_agent`, `send_input`, `resume_agent`, `close_agent`). Those tools sit behind a feature flag
-in `~/.codex/config.toml`:
+`wait_agent`, `send_input`, `resume_agent`, `close_agent`). On **codex-cli 0.154.0** these tools
+are present **whether or not `[features] multi_agent` is set** (that flag has graduated — see below);
+what you configure in `~/.codex/config.toml` is the concurrency cap that bounds how many run at once:
 
 ```toml
 [features]
-multi_agent = true
+multi_agent = true    # graduated on 0.154.0 (stable/true) — a legibility note now, not a gate
 
 [agents]
-max_concurrent_threads_per_session = 4   # cap parallel children; tune to your budget
+max_concurrent_threads_per_session = 4   # the real control: caps parallel children; set 1 to serialize
 ```
 
-- Set `multi_agent` **explicitly** even though OpenAI's current config reference lists it as
-  *stable, on by default*. The flag's default has moved (the capability measurement this bundle
-  was built against, 2026-08-08, recorded it as off-by-default and opt-in); writing it down makes
-  the adopter's posture legible instead of inherited, and setting a key to its own default is
-  harmless.
-- `max_concurrent_threads_per_session` (under `[agents]`; `max_threads` is its legacy alias) is
-  what actually caps parallelism. Assay does not require a particular value — but a desk pool
-  width larger than this cap will queue, not fan out, and the difference will look like the desk
-  hanging.
-- **With `multi_agent` off, dispatch is unavailable, and that is a *stated* degradation, never a
-  silent one.** The skill runs the fan-out **serially, one item at a time, and says so in
-  session.** A silent serial run is a defect in the skill body, not an acceptable posture.
-- **A `multi_agent` that does not enable parallelism never weakens a gate.** Review still needs
-  its reviewer, evidence still needs its command output, isolation still refuses. Serial fan-out
-  is a convenience degradation; the three guarantees below are not degradable at all.
+- **`multi_agent` has graduated on codex-cli 0.154.0 and no longer gates dispatch.** `codex
+  features list` reports `multi_agent  stable  true`, and a child was spawned with the flag set
+  `false` (measured on 0.154.0, `#939`). Setting it `true` in your config is now only a legibility
+  note about your posture — it does **not** turn the subagent tools on or off, and setting it
+  `false` does **not** put the harness into a no-dispatch state. Do not rely on this flag to
+  disable dispatch; the earlier "off → dispatch unavailable" reading is retired.
+- **`max_concurrent_threads_per_session`** (under `[agents]`; `max_threads` is its legacy alias)
+  is what actually bounds parallelism, and on 0.154.0 it is the reachable way to force serial
+  execution. Assay does not require a particular value — but a desk pool width larger than this
+  cap will **queue, not fan out** (the difference will look like the desk hanging), and setting it
+  to `1` serializes the pool outright.
+- **Where parallel dispatch is unavailable, the fan-out degrades to serial — and that is a
+  *stated* degradation, never a silent one.** The skill runs the fan-out **one item at a time,
+  and says so in session.** A silent serial run is a defect in the skill body, not an acceptable
+  posture. (On codex-cli ≥0.154.0 the way to *reach* that unavailability is the concurrency cap
+  above, not the graduated `multi_agent` flag.)
+- **A capped or serialized pool never weakens a gate.** Review still needs its reviewer, evidence
+  still needs its command output, isolation still refuses. Serial fan-out is a convenience
+  degradation; the three guarantees below are not degradable at all.
 
 *Resolved, in part, on codex-cli 0.154.0:* this bundle's binding file also describes a V2 tool set
 (`send_message` / `followup_task` / `interrupt_agent`) behind `multi_agent_v2.enabled`. `codex
