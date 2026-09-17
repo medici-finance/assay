@@ -20,7 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 11/27 | 2026-09-17 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-17 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-17 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/29 | 2026-09-17 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/30 | 2026-09-17 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 0/8 | 2026-09-17 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-17 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-17 |  |
@@ -35,7 +35,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| forge-neutral | 20 — Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs [exec:strong] | 1 | 6500 |
+| forge-neutral | 20 — Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs [exec:strong] | 1 | 7000 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -241,7 +241,7 @@ _None._
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 
-### forge-neutral (25 open)
+### forge-neutral (26 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -266,8 +266,9 @@ _None._
 - 25 Store-aware duties — the reviewer needs repository read once the cell's store is set, and the boot check names the store — todo (wave 3)
 - 28 Scaffold defaults — a fresh host cell gets the file store and the declaration, a container cell gets the served store; existing cells are left alone — todo (wave 5)
 - 29 Adopter docs and store-neutral skills — supported topologies, the reviewer at repository read, and the removal window — todo (wave 6)
-- 30 Cutover and removal — release N proves the narrowed reviewer, the operator narrows the grant, release N+1 deletes the forge store — todo (wave 7)
+- 30 Release-N cutover — ship, prove the narrowed reviewer on a live cell, then the operator narrows the grant — todo (wave 7)
 - 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
+- 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
 
 ### graph-execution (8 open)
 
@@ -446,4 +447,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **81/198** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **81/199** briefs done · completed initiatives: see `docs/archive/`
