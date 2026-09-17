@@ -466,7 +466,7 @@ func nextUpAllScores(streams []*Stream) map[string]int {
 	out := map[string]int{}
 	for _, s := range streams {
 		for _, b := range s.Briefs {
-			if !eligible(streams, s, b, nil, wiredQueues(streams)) {
+			if !eligible(streams, s, b, nil, wiredQueues(streams), eligibilityForStreams(streams)) {
 				continue
 			}
 			days := int(now.Sub(s.LastTouch).Hours() / 24)
