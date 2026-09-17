@@ -135,6 +135,13 @@ var lintRuleRegistry = []LintRule{
 	{"stream-cap", "a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap", StatusFatal},
 	{"stream-source", "a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec", StatusFatal},
 
+	// Eligibility evaluator could-not-check surface (eligibilitycli.go,
+	// graph-execution/01). Advisory: the underlying hold already excludes the
+	// brief from Next-up (a board-shape effect, not a --lint PROBLEM); this
+	// rule only NAMES the could-not-check reason so it is visible on a full
+	// lint run.
+	{ruleEligibilityCouldNotCheck, "a gates: edge (or unsatisfied depends:) the eligibility evaluator could not resolve offline — an unregistered/unpublished alias, an absent sibling checkout, or a forge-backed target — which HOLDS the brief out of Next-up", StatusAdvisory},
+
 	// Authoring conventions the lint does NOT check — the third status, stated so
 	// the block's non-coverage is itself visible (spec §3 D6).
 	{"consumers-flow-verify-row", "that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides", StatusNotEnforced},

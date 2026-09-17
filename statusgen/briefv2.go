@@ -438,16 +438,13 @@ func checkBriefV2Semantics(add, notice func(string, ...any), path string, bf *Br
 			add("%s: supersedes ref %s", path, reason)
 		}
 	}
-	// Reserved-not-gating summary: make it visible on --lint that the edges were
-	// read and are deliberately inert this schema. NOTICE severity — it never
-	// changes the exit code, and it is what distinguishes "parsed and reserved"
-	// from "silently ignored".
-	if n := len(bf.Gates); n > 0 {
-		notice("%s: gates: %s (reserved, not gating)", path, edgeCountPhrase(n))
-	}
-	if n := len(bf.Feathers); n > 0 {
-		notice("%s: feathers: %s (reserved, not gating)", path, edgeCountPhrase(n))
-	}
+	// gates:/feathers: are EXECUTED, not reserved, as of graph-execution/01:
+	// the eligibility evaluator (eligibility.go) reads them and Next-up/the
+	// drive frontier consume its verdict. The "(reserved, not gating)" NOTICE
+	// this block used to emit is retired — a gates:/feathers: edge parsed here
+	// now actually gates dispatch, so restating "reserved" would be false. The
+	// evaluator's own could-not-check surface (eligibilityCouldNotCheckNotices,
+	// eligibilitycli.go) is the NOTICE family that replaces it.
 }
 
 func validateReservedEdge(add func(string, ...any), path, field string, e GraphEdge, reg *graphRepos) {
@@ -457,13 +454,4 @@ func validateReservedEdge(add func(string, ...any), path, field string, e GraphE
 	if ok, reason := validGraphRef(e.Ref, reg); !ok {
 		add("%s: %s edge ref %s", path, field, reason)
 	}
-}
-
-// edgeCountPhrase renders the reserved-edge count with correct grammar:
-// "1 edge", "2 edges", … so the lint line reads naturally.
-func edgeCountPhrase(n int) string {
-	if n == 1 {
-		return "1 edge"
-	}
-	return fmt.Sprintf("%d edges", n)
 }
