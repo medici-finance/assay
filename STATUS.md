@@ -16,7 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-17 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-17 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-17 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/12 | 2026-09-17 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/15 | 2026-09-17 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 11/27 | 2026-09-17 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-17 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-17 |  |
@@ -34,9 +34,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-17 |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-17 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-17 |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-17 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-17 |
 
 ## Next up
 
@@ -47,8 +49,10 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 |---|---|---|---|
 | forge-neutral | 20 — Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs [exec:strong] | 1 | 7000 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
+| forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| desk-supervision | 13 — Worker-operations vitals — the self-report resource block [exec:strong] | 2 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
@@ -57,19 +61,20 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (46 desk-actionable of 57 total — 57 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (48 desk-actionable of 59 total — 59 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (46)
+### Desk-actionable (48)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4500 | 5 | — | — | — |
+| graph-execution | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 08 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | graph-execution | 01 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -85,6 +90,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | composability | 04 | implemented | 1500 | 1 | — | — | — |
@@ -93,7 +99,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
@@ -172,6 +178,13 @@ _None._
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
 - 08 Solo identity mode — spec and decision for running the desk verbs on the operator's own token — implemented (wave 0)
 
+### auto-triage (4 open)
+
+- 01 Culprit identifier — parse a failing whole-tree gate into check + file:line + mechanical/judgement class — todo (wave 1)
+- 02 Mechanical responder — file the bug and open a fixing draft PR, autonomously, for the mechanical class — todo (wave 2)
+- 03 Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes — todo (wave 2)
+- 04 Never-invisible watchdog — escalate any red whole-tree gate that no responder acted on within N minutes — todo (wave 3)
+
 ### composability (5 open)
 
 - 01 Reactive activation — a missing extension key downs one component, not the fleet — todo (wave 1)
@@ -211,14 +224,17 @@ _None._
 - 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — todo (wave 1)
 - 11 retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH — todo (wave 2)
 
-### desk-supervision (6 open)
+### desk-supervision (9 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
-- 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
+- 08 Objectives over transitions — measure an objective-style worker kit with skillbench — implemented (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 - 10 Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven — blocked (wave 0)
 - 11 The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it — blocked (wave 1)
 - 12 Retire the staged-copy hand-landing once the workflow App PR path is proven — blocked (wave 2)
+- 13 Worker-operations vitals — the self-report resource block — todo (wave 2)
+- 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
+- 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
 
 ### desk-tools (16 open)
 
@@ -308,7 +324,7 @@ _None._
 ### graph-execution (8 open)
 
 - 01 Eligibility evaluator — gates and feathers become gating, with a reason — implemented (wave 0)
-- 02 Workflow-pattern schema, node contract, and the implementation and research patterns — todo (wave 0)
+- 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
 - 05 Offline two-pattern experiment on frozen fixtures — todo (wave 2)
@@ -344,6 +360,14 @@ _None._
 - 04 statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off — todo (wave 0)
 - 05 attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish — todo (wave 1)
 - 06 model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login — todo (wave 1)
+
+### server-controls (5 open)
+
+- 01 Uniform-ruleset audit — define the target menu, read each repo's current ruleset state against it — todo (wave 0)
+- 02 Standardize on rulesets and retire classic protection so controls are readable (#1020) — todo (wave 1)
+- 03 The required-check enforcement pattern — a fine invariant as a required status check reported by a non-author-controllable runner — todo (wave 1)
+- 04 Decision-dependency note — the credential/identity rulings that gate the credential-contract work — todo (wave 0)
+- 05 Reference cross-operator / independent-approver check — the residual after require_last_push_approval, as a required status check — todo (wave 2)
 
 ### statusgen (3 open)
 
@@ -491,4 +515,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**19** streams (**16** active, **0** paused, **3** parked) · **81/224** briefs done · completed initiatives: see `docs/archive/`
+**21** streams (**16** active, **0** paused, **5** parked) · **81/236** briefs done · completed initiatives: see `docs/archive/`
