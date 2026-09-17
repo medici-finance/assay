@@ -190,7 +190,7 @@ func classifySite(root, raw string) site {
 	if strings.HasPrefix(s, "[") {
 		return site{Kind: siteForeign, Reason: "tagged for another repo/tree — not visible from this root"}
 	}
-	tok := strings.TrimRight(strings.Fields(s)[0], ",;:")
+	tok := stripMarkdownWrap(strings.TrimRight(strings.Fields(s)[0], ",;:"))
 	if strings.HasPrefix(tok, "~") || strings.HasPrefix(tok, "/") {
 		return site{Kind: siteForeign, Reason: "out-of-repo path — not visible from this root"}
 	}
@@ -202,6 +202,47 @@ func classifySite(root, raw string) site {
 		return site{Kind: siteProse, Token: tok, Reason: err.Error()}
 	}
 	return site{Kind: siteRepoPath, Token: tok, Matches: matches}
+}
+
+// markdownWrapDelims are the Markdown emphasis/code delimiters that may wrap a
+// site token when a `consumers:` entry is written as prose in a brief
+// ("`path/to/file.go`: fixed-here", "**path/to/file.go**: fixed-here"). Longest
+// first, so "**" is tried before the "*" it contains would otherwise shadow it.
+var markdownWrapDelims = []string{"**", "__", "~~", "`", "*", "_"}
+
+// stripMarkdownWrap removes a matching pair of Markdown delimiters from both
+// ends of tok, repeatedly (so a token double-wrapped like "`**path**`" reduces
+// fully). It strips a delimiter only when the SAME marker appears on both
+// ends — a token with a stray leading backtick from an unrelated quote is left
+// alone rather than guessed at.
+//
+// Without this, a site token copied out of a brief's Markdown prose — a path
+// wrapped in backticks — is read as its first whitespace field INCLUDING the
+// backticks, globs against a path that literally contains backtick characters,
+// matches nothing, and is wrongly DISPROVED even though the un-backticked path
+// exists and is touched (issue #1077).
+func stripMarkdownWrap(tok string) string {
+	for {
+		stripped := false
+		for _, d := range markdownWrapDelims {
+			if len(tok) < 2*len(d) {
+				continue
+			}
+			if !strings.HasPrefix(tok, d) || !strings.HasSuffix(tok, d) {
+				continue
+			}
+			inner := tok[len(d) : len(tok)-len(d)]
+			if inner == "" {
+				continue
+			}
+			tok = inner
+			stripped = true
+			break
+		}
+		if !stripped {
+			return tok
+		}
+	}
 }
 
 // pathish reports whether a token looks like a repo path: it contains a
@@ -691,13 +732,22 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 				// deleted or renamed it, which IS the fix.
 				add(stateCorroborated, raw, "path is absent from the tree but present in the diff (deleted/renamed here)")
 			case len(st.Matches) == 0:
-				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but %q resolves to nothing in the tree and appears nowhere in the diff — if this is an authoring PR that only declares a path its implementation will create, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that adds the path", st.Token))
+				// Two INDEPENDENT checks were run here — the tree-lookup (does
+				// %q resolve to a file/dir under the root right now?) and the
+				// diff-deletion-lookup (does the diff name that exact token,
+				// which would mean the branch deleted/renamed it?) — and BOTH
+				// came back empty. Naming both explicitly, rather than folding
+				// them into one "resolves to nothing ... and appears nowhere"
+				// sentence, is the fix for issue #1077's failure mode 1: a
+				// reader could not tell which of the two had actually failed,
+				// which is what stranded desk-containers/08's debugging.
+				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but %q fails BOTH checks — tree-lookup: FAILED (no file or directory under the root matches this path/glob) — diff-deletion-lookup: FAILED (no diff entry equals %q exactly, so this is not a delete/rename either) — if this is an authoring PR that only declares a path its implementation will create, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that adds the path", st.Token, st.Token))
 			case len(missing) == 0:
 				add(stateCorroborated, raw, directoryEvidence(root, changed, st.Matches))
 			case len(missing) == len(st.Matches):
-				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but no path it resolves to (%s) appears in the diff — if this is an authoring PR that only declares the path, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that edits the path", strings.Join(st.Matches, ", ")))
+				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but fails the diff-lookup check — tree-lookup: OK (resolves to %s) — diff-lookup: FAILED (none of those path(s) appear in the diff) — if this is an authoring PR that only declares the path, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that edits the path", strings.Join(st.Matches, ", ")))
 			default:
-				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here for %d path(s) but the diff leaves %d of them untouched (%s) — a site naming a set claims the whole set; split the entry if only part of it was fixed", len(st.Matches), len(missing), strings.Join(missing, ", ")))
+				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here for %d path(s) but fails the diff-lookup check for %d of them — tree-lookup: OK (all %d resolve) — diff-lookup: FAILED for %s — a site naming a set claims the whole set; split the entry if only part of it was fixed", len(st.Matches), len(missing), len(st.Matches), strings.Join(missing, ", ")))
 			}
 		case routingFollowUp:
 			if len(e.Targets) == 0 {
