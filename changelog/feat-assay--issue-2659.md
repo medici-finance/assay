@@ -14,6 +14,9 @@
 ### Fixed
 - Added a named regression test for the pipeline-exit worst-stage scoring fix (the shell
   already ran with `bash -o pipefail`; the new test pins the exact reported command shape).
+- The HELD/could-not-check-vs-deferred check is now row-scoped (per sentence/line) instead
+  of entry-scoped: a deferral clause naming one row no longer clears the hold on a
+  different, undeferred row in the same Evidence entry.
 
 ### Changed
 - `spec/lifecycle-v1.md` §2.4's "no execution witness" sentence is now date-bounded to

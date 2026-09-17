@@ -1071,6 +1071,16 @@ func TestHasVerifyPassRefusesHeldEntry(t *testing.T) {
 			"**VERIFY: PASS** (model) — done",
 			true,
 		},
+		{
+			"a deferral clause naming one row does not launder a different, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per assay#99. Row 5 is HELD: no runner, not deferred by anyone.",
+			false,
+		},
+		{
+			"a deferral clause in the SAME clause as its HELD row clears only that row",
+			"**VERIFY: PASS** — row 2 is HELD (deferred per assay#99).",
+			true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

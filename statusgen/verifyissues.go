@@ -217,6 +217,15 @@ var (
 	verifyDeferredClauseRe = regexp.MustCompile(`(?i)deferred per [a-z]+#\d+`)
 	// blankLineRe splits an Evidence body into its append-only log entries.
 	blankLineRe = regexp.MustCompile(`\r?\n[ \t]*\r?\n`)
+	// verifyClauseSplitRe splits a single Evidence entry into row-scoped
+	// clauses, on a sentence boundary (". "/"! "/"? " followed by
+	// whitespace) or a newline. entryIsHeld checks HELD/could-not-check and
+	// the deferral clause WITHIN the same clause, so a deferral naming one
+	// row cannot launder a different, undeferred HELD row in the same entry
+	// (an entry-wide match used to let it). A clause boundary this coarse
+	// prose splitter misses only ever merges two clauses into one, which
+	// makes the check MORE conservative (fail closed), never less.
+	verifyClauseSplitRe = regexp.MustCompile(`(?:\r?\n)+|[.!?]\s+`)
 )
 
 // verifyEvidenceEntries splits an Evidence body into its blank-line-separated
@@ -233,13 +242,26 @@ func verifyEvidenceEntries(evidence string) []string {
 	return entries
 }
 
-// entryIsHeld reports whether entry carries a HELD or could-not-check token on
-// a row the SAME entry does not also mark deferred by name (verifyDeferredClauseRe).
+// entryIsHeld reports whether entry carries a HELD or could-not-check token,
+// on a ROW (sentence-scoped clause, verifyClauseSplitRe) that same clause
+// does not also mark deferred by name (verifyDeferredClauseRe). Row-scoped
+// rather than entry-scoped: a deferral clause naming one row ("row 2
+// deferred per assay#99") must not clear the hold on a different, undeferred
+// row in the same entry ("row 5 is HELD ... not deferred by anyone") — an
+// entry-wide match let exactly that fail open.
 func entryIsHeld(entry string) bool {
-	if !verifyHeldRe.MatchString(entry) && !verifyCouldNotCheckRe.MatchString(entry) {
-		return false
+	for _, clause := range verifyClauseSplitRe.Split(entry, -1) {
+		if strings.TrimSpace(clause) == "" {
+			continue
+		}
+		if !verifyHeldRe.MatchString(clause) && !verifyCouldNotCheckRe.MatchString(clause) {
+			continue
+		}
+		if !verifyDeferredClauseRe.MatchString(clause) {
+			return true
+		}
 	}
-	return !verifyDeferredClauseRe.MatchString(entry)
+	return false
 }
 
 // hasVerifyPass reports whether Evidence carries a recorded, UNHELD model
