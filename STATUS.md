@@ -20,7 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 10/27 | 2026-09-17 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-17 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-17 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/19 | 2026-09-17 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/29 | 2026-09-17 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 0/8 | 2026-09-17 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-17 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-17 |  |
@@ -35,24 +35,19 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| graph-execution | 02 — Workflow-pattern schema, node contract, and the implementation and research patterns [exec:strong] | 0 | 4500 |
-| apps-installer | 02 — `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes [exec:strong] | 1 | 4000 |
+| forge-neutral | 20 — Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs [exec:strong] | 1 | 6500 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
-| desk-containers | 09 — cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check` [exec:strong] | 0 | 2000 |
-| forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2000 |
-| forge-neutral | 19 — Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs [exec:strong] | 1 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
-| desk-supervision | 08 — Objectives over transitions — measure an objective-style worker kit with skillbench [exec:strong] | 1 | 1000 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (47 desk-actionable of 58 total — 58 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (47 desk-actionable of 58 total — 57 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -65,7 +60,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
-| harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 05 [exec:strong] | verified | 4000 | 6 | — | 2026-09-17 sonnet-5-verifier (re-run against today's main, 8/8 checks PASS; sha256 chain re-derived; CI-gating-cadence finding filed #1278) | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 08 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | graph-execution | 01 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -248,7 +243,7 @@ _None._
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 
-### forge-neutral (15 open)
+### forge-neutral (25 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -265,6 +260,16 @@ _None._
 - 17 deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch — todo (wave 2)
 - 18 statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk — in-progress (wave 5)
 - 19 Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs — todo (wave 1)
+- 20 Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs — todo (wave 1)
+- 21 Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back — todo (wave 2)
+- 22 Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store — todo (wave 3)
+- 23 File claim store — claims in a directory on the cell's host, with the single-host declaration and the container, filesystem and mixed-store guards — todo (wave 3)
+- 24 Served claim store — the same directory store behind a small HTTP serve mode, member-initiated, holding no forge credential — todo (wave 4)
+- 25 Store-aware duties — the reviewer needs repository read once the cell's store is set, and the boot check names the store — todo (wave 3)
+- 28 Scaffold defaults — a fresh host cell gets the file store and the declaration, a container cell gets the served store; existing cells are left alone — todo (wave 5)
+- 29 Adopter docs and store-neutral skills — supported topologies, the reviewer at repository read, and the removal window — todo (wave 6)
+- 30 Cutover and removal — release N proves the narrowed reviewer, the operator narrows the grant, release N+1 deletes the forge store — todo (wave 7)
+- 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
 
 ### graph-execution (8 open)
 
@@ -281,7 +286,7 @@ _None._
 
 - 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
 - 04 Neutral-core skill bodies + per-harness binding files + neutrality lint — implemented (wave 2)
-- 05 Resident rules — one source, per-harness delivery generated — implemented (wave 2)
+- 05 Resident rules — one source, per-harness delivery generated — verified (wave 2)
 - 06 Codex packaging — generated manifest, coverage rule, install path — implemented (wave 3)
 - 07 Adoption docs, freshness registration, live Codex smoke protocol + first run — implemented (wave 4)
 - 09 jcode desk-harness spike — measured parity + fleet-density for driving desks — implemented (wave 0)
@@ -442,4 +447,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **79/188** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **79/198** briefs done · completed initiatives: see `docs/archive/`
