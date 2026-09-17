@@ -21,6 +21,10 @@
 // worker-desk skill's manual "Pre-PR self-check" (#22, #72): the 2026-07-30
 // recurrence on #22 showed a worker briefed against this in writing do it anyway, so the
 // check now runs on every push instead of depending on a worker remembering a manual step.
+// That check resolves its base against the ACTUAL push-target remote named by args[0] below,
+// never a hardcoded "origin" literal (#1201) — a worktree's own `origin` remote can point at a
+// different repo than the one a given push targets, and comparing against the wrong repo's
+// main misreports every real commit on the branch as foreign.
 //
 // It does NOT call deskkit.Guard() — the guard must run even when the desk-tools
 // kill-switch is armed, because a stopped desk still must not orphan commits.
@@ -75,7 +79,21 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Running from source (unstamped) is a drift risk.
 	deskkit.WarnIfUnpinned(stderr)
 
-	// Read remote URL from args. git invokes: pre-push <remote-name> <remote-url>
+	// Read the remote name and URL from args. git invokes:
+	//   pre-push <remote-name> <remote-url>
+	// remoteName is the ACTUAL remote this push is going to (#1201) — it is the answer to
+	// "which remote", already handed to the hook by git itself, so nothing downstream may
+	// substitute a hardcoded "origin" literal for it. A worktree's own `origin` remote can
+	// legitimately point at a different repo than the one a given push targets (e.g. a
+	// worktree cut from a shared checkout whose `origin` is a sibling repo, with the real
+	// target added under a second remote name); resolving refs/remotes/origin/main
+	// unconditionally in that shape compares the branch against the WRONG repo's history and
+	// misreports every real commit as foreign. Falling back to "origin" only when args[0] is
+	// empty preserves prior behaviour for a manual/test invocation that omits it.
+	remoteName := "origin"
+	if len(args) >= 1 && strings.TrimSpace(args[0]) != "" {
+		remoteName = strings.TrimSpace(args[0])
+	}
 	remoteURL := ""
 	if len(args) >= 2 {
 		remoteURL = args[1]
@@ -136,7 +154,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// MERGED/CLOSED PR-state check (it needs gh+repo), but still enforce any register-id
 	// collision already found above.
 	var blocked []blockedRef
-	repo, err := deriveRepo(remoteURL)
+	repo, err := deriveRepo(remoteURL, remoteName)
 	if err != nil {
 		fmt.Fprintf(stderr, "deskpushguard: cannot derive repo from remote %q: %v — skipping PR-state check (fail-open)\n", remoteURL, err)
 	} else {
@@ -166,7 +184,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	var strayBased []strayBaseRefFinding
 	var unchecked []uncheckedRef
 	for _, ref := range refs {
-		found, cerr := checkForeignCommits("", ref.branch, ref.localSHA)
+		found, cerr := checkForeignCommits("", remoteName, ref.branch, ref.localSHA)
 		if cerr != nil {
 			// checkForeignCommits currently never returns a non-nil error (it reports
 			// could-not-check inline); kept so a future stricter variant has somewhere to report.
@@ -335,22 +353,27 @@ func parseRef(line string) (refLine, bool) {
 	return refLine{branch: branch, localSHA: localSHA}, true
 }
 
-// deriveRepo extracts "owner/repo" from the origin remote URL.
+// deriveRepo extracts "owner/repo" from the push target's remote URL.
 // Handles HTTPS, git@, and ssh:// URLs.
-func deriveRepo(remoteURL string) (string, error) {
+func deriveRepo(remoteURL, remoteName string) (string, error) {
 	// The URL normally comes from git's hook invocation (args[1]). If empty, fall back to
-	// the configured origin remote — an in-process, local config read (no network touch),
-	// matching `git remote get-url origin` / `git config --get remote.origin.url`, migrated
-	// onto gitcore (#951) exactly as deskgit's and deskkit preflight's own
-	// `remote get-url` reads were migrated in an earlier PR (Repo.RemoteURL).
+	// the configured remote NAMED remoteName — the same remote the caller already resolved
+	// from args[0] (never a hardcoded "origin"; see run()'s own doc comment and #1201) — an
+	// in-process, local config read (no network touch), matching `git remote get-url
+	// <remoteName>` / `git config --get remote.<remoteName>.url`, migrated onto gitcore
+	// (#951) exactly as deskgit's and deskkit preflight's own `remote get-url` reads were
+	// migrated in an earlier PR (Repo.RemoteURL).
 	if remoteURL == "" {
+		if remoteName == "" {
+			remoteName = "origin"
+		}
 		repo, err := openRepo("")
 		if err != nil {
-			return "", fmt.Errorf("cannot get origin URL: %w", err)
+			return "", fmt.Errorf("cannot get %s URL: %w", remoteName, err)
 		}
-		url, err := repo.RemoteURL("origin")
+		url, err := repo.RemoteURL(remoteName)
 		if err != nil {
-			return "", fmt.Errorf("cannot get origin URL: %w", err)
+			return "", fmt.Errorf("cannot get %s URL: %w", remoteName, err)
 		}
 		remoteURL = strings.TrimSpace(url)
 	}
