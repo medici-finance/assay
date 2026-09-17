@@ -1,5 +1,7 @@
 # Standing note — the loop-continuity record that survives the session
 
+<!-- assay:harnesslint non-matrix-reference — harness-neutral loop-continuity record schema, not a per-harness capability binding; the capability-to-mechanism matrix and the per-skill degradation cells live in claude-code.md, codex.md and cursor.md -->
+
 A desk loop's working state lives in tool output that gets evicted between calls, and does
 not survive a session ending outright — a usage-limit reset, a crash, a hand-off to a fresh
 window. The standing note is the fix: a short, named-schema record a session writes at its
