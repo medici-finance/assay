@@ -415,7 +415,7 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 | 4 | permit-row grep + ceiling check | first line `0`, ceiling ≤6 | `0`; `allowedInvocationCeiling = 5` | 2026-09-17 | sonnet-5-verifier |
 | 5 | `TestForgeGithubGolden/hardening_read_unknown_kind` | exit 0, zero requests | exit 0 PASS; golden fixture directly confirms `"requests": []` | 2026-09-17 | sonnet-5-verifier |
 | 6 | 4 named repohardenguard tests | exit 0 | exit 0, all 4 PASS | 2026-09-17 | sonnet-5-verifier |
-| 7 | live `repohardenguard --json` run (needs auditor token) | exit 0 | **could-not-check: `auditor` App not provisioned in this environment** (see finding below, filed `assay-toolkit#2711`) | 2026-09-17 | sonnet-5-verifier |
+| 7 | live `repohardenguard --json` run (needs auditor token) | exit 0 | **could-not-check: `auditor` App not provisioned in this environment** (see finding below) | 2026-09-17 | sonnet-5-verifier |
 | 8 | live PATCH probe with auditor token | `403` | **could-not-check: same reason as row 7** — `desktoken auditor` fails to mint (no `AUDITOR_APP_ID`, no `auditor-app.pem`) | 2026-09-17 | sonnet-5-verifier |
 | 9 | `desktoken --version \| grep -c 'auditor=auditor-app'` | `1` | `1` — binding exists even though the App itself isn't provisioned | 2026-09-17 | sonnet-5-verifier |
 | 10 | `statusgen --root . --consumers` | exit 0 | exit 0 — no pending diff (post-merge); frontmatter itself already shows every consumer `fixed-here` | 2026-09-17 | sonnet-5-verifier |
@@ -423,7 +423,7 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 | 12 | 3-part adopter-docs grep | exit 0 | exit 0 — GitHub page names the read-only grant; GitLab role table has the auditor/Reporter(20)/read_api row; per-role token list includes auditor | 2026-09-17 | sonnet-5-verifier |
 | 13 | negative control — no auditor+write line | exit 1 (no match) | **exit 1 expected, got a match (exit 0)** — `docs/adopting-assay.md:329` names `auditor` on the same line as a `: write` reference, but on inspection the write belongs to the UNRELATED `cell-issues` App ("a narrower... `write-issues` identity... the model **the auditor role above** follows") — a control-precision false-positive, not an actual write grant to auditor. Flagged for human judgment, not resolved by this verifier | 2026-09-17 | sonnet-5-verifier |
 
-**Finding, filed separately (`medici-finance/assay-toolkit#2711`):** the `auditor` App is not provisioned in this house environment (`AUDITOR_APP_ID` unset — `apps.env` only has `KNOW_AUDITOR_APP_ID`/`RUNTIME_AUDITOR_APP_ID`, neither of which `desktoken`'s lookup reads; no `auditor-app.pem`). This means rows 7/8 — the actual runtime proof of the security boundary this brief exists to establish — cannot be independently verified by ANY verify-desk session until the App is provisioned, not just this one.
+**Finding, filed separately (tracked internally — not resolvable from this repo):** the `auditor` App is not provisioned in this house environment. This means rows 7/8 — the actual runtime proof of the security boundary this brief exists to establish — cannot be independently verified by ANY verify-desk session until the App is provisioned, not just this one.
 
 **RISK-VALUE — layered, one layer unverified this cycle:**
 - Layer 1 (code-level containment): op 40 takes a closed kind, not a path; zero-request refusal on an unknown kind. VERIFIED (rows 3, 5).
