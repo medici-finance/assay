@@ -137,6 +137,15 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			deskkit.SelfContainOpts{Repo: repo, NumberHint: pr}); err != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
+		// On-behalf-of trailer (multi-principal/01): resolved before any network call,
+		// refuses (exit 5) rather than post without one. Appended to the POSTED body only
+		// — `dig` (and every idempotency key derived from it, including the kind/dedup
+		// reads below that parse `body`) stays keyed on the CALLER-supplied body, so the
+		// same verdict retried from a different session still dedupes.
+		postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+		if oerr != nil {
+			return withDigest(fromReadErr(preVerb, repo, pr, "", oerr), dig)
+		}
 		// The verdict KIND (correctness vs security) comes from the BODY,
 		// not the flag — both kinds post as the same --verdict. It is part of the
 		// idempotency key below; VerdictKind fails closed rather than yielding a key that
@@ -345,7 +354,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 					"), --head matches the current head "+short(head)+", trust gate passed, public-repo "+
 					"gate passed, no equivalent verdict already at head — stopped before POST"), dig)
 		}
-		postNote, err := client.postReview(pr, head, shape.event, string(body))
+		postNote, err := client.postReview(pr, head, shape.event, string(postBody))
 		if err != nil {
 			return withDigest(fromErr(verb, repo, pr, head, err), dig)
 		}

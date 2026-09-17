@@ -320,11 +320,20 @@ func cmdCreate(args []string) (err error) {
 		return deskkit.Unverifiable("git push failed", pushErr)
 	}
 
+	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
+	// only — every gate above (the Brief:/Issue: trailer parse, the secret/self-contain
+	// scans) already ran against the caller-supplied body, so this cannot change what any
+	// of them saw.
+	prBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
+
 	// CreateDraftChange opens the change as a DRAFT — the frozen property of the seam; there
 	// is no path on which it opens ready. The body goes straight to the backend, so there is
 	// no temp file and no `--body-file` argv any more.
 	ref, cErr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
-		Title: *title, Body: string(body), Head: facts.branch, Base: *base,
+		Title: *title, Body: string(prBody), Head: facts.branch, Base: *base,
 	})
 	if cErr != nil {
 		return deskkit.Unverifiable("create draft change failed", cErr)

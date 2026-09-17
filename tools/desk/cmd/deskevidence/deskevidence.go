@@ -357,12 +357,21 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return werr
 	}
 
+	// On-behalf-of trailer (multi-principal/01): every Evidence commit carries the human
+	// principal it is on behalf of as a git trailer, or refuses (exit 5) rather than land
+	// one without it. Resolved immediately before the write — every gate above it (the
+	// lint-diff check, the rate limit) already ran.
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("")
+	if oerr != nil {
+		return oerr
+	}
+
 	// Write the Evidence row through the resolved forge, as the verifier App.
 	res, cerr := fg.WriteFile(fr, deskkit.WriteFileInput{
 		File:        targetRepoPath,
 		Branch:      branch,
 		Content:     commitContent,
-		Message:     "Evidence: verification row for " + targetRepoPath,
+		Message:     "Evidence: verification row for " + targetRepoPath + commitSuffix,
 		AppendOnly:  appendOnly,
 		AllowShrink: *allowShrink,
 	})
@@ -404,11 +413,17 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 	dig := deskkit.Sha256Hex(content)
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
+	// On-behalf-of trailer (multi-principal/01) — see the direct-write path above.
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("")
+	if oerr != nil {
+		return oerr
+	}
+
 	res, werr := fg.WriteFile(fr, deskkit.WriteFileInput{
 		File:        target,
 		Branch:      side,
 		Content:     content,
-		Message:     "Evidence: verification row for " + target,
+		Message:     "Evidence: verification row for " + target + commitSuffix,
 		StartBranch: base,
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
