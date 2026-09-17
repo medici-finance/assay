@@ -17,3 +17,11 @@
 - The `gates:`/`feathers:` "(reserved, not gating)" `--lint` NOTICE is
   retired: those fields are executed as of this change, so restating
   "reserved" would be false.
+- **Behavior change, not just a new field:** a `brief-v2` todo brief stops
+  being whole-wave gated. Previously every lower-wave sibling in the same
+  stream had to be `done`/`verified` before a v2 brief was eligible; now a v2
+  brief is gated by the evaluator's verdict on its own `depends:`/`gates:`
+  alone, so an unfinished wave-0 sibling no longer holds it. This is a
+  loosening on any brief-v2 tree with unsatisfied whole-wave gating but
+  satisfied `depends:` — on this repo's own board it admits two previously
+  held briefs (`apps-installer/02`, `desk-supervision/08`) to Next-up.

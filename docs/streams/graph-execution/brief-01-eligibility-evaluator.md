@@ -82,6 +82,8 @@ facts:
 | 8 | check +dereference | `grep -c 'eligible-with-notice' docs/dependency-graph-design.md docs/lifecycle.md docs/enforcement-model.md` | each file count >= 1 |
 | 9 | check | `statusgen --root . --lint; echo rc=$?` | `rc=0` |
 | 10 | check | `statusgen --consumers --brief graph-execution/01 --root .; echo rc=$?` | `rc=0` on the authoring branch (every entry routes follow-up or out-of-scope); exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass |
+| 11 | check:ci +mutation | `cd statusgen && go test -run 'TestEligibilityV2EscapesWholeWaveGate' -v ./...` | exit 0; added per review (PR #1251, correctness finding 1) — pins the v2 path the wave-fallthrough fix actually changes: a wave-1 `brief-v2` brief with a satisfied `depends:` is eligible despite an unfinished wave-0 sibling (the legacy whole-wave rule no longer applies to it), and the converse — unsatisfied `depends:` — stays held even when the wave-0 sibling is done. Fails on unfixed `origin/main` for the right reason (the whole-wave fallthrough holds the v2 brief) |
+| 12 | check +flow | `statusgen --next-up --root . \| jq .eligible` on `origin/main` vs this branch | main: 9; head: 11 — the two newly-admitted briefs are `apps-installer/02` and `desk-supervision/08`, both correct per row 11's rule (satisfied `depends:` on a `done` brief in another stream, held only by an unfinished same-stream wave-0 sibling under the old rule) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
