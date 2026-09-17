@@ -108,7 +108,7 @@ func allKits(t *testing.T) map[string]string {
 
 func TestKitsCarryNoPrivateReferences(t *testing.T) {
 	kits := allKits(t)
-	if len(kits) != 4 {
+	if len(kits) != 5 {
 		t.Fatalf("the guard scanned %d kits — every embedded kit must be covered", len(kits))
 	}
 	for name, text := range kits {

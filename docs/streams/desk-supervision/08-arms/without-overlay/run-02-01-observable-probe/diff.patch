@@ -1,0 +1,20 @@
+diff --git a/STATUS.md b/STATUS.md
+index 19ef2c8..26b6bdb 100644
+--- a/STATUS.md
++++ b/STATUS.md
+@@ -1 +1 @@
+-Status: in-progress
++Status: implemented
+diff --git a/heartbeat.go b/heartbeat.go
+index 5e214e5..7a0216b 100644
+--- a/heartbeat.go
++++ b/heartbeat.go
+@@ -8,7 +8,5 @@ import "time"
+ // A worker last seen exactly one gap ago, or longer, is stale; strictly inside the gap is
+ // not.
+ func IsStale(lastSeen, now time.Time, gap time.Duration) bool {
+-	// BUG: strict "greater than" never treats an exactly-gap-old heartbeat as stale, so a
+-	// worker sitting precisely on the boundary reads alive forever.
+-	return now.Sub(lastSeen) > gap
++	return now.Sub(lastSeen) >= gap
+ }
