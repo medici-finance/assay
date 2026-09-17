@@ -426,6 +426,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	attrProblems, attrNotices := attributionProblems(checkStreams)
 	problems = append(problems, attrProblems...)
 	notices = append(notices, attrNotices...)
+	// On-behalf-of principal attribution (multi-principal/01): an App-authored Evidence
+	// row with no (or an unrecognised) on-behalf-of principal is a hard PROBLEM.
+	problems = append(problems, principalAttributionProblems(checkStreams)...)
 	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
 	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
 	// than the actor who ran a strict majority of its own Evidence rows — the drift

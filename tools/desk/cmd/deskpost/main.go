@@ -205,6 +205,10 @@ func parseVerdictArgs(verb, verdictValues string, argv []string) (verdictArgs, i
 		fmt.Fprintf(stderr, "deskpost %s: cannot read --body-file: %s\n", verb, err.Error())
 		return a, 2, false
 	}
+	// The on-behalf-of trailer (multi-principal/01) is appended by the writer
+	// (runReview/runSecurityReview), NOT here: idempotency/dedup keys on the body the
+	// CALLER supplied, so two sessions posting the same semantic verdict still dedupe —
+	// the trailer must not make an identical retry look like a new write.
 	return verdictArgs{owner: owner, name: name, pr: pr, verdict: *verdict, head: *head,
 		bodyFile: *bodyFile, body: body, opts: opts}, 0, true
 }

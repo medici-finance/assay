@@ -450,8 +450,12 @@ func flip(o flipOpts) error {
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
 
 	if o.dryRun {
+		obo, oerr := deskkit.OnBehalfOfLine("")
+		if oerr != nil {
+			return oerr
+		}
 		fmt.Printf("deskflip: DRY RUN — every condition holds for %s#%d at %s (%d/%d); stopped before the "+
-			"mutation.\n", repo, o.pr, short(head), len(flipConditions), len(flipConditions))
+			"mutation. trailer: %s\n", repo, o.pr, short(head), len(flipConditions), len(flipConditions), obo)
 		return nil
 	}
 
@@ -473,6 +477,18 @@ func flip(o flipOpts) error {
 		return nil
 	}
 
+	// On-behalf-of trailer (multi-principal/01). The ready-flip mutation itself
+	// (deskkit.ReadyFlip below) carries no body or commit message to stamp a trailer
+	// onto — it is a pure state transition (draft → ready) with no text surface at all —
+	// so this verb's write is: resolve the principal as a PRECONDITION of the mutation,
+	// refusing (exit 5) rather than flip without one, and name it in the success line so
+	// the record of WHO this flip was on behalf of survives in the same place every other
+	// deskflip decision does (stdout, which the desk's audit capture already retains).
+	obo, oerr := deskkit.OnBehalfOfLine("")
+	if oerr != nil {
+		return oerr
+	}
+
 	// The mutation. The opaque change id is the one the PR READ returned — deskkit.ReadyFlip
 	// takes the change rather than an id string precisely so this call site cannot compose
 	// one, and refuses could-not-check (naming forge and operation, writing nothing) when the
@@ -492,8 +508,8 @@ func flip(o flipOpts) error {
 	if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
 		return err
 	}
-	fmt.Printf("deskflip: FLIPPED %s#%d ready-for-human at %s — the merge is the human's.\n",
-		repo, o.pr, short(head))
+	fmt.Printf("deskflip: FLIPPED %s#%d ready-for-human at %s — the merge is the human's. (%s)\n",
+		repo, o.pr, short(head), obo)
 	return nil
 }
 

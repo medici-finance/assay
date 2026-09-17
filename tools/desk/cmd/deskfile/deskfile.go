@@ -646,11 +646,19 @@ func cmdNew(args []string) (err error) {
 		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: toApply})
 	}
 
+	// On-behalf-of trailer (multi-principal/01), appended to the filed body only — every
+	// gate above (dedupe/title checks, the secret/self-contain scans) already ran against
+	// the caller-supplied body.
+	fileBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
+
 	// From here on the create HAS been sent, so every outcome charges session budget —
 	// including an unconfirmable one. Set before the call, not after: an error return must
 	// carry the marker too. See createSentMarker.
 	ac.createSent = true
-	ref, cerr := fg.FileIssue(fr, deskkit.IssueInput{Title: *title, Body: string(body)})
+	ref, cerr := fg.FileIssue(fr, deskkit.IssueInput{Title: *title, Body: string(fileBody)})
 	if cerr != nil {
 		return deskkit.Unverifiable("file issue failed", cerr)
 	}
@@ -794,7 +802,14 @@ func cmdAttach(args []string) (err error) {
 		return werr
 	}
 
-	ref, cerr := fg.PostCommentTyped(fr, target, kind, string(body))
+	// On-behalf-of trailer (multi-principal/01), appended to the posted body only —
+	// ac.bodyDigest above (audit-only here; attach has no body-keyed idempotency gate)
+	// stays keyed on the caller-supplied body.
+	attachBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
+	ref, cerr := fg.PostCommentTyped(fr, target, kind, string(attachBody))
 	if cerr != nil {
 		return deskkit.Unverifiable("post comment failed", cerr)
 	}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -514,6 +515,86 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices
+}
+
+// principalAttributionProblems is multi-principal/01's lint half (Task item 4): an
+// App-authored Evidence row carries the on-behalf-of annotation verifyrun.go's row()
+// renders (`on-behalf-of human:<login>`, inside the Runner cell's trailing
+// parenthetical), or the row is a PROBLEM.
+//
+// TWO shapes, both hard problems (never a notice — this is the same "an unattributed
+// witness is not a witness" stance verifyrun.go's own write-time refusal takes, applied
+// at read time to whatever already landed):
+//
+//   - an App/bot Runner (isAppRunnerToken — the `<slug>[bot]` convention) with NO
+//     on-behalf-of annotation at all: the write path that landed it predates this
+//     feature, or its own resolution refused and something bypassed that refusal.
+//   - an App/bot Runner WITH an on-behalf-of annotation naming a login this repo's own
+//     roster does not recognise as human (onBehalfOfPrincipalLogin's Humans check):
+//     the annotation exists but names nobody the roster can corroborate.
+//
+// A HUMAN Runner (`human:<name>`) needs no annotation at all and is never checked here
+// — the runner already names the acting human directly, which is the whole property
+// on-behalf-of exists to recover for a SHARED App identity.
+func principalAttributionProblems(streams []*Stream) (problems []string) {
+	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	cfg := scanEffectiveConfig()
+	for _, s := range streams {
+		for _, path := range briefFilePaths(s) {
+			bf, ok, err := parseBriefFile(path)
+			if err != nil || !ok {
+				continue
+			}
+			_, num, okName := expectedBriefID(path)
+			if !okName {
+				continue
+			}
+			label := fmt.Sprintf("%s/brief-%s", s.Name, num)
+			rows := parseEvidenceRows(bf.Evidence)
+			for _, id := range sortedEvidenceRowIDs(rows) {
+				for _, r := range rows[id] {
+					if isHumanRunnerToken(r.Runner) || !isAppRunnerToken(r.Runner) {
+						continue // not an App/bot runner — nothing for this check to say
+					}
+					login, hasAnnotation := onBehalfOfPrincipalOf(r.Runner)
+					if !hasAnnotation {
+						add("%s: Evidence row #%s was run by an App identity (%s) with no on-behalf-of "+
+							"principal — every App-authored Evidence row must carry the on-behalf-of "+
+							"annotation the write path stamps (see docs/on-behalf-of.md)", label, id, r.Runner)
+						continue
+					}
+					if cfg.Configured() {
+						if _, present := cfg.Humans[login]; !present {
+							add("%s: Evidence row #%s's on-behalf-of principal %q is not in this repo's "+
+								"roster human map — a principal must be a login the roster recognises as "+
+								"human", label, id, login)
+						}
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}
+
+// sortedEvidenceRowIDs returns rows' keys sorted numerically-then-lexically, so
+// principalAttributionProblems reports in a stable, readable order rather than Go's
+// randomised map iteration.
+func sortedEvidenceRowIDs(rows map[string][]evidenceRow) []string {
+	ids := make([]string, 0, len(rows))
+	for id := range rows {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		ni, ei := strconv.Atoi(ids[i])
+		nj, ej := strconv.Atoi(ids[j])
+		if ei == nil && ej == nil {
+			return ni < nj
+		}
+		return ids[i] < ids[j]
+	})
+	return ids
 }
 
 // authorToken extracts the author's identifying token from an `authored:`
