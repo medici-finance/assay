@@ -312,6 +312,32 @@ func TestSuccessfulCommitEndToEnd(t *testing.T) {
 	}
 }
 
+// TestEvidenceCommitCarriesOnBehalfOfTrailer is multi-principal/01's Verify row 6 at the
+// unit level: the commit message landed with an Evidence row carries the on-behalf-of
+// git trailer naming the roster's bless login (the fixture roster's
+// ASSAY_BLESS_LOGIN=ada:2001).
+func TestEvidenceCommitCarriesOnBehalfOfTrailer(t *testing.T) {
+	f, _ := setupFake(t)
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
+	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	if code != deskkit.ExitOK {
+		t.Fatalf("commit exit = %d, want 0", code)
+	}
+	if len(f.writes) != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", len(f.writes))
+	}
+	msg := f.writes[0].Message
+	if !strings.HasSuffix(msg, "On-behalf-of: human:ada mode:unattended") {
+		t.Fatalf("commit message = %q, want it to end with the on-behalf-of trailer", msg)
+	}
+	if !strings.HasPrefix(msg, "Evidence: verification row for "+evidencePath) {
+		t.Fatalf("commit message = %q, want it to still start with the evidence-row message", msg)
+	}
+}
+
 // TestIdempotencyNoop: committing content already on the branch is a noop (exit 0, NO WriteFile).
 func TestIdempotencyNoop(t *testing.T) {
 	f, _ := setupFake(t)

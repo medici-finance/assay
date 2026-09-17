@@ -203,10 +203,14 @@ func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir,
 	target, found := newestWorkpadCandidate(cands)
 
 	if dryRun {
+		obo, oerr := deskkit.OnBehalfOfLine("")
+		if oerr != nil {
+			return oerr
+		}
 		if found {
-			fmt.Printf("WORKPAD: would edit #%d\n", target.DatabaseID)
+			fmt.Printf("WORKPAD: would edit #%d (trailer: %s)\n", target.DatabaseID, obo)
 		} else {
-			fmt.Println("WORKPAD: would create")
+			fmt.Printf("WORKPAD: would create (trailer: %s)\n", obo)
 		}
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = "dry-run"
@@ -217,8 +221,14 @@ func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir,
 		return werr
 	}
 
+	// On-behalf-of trailer (multi-principal/01), appended to the POSTED/EDITED body only.
+	postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
+
 	if found {
-		if eerr := workpadEditor(fg, fr, target.CommentID, string(body)); eerr != nil {
+		if eerr := workpadEditor(fg, fr, target.CommentID, string(postBody)); eerr != nil {
 			return deskkit.Unverifiable("workpad comment edit failed", eerr)
 		}
 		recordWorkpadID(dir, target.DatabaseID)
@@ -230,7 +240,7 @@ func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir,
 	// The create path. The id recorded for the NEXT invocation is the one the FORGE reported
 	// for the comment it just created — not a number parsed back out of a printed URL, which
 	// only ever worked for one forge's URL shape and silently yielded 0 for anything else.
-	ref, cErr := fg.PostComment(fr, pr, string(body))
+	ref, cErr := fg.PostComment(fr, pr, string(postBody))
 	if cErr != nil {
 		return deskkit.Unverifiable("posting the workpad comment failed", cErr)
 	}

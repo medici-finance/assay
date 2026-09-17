@@ -114,12 +114,11 @@ func TestBriefV2ValidLintsClean(t *testing.T) {
 	if len(problems) != 0 {
 		t.Fatalf("a valid v2 brief should produce no PROBLEMs; got %v", problems)
 	}
-	// The reserved edges are surfaced reserved-not-gating.
-	if !hasProblem(notices, "gates: 1 edge (reserved, not gating)") {
-		t.Errorf("expected the reserved-not-gating notice; got %v", notices)
-	}
-	if !hasProblem(notices, "feathers: 1 edge (reserved, not gating)") {
-		t.Errorf("expected the feathers reserved-not-gating notice; got %v", notices)
+	// gates:/feathers: are EXECUTED as of graph-execution/01 — the
+	// "(reserved, not gating)" NOTICE is retired (checkBriefV2Semantics no
+	// longer emits it at all).
+	if hasProblem(notices, "reserved, not gating") {
+		t.Errorf("the reserved-not-gating notice should be retired (graph-execution/01); got %v", notices)
 	}
 }
 

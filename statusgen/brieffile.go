@@ -1429,6 +1429,11 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// rule; legacy briefs keep Schema="" and Depends nil.
 				row.Schema = bf.Schema
 				row.Depends = bf.Depends
+				// gates:/feathers: worm into the Brief row for the eligibility
+				// evaluator (graph-execution/01) — brief-v2 only; nil for
+				// brief-v1/legacy briefs, exactly like Depends above.
+				row.Gates = bf.Gates
+				row.Feathers = bf.Feathers
 				// value flows into the Next-up score;
 				// an invalid value is caught above and left off the row so the
 				// score falls back to med rather than trusting a bad token.

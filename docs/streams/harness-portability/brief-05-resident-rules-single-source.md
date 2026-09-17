@@ -137,6 +137,26 @@ Runner ≠ implementer. Isolated worktree; all deliverables in-repo (`tools/harn
 **RISK-VALUE: DERIVED — the ten resident rules' delivered payload is byte-identical (sha256 chain) across the pre-refactor git heredoc, the golden fixture under the generator's testdata, the committed Claude payload text, and the source-generated output** — no rule dropped, reordered, or altered; the refactor changed delivery, not the method text. Proven by sha256 chain, not by a passing test. All other literals (rule-count bound `10`, single-key JSON contract, version string) are reversible contract/framing shapes caught by rows 3/4/6.
 
 **VERIFY: PASS** — all 7 rows run with real observed output matching Expect (incl. inverted mutation row 2a and guarded row 3a); no UNRUN / COULD-NOT-CHECK rows.
+### Non-implementer verifier re-run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off origin/main at `c67cc371f165a7b63e8b0a26d0a5afa40a95556b`. This item's own Verify table already carried a clean PASS from 2026-08-22 that was never flipped to `verified`; re-run fresh against today's merged main before landing the flip, not trusted from the month-old snapshot.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./...` | exit 0 | exit 0 — `ok github.com/medici-finance/assay/tools/harnessgen 0.444s` | 2026-09-17 | sonnet-5-verifier |
+| 2 | `go run ./tools/harnessgen resident --check` | exit 0, clean | exit 0 — "clean — committed artifacts match the source" | 2026-09-17 | sonnet-5-verifier |
+| 2a | mutation: append `DRIFT-PROBE` to the Codex fragment, re-check, restore | non-zero naming the file; clean again after | exit 1, "DRIFT — committed artifacts differ..." naming `plugins/assay/codex/AGENTS-assay.md`; restored via `git checkout --`, row 2 re-run clean | 2026-09-17 | sonnet-5-verifier |
+| 3 | `inject-resident-rules.sh \| jq -er '.systemMessage'` + rule-count grep | exit 0, `10` | exit 0, `10` | 2026-09-17 | sonnet-5-verifier |
+| 3a | guarded per-rule presence loop R1..R10 | no MISSING lines | empty — sanity-checked the guard itself by injecting a probe `R99`, which correctly printed MISSING | 2026-09-17 | sonnet-5-verifier |
+| 4 | `test -f AGENTS-assay.md && grep -c '^## '` | exit 0, `1` | exit 0, `1` | 2026-09-17 | sonnet-5-verifier |
+| 5 | `grep -rlE 'harnessgen' .github/workflows` | exit 0 | exit 0 — matches `release.yml` (see filed finding below) | 2026-09-17 | sonnet-5-verifier |
+| 6 | `inject-resident-rules.sh \| jq -e 'keys == ["systemMessage"]'` | `true` | `true` | 2026-09-17 | sonnet-5-verifier |
+
+**RISK-VALUE: DERIVED — re-confirmed today, hashes computed independently, not copied from the tool's own report.** Committed Claude payload (`plugins/assay/hooks/resident-rules.payload.txt`) = freshly-regenerated generator output = the version-resolved golden fixture (`tools/harnessgen/testdata/payload.golden.txt`), all sha256 `9cfb90e0203d8ab053aaa98b7920b1e7e70eb2a053fc45cc5ea79852029363d1`. Codex fragment committed = freshly regenerated, sha256 `159aff111cbe939a941ec0d8d1121ad395968c2fdc04eb634805665811ed6783`. No rule dropped, reordered, or altered.
+
+**Filed finding (not a Verify-row failure): `medici-finance/assay#1278`.** Row 5 literally passes (`release.yml` does gate `resident --check`), but that workflow triggers only on a version-tag push / `workflow_dispatch`, not on `push: main`/`pull_request` — the regular per-PR pipeline (`ci.yml`) only runs `go build`+`go vet` for `tools/harnessgen`, not `go test` or `resident --check`. Drift introduced by a PR would not be caught until the next release cut, which reads weaker than this brief's own Task item 4 intent. Filed for a desk/driver ruling on whether that cadence is accepted or needs a stronger trigger — does not block this brief's own PASS, since the artifacts as committed today are genuinely correct.
+
+**VERIFY: PASS** — all 8 executable checks (1, 2, 2a, 3, 3a, 4, 5, 6) ran today with real observed output matching Expect exactly; no UNRUN/COULD-NOT-CHECK.
 
 ## Review
 

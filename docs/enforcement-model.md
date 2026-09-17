@@ -100,3 +100,17 @@ The honest scorecard, so no handover note overclaims a smaller install:
 Nothing on this page provisions an identity or changes a permission: App creation and permission
 grants are admin acts and are ESCALATE-only in the runbook. This page describes the model; the
 runbook installs it, and `#463` decides how small the supported floor may be.
+
+## A different layer: WHEN dispatch happens, not WHO may certify it
+
+Everything above is identity enforcement — who may post which verdict. The eligibility
+evaluator (`statusgen --eligibility`, `docs/dependency-graph-design.md` §3.7,
+graph-execution/01) is a **separate, deterministic** enforcement layer that gates *when* a
+brief may be dispatched at all, computed from the declared graph (`depends:`/`gates:`)
+rather than from any identity: `eligible` (no hold), `held` (excluded from Next-up — a
+`gates:` edge or an unsatisfied `depends:` blocks it), or `eligible-with-notice` (offered,
+with a `feathers:` edge flagged but never excluding). It runs before any reviewer/verifier
+identity is even in play, and it enforces the SAME verdict everywhere it is consulted
+(Next-up, the drive frontier) — a brief the board hides can never be offered by the
+frontier. It is a graph-shape gate, never an authorization: it says nothing about who
+certified the work, only about whether its declared prerequisites are in force.

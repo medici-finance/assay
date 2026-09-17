@@ -141,6 +141,29 @@ Runner ≠ implementer (first non-implementer run; prior Evidence was implemente
 | 7 | `cd statusgen && go test . -count=1` | 0 | full suite ok (incl. unknown-subcommand test with `brief` in the known list) | 2026-09-04 | opus-4.8[1m] |
 | 8 | `gofmt -l statusgen/briefinfo.go statusgen/briefinfo_test.go` | 0 | empty — the brief's touched files (`briefinfo.go`, `briefinfo_test.go`) are gofmt-clean under both go1.25 (CI pin) and go1.26; the unrelated pre-existing `statusgen` files that flag only under a newer local gofmt (not the CI toolchain) are #555's module-wide drift, out of scope | 2026-09-04 / re-scoped 2026-09-06 | opus-4.8[1m] |
 | 9 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | 2026-09-04 | opus-4.8[1m] |
+### Non-implementer verifier re-run — 2026-09-16 verify-desk (desk-tools/12 dispatched verifier) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Fresh, independent run — not a duplicate: the prior 2026-09-06 `opus-4.8[1m]-verifier` pass recorded PASS on rows 1-7/9 but HELD row 8, so the item never advanced past `implemented`. Merged main `a4700d2b`.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd statusgen && go build ./... && go vet ./...` | exit 0 | exit 0, clean | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 2 | `go test . -run '^TestBriefInfoResolvesFrontmatterAndRow$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 3 | `go test . -run '^TestBriefInfoDuplicatePrefixIsAnError$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 4 | `go test . -run '^TestBriefInfoLegacyAndMissingRow$' -count=1` | exit 0 | exit 0 — PASS (legacy + missing_row subtests) | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 5 | `go test . -run '^TestBriefInfoMultiKeyPartialFailure$' -count=1` | exit 0 | exit 0 — PASS (all-good + one-bad-key subtests) | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 6 | `go run . brief desk-tools/12 --root .. --json` + greps | exit 0 | exit 0; JSON has `"gate": "model"`, `"status": "implemented"`; `"file"` relative, no leading `/` | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 7 | `go test . -count=1` | exit 0 | exit 0 — full suite `ok`, incl. `TestUnknownSubcommandFailsClosed`, `TestBriefInfoLeavesFixtureByteIdentical` | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 8 | `gofmt -l statusgen/briefinfo.go statusgen/briefinfo_test.go` (brief's own scoped command, not a whole-dir sweep) | empty | exit 0, empty. **Was HELD 2026-09-06** — that verifier ran a broader, non-brief-specified whole-directory `gofmt -l statusgen` and hit 6 unrelated pre-existing go1.26/go1.25 drift files, out of this row's actual scope. Run exactly as the brief specifies, it's clean | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+| 9 | `go run . --root .. --lint` | rc 0 | rc 0 — LINT: PASS | 2026-09-16 | verify-desk (desk-tools/12 dispatched verifier) |
+
+No invented scope, no unrun rows. The row-8 HELD from the prior pass is corrected here: the brief's literal command scopes `gofmt -l` to the two touched files only, never a whole-dir sweep — run as written, it passes. `main.go:1233` intercepts `brief` before flag parsing (verifyrun pattern); `main.go:1316` known-subcommand list includes it. README usage paragraph at `statusgen/README.md:167`; verifyloop usage note at `tools/desk/cmd/verifyloop/main.go:215`. Duplicate-prefix fixture confirmed at `statusgen/testdata/briefinfo/docs/streams/sample/brief-03-{alpha,beta}.md`. `TestBriefInfoLeavesFixtureByteIdentical` covers the byte-identical pre-mortem requirement.
+
+**Risk-bearing value.** Enumerated: `briefInfoExitOK = 0` / `briefInfoExitResolve = 2` (`briefinfo.go:44`, exit-code contract), the `itemKeyNumRe` grammar regex, default `root = "."`, `"legacy"` schema sentinel. Only the exit-code contract is authority-binding (what downstream consumers branch on to decide whether the JSON is trustworthy); the rest are reversible operational defaults/labels.
+
+**RISK-VALUE: DERIVED** — `briefInfoExitResolve = 2` @ `statusgen/briefinfo.go:44` — matches the brief's explicit Facts contract (zero/multiple matches, or one unresolvable multi-key entry → exit 2) and statusgen's existing refusal=2 convention across other subcommands; independently confirmed by rows 3 and 5 (duplicate-prefix and partial multi-key failure both produce exit 2 with no JSON body).
+
+**VERIFY: PASS** — all 9 rows pass on merged main as written in the brief. No HELD rows remain.
 
 ## Review
 

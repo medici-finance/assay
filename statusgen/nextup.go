@@ -392,8 +392,8 @@ func queueBlocks(queues map[string]measuredQueue, measures *string) (blocked, un
 // queues carries the resolved measured-queue state for the drain-before-
 // instrument gate; a nil map makes every `measures:` field unresolvable, i.e.
 // could-not-check (fail closed) — pass wiredQueues(streams) to gate for real.
-func eligible(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, queues map[string]measuredQueue) bool {
-	if !eligibleBase(streams, s, b, claimed) {
+func eligible(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, queues map[string]measuredQueue, elig map[string]Eligibility) bool {
+	if !eligibleBase(streams, s, b, claimed, elig) {
 		return false
 	}
 	// Drain-before-instrument: a TODO brief that instruments a queue is not
@@ -418,7 +418,15 @@ func eligible(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, qu
 // wave rules. Split out so the pick loop can ask "would this brief have been
 // eligible but for the drain-before-instrument gate?" and attribute the
 // held-back brief honestly, instead of guessing.
-func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool) bool {
+//
+// elig is the evaluator's verdict map (eligibility.go, graph-execution/01),
+// computed ONCE per nextUp() call (eligibilityForStreams) and threaded
+// through rather than read from a package var, so every caller is explicit
+// about which board it is judging against. A brief-v1 todo brief's
+// depends:/gates: decision is read from elig — never re-derived by walking
+// b.Depends here — so Next-up and the evaluator can never disagree about
+// what a declaration means.
+func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, elig map[string]Eligibility) bool {
 	if s.Status != "active" || b.StaleRef != "" {
 		return false
 	}
@@ -448,12 +456,26 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 			}
 			return true
 		}
-		// brief-v1: gate on the brief's own typed depends list.
-		// Non-brief-v1 (legacy): keep the existing whole-wave rule.
-		// claim-aware filtering removes in-flight on open branches/PRs;
-		// this changes todo eligibility gating only — zero score-input
-		// changes (F-09/I-13 boundary).
-		if b.Schema == "brief-v1" {
+		// brief-v1/brief-v2: gate on the evaluator's verdict (graph-execution/01)
+		// — depends: (both schemas) and gates: (v2 only, since gates: does not
+		// exist under v1) together, not b.Depends walked in isolation. Before
+		// this brief, a v2 brief fell through to the legacy whole-wave rule
+		// below (the schema check named only "brief-v1"), which never consulted
+		// Depends at all — a real gap this closes, since gates:/feathers: exist
+		// ONLY under v2 and the evaluator must see every declared edge on the
+		// schema that carries it. Truly legacy (Schema == "", no frontmatter)
+		// keeps the whole-wave rule. claim-aware filtering removes in-flight on
+		// open branches/PRs; this changes todo eligibility gating only — zero
+		// score-input changes (F-09/I-13 boundary).
+		if b.Schema == "brief-v1" || b.Schema == "brief-v2" {
+			if ev, ok := elig[s.Name+"/"+b.Num]; ok {
+				return ev.Verdict != VerdictHeld
+			}
+			// No evaluator verdict available for this id — should not happen
+			// from nextUp() (elig is always computed there first); fail back
+			// to the pre-evaluator depends-only walk rather than silently
+			// eligible, so a caller that forgot to wire elig cannot un-gate
+			// a brief the evaluator would have held.
 			for _, dep := range b.Depends {
 				if !depIsSatisfied(streams, dep) {
 					return false
@@ -660,16 +682,21 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 	// property of the board, not of a brief, and re-deriving it per brief would
 	// be quadratic over every Evidence body on the page.
 	queues := wiredQueues(streams)
+	// Resolve the eligibility evaluator's verdict ONCE for the whole board
+	// (graph-execution/01) — the single deterministic source eligibleBase reads
+	// for the depends:/gates: decision, so Next-up and --eligibility can never
+	// disagree about the same declaration.
+	elig := eligibilityForStreams(streams)
 	var all []Pick
 	for _, s := range streams {
 		for _, b := range s.Briefs {
-			if !eligible(streams, s, b, claimed, queues) {
+			if !eligible(streams, s, b, claimed, queues, elig) {
 				// Attribute the drain-before-instrument exclusions so the board
 				// can name them. Only a brief that was OTHERWISE eligible counts:
 				// a paused-stream or claimed brief carrying `measures:` is held by
 				// something else and must not be reported as gate pressure.
 				if blocked, unknown := queueBlocks(queues, b.Measures); blocked &&
-					b.Status == "todo" && eligibleBase(streams, s, b, claimed) {
+					b.Status == "todo" && eligibleBase(streams, s, b, claimed, elig) {
 					id := s.Name + "/" + b.Num
 					if unknown {
 						nu.MeasuresUnknown = append(nu.MeasuresUnknown, id)
