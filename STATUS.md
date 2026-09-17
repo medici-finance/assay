@@ -44,12 +44,13 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2000 |
 | forge-neutral | 19 — Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs [exec:strong] | 1 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
+| desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (50 desk-actionable of 61 total — 61 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (50 desk-actionable of 61 total — 60 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -91,7 +92,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 10 [exec:strong] | verified | 1000 | 0 | — | 2026-09-16 verify-desk (desk-tools/10 dispatched verifier; 11/11 rows PASS incl. 2 previously-HELD rows now resolved; risk-value DERIVED on beaconFreshWindow) | — |
 | desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 15 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -221,7 +222,7 @@ _None._
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
 - 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — implemented (wave 1)
 - 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — implemented (wave 1)
-- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — implemented (wave 1)
+- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — verified (wave 1)
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — implemented (wave 1)
