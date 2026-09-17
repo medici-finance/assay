@@ -111,47 +111,67 @@ per HP/01 §3.3 (`auto-trigger` = `supported` on Codex CLI). If auto-trigger is 
 in the environment, record that posture and confirm the by-name floor (Step 3) still
 holds — a disabled auto-trigger is a config posture, not a FAIL, but MUST be stated.
 
-#### Step 5 — Dispatch-claim probe → spawn tools present; fan-out gated by the claim rule, not tool absence
+#### Step 5 — Serial-dispatch floor probe → force the concurrency cap to 1, observe graceful serial fan-out with every guarantee intact
 
-**Re-baselined (`#939`, ratified):** the original form of this step used
-`[features] multi_agent` **off** as its precondition — "dispatch is unavailable, so a
-degraded serial run must be observed and stated." On `codex-cli 0.154.0` that
-precondition no longer holds: `multi_agent=false` does not remove the spawn tools (see
-the established-fact note below), so the old `Expect:` was neither observable nor
-falsifiable and the step recorded `BLOCKED` in the run log merged via `#937`. The step
-now asserts what 0.154.0 actually exposes.
+**Re-baselined (`#939`, ratified — supersedes the earlier `multi_agent`-off form):** the
+original step used `[features] multi_agent` **off** as its precondition ("dispatch is
+unavailable, so a degraded serial run must be observed and stated"). On codex-cli
+≥0.154.0 that precondition is **unreachable**: `multi_agent` has graduated to
+`stable`/`true` (`codex features list`) and a child spawns with the flag `false`, so
+nothing in `[features]` puts the harness into a no-dispatch state — the old `Expect:`
+was neither observable nor falsifiable and recorded `BLOCKED` in the run log merged via
+`#937`. Per the 2026-09-17 ruling (human:ian, relayed on `#939`) the step is re-based
+to a trigger a current Codex **can** genuinely be put into: the concurrency cap. On
+0.154.0 `[agents] max_concurrent_threads_per_session` still bounds parallelism (`codex
+exec --strict-config` recognises the key; legacy alias `max_threads`), and setting it to
+`1` forces the desk pool to run **serially** — excess workers queue rather than fan out.
+That is the reachable form of the `capability:dispatch-worker` convenience-degradation
+floor.
 
 Action:
-  (i) Under `-c features.multi_agent=true`, issue a simple presence-check prompt
-      confirming a subagent-spawning tool (e.g. `spawn_agent`) is in the session's tool
-      list — a positive-presence check, not an absence check.
-  (ii) In a separate, real session (same config), exercise a dispatch-bearing skill
-      (`the-desk`, `worker-desk`, or a `pr-review-desk` fan-out) with a request that would fan
-      out work, and capture the FULL transcript (`--json` event log + `-o` final
-      message). Grep the transcript for evidence that the fan-out was gated by the
-      desk methodology's own claim-before-dispatch ceremony (no sub-agent is spawned
-      without first acquiring a dispatch claim — the skill bodies' own
-      claim-acquire-then-worktree-create rule) rather than by the spawn tool being
-      absent.
+  (i) Confirm the trigger is settable on this CLI: `codex exec --strict-config -c
+      agents.max_concurrent_threads_per_session=1 …` loads without an
+      unrecognised-field error — a positive check that the cap is a real config key
+      (a bogus `[agents]` key is rejected by `--strict-config`).
+  (ii) In a real session under `-c agents.max_concurrent_threads_per_session=1` and
+      `--sandbox danger-full-access` (so isolation and forge writes are available),
+      exercise a dispatch-bearing skill (`worker-desk`, `the-desk`, or a
+      `pr-review-desk` fan-out) with a request that would fan out **N ≥ 2** items.
+      Capture the FULL transcript (`--json` event log + `-o` final message).
 
-Expect:
-  (i) the presence-check names the spawn tool — a positive observation.
-  (ii) the transcript shows the session either (a) refusing or deferring the spawn
-      because no dispatch claim was established, or (b) establishing a claim via the
-      proper desk mechanism before making any spawn tool call. A transcript showing a
-      spawn tool call fired with no preceding claim step is a FAIL routed to
-      harness-portability/04 (the skill body's dispatch-ceremony text) — the tool being
-      present is expected; spawning without a claim is not. A run that never reaches a
-      dispatch decision for an unrelated reason (e.g., a sandbox write refusal before
-      the claim step) BLOCKS this step rather than passing or failing it — the claim
-      gate specifically must be exercised and observed.
+Expect: the fan-out **degrades to serial without dropping any guarantee** —
+  - every one of the N items is completed (none silently skipped to cope with the
+    throttle);
+  - the children's lifetimes in the `--json` event log do **not overlap** — serial
+    execution, the observable form of the cap;
+  - each dispatched item still receives its full guarantee set — its own isolated
+    worktree, its own command evidence, its own review — i.e. only the *convenience*
+    (parallelism) degraded, and where the skill body surfaces the serialization it
+    states it.
+
+  A run that drops or skips an item, or weakens any of the three guarantees (isolation /
+  evidence / gate) to keep up under the cap, is the FAIL — the "ran anyway, quietly, with
+  less" fourth-cell bug — routed to harness-portability/04. A run that never reaches a
+  dispatch decision for an unrelated reason (e.g. a sandbox write refusal before the
+  first spawn) **BLOCKS** this step rather than passing or failing it.
+
+**Note on the trigger (why the cap, not the flag).** On codex-cli 0.154.0 the concurrency
+cap is transparent to the skill — children queue at the harness, so a session capped at
+`1` may serialize without the skill *emitting* a degradation notice. This step therefore
+judges the floor's *guarantee* (serial throughput, no item dropped, no guarantee
+weakened), not a required verbal statement — which is exactly what made the retired
+flag-based `Expect:` unfalsifiable. **Re-open / restore condition:** if a future
+codex-cli re-gates the subagent tools behind a config a session can be put into —
+restoring a skill-*observable* "dispatch unavailable" precondition — the stated-degradation
+form of this probe becomes available again and should be restored.
 
 **Established fact, not a live finding (cite `#939` and the run log merged via `#937`,
-both bare — public-repo citation convention):** on `codex-cli 0.154.0`,
-`features.multi_agent=false` no longer removes the spawn tools from the tool list.
-`codex features list` reports `multi_agent  stable  true`; a paired presence-check
-and an actual `spawn_agent` call both succeeded with the flag set to `false`. This is
-recorded once, here, rather than re-measured on every run.
+both bare — public-repo citation convention):** on codex-cli 0.154.0,
+`features.multi_agent=false` no longer removes the subagent tools; `codex features list`
+reports `multi_agent  stable  true`, and both a presence-check and an actual `spawn_agent`
+call succeeded with the flag set to `false`. `[agents] max_concurrent_threads_per_session`
+remains a recognised config key (verified via `codex exec --strict-config`) and is the
+reachable parallelism control. Recorded once, here, rather than re-measured on every run.
 
 #### Step 6 — Isolation probe → refusal fires where ruled
 
@@ -222,13 +242,15 @@ Step 4: Auto-trigger probe
   Result: PASS | FAIL | BLOCKED
   Issue (if FAIL): owner/repo#<n> (harness-portability/06)
 
-Step 5: Dispatch-claim probe (multi_agent=true) -> spawn tools present, claim-gated not tool-absence-gated
+Step 5: Serial-dispatch floor (agents.max_concurrent_threads_per_session=1) -> graceful serial fan-out, every guarantee intact
+  Config: -c agents.max_concurrent_threads_per_session=1  --sandbox danger-full-access
   Action taken: ...
   Transcript excerpt:
-    <paste — (i) the presence-check naming the spawn tool, and (ii) the real
-    dispatch-attempt transcript lines showing the claim-before-dispatch gate>
+    <paste — (i) the --strict-config line showing the cap key is accepted, and (ii) the
+    --json event-log excerpt showing N>=2 items all completed with non-overlapping child
+    lifetimes, each with its own worktree / evidence / review>
   Result: PASS | FAIL | BLOCKED
-  Issue (if FAIL): owner/repo#<n> (harness-portability/04)
+  Issue (if FAIL, floor breach — item dropped or guarantee weakened): owner/repo#<n> (harness-portability/04)
 
 Step 6: Isolation probe -> refuses under workspace-write, runs under danger-full-access
   Action taken: ...

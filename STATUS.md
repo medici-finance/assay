@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-17 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-17 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-17 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 7/27 | 2026-09-17 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 8/27 | 2026-09-17 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-17 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 11/17 | 2026-09-17 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/19 | 2026-09-17 |  |
@@ -44,19 +44,20 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2000 |
 | forge-neutral | 19 — Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs [exec:strong] | 1 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
+| desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (50 desk-actionable of 61 total — 61 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (49 desk-actionable of 60 total — 60 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (50)
+### Desk-actionable (49)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -91,7 +92,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 15 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -213,7 +213,7 @@ _None._
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (20 open)
+### desk-tools (19 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -221,7 +221,6 @@ _None._
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
 - 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — implemented (wave 1)
 - 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — implemented (wave 1)
-- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — implemented (wave 1)
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — implemented (wave 1)
@@ -352,11 +351,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 06 Workpad — one upserted progress comment per PR — done (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — done (wave 1)
 
-### desk-tools (7 done)
+### desk-tools (8 done)
 
 - 04 Deterministic runner: execute rows, batch ~5 min, sign, file verdict issues — done (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — enum-bounded agent consults for deterministic loops — done (wave 1)
 - 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — done (wave 1)
+- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — done (wave 1)
 - 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — done (wave 1)
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — done (wave 1)
 - 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — done (wave 1)
@@ -442,4 +442,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **75/188** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **76/188** briefs done · completed initiatives: see `docs/archive/`
