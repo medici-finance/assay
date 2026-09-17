@@ -127,20 +127,20 @@ facts:
    body. Rows 6 and 5 must go red respectively.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskapps/ -count=1` | exit 0 |
-| 2 | `cd tools/desk && go build -o /tmp/deskapps ./cmd/deskapps && /tmp/deskapps init --tier team --org example --no-browser --dry-run 2>&1 \| grep -cE -e 'http://127\.0\.0\.1:[0-9]+/' -e 'example-read' -e 'example-act'` | 3 (URL printed, two App rows named) |
-| 3 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestManifest' -count=1 -v 2>&1 \| grep -cE -e 'family.*6 manifests' -e 'team.*2 manifests' -e 'requiredDuties covered'` | ≥ 3 |
-| 4 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestNoSecretInPage' -count=1` | exit 0 — served HTML for every route contains no PEM header, client secret, or webhook secret from the fake conversion |
-| 5 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestNoSecretInLogs' -count=1` | exit 0 — stdout and the deskkit audit line carry `app=`, `state=`, never key material |
-| 6 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestCallbackBadState' -count=1` | exit 0 — a callback with a foreign `state` is 403, no conversion attempted, row unchanged |
-| 7 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindLoopbackOnly' -count=1` | exit 0 — listener address is `127.0.0.1:<port>`; `0.0.0.0` and `::` never appear |
-| 8 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPemMode' -count=1` | exit 0 — written key is mode 0600 and byte-equal to the fake conversion's `pem` |
-| 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindingsWritten' -count=1 -v 2>&1 \| grep -cE -e 'REVIEWER_APP=example-act' -e 'WORKER_APP=example-act' -e 'READ_APP=example-read'` | ≥ 3 |
-| 10 | `grep -cE -e '^## Measured' docs/desk-tools/deskapps.md && grep -cE -e 'throttle' -e 'org owner' -e 'Enterprise Server' docs/desk-tools/deskapps.md` | 1 then ≥ 3 |
-| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — both mutants are caught by rows 5 and 6 |
-| 12 | `statusgen --root . --consumers --brief apps-installer/02` | exit 0 (routing claims corroborated against the diff) |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskapps/ -count=1` | exit 0 | check:ci |
+| 2 | `cd tools/desk && go build -o /tmp/deskapps ./cmd/deskapps && /tmp/deskapps init --tier team --org example --no-browser --dry-run 2>&1 \| grep -cE -e 'http://127\.0\.0\.1:[0-9]+/' -e 'example-read' -e 'example-act'` | 3 (URL printed, two App rows named) | check:ci |
+| 3 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestManifest' -count=1 -v 2>&1 \| grep -cE -e 'family.*6 manifests' -e 'team.*2 manifests' -e 'requiredDuties covered'` | ≥ 3 | check:ci |
+| 4 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestNoSecretInPage' -count=1` | exit 0 — served HTML for every route contains no PEM header, client secret, or webhook secret from the fake conversion | check:ci |
+| 5 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestNoSecretInLogs' -count=1` | exit 0 — stdout and the deskkit audit line carry `app=`, `state=`, never key material | check:ci +mutation |
+| 6 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestCallbackBadState' -count=1` | exit 0 — a callback with a foreign `state` is 403, no conversion attempted, row unchanged | check:ci +mutation |
+| 7 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindLoopbackOnly' -count=1` | exit 0 — listener address is `127.0.0.1:<port>`; `0.0.0.0` and `::` never appear | check:ci |
+| 8 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPemMode' -count=1` | exit 0 — written key is mode 0600 and byte-equal to the fake conversion's `pem` | check:ci |
+| 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindingsWritten' -count=1 -v 2>&1 \| grep -cE -e 'REVIEWER_APP=example-act' -e 'WORKER_APP=example-act' -e 'READ_APP=example-read'` | ≥ 3 | check:ci |
+| 10 | `grep -cE -e '^## Measured' docs/desk-tools/deskapps.md && grep -cE -e 'throttle' -e 'org owner' -e 'Enterprise Server' docs/desk-tools/deskapps.md` | 1 then ≥ 3 | check:ci |
+| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — both mutants are caught by rows 5 and 6 | check:ci |
+| 12 | `statusgen --root . --consumers --brief apps-installer/02` | exit 0 (routing claims corroborated against the diff) | check:ci |
 
 ## Evidence
 

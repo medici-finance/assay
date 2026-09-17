@@ -1,9 +1,9 @@
 // Command deskapps is the installer for Assay's GitHub App identities: one command, one
 // browser sitting, driving GitHub's App Manifest flow so the person clicks only what GitHub
 // reserves for a signed-in human (Create, Install, the avatar drop). See
-// docs/streams/apps-installer/design.md for the design of record.
+// docs/streams/example-stream/design.md for the design of record.
 //
-// This brief (apps-installer/02) ships `deskapps init`: the loopback page, the tier
+// This brief (example-stream/02) ships `deskapps init`: the loopback page, the tier
 // manifests, the manifest→code→conversion flow, and the key/record writes. `deskapps
 // resume`, `status` and `avatar` are later briefs (03, 04, 06).
 package main
@@ -26,7 +26,7 @@ func main() {
 
 const usage = `usage: deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <name>] [--port 41873] [--no-browser] [--dry-run]
 
-deskapps resume, deskapps status, deskapps avatar are not implemented yet (apps-installer/03, /04, /06).`
+deskapps resume, deskapps status, deskapps avatar are not implemented yet (example-stream/03, /04, /06).`
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {

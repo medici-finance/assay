@@ -1360,7 +1360,7 @@ cross-compile, so this is orchestration + Windows path handling (`.exe` suffixes
 the Makefile's `.PHONY` set (run `cd tools/winparity && go run . --root ../..`, exit 0 = in
 parity); the Windows script runs that guard as a preflight before any target.
 
-## deskapps — the GitHub App Manifest-flow installer (apps-installer/02)
+## deskapps — the GitHub App Manifest-flow installer (example-stream/02)
 
 `deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <name>] [--port 41873] [--no-browser] [--dry-run]`
 serves the loopback page (`http://127.0.0.1:<port>/`, `127.0.0.1` ONLY — never `0.0.0.0` or
