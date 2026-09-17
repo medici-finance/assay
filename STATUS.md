@@ -21,6 +21,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-17 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 11/17 | 2026-09-17 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/19 | 2026-09-17 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 0/8 | 2026-09-17 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-17 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-17 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-17 |  |
@@ -34,6 +35,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| graph-execution | 02 — Workflow-pattern schema, node contract, and the implementation and research patterns [exec:strong] | 0 | 4500 |
+| graph-execution | 01 — Eligibility evaluator — gates and feathers become gating, with a reason [exec:strong] | 0 | 3500 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -267,6 +270,17 @@ _None._
 - 18 statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk — in-progress (wave 5)
 - 19 Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs — todo (wave 1)
 
+### graph-execution (8 open)
+
+- 01 Eligibility evaluator — gates and feathers become gating, with a reason — todo (wave 0)
+- 02 Workflow-pattern schema, node contract, and the implementation and research patterns — todo (wave 0)
+- 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
+- 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
+- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 2)
+- 06 Run records and the replay/learning loop — todo (wave 3)
+- 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — todo (wave 1)
+- 08 Signal-triggered pattern — incident and regression — todo (wave 1)
+
 ### harness-portability (11 open)
 
 - 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
@@ -428,4 +442,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **75/180** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **75/188** briefs done · completed initiatives: see `docs/archive/`
