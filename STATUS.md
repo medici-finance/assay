@@ -36,7 +36,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | graph-execution | 02 — Workflow-pattern schema, node contract, and the implementation and research patterns [exec:strong] | 0 | 4500 |
-| graph-execution | 01 — Eligibility evaluator — gates and feathers become gating, with a reason [exec:strong] | 0 | 3500 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -44,20 +43,21 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2000 |
 | forge-neutral | 19 — Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs [exec:strong] | 1 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
+| forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (49 desk-actionable of 60 total — 60 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (50 desk-actionable of 61 total — 60 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (49)
+### Desk-actionable (50)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -66,6 +66,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 08 [exec:strong] | implemented | 3500 | 3 | — | — | — |
+| graph-execution | 01 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | windows-port | 00 | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
@@ -77,7 +78,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| forge-gitlab | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| forge-gitlab | 08 [exec:strong] | verified | 2000 | 2 | — | 2026-09-15 sonnet-5-verifier (5/5 rows PASS incl. row 3, which forge-gitlab/11's landing resolved since the 2026-09-10 FAIL; ratchet ceiling 9→5, no passthrough) | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | composability | 04 | implemented | 1500 | 1 | — | — | — |
@@ -245,7 +246,7 @@ _None._
 ### forge-gitlab (6 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
-- 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
+- 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — verified (wave 3)
 - 11 Guard-read custody — the last gh shell-outs onto the Forge seam — implemented (wave 4)
 - 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — implemented (wave 5)
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
@@ -271,7 +272,7 @@ _None._
 
 ### graph-execution (8 open)
 
-- 01 Eligibility evaluator — gates and feathers become gating, with a reason — todo (wave 0)
+- 01 Eligibility evaluator — gates and feathers become gating, with a reason — implemented (wave 0)
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — todo (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
