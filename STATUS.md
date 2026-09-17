@@ -16,7 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-17 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-17 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-17 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/9 | 2026-09-17 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/12 | 2026-09-17 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 11/27 | 2026-09-17 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-17 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-17 |  |
@@ -27,6 +27,16 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-17 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-17 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 4/10 | 2026-09-17 |  |
+
+## Parked
+
+_Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re-activate by flipping the README `status:` back to `active` (subject to the active-stream cap)._
+
+| Stream | Priority | Briefs | Last touched |
+|---|---|---|---|
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-17 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-17 |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-17 |
 
 ## Next up
 
@@ -59,9 +69,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
+| forge-neutral | 07 [exec:strong] | implemented | 4500 | 5 | — | — | — |
+| forge-neutral | 08 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| forge-neutral | 08 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | graph-execution | 01 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | windows-port | 00 | implemented | 3500 | 5 | — | — | — |
@@ -109,8 +119,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 8500 | 13 | — | — | — |
-| forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 9000 | 14 | — | — | — |
+| forge-neutral | 02 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 
@@ -201,11 +211,14 @@ _None._
 - 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — todo (wave 1)
 - 11 retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH — todo (wave 2)
 
-### desk-supervision (3 open)
+### desk-supervision (6 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
+- 10 Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven — blocked (wave 0)
+- 11 The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it — blocked (wave 1)
+- 12 Retire the staged-copy hand-landing once the workflow App PR path is proven — blocked (wave 2)
 
 ### desk-tools (16 open)
 
@@ -232,6 +245,19 @@ _None._
 - 05 migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) — todo (wave 4)
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — todo (wave 4)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
+
+### desktools-v2 (10 open)
+
+- 01 audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line) — todo (wave 1)
+- 02 the v2 seam contract + the ban-lint (advisory/counting first) — todo (wave 2)
+- 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — todo (wave 3)
+- 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — todo (wave 2)
+- 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — todo (wave 2)
+- 06 installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146) — todo (wave 4)
+- 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 6)
+- 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — todo (wave 3)
+- 10 one outbound-write check at the forge write seam, keyed on the target's visibility — todo (wave 2)
+- 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — todo (wave 3)
 
 ### forge-gitlab (5 open)
 
@@ -270,6 +296,15 @@ _None._
 - 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
 - 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
 
+### fresh-views (6 open)
+
+- 01 input-sha stamp + refuse-when-stale helper for derived reads — todo (wave 0)
+- 02 read-side loop views re-derive against live main: verifyloop plan + scanloop coalesce — todo (wave 1)
+- 03 ready-flip gate re-verifies mergeability on main-advance — todo (wave 1)
+- 04 shared append-only log discipline: verify-outcomes.jsonl merge=union + deskevidence post-write sha — todo (wave 0)
+- 05 mirror-freshness gate: fail the release/CI when a mirrored stamped value drifts from its source — todo (wave 0)
+- 06 reconcile ref-resolution across the brief-v2 id flag-day — todo (wave 0)
+
 ### graph-execution (8 open)
 
 - 01 Eligibility evaluator — gates and feathers become gating, with a reason — implemented (wave 0)
@@ -300,6 +335,15 @@ _None._
 - 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
 - 04 Record the authorizing human in the release itself — todo (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
+
+### measured-status (6 open)
+
+- 01 Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test — todo (wave 0)
+- 02 Derive MinCorpus for the learned riskscore model against its 15-feature events-per-variable floor, or record the rationale — and pin it with a test — todo (wave 0)
+- 03 Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop — todo (wave 0)
+- 04 statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off — todo (wave 0)
+- 05 attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish — todo (wave 1)
+- 06 model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login — todo (wave 1)
 
 ### statusgen (3 open)
 
@@ -447,4 +491,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **81/199** briefs done · completed initiatives: see `docs/archive/`
+**19** streams (**16** active, **0** paused, **3** parked) · **81/224** briefs done · completed initiatives: see `docs/archive/`
