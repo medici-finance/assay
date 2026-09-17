@@ -223,7 +223,21 @@ No invented scope, no unrun rows — every row is offline-executable (fixture-on
 
 `deniedPushOpts` (force/delete/prune/mirror/tags/no-verify) named but not top-ranked — defense-in-depth behind the fixed-argv guard (the option cannot reach git regardless), each directly exercised by row 7.
 
-**VERIFY: PASS** — all 11 rows pass exactly as written on merged main. No could-not-check rows, no invented scope.
+**VERIFY: PASS** — all 11 rows pass exactly as written on merged main. One carried residual
+recorded below (could-not-close); otherwise no could-not-check rows, no invented scope.
+
+**Carried residual — could-not-close (security review, 2026-09-17).** The pre-existing
+host-binding residual documented at `tools/desk/cmd/deskgit/deskgit.go:550-557` and
+`tools/desk/README.md:3139-3141` ("host is not bound to `github.com`") was scoped, when
+written, to a read-only fetch. This brief's `--as` credential channel shares the same
+effective-URL gate, and the residual's recorded consequence has not been re-scoped to say what
+that composition now implies. Tightening the gate, re-scoping the residual text at the two
+locations above, and adding the missing negative-path test row are main-side follow-up, out of
+scope for this Evidence-only PR — tracked at #1234 (`help wanted`). Not re-derived here:
+closing it needs either that follow-up to land, or a recorded human ruling accepting the
+residual as it stands under `--as` (a credential-scope acceptance, not a desk decision). This
+line does not revise rows 1–11 above, which pass exactly as run; it records a gap the original
+Evidence text did not state.
 
 ## Review
 
