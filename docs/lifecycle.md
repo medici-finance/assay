@@ -64,6 +64,16 @@ prevent). It weighs:
   the finding resolves (see `registers.md`).
 - **Claim exclusion** — a brief with an open branch against it on `origin` is already in
   flight and is dropped from the batch, so two sessions don't pick the same work.
+- **Eligibility (graph-execution/01)** — a `todo` brief-v1/v2 brief's `depends:`/`gates:`
+  declarations are read through the eligibility evaluator (`statusgen --eligibility`;
+  `docs/dependency-graph-design.md` §3.7), which returns one of three verdicts:
+  `eligible`, `held` (excluded from Next-up), or `eligible-with-notice` (offered, with its
+  `feathers:` notice rendered). A `held` brief's reason — the edge, its type, and why — is
+  the same reason `--eligibility` prints; a hold caused by an unresolvable edge (an
+  unpublished cross-repo alias, an absent sibling checkout, a forge-backed target) is
+  `could-not-check`, never silently treated as satisfied. An **in-progress** brief is never
+  re-gated by this rule — eligibility only governs whether `todo` work starts, not whether
+  started work continues.
 
 **When the claim read fails, the board says so.** Claim exclusion needs `git ls-remote
 origin`; when that times out or errors, Next-up is an *unfiltered superset* — it lists briefs
