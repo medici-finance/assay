@@ -78,7 +78,20 @@ facts:
   gate, the watchdog looks for a responder ACTION RECORD (an open PR/issue from brief 02 or
   a routed issue from brief 03, keyed on `check`+`file:line`) dated within N minutes of the
   red.
-- No action record within N minutes → ESCALATE: file a `needs-decision`/`help wanted`
+- **Independent eligibility check (same input-authorization boundary as 01/02/03).** Before a
+  red gate is ever joined to a responder record, the watchdog re-checks eligibility on the RED
+  RUN'S OWN origin — the identical two-part predicate 01/02/03 gate on: `trigger == schedule`
+  OR (`trigger == push` AND `ref` resolves to `main`). A red gate whose triggering run is
+  `pull_request`-sourced, or a `push` against a non-`main` ref, is INELIGIBLE and is never
+  escalated — not treated as "no action record, therefore escalate", but skipped outright,
+  same as an ineligible run never becomes a `Culprit` at brief 01 and is refused wholesale at
+  briefs 02/03. This is a fourth, independent instance of the same check, not a reuse of
+  01/02/03's verdict: the watchdog reads gate state directly rather than through a Culprit
+  those briefs have already screened, so it is the layer that would otherwise let an
+  ineligible run's check name/diagnostic text reach a needs-human escalation through the one
+  path 01/02/03 do not gate — a fork-branch or PR-triggered red reddening a whole-tree-shaped
+  check purely to have its text surface in an artifact this brief files.
+- No action record within N minutes, on an ELIGIBLE red → ESCALATE: file a `needs-decision`/`help wanted`
   notice naming the check and that no responder acted, so a human is pulled in. It escalates
   regardless of cause (crashed responder, unclassifiable red, classifier bug).
 - An action record present → do nothing (no double-escalation); dedupe on the same key so a
@@ -110,10 +123,13 @@ facts:
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. Build the watchdog: enumerate red whole-tree gates, join each to any brief-02/03 action
+1. Build the watchdog: enumerate red whole-tree gates, independently re-check each gate's
+   triggering-run `origin` against the same two-part eligibility predicate as 01/02/03
+   (`trigger == schedule` OR (`trigger == push` AND `ref == main`)), and skip ineligible gates
+   entirely — never escalate them. Join each remaining ELIGIBLE red to any brief-02/03 action
    record on the `check`+`file:line` key within the N-minute window.
-2. Escalate any red with no action record in-window (file a needs-human notice naming the
-   check), regardless of why the responders were silent.
+2. Escalate any ELIGIBLE red with no action record in-window (file a needs-human notice
+   naming the check), regardless of why the responders were silent.
 3. Suppress escalation when a responder acted, and dedupe so a persistent red escalates once.
 4. Make N configurable; wire the scheduled trigger; ensure the watchdog's own run
    failure/absence is surfaced out-of-band.
@@ -129,8 +145,9 @@ facts:
 | 5 | `cd tools/autotriage && go test -run TestEscalatesUnclassifiableRedRegardlessOfCause -v` | exit 0; a red of an unclassifiable check with no responder record still escalates — proves cause-independence (the failure mode #611-class automation would miss) | check |
 | 6 | `cd tools/autotriage && go test -run TestEscalationNamesCheckNotWithheldDetail -v` | exit 0; a leak-sweep-red escalation body names the check and contains NO withheld token/detail (public-repo safety) | check |
 | 7 | `cd tools/autotriage && go test -run TestWatchdogAbsenceIsSurfaced -v` | exit 0; asserts the watchdog run emits a failure/heartbeat signal such that its own absence is detectable out-of-band (who-watches-the-watchdog layer) | check |
-| 8 | `cd tools/autotriage && go test -run TestScheduledTriggerJoinsGateStateAndResponderRecordsThenEscalates -v` | exit 0; drives the path end to end on fixtures — a simulated scheduled-trigger invocation reads the current gate-state fixture AND the brief-02/03 action-record fixture through the same entry point the real trigger calls, and produces exactly one escalation naming the check. Fails if the trigger's entry point is stubbed, or if the join is exercised only through direct calls into the escalation function (rows 3–7) rather than through the wiring the schedule actually invokes | check +flow |
-| 9 | `cd tools/autotriage && go test -run TestEscalationBodySanitizesParsedText -v` | exit 0; an escalation for a check whose diagnostic text is CI-derived wraps that text in a fenced block with no live markdown link or directive content passed through | check |
+| 8 | `cd tools/autotriage && go test -run TestRefusesIneligibleOriginGate -v` | exit 0; a red whole-tree gate whose triggering run's `origin.trigger` is `pull_request` (or whose `push` origin's `ref` is not `main`), with NO responder action record present, produces NO escalation — negative row proving the watchdog gates on origin eligibility independently BEFORE it ever reaches the no-action-record branch, the same wholesale-refusal posture as 01/02/03 extended to this fourth layer; a watchdog that escalated here purely because no responder record existed would fail this row | check |
+| 9 | `cd tools/autotriage && go test -run TestScheduledTriggerJoinsGateStateAndResponderRecordsThenEscalates -v` | exit 0; drives the path end to end on fixtures — a simulated scheduled-trigger invocation reads the current gate-state fixture AND the brief-02/03 action-record fixture through the same entry point the real trigger calls, and produces exactly one escalation naming the check. Fails if the trigger's entry point is stubbed, or if the join is exercised only through direct calls into the escalation function (rows 3–7) rather than through the wiring the schedule actually invokes | check +flow |
+| 10 | `cd tools/autotriage && go test -run TestEscalationBodySanitizesParsedText -v` | exit 0; an escalation for a check whose diagnostic text is CI-derived wraps that text in a fenced block with no live markdown link or directive content passed through | check |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item.
@@ -145,6 +162,8 @@ brief removes is "a responder always acts"; the layers making the removal safe a
 cause-independent escalation and out-of-band watchdog-liveness — confirm both; (2) rows 4/5
 prove the lower layer catches the fault when the happy path (a responder acted) is bypassed,
 and row 7 proves the fail-safe is not itself a silent single point. Reviewer also confirms
-row 9 closes the sanitize-before-publish gap raised on security review, that the arming
-config and credential-layer ground rules are stated, and that the `.github/workflows/`
-trigger note about #1228's contract still holds. Verdict + date in the stream README table.
+row 8 closes the input-authorization gap raised on security review (this brief is the fourth
+independent layer re-checking origin eligibility, not merely a downstream consumer of
+01/02/03's screening), row 10 closes the sanitize-before-publish gap, that the arming config
+and credential-layer ground rules are stated, and that the `.github/workflows/` trigger note
+about #1228's contract still holds. Verdict + date in the stream README table.

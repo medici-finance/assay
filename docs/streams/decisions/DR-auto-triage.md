@@ -81,10 +81,21 @@ states, and is not what any brief implements. Brief 01's output schema carries t
 required `origin` field with both `trigger` and `ref` sub-fields, and briefs 02/03 each
 re-check the full two-part predicate independently rather than trusting brief 01's refusal
 alone (the same defense-in-depth posture as the three layers above, applied one step earlier
-— at the boundary between "accepted" and "not yet accepted" input). A run that fails this
-check produces no `Culprit`, not a lower-confidence one, and at every layer (01, 02, 03) that
-refusal is WHOLESALE — nothing is opened, filed, or routed on its account, so the refusal
-never dead-ends in a routed-but-silently-dropped artifact at a downstream layer.
+— at the boundary between "accepted" and "not yet accepted" input). **Brief 04's watchdog is a
+fourth enforcing layer, not merely a downstream consumer of 01/02/03's screening**: it reads
+the current gate state directly — bypassing the `Culprit` object 01 already refused to emit
+for an ineligible run — so it re-checks the identical two-part predicate itself, against the
+triggering run of every red gate it considers, before ever joining that gate to a responder
+record. Without this, an ineligible run (a `pull_request` build, or a `push` to a
+contributor-controlled non-`main` branch) that reddens a whole-tree-shaped check would never
+reach 01/02/03 at all, yet would still be visible to 04 as "a red gate with no responder
+action" — turning the fail-safe built to catch silent drops into the one path that still lets
+an ineligible run's check name and diagnostic text reach a published escalation. A run that
+fails this check produces no `Culprit` (01) or no escalation (04), not a lower-confidence one,
+and at every layer (01, 02, 03, 04) that refusal is WHOLESALE — nothing is opened, filed,
+routed, or escalated on its account, so the refusal never dead-ends in a
+routed-but-silently-dropped artifact at a downstream layer, and it is never rediscovered
+through the very fail-safe that exists to catch silent drops.
 
 ## What this record does NOT decide
 
