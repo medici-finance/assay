@@ -23,6 +23,7 @@ on:
     # statusgen source (the lint binary is built from it), and this workflow.
     paths:
       - "docs/**"
+      - "changelog/**"
       - "STATUS.md"
       - "statusgen/**"
       - ".github/workflows/assay-statusgen.yml"
@@ -34,6 +35,9 @@ on:
     # skips any [skip-status-regen] commit (loop guard 2, belt and suspenders).
     paths:
       - "docs/**"
+      # A release clears changelog/; lint reads brief paths into it, so a release
+      # that reds the lint must red it on its own commit (#722).
+      - "changelog/**"
       - "statusgen/**"
       - ".github/workflows/assay-statusgen.yml"
 
