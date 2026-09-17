@@ -163,17 +163,70 @@ gates:
 `on:` accepts the full §3.3 grammar, so a gate may be cross-repo
 (`on: <repo-alias>:<stream>/<NN>` with `type: ordering-gate`).
 
-### 3.6 Schema versioning — reserved under brief-v2
+### 3.6 Schema versioning — reserved under brief-v2, executed since graph-execution/01
 
 `gates:`, `feathers:`, and the identity keys (`id:`, `supersedes:`, and the per-Verify-row
-`id`/`target`) land **reserved under `schema: brief-v2`**: parsed, type-checked, and
-lint-validated, with the gating behaviour deferred. The alternative to reserving them —
-adding them as loose optional keys under the current schema — has a fail-open hazard: an
-old pinned tool silently ignores an edge it does not understand and dispatches past it,
-which is the exact edge class this design exists to close. A schema bump makes that
-fail-closed instead: a tool pinned below the release that understands brief-v2 **refuses**
-a brief-v2 tree rather than misreading it. That refusal is the property worth the one-time
-flag-day, so the keys are reserved at the bump rather than retrofitted after it.
+`id`/`target`) landed **reserved under `schema: brief-v2`** at the derived-board/03 flag-day:
+parsed, type-checked, and lint-validated, with the gating behaviour deferred. The
+alternative to reserving them — adding them as loose optional keys under the current
+schema — has a fail-open hazard: an old pinned tool silently ignores an edge it does not
+understand and dispatches past it, which is the exact edge class this design exists to
+close. A schema bump makes that fail-closed instead: a tool pinned below the release that
+understands brief-v2 **refuses** a brief-v2 tree rather than misreading it. That refusal is
+the property worth the one-time flag-day, so the keys were reserved at the bump rather than
+retrofitted after it.
+
+`gates:`/`feathers:` stopped being reserved at graph-execution/01: the eligibility
+evaluator (§3.7) now reads them and every consumer (Next-up, the drive frontier) reads its
+verdict. The `checkBriefV2Semantics` NOTICE that used to say "gates: N edge(s) (reserved,
+not gating)" is retired — restating "reserved" would be false once the edge actually gates
+dispatch. `id:`, `supersedes:` and the per-Verify-row identity keys remain reserved; nothing
+in this repo executes them yet.
+
+### 3.7 Executed semantics — the eligibility evaluator (graph-execution/01)
+
+`statusgen --eligibility` computes, for every brief, one of three verdicts — the SAME
+verdict Next-up and the drive frontier read, so a brief the board hides can never be
+offered by the frontier and vice versa:
+
+- **`eligible`** — no hold. The brief may be dispatched (subject to the caller's own
+  status/claim/wave rules, unchanged).
+- **`held`** — at least one `gates:` edge, or one unsatisfied `depends:` entry, blocks it.
+  Held briefs are excluded from Next-up.
+- **`eligible-with-notice`** — no hold, but at least one `feathers:` edge is unsatisfied or
+  could-not-check. Offered, rendered with its notice — a feather never excludes.
+
+Each hold/notice carries a **state**, three-way, never collapsed
+(`docs/three-state-instrument-rule.md`):
+
+- **`satisfied`** — the target is `done`/`verified` (a `gates:`/`depends:` target) or, for a
+  `feathers:` edge, simply resolved.
+- **`unsatisfied`** — the target resolved but is not yet `done`/`verified`. The everyday
+  case: the prerequisite just has not landed yet.
+- **`could-not-check`** — the target could not be resolved AT ALL from this tree: an alias
+  the registry marks `unpublished: true`, an alias whose sibling checkout is absent next to
+  `--root`, a forge-backed target (`#<NNN>`, `<alias>#<NNN>`) — the evaluator never reads the
+  forge, regardless of `--forge` — or a cross-cell reference (`<cell>:<alias>:<stream>/<NN>`,
+  no cross-cell resolution exists yet). A `gates:` edge in this state HOLDS the brief, same
+  as `unsatisfied`: "cannot look" is never silently treated as "looked and found
+  satisfied". A `feathers:` edge in this state is a NOTICE, same as `unsatisfied`.
+
+The evaluator runs **offline, from the tree alone** — it never starts a forge process or
+makes a network call, independent of whether the run passed `--forge` (that flag governs
+other checks' forge reads, never this evaluator). A `gates:`/`feathers:` edge that names a
+GitHub issue is therefore always `could-not-check` here.
+
+**Could-not-check visibility.** A hold caused by a could-not-check edge — a registry or
+sibling-checkout gap, not a genuine "not done yet" — is named on a full `--lint` run as a
+`[eligibility-could-not-check]` NOTICE (`NOTICE: [eligibility-could-not-check] <brief>: held
+by <ref> — could-not-check (<why>)`), so the gap is visible on main's daily lint, not only in
+a dispatcher's `--eligibility`/`--next-up` output.
+
+**Consumers.** `eligibleBase` (`statusgen/nextup.go`) and `briefFrontierState`
+(`statusgen/drivefrontier.go`) read the evaluator's verdict for a brief-v1 or brief-v2
+brief's `depends:`/`gates:` decision instead of walking `b.Depends` in isolation — the same
+map, computed once per board build. Nothing about the score changes (F-09 boundary):
+eligibility is a gate, never a score input.
 
 ## 4. The derived graph
 

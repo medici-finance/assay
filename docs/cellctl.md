@@ -15,6 +15,9 @@ can also stand up by hand. Nothing else in Assay depends on it.
 
 For an existing container deployment, the **container** kind provides registration and lifecycle
 delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
+For a harness that must run on the host but must NOT inherit the launching shell's credentials, the
+**scrubbed** kind composes a fully isolated environment instead. See
+[Scrubbed cells](#scrubbed-cells----kind-scrubbed).
 
 ---
 
@@ -227,6 +230,158 @@ window or "deskd is not up" notice unless `DESKD=1`; `DESK_ROOTS` is exported fr
 is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because house windows are
 re-booted by hand across days and the roster beacon should tell one boot from the next. The
 worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same code path.
+
+---
+
+## Scrubbed cells — `--kind scrubbed`
+
+A house cell keeps the operator's real `HOME` on purpose (*Why the session keeps the real `HOME`*
+above) — the desks ARE the operator's desks. A **scrubbed** cell is the opposite case: a harness
+that must run on THIS laptop but must NOT inherit anything of the launching shell — no real
+`HOME`, no SSH agent, no forge or model credentials, no cluster access — because the session
+carries no standing trust of its own. Where a house cell's config home is a **symlink** to the
+operator's, a scrubbed cell's config home is a **real directory**, scoped to exactly one repo,
+with its own harness login. Nothing is copied from the operator's config at `new` time, and
+nothing crosses at boot time beyond an explicit allowlist.
+
+```bash
+cellctl new scr1 --kind scrubbed \
+  --repo /path/to/checkout \
+  --repo-slug example-org/example-repo \
+  [--roots 'example-org/example-repo=/path/to/checkout,...'] [--roles "worker-desk"]
+# hand steps (see the scaffolded README): copy the role PEM(s) in as regular 0600 files,
+# log the harness in under the cell's own home
+cellctl check scr1
+cellctl smoke scr1                    # one-shot, tool-free, read-only readiness probe
+cellctl desk scr1 worker-desk         # the one role this cell boots at a time
+cellctl status scr1                   # running <session> | stopped | stale-lock <pid>
+cellctl down scr1
+```
+
+`new --kind scrubbed` needs `--repo` (a git checkout) and `--repo-slug` (`<owner>/<repo>` — the
+ONE repo this cell is scoped to). It writes `cell.env` (`CELL_KIND=scrubbed`, `CELL_REPO`,
+`CELL_REPO_SLUG`, optionally `CELL_ROOTS`), creates `home/.config/assay/` as a REAL directory
+(mode 0700, never a symlink) carrying a `roster.env` skeleton whose `ASSAY_ALLOWED_REPOS` is
+exactly the slug, and creates `home/.config/gh/` and an empty `home/.gitconfig` — real files, not
+links. It refuses an existing cell of the same name, exactly like every other kind.
+
+### The composed environment
+
+The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
+default. This is the exact list `cellctl` exports (the `SCRUBBED_ENV_KEYS` variable in the script
+is the single source this table, the `[plan]` lines below, and the live launch all trace back to):
+
+| Variable | Value |
+|---|---|
+| HOME | `<cell>/home` |
+| ZDOTDIR | `<cell>/home` |
+| SHELL | the bash `cellctl` itself runs under (never the operator's login shell) |
+| PATH | `<cell>/shim:<desk-tools bindir>:<dir of the resolved harness binary>:/usr/bin:/bin:/usr/sbin:/sbin` — exactly seven elements; `cell.env`'s `CELL_PATH` overrides only the trailing system part, never the shim prefix or the harness dir |
+| TMPDIR | `<cell>/tmp` (created 0700 if absent) |
+| KUBECONFIG | `/dev/null` |
+| ASSAY_CONFIG_HOME | `<cell>/home/.config/assay` |
+| GH_CONFIG_DIR | `<cell>/home/.config/gh` |
+| GIT_CONFIG_GLOBAL | `<cell>/home/.gitconfig` |
+| GIT_CONFIG_NOSYSTEM | `1` |
+| GIT_TERMINAL_PROMPT | `0` |
+| CODEX_HOME | `<cell>/home/.codex` — codex arm only |
+| CLAUDE_CONFIG_DIR | `<cell>/home/.claude` — claude arm only |
+| DESK_LOOP | the role (or `smoke`) |
+| DESK_SESSION | `<cell>-<role>-<UTC boot stamp>[-codex]` |
+| DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
+| TERM | passed through from the parent — a TUI harness needs it |
+| LANG | passed through from the parent |
+
+`CODEX_HOME` and `CLAUDE_CONFIG_DIR` are mutually exclusive — only the active harness's variable
+is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
+wholesale parent `PATH` — the harness's own directory is the ONE parent-derived `PATH` element,
+resolved once (`command -v`) before the launch switches to `env -i`, and named rather than
+inherited wholesale.
+
+The App PEM reaches the tools through the cell, never the parent shell: exporting
+`ASSAY_CONFIG_HOME` is the whole custody path, since the desk tools resolve a role's key from
+`<config-home>/<role>-app.pem`. `check` proves every PEM present under the cell's config home (or
+named by its `apps.env`) is a regular, non-symlink, mode-0600 file — a house-style symlink into the
+operator's real config home is a MISS on this kind, by design — and that the config-home directory
+itself is mode 0700 (a group- or world-readable directory holding 0600 PEMs still exposes their
+names and mtimes).
+
+### `smoke` — a one-shot, tool-free, read-only readiness probe
+
+```bash
+cellctl smoke <cell> [--harness <claude|codex>] [--model <m>]
+```
+
+Separate from `check`: `smoke` actually asks the harness something, in the composed environment,
+and passes iff the harness exits 0 AND its last non-empty stdout line is exactly `READY`. The
+prompt is the literal `Reply with the single word READY and nothing else.` — nothing that invokes
+a tool. codex arm: `codex exec --ephemeral --sandbox read-only --skip-git-repo-check -m <model>
+"<prompt>"` — the sandbox flag enforces "tool-free, read-only" in the argv itself. claude arm:
+`claude -p --model <model> "<prompt>"` — `-p`/`--print` is non-interactive with no session, plus
+the tool-free prompt; there is no claude-side argv sandbox equal to codex's `--sandbox read-only`
+here, so the isolation rests on those two things together. Both arms print the resolved model
+before first contact. `DRY_RUN=1 cellctl smoke <cell>` prints the plan and the argv and runs
+nothing. Live `smoke` is never something a Verify row runs — every row in this project runs it
+against a stub harness.
+
+A failure prints `smoke: not ready: <the harness's last line>` and exits 1 — a wrong-but-well-
+formed answer (the harness exits 0 but says something other than `READY`) is exactly as much a
+failure as a nonzero exit.
+
+### `status` — a read, not a check
+
+```bash
+cellctl status <cell>
+```
+
+Prints exactly one of `running <session>`, `stopped`, or `stale-lock <pid>` (a lock directory
+naming a pid that is no longer alive — reported here, cleared only by `down`), exit 0 in every
+case that is not a load error.
+
+### The session lock — two independent layers
+
+A scrubbed cell is single-occupancy: one role, one harness process, at a time.
+
+1. The tmux session lives on a **private socket** (`<cell>/run/tmux.sock`, one session named
+   `<cell>-cell`) — a `new-session` on an existing name refuses, so a second cockpit cannot attach
+   as a second owner, and nothing about this socket is shared with the operator's own default tmux
+   server.
+2. A **lock directory** (`<cell>/run/lock.d`, holding `pid`) taken by atomic `mkdir` — never
+   `flock(1)`, which is absent from macOS by default — before the exec, held for the life of the
+   harness process, released by `down`. A second `desk` while the held pid is still alive is
+   refused, exit 4: `cell <cell> is already running (pid <n>, session <name>); cellctl down <cell>
+   to release`. A lock naming a pid that is no longer alive is taken over rather than left to wedge
+   every future boot — `status`/`down` are the tools that report or clear it explicitly for an
+   operator who is just looking.
+
+`desk` attaches when stdin is a tty; otherwise it prints the attach line
+(`tmux -S <cell>/run/tmux.sock attach -t <cell>-cell`) and returns without blocking. `down` kills
+the private-socket session and clears the lock; the workspace under `<cell>/worktrees/` is KEPT.
+
+### `[plan]` — the dry-run grammar
+
+`cmd_desk`'s existing `[dry-run] cell=… kind=…` line stays, unchanged, on every kind. The scrubbed
+arm ADDS, immediately after it, under `DRY_RUN=1`: one `[plan] env KEY=VALUE` line per exported
+variable (`KEY`s sorted), then one `[plan] argv <shell-quoted argv>` line, then `[plan] cwd <path>`,
+then `[plan] lock <lock dir>`. This grammar is a contract, not a courtesy — a later parity harness
+(desk-containers/10) diffs against it.
+
+### `check` — the stricter rows
+
+On top of the generic preconditions (*`cellctl check` — the preconditions* below), a scrubbed cell
+proves: the config home is a REAL directory (never a symlink) at mode 0700; every PEM present is
+regular, non-symlink, mode 0600; the roster's `ASSAY_ALLOWED_REPOS` is EXACTLY the cell's
+`CELL_REPO_SLUG` (more than one entry, a different entry, or empty is a MISS); the harness is
+logged in UNDER THE CELL HOME — codex via `codex login status` with `CODEX_HOME=<cell>/home/.codex`,
+claude via a presence check of `<cell>/home/.claude` plus `claude --version` under
+`CLAUDE_CONFIG_DIR=<cell>/home/.claude`; the roster parses under the cell home; every `CELL_ROOTS`
+entry (when set) exists and carries `docs/streams/`; the desk verbs are installed; and the lock/run
+directory is writable. The generic `codex harness preconditions` block (*`cellctl check` — the
+codex harness block*) still runs unconditionally too, exactly as on any other kind.
+
+A registration carrying a retired kind (`CELL_KIND=local`, the out-of-tree bridge this brief
+retires the reason for) is not silently accepted: `load_cell` refuses it, exit 3, naming every
+known kind.
 
 ---
 
@@ -850,8 +1005,10 @@ a `MISS`, because a provider is opt-in.
 | Variable | What it is |
 |---|---|
 | `CELL` | the cell name (also the tmux session prefix) |
-| `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none) or `house` (the operator's own desks; see *House cells*) |
-| `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s (unset = the verbs' compiled placeholder topology, and `desk` says so) |
+| `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none), `house` (the operator's own desks; see *House cells*), `container` (see *Container cells*), or `scrubbed` (a composed environment; see *Scrubbed cells*) |
+| `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s/scrubbed (unset = the verbs' compiled placeholder topology, and `desk` says so) |
+| `CELL_REPO_SLUG` | **scrubbed only** — `<owner>/<repo>`; the ONE repo this cell is scoped to (checked against the roster's `ASSAY_ALLOWED_REPOS`) |
+| `CELL_PATH` | **scrubbed only** — overrides the trailing system part of the composed `PATH` (never the shim prefix or the resolved harness dir) |
 | `CELL_COCKPIT` | the surface `up` opens the role windows in: `auto` (default — herdr if on PATH, else orca if on PATH and its desktop app answers, else tmux), `tmux`, `herdr` or `orca`; `--cockpit` overrides it per run (see *Cockpits*) |
 | `DESKD` | **house** — `1` to require and stand a `deskd` as a k8s cell does (default `0`: no deskd, and `check` reports it `n/a`) |
 | `CELL_FORGE` | the cell's forge, `github` or `gitlab` (default `github` — a cell scaffolded before forge support carries none and is a GitHub cell by construction) |

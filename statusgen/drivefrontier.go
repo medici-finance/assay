@@ -73,11 +73,12 @@ type DriveStatus struct {
 }
 
 // briefFrontierState classifies one brief for the frontier. It mirrors Next-up
-// eligibility (eligibleBase/depIsSatisfied) so the frontier's "ready" agrees with
-// what the board would actually offer, and layers the awaiting states on top:
-// implemented ⇒ blocked-on(review) (a PR is up, awaiting a verdict), verified ⇒
-// done (the review passed; the done-close is bookkeeping, not a fleet blocker).
-func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[string]bool) string {
+// eligibility (eligibleBase, which reads elig — the SAME evaluator verdict map,
+// graph-execution/01) so the frontier's "ready" agrees with what the board would
+// actually offer, and layers the awaiting states on top: implemented ⇒
+// blocked-on(review) (a PR is up, awaiting a verdict), verified ⇒ done (the
+// review passed; the done-close is bookkeeping, not a fleet blocker).
+func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, elig map[string]Eligibility) string {
 	id := s.Name + "/" + b.Num
 	switch b.Status {
 	case "done", "verified":
@@ -100,7 +101,16 @@ func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[strin
 		}
 		return fsReady
 	}
-	if b.Schema == "brief-v1" {
+	if b.Schema == "brief-v1" || b.Schema == "brief-v2" {
+		if ev, ok := elig[s.Name+"/"+b.Num]; ok {
+			if ev.Verdict == VerdictHeld {
+				return fsBlockedItem
+			}
+			return fsReady
+		}
+		// No evaluator verdict available for this id — fail back to the
+		// pre-evaluator depends-only walk (see eligibleBase's identical
+		// fallback, nextup.go).
 		for _, dep := range b.Depends {
 			if !depIsSatisfied(streams, dep) {
 				return fsBlockedItem
@@ -108,7 +118,7 @@ func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[strin
 		}
 		return fsReady // empty / satisfied deps
 	}
-	// legacy (non-brief-v1): whole-wave gating in the same stream.
+	// legacy (Schema == "", no frontmatter): whole-wave gating in the same stream.
 	for _, o := range s.Briefs {
 		if o.Wave < b.Wave && o.Status != "done" && o.Status != "verified" {
 			return fsBlockedItem
@@ -155,6 +165,10 @@ func driveFrontier(d Drive, streams []*Stream, claimed map[string]bool, now time
 	for _, s := range streams {
 		byName[s.Name] = s
 	}
+	// Same evaluator verdict map Next-up reads (graph-execution/01), resolved
+	// once per frontier build so this drive's "ready" can never disagree with
+	// what the board would actually offer for the same brief.
+	elig := eligibilityForStreams(streams)
 	var out []FrontierItem
 	for _, it := range d.Items {
 		switch it.Kind {
@@ -167,7 +181,7 @@ func driveFrontier(d Drive, streams []*Stream, claimed map[string]bool, now time
 				out = append(out, FrontierItem{
 					Kind:  "brief",
 					Ref:   s.Name + "/" + b.Num,
-					State: briefFrontierState(streams, s, b, claimed),
+					State: briefFrontierState(streams, s, b, claimed, elig),
 				})
 			}
 		case "brief":
@@ -184,7 +198,7 @@ func driveFrontier(d Drive, streams []*Stream, claimed map[string]bool, now time
 					out = append(out, FrontierItem{
 						Kind:  "brief",
 						Ref:   it.Ref,
-						State: briefFrontierState(streams, s, b, claimed),
+						State: briefFrontierState(streams, s, b, claimed, elig),
 					})
 				}
 			}

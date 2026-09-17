@@ -297,6 +297,37 @@ FIELD reads, not a method call), then hands those to `HTTPAccountFetcher` — th
 authenticated transport, just not reached through a new `GitHubForge` method. `trust.go`,
 `forge_github.go`'s existing methods, the `Forge` interface, and `forge_gitlab.go` are all
 untouched by this deviation.
+### Non-implementer verifier run — 2026-09-16 verify-desk (desk-tools/22 dispatched verifier) — **VERIFY: PASS**
+
+Runner ≠ implementer (implementer's own commit `7302aa59`, PR #1009). Own detached temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Merged main `a4700d2b`. First non-implementer run of this table — no prior verifier Evidence exists.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, both silent | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 2 | `go test ./internal/deskkit/ -run '^TestCheckRosterLivenessClassifiesEveryCase$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 3 | `go test ./internal/deskkit/ -run '^TestCheckRosterLivenessNeverReportsAliveOnIDMismatch$' -count=1` | exit 0, mutation reddens | exit 0 — PASS; independently mutated `acct.ID != id.PinnedID` to always-false — test FAILed correctly on the negative control; restored byte-identical, re-confirmed PASS | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 4 | `TestGetAccountDeletedIs404` + `TestGetAccountRenameKeepsIDMatchesDifferentLogin` + `TestGetAccountReclaimDifferentID` | exit 0 x3 | exit 0 x3, all PASS | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 5 | `TestGetAccountTransportFailureIsNotDeleted` | exit 0 | exit 0 — PASS (500/403/401 subtests) | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 6 | `TestLivenessCmdUnconfiguredRosterRefuses` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 7 | `TestLivenessCmdReportsFindingsForConfiguredIdentities` | exit 0 | exit 0 — PASS, `liveness: 4 identities, 2 notices` | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 8 | `TestLivenessCmdNonGitHubForgeNamesTheGap` | exit 0 | exit 0 — PASS, `liveness: 0 identities checked (non-GitHub forge), 1 notice` | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 9 | `TestTrustedAuthor` + `TestTrustedHumanAuthor` + `TestBlessed` + `TestItemTrusted` | exit 0 all four | Three PASS unchanged; `TestTrustedHumanAuthor` — "no tests to run", zero hits by grep — a pre-existing naming gap in the brief's own row, not introduced by this change. Recorded explicitly could-not-check for that sub-clause | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 10 | grep for LivenessClass/CheckRosterLiveness/RenderLivenessNotices/AccountFetcher in trust.go | exit 0, zero refs | exit 0 — zero references found (no wiring into the trust gate) | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 11 | `go test ./... -count=1` | exit 0 | First run FAILed in unrelated `internal/loopengine` (concurrency flake, nothing to do with this brief); isolated re-run PASS, full re-run PASS — confirmed flake not regression | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 12 | `gofmt -l` on the five named files | empty | exit 0, empty | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+| 13 | `cd statusgen && go run . --root .. --lint` | 0 | exit 0, LINT: PASS | 2026-09-16 | verify-desk (desk-tools/22 dispatched verifier) |
+
+No invented scope. One disclosed, verified-necessary design deviation: `GetAccount` ships as a standalone `HTTPAccountFetcher.GetAccount` rather than a `*GitHubForge` method, because the latter placement would trip the pre-existing `TestForgeNoPassthrough` closed-surface invariant (confirmed: zero `GetAccount` references in `forge_github.go`; `TestForgeNoPassthrough` independently re-run, PASS).
+
+**Risk-bearing value.**
+
+**RISK-VALUE: DERIVED** — `acct.ID != id.PinnedID` @ `trustliveness.go:265`, the identity-continuity guard separating `LivenessReclaimed` from `LivenessAlive`. Derived by direct mutation, not by trusting a test result: short-circuited the comparison to always-false, observed the classifier misreport a hijacked login as Alive, restored byte-identical, re-confirmed PASS.
+
+**RISK-VALUE: DERIVED** — `resp.StatusCode == http.StatusNotFound` @ `trustliveness.go:115`, the boundary between `LivenessDeleted` and `LivenessCouldNotCheck`. Derived from GitHub REST semantics (404 is the only stable "gone" signal; 500/403/401 are ask-again-later ambiguity) and confirmed empirically by rows 4-5.
+
+**RISK-VALUE: NAMED, NOT DERIVED** — `id.PinnedID == 0` @ `trustliveness.go:255` (the "unpinned" sentinel) and `strings.EqualFold(acct.Login, id.Login)` @ `trustliveness.go:275` (the renamed-login comparison) — both rely on GitHub domain facts (numeric ids never 0; case-insensitive logins) not independently re-derived from GitHub's live API behavior in this pass. Low severity — a read-only NOTICE surface, never wired into `Trusted*`/`Blessed`/`ItemTrusted*`. Filed as a question: medici-finance/assay#1242 — not a blocker to this brief's flip.
+
+**VERIFY: PASS** — all 13 rows pass (row 9's sub-clause explicitly could-not-check, a pre-existing brief-wording gap; row 11's initial flake resolved by clean re-run). No wiring into the trust gate (rows 9+10 both hold).
 
 ## Review
 
