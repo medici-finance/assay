@@ -57,8 +57,12 @@ facts:
    and report NEEDS_CONTEXT rather than editing either to force agreement.
 4. **Fail-first (rule 9).** Add one entry to `tools/desk/internal/deskkit/mutations.json`
    that flips the new convention (e.g. reorders two adjacent refusal-class values so the
-   stated convention and the table disagree), and confirm the corpus's own guard catches it —
-   `TestExitCodeTableMatchesDerivation` (planned) must go red under the mutant and green once
+   stated convention and the table disagree), and extend that spec's `"test"` field to
+   include `TestExitCodeTableMatchesDerivation` — the field is a fixed allow-list `-run`
+   pattern consumed by `muhar`, and a new test the pattern does not name is invisible to it,
+   so the mutant cannot be caught until the field is widened. Confirm the corpus's own guard
+   catches it — run `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json`
+   and check the new mutation reports CAUGHT (mutant applied) and the suite is GREEN again once
    reverted.
    Record the red-then-green run under `## Evidence`.
 
@@ -69,7 +73,7 @@ facts:
 | 2 | `cd tools/desk && go vet ./internal/deskkit/` | exit 0 |
 | 3 | `cd tools/desk && grep -q 'Derivation:' internal/deskkit/exitcodes.go` | exit 0 (the derivation block is present) |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (the pinning assertions actually ran and passed) |
-| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'Mutation' -count=1` | exit 0 (the mutation corpus, including the new exit-code-convention mutant, still passes its own harness) |
+| 5 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, and every mutation CAUGHT, including the new exit-code-convention mutant (only reachable once the `"test"` field names `TestExitCodeTableMatchesDerivation`) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->
