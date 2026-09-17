@@ -36,6 +36,11 @@ distinct, owned step, not a side effect of merge.
 - The **Verify table proves function** ("works?"); the **review proves quality**
   ("well-built?"). Neither substitutes for the other. Reason: a change can pass every check
   and still be badly built, and vice versa.
+- In the `implementation-v1` workflow pattern (`spec/workflow-patterns/implementation-v1.yaml`,
+  `spec/workflow-pattern-v1.md`), the working-diff/PR review above is the pattern's `review`
+  node (role `reviewer`, `evidence: review`); post-merge verification is the pattern's `verify`
+  node (role `verifier`, `evidence: witness`), which is also the pattern's `join` — its
+  integration check.
 
 ## STATUS.md — a single-writer generated artifact
 
