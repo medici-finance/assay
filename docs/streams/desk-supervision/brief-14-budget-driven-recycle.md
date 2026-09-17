@@ -1,18 +1,18 @@
 ---
-brief: assay:assay:desk-supervision:11
+brief: assay:assay:desk-supervision:14
 title: Budget-driven recycle — retire a healthy worker before it degrades
 why: >-
   A worker does not have to die to fail. A session that has spent most of its context window,
   or run for hours, keeps its claim and keeps answering — worse and worse — until it wedges or
   ships something degraded, and the derived-plane observer (briefs 01-03) cannot see it coming
-  because every artifact still says "alive." The vitals from desk-supervision/10 make the
+  because every artifact still says "alive." The vitals from desk-supervision/13 make the
   approach measurable; this brief acts on them: recycle a HEALTHY worker at a budget threshold
   by having it hand off to durable state and exit, then respawn it fresh to resume. It is the
   opposite trigger from a reclaim — it fires on a full worker, not a silent one — and it turns
   slow degradation into a clean, logged, minutes-scale handover.
 wave: 3
-depends: ["desk-supervision/04", "desk-supervision/10"]
-unblocks: ["desk-supervision/12"]
+depends: ["desk-supervision/04", "desk-supervision/13"]
+unblocks: ["desk-supervision/15"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -28,7 +28,7 @@ schema: brief-v2
 authored: 2026-09-17 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §8.4 (retry + backoff) and §8.5 (active-run reconciliation; kill semantics) — the reactive-reclaim contrast this brief inverts — https://github.com/openai/symphony/blob/main/SPEC.md"
-  - "desk-supervision/10 — the `resource` block (context_pct_used, session_age_seconds, tokens, subagents_spawned, model), three-state, that this brief's evaluator reads."
+  - "desk-supervision/13 — the `resource` block (context_pct_used, session_age_seconds, tokens, subagents_spawned, model), three-state, that this brief's evaluator reads."
   - "desk-supervision/04 — the lifecycle hooks (after_run / before_remove) whose run-end moment the graceful recycle fires through; the envelope is configuration, not prose."
   - "desk-supervision/02 — the per-run STOP.run.<key> flag + desk-window stop, reused UNCHANGED as the hard-recycle backstop for a worker that will not exit."
   - "desk-supervision/01 — the observer tick this evaluation hangs off, and its conservative-reclaim rule (could-not-check is never 'no life'); the recycle evaluator mirrors it (could-not-check is never 'over budget')."
@@ -47,15 +47,15 @@ consumers:
   - "schemas/desksupervise-status-v1.json: fixed-here (each claim gains a `recycle` field, `object | null` — null or {state, reason, since} — so the decision is visible in the snapshot the console reads)"
   - "tools/desk/hooks.example.yaml (before_remove / after_run): fixed-here (the recycle fires the run-end hooks from desk-supervision/04; the graceful path is a hook-mediated exit)"
   - "the recycle DECISION consumer (deskd, the console): out-of-scope (a private consumer respawns the fresh session; the public contract is the threshold policy + the graceful-exit protocol + the snapshot `recycle` field it reads)"
-  - "plugins/assay/skills/worker-desk/SKILL.md (the on-budget graceful-exit step): follow-up desk-supervision/11 (the skill body gains 'on recycle.state == GRACE, write the hand-off and exit' once the protocol is proven in the implementation PR)"
+  - "plugins/assay/skills/worker-desk/SKILL.md (the on-budget graceful-exit step): follow-up desk-supervision/14 (the skill body gains 'on recycle.state == GRACE, write the hand-off and exit' once the protocol is proven in the implementation PR)"
 version: 1
 id: 3fa23219-219a-4f14-bf58-9e83ea4a03a1
 ---
 
-# Brief 11 — Budget-driven recycle
+# Brief 14 — Budget-driven recycle
 
 > The two-planes framing that governs this brief is stated at the top of
-> `desk-supervision/10`. In short: the derived plane reclaims a **dead/stalled** worker from
+> `desk-supervision/13`. In short: the derived plane reclaims a **dead/stalled** worker from
 > artifacts; this brief recycles a **healthy-but-full** worker from its self-reported vitals.
 > Different subject, different source, different trigger — a recycle can never suppress a
 > reclaim, because a could-not-check vital yields no recycle signal at all.
@@ -79,7 +79,7 @@ files:
 
 single-point-of-failure: the recycle is defense-in-depth, so there is NO single control — that
 is the design requirement, not an accident. The one thing both layers depend on is the vitals
-being three-state (desk-supervision/10): a `could-not-check`/`null` reading yields NO recycle
+being three-state (desk-supervision/13): a `could-not-check`/`null` reading yields NO recycle
 decision, so a blind reading can neither over-recycle (kill a worker on a missing number) nor
 be silently swallowed. Behind that: two independent recycle layers (below), which fail for
 different reasons in different components.
@@ -191,7 +191,7 @@ autonomous stop of healthy work; it does not proceed on a timeout).
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestRecycleIsIdempotentAcrossTicks -v -count=1` | exit 0; output contains `--- PASS: TestRecycleIsIdempotentAcrossTicks` |
 | 8 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestStatusJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestStatusJSONValidatesAgainstSchema` |
 | 9 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); r=s["properties"]["claims"]["items"]["properties"]["recycle"]; assert "null" in r["type"], "recycle must allow null"; print("ok")'` | exit 0; output is `ok` (the `recycle` field is `object | null`, so a healthy worker's `null` validates) |
-| 10 | check | `statusgen --root . --consumers --brief desk-supervision/11` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 10 | check | `statusgen --root . --consumers --brief desk-supervision/14` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
 
 Pre-mortem → detection: "a blind/missing vital is read as 'over budget' and a live worker is
 killed" → rows 5, 4; "a worker that ignores the graceful signal keeps its claim forever" → row 6

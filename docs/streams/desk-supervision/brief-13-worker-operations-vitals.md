@@ -1,5 +1,5 @@
 ---
-brief: assay:assay:desk-supervision:10
+brief: assay:assay:desk-supervision:13
 title: Worker-operations vitals — the self-report resource block
 why: >-
   The observer built by briefs 01-07 reclaims a DEAD or STALLED worker from artifacts it
@@ -9,10 +9,10 @@ why: >-
   that would carry them (`tokens`) a reserved could-not-check stub. Filling that stub with a
   small self-reported resource block turns "the worker degraded silently until its answers got
   worse" into a measured signal a consumer can act on before the worker dies — which is what
-  the recycle trigger (desk-supervision/11) needs to exist at all.
+  the recycle trigger (desk-supervision/14) needs to exist at all.
 wave: 2
 depends: ["desk-supervision/07"]
-unblocks: ["desk-supervision/11", "desk-supervision/12"]
+unblocks: ["desk-supervision/14", "desk-supervision/15"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -41,7 +41,7 @@ version: 1
 id: f167b9b6-ec90-4766-87de-da21aa47ee2b
 ---
 
-# Brief 10 — Worker-operations vitals: the self-report resource block
+# Brief 13 — Worker-operations vitals: the self-report resource block
 
 ## The framing principle — two orthogonal planes (governs briefs 10, 11, 12)
 
@@ -176,7 +176,7 @@ facts:
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestStatusJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestStatusJSONValidatesAgainstSchema` |
 | 8 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); item=s["properties"]["claims"]["items"]; assert "resource" in item["properties"], "no resource block"; assert "resource" in item["required"], "resource not required"; print("ok")'` | exit 0; output is `ok` |
 | 9 | check | `grep -c 'could-not-check' schemas/desksupervise-status-v1.json` | output is `1` or more |
-| 10 | check | `statusgen --root . --consumers --brief desk-supervision/10` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 10 | check | `statusgen --root . --consumers --brief desk-supervision/13` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
 
 Pre-mortem → detection: "an unset or unreadable vital renders 0 and a consumer reads it as
 'plenty of headroom'" → rows 3, 6 (unset ⇒ null; absent beacon ⇒ could-not-check; never 0);

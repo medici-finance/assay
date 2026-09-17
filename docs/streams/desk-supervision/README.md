@@ -81,10 +81,10 @@ hooks from the repository being worked on. Here an item's tree may be an untrust
 hook file inside it would be arbitrary shell under the desk's credentials. Hooks live in the
 desk's state directory only.
 
-## The worker-operations delta (briefs 10-12) — a second, orthogonal plane
+## The worker-operations delta (briefs 13-15) — a second, orthogonal plane
 
 Briefs 01-09 are the **DERIVED plane**: liveness *reclaimed from artifacts* (branch-SHA, PR
-updates, audit) the worker cannot fake, acting on a **dead or stalled** worker. Briefs 10-12
+updates, audit) the worker cannot fake, acting on a **dead or stalled** worker. Briefs 13-15
 add the **WORKER-OPERATIONS plane**: *self-reported vitals* (context-%, tokens, session age,
 subagents, model) that only the session itself can know, acting on a **healthy-but-full**
 worker — to recycle it gracefully *before* it dies. The two do not conflict: different subject
@@ -92,15 +92,15 @@ worker — to recycle it gracefully *before* it dies. The two do not conflict: d
 budget). The house "never self-report" invariant is a *work-plane / derived-liveness* rule — a
 session reporting its own context % makes no claim about the work, so there is no collision, and
 because a `could-not-check` vital yields no recycle signal at all, nothing on this plane can
-suppress a reclaim on the other. The full framing is at the top of `desk-supervision/10`.
+suppress a reclaim on the other. The full framing is at the top of `desk-supervision/13`.
 
-- **10** fills the reserved `tokens` stub in `desksupervise-status-v1` with a self-reported
+- **13** fills the reserved `tokens` stub in `desksupervise-status-v1` with a self-reported
   `resource` block (three-state: measured / could-not-check / null, never a fabricated 0),
   piggybacked on the per-tick roster beacon write. This is the ONLY strictly-new collection.
-- **11** adds a NEW recycle trigger on brief 04's lifecycle hooks: a *graceful* recycle of a
+- **14** adds a NEW recycle trigger on brief 04's lifecycle hooks: a *graceful* recycle of a
   healthy worker past its context / age budget (hand off to durable state, exit, respawn), with
   a hard-recycle backstop reusing brief 02's per-run stop for a worker that will not cooperate.
-- **12** stands a LOCAL supervisor host on the operator's own (non-k8s) cell via `cellctl`, so
+- **15** stands a LOCAL supervisor host on the operator's own (non-k8s) cell via `cellctl`, so
   supervision + recycle reach the operator's own desks, and aggregates per-cell vitals into a
   fleet ops view — separate from the statusgen work board.
 
@@ -118,9 +118,12 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #352 @ 496796982b573be17a032163cd3f6423e58be239) |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | todo | — | — |
 | 09 | [Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build](brief-09-ci-fanout-per-push.md) | 0 | S | implemented | — | — |
-| 10 | [Worker-operations vitals — the self-report resource block](brief-10-worker-operations-vitals.md) | 2 | M | todo | — | — |
-| 11 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-11-budget-driven-recycle.md) | 3 | M | todo | — | — |
-| 12 | [Local supervisor host + multi-cell vitals aggregation](brief-12-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
+| 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | blocked | — | — |
+| 11 | [The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it](brief-11-workflow-only-pr-contract.md) | 1 | M | blocked | — | — |
+| 12 | [Retire the staged-copy hand-landing once the workflow App PR path is proven](brief-12-retire-staged-copy-landing.md) | 2 | M | blocked | — | — |
+| 13 | [Worker-operations vitals — the self-report resource block](brief-13-worker-operations-vitals.md) | 2 | M | todo | — | — |
+| 14 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-14-budget-driven-recycle.md) | 3 | M | todo | — | — |
+| 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -148,28 +151,40 @@ what each of their pushes then costs on a runner pool two runners wide. Neither 
 other — 09 touches no engine code and no desk verb, only which CI workflows a given diff
 shape asks a question of — so it is wave 0 with no `depends:` and no `unblocks:`.
 
-**The vitals delta rides a second chain off 07.** Briefs 10-12 do not change the original
-head — they hang off the built machinery. `10` needs the snapshot + schema (`07`), `11` needs
-the vitals (`10`) plus the lifecycle hooks (`04`), and `12` needs both the vitals (`10`) and
-the recycle (`11`). So the longest chain in the stream is now the delta's:
-`01 → 07 → 10 → 11 → 12`. Its real head is still `01` (no probe, no observer, nothing to
-snapshot), which is already `done` — so the delta's smallest unblocking move is `10`, gated
-only by `07` landing (done). `11` and `12` are human-gated (a new autonomous stop of healthy
+**Briefs 10 → 11 → 12 are a second, self-contained chain — the workflow-landing lane.** They
+fix the reason 09 cannot reach `verified` today: 09's workflow edits are delivered as a staged
+copy a human must hand-land, and #1185 is that hand-copy still not landed. The chain wires the
+**workflow App** (the single `workflows: write` identity) to author a workflow-only PR, so a
+workflow change lands on its own reviewable PR instead of a staged copy that stalls and drifts.
+All three cite [`DR-workflow-app-landing`](../decisions/DR-workflow-app-landing.md) and are
+`gate: human`: the DR proposes the rule and each brief's human gate confirms a piece of it.
+The chain touches no engine code and is independent of the `01 → 02 → 03` supervision path —
+its head, brief 10, is the App's ground truth (installed? correctly scoped?), which is a
+provisioning question a human may have to answer before 11 and 12 can proceed.
+
+**The vitals delta rides a third, independent chain off 07.** Briefs 13-15 do not change the
+original head — they hang off the built machinery, and they are unrelated to the workflow-landing
+lane above (no shared files, no shared gate). `13` needs the snapshot + schema (`07`), `14` needs
+the vitals (`13`) plus the lifecycle hooks (`04`), and `15` needs both the vitals (`13`) and
+the recycle (`14`). So the longest chain in the stream is now the delta's:
+`01 → 07 → 13 → 14 → 15`. Its real head is still `01` (no probe, no observer, nothing to
+snapshot), which is already `done` — so the delta's smallest unblocking move is `13`, gated
+only by `07` landing (done). `14` and `15` are human-gated (a new autonomous stop of healthy
 work; a persistent local host under operator credentials), so each also waits on its decision
 issue, not just its `depends:`.
 
 ## Dependency waves
 
 ```
-Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]
-Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06
-Wave 2: [03 reconcile] ← 01, 02    [10 vitals resource block] ← 07
-Wave 3: [11 budget-driven recycle] ← 04, 10
-Wave 4: [12 local host + fleet aggregate] ← 10, 11
+Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]
+Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10
+Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11    [13 vitals resource block] ← 07
+Wave 3: [14 budget-driven recycle] ← 04, 13
+Wave 4: [15 local host + fleet aggregate] ← 13, 14
 ```
 
-Critical path (build): `01 → 02 → 03`.
-Critical path (with the vitals delta): `01 → 07 → 10 → 11 → 12`.
+Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` (workflow landing), and
+`01 → 07 → 13 → 14 → 15` (vitals delta) — three independent chains.
 
 ## Shared conventions
 

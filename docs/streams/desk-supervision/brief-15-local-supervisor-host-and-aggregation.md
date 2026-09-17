@@ -1,8 +1,8 @@
 ---
-brief: assay:assay:desk-supervision:12
+brief: assay:assay:desk-supervision:15
 title: Local supervisor host + multi-cell vitals aggregation
 why: >-
-  Everything briefs 01-11 build supervises k8s-hosted desks, because that is where a deskd
+  Everything briefs 01-09 and 13-14 build supervises k8s-hosted desks, because that is where a deskd
   runs. The operator's own laptop cell (`--kind house`) has no deskd, so its desks — the ones a
   person actually watches — get no liveness reclaim and no budget recycle at all. This brief
   stands a LOCAL deskd on that cell so the same supervision and recycle apply to non-k8s desks,
@@ -11,14 +11,14 @@ why: >-
   where the desks closest to the operator were the least supervised, and gives a fleet a single
   answer to "how is everyone doing" that is separate from, and complementary to, the work board.
 wave: 4
-depends: ["desk-supervision/10", "desk-supervision/11"]
+depends: ["desk-supervision/13", "desk-supervision/14"]
 unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 gate-why: >-
   This brief stands a PERSISTENT local daemon on the operator's own machine that runs the
-  supervision + recycle controls (briefs 01-11) over that machine's live desks. The four risk
+  supervision + recycle controls (briefs 01-09, 13-14) over that machine's live desks. The four risk
   answers are no, but a human should confirm, before it exists, the credential and blast-radius
   surface: a house-cell deskd runs under the operator's own ambient config home (roster, keys
   by symlink) rather than an isolated per-cell App identity, and it inherits authority to stop
@@ -32,8 +32,8 @@ sources:
   - "OpenAI Symphony SPEC.md §13.3 (runtime snapshot) and §13.7 (optional HTTP server / monitoring endpoint) — the shape a fleet ops view takes — https://github.com/openai/symphony/blob/main/SPEC.md"
   - "tools/cellctl/cellctl — `--kind house` is 'a LOCAL cell on the operator's own laptop … no deskd unless DESKD=1' (lines ~18-23); `DESKD=1` already 'require and stand a deskd as a k8s cell does' (line ~151); `cellctl deskd <cell>` stands the persistent deskd (line ~37); `check_house` already reports the deskd binary/health as n/a when DESKD=0 (lines ~856-860). This brief makes the DESKD=1 house path first-class and supervised."
   - "desk-supervision/07 — `desksupervise status --json` and its status.json written atomically each tick; the per-cell reading a roll-up consumes."
-  - "desk-supervision/10 — the `resource` block the aggregation rolls up per cell."
-  - "desk-supervision/11 — the recycle the local deskd applies to house-cell desks."
+  - "desk-supervision/13 — the `resource` block the aggregation rolls up per cell."
+  - "desk-supervision/14 — the recycle the local deskd applies to house-cell desks."
   - "tools/desk/cmd/opmetrics — the house's aggregates-only, three-state, could-not-check-never-zero collector; the fleet roll-up follows the same discipline and stays SEPARATE from the statusgen work board."
   - "freshness-checked 2026-09-17 @ daaa4b9c — no aggregate verb or schema exists; `ls schemas/desksupervise-aggregate*` is empty; cellctl's house-cell deskd path is present but check-only."
 exec-tier: strong
@@ -52,9 +52,9 @@ version: 1
 id: b394892e-6e4b-48aa-94f0-1167f195cd86
 ---
 
-# Brief 12 — Local supervisor host + multi-cell vitals aggregation
+# Brief 15 — Local supervisor host + multi-cell vitals aggregation
 
-> Two-planes framing: see the top of `desk-supervision/10`. This brief extends BOTH planes to a
+> Two-planes framing: see the top of `desk-supervision/13`. This brief extends BOTH planes to a
 > new class of host — the operator's local, non-k8s cell — and adds the roll-up that reads the
 > worker-operations plane (vitals) across many cells.
 
@@ -177,7 +177,7 @@ the operator's own credentials; it does not proceed on a timeout).
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestFleetRollupMatchesPerCellSnapshots -v -count=1` | exit 0; output contains `--- PASS: TestFleetRollupMatchesPerCellSnapshots` |
 | 8 | check | `test -f schemas/desksupervise-aggregate-v1.json && python3 -c 'import json; s=json.load(open("schemas/desksupervise-aggregate-v1.json")); assert s["properties"]["fleet"]["properties"]["blind_cells"]; print("ok")'` | exit 0; output is `ok` |
 | 9 | check | `cd tools/cellctl && bash tests/house-cell.test.sh 2>&1 \| grep -cF 'deskd up + supervising'` | output is `1` or more — a RUNTIME line from the `DESKD=1` case's `check_house` proves the deskd is up + supervising (observed output, not the `DESKD=0` `n/a — not required` line, and not a grep of a source comment) |
-| 10 | check | `statusgen --root . --consumers --brief desk-supervision/12` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 10 | check | `statusgen --root . --consumers --brief desk-supervision/15` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
 
 Pre-mortem → detection: "an unreachable cell is silently dropped and the fleet looks all-green"
 → rows 3, 4 (blind cell named, not dropped); "the ops view leaks into / is confused with the
