@@ -1121,8 +1121,8 @@ func TestForeignCommitFlagged(t *testing.T) {
 func newWrongOriginRemoteFixture(t *testing.T) (dir, upstreamRemote, branch, ownSHA string) {
 	t.Helper()
 
-	// wrongRepo stands in for the worktree's own, UNRELATED origin (e.g. assay-toolkit) —
-	// entirely disjoint history from the real target.
+	// wrongRepo stands in for the worktree's own, UNRELATED origin (e.g. a consumer repo's
+	// own tracker) — entirely disjoint history from the real target.
 	wrongRepo := t.TempDir()
 	runGitT(t, wrongRepo, "init", "--bare", "-b", "main")
 	wrongSeed := t.TempDir()
