@@ -24,7 +24,7 @@ gate-why: >-
   by symlink) rather than an isolated per-cell App identity, and it inherits authority to stop
   and recycle the operator's local desks. What the human confirms is that this host, under those
   credentials, over that blast radius, is intended — the same class of sign-off brief 04 (a new
-  execution surface) and brief 11 (an autonomous stop of healthy work) took.
+  execution surface) and brief 14 (an autonomous stop of healthy work) took.
 issues: [351]
 schema: brief-v2
 authored: 2026-09-17 by desk-supervision authoring session
@@ -105,6 +105,14 @@ facts:
   statusgen work board (what is queued / in review / done). The two never merge; a desk being
   supervised says nothing about brief status and vice-versa. The roll-up follows opmetrics'
   aggregates-only discipline.
+- **`sensitive-data: no` is about regulated/customer data, not about "nothing worth protecting"
+  (security review finding S-3).** The aggregate concentrates per-session operational telemetry —
+  session identities, claim keys, models, token counts, liveness class, armed stops — across a
+  whole fleet, which is a real information-concentration risk even though none of it is
+  regulated or customer data (the four risk questions above answer correctly for what they ask).
+  The serving side is out of scope for this brief, but the reference emitter's document carries at
+  least the same access control as the `/healthz` endpoint it is served beside — never a wider
+  audience than the health check that already exposes the cell's identity.
 - **A house cell can name `example-cell-a`, `example-cell-b`** in fixtures — placeholders, not
   real cell names (house config: the real cell/roster values live in the operator's cell.env and
   never in this public tree).
@@ -117,9 +125,16 @@ We want to run a small persistent background service on the operator's own machi
 desks running there — the ones a person watches directly, which today have no automatic
 supervision at all — get the same liveness reclaim and budget-driven recycle that the
 cloud-hosted desks already get. On the operator's machine this service runs under the operator's
-own configuration and credentials (rather than a separate, isolated identity), and it is allowed
-to stop and restart the operator's local desk sessions. Separately, this service can gather a
-"how is everyone doing" view — which sessions are alive, which are running low on headroom,
+own configuration and credentials (rather than a separate, isolated identity): concretely, it
+inherits ambient access to the operator's roster file, the operator's forge (GitHub/GitLab) keys
+by symlink, and whatever else lives in that configuration home — it does not get its own scoped
+App identity the way a cloud-hosted desk does. What it is allowed to DO with that inherited access
+is bounded to exactly three writes: release a claim, set a per-run stop flag, and append an audit
+journal entry — the same read-mostly write set brief 01's observer already has. It gains no forge
+write authority beyond that set: it never opens, comments on, or merges a PR, and never pushes a
+branch, even though the credentials it runs under could technically do so. It is allowed to stop
+and restart the operator's local desk sessions on that basis. Separately, this service can gather
+a "how is everyone doing" view — which sessions are alive, which are running low on headroom,
 which are stopped — across one or many machines, kept apart from the existing work-status board.
 
 Options:

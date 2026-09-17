@@ -43,7 +43,7 @@ id: f167b9b6-ec90-4766-87de-da21aa47ee2b
 
 # Brief 13 — Worker-operations vitals: the self-report resource block
 
-## The framing principle — two orthogonal planes (governs briefs 10, 11, 12)
+## The framing principle — two orthogonal planes (governs briefs 13, 14, 15)
 
 This delta and the machinery it sits on are **two orthogonal planes**, and keeping them
 separate is what makes the delta safe.
@@ -55,11 +55,11 @@ separate is what makes the delta safe.
   **dead or stalled** worker; its action is **reclaim**; its trigger is the absence of any
   observable sign of life.
 
-- **The WORKER-OPERATIONS plane — this delta (briefs 10-12).** Some facts are *only* knowable
+- **The WORKER-OPERATIONS plane — this delta (briefs 13-15).** Some facts are *only* knowable
   to the session itself: how much of its context window is spent, how many tokens it has
   burned, how long it has been alive, how many subagents it has spawned, which model it runs.
   These are **self-reported vitals**. Their subject is a **healthy-but-full** worker; the
-  consuming action (brief 11) is **recycle before it dies**; the trigger is a budget threshold,
+  consuming action (brief 14) is **recycle before it dies**; the trigger is a budget threshold,
   not silence.
 
 **Why they do not collide with the "never self-report" invariant.** That invariant is a
@@ -93,7 +93,7 @@ files:
 
 single-point-of-failure: the three-state discipline is the one control this design depends on —
 a missing or unreadable vital must render `null` / `could-not-check`, **never a fabricated 0**.
-The layer behind it is on the consumer side and independent: brief 11's recycle evaluator treats
+The layer behind it is on the consumer side and independent: brief 14's recycle evaluator treats
 `null`/`could-not-check` as "no recycle signal", never as "0% used ⇒ safe to keep", so even if
 the emit path regressed to writing 0 the consumer still would not act on a bare 0 without a
 `measured` marker. The two fail for different reasons in different components: the emitter's
@@ -131,6 +131,23 @@ facts:
   one plane none of them can see: the session's own resource state.
 - Verb contract unchanged: deskkit kill switch first, one audit line per invocation, exit
   0 · 3 · 5 · 6, fail closed. The status renderer stays read-mostly (brief 07's property).
+- **The beacon's trust boundary, stated explicitly (security review finding S-1).** Nothing in
+  `deskroster set` today binds a beacon to the session it names: the caller passes an optional
+  `--session NAME`, or the name resolves from the session environment, and either way it is a
+  caller-chosen string joined unvalidated into `roster/<session>.json`. Once desk-supervision/14
+  makes a GRACE/HARD-RECYCLE reading on this beacon trigger an involuntary stop, that write
+  becomes a control input, not just a status display, so the boundary has to be named rather than
+  left implicit. **The intended boundary is: same uid, same host, all desk sessions on that host
+  mutually trusted** — a house-cell operator's own windows, not a multi-tenant surface — mirroring
+  the trust domain the rest of this tree already runs under (ambient config home, shared roster).
+  Given that boundary, `deskroster set` does not need to authenticate a beacon write beyond that
+  domain; it does, however, need to fail predictably outside it: a session-name argument that does
+  not resolve to a single path segment (no `/`, no `..`, no empty string) is refused (exit 5),
+  never silently joined. A read of a malformed or unreadable beacon renders every vital
+  `could-not-check`, never `measured` — an absent or corrupt binding is a blind reading, not a
+  trusted one, so it can arm a recycle GRACE/HARD-RECYCLE decision under desk-supervision/14 no
+  more than a missing vital can (that brief's own three-state rule already covers this case; this
+  bullet is what makes the input to that rule well-defined).
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task
@@ -149,7 +166,12 @@ facts:
 2. **Emit flags** (`deskroster set`). Add `--tokens`, `--context-pct`, `--session-age-seconds`,
    `--subagents`, `--model`, each optional; a flag present with the sentinel value `unknown`
    writes `could-not-check`; a flag absent leaves the field `null`. `set` continues to preserve
-   `acks`/`open_work` (regression test).
+   `acks`/`open_work` (regression test). **Session-name shape check** (security review finding
+   S-1, worth-fixing-here): `--session`/the resolved session id must resolve to a single path
+   segment (no `/`, no `..`, non-empty) before it is joined into the beacon path; a name that
+   fails the check is refused (exit 5), never silently joined — this brief is what makes the
+   session-keyed path newly writable with control-bearing fields, so it is the moment to close it,
+   even though the unvalidated join itself pre-dates this brief.
 3. **Schema** (`desksupervise-status-v1.json`). Replace the `tokens` const with a required
    `resource` object on each claim item (`additionalProperties: false`), each field
    `oneOf` [its measured type, `{const: could-not-check}`, `null`]. Keep the schema id
@@ -177,14 +199,16 @@ facts:
 | 8 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); item=s["properties"]["claims"]["items"]; assert "resource" in item["properties"], "no resource block"; assert "resource" in item["required"], "resource not required"; print("ok")'` | exit 0; output is `ok` |
 | 9 | check | `grep -c 'could-not-check' schemas/desksupervise-status-v1.json` | output is `1` or more |
 | 10 | check | `statusgen --root . --consumers --brief desk-supervision/13` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 11 | check | `cd tools/desk && GOWORK=off go test ./cmd/deskroster/ -run TestSetRefusesMultiSegmentSessionName -v -count=1` | exit 0; output contains `--- PASS: TestSetRefusesMultiSegmentSessionName` (a `--session` value containing `/` or `..` is refused, exit 5, never joined into the beacon path) |
 
 Pre-mortem → detection: "an unset or unreadable vital renders 0 and a consumer reads it as
 'plenty of headroom'" → rows 3, 6 (unset ⇒ null; absent beacon ⇒ could-not-check; never 0);
 "a measured 0 (no subagents) is mistaken for 'unknown' and dropped" → row 4; "the vitals write
 clobbers the ack/open_work fields the beacon co-owns" → row 2; "the JSON drifts from the schema
-the console reads" → rows 7, 8; "tokens stays a dead const stub" → row 8. Review-only: whether
-the chosen field set is the right vitals to collect (a knob for brief 11 to consume, not a
-defect here).
+the console reads" → rows 7, 8; "tokens stays a dead const stub" → row 8; "a malformed session
+name is joined into the beacon path unvalidated" (security review finding S-1) → row 11.
+Review-only: whether the chosen field set is the right vitals to collect (a knob for brief 14 to
+consume, not a defect here).
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

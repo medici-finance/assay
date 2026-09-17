@@ -85,7 +85,7 @@ be silently swallowed. Behind that: two independent recycle layers (below), whic
 different reasons in different components.
 
 facts:
-- **The `recycle` field is `object | null`** (the shape brief 10 uses for `resource`): `null`
+- **The `recycle` field is `object | null`** (the shape brief 13 uses for `resource`): `null`
   when there is no recycle signal, else an object `{state, reason, since}` whose `state` is one
   of exactly `GRACE` or `HARD-RECYCLE`. `GRACE` and `HARD-RECYCLE` are the ONLY status words in
   this brief — there is no separate `RECYCLE-ELIGIBLE` value; "eligible for recycle" is exactly
@@ -126,6 +126,25 @@ facts:
 - Verb contract unchanged: kill switch first, one audit line per invocation, exit 0 · 3 · 5 · 6,
   fail closed. The evaluator's only writes are the same read-mostly set brief 01 permits (claim
   release, stop-flag, journal) — a recycle never writes a PR and never deletes a worktree.
+- **The residual, named in both directions (security review finding S-1).** The `resource` block
+  this evaluator reads is self-reported by the holder session (desk-supervision/13), and on a
+  single-uid, single-host, mutually-trusted desk fleet nothing authenticates it beyond that
+  domain. Two failure directions follow, and this brief covers only one of them by construction:
+  - *Over-report* (a healthy session reads as over-budget): bounded and reversible — the worst
+    case is an unnecessary but clean hand-off-and-respawn, the exact mechanism this brief already
+    builds for the true-positive case.
+  - *Under-report* (a genuinely full session never crosses the threshold): the session is never
+    recycled and holds a degrading claim indefinitely — this is the control being evaded by its
+    own subject, and no Verify row anywhere in this stream currently exercises a vital the named
+    session did not itself write, so nothing downstream today catches it (see the new Verify rows
+    below).
+  - **A recycle decision is never a liveness verdict.** `recycle.state` answers "is this worker
+    over its self-reported budget", never "is this worker alive" — the derived plane
+    (desk-supervision/01-03) remains the SOLE authority on liveness, evaluated independently of
+    any `resource`/`recycle` reading. A session under HARD-RECYCLE that is also genuinely dead is
+    still reclaimed by the derived plane on its own schedule; a session that never reports (or
+    under-reports) is not thereby read as "alive" — it is read as "no recycle signal", which is a
+    statement about budget, not about life.
 
 ## Human decision
 <!-- gate: human — lifted verbatim into the decision issue; self-contained, no links/paths. -->
@@ -171,13 +190,25 @@ autonomous stop of healthy work; it does not proceed on a timeout).
 3. Schema: add the required `recycle` field per claim, typed `object | null` (`["object",
    "null"]`) — `null` when no recycle signal, else `{state, reason, since}` with `state` an enum
    of exactly `["GRACE", "HARD-RECYCLE"]`, `additionalProperties: false`. JSON validates.
-4. Hooks note: the graceful path fires `after_run`/`before_remove` (desk-supervision/04).
-5. Tests: context-over-threshold ⇒ `recycle.state == GRACE`, reason=context-budget;
+4. Hooks note: the graceful path fires `after_run`/`before_remove` (desk-supervision/04). Hook
+   CONTENT is unchanged by this brief — it still lives only in the desk's state directory, never
+   the item's tree (security review finding S-4) — and a recycle-triggered hook run never uses
+   the item's worktree as its cwd and never puts the item's tree on PATH; only the invocation
+   TIMING is new (reachable from a worker-influenced signal rather than only run-end).
+5. **Beacon-identity check** (security review finding S-1): the evaluator only trusts a beacon
+   whose own `session` field names the claim's holder session; a beacon that is missing,
+   unreadable, or names a different session renders every resource field `could-not-check` for
+   that claim (never `measured`, never a stale reading from the wrong session), so `recycle` is
+   `null` — the same "no decision on a blind vital" rule desk-supervision/13 already states,
+   applied at the join point.
+6. Tests: context-over-threshold ⇒ `recycle.state == GRACE`, reason=context-budget;
    age-over-threshold ⇒ reason=age-budget; healthy under-budget ⇒ `recycle == null`; all-blind
    vitals ⇒ `recycle == null` (the safety row); a `GRACE` claim past its window ⇒ HARD-RECYCLE
    with the stop armed (the backstop / negative-path row); idempotency (a second tick does not
-   re-arm).
-6. Docs page: threshold policy + graceful-exit protocol.
+   re-arm); a beacon naming a different session ⇒ `could-not-check`/`null`, never armed (item 5);
+   a dead-but-blind-vitals session is still reclaimed by the derived plane regardless of `recycle`
+   (item 5's liveness-independence property).
+7. Docs page: threshold policy + graceful-exit protocol.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -192,14 +223,19 @@ autonomous stop of healthy work; it does not proceed on a timeout).
 | 8 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestStatusJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestStatusJSONValidatesAgainstSchema` |
 | 9 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); r=s["properties"]["claims"]["items"]["properties"]["recycle"]; assert "null" in r["type"], "recycle must allow null"; print("ok")'` | exit 0; output is `ok` (the `recycle` field is `object | null`, so a healthy worker's `null` validates) |
 | 10 | check | `statusgen --root . --consumers --brief desk-supervision/14` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 11 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestRecycleIgnoresBeaconForDifferentSession -v -count=1` | exit 0; output contains `--- PASS: TestRecycleIgnoresBeaconForDifferentSession` — a claim whose holder session does not match the beacon's own `session` field yields `recycle == null` (could-not-check vitals), never armed on someone else's or a mismatched vital (S-1, over/under-report direction). |
+| 12 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestUnderReportedVitalsNeverSuppressLivenessReclaim -v -count=1` | exit 0; output contains `--- PASS: TestUnderReportedVitalsNeverSuppressLivenessReclaim` — a session that is genuinely dead per the derived plane (desk-supervision/01-03) but whose last-written vitals read healthy/blind is still reclaimed on the observer's own schedule; `recycle` staying `null` proves nothing about liveness (S-1, under-report residual). |
 
 Pre-mortem → detection: "a blind/missing vital is read as 'over budget' and a live worker is
 killed" → rows 5, 4; "a worker that ignores the graceful signal keeps its claim forever" → row 6
 (the backstop fires); "every tick re-arms the stop / re-requests the hand-off" → row 7; "a
 healthy worker is recycled on churn" → row 4; "the decision is invisible to the console" → rows
-8, 9. Review-only (the human gate): whether 50% / the wall-age default are the right thresholds,
-and whether the grace window is long enough for a real hand-off — the knob, confirmed at
-sign-off, not a code defect.
+8, 9; "a beacon written by, or attributed to, the wrong session arms a recycle it should not, or
+suppresses one it should not" (security review finding S-1) → row 11; "a session under-reports
+(or never reports) and is read as alive because it was never recycled" (finding S-1) → row 12
+(the derived plane's reclaim is unconditional on `recycle`). Review-only (the human gate): whether
+50% / the wall-age default are the right thresholds, and whether the grace window is long enough
+for a real hand-off — the knob, confirmed at sign-off, not a code defect.
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
