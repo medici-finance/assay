@@ -83,6 +83,11 @@ applied. Run it, read it back to them, and apply only on their explicit confirma
 4. **Re-resolve the marketplace.** Apply prints the `/plugin marketplace add …@<version>` and
    `/plugin update` commands. **You** run those — the tool never re-points the marketplace or
    touches the platform install cache for you.
+5. **Land the re-pin.** This verb rewrites the working tree and deliberately never pushes or opens
+   a PR, so landing the diff is yours. A re-pin delivers no brief, so its PR body carries the
+   `Issue: #<N>` link trailer — file a short tracking issue for the bump and name it — not a
+   `Brief:` line. (Both forms satisfy `deskpr` / `pr-review-desk`; a bump with no brief is exactly
+   the `Issue:` case. This repo's own front-door re-pin, PR #496, is the precedent.)
 
 ## Refusals are first-class outcomes, each with a distinct exit code
 

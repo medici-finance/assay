@@ -128,6 +128,66 @@ func ghIssueLister(repo string) ([]ghIssue, error) {
 	return issues, nil
 }
 
+// deskreadIssueLister is the default issueLister since #1223: it reaches a repo's OPEN issues
+// through the desk-tools `deskread` verb — the forge seam every desk verb already reads through
+// (`deskfile`/`deskpost` "shell no gh or glab") — instead of shelling `gh issue list`. The
+// native forge behind `deskread` attaches the correct PER-INSTALLATION App token EXPLICITLY per
+// request, which is what makes this read immune, all at once, to the three ways the `gh`
+// shell-out lost or mis-scoped its token:
+//
+//   - a replaced HOME that hid gh's ambient keychain/config credential (#1145),
+//   - a token attached only to a child literally named `gh`, not to a script that itself shells
+//     `gh` (#1146),
+//   - one inherited GH_TOKEN forced across every scan repo, so a repo on a DIFFERENT App
+//     installation 404s/401s (#628 — the multi-installation case, and the reason the scanloop
+//     issue-lane drain 401'd on every rostered repo).
+//
+// It preserves ghIssueLister's per-repo contract EXACTLY, which is what lets it drop in without
+// touching planScan: a repo the forge would not serve comes back as an ERROR (deskread reports
+// it in the envelope's `partial` list), and planScan already degrades an issueLister error to a
+// per-repo could-not-check skip + NOTICE — never a clean empty read that would retire live
+// placeholders. It reuses deskreadReader (forgeread.go) so the `deskread` envelope has exactly
+// one parser in this module. This is the tactical read-path migration; the broader desk-tools
+// rebuild is tracked by the desktools-v2 stream (#1229).
+func deskreadIssueLister(repo string) ([]ghIssue, error) {
+	data, unavailable, err := newDeskreadReader().OpenIssues([]string{repo})
+	if err != nil {
+		return nil, err
+	}
+	// A repo deskread could not read lands in `partial`; surface it as an error so planScan
+	// records a could-not-check skip rather than reading it as an empty (clean) board.
+	for _, u := range unavailable {
+		if u.Repo == repo {
+			return nil, fmt.Errorf("deskread issues --repo %s: could-not-check: %s", repo, u.Reason)
+		}
+	}
+	fis := data[repo]
+	out := make([]ghIssue, 0, len(fis))
+	for _, fi := range fis {
+		labels := make([]ghLabel, 0, len(fi.Labels))
+		for _, l := range fi.Labels {
+			labels = append(labels, ghLabel{Name: l})
+		}
+		out = append(out, ghIssue{
+			Number: fi.Number,
+			Title:  fi.Title,
+			// The native forge renders an App author as `<slug>[bot]` (REST user.login); the
+			// roster registers both that form and gh's `app/<slug>` form as trusted logins
+			// (scanParseConfig), so the trust gate resolves the same verdict either way.
+			Author: ghAuthor{Login: fi.Author},
+			Labels: labels,
+			URL:    fi.URL,
+		})
+	}
+	return out, nil
+}
+
+// defaultScanIssueLister is the issueLister the PRODUCTION --scan-issues path uses. It is a var
+// with a stable name so the scan-issues read path can be exercised end to end in a test (that
+// the read authenticates through the native forge with NO working `gh` on PATH), rather than
+// only a hand-picked function being tested. Since #1223 it is the deskread-backed lister.
+var defaultScanIssueLister issueLister = deskreadIssueLister
+
 // labelNames flattens gh's label objects to their names, dropping blanks.
 func labelNames(labels []ghLabel) []string {
 	out := make([]string, 0, len(labels))

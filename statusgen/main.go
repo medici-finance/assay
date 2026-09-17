@@ -1730,7 +1730,11 @@ func main() {
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and
 	// writes local placeholder files; it never creates or mutates an issue.
 	if *scanIssuesMode {
-		os.Exit(runScanIssues(*root, *scanDryRun, ghIssueLister, issueCommentLister, ghIssueBlessChecker))
+		// #1223: the OPEN-issue read routes through the native forge (via the `deskread` verb),
+		// not a `gh issue list` shell-out — see defaultScanIssueLister. This is the read that
+		// 401'd on every rostered repo and the #628 multi-installation case. The bless and
+		// comment reads below still shell `gh` (see the audit note on #1223).
+		os.Exit(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, issueCommentLister, ghIssueBlessChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off
