@@ -207,6 +207,13 @@ func (w witness) row() string {
 	// and a witness with no source (RunnerSource == "") renders byte-identical to the
 	// pre-forge-neutral/07 format.
 	runnerCell := fmt.Sprintf("%s @ %s", w.Runner, w.Tree)
+	// On-behalf-of annotation (multi-principal/01): rendered inside a parenthetical, same
+	// as RunnerSource just below, and for the same reason — runnerKey (verifiedrunneragree.go)
+	// drops everything from the FIRST "(" onward, so this never changes the runner-
+	// comparison key. "" (a human runner, or no resolvable principal) adds nothing.
+	if obo := onBehalfOfSuffix(w.Runner); obo != "" {
+		runnerCell += " (" + obo + ")"
+	}
 	if w.RunnerSource != "" {
 		runnerCell += " (" + w.RunnerSource + ")"
 	}

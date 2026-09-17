@@ -435,6 +435,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	attrProblems, attrNotices := attributionProblems(checkStreams)
 	problems = append(problems, attrProblems...)
 	notices = append(notices, attrNotices...)
+	// On-behalf-of principal attribution (multi-principal/01): an App-authored Evidence
+	// row with an unrecognised on-behalf-of principal, or with none at all dated at or
+	// after principalAttributionCutoverDate (the write path's own landing date), is a
+	// hard PROBLEM. A missing-annotation row dated BEFORE the cutover is a NOTICE — no
+	// write path existed yet to stamp it (see principalAttributionProblems' comment).
+	paProblems, paNotices := principalAttributionProblems(checkStreams)
+	problems = append(problems, paProblems...)
+	notices = append(notices, paNotices...)
 	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
 	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
 	// than the actor who ran a strict majority of its own Evidence rows — the drift
