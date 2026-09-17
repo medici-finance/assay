@@ -1,5 +1,6 @@
 // Package eligibility is a tiny, standalone stand-in for the mid-run eligibility check a
-// reconciler makes — small enough to fix in one sitting, deterministic, and offline.
+// worker's supervising process makes — small enough to fix in one sitting, deterministic,
+// and offline.
 package eligibility
 
 // IsEligible reports whether a claimed item's PR is still eligible for a running worker.

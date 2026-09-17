@@ -129,6 +129,13 @@ Closes/Refs, wrong diagnosis text, on a real PR. `mktemp` is collision-proof: it
 the file with `O_EXCL` and echoes the name that won, so no `$$`/date/session suffix can
 alias it, and the explicit template argument is portable across BSD and GNU `mktemp`.
 
+Prefer it over a per-worktree path such as `"$(git rev-parse --show-toplevel)/.pr-body.md"`
+for two further reasons: that leaves an untracked file in every worker worktree that no
+`.gitignore` covers, so worktree pruning counts the tree dirty and never reclaims it; and
+it carries a command substitution the dispatcher could expand at prompt-compose time,
+baking the DISPATCHER's toplevel into every worker. `mktemp` is a bare literal — there is
+no expansion boundary to get wrong.
+
 ### Stop at implemented — never self-certify
 
 - One item = one branch = one draft PR. The worker's job ends at `implemented` plus the
@@ -247,7 +254,8 @@ That sentence is the reviewer's rule (`references/review-prompt.md` §3), quoted
 verbatim so both kits bind the same obligation. At review, a test whose red state was never
 observed is a finding, not evidence: the PR comes back with a request for the red run, and a
 correct fix spends a full review round-trip on evidence the worker had at hand before the
-PR was opened.
+PR was opened. Three PRs bounced on exactly this in one review window with the fix and the
+test both sound.
 
 Produce it BEFORE `deskpr create`, in one of two forms:
 
@@ -291,17 +299,19 @@ prose, not a Verify row.
 > own machine, no session or agent ids, no scratch worktree names, no identifiers out of a
 > register that is not published. Your own PR body is the first thing this binds.
 
-The tools ENFORCE it: `deskpr create`, `deskpost` and `deskreply` run a self-containment scan
-over the body whenever the target repo is not known-private, and a refusal is exit 5 — the
-same STOP every scan refusal is, taking the same audited `--force-scan-override` and no other
+This used to be a sentence a worker had to remember, and it leaked anyway. The tools now
+ENFORCE it: `deskpr create`, `deskpost` and `deskreply` run a self-containment scan over
+the body whenever the target repo is not known-private, and a refusal is exit 5 — the same
+STOP every scan refusal is, taking the same audited `--force-scan-override` and no other
 way through. There is no flag that turns the check off.
 
-The categories are enumerated in ONE place — `deskpr --help`, section PUBLIC-REPO
-SELF-CONTAINMENT — and deliberately not restated here. Read them there. What matters for the
-worker is the shape of the verdict: an unambiguous span REFUSES and the message names it,
-while an ambiguous one (a bare `#N`, a short name that is also an ordinary word, an
-unconfigured withheld set) prints a NOTICE on stderr and does not block. A notice is a
-could-not-check — read it, decide, and say what you decided in the PR body; it is not a pass.
+**The categories are enumerated in ONE place — `deskpr --help`, section
+PUBLIC-REPO SELF-CONTAINMENT — and deliberately not restated here.** Read them there; a
+second copy in a prompt is the copy that goes stale. What matters for the worker is the
+shape of the verdict: an unambiguous span REFUSES and the message names it, while an
+ambiguous one (a bare `#N`, a short name that is also an ordinary word, an unconfigured
+withheld set) prints a NOTICE on stderr and does not block. A notice is a could-not-check —
+read it, decide, and say what you decided in the PR body; it is not a pass.
 
 Run it over your body BEFORE you open the PR rather than discovering it at the refusal: it
 is the same code either way, and the round trip is better spent on the wording.
@@ -340,11 +350,21 @@ An empty or bullet-less fragment is rejected — a touched file is not a fragmen
 > first, so a row that overruns the watchdog costs you the ROW, not the branch. Progress
 > that lives only in an unpushed worktree does not survive the agent being killed.
 
+Both halves are one field failure seen whole. A worker reached the end of its work and ran
+`go test ./...` to self-check; the module's full suite ran past the agent's time budget; the
+watchdog killed the agent mid-run; and because nothing had been pushed since the last edit,
+the entire session's work was stranded and had to be re-dispatched from cold with no branch
+to resume. A targeted `-run` finishes inside the budget and gives the same signal for the
+row it covers; an explicit `-timeout` turns a hang into a fast, diagnosable test failure
+instead of a watchdog kill you cannot read; and the periodic push in the "Keep the branch
+current" clause above plus a push before any long-running command means the worst a killed
+agent costs is the current step.
+
 The `go test ./...` prohibition is about running it INSIDE the agent, not about the suite
 itself. The full module suite is exactly what CI runs, on a runner with no agent watchdog
 over it — leave the whole-matrix run to CI and keep the agent's own runs scoped to what the
-row in front of you needs to prove. `go test ./<pkg>/... -run '<TestName>'`, never the bare
-`./...`.
+row in front of you needs to prove. This is the same boundary the fail-first evidence clause
+above already draws: `go test ./<pkg>/... -run '<TestName>'`, never the bare `./...`.
 
 ---
 
