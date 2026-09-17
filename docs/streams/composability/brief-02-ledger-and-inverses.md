@@ -189,3 +189,56 @@ reverse and adopter damage, and whether it is acceptable; (2) which Verify row p
 layer (ledger-id refusal) catches a mis-classified step with the upper layer (manifest
 classification) wrong — row 4 with a deliberately mis-labelled fixture step, if the implementer
 adds it; otherwise the answer is "no row" and must be recorded as such.
+
+**Follow-up — 2026-09-13.** The implementer run above landed as PR #953 (merged 2026-09-12,
+`1cbd5bc4`). Fifteen seconds earlier in the same merge window, PR #952 (composability/04,
+harness-as-key) landed three new manifests — `components/harness-claude-code`,
+`components/harness-codex`, `components/harness-cursor` — each carrying a fresh
+`TODO composability/02` placeholder on its `inverse:` lines, since #953's branch was cut
+before #952 existed and never saw them. That left row 1's own bar (`grep -rn 'TODO
+composability/02' ... | wc -l` = 0) failing on `main` again: 5 lines across 3 files. Not
+caught by `deskmanifest lint` (that check is scoped to outside steps missing `ledger:`; these
+are `boundary: inside` with no registered executor, the same class brief 02's own Evidence
+already named as "real prose, no executor yet" for the plugin skills / hook wiring /
+statusgen binaries). This follow-up writes the same real, non-TODO `inverse:` prose for those
+5 steps — descriptive text only, mirroring the already-reviewed pattern; it registers no new
+`deskdisable` executor and does not touch ledger/disable execution logic at all. Re-ran row 1
+(`0`), `deskmanifest lint --root .` (`checked-clean: 26 manifest(s)...`), and the row 8 suite
+(`go test -timeout 180s ./internal/deskkit/... ./cmd/deskdisable/... ./cmd/deskmanifest/...` —
+all packages `ok`).
+
+The brief's `gate: human` decision issue was opened 2026-09-14, after PR #953 already merged;
+it is still OPEN at the time of this follow-up. This PR does not pre-empt it — no new
+deletion, compensation, or execution capability is added here, only descriptive text on inert
+manifest fields.
+
+**Correction — 2026-09-13 (later same day).** The first pass of this follow-up also flipped
+this stream's board row for brief 02 from `todo` to `implemented`, on the reasoning that PR
+#953 had merged the implementation but never flipped it. `statusgen --lint` (v1.0.6, picked up
+after merging forward past #1022) caught what that reasoning missed: this brief is
+risk-gated (`risk.irreversible: yes` → `gate: human`, `spec/lifecycle-v1.md` §4.3) and
+`authored: 2026-09-08`, strictly after the §4.4 design-approval-gate cutover
+(2026-09-05). §4.4 requires a cited, approved `DR-<slug>` record under
+`docs/streams/decisions/` before such a brief may sit at `in-progress` or later — none exists
+for composability (checked: no file under `docs/streams/decisions/` mentions it).
+
+**Correction (2026-09-14) — #1023's actual state.** This section originally said #1023 "is
+still open and unruled" — that was wrong at the time it was written: Ian closed #1023 at
+2026-09-14T03:03:46Z ("not planned since its work already merged in #953"), roughly 19 minutes
+before this note's own commit. §4.4's requirement stands regardless — a `design:` frontmatter
+key / cited `DR-<slug>` record is what the gate asks for, and a "not planned" issue closure is
+not that record on its own (`decided-by` requires a dated `human:<name>` stamp on an actual
+decision — fabricating one to pass this gate would be exactly the self-attested rubber stamp
+§4.4 exists to prevent). **Open question, not resolved here**: does a human "not planned"
+closure on the decision issue actually SATISFY §4.4 (i.e. should the row go back to
+`implemented` since Ian effectively said no formal DR is needed for already-shipped work), or
+does the gate strictly require the frontmatter/record regardless of how the issue closed? Filed
+as #1139 (`question`/`needs-decision`) for a standing ruling — it would apply to any risk-gated
+brief whose decision issue closes "not planned." The row stays at `todo` — the lint-compliant
+state — until that's answered. This is a real, standing gap:
+the underlying code has been on `main` since PR #953 (2026-09-12) without ever having passed
+this gate, because the rule did not yet exist/enforce at that time; grandfathering in
+`spec/lifecycle-v1.md` §4.4 is by `authored:` date only, so this brief does not qualify for
+it. Re-ran `statusgen --root . --lint` after the revert: the composability/brief-02 PROBLEM is
+gone (one unrelated pre-existing backticked-path PROBLEM remains, on the forge-gitlab
+stream's brief 11, untouched by this PR).

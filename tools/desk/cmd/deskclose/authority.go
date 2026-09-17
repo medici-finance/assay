@@ -128,7 +128,22 @@ type ghComment struct {
 //
 // Fail-closed in every direction: an unparseable URL is refused, and a fetch that does not come
 // back is Unverifiable (exit 6) with ZERO closes performed. COULD-NOT-CHECK IS NOT AUTHORIZATION.
-func fetchComment(url string) (ghComment, error) {
+func fetchComment(url string) (ghComment, error) { return fetchCommentKinded(url, "") }
+
+// fetchCommentTyped is fetchComment for a caller that KNOWS which kind of object the permalink
+// names. It is REQUIRED where the target is an ISSUE: the untyped ListComments reads a CHANGE's
+// thread on both backends (GitHub's pullRequest selection, forge_github.go; the same reason
+// superseded.go's readThread uses the typed read), so a comment on an issue is unreachable
+// through it and comes back as could-not-check every time. The human-decided triage lane fetches
+// a human ruling comment on an ISSUE and states TargetIssue so the real comment resolves.
+func fetchCommentTyped(url string, kind deskkit.TargetKind) (ghComment, error) {
+	return fetchCommentKinded(url, kind)
+}
+
+// fetchCommentKinded is the shared body. kind == "" keeps the legacy untyped ListComments path
+// byte-for-byte — the ruling gate and the manifest gate are UNCHANGED — while a non-empty kind
+// uses the kind-aware ListCommentsTyped so an issue's own thread is actually reachable.
+func fetchCommentKinded(url string, kind deskkit.TargetKind) (ghComment, error) {
 	m := commentURLRe.FindStringSubmatch(strings.TrimSpace(url))
 	if m == nil {
 		return ghComment{}, deskkit.Refused(
@@ -149,7 +164,13 @@ func fetchComment(url string) (ghComment, error) {
 	if ferr != nil {
 		return ghComment{}, ferr
 	}
-	comments, err := fg.ListComments(fr, itemN)
+	var comments []deskkit.Comment
+	var err error
+	if kind == "" {
+		comments, err = fg.ListComments(fr, itemN)
+	} else {
+		comments, err = fg.ListCommentsTyped(fr, itemN, kind)
+	}
 	if err != nil {
 		return ghComment{}, deskkit.Unverifiable(
 			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+

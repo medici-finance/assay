@@ -13,17 +13,19 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// TestMain installs the roster fixture and hands the exit code through finishFixtureRoster
+// so the fixture HOME is removed and proven gone before os.Exit — an explicit call, never a
+// defer, which os.Exit would skip (#1195).
 func TestMain(m *testing.M) {
 	rosterCleanup, rerr := installFixtureRoster()
 	if rerr != nil {
 		panic("cannot install the test-fixture roster: " + rerr.Error())
 	}
-	defer rosterCleanup()
 	os.Setenv("GH_TOKEN", "test-token")
 	os.Unsetenv("GITHUB_TOKEN")
 	os.Setenv("DESK_TOOLS_DISABLED", "")
 	code := m.Run()
-	os.Exit(code)
+	os.Exit(finishFixtureRoster(rosterCleanup, code))
 }
 
 // withMockAPI starts a test HTTP server, sets githubAPIBase to its URL.

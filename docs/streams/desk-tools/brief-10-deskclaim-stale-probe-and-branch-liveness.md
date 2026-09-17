@@ -188,6 +188,31 @@ Runner: opus-4.8[1m] worker (assay--desk-tools--10), 2026-09-04, macOS, `KUBECON
 
 **Fail-first (clause 9).** With the fix stashed (old `claim.go`/`main.go`, no `liveness.go`) and only the new `liveness_test.go` in place, the two behaviour tests fail on the unfixed code:
 `refused: unknown verb stale (want one of: acquire, release, list)` → `TestStaleVerdictOldBranchCheckedOut` FAIL (`stale line = ""`) and `TestAcquireReclaimsOldUnheldBranchClaim` FAIL (`stale rc = 5, want 0`). The verb and the branch-claim reclaim did not exist before this change.
+### Non-implementer verifier re-run — 2026-09-16 verify-desk (desk-tools/10 dispatched verifier) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Fresh, independent run — not a duplicate: the prior 2026-09-06 `opus-4.8[1m]-verifier` pass (commit `8245fd97`) recorded PASS on rows 1-8/11 but HELD rows 9-10 pending PR #547 (deskinstall registration) and #550 (model-stamp floor re-base). Both have since merged (`62c6bf7c`, `19de8341`), resolving the HELD condition. Merged main `a4700d2b`.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, clean | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 2 | `go test ./cmd/deskclaim/ -run '^TestStaleVerdictOldBranchCheckedOut$' -count=1` | exit 0 | exit 0 — PASS, `because=branch-checked-out:<path>`, acquire refused (exit 5) | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 3 | `go test ./cmd/deskclaim/ -run '^TestAcquireReclaimsOldUnheldBranchClaim$' -count=1` | exit 0 | exit 0 — PASS, reclaimed (age=150m prior-owner=deadsession) | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 4 | `go test ./cmd/deskclaim/ -run '^TestYoungClaimIsLiveWhateverTheSignals$' -count=1` | exit 0 | exit 0 — PASS, `because=age-under-ttl`, refused | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 5 | `go test ./cmd/deskclaim/ -run '^TestProbeFailsClosedWithoutRepoOrBeaconDir$' -count=1` | exit 0 | exit 0 — PASS, both subtests → `because=no-repo-cannot-prove`, live (fail-closed) | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 6 | `go test ./cmd/deskclaim/ -run '^TestBeaconKeepsClaimLive$' -count=1` | exit 0 | exit 0 — PASS, `because=beacon-live` | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 7 | `go test ./cmd/deskclaim/ -run '^TestStaleMissingAndUnreadableAreSix$' -count=1` | exit 0 | exit 0 — PASS, missing/unreadable both exit 6 | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 8 | `go test ./internal/deskkit/ -run '^TestAcquire' -count=1` | exit 0 | exit 0 — PASS, all 6 `TestAcquire*` subtests green | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 9 | `go test ./cmd/deskclaim/... ./internal/deskkit/... ./internal/loopengine/... -skip '...' -count=1` | exit 0 | exit 0, all four packages `ok`. **Was HELD 2026-09-06** (skip masked #547/#550-dependent code); re-run WITHOUT the skip also exit 0 all `ok` — confirms the HELD condition is resolved, not just masked | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 10 | `gofmt -l tools/desk/cmd/deskclaim tools/desk/internal/deskkit/claim.go` | empty | exit 0, empty — the brief's own 5 touched files are gofmt-clean. **Was HELD 2026-09-06** (whole-dir gofmt drift on unrelated files); that drift has since moved to a different, still out-of-scope file (`forge_writefile_test.go`) — the brief's own files remain clean either way | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+| 11 | `cd statusgen && go run . --root .. --lint` | rc 0 | rc 0 — LINT: PASS | 2026-09-16 | verify-desk (desk-tools/10 dispatched verifier) |
+
+No invented scope, no unrun rows. README (`tools/desk/README.md` §"deskclaim — the flock-backed claimable-action lock") carries the verdict table, `because` vocabulary, hand-delete sentence, forge-scope-boundary sentence. No `--ttl`/`--force` flags anywhere in `cmd/deskclaim/*.go` (ground-rule compliance). Row 2's test explicitly asserts the claim file's ModTime/bytes are unchanged after `stale` (a read-only verb, per its own contract).
+
+**Risk-bearing value.**
+
+**RISK-VALUE: DERIVED** — `beaconFreshWindow = 60 * time.Minute` @ `tools/desk/cmd/deskclaim/liveness.go:36` — introduced by this brief, confirmed byte-identical to the established worktree-lock beacon window (`tools/desk/cmd/deskwt/lockreclaim.go:73`, current main), so one definition of "session still there" governs both worktree-lock reclaim and claim reclaim; a divergent value would let one reclaim path judge a session live while the other steals its claim. Backed by two independent layers per the brief's own SPOF note: the pre-existing 120m age floor (`DefaultStaleClaim` @ `internal/deskkit/claim.go:49`, not introduced here) and the flock'd `deskkit.Acquire` rewrite (verified green, rows 8/9). No other literal constants introduced — exit codes and `because` strings are pre-existing/vocabulary tokens, not risk-bearing magnitudes.
+
+**VERIFY: PASS** — all 11 rows pass on merged main, including rows 9-10 which were previously HELD; their blocking condition has resolved. No FAIL.
 
 ## Review
 

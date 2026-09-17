@@ -145,11 +145,50 @@ func recordWorkpadID(dir string, id int) {
 	_, _ = git(dir, "config", "--worktree", workpadConfigKey, strconv.Itoa(id))
 }
 
+// maxCommentChars is the forge's own ceiling on one comment body (GitHub: 65,536
+// characters). A body over it can never post, so it is refused before anything else runs —
+// and a body that reaches it at all is the signature of the #1195 failure, a workpad
+// rebuilt by appending the previous one to itself until the disk filled.
+const maxCommentChars = 65536
+
+// checkCommentBody is the pair of cheap, transport-free refusals #1195 added, run on BOTH
+// the plain-reply and the workpad path before any preflight, mint or forge call:
+//
+//   - a body over maxCommentChars — the forge would reject it; refusing here costs nothing
+//     and stops the runaway shape at the first verb that sees it;
+//   - a body carrying the workpad marker as its own line MORE THAN ONCE — one workpad has
+//     exactly one marker (deskkit.Render writes it once; HasWorkpadMarker/Parse read the
+//     first), so a second is a body that re-read the old workpad into the new one. That is a
+//     caller bug, never something to post.
+//
+// Both are Refused (exit 5): the caller wrote the body, the caller fixes it.
+func checkCommentBody(body []byte) error {
+	if len(body) > maxCommentChars {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: body is %d characters, over the forge's %d-character comment limit — "+
+				"write the body file fresh each time (`>`), never by appending the previous workpad to it (`>>`)",
+			len(body), maxCommentChars))
+	}
+	if n := deskkit.WorkpadMarkerCount(string(body)); n > 1 {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: body carries the workpad marker line (%s) %d times — one workpad has exactly one; "+
+				"a body that embeds the previous workpad was appended to, not rewritten (write it fresh, never re-read the old workpad into it)",
+			deskkit.WorkpadMarker, n))
+	}
+	return nil
+}
+
 // cmdWorkpadUpsert is cmdReply's --workpad tail: it runs strictly AFTER the same
 // preflight/mint/public-repo-gate/PR-state verification the plain-reply path already ran
 // (ac.head is already set, the worker token already minted), and replaces the plain
 // path's idempotency+post block with the find-or-create decision.
 func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir, repo string, pr int, body []byte, dryRun bool) error {
+	// Cheapest check first, and again here even though cmdReply already ran it: this is the
+	// seam a caller with a body already in hand enters, and the size/marker refusal must
+	// precede the comment list, not follow it.
+	if cerr := checkCommentBody(body); cerr != nil {
+		return cerr
+	}
 	workerLogin, ok := deskkit.RoleAppLogin("worker")
 	if !ok {
 		return deskkit.Unverifiable(
