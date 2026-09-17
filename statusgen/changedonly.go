@@ -20,9 +20,14 @@ import (
 //     CI-mode switch in this binary reads). There is no flag, environment variable or argument
 //     order that overrides this refusal: a scoped lint that CAN be the gate is a gate that
 //     stops checking the moment someone finds it convenient.
-//  2. Outside CI it prints a LOUD banner naming exactly which paths were examined and stating,
-//     in words, that a full-tree defect outside them was NOT looked for — so a scoped run can
-//     never be mistaken for a full pass by anyone reading the log rather than the flags.
+//  2. Outside CI it prints a LOUD banner naming exactly which paths were given and stating, in
+//     words, exactly what that narrows: the DAR-sync, stream-cap, stream-source,
+//     register-integrity and verify-script-diff checks demote a pre-existing defect outside the
+//     named set from PROBLEM to NOTICE. Every other check — and these five checks' own
+//     defect-detection — still runs at full, unscoped breadth; --changed-only reuses the same
+//     `changed []string` plumbing `--changed` already has (see main.go), it does not add a new,
+//     narrower lint pass. The banner says exactly this so a scoped run can never be mistaken for
+//     a full-tree scope by anyone reading the log rather than the flags.
 
 // changedOnlyCIRefusalMessage is the message printed (and the reason for the non-zero exit)
 // when --changed-only is invoked inside the CI gate. Named as a constant so the test asserting
@@ -56,18 +61,24 @@ func parseChangedOnly(raw string) []string {
 }
 
 // changedOnlyBanner renders the scope banner --changed-only prints (to stderr) before running.
-// It names every path examined and says, in as many words, that a defect outside them was not
-// looked for — the second layer behind the CI refusal: even a scoped run that somehow reached a
-// gate is visibly narrowed in the log rather than reading as a full pass.
+// It names every path given and says, in as many words, exactly what narrows: the DAR-sync,
+// stream-cap, stream-source, register-integrity and verify-script-diff checks demote a
+// pre-existing defect outside this path set from PROBLEM to NOTICE — every other check, and
+// these checks' own defect-detection, still runs at full, unscoped breadth. This is the second
+// layer behind the CI refusal: even a scoped run that somehow reached a gate is visibly named as
+// a narrow demotion in the log, never mistaken for a full-tree scope.
 func changedOnlyBanner(paths []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "statusgen: --changed-only SCOPED LINT — examining %d path(s) only:\n", len(paths))
 	for _, p := range paths {
 		fmt.Fprintf(&b, "  %s\n", p)
 	}
-	b.WriteString("A defect outside this path set was NOT looked for. This is a local pre-push " +
-		"convenience, never a substitute for a full `statusgen --root . --lint` — the CI gate " +
-		"always runs the unscoped check.")
+	b.WriteString("This demotes a pre-existing defect outside this path set, in the DAR-sync, " +
+		"stream-cap, stream-source, register-integrity and verify-script-diff checks, from " +
+		"PROBLEM to NOTICE. It does NOT skip those checks and it does NOT narrow any other " +
+		"check's full-tree reach — every check still runs across the whole tree. This is a local " +
+		"pre-push convenience, never a substitute for a full `statusgen --root . --lint` — the CI " +
+		"gate always runs the unscoped check.")
 	return b.String()
 }
 
@@ -104,10 +115,10 @@ func resolveChangedOnly(raw string, changedFileGiven, lintMode, inCI bool) chang
 		return changedOnlyResult{Refusal: msg}
 	}
 	if changedFileGiven {
-		return changedOnlyResult{UsageErr: "--changed-only and --changed are mutually exclusive (both scope the lint; use one)"}
+		return changedOnlyResult{UsageErr: "--changed-only and --changed are mutually exclusive (both feed the same path-scoping plumbing; use one)"}
 	}
 	if !lintMode {
-		return changedOnlyResult{UsageErr: "--changed-only is only valid with --lint (it scopes a lint run, nothing else)"}
+		return changedOnlyResult{UsageErr: "--changed-only is only valid with --lint (it demotes specific checks' out-of-scope defects, nothing else)"}
 	}
 	paths := parseChangedOnly(raw)
 	if len(paths) == 0 {

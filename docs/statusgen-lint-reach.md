@@ -45,13 +45,17 @@ table.
 
 ## `--changed-only`: never the gate
 
-`--lint --changed-only <paths>` scopes a lint to a stated path set, for a local pre-push check.
-It is **not** part of the reach contract above — it changes which FILES are examined, not
-whether a forge is reached — but it carries its own hard rule worth stating beside this one:
-**it refuses outright, non-zero, with no override, the moment it detects it is running inside
-the CI gate** (`GITHUB_ACTIONS=true`). A scoped lint that could serve as the gate is a gate that
-stops checking the moment someone finds it convenient; the CI gate always runs the full,
-unscoped `statusgen --root . --lint`.
+`--lint --changed-only <paths>` is a local pre-push convenience that reuses the same
+`changed []string` plumbing `--changed` already has: it demotes a pre-existing defect outside
+the named path set, in the DAR-sync, stream-cap, stream-source, register-integrity and
+verify-script-diff checks, from PROBLEM to NOTICE. It is **not** a full-tree scope — every
+check, including those five checks' own defect-detection, still runs across the whole tree; a
+defect outside the named set is never simply absent from the output. It is **not** part of the
+reach contract above either — it changes nothing about whether a forge is reached — but it
+carries its own hard rule worth stating beside this one: **it refuses outright, non-zero, with
+no override, the moment it detects it is running inside the CI gate** (`GITHUB_ACTIONS=true`).
+A scoped lint that could serve as the gate is a gate that stops checking the moment someone
+finds it convenient; the CI gate always runs the full, unscoped `statusgen --root . --lint`.
 
 ## Auditing this contract
 

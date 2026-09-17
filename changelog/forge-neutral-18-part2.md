@@ -1,8 +1,11 @@
 ### Added
-- `statusgen --lint --changed-only <paths>`: a local pre-push convenience that
-  scopes a lint to a stated path set and prints a scope banner naming what was
-  (and was not) examined — refuses outright, non-zero, with no override, when
-  it detects it is running inside the CI gate.
+- `statusgen --lint --changed-only <paths>`: a local pre-push convenience, on
+  the same plumbing `--changed` already has, that demotes a pre-existing
+  defect outside a stated path set — in the DAR-sync, stream-cap,
+  stream-source, register-integrity and verify-script-diff checks — from
+  PROBLEM to NOTICE, and prints a banner naming exactly that (every check
+  still runs across the whole tree). Refuses outright, non-zero, with no
+  override, when it detects it is running inside the CI gate.
 - `docs/statusgen-lint-reach.md`: a short contract stating exactly what
   `statusgen --lint` may reach on the network, with and without `--forge`.
 

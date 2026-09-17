@@ -89,8 +89,11 @@ func TestChangedOnlyRefusesInCIGate(t *testing.T) {
 					t.Fatalf("banner does not name examined path %q: %q", p, r.Banner)
 				}
 			}
-			if !strings.Contains(strings.ToLower(r.Banner), "not looked for") {
-				t.Fatalf("banner does not state that a full-tree defect outside the set was not looked for: %q", r.Banner)
+			if !strings.Contains(strings.ToLower(r.Banner), "problem to notice") {
+				t.Fatalf("banner does not state the PROBLEM-to-NOTICE demotion --changed-only actually performs: %q", r.Banner)
+			}
+			if !strings.Contains(strings.ToLower(r.Banner), "does not skip") {
+				t.Fatalf("banner does not disclaim skipping other checks: %q", r.Banner)
 			}
 		})
 	}
@@ -118,6 +121,41 @@ func TestChangedOnlyBannerListsEveryPath(t *testing.T) {
 	}
 	if !strings.Contains(banner, "3 path") {
 		t.Fatalf("banner does not name the count of paths examined:\n%s", banner)
+	}
+}
+
+// TestChangedOnlyPathsReachStreamCapDemotion is the end-to-end proof the review on assay#1262
+// asked for: resolveChangedOnly's PARSED path set, fed into streamCapLint exactly the way
+// main() feeds it (r.Paths -> the same `changed []string` parameter --changed already uses),
+// demotes a pre-existing, standing over-cap defect OUTSIDE the named set from PROBLEM to
+// NOTICE. Critically it asserts the defect still SURFACES as a NOTICE — proving the corrected
+// banner claim ("demotes … from PROBLEM to NOTICE … does NOT skip") rather than the banner's
+// former, false claim that a defect outside the set "was NOT looked for" (it was: this is why
+// the NOTICE fires at all). A prior version of this file asserted the false claim; this test
+// exists precisely so that mistake cannot reappear silently.
+func TestChangedOnlyPathsReachStreamCapDemotion(t *testing.T) {
+	setStreamCap(t, 2, true)
+	streams := []*Stream{
+		mkStream("a", "active", "P1"),
+		mkStream("b", "active", "P1"),
+		mkStream("c", "active", "P1"),
+	}
+	setBaseActive(t, "docs/streams/a/README.md", "docs/streams/b/README.md", "docs/streams/c/README.md")
+
+	r := resolveChangedOnly("statusgen/main.go,docs/streams/a/brief-01-x.md", false, true, false)
+	if r.Refusal != "" || r.UsageErr != "" {
+		t.Fatalf("expected a success result from resolveChangedOnly, got %+v", r)
+	}
+	if len(r.Paths) != 2 {
+		t.Fatalf("expected 2 parsed paths, got %v", r.Paths)
+	}
+
+	problems, notices := streamCapLint(streams, "/repo", r.Paths)
+	if len(problems) != 0 {
+		t.Fatalf("--changed-only's own parsed path set must demote the standing over-cap to a NOTICE, not a PROBLEM; got %v", problems)
+	}
+	if !hasSubstr(notices, "did not introduce") {
+		t.Fatalf("the standing over-cap must still SURFACE as a NOTICE under --changed-only — it must never simply vanish; got %v", notices)
 	}
 }
 
