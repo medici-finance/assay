@@ -41,7 +41,7 @@ consumers:
   - "tools/desk/README.md (preflight table): follow-up forge-neutral/25 (this brief; flips to fixed-here when the implementation edits the path)"
   - "docs/adopting-assay.md, docs/enforcement-model.md, docs/adopting-assay-gitlab.md: follow-up forge-neutral/29"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up forge-neutral/29"
-  - "deletion of the legacy duty row with the forge store: follow-up forge-neutral/30"
+  - "deletion of the legacy duty row with the forge store: follow-up forge-neutral/32"
   - "duties of the roles other than the reviewer: follow-up forge-neutral/31 (the audit their later narrowing is authored from)"
 version: 1
 id: 9d0d6fdb-3db6-4e8e-87df-265bcc49ad38
