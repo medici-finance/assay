@@ -23,6 +23,83 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.12 — 2026-09-17
+
+### Added
+- Regenerated `.github/assay-statusgen.reconcile.patch` (still staged, not
+  applied — a workflow-file push needs the workflows scope) as an actual
+  `git apply`-able unified diff; the prior version's bare `@@` hunk headers
+  carried no line-range info and could not be applied as its own instructions
+  said.
+- The `statusgen --lint` PROBLEM-diff guard fails closed on a root it cannot evaluate: when
+  `statusgen` exits nonzero with no `PROBLEM:` line (a structural failure — no
+  `docs/streams` tree, a stream dir with no `README.md`, an incomplete checkout) the landing
+  is could-not-check (exit 6) rather than treated as clean, so the guard cannot silently
+  no-op against the scratchpad/bare-cwd roots the landing path is often handed.
+- This repo's own `docs/streams/*/README.md` boards get a `statusgen reconcile
+  --backfill --report` pass: `docs/streams/board-drift-2026-09-16.md` records
+  every brief where the hand-said lifecycle cell disagrees with what PR history
+  (plus the declared history-only backfill fallback) now derives, for a human to
+  resolve by linking or accepting.
+- `desk-containers` briefs 09–11 (#1193): a scrubbed host-local `cellctl` cell kind with `smoke`, `status`, a session lock and a stricter `check`; the Go port of `cellctl` on `deskkit` with the bash kept as a parity oracle (human-signed cutover); and the retirement of the out-of-tree bridge — `CELL_KIND=local` refused with its migration line, one `cellctl` on PATH.
+- `deskclose triage -R <owner/repo> <N> --disposition {not-planned|human-decided}` closes a triaged idea-ISSUE through the resolved forge under the role App — the intake front door's "close, no fix PR" exit that had no sanctioned path (a raw `gh issue close --reason "not planned"` is denied to an auto-mode session). Because a close verb is an authority surface, each disposition authorizes on an artifact deskclose FETCHES and VERIFIES, never a caller flag: `not-planned` closes only on a `<!-- desk-triage v1 -->` marker comment on the issue that is authored by a roster-trusted account and not minimized (a bare marker string, a minimized one, or one by an untrusted author does not authorize); `human-decided` closes only on the human's own ruling comment on the issue (`--decision <url>`), fetched and its author verified as the roster-pinned blessing authority — a blanket ruling grant never stands in for it. `--tracker` is never authority: when given it must name an EXISTING item (verified by a read), and it is required for `human-decided` (the close NAMES the continuing work). A `needs-decision` item is refused in both dispositions and `not-planned` also refuses a `human-decided`-labelled item (the control that keeps the verb from closing an undecided or unruled item); a pull-request target is refused; an already-closed issue is an idempotent no-op; an unreadable state is could-not-check (exit 6), never a guessed close. No marker writer ships in this PR, so `not-planned` fails closed until intake stamps a trusted marker — by design, never a close on an unverified signal. The other four modes are unchanged. (#1207)
+- `deskevidence` refuses a landing whose target path resolves outside `docs/streams/` —
+  catching a stray root-level file before it lands, not after.
+- `deskevidence` refuses an Evidence landing that would introduce a new `statusgen --lint`
+  PROBLEM, diffed against the landing worktree before the change so a pre-existing red
+  elsewhere in the repo never blocks a clean landing (exit 5, naming the PROBLEM lines).
+- `deskpr create --check` runs every LOCAL gate a real create would run — flags, branch
+  state, the `Brief:`/`Issue:` trailer, the secret scan, the public-repo self-containment
+  scan, the push-transport gate — and stops before minting a token or opening any
+  connection; `update` and `edit` gain the same flag for the gates that do not require the
+  forge-held PR body. `deskreply`'s `--dry-run` is widened from the `--workpad` path to the
+  plain reply path.
+- `graph-execution` stream: an approved scoping document and eight briefs for executing the brief graph — an eligibility evaluator that makes `gates:`/`feathers:` gating with a stated reason, a versioned workflow-pattern schema with node execution contracts and three reviewed patterns (implementation, research, signal-triggered), a deterministic evidence coverage rule with an `observe` evidence kind, a recovery contract for effect-bearing nodes in `drainloop`, an offline two-pattern experiment on frozen fixtures, run records with a replay/learning loop, and flow instruments (service/wait split, CI-slot saturation, gate catch/override). Design only; no gate moves and no behaviour changes in this PR.
+
+### Fixed
+- The GitHub forge backend never hands back a shorter open-issue listing with a nil error: a body cut off mid-transfer or a zero-byte body is an error, and the page walk follows the forge's own `Link: rel="next"` instead of stopping on any short page. (#1032)
+- The trailer grammar is now stated inline in the skills instead of citing `docs/streams/derived-board/spec.md`, a path `statusgen init` never writes into an adopter tree — so a reviewer asking "does `Issue:` substitute here?" has the answer in the skill they were given. The dead citation is swept from `worker-desk`, `verify-desk`, and `author-brief`. `upgrade-assay` and `install` now document the re-pin landing path (a re-pin files a tracking issue and carries `Issue: #<N>`), and `docs/desk-tools/deskpr.md` records that `deskpr edit` cannot change a trailer in place. (#1224)
+- `composability/02`'s Verify row 1 (`grep -rn 'TODO composability/02' --include=component.yaml . | wc -l` = 0) had
+  regressed to 5 on `main`: a merge race between PR #953 (this brief) and the concurrently-landed
+  PR #952 (composability/04, harness-as-key) left three new harness manifests
+  (`harness-claude-code`, `harness-codex`, `harness-cursor`) with placeholder `inverse:` text.
+  Wrote the real, non-TODO reverse prose for those 5 apply steps — descriptive text only, no new
+  `deskdisable` executor registered — and corrected the stream board's brief-02 row, which PR #953
+  never flipped, from `todo` to `implemented`.
+- `deskdispatch` claim-acquire no longer requires a GitHub App ID on a GitLab-only roster: when the target repo's forge resolves to GitLab (`ASSAY_REPO_FORGES=<slug>=gitlab`), the claim child is now authenticated with the same GitLab role PAT custody the other write verbs use (`deskpost`/`deskflip`), not the GitHub App installation-token minter there is no App to mint against. GitHub-resolved repos keep the App-mint path unchanged, and an explicit `GH_TOKEN` still wins for both. Previously a review (or worker) dispatch on a GitLab project failed closed with `no App ID for App "reviewer-app"` before any claim was taken. (#1203)
+- `deskreply` refuses, before any read or write, a `--body-file` whose size exceeds the cap (decided from the file's metadata, so a runaway body is never loaded into memory), a body over the forge's 65,536-character comment limit, and a body carrying the workpad marker line more than once — the signature of a workpad rebuilt by appending its predecessor to itself. The `pr-shepherd` and `worker-desk` skills say to write the workpad body file fresh (`>`), never append (`>>`) or re-read the old workpad. (#1195)
+- `desksupervise` (`status --stops` / `tick` / `run`) and the `BranchMoved` liveness probe now list refs authenticated as the session's role against the forge the roster names, instead of an anonymous read of a hardcoded `github.com` — so a private board root no longer fails with `authentication required: Repository not found`, and a GitLab forge is dialed with its own host and git username. The custody credential is presented only to the resolved forge kind's own canonical instance (`github.com` for GitHub, the `GITLAB_API_BASE` host for GitLab), never to the origin host of an unrelated checkout, so a cross-repo sweep can no longer send a GitHub App token to a GitLab host or vice versa; the host is validated as a bare hostname before use. A missing token, an unresolved forge, or an unknown instance host is could-not-check (exit 6), never an empty snapshot or a SaaS-host default. (#1197)
+- `issueboard` no longer retires a placeholder because its issue was merely absent from the open-issue listing: `RETIRE` now rests on a positive per-issue `closed` read, an unreadable state is could-not-check (exit 6, issue named), and an absent issue that reads open proves the listing partial and refuses the whole sweep. A slow/partial third sweep had flipped ~236 still-open issues `NONE→RETIRE`. (#1032)
+- `pr-review-desk` check 2 now accepts a PR body carrying **either** `Brief: <stream>/<NN>` **or** `Issue: #<N>`, matching the grammar `deskpr` already enforces (`deskkit.ParseTrailers`). Previously the reviewer named only the `Brief:` form and bounced any `Issue:`-trailered PR as if it had bypassed the gate — which made adopter re-pin PRs (a pin bump delivers no brief, so it carries `Issue: #<N>` by construction) unmergeable. The false "a trailer-less PR reaching review means the refusal was routed around" note is corrected: an `Issue:`-trailered PR satisfied the gate legitimately. (#1224)
+- `statusgen --scan-issues` now reads a repo's OPEN issues through the native forge (via the `deskread` verb on the `Forge` seam) instead of shelling out to `gh issue list`. The native client attaches the correct per-installation App token explicitly per request, so the read is immune to the three ways the `gh` shell-out lost or mis-scoped its token: a replaced `HOME` hiding gh's ambient credential (#1145), a token attached only to a child literally named `gh` rather than to a script that itself shells `gh` (#1146), and one inherited `GH_TOKEN` forced across every scan repo so a repo on a different App installation 401s/404s (#628). This unblocks the intake-desk issue-lane drain (`scanloop`), which 401'd on every rostered repo. Supersedes the narrow env-passing patches implied by #1145, #1146, #628. (#1223)
+- `statusgen reconcile`'s PR-trailer join matched a brief-v2 hierarchical id
+  (`<cell>:<repo>:<stream>:<NN>`) against a PR's short `Brief: <stream>/<NN>`
+  trailer as a bare string, so the two never matched — every PR-derived lifecycle
+  cell on a brief-v2 tree stuck at `todo` no matter how many trailer-carrying PRs
+  had merged. Both sides now reduce to the same `<stream>/<NN>` key before the
+  join.
+- `tools/desk` tests no longer leak into `$TMPDIR`: the six `TestMain`s that deferred the roster-fixture cleanup past `os.Exit` (`deskpr`, `deskfile`, `deskreply`, `deskroster`, `deskadvisory`, `deskpushguard`) now run it explicitly and fail the package if the fixture HOME survives; the host `GOMODCACHE`/`GOPATH`/`GOCACHE` are pinned before HOME is relocated so fake-binary builds stop filling each fixture with a fresh module and build cache; the cleanup makes the tree writable before removing it and reports a failure instead of dropping it; and the fake `desktoken` binaries (`deskpr`, `deskreply`, the fleet harness) write their token files inside a fixture directory that is removed. A static test in `deskkit` pins all three shapes. (#1195)
+
+### Changed
+- New `deskfile new --force-file --reason <r>` override raises the rate for one filing so a human can always raise an issue even when the rate is spent. It is distinct from `--force-new` (which bypasses the dedupe search): `--force-file` never weakens dedupe. The override is audit-logged with the reason and the filing identity, and the filing is still charged, so it neither resets nor erases the rate count — the next unoverridden `new` still sees the full history. The rate still counts over the audit log's session+tool+verb+repo fields, so a rotated session id leaves a forensic trail rather than erasing the count. (#1204)
+- The `windows-ci-leg` workflow now runs only on version-tag pushes (`v*`) and on `workflow_dispatch`; the `push` and `pull_request` triggers that ran the Windows leg on every branch push and every PR are dropped. Each release still gets its Windows build proven at tag time, and a maintainer can run the leg on demand, without spending a `windows-latest` public runner on every push. (#1215)
+- The measured top body/schema refusal classes in `deskpr` and `deskreply` now name the
+  offline check that would have caught them for free (`deskpr … --check`, `deskreply …
+  --dry-run`), continuing the same hint `deskpost`'s refusals already carry.
+- `deskfile new`'s issue-filing cap is now a per-window **rate** (N filings per window) rather than a compiled per-session tally, and both knobs are env-fixable with no recompile: `ASSAY_DESKFILE_NEW_RATE` (integer) and `ASSAY_DESKFILE_NEW_WINDOW` (a Go duration such as `24h`), falling back to the shipped defaults (3 per 24h) when unset. An unparseable value falls back to the shipped default AND prints a `NOTICE` naming the bad value — it never silently disables the cap. When the env knobs RAISE the pace, the effective rate/window are recorded on the filing's audit line (`rate-config: <n> per <window> (env)`) so an env-raised filing is never byte-identical to a default-rate one.
+- `pr-review-desk` generated-table bounce now admits a NARROW authoring case: a hunk that ADDS
+  brand-new brief rows (modifying no existing row) is admitted when each added row is honest-base —
+  `Status` = `todo`, empty `Verified`/`Reviewed` — AND the rows reproduce exactly under
+  `statusgen regen --readmes` (run in a throwaway worktree at the PR head with the pinned CI
+  `statusgen`, never one built from the untrusted tree). This unblocks brief-authoring PRs, which
+  must carry the regenerated rows or `statusgen --lint` fails on the PR head (dangling
+  depends/unblocks/consumers references). The honest-base check is what blocks forgery: regen
+  PRESERVES the `Status`/`Verified`/`Reviewed` cells for any row in the region — including a row the
+  PR just added — so "byte-identical to regen" can never certify those columns; only requiring
+  `todo`/`—`/`—` on an added row (stamps come later, from the verifier/reviewer) does. Any change to
+  an existing row, and any stamped or non-`todo` row inside the markers, still bounces. Reviewers
+  never hand-fix the table.
+
 ## v1.0.10 — 2026-09-16
 
 ### Added
