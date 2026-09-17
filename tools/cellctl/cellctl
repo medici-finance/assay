@@ -705,12 +705,46 @@ cmd_set(){
 
 gen_shims(){
   mkdir -p "$CELL_DIR/shim"
-  local b n
+  local b n rendered
+  # The shim body template. Single-quoted heredoc on purpose: everything here is LITERAL shell
+  # (evaluated when the generated shim itself runs, under the caller's REAL, un-swapped HOME —
+  # only the `env HOME=...` on the exec lines below swaps it for the wrapped verb) except the
+  # three __TOKEN__ placeholders, substituted per-binary below via bash parameter expansion (never
+  # sed: a bin path or CELL name containing `&` or a regex metacharacter would otherwise corrupt
+  # the substitution).
+  #
+  # assay#1145: `gh`'s ambient credential (keychain on macOS, hosts.yml-adjacent elsewhere) is
+  # keyed to the REAL HOME, not the cell one — so a `gh` subprocess a shimmed verb shells out to
+  # silently loses auth once HOME is swapped. Resolved HERE, before the swap, and threaded through
+  # as GH_TOKEN so it does: this widens what a `gh` child process can see, never what the verb's
+  # OWN config/state resolves against (still isolated to $CELL_HOME below) — the isolation the shim
+  # exists to provide is unchanged. An explicit GH_TOKEN/GH_ENTERPRISE_TOKEN already in the
+  # caller's env always wins and is never overridden or even looked up against.
+  local body
+  body="$(cat <<'SHIM_TEMPLATE'
+#!/usr/bin/env bash
+# cellctl shim (__CELL__): run this desk verb with the CELL config-home; the session keeps the
+# real HOME. gh's ambient credential is keyed to the real HOME, so it is resolved HERE (before
+# HOME is swapped below) and threaded through as GH_TOKEN — a `gh` subprocess the verb shells out
+# to then still authenticates (assay#1145) without widening the HOME swap itself.
+gh_token=""
+if [[ -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
+  gh_token="$(gh auth token 2>/dev/null || true)"
+fi
+if [[ -n "$gh_token" ]]; then
+  exec env HOME="__CELL_HOME__" GH_TOKEN="$gh_token" "__BIN__" "$@"
+else
+  exec env HOME="__CELL_HOME__" "__BIN__" "$@"
+fi
+SHIM_TEMPLATE
+)"
   for b in "$DESK_TOOLS_BIN"/*; do
     [[ -x "$b" && -f "$b" ]] || continue
     n="$(basename "$b")"
-    printf '#!/usr/bin/env bash\n# cellctl shim (%s): run this desk verb with the CELL config-home; the session keeps the real HOME.\nexec env HOME="%s" "%s" "$@"\n' \
-      "$CELL" "$CELL_HOME" "$b" > "$CELL_DIR/shim/$n"
+    rendered="${body//__CELL__/$CELL}"
+    rendered="${rendered//__CELL_HOME__/$CELL_HOME}"
+    rendered="${rendered//__BIN__/$b}"
+    printf '%s\n' "$rendered" > "$CELL_DIR/shim/$n"
     chmod +x "$CELL_DIR/shim/$n"
   done
   # the cell's own deskd/deskcli come first on PATH too
