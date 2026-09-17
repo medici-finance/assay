@@ -219,13 +219,24 @@ var (
 	blankLineRe = regexp.MustCompile(`\r?\n[ \t]*\r?\n`)
 	// verifyClauseSplitRe splits a single Evidence entry into row-scoped
 	// clauses, on a sentence boundary (". "/"! "/"? " followed by
-	// whitespace) or a newline. entryIsHeld checks HELD/could-not-check and
-	// the deferral clause WITHIN the same clause, so a deferral naming one
-	// row cannot launder a different, undeferred HELD row in the same entry
-	// (an entry-wide match used to let it). A clause boundary this coarse
-	// prose splitter misses only ever merges two clauses into one, which
-	// makes the check MORE conservative (fail closed), never less.
-	verifyClauseSplitRe = regexp.MustCompile(`(?:\r?\n)+|[.!?]\s+`)
+	// whitespace), a comma/semicolon boundary (", "/"; " followed by
+	// whitespace), an em/en-dash boundary (" — "/" – ") or a newline.
+	// entryIsHeld checks HELD/could-not-check and the deferral clause WITHIN
+	// the same clause, so a deferral naming one row cannot launder a
+	// different, undeferred HELD row in the same entry (an entry-wide match
+	// used to let it). A MISSED clause boundary is the FAIL-OPEN direction,
+	// not the conservative one: it merges a deferral clause with an
+	// undeferred HELD row into one clause, and entryIsHeld then sees a
+	// deferral clause covering the hold. That is exactly what happened when
+	// the only recognised boundaries were sentence-ending punctuation: a row
+	// separated from its deferral by a comma, a semicolon, or an em dash
+	// (all idiomatic here — see
+	// testdata/autoflip/docs/streams/af/brief-08-model-held-pass.md, which
+	// separates two rows with a semicolon) stayed in one clause and the
+	// laundering this split exists to prevent returned unchanged. An EXTRA
+	// boundary is the conservative one, which is why the split list below is
+	// deliberately broad rather than narrow.
+	verifyClauseSplitRe = regexp.MustCompile(`(?:\r?\n)+|[.!?,;]\s+|\s+[—–]\s+`)
 )
 
 // verifyEvidenceEntries splits an Evidence body into its blank-line-separated

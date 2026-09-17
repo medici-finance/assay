@@ -1081,6 +1081,21 @@ func TestHasVerifyPassRefusesHeldEntry(t *testing.T) {
 			"**VERIFY: PASS** — row 2 is HELD (deferred per assay#99).",
 			true,
 		},
+		{
+			"comma-separated rows: a deferral clause naming one row still does not launder a comma-joined, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99, row 5 HELD (no runner).",
+			false,
+		},
+		{
+			"semicolon-separated rows: a deferral clause naming one row still does not launder a semicolon-joined, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99; row 5 HELD (no runner).",
+			false,
+		},
+		{
+			"em-dash-separated rows: a deferral clause naming one row still does not launder an em-dash-joined, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99 — row 5 HELD, no runner.",
+			false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
