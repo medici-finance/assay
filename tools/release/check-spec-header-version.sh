@@ -8,9 +8,8 @@
 # mechanical floor, so the header drifted silently again — it still read
 # v0.22.0 while the released umbrella tag had moved dozens of releases ahead
 # (v1.0.9 when #1192 was filed, v1.0.12 by the time this script landed). This
-# is the still-missing second half of brief-13's Task 4
-# (docs/streams/desk-tools/brief-13-schema-first-conformance.md, house repo
-# medici-finance/assay-toolkit): "a release-time check ... that the spec
+# is the still-missing second half of brief-13's Task 4 (brief-13, cited on
+# assay#1192's own tracker entry): "a release-time check ... that the spec
 # header matches the version being cut."
 #
 # CONTRACT. Reads the `Describes reference implementation:` line's `statusgen`
