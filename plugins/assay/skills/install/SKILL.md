@@ -220,7 +220,10 @@ prose, and never fall through to `latest`.
 
 ## NEVER autonomous — STOP and escalate to a human
 
-The installer authors branches and opens **DRAFT PRs only**. It never performs any of these — it
+The installer authors branches and opens **DRAFT PRs only**. An install or re-pin PR delivers no
+brief, so its body carries the `Issue: #<N>` link trailer — file a short tracking issue for the
+install/bump and name it — not a `Brief:` line; both forms satisfy `deskpr` and `pr-review-desk`
+(this repo's own front-door re-pin, PR #496, is the precedent). It never performs any of these — it
 hands the human the exact values and waits:
 
 - **Reviewer GitHub App** creation / installation — the identity that posts approvals, which a plain

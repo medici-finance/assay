@@ -1,0 +1,2 @@
+### Changed
+- The `windows-ci-leg` workflow now runs only on version-tag pushes (`v*`) and on `workflow_dispatch`; the `push` and `pull_request` triggers that ran the Windows leg on every branch push and every PR are dropped. Each release still gets its Windows build proven at tag time, and a maintainer can run the leg on demand, without spending a `windows-latest` public runner on every push. (#1215)
