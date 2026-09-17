@@ -228,7 +228,10 @@ func cmdEdit(args []string) (err error) {
 	// already there. Identical body and (when asked for) identical title → noop, exit 0,
 	// and in particular no second re-review comment on a PR nothing changed on.
 	titleUnchanged := *title == "" || *title == cur.Title
-	if cur.Body == string(body) && titleUnchanged {
+	// The live body carries a PRIOR edit/create's on-behalf-of trailer (multi-principal/01);
+	// strip it from both sides before the noop compare so an edit that is otherwise
+	// byte-for-byte identical still noops instead of re-posting for a trailer-only delta.
+	if deskkit.StripOnBehalfOfSuffix(cur.Body) == string(body) && titleUnchanged {
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = "body/title already match " + pr.URL
 		fmt.Printf("noop: %s already carries this body/title\n", pr.URL)
@@ -254,8 +257,15 @@ func cmdEdit(args []string) (err error) {
 	// EditChange replaces the body and, when --title is given, the title. Only the surfaces
 	// this verb edits are sent — the body always, the title only when asked for — so an
 	// omitted --title leaves the current title (and the `Draft:` prefix it may carry) untouched.
+	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
+	// only — the trailer grammar/self-contain scans above and the noop compare just above
+	// both ran against the caller-supplied body.
+	editBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	if oerr != nil {
+		return oerr
+	}
 	changed := []string{"body"}
-	editIn := deskkit.EditChangeInput{Body: string(body)}
+	editIn := deskkit.EditChangeInput{Body: string(editBody)}
 	if *title != "" {
 		editIn.Title = *title
 		changed = append(changed, "title")

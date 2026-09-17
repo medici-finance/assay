@@ -26,6 +26,30 @@ func TestCommentSuccess(t *testing.T) {
 	}
 }
 
+// TestTrailerOnComment is Verify row 2 of multi-principal/01: the posted comment body
+// ends with the on-behalf-of trailer naming the roster's bless login (the fixture
+// roster's ASSAY_BLESS_LOGIN=ada:2001), and the CALLER-supplied file on disk is left
+// untouched (the trailer is appended to the POSTED body only, never written back).
+func TestTrailerOnComment(t *testing.T) {
+	f, _ := setupFake(t)
+	original := "Re-reviewed the delta; the cursor off-by-one is fixed."
+	bf := writeBody(t, "c.md", original)
+	code := run(commentArgs("example-org/tracker", "1", bf))
+	if code != 0 {
+		t.Fatalf("comment exit = %d, want 0", code)
+	}
+	if f.postedCmt != 1 {
+		t.Fatalf("postedCmt = %d, want 1", f.postedCmt)
+	}
+	posted := strings.TrimRight(f.issueComments[len(f.issueComments)-1]["body"].(string), "\n")
+	if !strings.HasSuffix(posted, "On-behalf-of: human:ada mode:unattended") {
+		t.Fatalf("posted comment body = %q, want it to end with the on-behalf-of trailer", posted)
+	}
+	if !strings.HasPrefix(posted, original) {
+		t.Fatalf("posted comment body = %q, want it to still start with the caller's original text", posted)
+	}
+}
+
 // TestCommentBadBodyExit5NoNetwork checks that a secret-carrying body refuses (5)
 // with no comment posted and no network call.
 func TestCommentBadBodyExit5NoNetwork(t *testing.T) {
