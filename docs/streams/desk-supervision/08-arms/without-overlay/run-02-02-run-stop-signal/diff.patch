@@ -1,0 +1,19 @@
+diff --git a/STATUS.md b/STATUS.md
+index 19ef2c8..26b6bdb 100644
+--- a/STATUS.md
++++ b/STATUS.md
+@@ -1 +1 @@
+-Status: in-progress
++Status: implemented
+diff --git a/stopsignal.go b/stopsignal.go
+index ba90e94..8c8dad6 100644
+--- a/stopsignal.go
++++ b/stopsignal.go
+@@ -7,6 +7,5 @@ package stopsignal
+ // true only when a stop flag is armed AND the run is still in the "working" state. A run
+ // already "handed-off" has nothing left to cooperatively stop.
+ func ShouldStop(flagArmed bool, state string) bool {
+-	// TODO: implement — currently never signals a stop, so an armed flag is never honoured.
+-	return false
++	return flagArmed && state == "working"
+ }
