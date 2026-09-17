@@ -1,0 +1,2 @@
+### Added
+- Draft scoping doc `docs/streams/forge-neutral/reviewer-write-boundary.md` and briefs forge-neutral/20–30: where a cell keeps its dispatch claims becomes a store resolved in the desk-tool layer (a shared directory, the same store served over HTTP, or the forge ref as an explicit opt-in), so the reviewer role needs repository write only under the forge-ref store. Authoring only — no tool behaviour changes until the spec is approved and the briefs land.

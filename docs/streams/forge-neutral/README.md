@@ -225,6 +225,17 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | todo | — | — |
 | 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
 | 19 | [Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs](brief-19-human-only-surfaces-server-side.md) | 1 | M | todo | — | — |
+| 20 | [Measurements — what the reviewer writes, who reads claims, what a shared directory guarantees, and what each forge refuses](brief-20-claim-store-measurements.md) | 1 | M | todo | — | — |
+| 21 | [Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back](brief-21-claim-store-seam-and-resolver.md) | 2 | M | todo | — | — |
+| 22 | [Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store](brief-22-claim-readers-onto-the-seam.md) | 3 | M | todo | — | — |
+| 23 | [File claim store — claims in a directory the cell shares, with the single-host declaration and the mixed-store refusal](brief-23-file-claim-store-and-guards.md) | 3 | M | todo | — | — |
+| 24 | [Served claim store — the same directory store behind a small HTTP serve mode, member-initiated, holding no forge credential](brief-24-served-claim-store.md) | 4 | L | todo | — | — |
+| 25 | [Store-aware duties — the reviewer needs repository write only under the forge-ref store, and the boot check names the store](brief-25-store-aware-duties.md) | 3 | M | todo | — | — |
+| 26 | [Forge-ref store on GitHub — a ruleset pair that leaves the reviewer only the claim namespace, and the audit rows that watch it](brief-26-forge-ref-bound-github.md) | 2 | M | todo | — | — |
+| 27 | [Forge-ref store on GitLab — wildcard protection where the tier allows it, and the Free tradeoff provisioned honestly](brief-27-forge-ref-bound-gitlab.md) | 2 | M | todo | — | — |
+| 28 | [Scaffold defaults — a fresh single-host cell gets the file store and the declaration; existing cells are left alone](brief-28-scaffold-claim-store-defaults.md) | 4 | M | todo | — | — |
+| 29 | [Adopter docs and store-neutral skills — supported topologies, store-aware grants, the GitLab Free tradeoff](brief-29-docs-and-store-neutral-skills.md) | 5 | M | todo | — | — |
+| 30 | [Cutover — release, re-pin, drain and switch the store, prove on a fixture, and only then the operator narrows the grant](brief-30-cutover-and-lower-layer-proof.md) | 6 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -342,6 +353,42 @@ verbs by routing them through the resolver, and cites it. `#349` (statusgen's Gi
 scaffold and silently-degraded claim decay) is brief 08. `#346` (provisioner defects) and
 `#348` (adopter doc) are `forge-gitlab`'s and are not re-opened here.
 
+### Second path — the reviewer write boundary (briefs 20–30, #1267)
+
+Spec: [`reviewer-write-boundary.md`](reviewer-write-boundary.md) — **Status: draft**. No brief
+on this path other than 20 starts until a human marks it approved; every implementing brief's
+Verify row 1 checks that.
+
+```
+spec approved ─> 20 ─> 21 ─┬─> 22 ─┐
+ (human)      (measure) (seam + │       ├─> 28 ─> 29 ─> 30 ─> the operator narrows the grant
+                        resolver)├─> 23 ─┤  (scaffold  (docs)  (cutover    (human, per installation, LAST)
+                                │  (file │   defaults)          + proof)
+                                │  store)└─> 24 (served store — off the path)
+                                └─> 25 (store-aware duties) ──────────┘
+            20 ─> 26, 27 (forge-ref bounds — off the path; they feed 29)
+```
+
+One-line path: `20 → 21 → 23 → 28 → 29 → 30`, with 22 and 25 joining before 28 and 30.
+
+**The head is 20, and the reason is checked, not assumed.** The tempting first step is 25 —
+make the duty list role-keyed so the reviewer can drop repository write. It is a dead end on
+its own: at `c67cc371` the review dispatch takes its claim as the `reviewer` role by writing a
+forge ref (`tools/desk/cmd/deskdispatch/dispatch.go:872-918`), so a reviewer that boots
+without repository write fails at its first dispatch. The second tempting step is 23 — add a
+file store. Also a dead end alone: the supervisor, the verdict stamp and the fan-out release
+read claims straight off the forge (`tools/desk/cmd/desksupervise/live.go:35`,
+`tools/desk/cmd/deskpost/claimliveness.go:41-61`, `tools/desk/cmd/fanoutloop/land.go:81-154`),
+so with claims elsewhere they would report every held slot free. 21 is genuinely unblocked in
+code — the store interface already exists behind the claim tool
+(`tools/desk/cmd/deskclaim-ref/claim.go:97-119`) — but it rests on two inventories and on
+filesystem and forge behaviour nobody has measured, which is 20.
+
+**Smallest unblocking move:** approve the spec (or rule on its §10 questions), then run 20.
+
+**The last step is not a brief.** Narrowing the reviewer's grant on a real installation is a
+human, admin-side act, performed after 30 is verified. No tool performs or prompts it.
+
 ## Dependency waves
 
 - **Wave 1** — `forge-neutral/01`. The resolver, the per-forge custody binding, and the
@@ -361,6 +408,21 @@ scaffold and silently-degraded claim decay) is brief 08. `#346` (provisioner def
   (`statusgen/brieffile.go:1492-1522`), and 08 is wave 4.
 
 One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`.
+
+**Reviewer write boundary (briefs 20–30)** — waves are derived from `depends:` like every
+other brief here, so they interleave with the numbers above rather than restarting:
+
+- **Wave 1** — `forge-neutral/20` (measurements; may run while the spec is draft).
+- **Wave 2** — `forge-neutral/21` (store seam + resolver), `26`, `27` (forge-ref bounds); all
+  depend only on 20.
+- **Wave 3** — `forge-neutral/22` (readers onto the seam), `23` (file store + guards), `25`
+  (store-aware duties); all depend only on 21, all parallelizable.
+- **Wave 4** — `forge-neutral/24` (served store; depends on 23), `28` (scaffold defaults;
+  depends on 22 + 23).
+- **Wave 5** — `forge-neutral/29` (docs + store-neutral skills; depends on 25, 26, 27, 28).
+- **Wave 6** — `forge-neutral/30` (cutover + proof; depends on 22, 23, 25, 29).
+
+One-line path: `20 → 21 → 23 → 28 → 29 → 30`.
 
 ## Shared conventions the briefs inherit
 
