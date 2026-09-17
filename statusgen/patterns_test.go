@@ -10,7 +10,7 @@ import (
 )
 
 // patterns_test.go — graph-execution/02. Covers the schema-parity gate, the two
-// shipped patterns validating clean, and the four MUST-rule fixtures each
+// shipped patterns validating clean, and the five MUST-rule fixtures each
 // failing for the reason they are named for (never a different rule, and never
 // silently clean).
 
@@ -89,6 +89,28 @@ func TestPatternsEffectExceedsRoleIsProblem(t *testing.T) {
 	}
 	if !anyContains(violations, rulePatternEffectExceedsRole) {
 		t.Errorf("violations do not name %q:\n%s", rulePatternEffectExceedsRole, strings.Join(violations, "\n"))
+	}
+}
+
+// TestPatternsEffectTargetNotOwnedIsProblem — the `bad-effect-target-not-owned.yaml`
+// fixture: a non-`effect`-kind node declares an effect whose `target` is not
+// among its own `outputs`. The lint MUST exit 1, naming
+// pattern-effect-target-not-owned — and only that rule, never
+// pattern-effect-exceeds-role (the fixture's effect kind IS permitted for its
+// role; only the target-ownership check is meant to fire).
+func TestPatternsEffectTargetNotOwnedIsProblem(t *testing.T) {
+	schema := mustParseEmbeddedPatternSchema(t)
+	path := filepath.Join("testdata", "patterns", "bad-effect-target-not-owned.yaml")
+	state, violations := lintPatternFile(path, schema)
+	if state != patternStateFailed {
+		t.Fatalf("want checked-failed, got state=%d violations=%v", state, violations)
+	}
+	if !anyContains(violations, rulePatternEffectTargetUnowned) {
+		t.Errorf("violations do not name %q:\n%s", rulePatternEffectTargetUnowned, strings.Join(violations, "\n"))
+	}
+	if anyContains(violations, rulePatternEffectExceedsRole) {
+		t.Errorf("fixture unexpectedly also tripped %q — it should trip only %q:\n%s",
+			rulePatternEffectExceedsRole, rulePatternEffectTargetUnowned, strings.Join(violations, "\n"))
 	}
 }
 

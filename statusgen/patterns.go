@@ -13,15 +13,17 @@ package main
 // WHAT A SCHEMA CANNOT EXPRESS. `schemas/workflow-pattern-v1.json` covers shape:
 // required keys, field types, closed value sets (see conform.go's minimal JSON
 // Schema validator, reused here — parseSchema/validateValue). It cannot express
-// the pattern's own resolved node graph: whether a node's effect kind is
-// permitted for its role (needs the role→effect-kind table), whether a review
-// node's role differs from every node that produced its inputs (needs edges
-// resolved between inputs[].artifact and other nodes' outputs), whether `join`
-// names a `check`-kind node (needs the node set looked up by id), or whether
+// the pattern's own resolved node graph: whether a non-`effect`-kind node's
+// effect target is among its own outputs (needs each node's own output list),
+// whether a node's effect kind is permitted for its role (needs the
+// role→effect-kind table), whether a review node's role differs from every
+// node that produced its inputs (needs edges resolved between
+// inputs[].artifact and other nodes' outputs), whether `join` names a
+// `check`-kind node (needs the node set looked up by id), or whether
 // `risk-input` states all four verdicts (deliberately NOT a schema `required`
 // list — see schemas/workflow-pattern-v1.json's risk-input description — so a
 // missing verdict reports as a MUST-rule violation, not a shape violation). Those
-// four rules are implemented here, in Go, over the parsed document.
+// five rules are implemented here, in Go, over the parsed document.
 //
 // THREE-STATE, SAME CONTRACT AS conform/verifyrun/shardcheck. checked-clean (0) /
 // checked-failed (1) / could-not-check (2), fail-closed: an unreadable file, a
@@ -355,7 +357,7 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 	return doc, nil
 }
 
-// checkPatternMustRules runs the four cross-field MUST rules a JSON schema
+// checkPatternMustRules runs the five cross-field MUST rules a JSON schema
 // cannot express, over the resolved document. Each returned string names the
 // rule tag so it reads identically whether printed by the CLI or scraped by a
 // test.
