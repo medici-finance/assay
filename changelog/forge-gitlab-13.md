@@ -8,4 +8,5 @@
   paths performs the flip today — `regen --readmes` preserves lifecycle cells
   by design rather than deriving them, and `reconcile --backfill --apply` (the
   verb that would write one) is not wired into this repo's CI — so the row
-  stays `todo` pending that follow-up.
+  stays `todo` pending that follow-up. (The PR's own title previously read
+  "flip board row to implemented" — retitled to match: no flip happens here.)
