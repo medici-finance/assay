@@ -11,7 +11,7 @@ why: >-
   snapshot — and because the query lives inside the backend, no GitHub-specific document leaks
   past the seam.
 wave: 3
-depends: ["desktools-v2/02", "desktools-v2/07"]
+depends: ["desktools-v2/02"]
 unblocks: []
 effort: L
 gate: model
@@ -22,7 +22,7 @@ authored: 2026-09-16 by desktools-v2 authoring session
 sources:
   - "docs/streams/desktools-v2/spec.md §2 Principle 3 (PURPOSE-BUILT QUERIES) — the operation set, the rationale (latency / rate-limit / consistent snapshot), and the two cautions (cost budget, no raw query past the seam)"
   - "docs/streams/desktools-v2/inventory.md (desktools-v2/01) — the N+1 read clusters routed to this brief"
-  - "tools/desk/internal/deskkit/forge.go — the interface these typed ops extend (freeze rule: a new method lands with its consuming call site); the shared library (desktools-v2/07) is where they live"
+  - "tools/desk/internal/deskkit/forge.go — the interface these typed ops extend (freeze rule: a new method lands with its consuming call site); they live in tools/desk/internal/deskkit, which stays internal (spec §2 Principle 2 — a second module reaches the seam through the deskread verb, never by import)"
   - "the ban-lint (desktools-v2/02) — the control that already forbids a raw query literal outside a backend; this brief adds ops, it does not relax that"
   - "freshness-checked 2026-09-16 @ e9fa19d3 — forge.go already carries per-item ops (ListOpenChanges, ReviewsAtHead, ChecksAtHead, GetPullRequest); the access-pattern ops COMBINE these into one round-trip, they do not replace the interface"
 consumers:
@@ -44,7 +44,7 @@ id: 264e1b84-3155-4369-8c68-059a35e70645
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/forge.go` (the shared library after `desktools-v2/07`) — the
+- `tools/desk/internal/deskkit/forge.go` — the
   new typed access-pattern operations (e.g. `ReviewQueueSnapshot`, `HeadSHAsForChanges`,
   `BoardSweepRead`) and their typed result structs.
 - `forge_github.go`, `forge_gitlab.go` — each backend implements each op as ONE tuned query
@@ -105,11 +105,11 @@ facts:
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 |
-| 2 | `cd tools/desk && go test ./...` | exit 0; the new op's backend tests + the migrated consumer's tests pass |
-| 3 | `cd tools/desk && go test ./... -run TestAccessPatternSingleRoundTrip -v` | exit 0; the named test runs (`--- PASS`) proving the op resolves in ONE round-trip / one consistent snapshot — the dereferencing row for the freshness claim |
-| 4 | `cd tools/desk && go test ./... -run TestForgeNoRawQueryInSignature -v` | exit 0; the named test runs (`--- PASS`) asserting the access-pattern op signatures carry typed inputs/results only, no raw query string — the "no raw query crosses the seam" row |
-| 5 | `grep -c 'points' docs/streams/desktools-v2/query-cost.md` | exit 0; count >= 1 — the measured before/after call+point costs are recorded in `docs/streams/desktools-v2/query-cost.md` (planned), not asserted from memory |
-| 6 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb9.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb9.txt` | exit 0; count NOT HIGHER than brief 07's baseline — adding typed ops introduces no reach-past site (the query documents stay inside the backends) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | exit 0; the new op's backend tests + the migrated consumer's tests pass |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | output contains the literal line `--- PASS: TestAccessPatternSingleRoundTrip` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) proving the op resolves in ONE round-trip / one consistent snapshot — the dereferencing row for the freshness claim |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | output contains the literal line `--- PASS: TestForgeNoRawQueryInSignature` (same rule) asserting the access-pattern op signatures carry typed inputs/results only, no raw query string — the "no raw query crosses the seam" row |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | exit 0; prints `all-present` — each of the four measurements is checked SEPARATELY in `docs/streams/desktools-v2/query-cost.md` (planned), so one word repeated cannot stand in for a missing measurement |
+| 6 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb9.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb9.txt` | exit 0; count NOT HIGHER than the `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt` — adding typed ops introduces no reach-past site (the query documents stay inside the backends) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

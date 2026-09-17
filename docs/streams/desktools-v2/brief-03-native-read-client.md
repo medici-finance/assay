@@ -9,9 +9,9 @@ why: >-
   client handed an explicitly-minted installation token — because none of those vectors exists
   without a gh subprocess. This is the stream's first concrete migration and the client every
   later write migration reuses.
-wave: 2
-depends: ["desktools-v2/01"]
-unblocks: ["desktools-v2/04", "desktools-v2/06", "desktools-v2/08"]
+wave: 3
+depends: ["desktools-v2/01", "desktools-v2/02"]
+unblocks: ["desktools-v2/06"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -20,7 +20,7 @@ schema: brief-v2
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
   - "docs/streams/desktools-v2/spec.md §2 Principle 1 (CUSTODY) — the framing this brief's contract codifies: explicit minted-token only, key-presence is the custody boundary, desktop-as-locked-container"
-  - "docs/streams/desktools-v2/spec.md §5 — the audit reframe: desk verbs ~mostly migrated (5 token-custody exceptions); statusgen's read path is desktools-v2/08"
+  - "docs/streams/desktools-v2/spec.md §5 — the audit reframe: desk verbs ~mostly migrated (5 token-custody exceptions); statusgen's read path is forge-neutral/18's, through the deskread verb"
   - "docs/streams/desktools-v2/inventory.md (desktools-v2/01) — the exact desk read sites and the 5 gh exceptions this brief dispositions"
   - "tools/desk/internal/deskkit/forge_github.go:16-40,68-72 — GitHubForge already runs on go-gh with an explicitly-minted token and REFUSES an empty one; this is the client foundation the reads route onto"
   - "tools/desk/internal/deskkit/forge.go — the seam op each migrated read should call"
@@ -78,8 +78,10 @@ facts:
   a new desk `gh` shell-out. So this brief's desk-side work is (i) codifying the custody
   contract on the native read client and (ii) dispositioning the five sanctioned desk `gh`
   exceptions (each a token-custody decision, listed in the inventory), NOT a wholesale desk
-  read rewrite. The higher-value read migration — statusgen — is `desktools-v2/08`, gated on
-  the importable library `desktools-v2/07`; this brief does not touch statusgen.
+  read rewrite. The higher-value read migration — statusgen — belongs to the sibling brief
+  `forge-neutral/18` (through the `deskread` verb); this brief does not touch statusgen.
+  `deskread` itself already resolves its `Forge` through the same resolver and so inherits
+  this contract.
 - `forge_github.go`'s `restClient()` constructs the go-gh client with an explicit Host,
   AuthToken and Transport set, which makes go-gh's `optionsNeedResolution` false — it never
   consults gh's ambient keyring/config — and REFUSES an empty token. The native read client
@@ -150,7 +152,7 @@ proceed on silence).
 | 2 | `cd tools/desk && go test ./internal/deskkit/` | exit 0; native read-client + negative-path tests pass |
 | 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientRefusesUnmintedToken -v` | exit 0; the named test runs (`--- PASS`) and proves an empty/unminted token is REFUSED (not resolved to an ambient identity) — the negative-path row for the transport-floor layer |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientInstallationFromRepoNotEnv -v` | exit 0; the named test runs (`--- PASS`) and proves an ambient GH_TOKEN/HOME does not redirect the read's installation — the negative-path row for the identity-floor layer |
-| 5 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb3.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb3.txt` | exit 0; prints a count STRICTLY LOWER than brief 02's recorded baseline (the migrated reads' gh reach-arounds are gone — the dereferencing check that the old path was removed, not left dormant) |
+| 5 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb3.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb3.txt` | exit 0; prints a count STRICTLY LOWER than the `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt` (the migrated reads' gh reach-arounds are gone — the dereferencing check that the old path was removed, not left dormant; this row needs brief 02's script, which is why 02 is in `depends:`) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

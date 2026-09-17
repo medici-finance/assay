@@ -10,8 +10,8 @@ why: >-
   minted PER the repo it targets removes the ambient-decides-identity class structurally: there
   is no ambient credential to hide, inherit, or mis-scope once the token is an explicit,
   repo-scoped input.
-wave: 3
-depends: ["desktools-v2/03"]
+wave: 4
+depends: ["desktools-v2/02", "desktools-v2/03"]
 unblocks: []
 effort: M
 gate: human
@@ -137,8 +137,10 @@ proceed on silence).
 4. REMOVE every ambient-credential fallback on all three surfaces (no dormant path).
 5. Add negative-path tests, named so the Verify rows target them:
    `TestTokenInstallationFromRepoNotInheritedGHToken` (#628),
-   `TestShimHandsExplicitTokenNotAmbient` (#1145),
-   `TestDispatchTokenReachesNonGhChild` (#1146).
+   the shell suite `tools/cellctl/tests/shim-explicit-token.test.sh` (planned) (#1145 — cellctl is
+   a shell script, so its test is a shell suite that prints
+   `PASS shim hands explicit token, not ambient` and exits non-zero on failure),
+   `TestDispatchHandsTokenToScriptChild` in `tools/desk/cmd/deskdispatch/` (#1146).
 6. Record in the PR body which surfaces were migrated and the ban-lint count before/after.
 
 ## Verify (executable — no prose-only DoD items)
@@ -146,10 +148,10 @@ proceed on silence).
 |---|---------|--------|
 | 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | exit 0 |
 | 2 | `cd tools/desk && go test ./internal/deskkit/` | exit 0; the scoping + negative-path tests pass |
-| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestTokenInstallationFromRepoNotInheritedGHToken -v` | exit 0; the named test runs (`--- PASS`) — an inherited `GH_TOKEN` does not determine the installation (#628); the identity-floor negative-path row |
-| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestShimHandsExplicitTokenNotAmbient -v` | exit 0; the named test runs (`--- PASS`) — the shim hands an explicit token, not an ambient credential a `HOME` override hides (#1145) |
-| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestDispatchTokenReachesNonGhChild -v` | exit 0; the named test runs (`--- PASS`) — the token reaches a script that shells the client, not only a child named `gh` (#1146) |
-| 6 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb6.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb6.txt` | exit 0; count STRICTLY LOWER than the pre-brief value in the PR body (the ambient-credential reach-arounds are gone — the removal check) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestTokenInstallationFromRepoNotInheritedGHToken -v` | output contains the literal line `--- PASS: TestTokenInstallationFromRepoNotInheritedGHToken` (assert on that line, not on the exit status — a `-run` selector matching nothing exits 0) — an inherited `GH_TOKEN` does not determine the installation (#628); the identity-floor negative-path row |
+| 4 | `sh tools/cellctl/tests/shim-explicit-token.test.sh` (planned) | exit 0 AND output contains the literal line `PASS shim hands explicit token, not ambient`; `tools/cellctl/cellctl` is a POSIX shell script with no Go source, so its test lives beside the other `tools/cellctl/tests/*.test.sh` suites — the shim hands an explicit token, not an ambient credential a `HOME` override hides (#1145). A missing script is exit 127, not a pass |
+| 5 | `cd tools/desk && go test ./cmd/deskdispatch/ -run TestDispatchHandsTokenToScriptChild -v` | output contains the literal line `--- PASS: TestDispatchHandsTokenToScriptChild` — assert on that line, NOT on the exit status (`go test -run` with no matching test exits 0); the test lives in `tools/desk/cmd/deskdispatch/`, the package that owns the dispatch path — the token reaches a script that shells the client, not only a child named `gh` (#1146) |
+| 6 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb6.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb6.txt` | exit 0; count STRICTLY LOWER than the most recent line in `docs/streams/desktools-v2/forge-ban-baseline.txt` (written by `forge-ban.sh --baseline`, `desktools-v2/02`; the ambient-credential reach-arounds are gone — the removal check) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

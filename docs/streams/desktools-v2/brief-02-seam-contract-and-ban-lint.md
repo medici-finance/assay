@@ -10,7 +10,7 @@ why: >-
   migration stick: once the count is zero and the gate is failing, the class cannot return.
 wave: 2
 depends: ["desktools-v2/01"]
-unblocks: ["desktools-v2/04", "desktools-v2/05", "desktools-v2/06", "desktools-v2/09"]
+unblocks: ["desktools-v2/03", "desktools-v2/05", "desktools-v2/06", "desktools-v2/08", "desktools-v2/09"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -68,12 +68,21 @@ facts:
   `forge.go` already documents as living in exactly one place (`GitHubAPIBase`).
 - The counter starts ADVISORY (prints `forge reach-around sites: N`, exits 0), exactly as
   `desktools-go-git`'s `count-git-exec.sh` did. It flips to failing (non-zero above zero)
-  only after the migrations (`desktools-v2/04..08`) drive N down — that flip is a separate,
-  later brief, not this one.
+  only after the migrations drive N down: `desktools-v2/08` flips the `statusgen/**` half, and
+  the desk-tools half flips in a later brief that is not authored yet.
 - **The counter's scope INCLUDES `statusgen/**`** (spec §2 Principle 2 / §3 commitment 2).
-  statusgen is a separate binary shelling `gh` directly and is NOT under `forgeban` today; the
-  ban-lint is the control that brings it under the same rule, so its `gh` reads
-  (`desktools-v2/08` migrates them) show up in the count and its removal is measured here.
+  statusgen is a separate Go module shelling `gh` directly and is NOT under `forgeban` today;
+  the ban-lint is the control that brings it under the same rule. Its `gh` reads are migrated
+  by the sibling brief `forge-neutral/18` (through the `deskread` verb — statusgen never
+  imports `deskkit`); this counter is what makes that progress visible, and
+  `desktools-v2/08` flips the statusgen half to failing once it reaches zero. The counter
+  prints the statusgen and desk-tools counts SEPARATELY as well as the total, so a drop in one
+  cannot hide a rise in the other.
+- **The baseline is a file, not prose.**
+  `tools/desk/scripts/forge-ban.sh --baseline` writes the count to
+  `docs/streams/desktools-v2/forge-ban-baseline.txt` (planned; one integer per line, keyed
+  `<brief-id> <count>`), so a later brief's "strictly lower than" row compares two machine-
+  readable numbers instead of a sentence in a PR body.
 - This brief does NOT touch identity or token custody: WHICH forge and WHICH identity a write
   uses is `forge-neutral/01`'s resolver, which this brief cites and consumes. The ban only
   asserts that construction happens inside a backend; it does not decide which backend.
@@ -108,10 +117,12 @@ facts:
 |---|---------|--------|
 | 1 | `test -x tools/desk/scripts/forge-ban.sh; echo rc=$?` | `rc=0` (the counter is present and executable) |
 | 2 | `sh tools/desk/scripts/forge-ban.sh; echo rc=$?` | prints `forge reach-around sites: <N>`; `rc=0` (advisory/counting mode — does not fail the build) |
-| 3 | `grep -cE -e 'forge_github.go' -e 'forge_gitlab.go' tools/desk/scripts/forge-ban.sh` | exit 0; count >= 2 (the two backends are the exemption the counter excludes) |
+| 3 | `sh -c 'for p in forge_github.go forge_gitlab.go; do grep -qF -- "$p" tools/desk/scripts/forge-ban.sh; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo both-exempt'` | exit 0; prints `both-exempt` (each backend is checked SEPARATELY — one name on two lines cannot pass for both) |
 | 4 | `grep -c 'forge-ban' .github/workflows/forge-surface-control.yml` | exit 0; count >= 1 (the counter is wired into the existing forge-surface job) |
 | 5 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb.txt` | exit 0; prints `reach-around sites: <N>` with N a real integer (the counter emits a number, not a placeholder — the dereferencing check against the inventory baseline) |
 | 6 | `test -f docs/streams/desktools-v2/seam-contract.md && grep -cE -e 'origin' -e 'pullRequest' -e 'api.github.com' docs/streams/desktools-v2/seam-contract.md` | exit 0; count >= 1 (the contract names the banned fact classes) |
+| 7 | `sh tools/desk/scripts/forge-ban.sh --baseline && grep -cE '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | exit 0; count = 1 (the baseline later briefs compare against is a machine-readable line, not a PR-body sentence) |
+| 8 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb2s.txt 2>&1; grep -oE 'statusgen sites: [0-9]+' /tmp/dv2-fb2s.txt` | exit 0; prints `statusgen sites: <N>` with N a real integer (the statusgen half is counted and reported on its own line) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
