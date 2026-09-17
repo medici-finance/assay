@@ -57,7 +57,7 @@ func TestInertWithoutConfig(t *testing.T) {
 	})
 }
 
-// --- acp-guardrails/11 Verify row 3: InertWithoutAllKeys -------------------
+// --- InertWithoutAllKeys ----------------------------------------------------
 //
 // The house enablement contract (config.go's own doc comment) is THREE
 // independent off-switches: a
