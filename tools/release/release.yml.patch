@@ -1,0 +1,32 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index f987ec3f..a71f1954 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -374,6 +374,27 @@ jobs:
+             bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev"
+           fi
+ 
++      # SPEC HEADER VERSION GATE (assay#1192) — the last open item of brief-13's
++      # task list (docs/streams/desk-tools/brief-13-schema-first-conformance.md,
++      # house repo medici-finance/assay-toolkit). spec/brief-v1.md's
++      # `Describes reference implementation:` line names a `statusgen` version by
++      # hand; #302 (2026-09-02) did a one-time freshen (v0.8.0 -> v0.22.0, per
++      # brief-13's own drift-class `facts:`) but added no mechanical floor, so the
++      # header drifted silently again — it still read v0.22.0 while the released
++      # umbrella tag had moved dozens of releases ahead by the time #1192 was
++      # filed. This refuses to cut a tag whose spec header names any OTHER
++      # version, so the header edit has to land in the same PR that bumps the
++      # release rather than a later, forgettable one. Cheap and dependency-free,
++      # same as the manifest-version gate above, so it lives in THIS job rather
++      # than behind the full test matrix. Logic lives in
++      # tools/release/check-spec-header-version.sh, unit-tested offline by
++      # tools/release/check-spec-header-version.test.sh (same split as
++      # tools/changelog/check.sh + check_test.sh).
++      - name: Release gate — refuse a stale spec/brief-v1.md reference-implementation version
++        env:
++          TAG: ${{ needs.resolve.outputs.tag }}
++        run: bash tools/release/check-spec-header-version.sh "$TAG"
++
+   # The publish path's own test gate. ci.yml build/vets every module at PR time,
+   # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
+   # this job, on purpose: it runs on tag push, on dispatch, and on dry_run — a

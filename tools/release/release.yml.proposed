@@ -1,3 +1,18 @@
+# ⚠️ STAGED — NOT YET ACTIVE. This file is the COMPLETE intended content of the
+# release workflow WITH the spec/brief-v1.md header-version release gate
+# applied (assay#1192), staged here under tools/ because the identity that
+# authored it cannot push under .github/workflows/ (a server-side
+# workflows-scope block). A workflows-capable identity ACTIVATES the change by
+# copying this file verbatim (dropping this banner, down to the `# ---` rule)
+# over
+#     .github/workflows/release.yml
+# (see tools/release/README.md and tools/release/release.yml.patch for the
+# exact delta from the currently-live release.yml). The only change from the
+# live file is the ONE new step, "Release gate — refuse a stale
+# spec/brief-v1.md reference-implementation version", added to the `guard`
+# job; everything else is byte-identical to the live workflow. Nothing reads
+# this file while it sits under tools/.
+# ---------------------------------------------------------------------------
 name: release
 # Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on a
 # plain `vX.Y.Z` repo tag, produce checksums.txt, and create a GitHub release.
@@ -373,6 +388,27 @@ jobs:
           else
             bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev"
           fi
+
+      # SPEC HEADER VERSION GATE (assay#1192) — the last open item of brief-13's
+      # task list (docs/streams/desk-tools/brief-13-schema-first-conformance.md,
+      # house repo medici-finance/assay-toolkit). spec/brief-v1.md's
+      # `Describes reference implementation:` line names a `statusgen` version by
+      # hand; #302 (2026-09-02) did a one-time freshen (v0.8.0 -> v0.22.0, per
+      # brief-13's own drift-class `facts:`) but added no mechanical floor, so the
+      # header drifted silently again — it still read v0.22.0 while the released
+      # umbrella tag had moved dozens of releases ahead by the time #1192 was
+      # filed. This refuses to cut a tag whose spec header names any OTHER
+      # version, so the header edit has to land in the same PR that bumps the
+      # release rather than a later, forgettable one. Cheap and dependency-free,
+      # same as the manifest-version gate above, so it lives in THIS job rather
+      # than behind the full test matrix. Logic lives in
+      # tools/release/check-spec-header-version.sh, unit-tested offline by
+      # tools/release/check-spec-header-version.test.sh (same split as
+      # tools/changelog/check.sh + check_test.sh).
+      - name: Release gate — refuse a stale spec/brief-v1.md reference-implementation version
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: bash tools/release/check-spec-header-version.sh "$TAG"
 
   # The publish path's own test gate. ci.yml build/vets every module at PR time,
   # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
