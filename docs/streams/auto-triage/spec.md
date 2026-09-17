@@ -80,10 +80,13 @@ every brief inherits them:
    issues; it never merges, never flips a PR ready, never self-approves. Merge authority is
    unchanged and remains the human's.
 5. **The automation acts only on trusted-provenance CI output.** A `push`-to-`main` or
-   `schedule`-triggered run is eligible input; a `pull_request`-triggered run is not — its
-   log/diagnostic text is contributor-authored on a contribution the repository does not
-   control, and the automation refuses it wholesale rather than partially trusting it (see
-   `DR-auto-triage`'s "input-authorization boundary" section).
+   `schedule`-triggered run is eligible input; a `pull_request`-triggered run is not, and
+   neither is a `push` to any ref other than `main` — both halves (trigger AND ref) are
+   checked together, never trigger alone. An ineligible run's log/diagnostic text is
+   contributor-authored on a contribution the repository does not control (or, for a
+   non-`main` push, on an unprotected ref), and the automation refuses it wholesale, at every
+   layer that checks it, rather than partially trusting it or routing it onward to dead-end
+   silently downstream (see `DR-auto-triage`'s "input-authorization boundary" section).
 
 ## 3. Why a new stream (and not an existing one)
 

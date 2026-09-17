@@ -70,13 +70,21 @@ in a different component:
 
 Every layer above sits downstream of the automation having ACCEPTED its input. This record
 also settles that boundary, rather than leaving it implicit in "whole-tree gate": the
-automation acts only on CI output from a `push`-to-`main` or `schedule`-triggered run —
+automation acts only on CI output from a `push`-**to-`main`** or `schedule`-triggered run —
 never from a `pull_request`-triggered run, whose log/diagnostic text is contributor-authored
-on a contribution the repository does not control. Brief 01's output schema carries this as
-a required `origin` field, and briefs 02/03 each re-check it independently rather than
-trusting brief 01's refusal alone (the same defense-in-depth posture as the three layers
-above, applied one step earlier — at the boundary between "accepted" and "not yet accepted"
-input). A run that fails this check produces no `Culprit`, not a lower-confidence one.
+on a contribution the repository does not control, and never from a `push` to any ref other
+than `main` (a push to a non-`main` branch is itself a contributor-controlled event on an
+unprotected ref, so trusting the trigger alone would reopen the same gap through a side
+door). Both halves of that boundary — trigger AND ref — are checked together, not trigger
+alone: the trigger check without the ref check is a materially weaker rule than this record
+states, and is not what any brief implements. Brief 01's output schema carries this as a
+required `origin` field with both `trigger` and `ref` sub-fields, and briefs 02/03 each
+re-check the full two-part predicate independently rather than trusting brief 01's refusal
+alone (the same defense-in-depth posture as the three layers above, applied one step earlier
+— at the boundary between "accepted" and "not yet accepted" input). A run that fails this
+check produces no `Culprit`, not a lower-confidence one, and at every layer (01, 02, 03) that
+refusal is WHOLESALE — nothing is opened, filed, or routed on its account, so the refusal
+never dead-ends in a routed-but-silently-dropped artifact at a downstream layer.
 
 ## What this record does NOT decide
 

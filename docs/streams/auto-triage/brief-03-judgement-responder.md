@@ -62,12 +62,22 @@ files:
   culprit fixtures.
 
 facts:
-- Input: a `Culprit` from brief 01 with `class == judgement`, OR any culprit brief 02
-  refused (non-mechanical, leak-sweep, ineligible origin, path-refused, remedy-refused).
-- **Independent eligibility check.** Same posture as brief 02: this router does not trust
-  brief 01's `origin` field merely because it is present — it refuses (files nothing) any
-  Culprit whose `origin.trigger` is not in `{push, schedule}` or whose `origin` is absent,
-  independent of brief 01's own refusal and of whatever routed it here from brief 02.
+- Input: a `Culprit` from brief 01 with `class == judgement`, OR any culprit brief 02 routed
+  here (non-mechanical, leak-sweep, path-refused, remedy-refused). An ineligible-origin
+  culprit is NOT among these — brief 02 refuses that case wholesale itself and never routes
+  it here (routing it here would only relocate the same silent drop, since this router would
+  refuse it too). This router keeps its own independent eligibility check below regardless,
+  as a defense-in-depth layer for the case where it is reached directly (e.g. a `class ==
+  judgement` culprit from brief 01, bypassing 02 entirely) with 01's own guard bypassed or
+  buggy.
+- **Independent eligibility check.** Same posture as brief 01 and brief 02: this router does
+  not trust brief 01's `origin` field merely because it is present — it refuses (files
+  nothing) any Culprit whose `origin` is missing, whose `trigger` is not in `{push,
+  schedule}`, or whose `trigger` is `push` against a `ref` other than `main`, independent of
+  brief 01's own refusal. This is a WHOLESALE refusal, identical in shape to brief 01's and
+  brief 02's: it files nothing and produces no record beyond that refusal, which is why brief
+  02 does not route the ineligible-origin case here — this router's own posture for that case
+  is already the dead end, so routing to it would add a hop without changing the outcome.
 - Output: file a bug issue naming the check + `file:line` (when known) + the problem, and
   attach a RECOMMENDED DEFAULT next-step — e.g. a flake → "re-run once; if it re-fails,
   quarantine the test and file a fix brief"; a duplication → "route to a consolidation
@@ -109,8 +119,10 @@ facts:
 
 ## Task
 1. Build the judgement router over brief 01's `Classify`: on `class == judgement` (or a
-   brief-02 refusal), independently check `origin` eligibility, then compose the issue body
-   and a recommended-default next-step.
+   brief-02 route — non-mechanical, leak-sweep, path-refused, remedy-refused; NOT
+   ineligible-origin, which brief 02 refuses wholesale itself), independently check `origin`
+   eligibility (`trigger == schedule` OR (`trigger == push` AND `ref == main`)), then compose
+   the issue body and a recommended-default next-step.
 2. Implement the opaque-red (leak-sweep) path: route by check identity, `file: null`, no
    token and no file content in the body; recommend the private-log path for a human.
 3. Sanitize parsed CI text (truncate, fence, render inert) in EVERY routed body, not only
@@ -132,8 +144,9 @@ facts:
 | 5 | `cd tools/autotriage && go test -run TestLeakSweepRoutedWithoutLeakingDetail -v` | exit 0; the leak-sweep fixture routes with `file` null and a body containing NO token and NO fixture file content — the public-repo safety row, proven by asserting the withheld synthetic marker is absent from the routed body |
 | 6 | `cd tools/autotriage && go test -run TestRouteWithoutDefaultIsError -v` | exit 0; a route constructed with no recommended default is rejected by the router (proves "every route carries a default") |
 | 7 | `cd tools/autotriage && go test -run TestRefusesIneligibleOrigin -v` | exit 0; a Culprit whose `origin.trigger` is `pull_request` (or `origin` absent) is refused and files nothing — independent of brief 01's or brief 02's own refusal |
-| 8 | `cd tools/autotriage && go test -run TestRoutedBodySanitizesParsedText -v` | exit 0; a NON-leak-sweep judgement culprit's routed body wraps the parsed `problem` text in a fenced block with no live markdown link or directive content passed through — the sanitize rule applies beyond the opaque-red path |
-| 9 | `cd tools/autotriage && go test -run TestCeilingFailsClosedToEscalation -v` | exit 0; once the open-issue ceiling or the per-window rate is hit, the router files NOTHING further and instead emits the escalation signal brief 04 observes |
+| 8 | `cd tools/autotriage && go test -run TestRefusesPushToNonMainRef -v` | exit 0; a Culprit whose `origin.trigger` is `push` but whose `origin.ref` is a non-`main` branch is refused and files nothing — proving this router's independent check gates on `ref` as well as `trigger`, matching briefs 01 and 02 |
+| 9 | `cd tools/autotriage && go test -run TestRoutedBodySanitizesParsedText -v` | exit 0; a NON-leak-sweep judgement culprit's routed body wraps the parsed `problem` text in a fenced block with no live markdown link or directive content passed through — the sanitize rule applies beyond the opaque-red path |
+| 10 | `cd tools/autotriage && go test -run TestCeilingFailsClosedToEscalation -v` | exit 0; once the open-issue ceiling or the per-window rate is hit, the router files NOTHING further and instead emits the escalation signal brief 04 observes |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item.
@@ -147,6 +160,10 @@ DR-auto-triage). Reviewer answers both core-control questions: (1) the single co
 routing message; the layers making it acceptable are route-only (no fix/merge) and
 content-blind opaque-red handling — confirm both; (2) row 5 proves the lower, content-blind
 layer holds with the happy path bypassed (a leak-sweep red routes with zero withheld detail
-on a public surface). Reviewer also confirms rows 7–9 close the input-authorization,
-general-sanitize and abuse-ceiling gaps raised on security review, and that the
-credential-layer ground rule is stated. Verdict + date in the stream README table.
+on a public surface). Reviewer also confirms rows 7–8 close the input-authorization gap on
+BOTH halves of `origin` (trigger and ref) raised on security re-review, that the Input list
+no longer names "ineligible origin" as something brief 02 routes here (it dead-ends at 02
+instead — confirm this router's own refusal for that case is wholesale, not a filed no-op
+disguised as a route target), and that rows 9–10 close the general-sanitize and
+abuse-ceiling gaps raised on security review, and that the credential-layer ground rule is
+stated. Verdict + date in the stream README table.

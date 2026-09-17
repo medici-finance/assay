@@ -75,11 +75,18 @@ files:
 facts:
 - Input: a `Culprit` from brief 01 (`check`, `file`, `line`, `problem`, `class`, `origin`).
 - **Independent eligibility check.** This responder does not trust brief 01's `origin` field
-  merely because it is present — it re-checks `origin.trigger ∈ {push, schedule}` itself
-  before composing anything, and refuses (routes to 03, opens nothing) any Culprit whose
-  `origin` is missing or ineligible. This is a second, independent layer at the ACTING
+  merely because it is present — it re-checks eligibility itself, before composing anything,
+  using the SAME predicate brief 01 gates on: `trigger == schedule` OR (`trigger == push` AND
+  `ref` resolves to `main`). A Culprit whose `origin` is missing, whose `trigger` is
+  ineligible, or whose `trigger` is `push` against a non-`main` `ref`, is refused WHOLESALE —
+  opens nothing, files nothing, routes nothing to brief 03 — the identical posture brief 01
+  applies at intake, applied again here as a second, independent layer at the ACTING
   component: it trips even if brief 01's own refusal is bypassed or buggy, the same
-  defense-in-depth posture the design already applies to the classifier.
+  defense-in-depth posture the design already applies to the classifier. It is deliberately
+  NOT in the route-to-03 list below: routing an ineligible-origin culprit to 03 would only
+  move the silent drop one hop downstream (03 applies this same wholesale posture and would
+  refuse it too — see brief 03), so this responder refuses it outright instead of manufacturing
+  a hand-off that ends in the same no-op.
 - On `class == mechanical`: (a) compose a bug issue body naming the check + `file:line` +
   the deterministic remedy; (b) produce a fix on a fresh branch editing ONLY the culprit
   `file:line`; (c) open the PR as a **draft**. Filing + PR-open go through the sanctioned
@@ -107,15 +114,20 @@ facts:
   explicit path such as `tools/autotriage/config/`), read at startup — never an environment
   variable or secret this responder could set for itself. That config path is itself within
   the refused-path set below: no code path in this responder may edit its own arming config.
-- Refusals (all → route to brief 03, never a silent no-op): `class != mechanical`;
-  `check == leak-sweep`; `origin.trigger` not in `{push, schedule}` or `origin` absent; a
-  culprit `file` resolving — after canonicalization: no `..` traversal, no symlink
-  resolution to outside the tree, path made relative to the repo root — into the
-  REFUSED-PATH set: CI/repository configuration (`.github/`, including but not limited to
-  `.github/workflows/`), ownership files (`CODEOWNERS`), the gate tooling itself
-  (`tools/autotriage/`, `statusgen/`, `tools/changelog/`, any `tools/*guard*` or
-  `tools/*claim*` path), the arming config above, and instruction surfaces other automation
-  reads (`CLAUDE.md`, `.claude/`, any `SKILL.md`). The refused set is an ENUMERATION — an
+- **Two distinct refusal postures — do not conflate them.** (1) **Wholesale refusal** (opens
+  nothing, files nothing, routes nothing to brief 03 — the input-authorization case only): an
+  ineligible/absent `origin` per the independent eligibility check above. This is the ONLY
+  refusal reason that dead-ends here; every other refusal reason below hands off to a human
+  via brief 03, which is where its "never a silent no-op" guarantee applies. (2) **Route to
+  brief 03** (never a silent no-op — every one of these reaches a human-visible filed issue):
+  `class != mechanical`; `check == leak-sweep`; a culprit `file` resolving — after
+  canonicalization: no `..` traversal, no symlink resolution to outside the tree, path made
+  relative to the repo root — into the REFUSED-PATH set: CI/repository configuration
+  (`.github/`, including but not limited to `.github/workflows/`), ownership files
+  (`CODEOWNERS`), the gate tooling itself (`tools/autotriage/`, `statusgen/`,
+  `tools/changelog/`, any `tools/*guard*` or `tools/*claim*` path), the arming config above,
+  and instruction surfaces other automation reads (`CLAUDE.md`, `.claude/`, any `SKILL.md`);
+  or a remedy outside the closed enumeration. The refused-path set is an ENUMERATION — an
   ALLOW-LIST posture on what may be edited, not a deny-list of the one directory an earlier
   draft named. A parsed path is a location the automation is about to MODIFY, so it gets the
   stricter posture.
@@ -148,14 +160,17 @@ facts:
 
 ## Task
 1. Build the mechanical responder over brief 01's `Classify`: on a `mechanical` culprit,
-   independently check `origin` eligibility, compose the issue body, generate the
-   closed-enumeration fix, and assemble a DRAFT-PR plan.
+   independently check `origin` eligibility (`trigger == schedule` OR (`trigger == push` AND
+   `ref == main`)), compose the issue body, generate the closed-enumeration fix, and assemble
+   a DRAFT-PR plan.
 2. Implement `--dry-run` (print issue + PR plan, write nothing) as the default; live writes
    only when explicitly armed via the repository-tracked config, and only through the
    sanctioned desk write path.
-3. Implement the refusal paths (non-mechanical class, leak-sweep, ineligible/absent origin,
-   an allow-list-refused culprit path after canonicalization, a remedy outside the closed
-   enumeration) — each routes to brief 03, never a silent success.
+3. Implement the two refusal postures distinctly: ineligible/absent origin (including a
+   `push` against a non-`main` `ref`) refuses WHOLESALE — opens/files/routes nothing; every
+   other refusal path (non-mechanical class, leak-sweep, an allow-list-refused culprit path
+   after canonicalization, a remedy outside the closed enumeration) routes to brief 03, never
+   a silent success.
 4. Implement dedupe so a persistently-red gate opens exactly one PR/issue, PLUS the separate
    open-artifact ceiling and per-window rate that fail closed to escalation.
 5. Sanitize parsed CI text (truncate, fence, render inert) before it enters any published
@@ -172,11 +187,12 @@ facts:
 | 5 | `cd tools/autotriage && go test -run TestRefusesJudgementAndLeakSweep -v` | exit 0; a judgement-class culprit and a leak-sweep culprit each yield REFUSE→route-to-03 and open nothing (negative row: the auto-fix path is unreachable for opaque/judgement reds) |
 | 6 | `cd tools/autotriage && go test -run TestNeverEditsGateConfig -v` | exit 0; a culprit whose `file` is under `.github/workflows/` is refused, and no generated fix ever edits gate/workflow config — the never-weaken-gate invariant, proven by breaking it (feeding a workflow-file culprit) and asserting refusal |
 | 7 | `cd tools/autotriage && go test -run TestDedupeSingleOpenPR -v` | exit 0; the same culprit across two runs plans exactly one PR/issue |
-| 8 | `cd tools/autotriage && go test -run TestRefusesIneligibleOrigin -v` | exit 0; a Culprit whose `origin.trigger` is `pull_request` (or `origin` absent) is refused and routed to 03 — independent of brief 01's own refusal (feed it in as if 01's guard were bypassed), proving the second, independent eligibility layer |
+| 8 | `cd tools/autotriage && go test -run TestRefusesIneligibleOrigin -v` | exit 0; a Culprit whose `origin.trigger` is `pull_request` (or `origin` absent) is refused WHOLESALE — opens nothing AND routes nothing to 03 — independent of brief 01's own refusal (feed it in as if 01's guard were bypassed), proving the second, independent eligibility layer and that this specific refusal reason dead-ends here rather than manufacturing a hand-off |
 | 9 | `cd tools/autotriage && go test -run TestPathAllowListCanonicalized -v` | exit 0; a culprit `file` that reaches a refused surface via `..` traversal or a symlink is refused after canonicalization — proves the allow-list is checked against the RESOLVED path, not the literal string |
 | 10 | `cd tools/autotriage && go test -run TestRemedyOutsideClosedSetRefused -v` | exit 0; a mechanical-classified culprit whose parsed diagnostic does not match one of the three named transforms (gofmt / stray-file-deletion / exact-stale-string-replace) is refused, not force-fit into a generated patch |
 | 11 | `cd tools/autotriage && go test -run TestIssueBodySanitizesParsedText -v` | exit 0; the composed issue body wraps the parsed `problem` text in a fenced block with no live markdown link or directive-shaped content passed through from the source log |
 | 12 | `cd tools/autotriage && go test -run TestCeilingFailsClosedToEscalation -v` | exit 0; once the open-artifact ceiling or the per-window rate is hit, the responder opens NOTHING further for the next eligible culprit and instead emits the escalation signal brief 04 observes, rather than continuing to author |
+| 13 | `cd tools/autotriage && go test -run TestRefusesPushToNonMainRef -v` | exit 0; a Culprit whose `origin.trigger` is `push` but whose `origin.ref` is a non-`main` branch is refused WHOLESALE by this responder's independent check — opens nothing and routes nothing to 03 — proving the ref half of eligibility is re-checked here too, not only at brief 01 |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item.
@@ -191,8 +207,10 @@ DR-auto-triage). Reviewer answers both core-control questions: (1) the single co
 between a mis-classification and a bad outcome is the classifier, and the acceptable-making
 layers are draft-only+human-merge, mechanical-only, and never-weaken-gate — confirm all
 three are independent and present; (2) which Verify row proves a LOWER layer catches the
-fault with the classifier bypassed — rows 4/5/6/8 break the upper assumption and prove the
-responder still refuses. Reviewer also confirms rows 9–12 close the input-authorization,
-path-allow-list, closed-remedy and abuse-ceiling gaps raised on security review, and that
-the credential-layer ground rule (no merge/review/bypass/workflow authority) is stated, not
-merely implied. Verdict + date in the stream README table.
+fault with the classifier bypassed — rows 4/5/6/8/13 break the upper assumption and prove the
+responder still refuses. Reviewer also confirms rows 8/13 refuse the ineligible-origin case
+WHOLESALE (opens/routes nothing) rather than routing it to brief 03 — a route-then-drop there
+would be the same silent no-op the refusals list explicitly disclaims — and that rows 9–12
+close the path-allow-list, closed-remedy and abuse-ceiling gaps raised on security review, and
+that the credential-layer ground rule (no merge/review/bypass/workflow authority) is stated,
+not merely implied. Verdict + date in the stream README table.
