@@ -455,6 +455,17 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   a local stub does not; when they disagree CI wins and the reviewer investigates *why*.
   **Stub-validation trap:** proving a script emits the right argv is NOT proving the tool accepts
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
+- **Protected-verifier-paths check — a PR that writes to the test it is graded by is labelled
+  and gate-forced.** At every new head, run `deskpathguard check <owner/repo> <N>` (see
+  `docs/protected-paths.md` for the protected set and the exemptions). If it applies the
+  `wrote-to-the-test` label and prints `gate-forced: wrote-to-the-test`, the PR cannot receive
+  an APPROVE verdict without a reviewer comment naming the protected path touched and why the
+  edit is legitimate — an unexplained labelled PR is `--request-changes`, one line pointing at
+  the label. This changes NOTHING about `deskflip`'s own conditions: the label forces the
+  brief's status transition to `gate: human`, never a ready-flip refusal (the at#2063
+  boundary — a human-gate block sits at the status transition, not the flip). A
+  `could-not-check` verdict (the diff could not be read) is treated as a blocker, same as any
+  other could-not-check read this bar already refuses to wave through.
 - **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer.**
   Two mechanical checks, either one a one-line bounce,
   never a judgment call — no reviewer edits the board itself:
