@@ -17,6 +17,7 @@ issues: [1267]
 schema: brief-v2
 authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
+  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them; in particular the ordering constraint: readers are on the seam before any writer switches store"
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
   - "docs/streams/forge-neutral/reviewer-write-boundary.md — the scoping doc this brief implements; section numbers below refer to it"
   - "tools/desk/cmd/desksupervise/live.go:35 — live claim enumeration listed straight from the forge"
@@ -63,8 +64,11 @@ namespace (a missed or newly added direct reader is caught at build time, in a d
 component from the readers themselves).
 
 facts:
-- Only `forge-ref` is selectable when this brief lands (brief 21), so every change here is
-  behaviour-preserving and provable against today's suites.
+- Only the legacy forge store resolves when this brief lands (brief 21), so every change
+  here is behaviour-preserving and provable against today's suites.
+- **Ordering constraint, ruled:** this brief lands before any brief that lets a writer use
+  another store. Briefs 28 and 30 depend on it; brief 23's store cannot be selected by a
+  scaffold or a cutover until the readers are here.
 - The three-state rule holds per reader: a store that cannot be read is could-not-check. It is
   never rendered as "no claims", "free", or "released".
 - The verdict stamp's liveness mapping is unchanged: only a positive ABSENT ages a stamp out

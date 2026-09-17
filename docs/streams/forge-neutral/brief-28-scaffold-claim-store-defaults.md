@@ -1,14 +1,13 @@
 ---
 brief: assay:assay:forge-neutral:28
-title: Scaffold defaults — a fresh single-host cell gets the file store and the declaration; existing cells are left alone
+title: Scaffold defaults — a fresh host cell gets the file store and the declaration, a container cell gets the served store; existing cells are left alone
 why: >-
   A new adopter running everything on one machine should never need to give the reviewer
-  repository write, but they only get that if the scaffold chooses the file store for them.
-  The same scaffold must never touch an existing cell, because an install that is quietly
-  switched while another machine still dispatches is the double-dispatch this work exists to
-  prevent.
-wave: 4
-depends: ["forge-neutral/22", "forge-neutral/23"]
+  repository write, but they only get that if the scaffold chooses the store for them. The
+  same scaffold must never touch an existing cell, because an install that is quietly switched
+  while another machine still dispatches is the double-dispatch this work exists to prevent.
+wave: 5
+depends: ["forge-neutral/22", "forge-neutral/23", "forge-neutral/24"]
 unblocks: ["forge-neutral/29"]
 effort: M
 gate: human
@@ -19,8 +18,9 @@ authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
   - "docs/streams/forge-neutral/reviewer-write-boundary.md — the scoping doc this brief implements; section numbers below refer to it"
+  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them (A: `file` plus the single-host declaration for a fresh single-host adopter; H: `service` for anything in a container or pod, permanently)"
   - "docs/cellctl.md:21-55 and 117-232 — what `cellctl new` writes for each cell kind"
-  - "docs/docker.md:152-165 and containers/README.md:160 — per-desk volumes; no shared volume exists today"
+  - "docs/docker.md:152-165 and containers/README.md:160 — container desks have per-desk volumes and share none"
   - "plugins/assay/skills/install/SKILL.md — the turnkey install that writes the roster for a cold adopter"
   - "routed here from assay:assay:forge-neutral:23 (scaffolds that write the keys) and assay:assay:forge-neutral:24 (launchers that export the service variables)"
   - "freshness-checked 2026-09-17 @ c67cc371 (origin/main)"
@@ -29,9 +29,8 @@ exec-tier-why: "question (b): three scaffolds (host cell, container cell, turnke
 gate-why: >-
   The scaffold writes the keys that decide where a new cell keeps its claims, including the
   single-host declaration made on the operator's behalf — claim custody. The human confirms
-  the declaration is written only for cell kinds that are single-host by construction, is
-  shown to the operator when written, and that no code path rewrites an existing cell's
-  keys.
+  the declaration is written only for host cells, never for a container cell, is shown to
+  the operator when written, and that no code path rewrites an existing cell's keys.
 decision-trigger: start
 domain: complicated
 consumers:
@@ -54,15 +53,17 @@ files:
 
 single-point-of-failure: the scaffold's "new cell only" condition — behind it, the resolver's
 mixed-store refusal (brief 23: a switched cell beside a live forge-claim dispatcher refuses at
-dispatch) and `cellctl check`, which reports the store and declaration it finds without
-changing them.
+dispatch, during the window) and `cellctl check`, which reports the store and declaration it
+finds without changing them.
 
 facts:
-- Defaults (spec §10 A, H): host and house cells → `ASSAY_CLAIM_STORE=file`,
-  `ASSAY_CLAIM_SINGLE_HOST=yes`, claims directory under the cell. Container cells → `service`
-  until brief 20's shared-volume row is clean; then a claims-only volume is permitted. The
-  volume never holds a working tree, so the per-desk working-volume property stands.
-- A cluster-hosted cell → `service`; the scaffold prints the placement rule (spec §4.2).
+- Ruled defaults: host and house cells (plain host processes) → `ASSAY_CLAIM_STORE=file`,
+  `ASSAY_CLAIM_SINGLE_HOST=yes`, claims directory under the cell. **Container cells and
+  anything on a cluster → `service`, permanently.** No scaffold writes a shared claims volume;
+  the first draft's conditional volume path is withdrawn.
+- For a `service` cell the scaffold prints the placement rule (spec §4.2) and what the operator
+  must supply: the service address and the cell-token file. It generates neither secret nor
+  address into a committed file.
 - The scaffold prints what it wrote and what the declaration means, at creation time.
 - An existing cell directory or roster is never modified: `new` already refuses an existing
   cell; this brief adds no migration verb. Moving a cell is the documented drain (spec §7),
@@ -71,21 +72,24 @@ facts:
   directory permissions, service reachable — three-state.
 - Launchers export `DESK_CLAIM_SERVICE` and `DESK_CLAIM_TOKEN_FILE` from cell configuration
   that is never committed.
+- Depends on brief 22 by ruling: no scaffold selects a non-forge store until the readers are on
+  the seam.
 
 ## Human decision
-When someone sets up a new cell on a single computer, the setup tool would choose to keep that
-cell's dispatch claims in a folder on that computer and would record, on the operator's behalf,
-that this is the only computer dispatching for its repositories. It shows the operator what it
-wrote and what that statement means. With that choice the reviewing identity never needs write
-access to the repository. Cells made of several containers or running on a cluster are pointed
-at the claim service instead. Existing cells are never changed by the tool. The decision is
-whether the setup tool may make that choice and that statement for new single-computer cells.
+When someone sets up a new cell that runs as ordinary programs on a single computer, the setup
+tool would choose to keep that cell's dispatch claims in a folder on that computer and would
+record, on the operator's behalf, that this is the only computer dispatching for its
+repositories. It shows the operator what it wrote and what that statement means. With that
+choice the reviewing identity never needs write access to the repository. A new cell made of
+containers, or running on a cluster, is always pointed at the claim service instead and gets no
+such statement. Existing cells are never changed by the tool. The decision is whether the setup
+tool may make that choice and that statement for new single-computer cells.
 
 Options:
 1. **Approve as specified.**
 2. **Approve, but ask instead of assume** — the setup tool stops and asks the operator to
    confirm the single-computer statement; safer, one more step in a first install.
-3. **Reject** — new cells keep claims on the platform unless the operator configures otherwise.
+3. **Reject** — new cells get no store written and must be configured by hand before they start.
 
 Default if no answer: none — blocks until answered.
 
@@ -105,25 +109,26 @@ Default if no answer: none — blocks until answered.
 3. Launchers: export the two service variables when configured.
 4. Install skill: the same defaults in its roster step, same printed explanation; store-neutral
    wording elsewhere.
-5. Container launch surfaces: the service variables; the claims-only volume documented as
-   conditional on brief 20's row.
+5. Container launch surfaces: the two service variables, passed at run time.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -c -F '**Status:** approved' docs/streams/forge-neutral/reviewer-write-boundary.md` | `1` — the spec this brief implements is approved; `0` means STOP, do not start |
-| 2 | check:ci | `bash tools/cellctl/tests/claim-store-defaults.test.sh` (planned) | exit 0; a new host cell's roster carries `ASSAY_CLAIM_STORE=file` and the declaration; a new container cell's carries `service`; stdout shows the explanation |
+| 2 | check:ci | `bash tools/cellctl/tests/claim-store-defaults.test.sh` (planned) | exit 0; a new host cell's roster carries `ASSAY_CLAIM_STORE=file` and the declaration; a new container cell's carries `ASSAY_CLAIM_STORE=service` and NO declaration; stdout shows the explanation |
 | 3 | check:ci | the same test's existing-cell case | `new` against an existing cell refuses and the cell's files are byte-identical before and after |
 | 4 | check:ci | the same test's `check` case | `check` reports the store block three-state and modifies nothing |
 | 5 | check +flow +dereference | Scaffold a new host cell against a fixture repository with a reviewer grant of repository **read**; boot the review desk; dispatch one review | boot is clean with `claim store: file`; dispatch succeeds; no ref written to the fixture (spec V5 end to end from a fresh scaffold) |
 | 6 | check | `grep -n -i -e 'ASSAY_CLAIM_STORE' -e 'single.host' plugins/assay/skills/install/SKILL.md` | hits only inside the roster-writing step |
-| 7 | check | `(cd statusgen && go build -o /tmp/statusgen-fn28 .) && /tmp/statusgen-fn28 --root . --consumers --brief forge-neutral/28` | exit 0 |
+| 7 | check | `! grep -rn -i -e 'claims volume' -e 'dispatch-claims:/' containers/ docs/docker.md` | exit 0 and no line printed — no launch surface mounts a shared claims volume |
+| 8 | check | `(cd statusgen && go build -o /tmp/statusgen-fn28 .) && /tmp/statusgen-fn28 --root . --consumers --brief forge-neutral/28` | exit 0 |
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |
 |---|---|
 | An existing multi-machine cell is switched to `file` by a re-run of the scaffold | row 3; and brief 23's mixed-store refusal in the other component |
-| The declaration is written for a cell kind that is not single-host | row 2's container case |
+| The declaration is written for a container cell | row 2's container case |
+| A container launch surface quietly shares a claims directory | row 7; and brief 23's container guard in the other component |
 | The operator never sees what was declared for them | row 2 (stdout) and brief 25's every-boot notice |
 | A fresh scaffold does not actually boot a read-only reviewer | row 5 |
 

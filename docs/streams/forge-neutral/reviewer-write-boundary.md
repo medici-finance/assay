@@ -5,9 +5,10 @@
 **Base read:** `c67cc371` (origin/main)
 
 No code lands against this document until its status is `approved`. Approval is a human act.
-Every open design fork is a lettered question in [§10](#10-open-questions); the briefs that
-implement this spec ([20–30](README.md#briefs)) build on the recommended defaults and say which
-question they would change under.
+Every design fork is a lettered question in [§10](#10-questions-and-rulings) — all but one now
+ruled by the driver (2026-09-17, recorded on the pull request that carries this spec); the briefs that
+implement this spec ([20–25, 28–31](README.md#briefs)) are written on the rulings recorded in §10.
+Briefs 26 and 27 were withdrawn with the forge-ref store (§10 D); the numbering gap is kept.
 
 ## 1. Problem
 
@@ -47,8 +48,13 @@ on machines that share nothing but the forge. A cell normally shares more than t
 a volume, or a desk service. Where it does, the claim does not need to live on the forge, and
 then **no role needs repository write for claims, on any forge or plan tier.** The question
 stops being "how does the reviewer's claim reach the forge" and becomes "where does this cell
-keep its claims". This reframing reached the authoring session as a relay of the driver's
-question; it is not yet recorded on #1267 ([§10 K](#10-open-questions)).
+keep its claims". The step back is recorded on #1267 (relayed there on 2026-09-17).
+
+**Ruled since (2026-09-17, §10).** The forge-ref store is not kept as an opt-in: it is
+**removed**, over one release window. Two stores remain — `file` for plain host processes and
+`service` for anything in a container or pod, and for any cell that spans hosts. Point 2 of
+the direction above therefore has no lasting case: once forge-ref is gone, no reviewer keeps
+repository write on any forge or tier.
 
 Out of scope: how verdicts, comments and the ready flip are posted.
 
@@ -78,86 +84,81 @@ Out of scope: how verdicts, comments and the ready flip are posted.
 |---|---|---|---|
 | A1 | The documented way to run a cell is **one machine**: "how that cell runs on one machine: a persistent `deskd`, one window per desk role" | `docs/cellctl.md:3-6`, `docs/adopting-assay.md:1642-1643` | established |
 | A2 | Two cells on one laptop "share nothing but the binaries" — a cell's state is one directory under the cells root | `docs/cellctl.md:21-41`, `48`, `54-55` | established |
-| A3 | Container desks are one image per desk with a **per-desk** work volume; "Volumes are per-desk — two desks never share a writable working tree" | `docs/docker.md:152-165`, `containers/README.md:160` | established — so a shared claims volume does not exist today and would be a new mount |
+| A3 | Container desks are one image per desk with a **per-desk** work volume; "Volumes are per-desk — two desks never share a writable working tree" | `docs/docker.md:152-165`, `containers/README.md:160` | established — and ruled (§10 H): container desks do not share a claims volume; they use `service` |
 | A4 | Compose and Kubernetes definitions for the five desks are planned, not shipped (one StatefulSet, one replica, one volume per desk) | `docs/streams/desk-containers/README.md:37-38`, `docs/streams/desk-containers/brief-06-k8s-manifests.md:32` | established (as plans) |
 | A5 | A per-cell persistent service (`deskd`) is part of the documented cell, but its source is not in this tree (it is built from a separate console component) | `docs/cellctl.md:37-38`; `tools/cellctl/cellctl:1990` | established; what that service can host is **could-not-check** from here |
 | A6 | Several uncoordinated machines dispatching one repo's queue is a case that **has occurred** and is the reason for the forge claim; one skill still describes the claim as what arbitrates "the cross-machine race" | T7; `plugins/assay/skills/the-desk/SKILL.md:163-167` | established |
 | A7 | No adopter document states a supported-topology list (single box / pods / several machines) | searched `docs/adopting-assay.md`, `docs/cellctl.md`, `docs/docker.md`, `docs/how-assay-works.md`, `docs/distribution.md` | established by absence in the pages searched — the docs describe one machine and per-desk containers, and promise nothing about several machines |
 
 Reading: the documented, supported shape is a single host (A1, A2). Containers are per-desk
-volumes on what the docs present as one Docker host (A3). Multi-machine is real but
-undocumented (A6, A7). That supports a **`file` store as the default for a fresh single-host
-adopter**, with the forge ref kept for the multi-machine case — and it means the default must
-never be applied silently to an install that might be the multi-machine case (§7).
+volumes (A3). Multi-machine is real but undocumented (A6, A7). Hence the ruled defaults:
+`file` for a fresh single-host adopter running plain host processes, `service` for anything
+containerised and for any cell that spans hosts. A6 is also why the forge-ref store cannot
+simply vanish in one release: an install that depends on it today has to be told, and given a
+window (§7).
 
 ### 3.3 Store behaviour
 
 | # | Claim | Status | How checked |
 |---|---|---|---|
 | S1 | Exclusive create plus a directory lock gives mutual exclusion between processes on one host's local filesystem | established — in-tree | T6: the primitive and its race tests ship in this tree and gate the non-dispatch claim kinds today |
-| S2 | The same guarantees hold on a network filesystem (NFS, SMB) or a cluster read-write-many volume | **could-not-check** | not measured; not asserted from memory. Brief 20 measures what it can; anything unmeasured stays unsupported for the `file` store |
-| S3 | A Docker named volume mounted into several containers on one host behaves as S1 | **could-not-check** | not measured. Brief 20 |
-| S4 | The tool can reliably detect that a directory is on a network filesystem, on every supported OS | **could-not-check** | not investigated. Brief 20; the guard in §6 does not depend on it |
+| S2 | The same guarantees hold on a network filesystem (NFS, SMB) or a cluster read-write-many volume | **could-not-check** | not measured; not asserted from memory. It matters only if a host process points `file` at such a path, which §6 guards against. Brief 20 measures what it can reach; anything unmeasured stays unsupported |
+| S4 | The tool can reliably detect that a directory is on a network filesystem, on every supported OS | **could-not-check** | not investigated. Brief 20; it decides how much of §6's filesystem guard can be a refusal rather than a notice |
 
-### 3.4 Forge behaviour — relevant to the forge-ref store only
+(S3 — a Docker volume shared between containers — was withdrawn: containers use `service`,
+§10 H, so the question no longer decides anything.)
 
-| # | Claim | Status | How checked |
-|---|---|---|---|
-| F1 | GitHub rulesets target branches and tags (and, separately, pushes) | established — documentation | GitHub Docs, *About rulesets*, *Creating rulesets for a repository*, read 2026-09-17 |
-| F2 | *Restrict creations / updates / deletions* limit the operation on matching refs to actors with bypass permission | established — documentation | GitHub Docs, *Available rules for rulesets*, read 2026-09-17 |
-| F3 | A GitHub App can be a ruleset bypass actor; targets take include and exclude `fnmatch` patterns | established — documentation | GitHub Docs, *Creating rulesets for a repository*, read 2026-09-17 |
-| F4 | A ruleset cannot target a ref outside `refs/heads/` and `refs/tags/` | could-not-check | the pages read are silent; absence of a statement is not a statement. Brief 20 |
-| F5 | With the restrict rules in force, a non-bypass App token is refused on every write route to a branch (git push, contents endpoint, update-branch), while a create under an excluded claim prefix succeeds | could-not-check | needs a fixture and two App credentials. Brief 20 measures; brief 26 pins it |
-| F6 | Ruleset availability by plan and repository visibility | could-not-check | the pages read state the organisation-level plan condition only. Brief 26 dereferences it |
-| F7 | GitHub offers no App permission narrower than `contents: write` for writing a ref in one namespace | could-not-check this session | carried from #1267 and `docs/adopting-assay.md:873-876`; not re-read. Brief 20 |
-| F8 | Whether a base-repository token with `contents: write` can update a fork-hosted change head, which base rulesets do not govern | could-not-check | not read. Brief 20 |
-| F9 | GitLab protected branches and tags accept wildcards; when several rules match, the most permissive applies | established — documentation | GitLab Docs, *Protected branches*, *Protected tags*, read 2026-09-17 |
-| F10 | GitLab per-user / per-group push allow lists need Premium or Ultimate; Free offers role levels only | established — documentation and this repository's live read | same pages; `docs/adopting-assay-gitlab.md:67` (HTTP 400 on Free, 2026-09-02) |
-| F11 | A GitLab wildcard protection stops a Developer *creating* a matching branch | could-not-check | the page read does not address creation. Brief 20 |
-| F12 | A ref outside `refs/heads` / `refs/tags` can be pushed to a GitLab project | could-not-check | open since 2026-09-07 as L10 in [`claim-shape.md`](claim-shape.md). Brief 20 |
-| F13 | A GitLab PAT with scope `api` and no `write_repository` (how the reviewer is provisioned — `docs/adopting-assay-gitlab.md:114`) can push over git HTTPS | could-not-check | the token pages read carry no scope-to-transport statement. Brief 20 |
-| F14 | A GitLab member must hold Developer or higher to approve a merge request | could-not-check this session | consistent with `docs/adopting-assay-gitlab.md:114`, page not read. Brief 27 |
+### 3.4 Forge behaviour — no longer pursued
 
-## 4. The claim store — one seam, three backends
+The first draft listed fourteen forge-behaviour claims (ruleset targeting, restrict rules,
+bypass actors, GitLab wildcard protection and tier limits, custom-ref pushes), each marked
+established or could-not-check, because a server-side bound was going to be built around a
+reviewer that kept repository write under the forge-ref store. That store is being removed
+(§10 D), so nothing is built on those claims and brief 20 no longer measures them. Two facts
+from that list still inform §9's note and are restated there with their status. The open row
+L10 in [`claim-shape.md`](claim-shape.md) stays open and is not this work's to close.
+
+## 4. The claim store — one seam, two backends, one legacy store on its way out
 
 The seam already exists (T4). It is lifted from the claim tool's `main` package into `deskkit`
 as `ClaimStore`, unchanged: the same six verbs, the same holder encoding
 (`dispatch-claim <id> owner=… state=… branch=…`), the same two TTLs (20 min claimed, 120 min
 dispatched), the same exit codes (0 / 5 / 6), and byte-identical `show` / `list` output (T5).
-A conformance suite runs every backend through one table of cases so the three cannot drift.
+A conformance suite runs every backend through one table of cases so they cannot drift.
+
+**Which store a process uses is decided by where it runs** (§10 H): a plain host process may
+use `file`; anything in a container or pod uses `service`, permanently.
 
 ### 4.1 Filesystem store, direct — `file`
 
-A directory under the cell's state root (or a mounted volume the cell's dispatching desks
-share). Acquire is an exclusive create of the claim file; advance and steal are
-compare-and-replace against the content hash last read; release is compare-and-delete. All
-four run under the directory lock discipline T6 already ships, and inherit its invariant: a
-lock that cannot be held or a file that cannot be read is exit 6.
+A directory under the cell's state root, for plain host processes. Acquire is an exclusive
+create of the claim file; advance and steal compare against the content hash last read and
+rewrite in place; release is compare-and-delete. All run under the directory lock discipline
+T6 already ships (§10 E), and inherit its invariant: a lock that cannot be held, or a file that
+cannot be read or is torn, is `unverifiable` (exit 6) — never "free".
 
 **What it does not give.** It is invisible to any machine that does not share the directory.
-Two machines each running their own `file` store for the same repo will both acquire the same item and
-neither will know (T7 is this exact failure). It carries no guarantee on a network filesystem
-(S2) and none has been measured on a shared container volume (S3). The guard is §6.
+Two machines each running their own `file` store for the same repo will both acquire the same
+item and neither will know (T7 is this exact failure). It carries no guarantee on a network
+filesystem (S2). The guards are §6.
 
 ### 4.2 The same store, served — `service`
 
 Not a second implementation. There is one claim-store logic over a directory and two ways to
-reach it: **direct** (`file` — every member shares the directory or a mounted volume) and
-**served** — a small serve mode in this repository's desk tools that exposes acquire /
-progress / release / steal / show / list over HTTP in front of a `file` store on its own
-disk. A fuller cell service elsewhere may implement the same API; the client does not care
-which answers ([§10 D](#10-open-questions)).
+reach it: **direct** (`file`) and **served** — a small serve mode in this repository's desk
+tools (§10 D) that exposes acquire / progress / release / steal / show / list over HTTP in
+front of a `file` store on its own disk. A fuller cell service elsewhere may implement the
+same API; the client does not care which answers.
 
 Properties, stated because each one is load-bearing:
 
 - **Member-initiated only.** Every exchange is a request from a member and a response to it.
-  The service never calls a member; liveness is the existing TTLs, exactly as on the other
-  stores. The requirement is therefore **one-way reachability** — every member can reach the
-  service — not two-way.
+  The service never calls a member; liveness is the existing TTLs. The requirement is
+  therefore **one-way reachability** — every member can reach the service — not two-way.
 - **Placement rule.** The service runs where the **least-reachable member can still reach
   it**. A laptop-hosted service is not reachable from cluster pods behind NAT; a cluster- or
-  otherwise-hosted service is reachable from a laptop. A laptop-only cell — including its own
-  local containers, through a mounted volume — needs no service at all: `file` covers it.
+  otherwise-hosted service is reachable from a laptop. A cell of plain host processes on one
+  machine needs no service at all: `file` covers it.
 - **No forge credential, no minting.** The serve mode holds cell coordination state only. It
   adds no key-custody surface: it never reads an App key or a role token and cannot write to
   a forge.
@@ -179,83 +180,102 @@ Properties, stated because each one is load-bearing:
 authenticates membership of the cell, not the role: the owner recorded on a claim is what the
 member says it is, as it is on every store today.
 
-### 4.3 Forge-ref store — `forge-ref`
+### 4.3 Forge-ref — the legacy store, removed after one release window
 
-Today's behaviour, kept as an **explicit opt-in** for the one case the others cannot cover:
-several uncoordinated machines dispatching one repo's queue with no shared volume and no
-shared service.
+Today's behaviour. It is **not a supported choice** going forward (§10 D, B): it is the only
+store that needs repository write, it carries the GitLab release problem and the unresolved
+namespace split (T9), and the two stores above cover every topology the adopter docs describe.
 
-**What it does not give.** It is the only store that needs repository write, so it is the
-only store under which the reviewer's grant cannot simply be dropped — §8 applies to it and
-only to it. It carries the GitLab release problem and the unresolved namespace split (T9).
+Removal takes one release window (§7): release **N** ships `file` and the serve mode, and
+keeps forge-ref reachable only as what an **unset** key resolves to, under a boot NOTICE that
+names the removal release. Release **N+1** deletes the store.
+
+**What is lost, stated plainly.** Several machines that share nothing but the forge, with no
+host able to run a service the others can reach, have no supported store after N+1. The
+placement rule in §4.2 is the answer offered to that topology: one reachable serve mode.
 
 ## 5. Resolution
 
 One function, `ResolveClaimStore(repo)`, called by `deskdispatch` step 1, by the claim tool,
 and by every claim reader (T8). No command-line flag selects a store.
 
-Inputs, proposed names in the existing style:
-
 | Key | Where | Meaning |
 |---|---|---|
-| `ASSAY_CLAIM_STORE` | roster | `file` \| `service` \| `forge-ref`. One value per cell; an optional `<owner/repo>=<store>` form for a cell whose repos genuinely differ. Strictly parsed; an unknown value is a refusal |
+| `ASSAY_CLAIM_STORE` | roster | `file` \| `service`. One value per cell; an optional `<owner/repo>=<store>` form for a cell whose repos genuinely differ. Strictly parsed; an unknown value — `forge-ref` included — is a refusal that prints the two valid values |
 | `ASSAY_CLAIM_DIR` | roster | the `file` store's directory. Default `<config home>/dispatch-claims` — under a cell launcher the config home is already the cell's own |
 | `DESK_CLAIM_SERVICE` | exported by the cell launcher | the claim service base URL. Never committed |
 | `DESK_CLAIM_TOKEN_FILE` | exported by the cell launcher | path of the 0600 file holding the cell token. The value is never in the environment, a message or the tree |
-| `ASSAY_CLAIM_SINGLE_HOST` | roster | `yes` — the operator's declaration that this cell's repos are dispatched from this host only. Required by the guard in §6 |
+| `ASSAY_CLAIM_SINGLE_HOST` | roster | `yes` — the operator's declaration that this cell's repos are dispatched from this host only. Required before `file` resolves (§6) |
 
 Order:
 
-1. `ASSAY_CLAIM_STORE` set → that store. Its own preconditions must hold (`file`: §6 guard;
-   `service`: `DESK_CLAIM_SERVICE` and `DESK_CLAIM_TOKEN_FILE` set and the service answering; `forge-ref`: the acting role holds
-   repository write) or the resolution **refuses** — it never moves on to another store.
-2. Unset, first release: `forge-ref`, with a boot NOTICE naming the key and the scaffold
-   default. This preserves every existing install's behaviour (§7).
-3. Unset, after the release window ([§10 B](#10-open-questions)): refusal naming the key.
+1. `ASSAY_CLAIM_STORE` set → that store. Its preconditions must hold (`file`: the §6 guards;
+   `service`: both service keys set and the service answering) or the resolution
+   **refuses** — it never moves on to another store.
+2. Unset, **release N only** — the one-window legacy resolution: forge-ref, exactly as today,
+   with a boot NOTICE on every dispatching role naming `ASSAY_CLAIM_STORE`, the two valid
+   values, and the release in which the unset key stops resolving. `forge-ref` cannot be
+   *selected*; it is only what silence means for one window.
+3. Unset, **release N+1 onward** — refusal, printing the two valid values. The forge-ref code
+   is gone.
 
-A fresh adopter never reaches step 2: the scaffold writes `ASSAY_CLAIM_STORE=file` and the
-single-host declaration at cell creation ([§10 A](#10-open-questions)).
+A fresh adopter never reaches step 2: the scaffold writes the key at cell creation — `file`
+plus the single-host declaration for a host cell, `service` for a container cell (§10 A, H).
 
-Every refusal is exit 6, happens before any worktree is cut, names the store, the missing
+Every refusal is exit 6, happens before any worktree is cut, and names the store, the missing
 precondition and the remedy. A store that fails mid-operation is `unverifiable`; there is no
 cross-store fallback anywhere.
 
-## 6. Guards — one cell, one store
+## 6. Guards
 
-**Cross-host guard (`file` store).** The tool cannot see other hosts (T12). What it can do:
+**Cross-host guard (`file`).** The tool cannot see other hosts (T12). Ruled (§10 C):
 
-- require `ASSAY_CLAIM_SINGLE_HOST=yes` before a `file` store resolves — an operator who has
-  not said "this is the only host" does not get a store that is only correct if it is;
-- print, on every boot, that the declaration is **declared, not verified** — the tool names
-  that it cannot tell ([§10 C](#10-open-questions));
-- read the forge claim namespaces (a read; needs no repository write) and **refuse** if a
-  live forge claim exists for the repo: that is positive evidence of another dispatcher
-  using a different store.
+- `file` does not resolve without `ASSAY_CLAIM_SINGLE_HOST=yes` — an operator who has not said
+  "this is the only host" does not get a store that is only correct if it is;
+- every boot prints that the declaration is **declared, not verified**.
 
-**Mixed-store refusal.** The claims directory (served or not) carries a store marker (cell
-name, store kind). A resolver that finds a marker disagreeing with the resolved store, a
-`forge-ref` resolver that finds live `file` claims for the repo, or a `file` / `service`
-resolver that finds live forge claims, refuses. Stores are never merged and never read in
-union.
+**Container guard.** A process that detects it is running in a container or pod refuses
+`file` and names `service` (§10 H). Where detection is not possible the rule still binds the
+scaffolds and the docs; the tool says what it could not determine rather than guessing.
+
+**Filesystem guard (`file`).** A host process might point `ASSAY_CLAIM_DIR` at a network
+filesystem, where S2 is could-not-check. Proposed, and the one fork not yet ruled
+([§10 L](#10-questions-and-rulings)): **refuse** when the directory is positively identified
+as a network filesystem; print a **NOTICE on every boot** when the filesystem type cannot be
+determined ("filesystem type not determined — the file store is supported on local disks
+only"). Refusing on "cannot tell" would stop legitimate single-host cells on any OS where
+detection is unimplemented (S4); staying silent would hide an unsupported setup.
+
+**Mixed-store refusal — during the window.** While forge-ref still exists (release N), a cell
+half-way through its drain must not double-dispatch. A `file` / `service` resolver that finds
+a live forge claim for the repo refuses (a read; needs no repository write), and the legacy
+resolution refuses if the default claims directory holds a live claim for the repo. The claims
+directory, served or not, carries a store marker (cell name, store kind) and a disagreeing
+marker refuses. Stores are never merged and never read in union. In release N+1 the
+forge-side half of this check is deleted with the store.
 
 **Second layer.** None of this replaces the supervisor's staleness reclaim, which frees a
 slot on elapsed time plus no live branch — a different signal in a different component — nor
 branch-as-claim, which takes over once the worker's branch is pushed and is on the forge
 under every store.
 
-## 7. Migration — a fleet mid-transition must not double-dispatch
+## 7. Migration — two releases, and readers before writers
 
-- Existing installs are on `forge-ref` and have no key set. Upgrading changes nothing (§5
-  step 2).
-- Moving a cell to `file` or `service` is a **drain, not a merge**: quiesce dispatch, let
-  live claims release or expire, set the key on **every** dispatching process of the cell,
-  resume. The mixed-store refusal is what makes a half-done change loud instead of silent.
+- **Readers first.** Claim readers (T8) are on the seam (brief 22) **before any writer
+  switches store**. Otherwise the supervisor and the verdict stamp read an empty forge
+  namespace and report every held slot free. This ordering is a dependency edge in the
+  briefs, not advice.
+- **Release N.** Ships the seam, the readers on it, `file`, the serve mode, store-aware
+  duties, the scaffolds and the docs. Existing installs have no key set and keep today's
+  behaviour under the removal NOTICE. Nothing forces a switch in N.
+- **Per cell, during the window: a drain, not a merge.** Quiesce dispatch, let live claims
+  release or expire, set the key on **every** dispatching process of the cell, resume. The
+  mixed-store refusal makes a half-done change loud instead of silent.
+- **Release N+1.** Deletes the forge-ref store and the forge-side mixed-store read; an unset
+  key is a refusal printing the two valid values. An install that ignored the NOTICE for a
+  whole window stops at boot with the remedy in front of it — it does not double-dispatch.
 - One cell, one store. Two cells sharing a repo is already outside the cell model (a cell is
-  "accountable for its own repo set"); if it exists, both must be on `forge-ref` or share one
-  `service`.
-- Claim readers (T8) move onto the seam **before** any non-forge store can be selected
-  (brief 22). Otherwise the supervisor and the verdict stamp would read an empty forge
-  namespace and report every slot free.
+  "accountable for its own repo set"); if it exists, they share one `service`.
 
 ## 8. Per-role duties, store-aware
 
@@ -263,98 +283,103 @@ under every store.
 
 | Role | `pull_requests` | `issues` | repository write | Why |
 |---|---|---|---|---|
-| desk, worker, verifier, issue-loop, intake-loop | write | write | write | they land commits or branches under every store |
+| desk, worker, verifier, issue-loop, intake-loop | write | write | write | unchanged in this work; audited and narrowed afterwards (§12) |
 | **reviewer**, store `file` or `service` | write | write | **read** | the reviewer writes no ref; the worktree fetch needs read |
-| **reviewer**, store `forge-ref` | write | write | **write** | the claim is a ref the reviewer writes; bounded server-side (§9) |
+| **reviewer**, legacy resolution (release N only) | write | write | **write** | the claim is still a ref the reviewer writes. This row is deleted in N+1 |
 
 - An unknown role keeps the full set. The direction is one way: store → duty → compare to
   grant. A missing grant never lowers a duty.
 - The boot check's detail line names the store: `claim store: file (<dir>; single-host
-  declared, not verified)`, `claim store: service (reachable)`,
-  `claim store: forge-ref (repository write held; server-side bound: could-not-check — run
-  the hardening audit)`.
+  declared, not verified)`, `claim store: service (reachable)`, or — release N only —
+  `claim store: forge-ref (legacy; removed in <release> — set ASSAY_CLAIM_STORE)`.
 - A reviewer holding **more** than its duty is a NOTICE, not a failure — the order of
   operations (§11) passes through that state on purpose.
 - On GitLab the grant comparison stays not-applicable (T2); the store line and notices are
   still printed.
 
-## 9. Server-side bound and the GitLab Free tradeoff — forge-ref store only
+## 9. Forge-ref during the removal window — what an operator should know
 
-Under `file` and `service` this section does not apply: the reviewer holds no repository
-write on any forge or tier.
+Nothing new is built to harden a store that is being deleted. The first draft specified a
+GitHub ruleset pair, a GitLab wildcard-protection shape and an adopter-facing GitLab Free
+tradeoff text for a reviewer that kept repository write; all three are withdrawn with the
+store (briefs 26 and 27; §10 F, G, J). For the one window in which the legacy resolution
+still exists:
 
-**GitHub.** A dedicated ruleset pair (branches, tags), separate from default-branch protection
-so its bypass list cannot weaken that one: target all, excluding the claim prefix when claims
-live under `refs/heads/`; restrict creations, updates, deletions (F2); bypass = the writing
-roles' Apps and human writers (F3); the reviewer App absent. Second layer: hardening-audit
-rows (pair present, reviewer absent from bypass). Third: the ready flip refuses a change whose
-head branch is inside the claim prefix. Not covered until measured: a fork-hosted head (F8).
+- **The reviewer still holds repository write until the cell switches.** The identity that
+  approves a change can still move the head it approves; that stays a convention, exactly as
+  it is today, until the key is set. The boot NOTICE says so on every boot.
+- **Switching is the fix, on every forge and tier.** After the drain, the reviewer needs
+  read only. There is no tier-dependent case left: the GitLab Free limitation (no per-account
+  push rule — established, `docs/adopting-assay-gitlab.md:67`) only ever mattered while the
+  reviewer had to write a ref.
+- **An operator who wants a forge-side bound for the window can already express one** with
+  the forge's own branch rules (GitHub rulesets restricting creations, updates and deletions
+  to bypass actors — established from documentation read 2026-09-17; whether they cover every
+  write route was never measured and is **could-not-check**). This spec ships no template and
+  no audit row for it.
+- **Narrow last.** Do not reduce the reviewer's grant while the cell still resolves to the
+  legacy store: the boot check refuses, naming both remedies.
 
-**GitLab.** Ultimate: a custom role without push. Premium: wildcard protection of `*` branches
-and tags with a per-account allow list (F9, F10), plus a more permissive rule for the claim
-prefix. Free: role levels only — a level that refuses the reviewer refuses every
-Developer-level role — so **the reviewer keeps repository write**.
+## 10. Questions and rulings
 
-**The Free tradeoff, in adopter language** (brief 29 lands it verbatim):
+Rulings are the driver's, relayed by the desk and recorded on the pull request that carries
+this spec, all dated **2026-09-17**. None of them approves the spec.
 
-> **On GitLab Free with forge-stored claims, your reviewer account can also push to
-> merge-request branches.** Assay keeps "who approves" and "who writes" as separate accounts.
-> If your desks run on one machine, or share a claim service, use the file or service claim
-> store: the reviewer account then needs no write access at all, on any GitLab tier. Only if
-> several separate machines dispatch the same repository do claims have to live on GitLab
-> itself, and then the reviewer account must be able to write them. GitLab Free has no
-> per-account push rule, so in that one setup the separation rests on the reviewer being a
-> separate account with its own credential, the desk tools never pushing as it, and every
-> commit on a merge request naming the account that pushed it. The default branch stays
-> protected. Premium (per-account protected branches) or Ultimate (a reviewer role with no
-> push) lets GitLab refuse the push outright.
-
-Surfaced in `docs/adopting-assay-gitlab.md` and as a boot **NOTICE** on the reviewer role
-whenever the store is `forge-ref` and the declared GitLab profile is Free — every boot.
-
-## 10. Open questions
-
-Each has a recommended default. The briefs are authored on the defaults.
-
-| # | Question | Options | Recommended default |
-|---|---|---|---|
-| **A** | Default store for a fresh single-host adopter | `file` / `service` / `forge-ref` | **`file`**, written by the scaffold together with the single-host declaration. It matches the documented topology (§3.2 A1–A2), needs no service and no repository write |
-| **B** | Does `forge-ref` remain supported, or is it deprecated after a release window? | (1) supported indefinitely as an explicit opt-in; (2) deprecated once `service` has shipped for a window | **(1).** It is the only store for machines that share nothing but the forge, a case that has occurred (T7). What ends after one release window is the *implicit* default for an unset key, not the store |
-| **C** | Cross-host guard when it cannot tell | (1) refuse `file` without the operator's single-host declaration, then NOTICE every boot that it is declared, not verified; (2) NOTICE only; (3) refuse always unless a probe proves single-host | **(1).** (2) reproduces T7 silently for anyone who copies a config; (3) is unimplementable (T12) |
-| **D** | Does the serve mode ship in this repository's desk tools, or is it left to an external cell service? | (1) ship it here, minimal — six verbs over HTTP, cell token, loopback default, over the `file` store; (2) specify the API only and leave every implementation external | **(1).** Without an in-tree implementation the `service` store cannot be verified from this tree, and the per-cell service the docs mention is not built here (A5). An external service may still implement the same API |
-| **E** | Local-store mechanics: replace-by-rename, or rewrite in place under the directory lock as the shipped primitive does? | rename / in-place | **in place under the lock** — reuse T6 rather than add a second discipline; the conformance suite pins the observable behaviour either way |
-| **F** | For `forge-ref`, which namespace does the server-side bound assume? | settle the namespace first / bound for both | **bound for both** — an exclude for an unused prefix is inert, so this work does not wait on that ruling |
-| **G** | Does the boot check fail, or NOTICE, when `forge-ref` is in force and the hardening audit has no fresh clean result? | fail / NOTICE | **NOTICE** for the first release; failing would stop every existing install at re-pin |
-| **H** | Container desks on one host: a mounted claims volume (`file`) or the serve mode (`service`)? | volume / service | **volume, once S3 is measured clean** — a laptop-only cell should need no service (§4.2 placement rule). The volume holds claims only, never a working tree, so the per-desk working-volume property (A3) stands. Until S3 is measured, container cells use `service`. Pods on a cluster use `service` |
-| **I** | Do roles other than the reviewer get narrowed duties here? | yes / no | **no** — the table is role-keyed so they can be later |
-| **J** | How is the GitLab tier known for the Free NOTICE, given a PAT's reach is not observable offline (T2)? | a roster-declared profile / a live settings read (needs Maintainer) / a probe write | **roster-declared profile** — the other two need a wider grant, or a write made to learn whether writes work |
-| **K** | The step back in §2 reached this spec as a relay. Is it recorded on #1267 by the driver before approval? | yes / no | **yes** — approval of this spec should cite it |
+| # | Question | Ruling |
+|---|---|---|
+| **A** | Default store for a fresh single-host adopter | **RULED: `file`**, written by the scaffold together with the single-host declaration |
+| **B** | Does forge-ref remain supported? | **RULED: no — removed**, over one release window (with D) |
+| **C** | Cross-host guard when it cannot tell | **RULED:** refuse `file` without the explicit declaration, then NOTICE on every boot "declared, not verified" |
+| **D** | Does the serve mode ship in this repository's desk tools? | **RULED: yes, minimal — and the forge-ref store is removed**, not kept as an opt-in |
+| **E** | File-store write mechanics | **RULED:** rewrite in place under the existing directory lock; a torn file reads as unverifiable, fail closed |
+| **F** | Which forge-ref namespace the server-side bound assumes | **MOOT** — there is no server-side bound; forge-ref is removed (D) |
+| **G** | Fail or NOTICE when the forge-ref bound is unaudited | **MOOT** — same reason |
+| **H** | Container desks on one host: claims volume or `service`? | **RULED: `service` for anything in a container or pod, permanently**; `file` is for plain host processes only. Departs from the first draft's default; the shared-volume measurement is dropped |
+| **I** | Do roles other than the reviewer get narrowed duties? | **RULED: yes — every role is audited and narrowed, as a follow-on wave after the reviewer change is live** (§12). Briefs 20–30 keep reviewer-only scope. Departs from the first draft's default |
+| **J** | How the GitLab tier is known for the Free notice | **MOOT** — there is no Free notice; the tradeoff disappears with forge-ref (§9) |
+| **K** | Is the step back in §2 recorded on #1267? | **SATISFIED** — recorded there as a desk relay, 2026-09-17 |
+| **—** | Removal schedule (asked after D) | **RULED: one release window.** N ships `file` + serve mode, unset key → forge-ref under a NOTICE naming the removal release; N+1 deletes the store and refuses an unset key |
+| **L** | **OPEN.** `file` pointed at a network filesystem by a host process | Recommended default: **refuse** when positively identified as a network filesystem; **NOTICE every boot** when the type cannot be determined (§6). Brief 23 is written on this default |
 
 ## 11. Order of operations
 
-No review desk goes dark at any step: the tools accept the old grant and the old store
-throughout, and the grant changes last.
+No review desk goes dark at any step: the tools accept the old grant and the legacy store
+through release N, and the grant changes last.
 
 1. **Spec approved** (human).
 2. **Measure** (brief 20).
-3. **Seam and resolver** (21) — `forge-ref` only, behaviour unchanged. **Readers onto the
-   seam** (22). **Store-aware duties** (25) — a reviewer still holding write boots clean.
-4. **File store and guards** (23); **service store** (24); **forge-ref bounds** (26, 27) —
-   in parallel.
+3. **Seam and resolver** (21) — legacy resolution only, behaviour unchanged. Then **readers
+   onto the seam** (22) — before any writer can switch — and **store-aware duties** (25).
+4. **File store and guards** (23); then the **served store** (24).
 5. **Scaffold defaults** (28), then **docs and store-neutral skills** (29).
-6. **Release**; adopters **re-pin**. Existing human-gated processes.
+6. **Release N**; adopters **re-pin**. Existing human-gated processes.
 7. **Per cell: drain, set the store key, resume** (§7).
-8. **Prove on a fixture** (brief 30): reviewer at repository read boots clean and dispatches
-   under `file`; under `forge-ref` with the bound, a branch push is refused by the forge while
-   a claim succeeds.
-9. **The operator narrows the grant.** A human act, per installation, and the last step:
-   reduce the reviewer to repository read (`file` / `service`), or apply the server-side
-   bound (`forge-ref`). Re-mint fresh afterwards (`preflight.go:835-838`). No tool performs or
+8. **Prove on a fixture** (brief 30): a reviewer at repository read boots clean and
+   dispatches under `file` and under `service`; with the same credential a branch push is
+   refused by the forge for lack of write access.
+9. **The operator narrows the grant.** A human act, per installation: reduce the reviewer to
+   repository read. Re-mint fresh afterwards (`preflight.go:835-838`). No tool performs or
    prompts it.
+10. **Release N+1** removes forge-ref (brief 30's second half) once the window has run.
 
-Rollback at step 9 is restoring the grant; rollback at step 7 is the same drain in reverse.
+Rollback during the window is restoring the grant and reversing the drain. After N+1 there is
+no forge-ref to return to; rollback is re-pinning N.
 
-## 12. Same seam later — listed, not designed here
+## 12. After cutover — the other roles
+
+Ruled (§10 I): every remaining role — desk, worker, verifier, issue-loop, intake-loop — is
+audited for the repository writes it actually performs and narrowed to them. This is a
+**follow-on wave behind brief 30**, so the reviewer change does not wait on it.
+
+- One measurement brief, [31](brief-31-remaining-roles-write-audit.md), inventories each
+  role's real forge writes with the same method brief 20 uses for the reviewer.
+- The per-role duties briefs are **authored from its findings, later**. None is authored now:
+  what each role can drop is not known until 31 has run, and a duties brief written on a
+  guess is the failure brief 20 exists to prevent.
+- The duty table in §8 is already role-keyed, so narrowing a role is a table row plus its
+  tests, not a redesign.
+
+## 13. Same seam later — listed, not designed here
 
 Claims are the only state this spec moves. Other cell-scoped state also lives per machine
 today and will meet the same question the moment a cell spans hosts. Listed so the seam is
@@ -369,30 +394,41 @@ built with them in view; none is designed here.
 | Acknowledgement beacons | files under the state directory | `tools/desk/internal/deskkit/ackbeacon.go:43` |
 | Non-dispatch claim kinds (route / file / close / verify) | `<config home>/claims`, machine-local by design | `tools/desk/cmd/deskclaim/main.go:26-35` |
 
-## 13. Verify rows that prove the lower layer
+## 14. Verify rows that prove the lower layer
 
 | # | Row | Brief |
 |---|---|---|
 | V1 | Conformance: every backend passes one table — acquire, refuse-live, reclaim-stale, progress, release, steal, `show` / `list` byte parity | 21, 23, 24 |
 | V2 | Two processes racing one key on a `file` store: exactly one acquires, the other exits 5 | 23 |
 | V3 | `file` without the single-host declaration → refused; with it → NOTICE on every boot | 23, 25 |
-| V4 | Mixed stores: a live forge claim present while resolving `file` → refused before any worktree; and the reverse | 23 |
+| V4 | During the window: a live forge claim present while resolving `file` → refused before any worktree; and the reverse | 23 |
 | V5 | A reviewer credential with **no repository write** dispatches a review under `file` and under `service`; the supervisor and the verdict-stamp liveness read see that claim | 22, 23, 24 |
 | V6 | Service down → dispatch exits 6 before any worktree; lost reply → unverifiable, no fallback | 24 |
-| V7 | `forge-ref`, GitHub fixture, bound applied, reviewer credential, plain git: branch push **refused by the forge**; claim acquire **succeeds** | 26, re-run in 30 |
-| V8 | `forge-ref` + GitLab profile Free → the NOTICE fires on every reviewer boot; absent under `file` | 25 |
-| V9 | The boot check names the store; a reviewer at repository read is clean under `file` and refused under `forge-ref` | 25 |
+| V7 | `file` inside a container → refused naming `service`; `file` on a positively identified network filesystem → refused; undetermined filesystem → NOTICE every boot | 23 |
+| V8 | Release N: unset key → legacy resolution plus the removal NOTICE on every boot, and `forge-ref` as an explicit value is refused. Release N+1: unset key → refused printing the two valid values, and no forge-ref code remains | 21, 30 |
+| V9 | The boot check names the store; a reviewer at repository read is clean under `file` / `service` and refused under the legacy resolution | 25 |
 | V10 | No skill body names a store, a claim namespace, or a per-store grant | 29 |
+| V11 | With the narrowed reviewer credential and plain git, a branch push is **refused by the forge** for lack of write access | 30 |
 
-## 14. Documents that change
+## 15. Documents that change
 
 | Document | Change | Brief |
 |---|---|---|
-| `docs/adopting-assay.md` — App inventory, `setup-reviewer-app`, *The required duty set* | store-aware duty table; the reviewer's narrowed shape as the default for a single-host cell; the forge-ref bound; the retired-recommendation note rewritten | 29 |
-| per-role App manifests (the permission sets the Apps installer stream's manifest flow emits — `docs/streams/apps-installer/design.md`) | reviewer manifest: repository read by default, write only for `forge-ref` | 29 (text) |
-| `docs/adopting-assay-gitlab.md` | tier table and reviewer row per §9; the §9 text verbatim; the profile key | 29 |
+| `docs/adopting-assay.md` — App inventory, `setup-reviewer-app`, *The required duty set* | store-aware duty table; the reviewer at repository read as the target shape; the removal window and its NOTICE; the retired-recommendation note rewritten | 29 |
+| per-role App manifests (the permission sets the Apps installer stream's manifest flow emits — `docs/streams/apps-installer/design.md`) | reviewer manifest: repository read | 29 (text) |
+| `docs/adopting-assay-gitlab.md` | reviewer row: no repository write needed once the store key is set, on every tier. **No Free-tier tradeoff text is added** — the tradeoff is removed, not documented (§9) | 29 |
 | `docs/enforcement-model.md` — *The identity set* | "one list, identically" becomes store-aware; the write boundary described as a layer | 29 |
-| `docs/cellctl.md`, `docs/docker.md`, `containers/README.md` | the claim store per cell kind; supported topologies stated for the first time (closes A7) | 28, 29 |
+| `docs/cellctl.md`, `docs/docker.md`, `containers/README.md` | the claim store per cell kind — host processes `file`, containers and pods `service`; supported topologies stated for the first time (closes A7) | 28, 29 |
+| `docs/UPGRADING.txt`, release notes for N and N+1 | the removal window, the drain, the refusal in N+1 | 30 |
 | `tools/desk/README.md` | claim tool, resolver, keys, preflight row | 21, 23, 24, 25 |
 | `plugins/assay/skills/` — pr-review-desk, worker-desk, pr-shepherd, the-desk | remove grant lists, claim namespaces and `git ls-remote` claim reads; point at the claim tool's `show` / `list` and the boot check. Store-neutral | 29 |
 | the public website's Apps and adoption pages | mirror the adopter guides; they live in the site's own repository and the companion change is tracked there | — |
+
+## 16. A note on the stream README's brief rows
+
+The briefs table in the stream README is generated. When these briefs were first added, the
+tree's brief generator could not produce this stream's brief shape (#1280 tracks the defect),
+so the first eleven rows were added by hand in the exact shape the generator prints. They have
+since been replaced by tool output: the table as committed is what
+`statusgen regen --readmes --root .`, built from this tree, writes from the briefs'
+frontmatter.

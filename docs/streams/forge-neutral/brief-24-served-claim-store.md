@@ -9,7 +9,7 @@ why: >-
   authentication, its bind default and its behaviour when unreachable have to be exact.
 wave: 4
 depends: ["forge-neutral/23"]
-unblocks: []
+unblocks: ["forge-neutral/28", "forge-neutral/30"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -17,6 +17,7 @@ issues: [1267]
 schema: brief-v2
 authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
+  - "the rulings of 2026-09-17 recorded in the spec's §10 — this brief is written on them (D: the minimal serve mode ships in this repository's desk tools; H: anything in a container or pod uses this store, permanently)"
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
   - "docs/streams/forge-neutral/reviewer-write-boundary.md — the scoping doc this brief implements; section numbers below refer to it"
   - "the spec's §4.2 — the properties this brief implements: member-initiated only, one-way reachability, the placement rule, no forge credential, cell token, loopback default, fail closed"
@@ -80,7 +81,11 @@ facts:
 - The token authenticates membership of the cell, not the role; the owner recorded on a claim
   is what the member declares, as on every store today. One audit line per request.
 - The single-host declaration is NOT required for `service`: the service is the single arbiter.
-  The mixed-store refusal of brief 23 applies unchanged.
+  The mixed-store refusal of brief 23 applies unchanged for as long as the removal window lasts.
+- Ruled (spec §10 H): this is the store for **anything running in a container or pod,
+  permanently** — there is no shared-volume alternative. The serve mode itself is a plain
+  process over a `file` store on local disk; when it is run in a container, its own directory
+  is that container's private volume, never one shared with members.
 
 ## Human decision
 A cell whose desks run on more than one computer cannot share a folder. The proposal adds a
