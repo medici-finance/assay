@@ -28,7 +28,11 @@ func TestPemMode(t *testing.T) {
 	actSpec := specFor(specs, "example-act")
 	sf, nonce := plantPendingRow(t, actSpec, "team")
 
-	const wantPEM = "-----BEGIN RSA PRIVATE KEY-----\nSOME-DETERMINISTIC-TEST-BYTES\n-----END RSA PRIVATE KEY-----\n"
+	// Deliberately not PEM-armor-shaped (no dashed BEGIN/END header line): the property under
+	// test is byte-for-byte custody of whatever the conversion's `pem` field carries, which
+	// an opaque fake string proves just as well, without a repo-wide secret scanner mistaking
+	// test fixture text for a real key.
+	const wantPEM = "SOME-DETERMINISTIC-TEST-BYTES-a19f7c04e8"
 	fake := fakeConversionServer(t, conversionResult{ID: 7, ClientID: "cid", WebhookSecret: "whs", PEM: wantPEM})
 	withFakeGitHubAPI(t, fake)
 

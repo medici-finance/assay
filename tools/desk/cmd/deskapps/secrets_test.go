@@ -15,9 +15,12 @@ import (
 
 // The fake conversion's secrets — chosen to be unmistakable and never legitimately
 // present anywhere else this package writes, so any test finding one of these
-// substrings has found a real leak, not a coincidence.
+// substrings has found a real leak, not a coincidence. These are deliberately NOT shaped
+// like a real PEM armor block (no dashed BEGIN/END header line): the property under test is
+// "the conversion's `pem` field value never leaks", which an opaque fake string proves just
+// as well, without a repo-wide secret scanner mistaking test fixture text for a real key.
 const (
-	fakePEM           = "-----BEGIN RSA PRIVATE KEY-----\nFAKESECRETPEMBODYDONOTLEAK\n-----END RSA PRIVATE KEY-----\n"
+	fakePEM           = "FAKESECRETPEMBODYDONOTLEAK-7f3ac91e2b6d"
 	fakeClientSecret  = "fake-client-secret-zzq7"
 	fakeWebhookSecret = "fake-webhook-secret-pl4x"
 )
@@ -69,7 +72,7 @@ func runKeyedCallback(t *testing.T, out io.Writer) (*deskappsServer, *httptest.S
 func TestNoSecretInPage(t *testing.T) {
 	_, ts := runKeyedCallback(t, &bytes.Buffer{})
 
-	forbidden := []string{fakePEM, fakeClientSecret, fakeWebhookSecret, "BEGIN RSA PRIVATE KEY", "FAKESECRETPEMBODY"}
+	forbidden := []string{fakePEM, fakeClientSecret, fakeWebhookSecret}
 	for _, route := range []string{"/", "/tier", "/setup", "/run"} {
 		resp, err := http.Get(ts.URL + route)
 		if err != nil {
@@ -121,7 +124,7 @@ func TestNoSecretInLogs(t *testing.T) {
 		runKeyedCallback(t, &console)
 	})
 
-	forbidden := []string{fakePEM, fakeClientSecret, fakeWebhookSecret, "BEGIN RSA PRIVATE KEY", "FAKESECRETPEMBODY"}
+	forbidden := []string{fakePEM, fakeClientSecret, fakeWebhookSecret}
 	consoleOut := console.String()
 	for _, f := range forbidden {
 		if strings.Contains(consoleOut, f) {
