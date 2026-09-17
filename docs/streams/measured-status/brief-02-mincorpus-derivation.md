@@ -47,6 +47,8 @@ facts:
   could-not-learn status (a three-state read), so an under-set floor over-trusts the learned
   model and an over-set one keeps the heuristic longer — the value is a real tradeoff, not cosmetic.
 - `qualgen/riskscore` is buildable/testable from fixtures without a live corpus.
+- `qualgen` is its own Go module (`qualgen/go.mod`, no root `go.mod` in this repo); tests and
+  builds run from `qualgen/` (`cd qualgen && go test ./riskscore/ …`), not from the repo root.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task instructions only.
@@ -63,20 +65,28 @@ facts:
    as a `// Derivation:` block on `MinCorpus` naming why the EPV floor is intentionally not
    applied and what condition would raise it — and add the same pinning test against the
    documented value. Do not leave a bare literal either way.
-3. Add a test `TestMinCorpusDerivedFromFeatureCount` that recomputes the floor from
+3. Add a test `TestMinCorpusDerivedFromFeatureCount` (planned) that recomputes the floor from
    `len(features)` and the documented EPV (or asserts the documented conservative value and
    its stated invariant), and fails if `MinCorpus` drifts from its derivation.
-4. Add a FLOW test `TestMinCorpusGovernsLearnedSwitch` that trains against a corpus one below
-   the derived floor (asserts heuristic-only / could-not-learn) and one at the floor (asserts
-   the learned model trains), proving the derived value actually governs the heuristic↔learned
-   switch end to end — MinCorpus is a shared default consumed by the Train under-corpus gate.
+4. Add a FLOW test `TestMinCorpusGovernsLearnedSwitch` (planned) that trains against a corpus
+   one below the derived floor (asserts heuristic-only / could-not-learn) and one at the floor
+   (asserts the learned model trains), proving the derived value actually governs the
+   heuristic↔learned switch end to end — MinCorpus is a shared default consumed by the Train
+   under-corpus gate.
+5. **Fail-first (rule 9).** Before landing, temporarily set the derived/documented value one
+   below its own correct output (e.g. drop `EventsPerVariable` by one) and confirm
+   `TestMinCorpusDerivedFromFeatureCount` (planned) goes red; restore and confirm green. Record the
+   red-then-green run under `## Evidence` (this repo has no `mutations.json` harness under
+   `qualgen/`, so the proof is a one-time hand-mutation, not a corpus entry — same convention
+   used across the repo's other `Fail-first (rule 9)` sections, e.g.
+   `docs/streams/apps-installer/brief-01-role-app-indirection.md`).
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `go test ./qualgen/riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1` | exit 0; output contains "ok" | check +dereference |
-| 2 | `go test ./qualgen/riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
-| 3 | `go build ./qualgen/riskscore/` | exit 0 | check |
+| 1 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1` | exit 0; output contains "ok" | check +dereference |
+| 2 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
+| 3 | `cd qualgen && go build ./riskscore/` | exit 0 | check |
 | 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | exit 0 (a written derivation exists next to the value) | check |
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | exit 0; output does not contain "DISPROVED" (the fixed-here consumer routing is corroborated, not contradicted) | check |
 

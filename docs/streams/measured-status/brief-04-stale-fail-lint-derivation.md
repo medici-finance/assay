@@ -8,7 +8,7 @@ why: >-
   routing back to dispatch with an empty diff. The lint decides the state from the Evidence
   text alone; it should DERIVE whether the FAIL is stale by comparing the fix commits' dates to
   the Evidence date, and route a stale FAIL to a re-verify, never to a person's signature.
-wave: 1
+wave: 0
 depends: []
 unblocks: []
 effort: M
@@ -21,7 +21,7 @@ sources:
   - "#862 — a stale VERIFY: FAIL on a gate:human brief nudges workers to hand-file a sign-off"
   - "statusgen/brieffile.go — the gate:human-at-implemented lint nudge (the `no decision-issue` message)"
   - "statusgen/testdata — the per-state fixture trees the lint tests read"
-  - "freshness-checked 2026-09-16 @ e9fa19d3 — the nudge does not distinguish a canonical VERIFY: PASS-no-card state from a stale-FAIL state, and its text tells a worker to file rather than naming --decision-issues / a re-verify"
+  - "freshness-checked 2026-09-16 @ e9fa19d3 — the nudge already names `--decision-issues` as the filer (`statusgen/brieffile.go:1549`); what it does NOT do is distinguish a canonical VERIFY: PASS-no-card state from a stale-FAIL state, so a stale FAIL still gets routed to the same file-a-decision-issue nudge instead of a re-verify"
 exec-tier: strong
 exec-tier-why: changes lint routing logic that steers worker vs verify-desk vs human effort; a mis-derived state sends work down the wrong lane, which is the exact failure the issue reports
 domain: complicated
@@ -48,7 +48,12 @@ facts:
 - statusgen is pure over the tree plus git-readable history; deriving "newer than the Evidence
   date" uses the same commit-history read attribution.go already performs, degraded three-state
   when history is unavailable (could-not-check, never rounded to "current").
-- statusgen is one Go module; tests run from the repo root.
+- `statusgen` is its own Go module (`statusgen/go.mod`, no root `go.mod` in this repo); tests
+  run from `statusgen/` (`cd statusgen && go test . …`), not from the repo root.
+- the existing nudge text (`statusgen/brieffile.go:1549`) already names `--decision-issues` as
+  the filer — state (3)'s message needs no retexting on that point; what changes is that state
+  (2) (stale FAIL) gets its OWN, differently-worded message naming the newest fix commit and a
+  re-verify route, so it is no longer indistinguishable from state (3)'s file-a-decision-issue text.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task instructions only.
@@ -60,18 +65,27 @@ facts:
    comparison (fix commits vs Evidence date), not from the Evidence text alone. Preserve the
    three-state read: an unavailable history is a could-not-check that keeps the conservative
    nudge, never a silent "current".
-2. Retext state (3)'s message so it names `--decision-issues` (the tool) as the filer, not a worker.
-3. Add one fixture tree per state under the lint's testdata and a test asserting the current
-   nudge text no longer appears for states (1) and (2), and the stale-FAIL message names the
-   newest commit.
+2. Leave state (3)'s message text as-is — it already names `--decision-issues` (the tool) as
+   the filer, not a worker (`statusgen/brieffile.go:1549`); there is nothing to retext there.
+   The actual gap is that state (2) currently reuses that same text instead of getting its own
+   stale-FAIL message, so give state (2) a distinct message naming the newest commit and
+   pointing at a re-verify, and confirm state (3)'s existing text is otherwise untouched.
+3. Add one fixture tree per state under the lint's testdata and a test asserting state (2)'s
+   new stale-FAIL message (naming the newest commit) is distinct from state (3)'s unchanged
+   `--decision-issues` message, and that state (1)'s "sign-off card missing" text is distinct
+   from both.
+4. **Fail-first (rule 9).** Before landing, run the new test against the pre-change
+   `brieffile.go` (single shared message, no date comparison) and confirm it fails to
+   distinguish states (2)/(3); then against the fixed code and confirm it passes. Record the
+   red-then-green run under `## Evidence`.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/ -run TestStaleFailVsMissingCard -count=1` | exit 0; output contains "ok" |
-| 2 | `go test ./statusgen/ -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (all three fixture-state assertions ran and passed) |
+| 1 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1` | exit 0; output contains "ok" |
+| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (all three fixture-state assertions ran and passed) |
 | 3 | `ls statusgen/testdata/*stale*fail* statusgen/testdata/*missing*card* >/dev/null 2>&1` | exit 0 (a fixture tree exists per state) |
-| 4 | `go test ./statusgen/ -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'stale FAIL'` | exit 0 (the stale-FAIL branch's message is exercised) |
+| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'stale FAIL'` | exit 0 (the stale-FAIL branch's message is exercised) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->

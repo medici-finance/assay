@@ -8,7 +8,7 @@ why: >-
   legitimate draft PRs. Authority should be DERIVED from a verifiable stamp the dispatcher
   applies as its own bound identity — and where a legacy label lacks that stamp, there should be
   a sanctioned re-stamp path, not a reader's guess about a login.
-wave: 2
+wave: 1
 depends: []
 unblocks: []
 effort: M
@@ -75,9 +75,17 @@ Options:
 2. **Also accept labels attached by a trusted human account** — widen what the check counts as
    authority to include trusted human accounts, not only dispatcher identities. Consequence:
    the backlog clears with no per-item action, but the set of accounts that can vouch for a tier
-   grows, which is a security-relevant loosening.
+   grows, which is a security-relevant loosening. **`design: DR-independence-gate`'s second
+   alternative already weighs and rules this out as the primary control** — the record calls
+   honoring a trusted login "at most an interim operator action a human authorizes, recorded,
+   not a code default." Choosing this option as a standing code default AMENDS that record and
+   must update `DR-independence-gate` in the same motion, not leave the two disagreeing.
 3. **Both** — clear the current backlog with a one-time, explicitly human-authorized acceptance,
-   and add the re-stamp path as the durable mechanism so the loosening is not permanent.
+   and add the re-stamp path as the durable mechanism so the loosening is not permanent. **This
+   is the shape `DR-independence-gate` itself describes as sanctioned** — an interim,
+   human-authorized, RECORDED operator action, never a silent code default — so choosing it is
+   consistent with the record as written; no amendment needed as long as the acceptance is a
+   recorded, one-time act rather than a standing widened check.
 
 Default if no answer: none — blocks until answered (this changes a trust boundary and must not be defaulted).
 

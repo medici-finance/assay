@@ -50,11 +50,17 @@ facts:
    must branch on differently (disabled vs rate-limited vs constraint-refused vs
    unverifiable), not one per message. Name why a single `ExitRefused` (not a code per refusal
    reason) is correct: the caller's action is identical for every compiled-in refusal.
-2. Add a test `TestExitCodeTableMatchesDerivation` that asserts each constant equals the value
-   the stated convention predicts (0 for OK; the four refusal classes are 3..6 contiguous;
-   1 and 2 are never used) and fails if any value drifts.
+2. Add a test `TestExitCodeTableMatchesDerivation` (planned) that asserts each constant equals
+   the value the stated convention predicts (0 for OK; the four refusal classes are 3..6
+   contiguous; 1 and 2 are never used) and fails if any value drifts.
 3. Do not change any constant's value; if the convention and a value genuinely disagree, stop
    and report NEEDS_CONTEXT rather than editing either to force agreement.
+4. **Fail-first (rule 9).** Add one entry to `tools/desk/internal/deskkit/mutations.json`
+   that flips the new convention (e.g. reorders two adjacent refusal-class values so the
+   stated convention and the table disagree), and confirm the corpus's own guard catches it —
+   `TestExitCodeTableMatchesDerivation` (planned) must go red under the mutant and green once
+   reverted.
+   Record the red-then-green run under `## Evidence`.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
@@ -63,6 +69,7 @@ facts:
 | 2 | `cd tools/desk && go vet ./internal/deskkit/` | exit 0 |
 | 3 | `cd tools/desk && grep -q 'Derivation:' internal/deskkit/exitcodes.go` | exit 0 (the derivation block is present) |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (the pinning assertions actually ran and passed) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'Mutation' -count=1` | exit 0 (the mutation corpus, including the new exit-code-convention mutant, still passes its own harness) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->

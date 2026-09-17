@@ -8,7 +8,7 @@ why: >-
   The defense-in-depth property the check was built for (security-hardening/27) therefore does
   not actually gate anything. This flips the discriminating case to a hard PROBLEM so
   independence is enforced by the code, not left as a line a reader may skim past.
-wave: 2
+wave: 1
 depends: []
 unblocks: []
 effort: M
@@ -55,7 +55,12 @@ facts:
   for its discriminating case only — it does not touch the token checks.
 - the two existing tests assert the NOTICE-only behaviour and MUST be updated to assert the hard
   PROBLEM for the multi-identity same-pair case (and the still-NOTICE for the inconclusive case).
-- statusgen is one Go module; tests run from the repo root.
+- `statusgen` is its own Go module (`statusgen/go.mod`, no root `go.mod` in this repo); tests
+  run from `statusgen/` (`cd statusgen && go test . …`), not from the repo root.
+- this brief is inherently fail-first: `TestAttributionIdentityCrossCheckMultiIdentity` asserts
+  NOTICE-only today and is being changed to assert a hard PROBLEM instead, so simply running the
+  updated test against the unflipped `addNotice(...)` branch (before Task step 1 is applied)
+  already demonstrates the red-before state — no separate mutation is needed.
 
 ## Human decision
 A verification is supposed to be independent: the person or agent who checks a piece of work
@@ -101,10 +106,10 @@ Default if no answer: none — blocks until answered (this narrows a trust gate 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/ -run TestAttributionIdentityCrossCheck -count=1` | exit 0; output contains "ok" |
-| 2 | `go test ./statusgen/ -run 'TestAttributionIdentity' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (both the hard-reject and the inconclusive-NOTICE cases ran and passed) |
-| 3 | `go vet ./statusgen/` | exit 0 (the flipped branch compiles and vets clean) |
-| 4 | `go test ./statusgen/ -count=1` | exit 0 (the whole statusgen suite is green with the flip) |
+| 1 | `cd statusgen && go test . -run TestAttributionIdentityCrossCheck -count=1` | exit 0; output contains "ok" |
+| 2 | `cd statusgen && go test . -run 'TestAttributionIdentity' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (both the hard-reject and the inconclusive-NOTICE cases ran and passed) |
+| 3 | `cd statusgen && go vet ./...` | exit 0 (the flipped branch compiles and vets clean) |
+| 4 | `cd statusgen && go test . -count=1` | exit 0 (the whole statusgen suite is green with the flip) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->

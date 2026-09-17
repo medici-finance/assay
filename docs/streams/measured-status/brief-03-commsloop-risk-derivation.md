@@ -62,17 +62,28 @@ facts:
    yet exist anywhere upstream), then instead record a `// Derivation:` block at the call site
    proving why `false` is sound here — enumerate the classes of message the router sees and show
    each is covered by the router's own action choice — AND file the wiring as a tracked
-   follow-up (`consumers:` `follow-up`), rather than leaving an underived literal.
-3. Add a test asserting a risk-shaped envelope routes to `TierHuman` (the backstop fires) and an
-   unknown-risk envelope fails closed rather than routing to a session tier.
+   follow-up (`consumers:` `follow-up`), rather than leaving an underived literal. Under this
+   option the literal `const risk = false` STAYS — the Derivation block is what justifies it,
+   not a replacement for it — so mark this brief `implemented` with the follow-up issue linked
+   in `## Evidence`, not as if the envelope wiring landed.
+3. Which option applies determines which rows below are in scope; record the choice in
+   `## Evidence` before filling the table.
+   - **Option 1 (envelope wiring landed):** add a test asserting a risk-shaped envelope routes
+     to `TierHuman` (the backstop fires) and an unknown-risk envelope fails closed rather than
+     routing to a session tier. Rows 1, 2 and 4 apply; row 3 must show the literal gone.
+   - **Option 2 (Derivation block + follow-up):** no new routing behaviour exists to test, so
+     rows 1 and 2 are not applicable (record "N/A — Option 2 taken" against them, do not invent
+     a test to force a pass). Row 3 must show the Derivation block present at the call site
+     with the literal still `false`. Row 5 applies instead of rows 1/2.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `cd tools/desk && go test ./cmd/commsloop/ -run TestRouterRiskDerivedFromEnvelope -count=1` | exit 0; output contains "ok" |
-| 2 | `cd tools/desk && go test ./cmd/commsloop/ -run 'TestRouter.*Risk' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (the backstop-fires and fail-closed cases both ran and passed) |
-| 3 | `cd tools/desk && ! grep -q 'const risk = false' cmd/commsloop/loop.go` | exit 0 (the hardcoded literal is gone — risk is derived or a Derivation block replaced it) |
-| 4 | `cd tools/desk && go vet ./cmd/commsloop/` | exit 0 |
+| 1 | `cd tools/desk && go test ./cmd/commsloop/ -run TestRouterRiskDerivedFromEnvelope -count=1` | Option 1: exit 0, output contains "ok". Option 2: N/A (record so in Evidence, do not force a pass) |
+| 2 | `cd tools/desk && go test ./cmd/commsloop/ -run 'TestRouter.*Risk' -count=1 -v 2>&1 \| grep -q 'PASS'` | Option 1: exit 0 (the backstop-fires and fail-closed cases both ran and passed). Option 2: N/A |
+| 3 | `cd tools/desk && ( ! grep -q 'const risk = false' cmd/commsloop/loop.go ) \|\| grep -q 'Derivation:' cmd/commsloop/loop.go` | exit 0 — Option 1: the hardcoded literal is gone. Option 2: the literal remains, but a `Derivation:` block justifies it at the call site |
+| 4 | `cd tools/desk && go vet ./cmd/commsloop/` | exit 0 (both options) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:03` | Option 2 only: exit 0; output does not contain "DISPROVED" (the follow-up wiring issue recorded as a `consumers:` `follow-up` edge is corroborated, not contradicted) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->

@@ -81,27 +81,28 @@ scope (they are not derive-not-assert / independence-enforcement changes).
 | 01 | [Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test](brief-01-exit-code-derivation.md) | 0 | S | todo | — | — |
 | 02 | [Derive MinCorpus for the learned riskscore model against its 15-feature events-per-variable floor, or record the rationale — and pin it with a test](brief-02-mincorpus-derivation.md) | 0 | M | todo | — | — |
 | 03 | [Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop](brief-03-commsloop-risk-derivation.md) | 0 | M | todo | — | — |
-| 04 | [statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off](brief-04-stale-fail-lint-derivation.md) | 1 | M | todo | — | — |
-| 05 | [attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish](brief-05-attribution-hard-reject.md) | 2 | M | todo | — | — |
-| 06 | [model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login](brief-06-modelfloor-derived-stamp.md) | 2 | M | todo | — | — |
+| 04 | [statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off](brief-04-stale-fail-lint-derivation.md) | 0 | M | todo | — | — |
+| 05 | [attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish](brief-05-attribution-hard-reject.md) | 1 | M | todo | — | — |
+| 06 | [model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login](brief-06-modelfloor-derived-stamp.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
 
 The enforcement half is the value head, and its real blocker is a human ruling, not code:
-**`DR-independence-gate` (approved)** → **`measured-status/05`** (the same-identity
-author/verifier pair becomes a hard PROBLEM) is the chain that, if it slips, slips the whole
-"enforce independence" side of the seam. `measured-status/06` (model-floor authority from a
-derived stamp) rides the same DR. The three derivation briefs (`01`, `02`, `03`) and the lint
-fix (`04`) are unblocked today and run in parallel — they are `gate: model`, cheap, and
-establish the derive-not-assert pattern the enforcement half then hardens.
+**`DR-independence-gate`** (currently `PROPOSED` — no ruling recorded yet) **→
+`measured-status/05`** (the same-identity author/verifier pair becomes a hard PROBLEM) is the
+chain that, if it slips, slips the whole "enforce independence" side of the seam; `05` cannot
+start until the DR is ratified. `measured-status/06` (model-floor authority from a derived
+stamp) rides the same DR and is blocked the same way. The three derivation briefs (`01`, `02`,
+`03`) and the lint fix (`04`) are unblocked today and run in parallel — they are `gate: model`,
+cheap, and establish the derive-not-assert pattern the enforcement half then hardens.
 
 ## Dependency waves
 
 - **Wave 0** — `01` (exit-code table derivation, #1216), `02` (MinCorpus derivation, #1171),
-  `03` (commsloop risk derivation, #1065). Independent, `gate: model`.
-- **Wave 1** — `04` (lint distinguishes stale-FAIL from missing-card, #862). Independent,
-  `gate: model`.
-- **Wave 2** — `05` (attribution same-identity hard-reject, #1116) and `06` (model-floor
-  derived stamp, #336). Both `gate: human`, both behind the approved `DR-independence-gate`
-  design record, because each narrows a trust/enforcement gate.
+  `03` (commsloop risk derivation, #1065), `04` (lint distinguishes stale-FAIL from
+  missing-card, #862). Independent, `gate: model`.
+- **Wave 1** — `05` (attribution same-identity hard-reject, #1116) and `06` (model-floor
+  derived stamp, #336). Both `gate: human`, both behind `DR-independence-gate` (currently
+  `PROPOSED`; neither may start `in-progress` until it is ratified), because each narrows a
+  trust/enforcement gate.
