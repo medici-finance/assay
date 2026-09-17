@@ -88,6 +88,14 @@ facts:
 4. Record `medici-finance/assay`'s row from the live read (it is the one repo authoring can fully
    dereference): protect-main enforces the approver/last-push/dismiss/force-push/deletion items;
    its required-status-checks are carried by the separate `leak-sweep` ruleset.
+5. Add a **recurrence trigger** section to `ruleset-audit.md`: uniformity is an operational
+   commitment, not a one-time read (DR-server-controls `accepted` entry 1) — a repo added to the
+   operator's configured set after this audit runs defaults to no ruleset, silently reintroducing
+   the divergence the audit exists to catch. State the trigger explicitly and event-driven (a repo
+   is added to the configured set), not calendar-driven, and name the owner: whoever maintains that
+   configured set re-runs this brief's Task steps 1-4 against the added repo (or the whole set)
+   before treating the menu as uniform again. This is a re-read of the same brief, never a new one,
+   and a stale frozen table is not evidence the menu is still uniform.
 
 ## Verify (executable — no prose-only DoD items)
 
@@ -100,6 +108,7 @@ against live state rather than counting presence).
 | 2 | check | `test -f docs/streams/server-controls/ruleset-audit.md && grep -q 'required signed commits' docs/streams/server-controls/ruleset-audit.md && grep -q 'block-force-push' docs/streams/server-controls/ruleset-audit.md` | exit 0 — the target-menu definition enumerates the menu items (presence of the definition section) |
 | 3 | check +dereference | `for r in $(grep -oE 'medici-finance/[a-z0-9._-]+' docs/streams/server-controls/ruleset-audit.md \| sort -u); do gh api "repos/$r/rulesets" --jq '.[].name'; done` | for each real repo the audit's table names, the live rulesets read returns its ruleset names, backing that row's asserted cells; a repo returning no menu-naming ruleset is the `classic` / `could-not-read` case the doc must MARK, never assert a value for — a cell typed from memory (no backing read) fails this row |
 | 4 | check | `grep -q 'Provisioning ask' docs/streams/server-controls/ruleset-audit.md && grep -q '→' docs/streams/server-controls/ruleset-audit.md` | exit 0 — the deliverable terminates in a concrete current→target delta list, the human provisioning ask this brief produces |
+| 5 | check | `f=docs/streams/server-controls/ruleset-audit.md; grep -Eiq -e 'recurrence' -e 're-audit' -e 're-run' $f && grep -Eiq 'repo is added' $f` | exit 0 — the recurrence trigger (re-run when a repo is added to the configured set) and its owner are stated, not left implicit |
 
 ## Pre-mortem → detection map
 
@@ -109,6 +118,7 @@ against live state rather than counting presence).
 | The audit hardcodes real repo names into the shipped doc (leak surface / staleness) | Review — the shipped template must carry `example-*` placeholders; the real set is run-time config |
 | The doc lists gaps but no actionable deltas, so nobody knows what to change | row 4 — a current→target provisioning ask must be present |
 | `medici-finance/assay`'s row drifts from live state over time | row 1 — re-run the live read rather than trust the frozen numbers |
+| Uniformity is read once and assumed to hold forever; a repo added later silently reintroduces the divergence the audit exists to catch, with nothing that says who re-checks it | row 5 — the recurrence trigger and its owner must be stated in the shipped doc |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

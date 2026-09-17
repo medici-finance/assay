@@ -84,8 +84,8 @@ facts:
    code boundary in `forge_github.go` (implementation is follow-up server-controls/02).
 3. Document the **administration: read interim**: the classic endpoint, the grant it needs, and
    that this path is the fallback for a not-yet-migrated repo, not the default.
-4. Cross-reference brief-01's audit as the input (which repos are classic) and DR-server-side-
-   enforcement as the design rationale.
+4. Cross-reference brief-01's audit as the input (which repos are classic) and DR-server-controls
+   as the design rationale.
 
 ## Verify (executable — no prose-only DoD items)
 

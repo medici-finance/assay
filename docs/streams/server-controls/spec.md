@@ -100,7 +100,8 @@ stream, `server-controls`, parked pending approval.
 2. **Standardize on rulesets / retire classic protection (#1020)** so the controls are
    readable through one API, or record the `administration: read` grant as the alternative.
 3. The **required-check enforcement pattern** — the reusable design (base-repo execution,
-   non-author identity, protected source) and its self-attestation caveat.
+   non-author identity, protected source, and custody of any input data the rule reads beyond
+   the triggering event) and its self-attestation caveat.
 4. A **decision-dependency note** folding the credential/identity design decisions (#900,
    #903, #942) that gate the credential-contract parts — cited, not re-authored.
 5. A **reference cross-operator / independent-approver check** — the #997 residual, expressed

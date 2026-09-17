@@ -31,8 +31,9 @@ into three tractable things ([`spec.md`](spec.md) §0):
    `administration: read`) — closed by one readable API on every repo, or that grant as interim.
 3. **Express any invariant FINER than the menu as a required STATUS CHECK reported by a runner the
    policed party cannot control.** The only fine-grained mechanism the forge gives, already in
-   production here as the `leak-sweep` check — trustworthy ONLY under three conditions (non-author
-   identity, base-repo execution, protected source), or it degrades to self-attestation.
+   production here as the `leak-sweep` check — trustworthy ONLY under four conditions (non-author
+   identity, base-repo execution, protected source, and — where the rule reads input data beyond
+   the triggering event — custody of that data), or it degrades to self-attestation.
 
 The honest anti-collusion position ([`spec.md`](spec.md) §1): on this repo author≠approver is
 ALREADY enforced (`require_last_push_approval: true`), so #997's original premise is partly stale.

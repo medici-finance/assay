@@ -12,10 +12,11 @@ alternatives:
   - "Treat #997 as fully stale because `require_last_push_approval` is already set — ruled out as an overstatement. That setting closes author≠approver, which is real and worth stating, but it does not close the finer residual: an independent/second approver, and cross-operator collusion where two distinct role Apps (one pushing, a different one approving) satisfy the forge, which cannot see they may share one operator. Declaring #997 solved would leave that residual untracked."
 accepted:
   - "Uniformity is an operational commitment, not a one-time act: the target ruleset menu must be re-audited as repos are added, because a new repo defaults to no ruleset and silently reintroduces the divergence the audit exists to catch. The audit brief reads; a human applies; and nothing but a repeat read proves it stayed applied."
-  - "A required check is a real widening of trust in the runner: the merge gate now depends on the check's identity, execution context, and source integrity. Those three properties are the security surface and each is a Verify obligation (a negative-path row proving the check reddens when its precondition is violated), not a claim. Where any of the three cannot be assured, the check must NOT be relied upon as a server-side control and must be described as advisory."
+  - "A required check is a real widening of trust in the runner: the merge gate now depends on the check's identity, execution context, source integrity, and — where the rule reads data beyond the triggering event — the custody of that data. Those four properties are the security surface and each is a Verify obligation (a negative-path row proving the check reddens when its precondition is violated), not a claim. Where any of the four cannot be assured, the check must NOT be relied upon as a server-side control and must be described as advisory."
   - "Author≠approver is enforced today on this repo (require_last_push_approval + require_extra_approval_for_unattributed_changes); the honest residual is the finer independent-approver and cross-operator-collusion case, which no forge setting can see and only a required check can close. The stream states both halves and rounds neither."
   - "Retiring classic branch protection is an admin act with a blast radius (it changes what the platform enforces on the default branch); it is performed by a human, verified by a read-back, and never done to make a client tool's could-not-check go green without confirming the equivalent ruleset is in place first."
   - "The credential/identity design decisions this depends on (#900 runtime credential contract, #903 in-process transport/auth, #942 the cell-issues mint role) are forge-granularity-independent and remain open human gates; the enforcement design here does not pre-empt them and the credential-contract briefs wait on their rulings."
+  - "Evaluating a cross-operator check's approver rule over login identity alone does not close the residual it exists to close: two colluding role Apps are, by construction, distinct logins, so a rule that only checks login-distinctness returns success on the exact case it is meant to catch. The rule's mandatory component is the custodied independent-approver set (the fourth trust condition above), not login-distinctness by itself; a design that leaves that set optional has not closed the residual, whatever it claims."
 ---
 
 **PROPOSED — no ruling is recorded.** `decided-by:` is a placeholder until a human rules on
@@ -45,7 +46,7 @@ server-side control the fleet needs is built from them:
 Primitive #3 is the general tool for a fine invariant: the server enforces "check X is green,"
 and check X is our code enforcing the fine rule. This repo already runs one — the `leak-sweep`
 required status check named by the `leak-sweep` ruleset. The pattern is reusable, but only
-under three conditions, because a required check written without them is worse than none — it
+under four conditions, because a required check written without them is worse than none — it
 looks enforced while enforcing nothing:
 
 - **Non-author identity.** The check reports under an identity the policed party does not
@@ -54,11 +55,22 @@ looks enforced while enforcing nothing:
   branch's own `pull_request` workflow. A `pull_request`-triggered workflow executes code from
   the head the author controls; the author edits the check to pass.
 - **Protected source.** The check's own source (workflow file, action, ruleset entry) lives on
-  a protected path, so changing the check is itself gated.
+  a protected path, so changing the check is itself gated — with the caveat that "protected" is
+  not independent of the policed party where that party is also the merging party; that shape
+  needs a named mitigation (CODEOWNERS, a separate ruleset, or an out-of-repo definition), not
+  reliance on the protected path alone.
+- **Custodied evidence.** Where the rule reads input data beyond the triggering event itself —
+  a roster, an identity map, an independent-approver set — that data must sit under the same
+  non-author-controllable custody as the runner. Data the policed party can edit is
+  self-attestation arriving through the input rather than through the runner; a check can
+  satisfy the first three conditions perfectly and still be defeated by an editable input. This
+  condition surfaces concretely in the cross-operator check below, where evaluating the approver
+  rule over login identity alone does not close the residual it is meant to close.
 
 Violate any one and the check degrades to **self-attestation**. This is the same measured-status
 mechanism the fleet already uses for verification witnesses, pointed at the merge gate: trust in
-the green cell is exactly trust in who reported it and where it ran.
+the green cell is exactly trust in who reported it, where it ran, and — where the rule reads more
+than the event itself — who controls what it reads.
 
 ## The anti-collusion reality (#997), stated honestly
 
