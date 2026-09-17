@@ -56,12 +56,35 @@ in a different component:
    minutes is escalated regardless of why the responders were silent — a crashed responder,
    an unclassifiable red, a bug in step 1. It trips on elapsed-time-with-no-action, a signal
    independent of both the classifier and the merge gate, in a separate component.
+4. **Credential scope (at the identity layer).** The forge-write identity every responder
+   and the watchdog post under holds no merge authority, no review-submission authority, no
+   branch-protection-bypass authority, and no workflow-write/workflow-dispatch authority.
+   This layer holds even if a bug defeats every code-level guard above (the draft-only
+   test, the mechanical-class-only test, the never-weaken-gate test) — it is a control at
+   the credential layer, not the code layer, so it survives a code bug that no test in this
+   stream can catch. Each of briefs 02/03/04 now states this identity constraint explicitly
+   in its own Ground rules: it is the same independence discipline this design already
+   applied to the classifier, applied to the design's own standing authority.
+
+## The input-authorization boundary
+
+Every layer above sits downstream of the automation having ACCEPTED its input. This record
+also settles that boundary, rather than leaving it implicit in "whole-tree gate": the
+automation acts only on CI output from a `push`-to-`main` or `schedule`-triggered run —
+never from a `pull_request`-triggered run, whose log/diagnostic text is contributor-authored
+on a contribution the repository does not control. Brief 01's output schema carries this as
+a required `origin` field, and briefs 02/03 each re-check it independently rather than
+trusting brief 01's refusal alone (the same defense-in-depth posture as the three layers
+above, applied one step earlier — at the boundary between "accepted" and "not yet accepted"
+input). A run that fails this check produces no `Culprit`, not a lower-confidence one.
 
 ## What this record does NOT decide
 
 It does not fix the trigger mechanism (workflow event vs poll), the binary-vs-workflow split,
-the value of N for the watchdog, or which forge-write identity the automation posts under —
-those are the briefs' and their reviewers' to settle. It does not authorize any merge,
+or the value of N for the watchdog — those are the briefs' and their reviewers' to settle. It
+does not name WHICH forge-write identity the automation posts under, but whichever identity
+is chosen must hold none of the four authorities layer 4 (above) names — that constraint is
+decided here, the identity itself is not. It does not authorize any merge,
 ready-flip, or self-approval. It does not narrow, silence, or edit any gate. And it does not
 claim the draft-only bound is a sandbox: a human acting outside the tools can still merge a
 bad fix — the bound raises the cost of the mistake and gives it a review surface, it is not

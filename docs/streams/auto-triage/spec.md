@@ -79,6 +79,11 @@ every brief inherits them:
 4. **The human still merges every fix.** The automation opens **draft** PRs and files
    issues; it never merges, never flips a PR ready, never self-approves. Merge authority is
    unchanged and remains the human's.
+5. **The automation acts only on trusted-provenance CI output.** A `push`-to-`main` or
+   `schedule`-triggered run is eligible input; a `pull_request`-triggered run is not — its
+   log/diagnostic text is contributor-authored on a contribution the repository does not
+   control, and the automation refuses it wholesale rather than partially trusting it (see
+   `DR-auto-triage`'s "input-authorization boundary" section).
 
 ## 3. Why a new stream (and not an existing one)
 
@@ -146,6 +151,20 @@ and it is where the mechanical/judgement boundary is drawn.
   genuinely ambiguous, it classifies **judgement** (route to a human), never mechanical.
   A false "mechanical" opens a wrong draft PR; a false "judgement" merely asks a human —
   the asymmetry is deliberate.
+- **The path the mechanical responder may touch is an allow-list, not a deny-list.**
+  Brief 02's refused-path set is an enumeration (CI/repo config, ownership files, the gate
+  tooling itself, instruction surfaces other automation reads, its own arming config),
+  checked against the CANONICALIZED path — never a single named directory checked against
+  the literal string.
+- **The mechanical remedy set is closed.** Brief 02 may apply exactly one of three named
+  deterministic transforms (gofmt, stray-file deletion, exact-substring replace); anything
+  else is refused to the judgement responder rather than freely generated.
+- **Parsed CI text is sanitized before republication.** Every responder and the watchdog
+  truncate, fence, and render inert any CI-derived text before it enters a filed artifact —
+  it is data quoted from a log, never live content.
+- **Filing/opening is bounded by a ceiling, not only by dedupe.** Each responder enforces an
+  absolute cap on its own open artifacts and a per-window rate, failing closed to escalation
+  rather than to further authoring when either is hit.
 
 ## 7. The human-gate posture and its decision record
 

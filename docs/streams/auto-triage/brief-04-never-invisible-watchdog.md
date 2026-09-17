@@ -89,12 +89,23 @@ facts:
 - Who-watches-the-watchdog: the scheduled run's own failure/absence is surfaced by the
   platform (a failed/failing workflow run is itself visible), so the fail-safe is not a
   silent single point.
+- **Escalation bodies are sanitized before they are published**, the same rule briefs 02/03
+  apply: any CI-derived text the watchdog names (the `check`, not the withheld detail of an
+  opaque red) is truncated, fenced, and rendered inert before it enters the escalation
+  artifact.
+- **Arming mechanism.** Same repository-tracked config surface as briefs 02/03 (never an
+  environment variable or a value the watchdog could set for itself) — the same path
+  brief 02's refused-path allow-list protects.
 
 ## Ground rules
 - NEVER fix, merge, ready-flip, self-approve, or edit a gate — escalate only.
 - File the escalation ONLY through the sanctioned desk write path; never a hand-rolled mint;
-  live writes only when armed (default `--dry-run`).
+  live writes only when armed (default `--dry-run`) via the repository-tracked config.
 - NEVER echo a withheld/opaque-red token — the escalation names the CHECK, not the detail.
+- **The forge-write identity this watchdog posts under holds NO merge authority, NO
+  review-submission authority, NO branch-protection-bypass authority, and NO
+  workflow-write/workflow-dispatch authority** — the same credential-layer control briefs
+  02/03 state, applied here too since this brief also posts autonomously.
 - Stop at `implemented`. Feature branch + draft PR only. Never commit `STATUS.md`/`FINDINGS.md`.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
@@ -119,6 +130,7 @@ facts:
 | 6 | `cd tools/autotriage && go test -run TestEscalationNamesCheckNotWithheldDetail -v` | exit 0; a leak-sweep-red escalation body names the check and contains NO withheld token/detail (public-repo safety) | check |
 | 7 | `cd tools/autotriage && go test -run TestWatchdogAbsenceIsSurfaced -v` | exit 0; asserts the watchdog run emits a failure/heartbeat signal such that its own absence is detectable out-of-band (who-watches-the-watchdog layer) | check |
 | 8 | `cd tools/autotriage && go test -run TestScheduledTriggerJoinsGateStateAndResponderRecordsThenEscalates -v` | exit 0; drives the path end to end on fixtures — a simulated scheduled-trigger invocation reads the current gate-state fixture AND the brief-02/03 action-record fixture through the same entry point the real trigger calls, and produces exactly one escalation naming the check. Fails if the trigger's entry point is stubbed, or if the join is exercised only through direct calls into the escalation function (rows 3–7) rather than through the wiring the schedule actually invokes | check +flow |
+| 9 | `cd tools/autotriage && go test -run TestEscalationBodySanitizesParsedText -v` | exit 0; an escalation for a check whose diagnostic text is CI-derived wraps that text in a fenced block with no live markdown link or directive content passed through | check |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item.
@@ -132,5 +144,7 @@ DR-auto-triage). Reviewer answers both core-control questions: (1) the single co
 brief removes is "a responder always acts"; the layers making the removal safe are
 cause-independent escalation and out-of-band watchdog-liveness — confirm both; (2) rows 4/5
 prove the lower layer catches the fault when the happy path (a responder acted) is bypassed,
-and row 7 proves the fail-safe is not itself a silent single point. Verdict + date in the
-stream README table.
+and row 7 proves the fail-safe is not itself a silent single point. Reviewer also confirms
+row 9 closes the sanitize-before-publish gap raised on security review, that the arming
+config and credential-layer ground rules are stated, and that the `.github/workflows/`
+trigger note about #1228's contract still holds. Verdict + date in the stream README table.

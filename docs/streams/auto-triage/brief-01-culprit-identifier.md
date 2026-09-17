@@ -56,9 +56,12 @@ facts:
   The brief parses text it is GIVEN; acquiring it (log fetch vs status read) is the
   responders' job, not this brief's.
 - Output schema (the seam 02/03/04 consume): `{check: <workflow/job name>, file: <path>,
-  line: <int|null>, problem: <one-line diagnostic>, class: mechanical | judgement}`. This
+  line: <int|null>, problem: <one-line diagnostic>, class: mechanical | judgement,
+  origin: {trigger: push | schedule, ref: <branch/sha the run executed against>}}`. This
   schema is the interface contract; changing it later is a shared-value change owed to a
-  follow-up brief.
+  follow-up brief. `origin` is REQUIRED on every emitted `Culprit` — it is not descriptive
+  metadata, it is the field 02/03/04 gate on before they act (see the eligibility bound,
+  below).
 - Mechanical class = deterministic, low-judgement fixes: a gofmt diff (#611/#1119), a
   stray/undeleted file reddening a tree gate, a stale string. Judgement class = a flake
   (#612), a duplicated abstraction (#536), or any red whose remedy needs a human/design
@@ -66,6 +69,15 @@ facts:
 - **leak-sweep is NEVER mechanical.** Its status carries only "withheld content detected";
   the token and file:line are withheld by design. The classifier emits `check: leak-sweep,
   file: null, class: judgement` and NEVER attempts to reconstruct the culprit from a diff.
+- **Eligibility bound (input provenance).** The identifier accepts CI output ONLY from a
+  `push`-to-`main` or `schedule`-triggered run — never from a `pull_request`-triggered run.
+  A `pull_request` run's log/diagnostic text is contributor-authored, on a contribution the
+  repository does not control, and turning that text into a `file:line` a responder will
+  later EDIT (brief 02) or into a `problem` string a responder will PUBLISH (brief 02/03) is
+  exactly the step that needs a trust boundary. A run whose `origin.trigger` is not `push`
+  or `schedule` is REFUSED wholesale — no `Culprit` is emitted for it at all, not a
+  lower-confidence one — the same all-or-nothing posture the leak-sweep rule already applies
+  to opaque content.
 - Conservative default: any red the parser cannot resolve to a concrete `file:line` + a
   known-deterministic remedy classifies `judgement`. A false `mechanical` is the expensive
   error (it later opens a wrong draft PR); a false `judgement` merely asks a human.
@@ -104,6 +116,7 @@ facts:
 | 4 | `cd tools/autotriage && go test -run TestLeakSweepNeverMechanical -v` | exit 0; the leak-sweep fixture classifies `judgement` with `file` null, and the test asserts the classifier returns non-mechanical for it — the negative-path row proving the opaque-red rule holds |
 | 5 | `cd tools/autotriage && go test -run TestClassifyFlakeFixture -v` | exit 0; the #612-style timing-flake fixture classifies `judgement` (a wrong-but-plausible classifier that called it `mechanical` fails this row) |
 | 6 | `cd tools/autotriage && go test -run TestUnresolvedDefaultsJudgement -v` | exit 0; an unparseable/unknown red defaults to `judgement`, proving the conservative default |
+| 7 | `cd tools/autotriage && go test -run TestRefusesPullRequestTriggeredRun -v` | exit 0; a well-formed, otherwise-cleanly-parseable gofmt-diagnostic input whose `origin.trigger` is `pull_request` produces NO `Culprit` at all — proves the identifier refuses on PROVENANCE, independent of how cleanly the content parses (a classifier that trusted content over origin fails this row) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
@@ -112,6 +125,8 @@ facts:
 
 ## Review
 Gate: model (read-only classifier; no autonomous write). Reviewer confirms the seam schema
-is stable enough for 02/03/04 to build on, and that Verify rows 4 and 6 (leak-sweep never
-mechanical; unresolved defaults to judgement) actually discriminate — a classifier that
-over-claims `mechanical` must fail them. Verdict + date in the stream README table.
+is stable enough for 02/03/04 to build on, that it carries `origin` as a required field, and
+that Verify rows 4, 6 and 7 (leak-sweep never mechanical; unresolved defaults to judgement;
+a `pull_request`-triggered run is refused wholesale) actually discriminate — a classifier
+that over-claims `mechanical`, or that trusts content over provenance, must fail them.
+Verdict + date in the stream README table.

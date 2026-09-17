@@ -49,10 +49,12 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 
 single-point-of-failure: this responder's routing message is the one artifact a human acts
 on for a judgement/opaque red — but it takes no fixing action, so its worst failure is a
-misleading recommendation (a closed/re-labelled issue), not a bad change to `main`. Two
+misleading recommendation (a closed/re-labelled issue), not a bad change to `main`. Three
 layers stand behind the single control: the responder NEVER drafts a fix or merges (it only
-files + routes), and the opaque-red path is content-blind by construction (it routes
-leak-sweep by CHECK identity and never reads or echoes the withheld detail).
+files + routes), the opaque-red path is content-blind by construction (it routes leak-sweep
+by CHECK identity and never reads or echoes the withheld detail), and the forge-write
+identity itself holds no merge/review/bypass/workflow authority (credential-layer control,
+independent of both).
 
 files:
 - `tools/autotriage/` — the judgement router (over brief 01's `Classify`), plus tests.
@@ -61,7 +63,11 @@ files:
 
 facts:
 - Input: a `Culprit` from brief 01 with `class == judgement`, OR any culprit brief 02
-  refused (non-mechanical, leak-sweep, gate-config).
+  refused (non-mechanical, leak-sweep, ineligible origin, path-refused, remedy-refused).
+- **Independent eligibility check.** Same posture as brief 02: this router does not trust
+  brief 01's `origin` field merely because it is present — it refuses (files nothing) any
+  Culprit whose `origin.trigger` is not in `{push, schedule}` or whose `origin` is absent,
+  independent of brief 01's own refusal and of whatever routed it here from brief 02.
 - Output: file a bug issue naming the check + `file:line` (when known) + the problem, and
   attach a RECOMMENDED DEFAULT next-step — e.g. a flake → "re-run once; if it re-fails,
   quarantine the test and file a fix brief"; a duplication → "route to a consolidation
@@ -70,10 +76,22 @@ facts:
   names NO token, and echoes NO file content — it routes by check identity only. The
   withheld detail lives in a private channel a human reads; this responder never reproduces
   it on a public surface.
+- **Parsed text is sanitized before it is published, for every routed issue** — not only the
+  leak-sweep path. The `problem` diagnostic is truncated to a bounded length, wrapped in a
+  fenced code block, and rendered inert (no live markdown links, no directive-shaped
+  content) before it enters the issue body: contributor/CI-derived text is DATA quoted from
+  a log, never live content in the artifact.
 - Every routed issue carries a default — "needs a human" with no recommended action is a
   defect, not a route. The default is a RECOMMENDATION a human overrides, never an action
   the responder takes.
 - `--dry-run` prints the issue body + the routing recommendation and writes nothing.
+- **Arming mechanism.** Same repository-tracked config surface brief 02 uses (never an
+  environment variable or self-settable secret) — the identical config path brief 02's
+  refused-path allow-list protects; this router has no file-edit surface of its own to
+  refuse over, but never treats its own arming state as something it may set.
+- **Dedupe is not an abuse bound.** Independent of the `check`+`file:line` dedupe key, this
+  responder enforces an absolute ceiling on its own open filed issues and a per-window rate;
+  hitting either fails CLOSED — no further filing, escalate instead (brief 04's path).
 - Hard bound: this responder NEVER drafts a fix, opens a non-issue PR, merges, or flips
   ready. It files and routes; that is all.
 
@@ -82,18 +100,27 @@ facts:
 - NEVER echo a withheld/opaque-red token or file content onto any surface (public repo).
 - File issues ONLY through the sanctioned desk write path; never a hand-rolled mint; live
   writes only when armed (default `--dry-run`).
+- **The forge-write identity this responder posts under holds NO merge authority, NO
+  review-submission authority, NO branch-protection-bypass authority, and NO
+  workflow-write/workflow-dispatch authority** — a credential-layer control, independent of
+  the code-level never-drafts/never-merges guarantees, and it survives a code bug in them.
 - Stop at `implemented`. Feature branch + draft PR only. Never commit `STATUS.md`/`FINDINGS.md`.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
 1. Build the judgement router over brief 01's `Classify`: on `class == judgement` (or a
-   brief-02 refusal), compose the issue body and a recommended-default next-step.
+   brief-02 refusal), independently check `origin` eligibility, then compose the issue body
+   and a recommended-default next-step.
 2. Implement the opaque-red (leak-sweep) path: route by check identity, `file: null`, no
    token and no file content in the body; recommend the private-log path for a human.
-3. Enforce "every route carries a default" — a route with no recommended next-step is a
+3. Sanitize parsed CI text (truncate, fence, render inert) in EVERY routed body, not only
+   the leak-sweep path.
+4. Enforce "every route carries a default" — a route with no recommended next-step is a
    hard error in the router, not an emitted issue.
-4. Implement `--dry-run` (print, write nothing) as default; live writes only when armed.
-5. Assert in tests that no code path drafts a fix, merges, or flips ready.
+5. Implement `--dry-run` (print, write nothing) as default; live writes only when armed via
+   the repository-tracked config.
+6. Implement the open-issue ceiling and per-window rate that fail closed to escalation.
+7. Assert in tests that no code path drafts a fix, merges, or flips ready.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
@@ -104,6 +131,9 @@ facts:
 | 4 | `cd tools/autotriage && go test -run TestNeverDraftsFixNeverMerges -v` | exit 0; asserts NO code path drafts a fix, merges, or flips ready (mutation/negative row) |
 | 5 | `cd tools/autotriage && go test -run TestLeakSweepRoutedWithoutLeakingDetail -v` | exit 0; the leak-sweep fixture routes with `file` null and a body containing NO token and NO fixture file content — the public-repo safety row, proven by asserting the withheld synthetic marker is absent from the routed body |
 | 6 | `cd tools/autotriage && go test -run TestRouteWithoutDefaultIsError -v` | exit 0; a route constructed with no recommended default is rejected by the router (proves "every route carries a default") |
+| 7 | `cd tools/autotriage && go test -run TestRefusesIneligibleOrigin -v` | exit 0; a Culprit whose `origin.trigger` is `pull_request` (or `origin` absent) is refused and files nothing — independent of brief 01's or brief 02's own refusal |
+| 8 | `cd tools/autotriage && go test -run TestRoutedBodySanitizesParsedText -v` | exit 0; a NON-leak-sweep judgement culprit's routed body wraps the parsed `problem` text in a fenced block with no live markdown link or directive content passed through — the sanitize rule applies beyond the opaque-red path |
+| 9 | `cd tools/autotriage && go test -run TestCeilingFailsClosedToEscalation -v` | exit 0; once the open-issue ceiling or the per-window rate is hit, the router files NOTHING further and instead emits the escalation signal brief 04 observes |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item.
@@ -117,4 +147,6 @@ DR-auto-triage). Reviewer answers both core-control questions: (1) the single co
 routing message; the layers making it acceptable are route-only (no fix/merge) and
 content-blind opaque-red handling — confirm both; (2) row 5 proves the lower, content-blind
 layer holds with the happy path bypassed (a leak-sweep red routes with zero withheld detail
-on a public surface). Verdict + date in the stream README table.
+on a public surface). Reviewer also confirms rows 7–9 close the input-authorization,
+general-sanitize and abuse-ceiling gaps raised on security review, and that the
+credential-layer ground rule is stated. Verdict + date in the stream README table.
