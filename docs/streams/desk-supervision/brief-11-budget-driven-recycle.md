@@ -43,11 +43,11 @@ exec-tier-why: >-
 decision-trigger: creation
 consumers:
   - "tools/desk/internal/loopengine/recyclepolicy.go (new) RecyclePolicy + DefaultRecyclePolicy: fixed-here (the threshold policy — context_pct max, session-age max — as engine-internal Config data, the liveness.go pattern)"
-  - "tools/desk/cmd/desksupervise/recycle.go (new): fixed-here (the recycle-eligibility evaluator, read from the resource block each tick, classifying RECYCLE-ELIGIBLE / GRACE / HARD-RECYCLE)"
-  - "schemas/desksupervise-status-v1.json: fixed-here (each claim gains a `recycle` object {state, reason, since} so the decision is visible in the snapshot the console reads)"
+  - "tools/desk/cmd/desksupervise/recycle.go (new): fixed-here (the recycle evaluator, read from the resource block each tick, setting the claim's `recycle` to null / GRACE / HARD-RECYCLE)"
+  - "schemas/desksupervise-status-v1.json: fixed-here (each claim gains a `recycle` field, `object | null` — null or {state, reason, since} — so the decision is visible in the snapshot the console reads)"
   - "tools/desk/hooks.example.yaml (before_remove / after_run): fixed-here (the recycle fires the run-end hooks from desk-supervision/04; the graceful path is a hook-mediated exit)"
   - "the recycle DECISION consumer (deskd, the console): out-of-scope (a private consumer respawns the fresh session; the public contract is the threshold policy + the graceful-exit protocol + the snapshot `recycle` field it reads)"
-  - "plugins/assay/skills/worker-desk/SKILL.md (the on-budget graceful-exit step): follow-up desk-supervision/11 (the skill body gains 'on RECYCLE-ELIGIBLE, write the hand-off and exit' once the protocol is proven in the implementation PR)"
+  - "plugins/assay/skills/worker-desk/SKILL.md (the on-budget graceful-exit step): follow-up desk-supervision/11 (the skill body gains 'on recycle.state == GRACE, write the hand-off and exit' once the protocol is proven in the implementation PR)"
 version: 1
 id: 3fa23219-219a-4f14-bf58-9e83ea4a03a1
 ---
@@ -68,10 +68,10 @@ files:
   shape; a nil policy disables recycle entirely, strictly additive).
 - `tools/desk/internal/loopengine/recyclepolicy_test.go` (new).
 - `tools/desk/cmd/desksupervise/recycle.go` (new) — the evaluator: read the holder session's
-  `resource` block, classify against the policy, emit `RECYCLE-ELIGIBLE` / `GRACE` /
-  `HARD-RECYCLE` with a reason; integrated into `tick`/`status`.
+  `resource` block, classify against the policy, set `recycle` to `null` / `{state: GRACE}` /
+  `{state: HARD-RECYCLE}` with a reason; integrated into `tick`/`status`.
 - `tools/desk/cmd/desksupervise/recycle_test.go` (new).
-- `schemas/desksupervise-status-v1.json` — each claim gains a `recycle` object.
+- `schemas/desksupervise-status-v1.json` — each claim gains a `recycle` field (`object | null`).
 - `tools/desk/hooks.example.yaml` — a documented `before_remove` note that the graceful path
   is hook-mediated.
 - `tools/desk/cmd/desksupervise/testdata/` — recycle fixtures.
@@ -85,24 +85,29 @@ be silently swallowed. Behind that: two independent recycle layers (below), whic
 different reasons in different components.
 
 facts:
-- **Trigger.** A claim is `RECYCLE-ELIGIBLE` when its holder session's `resource` block reports
-  `context_pct_used >= ContextPctMax` (default **50%**, tunable) OR `session_age_seconds >=
-  SessionAgeMax` (default configurable; ships as a conservative wall value in
-  `DefaultRecyclePolicy()`), whichever fires first. The reason names which threshold tripped.
+- **The `recycle` field is `object | null`** (the shape brief 10 uses for `resource`): `null`
+  when there is no recycle signal, else an object `{state, reason, since}` whose `state` is one
+  of exactly `GRACE` or `HARD-RECYCLE`. `GRACE` and `HARD-RECYCLE` are the ONLY status words in
+  this brief — there is no separate `RECYCLE-ELIGIBLE` value; "eligible for recycle" is exactly
+  "`recycle.state == GRACE`".
+- **Trigger.** A claim's `recycle.state` is `GRACE` when its holder session's `resource` block
+  reports `context_pct_used >= ContextPctMax` (default **50%**, tunable) OR `session_age_seconds
+  >= SessionAgeMax` (default configurable; ships as a conservative wall value in
+  `DefaultRecyclePolicy()`), whichever fires first. The `reason` names which threshold tripped.
 - **could-not-check is never over-budget.** If `context_pct_used` and `session_age_seconds` are
-  both `could-not-check`/`null`, the claim is `recycle: null` — no decision. This mirrors the
+  both `could-not-check`/`null`, the claim's `recycle` is `null` — no decision. This mirrors the
   observer's "could-not-check is never no-life" rule on the derived plane. A recycle is NEVER
   armed on a blind vital.
 - **A recycle is a GRACEFUL retirement, not a reclaim.** The subject is HEALTHY. The sequence:
-  (1) the session is signalled RECYCLE-ELIGIBLE; (2) it writes its hand-off to durable state
+  (1) the claim enters `GRACE`; (2) the session writes its hand-off to durable state
   (a drive-plan entry / standing-note / `deskfile`), so the next session resumes from record,
   not memory; (3) it exits cleanly; (4) it is respawned fresh and resumes. Contrast
   desk-supervision/01-03, which *reclaim* a *dead* run reactively — no hand-off, because the
   subject is already gone.
 - **Two INDEPENDENT layers** (defense in depth, rule 10):
-  - *Layer A — cooperative graceful exit.* The session, seeing RECYCLE-ELIGIBLE, refuses to
-    pick up further work, writes its hand-off, and exits. This layer fails if the session is too
-    degraded to cooperate.
+  - *Layer A — cooperative graceful exit.* The session, seeing its claim enter `GRACE`, refuses
+    to pick up further work, writes its hand-off, and exits. This layer fails if the session is
+    too degraded to cooperate.
   - *Layer B — the hard-recycle backstop.* When a session marked `GRACE` has not exited within
     the grace window, the observer arms the per-run stop of desk-supervision/02
     (`STOP.run.<key>` + the desk-window stop) — the SAME involuntary stop the derived plane
@@ -111,10 +116,10 @@ facts:
     signal) in a different component (the stop flag + harness stop, not the session's own logic).
   The independence test holds: A is the session stopping itself; B is the supervisor stopping
   the session. Bypassing A (the session never cooperates) does not bypass B.
-- **State machine on the claim's `recycle` field:** `null` (no signal) → `GRACE` (eligible,
-  hand-off requested, grace window running) → cleared on clean exit, OR `HARD-RECYCLE` (grace
-  window elapsed, backstop armed). Idempotent by marker: a claim already in `GRACE` is not
-  re-signalled; a claim already `HARD-RECYCLE` does not re-arm the stop.
+- **State machine on the claim's `recycle` field:** `null` (no signal) → `{state: GRACE}`
+  (over budget, hand-off requested, grace window running) → back to `null` on clean exit, OR
+  `{state: HARD-RECYCLE}` (grace window elapsed, backstop armed). Idempotent by marker: a claim
+  already in `GRACE` is not re-signalled; a claim already `HARD-RECYCLE` does not re-arm the stop.
 - **The decision consumer is private.** Respawning the fresh session is deskd's job (the
   console); the public contract is the policy, the protocol, and the snapshot `recycle` field.
   This brief ships the classifier and the backstop, not the respawn.
@@ -163,13 +168,15 @@ autonomous stop of healthy work; it does not proceed on a timeout).
 2. `recycle.go`: wire the evaluator into the observer tick and `status`; emit the classification
    per claim; on `GRACE`→grace-window-elapsed, escalate to `HARD-RECYCLE` by arming the
    desk-supervision/02 stop and releasing the claim; idempotent by marker.
-3. Schema: add the required `recycle` object `{state: null|GRACE|HARD-RECYCLE, reason, since}`
-   per claim; JSON validates.
+3. Schema: add the required `recycle` field per claim, typed `object | null` (`["object",
+   "null"]`) — `null` when no recycle signal, else `{state, reason, since}` with `state` an enum
+   of exactly `["GRACE", "HARD-RECYCLE"]`, `additionalProperties: false`. JSON validates.
 4. Hooks note: the graceful path fires `after_run`/`before_remove` (desk-supervision/04).
-5. Tests: context-over-threshold ⇒ RECYCLE-ELIGIBLE reason=context-budget; age-over-threshold ⇒
-   reason=age-budget; healthy under-budget ⇒ no recycle; all-blind vitals ⇒ no recycle (the
-   safety row); a `GRACE` claim past its window ⇒ HARD-RECYCLE with the stop armed (the
-   backstop / negative-path row); idempotency (a second tick does not re-arm).
+5. Tests: context-over-threshold ⇒ `recycle.state == GRACE`, reason=context-budget;
+   age-over-threshold ⇒ reason=age-budget; healthy under-budget ⇒ `recycle == null`; all-blind
+   vitals ⇒ `recycle == null` (the safety row); a `GRACE` claim past its window ⇒ HARD-RECYCLE
+   with the stop armed (the backstop / negative-path row); idempotency (a second tick does not
+   re-arm).
 6. Docs page: threshold policy + graceful-exit protocol.
 
 ## Verify (executable — no prose-only DoD items)
@@ -183,7 +190,7 @@ autonomous stop of healthy work; it does not proceed on a timeout).
 | 6 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestGraceWindowElapsedHardRecyclesAndArmsStop -v -count=1` | exit 0; output contains `--- PASS: TestGraceWindowElapsedHardRecyclesAndArmsStop` |
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestRecycleIsIdempotentAcrossTicks -v -count=1` | exit 0; output contains `--- PASS: TestRecycleIsIdempotentAcrossTicks` |
 | 8 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestStatusJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestStatusJSONValidatesAgainstSchema` |
-| 9 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); item=s["properties"]["claims"]["items"]; assert "recycle" in item["properties"]; print("ok")'` | exit 0; output is `ok` |
+| 9 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); r=s["properties"]["claims"]["items"]["properties"]["recycle"]; assert "null" in r["type"], "recycle must allow null"; print("ok")'` | exit 0; output is `ok` (the `recycle` field is `object | null`, so a healthy worker's `null` validates) |
 | 10 | check | `statusgen --root . --consumers --brief desk-supervision/11` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
 
 Pre-mortem → detection: "a blind/missing vital is read as 'over budget' and a live worker is

@@ -155,7 +155,11 @@ the operator's own credentials; it does not proceed on a timeout).
    [--json]` reads N cells' status.json (or beacons) and emits the document; an unreadable cell
    renders `could-not-check` and appears in `blind_cells`, never dropped. Table + JSON; JSON
    validates against the schema.
-4. **Tests**: house-cell shell test with `DESKD=1` (deskd required + supervising); aggregate over
+4. **Tests**: add a `DESKD=1` case INSIDE `tools/cellctl/tests/house-cell.test.sh`, alongside the existing
+   `DESKD=0` case (which asserts the opposite — n/a, no deskd), printing an identifiable PASS
+   line for the new case (e.g. `PASS: DESKD=1 house cell requires + supervises a local deskd`);
+   the DESKD=1 case asserts `check_house`'s OBSERVED OUTPUT proves the deskd (up + supervising),
+   not the DESKD=0 `n/a — not required` line. Aggregate over
    3 cells where one is unreadable ⇒ that cell is `could-not-check` and in `blind_cells`, the
    other two roll up; the roll-up counts match the per-cell snapshots; JSON validates.
 5. **Docs page**: the local deskd host (console callout) + the aggregate contract; state the
@@ -164,7 +168,7 @@ the operator's own credentials; it does not proceed on a timeout).
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `cd tools/cellctl && DESKD=1 bash tests/house-cell.test.sh` | exit 0; output contains `PASS` and `deskd` |
+| 1 | check | `cd tools/cellctl && bash tests/house-cell.test.sh` | exit 0; output contains a `PASS` line for the new `DESKD=1` case (e.g. `PASS: DESKD=1 house cell requires + supervises a local deskd`) — the whole suite, incl. the existing `DESKD=0` case, stays green |
 | 2 | check +flow | `cd tools/desk && GOWORK=off go build ./cmd/desksupervise && ./desksupervise aggregate --json --cells-fixture cmd/desksupervise/testdata/cells \| python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["schema"], len(d["cells"]))'` | exit 0; output is `desksupervise-aggregate-v1 3` |
 | 3 | check +dereference | `cd tools/desk && ./desksupervise aggregate --json --cells-fixture cmd/desksupervise/testdata/cells \| python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["fleet"]["blind_cells"])'` | exit 0; output contains `example-cell-c` (the unreadable cell is named blind, not dropped) |
 | 4 | check +dereference | `cd tools/desk && ./desksupervise aggregate --json --cells-fixture cmd/desksupervise/testdata/cells \| python3 -c 'import json,sys; d=json.load(sys.stdin); c=[x for x in d["cells"] if x["cell"]=="example-cell-c"][0]; print(c["status"])'` | exit 0; output is `could-not-check` |
@@ -172,7 +176,7 @@ the operator's own credentials; it does not proceed on a timeout).
 | 6 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestAggregateJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestAggregateJSONValidatesAgainstSchema` |
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestFleetRollupMatchesPerCellSnapshots -v -count=1` | exit 0; output contains `--- PASS: TestFleetRollupMatchesPerCellSnapshots` |
 | 8 | check | `test -f schemas/desksupervise-aggregate-v1.json && python3 -c 'import json; s=json.load(open("schemas/desksupervise-aggregate-v1.json")); assert s["properties"]["fleet"]["properties"]["blind_cells"]; print("ok")'` | exit 0; output is `ok` |
-| 9 | check | `grep -n 'DESKD' tools/cellctl/cellctl \| grep -qiE -e require -e stand && echo present` | output contains `present` |
+| 9 | check | `cd tools/cellctl && bash tests/house-cell.test.sh 2>&1 \| grep -cF 'deskd up + supervising'` | output is `1` or more — a RUNTIME line from the `DESKD=1` case's `check_house` proves the deskd is up + supervising (observed output, not the `DESKD=0` `n/a — not required` line, and not a grep of a source comment) |
 | 10 | check | `statusgen --root . --consumers --brief desk-supervision/12` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
 
 Pre-mortem → detection: "an unreachable cell is silently dropped and the fleet looks all-green"
