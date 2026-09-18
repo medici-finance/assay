@@ -1096,6 +1096,41 @@ func TestHasVerifyPassRefusesHeldEntry(t *testing.T) {
 			"**VERIFY: PASS** — row 2 deferred per alias#99 — row 5 HELD, no runner.",
 			false,
 		},
+		{
+			"hyphen-separated rows: a deferral clause naming one row still does not launder a hyphen-joined, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99 - row 5 HELD, no runner.",
+			false,
+		},
+		{
+			"colon-separated rows: a deferral clause naming one row still does not launder a colon-joined, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99: row 5 HELD, no runner.",
+			false,
+		},
+		{
+			"parenthetical rows: a deferral clause naming one row still does not launder a parenthesised, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99 (row 5 HELD, no runner).",
+			false,
+		},
+		{
+			"ampersand-separated rows: a deferral clause naming one row still does not launder an ampersand-joined, undeferred HELD row",
+			"**VERIFY: PASS** — row 2 deferred per alias#99 & row 5 HELD, no runner.",
+			false,
+		},
+		{
+			"a deferral clause in the next SENTENCE, naming no row of its own, clears the one row named before it",
+			"**VERIFY: PASS** — row 11 could-not-check. Deferred per alias#99.",
+			true,
+		},
+		{
+			"a deferral clause in a later sentence still clears its own row when no OTHER row is named in between",
+			"**VERIFY: PASS (10/11 rows green)** — row 11 is HELD: runner offline. Deferred per alias#99 until the runner returns.",
+			true,
+		},
+		{
+			"no row number anywhere in the entry: a HELD token refuses regardless of an unscoped deferral clause elsewhere",
+			"**VERIFY: PASS** — the run is HELD pending review. Deferred per alias#99.",
+			false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -217,26 +217,17 @@ var (
 	verifyDeferredClauseRe = regexp.MustCompile(`(?i)deferred per [a-z]+#\d+`)
 	// blankLineRe splits an Evidence body into its append-only log entries.
 	blankLineRe = regexp.MustCompile(`\r?\n[ \t]*\r?\n`)
-	// verifyClauseSplitRe splits a single Evidence entry into row-scoped
-	// clauses, on a sentence boundary (". "/"! "/"? " followed by
-	// whitespace), a comma/semicolon boundary (", "/"; " followed by
-	// whitespace), an em/en-dash boundary (" — "/" – ") or a newline.
-	// entryIsHeld checks HELD/could-not-check and the deferral clause WITHIN
-	// the same clause, so a deferral naming one row cannot launder a
-	// different, undeferred HELD row in the same entry (an entry-wide match
-	// used to let it). A MISSED clause boundary is the FAIL-OPEN direction,
-	// not the conservative one: it merges a deferral clause with an
-	// undeferred HELD row into one clause, and entryIsHeld then sees a
-	// deferral clause covering the hold. That is exactly what happened when
-	// the only recognised boundaries were sentence-ending punctuation: a row
-	// separated from its deferral by a comma, a semicolon, or an em dash
-	// (all idiomatic here — see
-	// testdata/autoflip/docs/streams/af/brief-08-model-held-pass.md, which
-	// separates two rows with a semicolon) stayed in one clause and the
-	// laundering this split exists to prevent returned unchanged. An EXTRA
-	// boundary is the conservative one, which is why the split list below is
-	// deliberately broad rather than narrow.
-	verifyClauseSplitRe = regexp.MustCompile(`(?:\r?\n)+|[.!?,;]\s+|\s+[—–]\s+`)
+	// verifyRowMentionRe is the structural marker entryIsHeld scopes on: an
+	// explicit "row N" reference. Every real HELD/could-not-check/
+	// deferred-per entry in this repo's own corpus names the row it is
+	// about — "row 11 could-not-check" in
+	// docs/streams/forge-neutral/brief-01-forge-resolution-contract.md,
+	// "row 4 is HELD" in
+	// testdata/autoflip/docs/streams/af/brief-08-model-held-pass.md — so
+	// this is not a new convention entryIsHeld invents, only the one it now
+	// anchors on directly instead of trying to infer clause boundaries from
+	// punctuation.
+	verifyRowMentionRe = regexp.MustCompile(`(?i)\brow\s+\d+\b`)
 )
 
 // verifyEvidenceEntries splits an Evidence body into its blank-line-separated
@@ -253,22 +244,61 @@ func verifyEvidenceEntries(evidence string) []string {
 	return entries
 }
 
-// entryIsHeld reports whether entry carries a HELD or could-not-check token,
-// on a ROW (sentence-scoped clause, verifyClauseSplitRe) that same clause
-// does not also mark deferred by name (verifyDeferredClauseRe). Row-scoped
-// rather than entry-scoped: a deferral clause naming one row ("row 2
-// deferred per assay#99") must not clear the hold on a different, undeferred
-// row in the same entry ("row 5 is HELD ... not deferred by anyone") — an
-// entry-wide match let exactly that fail open.
+// entryIsHeld reports whether entry carries a HELD or could-not-check token
+// on a row that a deferral clause (verifyDeferredClauseRe) does not also
+// name, ANCHORED ON ROW NUMBER, not on inferred clause punctuation.
+//
+// Two earlier versions of this function scoped a deferral to its row by
+// splitting the entry into clauses on punctuation — first sentence-ending
+// punctuation alone, then a broadened list adding commas, semicolons and em
+// dashes — and each version was reopened by a separator the list had not
+// enumerated yet: a plain hyphen, a colon, a parenthetical aside, an
+// ampersand each merge a deferred row's clause with a different, undeferred
+// HELD row's clause into the splitter's idea of "one clause", which is
+// exactly the laundering this function exists to prevent (an undeferred HELD
+// row treated as covered by a deferral that never named it). Which
+// characters split a clause is not decidable by an enumerated punctuation
+// whitelist over free-text Evidence prose — the failure mode reproduces
+// again with the next mark of punctuation a real entry happens to use.
+//
+// Every real HELD/could-not-check/deferred-per entry in this repo's own
+// corpus names the row it is about (verifyRowMentionRe's doc comment cites
+// two). This scopes on THAT structural marker instead: the entry is split
+// into row-scoped segments at each "row N" mention, and a HELD/
+// could-not-check token is refused unless a deferred-per clause names that
+// SAME row's segment — regardless of what punctuation, if any, separates
+// them. This is immune to the punctuation-whitelist failure mode by
+// construction: nothing here enumerates separators.
+//
+// An entry with no "row N" mention anywhere has no structure to scope a
+// deferral against, so it fails CLOSED rather than open: any
+// HELD/could-not-check token in such an entry refuses it outright, and
+// deferred-per is not consulted at all. This is strictly stricter than
+// every prior version, never looser — an un-numbered entry could only ever
+// have its hold cleared by the punctuation-scoped code when the deferral
+// clause happened to land in the same inferred clause, and now it is never
+// cleared without an explicit row number to scope the deferral to.
 func entryIsHeld(entry string) bool {
-	for _, clause := range verifyClauseSplitRe.Split(entry, -1) {
-		if strings.TrimSpace(clause) == "" {
+	locs := verifyRowMentionRe.FindAllStringIndex(entry, -1)
+	if locs == nil {
+		return verifyHeldRe.MatchString(entry) || verifyCouldNotCheckRe.MatchString(entry)
+	}
+	segments := make([]string, 0, len(locs)+1)
+	if locs[0][0] > 0 {
+		segments = append(segments, entry[:locs[0][0]])
+	}
+	for i, loc := range locs {
+		end := len(entry)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		segments = append(segments, entry[loc[0]:end])
+	}
+	for _, seg := range segments {
+		if !verifyHeldRe.MatchString(seg) && !verifyCouldNotCheckRe.MatchString(seg) {
 			continue
 		}
-		if !verifyHeldRe.MatchString(clause) && !verifyCouldNotCheckRe.MatchString(clause) {
-			continue
-		}
-		if !verifyDeferredClauseRe.MatchString(clause) {
+		if !verifyDeferredClauseRe.MatchString(seg) {
 			return true
 		}
 	}

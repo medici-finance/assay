@@ -9,22 +9,31 @@
   `BLOCKED` never matches.
 - A `**VERIFY: PASS**` entry is no longer treated as a flip signal — by the verify-gate card
   or the `gate: model` autoflip — when its own Evidence entry also reads `HELD` or
-  `could-not-check` on a row that is not explicitly deferred by name in the SAME ROW-SCOPED
-  CLAUSE (sentence/line — see Fixed, below) as that row.
+  `could-not-check` on a row that is not explicitly deferred by name in the SAME ROW-NUMBERED
+  SEGMENT (see Fixed, below) as that row.
 
 ### Fixed
 - Added a named regression test for the pipeline-exit worst-stage scoring fix (the shell
   already ran with `bash -o pipefail`; the new test pins the exact reported command shape).
-- The HELD/could-not-check-vs-deferred check is now row-scoped (per sentence/line, split on
-  `.`/`!`/`?`/`,`/`;`/em-dash/en-dash plus whitespace, or a newline) instead of entry-scoped:
-  a deferral clause naming one row no longer clears the hold on a different, undeferred row
-  in the same Evidence entry, including when the two rows are separated only by a comma,
-  semicolon, or dash rather than sentence-ending punctuation.
-  **Convention change for Evidence authors:** a deferral clause must now sit in the SAME
-  clause as the row it defers — writing the deferral in a later sentence of the same entry
-  (e.g. `row 11 could-not-check. Deferred per alias#99.`) is refused where it was previously
-  accepted; write it in the same clause instead (`row 11 could-not-check, deferred per
-  alias#99` or `row 11 is HELD (deferred per alias#99)`).
+- The HELD/could-not-check-vs-deferred check is now ROW-NUMBER-ANCHORED instead of
+  entry-scoped or punctuation-clause-scoped: a deferral clause naming one row no longer
+  clears the hold on a different, undeferred row in the same Evidence entry, no matter what
+  punctuation (or none) separates them. Two earlier shapes of this fix scoped the check by
+  splitting the entry into clauses on an enumerated list of punctuation, and each was
+  reopened by a separator the list had not enumerated yet (first a plain sentence boundary
+  missed comma/semicolon/dash-separated rows; then that broadened list still missed a plain
+  hyphen, a colon, a parenthetical aside, an ampersand). The check now anchors on the `row N`
+  reference every real HELD/could-not-check/deferred-per entry in this repo's own corpus
+  already names, splitting the entry into row-scoped segments at each `row N` mention instead
+  of guessing where prose punctuation ends one row's clause and starts the next — closing the
+  laundering class itself rather than the one separator most recently demonstrated.
+  **No convention change for Evidence authors** (this corrects the prior fix's narrowing): a
+  deferral clause deferring the one row named before it clears the hold whether it sits in the
+  same clause (`row 11 is HELD (deferred per alias#99)`) or a later sentence of the same entry
+  (`row 11 could-not-check. Deferred per alias#99.`) — the ratified convention is unchanged
+  either way. An entry with no `row N` mention at all has no structure to scope a deferral
+  against and now fails CLOSED: any `HELD`/`could-not-check` token in it refuses the entry
+  outright, regardless of any deferral clause elsewhere in it.
 
 ### Changed
 - `spec/lifecycle-v1.md` §2.4's "no execution witness" sentence is now scoped to a closure
