@@ -75,7 +75,7 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `docker build -f containers/base/Dockerfile -t assay-desk-base:dev .` (run from the repo root — the build context must be the repo root, not `containers/base`, because the Dockerfile COPYs `plugins/assay/` from context root) | exit 0 |
+| 1 | `docker build -f containers/base/Dockerfile -t assay-desk-base:dev .` | exit 0 — run from the repo root (context must be the repo root, not `containers/base`, because the Dockerfile COPYs `plugins/assay/` from context root) |
 | 2 | `docker run --rm assay-desk-base:dev sh -c 'go version && python3 --version && git --version && gh --version && statusgen --version && deskboard --version'` | exit 0; each tool prints a version |
 | 3 | `docker run --rm assay-desk-base:dev sh -c 'ls /opt/assay/plugin/skills'` | exit 0; output contains `the-desk`, `worker-desk`, `intake-desk`, `pr-review-desk`, `verify-desk` |
 | 4 | `docker inspect --format '{{json .Config.Volumes}}' assay-desk-base:dev` | output contains `/work` |
