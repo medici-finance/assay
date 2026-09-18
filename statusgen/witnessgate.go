@@ -53,7 +53,7 @@ import (
 
 // witnessAbsenceGateChecks reports briefs whose `verified`/`done` cell is a
 // closure THIS BRANCH made with NO execution witness at all for one or more
-// Verify rows (verify-integrity/02).
+// Verify rows.
 //
 // A THIRD CASE, distinct from the two above. witnessNotices (verifyrun.go) is
 // the roll-up for the INHERITED corpus — every brief already closed, on main,
@@ -117,7 +117,7 @@ func witnessAbsenceGateChecks(root string, streams []*Stream) (problems, notices
 				continue
 			}
 			problems = append(problems, fmt.Sprintf(
-				"%s: cannot close as %s — this branch's own closure carries no EXECUTION WITNESS in Evidence for Verify row(s) %s. Run `statusgen verifyrun --brief %s` and commit the resulting witness table before closing, or set the Status cell back to `implemented` — a NEW closure must carry the witness it asserts (verify-integrity/02)",
+				"%s: cannot close as %s — this branch's own closure carries no EXECUTION WITNESS in Evidence for Verify row(s) %s. Run `statusgen verifyrun --brief %s` and commit the resulting witness table before closing, or set the Status cell back to `implemented` — a NEW closure must carry the witness it asserts",
 				id, br.Status, strings.Join(missing, ", "), relDisplayPath(s.Root, art.Path)))
 		}
 	}

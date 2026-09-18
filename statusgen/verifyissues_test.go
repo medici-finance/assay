@@ -995,7 +995,7 @@ func TestHasVerifyPass(t *testing.T) {
 	}
 }
 
-// TestVerifyMarkerRegex pins the at#2420-ratified marker regex
+// TestVerifyMarkerRegex pins the ratified marker regex
 // (verifyVerdictBoldRe / hasVerifyPass): a bold VERIFY verdict token followed
 // by arbitrary prose up to the closing `**` matches, but the verdict token
 // itself is anchored to PASS|FAIL — BLOCKED (or any other spelling) never

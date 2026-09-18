@@ -80,7 +80,7 @@ table is **self-reported**. A conforming implementation MUST NOT describe `verif
 proof of execution. See `spec/README.md` § "Known divergences from the reference
 implementation".
 
-**Date-bounded successor (verify-integrity/02).** The "no execution witness" sentence
+**Date-bounded successor.** The "no execution witness" sentence
 above describes every closure made **before statusgen v1.0.13**. From that pin,
 `statusgen verifyrun` writes the witness (command, exit code, output hash, date,
 runner) into the Evidence section, and a `verified`/`done` transition made on a branch

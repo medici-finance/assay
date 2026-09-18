@@ -200,19 +200,18 @@ func TestRunVerifyCommandPipefailSurfacesLeftHandFailure(t *testing.T) {
 	}
 }
 
-// TestVerifyrunPipelineExit pins the at#1645 fixture directly: a piped Verify
-// row shaped `<bad cmd> 2>/dev/null | head -c1` must score `fail`, not
-// `pass exit=0` on the trailing reader's exit — head -c1 reads one byte and
-// exits 0 regardless of whether the left-hand command ever produced anything.
-// TestRunVerifyCommandPipefailSurfacesLeftHandFailure above already pins the
-// general `false | cat` shape; this row adds the EXACT at#1645 command (the
-// stderr redirect plus a byte-count reader) as its own fixture, per
-// verify-integrity/02 task 2.
+// TestVerifyrunPipelineExit pins a measured pipe-masked false-clean directly:
+// a piped Verify row shaped `<bad cmd> 2>/dev/null | head -c1` must score
+// `fail`, not `pass exit=0` on the trailing reader's exit — head -c1 reads
+// one byte and exits 0 regardless of whether the left-hand command ever
+// produced anything. TestRunVerifyCommandPipefailSurfacesLeftHandFailure
+// above already pins the general `false | cat` shape; this row adds the
+// exact stderr-redirect-plus-byte-count-reader command as its own fixture.
 func TestVerifyrunPipelineExit(t *testing.T) {
 	root := t.TempDir()
 	got := runVerifyCommand(root, `false 2>/dev/null \| head -c1`, 30*time.Second)
 	if got.couldNotRun || got.exit == 0 {
-		t.Errorf("at#1645 fixture `false 2>/dev/null | head -c1` = %+v, want a failing (non-zero, not could-not-run) result — pipefail must surface the left-hand failure through head's own exit", got)
+		t.Errorf("`false 2>/dev/null | head -c1` = %+v, want a failing (non-zero, not could-not-run) result — pipefail must surface the left-hand failure through head's own exit", got)
 	}
 }
 

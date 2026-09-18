@@ -514,9 +514,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
-	// Missing EXECUTION WITNESS, but only for closures THIS branch makes
-	// (verify-integrity/02): a brief flipped to verified/done post-merge-base
-	// with no witness for one or more Verify rows is a PROBLEM, not the
+	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a
+	// brief flipped to verified/done post-merge-base with no witness for one
+	// or more Verify rows is a PROBLEM, not the
 	// per-stream NOTICE above the inherited corpus still gets. Reuses the SAME
 	// closedAtBase predicate — never a second one. See witnessgate.go.
 	waProblems, waNotices := witnessAbsenceGateChecks(root, checkStreams)

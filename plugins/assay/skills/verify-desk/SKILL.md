@@ -151,7 +151,7 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
   verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
   command, exit code, an output hash, the date and the runner identity; that witness table is what
-  turns an Evidence row from prose into something a reviewer can re-run and compare (verify-integrity/02).
+  turns an Evidence row from prose into something a reviewer can re-run and compare.
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a

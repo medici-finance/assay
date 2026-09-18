@@ -394,13 +394,13 @@ func TestAutoFlipDryRun(t *testing.T) {
 	}
 }
 
-// TestAutoflipRefusesHeldPass pins verify-integrity/02 task 4 / at#2420: a
+// TestAutoflipRefusesHeldPass pins the held-contradiction rule: a
 // **VERIFY: PASS** marker is not a flip signal on its own when the same
 // Evidence entry ALSO says HELD or could-not-check on a row not marked
 // deferred — even with a valid App approval at the merged head (af/01's own
 // wiring, reused here unmodified), the flip must be REFUSED. Marking that
-// same row deferred (the at#2303 deferral clause) removes the contradiction
-// and the identical approval flips it.
+// same row deferred removes the contradiction and the identical approval
+// flips it.
 func TestAutoflipRefusesHeldPass(t *testing.T) {
 	root, streams := loadAFStreams(t)
 	s := streams[0]
@@ -428,7 +428,7 @@ func TestAutoflipRefusesHeldPass(t *testing.T) {
 		"| # | Command | Exit | Result | Date | Runner |\n" +
 		"|---|---------|------|--------|------|--------|\n" +
 		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
-		"| 2 | `go test ./missing/...` | — | could-not-check: deferred to at#2303 | 2026-07-08 | fixture-verifier |\n"
+		"| 2 | `go test ./missing/...` | — | could-not-check: deferred to a follow-up brief | 2026-07-08 | fixture-verifier |\n"
 
 	got2 := decideModelFlip(root, s, path, "af/01", deferredEvidence, src, ghReviewer(afReviewer))
 	if got2.Outcome != flipDone {

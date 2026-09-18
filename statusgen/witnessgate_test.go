@@ -139,7 +139,7 @@ func TestWitnessGateSilentOnAPassingWitness(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// witnessAbsenceGateChecks (verify-integrity/02) — the THIRD case: nothing
+// witnessAbsenceGateChecks — the THIRD case: nothing
 // contradicts the cell, nothing was inherited, and a NEW closure simply
 // carries no witness at all.
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ func TestWitnessAbsenceBlocksANewClosureWithNoWitnessAtAll(t *testing.T) {
 	if len(problems) != 1 {
 		t.Fatalf("got %d problems, want 1: %v", len(problems), problems)
 	}
-	for _, want := range []string{"wg/brief-01", "cannot close as verified", "#1", "#2", "verify-integrity/02"} {
+	for _, want := range []string{"wg/brief-01", "cannot close as verified", "#1", "#2", "must carry the witness it asserts"} {
 		if !strings.Contains(problems[0], want) {
 			t.Errorf("problem does not mention %q: %s", want, problems[0])
 		}

@@ -192,8 +192,8 @@ func extractSectionByPrefix(body, prefix string) string {
 	return strings.Join(out, "\n")
 }
 
-// verifyVerdictBoldRe is the ratified regex (at#2420, verify-integrity/02) for
-// a BOLD VERIFY verdict marker: `**VERIFY: PASS**` or `**VERIFY: FAIL**`, with
+// verifyVerdictBoldRe is the ratified regex for a BOLD VERIFY verdict marker:
+// `**VERIFY: PASS**` or `**VERIFY: FAIL**`, with
 // arbitrary prose between the verdict token and the closing `**` —
 // `**VERIFY: PASS (4/4 offline-runnable rows)**`, `**VERIFY: PASS — all 6
 // rows green.**` — but the verdict token itself is anchored to PASS|FAIL:
@@ -301,7 +301,7 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 // also says HELD or could-not-check. The first offending line is returned for
 // the caller's message.
 //
-// at#2420 (verify-integrity/02): a **VERIFY: PASS** line is NOT a flip signal
+// A **VERIFY: PASS** line is NOT a flip signal
 // on its own when the same Evidence entry contradicts it this way — the model
 // autoflip (autoflip.go's decideModelFlip) and the verify-gate card/closeVerify
 // below both refuse on a true return rather than trusting the whole-brief
@@ -656,9 +656,9 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 			// is loosened here; WHAT evidence is required is not.
 			if row.Status == "implemented" && hasVerifyPass(bf.Evidence) {
 				if held, _ := verifyPassHeldContradiction(bf.Evidence); held {
-					// at#2420: a PASS line is not a flip signal while a
-					// non-deferred row still reads HELD/could-not-check — no
-					// card is raised on the strength of the marker alone.
+					// A PASS line is not a flip signal while a non-deferred
+					// row still reads HELD/could-not-check — no card is
+					// raised on the strength of the marker alone.
 					continue
 				}
 				marker := verifyMarker(bf.Brief)
@@ -891,7 +891,7 @@ func closeVerify(root, briefID string, now time.Time) error {
 			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
 		}
 		if held, why := verifyPassHeldContradiction(bf.Evidence); held {
-			return fmt.Errorf("refusing: brief %s carries **VERIFY: PASS** but Evidence also reads %q on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check (at#2420)", briefID, why)
+			return fmt.Errorf("refusing: brief %s carries **VERIFY: PASS** but Evidence also reads %q on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check", briefID, why)
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
