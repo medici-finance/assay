@@ -1,0 +1,35 @@
+# Fixture for the pattern-join-not-check rule — `join` names `close`, whose kind
+# is `decision`, not `check`. A pattern's integration check MUST be a check-kind
+# node (spec/workflow-pattern-v1.md §4.2 rule 5 / §6). This MUST make
+# `statusgen patterns --lint` exit 1, naming pattern-join-not-check.
+schema: workflow-pattern-v1
+pattern: bad-join-not-check
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review]
+  human: [review]
+nodes:
+  - id: implement
+    kind: artifact
+    role: worker
+    outputs: [branch]
+  - id: review
+    kind: check
+    role: reviewer
+    inputs:
+      - {artifact: branch}
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "reviewer APPROVED", mandatory: true}
+  - id: close
+    kind: decision
+    role: desk
+    inputs:
+      - {artifact: approval}
+    outputs: [closed]
+edges:
+  - {from: implement, to: review}
+  - {from: review, to: close}
+join: close

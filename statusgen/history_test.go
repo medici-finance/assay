@@ -101,6 +101,69 @@ func TestLoadHistoryRoundTrip(t *testing.T) {
 	}
 }
 
+// TestLoadHistoryMemoisedOnStampNotCall proves the (path, mtime, size) memo (forge-neutral/18
+// task 4): repeated calls against an unchanged file count as ONE distinct load, and a call
+// after the file's mtime/size changes forces a fresh read rather than serving the stale
+// content. This is the same-shaped guarantee row 9 (TestParseBriefFileMemoDistinctPaths) makes
+// for brief parsing, applied to the second redundant read main.go's run() made three times per
+// `--lint` on the SAME path.
+func TestLoadHistoryMemoisedOnStampNotCall(t *testing.T) {
+	resetHistoryLoadMemo()
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".history.jsonl")
+	body := `{"ts":"2026-07-01T00:00:00Z","brief":"hist/01","from":"","to":"implemented","sha":"a"}
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 5; i++ {
+		entries, err := LoadHistory(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("call %d: got %d entries, want 1", i, len(entries))
+		}
+	}
+	if got := historyLoadCountValue(); got != 1 {
+		t.Fatalf("distinct loads after 5 identical calls = %d, want 1 (the memo's whole point)", got)
+	}
+
+	// A defensive-copy check: mutating what one caller got back must not corrupt what the next
+	// caller reads from the memo (parseBriefFile's memo makes the same guarantee).
+	entries, err := LoadHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries[0].Brief = "CORRUPTED"
+	again, err := LoadHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again[0].Brief != "hist/01" {
+		t.Fatalf("memo leaked a caller's mutation: got %q, want %q", again[0].Brief, "hist/01")
+	}
+
+	// The mid-run mutation case: the file changes (append), so a cache must not outlive its
+	// subject — the next load must see the NEW content, not the stale 1-entry cache.
+	moreBody := body + `{"ts":"2026-07-02T00:00:00Z","brief":"hist/01","from":"implemented","to":"verified","sha":"b"}
+`
+	if err := os.WriteFile(path, []byte(moreBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, err = LoadHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("after the file changed: got %d entries, want 2 — a stale memo served old content", len(entries))
+	}
+	if got := historyLoadCountValue(); got != 2 {
+		t.Fatalf("distinct loads after the file changed = %d, want 2 (one per distinct stamp)", got)
+	}
+}
+
 func TestLoadHistoryMalformedLineErrors(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".history.jsonl")

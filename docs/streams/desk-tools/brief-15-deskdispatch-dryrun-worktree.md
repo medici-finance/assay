@@ -118,6 +118,23 @@ RISK-VALUE: DERIVED — worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdi
 RISK-VALUE: DERIVED — the "tracker-" worktree-name prefix check @ tools/desk/cmd/deskdispatch/worktree.go:100 and the `.claude/worktrees` sanctioned-suffix path @ worktree.go:103 both match deskwt.go's own literals (`"tracker-"` prefix test and `filepath.Join(root, ".claude", "worktrees")`) byte-for-byte — the duplicated isolation-floor allowlist is faithful to its source, not loosened.
 
 VERIFY: HELD — deliverable sound; stays `implemented`. Rows 1-5 and 7 PASS. Row 6 fails on an EXTERNAL, pre-existing, unrelated cause (medici-finance/assay#1119) — not a defect in this brief's diff. Not advanced to `verified` per the row-6 fail; no new bug filed since #1119 already covers it.
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PARTIAL** — HELD at `implemented`
+
+Runner ≠ implementer. Deliverable commit `622400754` confirmed merged and an ancestor of `origin/main`. The brief's own file already carried a prior verdict (dated 2026-09-15, attributed `sonnet-5-verifier` — a distinct, non-implementer identity from the implementing `assay-worker-app[bot]` commit; not self-reported). Every row independently re-run from scratch regardless, not trusted from that prior record.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go vet ./...` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 2 | `TestDryRunWorktreeRendersVerifiedPath` | exit 0, path at both sites, no placeholder, banner present | exit 0 — independently read the test body: asserts count ≥2, no placeholder string, banner substring present | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestDryRunWorktreeRefusesUnverifiablePaths` | exit 0, 4 negative subtests each exit 5 | exit 0 — all 4 subtests PASS (outside-prefix, not-a-worktree, other-repo, shared-checkout) | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestWorktreeFlagRefusedOnRealDispatch` | exit 0, exit 5, zero child processes | exit 0 — read test body: asserts exit 5 and zero recorded calls | 2026-09-17 | sonnet-5-verifier |
+| 5 | whole-package test | exit 0 incl. unchanged placeholder test | exit 0 — pre-existing placeholder assertions still run and pass | 2026-09-17 | sonnet-5-verifier |
+| 6 | `gofmt -l tools/desk/cmd/deskdispatch` | exit 0 | **exit 1** — only `phantom_test.go` listed, an UNRELATED file this brief does not touch. Independently confirmed: this brief's 4 touched files are gofmt-clean on their own; the drift is a comment-alignment issue from a separate commit `91a7f9208` (2026-09-06), predating this brief's merge (2026-09-08). Already tracked at `medici-finance/assay#1119` — not re-filed | 2026-09-17 | sonnet-5-verifier |
+| 7 | `statusgen --lint` | exit 0 | exit 0, LINT: PASS | 2026-09-17 | sonnet-5-verifier |
+
+**RISK-VALUE: DERIVED** — `worktreeTmpBase = "/private/tmp"` (`worktree.go:30`), cross-checked byte-for-byte against `deskwt.go:26`'s identical constant — not independently invented or loosened. The `"tracker-"` prefix test and `.claude/worktrees` sanctioned-suffix path (`worktree.go:100,103`) cross-checked against `deskwt.go`'s own `pathGuard.allowed` — same rule, duplicated verbatim. Check ordering (shared-checkout identity check before prefix check) matches deskwt's own refusal order. Exit code `deskkit.ExitRefused = 5` used throughout, matching the brief's requirement. No self-chosen or unexplained literal found — both named values are derived (duplicated from deskwt's existing pinned constants), not fabricated.
+
+**VERIFY: PARTIAL** — rows 1-5, 7 PASS. Row 6 fails AS WRITTEN (the command scans the whole `cmd/deskdispatch` directory, not just this brief's 4 files) but for a confirmed, pre-existing, unrelated cause tracked at `assay#1119` — not a defect in this brief's own diff. Per the discipline that a Verify row's literal command is what's judged, this stays a PARTIAL, not a rounded-up PASS: held at `implemented`, consistent with how this house has treated similarly externally-caused literal-row failures elsewhere in this drain (e.g. harness-portability/04, sdlc/15).
 
 ## Review
 
