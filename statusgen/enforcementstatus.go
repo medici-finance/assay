@@ -142,6 +142,16 @@ var lintRuleRegistry = []LintRule{
 	// lint run.
 	{ruleEligibilityCouldNotCheck, "a gates: edge (or unsatisfied depends:) the eligibility evaluator could not resolve offline — an unregistered/unpublished alias, an absent sibling checkout, or a forge-backed target — which HOLDS the brief out of Next-up", StatusAdvisory},
 
+	// Workflow-pattern node-contract lint (graph-execution/02, patterns.go).
+	// Enforced by the separate `statusgen patterns --lint` subcommand (like
+	// `conform`, never part of the board `--lint`); all four fatal — each makes
+	// `patterns --lint` exit 1.
+	{rulePatternEffectExceedsRole, "a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold", StatusFatal},
+	{rulePatternReviewSameRole, "a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked", StatusFatal},
+	{rulePatternJoinNotCheck, "a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check", StatusFatal},
+	{rulePatternRiskInputMissing, "a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates", StatusFatal},
+	{rulePatternEffectTargetUnowned, "a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary", StatusFatal},
+
 	// Authoring conventions the lint does NOT check — the third status, stated so
 	// the block's non-coverage is itself visible (spec §3 D6).
 	{"consumers-flow-verify-row", "that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides", StatusNotEnforced},

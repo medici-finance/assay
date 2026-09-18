@@ -44,9 +44,10 @@ const commonKitPath = "references/common-clauses.md"
 // clauses in it — an agent dispatched without the clauses is exactly the failure the kits
 // exist to prevent, and it would look like a successful dispatch.
 var kitFile = map[string]string{
-	"worker":   "references/worker-prompt.md",
-	"review":   "references/review-prompt.md",
-	"verifier": "references/verifier-prompt.md",
+	"worker":           "references/worker-prompt.md",
+	"worker-objective": "references/worker-prompt-objective.md",
+	"review":           "references/review-prompt.md",
+	"verifier":         "references/verifier-prompt.md",
 }
 
 func kitNames() []string {

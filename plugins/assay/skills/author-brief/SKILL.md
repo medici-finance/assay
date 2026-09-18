@@ -474,6 +474,11 @@ it is an authoring convention only.
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
 | `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
 | `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
+| `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |
+| `pattern-effect-target-not-owned` | a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary | fatal |
+| `pattern-join-not-check` | a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check | fatal |
+| `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
+| `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |

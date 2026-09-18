@@ -66,7 +66,7 @@ import (
 const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DISPATCH).
 
 USAGE:
-  deskdispatch <item-key> [--tier strong|any] [--kit worker|review|verifier]
+  deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
                [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
