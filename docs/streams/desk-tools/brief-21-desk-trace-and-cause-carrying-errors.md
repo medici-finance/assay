@@ -268,6 +268,36 @@ run reported **4 NOT CAUGHT** — the three per-shape redactor mutations and the
 one — because the mutation spec's `-run` filter did not reach the tests that cover them. The
 tests were right; the spec was under-scoped. Widening the filter brought all four to CAUGHT with
 no change to any assertion.
+### Non-implementer verifier re-run — VERIFY: PASS — sonnet-5-verifier (verify-desk dispatch), @ merged main `951ca784d100a7d201a28a34033da6709ec2ec8f`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Implementation commit `1003557e1` confirmed merged. go1.26.5/darwin-arm64.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `go build ./... && go vet ./...` | exit 0 | exit 0, silent | 2026-09-18 | sonnet-5-verifier |
+| 2 | ToolRun said/fail-shape tests | exit 0 | both PASS | 2026-09-18 | sonnet-5-verifier |
+| 3 | ReportError off/on tests | exit 0 | both PASS | 2026-09-18 | sonnet-5-verifier |
+| 4 | `TestScrubRedactsEveryTransportShape` | exit 0, shapes redacted + negative control | PASS, 7 subtests green | 2026-09-18 | sonnet-5-verifier |
+| 5 | `TestTraceNeverPrintsACredential` (SPOF) | exit 0, planted token absent | PASS | 2026-09-18 | sonnet-5-verifier |
+| 6 | RefusedWithCause + trace-env-spellings tests | exit 0 | both PASS | 2026-09-18 | sonnet-5-verifier |
+| 7 | deskdispatch claim/git failure tests | exit 0 | both PASS | 2026-09-18 | sonnet-5-verifier |
+| 8 | deskwt worktree-create/trace-off tests | exit 0 | both PASS | 2026-09-18 | sonnet-5-verifier |
+| 9 | deskwt run-git-failure/trace tests | exit 0 | both PASS | 2026-09-18 | sonnet-5-verifier |
+| 10 | `TestTokenPathNoticeIsPrintedOnStderrNotStdout` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 11 | deskfile dedupe-outage/control-byte tests | exit 0 | **checked-failed as literally named** — neither test name exists; renamed by commit b7a82c025 (write-verbs-C, #775/#783, merged after this brief) to `TestDedupeSearchPropagatesTheForgeDiagnosis`/`TestDedupeSearchControlBytesStrippedByBackend`. Ran the current equivalents as substitutes: both PASS, same properties discharged. Filed medici-finance/assay#1306 to re-point the row | 2026-09-18 | sonnet-5-verifier |
+| 12 | full 6-package test run | exit 0 | exit 0, all ok | 2026-09-18 | sonnet-5-verifier |
+| 13 | S2/Corpus leak-sweep tests | exit 0 | exit 0, 15 PASS + 1 SKIP by design (private fixture absent, matches implementer's own note) | 2026-09-18 | sonnet-5-verifier |
+| 14 | `gofmt -l` on brief-owned files | exit 0 | **exit 1 on whole-dir glob** — lists only phantom_test.go (unrelated, pre-existing, matches implementer's own Evidence note); no brief-owned file listed | 2026-09-18 | sonnet-5-verifier |
+| 15 | `statusgen --root .. --lint` | exit 0 | exit 0 — LINT: PASS | 2026-09-18 | sonnet-5-verifier |
+| 16 | mutation harness, 10 named mutations | exit 0, all CAUGHT | exit 0 — 10 caught, 0 NOT CAUGHT, 0 could-not-mutate | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 16 rows map 1:1 to Verify rows; diff scope cross-checked against brief's exact 24-file list — no other verb touched.
+
+RISK-VALUE: DERIVED — Scrub's 3 transport-shape redaction patterns @ deskkit/scrub.go:29-40 — top-ranked (an un-redacted leak cannot be un-leaked); proven load-bearing via row 4's positive+negative control, row 5's SPOF test, and row 16's mutation proof each pattern is individually CAUGHT if removed.
+RISK-VALUE: DERIVED — `envTruthy` whitelist {"1","true","yes","on"} @ deskkit/trace.go:97-99 — fail-safe by construction (anything else is OFF); proven via row 6 and row 16's "empty DESK_TRACE as on" mutation CAUGHT.
+RISK-VALUE: N/A — `traceStepCap = 200` @ deskkit/trace.go:54 — in-memory display bound only, no disclosure/correctness boundary, ranks last.
+
+VERIFY: PASS — 14/16 rows checked-clean directly. Row 11's literal test names are stale (post-merge rename, filed assay#1306), functionally re-verified via current equivalents, both PASS. Row 14's failure is the same pre-existing phantom_test.go drift tracked at assay#1119, no brief-owned file affected. No exit code moved, no redaction pattern bypassable, full mutation sweep clean. Flip-eligible: gate:model, risk all no.
 
 ## Review
 
