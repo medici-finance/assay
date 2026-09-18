@@ -131,7 +131,7 @@ func newForeignCommitFixture(t *testing.T) (victimDir, ownBranch, ownSHA string)
 func TestCheckForeignCommits_DetectsLaunderedSiblingCommits(t *testing.T) {
 	victimDir, ownBranch, ownSHA := newForeignCommitFixture(t)
 
-	found, err := checkForeignCommits(victimDir, ownBranch, ownSHA)
+	found, err := checkForeignCommits(victimDir, "origin", ownBranch, ownSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestCheckForeignCommits_CleanBranchFromOriginMainReportsNothing(t *testing.
 	runGitT(t, goodDir, "checkout", "-b", "good-mine", "origin/main")
 	ownSHA := commitEmpty(t, goodDir, "feat: my own genuine commit E")
 
-	found, err := checkForeignCommits(goodDir, "good-mine", ownSHA)
+	found, err := checkForeignCommits(goodDir, "origin", "good-mine", ownSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestCheckForeignCommits_DetectsSingleParentMergeMasquerade(t *testing.T) {
 	// tracker#259's failure shape: a single-parent commit whose SUBJECT claims to be a merge.
 	fakeSHA := commitEmpty(t, dir, "merge: rebase onto origin/main")
 
-	found, err := checkForeignCommits(dir, "fake-merge", fakeSHA)
+	found, err := checkForeignCommits(dir, "origin", "fake-merge", fakeSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestCheckForeignCommits_OrdinaryMergeMentionNotFlagged(t *testing.T) {
 	commitEmpty(t, dir, "describe the merge workflow in README")
 	headSHA := commitEmpty(t, dir, "simplify merge-base comparison")
 
-	found, err := checkForeignCommits(dir, "ordinary-work", headSHA)
+	found, err := checkForeignCommits(dir, "origin", "ordinary-work", headSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestCheckForeignCommits_RealMergeCommitNotFlagged(t *testing.T) {
 	runGitT(t, dir, "merge", "--no-ff", "-m", "merge: bring in topic", "topic")
 	headSHA := runGitT(t, dir, "rev-parse", "HEAD")
 
-	found, err := checkForeignCommits(dir, "real-merge", headSHA)
+	found, err := checkForeignCommits(dir, "origin", "real-merge", headSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestCheckForeignCommits_FailsOpenOnNonSHA(t *testing.T) {
 	// Existing deskpushguard tests feed placeholder stdin values ("x", "y") as the local
 	// sha; checkForeignCommits must fail open (no findings, no error, no git invocation
 	// against whatever happens to be the process's cwd) rather than error out.
-	found, err := checkForeignCommits("", "test-branch", "x")
+	found, err := checkForeignCommits("", "origin", "test-branch", "x")
 	if err != nil {
 		t.Fatalf("expected nil error on a non-sha placeholder, got %v", err)
 	}
@@ -331,7 +331,7 @@ func TestCheckForeignCommits_FailsOpenWhenOriginMainUnresolvable(t *testing.T) {
 	runGitT(t, dir, "config", "user.name", "w")
 	sha := commitEmpty(t, dir, "chore: no origin remote configured at all")
 
-	found, err := checkForeignCommits(dir, "main", sha)
+	found, err := checkForeignCommits(dir, "origin", "main", sha)
 	if err != nil {
 		t.Fatalf("expected nil error when origin/main is unresolvable, got %v", err)
 	}
@@ -376,7 +376,7 @@ func TestCheckForeignCommits_CouldNotCheckWhenOnlyTheStrayResolves(t *testing.T)
 		t.Fatal("fixture: refs/remotes/origin/main must NOT resolve in this repo")
 	}
 
-	found, err := checkForeignCommits(dir, "main", sha)
+	found, err := checkForeignCommits(dir, "origin", "main", sha)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -457,7 +457,7 @@ func newStrayBaseFixture(t *testing.T) (wtDir, branch, headSHA, staleSHA, trueSH
 func TestCheckForeignCommits_DetectsStrayLocalOriginMainBase(t *testing.T) {
 	wtDir, branch, headSHA, staleSHA, trueSHA := newStrayBaseFixture(t)
 
-	found, err := checkForeignCommits(wtDir, branch, headSHA)
+	found, err := checkForeignCommits(wtDir, "origin", branch, headSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -569,7 +569,7 @@ func newStrayBaseMergeFixture(t *testing.T) (wtDir, branch, headSHA, staleSHA, t
 func TestCheckForeignCommits_StrayBaseBehindCountAccountsForMergedHistory(t *testing.T) {
 	wtDir, branch, headSHA, staleSHA, trueSHA, realBehind := newStrayBaseMergeFixture(t)
 
-	found, err := checkForeignCommits(wtDir, branch, headSHA)
+	found, err := checkForeignCommits(wtDir, "origin", branch, headSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -620,7 +620,7 @@ func TestCheckForeignCommits_StrayPresentButCutFromTrueBaseNotFlagged(t *testing
 	runGitT(t, dir, "checkout", "-b", "mine", "refs/remotes/origin/main")
 	head := commitEmpty(t, dir, "feat: correctly based work")
 
-	found, err := checkForeignCommits(dir, "mine", head)
+	found, err := checkForeignCommits(dir, "origin", "mine", head)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -662,7 +662,7 @@ func TestCheckForeignCommits_OrdinaryBranchBehindMainNotFlagged(t *testing.T) {
 	if behind := runGitT(t, dir, "rev-list", "--count", head+"..refs/remotes/origin/main"); behind != "2" {
 		t.Fatalf("fixture: expected the branch to be 2 commits behind main, got %s", behind)
 	}
-	found, err := checkForeignCommits(dir, "mine", head)
+	found, err := checkForeignCommits(dir, "origin", "mine", head)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -739,7 +739,7 @@ func TestCheckForeignCommits_AmbiguousOriginMainRefUsesRemoteTracking(t *testing
 		t.Fatalf("fixture: bare origin/main resolved to %s, expected the stale local branch %s", bare, staleBase)
 	}
 
-	found, err := checkForeignCommits(goodDir, "good-mine", ownSHA)
+	found, err := checkForeignCommits(goodDir, "origin", "good-mine", ownSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -877,7 +877,7 @@ func newExistingPRBranchFixture(t *testing.T) (victimDir, branch, headSHA string
 func TestCheckForeignCommits_OwnAlreadyPublishedCommitsNotFlagged(t *testing.T) {
 	victimDir, branch, headSHA := newExistingPRBranchFixture(t)
 
-	found, err := checkForeignCommits(victimDir, branch, headSHA)
+	found, err := checkForeignCommits(victimDir, "origin", branch, headSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -1089,7 +1089,7 @@ func TestRun_AnnouncesCouldNotCheck(t *testing.T) {
 func TestForeignCommitFlagged(t *testing.T) {
 	victimDir, ownBranch, ownSHA := newForeignCommitFixture(t)
 
-	found, err := checkForeignCommits(victimDir, ownBranch, ownSHA)
+	found, err := checkForeignCommits(victimDir, "origin", ownBranch, ownSHA)
 	if err != nil {
 		t.Fatalf("checkForeignCommits error: %v", err)
 	}
@@ -1104,5 +1104,98 @@ func TestForeignCommitFlagged(t *testing.T) {
 		if f.sourceBranch != "origin/sibling" {
 			t.Errorf("foreign commit %s: sourceBranch = %q, want origin/sibling", shortSHA(f.sha), f.sourceBranch)
 		}
+	}
+}
+
+// --- #1201: the actual push-target remote can differ from the worktree's `origin` -----------
+
+// newWrongOriginRemoteFixture builds the exact multi-remote shape #1201 describes: a worktree
+// whose configured `origin` remote points at a DIFFERENT, UNRELATED repo than the one a given
+// push actually targets (e.g. a worktree cut from a shared board-dispatch checkout whose own
+// `origin` is a sibling repo). The real target is added and fetched under its OWN remote name,
+// "upstream" — matching how git's pre-push hook invocation names the real remote in args[0].
+//
+// Returns the worktree dir, the real target's remote name, the branch name, and the sha of the
+// branch's own genuine commit — correctly cut from refs/remotes/upstream/main, dragging in
+// nothing foreign.
+func newWrongOriginRemoteFixture(t *testing.T) (dir, upstreamRemote, branch, ownSHA string) {
+	t.Helper()
+
+	// wrongRepo stands in for the worktree's own, UNRELATED origin (e.g. a consumer repo's
+	// own tracker) — entirely disjoint history from the real target.
+	wrongRepo := t.TempDir()
+	runGitT(t, wrongRepo, "init", "--bare", "-b", "main")
+	wrongSeed := t.TempDir()
+	runGitT(t, wrongSeed, "init", "-b", "main")
+	runGitT(t, wrongSeed, "config", "user.email", "wrong@test")
+	runGitT(t, wrongSeed, "config", "user.name", "wrong")
+	runGitT(t, wrongSeed, "remote", "add", "origin", wrongRepo)
+	commitEmpty(t, wrongSeed, "chore: unrelated repo's own initial commit")
+	runGitT(t, wrongSeed, "push", "origin", "main")
+
+	// targetRepo stands in for the repo the push is ACTUALLY going to (e.g. assay).
+	targetRepo := t.TempDir()
+	runGitT(t, targetRepo, "init", "--bare", "-b", "main")
+	targetSeed := t.TempDir()
+	runGitT(t, targetSeed, "init", "-b", "main")
+	runGitT(t, targetSeed, "config", "user.email", "target@test")
+	runGitT(t, targetSeed, "config", "user.name", "target")
+	runGitT(t, targetSeed, "remote", "add", "origin", targetRepo)
+	commitEmpty(t, targetSeed, "chore: target repo's own initial commit")
+	runGitT(t, targetSeed, "push", "origin", "main")
+
+	// The worktree: `origin` points at the WRONG repo; the real push target is added and
+	// fetched under a second remote name, "upstream" — exactly the shape a shepherd worktree
+	// cut from a shared board-dispatch checkout takes on.
+	dir = t.TempDir()
+	runGitT(t, dir, "init", "-b", "main")
+	runGitT(t, dir, "config", "user.email", "w@test")
+	runGitT(t, dir, "config", "user.name", "w")
+	runGitT(t, dir, "remote", "add", "origin", wrongRepo)
+	runGitT(t, dir, "fetch", "origin")
+	runGitT(t, dir, "remote", "add", "upstream", targetRepo)
+	runGitT(t, dir, "fetch", "upstream")
+
+	// Correctly cut from the REAL target's main (refs/remotes/upstream/main), one genuine
+	// commit of the worker's own.
+	runGitT(t, dir, "checkout", "-b", "mine", "refs/remotes/upstream/main")
+	ownSHA = commitEmpty(t, dir, "feat: my own genuine commit for the real target repo")
+	return dir, "upstream", "mine", ownSHA
+}
+
+// TestCheckForeignCommits_WrongOriginRemoteDoesNotMisfire is #1201's own reproduction: a
+// worktree correctly cut from the REAL push target's main, but whose `origin` remote points at
+// an entirely different, unrelated repo. Comparing against a hardcoded `origin` resolves
+// refs/remotes/origin/main to the WRONG repo's history, putting every commit on `mine`
+// (including its own genuine commit) "ahead" of that unrelated base and misreporting them all
+// as foreign — reproduced 2026-09-16 shepherding assay#1191 (#1201's own description).
+//
+// The fix threads the ACTUAL push-target remote name (here "upstream", matching what git's own
+// pre-push hook invocation names in args[0]) down to checkForeignCommits instead of assuming
+// "origin", so the base resolves against refs/remotes/upstream/main — the correct repo — and a
+// correctly-cut branch reports clean.
+//
+// FAIL-FIRST (#1201): with checkForeignCommits' remoteName parameter ignored and the base
+// resolution hardcoded back to the literal "origin" (the pre-#1201 shape — the parameter did
+// not exist at all), this fixture's own genuine commit is misreported as foreign, sourced from
+// "origin/main" (the unrelated repo). See the PR's Fail-first section for the captured
+// before/after run.
+func TestCheckForeignCommits_WrongOriginRemoteDoesNotMisfire(t *testing.T) {
+	dir, upstreamRemote, branch, ownSHA := newWrongOriginRemoteFixture(t)
+
+	found, err := checkForeignCommits(dir, upstreamRemote, branch, ownSHA)
+	if err != nil {
+		t.Fatalf("checkForeignCommits error: %v", err)
+	}
+	if len(found.indeterminate) != 0 {
+		t.Fatalf("base was determinable via the real target remote; unexpected could-not-check: %v", found.indeterminate)
+	}
+	if len(found.foreign) != 0 {
+		t.Errorf("a branch correctly cut from the REAL push target's main must not be flagged "+
+			"foreign just because a DIFFERENT, unrelated repo happens to be configured as "+
+			"`origin` in this worktree — got %+v", found.foreign)
+	}
+	if len(found.masquerades) != 0 {
+		t.Errorf("expected no merge masquerades, got %+v", found.masquerades)
 	}
 }

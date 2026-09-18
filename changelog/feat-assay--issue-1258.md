@@ -1,0 +1,2 @@
+### Added
+- `the-desk` and `intake-desk` now state a shared carve-out: when an inbound issue is authored by the driver identity itself, its body reads as an instruction to the desk, and it names no existing work item, the coordinator (`the-desk`) acts on it directly — receipt comment, dispatch behind draft PRs, and the intake register entry filed in the same deliverable PR — instead of it routing to `intake-desk`. (#1258)

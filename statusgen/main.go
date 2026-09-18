@@ -1231,6 +1231,19 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen patterns --lint [--root DIR]` — validate every
+	// spec/workflow-patterns/*.yaml workflow-pattern-v1 file against
+	// schemas/workflow-pattern-v1.json and the cross-field MUST rules a schema
+	// cannot express (graph-execution/02, patterns.go).
+	//
+	// Intercepted before flag parsing for conform's reason: it owns --root and
+	// its own --lint verb flag, and it is a DISTINCT artifact-class surface
+	// (pattern files, not briefs) from the board `--lint`, so it is a subcommand
+	// rather than a `--lint` leg — same shape as `conform`.
+	if len(os.Args) > 1 && os.Args[1] == "patterns" {
+		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
 	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
 	// before flag parsing for verifyrun's reason: it owns its own target
@@ -1560,6 +1573,7 @@ func main() {
 	// product override (serves:), skipping auto-derivation. Both apply to --lint;
 	// absent = today's whole-house behavior (main regen never passes them).
 	changedFile := flag.String("changed", "", "file of changed repo-relative paths (one per line); path-scopes the DAR check and auto-derives --scope")
+	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	flag.Parse()
 
@@ -2076,6 +2090,23 @@ func main() {
 			if p := strings.TrimSpace(line); p != "" {
 				changedPaths = append(changedPaths, p)
 			}
+		}
+	}
+	// --changed-only: the louder, CI-refusing local sibling of --changed (task 5,
+	// forge-neutral/18). resolveChangedOnly is the pure decision core (see changedonly.go);
+	// main() only performs the print/exit its result names, so the CI-gate refusal is a
+	// table-driven unit test rather than a subprocess spawn.
+	if r := resolveChangedOnly(*changedOnlyFlag, *changedFile != "", mode == "lint", scanInCI()); *changedOnlyFlag != "" {
+		switch {
+		case r.Refusal != "":
+			fmt.Fprintln(os.Stderr, r.Refusal)
+			os.Exit(1)
+		case r.UsageErr != "":
+			fmt.Fprintln(os.Stderr, "statusgen:", r.UsageErr)
+			os.Exit(2)
+		default:
+			fmt.Fprintln(os.Stderr, r.Banner)
+			changedPaths = append(changedPaths, r.Paths...)
 		}
 	}
 	// Differential register lint: --diff-base makes --lint compare the

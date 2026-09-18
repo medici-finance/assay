@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/workflow-pattern-v1.json",
+  "title": "workflow-pattern-v1",
+  "description": "Machine-readable contract for a workflow-pattern-v1 document (spec/workflow-pattern-v1.md). A pattern is a small directed graph of nodes and edges: each node is a durable-boundary execution contract (kind, role, inputs, outputs, evidence, effects, budget, outcomes); `risk-input` maps a risk-class verdict to the mandatory gate nodes it requires; `join` names the node carrying the integration check. This contract is DESCRIPTIVE of the per-file, frontmatter-shape rules only: required keys, field types, and closed value sets. It deliberately does NOT encode the cross-field rules `statusgen patterns --lint` owns (a node's effect kind must be permitted for its role; a node whose evidence includes `review` must have a role distinct from every node that produced its inputs; `join` must name a `check` node) — those need the pattern's own edges and node graph resolved, which a per-value schema cannot express. Where the two would disagree the schema is the LOOSER of the two on purpose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "pattern", "version", "risk-input", "nodes", "edges", "join"],
+  "properties": {
+    "schema": {
+      "description": "The opt-in schema marker. Its presence is what selects a file for validation; for this contract it is exactly workflow-pattern-v1.",
+      "const": "workflow-pattern-v1"
+    },
+    "pattern": {
+      "description": "The pattern's own name (e.g. `implementation`, `research`).",
+      "type": "string"
+    },
+    "version": {
+      "description": "Bumped on every node/edge/evidence edit after the pattern's first review.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "risk-input": {
+      "description": "Risk-class verdict to mandatory gate-node-id list. All four verdicts MUST be present — a pattern that does not state what an `elevated` or `human` risk class requires cannot be instantiated against one. Presence of all four keys is a MUST-rule the lint checks against the resolved document (`pattern-risk-input-missing-verdict`), not a schema `required` list here, so a missing verdict is reported as a MUST-rule violation, distinct from a shape violation, per spec/workflow-pattern-v1.md §8.2.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "low": { "type": "array", "items": { "type": "string" } },
+        "standard": { "type": "array", "items": { "type": "string" } },
+        "elevated": { "type": "array", "items": { "type": "string" } },
+        "human": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "nodes": {
+      "description": "The pattern's node set. Every node sits at a durable boundary (an artifact, an independent check, a human decision, an external effect) — a step that produces none of these is not a node.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "role"],
+        "properties": {
+          "id": {
+            "description": "The node's identity within this pattern. Referenced by edges, `join`, `risk-input` gate lists and other nodes' `effects[].target`.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Exactly one node kind. `artifact` produces a durable output; `check` is an independent verification (review or verify); `decision` is a human or desk disposition; `effect` performs an action with external consequence.",
+            "type": "string",
+            "enum": ["artifact", "check", "decision", "effect"]
+          },
+          "role": {
+            "description": "Exactly one `topology.yaml` `apps:` role this node binds. A pattern names a role, never a login or id — binding is the roster's job.",
+            "type": "string",
+            "enum": ["desk", "reviewer", "verifier", "worker"]
+          },
+          "inputs": {
+            "description": "What this node needs before it can run. `artifact` names the artifact kind it consumes; `revision` optionally pins which revision (e.g. `brief.version`).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["artifact"],
+              "properties": {
+                "artifact": { "type": "string" },
+                "revision": { "type": "string" }
+              }
+            }
+          },
+          "outputs": {
+            "description": "The durable artifacts this node produces, by name. An `effects[].target` naming one of these is how the node's own effects stay owned by its own output.",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "evidence": {
+            "description": "The claims this node owes, each in words a verifier can check.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "claim"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["command", "review", "witness", "observe"]
+                },
+                "claim": { "type": "string" },
+                "mandatory": { "type": "boolean" }
+              }
+            }
+          },
+          "effects": {
+            "description": "External-consequence actions this node performs. The lint's `pattern-effect-exceeds-role` rule refuses a node whose effect kind is not permitted for its role (spec/workflow-pattern-v1.md §4's role-to-effect-kind table).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "target"],
+              "properties": {
+                "kind": { "type": "string" },
+                "target": { "type": "string" }
+              }
+            }
+          },
+          "budget": {
+            "description": "Attempt/retry budget for this node.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "attempts": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "outcomes": {
+            "description": "Non-success dispositions this node may end in.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "wait": { "type": "array", "items": { "type": "string" } },
+              "fail": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "description": "Directed edges between node ids.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" }
+        }
+      }
+    },
+    "join": {
+      "description": "The node id carrying the integration check. MUST name a `check`-kind node (`statusgen patterns --lint`'s `pattern-join-not-check` rule).",
+      "type": "string"
+    }
+  }
+}
