@@ -394,6 +394,48 @@ func TestAutoFlipDryRun(t *testing.T) {
 	}
 }
 
+// TestAutoflipRefusesHeldPass pins verify-integrity/02 task 4 / at#2420: a
+// **VERIFY: PASS** marker is not a flip signal on its own when the same
+// Evidence entry ALSO says HELD or could-not-check on a row not marked
+// deferred — even with a valid App approval at the merged head (af/01's own
+// wiring, reused here unmodified), the flip must be REFUSED. Marking that
+// same row deferred (the at#2303 deferral clause) removes the contradiction
+// and the identical approval flips it.
+func TestAutoflipRefusesHeldPass(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	s := streams[0]
+	path := filepath.Join(s.Dir, "brief-01-model-approved-at-head.md")
+	src := afSource() // af/01 -> PR 101, App APPROVED at the merged head
+
+	heldEvidence := "**VERIFY: PASS (1/1 offline-runnable rows)**\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
+		"| 2 | `go test ./missing/...` | — | could-not-check: package removed | 2026-07-08 | fixture-verifier |\n"
+
+	got := decideModelFlip(root, s, path, "af/01", heldEvidence, src, ghReviewer(afReviewer))
+	if got.Outcome == flipDone {
+		t.Fatalf("PASS + could-not-check on a non-deferred row must be refused, got flipDone (%s)", got.Reason)
+	}
+	if !strings.Contains(strings.ToLower(got.Reason), "could-not-check") {
+		t.Errorf("refusal reason must name the contradicting row; got %q", got.Reason)
+	}
+	if len(src.seen) != 0 {
+		t.Errorf("the held-contradiction check must short-circuit BEFORE any reviewer fetch; src.seen = %v", src.seen)
+	}
+
+	deferredEvidence := "**VERIFY: PASS (1/1 offline-runnable rows)**\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
+		"| 2 | `go test ./missing/...` | — | could-not-check: deferred to at#2303 | 2026-07-08 | fixture-verifier |\n"
+
+	got2 := decideModelFlip(root, s, path, "af/01", deferredEvidence, src, ghReviewer(afReviewer))
+	if got2.Outcome != flipDone {
+		t.Fatalf("the same row marked deferred must flip once the App approval corroborates it, got %v (%s)", got2.Outcome, got2.Reason)
+	}
+}
+
 // TestAutoFlipNoOverride pins the no-override requirement: the
 // flag surface must expose no way to skip corroboration, and no environment
 // variable may stand in for an App approval. A future --force/--assume-approved

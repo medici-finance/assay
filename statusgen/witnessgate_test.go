@@ -138,6 +138,87 @@ func TestWitnessGateSilentOnAPassingWitness(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// witnessAbsenceGateChecks (verify-integrity/02) — the THIRD case: nothing
+// contradicts the cell, nothing was inherited, and a NEW closure simply
+// carries no witness at all.
+// ---------------------------------------------------------------------------
+
+func TestWitnessAbsenceBlocksANewClosureWithNoWitnessAtAll(t *testing.T) {
+	withBaseClosures(t, map[string]bool{}, true) // nothing grandfathered: this branch made the closure
+	streams := witnessGateFixture(t, "verified", "")
+
+	problems, notices := witnessAbsenceGateChecks("/repo", streams)
+	if len(problems) != 1 {
+		t.Fatalf("got %d problems, want 1: %v", len(problems), problems)
+	}
+	for _, want := range []string{"wg/brief-01", "cannot close as verified", "#1", "#2", "verify-integrity/02"} {
+		if !strings.Contains(problems[0], want) {
+			t.Errorf("problem does not mention %q: %s", want, problems[0])
+		}
+	}
+	if len(notices) != 0 {
+		t.Errorf("a blocked closure must not also notice: %v", notices)
+	}
+}
+
+func TestWitnessAbsenceNamesOnlyTheMissingRow(t *testing.T) {
+	withBaseClosures(t, map[string]bool{}, true)
+	// Row 1 has a witness; row 2 does not.
+	streams := witnessGateFixture(t, "verified", witnessTableFor(witnessRowOnePass))
+
+	problems, _ := witnessAbsenceGateChecks("/repo", streams)
+	if len(problems) != 1 {
+		t.Fatalf("got %d problems, want 1: %v", len(problems), problems)
+	}
+	if !strings.Contains(problems[0], "#2") {
+		t.Errorf("problem must name the unwitnessed row #2: %s", problems[0])
+	}
+	if strings.Contains(problems[0], "#1") {
+		t.Errorf("a witnessed row must not be named as missing: %s", problems[0])
+	}
+}
+
+func TestWitnessAbsenceGrandfathersAnInheritedClosure(t *testing.T) {
+	withBaseClosures(t, map[string]bool{"wg/01": true}, true)
+	streams := witnessGateFixture(t, "done", "") // no witness at all, but closed at the base
+
+	problems, notices := witnessAbsenceGateChecks("/repo", streams)
+	if len(problems) != 0 {
+		t.Fatalf("an inherited closure must never be a PROBLEM here: %v", problems)
+	}
+	// The inherited-corpus case stays witnessNotices' per-stream roll-up
+	// (verifyrun.go) — this check reports nothing of its own for it, so the
+	// same absence is never counted twice.
+	if len(notices) != 0 {
+		t.Errorf("a grandfathered absence must not also notice here (witnessNotices already rolls it up): %v", notices)
+	}
+}
+
+func TestWitnessAbsenceSaysSoWhenTheBaseIsUnresolvable(t *testing.T) {
+	withBaseClosures(t, nil, false)
+	streams := witnessGateFixture(t, "verified", "")
+
+	problems, notices := witnessAbsenceGateChecks("/repo", streams)
+	if len(problems) != 0 {
+		t.Fatalf("an unresolvable base must not produce PROBLEMs: %v", problems)
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "degraded") {
+		t.Errorf("a degraded run must announce itself: %v", notices)
+	}
+}
+
+func TestWitnessAbsenceSilentWhenEveryRowIsWitnessed(t *testing.T) {
+	withBaseClosures(t, map[string]bool{}, true)
+	streams := witnessGateFixture(t, "verified", witnessTableFor(witnessRowOnePass, witnessRowTwoPass))
+
+	problems, notices := witnessAbsenceGateChecks("/repo", streams)
+	if len(problems) != 0 || len(notices) != 0 {
+		t.Fatalf("a fully-witnessed new closure must be quiet: problems=%v notices=%v", problems, notices)
+	}
+}
+
 // THE MEASURED BLAST RADIUS, as a test. On 2026-08-13, 319 of 320 brief files
 // carried no witness at all. If absence were folded into this check it would
 // fire on essentially the whole corpus; witnessNotices owns that state, rolled

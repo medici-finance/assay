@@ -51,6 +51,84 @@ import (
 	"strings"
 )
 
+// witnessAbsenceGateChecks reports briefs whose `verified`/`done` cell is a
+// closure THIS BRANCH made with NO execution witness at all for one or more
+// Verify rows (verify-integrity/02).
+//
+// A THIRD CASE, distinct from the two above. witnessNotices (verifyrun.go) is
+// the roll-up for the INHERITED corpus — every brief already closed, on main,
+// with no witness — and stays a per-stream NOTICE forever; a hard error there
+// would red main on a PR that never touched the offending brief. witnessGateChecks
+// above is the CONTRADICTION case: a witness ran and recorded `fail`. This
+// function is neither: nothing here contradicts the cell, and nothing was
+// inherited either — verifyrun already existed when this branch opened, so a
+// NEW closure with no witness behind it chose not to run it. That is exactly
+// the self-report the witness was built to replace, and unlike the inherited
+// backlog there is no excuse for it: PROBLEM, not NOTICE.
+//
+// SCOPED TO THE TRANSITION, and reusing the SAME closedAtBase predicate
+// witnessGateChecks and unrunGateChecks already resolve — a brief already
+// verified/done at the merge-base is the inherited backlog and stays covered
+// by witnessNotices' roll-up; only a closure this branch newly makes is a
+// PROBLEM here. An unresolvable base grandfathers everything, exactly as the
+// two checks above do: with no observable transition there is nothing to gate.
+func witnessAbsenceGateChecks(root string, streams []*Stream) (problems, notices []string) {
+	grandfathered, baseOK := closedAtBase(root, streams)
+	degraded := false
+	for _, s := range streams {
+		for i := range s.Briefs {
+			br := &s.Briefs[i]
+			if br.Status != "done" && br.Status != "verified" {
+				continue
+			}
+			art, ok := loadBriefArtifacts(s, br.Num)
+			if !ok {
+				continue
+			}
+			rows := briefVerifyRows(art.Verify)
+			if len(rows) == 0 {
+				continue // no Verify table: verifySectionProblems' business
+			}
+			evidence := parseEvidenceRows(art.Evidence)
+			var missing []string
+			for _, r := range rows {
+				witnessed := false
+				for _, er := range evidence[r.ID] {
+					if isWitnessRow(er.Text) {
+						witnessed = true
+						break
+					}
+				}
+				if !witnessed {
+					missing = append(missing, "#"+r.ID)
+				}
+			}
+			if len(missing) == 0 {
+				continue
+			}
+			id := s.Name + "/brief-" + br.Num
+			if !baseOK || grandfathered[s.Name+"/"+br.Num] {
+				if !baseOK {
+					degraded = true
+				}
+				// witnessNotices already rolls this brief into its per-stream
+				// NOTICE (the inherited-corpus case) — never double-report the
+				// same absence as a second finding here.
+				continue
+			}
+			problems = append(problems, fmt.Sprintf(
+				"%s: cannot close as %s — this branch's own closure carries no EXECUTION WITNESS in Evidence for Verify row(s) %s. Run `statusgen verifyrun --brief %s` and commit the resulting witness table before closing, or set the Status cell back to `implemented` — a NEW closure must carry the witness it asserts (verify-integrity/02)",
+				id, br.Status, strings.Join(missing, ", "), relDisplayPath(s.Root, art.Path)))
+		}
+	}
+	if degraded {
+		notices = append(notices, "witness-absence `done`-gate is running degraded: origin/main could not be resolved, so no brief can be shown to have been closed on THIS branch and every unwitnessed closure is grandfathered to the per-stream NOTICE (witnessNotices). If this is CI, fetch origin/main before the lint step")
+	}
+	sort.Strings(problems)
+	sort.Strings(notices)
+	return problems, notices
+}
+
 // witnessGateChecks reports briefs whose `verified`/`done` cell is contradicted
 // by a failing execution witness in their own Evidence.
 func witnessGateChecks(root string, streams []*Stream) (problems, notices []string) {

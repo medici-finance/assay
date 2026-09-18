@@ -148,6 +148,12 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
+- **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
+  verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
+  command, exit code, an output hash, the date and the runner identity; that witness table is what
+  turns an Evidence row from prose into something a reviewer can re-run and compare (verify-integrity/02).
+  A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
+  PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
   copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
@@ -252,6 +258,11 @@ row with `"outcome":"verified"`, so the denominator is complete.
 ```
 
 ## Landing — `deskevidence` is the SOLE main-push carve-out (narrow, dated)
+
+**The witness lands WITH the Evidence, in the same file, same invocation.** `verifyrun`'s output rows
+(Result/Output/Date/Runner) ARE the Evidence table's rows — there is no separate landing step for the
+witness. Commit it alongside the Evidence row it backs; an Evidence row landed without first running
+`verifyrun` is the self-report this desk exists to replace.
 
 **The whole fleet is branch + draft PR; push-to-main and merge are human-gated. The one exception, and it
 is this desk's alone: `deskevidence` Evidence-row landings and the status flips that accompany them
