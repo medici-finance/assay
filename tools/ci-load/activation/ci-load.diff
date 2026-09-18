@@ -162,7 +162,7 @@
  # regen job is the sole thing that commits, so it alone gets contents: write
 --- a/.github/workflows/evidence-automerge.yml
 +++ b/.github/workflows/evidence-automerge.yml
-@@ -63,6 +63,34 @@
+@@ -66,6 +66,34 @@
  
  jobs:
    enable:

@@ -202,6 +202,19 @@ gives example `input → expected` pairs, the verifier re-derives each expected 
 **brief text** and compares; it never lifts the expected value out of the implementer's test code
 or output. A value copied from the work under test verifies only that the work agrees with itself.
 
+- **`wrote-to-the-test` labelled brief — re-derive the table from the merge-base, never as
+  merged.** On a brief whose delivering PR carries `pr-review-desk`'s `wrote-to-the-test` label
+  (see `docs/protected-paths.md`), run `deskpathguard rederive --root <this checkout> --brief
+  <path/to/brief.md>` BEFORE running any row. It reads the `## Verify` table as it stood at the
+  merge-base of the delivering PR with `origin/main` and diffs it against the table at HEAD: a
+  row present only in the post-change table is `author-added`, and is reported that way in
+  Evidence — **never** `pass`, whatever it asserts. Every other row runs using the merge-base
+  row's own command/expect text, not the (possibly edited) HEAD text — an edit to an existing
+  row's assertion is bypassed rather than trusted. This is the SECOND layer the check's
+  single-point-of-failure note names: the reviewer's `deskpathguard check` is the one control
+  until the paths land in branch protection, and this re-derivation catches an edit the check
+  missed because it reads git history, not a label.
+
 ## Risk-bearing value — desk-side routing
 
 The gate essence, so the desk can read a verdict: a green Verify table proves the code matches the pinned

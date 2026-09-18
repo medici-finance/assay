@@ -1,0 +1,30 @@
+# Fixture for TestPatternsReviewSameRoleIsProblem — the `review` node (evidence
+# kind: review) has role `worker`, the same role as `implement`, which produced
+# its input `branch`. A review node sharing its subject's role is exactly the
+# fault docs/enforcement-model.md's implementer<->reviewer separation exists to
+# refuse. This MUST make `statusgen patterns --lint` exit 1, naming
+# pattern-review-same-role.
+schema: workflow-pattern-v1
+pattern: bad-review-same-role
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review]
+  human: [review]
+nodes:
+  - id: implement
+    kind: artifact
+    role: worker
+    outputs: [branch]
+  - id: review
+    kind: check
+    role: worker
+    inputs:
+      - {artifact: branch}
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "reviewer APPROVED", mandatory: true}
+edges:
+  - {from: implement, to: review}
+join: review
