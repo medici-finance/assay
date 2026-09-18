@@ -1,0 +1,20 @@
+diff --git a/STATUS.md b/STATUS.md
+index 19ef2c8..26b6bdb 100644
+--- a/STATUS.md
++++ b/STATUS.md
+@@ -1 +1 @@
+-Status: in-progress
++Status: implemented
+diff --git a/eligibility.go b/eligibility.go
+index cf3fd72..2a3ae82 100644
+--- a/eligibility.go
++++ b/eligibility.go
+@@ -5,7 +5,5 @@ package eligibility
+ // IsEligible reports whether a claimed item's PR is still eligible for a running worker.
+ // A merged or closed PR ends eligibility; every other state keeps it.
+ func IsEligible(prState string) bool {
+-	// BUG: always eligible — a worker whose PR was merged or closed out from under it
+-	// keeps running forever.
+-	return true
++	return prState != "merged" && prState != "closed"
+ }

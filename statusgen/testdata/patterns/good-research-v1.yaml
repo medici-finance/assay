@@ -1,0 +1,68 @@
+# The research workflow pattern: a worker collects sources, resolves the gaps
+# an initial pass leaves open, synthesises the result, and an independent
+# reviewer checks the artifact before it is treated as usable. There is no
+# effect-bearing merge step — the artifact itself is the deliverable, so the
+# pattern's join is the review, not a separate integration check.
+#
+# Validate: `statusgen patterns --lint --root .` (Go) and, independently,
+# `python3 -c 'import json,yaml,jsonschema; jsonschema.validate(yaml.safe_load(open("spec/workflow-patterns/research-v1.yaml")), json.load(open("schemas/workflow-pattern-v1.json")))'`.
+schema: workflow-pattern-v1
+pattern: research
+version: 1
+risk-input:
+  low: [review-artifact]
+  standard: [review-artifact]
+  elevated: [review-artifact]
+  human: [review-artifact]
+nodes:
+  - id: collect-sources
+    kind: artifact
+    role: worker
+    inputs:
+      - {artifact: brief, revision: brief.version}
+    outputs: [source-register]
+    evidence:
+      - {kind: command, claim: "every source cited resolves (link check)", mandatory: true}
+    budget: {attempts: 2}
+    outcomes:
+      fail: [needs-context]
+  - id: resolve-gaps
+    kind: artifact
+    role: worker
+    inputs:
+      - {artifact: source-register}
+    outputs: [gap-resolution]
+    evidence:
+      - {kind: command, claim: "every gap the first pass flagged is either closed or recorded as could-not-check", mandatory: true}
+    budget: {attempts: 2}
+    outcomes:
+      wait: [needs-context]
+  - id: synthesise
+    kind: artifact
+    role: worker
+    inputs:
+      - {artifact: gap-resolution}
+    outputs: [draft-artifact]
+    evidence:
+      - {kind: command, claim: "every claim in the draft traces to a source in the register", mandatory: true}
+    effects:
+      - {kind: pr-open, target: draft-artifact}
+    budget: {attempts: 2}
+  - id: review-artifact
+    kind: check
+    role: reviewer
+    inputs:
+      - {artifact: draft-artifact}
+    outputs: [approved-artifact]
+    evidence:
+      - {kind: review, claim: "the reviewer App APPROVED the artifact against its sources", mandatory: true}
+    effects:
+      - {kind: comment, target: approved-artifact}
+    outcomes:
+      wait: [changes-requested]
+      fail: [findings-unaddressed]
+edges:
+  - {from: collect-sources, to: resolve-gaps}
+  - {from: resolve-gaps, to: synthesise}
+  - {from: synthesise, to: review-artifact}
+join: review-artifact

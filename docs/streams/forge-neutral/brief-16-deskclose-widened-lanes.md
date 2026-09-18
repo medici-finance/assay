@@ -403,6 +403,38 @@ below are this brief's planned test deliverables, created by the implementer:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PARTIAL (16/17 PASS)** — HELD at `implemented`
+
+Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` origin/main at `c67cc371f165a7b63e8b0a26d0a5afa40a95556b`. Implementation landed via PR #1172; the brief itself was authored separately in PR #996 — no Evidence was ever appended.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go test ./...` | exit 0 | exit 0, full suite green | 2026-09-17 | sonnet-5-verifier |
+| 2 | `go test ./cmd/deskclose/... -count=1` | exit 0, existing modes unmodified+green | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestSelfWithdrawSucceedsOnOwnDraft -v` | exit 0, exactly 1 comment+1 close | exit 0, all 5 subtests PASS | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestSelfWithdrawRefusesNonAuthor -v` | negative, zero writes | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestSelfWithdrawRefusesNonDraft -v` | negative, zero writes | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 6 | `TestSelfWithdrawRefusesDecisionLabelled -v` | negative, refuses before authorship check | exit 0 PASS — confirmed in source: `refuseDecisionItem` at `lanes.go:208` runs before the draft gate (`:212`) and authorship pin (`:221-248`) | 2026-09-17 | sonnet-5-verifier |
+| 7 | `TestSelfWithdrawIDPinRejectsLoginOnlyMatch -v` | negative, login match/id mismatch refused | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 8 | `TestSelfWithdrawIgnoresUnsignedRuling -v` | R-1 unsigned still succeeds | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 9 | `TestVerifyGateRefireSucceedsAsVerifier -v` | Reopen→Comment→Close order | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 10 | `TestVerifyGateRefireRefusesNonVerifier -v` | negative | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 11 | `TestVerifyGateRefireRefusesUnlabelledItem -v` | negative | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 12 | `TestVerifyGateRefireIgnoresUnsignedRuling -v` | R-1 unsigned still succeeds | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 13 | grep guard present ≥2, workflows diff empty | both hold | grep count `4`; `git diff origin/main -- .github/workflows` = 0 lines (byte-empty) | 2026-09-17 | sonnet-5-verifier |
+| 14 | `TestReopenIssueOpBothBackends` + golden/coverage chain | exit 0 all | exit 0 all 4 — `ReopenIssue` pinned both backends, inventory row 38/op 46 | 2026-09-17 | sonnet-5-verifier |
+| 15 | grep mode names in inventory.md + main.go | each ≥1 | `self-withdraw` total 2, `verify-gate-refire` total 5 | 2026-09-17 | sonnet-5-verifier |
+| 16 | mutation: disable id-half of the identity pin, re-run, restore | mutant exit 1 (only the id-pin test fails); restored exit 0 | mutant (`lanes.go:239`): exit 1, only `TestSelfWithdrawIDPinRejectsLoginOnlyMatch` failed, every other self-withdraw test still PASS; restored exit 0, all PASS | 2026-09-17 | sonnet-5-verifier |
+| 17 | `statusgen --root . --consumers --brief forge-neutral/16` | exit 0 | **EXPLICITLY UNRUN (exit 2)** — same structural class already filed as `medici-finance/assay#1281`: brief authored in PR #996, implemented separately in PR #1172; no single diff ever contains both the brief file and its consumers' targets, regardless of which commit is used as base (tried the implementation commit's own parent too — still fails). Not re-filed | 2026-09-17 | sonnet-5-verifier |
+
+**RISK-VALUE: DERIVED — read from shipped source, file:line, not from the brief's prose:**
+- Identity pin, both halves confirmed live: login half `deskkit.SameActor(pr.Author.Login, self.login)` @ `lanes.go:229`; id half `pr.Author.ID != self.id` @ `lanes.go:239` (id sourced via `RoleBotIdentity`; unpinned/0 id is itself a refusal at `lanes.go:159-166`). Row 16's mutation proves the id half is live, not decorative.
+- `refuseDecisionItem` (`lanes.go:208`) runs after the read/idempotent-closed checks but strictly before the draft gate (`:212`) and authorship pin (`:221-248`).
+- Verifier role-check `resolveVerifier` (`lanes.go:336-352`) refuses any `mintedRole != roleVerifier` by name, no default-accept arm.
+- `gateFor`/`authorize` call-graph grepped directly: call sites exist only at `manifest.go:243`, `verbs.go:222,282`, `superseded.go:427`; `lanes.go` (both new lanes) has ZERO calls to either — confirmed structurally, not inferred from the unsigned-ruling tests passing.
+- Both new modes registered in `modes()` (`verbs.go:25-26`) and the dispatcher (`main.go:181,183`); correctly ABSENT from `rowModes()` (`verbs.go:36`, still only `duplicate`/`superseded`/`review-request`) — a manifest row cannot invoke either new lane.
+
+**VERIFY: PARTIAL** — 16/17 rows PASS with real, independently-run evidence including the load-bearing mutation proof for the security-critical id pin. Row 17 is the same structural gap as #1281 — held at `implemented` pending that row's resolution, not a defect in the shipped lanes.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers `no`; see gate-why for the reasoning that

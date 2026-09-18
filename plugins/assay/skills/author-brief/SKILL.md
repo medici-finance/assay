@@ -468,11 +468,17 @@ it is an authoring convention only.
 | `consumers-out-of-scope-no-reason` | an `out-of-scope` routing with no substantive reason for the reviewer who must weigh the exclusion | advisory |
 | `consumers-prose` | a `consumers:` written as a prose paragraph rather than a routed list, so nothing can corroborate it | advisory |
 | `consumers-unrouted` | a `consumers:` entry that names no routing token (`fixed-here` / `follow-up` / `out-of-scope`) | advisory |
+| `eligibility-could-not-check` | a gates: edge (or unsatisfied depends:) the eligibility evaluator could not resolve offline — an unregistered/unpublished alias, an absent sibling checkout, or a forge-backed target — which HOLDS the brief out of Next-up | advisory |
 | `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind | advisory |
 | `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on | advisory |
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
 | `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
 | `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
+| `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |
+| `pattern-effect-target-not-owned` | a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary | fatal |
+| `pattern-join-not-check` | a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check | fatal |
+| `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
+| `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
