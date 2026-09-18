@@ -47,6 +47,8 @@ unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_RO
   CODEX_MODEL_default CODEX_MODEL_the_desk CODEX_MODEL_worker_desk \
   TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
   TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX \
+  KIMI_MODEL_default KIMI_MODEL_the_desk KIMI_MODEL_worker_desk \
+  TIER_MODEL_TOP_KIMI TIER_MODEL_MID_KIMI TIER_MODEL_FAST_KIMI \
   DESK_ROOTS DESK_LOOP DESK_SESSION 2>/dev/null || true
 
 # ---------------------------------------------------------------- fixtures
@@ -96,6 +98,16 @@ esac
 echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/codex"
+cat > "$T/bin/kimi" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version|-V) echo "0.38.0-test"; exit 0 ;;
+  doctor) echo "OK config.toml"; exit 0 ;;
+esac
+echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
+EOF
+chmod +x "$T/bin/kimi"
+mkdir -p "$REPO/plugins/assay/skills/the-desk"; printf -- '---\nname: the-desk\n---\n' > "$REPO/plugins/assay/skills/the-desk/SKILL.md"
 export PATH="$T/bin:$PATH"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 
@@ -208,6 +220,64 @@ assert "omitting --harness resolves the namespace from the cell's own CELL_HARNE
 
 out="$("$CELLCTL" set ns-cell worker-desk 2>&1)" && rc=0 || rc=$?
 assert "the role-sugar form needs --model" '[[ $rc -ne 0 ]] && grep -q -- "--model" <<<"$out"'
+
+# ---------------------------------------------------------------- 8: kimi namespace (#1303)
+echo "[desk: Claude-only cell, --harness kimi resolves via the kimi tier column]"
+assert "fixture carries no KIMI_MODEL_the_desk" '! grep -q "^KIMI_MODEL_the_desk=" "$CELL/cell.env"'
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell the-desk --harness kimi 2>&1)" && rc=0 || rc=$?
+assert "resolves (exit 0), no manual re-pin needed" '[[ $rc -eq 0 ]]'
+assert "resolves to the tier map's top-tier kimi alias, tagged with its source" \
+  'grep -q "model=kimi-code/k3 (tier:top (TIER_MODEL_TOP_KIMI))" <<<"$out"'
+export CELLCTL_TEST_OUT="$T/launch-kimi-tier.env"
+"$CELLCTL" desk ns-cell the-desk --harness kimi >/dev/null
+assert "the resolved tier value reaches the kimi launch (-m kimi-code/k3)" 'grep -q -- "-m kimi-code/k3" "$CELLCTL_TEST_OUT"'
+
+echo "[desk: KIMI_MODEL_<role> wins over the tier map; KIMI_MODEL_default before it; never cross-read]"
+set_kv "$CELL/cell.env" KIMI_MODEL_the_desk "kimi-top-special"
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell the-desk --harness kimi 2>&1)" && rc=0 || rc=$?
+assert "the explicit KIMI_MODEL_the_desk pin wins" '[[ $rc -eq 0 ]] && grep -q "model=kimi-top-special" <<<"$out" && ! grep -q "tier:" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell the-desk --harness codex 2>&1)" && rc=0 || rc=$?
+assert "the codex arm does not read the kimi pin" '! grep -q "kimi-top-special" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell the-desk 2>&1)" && rc=0 || rc=$?
+assert "the claude arm does not read the kimi pin either (still fable)" 'grep -q "model=fable" <<<"$out"'
+set_kv "$CELL/cell.env" KIMI_MODEL_the_desk ""
+set_kv "$CELL/cell.env" KIMI_MODEL_default "kimi-house-default"
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell worker-desk --harness kimi 2>&1)" && rc=0 || rc=$?
+assert "worker-desk (no per-role kimi pin) resolves to KIMI_MODEL_default" 'grep -q "model=kimi-house-default" <<<"$out"'
+set_kv "$CELL/cell.env" KIMI_MODEL_default ""
+
+echo "[desk: --harness kimi --model <explicit> passes through verbatim]"
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell the-desk --harness kimi --model claude-fable-9 2>&1)" && rc=0 || rc=$?
+assert "an explicit --model is not remapped on kimi" '[[ $rc -eq 0 ]] && grep -q "model=claude-fable-9 (override)" <<<"$out"'
+
+echo "[desk: kimi — no per-role pin and no tier match is refused]"
+printf 'TIER_MODEL_MID_KIMI=\n' >> "$CELL/cell.env"
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell worker-desk --harness kimi 2>&1)" && rc=0 || rc=$?
+assert "refused (non-zero exit)" '[[ $rc -ne 0 ]]'
+assert "names what it checked (kimi namespace)" 'grep -q "no model resolves for role .worker-desk. harness .kimi." <<<"$out" && grep -q "KIMI_MODEL_worker_desk" <<<"$out" && grep -q "KIMI_MODEL_default" <<<"$out" && grep -q "TIER_MODEL_MID_KIMI" <<<"$out"'
+grep -v '^TIER_MODEL_MID_KIMI=' "$CELL/cell.env" > "$CELL/cell.env.tmp" && mv "$CELL/cell.env.tmp" "$CELL/cell.env"
+
+echo "[desk: TIER_MODEL_<TIER>_KIMI is overridable in cell.env]"
+"$CELLCTL" set ns-cell TIER_MODEL_TOP_KIMI=my-custom-top-kimi >/dev/null
+out="$(DRY_RUN=1 "$CELLCTL" desk ns-cell the-desk --harness kimi 2>&1)" && rc=0 || rc=$?
+assert "the-desk now resolves to the overridden kimi tier value" 'grep -q "model=my-custom-top-kimi" <<<"$out"'
+"$CELLCTL" set ns-cell TIER_MODEL_TOP_KIMI=kimi-code/k3 >/dev/null
+
+echo "[set: role-sugar --harness kimi writes KIMI_MODEL_<role>]"
+out="$("$CELLCTL" set ns-cell worker-desk --harness kimi --model my-kimi-worker 2>&1)" && rc=0 || rc=$?
+assert "set exits 0" '[[ $rc -eq 0 ]]'
+assert "writes KIMI_MODEL_worker_desk, not DESK_MODEL_/CODEX_MODEL_" \
+  'grep -qx "KIMI_MODEL_worker_desk=my-kimi-worker" "$CELL/cell.env" && ! grep -E "^(DESK|CODEX)_MODEL_" "$CELL/cell.env" | grep -q "my-kimi-worker"'
+out="$("$CELLCTL" set ns-cell KIMI_MODEL_default=k-default 2>&1)" && rc=0 || rc=$?
+assert "KIMI_MODEL_default is a known key" '[[ $rc -eq 0 ]] && grep -qx "KIMI_MODEL_default=k-default" "$CELL/cell.env"'
+out="$("$CELLCTL" set ns-cell KIMI_MODEL_bogus_role=x 2>&1)" && rc=0 || rc=$?
+assert "KIMI_MODEL_<not-a-role> is refused without --force" '[[ $rc -ne 0 ]] && grep -q "not a known cell.env key" <<<"$out"'
+"$CELLCTL" set ns-cell CELL_HARNESS=kimi >/dev/null
+out="$("$CELLCTL" set ns-cell worker-desk --model my-implicit-kimi-worker 2>&1)" && rc=0 || rc=$?
+assert "omitting --harness resolves the namespace from CELL_HARNESS=kimi" 'grep -qx "KIMI_MODEL_worker_desk=my-implicit-kimi-worker" "$CELL/cell.env"'
+out="$("$CELLCTL" check ns-cell 2>&1)" && rc=0 || rc=$?
+assert "check on the kimi cell prints the kimi-namespace model pin rows" 'grep -q "ok    model pin: role=worker-desk harness=kimi model=my-implicit-kimi-worker (from KIMI_MODEL_worker_desk)" <<<"$out"'
+"$CELLCTL" set ns-cell CELL_HARNESS=claude >/dev/null
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "model-namespace.test.sh: OK"; else echo "model-namespace.test.sh: $fails FAILED"; exit 1; fi
