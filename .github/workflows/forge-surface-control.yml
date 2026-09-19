@@ -104,3 +104,12 @@ jobs:
           cd tools/desk
           go test ./internal/forgeban/ -count=1 -v
           go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout|TestForgeNoPassthrough|TestForgeSingleConstructionSite' -count=1 -v
+
+      # desktools-v2/02 — the v2 seam contract's ban-lint (docs/streams/desktools-v2/
+      # seam-contract.md). A portable grep counter, not a Go test: it covers what the three
+      # Go-level checks above cannot reach — shell/skill scripts and statusgen/** (a separate
+      # module the forgeban register does not scope to). ADVISORY/counting mode: always exits
+      # 0. It flips to failing only once a migration has driven its count to zero
+      # (desktools-v2/08 for the statusgen half).
+      - name: Forge reach-around counter (forge-ban, advisory)
+        run: sh tools/desk/scripts/forge-ban.sh
