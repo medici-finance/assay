@@ -46,6 +46,15 @@ const (
 	// dispInRepair: an in-flight table-repair pipeline already owns this brief's Verify table
 	// (a stale-artifact re-baseline). Dispatching a verifier at it races the repair.
 	dispInRepair
+	// dispDispatchForEvidence: the SECOND dispatchable class (#1309 item 2). A human-gated /
+	// risk-flagged brief whose Evidence section is still EMPTY and which is otherwise
+	// offline-runnable (not blocked, not in repair, not on an online lane): a model MAY gather
+	// its Evidence — Evidence rows plus the outcome sidecar row, and NEVER a status flip (Land
+	// enforces the no-flip structurally). It is emitted AFTER the DISPATCH set so the desk's
+	// declared worklist is the tool's output, not a hand-computed union of DISPATCH and the
+	// ROUTE-HUMAN bucket. A human-gated brief whose Evidence is already gathered stays in
+	// awaiting-human: re-gathering it every pass is the treadmill item 3 closes.
+	dispDispatchForEvidence
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -61,9 +70,29 @@ func (d disposition) String() string {
 		return "awaiting-online-lane"
 	case dispInRepair:
 		return "in-repair"
+	case dispDispatchForEvidence:
+		return "dispatch-for-evidence"
 	default:
 		return "unknown"
 	}
+}
+
+// evidenceOnlyDispatchable reports whether an awaiting-human item is the DISPATCH-FOR-EVIDENCE
+// shape: its Evidence is KNOWN empty (the scan writes evidence_empty=yes; an item with no such
+// payload is not known and stays awaiting-human, fail-safe) and nothing below the human arm in
+// classifyItem's precedence — in-repair, online lane — would keep an offline run from producing
+// the Evidence.
+func evidenceOnlyDispatchable(it loopengine.Item) bool {
+	if payloadValue(it, "evidence_empty") != "yes" {
+		return false
+	}
+	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
+		return false
+	}
+	if lane := strings.ToLower(payloadValue(it, "verify_lane")); onlineLaneValues[lane] {
+		return false
+	}
+	return true
 }
 
 // whyItWaits is the one-line explanation printed once per non-dispatch disposition.
@@ -128,6 +157,9 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 		return dispDeferred, bu
 	}
 	if tier == loopengine.TierHuman || loopengine.GateIsHuman(it.Gate) || it.Risk.Any() {
+		if evidenceOnlyDispatchable(it) {
+			return dispDispatchForEvidence, humanReason(it)
+		}
 		return dispAwaitingHuman, riskReason(it.Risk)
 	}
 	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
@@ -137,6 +169,15 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 		return dispAwaitingOnlineLane, lane
 	}
 	return dispDispatch, ""
+}
+
+// humanReason is the DISPATCH-FOR-EVIDENCE header reason: the risk answers that are yes, else
+// the bare human gate — a for-evidence header always names WHY the flip is withheld.
+func humanReason(it loopengine.Item) string {
+	if r := riskReason(it.Risk); r != "" {
+		return r
+	}
+	return "gate: human"
 }
 
 // riskReason names the risk answers that are yes, in canonical key order, as

@@ -267,6 +267,16 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	return b.String()
 }
 
+// renderEvidenceOnlyPrompt is the DISPATCH-FOR-EVIDENCE prompt: the ordinary verifier prompt at
+// the local session tier, headed by the ONE clause that differs — write Evidence rows and the
+// outcome sidecar row, never a status flip. reason names the human gate / risk answer that
+// withholds the flip, so the agent reads the permission and its limit together.
+func renderEvidenceOnlyPrompt(it loopengine.Item, reason string) string {
+	return "EVIDENCE-ONLY (" + reason + "): gather and record Evidence rows plus the outcome sidecar row " +
+		"for this brief. NEVER flip its status — the human's merge is the flip.\n\n" +
+		renderDispatchPrompt(it, loopengine.TierLocal)
+}
+
 // assertNoSharedCheckout is the in-code backstop: the emitted dispatch instruction must
 // never name a shared-checkout path. If the rendered prompt or any payload value contains a
 // shared-checkout marker, dispatch refuses (fail closed) rather than emit a leaky instruction.

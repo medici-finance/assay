@@ -157,6 +157,9 @@ func cmdPlan(args []string) error {
 	// count and a one-line "why it waits", never silently listed as DISPATCH (queueclass.go).
 	bucketed := map[disposition][]bucketMember{}
 	dispatchable := 0
+	// forEvidence collects the DISPATCH-FOR-EVIDENCE set (queueclass.go): printed AFTER every
+	// DISPATCH block, each with its human-gate reason and the Evidence-only limit on the header.
+	var forEvidence []string
 	for _, it := range items {
 		// author != runner is a STRUCTURAL engine guard, shown here for transparency.
 		if err := loopengine.CheckAuthorRunner(it, *runner); err != nil {
@@ -168,7 +171,17 @@ func cmdPlan(args []string) error {
 			fmt.Printf("\n-- %s: tier error: %v\n", it.ID, terr)
 			continue
 		}
-		if disp, reason := classifyItem(it, tier); disp != dispDispatch {
+		disp, reason := classifyItem(it, tier)
+		if disp == dispDispatchForEvidence {
+			prompt := renderEvidenceOnlyPrompt(it, reason)
+			if err := assertNoSharedCheckout(prompt); err != nil {
+				return deskkit.Refused(err.Error())
+			}
+			forEvidence = append(forEvidence, fmt.Sprintf("\n=== DISPATCH-FOR-EVIDENCE %s (tier=%s)%s — ROUTE-HUMAN: %s — %s ===\n%s\n",
+				it.ID, loopengine.TierLocal, rootTag(it), reason, evidenceOnlyMarker, prompt))
+			continue
+		}
+		if disp != dispDispatch {
 			bucketed[disp] = append(bucketed[disp], bucketMember{ID: it.ID, Reason: reason})
 			continue
 		}
@@ -180,6 +193,12 @@ func cmdPlan(args []string) error {
 		fmt.Printf("\n=== DISPATCH %s (tier=%s)%s ===\n%s\n", it.ID, tier, rootTag(it), prompt)
 	}
 
+	for _, block := range forEvidence {
+		fmt.Print(block)
+	}
+	if len(forEvidence) > 0 {
+		fmt.Printf("\nverify-desk plan: %d dispatch-for-evidence (Evidence rows + outcome sidecar only; flip never)\n", len(forEvidence))
+	}
 	printBuckets(dispatchable, bucketed)
 	if skippedRoots > 0 {
 		// The plan printed is complete for every root that was read; the exit code says the
@@ -278,7 +297,10 @@ narrows to that one root; with DESK_ROOTS unset the plan is the single --root re
 'plan' FAILS SAFE on risk: any brief with gate:human OR any risk answer yes (irreversible
 first) is bucketed under awaiting-human / ROUTE-HUMAN, never DISPATCH. A model MAY gather
 Evidence for such a brief — its member line says 'Evidence-only (never flip-eligible)' — but
-never flips it; the human's merge of the checkpoint PR is the flip.
+never flips it; the human's merge of the checkpoint PR is the flip. When such a brief's Evidence
+is still EMPTY (and nothing else withholds an offline run) it is emitted as a second dispatchable
+class, DISPATCH-FOR-EVIDENCE, after the DISPATCH set: Evidence rows + the outcome sidecar row
+only, flip never. A human-gated brief whose Evidence is already gathered stays awaiting-human.
 
 'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally
 (exit code = verdict), batches results over the flush window into ONE signed verdict-v1
