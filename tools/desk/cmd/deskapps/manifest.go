@@ -51,8 +51,11 @@ var teamActPerms = []string{
 // The URL/Description/Public/DefaultEvents/HookExtra fields exist for a --manifest-driven
 // spec (see ManifestAppSpec below) only. A tier-derived spec (TierManifests) never sets
 // them, and BuildManifestJSON falls back to the tier path's original fixed choices
-// (manifestHomepageURL, public:false, default_events:[], hook_attributes:{active:false})
-// exactly as before — this is additive, not a behaviour change for --tier.
+// (manifestHomepageURL, public:false, default_events:[]) exactly as before — this is
+// additive, not a behaviour change for --tier. hook_attributes is posted only when
+// HookExtra names a "url" (never reachable today — LoadManifestFile refuses one); a
+// webhook-less spec gets no hook_attributes key at all rather than {"active": false} with
+// no url, which GitHub's manifest schema rejects (medici-finance/assay#1260).
 type AppSpec struct {
 	Name        string
 	Permissions []string // "resource:level" (defaults to "read" when no ":level" is given)
@@ -127,8 +130,9 @@ func containsPerm(perms []string, p string) bool {
 
 // githubManifest is the JSON body a browser auto-POSTs to GitHub's App-manifest new-App
 // page (design.md §3): name, url, redirect_url, public:false, default_permissions,
-// default_events:[], hook_attributes:{active:false} — the fields brief 02's facts name and
-// no others.
+// default_events:[] — the fields brief 02's facts name and no others — plus hook_attributes
+// only when a webhook url is actually named (omitted entirely otherwise — assay#1260: a
+// url-less hook_attributes, even {"active": false}, is rejected by GitHub's own schema).
 type githubManifest struct {
 	Name               string            `json:"name"`
 	URL                string            `json:"url"`
@@ -137,7 +141,7 @@ type githubManifest struct {
 	Public             bool              `json:"public"`
 	DefaultEvents      []string          `json:"default_events"`
 	DefaultPermissions map[string]string `json:"default_permissions"`
-	HookAttributes     map[string]any    `json:"hook_attributes"`
+	HookAttributes     map[string]any    `json:"hook_attributes,omitempty"`
 }
 
 // manifestHomepageURL is the App's required homepage URL. Assay is the product these Apps
@@ -166,12 +170,24 @@ func BuildManifestJSON(spec AppSpec, redirectURL string) ([]byte, error) {
 	// hook_attributes: start from the manifest's own extra fields (never "url" — refused at
 	// load, LoadManifestFile), default "active" to false when the manifest did not name it,
 	// exactly the tier path's original fixed value.
-	hook := make(map[string]any, len(spec.HookExtra)+1)
-	for k, v := range spec.HookExtra {
-		hook[k] = v
-	}
-	if _, ok := hook["active"]; !ok {
-		hook["active"] = false
+	//
+	// GitHub's manifest schema requires hook_attributes.url whenever hook_attributes is
+	// present at all — posting {"active": false} (or any hook_attributes) with no url gets
+	// GitHub's new-App page to reject the whole manifest with `"url" wasn't supplied`
+	// (medici-finance/assay#1260, reported live against feat/apps-installer-02). Today
+	// hook_attributes.url can never reach this function — LoadManifestFile refuses a
+	// manifest that sets it — so a webhook-less App (no hook_attributes at all, or
+	// active:false/true with no url) must post NO hook_attributes key rather than a
+	// url-less one; omit the field entirely instead of sending it half-built.
+	var hook map[string]any
+	if _, hasURL := spec.HookExtra["url"]; hasURL {
+		hook = make(map[string]any, len(spec.HookExtra)+1)
+		for k, v := range spec.HookExtra {
+			hook[k] = v
+		}
+		if _, ok := hook["active"]; !ok {
+			hook["active"] = false
+		}
 	}
 
 	m := githubManifest{
