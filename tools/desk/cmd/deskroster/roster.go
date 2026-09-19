@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,11 @@ type Beacon struct {
 	Updated  string          `json:"updated"`
 	OpenWork []WorkEntry     `json:"open_work,omitempty"`
 	Acks     json.RawMessage `json:"acks,omitempty"`
+	// Resource is example-stream/13's self-reported vitals block, owned by
+	// deskkit.MergeResourceVitals — carried here as an opaque RawMessage for the SAME
+	// reason Acks is: so a typed rewrite through loadBeacon/saveBeacon (the role/work-entry
+	// path below) round-trips it untouched rather than silently dropping it on the floor.
+	Resource json.RawMessage `json:"resource,omitempty"`
 }
 
 // hasAcks reports whether a beacon carries at least one receipt record — used so a beacon
@@ -273,6 +279,56 @@ func ghListOpenPRs(fullRepo string) []PRInfo {
 
 // ---- commands ----
 
+// parseVitalNumeric parses a numeric vitals flag's raw value: "" means the flag was not
+// passed (caller skips it entirely — the field stays unset/null), the sentinel "unknown"
+// means the source read failed (could-not-check), and anything else must parse as the
+// requested numeric kind or the whole `set` call is refused — a numeric flag that silently
+// became could-not-check on a typo would hide a real reading behind a false blind.
+func parseVitalNumericInt(flagName, raw string) (*deskkit.VitalField, error) {
+	switch raw {
+	case "":
+		return nil, nil
+	case "unknown":
+		return deskkit.CouldNotCheckVital(), nil
+	default:
+		n, perr := strconv.ParseInt(raw, 10, 64)
+		if perr != nil {
+			return nil, deskkit.Refused(fmt.Sprintf(
+				"refused: --%s must be an integer or the sentinel \"unknown\" (got %q)", flagName, raw))
+		}
+		return deskkit.MeasuredInt(n), nil
+	}
+}
+
+func parseVitalNumericFloat(flagName, raw string) (*deskkit.VitalField, error) {
+	switch raw {
+	case "":
+		return nil, nil
+	case "unknown":
+		return deskkit.CouldNotCheckVital(), nil
+	default:
+		f, perr := strconv.ParseFloat(raw, 64)
+		if perr != nil {
+			return nil, deskkit.Refused(fmt.Sprintf(
+				"refused: --%s must be a number or the sentinel \"unknown\" (got %q)", flagName, raw))
+		}
+		return deskkit.MeasuredFloat(f), nil
+	}
+}
+
+// parseVitalString parses a string vitals flag (--model): "" ⇒ unset, "unknown" ⇒
+// could-not-check, anything else is the measured value verbatim.
+func parseVitalString(raw string) *deskkit.VitalField {
+	switch raw {
+	case "":
+		return nil
+	case "unknown":
+		return deskkit.CouldNotCheckVital()
+	default:
+		return deskkit.MeasuredString(raw)
+	}
+}
+
 func cmdSet(args []string) error {
 	fs := flag.NewFlagSet("set", flag.ContinueOnError)
 	var (
@@ -282,6 +338,14 @@ func cmdSet(args []string) error {
 		role    string
 		session string
 		width   int
+		// Vitals flags (example-stream/13) — the per-tick self-report the desk session
+		// makes about ITSELF, not about the work. Each is a raw string so the sentinel
+		// "unknown" is distinguishable from "not passed" (flag.StringVar's zero value, "").
+		tokens    string
+		ctxPct    string
+		ageSecs   string
+		subagents string
+		model     string
 	)
 	fs.StringVar(&repo, "repo", "", "Short repo name (e.g. tracker)")
 	fs.IntVar(&pr, "pr", 0, "PR number")
@@ -289,6 +353,11 @@ func cmdSet(args []string) error {
 	fs.StringVar(&role, "role", "", "Optional role label for this session")
 	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
 	fs.IntVar(&width, "width", 0, "With --role: set that LOOP's agent-pool width (see `deskroster width --role`)")
+	fs.StringVar(&tokens, "tokens", "", "Cumulative tokens this session has consumed, or \"unknown\" (could-not-check); omit to leave unset")
+	fs.StringVar(&ctxPct, "context-pct", "", "Percent of the context window in use (0-100), or \"unknown\"; omit to leave unset")
+	fs.StringVar(&ageSecs, "session-age-seconds", "", "Wall seconds since this session booted, or \"unknown\"; omit to leave unset")
+	fs.StringVar(&subagents, "subagents", "", "Count of subagents this session has launched, or \"unknown\"; omit to leave unset")
+	fs.StringVar(&model, "model", "", "The model id this session runs, or \"unknown\"; omit to leave unset")
 
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused(fmt.Sprintf("set: %v", err))
@@ -301,6 +370,9 @@ func cmdSet(args []string) error {
 	// Width set: --role names the LOOP whose pool is being resized. It is a distinct shape
 	// from the two above, and deliberately so — see the next block.
 	widthSet := width != 0
+	// Vitals set: any one of the five resource flags — orthogonal to role/work/width, and
+	// combinable with --role (the per-tick self-declare call this brief's facts describe).
+	vitalsSet := tokens != "" || ctxPct != "" || ageSecs != "" || subagents != "" || model != ""
 
 	if widthSet {
 		// --width addresses ANOTHER window's pool; it does not describe this session. Writing
@@ -315,6 +387,10 @@ func cmdSet(args []string) error {
 			return deskkit.Refused("set --width is a pool-size directive for a loop, not a work entry: " +
 				"pass it with --role alone, and register work in a separate `deskroster set --repo … --pr … --what …`")
 		}
+		if vitalsSet {
+			return deskkit.Refused("set --width is a pool-size directive for a loop, not a vitals self-report: " +
+				"pass it with --role alone, and report vitals in a separate `deskroster set --tokens … [...]`")
+		}
 		setBy, serr := resolveSession(session)
 		if serr != nil {
 			return serr
@@ -328,48 +404,95 @@ func cmdSet(args []string) error {
 		return nil
 	}
 
-	if !roleOnly && !workSet {
-		return deskkit.Refused("set requires either (--repo, --pr, --what) for a work entry, or --role alone for a standing session")
+	// role/work-entry require exactly the shapes above; a vitals flag with none of those
+	// is its own valid shape (the per-tick "just report vitals" call), so it is checked
+	// separately rather than folded into roleOnly/workSet.
+	bareVitalsOnly := !roleOnly && !workSet && vitalsSet && repo == "" && pr == 0 && what == ""
+	if !roleOnly && !workSet && !bareVitalsOnly {
+		return deskkit.Refused("set requires either (--repo, --pr, --what) for a work entry, --role alone for a " +
+			"standing session, or a vitals flag (--tokens/--context-pct/--session-age-seconds/--subagents/--model) " +
+			"to report resource vitals")
 	}
 
 	sess, err := resolveSession(session)
 	if err != nil {
 		return err
 	}
-
-	b, err := loadBeacon(sess)
-	if err != nil {
-		return deskkit.Unverifiable("cannot load beacon", err)
+	// Security review finding S-1 (example-stream/13): a session name that does not
+	// resolve to a single path segment must never be silently joined into a beacon path —
+	// once a beacon write can arm an involuntary recycle (example-stream/14), that join
+	// is a control-bearing surface, not just a display quirk.
+	if !deskkit.ValidSessionSegment(sess) {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: session name %q does not resolve to a single path segment (no \"/\", no \"..\", "+
+				"non-empty) — refusing to join it into the beacon path", sess))
 	}
 
-	// Set role if provided.
-	if role != "" {
-		b.Role = role
-	}
+	if role != "" || workSet {
+		b, err := loadBeacon(sess)
+		if err != nil {
+			return deskkit.Unverifiable("cannot load beacon", err)
+		}
 
-	// Upsert the work entry (idempotent on (repo,pr)).
-	if workSet {
-		found := false
-		for i, w := range b.OpenWork {
-			if w.Repo == repo && w.PR == pr {
-				b.OpenWork[i].What = what
-				found = true
-				break
+		// Set role if provided.
+		if role != "" {
+			b.Role = role
+		}
+
+		// Upsert the work entry (idempotent on (repo,pr)).
+		if workSet {
+			found := false
+			for i, w := range b.OpenWork {
+				if w.Repo == repo && w.PR == pr {
+					b.OpenWork[i].What = what
+					found = true
+					break
+				}
+			}
+			if !found {
+				b.OpenWork = append(b.OpenWork, WorkEntry{Repo: repo, PR: pr, What: what})
 			}
 		}
-		if !found {
-			b.OpenWork = append(b.OpenWork, WorkEntry{Repo: repo, PR: pr, What: what})
+
+		if err := saveBeacon(b); err != nil {
+			return deskkit.Unverifiable("cannot save beacon", err)
 		}
 	}
 
-	if err := saveBeacon(b); err != nil {
-		return deskkit.Unverifiable("cannot save beacon", err)
+	// Vitals: an independent field-preserving raw-key merge (deskkit.MergeResourceVitals),
+	// never the typed loadBeacon/saveBeacon path above — see vitals.go's header for why a
+	// second, dedicated writer is the safer property than one struct trusted to remember
+	// every co-owned field forever.
+	if vitalsSet {
+		rv := deskkit.ResourceVitals{}
+		if rv.Tokens, err = parseVitalNumericInt("tokens", tokens); err != nil {
+			return err
+		}
+		if rv.ContextPctUsed, err = parseVitalNumericFloat("context-pct", ctxPct); err != nil {
+			return err
+		}
+		if rv.SessionAgeSeconds, err = parseVitalNumericInt("session-age-seconds", ageSecs); err != nil {
+			return err
+		}
+		if rv.SubagentsSpawned, err = parseVitalNumericInt("subagents", subagents); err != nil {
+			return err
+		}
+		rv.Model = parseVitalString(model)
+		if _, err := deskkit.MergeResourceVitals(sess, rv); err != nil {
+			return err
+		}
 	}
 
-	if workSet {
+	switch {
+	case workSet:
 		fmt.Printf("deskroster: %s registered PR #%d (%s) as %q\n", sess, pr, repo, what)
-	} else {
+	case role != "":
 		fmt.Printf("deskroster: %s set role %q\n", sess, role)
+	default:
+		fmt.Printf("deskroster: %s reported resource vitals\n", sess)
+	}
+	if vitalsSet && (workSet || role != "") {
+		fmt.Printf("deskroster: %s also reported resource vitals\n", sess)
 	}
 	return nil
 }

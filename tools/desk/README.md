@@ -1091,6 +1091,16 @@ there was no way to say which stage that was — nor any value to move once you 
 - **Defaults live in ONE place** (`internal/deskkit/width.go`), with the argument for each number
   beside it and a test pinning the values. The desk skill bodies point at that table instead of
   stating a number that could drift from it.
+- **Self-reported resource vitals — `deskroster set --tokens N --context-pct P --session-age-seconds S
+  --subagents N --model ID`** (example-stream/13), one more field a session can set on its OWN
+  roster beacon alongside `--role`/`--repo …`. Each flag is independent and optional: omit one to
+  leave that field `null` (not collected this tick), pass the literal `unknown` to record
+  `could-not-check` (the source read failed), or pass the real reading — including a measured `0`,
+  which round-trips as a real zero rather than "unset". `desksupervise status --json` joins these
+  onto the holder's claim as the `resource` block, filling what used to be a permanently
+  `could-not-check` `tokens` stub. `--session` (explicit or env-resolved) must resolve to a single
+  path segment — no `/`, no `..` — or `set` refuses (exit 5) rather than silently joining it into
+  the beacon path.
 
 ### Scope: what the board covers
 
