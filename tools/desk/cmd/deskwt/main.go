@@ -41,8 +41,12 @@ role-init provisions a DESK ROLE's own worktree in one idempotent call: a sessio
 path under /private/tmp/tracker-*, a uniquely-named branch cut from a FRESHLY FETCHED
 origin/main (so the preflight landing probe is green and the session does not start behind
 main), a worktree lock, and the role's App commit identity set PER-WORKTREE (bot USER id,
-#638) so concurrent sessions cannot race each other's identity via shared config. An
-existing valid worktree is reused; a foreign-repo path is refused, never re-pointed. The
+#638) so concurrent sessions cannot race each other's identity via shared config, plus the
+role's App CREDENTIAL HELPER set per-worktree (chain reset, one inline helper reading the
+role's 0600 token file — never a token in argv or a URL), and finally the role's own
+PREFLIGHT run against the provisioned worktree (red = exit 6, the path is still printed). An
+existing valid worktree is reused (helper re-wired, so a polluted chain is scrubbed); a
+foreign-repo path is refused, never re-pointed. The
 LAST line on stdout is the worktree's absolute path — the launcher contract:
 ` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
 role-clean unlocks and removes it under the same safety guards as remove.

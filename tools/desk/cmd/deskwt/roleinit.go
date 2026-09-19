@@ -29,6 +29,11 @@ import (
 //   - a worktree LOCK (cooperative half of the prune liveness guard);
 //   - the role's App commit identity as a PER-WORKTREE config (bot USER id, #638), scoped via
 //     extensions.worktreeConfig so it never bleeds into the primary checkout;
+//   - the role's App CREDENTIAL HELPER as a per-worktree config too (#1309 item 7): the helper
+//     chain is reset at worktree scope and one inline helper reading the role's 0600 token file
+//     is added, so https fetch/push authenticate as the role and never fall through to a
+//     sibling role's leftover helper in shared config — followed by the role's own PREFLIGHT,
+//     run against the provisioned worktree, so a red envelope is found here and not at boot;
 //   - an ORIGIN identity guard: an existing target whose origin is a different repo is
 //     REFUSED, never re-pointed or reset (fail closed);
 //   - idempotency: a valid existing worktree is reused (noop), not clobbered or errored.
@@ -279,7 +284,11 @@ func cmdRoleInit(args []string) (err error) {
 	// brief), never a fixed shape, and never the GitHub noreply shape for a GitLab account
 	// (#677 — a GitHub-shaped email on a GitLab commit lands it under no GitLab identity).
 	var botName, botEmail string
+	// credUser is the username the inline credential helper answers with: GitHub App
+	// installation tokens authenticate as `x-access-token`; a GitLab PAT as `oauth2`.
+	credUser := "x-access-token"
 	if ident, bound := deskkit.EffectiveConfig().RoleBotIdentity(p.role); bound && ident.Forge == deskkit.ForgeGitLab {
+		credUser = "oauth2"
 		// GitLab: the service-account commit email embeds a group id and per-account suffix the
 		// roster does not carry, so it is not CONSTRUCTIBLE. The established mechanism (#643) is
 		// the two-identity model — the worktree commits under the trusted session / implementer
@@ -356,10 +365,15 @@ func cmdRoleInit(args []string) (err error) {
 		if serr := setCommitIdentity(p.target, botName, botEmail); serr != nil {
 			return serr
 		}
+		// Reuse re-wires the credential helper too: a reused worktree is exactly the one a
+		// sibling role's stale helper has had time to pollute (#1309 item 7).
+		if werr := wireRoleCredential(p.target, p.role, repo, credUser); werr != nil {
+			return werr
+		}
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = "reused role worktree " + p.target + " (branch " + p.branch + ", identity " + botEmail + ")"
 		fmt.Println(p.target)
-		return nil
+		return roleInitPreflightRun(p, repo)
 	} else if !os.IsNotExist(statErr) {
 		return deskkit.Unverifiable("cannot stat target "+p.target, statErr)
 	}
@@ -421,9 +435,81 @@ func cmdRoleInit(args []string) (err error) {
 	if serr := setCommitIdentity(p.target, botName, botEmail); serr != nil {
 		return serr
 	}
+	if werr := wireRoleCredential(p.target, p.role, repo, credUser); werr != nil {
+		return werr
+	}
 
 	ac.detail = "provisioned role worktree " + p.target + " (branch " + p.branch + " tracking origin/main, identity " + botEmail + ")"
 	fmt.Println(p.target)
+	return roleInitPreflightRun(p, repo)
+}
+
+// roleTokenPath resolves the PATH of the role's cached App token for an account — minting it
+// when the cache is cold — through deskkit's one token resolver (the same one every desk verb's
+// forge reads use). It returns a path and never the token value. It is a package var ONLY as a
+// test seam: a fixture has no App credential to mint.
+var roleTokenPath = func(role, owner string) (string, error) {
+	_, path, err := deskkit.RoleTokenForOwner(role, owner)
+	return path, err
+}
+
+// roleInitPreflight runs the role's envelope preflight and returns its one-line refusal, or nil
+// when every check passes. Package var ONLY as a test seam; production is the real deskkit
+// preflight — the same five checks the desk boot runs.
+var roleInitPreflight = func(req deskkit.PreflightRequest) error { return req.Run().Err() }
+
+// roleInitPreflightRun is the LAST step of role-init (#1309 item 7): having wired the identity
+// and the credential helper it knows how to mint, the verb proves them by running the role's
+// preflight against the provisioned worktree itself. Before this, a sibling-root role-init
+// handed back a worktree whose first https fetch died with "could not read Username", and the
+// desk found out at boot — after which that root's whole queue was invisible. The target path
+// has already been printed (the worktree IS provisioned and idempotently reusable); a red
+// preflight is exit 6, with the report on stderr, so a launcher stops rather than boots blind.
+func roleInitPreflightRun(p roleInitParams, repo string) error {
+	err := roleInitPreflight(deskkit.PreflightRequest{
+		Role:    p.role,
+		Root:    p.target,
+		Repo:    repo,
+		Landing: deskkit.Landing{Dir: p.target, Remote: "origin"},
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "deskwt: role-init preflight green for "+p.role+" at "+p.target)
+	return nil
+}
+
+// wireRoleCredential writes the WORKTREE-SCOPED credential helper for the role's App token
+// (#1309 item 7), so every https fetch/push this worktree makes authenticates as the role —
+// never as whatever ambient keychain entry or sibling role's leftover helper the shared
+// .git/config happens to carry.
+//
+// Shape: the helper chain is RESET at worktree scope (an empty `credential.helper` clears every
+// helper accumulated from system/global/shared config — the shadowing that produced the
+// "Invalid username or token" 401s), then ONE inline helper is added that reads the 0600 token
+// file at auth time inside git's own shell. The token never appears in argv, in a URL, on
+// stdout, or in the audit line — only its PATH does. Scoped via extensions.worktreeConfig
+// (already on from setCommitIdentity), so the primary checkout's config is never mutated.
+func wireRoleCredential(target, role, repo, username string) error {
+	owner := deskkit.OwnerOf(repo)
+	path, err := roleTokenPath(role, owner)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(path) == "" {
+		return deskkit.Unverifiable("the token minter returned no path for the "+role+" App token on "+owner, nil)
+	}
+	if strings.ContainsAny(path, "'\n") {
+		return deskkit.Refused("refused: token path " + path + " cannot be quoted into a credential helper")
+	}
+	helper := "!f(){ echo username=" + username + "; echo \"password=$(cat '" + path + "')\"; }; f"
+	if _, err := runGit(target, "config", "--worktree", "--replace-all", "credential.helper", ""); err != nil {
+		return deskkit.Unverifiable("cannot reset the worktree-scoped credential helper chain at "+target, err)
+	}
+	if _, err := runGit(target, "config", "--worktree", "--add", "credential.helper", helper); err != nil {
+		return deskkit.Unverifiable("cannot set the worktree-scoped credential helper at "+target, err)
+	}
+	fmt.Fprintln(os.Stderr, "deskwt: worktree-scoped credential helper set for the "+role+" App (token file "+path+")")
 	return nil
 }
 
