@@ -9,23 +9,34 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// cmdSign canonicalises the payload JSON, signs it (RS256) with the LOCAL verifier
-// App private key, and prints the issue-body block on stdout.
+// cmdSign canonicalises the payload JSON, signs it (RS256) with the LOCAL
+// private key for the selected --key ROLE, and prints the issue-body block on
+// stdout.
 //
-// The private key is resolved EXACTLY as deskevidence resolves it (#794): the
-// VERIFIER_PEM env override first, else verifier-app.pem on the App-credential
-// search path (deskkit.FindConfigFile / confighome.go). It is never an Actions
-// secret and never leaves this machine.
+// The private key is resolved EXACTLY as deskevidence resolves the verifier's
+// (#794), generalised by role (scan-lane-private/02, Task 1): an explicit
+// --pem, else the role's env override (VERIFIER_PEM / ISSUE_LOOP_PEM), else
+// <role>-app.pem on the App-credential search path (deskkit.FindConfigFile /
+// confighome.go). It is never an Actions secret and never leaves this machine,
+// for either role.
 func cmdSign(args []string) int {
 	fs := flag.NewFlagSet("sign", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	payloadPath := fs.String("payload", "", "path to the verdict payload JSON")
-	pemOverride := fs.String("pem", "", "path to the verifier private-key PEM (default: VERIFIER_PEM, else <config-home>/verifier-app.pem)")
+	pemOverride := fs.String("pem", "", "path to the signer's private-key PEM (default: the --key role's env override, else <config-home>/<role>-app.pem)")
+	keyRole := fs.String("key", deskkit.VerdictRoleVerifier, "signing role: "+deskkit.VerdictRoleVerifier+" | "+deskkit.VerdictRoleIssueLoop+" (selects WHICH role's key signs; never changes WHERE a key comes from)")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.ExitRefused
 	}
 	if *payloadPath == "" {
 		fmt.Fprintln(stderr, "deskverdict sign: --payload <f.json> is required")
+		return deskkit.ExitRefused
+	}
+	// An unrecognized --key role is REFUSED and NEVER falls back to verifier — a
+	// silent fall-back would let an issue-loop artifact be signed (and later
+	// trusted) as if it were the verifier's.
+	if !deskkit.ValidVerdictRole(*keyRole) {
+		fmt.Fprintf(stderr, "deskverdict sign: unrecognized --key role %q (want %q or %q)\n", *keyRole, deskkit.VerdictRoleVerifier, deskkit.VerdictRoleIssueLoop)
 		return deskkit.ExitRefused
 	}
 
@@ -40,14 +51,14 @@ func cmdSign(args []string) int {
 		return deskkit.ExitRefused
 	}
 
-	pemPath, err := resolveVerifierPEM(*pemOverride)
+	pemPath, err := resolveSignerPEM(*keyRole, *pemOverride)
 	if err != nil {
 		fmt.Fprintf(stderr, "deskverdict sign: %v\n", err)
 		return deskkit.ExitUnverifiable
 	}
 	keyPEM, err := os.ReadFile(pemPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "deskverdict sign: cannot read verifier key at %s: %v\n", pemPath, err)
+		fmt.Fprintf(stderr, "deskverdict sign: cannot read %s key at %s: %v\n", *keyRole, pemPath, err)
 		return deskkit.ExitUnverifiable
 	}
 	key, err := deskkit.ParseRSAPrivateKeyPEM(keyPEM)
@@ -62,7 +73,7 @@ func cmdSign(args []string) int {
 		return deskkit.ExitUnverifiable
 	}
 
-	body := deskkit.AssembleVerdictBody(canonical, sig)
+	body := deskkit.AssembleVerdictBodyForRole(canonical, sig, *keyRole)
 
 	// Default output: the issue-body block on stdout. When --payload is X.json and
 	// the block is redirected, callers usually want X.out (Verify #4 reads
@@ -77,23 +88,54 @@ func cmdSign(args []string) int {
 	return deskkit.ExitOK
 }
 
-// resolveVerifierPEM returns the path to the verifier private-key PEM, honouring
-// (in order) an explicit --pem, the VERIFIER_PEM env override, and finally
-// verifier-app.pem on the App-credential search path. Fails closed, naming every
-// directory searched.
-func resolveVerifierPEM(override string) (string, error) {
+// privKeyEnvForRole and privKeyFileForRole map a verdict ROLE to its LOCAL
+// private-key resolution names (scan-lane-private/02, Task 1). Callers must
+// have already validated role with deskkit.ValidVerdictRole; an unrecognized
+// role falls through to the verifier names here ONLY because both call sites
+// (resolveSignerPEM) are reached exclusively after that validation — there is
+// no path from an unrecognized --key to a resolved PEM.
+func privKeyEnvForRole(role string) string {
+	if role == deskkit.VerdictRoleIssueLoop {
+		return "ISSUE_LOOP_PEM"
+	}
+	return "VERIFIER_PEM"
+}
+
+func privKeyFileForRole(role string) string {
+	if role == deskkit.VerdictRoleIssueLoop {
+		return "issue-loop-app.pem"
+	}
+	return "verifier-app.pem"
+}
+
+// resolveSignerPEM returns the path to role's private-key PEM, honouring (in
+// order) an explicit --pem, the role's env override, and finally
+// <role>-app.pem on the App-credential search path. Fails closed, naming every
+// directory searched. This generalises resolveVerifierPEM (below) by role
+// (scan-lane-private/02, Task 1); the resolution ORDER is unchanged, only the
+// env-var and file names now vary by role.
+func resolveSignerPEM(role, override string) (string, error) {
 	if override != "" {
 		return expandHome(override), nil
 	}
-	if v := strings.TrimSpace(os.Getenv("VERIFIER_PEM")); v != "" {
+	envName := privKeyEnvForRole(role)
+	if v := strings.TrimSpace(os.Getenv(envName)); v != "" {
 		return expandHome(v), nil
 	}
-	path, searched, found := deskkit.FindConfigFile("verifier-app.pem")
+	fileName := privKeyFileForRole(role)
+	path, searched, found := deskkit.FindConfigFile(fileName)
 	if !found {
-		return "", fmt.Errorf("cannot find verifier-app.pem — set VERIFIER_PEM=<file>, "+
-			"or place it in one of: %s", strings.Join(searched, ", "))
+		return "", fmt.Errorf("cannot find %s — set %s=<file>, "+
+			"or place it in one of: %s", fileName, envName, strings.Join(searched, ", "))
 	}
 	return expandHome(path), nil
+}
+
+// resolveVerifierPEM is the VerdictRoleVerifier-role shorthand for
+// resolveSignerPEM, kept so pubkey.go (a local-only tool with no --key of its
+// own) is unaffected by Task 1.
+func resolveVerifierPEM(override string) (string, error) {
+	return resolveSignerPEM(deskkit.VerdictRoleVerifier, override)
 }
 
 // siblingOutPath maps foo.json -> foo.out, so `sign --payload foo.json` also

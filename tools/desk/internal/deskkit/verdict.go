@@ -74,6 +74,63 @@ const (
 // it never carries the eyJ… shape a body scanner refuses.
 var verdictSigRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\bsig=([A-Za-z0-9+/=]+)`)
 
+// verdictRoleRE extracts the declared signing ROLE from the trailer comment
+// (`role=<role>`), independent of where that field sits relative to `sig=` —
+// [^>]* on both regexes tolerates either order. Absent from the trailer entirely
+// (a body assembled before role-keying existed) means VerdictRoleVerifier: the
+// scheme's only role at the time, and the default AssembleVerdictBody still emits
+// today for a caller that does not ask for a specific role.
+var verdictRoleRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\brole=([a-z-]+)`)
+
+// VerdictRoleVerifier and VerdictRoleIssueLoop are the two recognised signing
+// roles (scan-lane-private/02, Task 1). VerdictRoleVerifier is the original,
+// landed role (verdict-lane/01); VerdictRoleIssueLoop is added by this brief for
+// the cross-repo desk-batched scan-delta lane. There are EXACTLY two — an
+// unrecognized role string is always refused by ValidVerdictRole, never silently
+// treated as verifier.
+const (
+	VerdictRoleVerifier  = "verifier"
+	VerdictRoleIssueLoop = "issue-loop"
+)
+
+// ValidVerdictRole reports whether role is one of the two recognised signing
+// roles. Callers (deskverdict's --key flag, PubkeyVarForRole) must refuse an
+// unrecognized role rather than falling back to VerdictRoleVerifier — a silent
+// fall-back would let an issue-loop artifact be accepted on the verifier's key.
+func ValidVerdictRole(role string) bool {
+	return role == VerdictRoleVerifier || role == VerdictRoleIssueLoop
+}
+
+// VerifierPubkeyVar and IssueLoopPubkeyVar are the two repo/Actions VARIABLES
+// that carry each role's PUBLIC key. Same custody rule for both: never a
+// committed file, PEM string or base64-of-PEM, fail closed when unset — see
+// PubkeyVarForRole, the single place this role -> variable mapping is defined.
+const IssueLoopPubkeyVar = "ASSAY_ISSUE_LOOP_PUBKEY"
+
+// PubkeyVarForRole returns the repo/Actions VARIABLE name that carries role's
+// PUBLIC key. An unrecognized role is an error, never a default to
+// VerifierPubkeyVar — see ValidVerdictRole.
+func PubkeyVarForRole(role string) (string, error) {
+	switch role {
+	case VerdictRoleVerifier:
+		return VerifierPubkeyVar, nil
+	case VerdictRoleIssueLoop:
+		return IssueLoopPubkeyVar, nil
+	default:
+		return "", fmt.Errorf("unrecognized verdict role %q (want %q or %q)", role, VerdictRoleVerifier, VerdictRoleIssueLoop)
+	}
+}
+
+// extractDeclaredRole returns the signing role a body's trailer DECLARES, or
+// VerdictRoleVerifier when the trailer carries no role= field at all — the
+// backward-compatibility default for a body signed before role-keying existed.
+func extractDeclaredRole(body string) string {
+	if m := verdictRoleRE.FindStringSubmatch(body); m != nil {
+		return m[1]
+	}
+	return VerdictRoleVerifier
+}
+
 // CanonicalizeJSON returns the byte-deterministic canonical JSON encoding of raw:
 //
 //   - object keys sorted lexicographically by UTF-8 code unit;
@@ -264,7 +321,22 @@ func VerifyVerdictCanonical(canonical []byte, sigB64 string, pub *rsa.PublicKey)
 // canonical payload in a fenced code block, then the signature as an HTML-comment
 // trailer. canonical must be the CanonicalizeJSON output that sigB64 was computed
 // over, so the block is internally consistent and re-verifiable.
+//
+// This is the VerdictRoleVerifier-role shorthand: AssembleVerdictBodyForRole(canonical,
+// sigB64, VerdictRoleVerifier). Every body it produces carries an explicit
+// `role=verifier` field (see AssembleVerdictBodyForRole) — existing callers are
+// unaffected because VerifyVerdictBody's implicit wantRole is also "verifier".
 func AssembleVerdictBody(canonical []byte, sigB64 string) string {
+	return AssembleVerdictBodyForRole(canonical, sigB64, VerdictRoleVerifier)
+}
+
+// AssembleVerdictBodyForRole is AssembleVerdictBody generalised by signing ROLE
+// (scan-lane-private/02, Task 1). The declared role travels in the signature
+// trailer (`role=<role>`) so a consumer can refuse a block whose declared role
+// does not match the key it was asked to verify against — BEFORE any signature
+// arithmetic runs (see VerifyVerdictBodyForRole). role is written verbatim; the
+// caller is responsible for having validated it with ValidVerdictRole first.
+func AssembleVerdictBodyForRole(canonical []byte, sigB64 string, role string) string {
 	var b strings.Builder
 	b.WriteString("```")
 	b.WriteString(verdictFenceTag)
@@ -276,6 +348,8 @@ func AssembleVerdictBody(canonical []byte, sigB64 string) string {
 	b.WriteString(verdictSigMarker)
 	b.WriteString(" v1 alg=")
 	b.WriteString(verdictSigAlg)
+	b.WriteString(" role=")
+	b.WriteString(role)
 	b.WriteString(" sig=")
 	b.WriteString(sigB64)
 	b.WriteString(" -->\n")
@@ -345,10 +419,39 @@ const (
 // check the signature with the PUBLIC key. It returns the three-state result and
 // a human-readable message. The Refused message always contains the word
 // "refused"; the CouldNotCheck message always contains "could not check".
+//
+// This is the VerdictRoleVerifier-role shorthand: VerifyVerdictBodyForRole(body,
+// pub, VerdictRoleVerifier). Every existing caller is unaffected: a body with no
+// role= field (assembled before role-keying existed) declares VerdictRoleVerifier
+// implicitly (extractDeclaredRole), which is exactly the role this shorthand asks
+// for, so the role-mismatch layer never fires for pre-existing callers.
 func VerifyVerdictBody(body string, pub *rsa.PublicKey) (VerdictVerifyState, string) {
+	return VerifyVerdictBodyForRole(body, pub, VerdictRoleVerifier)
+}
+
+// VerifyVerdictBodyForRole is VerifyVerdictBody generalised by signing ROLE
+// (scan-lane-private/02, Task 1). wantRole must be ValidVerdictRole; an
+// unrecognized wantRole is CouldNotCheck, never a silent pass and never a
+// fall-back to VerdictRoleVerifier.
+//
+// The declared-role check runs BEFORE any signature arithmetic: a block whose
+// trailer declares a different role than wantRole is REFUSED right after
+// structural parsing, independent of whether its signature would otherwise
+// verify. This is deliberate — it is the second trust layer behind the
+// signature (scan-lane-private/02's single-point-of-failure note): it still
+// bites when a key is mis-provisioned into the wrong role's variable, a case a
+// signature check alone cannot catch (the signature is cryptographically valid
+// either way; only the DECLARATION says which role signed it).
+func VerifyVerdictBodyForRole(body string, pub *rsa.PublicKey, wantRole string) (VerdictVerifyState, string) {
+	if !ValidVerdictRole(wantRole) {
+		return VerdictCouldNotCheck, fmt.Sprintf("could not check: unrecognized verdict role %q (want %q or %q)", wantRole, VerdictRoleVerifier, VerdictRoleIssueLoop)
+	}
 	rawPayload, sigB64, err := ParseVerdictBody(body)
 	if err != nil {
 		return VerdictCouldNotCheck, "could not check: " + err.Error()
+	}
+	if declared := extractDeclaredRole(body); declared != wantRole {
+		return VerdictRefused, fmt.Sprintf("refused: signed block declares role %q, but verify was asked to check role %q", declared, wantRole)
 	}
 	canonical, cerr := CanonicalizeJSON(rawPayload)
 	if cerr != nil {

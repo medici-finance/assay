@@ -349,7 +349,7 @@ func verdictResolvePubkey(pubkeyPath string) (*rsa.PublicKey, error) {
 		return verdictParseRSAPublicKeyPEM(data)
 	}
 	if v := strings.TrimSpace(os.Getenv(verdictPubkeyVar)); v != "" {
-		pemBytes, err := verdictDecodePubkeyVar(v)
+		pemBytes, err := verdictDecodePubkeyVar(verdictPubkeyVar, v)
 		if err != nil {
 			return nil, err
 		}
@@ -358,13 +358,19 @@ func verdictResolvePubkey(pubkeyPath string) (*rsa.PublicKey, error) {
 	return nil, fmt.Errorf("no verifier public key: pass --pubkey <file> or set %s (a missing key is could-not-check, never trust)", verdictPubkeyVar)
 }
 
-// verdictDecodePubkeyVar normalises the variable value into PKIX public-key PEM
-// bytes, accepting a literal PEM string or base64-of-PEM (newline-safe across an
-// Actions round-trip). Empty, or base64 that does not decode to a PEM, is an error.
-func verdictDecodePubkeyVar(val string) ([]byte, error) {
+// verdictDecodePubkeyVar normalises a pubkey-variable's value into PKIX
+// public-key PEM bytes, accepting a literal PEM string or base64-of-PEM
+// (newline-safe across an Actions round-trip). Empty, or base64 that does not
+// decode to a PEM, is an error. varName is ONLY used to name the variable in
+// error text — it is generalised (scan-lane-private/02, Task 3) so the SAME
+// decoder serves both verdictResolvePubkey (verdictPubkeyVar /
+// ASSAY_VERIFIER_PUBKEY) and scanDeltaResolvePubkey (scanDeltaPubkeyVar /
+// ASSAY_ISSUE_LOOP_PUBKEY) without either misnaming the other's variable in a
+// could-not-check message.
+func verdictDecodePubkeyVar(varName, val string) ([]byte, error) {
 	s := strings.TrimSpace(val)
 	if s == "" {
-		return nil, errors.New("empty verifier pubkey value")
+		return nil, fmt.Errorf("empty %s value", varName)
 	}
 	if strings.HasPrefix(s, "-----BEGIN") {
 		return []byte(val), nil
@@ -377,10 +383,10 @@ func verdictDecodePubkeyVar(val string) ([]byte, error) {
 	}, s)
 	der, err := base64.StdEncoding.DecodeString(compact)
 	if err != nil {
-		return nil, fmt.Errorf("%s is neither a PEM string nor valid base64-of-PEM: %w", verdictPubkeyVar, err)
+		return nil, fmt.Errorf("%s is neither a PEM string nor valid base64-of-PEM: %w", varName, err)
 	}
 	if !bytes.Contains(der, []byte("-----BEGIN")) {
-		return nil, fmt.Errorf("%s base64-decoded but is not a PEM (no BEGIN marker)", verdictPubkeyVar)
+		return nil, fmt.Errorf("%s base64-decoded but is not a PEM (no BEGIN marker)", varName)
 	}
 	return der, nil
 }
