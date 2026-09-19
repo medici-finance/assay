@@ -88,8 +88,8 @@ func cmdVerify(args []string) int {
 // It NEVER reads a committed key file: with neither source configured it fails
 // closed with a "no <role> pubkey configured" error the caller maps to
 // could-not-check (exit 6) — a missing key is never a silent pass. This
-// generalises resolveVerifierPubkeyPEM (below) by role (scan-lane-private/02,
-// Task 1); callers pass an already-validated role (deskkit.ValidVerdictRole).
+// generalises resolveVerifierPubkeyPEM (below) by role (the house-private
+// brief's Task 1); callers pass an already-validated role (deskkit.ValidVerdictRole).
 func resolvePublicKeyPEM(role, flagPath string) (pemBytes []byte, source string, err error) {
 	if flagPath != "" {
 		p := expandHome(flagPath)

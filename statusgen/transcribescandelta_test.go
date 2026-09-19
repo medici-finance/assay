@@ -1,7 +1,7 @@
 package main
 
 // Tests for the R-7 clause-4 CROSS-REPO scan-delta verify path
-// (scan-lane-private/02, Task 3). Reuses the R-7 enactment-gate fixtures
+// (the house-private brief's Task 3). Reuses the R-7 enactment-gate fixtures
 // (writeRulings, r7Armed, blessAuthorityResolver) from transcribescan_test.go
 // and the verdictIssue fixture resolver from transcribeverdict_test.go — same
 // package, one fixture vocabulary.
@@ -104,15 +104,15 @@ func TestScanDeltaRoundtripByteIdentical(t *testing.T) {
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)
 
-	e1 := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e1 := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	e2 := scanDeltaEntryFixture("example-org/agents", 7, "ada", 100001, "User", "blessed:12345")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, TS: "2026-09-18T00:00:00Z", Entries: []scanDeltaEntry{e1, e2}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
 	vi := scanDeltaContainer(body, scanDeltaIssueLoopIdent, false)
 
 	authors := fixtureAuthorResolver(map[string]authorIdentity{
-		"example-org/oit#42":   {Login: "dana", ID: 200002, Type: "User"},
-		"example-org/agents#7": {Login: "ada", ID: 100001, Type: "User"},
+		"example-org/widget#42": {Login: "dana", ID: 200002, Type: "User"},
+		"example-org/agents#7":  {Login: "ada", ID: 100001, Type: "User"},
 	})
 
 	creates, results, notices, clause, why := planScanDelta(root, 900, vi, &key.PublicKey, "example-org/tracker", scanDeltaIssueLoopIdent, authors, map[string]bool{})
@@ -172,14 +172,14 @@ func TestScanDeltaAuthorContradictedRefused(t *testing.T) {
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
 	vi := scanDeltaContainer(body, scanDeltaIssueLoopIdent, false)
 
 	// The API reads a DIFFERENT author than the entry declares.
 	authors := fixtureAuthorResolver(map[string]authorIdentity{
-		"example-org/oit#42": {Login: "mallory", ID: 999999, Type: "User"},
+		"example-org/widget#42": {Login: "mallory", ID: 999999, Type: "User"},
 	})
 
 	creates, results, _, clause, _ := planScanDelta(root, 900, vi, &key.PublicKey, "example-org/tracker", scanDeltaIssueLoopIdent, authors, map[string]bool{})
@@ -230,7 +230,7 @@ func TestScanDeltaContainerAuthorNotIssueLoopRefused(t *testing.T) {
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
 	// The CONTAINER issue is authored by an arbitrary human, not the issue-loop App.
@@ -250,7 +250,7 @@ func TestScanDeltaWrongRoleSignatureRefused(t *testing.T) {
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	// Signed with the SAME key, but declaring role=verifier instead of issue-loop.
 	body := signScanDeltaBody(t, key, pl, "verifier")
@@ -283,7 +283,7 @@ func TestScanDeltaWrongKeySignatureRefused(t *testing.T) {
 	}
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, otherKey, pl, "issue-loop") // signed with the WRONG key
 
@@ -307,7 +307,7 @@ func TestScanDeltaEditedBodyRefused(t *testing.T) {
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
 	// The container issue WAS edited since creation.
@@ -329,7 +329,7 @@ func TestScanDeltaNoPubkeyConfiguredCouldNotCheck(t *testing.T) {
 	t.Setenv(scanDeltaPubkeyVar, "")
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	// Sign with a throwaway key never exported anywhere — pub is nil below regardless.
 	throwaway, _ := rsa.GenerateKey(rand.Reader, 2048)
@@ -354,7 +354,7 @@ func TestScanDeltaUnsupportedClassCouldNotCheck(t *testing.T) {
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	e.Class = "retire" // not yet handled by this lane
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
@@ -380,7 +380,7 @@ func TestRunTranscribeScanDeltaInertWhenUnarmed(t *testing.T) {
 	_, root := scanFixtureRepo(t, nil)
 	writeRulings(t, root, "**Sign-off:** _(empty)_") // R-7 UNsigned
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
 	vi := scanDeltaContainer(body, scanDeltaIssueLoopIdent, false)
@@ -415,16 +415,16 @@ func TestRunTranscribeScanDeltaDryRunThenApply(t *testing.T) {
 	_, root := scanFixtureRepo(t, nil)
 	writeRulings(t, root, r7Armed)
 
-	e := scanDeltaEntryFixture("example-org/oit", 42, "dana", 200002, "User", "rostered")
+	e := scanDeltaEntryFixture("example-org/widget", 42, "dana", 200002, "User", "rostered")
 	pl := scanDeltaPayload{Schema: scanDeltaSchemaVersion, Entries: []scanDeltaEntry{e}}
 	body := signScanDeltaBody(t, key, pl, "issue-loop")
 	vi := scanDeltaContainer(body, scanDeltaIssueLoopIdent, false)
 
 	list := fixtureLister(map[string][]ghIssue{"example-org/tracker": {{Number: 900, Title: "scan-delta batch", Labels: lbl("scan-delta")}}}, "")
 	resolveIssue := fixtureVerdictResolver(map[string]verdictIssue{"example-org/tracker#900": vi})
-	authors := fixtureAuthorResolver(map[string]authorIdentity{"example-org/oit#42": {Login: "dana", ID: 200002, Type: "User"}})
+	authors := fixtureAuthorResolver(map[string]authorIdentity{"example-org/widget#42": {Login: "dana", ID: 200002, Type: "User"}})
 
-	target := filepath.Join(root, "docs", "streams", scanStreamName, placeholderFileName("example-org/oit", 42))
+	target := filepath.Join(root, "docs", "streams", scanStreamName, placeholderFileName("example-org/widget", 42))
 
 	// --check: report only.
 	out := captureRun(t, func() int {
@@ -433,8 +433,8 @@ func TestRunTranscribeScanDeltaDryRunThenApply(t *testing.T) {
 	if out.code != 0 {
 		t.Fatalf("armed --check must exit 0, got %d:\n%s", out.code, out.log)
 	}
-	if !strings.Contains(out.log, "CREATE") || !strings.Contains(out.log, "example-org/oit#42") {
-		t.Errorf("expected a CREATE for example-org/oit#42 in:\n%s", out.log)
+	if !strings.Contains(out.log, "CREATE") || !strings.Contains(out.log, "example-org/widget#42") {
+		t.Errorf("expected a CREATE for example-org/widget#42 in:\n%s", out.log)
 	}
 	if _, err := os.Stat(target); err == nil {
 		t.Fatal("--check must not write the placeholder")

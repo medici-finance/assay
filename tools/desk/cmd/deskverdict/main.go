@@ -1,5 +1,5 @@
 // Command deskverdict signs and verifies verdict payloads for the
-// verdict-by-issue lane and, as of scan-lane-private/02, the cross-repo
+// verdict-by-issue lane and, as of a house-private brief, the cross-repo
 // desk-batched scan-delta lane.
 //
 // A main-side workflow has to act on an issue body it did not write. deskverdict

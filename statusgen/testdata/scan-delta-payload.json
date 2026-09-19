@@ -3,14 +3,14 @@
   "ts": "2026-09-17T00:00:00Z",
   "entries": [
     {
-      "repo": "medici-finance/oit",
+      "repo": "medici-finance/widget",
       "issue": 42,
       "author_login": "dana",
       "author_id": 200002,
       "author_type": "User",
       "trust_basis": "rostered",
       "class": "create",
-      "body": "---\nschema: placeholder-v1\nbrief: issue-loop/oit-issue-42\nissue: 42\nrepo: medici-finance/oit\nwave: 0\nstatus: todo\ngate: model\n---\nSee issue #42 — the issue body is the spec.\n"
+      "body": "---\nschema: placeholder-v1\nbrief: issue-loop/widget-issue-42\nissue: 42\nrepo: medici-finance/widget\nwave: 0\nstatus: todo\ngate: model\n---\nSee issue #42 — the issue body is the spec.\n"
     }
   ]
 }

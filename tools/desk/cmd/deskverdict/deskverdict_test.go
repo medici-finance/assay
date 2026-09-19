@@ -240,7 +240,7 @@ func TestCLIKeygenRequiresPriv(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Role-keyed signing (scan-lane-private/02, Task 1)
+// Role-keyed signing (house-private brief, Task 1)
 // ---------------------------------------------------------------------------
 
 // writeRolePEM writes a fresh RSA private key PEM at <role>-app.pem, mirroring

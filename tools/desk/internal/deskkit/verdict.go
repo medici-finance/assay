@@ -83,7 +83,7 @@ var verdictSigRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\bsig=([A-Za-z0
 var verdictRoleRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\brole=([a-z-]+)`)
 
 // VerdictRoleVerifier and VerdictRoleIssueLoop are the two recognised signing
-// roles (scan-lane-private/02, Task 1). VerdictRoleVerifier is the original,
+// roles (the house-private brief's Task 1). VerdictRoleVerifier is the original,
 // landed role (verdict-lane/01); VerdictRoleIssueLoop is added by this brief for
 // the cross-repo desk-batched scan-delta lane. There are EXACTLY two — an
 // unrecognized role string is always refused by ValidVerdictRole, never silently
@@ -331,7 +331,7 @@ func AssembleVerdictBody(canonical []byte, sigB64 string) string {
 }
 
 // AssembleVerdictBodyForRole is AssembleVerdictBody generalised by signing ROLE
-// (scan-lane-private/02, Task 1). The declared role travels in the signature
+// (the house-private brief's Task 1). The declared role travels in the signature
 // trailer (`role=<role>`) so a consumer can refuse a block whose declared role
 // does not match the key it was asked to verify against — BEFORE any signature
 // arithmetic runs (see VerifyVerdictBodyForRole). role is written verbatim; the
@@ -430,7 +430,7 @@ func VerifyVerdictBody(body string, pub *rsa.PublicKey) (VerdictVerifyState, str
 }
 
 // VerifyVerdictBodyForRole is VerifyVerdictBody generalised by signing ROLE
-// (scan-lane-private/02, Task 1). wantRole must be ValidVerdictRole; an
+// (the house-private brief's Task 1). wantRole must be ValidVerdictRole; an
 // unrecognized wantRole is CouldNotCheck, never a silent pass and never a
 // fall-back to VerdictRoleVerifier.
 //
@@ -438,7 +438,7 @@ func VerifyVerdictBody(body string, pub *rsa.PublicKey) (VerdictVerifyState, str
 // trailer declares a different role than wantRole is REFUSED right after
 // structural parsing, independent of whether its signature would otherwise
 // verify. This is deliberate — it is the second trust layer behind the
-// signature (scan-lane-private/02's single-point-of-failure note): it still
+// signature (the house-private brief's single-point-of-failure note): it still
 // bites when a key is mis-provisioned into the wrong role's variable, a case a
 // signature check alone cannot catch (the signature is cryptographically valid
 // either way; only the DECLARATION says which role signed it).

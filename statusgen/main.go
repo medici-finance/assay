@@ -1430,7 +1430,7 @@ func main() {
 	transcribeVerdictMode := flag.Bool("transcribe-verdict", false, "verify verdict transcriber (R-6): land the Evidence-append + model-tier-flip delta from signed verifier verdict issues on the candidate tree behind authorship + RS256 signature + check:ci re-execution + the enactment gate; INERT until R-6 is signed. --dry-run = --check")
 	verdictPubkey := flag.String("pubkey", "", "--transcribe-verdict: verifier public-key PEM path; falls back to the ASSAY_VERIFIER_PUBKEY variable (PEM or base64-of-PEM)")
 	// --transcribe-scan-delta is the CROSS-REPO scan-delta transcriber
-	// (scan-lane-private/02, R-7 clause 4): it sweeps open issues on the home
+	// (the house-private brief, R-7 clause 4): it sweeps open issues on the home
 	// repo for a scan-delta payload block signed with the issue-loop role key
 	// (deskverdict --key issue-loop), verifies it under the SAME R-7 enactment
 	// gate as --transcribe-scan, and lands the cross-repo placeholder delta
@@ -1789,7 +1789,7 @@ func main() {
 		os.Exit(runTranscribeScan(*root, *scanDryRun,
 			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
 	}
-	// Cross-repo scan-delta transcriber (scan-lane-private/02, R-7 clause 4):
+	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
 	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
 	// resolves as --transcribe-scan; --dry-run is the no-write "--check" surface.
 	if *transcribeScanDeltaMode {

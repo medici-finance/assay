@@ -362,7 +362,7 @@ func verdictResolvePubkey(pubkeyPath string) (*rsa.PublicKey, error) {
 // public-key PEM bytes, accepting a literal PEM string or base64-of-PEM
 // (newline-safe across an Actions round-trip). Empty, or base64 that does not
 // decode to a PEM, is an error. varName is ONLY used to name the variable in
-// error text — it is generalised (scan-lane-private/02, Task 3) so the SAME
+// error text — it is generalised (the house-private brief's Task 3) so the SAME
 // decoder serves both verdictResolvePubkey (verdictPubkeyVar /
 // ASSAY_VERIFIER_PUBKEY) and scanDeltaResolvePubkey (scanDeltaPubkeyVar /
 // ASSAY_ISSUE_LOOP_PUBKEY) without either misnaming the other's variable in a

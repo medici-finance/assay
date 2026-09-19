@@ -287,7 +287,7 @@ func flipB64(sig string) string {
 }
 
 // ---------------------------------------------------------------------------
-// Role-keyed signing (scan-lane-private/02, Task 1)
+// Role-keyed signing (house-private brief, Task 1)
 // ---------------------------------------------------------------------------
 
 func TestValidVerdictRole(t *testing.T) {
@@ -318,7 +318,7 @@ func TestIssueLoopRoleRoundtrip(t *testing.T) {
 	key := testKey(t)
 	pub := &key.PublicKey
 
-	payload := `{"schema":"scan-delta-v1","repo":"medici-finance/oit","entries":[{"issue":42}]}`
+	payload := `{"schema":"scan-delta-v1","repo":"medici-finance/widget","entries":[{"issue":42}]}`
 	canon, err := CanonicalizeJSON([]byte(payload))
 	if err != nil {
 		t.Fatal(err)

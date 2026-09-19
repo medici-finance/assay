@@ -641,7 +641,7 @@ func TestVerdictDecodePubkeyVarBase64(t *testing.T) {
 }
 
 // TestVerdictDecodePubkeyVarNamesTheRightVariable pins the generalisation
-// (scan-lane-private/02, Task 3): the error text names WHICHEVER varName the
+// (the house-private brief's Task 3): the error text names WHICHEVER varName the
 // caller passed, never a hard-coded verifier variable — otherwise a
 // could-not-check on the issue-loop role's variable would misleadingly point an
 // operator at ASSAY_VERIFIER_PUBKEY.

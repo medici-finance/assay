@@ -604,13 +604,13 @@ func runTranscribeScan(root string, dryRun bool,
 }
 
 // ===========================================================================
-// R-7 clause 4 — the CROSS-REPO scan-delta verify path (scan-lane-private/02,
-// Task 3).
+// R-7 clause 4 — the CROSS-REPO scan-delta verify path (the house-private
+// brief, Task 3).
 //
 // RELATION TO THE SAME-REPO LANE ABOVE. planTranscribeScan re-derives its own
 // delta from a live API read of the home repo's open issues — the API access
 // itself is the trust primitive. A foreign repo this box cannot always read
-// (a private repo like oit or assay-console) has no such API-re-derivation
+// (a private downstream repo) has no such API-re-derivation
 // available for every entry, so the cross-repo lane substitutes a SIGNATURE:
 // the intake loop's existing scan already computes the foreign delta in an
 // isolated worktree, signs the canonical payload with the issue-loop role key

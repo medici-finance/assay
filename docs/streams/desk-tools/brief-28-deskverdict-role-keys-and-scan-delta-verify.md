@@ -2,7 +2,7 @@
 brief: assay:assay:desk-tools:28
 title: Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path
 why: >-
-  A house-private brief (medici-finance/assay-toolkit `scan-lane-private/02`) needed a second
+  A house-private brief (on the house's own toolkit repo) needed a second
   signing role in `deskverdict` — the cross-repo desk-batched scan-delta lane signs with the
   issue-loop App's key, distinct from the existing verdict-by-issue lane's verifier key — and a
   new cross-repo clause-4 verify path in `statusgen`'s R-7 transcriber. Both are house-lane
@@ -19,11 +19,11 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-authored: 2026-09-19 by a worker-desk session dispatched from medici-finance/assay-toolkit
-  scan-lane-private/02
+authored: 2026-09-19 by a worker-desk session dispatched from the house's own toolkit repo's
+  house-private brief
 sources:
-  - "medici-finance/assay-toolkit docs/streams/scan-lane-private/brief-02-crossrepo-scan-delta.md
-    — the house-private brief whose Task 1 and Task 3 this brief carries out; its Task 2
+  - "the house's own toolkit repo's house-private brief specifying this cross-repo scan-delta
+    work — its Task 1 and Task 3 this brief carries out; its Task 2
     (consuming the emitted payload into the intake-scan flow) is deferred pending an unauthored
     public statusgen payload-emission brief and is NOT part of this brief."
   - "freshness-checked 2026-09-19 @ 951ca784 (origin/main) — tools/desk/internal/deskkit/verdict.go,
@@ -35,9 +35,9 @@ exec-tier-why: "(b) cross-component: this is the signing primitive a separate cr
   lane verifies against — a drift here (a role silently defaulting, a declared-role check skipped)
   fails silently at the consuming lane, not at this repo's own tests."
 consumers:
-  - "medici-finance/assay-toolkit docs/streams/scan-lane-private/brief-02: out-of-scope (the
+  - "the house's own toolkit repo's house-private consuming brief: out-of-scope (the
     consuming brief — house-private verify scripts + committed fixtures exercising this brief's
-    CLI/Go surface — lives on medici-finance/assay-toolkit's own board, which this repo's
+    CLI/Go surface — lives on that repo's own board, which this repo's
     consumers-corroboration pass cannot read or verify; tracked there, not here)."
 version: 1
 id: 0350262d-2d1a-4a4d-af21-880ad708e0c8
@@ -49,7 +49,7 @@ id: 0350262d-2d1a-4a4d-af21-880ad708e0c8
 None typed, and the reason is recorded rather than left to be rediscovered.
 
 `verdict-lane/01` (the brief that landed the original single-role signing scheme this brief
-generalises) is a HOUSE-PRIVATE brief on `medici-finance/assay-toolkit`'s own board, not this
+generalises) is a HOUSE-PRIVATE brief on the house's own toolkit repo's own board, not this
 board — there is no `verdict-lane/01` entry here for a typed `depends:` edge to resolve against,
 and a typed id naming a brief that exists on no board this repo's `statusgen --lint` can see is
 exactly the dangling-reference PROBLEM class the sibling house-private brief's own `sources:`

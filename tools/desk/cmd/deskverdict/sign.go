@@ -14,7 +14,7 @@ import (
 // stdout.
 //
 // The private key is resolved EXACTLY as deskevidence resolves the verifier's
-// (#794), generalised by role (scan-lane-private/02, Task 1): an explicit
+// (#794), generalised by role (the house-private brief's Task 1): an explicit
 // --pem, else the role's env override (VERIFIER_PEM / ISSUE_LOOP_PEM), else
 // <role>-app.pem on the App-credential search path (deskkit.FindConfigFile /
 // confighome.go). It is never an Actions secret and never leaves this machine,
@@ -89,7 +89,7 @@ func cmdSign(args []string) int {
 }
 
 // privKeyEnvForRole and privKeyFileForRole map a verdict ROLE to its LOCAL
-// private-key resolution names (scan-lane-private/02, Task 1). Callers must
+// private-key resolution names (the house-private brief's Task 1). Callers must
 // have already validated role with deskkit.ValidVerdictRole; an unrecognized
 // role falls through to the verifier names here ONLY because both call sites
 // (resolveSignerPEM) are reached exclusively after that validation — there is
@@ -112,7 +112,7 @@ func privKeyFileForRole(role string) string {
 // order) an explicit --pem, the role's env override, and finally
 // <role>-app.pem on the App-credential search path. Fails closed, naming every
 // directory searched. This generalises resolveVerifierPEM (below) by role
-// (scan-lane-private/02, Task 1); the resolution ORDER is unchanged, only the
+// (the house-private brief's Task 1); the resolution ORDER is unchanged, only the
 // env-var and file names now vary by role.
 func resolveSignerPEM(role, override string) (string, error) {
 	if override != "" {
