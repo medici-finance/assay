@@ -230,6 +230,24 @@ out="$(DRY_RUN=1 "$CELLCTL" desk example-cell the-desk --provider glm 2>&1)" && 
 assert "dry-run keeps the flat provider source for the-desk" '[[ $rc -eq 0 ]] && grep -q "model=glm-5.3\[1m\] (provider:glm (CELL_PROVIDER_GLM_MODEL))" <<<"$out"'
 printf 'DESK_MODEL_the_desk=fable\n' >> "$CELL/cell.env"
 
+echo "[glm per-tier: --model-top/mid/fast CLI flags — one-run override, --set persists the default]"
+export CELLCTL_TEST_OUT="$T/launch-glm-flag.env"
+"$CELLCTL" desk example-cell worker-desk --provider glm --model-mid my-flash-variant >/dev/null 2>&1
+assert "--model-mid overrides the preset for this run: mid role launches on it" 'grep -qxF "ANTHROPIC_MODEL=my-flash-variant" "$CELLCTL_TEST_OUT" && grep -q -- "--model my-flash-variant" "$CELLCTL_TEST_OUT"'
+assert "the sonnet alias follows --model-mid; opus keeps the flat glm-5.3[1m]" 'grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=my-flash-variant" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT"'
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --model-mid my-flash-variant 2>&1)" && rc=0 || rc=$?
+assert "a tier flag with no provider is refused, naming the provider-keyed shape" '[[ $rc -ne 0 ]] && grep -q "need a provider" <<<"$out" && grep -q "CELL_PROVIDER_<NAME>_MODEL_<TIER>" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider glm --model beats-tier --model-mid my-flash-variant 2>&1)" && rc=0 || rc=$?
+assert "--model still beats --model-mid (a pin/override always wins verbatim)" '[[ $rc -eq 0 ]] && grep -q "model=beats-tier (override)" <<<"$out"'
+"$CELLCTL" desk example-cell worker-desk --provider glm --model-mid persisted-mid --set >/dev/null 2>&1
+assert "--set persists CELL_PROVIDER_GLM_MODEL_MID into cell.env" 'grep -qx "CELL_PROVIDER_GLM_MODEL_MID=persisted-mid" "$CELL/cell.env"'
+export CELLCTL_TEST_OUT="$T/launch-glm-persisted.env"
+"$CELLCTL" desk example-cell worker-desk >/dev/null 2>&1
+assert "after --set, a plain run (CELL_PROVIDER from cell.env, no flags) uses the persisted default" 'grep -qxF "ANTHROPIC_MODEL=persisted-mid" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=persisted-mid" "$CELLCTL_TEST_OUT"'
+sed -i.bak '/^CELL_PROVIDER_GLM_MODEL_MID=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+out="$(DRY_RUN=1 CELL_TIER_MODEL_MID=env-threaded-mid "$CELLCTL" desk example-cell worker-desk --provider glm 2>&1)" && rc=0 || rc=$?
+assert "CELL_TIER_MODEL_MID (up's threading env) reaches desk as the tier default" '[[ $rc -eq 0 ]] && grep -q "model=env-threaded-mid (provider:glm (tier MID: --model-mid flag)" <<<"$out"'
+
 echo "[glm per-tier: an operator-set flat model suppresses preset tier splits; an explicit tier key wins]"
 export CELL_PROVIDER_GLM_MODEL_MID="glm-custom-mid"
 export CELLCTL_TEST_OUT="$T/launch-glm-midkey.env"

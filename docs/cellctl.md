@@ -1093,6 +1093,13 @@ glm cell every mid-tier window and every sonnet ask inside any window runs the f
 while the-desk (TOP) keeps the full `glm-5.3[1m]`. `cellctl check` prints the sonnet slot as its
 own row when it differs. A per-role pin or `--model` still wins over both, verbatim as ever.
 
+**Tier flags** (`--model-top` / `--model-mid` / `--model-fast`): override the provider's
+per-tier models for ONE run — refused without a provider (the keys are provider-keyed), and
+`--set` persists each given flag to its `CELL_PROVIDER_<NAME>_MODEL_<TIER>` key, making it the
+cell's default. `cellctl up` accepts the same three flags and threads them onto every role
+window it opens (via the `CELL_TIER_MODEL_<TIER>` environment), and the raw keys are settable
+directly: `cellctl set <cell> CELL_PROVIDER_GLM_MODEL_MID=glm-5.3-flash[1m]`.
+
 A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
 is refused rather than launching codex against Anthropic with a provider the operator asked for.
 
