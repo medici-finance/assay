@@ -80,6 +80,16 @@ table is **self-reported**. A conforming implementation MUST NOT describe `verif
 proof of execution. See `spec/README.md` § "Known divergences from the reference
 implementation".
 
+**Date-bounded successor.** The "no execution witness" sentence
+above describes every closure made **before statusgen v1.0.13**. From that pin,
+`statusgen verifyrun` writes the witness (command, exit code, output hash, date,
+runner) into the Evidence section, and a `verified`/`done` transition made on a branch
+merging after the pin with no witness behind one or more Verify rows is a hard lint
+PROBLEM, merge-base scoped (a closure already on `main` at the merge-base is
+grandfathered to a NOTICE — the inherited corpus is not retroactively falsified). A
+conforming implementation MUST NOT describe a POST-pin `verified`/`done` closure with
+no witness as adequately attested.
+
 ### 2.5 `done`
 
 The brief additionally carries the recorded review verdict. A `gate: human` brief
