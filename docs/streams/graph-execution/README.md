@@ -144,7 +144,7 @@ rule exist would compare two hand-scripted procedures and prove nothing about de
 ## Proposed admission and assurance extension (2026-09-18)
 
 Read [the amendment](admission-assurance-spec.md). This extends the existing graph;
-it does not commission another runtime. 01–02 retain their implemented status. The
+it does not commission another runtime. 01 is now done; 02 retains its implemented status. The
 starting-state prose above is historical; source presence is not deployed verification.
 Existing 03–06 gain shared-contract amendments; their statuses remain todo.
 
@@ -169,3 +169,6 @@ is explicitly absent from pattern v1; Decide has no assessment distribution; no 
 adapter or admission module exists at the planned paths. The original graph milestone
 is not blocked on model evaluation or a GPU. Source implementation is not an operational
 receipt. Do not add both the old migration package estimate and its graph equivalent.
+
+Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c8`;
+01 verification is now recorded. No changes to the proposed 09–18 target seams were found.

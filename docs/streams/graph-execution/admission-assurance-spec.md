@@ -16,7 +16,7 @@ and evidence/provenance relationships distinguishable, joined by stable identity
 inferred relationship never silently becomes an authorized dependency. Retain canonical
 brief IDs; a node instance additionally binds run ID, pattern revision and node ID.
 
-At the inspected source revision, graph 01 and 02 have implementations; 03–08 are planned.
+At the refreshed 2026-09-19 source revision, graph 01 is done, 02 is implemented and 03–08 are planned.
 The pattern spec remains a draft and explicitly leaves instantiation unspecified. Existing
 Decide returns bounded advice but has no calibrated distribution contract. No benchmark,
 installed-release reconciliation or live deployment was performed to author this amendment.
@@ -183,3 +183,6 @@ causal product experiments, retirement and general data migrations remain future
   (device resolution, fallback, local loading and input handling; no benchmark reproduced).
 - Candidate model card: https://huggingface.co/convaiinnovations/laya . Exact weight revision,
   transitive artifacts and license provenance are a deliverable of 11, not asserted here.
+
+Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c8`;
+01 verification is now recorded. No changes to the proposed 09–18 target seams were found.
