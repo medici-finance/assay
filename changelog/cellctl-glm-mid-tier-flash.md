@@ -1,0 +1,3 @@
+### Added
+- `cellctl` per-tier provider models: a provider may name a different model for one tier (`CELL_PROVIDER_<NAME>_MODEL_TOP|_MID|_FAST`, cell.env line or preset) — the tier's role windows launch on it and the matching `ANTHROPIC_DEFAULT_*_MODEL` alias maps to it, else the flat provider model
+- the `glm` preset maps the MID (sonnet) slot to `glm-5.3-flash[1m]`, so mid-tier desk windows and every sonnet ask inside any window run the flash variant while the top tier keeps the full model; an operator-set flat model suppresses preset tier splits, and `cellctl check` prints the sonnet slot as its own row when it differs
