@@ -44,6 +44,9 @@ type topologySource struct {
 		Slug             string   `yaml:"slug"`
 		RiskPathTriggers []string `yaml:"risk_path_triggers"`
 	} `yaml:"repos"`
+	Apps []struct {
+		Role string `yaml:"role"`
+	} `yaml:"apps"`
 }
 
 func loadTopologySource(t *testing.T) topologySource {
@@ -146,6 +149,24 @@ func TestTopologyValuesMatchSource(t *testing.T) {
 				slug, topologySourceFile, sortedCopy(want), sortedCopy(got))
 		}
 	}
+
+	// apps[].role — the pattern node contract's role vocabulary
+	// (graph-execution/02, patterns.go).
+	var wantRoles []string
+	for _, a := range src.Apps {
+		wantRoles = append(wantRoles, a.Role)
+	}
+	if len(wantRoles) == 0 {
+		t.Fatalf("COULD-NOT-CHECK: %s declares no apps — an empty read is not an empty set, and "+
+			"comparing against it would pass any derivation", topologySourceFile)
+	}
+	if !reflect.DeepEqual(sortedCopy(wantRoles), sortedCopy(topologyAppRoles)) {
+		t.Errorf("DERIVATION DRIFT — apps[].role\n"+
+			"  %s says %v\n"+
+			"  statusgen/topologyvalues.go says %v\n"+
+			"  Edit the SOURCE first, then mirror it into the derivation. The source wins.",
+			topologySourceFile, sortedCopy(wantRoles), sortedCopy(topologyAppRoles))
+	}
 }
 
 // TestTopologyValuesDiffCanFail is the positive control: it proves the comparison
@@ -162,6 +183,25 @@ func TestTopologyValuesDiffCanFail(t *testing.T) {
 	if reflect.DeepEqual(sortedCopy(fromSource), bent) {
 		t.Fatal("POSITIVE CONTROL FAILED: dropping a label from the derivation still compared EQUAL " +
 			"to the declared source. The drift comparison is vacuous.")
+	}
+}
+
+// TestTopologyAppRolesDiffCanFail is the positive control for the apps[].role
+// comparison: it proves the comparison discriminates.
+func TestTopologyAppRolesDiffCanFail(t *testing.T) {
+	src := loadTopologySource(t)
+	var fromSource []string
+	for _, a := range src.Apps {
+		fromSource = append(fromSource, a.Role)
+	}
+	if len(fromSource) == 0 {
+		t.Fatal("COULD-NOT-CHECK: the source states no apps, so the control cannot bend one")
+	}
+	bent := sortedCopy(topologyAppRoles)
+	bent = bent[:len(bent)-1] // a derivation that dropped one role
+	if reflect.DeepEqual(sortedCopy(fromSource), bent) {
+		t.Fatal("POSITIVE CONTROL FAILED: dropping a role from the derivation still compared EQUAL " +
+			"to the declared source. The apps[].role drift comparison is vacuous.")
 	}
 }
 

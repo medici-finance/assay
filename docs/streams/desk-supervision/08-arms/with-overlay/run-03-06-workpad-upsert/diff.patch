@@ -1,0 +1,26 @@
+diff --git a/STATUS.md b/STATUS.md
+index 19ef2c8..26b6bdb 100644
+--- a/STATUS.md
++++ b/STATUS.md
+@@ -1 +1 @@
+-Status: in-progress
++Status: implemented
+diff --git a/workpad.go b/workpad.go
+index c638b5c..5cdd1a8 100644
+--- a/workpad.go
++++ b/workpad.go
+@@ -7,8 +7,12 @@ package workpad
+ // ownIndex, -1 if none), it is replaced in place; otherwise the new body is appended as a
+ // new comment. The input slice is never mutated in place.
+ func Upsert(comments []string, ownIndex int, body string) []string {
+-	// BUG: always appends — an agent re-dispatched onto the same PR scatters a new
+-	// comment every time instead of editing its one workpad in place.
++	if ownIndex >= 0 && ownIndex < len(comments) {
++		out := make([]string, len(comments))
++		copy(out, comments)
++		out[ownIndex] = body
++		return out
++	}
+ 	out := make([]string, len(comments))
+ 	copy(out, comments)
+ 	return append(out, body)
