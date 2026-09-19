@@ -443,6 +443,39 @@ Pre-mortem → detection map:
 | # | Exit | Key observed output |
 |---|------|---------------------|
 | — | — | not yet run — this brief is authored, not implemented |
+### Non-implementer verifier re-run — VERIFY: PASS — sonnet-5-verifier (verify-desk dispatch), @ merged main `951ca784d100a7d201a28a34033da6709ec2ec8f`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Implementation commit `db1dbc610` (squash of PR #1055) confirmed merged.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `go build ./... && go vet ./...` | exit 0 | exit 0, silent | 2026-09-18 | sonnet-5-verifier |
+| 2 | `TestRoleTokenMemoForksOncePerOwner` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 3 | `TestRoleTokenMemoRemintsPastMaxAge` | exit 0 | PASS (44m/46m boundary) | 2026-09-18 | sonnet-5-verifier |
+| 4 | `TestRoleTokenMemoDoesNotCacheFailures` | exit 0 | PASS, 4 subtests | 2026-09-18 | sonnet-5-verifier |
+| 5 | `TestRoleTokenMemoNeverCrossesIdentities` (+mutation) | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 6 | `TestBoardReadsForkTokenMinterOncePerOwner` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 7 | `TestFlipForksTokenMinterOncePerRun` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 8 | `TestWarmCacheMakesNoNetworkCall` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 9 | `TestStaleCacheMintsExactlyOnce` | exit 0 | PASS, both subtests | 2026-09-18 | sonnet-5-verifier |
+| 10 | `TestInstallIDCacheHitAndExpiry` | exit 0 | PASS, 4 subtests | 2026-09-18 | sonnet-5-verifier |
+| 11 | `TestTwoAppsOnOneOwnerNeverShareACacheFile` (+mutation) | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 12 | `TestProbeFallsThroughOnAmbiguityAndMalformedInput` | exit 0 | PASS, 5 subtests | 2026-09-18 | sonnet-5-verifier |
+| 13 | `TestFreshBypassesProbeAndInstallIDCache` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 14 | `TestExchange404OnCachedInstallIDInvalidatesIt` | exit 0 | PASS, 2 subtests | 2026-09-18 | sonnet-5-verifier |
+| 15 | mutation harness x2 specs | exit 0, all CAUGHT | exit 0 — 32+37 caught, 0 NOT CAUGHT | 2026-09-18 | sonnet-5-verifier |
+| 16 | full suite, 4 touched packages | exit 0 | exit 0, all ok | 2026-09-18 | sonnet-5-verifier |
+| 17 | `gofmt -l` on directory glob | exit 0 | **exit 1** — lists only cmd/deskboard/classdegrade_test.go (name given plainly, not as a resolvable link), confirmed added by unrelated commit 12087009 (#1084, 2026-09-15), never touched by any brief-25 commit. Targeted re-run on the 7 brief-25-owned files: exit 0, clean. Filed medici-finance/assay#1307 | 2026-09-18 | sonnet-5-verifier |
+| 18 | `statusgen --root .. --lint` | exit 0 | exit 0 — LINT: PASS | 2026-09-18 | sonnet-5-verifier |
+| 19 | `statusgen --consumers --brief assay:assay:desk-tools:25` | exit 0 or explicit COULD-NOT-CHECK | Against merged tree (no open diff): exit 2, COULD-NOT-CHECK as the row's own Expect anticipates. Re-run per the row's own guidance against the implementing squash-commit's own diff (read-only detached checkout, restored cleanly after): exit 0 — 3 corroborated, 0 disproved, 5 unchecked (judgement-call prose) | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 19 rows map 1:1 to Verify rows; no invented scope.
+
+RISK-VALUE: DERIVED — `roleTokenMemoMaxAge = 45 * time.Minute` @ deskkit/roletoken.go:186 — strictly under desktoken's `cacheMaxAge = 50 * time.Minute` @ desktoken.go:48, itself under GitHub's ~60min token life. Right because a memo outliving the minter's reuse window hands back a token the minter would have replaced. Review note: the brief's "two constants reference each other so they cannot drift" claim is comments + an independently duplicated test literal, not a compiler-enforced link (packages can't share the constant without an import cycle) — not a FAIL, no Verify row requires the linkage.
+RISK-VALUE: DERIVED — `installIDMaxAge = 24 * time.Hour` @ desktoken/installidcache.go:39 — bounded by a fail-closed backstop (404 self-heals in one run, row 14); reversible operational knob.
+RISK-VALUE: NAMED, NOT DERIVED — character-set allowlist `[A-Za-z0-9._-]` (cacheNameOK) @ installidcache.go:46-59 — requirement named, fall-through behavior proven (row 12), but no documented rationale for this exact set vs. e.g. GitHub's login grammar. Low risk (fail-closed by construction, rejection only ever degrades to a network call).
+
+VERIFY: PASS — 18/19 rows checked-clean directly. Row 17 fails on an unrelated file outside this brief's scope (filed assay#1307); every brief-25-owned file is gofmt-clean. Row 19 correctly reports COULD-NOT-CHECK on a merged tree per its own design, corroborated positively against the implementing commit's own diff. 69/69 mutations caught across both specs, no identity-crossing or availability hazard uncaught. Flip-eligible: gate:model, risk all no.
 
 ## Review
 
