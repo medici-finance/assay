@@ -180,9 +180,9 @@ assert "--model opus --set is refused (opus rule outranks the sugar) and persist
 
 # ================================================================ #1303 scope 2: every per-run choice
 # `set` sugar flags, `desk`/`up --set` persisting EVERY override given, kind-change preconditions,
-# and the `show` read. A codex/kimi stub and a no-op tmux stub so the live `up --set` path runs
+# and the `show` read. A codex stub and a no-op tmux stub so the live `up --set` path runs
 # without a real cockpit.
-for stub in codex kimi; do
+for stub in codex; do
   cat > "$T/bin/$stub" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in --version|-V) echo "0.0.0-test"; exit 0;; doctor) exit 0;; esac
@@ -212,7 +212,7 @@ cp "$WCELL/cell.env" "$T/wide-before.env"; n0="$(backups "$WCELL")"
 out="$("$CELLCTL" set wide-cell --cockpit bogus 2>&1)" && rc=0 || rc=$?
 assert "--cockpit bogus refused" '[[ $rc -ne 0 ]] && grep -q "CELL_COCKPIT must be one of auto|tmux|herdr|orca" <<<"$out"'
 out="$("$CELLCTL" set wide-cell --harness bogus 2>&1)" && rc=0 || rc=$?
-assert "--harness bogus refused" '[[ $rc -ne 0 ]] && grep -q "CELL_HARNESS must be claude or codex or kimi" <<<"$out"'
+assert "--harness bogus refused" '[[ $rc -ne 0 ]] && grep -q "CELL_HARNESS must be claude or codex" <<<"$out"'
 out="$("$CELLCTL" set wide-cell --kind bogus 2>&1)" && rc=0 || rc=$?
 assert "--kind bogus refused" '[[ $rc -ne 0 ]] && grep -q "CELL_KIND must be one of k8s|house|container|scrubbed" <<<"$out"'
 out="$("$CELLCTL" set wide-cell CELL_COCKPIT=bogus --force 2>&1)" && rc=0 || rc=$?
@@ -222,8 +222,8 @@ assert "--model without a role is refused (the pin is per role)" '[[ $rc -ne 0 ]
 assert "cell.env untouched by every refusal, no backup written" '[[ "$(sha "$WCELL/cell.env")" == "$(sha "$T/wide-before.env")" && $(backups "$WCELL") -eq $n0 ]]'
 
 echo "[set: with a role, --harness still selects the namespace and is NOT persisted]"
-out="$("$CELLCTL" set wide-cell worker-desk --harness kimi --model kw 2>&1)" && rc=0 || rc=$?
-assert "writes KIMI_MODEL_worker_desk" '[[ $rc -eq 0 ]] && grep -qx "KIMI_MODEL_worker_desk=kw" "$WCELL/cell.env"'
+out="$("$CELLCTL" set wide-cell worker-desk --harness claude --model cw 2>&1)" && rc=0 || rc=$?
+assert "writes DESK_MODEL_worker_desk" '[[ $rc -eq 0 ]] && grep -qx "DESK_MODEL_worker_desk=cw" "$WCELL/cell.env"'
 assert "CELL_HARNESS stays codex" 'grep -qx "CELL_HARNESS=codex" "$WCELL/cell.env"'
 
 # ---------------------------------------------------------------- set: kind change preconditions
@@ -267,8 +267,8 @@ assert "CELL_PROVIDER=zai persisted" 'grep -qx "CELL_PROVIDER=zai" "$WCELL/cell.
 assert "CELL_COCKPIT=herdr persisted" 'grep -qx "CELL_COCKPIT=herdr" "$WCELL/cell.env"'
 assert "exactly one backup written for the whole --set" '[[ "$(grep -c "backup written" <<<"$out")" -eq 1 ]]'
 assert "the run itself used the overrides (codex stub launched with -m cm)" 'grep -q -- "-m cm" "$CELLCTL_TEST_OUT"'
-out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell worker-desk --harness kimi --set 2>&1)" && rc=0 || rc=$?
-assert "--set with only --harness (no --model) is accepted and persists just CELL_HARNESS" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_HARNESS=kimi" <<<"$out" && ! grep -q "would persist .*_MODEL_" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell worker-desk --harness codex --set 2>&1)" && rc=0 || rc=$?
+assert "--set with only --harness (no --model) is accepted and persists just CELL_HARNESS" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_HARNESS=codex" <<<"$out" && ! grep -q "would persist .*_MODEL_" <<<"$out"'
 out="$("$CELLCTL" desk wide-cell worker-desk --set 2>&1)" && rc=0 || rc=$?
 assert "--set with nothing to persist is still refused" '[[ $rc -ne 0 ]] && grep -q -- "--set needs --model" <<<"$out"'
 out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell the-desk --kind container --set 2>&1)" && rc=0 || rc=$?
@@ -278,14 +278,14 @@ grep -v '^CELL_PROVIDER=' "$WCELL/cell.env" > "$WCELL/cell.env.tmp" && mv "$WCEL
 
 # ---------------------------------------------------------------- up --set
 echo "[up --set: persists the cockpit/harness/kind and --model per role window]"
-out="$(DRY_RUN=1 "$CELLCTL" up wide-cell --cockpit tmux --harness kimi --model km --set 2>&1)" && rc=0 || rc=$?
-assert "up dry-run lists CELL_COCKPIT, CELL_HARNESS and one KIMI_MODEL_<role> per window" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_COCKPIT=tmux" <<<"$out" && grep -q "would persist CELL_HARNESS=kimi" <<<"$out" && grep -q "would persist KIMI_MODEL_the_desk=km" <<<"$out" && grep -q "would persist KIMI_MODEL_worker_desk=km" <<<"$out"'
-assert "up dry-run writes nothing" '! grep -q "^KIMI_MODEL_the_desk=" "$WCELL/cell.env"'
+out="$(DRY_RUN=1 "$CELLCTL" up wide-cell --cockpit tmux --harness codex --model km --set 2>&1)" && rc=0 || rc=$?
+assert "up dry-run lists CELL_COCKPIT, CELL_HARNESS and one CODEX_MODEL_<role> per window" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_COCKPIT=tmux" <<<"$out" && grep -q "would persist CELL_HARNESS=codex" <<<"$out" && grep -q "would persist CODEX_MODEL_the_desk=km" <<<"$out" && grep -q "would persist CODEX_MODEL_worker_desk=km" <<<"$out"'
+assert "up dry-run writes nothing" '! grep -q "^CODEX_MODEL_the_desk=" "$WCELL/cell.env"'
 n0="$(backups "$WCELL")"
-out="$("$CELLCTL" up wide-cell --cockpit tmux --no-attach --harness kimi --model km --set 2>&1)" && rc=0 || rc=$?
+out="$("$CELLCTL" up wide-cell --cockpit tmux --no-attach --harness codex --model km --set 2>&1)" && rc=0 || rc=$?
 assert "live up --set exits 0 (tmux stub)" '[[ $rc -eq 0 ]]'
-assert "CELL_COCKPIT=tmux and CELL_HARNESS=kimi persisted by up" 'grep -qx "CELL_COCKPIT=tmux" "$WCELL/cell.env" && grep -qx "CELL_HARNESS=kimi" "$WCELL/cell.env"'
-assert "KIMI_MODEL_<role>=km persisted for every role window" 'grep -qx "KIMI_MODEL_the_desk=km" "$WCELL/cell.env" && grep -qx "KIMI_MODEL_worker_desk=km" "$WCELL/cell.env" && grep -qx "KIMI_MODEL_verify_desk=km" "$WCELL/cell.env"'
+assert "CELL_COCKPIT=tmux and CELL_HARNESS=codex persisted by up" 'grep -qx "CELL_COCKPIT=tmux" "$WCELL/cell.env" && grep -qx "CELL_HARNESS=codex" "$WCELL/cell.env"'
+assert "CODEX_MODEL_<role>=km persisted for every role window" 'grep -qx "CODEX_MODEL_the_desk=km" "$WCELL/cell.env" && grep -qx "CODEX_MODEL_worker_desk=km" "$WCELL/cell.env" && grep -qx "CODEX_MODEL_verify_desk=km" "$WCELL/cell.env"'
 assert "exactly one backup for the whole up --set" '[[ "$(grep -c "backup written" <<<"$out")" -eq 1 ]]'
 out="$(DRY_RUN=1 "$CELLCTL" up wide-cell --set 2>&1)" && rc=0 || rc=$?
 assert "up --set with nothing to persist is refused" '[[ $rc -ne 0 ]] && grep -q -- "--set needs" <<<"$out"'
@@ -293,6 +293,8 @@ assert "up --set with nothing to persist is refused" '[[ $rc -ne 0 ]] && grep -q
 
 # ---------------------------------------------------------------- show
 echo "[show: effective value + source per key]"
+# drop the per-role pins the earlier --set cases persisted so the default/tier sources are visible
+grep -vE '^(DESK_MODEL_worker_desk|CODEX_MODEL_[a-z_]+)=' "$WCELL/cell.env" > "$WCELL/cell.env.tmp" && mv "$WCELL/cell.env.tmp" "$WCELL/cell.env"
 out="$("$CELLCTL" show wide-cell 2>&1)" && rc=0 || rc=$?
 assert "show exits 0" '[[ $rc -eq 0 ]]'
 assert "CELL_KIND from cell.env" 'grep -qx "\[show\] CELL_KIND=house (cell.env)" <<<"$out"'

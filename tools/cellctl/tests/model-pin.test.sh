@@ -10,8 +10,6 @@
 #           value — including a full `claude-fable-*` id — passes; a non-the-desk role (e.g.
 #           worker-desk) pinned to opus is NOT refused
 #   check   flags an Opus pin on the-desk as a MISS with the same message, and passes a fable pin
-#   kimi    an opus-shaped KIMI_MODEL_the_desk is NOT refused by desk --harness kimi or by check on a
-#           kimi cell — the refusal binds the claude arm only (#1303)
 #
 # No network, no tmux, no real desk-tools: `claude` and the desk verbs are stubs on a private
 # PATH, and the "operator config home" is a temp directory. Runs with plain bash.
@@ -64,17 +62,6 @@ esac
 echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/claude"
-# kimi stub (#1303): enough for `check`'s kimi block and a dry-run/live desk boot.
-cat > "$T/bin/kimi" <<'EOF'
-#!/usr/bin/env bash
-case "${1:-}" in
-  --version|-V) echo "0.38.0-test"; exit 0 ;;
-  doctor) echo "OK config.toml"; exit 0 ;;
-esac
-echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
-EOF
-chmod +x "$T/bin/kimi"
-mkdir -p "$REPO/plugins/assay/skills/the-desk"; printf -- '---\nname: the-desk\n---\n' > "$REPO/plugins/assay/skills/the-desk/SKILL.md"
 export PATH="$T/bin:$PATH"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 # A minimal cells.yaml + App PEM for the k8s/github and k8s/gitlab paths.
@@ -147,21 +134,6 @@ assert "check's the-desk model row is a MISS naming the resolved value" 'grep -q
 set_model fable
 out="$("$CELLCTL" check house-cell 2>&1)" && rc=0 || rc=$?
 assert "check passes on a fable pin" 'grep -q "ok    the-desk model: fable" <<<"$out"'
-
-# ---------------------------------------------------------------- kimi: the Opus refusal is claude-only (#1303)
-echo "[kimi: opus-shaped pin in the kimi namespace is not refused]"
-set_model fable
-printf 'KIMI_MODEL_the_desk=opus\n' >> "$CELL/cell.env"
-out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "desk --harness kimi does NOT refuse KIMI_MODEL_the_desk=opus" '[[ $rc -eq 0 ]] && grep -q "model=opus" <<<"$out" && grep -q "harness=kimi" <<<"$out"'
-out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk 2>&1)" && rc=0 || rc=$?
-assert "the claude arm still resolves its own fable pin (never reads the kimi namespace)" '[[ $rc -eq 0 ]] && grep -q "model=fable" <<<"$out"'
-"$CELLCTL" set house-cell CELL_HARNESS=kimi >/dev/null
-out="$("$CELLCTL" check house-cell 2>&1)" && rc=0 || rc=$?
-assert "check on a kimi cell passes with the opus-shaped kimi pin (row is ok, not MISS)" '[[ $rc -eq 0 ]] && grep -q "ok    model pin: role=the-desk harness=kimi model=opus (from KIMI_MODEL_the_desk)" <<<"$out"'
-assert "check's claude-only the-desk model row still reads the claude pin" 'grep -q "ok    the-desk model: fable" <<<"$out"'
-"$CELLCTL" set house-cell CELL_HARNESS=claude >/dev/null
-grep -v '^KIMI_MODEL_the_desk=' "$CELL/cell.env" > "$CELL/cell.env.tmp" && mv "$CELL/cell.env.tmp" "$CELL/cell.env"
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "model-pin.test.sh: OK"; else echo "model-pin.test.sh: $fails FAILED"; exit 1; fi

@@ -42,15 +42,13 @@
 #                                                precondition for the OTHER kind/forge is reported n/a or MISS,
 #                                                never silently skipped. When CELL_HARNESS=codex, also checks
 #                                                the codex harness block (binary, auth, multi_agent, resident
-#                                                rules, skills discovery) — n/a on a claude cell; when
-#                                                CELL_HARNESS=kimi, the kimi harness block (binary, version,
-#                                                `kimi doctor`, skills dir) — n/a otherwise. Also prints one
+#                                                rules, skills discovery) — n/a on a claude cell. Also prints one
 #                                                "model pin" row per role naming that role's HARNESS and its
 #                                                RESOLVED model (namespace pin, else harness default, else the
 #                                                tier-map fallback) — a role with no per-harness pin and no tier
 #                                                match is a MISS here, before boot, not a startup failure (#986).
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
-#   cellctl desk  <cell> <role> [--model <m>] [--set] [--harness <claude|codex|kimi>]
+#   cellctl desk  <cell> <role> [--model <m>] [--set] [--harness <claude|codex>]
 #                        [--kind <k>] [--cockpit <c>] [--provider <p>] [CLAUDE_CONFIG_DIR]
 #                                                one role window (own worktree, real HOME, shims).
 #                                                --model overrides the cell.env pin for THIS run only
@@ -66,8 +64,7 @@
 #                                                CELL_HARNESS for this run only (default claude); see
 #                                                Harnesses in docs/cellctl.md. --set persists into whichever
 #                                                harness's own pin namespace is ACTIVE for this run
-#                                                (DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on codex,
-#                                                KIMI_MODEL_<role> on kimi) —
+#                                                (DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on codex) —
 #                                                see Pinned models / Per-harness namespaces below. An explicit
 #                                                --model always passes through verbatim to the selected harness,
 #                                                bypassing the namespace/tier resolution entirely.
@@ -80,7 +77,7 @@
 #                                                CELL_COCKPIT — through the same one-backup path `cellctl set`
 #                                                uses; an override not given is never re-written.
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
-#                        [--automate '<cron>'] [--model <m>] [--harness <claude|codex|kimi>]
+#                        [--automate '<cron>'] [--model <m>] [--harness <claude|codex>]
 #                        [--kind <k>] [--provider <p>] [--set] [CLAUDE_CONFIG_DIR]
 #                                                one window per role in the resolved COCKPIT: a tmux session
 #                                                "<cell>-cell", a labelled herdr tab per role, or an orca
@@ -107,7 +104,7 @@
 #                                                in a non-tmux cockpit is closed where that cockpit offers a verb
 #                                                for it, and named for you to close by hand where it does not
 #   cellctl set   <cell> KEY=VALUE [KEY=VALUE...] [--force]
-#                        <cell> <role> [--harness claude|codex|kimi] --model <m>
+#                        <cell> <role> [--harness claude|codex] --model <m>
 #                        <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]
 #                                                persist a change into <cell>/cell.env in place — rewrites an
 #                                                existing KEY= line or appends a new one, comment lines and
@@ -119,7 +116,7 @@
 #                                                for the model pin specifically: it computes the KEY itself from
 #                                                the ACTIVE harness (--harness given, else the cell's own
 #                                                CELL_HARNESS) — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
-#                                                on codex, KIMI_MODEL_<role> on kimi — so `cellctl set <cell>
+#                                                on codex — so `cellctl set <cell>
 #                                                <role> --harness codex --model X` writes CODEX_MODEL_<role>=X,
 #                                                never DESK_MODEL_<role>. The third form is sugar for the
 #                                                matching KEY=VALUE (CELL_KIND / CELL_COCKPIT / CELL_HARNESS /
@@ -173,19 +170,6 @@
 # there. The Opus refusal below binds the claude arm ONLY: on codex it refuses nothing and prints
 # the resolved model, because Opus is a Claude-family alias with no meaning to codex. See Harnesses
 # in docs/cellctl.md.
-#
-# The KIMI arm (#1303) is shaped like the codex arm: its own namespace (KIMI_MODEL_<role> /
-# KIMI_MODEL_default, tier column TIER_MODEL_<TIER>_KIMI), `--harness kimi` on desk/up/set,
-# CELL_HARNESS=kimi, `check_kimi_harness` under `cellctl check`, and an exec of
-# `kimi -m <model> --skills-dir <bundle skills>` in the role worktree with the same
-# DESK_LOOP/DESK_SESSION/DESK_ROOTS/shim-PATH env. Two deliberate differences, both because the
-# installed `kimi --help` (0.38.0) gives no positional prompt argument and names no project
-# instructions file: the "Invoke the assay:<role> skill now." bootstrap is PRINTED for the operator
-# to type as the first prompt rather than passed on the exec line, and no resident-rules fragment
-# is appended (could-not-check whether kimi reads AGENTS.md or any equivalent). The Opus refusal
-# is claude-only here too. House/k8s kinds only: a scrubbed cell's composed allowlist has no
-# kimi config-home entry (its env var name is not established) and the container launcher
-# contract is unchanged, so both refuse `--harness kimi` explicitly.
 #
 # A cell directory holds:
 #   cell.env            the per-cell variables (written by `cellctl new`)
@@ -339,8 +323,8 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   # in cell.env is caught at every boot, not just when a window happens to hit the codex arm.
   CELL_HARNESS="${CELL_HARNESS:-claude}"
   case "$CELL_HARNESS" in
-    claude|codex|kimi) ;;
-    *) die "cell.env: CELL_HARNESS=$CELL_HARNESS is not a known harness (claude|codex|kimi)" ;;
+    claude|codex) ;;
+    *) die "cell.env: CELL_HARNESS=$CELL_HARNESS is not a known harness (claude|codex)" ;;
   esac
   # Model TIER map compiled defaults (#986) — the fallback `resolve_role_model` uses when a role has
   # neither its own per-harness pin (DESK_MODEL_<role>/CODEX_MODEL_<role>) nor that harness's default
@@ -359,15 +343,6 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   TIER_MODEL_TOP_CODEX="${TIER_MODEL_TOP_CODEX-gpt-5.6-terra}"
   TIER_MODEL_MID_CODEX="${TIER_MODEL_MID_CODEX-gpt-5.6-terra}"
   TIER_MODEL_FAST_CODEX="${TIER_MODEL_FAST_CODEX-gpt-5.6-terra}"
-  # kimi's `-m` takes a model ALIAS from its own config.toml (`kimi --help`, 0.38.0: "Defaults to
-  # default_model in config.toml"). No kimi alias is proven live in a cellctl role window yet, so
-  # every tier compiles to `kimi-code/k3` — the alias the managed kimi-code provider config carries
-  # as its default_model on the machine this arm was written on — rather than fabricating per-tier
-  # names. Override any of the three independently in cell.env; a cell whose kimi config carries a
-  # different alias set MUST (the resolved alias is passed verbatim, never validated here).
-  TIER_MODEL_TOP_KIMI="${TIER_MODEL_TOP_KIMI-kimi-code/k3}"
-  TIER_MODEL_MID_KIMI="${TIER_MODEL_MID_KIMI-kimi-code/k3}"
-  TIER_MODEL_FAST_KIMI="${TIER_MODEL_FAST_KIMI-kimi-code/k3}"
   SESSION="${TMUX_SESSION:-${CELL}-cell}"
   [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout roles worktree from) is not set"
 }
@@ -609,8 +584,7 @@ role_tier(){
 # this whole chain, on either harness.
 #
 # Order: (1) that harness's own per-role pin — DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on
-# codex, KIMI_MODEL_<role> on kimi — (2) that harness's own default — DESK_MODEL_DEFAULT /
-# CODEX_MODEL_default / KIMI_MODEL_default — (3) the tier
+# codex — (2) that harness's own default — DESK_MODEL_DEFAULT / CODEX_MODEL_default — (3) the tier
 # map, by this role's tier (role_tier) and the ACTIVE harness's column (TIER_MODEL_<TIER>_<HARNESS>,
 # compiled defaults in load_cell, overridable per entry in cell.env). Claude always resolves at step
 # 2 today, because DESK_MODEL_DEFAULT carries a compiled default (`sonnet`) — which is exactly what
@@ -618,7 +592,6 @@ role_tier(){
 resolve_role_model(){
   local role="$1" harness="$2" rvar dvar tier tvar
   if [[ "$harness" == "codex" ]]; then rvar="CODEX_MODEL_${role//-/_}"; dvar="CODEX_MODEL_default"
-  elif [[ "$harness" == "kimi" ]]; then rvar="KIMI_MODEL_${role//-/_}"; dvar="KIMI_MODEL_default"
   else rvar="DESK_MODEL_${role//-/_}"; dvar="DESK_MODEL_DEFAULT"
   fi
   if [[ -n "${!rvar-}" ]]; then RESOLVED_MODEL="${!rvar}"; RESOLVED_MODEL_SRC="$rvar"; return 0; fi
@@ -657,20 +630,19 @@ resolve_provider(){
 
 # ---------------------------------------------------------------- cellctl set
 # The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>,
-# CODEX_MODEL_<role>, KIMI_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and
-# CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV} families (a typo'd role/tier/provider name is refused
-# rather than silently scaffolding a variable nothing ever reads).
+# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV}
+# families (a typo'd role/tier/provider name is refused rather than silently scaffolding a variable
+# nothing ever reads).
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
-KIMI_MODEL_default KIMI_SKILLS_DIR CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH \
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH \
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
-TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX \
-TIER_MODEL_TOP_KIMI TIER_MODEL_MID_KIMI TIER_MODEL_FAST_KIMI"
+TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX"
 
-# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role>/CODEX_MODEL_<role>/
-# KIMI_MODEL_<role> for one of the five roles (role name with `-` as `_` — the same family
-# `resolve_role_model` reads per harness), or CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name
+# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role>/CODEX_MODEL_<role> for one of
+# the five roles (role name with `-` as `_` — the same family `resolve_role_model` reads per
+# harness), or CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name
 # (the family `resolve_provider` reads — the name itself is operator-chosen, so any shape is
 # accepted here).
 known_cell_env_key(){
@@ -683,10 +655,6 @@ known_cell_env_key(){
       ;;
     CODEX_MODEL_*)
       r="${k#CODEX_MODEL_}"
-      for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
-      ;;
-    KIMI_MODEL_*)
-      r="${k#KIMI_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
     CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV) return 0 ;;
@@ -712,8 +680,8 @@ validate_env_key(){
   # get the same treatment (#1303 scope 2): the value sets load_cell / cockpit_want accept.
   if [[ "$key" == "CELL_HARNESS" ]]; then
     case "$value" in
-      claude|codex|kimi) ;;
-      *) die "set: CELL_HARNESS must be claude or codex or kimi, got '$value'" ;;
+      claude|codex) ;;
+      *) die "set: CELL_HARNESS must be claude or codex, got '$value'" ;;
     esac
   fi
   if [[ "$key" == "CELL_KIND" ]]; then
@@ -731,7 +699,7 @@ validate_env_key(){
 # added in exactly one place.
 KIND_VALUES="k8s house container scrubbed"
 COCKPIT_VALUES="auto tmux herdr orca"
-HARNESS_VALUES="claude codex kimi"
+HARNESS_VALUES="claude codex"
 # Only prescan_kind_override in THIS process may set it — cleared here so a value inherited from a
 # launching shell (a nested cellctl inside a booted window) never re-kinds a cell silently.
 CELL_KIND_OVERRIDE=""
@@ -850,7 +818,7 @@ active_harness_of(){
 }
 
 cmd_set(){
-  local usage_msg="cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex|kimi] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
+  local usage_msg="cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
   local cell="${1:?$usage_msg}"; shift || true
   local d; d="$(cell_dir "$cell")"; d="$(cd "$d" && pwd)"
   local envfile="$d/cell.env"
@@ -858,7 +826,7 @@ cmd_set(){
   local -a kvs=() sugar=()
   while [[ $# -gt 0 ]]; do case "$1" in
     --force) force=1; shift;;
-    --harness) harness="${2:?--harness needs a value (claude|codex|kimi)}"; shift 2;;
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --model) model="${2:?--model needs a value}"; shift 2;;
     # Sugar for the equivalent KEY=VALUE (#1303 scope 2): validated by the same validate_env_key
     # rules as the long form, so an unknown kind/cockpit/harness is refused before anything is
@@ -877,20 +845,20 @@ cmd_set(){
   [[ -n "$cockpit" ]] && sugar+=("CELL_COCKPIT=$cockpit")
   [[ -n "$provider" ]] && sugar+=("CELL_PROVIDER=$provider")
   if [[ -n "$role" ]]; then
-    # Role-sugar form: `cellctl set <cell> <role> [--harness claude|codex|kimi] --model <m>` — computes
+    # Role-sugar form: `cellctl set <cell> <role> [--harness claude|codex] --model <m>` — computes
     # the model-pin KEY itself from the ACTIVE harness (the flag given here, else the cell's own
-    # CELL_HARNESS) so a codex-harness call writes CODEX_MODEL_<role> (a kimi one KIMI_MODEL_<role>),
-    # never DESK_MODEL_<role> (#986) — the same namespace `cmd_desk --set` persists into for a live boot.
+    # CELL_HARNESS) so a codex-harness call writes CODEX_MODEL_<role>, never DESK_MODEL_<role>
+    # (#986) — the same namespace `cmd_desk --set` persists into for a live boot.
     # With a role, --harness SELECTS the namespace and is not itself persisted (unchanged from #986);
     # without one it is the CELL_HARNESS sugar below.
-    [[ -n "$model" ]] || die "set: '$role' needs --model <m> (role-sugar form: cellctl set <cell> <role> [--harness claude|codex|kimi] --model <m>)"
+    [[ -n "$model" ]] || die "set: '$role' needs --model <m> (role-sugar form: cellctl set <cell> <role> [--harness claude|codex] --model <m>)"
     [[ ${#kvs[@]} -eq 0 ]] || die "set: the role-sugar form and KEY=VALUE pairs cannot be combined in one call"
-    case "${harness:-claude}" in claude|codex|kimi) ;; *) die "set: --harness must be claude or codex or kimi, got '$harness'";; esac
+    case "${harness:-claude}" in claude|codex) ;; *) die "set: --harness must be claude or codex, got '$harness'";; esac
     local active="${harness:-$(active_harness_of "$envfile")}"
-    local mvar; if [[ "$active" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; elif [[ "$active" == "kimi" ]]; then mvar="KIMI_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+    local mvar; if [[ "$active" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
     kvs=("$mvar=$model")
   else
-    [[ -z "$model" ]] || die "set: --model needs a role (cellctl set <cell> <role> --model <m>); the harness-wide default is the KEY=VALUE form (DESK_MODEL_DEFAULT / CODEX_MODEL_default / KIMI_MODEL_default)"
+    [[ -z "$model" ]] || die "set: --model needs a role (cellctl set <cell> <role> --model <m>); the harness-wide default is the KEY=VALUE form (DESK_MODEL_DEFAULT / CODEX_MODEL_default)"
     [[ -n "$harness" ]] && sugar+=("CELL_HARNESS=$harness")
   fi
   [[ ${#sugar[@]} -gt 0 ]] && kvs+=("${sugar[@]}")
@@ -1104,7 +1072,6 @@ cmd_check(){
     na "provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)"
   fi
   check_codex_harness
-  check_kimi_harness
   case "$CELL_KIND" in
     house) check_house "${2:-}" ;;
     scrubbed)
@@ -1294,11 +1261,6 @@ check_scrubbed(){
   if [[ "$CELL_HARNESS" == "codex" ]]; then
     chk "harness login under the cell home: codex login status (CODEX_HOME=$CELL_HOME/.codex)" \
       'env CODEX_HOME="$CELL_HOME/.codex" codex login status >/dev/null 2>&1 || env CODEX_HOME="$CELL_HOME/.codex" codex login status --json >/dev/null 2>&1'
-  elif [[ "$CELL_HARNESS" == "kimi" ]]; then
-    # A scrubbed cell composes its env from SCRUBBED_ENV_KEYS, which carries no kimi config-home
-    # entry (kimi's env var for it is not established from `kimi --help`) — so a kimi login under
-    # the cell home cannot be composed, and `desk` refuses the combination; stated here as a MISS.
-    chk "harness login under the cell home: kimi is not wired for a scrubbed cell (no composed config-home entry; use --kind house)" 'false'
   else
     chk "harness login under the cell home: $CELL_HOME/.claude present, claude --version (CLAUDE_CONFIG_DIR=$CELL_HOME/.claude)" \
       '[[ -d "$CELL_HOME/.claude" ]] && env CLAUDE_CONFIG_DIR="$CELL_HOME/.claude" claude --version >/dev/null 2>&1'
@@ -1584,41 +1546,6 @@ check_codex_harness(){
   chk "skills discoverable: marketplace plugin assay@assay, or .agents/skills/ placed" 'codex_skills_discoverable'
 }
 
-# ---------------------------------------------------------------- kimi harness (#1303)
-# kimi_skills_dir: the directory the kimi arm hands `--skills-dir` — the assay bundle's skills
-# under the checkout the role worktree is cut from (CELL_REPO), the same place the codex arm reads
-# its resident-rules fragment from. `kimi --help` (0.38.0) documents `--skills-dir <dir>` as "Load
-# skills from this directory instead of auto-discovered user and project directories", so passing
-# it is what makes `assay:<role>` reachable by name in a fresh worktree without any per-machine
-# kimi setup. Overridable via KIMI_SKILLS_DIR in cell.env or the environment for an adopter whose
-# skills live elsewhere.
-kimi_skills_dir(){ printf '%s' "${KIMI_SKILLS_DIR:-$CELL_REPO/plugins/assay/skills}"; }
-
-# kimi_skills_discoverable: the skills dir exists and holds at least one skill (a directory with
-# a SKILL.md). File-level only — kimi has no documented list-skills verb in `kimi --help`, and
-# this check never starts a kimi session.
-kimi_skills_discoverable(){
-  local d; d="$(kimi_skills_dir)"
-  [[ -d "$d" ]] && find "$d" -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null | grep -q .
-}
-
-# check_kimi_harness: the kimi preconditions, run only when this cell's CELL_HARNESS is kimi — any
-# other cell reports n/a, never silently skipped, mirroring check_codex_harness. Three of the four
-# rows are the verbs `kimi --help` documents (`--version`, `doctor`); there is no login-status
-# verb to probe (only `kimi login`, which starts a device-code flow), so authentication is NOT a
-# row here — `kimi doctor` validates the config files and is the closest read-only proxy.
-# shellcheck disable=SC2016
-check_kimi_harness(){
-  if [[ "$CELL_HARNESS" != "kimi" ]]; then
-    na "kimi harness preconditions — CELL_HARNESS=$CELL_HARNESS (set CELL_HARNESS=kimi in cell.env, or --harness kimi per run, to require them)"
-    return
-  fi
-  chk "kimi on PATH" 'command -v kimi >/dev/null'
-  chk "kimi --version" 'command -v kimi >/dev/null && kimi --version >/dev/null 2>&1'
-  chk "kimi doctor passes (config files valid)" 'command -v kimi >/dev/null && kimi doctor >/dev/null 2>&1'
-  chk "skills discoverable: $(kimi_skills_dir) holds at least one <skill>/SKILL.md (passed via --skills-dir)" 'kimi_skills_discoverable'
-}
-
 # ---------------------------------------------------------------- scrubbed cells (desk-containers/09)
 # A scrubbed cell's launch is COMPOSED, not filtered: `env -i` plus this exact allowlist — the
 # parent shell contributes nothing by default. This block is the SINGLE source the [plan] lines,
@@ -1777,7 +1704,7 @@ scrubbed_desk_launch(){
 }
 
 cmd_desk(){
-  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex|kimi>] [--kind <k>] [--cockpit <c>] [CLAUDE_CONFIG_DIR]"
+  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [--kind <k>] [--cockpit <c>] [CLAUDE_CONFIG_DIR]"
   local cell="${1:?$usage_msg}"; shift || true
   local role="${1:?$usage_msg}"; shift || true
   # --kind is applied BEFORE load_cell (see prescan_kind_override): the kind's preconditions and
@@ -1806,7 +1733,7 @@ cmd_desk(){
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --set) persist=1; shift;;
     --provider) provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
-    --harness) harness="${2:?--harness needs a value (claude|codex|kimi)}"; harness_flag="$harness"; shift 2;;
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; harness_flag="$harness"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
     --*) die "desk: unknown flag $1";;
@@ -1816,14 +1743,7 @@ cmd_desk(){
     || die "desk: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
     || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
-  case "$harness" in claude|codex|kimi) ;; *) die "desk: --harness must be claude or codex or kimi, got '$harness'";; esac
-  # The kimi arm is house/k8s-kind only (#1303): a scrubbed cell composes its environment from
-  # SCRUBBED_ENV_KEYS, which has no kimi config-home entry (the env var kimi reads for it is not
-  # established from `kimi --help`), and the container launcher contract is unchanged by that issue
-  # — so both refuse here, before any worktree or lock is touched, rather than launching a window
-  # whose harness cannot find its own login.
-  [[ "$harness" == "kimi" && ( "$CELL_KIND" == "scrubbed" || "$CELL_KIND" == "container" ) ]] \
-    && die "desk: --harness kimi is not wired for a $CELL_KIND cell (house/k8s kinds only — see Harnesses in docs/cellctl.md)"
+  case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
   local cfg=""
   if [[ "$CELL_KIND" == "container" ]]; then
     [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
@@ -1854,15 +1774,14 @@ cmd_desk(){
   # The harness is NOTED on the roster beacon/session name when it is not the claude default, so
   # "which harness is this window on" is answerable from the roster the same way the model is.
   [[ "$harness" == "codex" ]] && session="${session}-codex"
-  [[ "$harness" == "kimi" ]] && session="${session}-kimi"
   if [[ "$CELL_KIND" != "container" ]]; then
     [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
   fi
   # The model is PINNED per role, never left to the CLI default, and PER HARNESS (#986): mvar is
   # also what `--set` persists into below, so it must name the ACTIVE harness's own namespace —
-  # CODEX_MODEL_<role> on codex, KIMI_MODEL_<role> on kimi, DESK_MODEL_<role> on claude — never
-  # another one, whichever harness this run resolves to.
-  local mvar; if [[ "$harness" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; elif [[ "$harness" == "kimi" ]]; then mvar="KIMI_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+  # CODEX_MODEL_<role> on codex, DESK_MODEL_<role> on claude — never the other one, whichever
+  # harness this run resolves to.
+  local mvar; if [[ "$harness" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
   # What --set persists: every override GIVEN on this invocation, each to its own key (#1303
   # scope 2). Built once here so the container, dry-run and live branches below agree.
   local -a persist_kvs=()
@@ -1941,8 +1860,7 @@ cmd_desk(){
     apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
   fi
   # Enabling the assay@assay plugin is a CLAUDE-specific action (it shells out to `claude plugin
-  # enable`) — skipped on the codex arm (skills are discovered per the codex harness check block),
-  # on the kimi arm (the bundle skills dir is passed via --skills-dir at launch),
+  # enable`) — skipped on the codex arm (skills are discovered per the codex harness check block)
   # and on a scrubbed cell (there is no host $cfg here — the plugin state lives under the cell's
   # own CLAUDE_CONFIG_DIR, which the operator enables during the cell's own hand-boot step).
   if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
@@ -2022,27 +1940,6 @@ cmd_desk(){
     exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
-  elif [[ "$harness" == "kimi" ]]; then
-    # The kimi arm (#1303): the same exported env the codex arm gets; CLAUDE_CONFIG_DIR and
-    # --provider are not threaded here either. `kimi --help` (0.38.0) offers NO positional prompt
-    # and its only prompt flag (`-p`) runs non-interactively and exits — so the invoke-by-name
-    # bootstrap the codex arm passes on its exec line cannot be sent to an interactive kimi
-    # session by cellctl. It is PRINTED here for the operator to type as the first prompt; the
-    # alternative (`--agent-file` with a generated definition) was not taken because that file's
-    # format is not documented in `kimi --help` and a malformed one would fail the boot itself.
-    # No resident-rules fragment is appended: whether kimi reads AGENTS.md or any project
-    # instructions file could not be established from `kimi --help`/`kimi doctor`.
-    local kskills; kskills="$(kimi_skills_dir)"
-    local -a kargv=(kimi -m "$model")
-    if [[ -d "$kskills" ]]; then
-      kargv+=(--skills-dir "$kskills")
-    else
-      echo "NOTICE: kimi skills dir $kskills is missing — launching without --skills-dir (kimi's own auto-discovery applies)" >&2
-    fi
-    echo "[kimi] first prompt to type in the session (kimi takes no positional prompt): Invoke the \"assay:$role\" skill now."
-    exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
-      ${desk_roots:+DESK_ROOTS="$desk_roots"} \
-      "${kargv[@]}"
   else
     # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
     # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
@@ -2203,13 +2100,13 @@ cmd_up(){
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --provider) provider_flag="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
-    --harness) harness_flag="${2:?--harness needs a value (claude|codex|kimi)}"; shift 2;;
+    --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
     --set) persist=1; shift;;
     --*) die "up: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
-  case "$harness_flag" in ""|claude|codex|kimi) ;; *) die "up: --harness must be claude or codex or kimi, got '$harness_flag'";; esac
+  case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "up: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
@@ -2241,7 +2138,7 @@ cmd_up(){
     local eff_harness="${harness_flag:-$CELL_HARNESS}" prole pmvar
     if [[ -n "$model_override" ]]; then
       for prole in $roles; do
-        if [[ "$eff_harness" == "codex" ]]; then pmvar="CODEX_MODEL_${prole//-/_}"; elif [[ "$eff_harness" == "kimi" ]]; then pmvar="KIMI_MODEL_${prole//-/_}"; else pmvar="DESK_MODEL_${prole//-/_}"; fi
+        if [[ "$eff_harness" == "codex" ]]; then pmvar="CODEX_MODEL_${prole//-/_}"; else pmvar="DESK_MODEL_${prole//-/_}"; fi
         persist_kvs+=("$pmvar=$model_override")
       done
     fi
@@ -2750,7 +2647,7 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
-# The harness a role window boots on: claude (default), codex or kimi. \`cellctl desk\`/\`up --harness\`
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
 # Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
@@ -2758,10 +2655,6 @@ CELL_HARNESS=claude
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
 # CODEX_MODEL_the_desk=gpt-5.6-terra
-# Kimi likewise (KIMI_MODEL_<role> / KIMI_MODEL_default; values are \`kimi -m\` aliases from its
-# own config.toml), never read on any other harness; absent here, the tier map applies:
-# KIMI_MODEL_default=kimi-code/k3
-# KIMI_MODEL_the_desk=kimi-code/k3
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (github) — scaffolded by cellctl
@@ -2812,7 +2705,7 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
-# The harness a role window boots on: claude (default), codex or kimi. \`cellctl desk\`/\`up --harness\`
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
 # Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
@@ -2820,10 +2713,6 @@ CELL_HARNESS=claude
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
 # CODEX_MODEL_the_desk=gpt-5.6-terra
-# Kimi likewise (KIMI_MODEL_<role> / KIMI_MODEL_default; values are \`kimi -m\` aliases from its
-# own config.toml), never read on any other harness; absent here, the tier map applies:
-# KIMI_MODEL_default=kimi-code/k3
-# KIMI_MODEL_the_desk=kimi-code/k3
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (gitlab) — scaffolded by cellctl
@@ -2915,7 +2804,7 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
-# The harness a role window boots on: claude (default), codex or kimi. \`cellctl desk\`/\`up --harness\`
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
 # Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
@@ -2923,10 +2812,6 @@ CELL_HARNESS=claude
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
 # CODEX_MODEL_the_desk=gpt-5.6-terra
-# Kimi likewise (KIMI_MODEL_<role> / KIMI_MODEL_default; values are \`kimi -m\` aliases from its
-# own config.toml), never read on any other harness; absent here, the tier map applies:
-# KIMI_MODEL_default=kimi-code/k3
-# KIMI_MODEL_the_desk=kimi-code/k3
 # Provider (optional; unset = Anthropic). \`--model\` alone only changes the model NAME — a
 # non-Anthropic model additionally needs its endpoint and credential switched, which a provider
 # does: uncomment and name a provider (any short slug), then declare its endpoint and the NAME of

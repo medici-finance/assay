@@ -95,10 +95,6 @@ sys.exit(int(code.read_text()) if code.exists() else 0)
         result=self.call('set','sample','--kind','house',code=3)
         self.assertIn('CELL_KIND=house needs CELL_ROOTS',result.stderr)
         self.assertEqual((self.directory/'cell.env').read_bytes(),before)
-        # --harness kimi is not wired for the container launcher contract
-        result=self.call('desk','sample','the-desk','--harness','kimi',code=3)
-        self.assertIn('not wired for a container cell',result.stderr)
-        self.assertFalse((self.directory/'calls.json').exists())
         # show is a read: kind from cell.env, launcher never called
         result=self.call('show','sample')
         self.assertIn('[show] CELL_KIND=container (cell.env)',result.stdout)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# harness.test.sh — `--harness <claude|codex|kimi>` on `desk`/`up`, CELL_HARNESS in cell.env, the codex
-# launch arm, `check`'s codex harness block (issue-946), and the kimi arm + its check block (#1303).
+# harness.test.sh — `--harness <claude|codex>` on `desk`/`up`, CELL_HARNESS in cell.env, the codex
+# launch arm, and `check`'s codex harness block (issue-946).
 #
 # What it proves (each an `assert` below):
 #   new     scaffolds CELL_HARNESS=claude in cell.env (default) for k8s and house alike
@@ -18,11 +18,6 @@
 #           every codex precondition holds
 #   up      DRY_RUN=1 --harness codex threads `--harness 'codex'` onto every role window's own
 #           `cellctl desk` invocation, and announces the override once
-#   kimi    --harness kimi execs `kimi -m <model> --skills-dir <bundle skills>` in the role worktree
-#           with the same env, PRINTS the invoke-by-name bootstrap (kimi has no positional prompt),
-#           appends no resident-rules fragment, suffixes DESK_SESSION with -kimi, is refused on a
-#           scrubbed cell; `check` runs the kimi block (PATH, --version, doctor, skills dir) only
-#           when CELL_HARNESS=kimi; `set`/`up` accept kimi
 #
 # No network, no tmux, no real desk-tools: `claude`, `codex` and the desk verbs are stubs on a
 # private PATH, and the "operator config home" is a temp directory. Runs with plain bash.
@@ -137,32 +132,6 @@ esac
 } > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/codex"
-# The kimi stub (#1303). Control file under $KIMI_TEST_DIR: `doctor-fails` present makes
-# `kimi doctor` exit 1. Everything else (`--version`, `doctor`) answers the shape the real
-# 0.38.0 binary prints; a launch records its env + argv like the other two stubs.
-export KIMI_TEST_DIR="$T/kimi-state"; mkdir -p "$KIMI_TEST_DIR"
-cat > "$T/bin/kimi" <<'EOF'
-#!/usr/bin/env bash
-case "${1:-}" in
-  --version|-V) echo "0.38.0-test"; exit 0 ;;
-  doctor)
-    if [[ -f "$KIMI_TEST_DIR/doctor-fails" ]]; then echo "ERR config.toml invalid"; exit 1; fi
-    echo "OK config.toml"; exit 0 ;;
-esac
-{
-  echo "PWD=$(pwd -P)"
-  echo "DESK_ROOTS=${DESK_ROOTS:-}"
-  echo "DESK_LOOP=${DESK_LOOP:-}"
-  echo "DESK_SESSION=${DESK_SESSION:-}"
-  echo "CLAUDE_CONFIG_DIR=${CLAUDE_CONFIG_DIR:-}"
-  echo "ARGS=$*"
-} > "${CELLCTL_TEST_OUT:-/dev/null}"
-EOF
-chmod +x "$T/bin/kimi"
-# The bundle skills dir the kimi arm passes via --skills-dir lives in the CHECKOUT (CELL_REPO).
-mkdir -p "$REPO/plugins/assay/skills/the-desk" "$REPO/plugins/assay/skills/worker-desk"
-printf -- '---\nname: the-desk\n---\n' > "$REPO/plugins/assay/skills/the-desk/SKILL.md"
-printf -- '---\nname: worker-desk\n---\n' > "$REPO/plugins/assay/skills/worker-desk/SKILL.md"
 export PATH="$T/bin:$PATH"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 printf 'cells: []\n' > "$T/cells.yaml"
@@ -339,103 +308,6 @@ assert "check fails when neither discovery arm is present (exit 1)" '[[ $rc -ne 
 assert "names skills discoverable as the MISS" 'grep -q "MISS  skills discoverable" <<<"$out"'
 printf '[{"id":"assay@assay","enabled":true}]\n' > "$CODEX_TEST_DIR/skills"
 
-# ---------------------------------------------------------------- desk: --harness kimi (#1303)
-echo "[desk: --harness kimi]"
-out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "kimi dry-run exits 0" '[[ $rc -eq 0 ]]'
-assert "kimi dry-run shows harness=kimi" 'grep -q "harness=kimi" <<<"$out"'
-assert "kimi DESK_SESSION carries a -kimi suffix" 'grep -qE "session=house-cell-worker-desk-[0-9]{8}T[0-9]{6}Z-kimi" <<<"$out"'
-
-export CELLCTL_TEST_OUT="$T/launch-kimi.env"
-out="$("$CELLCTL" desk house-cell worker-desk --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "live --harness kimi exits 0" '[[ $rc -eq 0 ]]'
-assert "launch line shows harness=kimi" 'grep -q "harness=kimi" <<<"$out"'
-assert "the kimi stub ran, not claude or codex" 'grep -q "^ARGS=" "$CELLCTL_TEST_OUT" && ! grep -q -- "--sandbox" "$CELLCTL_TEST_OUT"'
-# worker-desk has no KIMI_MODEL_worker_desk / KIMI_MODEL_default in this fixture, so it falls
-# through to the tier map's kimi column (mid tier) — never the Claude-only DESK_MODEL_DEFAULT.
-assert "kimi invoked with -m <model> from the kimi tier column, not DESK_MODEL_DEFAULT" 'grep -q -- "-m kimi-code/k3" "$CELLCTL_TEST_OUT" && ! grep -q -- "-m sonnet" "$CELLCTL_TEST_OUT"'
-assert "kimi invoked with --skills-dir <bundle skills under CELL_REPO>" "grep -q -- \"--skills-dir $REPO/plugins/assay/skills\" \"\$CELLCTL_TEST_OUT\""
-assert "kimi cwd is the role worktree" "grep -qx \"PWD=$(cd "$WT" && pwd -P)\" \"\$CELLCTL_TEST_OUT\""
-assert "same DESK_ROOTS/DESK_LOOP env as the other arms" \
-  'grep -qxF "DESK_ROOTS=$ROOTS" "$CELLCTL_TEST_OUT" && grep -qxF "DESK_LOOP=worker-desk" "$CELLCTL_TEST_OUT"'
-assert "the invoke-by-name bootstrap is PRINTED for the operator (kimi takes no positional prompt)" 'grep -qF "[kimi] first prompt" <<<"$out" && grep -qF "Invoke the \"assay:worker-desk\" skill now." <<<"$out"'
-assert "no positional prompt is passed on the kimi exec line" '! grep -q "assay:worker-desk" "$CELLCTL_TEST_OUT"'
-# A role whose worktree has never been booted on codex: the kimi arm appends no fragment (whether
-# kimi reads AGENTS.md is could-not-check), so no AGENTS.md is created there at all.
-export CELLCTL_TEST_OUT="$T/launch-kimi-intake.env"
-"$CELLCTL" desk house-cell intake-desk --harness kimi >/dev/null 2>&1 || true
-assert "no resident-rules fragment is appended on the kimi arm (fresh worktree has no AGENTS.md)" '[[ -e "$CELL/worktrees/intake-desk/.git" && ! -e "$CELL/worktrees/intake-desk/AGENTS.md" ]]'
-
-echo "[desk: kimi Opus refusal binds the claude arm only]"
-printf '%s\n' "KIMI_MODEL_the_desk=opus" >> "$CELL/cell.env"
-out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "kimi arm does NOT refuse an opus-shaped pin in its own namespace" '[[ $rc -eq 0 ]] && grep -q "model=opus" <<<"$out"'
-grep -v '^KIMI_MODEL_the_desk=' "$CELL/cell.env" > "$CELL/cell.env.tmp" && mv "$CELL/cell.env.tmp" "$CELL/cell.env"
-
-echo "[desk: kimi skills dir missing → NOTICE, no --skills-dir]"
-mv "$REPO/plugins/assay/skills" "$T/skills.bak"
-export CELLCTL_TEST_OUT="$T/launch-kimi-noskills.env"
-out="$("$CELLCTL" desk house-cell worker-desk --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "boot still exits 0 without the skills dir" '[[ $rc -eq 0 ]]'
-assert "a NOTICE names the missing skills dir" 'grep -q "NOTICE: kimi skills dir" <<<"$out"'
-assert "--skills-dir is not passed when the dir is missing" '! grep -q -- "--skills-dir" "$CELLCTL_TEST_OUT"'
-mv "$T/skills.bak" "$REPO/plugins/assay/skills"
-
-echo "[desk: kimi is refused on a scrubbed cell]"
-"$CELLCTL" new scrub-cell --kind scrubbed --repo "$REPO" --repo-slug example-org/example-repo >/dev/null
-out="$(DRY_RUN=1 "$CELLCTL" desk scrub-cell the-desk --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "scrubbed + kimi is refused (non-zero exit)" '[[ $rc -ne 0 ]]'
-assert "names the kind and the house/k8s-only rule" 'grep -q "not wired for a scrubbed cell" <<<"$out"'
-
-# ---------------------------------------------------------------- check: kimi harness block
-echo "[check: kimi harness block is n/a on a claude cell]"
-out="$("$CELLCTL" check house-cell 2>&1)" && rc=0 || rc=$?
-assert "kimi harness row is n/a on the claude cell" 'grep -q "n/a   kimi harness preconditions" <<<"$out"'
-
-echo "[check: kimi cell — everything holds]"
-"$CELLCTL" new kimi-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
-KCELL="$CELLS_ROOT/kimi-cell"
-printf 'CELL_HARNESS=kimi\n' >> "$KCELL/cell.env"
-out="$("$CELLCTL" check kimi-cell 2>&1)" && rc=0 || rc=$?
-assert "check passes when every kimi precondition holds" '[[ $rc -eq 0 ]]'
-assert "kimi on PATH row is ok" 'grep -q "ok    kimi on PATH" <<<"$out"'
-assert "kimi --version row is ok" 'grep -q "ok    kimi --version" <<<"$out"'
-assert "kimi doctor row is ok" 'grep -q "ok    kimi doctor passes" <<<"$out"'
-assert "kimi skills discoverable row is ok" 'grep -q "ok    skills discoverable: $REPO/plugins/assay/skills" <<<"$out"'
-assert "codex harness block is n/a on the kimi cell" 'grep -q "n/a   codex harness preconditions" <<<"$out"'
-assert "model pin rows resolve on the kimi harness via the kimi tier column" 'grep -q "ok    model pin: role=the-desk harness=kimi model=kimi-code/k3 (from tier:top (TIER_MODEL_TOP_KIMI))" <<<"$out"'
-
-echo "[check: kimi cell — kimi missing from PATH]"
-mkdir -p "$T/bin-nokimi"
-IFS=':' read -r -a _pdirs <<<"$PATH"
-for _d in "${_pdirs[@]}"; do
-  [[ -d "$_d" ]] || continue
-  for _f in "$_d"/*; do
-    [[ -e "$_f" ]] || continue
-    _b="$(basename "$_f")"
-    [[ "$_b" == "kimi" ]] && continue
-    [[ -e "$T/bin-nokimi/$_b" ]] && continue
-    ln -sf "$_f" "$T/bin-nokimi/$_b"
-  done
-done
-out="$(PATH="$T/bin-nokimi" "$CELLCTL" check kimi-cell 2>&1)" && rc=0 || rc=$?
-assert "check fails when kimi is missing (exit 1)" '[[ $rc -ne 0 ]]'
-assert "names kimi on PATH as the MISS" 'grep -q "MISS  kimi on PATH" <<<"$out"'
-
-echo "[check: kimi cell — doctor fails]"
-touch "$KIMI_TEST_DIR/doctor-fails"
-out="$("$CELLCTL" check kimi-cell 2>&1)" && rc=0 || rc=$?
-assert "check fails when kimi doctor fails (exit 1)" '[[ $rc -ne 0 ]]'
-assert "names the doctor row as the MISS" 'grep -q "MISS  kimi doctor passes" <<<"$out"'
-rm -f "$KIMI_TEST_DIR/doctor-fails"
-
-echo "[check: kimi cell — skills not discoverable]"
-mv "$REPO/plugins/assay/skills" "$T/skills.bak"
-out="$("$CELLCTL" check kimi-cell 2>&1)" && rc=0 || rc=$?
-assert "check fails when the skills dir is absent (exit 1)" '[[ $rc -ne 0 ]]'
-assert "names skills discoverable as the MISS" 'grep -q "MISS  skills discoverable" <<<"$out"'
-mv "$T/skills.bak" "$REPO/plugins/assay/skills"
-
 # ---------------------------------------------------------------- set: CELL_HARNESS is a known key
 # (cellctl set shipped in #944, merged after this branch was cut — CELL_HARNESS is wired into its
 # known-key list and value check as part of this issue's own "settable via cellctl set" ask.)
@@ -450,8 +322,6 @@ assert "names claude or codex" 'grep -q "CELL_HARNESS must be claude or codex" <
 assert "cell.env is untouched by the refusal" 'grep -qx "CELL_HARNESS=codex" "$CELL/cell.env"'
 out="$("$CELLCTL" set house-cell CELL_HARNESS=bogus --force 2>&1)" && rc=0 || rc=$?
 assert "--force does not bypass the value check" '[[ $rc -ne 0 ]] && grep -q "CELL_HARNESS must be claude or codex" <<<"$out"'
-out="$("$CELLCTL" set house-cell CELL_HARNESS=kimi 2>&1)" && rc=0 || rc=$?
-assert "CELL_HARNESS=kimi is accepted by set (#1303)" '[[ $rc -eq 0 ]] && grep -qx "CELL_HARNESS=kimi" "$CELL/cell.env"'
 # restore claude for the remaining tests
 "$CELLCTL" set house-cell CELL_HARNESS=claude >/dev/null
 
@@ -465,11 +335,6 @@ assert "worker-desk window command carries --harness codex too" "grep -q \"worke
 
 out="$(DRY_RUN=1 "$CELLCTL" up house-cell --cockpit tmux 2>&1)" && rc=0 || rc=$?
 assert "up without --harness carries no --harness flag in the per-role commands" '! grep -q -- "--harness" <<<"$out"'
-
-out="$(DRY_RUN=1 "$CELLCTL" up house-cell --cockpit tmux --harness kimi 2>&1)" && rc=0 || rc=$?
-assert "up --harness kimi dry-run exits 0 (#1303)" '[[ $rc -eq 0 ]]'
-assert "up announces the kimi override once" 'grep -q "harness=kimi — applied to every role window below" <<<"$out"'
-assert "worker-desk window command carries --harness kimi" "grep -q \"worker-desk: .*desk 'house-cell' 'worker-desk' --harness 'kimi'\" <<<\"\$out\""
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "harness.test.sh: OK"; else echo "harness.test.sh: $fails FAILED"; exit 1; fi

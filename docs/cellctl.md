@@ -746,11 +746,11 @@ pin a role there directly if you want it). This is what lets a cell pinned Claud
 common case — every cell `cellctl new` scaffolds is claude-only until an operator adds Codex pins)
 boot `--harness codex` with a real, working model name and no manual re-pin:
 
-| Tier | claude | codex | kimi |
-|---|---|---|---|
-| top (`the-desk`) | `fable` | `gpt-5.6-terra` | `kimi-code/k3` |
-| mid (every other role) | `sonnet` | `gpt-5.6-terra` | `kimi-code/k3` |
-| fast (not auto-assigned) | `haiku` | `gpt-5.6-terra` | `kimi-code/k3` |
+| Tier | claude | codex |
+|---|---|---|
+| top (`the-desk`) | `fable` | `gpt-5.6-terra` |
+| mid (every other role) | `sonnet` | `gpt-5.6-terra` |
+| fast (not auto-assigned) | `haiku` | `gpt-5.6-terra` |
 
 These are the **compiled defaults** (`gpt-5.6-terra` is the one codex model id proven live against
 a real build — `docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md` — used for all three codex tiers
@@ -765,16 +765,7 @@ TIER_MODEL_FAST_CLAUDE=haiku
 TIER_MODEL_TOP_CODEX=gpt-5.6-terra
 TIER_MODEL_MID_CODEX=gpt-5.6-terra
 TIER_MODEL_FAST_CODEX=gpt-5.6-terra
-TIER_MODEL_TOP_KIMI=kimi-code/k3
-TIER_MODEL_MID_KIMI=kimi-code/k3
-TIER_MODEL_FAST_KIMI=kimi-code/k3
 ```
-
-The kimi column (`#1303`) follows the same rule as codex's: one alias for all three tiers, not
-because kimi has no cheaper models but because `kimi-code/k3` is the only alias with any evidence
-behind it (a managed kimi-code `config.toml`'s `default_model`) — no kimi alias is proven live in a
-role window yet. `KIMI_MODEL_<role>` / `KIMI_MODEL_default` are the kimi namespace, never read on
-claude or codex.
 
 Resolution order, per role and per the ACTIVE harness (`resolve_role_model` in the script): (1) that
 harness's own per-role pin, (2) that harness's own default, (3) the tier map, by this role's tier
@@ -794,9 +785,9 @@ exactly as *`--model` — a per-run override* below describes; it is not a names
 bypasses both.
 
 **`cellctl set` writes to whichever namespace is ACTIVE.** The role-sugar form
-`cellctl set <cell> <role> [--harness claude|codex|kimi] --model <m>` computes the KEY itself from the
+`cellctl set <cell> <role> [--harness claude|codex] --model <m>` computes the KEY itself from the
 harness given (or, absent `--harness`, the cell's own `CELL_HARNESS`) — `CODEX_MODEL_<role>` on
-codex, `KIMI_MODEL_<role>` on kimi, `DESK_MODEL_<role>` on claude — so `cellctl set <cell> the-desk --harness codex --model X`
+codex, `DESK_MODEL_<role>` on claude — so `cellctl set <cell> the-desk --harness codex --model X`
 writes `CODEX_MODEL_the_desk=X`, never `DESK_MODEL_the_desk`. The plain `KEY=VALUE` form (`cellctl
 set <cell> CODEX_MODEL_the_desk=X`) still works too — the role-sugar form is convenience, not the
 only path. See *`cellctl set` — persisting a change* below for the shared mechanics (backup,
@@ -878,8 +869,8 @@ followed by `cellctl set <cell> DESK_MODEL_<role>=<m>`. Under `DRY_RUN=1` it pri
 persist and writes nothing — a dry run touches nothing, `--set` included.
 
 **`CELL_HARNESS` is a known key too** — `cellctl set <cell> CELL_HARNESS=codex` persists the harness
-pin the same way, with the same value check as the harness flag itself: only `claude`, `codex` or
-`kimi` is accepted (not bypassable by `--force`, which only widens which *keys* `set` will touch).
+pin the same way, with the same value check as the harness flag itself: only `claude` or `codex` is
+accepted (not bypassable by `--force`, which only widens which *keys* `set` will touch).
 
 ### Every per-run choice — override for one run, `--set` to persist, `show` to read (`#1303`)
 
@@ -933,22 +924,21 @@ cellctl show <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provi
 ## Harnesses
 
 **Every role window boots on a harness pinned in `cell.env`, the same way its model is.** Default
-`claude`. `CELL_HARNESS=claude|codex|kimi`; `--harness <h>` on `cellctl desk`/`cellctl up` overrides it
+`claude`. `CELL_HARNESS=claude|codex`; `--harness <h>` on `cellctl desk`/`cellctl up` overrides it
 for that run only, without touching `cell.env`.
 
 ```
-CELL_HARNESS=claude          # cell.env: claude (default) | codex | kimi
+CELL_HARNESS=claude          # cell.env: claude (default) | codex
 cellctl desk <cell> the-desk --harness codex     # this ONE window, this run only
 cellctl up   <cell>          --harness codex     # every role window this run opens
-cellctl desk <cell> worker-desk --harness kimi   # the kimi arm (#1303) — see below
 ```
 
 `cellctl up --harness <h>` threads the override onto **every** role window it opens (the-desk
 included) by passing `--harness <h>` on to each role's own `cellctl desk <cell> <role> --harness
 <h>` invocation — there is no per-role `--harness-<role>` form, the same shape the model override
 uses. The source is visible without reading the config: `[dry-run]`/`[launch]` print `harness=<h>`,
-and a non-claude window's `DESK_SESSION` carries a `-codex` / `-kimi` suffix (see *`cellctl desk`,
-`up`, `down`* above).
+and a non-claude window's `DESK_SESSION` carries a `-codex` suffix (see *`cellctl desk`, `up`,
+`down`* above).
 
 ### The claude arm — unchanged
 
@@ -992,51 +982,6 @@ methodology's resident operating rules, so on this arm they travel in `AGENTS.md
 fragment to the **worktree's own** `AGENTS.md` at boot, idempotently (a marker-string check skips
 the append when it is already present) — belt-and-suspenders alongside a checkout whose root
 `AGENTS.md` already carries it, which `cellctl check` verifies separately (below).
-
-### The kimi arm (`#1303`)
-
-```bash
-kimi -m <model> --skills-dir <checkout>/plugins/assay/skills
-```
-
-Shaped like the codex arm: the same exported env (`DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS`, `shim/`
-first on `PATH`), no `CLAUDE_CONFIG_DIR`, no `--provider`, the model from the **kimi namespace** —
-`KIMI_MODEL_<role>` / `KIMI_MODEL_default`, falling back to the `TIER_MODEL_<TIER>_KIMI` column —
-and the-desk's Opus refusal not firing. `-m` takes a kimi model **alias** (what `kimi --help` calls
-"LLM model alias … Defaults to default_model in config.toml"), so the compiled tier default
-`kimi-code/k3` is the alias a managed kimi-code login carries as its `default_model`; re-pin it if
-your `config.toml` names different aliases. `--skills-dir` points kimi at the assay bundle's skills
-under the checkout the worktree was cut from (`KIMI_SKILLS_DIR` in `cell.env` overrides the path;
-a missing directory is a NOTICE and the flag is dropped, leaving kimi's own auto-discovery).
-
-Two deliberate differences from the codex arm, both because the installed `kimi --help` (0.38.0)
-establishes neither the mechanism nor the file:
-
-- **The bootstrap prompt is printed, not passed.** `kimi` takes no positional prompt and its only
-  prompt flag (`-p`) runs one prompt non-interactively and exits, so `cellctl` cannot hand an
-  interactive session the `Invoke the "assay:<role>" skill now.` line the codex arm passes on its
-  exec line. It prints that line as `[kimi] first prompt …` just before `exec`, for the operator to
-  type. (`--agent-file` could carry it, but its Markdown format is not documented in `--help` and a
-  malformed file would fail the boot itself.)
-- **No resident-rules fragment is appended.** Whether kimi reads `AGENTS.md` or any project
-  instructions file could not be checked from `kimi --help` / `kimi doctor`; rather than guess, the
-  arm appends nothing, and `check`'s kimi block has no resident-rules row.
-
-The kimi arm is **house/k8s kinds only**: a scrubbed cell composes its environment from a fixed
-allowlist that has no kimi config-home entry (the env var kimi reads for it is not established), and
-the container launcher contract is unchanged — `cellctl desk --harness kimi` refuses on either kind
-before touching a worktree or lock, and `check` on a scrubbed kimi cell reports the login row MISS.
-
-### `cellctl check` — the kimi harness block
-
-Only asked for when `CELL_HARNESS=kimi` (any other cell reports the block `n/a`):
-
-| Row | What it proves |
-|---|---|
-| `kimi on PATH` | `command -v kimi` |
-| `kimi --version` | the binary actually runs |
-| `kimi doctor passes` | kimi's own config-file validation exits 0 — the closest read-only proxy for "logged in and configured"; `kimi --help` documents no login-status verb, so authentication itself is not a row |
-| skills discoverable | the `--skills-dir` directory exists and holds at least one `<skill>/SKILL.md` — file-level, never a kimi session |
 
 ### `cellctl check` — the codex harness block
 
@@ -1130,9 +1075,8 @@ a `MISS`, because a provider is opt-in.
 | `CODEX_MODEL_<role>` | **codex**-namespace per-role model override, same `-`-as-`_` role naming; the Opus refusal does NOT apply here (Opus is a Claude-only concept) |
 | `TIER_MODEL_TOP_CLAUDE` / `_MID_CLAUDE` / `_FAST_CLAUDE` | overrides one entry of the claude column of the tier-map fallback (compiled defaults `fable`/`sonnet`/`haiku`) |
 | `TIER_MODEL_TOP_CODEX` / `_MID_CODEX` / `_FAST_CODEX` | overrides one entry of the codex column of the tier-map fallback (compiled default `gpt-5.6-terra` for all three today) |
-| `CELL_HARNESS` | the harness every role window boots on: `claude` (default), `codex` or `kimi`; `--harness` overrides it per run (see *Harnesses*); `--set` persists the override, `cellctl set --harness` the same without a boot |
+| `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*); `--set` persists the override, `cellctl set --harness` the same without a boot |
 | `CELL_KIND` / `CELL_COCKPIT` / `CELL_PROVIDER` | overridable per run with `--kind` / `--cockpit` / `--provider` on `desk`/`up`, persisted by `--set` or `cellctl set --kind/--cockpit/--provider`, read back by `cellctl show` (see *Every per-run choice*) |
-| `KIMI_MODEL_<role>` / `KIMI_MODEL_default` / `TIER_MODEL_<TIER>_KIMI` / `KIMI_SKILLS_DIR` | the kimi arm's own pin namespace, tier column and skills directory (see *The kimi arm*) |
 | `CELL_PROVIDER` | the default provider name for `cellctl desk`/`up` (unset = Anthropic); `--provider` overrides it per run — see *Providers* |
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
