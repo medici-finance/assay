@@ -211,7 +211,7 @@ is absent, the documented future direction is an OAuth device-code login: the in
 GitHub's device-authorization flow directly, the person approves it in their browser the same
 way they already approve the App manifest, and the resulting token is held in memory for the
 duration of that one install only — never written to disk, never the App's own credential, and
-discarded once the identity read it services is done. This is a separate follow-on brief in this
+discarded once the identity read it services completes. This is a separate follow-on brief in this
 stream, authored by the driver; it is recorded here as the direction, not implemented by this PR
 (ruling addendum: https://github.com/medici-finance/assay/pull/1260#issuecomment-5737892794).
 
