@@ -348,3 +348,24 @@ func TestDetectCitations_SignOffAfterTrailerIsStillJudged(t *testing.T) {
 		t.Fatalf("ada must resolve as the cited login, got %q ok=%v", login, ok)
 	}
 }
+
+// TestDetectCitations_HyphenJoinedVerbIsNotSwallowed pins the security-lane finding
+// on #1337: `human:ada-approved` / `human:ada_approved` are not configured principals,
+// so the annotation is left intact and the line is judged as written. Neither token
+// reads as "ada approved" (no adjacency), and nothing is deleted in front of them; a
+// real sign-off later on the same line is still found.
+func TestDetectCitations_HyphenJoinedVerbIsNotSwallowed(t *testing.T) {
+	for _, line := range []string{
+		"On-behalf-of: human:ada-approved the prod flip on #12",
+		"On-behalf-of: human:ada_approved the prod flip on #12",
+	} {
+		if cits := detectCitations("commit abc1234", line); len(cits) != 0 {
+			t.Errorf("detectCitations(%q): a glued token is not a sign-off claim, got %+v", line, cits)
+		}
+	}
+	// Glued token AND a real sign-off on one line: the sign-off is still judged.
+	cits := detectCitations("commit abc1234", "On-behalf-of: human:ada-approved; ada approved the prod flip on #12")
+	if len(cits) != 1 || cits[0].Name != "ada" || cits[0].Marker != "approved" || cits[0].Number != 12 {
+		t.Fatalf("want the ada/approved/#12 citation to survive an unstripped glued token, got %+v", cits)
+	}
+}

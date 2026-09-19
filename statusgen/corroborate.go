@@ -404,23 +404,64 @@ var humanStampRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z_-])human:([0-9A-Za-z_]+)
 // MARKER (never the login — see stripOnBehalfOf) is the ONLY exemption: every
 // human:<name> outside it, and every sign-off the login is then read to have made,
 // stays fully gated.
-var onBehalfOfAnnotationRe = regexp.MustCompile(`(?i)\bon-behalf-of:?\s+human:([0-9A-Za-z_-]+)`)
+var onBehalfOfAnnotationRe = regexp.MustCompile(`(?i)\bon-behalf-of:?\s+human:([^\s)|]+)`)
+
+// gitHubLoginShapeRe is the GitHub login grammar the on-behalf-of principal is written
+// in (the same grammar onBehalfOfPrincipalOf reads back, principal.go): alphanumerics
+// joined by SINGLE hyphens, no leading or trailing hyphen, no underscore; the 39-char
+// cap is checked alongside. It is the whole-token test the strip applies — a token
+// that is not a login is not an on-behalf-of principal and is left for the sign-off
+// scans to judge as they always did.
+var gitHubLoginShapeRe = regexp.MustCompile(`^[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*$`)
+
+// isConfiguredHumanLogin reports whether token is BOTH login-shaped AND a login the
+// adopter's human map declares (a value of ASSAY_HUMAN_LOGIN_MAP, the same anchor
+// citedHumanLogin and the attribution lint use). Shape alone is not enough: the
+// grammar admits `ada-approved` as a login, and a strip keyed on shape would delete
+// the `human:` prefix in front of it and hand the sign-off scans a token neither lane
+// recognises. Anchoring on the configured map keeps the exemption to a principal the
+// house actually declared — an annotation naming any other token is NOT an
+// on-behalf-of the checker trusts, so it stays a fully-gated stamp, exactly as before.
+// An empty map exempts nothing (the strict-but-inert direction this file already
+// takes for names).
+func isConfiguredHumanLogin(token string) bool {
+	if token == "" || len(token) > 39 || !gitHubLoginShapeRe.MatchString(token) {
+		return false
+	}
+	for _, l := range scanEffectiveConfig().HumanLogins {
+		if strings.EqualFold(l, token) {
+			return true
+		}
+	}
+	return false
+}
 
 // stripOnBehalfOf removes the on-behalf-of MARKER (`on-behalf-of[:] human:`) from
-// every annotation / trailer in s and keeps the login token that followed it, so the
-// sign-off scans that follow judge only what is left — and still see everything the
-// human WROTE. Stripping the login too would hide a real sign-off that follows the
-// trailer: "On-behalf-of: human:ada approved the prod flip on #12" must still read as
-// "ada approved …" to the citation lane (a reviewer-found case, pinned in both lanes'
-// tests). What remains is a bare `<login>`, which is not a human:<name> stamp (the
-// stamp regex needs the `human:` prefix) and is a citation only when a sign-off verb
-// follows it. RE2 has no lookahead, so the marker is dropped by a replacement func
-// returning the captured login. Length-preserving is NOT required: callers re-split
-// cells from the stripped text but record the ORIGINAL cell, so the pre-existing
-// byte-identity comparison still sees the real cell.
+// every annotation / trailer in s whose principal is a configured human login, and
+// keeps the login token that followed it, so the sign-off scans that follow judge
+// only what is left — and still see everything the human WROTE. Stripping the login
+// too would hide a real sign-off that follows the trailer: "On-behalf-of: human:ada
+// approved the prod flip on #12" must still read as "ada approved …" to the citation
+// lane (a reviewer-found case, pinned in both lanes' tests). What remains is a bare
+// `<login>`, which is not a human:<name> stamp (the stamp regex needs the `human:`
+// prefix) and is a citation only when a sign-off verb follows it.
+//
+// The principal token runs to the same boundary onBehalfOfPrincipalOf stops at — `)`,
+// `|`, whitespace or end of line — and the WHOLE token must pass isConfiguredHumanLogin
+// or the annotation is left untouched: `human:ada-approved` (login-shaped but not a
+// declared login) and `human:ada_approved` (not login-shaped) both stay in the text,
+// so the stamp lane still records their stamp and gates it (second reviewer finding:
+// a wider login class swallowed a hyphen-joined verb and both lanes lost it). RE2 has
+// no lookahead, so the decision is made in a replacement func. Length-preserving is
+// NOT required: callers re-split cells from the stripped text but record the ORIGINAL
+// cell, so the pre-existing byte-identity comparison still sees the real cell.
 func stripOnBehalfOf(s string) string {
 	return onBehalfOfAnnotationRe.ReplaceAllStringFunc(s, func(m string) string {
-		return onBehalfOfAnnotationRe.FindStringSubmatch(m)[1]
+		login := onBehalfOfAnnotationRe.FindStringSubmatch(m)[1]
+		if !isConfiguredHumanLogin(login) {
+			return m
+		}
+		return login
 	})
 }
 
