@@ -47,20 +47,18 @@ func classifyFixture(t *testing.T, brief string) (disposition, string) {
 	return classifyItem(it, tier)
 }
 
-// TestRealHeading_LongitudinalWindowDefers: gap 1 on the real heading shape. The Verify exit
-// criterion is an accrual window ("the shadow window's dated capture trees exist on main"), the
-// brief carries NO `blocked-until:` marker, and the heading carries the real qualifier. Before the
-// heading-prefix fix the derivation reads an empty Verify section and the item over-reports as
-// DISPATCH; after, it defers.
-func TestRealHeading_LongitudinalWindowDefers(t *testing.T) {
+// TestRealHeading_LongitudinalWindowStaysDispatchWhenOnlyExpectNamesIt (#1309 item 4): the
+// Verify EXPECT prose mentions "the shadow window's dated capture trees", but the COMMAND is
+// `git ls-files … | wc -l`, which runs offline today. Derivation reads the Command cell only,
+// so this brief is DISPATCH — it was the live false positive that deferred a runnable brief on
+// one row's expectation wording. (A row whose COMMAND names the window still defers: see
+// TestGap1_LongitudinalWindowDefersWithoutMarker.)
+func TestRealHeading_LongitudinalWindowStaysDispatchWhenOnlyExpectNamesIt(t *testing.T) {
 	brief := fixtureBrief("",
 		"| 1 | `git ls-files 'reports/daily/*' \\| wc -l` | >= 14 — the shadow window's dated capture trees exist on main |")
 	disp, reason := classifyFixture(t, brief)
-	if disp != dispDeferred {
-		t.Fatalf("longitudinal window brief (real heading, no marker) classified %v; want deferred", disp)
-	}
-	if reason == "" {
-		t.Fatalf("deferred member should carry a why-it-waits reason")
+	if disp != dispDispatch {
+		t.Fatalf("offline-command brief whose Expect names a window classified %v (%q); want dispatch", disp, reason)
 	}
 }
 
@@ -81,13 +79,15 @@ func TestRealHeading_ClusterKubectlBuckets(t *testing.T) {
 }
 
 // TestRealHeading_ExternalHandoffRowBuckets: gap 2 broadened-phrase coverage. A Verify row whose
-// Expect is an offline→online hand-off ("hand-off to the online verify lane"), with NO kubectl and
-// NO marker, must still bucket awaiting-online-lane — an offline verifier cannot produce the
-// verdict for a row that names an external/online lane. This is RED both because the heading is
-// qualifier-carrying AND because the earlier phrase set did not include the hand-off wording.
+// COMMAND is an offline→online hand-off ("console-external-verify hand-off to the online verify
+// lane"), with NO kubectl and NO marker, must still bucket awaiting-online-lane — an offline
+// verifier cannot produce the verdict for a row that names an external/online lane. The hand-off
+// is named in the Command cell: since #1309 item 4 derivation reads the Command cell only, so a
+// hand-off that appears only in the Expect prose no longer defers (that prose explains, it does
+// not command).
 func TestRealHeading_ExternalHandoffRowBuckets(t *testing.T) {
 	brief := fixtureBrief("",
-		"| 1 | confirm the deployed config matches | console-external-verify — hand-off to the online verify lane |")
+		"| 1 | console-external-verify — hand-off to the online verify lane: confirm the deployed config matches | matches |")
 	disp, reason := classifyFixture(t, brief)
 	if disp != dispAwaitingOnlineLane {
 		t.Fatalf("external hand-off row (real heading, no marker) classified %v; want awaiting-online-lane", disp)

@@ -54,6 +54,13 @@ type briefFrontmatter struct {
 	// brief's Verify table (a stale-artifact re-baseline). Its value is the pipeline reference,
 	// carried into the "why it waits" note. Presence buckets the brief as in-repair.
 	InRepair string
+
+	// DeferredRows is NOT a frontmatter field: it is the per-ROW derivation result (#1309 item
+	// 4) for a brief that stays dispatchable — the Verify rows whose Command cell names an
+	// online lane or a longitudinal window, listed as "<num>: <why>; …" so the dispatched
+	// verifier records exactly those rows as explicitly unrun and runs the rest. Rows are
+	// deferred; the brief is deferred only when EVERY row is.
+	DeferredRows string
 }
 
 // scanAwaiting reads every stream README under <root>/docs/streams/*/README.md, applies the
@@ -155,6 +162,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 			"verify_lane":    br.fm.VerifyLane,
 			"in_repair":      br.fm.InRepair,
 			"evidence_empty": yesNo(br.evidenceEmpty),
+			"deferred_rows":  br.fm.DeferredRows,
 		}
 		if oc, ok := outcomes[br.Stream+"/"+br.Num]; ok {
 			payload["sidecar_outcome"] = oc.Outcome
@@ -337,23 +345,53 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 // its Verify rows rather than declaring in frontmatter — an online/cluster verify lane and a
 // longitudinal observation/accrual window. An explicit frontmatter marker always wins: derivation
 // only runs when the field is empty, so an author's stated condition/lane (and its exact reason
-// text) is never overwritten. The signals are read ONLY from the brief's own `## Verify` section,
-// never invented, and each keyword set is deliberately narrow so a genuinely-actionable brief is
-// not falsely bucketed (false-deferring an actionable brief is a worse harm than the over-report
-// this fixes).
+// text) is never overwritten.
+//
+// PER ROW, FROM THE COMMAND CELL ONLY (#1309 item 4). The signals are read from each Verify
+// row's Command cell — never from its Expect prose — because prose EXPLAINS: a row whose
+// expectation says "kubectl is refused here" is an offline row, and a row whose expectation
+// mentions "the shadow window" while its command is `git ls-files … | wc -l` runs offline today.
+// Both were live false positives that deferred a whole brief on one row's wording. And rows are
+// deferred, not briefs: when at least one row is runnable offline the brief stays dispatchable
+// and DeferredRows names the rows to record as explicitly unrun; only a brief whose EVERY row
+// names an online lane / a window is bucketed as a whole. A Verify section with no parseable
+// Command column derives nothing (there is no command cell to read) and stays dispatchable.
 func deriveContentSignals(fm *briefFrontmatter, verifyText string) {
-	if verifyText == "" {
+	rows := parseVerifyRowsIn(verifyText)
+	if len(rows) == 0 {
 		return
 	}
-	if fm.VerifyLane == "" {
-		if lane := deriveOnlineLane(verifyText); lane != "" {
-			fm.VerifyLane = lane
+	var notes []string
+	runnable := 0
+	lane, blocked := "", ""
+	for _, r := range rows {
+		rl := deriveOnlineLane(r.Command)
+		rb := deriveBlockedUntil(r.Command)
+		if rl == "" && rb == "" {
+			runnable++
+			continue
+		}
+		if rl != "" {
+			notes = append(notes, fmt.Sprintf("%d: online lane (%s)", r.Num, rl))
+			if lane == "" {
+				lane = rl
+			}
+		} else {
+			notes = append(notes, fmt.Sprintf("%d: longitudinal window", r.Num))
+		}
+		if rb != "" && blocked == "" {
+			blocked = rb
 		}
 	}
-	if fm.BlockedUntil == "" {
-		if reason := deriveBlockedUntil(verifyText); reason != "" {
-			fm.BlockedUntil = reason
-		}
+	if runnable > 0 {
+		fm.DeferredRows = strings.Join(notes, "; ")
+		return
+	}
+	if fm.VerifyLane == "" && lane != "" {
+		fm.VerifyLane = lane
+	}
+	if fm.BlockedUntil == "" && blocked != "" {
+		fm.BlockedUntil = blocked
 	}
 }
 
@@ -388,10 +426,10 @@ var onlineLanePhrases = []struct {
 	{"live-session", "live-session"},
 }
 
-// deriveOnlineLane returns the canonical lane if the Verify text names an online/cluster substrate,
-// else "". Case-insensitive.
-func deriveOnlineLane(verifyText string) string {
-	lc := strings.ToLower(verifyText)
+// deriveOnlineLane returns the canonical lane if a Verify row's COMMAND cell names an
+// online/cluster substrate, else "". Case-insensitive.
+func deriveOnlineLane(command string) string {
+	lc := strings.ToLower(command)
 	for _, p := range onlineLanePhrases {
 		if strings.Contains(lc, p.phrase) {
 			return p.lane
@@ -420,10 +458,10 @@ var longitudinalPhrases = []string{
 	"observation period",
 }
 
-// deriveBlockedUntil returns a human-facing defer reason if the Verify text's exit criteria are a
+// deriveBlockedUntil returns a human-facing defer reason if a Verify row's COMMAND cell names a
 // longitudinal observation/accrual window, else "". Case-insensitive.
-func deriveBlockedUntil(verifyText string) string {
-	lc := strings.ToLower(verifyText)
+func deriveBlockedUntil(command string) string {
+	lc := strings.ToLower(command)
 	for _, p := range longitudinalPhrases {
 		if strings.Contains(lc, p) {
 			return "longitudinal: Verify exit criteria depend on an observation/accrual window (derived from the brief's Verify rows) — add an explicit `blocked-until:` marker to state the date/condition"

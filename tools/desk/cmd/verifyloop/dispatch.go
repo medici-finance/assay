@@ -261,6 +261,11 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	b.WriteString("(real output, never a claim; a row that cannot run is recorded as explicitly unrun):\n")
 	b.WriteString(verifyTable)
 	b.WriteString("\n\n")
+	if deferred := payloadValue(it, "deferred_rows"); deferred != "" {
+		// Per-row derivation (briefscan.go): these rows name an online lane or a longitudinal
+		// window in their Command cell. They are recorded as explicitly unrun — the rest run.
+		fmt.Fprintf(&b, "Rows to record as explicitly UNRUN (not runnable offline; run every other row): %s\n\n", deferred)
+	}
 	b.WriteString("You are NOT this brief's implementer (verifier != author). Fresh agent only.\n")
 	b.WriteString("Report back a STRUCTURED result: one Evidence row per Verify row (command, exit, output),\n")
 	b.WriteString("a clear verdict PASS|FAIL|BLOCKED, and your runner identity. Free-text verdicts are not accepted.\n")
