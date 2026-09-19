@@ -250,7 +250,7 @@ assert "CELL_TIER_MODEL_MID (up's threading env) reaches desk, labelled as env n
 sed -i.bak '/^CELL_PROVIDER=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
 out="$(DRY_RUN=1 CELL_TIER_MODEL_MID=orphan-mid "$CELLCTL" desk example-cell worker-desk 2>&1)" && rc=0 || rc=$?
 assert "an env-threaded tier value with no provider is refused on desk too (up-refusal symmetry)" '[[ $rc -ne 0 ]] && grep -q "need a provider" <<<"$out"'
-printf 'CELL_PROVIDER=glm\n' >> "$CELL/cell.env"'
+printf 'CELL_PROVIDER=glm\n' >> "$CELL/cell.env"
 out="$(DRY_RUN=1 "$CELLCTL" up example-cell --provider glm --model-mid up-set-mid --set 2>&1)" && rc=0 || rc=$?
 assert "up --set with a tier flag persists the provider-keyed tier key (dry-run persist plan)" '[[ $rc -eq 0 ]] && grep -q -- "--set: would persist CELL_PROVIDER_GLM_MODEL_MID=up-set-mid into" <<<"$out"'
 assert "up dry-run shows no per-role tier keys (tier keys are provider-keyed, not per-role)" '[[ $(grep -c -- "--set: would persist DESK_MODEL_" <<<"$out") -eq 0 ]]'
