@@ -31,9 +31,14 @@ import (
 //     (never 0s — a blind claim has no computed remaining), and its blind source is listed in
 //     aggregates.blind_sources; a snapshot carrying one exits 6 (the reading is incomplete),
 //     never 0, exactly as `tick` does.
-//   - `tokens` is could-not-check BY DESIGN at this layer: a dispatched worker's token usage
-//     is held by the harness, not by desk tools, and no read path exists. The field is present
-//     so a future harness binding can fill it; it is NEVER rendered as zero.
+//   - `resource` (example-stream/13) carries the WORKER-OPERATIONS plane — tokens burned,
+//     context-% used, session age, subagent count, model — joined from the claim holder's own
+//     roster beacon (a self-report only the session itself can make; see deskkit/vitals.go). It
+//     is orthogonal to liveness: a claim whose holder has no readable beacon renders every
+//     resource field could-not-check, but that never makes the SNAPSHOT could-not-check —
+//     resource-blind and liveness-blind are independent signals with independent triggers, and
+//     joining a blind resource must never suppress a reclaim the derived plane would otherwise
+//     make (the two-planes framing in the brief). It is NEVER rendered as zero.
 
 // statusSchemaID is the published schema marker the JSON document carries and the console
 // keys on. The schema file lives at repo-root schemas/desksupervise-status-v1.json.
@@ -58,21 +63,121 @@ type StatusStop struct {
 	Reason  string `json:"reason"`
 }
 
+// StatusResource is the self-reported vitals block joined onto a claim from its holder
+// session's roster beacon (deskkit.MergeResourceVitals' write — see example-stream/13).
+// Each field carries RAW JSON verbatim: this layer is a JOIN, not a re-interpretation, so
+// it never fabricates a 0 for a field it did not itself measure. A field is one of a
+// measured value, the JSON string "could-not-check", or JSON null (the reporting session
+// left it unset that tick) — exactly the shape MergeResourceVitals writes.
+type StatusResource struct {
+	Tokens            json.RawMessage `json:"tokens"`
+	ContextPctUsed    json.RawMessage `json:"context_pct_used"`
+	SessionAgeSeconds json.RawMessage `json:"session_age_seconds"`
+	SubagentsSpawned  json.RawMessage `json:"subagents_spawned"`
+	Model             json.RawMessage `json:"model"`
+}
+
+// couldNotCheckRaw is the raw JSON string every StatusResource field renders when the join
+// itself is blind (no readable beacon for the holder) — never null (that would claim the
+// SESSION reported "unset", a claim this layer cannot make on the session's behalf) and
+// never a number.
+var couldNotCheckRaw = json.RawMessage(`"could-not-check"`)
+
+// blindResource renders every vital could-not-check.
+func blindResource() StatusResource {
+	return StatusResource{
+		Tokens:            couldNotCheckRaw,
+		ContextPctUsed:    couldNotCheckRaw,
+		SessionAgeSeconds: couldNotCheckRaw,
+		SubagentsSpawned:  couldNotCheckRaw,
+		Model:             couldNotCheckRaw,
+	}
+}
+
+// resourceSource resolves the self-reported resource vitals for one claim's holder
+// session. It never errors: a holder with no beacon, or one that fails to parse, is BLIND
+// (blindResource()) rather than aborting the whole snapshot — the resource plane is
+// orthogonal to liveness (see this file's header and the brief's two-planes framing), and a
+// blind vital must never turn into the overall could-not-check exit `status` uses for the
+// liveness reading.
+type resourceSource func(holder string) StatusResource
+
+// beaconResourceOnly reads only the `resource` key of a beacon file (live or fixture) —
+// the rest of the beacon (acks, open_work, role) is not this reader's business.
+type beaconResourceOnly struct {
+	Resource *StatusResource `json:"resource"`
+}
+
+// liveResourceSource reads <StateDir>/roster/<holder>.json for its `resource` key. A
+// missing StateDir, missing/unreadable file, or one naming no resource block at all is
+// BLIND — never null, never an aborted snapshot (facts: "a claim whose holder session has
+// no beacon ... renders every resource field could-not-check").
+func liveResourceSource() resourceSource {
+	return func(holder string) StatusResource {
+		if strings.TrimSpace(holder) == "" || holder == notApplicable {
+			return blindResource()
+		}
+		stateDir, err := deskkit.StateDir()
+		if err != nil {
+			return blindResource()
+		}
+		path := filepath.Join(stateDir, "roster", holder+".json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return blindResource()
+		}
+		var raw beaconResourceOnly
+		if err := json.Unmarshal(data, &raw); err != nil || raw.Resource == nil {
+			return blindResource()
+		}
+		return *raw.Resource
+	}
+}
+
+// fixtureResourceSource resolves resource vitals from a --beacons-fixture: a JSON object
+// keyed by session name, each value the RESOURCE object itself (not a whole beacon) —
+// Verify-fixture use only, exactly like --observations-fixture. A session key absent from
+// the fixture is BLIND, matching the live "no beacon file" case.
+func fixtureResourceSource(byHolder map[string]StatusResource) resourceSource {
+	return func(holder string) StatusResource {
+		if r, ok := byHolder[holder]; ok {
+			return r
+		}
+		return blindResource()
+	}
+}
+
+// loadResourceFixture reads a --beacons-fixture file: a JSON object keyed by session name,
+// each value a resource object. A read/parse failure refuses the WHOLE load — silently
+// rendering every claim blind on a broken fixture would look identical to "no worker has
+// reported vitals yet", which is a could-not-check the caller must see as such.
+func loadResourceFixture(path string) (map[string]StatusResource, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot read --beacons-fixture "+path, err)
+	}
+	var raw map[string]StatusResource
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil, deskkit.Unverifiable("cannot parse --beacons-fixture "+path+" as a JSON object keyed by session name", err)
+	}
+	return raw, nil
+}
+
 // StatusClaim is one in-flight claim's runtime snapshot row.
 type StatusClaim struct {
-	Key            string       `json:"key"`
-	Repo           string       `json:"repo"`
-	Item           string       `json:"item"`
-	State          string       `json:"state"` // claimed | dispatched
-	Holder         string       `json:"holder"`
-	ClaimedAt      string       `json:"claimed_at"`
-	DispatchedAt   string       `json:"dispatched_at"`
-	LastObservedAt string       `json:"last_observed_at"`
-	ObservedVia    string       `json:"observed_via"`
-	Liveness       string       `json:"liveness"`
-	Timers         StatusTimers `json:"timers"`
-	Stop           *StatusStop  `json:"stop"`
-	Tokens         string       `json:"tokens"`
+	Key            string         `json:"key"`
+	Repo           string         `json:"repo"`
+	Item           string         `json:"item"`
+	State          string         `json:"state"` // claimed | dispatched
+	Holder         string         `json:"holder"`
+	ClaimedAt      string         `json:"claimed_at"`
+	DispatchedAt   string         `json:"dispatched_at"`
+	LastObservedAt string         `json:"last_observed_at"`
+	ObservedVia    string         `json:"observed_via"`
+	Liveness       string         `json:"liveness"`
+	Timers         StatusTimers   `json:"timers"`
+	Stop           *StatusStop    `json:"stop"`
+	Resource       StatusResource `json:"resource"`
 }
 
 // StatusAggregates rolls the per-claim rows up into the counts a console banners.
@@ -187,7 +292,7 @@ func loadStopsFixture(path string) (map[string]*StatusStop, error) {
 // stopsOnly is true the rendered claim list is filtered to claims carrying an armed stop; the
 // blind reading (and thus the exit-6 signal) is computed over the FULL set regardless of the
 // filter, because a could-not-check anywhere means the tick's reading was incomplete.
-func buildSnapshot(claims []claimRecord, obsSource statusObsSource, stopsByKey map[string]*StatusStop, stopsOnly bool, pol loopengine.LivenessPolicy, now time.Time) (StatusSnapshot, bool, error) {
+func buildSnapshot(claims []claimRecord, obsSource statusObsSource, resSource resourceSource, stopsByKey map[string]*StatusStop, stopsOnly bool, pol loopengine.LivenessPolicy, now time.Time) (StatusSnapshot, bool, error) {
 	snap := StatusSnapshot{
 		Schema: statusSchemaID,
 		Now:    now.UTC().Format(time.RFC3339),
@@ -227,7 +332,7 @@ func buildSnapshot(claims []claimRecord, obsSource statusObsSource, stopsByKey m
 			ClaimedAt:    orNA(c.ClaimedAt),
 			DispatchedAt: c.DispatchedAt,
 			Stop:         stopsByKey[c.Key],
-			Tokens:       "could-not-check",
+			Resource:     resSource(c.Owner),
 		}
 
 		if !co.observed {
@@ -328,7 +433,8 @@ func renderStatusTable(w io.Writer, snap StatusSnapshot) {
 		fmt.Fprintf(w, "  dispatched_at=%s last_observed_at=%s via=%s\n", c.DispatchedAt, c.LastObservedAt, c.ObservedVia)
 		fmt.Fprintf(w, "  timers: schedule_to_start=%s heartbeat=%s wall_cap=%s\n",
 			c.Timers.ScheduleToStartRemaining, c.Timers.HeartbeatRemaining, c.Timers.WallCapRemaining)
-		fmt.Fprintf(w, "  tokens=%s\n", c.Tokens)
+		fmt.Fprintf(w, "  resource: tokens=%s context_pct_used=%s session_age_seconds=%s subagents_spawned=%s model=%s\n",
+			c.Resource.Tokens, c.Resource.ContextPctUsed, c.Resource.SessionAgeSeconds, c.Resource.SubagentsSpawned, c.Resource.Model)
 		if c.Stop != nil {
 			fmt.Fprintf(w, "  STOP armed_at=%s reason=%s\n", c.Stop.ArmedAt, c.Stop.Reason)
 		}
@@ -378,6 +484,9 @@ func snapshotFromSweep(results []sweepResult, pol loopengine.LivenessPolicy, now
 			BlindSources: []string{},
 		},
 	}
+	// run --interval is always live (never fixture-driven), so the resource join always
+	// reads the real roster beacons.
+	resSource := liveResourceSource()
 	for _, r := range results {
 		state := r.Claim.State
 		if state == "" {
@@ -391,7 +500,7 @@ func snapshotFromSweep(results []sweepResult, pol loopengine.LivenessPolicy, now
 			Holder:       orNA(r.Claim.Owner),
 			ClaimedAt:    orNA(r.Claim.ClaimedAt),
 			DispatchedAt: r.Claim.DispatchedAt,
-			Tokens:       "could-not-check",
+			Resource:     resSource(r.Claim.Owner),
 		}
 		if r.Blind {
 			row.Liveness = "COULD-NOT-CHECK"
@@ -480,6 +589,7 @@ func cmdStatus(args []string) (err error) {
 	claimsFixture := fs.String("claims-fixture", "", "JSON array of claim records — bypasses the live claim tool")
 	obsFixture := fs.String("observations-fixture", "", "JSON object keyed by claim key — bypasses the forge and audit file")
 	stopsFixture := fs.String("stops-fixture", "", "JSON object keyed by claim key — per-claim armed stops (offline)")
+	beaconsFixture := fs.String("beacons-fixture", "", "JSON object keyed by session name, each value a resource object — bypasses the live roster beacon files (example-stream/13)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
@@ -536,6 +646,21 @@ func cmdStatus(args []string) (err error) {
 		obsSource = liveStatusObs(loopengine.HouseProbes())
 	}
 
+	// Resource vitals join (example-stream/13): --beacons-fixture offline, or the live
+	// roster beacon files otherwise. Independent of the claims/observations fixture choice
+	// above — a live claims read may still be paired with --beacons-fixture in a test, and
+	// vice versa is harmless (the live join just finds no file and renders blind).
+	var resSource resourceSource
+	if *beaconsFixture != "" {
+		byHolder, rerr := loadResourceFixture(*beaconsFixture)
+		if rerr != nil {
+			return rerr
+		}
+		resSource = fixtureResourceSource(byHolder)
+	} else {
+		resSource = liveResourceSource()
+	}
+
 	// Per-claim stops: from --stops-fixture offline, or from the live STOP.run.<key> registry
 	// (deskkit.ListRunStops) in live mode. The per-run stop signal is the
 	// LIVE per-item source the earlier gap called for — `desksupervise stop <key>` and tick's
@@ -560,7 +685,7 @@ func cmdStatus(args []string) (err error) {
 		}
 	}
 
-	snap, anyBlind, berr := buildSnapshot(claims, obsSource, stopsByKey, *stopsOnly, pol, now)
+	snap, anyBlind, berr := buildSnapshot(claims, obsSource, resSource, stopsByKey, *stopsOnly, pol, now)
 	if berr != nil {
 		return berr
 	}
