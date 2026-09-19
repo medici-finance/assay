@@ -23,6 +23,10 @@ type briefRow struct {
 	BriefPath     string // repo-relative
 	fm            briefFrontmatter
 	evidenceEmpty bool
+	// couldNotCheck is non-empty when the row's brief file could not be resolved or read
+	// (#1309 item 5): the gate and every risk answer are then UNKNOWN, not "model / all no",
+	// so the row is bucketed could-not-check and never dispatched.
+	couldNotCheck string
 }
 
 // briefFrontmatter is the subset of brief-v1 frontmatter the verify adapter needs. It is
@@ -132,7 +136,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 				continue // Awaiting filter
 			}
 			r.Stream = stream
-			r.BriefPath, r.fm, r.evidenceEmpty = resolveBrief(root, streamsDir, e.Name(), r.Num)
+			r.BriefPath, r.fm, r.evidenceEmpty, r.couldNotCheck = resolveBrief(root, streamsDir, e.Name(), r.Num)
 			rows = append(rows, r)
 		}
 	}
@@ -163,6 +167,9 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 			"in_repair":      br.fm.InRepair,
 			"evidence_empty": yesNo(br.evidenceEmpty),
 			"deferred_rows":  br.fm.DeferredRows,
+		}
+		if br.couldNotCheck != "" {
+			payload["could_not_check"] = br.couldNotCheck
 		}
 		if oc, ok := outcomes[br.Stream+"/"+br.Num]; ok {
 			payload["sidecar_outcome"] = oc.Outcome
@@ -320,25 +327,37 @@ func normalizeMark(s string) string {
 
 // resolveBrief finds the brief file for a row (docs/streams/<dir>/brief-<num>-*.md), parses
 // the frontmatter subset, and reports whether its ## Evidence section is empty.
-func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool) {
-	matches, _ := filepath.Glob(filepath.Join(streamsDir, dir, "brief-"+num+"-*.md"))
+//
+// FAIL CLOSED (#1309 item 5). A row whose brief file is not found, or cannot be read, returns
+// a non-empty couldNotCheck reason and the ZERO frontmatter — and the caller must treat that
+// row as could-not-check, never dispatchable. Before this the zero value flowed straight into
+// classification: gate "" and every risk flag false read as a risk-clear model-gated brief, so
+// an unresolvable row was routed to DISPATCH with its human gate erased.
+func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool, couldNotCheck string) {
+	pattern := filepath.Join(streamsDir, dir, "brief-"+num+"-*.md")
+	matches, _ := filepath.Glob(pattern)
 	if len(matches) == 0 {
-		// no resolvable brief file — treat as empty-evidence so it is not silently dropped
-		return "", briefFrontmatter{}, true
+		return "", briefFrontmatter{}, true, "brief file not found: " + relTo(root, pattern)
 	}
 	path := matches[0]
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", briefFrontmatter{}, true
+		return "", briefFrontmatter{}, true, "brief file unreadable: " + relTo(root, path) + " (" + err.Error() + ")"
 	}
-	rel, rerr := filepath.Rel(root, path)
-	if rerr != nil || rel == "" {
-		rel = path
-	}
+	rel := relTo(root, path)
 	fm = parseFrontmatter(string(raw))
 	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
-	return rel, fm, evidenceEmpty
+	return rel, fm, evidenceEmpty, ""
+}
+
+// relTo is path relative to root, or path itself when it cannot be made relative.
+func relTo(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "" {
+		return path
+	}
+	return rel
 }
 
 // deriveContentSignals fills the two queue-truthfulness markers a real brief usually EXPRESSES in

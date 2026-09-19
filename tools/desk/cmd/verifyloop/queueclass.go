@@ -61,6 +61,12 @@ const (
 	// reproduces the same verified outcome every pass (#1309 item 3: it re-entered DISPATCH as
 	// item 1 on every plan); it is a finding to file / point the flip at, never a re-run.
 	dispStuckFlip
+	// dispCouldNotCheck: the row's brief file could not be resolved or read (#1309 item 5), so
+	// its gate and risk answers are UNKNOWN. An instrument that did not look has cleared
+	// nothing: the row is listed under could-not-check with the reason and is never
+	// dispatchable — before this it fell through as a zero-value (risk-clear, model-gated)
+	// brief and reached DISPATCH with its human gate erased.
+	dispCouldNotCheck
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -80,6 +86,8 @@ func (d disposition) String() string {
 		return "dispatch-for-evidence"
 	case dispStuckFlip:
 		return "stuck-flip"
+	case dispCouldNotCheck:
+		return "could-not-check"
 	default:
 		return "unknown"
 	}
@@ -114,6 +122,8 @@ func (d disposition) whyItWaits() string {
 		return "needs a cluster / online / live-session hand-off — an offline verifier run cannot produce the verdict"
 	case dispInRepair:
 		return "an in-flight table-repair pipeline already owns this Verify table — leave it to the repair"
+	case dispCouldNotCheck:
+		return "the brief file could not be resolved/read — gate and risk answers are UNKNOWN, so it is never dispatchable; fix the board row or the file"
 	case dispStuckFlip:
 		return "a verified outcome is in the sidecar and Evidence is filled, but the status flip has not landed — file/point at the stuck flip, never re-run"
 	default:
@@ -151,6 +161,7 @@ var notInRepairValues = map[string]bool{
 // (whose why is the same for every member — carried by whyItWaits).
 //
 // Precedence, most-specific first:
+//  0. could-not-check — the brief file is unresolvable; nothing below can be read off it.
 //  1. blocked-until — the brief cannot even be attempted this run, whatever else is true of it.
 //  2. human gate / risk-flagged — FAIL SAFE. These items are never dispatched to a model. The
 //     arm is INDEPENDENT of the tier the risk-router computed: it admits an item when the tier is
@@ -165,6 +176,9 @@ var notInRepairValues = map[string]bool{
 //  5. online lane — no offline verdict is possible.
 //  6. otherwise DISPATCH.
 func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string) {
+	if cnc := payloadValue(it, "could_not_check"); cnc != "" {
+		return dispCouldNotCheck, cnc
+	}
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
 	}
