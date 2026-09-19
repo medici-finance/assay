@@ -621,9 +621,11 @@ func attrProblemsAndNotices(t *testing.T, root string) (problems, notices []stri
 
 // TestAttributionIdentityCrossCheckMultiIdentity: in a repo with more than one
 // committer identity, a brief whose authoring and most-recent (Evidence-adding)
-// commit share ONE identity is surfaced as a NOTICE (independence not
-// corroborated by commit metadata), while a brief whose authoring and Evidence
-// commits are under DISTINCT identities is not — the healthy independent case.
+// commit share ONE identity — and whose Verified/Evidence tokens self-label as
+// independent (the token layer alone would pass it) — is a hard PROBLEM: the
+// security-hardening/27 Task 2 selfVerification escalation (assay#1116).
+// A brief whose authoring and Evidence commits are under DISTINCT identities is
+// not flagged at all — the healthy independent case.
 func TestAttributionIdentityCrossCheckMultiIdentity(t *testing.T) {
 	gitAvailable(t)
 	root := t.TempDir()
@@ -645,22 +647,117 @@ func TestAttributionIdentityCrossCheckMultiIdentity(t *testing.T) {
 	gitCommitAs(t, root, "Bob", "bob@example.com", "bob re-touches brief-02")
 
 	problems, notices := attrProblemsAndNotices(t, root)
-	if len(problems) != 0 {
-		t.Fatalf("no hard problems expected (the identity layer is NOTICE-only); got:\n%s", strings.Join(problems, "\n"))
+	joinedProblems := strings.Join(problems, "\n")
+	if !strings.Contains(joinedProblems, "committer-identity cross-check") || !strings.Contains(joinedProblems, "brief-01") {
+		t.Fatalf("want a hard committer-identity PROBLEM naming brief-01 (author==last committer, self-labeled "+
+			"independent, multi-identity repo); got problems:\n%s\nnotices:\n%s", joinedProblems, strings.Join(notices, "\n"))
 	}
-	joined := strings.Join(notices, "\n")
-	if !strings.Contains(joined, "committer-identity cross-check") || !strings.Contains(joined, "brief-01") {
-		t.Errorf("want a committer-identity NOTICE naming brief-01 (author==last committer); got:\n%s", joined)
+	if strings.Contains(joinedProblems, "brief-02") {
+		t.Errorf("brief-02 has distinct authoring/Evidence identities and must NOT be flagged; got:\n%s", joinedProblems)
 	}
-	if strings.Contains(joined, "brief-02") {
-		t.Errorf("brief-02 has distinct authoring/Evidence identities and must NOT be flagged; got:\n%s", joined)
+	joinedNotices := strings.Join(notices, "\n")
+	if strings.Contains(joinedNotices, "brief-01") {
+		t.Errorf("brief-01's finding is now a hard PROBLEM, not also a NOTICE (no double-reporting); got notices:\n%s", joinedNotices)
+	}
+}
+
+// TestAttributionIdentitySameIdentityAlreadyTokenFlagged: a multi-identity repo
+// where the same-identity brief's OWN tokens already read as self-verification
+// (verifier token == author token) is not double-flagged by the identity layer
+// as a second hard PROBLEM — the token-level check already failed it. The
+// identity layer instead surfaces a bounded corroborating NOTICE, so the
+// signal is still visible without manufacturing a duplicate failure.
+func TestAttributionIdentitySameIdentityAlreadyTokenFlagged(t *testing.T) {
+	gitAvailable(t)
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", "gitattr")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// authored-by token and Verified runner token are identical ("fable") —
+	// selfVerificationReason already fails this brief on tokens alone.
+	body := `---
+schema: brief-v1
+brief: gitattr/01
+title: t
+wave: 0
+depends: []
+unblocks: []
+effort: S
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+authored: 2026-07-08 by fable session (test)
+sources: ["s"]
+---
+
+# Brief 01
+
+## Evidence
+
+| # | Command | Exit | Result | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | ` + "`go test ./...`" + ` | 0 | ok | 2026-07-08 | fable |
+`
+	if err := os.WriteFile(filepath.Join(dir, "brief-01-t.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A second brief, healthy/independent, in the SAME README from the start —
+	// this repo's brief history then carries more than one identity (identity
+	// IS discriminating here) without a later README overwrite dropping brief-01's row.
+	body2 := strings.ReplaceAll(identBriefTmpl, "%s", "02")
+	if err := os.WriteFile(filepath.Join(dir, "brief-02-t.md"), []byte(body2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	readme := "---\nstream: gitattr\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# Gitattr\n\n## Briefs\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | [t](./brief-01-t.md) | 0 | S | verified | 2026-07-08 fable | 2026-07-08 model:sonnet |\n" +
+		"| 02 | [t](./brief-02-t.md) | 0 | S | verified | 2026-07-08 opus-verifier | 2026-07-08 model:sonnet |\n"
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	attrGitInit(t, root)
+	gitCommitAs(t, root, "Alice", "alice@example.com", "author both briefs")
+	// Bob re-touches brief-02 only, giving it a distinct last committer so this
+	// repo's identity set has more than one member; brief-01 stays single-
+	// identity (alice authored, alice is still the last committer).
+	f, err := os.OpenFile(filepath.Join(dir, "brief-02-t.md"), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("\n<!-- independent re-run touch -->\n")
+	f.Close()
+	gitCommitAs(t, root, "Bob", "bob@example.com", "bob re-touches brief-02, distinct identity")
+
+	problems, notices := attrProblemsAndNotices(t, root)
+	joinedProblems := strings.Join(problems, "\n")
+	if !strings.Contains(joinedProblems, "brief-01") || !strings.Contains(joinedProblems, "self-verification") {
+		t.Fatalf("want brief-01's token-level self-verification PROBLEM; got:\n%s", joinedProblems)
+	}
+	// Exactly one PROBLEM should name brief-01 — not a second one from the
+	// identity layer duplicating the token-level finding.
+	count := strings.Count(joinedProblems, "brief-01")
+	if count != 1 {
+		t.Errorf("want brief-01 named in exactly one PROBLEM (no identity-layer duplicate); got %d mentions:\n%s", count, joinedProblems)
+	}
+	joinedNotices := strings.Join(notices, "\n")
+	if !strings.Contains(joinedNotices, "committer-identity cross-check") || !strings.Contains(joinedNotices, "brief-01") {
+		t.Errorf("want a corroborating identity NOTICE naming brief-01 (already flagged above); got:\n%s", joinedNotices)
 	}
 }
 
 // TestAttributionIdentitySingleIdentityInconclusive: a repo whose entire brief
 // history is one git identity emits exactly one aggregate "inconclusive" NOTICE
 // — the loud, honest degradation that commit metadata cannot corroborate
-// independence — and never a hard problem.
+// independence — and never a hard problem. This is the DELIBERATE legitimate
+// exception to the security-hardening/27 Task 2 escalation (assay#1116): a
+// repo/bot workflow where every commit shares one git identity by design (a
+// solo-maintainer repo, or a house that commits everything under one App
+// identity) gives commit metadata nothing to discriminate on, so escalating
+// here would be a new false-positive class, not a caught independence gap.
+// Escalation to a hard PROBLEM only applies once this repo's history shows
+// MORE than one identity (see TestAttributionIdentityCrossCheckMultiIdentity).
 func TestAttributionIdentitySingleIdentityInconclusive(t *testing.T) {
 	gitAvailable(t)
 	root := t.TempDir()
