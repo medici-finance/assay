@@ -157,12 +157,35 @@ func (s *stubRemote) GetIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.Tar
 }
 
 // ListCommentsTyped records the kind and serves the same thread fixture ListComments does.
+//
+// KIND-ACCURATE, matching production (forge_github.go: listCommentsGQL): a number that names
+// the OTHER kind resolves to a null noteable, reported as could-not-check — never as an empty
+// thread. That check applies only when the item at the resolved key IS modelled: a number with
+// no modelled issue/PR object (a bare sign-off / manifest comment host) is not a mismatch, it is
+// simply not modelled either way — the untyped ListComments stub already treats it the same way.
 func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
 	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
 	}
+	key := s.stubKey(fr.Slug(), n, kind)
+	if j, ok := s.items[key]; ok {
+		var w stubIssueWire
+		if err := json.Unmarshal([]byte(j), &w); err == nil {
+			isPR := w.PullRequest != nil
+			switch {
+			case isPR && kind == deskkit.TargetIssue:
+				return nil, deskkit.Unverifiable(fmt.Sprintf(
+					"could-not-check: %s carries no issue at number %d, so its comment thread could not be read",
+					fr.Slug(), n), nil)
+			case !isPR && kind == deskkit.TargetChange:
+				return nil, deskkit.Unverifiable(fmt.Sprintf(
+					"could-not-check: %s carries no pull request at number %d, so its comment thread could not be read",
+					fr.Slug(), n), nil)
+			}
+		}
+	}
 	s.typedThreads = append(s.typedThreads, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
-	return s.listCommentsAt(fr, n, s.stubKey(fr.Slug(), n, kind))
+	return s.listCommentsAt(fr, n, key)
 }
 
 func (s *stubRemote) GetPullRequest(fr deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
