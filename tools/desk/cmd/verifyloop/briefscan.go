@@ -130,14 +130,14 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 			continue // a stream dir without a README is not a fatal scan error
 		}
 		stream, tableRows := parseStreamTable(string(raw), e.Name())
-		for _, r := range tableRows {
-			st := strings.ToLower(r.Status)
+		for _, row := range tableRows {
+			st := strings.ToLower(row.Status)
 			if st != "implemented" && st != "verified" {
 				continue // Awaiting filter
 			}
-			r.Stream = stream
-			r.BriefPath, r.fm, r.evidenceEmpty, r.couldNotCheck = resolveBrief(root, streamsDir, e.Name(), r.Num)
-			rows = append(rows, r)
+			row.Stream = stream
+			row.BriefPath, row.fm, row.evidenceEmpty, row.couldNotCheck = resolveBrief(root, streamsDir, e.Name(), row.Num)
+			rows = append(rows, row)
 		}
 	}
 
