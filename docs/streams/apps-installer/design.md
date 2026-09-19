@@ -202,6 +202,19 @@ implementation is authored after the ruling.
 | Port in use | bind fails | next free loopback port, said so; the manifest redirect follows the port actually bound |
 | Cross-org cell | repo list spans two orgs | says one App still needs one install and one token per org; runs the install step per org |
 
+**No `gh` on the machine.** The identity-mismatch check above (`ghIdentity`, "Browser signed in
+as someone else") currently reads the signed-in login via `gh api user`, an allowlisted
+exception (`tools/desk/internal/forgeban/allowlist.go`, `cmd/deskapps/identity.go::runGH::gh`)
+scoped to that one read, per the driver's ruling on #1260
+(https://github.com/medici-finance/assay/pull/1260#issuecomment-5737886839). Where `gh` itself
+is absent, the documented future direction is an OAuth device-code login: the installer drives
+GitHub's device-authorization flow directly, the person approves it in their browser the same
+way they already approve the App manifest, and the resulting token is held in memory for the
+duration of that one install only — never written to disk, never the App's own credential, and
+discarded once the identity read it services is done. This is a separate follow-on brief in this
+stream, authored by the driver; it is recorded here as the direction, not implemented by this PR
+(ruling addendum: https://github.com/medici-finance/assay/pull/1260#issuecomment-5737892794).
+
 ## 9. Measured before building (brief 02 records the answers)
 
 1. Does the throttle count conversions, or only the create form? Decides whether codes are

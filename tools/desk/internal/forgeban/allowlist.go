@@ -81,7 +81,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 5
+const allowedInvocationCeiling = 6
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -91,6 +91,21 @@ var AllowedInvocations = []Allowance{
 			"operation at all but the identity layer, which inventory delta D2 keeps deliberately outside the " +
 			"interface. Retiring it means giving deskadvisory a minted token of its own; there is no Forge " +
 			"method it could move to.",
+	},
+	{
+		Key: "cmd/deskapps/identity.go::runGH::gh",
+		Reason: "Exception granted by the driver's ruling on #1260 " +
+			"(https://github.com/medici-finance/assay/pull/1260#issuecomment-5737886839): deskapps init's " +
+			"manifest-flow installer runs before any App token can exist, so the design §8 identity-mismatch " +
+			"check (`ghIdentity`) reads the signed-in `gh auth` login via `gh api user` — the ONE verb this " +
+			"row permits, read-only, never a write and never a token mint of its own. The ruling's own three " +
+			"options were (A) rewrite the check off the manifest-conversion response, (B) register the call " +
+			"and raise the ceiling, (C) park until re-scoped; the driver picked (B), so this row is the " +
+			"decision, not a placeholder for one. TODO(forge-surface): retires only if a future brief " +
+			"re-sources the identity-mismatch check from the manifest-conversion response instead (the " +
+			"declined option A) — until then this permit stands as the ruling-authorized exception. " +
+			"`ghOwnedOrgs`, the other `gh` shell-out this file held, was dead code (zero call sites) and " +
+			"was removed rather than registered — see the identity.go file header.",
 	},
 	{
 		Key: "cmd/deskdigest/exec.go::runGH::gh",

@@ -68,7 +68,8 @@ deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <nam
   `app=`/`state=` for every state change. `convert.go`'s conversion-failure path deliberately
   omits the response body from its error string for the same reason.
 - **Nothing here asks for a password or a token of its own.** Identity comes from `gh auth`
-  once (`identity.go`'s `ghIdentity`/`ghOwnedOrgs`), never called for `--dry-run`.
+  once (`identity.go`'s `ghIdentity`, a registered forge-surface exception per #1260's
+  ruling — `tools/desk/internal/forgeban/allowlist.go`), never called for `--dry-run`.
 - **Public tree.** This file and the code it documents are self-contained: no private repo
   names, no private issue references.
 
