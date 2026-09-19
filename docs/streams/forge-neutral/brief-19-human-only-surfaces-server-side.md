@@ -19,6 +19,7 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-19
 exec-tier: strong
 exec-tier-why: "getting item 1 wrong in either direction is a security judgment: understating the gap leaves a real merge-bypass unflagged, and a proposed fix that is subtly mis-specified (a required check a bot can also satisfy, a review-login match that accepts the wrong identity class) would read as closed when it is not — this is not a fact a model self-certifies (question c)."
 gate-why: >-

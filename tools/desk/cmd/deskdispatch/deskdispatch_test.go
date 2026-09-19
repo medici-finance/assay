@@ -770,8 +770,8 @@ func TestUnknownKitRefusesRatherThanEmittingAnEmptyPrompt(t *testing.T) {
 // Every advertised kit must actually be embedded and non-trivial.
 func TestEveryAdvertisedKitIsEmbedded(t *testing.T) {
 	names := kitNames()
-	if len(names) != 3 {
-		t.Fatalf("kits = %v, want exactly the three dispatched-agent classes", names)
+	if len(names) != 4 {
+		t.Fatalf("kits = %v, want exactly the four dispatched-agent classes", names)
 	}
 	for _, n := range names {
 		text, err := kitText(n)

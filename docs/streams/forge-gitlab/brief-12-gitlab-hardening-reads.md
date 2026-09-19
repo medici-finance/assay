@@ -176,6 +176,24 @@ need a live project are left for the verifier.
 | 4 | live `curl … /protected_branches` under the auditor PAT | `200` | left to the verifier: needs a live project and the provisioned auditor PAT; the adopter doc states Maintainer as the minimum role and says in the same breath that it is stated, not measured | — | — |
 | 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | ≥ 1 | `2` (the two push-rules rows of the CE template; the kind table and prose spell the `not available — <tier>` form) | 2026-09-15 | implementer (self-run) |
 | 6 | `statusgen --root . --consumers` | exit 0 | exit 0; `statusgen --lint` LINT: PASS | 2026-09-15 | implementer (self-run) |
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PARTIAL (5/6 PASS)** — HELD at `implemented`
+
+Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` origin/main at `57509073b9b7c989b850c7e5d251f7443ef3794c`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go test ./...` | exit 0 | exit 0, every package ok incl. `cmd/repohardenguard` and `internal/deskkit` | 2026-09-17 | sonnet-5-verifier |
+| 2 | `TestForgeGitlabGolden`, `TestForgeGitlabCoverage`, `TestForgeNoPassthrough` | exit 0, `push_rules_premium_gated` golden records a classified 403 could-not-check | exit 0 all three. Read the actual golden fixture directly: `"result": null`, `"err": "could-not-check: ... push rules are a Premium feature ..."` — a real classified could-not-check, not a false empty/ok read. Coverage confirms all 46 ops reconciled against inventory.md | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestGitLabNotAvailableNoRequest`, `TestGitLabTierGateCouldNotCheck` | exit 0 | exit 0 both; 4 subtests on the tier-gate test all PASS | 2026-09-17 | sonnet-5-verifier |
+| 4 | live GitLab API call under an `auditor` PAT against the pilot project | `200` | **EXPLICITLY UNRUN (could-not-check)** — the live pilot project's slug/API base is deliberately never disclosed in this repo (per `docs/streams/forge-gitlab/pilot-report.md`'s own "Naming" section: only numeric ids are ever given, never a group/project path, so it "carries no private name into a public repo"); `$GITLAB_API_BASE` unset, no gitlab/auditor roster entry available, and minting an auditor token against any repo I could name was correctly refused rather than guessed | 2026-09-17 | sonnet-5-verifier |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | ≥1 | exit 0, `2` | 2026-09-17 | sonnet-5-verifier |
+| 6 | `statusgen --root . --consumers` | exit 0 | exit 0 (no local diff to corroborate against, as expected for an unmodified worktree at HEAD) | 2026-09-17 | sonnet-5-verifier |
+
+**Security-Review precondition (named in the brief's own dispatch checklist item 4): CONFIRMED LANDED.** Implementing PR `medici-finance/assay#1179`, merged 2026-09-16T12:07:07Z. `assay-reviewer-app` posted both a correctness-lane APPROVED review and a separate COMMENTED review titled "Security review — forge-gitlab/12" carrying `Security-Review: pass`.
+
+**RISK-VALUE: DERIVED** — `docs/adopting-assay-gitlab.md`'s CE template enumerates every tier/permission literal (Reporter=20, Maintainer=40, Admin=60; access_level 0/30/40/60; two Premium-gated rows, one Ultimate-gated row). Cross-checked against the actual golden fixture `hardening_read_protected_branches.golden.json`: `push_access_levels[0].access_level=0` ("No one"), `merge_access_levels[0].access_level=40` ("Maintainers") — matches the doc's example rows exactly, no drift. The tier-gate SPOF (a Premium 403 never fail-opening into a value) is backed by two independently-observed layers: the backend's error classification (golden, live) and the checklist's own zero-request short-circuit (`TestGitLabNotAvailableNoRequest`, live) — both real and green.
+
+**VERIFY: PARTIAL** — 5/6 rows PASS; row 4 explicitly unrun for a structural, non-guessable reason (the pilot project is deliberately anonymized in this public repo). No defect found anywhere. Held at `implemented`.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
