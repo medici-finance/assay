@@ -247,6 +247,12 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "VERIFY %s (tier=%s, local session model — never opus/external)\n\n", it.ID, tier)
 	fmt.Fprintf(&b, "Brief: %s\n", it.BriefPath)
+	if root := payloadValue(it, "root"); root != "" {
+		// Multi-root plan: the brief path above is relative to THIS root, so name it — the
+		// verifier cuts its own worktree FROM this checkout and never writes in it.
+		fmt.Fprintf(&b, "Repo: %s — checkout root (cut your worktree FROM it; never write in it): %s\n",
+			payloadValue(it, "repo"), root)
+	}
 	fmt.Fprintf(&b, "Target SHA (merged main to run against): %s\n\n", it.TargetSHA)
 	b.WriteString("Isolation (MANDATORY):\n")
 	b.WriteString("- Create and work in your OWN temporary worktree under /private/tmp off the target SHA.\n")

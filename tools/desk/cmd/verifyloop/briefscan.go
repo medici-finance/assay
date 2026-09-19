@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -62,6 +64,43 @@ type briefFrontmatter struct {
 // This is the deterministic board read; there is NO code path that produces a verify verdict
 // without going through the engine's Dispatch — the inline-verify path is unrepresentable.
 func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
+	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA)
+}
+
+// scanAwaitingRoots is the MULTI-ROOT board read: one scanAwaitingIn per configured root, in
+// the order given (deskkit.ConfiguredRoots sorts by repo), then ONE global tier ordering so a
+// tier-1 brief on the last root is never crowded out by tier-2 free-closes on the first. Within
+// a class the per-root order (root order, then stream, then brief-num) is preserved — the sort
+// is stable. A root whose streams cannot be read is an error naming the root, never a silent
+// omission: the whole point of the multi-root plan is that a repo's queue cannot vanish.
+func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string) ([]loopengine.Item, error) {
+	var all []loopengine.Item
+	for _, r := range roots {
+		items, err := scanAwaitingIn(r, targetSHA)
+		if err != nil {
+			return nil, fmt.Errorf("root %s (%s): %w", r.Repo, r.Path, err)
+		}
+		all = append(all, items...)
+	}
+	sort.SliceStable(all, func(i, j int) bool { return itemWorkClass(all[i]) < itemWorkClass(all[j]) })
+	return all, nil
+}
+
+// itemWorkClass is workClass read back off a scanned Item's payload (status + Evidence
+// emptiness), so the cross-root ordering uses exactly the per-root tier rule.
+func itemWorkClass(it loopengine.Item) int {
+	if strings.ToLower(payloadValue(it, "status")) == "implemented" && payloadValue(it, "evidence_empty") == "yes" {
+		return 0
+	}
+	return 1
+}
+
+// scanAwaitingIn scans ONE root. With r.Repo empty this is the single-root read exactly as
+// before (bare `<stream>/<NN>` IDs, no provenance). With r.Repo set — the multi-root plan — every
+// item's ID is `<owner>/<repo>:<stream>/<NN>` and its payload carries `repo` and `root`, so the
+// root is named on every printed item and two roots carrying a same-named stream cannot alias.
+func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, error) {
+	root := r.Path
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
 	if err != nil {
@@ -104,27 +143,42 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 	})
 
 	items := make([]loopengine.Item, 0, len(rows))
-	for _, r := range rows {
+	for _, br := range rows {
+		id := br.Stream + "/" + br.Num
+		payload := map[string]string{
+			"status":         br.Status,
+			"verified":       br.Verified,
+			"reviewed":       br.Reviewed,
+			"blocked_until":  br.fm.BlockedUntil,
+			"verify_lane":    br.fm.VerifyLane,
+			"in_repair":      br.fm.InRepair,
+			"evidence_empty": yesNo(br.evidenceEmpty),
+		}
+		if r.Repo != "" {
+			id = r.Repo + ":" + id
+			payload["repo"] = r.Repo
+			payload["root"] = root
+		}
 		items = append(items, loopengine.Item{
-			ID:          r.Stream + "/" + r.Num,
-			BriefPath:   r.BriefPath,
+			ID:          id,
+			BriefPath:   br.BriefPath,
 			TargetSHA:   targetSHA,
-			Risk:        r.fm.Risk,
-			Gate:        r.fm.Gate,
-			Effort:      r.fm.Effort,
-			ExecTier:    r.fm.ExecTier,
-			Implementer: r.fm.Implementer,
-			Payload: map[string]string{
-				"status":        r.Status,
-				"verified":      r.Verified,
-				"reviewed":      r.Reviewed,
-				"blocked_until": r.fm.BlockedUntil,
-				"verify_lane":   r.fm.VerifyLane,
-				"in_repair":     r.fm.InRepair,
-			},
+			Risk:        br.fm.Risk,
+			Gate:        br.fm.Gate,
+			Effort:      br.fm.Effort,
+			ExecTier:    br.fm.ExecTier,
+			Implementer: br.fm.Implementer,
+			Payload:     payload,
 		})
 	}
 	return items, nil
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // workClass returns 0 for tier-1 (the real verify work: implemented with an EMPTY Evidence
