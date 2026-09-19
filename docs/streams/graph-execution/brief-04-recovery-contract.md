@@ -17,6 +17,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
+  - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
+  - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
   - "docs/streams/graph-execution/spec.md §2.4 (recovery semantics beyond an audit log; the lost-acknowledgment case) and §4 (the recovery case in the experiment)"
   - "drainloop/journal.go (Journal contract: 'a returned error is logged but does not abort the drain') and drainloop/engine.go `Config.record` (the best-effort implementation of that contract)"
   - "drainloop/item.go (Item carries ID, Implementer, Payload, Retry — no run or attempt identity) and drainloop/retry.go (the three-state retry taxonomy this brief's Reconcile step runs before)"
@@ -30,7 +32,7 @@ consumers:
   - "drainloop/README.md §Optional layers (the Journal row's 'best-effort' wording is now conditional on whether the adapter registers effects): follow-up graph-execution/04 (this brief; flips to fixed-here when the implementation edits the path)"
   - "docs/streams/graph-execution/spec.md §3 seam table row 'Drain engine' (state text): out-of-scope (the spec describes the starting state; the stream README's end-state paragraph is the forward statement)"
   - "graph-execution/05's experiment harness (the recovery case consumes the Effect/Receipt/Reconcile seam by name): follow-up graph-execution/05"
-version: 1
+version: 2
 id: 961a1aa6-80a6-4712-b8ca-5a71cbdf6ece
 ---
 
@@ -43,7 +45,7 @@ facts:
   - Journal today (2026-09-16 @ d96fd3ba): `Config.record` in `drainloop/engine.go` logs a sink error as `JOURNAL ... (non-fatal)` and continues. `journal.go` documents the kinds the engine emits: CLAIM, DISPATCH, LAND, RELEASE (via LAND), SKIP, HOLD, GUARD, EVIDENCE, IDLE. Nothing in the engine distinguishes an event that precedes an external effect from one that does not.
   - `Item` (`drainloop/item.go`) carries `ID`, `Implementer`, `Payload`, `Retry`. There is no run identity and no attempt identity; `Retry` is a count a queue bumps on re-selection.
   - Retry (`drainloop/retry.go`) is a facility `Land`/re-selection consults, deliberately off the six-method `Loop` contract. A `DecisionRetry` re-selects and re-dispatches the item — today with no step between the decision and the re-dispatch.
-  - Vocabulary (stream README, shared conventions): node kinds `artifact | check | decision | effect`; only an `effect` node registers an Effect. The node contract from graph-execution/02 declares `effects:[{kind, target}]`; this brief gives the executor the adapter that carries one out.
+  - Vocabulary (stream README, shared conventions): node kinds `artifact | check | decision | effect`; every node with declared effects registers each Effect. The node contract from graph-execution/02 declares `effects:[{kind, target}]`; this brief gives the executor the adapter that carries one out.
   - Single-point-of-failure note: the ONE control is the receipt lookup before re-apply. Second, independent layer: the journal record BEFORE the effect is mandatory for effect nodes, so a crash after the effect leaves a RECORDED intent the resuming worker reconciles against even when the authoritative store is unreadable (could-not-check ⇒ hold, never re-apply). Third, out-of-band: the idempotency key is passed to the authoritative store on `Apply`, so a store that honours keys refuses the duplicate even if both engine layers were bypassed.
 
 ## Ground rules
@@ -53,8 +55,12 @@ facts:
 - Stop at `implemented` — you do not set verified/done.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
+## Integration amendment — 2026-09-18
+
+This remains the basic mandatory-intent/receipt/reconcile contract. Apply it to EVERY declared external effect, including a non-effect-kind node legally declaring effects within its output boundary under pattern §4.2.2; do not let node kind bypass recording. Keys bind logical run, operation, target and subject, NOT attempt, so retries reuse the same operation key. Preserve succeeded/failed/unknown outcomes and hold an unreadable lookup. Cell fencing/cumulative budgets are the separate extension 16; do not enlarge this brief into that work.
+
 ## Task
-1. **Identity.** Add `RunID` and `AttemptID` to `Item` (`drainloop/item.go`): `RunID` is stable across attempts of one unit of work; `AttemptID` is minted per dispatch. Document that a queue re-selecting a failed item keeps `RunID` and mints a new `AttemptID`. Both are strings; empty means "the adapter did not assign one", which is legal for non-effect items and a refusal for effect items (step 3).
+1. **Identity.** Add `RunID` and `AttemptID` to `Item` (`drainloop/item.go`): `RunID` is stable across attempts of one unit of work; `AttemptID` is minted per dispatch. Document that a queue re-selecting a failed item keeps `RunID` and mints a new `AttemptID`. Both are strings; empty means "the adapter did not assign one", legal only for items with no declared external effects (step 3).
 2. **Effect adapter** (`drainloop/effect.go` (planned)):
    ```go
    type Receipt struct { Key string; Ref string; At time.Time }   // Ref points at the authoritative record (a URL/path/id)
@@ -89,6 +95,8 @@ facts:
 | 7 | check +dereference | `grep -n 'reconcile' docs/enforcement-model.md` | ≥ 1 line, and that line names the bypass boundary ("adapters that route effects through this layer") — a row that only claims exactly-once fails the reviewer's reading |
 | 8 | check +flow | `cd drainloop && GOWORK=off go run ./cmd/demo > /tmp/ge04-demo.txt 2>&1; grep -c LAND /tmp/ge04-demo.txt` | 5 — the demo's five non-effect items still drain unchanged with the layer off |
 | 9 | check | `statusgen --root . --consumers --diff-base $(git merge-base HEAD origin/main)` | exit 0 — the `consumers:` routing above is corroborated by the diff |
+
+| 10 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run TestDeclaredEffectCannotBypassJournal ./...` | exit 0; named test PASS; an artifact node with a declared effect cannot bypass mandatory intent recording |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

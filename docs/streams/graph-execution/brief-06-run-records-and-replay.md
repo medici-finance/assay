@@ -9,7 +9,7 @@ why: >-
   proves the revision fixes the motivating cases without changing the ones it did not touch.
   A human decides what ships; the loop proposes, it never promotes.
 wave: 3
-depends: ["graph-execution/05"]
+depends: ["graph-execution/05", "graph-execution/09"]
 unblocks: []
 effort: L
 gate: model
@@ -18,6 +18,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
+  - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
+  - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
   - "docs/streams/graph-execution/spec.md §2.5 (run record → recurring failure → replay fixture → small change → regression over motivating cases and holdouts → reviewed next version; outcome and permitted method scored independently) and §4 (one incident-derived improvement replayed over its motivating cases and unchanged holdouts)"
   - "graph-execution/05 (the eight fixtures and the `statusgen experiment` harness this brief replays through; the failed run its replay fixture derives from) and graph-execution/02 (`spec/workflow-pattern-v1.md` (planned) — the `supersedes:` and `version:` keys a v2 pattern file carries)"
   - "schemas/desksupervise-status-v1.json (the JSON-schema convention this repo uses for a machine-readable contract: `$id` under schemas/, `additionalProperties: false`, every field three-state per docs/three-state-instrument-rule.md) and schemas/brief-v2.json"
@@ -26,7 +28,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "(a) the run-record field set and the replay-fixture derivation are design decisions the facts do not fully pre-specify; (b) correctness is cross-artifact — a pattern revision, its regression run and the holdout assertion must agree, and a loop that scores outcome only would silently reward a route that broke a constraint."
 domain: complex
-version: 1
+version: 2
 id: 227c272b-dc4c-4528-9066-9e8db14d223d
 ---
 
@@ -50,6 +52,10 @@ facts:
 - Stop at `implemented` — you do not set verified/done.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
+## Integration amendment — 2026-09-18
+
+This is the single run-record/replay schema owner. Use 09 instance and canonical Cell/work/node identities; record immutable input/acceptance/policy references, effect receipts, assessment/policy references when present, source freshness and provenance. Add compatible optional extension fields or version the schema with explicit reader refusal for mandatory semantics. Sensitive payloads are permissioned references, not embedded transcripts. Do not copy this record into a second migration schema. Learned selection is only a recorded reason tied to a separate assessment; policy still controls admission.
+
 ## Task
 1. **Schema.** `schemas/run-record-v1.json` (planned) per the facts; `$id` under `schemas/`, `additionalProperties: false`, `required` lists every top-level field. `statusgen/runrecord.go` (planned): `WriteRunRecord` and `ValidateRunRecord`; the validator refuses a record with an unknown field, a non-enumerated `selected_because` or `interventions[].kind`, or a `by_role` that is not one of the five role names.
 2. **Emit.** `statusgen experiment` (from 05) writes one run record per case to `--records-dir` (planned flag); `TestExperimentEmitsValidRecords` (planned) validates every emitted record against the schema.
@@ -71,6 +77,8 @@ facts:
 | 8 | check +neighbour | `cd statusgen && go test -run 'TestExperiment' ./...` | exit 0 — the 05 harness still passes with record emission added |
 | 9 | check +flow | `cd statusgen && go run . experiment --root testdata/graph-execution/replay --records-dir /tmp/ge06-one > /dev/null; go run . replay --record /tmp/ge06-one/*.json --root testdata/graph-execution/replay; echo rc=$?` | `rc=0` — a record written by one run replays cleanly through the other subcommand: emit → validate → replay is one path, not three |
 | 10 | check +dereference | `grep -n -i 'promot' docs/lifecycle.md` | ≥ 1 line and it states the revision lands as a reviewed pull request; a lifecycle doc that describes an automatic promotion fails the reviewer's reading |
+
+| 11 | check:ci +flow | `cd statusgen && go test -count=1 -v -run TestRunRecordInstanceReferencesRoundTrip ./...` | exit 0; named test PASS; instance, subject and optional assessment references survive emit/validate/replay |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
