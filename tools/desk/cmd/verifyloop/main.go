@@ -253,7 +253,7 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 	}
 	fmt.Printf("\nverify-desk plan: %d dispatchable, %d deferred/bucketed (not offline-convertible this run)\n",
 		dispatchable, total)
-	for _, disp := range []disposition{dispDeferred, dispAwaitingHuman, dispAwaitingOnlineLane, dispInRepair} {
+	for _, disp := range []disposition{dispDeferred, dispAwaitingHuman, dispStuckFlip, dispAwaitingOnlineLane, dispInRepair} {
 		members := bucketed[disp]
 		if len(members) == 0 {
 			continue

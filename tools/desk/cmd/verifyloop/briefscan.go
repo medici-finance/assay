@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -106,6 +107,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 	if err != nil {
 		return nil, err
 	}
+	outcomes := readOutcomeSidecar(filepath.Join(streamsDir, outcomeSidecarName))
 	var rows []briefRow
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -154,6 +156,11 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 			"in_repair":      br.fm.InRepair,
 			"evidence_empty": yesNo(br.evidenceEmpty),
 		}
+		if oc, ok := outcomes[br.Stream+"/"+br.Num]; ok {
+			payload["sidecar_outcome"] = oc.Outcome
+			payload["sidecar_ts"] = oc.TS
+			payload["sidecar_sha"] = oc.SHA
+		}
 		if r.Repo != "" {
 			id = r.Repo + ":" + id
 			payload["repo"] = r.Repo
@@ -172,6 +179,43 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 		})
 	}
 	return items, nil
+}
+
+// outcomeSidecarName is the append-only verify-outcomes log under docs/streams/ (the verify
+// desk's single-writer sidecar; the Change Failure Rate sensor's input). Each line is one JSON
+// row: {"ts","brief":"<stream>/<NN>","outcome":"verified"|"verify-fail",…,"sha"}.
+const outcomeSidecarName = "verify-outcomes.jsonl"
+
+// outcomeRow is the subset of a sidecar row the stuck-flip bucket keys on.
+type outcomeRow struct {
+	TS      string `json:"ts"`
+	Brief   string `json:"brief"`
+	Outcome string `json:"outcome"`
+	SHA     string `json:"sha"`
+}
+
+// readOutcomeSidecar returns the LATEST sidecar row per brief key (the log is append-only, so
+// the last line for a brief is its current outcome). An absent or unreadable sidecar is an
+// empty map — no brief is then stuck-flip, which is the pre-#1309 behaviour; a malformed line
+// is skipped, never fatal to the board read.
+func readOutcomeSidecar(path string) map[string]outcomeRow {
+	out := map[string]outcomeRow{}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var row outcomeRow
+		if json.Unmarshal([]byte(line), &row) != nil || row.Brief == "" {
+			continue
+		}
+		out[row.Brief] = row
+	}
+	return out
 }
 
 func yesNo(b bool) string {

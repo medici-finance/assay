@@ -55,6 +55,12 @@ const (
 	// ROUTE-HUMAN bucket. A human-gated brief whose Evidence is already gathered stays in
 	// awaiting-human: re-gathering it every pass is the treadmill item 3 closes.
 	dispDispatchForEvidence
+	// dispStuckFlip: the sidecar's latest row for this brief is `outcome: verified` and its
+	// Evidence is FILLED, yet the board row still awaits (the implemented→verified flip — a
+	// `gate: model` row's CI flip — or the verified→done flip has not landed). Re-verifying it
+	// reproduces the same verified outcome every pass (#1309 item 3: it re-entered DISPATCH as
+	// item 1 on every plan); it is a finding to file / point the flip at, never a re-run.
+	dispStuckFlip
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -72,6 +78,8 @@ func (d disposition) String() string {
 		return "in-repair"
 	case dispDispatchForEvidence:
 		return "dispatch-for-evidence"
+	case dispStuckFlip:
+		return "stuck-flip"
 	default:
 		return "unknown"
 	}
@@ -106,6 +114,8 @@ func (d disposition) whyItWaits() string {
 		return "needs a cluster / online / live-session hand-off — an offline verifier run cannot produce the verdict"
 	case dispInRepair:
 		return "an in-flight table-repair pipeline already owns this Verify table — leave it to the repair"
+	case dispStuckFlip:
+		return "a verified outcome is in the sidecar and Evidence is filled, but the status flip has not landed — file/point at the stuck flip, never re-run"
 	default:
 		return ""
 	}
@@ -149,9 +159,11 @@ var notInRepairValues = map[string]bool{
 //     control that catches a fail-open in TierPolicy (a re-cased gate, a future edit that hands a
 //     risk-bearing brief a dispatchable tier). A model may gather Evidence for such a brief but
 //     may never flip it, so the gate/risk answers decide here regardless of the computed tier.
-//  3. in-repair — a pipeline owns the table; do not race it.
-//  4. online lane — no offline verdict is possible.
-//  5. otherwise DISPATCH.
+//  3. stuck-flip — the sidecar already records a verified outcome and the Evidence is filled;
+//     only the flip is missing, and a re-run cannot land it.
+//  4. in-repair — a pipeline owns the table; do not race it.
+//  5. online lane — no offline verdict is possible.
+//  6. otherwise DISPATCH.
 func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string) {
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
@@ -162,6 +174,9 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 		}
 		return dispAwaitingHuman, riskReason(it.Risk)
 	}
+	if reason, stuck := stuckFlip(it); stuck {
+		return dispStuckFlip, reason
+	}
 	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
 		return dispInRepair, ir
 	}
@@ -169,6 +184,19 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 		return dispAwaitingOnlineLane, lane
 	}
 	return dispDispatch, ""
+}
+
+// stuckFlip reports whether the item is the stuck-flip shape — latest sidecar outcome
+// `verified` AND Evidence known filled — with the member-line reason naming the landed outcome
+// (its timestamp and SHA) and the board status that failed to move. An item whose Evidence
+// state is unknown, or whose latest outcome is anything but verified (a verify-fail wants a
+// re-run once fixed), is not stuck.
+func stuckFlip(it loopengine.Item) (string, bool) {
+	if payloadValue(it, "sidecar_outcome") != "verified" || payloadValue(it, "evidence_empty") != "no" {
+		return "", false
+	}
+	return "sidecar outcome verified " + payloadValue(it, "sidecar_ts") + " (sha " + payloadValue(it, "sidecar_sha") +
+		"), Evidence filled, status still " + payloadValue(it, "status"), true
 }
 
 // humanReason is the DISPATCH-FOR-EVIDENCE header reason: the risk answers that are yes, else
