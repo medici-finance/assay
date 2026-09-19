@@ -1,0 +1,68 @@
+/* style.css — inlined into every deskapps page via go:embed + <style>. No CDN, no fonts
+   fetched: this is the whole styling surface (Ground rule: "no external assets in the
+   page: CSS and JS inline, no CDN, no fonts fetched"). */
+:root {
+  color-scheme: light dark;
+  --ink: #1b1f23;
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --border: #d0d7de;
+  --accent: #1a7f37;
+  --warn: #9a6700;
+  --danger: #cf222e;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 2rem;
+  background: var(--bg);
+  color: var(--ink);
+  max-width: 880px;
+}
+h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+.subtitle { color: #57606a; margin-top: 0; }
+.chips { display: flex; gap: 0.5rem; margin: 1rem 0; font-size: 0.85rem; }
+.chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.75rem;
+  background: var(--panel);
+}
+.chip.current { border-color: var(--accent); font-weight: 600; }
+.identity-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  background: var(--panel);
+}
+.identity-strip img { width: 32px; height: 32px; border-radius: 50%; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; font-size: 0.9rem; }
+th { background: var(--panel); }
+.state { font-weight: 600; }
+.state-pending, .state-posted { color: var(--warn); }
+.state-keyed, .state-avatar_ok, .state-installed, .state-verified { color: var(--accent); }
+.state-paused { color: var(--danger); }
+.banner {
+  border: 1px solid var(--warn);
+  background: #fff8c5;
+  color: #4d3800;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+.footer-note { color: #57606a; font-size: 0.85rem; margin-top: 2rem; }
+form.create-form { display: inline; }
+button {
+  font: inherit;
+  padding: 0.3rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  cursor: pointer;
+}

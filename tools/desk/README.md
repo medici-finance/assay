@@ -53,6 +53,7 @@ it on day one.
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
+| `deskapps` | `init` — the GitHub App Manifest-flow installer: serves the loopback page, posts the tier's manifests, converts the callback code, writes the PEM/records/role bindings. `resume`/`status`/`avatar` are later briefs (03/04/06) | local-only + loopback HTTP (no outward GitHub write of its own — the App is created by GitHub on the person's own click) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
@@ -1358,6 +1359,26 @@ cross-compile, so this is orchestration + Windows path handling (`.exe` suffixes
 [`tools/winparity`](../winparity/README.md), which asserts the script's target set equals
 the Makefile's `.PHONY` set (run `cd tools/winparity && go run . --root ../..`, exit 0 = in
 parity); the Windows script runs that guard as a preflight before any target.
+
+## deskapps — the GitHub App Manifest-flow installer (example-stream/02)
+
+`deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <name>] [--port 41873] [--no-browser] [--dry-run]`
+serves the loopback page (`http://127.0.0.1:<port>/`, `127.0.0.1` ONLY — never `0.0.0.0` or
+`::`) that drives GitHub's App Manifest flow end to end: it posts the tier's manifest JSON to
+GitHub's own new-App page, receives the redirect at `/callback`, exchanges the one-hour code
+for the App's credentials (`POST /app-manifests/{code}/conversions`), and writes the PEM
+(0600, never printed/logged/rendered), `apps.env` (App id, client id, webhook secret, plus
+the brief-01 `<ROLE>_APP=`/`READ_APP=` role bindings) and `apps.state.json`
+(`deskapps-state-v1`, the per-App state machine). `--dry-run` prints the planned URL and App
+rows without touching the network; every other test and CI invocation runs with
+`--no-browser`. `resume`, `status` and `avatar` are later briefs (03, 04, 06).
+
+The single control behind `/callback` is the per-row state nonce: an unmatched `state`
+refuses (403) before any conversion is attempted, with the loopback bind and the
+record-side match as the two independent layers behind it. Full reference, the tier
+manifests' exact permission sets, the trust boundaries, and the design.md §9 measured
+facts (blocked on live GitHub access — see that file) are in
+[`docs/desk-tools/deskapps.md`](../../docs/desk-tools/deskapps.md).
 
 ## deskpost — the reviewer App's verdict / comment / ready-flip (brief 03)
 
