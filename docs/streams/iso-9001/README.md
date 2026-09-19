@@ -49,6 +49,13 @@ Four gaps the mapping names are **deliberately not** in this stream, because the
 adopter's own and Assay must not appear to supply them: the quality policy (5.2), quality
 objectives (6.2), the internal-audit programme (9.2), and the management review (9.3).
 
+**Not overlapping with sdlc/08's release-keyed audit pack.** Brief 01 below emits the
+tool-VALIDATION evidence pack — proof that the checking tool itself works — as a release
+asset. `statusgen --export-audit-pack --release <tag>`
+([`docs/evidence-bundle.md`](../../evidence-bundle.md#release-keyed-audit-pack-sdlc08))
+emits the compliance CONTENT behind a release: the requirement → brief → Evidence/review
+chain. Related, adjacent, cite both, never conflate them.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
