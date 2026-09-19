@@ -94,8 +94,8 @@ facts:
 | 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) |
 | 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo |
 | 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is an `unknown` with the status, not a clean board |
-| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id']=='derived-board/02'][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Re-anchored from the original `desk-containers/02`/`PR #67`, which the engine correctly returns `todo` for: that brief's deliverable PR lives in another repository and carries no `Brief:` trailer (its board flip went via a separate PR), so this `--repo medici-finance/assay` run has no witness for it. The engine is sound; the old row anchored on a brief whose deliverable it cannot witness from this repo. |
-| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `gates: 1 edge (reserved, not gating)` — fixture dir prepared by the brief |
+| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Id lookup matches by `endswith(':derived-board:02')` rather than the old flat `derived-board/02` string: since the `derived-board/07` id flag-day (`bb2079bd`, #736) `reconcile --json`'s `id` field is the hierarchical `<cell>:<repo>:<stream>:<NN>` form (`assay:assay:derived-board:02`), and a suffix match survives a future cell/repo-prefix change the way an exact-string match already broke on once (assay#1305). |
+| 5 | `cd statusgen && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `eligibility-could-not-check] demo/01` — the fixture tree's own `docs/streams/demo/brief-01-smoke.md` carries the reserved `gates: [{on: "rec:ingest/06", ...}]` edge that exercises this; since commit `92aa88273` (#1251) made `gates:` an active gate the edge now surfaces as an eligibility-could-not-check NOTICE (the alias `rec` is unpublished) rather than the old reserved-not-gating wording (assay#1305) — dropped the row's own `printf … > testdata/tmp-v2.md` fixture-write, confirmed inert: that file lands outside any `docs/streams/<stream>/` path `--lint` walks, so removing it changes nothing observed and stops leaving a stray untracked file behind after every row-5 run. |
 | 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 |
 | 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 |
 | 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) |
@@ -226,6 +226,45 @@ RISK-VALUE: DERIVED — `maxPages=20`/`perPage=100` @ statusgen/ghfetch.go:105-1
 RISK-VALUE: NAMED, NOT DERIVED — `version := 1` legacy default @ statusgen/reconcile.go:203/207 — reversible operational default, unrelated to either failing row.
 
 VERIFY: FAIL — rows 1,2,3,6,7,8 checked-clean. Rows 4 and 5 fail as literally written but both are stale Verify-row anchors from later, unrelated, in-scope changes (id-format flag-day; gates: becoming gating), not regressions in this brief's own code — third consecutive verify cycle (2026-09-06, 2026-09-15, 2026-09-18) hitting a different staleness cause on the same table. Filed medici-finance/assay#1305 recommending a re-baseline of rows 4 and 5. Status stays implemented, not advanced.
+
+### Worker re-baseline — Verify rows 4+5 (assay#1305), no engine change
+
+Re-baselined the two stale Verify-table rows the 2026-09-18 verifier run filed as assay#1305.
+Verify-table maintenance only — `lifecycle.go`, `ghfetch.go`, `briefv2.go`, `reconcile.go`
+untouched.
+
+- **Row 4**: the python literal's id lookup was `x['id']=='derived-board/02'`, an exact match
+  against the pre-flag-day flat id. Since the `derived-board/07` id flag-day (`bb2079bd`, #736)
+  `reconcile --json`'s `id` field is the hierarchical `assay:assay:derived-board:02`, so the
+  exact match now always misses (`IndexError`). Changed to
+  `x['id'].endswith(':derived-board:02')` — a suffix match tolerant of the id shape, so a future
+  cell/repo-prefix change doesn't re-break this row a fourth time.
+- **Row 5**: the expected substring `gates: 1 edge (reserved, not gating)` predates commit
+  `92aa88273` (#1251), which turned `gates:` from reserved-and-parsed into an active gate. The
+  fixture tree's real `docs/streams/demo/brief-01-smoke.md` (the actual carrier of the `gates:`
+  edge exercised here — the row's own `printf … > testdata/tmp-v2.md` step writes a file outside
+  any `docs/streams/<stream>/` path `--lint` walks, confirmed inert by running with and without
+  it: identical output either way) now surfaces that edge as
+  `NOTICE: [eligibility-could-not-check] demo/01: held by rec:ingest/06 — could-not-check (alias
+  rec is unpublished — its target repo is not resolvable from this tree)`. Re-baselined the
+  expected substring to `eligibility-could-not-check] demo/01` and dropped the dead `printf` step
+  from the command.
+
+| # | Result | Runner |
+|---|--------|--------|
+| 1 | PASS — Lifecycle 17 + BriefV2 14 + GHFetch 5 = 36 `^--- PASS` (≥14) | 2026-09-19 sonnet-5 worker |
+| 2 | PASS — `reconcile --root . --offline --json` → `ok` | 2026-09-19 sonnet-5 worker |
+| 3 | PASS — `GITHUB_TOKEN=invalid … --json` → `ok` (`lookedAt=false`, `HTTP 401: Bad credentials`) | 2026-09-19 sonnet-5 worker |
+| 4 | PASS (re-baselined) — `reconcile --repo medici-finance/assay --json`, id matched by `endswith(':derived-board:02')` → `derived-board/02` cell `implemented`, witness `PR #80 (merged c93ae91)` | 2026-09-19 sonnet-5 worker |
+| 5 | PASS (re-baselined) — `--lint --root testdata/v2-smoke` → `rc=0`, output contains `eligibility-could-not-check] demo/01` | 2026-09-19 sonnet-5 worker |
+| 6 | PASS — `go test -run 'Demotion'` → 13 PASS (≥3) | 2026-09-19 sonnet-5 worker |
+| 7 | PASS — `grep -c 'reconcile' statusgen/README.md` → 5 (≥1) | 2026-09-19 sonnet-5 worker |
+| 8 | PASS — `go vet ./...` clean; no `graphql` in the 4 brief-scoped files | 2026-09-19 sonnet-5 worker |
+
+VERIFY: PASS on the re-baselined table — all 8 rows checked-clean, no engine defect found or
+introduced. Closes out assay#1305 (Verify-table maintenance only; no code in `statusgen/`
+touched by this pass). Status stays `implemented` — a worker never flips verified/done; that is
+the non-implementer verifier's call on the next pass.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
