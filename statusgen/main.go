@@ -1523,6 +1523,13 @@ func main() {
 	leadtimeMode := flag.Bool("leadtime", false, "emit authored->done lead time (median + p85, with n) per S/M/L size bucket. Reuses --since / --until / --json; --by-size selects the (currently only) per-size breakdown")
 	leadtimeBySize := flag.Bool("by-size", false, "--leadtime: break the lead-time distribution down by S/M/L (currently the only supported --leadtime shape; the flag is accepted for forward compatibility with an aggregate-only mode)")
 	flowEfficiencyMode := flag.Bool("flow-efficiency", false, "emit touch/(touch+wait) flow efficiency from historian dwell (in-progress = touch; todo/implemented/verified = wait) — a proxy pending a real work-start event; could-not-check under thin data. Reuses --since / --until / --json")
+	// --flow (graph-execution/07): the scheduling-vs-service split the
+	// bottleneck/flow-efficiency proxies cannot answer — eligible-to-start
+	// delay, active work time, external wait, verification time — plus
+	// ci_slot_saturation and gate_catch_override. Reuses --since / --until /
+	// --json / --forge; never contacts the network unless --forge is set.
+	flowMode := flag.Bool("flow", false, "emit the flow-instruments report (graph-execution/07): per-brief eligible-to-start / active-work / external-wait / verification durations, fleet medians, ci_slot_saturation and gate_catch_override, with an environment stamp. Reuses --since / --until / --json / --forge / --ci-hours-per-day. Exit 0 only once every source was read; 3 when ci_slot_saturation or gate_catch_override is could-not-check")
+	ciHoursPerDay := flag.Float64("ci-hours-per-day", 0, "--flow: available CI wall-clock hours per day, the ci_slot_saturation divisor. Absent (0 or unset) ⇒ could-not-check, never an invented number")
 	firstPassYieldMode := flag.Bool("first-pass-yield", false, "emit first-pass yield: the share of to:\"done\" briefs, linked to their merged PR via the Brief: trailer, merged with 0 CHANGES_REQUESTED, no VERIFY:FAIL, and no unresolved finding naming them. Reuses --since / --until / --json; reads gh")
 	reviewReworkMode := flag.Bool("review-rework", false, "emit the CHANGES_REQUESTED rounds/PR distribution over brief-linked merged PRs, from the full (un-laundered) reviews array. Reuses --since / --until / --json; reads gh")
 	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads gh")
@@ -1653,6 +1660,7 @@ func main() {
 			"--register-links":        *registerLinksFlag,
 			"--gate-telemetry":        *gateTelemetryMode,
 			"--telemetry-dry-run":     *telemetryDryRun,
+			"--flow":                  *flowMode,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
 			// to the first root corroborates one repo's claims and reports
 			// the others clean, unread.
@@ -1907,6 +1915,9 @@ func main() {
 	}
 	if *flowEfficiencyMode {
 		os.Exit(runFlowEfficiency(*root, *since, *doraTimingUntil, *doraJSON))
+	}
+	if *flowMode {
+		os.Exit(runFlow(*root, *forgeMode, *doraJSON, *since, *doraTimingUntil, *ciHoursPerDay))
 	}
 	if *firstPassYieldMode {
 		os.Exit(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
