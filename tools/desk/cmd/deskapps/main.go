@@ -25,6 +25,11 @@ func main() {
 }
 
 const usage = `usage: deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <name>] [--port 41873] [--no-browser] [--dry-run]
+       deskapps init --manifest <file> [--org <login>] [--port 41873] [--no-browser] [--dry-run]
+
+--manifest registers a single arbitrary GitHub App from a manifest JSON file (fields: name,
+url, description, public, default_permissions, default_events, hook_attributes) instead of
+a tier's fixed App set. --manifest and --tier are mutually exclusive.
 
 deskapps resume, deskapps status, deskapps avatar are not implemented yet (example-stream/03, /04, /06).`
 
@@ -49,17 +54,37 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("deskapps init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		tier      = fs.String("tier", "team", "team or family")
-		org       = fs.String("org", "", "org login (required with --owner org, the default)")
-		owner     = fs.String("owner", "org", "org or me")
-		prefix    = fs.String("prefix", "", `App name prefix (default: --org's value, else "assay")`)
-		port      = fs.Int("port", 41873, "loopback port to bind")
-		noBrowser = fs.Bool("no-browser", false, "print the URL instead of opening a browser")
-		dryRun    = fs.Bool("dry-run", false, "print the planned URL and App rows, then exit without serving")
+		tier         = fs.String("tier", "team", "team or family")
+		manifestPath = fs.String("manifest", "", "path to a single-App manifest JSON file (mutually exclusive with --tier)")
+		org          = fs.String("org", "", "org login (required with --owner org, the default; for --manifest, its presence selects org-owned)")
+		owner        = fs.String("owner", "org", "org or me")
+		prefix       = fs.String("prefix", "", `App name prefix (default: --org's value, else "assay")`)
+		port         = fs.Int("port", 41873, "loopback port to bind")
+		noBrowser    = fs.Bool("no-browser", false, "print the URL instead of opening a browser")
+		dryRun       = fs.Bool("dry-run", false, "print the planned URL and App rows, then exit without serving")
 	)
 	fs.Usage = func() { fmt.Fprintln(stderr, usage); fs.PrintDefaults() }
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+
+	// --tier has a non-empty default ("team"), so "was --tier given" has to be read off
+	// which flags were actually set on the command line, not off *tier's value.
+	tierExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "tier" {
+			tierExplicit = true
+		}
+	})
+
+	manifestMode := strings.TrimSpace(*manifestPath) != ""
+	if manifestMode && tierExplicit {
+		fmt.Fprintln(stderr, "deskapps init: --manifest and --tier are mutually exclusive")
+		return 2
+	}
+
+	if manifestMode {
+		return runInitManifest(*manifestPath, *org, *port, *noBrowser, *dryRun, stdout, stderr)
 	}
 
 	if *tier != "team" && *tier != "family" {
@@ -90,17 +115,51 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	ln, boundPort, err := listenLoopback(*port)
+	return serveSpecs(specs, *tier, resolvedPrefix, *org, *owner, *port, *noBrowser, *dryRun, "/", stdout, stderr)
+}
+
+// runInitManifest is the --manifest path (assay--issue-1116-manifest): load and validate a
+// single-App manifest file, turn it into the one AppSpec the shared machinery drives, and
+// hand off to serveSpecs — the SAME loopback bind, state-nonce issuance, callback →
+// conversion → PEM-write path and §8 mismatch check the --tier path uses, never a second
+// implementation. ownerKind is inferred from whether --org was given: present → org-owned,
+// absent → personal-owned, mirroring design.md §2's "org-owned (default) or personal-owned"
+// without adding a second --owner flag this command's minimal surface does not ask for.
+func runInitManifest(path, org string, port int, noBrowser, dryRun bool, stdout, stderr io.Writer) int {
+	mf, err := LoadManifestFile(path)
+	if err != nil {
+		fmt.Fprintln(stderr, "deskapps init:", err)
+		return 2
+	}
+	spec := ManifestAppSpec(mf)
+
+	ownerKind := "me"
+	if strings.TrimSpace(org) != "" {
+		ownerKind = "org"
+	}
+
+	return serveSpecs([]AppSpec{spec}, "manifest", spec.Name, org, ownerKind, port, noBrowser, dryRun, "/run", stdout, stderr)
+}
+
+// serveSpecs is the shared tail of deskapps init for BOTH --tier and --manifest: bind the
+// loopback listener, report and exit for --dry-run, else resolve identity, plant one
+// pending apps.state.json row per spec (keyed by spec.Name — for a --manifest spec that is
+// the App's manifest name, never a role), build the server and serve until the process
+// exits. startPath is "/" for --tier (Screen 0, the tier-comparison page) and "/run" for
+// --manifest (Screen 0/1 are a tier decision with nothing to decide for a single
+// already-specified App, so a manifest run goes straight to the Create board).
+func serveSpecs(specs []AppSpec, tierLabel, prefix, org, ownerKind string, port int, noBrowser, dryRun bool, startPath string, stdout, stderr io.Writer) int {
+	ln, boundPort, err := listenLoopback(port)
 	if err != nil {
 		fmt.Fprintln(stderr, "deskapps init: cannot bind any loopback port:", err)
 		return 1
 	}
 
-	if *dryRun {
+	if dryRun {
 		_ = ln.Close()
 		fmt.Fprintf(stdout, "deskapps init: tier=%s owner=%s prefix=%s port=%d (dry-run)\n",
-			*tier, ownerDesc(*owner, *org), resolvedPrefix, boundPort)
-		fmt.Fprintf(stdout, "would serve at http://127.0.0.1:%d/\n", boundPort)
+			tierLabel, ownerDesc(ownerKind, org), prefix, boundPort)
+		fmt.Fprintf(stdout, "would serve at http://127.0.0.1:%d%s\n", boundPort, startPath)
 		fmt.Fprintln(stdout, "planned Apps:")
 		for _, spec := range specs {
 			fmt.Fprintf(stdout, "  %s\n", spec.Name)
@@ -126,9 +185,9 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		}
 		sf.Apps = append(sf.Apps, AppRow{
 			App:        spec.Name,
-			Tier:       *tier,
-			Owner:      *org,
-			OwnerKind:  *owner,
+			Tier:       tierLabel,
+			Owner:      org,
+			OwnerKind:  ownerKind,
 			Roles:      spec.Roles,
 			ReadOnly:   spec.ReadOnly,
 			State:      StatePending,
@@ -143,12 +202,12 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	srv := newServer(boundPort, *tier, resolvedPrefix, *org, *owner, specs, sf)
+	srv := newServer(boundPort, tierLabel, prefix, org, ownerKind, specs, sf)
 	srv.identity = id
 
-	url := fmt.Sprintf("http://127.0.0.1:%d/", boundPort)
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", boundPort, startPath)
 	fmt.Fprintln(stdout, url)
-	if !*noBrowser {
+	if !noBrowser {
 		_ = openBrowser(url)
 	}
 

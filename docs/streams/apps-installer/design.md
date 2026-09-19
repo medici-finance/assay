@@ -168,11 +168,18 @@ uploader takes raster). Rules:
 
 ```
 deskapps init   --tier team|family [--org <login>] [--owner org|me] [--prefix assay] [--port 41873] [--no-browser]
+deskapps init   --manifest <file> [--org <login>] [--port 41873] [--no-browser]   # a single arbitrary App, keyed by its manifest name
 deskapps resume
 deskapps status
 deskapps avatar --regen
 deskavatar --org <login> --tier team|family --out <dir>     # also callable on its own
 ```
+
+`--manifest` and `--tier` are mutually exclusive. It runs the same loopback bind, state-nonce
+issuance, callback → conversion → PEM-write path and §8 mismatch check as `--tier`, for an
+App outside the six desk roles (e.g. a leak-sweep gate App) — see
+[`docs/desk-tools/deskapps.md`](../../desk-tools/deskapps.md#deskapps-init---manifest) for the
+manifest file's fields and the two it refuses (`redirect_url`, `hook_attributes.url`).
 
 Every verb is safe to run twice. `--no-browser` prints the URL; only `127.0.0.1` is ever bound.
 Files: `~/.config/assay/apps.env` (App and installation IDs per App, plus the role→App bindings of

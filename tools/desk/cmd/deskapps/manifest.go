@@ -6,6 +6,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 )
 
@@ -45,11 +47,23 @@ var teamActPerms = []string{
 // AppSpec is one App this run will create: its manifest name, its GitHub Manifest
 // permission set, and the desk roles bound to it once keyed (records.go writes the
 // `<ROLE>_APP=` bindings — brief 01 — from this).
+//
+// The URL/Description/Public/DefaultEvents/HookExtra fields exist for a --manifest-driven
+// spec (see ManifestAppSpec below) only. A tier-derived spec (TierManifests) never sets
+// them, and BuildManifestJSON falls back to the tier path's original fixed choices
+// (manifestHomepageURL, public:false, default_events:[], hook_attributes:{active:false})
+// exactly as before — this is additive, not a behaviour change for --tier.
 type AppSpec struct {
 	Name        string
 	Permissions []string // "resource:level" (defaults to "read" when no ":level" is given)
-	Roles       []string // desk roles bound to this App once keyed
+	Roles       []string // desk roles bound to this App once keyed; empty for a --manifest App
 	ReadOnly    bool     // true for the team-tier `<prefix>-read` App (bound via READ_APP=)
+
+	URL           string         // manifest "url" (homepage); "" falls back to manifestHomepageURL
+	Description   string         // manifest "description"; "" omits the field
+	Public        bool           // manifest "public"
+	DefaultEvents []string       // manifest "default_events"; nil falls back to []
+	HookExtra     map[string]any // manifest "hook_attributes" minus "url" (refused at load — see LoadManifestFile)
 }
 
 // TierManifests returns the App rows a tier creates, in the design §2 run-board order.
@@ -118,11 +132,12 @@ func containsPerm(perms []string, p string) bool {
 type githubManifest struct {
 	Name               string            `json:"name"`
 	URL                string            `json:"url"`
+	Description        string            `json:"description,omitempty"`
 	RedirectURL        string            `json:"redirect_url"`
 	Public             bool              `json:"public"`
 	DefaultEvents      []string          `json:"default_events"`
 	DefaultPermissions map[string]string `json:"default_permissions"`
-	HookAttributes     map[string]bool   `json:"hook_attributes"`
+	HookAttributes     map[string]any    `json:"hook_attributes"`
 }
 
 // manifestHomepageURL is the App's required homepage URL. Assay is the product these Apps
@@ -137,16 +152,128 @@ func BuildManifestJSON(spec AppSpec, redirectURL string) ([]byte, error) {
 		resource, level := splitPerm(p)
 		perms[resource] = level
 	}
+
+	url := spec.URL
+	if url == "" {
+		url = manifestHomepageURL
+	}
+
+	events := spec.DefaultEvents
+	if events == nil {
+		events = []string{}
+	}
+
+	// hook_attributes: start from the manifest's own extra fields (never "url" — refused at
+	// load, LoadManifestFile), default "active" to false when the manifest did not name it,
+	// exactly the tier path's original fixed value.
+	hook := make(map[string]any, len(spec.HookExtra)+1)
+	for k, v := range spec.HookExtra {
+		hook[k] = v
+	}
+	if _, ok := hook["active"]; !ok {
+		hook["active"] = false
+	}
+
 	m := githubManifest{
 		Name:               spec.Name,
-		URL:                manifestHomepageURL,
+		URL:                url,
+		Description:        spec.Description,
 		RedirectURL:        redirectURL,
-		Public:             false,
-		DefaultEvents:      []string{},
+		Public:             spec.Public,
+		DefaultEvents:      events,
 		DefaultPermissions: perms,
-		HookAttributes:     map[string]bool{"active": false},
+		HookAttributes:     hook,
 	}
 	return json.Marshal(m)
+}
+
+// AppManifestFile is the --manifest JSON contract: a single arbitrary GitHub App's manifest
+// fields. Everything else about the flow — the loopback redirect_url, the state nonce, the
+// callback → conversion → PEM-write path, the design.md §8 mismatch check — is reused
+// unchanged from the --tier path; this file's only job is turning this JSON into the one
+// AppSpec that shared machinery drives.
+type AppManifestFile struct {
+	Name               string            `json:"name"`
+	URL                string            `json:"url"`
+	Description        string            `json:"description"`
+	Public             bool              `json:"public"`
+	DefaultPermissions map[string]string `json:"default_permissions"`
+	DefaultEvents      []string          `json:"default_events"`
+	HookAttributes     map[string]any    `json:"hook_attributes"`
+}
+
+// LoadManifestFile reads and validates path as a --manifest single-App registration. It
+// REFUSES — a clear error, never a silent strip — a manifest that specifies its own
+// top-level `redirect_url`, or a `hook_attributes.url`: both are deskapps's to set (the
+// loopback callback the tool binds itself, and — for hook_attributes.url — a value this
+// flow never sets on the manifest's behalf), never the manifest file's.
+func LoadManifestFile(path string) (*AppManifestFile, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest %s: %w", path, err)
+	}
+
+	// Presence-check on the RAW JSON first: unmarshalling straight into AppManifestFile
+	// would silently drop an unknown/unwanted redirect_url field rather than refuse it, and
+	// a struct field for it would invite exactly the "read it, then ignore it" bug this
+	// check exists to prevent.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil, fmt.Errorf("parsing manifest %s: %w", path, err)
+	}
+	if _, ok := raw["redirect_url"]; ok {
+		return nil, fmt.Errorf("manifest %s sets its own redirect_url — deskapps sets the loopback redirect_url itself; remove redirect_url from the manifest", path)
+	}
+	if hookRaw, ok := raw["hook_attributes"]; ok {
+		var hook map[string]json.RawMessage
+		if err := json.Unmarshal(hookRaw, &hook); err != nil {
+			return nil, fmt.Errorf("parsing manifest %s hook_attributes: %w", path, err)
+		}
+		if _, ok := hook["url"]; ok {
+			return nil, fmt.Errorf("manifest %s sets hook_attributes.url — deskapps does not set a webhook URL through this flow; remove hook_attributes.url from the manifest", path)
+		}
+	}
+
+	var m AppManifestFile
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, fmt.Errorf("parsing manifest %s: %w", path, err)
+	}
+	if strings.TrimSpace(m.Name) == "" {
+		return nil, fmt.Errorf("manifest %s: name is required", path)
+	}
+	if strings.TrimSpace(m.URL) == "" {
+		return nil, fmt.Errorf("manifest %s: url is required", path)
+	}
+	return &m, nil
+}
+
+// ManifestAppSpec converts a validated AppManifestFile into the single AppSpec deskapps
+// init's shared machinery drives. This is the one structural difference from the tier
+// path: Roles is left empty and ReadOnly false, because a manifest-driven App is not bound
+// to a desk role — its apps.state.json row (and every apps.env write) is keyed by this
+// App's manifest NAME, not a role name, and writeBindings (records.go) correctly writes no
+// `<ROLE>_APP=`/`READ_APP=` line for it as a result.
+func ManifestAppSpec(m *AppManifestFile) AppSpec {
+	perms := make([]string, 0, len(m.DefaultPermissions))
+	for resource, level := range m.DefaultPermissions {
+		perms = append(perms, resource+":"+level)
+	}
+	sort.Strings(perms) // deterministic order — map iteration is not
+
+	hookExtra := make(map[string]any, len(m.HookAttributes))
+	for k, v := range m.HookAttributes {
+		hookExtra[k] = v
+	}
+
+	return AppSpec{
+		Name:          m.Name,
+		Permissions:   perms,
+		URL:           m.URL,
+		Description:   m.Description,
+		Public:        m.Public,
+		DefaultEvents: append([]string(nil), m.DefaultEvents...),
+		HookExtra:     hookExtra,
+	}
 }
 
 // splitPerm splits "resource:level" into its parts; a bare "resource" (metadata has no

@@ -36,6 +36,29 @@ deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <nam
   the network. Identity (`gh api user`) is **not** resolved on this path — dry-run's whole
   job is a network-free report of what a real run would create.
 
+### `deskapps init --manifest`
+
+```
+deskapps init --manifest <file> [--org <login>] [--port 41873] [--no-browser] [--dry-run]
+```
+
+Registers a single arbitrary GitHub App from a manifest JSON file, instead of a tier's fixed
+App set — for an App that isn't one of the six desk roles (e.g. `assay-leaksweep-app`).
+`--manifest` and `--tier` are mutually exclusive.
+
+- The manifest file's fields: `name`, `url`, `description`, `public`,
+  `default_permissions`, `default_events`, `hook_attributes`.
+- `deskapps` sets its OWN `redirect_url` (the loopback callback) and state nonce, the exact
+  machinery `--tier` already uses — a manifest **must not** carry its own `redirect_url`, and
+  its `hook_attributes` must not carry a `url`; either is REFUSED with a clear error rather
+  than silently stripped.
+- `--org <login>` selects org-owned (its presence) vs. personal-owned (its absence) — there
+  is no separate `--owner` flag for this mode.
+- Runs the SAME callback → conversion → PEM-write path as `--tier`, including the design.md
+  §8 identity-mismatch check. The one structural difference: the `apps.state.json` row (and
+  every `apps.env` write) is keyed by the manifest App's own **name**, not a desk role — no
+  `<ROLE>_APP=`/`READ_APP=` binding line is written for it.
+
 ### Files written
 
 - `~/.config/assay/apps.env` — `<APP>_APP_ID`, `<APP>_CLIENT_ID`, `<APP>_WEBHOOK_SECRET` per
