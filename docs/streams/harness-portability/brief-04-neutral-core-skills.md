@@ -228,7 +228,7 @@ Runner ≠ implementer. Own detached temp worktree off origin/main. Offline enve
 Scope traceability: all rows map 1:1 to Verify rows; no invented scope.
 
 RISK-VALUE: DERIVED — exitClean=0, exitFailed=1, exitCannot=2, exitUsage=2 @ tools/harnesslint/lint.go:36-39 — matches the three-state instrument invariant exactly; all three states exercised live this pass (rows 1, 2a, 3a).
-RISK-VALUE: DERIVED — 7-entry closed capability vocabulary @ docs/streams/harness-portability/README.md:377-385 — confirmed the lint reads and enforces this exact live set (rows 3/3a/5), not a stale copy.
+RISK-VALUE: DERIVED — 7-entry closed capability vocabulary @ docs/streams/harness-portability/README.md:377-385, scoped to this pass's cited base `5fbf75834e1d2e5a80b44524649b4030f50e80f1` — confirmed the lint reads and enforces this exact live set (rows 3/3a/5), not a stale copy. (Reviewer note 2026-09-19: the merge-target main advanced past this base one commit later, PR #1318, adding an 8th entry `cadence-tick` at lines 380-389; that growth is outside this row's own diff and does not change the pass/fail verdict on rows 3/3a/5, which are independently reproduced clean against current main in the reviewer's own re-run.)
 
 VERIFY: FAIL — held at implemented. Row 7 fails, root-caused to the still-unlanded harness-portability/15 (CI wiring, App-token scope constraint) — not a regression in this brief's own diff, already tracked. Every row exercising this brief's own deliverable directly (1,2,2a,3,3a,4,4a,5,6) passes clean, including row 3 which newly confirms a prior regression (#1182) is fixed on merged main. Housekeeping: closed #1182 (fix landed via #1293, never auto-closed since the PR used "Issue:" not "Closes:").
 
