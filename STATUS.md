@@ -11,22 +11,22 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-18 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-18 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-18 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-18 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-18 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/15 | 2026-09-18 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 12/27 | 2026-09-18 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-18 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-18 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/30 | 2026-09-18 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 0/8 | 2026-09-18 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-18 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-18 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-18 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-18 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/10 | 2026-09-18 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-19 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-19 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-19 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-19 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-19 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/15 | 2026-09-19 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 12/27 | 2026-09-19 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-19 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-19 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/30 | 2026-09-19 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 0/8 | 2026-09-19 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-19 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-19 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-19 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-19 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/10 | 2026-09-19 |  |
 
 ## Parked
 
@@ -34,11 +34,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-18 |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-18 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-18 |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-18 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-18 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-19 |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-19 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-19 |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-19 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-19 |
 
 ## Next up
 
@@ -53,6 +53,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | desk-supervision | 13 — Worker-operations vitals — the self-report resource block [exec:strong] | 2 | 2000 |
+| graph-execution | 07 — Flow instruments — service/wait split, CI-slot saturation, gate catch/override [exec:strong] | 1 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
@@ -61,14 +62,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (44 desk-actionable of 56 total — 56 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (45 desk-actionable of 56 total — 54 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (44)
+### Desk-actionable (45)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -77,7 +78,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 08 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| graph-execution | 01 [exec:strong] | implemented | 3500 | 3 | — | — | — |
+| graph-execution | 01 [exec:strong] | verified | 3500 | 3 | — | 2026-09-17 sonnet-5-verifier (9/12 clean PASS; rows 6/12 literal-fail-shaped but independently proven pre-existing board-drift, not regressions; risk-values DERIVED) | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 02 | implemented | 3000 | 4 | — | — | — |
@@ -101,6 +102,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 09 [exec:strong] | verified | 1000 | 0 | — | 2026-09-16 verify-desk (desk-tools/09 dispatched verifier; 9/9 rows PASS; prior FAIL row-7 no longer reproduces; risk-value DERIVED on page-size) | — |
 | desk-tools | 15 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -127,7 +129,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 
-### Awaiting implementer rework (7)
+### Awaiting implementer rework (6)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -136,7 +138,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
@@ -238,7 +239,7 @@ _None._
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
-- 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — implemented (wave 1)
+- 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — verified (wave 1)
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — implemented (wave 1)
 - 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — implemented (wave 1)
@@ -318,7 +319,7 @@ _None._
 
 ### graph-execution (8 open)
 
-- 01 Eligibility evaluator — gates and feathers become gating, with a reason — implemented (wave 0)
+- 01 Eligibility evaluator — gates and feathers become gating, with a reason — verified (wave 0)
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
