@@ -160,7 +160,9 @@
 # (https://api.z.ai/api/anthropic, $ZAI_API_KEY, glm-5.3[1m]) that need no cell.env line — a line
 # overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
 # cellctl never stores, prints or persists a token value. With a provider the launch unsets
-# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL
+# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
+# each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
+# the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
 # (provider_preset / resolve_provider / cmd_desk's claude arm below; docs/cellctl.md Providers).
 #
 # `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
@@ -631,7 +633,15 @@ provider_var(){ printf 'CELL_PROVIDER_%s_%s' "$(printf '%s' "$1" | tr '[:lower:]
 # a default model. Any CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} line in cell.env (or the
 # environment) overrides the matching preset value; a name with no preset still needs its own
 # lines exactly as before. Presets carry no credential of any kind — only the env var's NAME.
-provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL> → the compiled default, or nothing
+#
+# Per-TIER provider models (assay#1352): a provider's flat MODEL is what a window launches with when no
+# pin names a model, and what every tier alias maps to when nothing finer exists. A provider may
+# additionally name a DIFFERENT model for one tier — `MODEL_TOP` / `MODEL_MID` / `MODEL_FAST`,
+# same CELL_PROVIDER_<NAME>_<suffix> override family, preset first. `glm` ships one: MID (the
+# sonnet slot) maps to `glm-5.3-flash[1m]`, so a mid-tier window and everything inside any window
+# that asks for sonnet runs the flash variant instead of the full model; TOP (the-desk) keeps the
+# full `glm-5.3[1m]`, and FAST keeps the flat model until a ruling says otherwise.
+provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL|MODEL_TOP|MODEL_MID|MODEL_FAST> → the compiled default, or nothing
   case "$1:$2" in
     kimi:BASE_URL)  printf '%s' 'https://api.kimi.com/coding' ;;
     kimi:TOKEN_ENV) printf '%s' 'KIMI_API_KEY' ;;
@@ -639,6 +649,7 @@ provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL> → the compiled default,
     glm:BASE_URL)   printf '%s' 'https://api.z.ai/api/anthropic' ;;
     glm:TOKEN_ENV)  printf '%s' 'ZAI_API_KEY' ;;
     glm:MODEL)      printf '%s' 'glm-5.3[1m]' ;;
+    glm:MODEL_MID)  printf '%s' 'glm-5.3-flash[1m]' ;;
   esac
   return 0
 }
@@ -653,12 +664,25 @@ provider_value(){
   if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="preset"; return 0; fi
   PROVIDER_VALUE_SRC="unset"; return 0
 }
+# provider_alias_model <name> <OPUS|SONNET|HAIKU> — the per-tier model for one of the LAUNCH-TIME
+# tier ALIASES, via the provider's MODEL_<tier> value for the matching cellctl tier (TOP/MID/FAST).
+# Sets PROVIDER_VALUE to that model or leaves it empty (caller falls back to the flat provider
+# model). Pure alias→tier translation plus provider_value — no logic of its own.
+provider_alias_model(){
+  case "$2" in
+    OPUS)   provider_value "$1" MODEL_TOP ;;
+    SONNET) provider_value "$1" MODEL_MID ;;
+    HAIKU)  provider_value "$1" MODEL_FAST ;;
+    *)      PROVIDER_VALUE="" ;;
+  esac
+  return 0
+}
 resolve_provider(){
   local name="$1" base_var token_var
   base_var="$(provider_var "$name" BASE_URL)"; token_var="$(provider_var "$name" TOKEN_ENV)"
   provider_value "$name" BASE_URL;  PROVIDER_BASE_URL="$PROVIDER_VALUE"
   provider_value "$name" TOKEN_ENV; PROVIDER_TOKEN_ENV="$PROVIDER_VALUE"
-  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"
+  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"; PROVIDER_MODEL_SRC="$PROVIDER_VALUE_SRC"
   [[ -n "$PROVIDER_BASE_URL" ]] || die "cell.env: $base_var is not set — declare it for provider '$name' (e.g. $base_var=https://api.$name.example)"
   local upname; upname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
   [[ -n "$PROVIDER_TOKEN_ENV" ]] || die "cell.env: $token_var is not set — declare it for provider '$name' as the NAME of an env var carrying the token (never the token itself), e.g. $token_var=${upname}_API_KEY"
@@ -695,7 +719,7 @@ known_cell_env_key(){
       r="${k#CODEX_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
-    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL) return 0 ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL|CELL_PROVIDER_*_MODEL_TOP|CELL_PROVIDER_*_MODEL_MID|CELL_PROVIDER_*_MODEL_FAST) return 0 ;;
   esac
   return 1
 }
@@ -1123,7 +1147,15 @@ cmd_check(){
       chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
     fi
     if [[ -n "$pv_model" ]]; then
-      chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+      # Per-tier provider models (assay#1352) show in their own row when one differs from the flat
+      # model, so `cellctl check` answers "what would the sonnet slot run" without a launch.
+      local pv_mid; provider_value "$CELL_PROVIDER" MODEL_MID; pv_mid="$PROVIDER_VALUE"
+      if [[ -n "$pv_mid" && "$pv_mid" != "$pv_model" ]]; then
+        chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+        chk "provider $CELL_PROVIDER: sonnet slot (MID tier)=$pv_mid ($PROVIDER_VALUE_SRC; ANTHROPIC_DEFAULT_SONNET_MODEL + mid-tier role launches)" 'true'
+      else
+        chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+      fi
     else
       na "provider $CELL_PROVIDER: model — no $(provider_var "$CELL_PROVIDER" MODEL) and no preset; the role pin is exported as is"
     fi
@@ -1820,7 +1852,7 @@ cmd_desk(){
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
   # (unset = Anthropic, cellctl's own long-standing default).
   provider="${provider:-${CELL_PROVIDER:-}}"
-  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL=""
+  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL="" PROVIDER_MODEL_SRC=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
@@ -1864,6 +1896,18 @@ cmd_desk(){
     # window runs when neither --model nor a PER-ROLE pin names one (#1303): the harness-wide
     # DESK_MODEL_DEFAULT / tier fallback are Anthropic names the provider's endpoint would reject.
     model="$PROVIDER_MODEL"; RESOLVED_MODEL_SRC="provider:$provider ($(provider_var "$provider" MODEL))"
+    # Per-tier provider model (assay#1352): a provider's MODEL_<TIER> (preset, or a cell.env line)
+    # re-points just this role's tier — the flat MODEL above stays the default. `glm` maps MID
+    # to glm-5.3-flash[1m], so mid-tier windows launch on the flash variant while the-desk (TOP)
+    # keeps the full model. A per-role pin or --model still wins over both. An operator-set flat
+    # MODEL (cell.env line) suppresses PRESET tier splits — an operator naming their own model
+    # owns every tier unless they also name the tier key — while an operator-set MODEL_<TIER>
+    # always applies.
+    local ptier; ptier="$(printf '%s' "$(role_tier "$role")" | tr '[:lower:]' '[:upper:]')"
+    provider_value "$provider" "MODEL_${ptier}"
+    if [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]]; then
+      model="$PROVIDER_VALUE"; RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: $(provider_var "$provider" "MODEL_${ptier}") ${PROVIDER_VALUE_SRC})"
+    fi
   else
     resolve_role_model "$role" "$harness" \
       || die "desk: $RESOLVED_MODEL_SRC — set $mvar in cell.env, or the harness default, or a tier fallback (docs/cellctl.md Pinned models), or pass --model explicitly"
@@ -2021,11 +2065,19 @@ cmd_desk(){
     # aliases take the provider's own model (CELL_PROVIDER_<NAME>_MODEL / preset) when it has one,
     # else the model this window launches with.
     local pmodel="${PROVIDER_MODEL:-$model}"
+    # Per-tier alias models (assay#1352): each alias maps to the provider's MODEL_<TIER> for its own
+    # tier (preset or cell.env line, TOP/MID/FAST ← OPUS/SONNET/HAIKU), else the flat provider
+    # model — so a provider can run its flash variant for the sonnet slot without touching what
+    # an opus- or haiku-asker resolves to.
+    local pmodel_opus pmodel_sonnet pmodel_haiku
+    provider_alias_model "$provider" OPUS;   [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_opus="$PROVIDER_VALUE"   || pmodel_opus="$pmodel"
+    provider_alias_model "$provider" SONNET; [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_sonnet="$PROVIDER_VALUE" || pmodel_sonnet="$pmodel"
+    provider_alias_model "$provider" HAIKU;  [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_haiku="$PROVIDER_VALUE"  || pmodel_haiku="$pmodel"
     exec env ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       ${provider:+ANTHROPIC_MODEL="$model"} \
-      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel"} \
+      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel_opus"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel_sonnet"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel_haiku"} \
       claude --name "$session" --model "$model" "/assay:$role"
   fi
 }

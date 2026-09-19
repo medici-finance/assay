@@ -1083,6 +1083,16 @@ persists `--model` per the widened-scope rules above, into `DESK_MODEL_<role>`.
   `ANTHROPIC_DEFAULT_HAIKU_MODEL` = the provider model (else the launch model) — so every tier alias
   this window or its subagents use resolves to a name the endpoint accepts.
 
+**Per-tier provider models** (`assay#1352`): a provider may name a DIFFERENT model for one tier —
+`CELL_PROVIDER_<NAME>_MODEL_TOP` / `_MODEL_MID` / `_MODEL_FAST` (cell.env line, else the preset) —
+and it applies in two places: a role window whose cellctl tier is that one launches on it (the
+flat `MODEL` stays every other tier's default), and the matching launch alias
+(`OPUS`→`MODEL_TOP`, `SONNET`→`MODEL_MID`, `HAIKU`→`MODEL_FAST`) maps to it, else to the flat
+provider model. The built-in `glm` preset ships one: `MODEL_MID` = `glm-5.3-flash[1m]`, so on a
+glm cell every mid-tier window and every sonnet ask inside any window runs the flash variant,
+while the-desk (TOP) keeps the full `glm-5.3[1m]`. `cellctl check` prints the sonnet slot as its
+own row when it differs. A per-role pin or `--model` still wins over both, verbatim as ever.
+
 A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
 is refused rather than launching codex against Anthropic with a provider the operator asked for.
 

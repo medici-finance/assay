@@ -209,16 +209,44 @@ echo "[presets: glm]"
 export ZAI_API_KEY="fixture-zai-token-not-real"
 export CELLCTL_TEST_OUT="$T/launch-glm.env"
 "$CELLCTL" desk example-cell worker-desk --provider glm >/dev/null 2>&1
-assert "glm preset endpoint + token env + model" 'grep -qxF "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_AUTH_TOKEN=fixture-zai-token-not-real" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT"'
+assert "glm preset endpoint + token env" 'grep -qxF "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_AUTH_TOKEN=fixture-zai-token-not-real" "$CELLCTL_TEST_OUT"'
+
+# ================================================================ assay#1352: per-tier provider models
+echo "[glm per-tier (assay#1352): MID = sonnet slot runs flash; TOP keeps the full model]"
+assert "a MID-tier role (worker-desk) launches on glm-5.3-flash[1m]" 'grep -qxF "ANTHROPIC_MODEL=glm-5.3-flash[1m]" "$CELLCTL_TEST_OUT"'
+assert "ANTHROPIC_DEFAULT_SONNET_MODEL maps to the flash variant" 'grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.3-flash[1m]" "$CELLCTL_TEST_OUT"'
+assert "ANTHROPIC_DEFAULT_OPUS_MODEL and _HAIKU_MODEL keep the flat glm-5.3[1m]" 'grep -qxF "ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT"'
+assert "claude is launched with --model glm-5.3-flash[1m] for the mid role" 'grep -q -- "--model glm-5.3-flash\[1m\]" "$CELLCTL_TEST_OUT"'
+export CELLCTL_TEST_OUT="$T/launch-glm-top.env"
+# the scaffolded house cell pins the-desk (as the real one does) — clear the pin for this block so
+# the TOP tier resolves through the provider arm, then restore it (the suite's own sed idiom).
+sed -i.bak '/^DESK_MODEL_the_desk=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+"$CELLCTL" desk example-cell the-desk --provider glm >/dev/null 2>&1
+assert "a TOP-tier role (the-desk) still launches on the full glm-5.3[1m]" 'grep -qxF "ANTHROPIC_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT" && grep -q -- "--model glm-5.3\[1m\]" "$CELLCTL_TEST_OUT"'
+assert "the sonnet alias is flash even inside a TOP-tier window (fanouts asking sonnet get flash)" 'grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.3-flash[1m]" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT"'
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider glm 2>&1)" && rc=0 || rc=$?
+assert "dry-run names the tier source for the mid role" '[[ $rc -eq 0 ]] && grep -q "model=glm-5.3-flash\[1m\] (provider:glm (tier MID:" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell the-desk --provider glm 2>&1)" && rc=0 || rc=$?
+assert "dry-run keeps the flat provider source for the-desk" '[[ $rc -eq 0 ]] && grep -q "model=glm-5.3\[1m\] (provider:glm (CELL_PROVIDER_GLM_MODEL))" <<<"$out"'
+printf 'DESK_MODEL_the_desk=fable\n' >> "$CELL/cell.env"
+
+echo "[glm per-tier: an operator-set flat model suppresses preset tier splits; an explicit tier key wins]"
+export CELL_PROVIDER_GLM_MODEL_MID="glm-custom-mid"
+export CELLCTL_TEST_OUT="$T/launch-glm-midkey.env"
+"$CELLCTL" desk example-cell worker-desk --provider glm >/dev/null 2>&1
+assert "CELL_PROVIDER_GLM_MODEL_MID (env line) beats the preset flash value" 'grep -qxF "ANTHROPIC_MODEL=glm-custom-mid" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=glm-custom-mid" "$CELLCTL_TEST_OUT"'
+unset CELL_PROVIDER_GLM_MODEL_MID
 
 echo "[presets: cell.env lines override the preset piecewise]"
 export CELL_PROVIDER_GLM_MODEL="glm-custom"
 out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider glm 2>&1)" && rc=0 || rc=$?
 assert "CELL_PROVIDER_GLM_MODEL overrides the preset model" '[[ $rc -eq 0 ]] && grep -q "model=glm-custom (provider:glm" <<<"$out"'
+assert "an operator-set flat model suppresses preset tier splits (mid role runs glm-custom, not preset flash)" 'grep -q "model=glm-custom (provider:glm (CELL_PROVIDER_GLM_MODEL))" <<<"$out" && ! grep -q "glm-5.3-flash" <<<"$out"'
 export CELL_PROVIDER_GLM_BASE_URL="https://proxy.example.invalid/anthropic"
 export CELLCTL_TEST_OUT="$T/launch-glm2.env"
 "$CELLCTL" desk example-cell worker-desk --provider glm >/dev/null 2>&1
 assert "CELL_PROVIDER_GLM_BASE_URL overrides the preset endpoint; token env stays the preset" 'grep -qxF "ANTHROPIC_BASE_URL=https://proxy.example.invalid/anthropic" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_AUTH_TOKEN=fixture-zai-token-not-real" "$CELLCTL_TEST_OUT"'
+assert "under an operator flat model the sonnet alias also runs it (no preset mixing)" 'grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=glm-custom" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_MODEL=glm-custom" "$CELLCTL_TEST_OUT"'
 unset CELL_PROVIDER_GLM_MODEL CELL_PROVIDER_GLM_BASE_URL
 
 echo "[presets: model precedence — --model, then the per-role pin, then the provider model]"
