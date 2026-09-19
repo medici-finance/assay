@@ -20,7 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/27 | 2026-09-19 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-19 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-19 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/30 | 2026-09-19 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-19 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/8 | 2026-09-19 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-19 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-19 |  |
@@ -62,31 +62,27 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (42 desk-actionable of 53 total — 53 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (37 desk-actionable of 52 total — 52 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (42)
+### Desk-actionable (37)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| forge-neutral | 07 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | graph-execution | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| forge-neutral | 08 [exec:strong] | implemented | 4000 | 4 | — | — | — |
+| forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 02 | implemented | 3000 | 4 | — | — | — |
-| windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
-| harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -109,7 +105,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -120,22 +115,26 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 9000 | 14 | — | — | — |
-| forge-neutral | 02 [exec:strong] | implemented | 5500 | 7 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 8500 | 13 | — | — | — |
+| forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 
-### Awaiting implementer rework (6)
+### Awaiting implementer rework (10)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| windows-port | 00 | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -274,13 +273,12 @@ _None._
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — todo (wave 3)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 
-### forge-neutral (26 open)
+### forge-neutral (25 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver — implemented (wave 2)
 - 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
-- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — implemented (wave 4)
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
@@ -448,11 +446,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 15 The GitLab runbook's missing keys — forge binding, board-push credential, source-pin lane — done (wave 4)
 - 17 An enforceable merge gate on GitLab Free — the unresolved review thread — done (wave 5)
 
-### forge-neutral (4 done)
+### forge-neutral (5 done)
 
 - 03 Write verbs A — deskpost, deskreply and deskflip onto the resolver — done (wave 2)
 - 05 Claim layer — the GitLab shape of refs/dispatch/* and its release — done (wave 2)
 - 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — done (wave 3)
+- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — done (wave 4)
 - 12 deskboard non-board reads onto the seam — done (wave 4)
 
 ### graph-execution (1 done)
@@ -513,4 +512,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**21** streams (**16** active, **0** paused, **5** parked) · **87/236** briefs done · completed initiatives: see `docs/archive/`
+**21** streams (**16** active, **0** paused, **5** parked) · **88/236** briefs done · completed initiatives: see `docs/archive/`

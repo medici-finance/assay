@@ -865,15 +865,59 @@ cellctl desk <cell> <role> --model <m> --set
 ```
 
 `--set` applies `--model <m>` for this run **and** persists it — equivalent to `--model <m>`
-followed by `cellctl set <cell> DESK_MODEL_<role>=<m>`. It needs a value to persist, so it is
-refused without `--model` (or `DESK_MODEL_OVERRIDE`) alongside it. Under `DRY_RUN=1` it prints what
-it *would* persist and writes nothing — a dry run touches nothing, `--set` included.
+followed by `cellctl set <cell> DESK_MODEL_<role>=<m>`. Under `DRY_RUN=1` it prints what it *would*
+persist and writes nothing — a dry run touches nothing, `--set` included.
 
 **`CELL_HARNESS` is a known key too** — `cellctl set <cell> CELL_HARNESS=codex` persists the harness
 pin the same way, with the same value check as the harness flag itself: only `claude` or `codex` is
-accepted (not bypassable by `--force`, which only widens which *keys* `set` will touch). There is no
-`--harness ... --set` sugar — `cellctl desk`/`up --harness` is a per-run override only; persist it
-with `cellctl set` directly.
+accepted (not bypassable by `--force`, which only widens which *keys* `set` will touch).
+
+### Every per-run choice — override for one run, `--set` to persist, `show` to read (`#1303`)
+
+Since `#1303` the same shape covers **every** per-run choice, not just the model: the kind (how and
+where the windows run), the cockpit, the harness and the provider.
+
+```bash
+cellctl desk <cell> <role> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>] [--set]
+cellctl up   <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>] [--set]
+cellctl set  <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]
+cellctl show <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]
+```
+
+- **Each flag overrides its `cell.env` key for that run only** (`CELL_KIND`, `CELL_COCKPIT`,
+  `CELL_HARNESS`, `CELL_PROVIDER`, the model pin) without touching the file. `--kind` is applied
+  *before* the cell loads — the kind's own preconditions are asserted at load, so `--kind house` on
+  a cell with no `CELL_ROOTS`, or `--kind container` with no `CELL_CONTAINER_LAUNCHER`, refuses
+  right there naming the missing key, exactly as a `cell.env` carrying that kind would. `--cockpit`
+  on a single `desk` window is accepted (and persistable) but drives nothing in that window —
+  a `desk` boot opens in the calling terminal; the cockpit is `up`'s concern. A per-run `--kind`
+  is reported as `kind=<k> (override)` on the `[dry-run]`/`[launch]` lines.
+- **`--set` persists EVERY override given on that invocation**, each to its own key, through the
+  same one-backup path `cellctl set` uses (`cell.env.bak-<ts>` first, then each `[set] KEY:
+  before -> after` line). An override not given is never re-written. On `desk`, `--model` persists
+  to the ACTIVE harness's `<FAMILY>_MODEL_<role>`; on `up` it persists to that key for every role
+  window the run opens (the-desk included unless `--no-the-desk`), since that is exactly the set of
+  windows the override applied to. `--set` with nothing to persist is refused; the the-desk Opus
+  rule and the kind precondition apply to the persisted values as they do to the run.
+- **`cellctl set <cell> --kind/--cockpit/--harness/--provider`** is sugar for the matching
+  `KEY=VALUE`, validated by the same rules: an unknown kind/cockpit/harness is refused before
+  anything is written, and a kind change refuses when the target kind's own precondition
+  (`container`: an absolute executable `CELL_CONTAINER_LAUNCHER`; `house`: `CELL_ROOTS`; `scrubbed`:
+  `CELL_REPO_SLUG`) is neither already in `cell.env` nor given in the same call — so `cellctl set
+  <cell> --kind house CELL_ROOTS=…` in one call passes while `--kind house` alone on an
+  un-rooted cell does not, and nothing (no backup either) is written on the refusal. With a role
+  name, `--harness` keeps its `#986` meaning — it *selects* the namespace for `--model` and is not
+  itself persisted; without a role it is the `CELL_HARNESS` sugar. `--model` on `set` still needs a
+  role (the harness-wide default is the `KEY=VALUE` form).
+- **`cellctl show <cell>` is a read.** One greppable line per choice — `[show] KEY=VALUE (source)`
+  with source `flag` (given on this invocation), `cell.env` (the file's own line) or `default`
+  (cellctl's compiled fallback; the provider prints `unset (default: anthropic)`) — then one
+  `[show] model <role>=<m> (source)` line per role, resolved exactly as a plain `desk` boot on the
+  shown harness would (`cell.env <KEY>`, `default: <KEY>` for a compiled default, `default:
+  tier:<t> (<KEY>)` for the tier map, `flag` for an explicit `--model`). It accepts the same flags
+  as `desk`/`up`, so "what would this invocation resolve to" is answerable before booting it, and a
+  `--kind` the cell is not provisioned for refuses just as `desk` would. Nothing is launched or
+  written.
 
 ---
 
@@ -976,7 +1020,7 @@ cellctl desk <cell> worker-desk --provider zai                 # override for on
 cellctl up   <cell> --provider zai                              # every role window this run opens
 ```
 
-A provider name (`zai`, `kimi`, anything) resolves to two `cell.env` variables,
+A provider name (`zai`, anything — or a built-in preset, below) resolves to two `cell.env` variables,
 `CELL_PROVIDER_<NAME>_BASE_URL` and `CELL_PROVIDER_<NAME>_TOKEN_ENV` (the name upper-cased, `-` as
 `_`). The launched `claude` process gets `ANTHROPIC_BASE_URL` from the first and
 `ANTHROPIC_AUTH_TOKEN` from `${!CELL_PROVIDER_<NAME>_TOKEN_ENV}` — the **value** of whichever
@@ -993,8 +1037,54 @@ the `CELL_PROVIDER_<NAME>_*` keys) persist a default the way any other `cellctl 
 Both `cellctl desk`'s launch line and `DRY_RUN=1` plan print `provider=<name>` (or `provider=anthropic`
 when none is set), so which endpoint a window is on is visible without reading `cell.env`.
 `cellctl check` carries three rows for a cell's default `CELL_PROVIDER` (base URL declared, token-env
-variable named, and that variable actually set in *this* shell) — unset `CELL_PROVIDER` is `n/a`, not
-a `MISS`, because a provider is opt-in.
+variable named, and that variable actually set in *this* shell) plus a model row — unset
+`CELL_PROVIDER` is `n/a`, not a `MISS`, because a provider is opt-in. Every row prints the endpoint,
+the env var's **name**, the model and *set*/*unset* — never a token value.
+
+### Built-in presets: `kimi` and `glm` (`#1303`)
+
+Two providers resolve with **no** `CELL_PROVIDER_<NAME>_*` line at all — the operator exports the
+one env var and boots:
+
+| Preset | `ANTHROPIC_BASE_URL` | token env NAME | default model |
+|---|---|---|---|
+| `kimi` | `https://api.kimi.com/coding` | `KIMI_API_KEY` | `k3[1m]` |
+| `glm` | `https://api.z.ai/api/anthropic` | `ZAI_API_KEY` | `glm-5.3[1m]` |
+
+```bash
+export KIMI_API_KEY=…                                 # in your shell, never in cell.env
+cellctl desk <cell> worker-desk --provider kimi       # this window, this run
+cellctl up   <cell> --provider glm --set              # every window, and persist CELL_PROVIDER=glm
+cellctl set  <cell> --provider kimi                   # persist without booting
+cellctl show <cell> --provider kimi                   # the effective endpoint / env NAME (set|unset) / model
+```
+
+Any `CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL}` line overrides the matching preset value
+**piecewise** (a proxy endpoint for `glm` with the preset's token env and model, say); a name with
+no preset needs its own lines exactly as before. `cellctl check`/`show` tag each value `preset`,
+`cell.env` or `unset`.
+
+**`CELL_PROVIDER_<NAME>_MODEL` — the provider's model.** A provider window resolves its model as
+`--model` (or `DESK_MODEL_OVERRIDE`) > the role's own `DESK_MODEL_<role>` pin > the provider model
+(`CELL_PROVIDER_<NAME>_MODEL`, else the preset's) > the usual `DESK_MODEL_DEFAULT`/tier chain. The
+harness-wide default and the tier map are Anthropic names a provider endpoint rejects, which is why
+the provider model sits above them; a per-role pin is still honoured because it was set on purpose
+(`cellctl new` pins the-desk to `fable`, so a provider the-desk needs that pin changed — or
+`--model` — to run on the provider's model; `[dry-run]`/`show` print what resolved). `--set`
+persists `--model` per the widened-scope rules above, into `DESK_MODEL_<role>`.
+
+**What the launch exports with a provider active** (and touches not at all without one):
+
+- `ANTHROPIC_API_KEY` is **unset** for the launched process — an inherited API key wins over the
+  auth token and silently routes to Anthropic.
+- `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` as before.
+- `ANTHROPIC_MODEL` = the model this window launches with, and
+  `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` /
+  `ANTHROPIC_DEFAULT_HAIKU_MODEL` = the provider model (else the launch model) — so every tier alias
+  this window or its subagents use resolves to a name the endpoint accepts.
+
+A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
+is refused rather than launching codex against Anthropic with a provider the operator asked for.
 
 ---
 
@@ -1031,7 +1121,8 @@ a `MISS`, because a provider is opt-in.
 | `CODEX_MODEL_<role>` | **codex**-namespace per-role model override, same `-`-as-`_` role naming; the Opus refusal does NOT apply here (Opus is a Claude-only concept) |
 | `TIER_MODEL_TOP_CLAUDE` / `_MID_CLAUDE` / `_FAST_CLAUDE` | overrides one entry of the claude column of the tier-map fallback (compiled defaults `fable`/`sonnet`/`haiku`) |
 | `TIER_MODEL_TOP_CODEX` / `_MID_CODEX` / `_FAST_CODEX` | overrides one entry of the codex column of the tier-map fallback (compiled default `gpt-5.6-terra` for all three today) |
-| `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*) |
+| `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*); `--set` persists the override, `cellctl set --harness` the same without a boot |
+| `CELL_KIND` / `CELL_COCKPIT` / `CELL_PROVIDER` | overridable per run with `--kind` / `--cockpit` / `--provider` on `desk`/`up`, persisted by `--set` or `cellctl set --kind/--cockpit/--provider`, read back by `cellctl show` (see *Every per-run choice*) |
 | `CELL_PROVIDER` | the default provider name for `cellctl desk`/`up` (unset = Anthropic); `--provider` overrides it per run — see *Providers* |
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
