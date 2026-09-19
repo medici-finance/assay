@@ -17,7 +17,7 @@ issues: []
 schema: brief-v2
 authored: 2026-01-01 by worker-desk (sdlc/08 fixture, never dispatched)
 sources:
-  - "../assay-toolkit/docs/streams/sdlc/brief-08-audit-pack-export.md — task item 4: 'a worked
+  - "sdlc/brief-08-audit-pack-export.md — task item 4: 'a worked
     example committed as a fixture'"
   - "docs/streams/requirements/apfixture-ok.md, apfixture-unresolved.md — the two fixture
     requirements this stream's pack scope names"
@@ -58,7 +58,7 @@ None. This file exists to be cited by `satisfies:`, not to be worked.
 ## Verify
 
 The pack format this brief demonstrates is verified by sdlc/08's own Verify table
-(`../assay-toolkit/docs/streams/sdlc/brief-08-audit-pack-export.md`). This brief's own row is
+(the sdlc brief, `sdlc/brief-08-audit-pack-export.md`). This brief's own row is
 a structural placeholder only — it is never dispatched, so there is nothing behavioral to
 assert here.
 
