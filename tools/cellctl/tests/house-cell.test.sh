@@ -32,6 +32,14 @@ assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$(
 sha(){ if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 real(){ (cd "$1" && pwd -P); }
 
+# A caller's shell may already carry a cell's exported environment (cellctl sources cell.env with
+# `set -a`), which would leak into every cell loaded here — including the [legacy] k8s-default
+# assertions below, which assume no CELL_KIND/CELL_ROOTS is already set. Clear it, same convention
+# as every other file in this suite.
+unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_ROOTS CELLS_CONFIG \
+      CELL_COCKPIT ROLES DESKD DESKD_ADDR DESKD_INDEX DESK_MODEL_DEFAULT TMUX_SESSION \
+      CELL_ATTENDED
+
 # ---------------------------------------------------------------- fixtures
 # A private HOME so nothing of the operator's is read or linked; git identity via its .gitconfig.
 export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
