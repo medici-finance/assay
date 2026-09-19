@@ -379,6 +379,92 @@ func hasApprovalPhrase(body string) bool {
 // existing call site keeps working.
 var humanStampRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z_-])human:([0-9A-Za-z_]+)`)
 
+// onBehalfOfAnnotationRe matches the on-behalf-of ATTRIBUTION form — the Runner-cell
+// annotation `on-behalf-of human:<login>` and the commit/body trailer
+// `On-behalf-of: human:<login>` — so both corroboration lanes can strip it BEFORE
+// they look for sign-off vocabulary. It is attribution, never an acceptance / ruling /
+// sign-off claim: it records which human an App identity acted FOR, not that the
+// human approved anything, so there is nothing on the PR to corroborate and matching
+// it as a stamp only reddens every App-authored Evidence row the attribution lint
+// REQUIRES to carry it.
+//
+// TWO PRINCIPAL SPELLINGS, ON PURPOSE — do not "fix" one into the other:
+//
+//   - on-behalf-of is LOGIN-keyed (docs/on-behalf-of.md; principal.go): the token
+//     after `human:` is the GitHub login, resolved against the roster's human map
+//     VALUES (onBehalfOfPrincipalOf / attribution.go).
+//   - a human:<name> STAMP and a prose citation are NAME-keyed (this file;
+//     citationcorroborate.go): the token is the configured NAME, the human map KEY,
+//     resolved to a login by HumanLogin.
+//
+// Fed to the stamp regex, a login-keyed annotation therefore fails one of two ways —
+// as an unmapped "name" (the login is a map value, not a key) or, when a login happens
+// to equal a name, as an uncorroborated stamp on a PR nobody has approved. Neither is
+// a forgery; both are the checker reading an attribution as a sign-off. Stripping the
+// MARKER (never the login — see stripOnBehalfOf) is the ONLY exemption: every
+// human:<name> outside it, and every sign-off the login is then read to have made,
+// stays fully gated.
+var onBehalfOfAnnotationRe = regexp.MustCompile(`(?i)\bon-behalf-of:?\s+human:([^\s)|]+)`)
+
+// gitHubLoginShapeRe is the GitHub login grammar the on-behalf-of principal is written
+// in (the same grammar onBehalfOfPrincipalOf reads back, principal.go): alphanumerics
+// joined by SINGLE hyphens, no leading or trailing hyphen, no underscore; the 39-char
+// cap is checked alongside. It is the whole-token test the strip applies — a token
+// that is not a login is not an on-behalf-of principal and is left for the sign-off
+// scans to judge as they always did.
+var gitHubLoginShapeRe = regexp.MustCompile(`^[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*$`)
+
+// isConfiguredHumanLogin reports whether token is BOTH login-shaped AND a login the
+// adopter's human map declares (a value of ASSAY_HUMAN_LOGIN_MAP, the same anchor
+// citedHumanLogin and the attribution lint use). Shape alone is not enough: the
+// grammar admits `ada-approved` as a login, and a strip keyed on shape would delete
+// the `human:` prefix in front of it and hand the sign-off scans a token neither lane
+// recognises. Anchoring on the configured map keeps the exemption to a principal the
+// house actually declared — an annotation naming any other token is NOT an
+// on-behalf-of the checker trusts, so it stays a fully-gated stamp, exactly as before.
+// An empty map exempts nothing (the strict-but-inert direction this file already
+// takes for names).
+func isConfiguredHumanLogin(token string) bool {
+	if token == "" || len(token) > 39 || !gitHubLoginShapeRe.MatchString(token) {
+		return false
+	}
+	for _, l := range scanEffectiveConfig().HumanLogins {
+		if strings.EqualFold(l, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripOnBehalfOf removes the on-behalf-of MARKER (`on-behalf-of[:] human:`) from
+// every annotation / trailer in s whose principal is a configured human login, and
+// keeps the login token that followed it, so the sign-off scans that follow judge
+// only what is left — and still see everything the human WROTE. Stripping the login
+// too would hide a real sign-off that follows the trailer: "On-behalf-of: human:ada
+// approved the prod flip on #12" must still read as "ada approved …" to the citation
+// lane (a reviewer-found case, pinned in both lanes' tests). What remains is a bare
+// `<login>`, which is not a human:<name> stamp (the stamp regex needs the `human:`
+// prefix) and is a citation only when a sign-off verb follows it.
+//
+// The principal token runs to the same boundary onBehalfOfPrincipalOf stops at — `)`,
+// `|`, whitespace or end of line — and the WHOLE token must pass isConfiguredHumanLogin
+// or the annotation is left untouched: `human:ada-approved` (login-shaped but not a
+// declared login) and `human:ada_approved` (not login-shaped) both stay in the text,
+// so the stamp lane still records their stamp and gates it (second reviewer finding:
+// a wider login class swallowed a hyphen-joined verb and both lanes lost it). RE2 has
+// no lookahead, so the decision is made in a replacement func. Length-preserving is
+// NOT required: callers re-split cells from the stripped text but record the ORIGINAL
+// cell, so the pre-existing byte-identity comparison still sees the real cell.
+func stripOnBehalfOf(s string) string {
+	return onBehalfOfAnnotationRe.ReplaceAllStringFunc(s, func(m string) string {
+		login := onBehalfOfAnnotationRe.FindStringSubmatch(m)[1]
+		if !isConfiguredHumanLogin(login) {
+			return m
+		}
+		return login
+	})
+}
+
 // looseHumanStampRe matches the same boundary-anchored "human:" prefix followed by
 // any run of non-space characters. It exists only to find the stamps humanStampRe
 // deliberately cannot parse — see confusableStampNames.
@@ -848,7 +934,16 @@ func stampsInDiff(root, diff string) []stamp {
 		if briefKey != "" {
 			cells = splitTableCells(content)
 		}
-		for _, m := range humanStampRe.FindAllStringSubmatch(content, -1) {
+		// Judge only the sign-off half of the line: the on-behalf-of ATTRIBUTION
+		// annotation is not a stamp (see onBehalfOfAnnotationRe). Cells are re-split
+		// from the stripped text ONLY to locate the stamp's column; the recorded cell
+		// is the original, so base-row byte-identity is unaffected.
+		scan := stripOnBehalfOf(content)
+		var scanCells []string
+		if briefKey != "" {
+			scanCells = splitTableCells(scan)
+		}
+		for _, m := range humanStampRe.FindAllStringSubmatch(scan, -1) {
 			name := strings.ToLower(m[1])
 			s := stamp{
 				Name: name,
@@ -861,7 +956,10 @@ func stampsInDiff(root, diff string) []stamp {
 			// Unresolved => fail closed, never exempt.
 			resolved := false
 			if briefKey != "" {
-				if idx, cell, ok := findStampCell(cells, name); ok {
+				if idx, cell, ok := findStampCell(scanCells, name); ok {
+					if idx < len(cells) {
+						cell = cells[idx]
+					}
 					// Record the branch column's header NAME (e.g. "Reviewed") when the
 					// branch table's header was seen, so the base cell can be located by
 					// name rather than by an index the migration may have shifted.
@@ -879,7 +977,7 @@ func stampsInDiff(root, diff string) []stamp {
 		// A confusable-name stamp is recorded too, under its raw name. It will
 		// fail the human-login lookup and report MISSING-CORROBORATION — loud
 		// refusal rather than the silent "no stamps — clean" it used to produce.
-		for _, name := range confusableStampNames(content) {
+		for _, name := range confusableStampNames(scan) {
 			out = append(out, stamp{
 				Name:       strings.ToLower(name),
 				File:       curFile,
