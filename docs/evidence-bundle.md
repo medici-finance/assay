@@ -169,3 +169,82 @@ tar -xzf /tmp/bundle.tgz -O manifest.json | head -30
 The `--export-evidence` mode is a self-contained subcommand like `--dora` or
 `--trend`: it does not read or write `STATUS.md`, and it accepts exactly one
 `--root`.
+
+## Release-keyed audit pack (sdlc/08)
+
+`--export-evidence` is keyed on a DATE range. A buyer or an auditor does not ask for a date
+range — they ask **"show me everything behind release Y"**, which is a different graph:
+release -> the briefs in it -> the requirements those briefs satisfy -> the Evidence and
+review verdicts behind each one. `statusgen --export-audit-pack --release <tag>` walks that
+graph and reuses the existing bundler rather than forking it.
+
+The same honest framing applies without qualification: this pack, too, is an **input to** a
+compliance review, not a compliance artifact in itself. It is **not an audit opinion** and
+does not attest ground truth — everything [above](#bundle-format) about what the bundle does
+and does not claim holds for the release-keyed pack as well. This section states only what is
+DIFFERENT about it.
+
+**How the release resolves.** A tag is scoped by
+`docs/release-notes/<tag>.md` -- the existing release-notes convention, not a second
+register. That file already carries a release's story; this brief adds one OPTIONAL
+machine-readable frontmatter block naming its scope:
+
+```yaml
+---
+release: v1.2.3
+briefs: ["<stream>/<NN>", ...]
+requirements: ["REQ-<slug>", ...]
+---
+```
+
+Three states:
+
+- **no `docs/release-notes/<tag>.md` at all** -- the release is **not found**. A hard
+  refusal (`exit 1`, the message names the tag), never an empty-but-well-formed pack.
+- **the file exists with no frontmatter** (every release note written before this brief) --
+  a legitimate **release found, empty declared scope** state. The note IS the release; it
+  simply predates machine-readable scoping.
+- **the file exists WITH frontmatter that fails to parse** -- a real error
+  (could-not-check), never silently rounded to an empty scope.
+
+**What the pack carries, per requirement in scope.** One entry per `requirements:` id, each
+with its acceptance criteria, every backing brief's status and Evidence, that brief's PR
+number and review verdict (identity + date) -- read straight off the SAME Reviewed-cell
+convention every stream README already writes (`YYYY-MM-DD <runner> (approved PR #<N> @
+<sha>)`), never re-derived from a second source -- and a three-state verdict: `satisfied`,
+`partial`, or `could-not-check`. A requirement whose chain cannot be resolved is
+`could-not-check` **with the reason**; it is never omitted silently and never counted as
+satisfied. This detail is bundled as `audit-pack-report.json`, one more entry in
+`manifest.json`'s existing `files` array -- **the manifest is not forked.**
+
+**The single point of failure, named, and its second layer.** The `omitted` array is the one
+thing standing between an incomplete pack and an auditor who believes they hold the whole
+chain, and a collector can have a bug that drops something without ever populating it. The
+second, independent layer here is a **completeness comparison**: this pack's own
+requirement-\>brief walk is checked against a **fresh, separate** call into
+`--requirements-rollup` (sdlc/02) -- the SAME requirement register, walked by DIFFERENT code
+that reads the tree a second time. When the two disagree on how many resolved backing links a
+requirement has, **the pack refuses to write, naming both numbers**, rather than ship the
+disagreement quietly. An omission that slips past the collector's own bundling code still
+fails this comparison.
+
+**Reproducibility.** Same discipline as `--export-evidence`: pass `-generated` and two runs
+against the same tree produce a byte-identical tarball.
+
+**Cross-reference: not the [iso-9001](streams/iso-9001/README.md) stream's tool-validation
+pack.** [`docs/streams/iso-9001/`](streams/iso-9001/README.md) brief 01 emits the
+tool-VALIDATION evidence pack as a release asset -- proof that the checking tool itself works.
+This pack emits the compliance CONTENT behind a release -- the requirement/brief/Evidence
+chain. Related, adjacent, and never overlapping.
+
+```bash
+# Export the audit pack for a release named in docs/release-notes/<tag>.md
+cd statusgen && go run . --root .. --export-audit-pack --release v1.2.3 -o /tmp/audit-pack.tgz
+
+# Byte-reproducible
+cd statusgen && go run . --root .. --export-audit-pack --release v1.2.3 \
+  -o /tmp/audit-pack.tgz -generated 2026-08-03T00:00:00Z
+
+# Read the per-requirement chain
+tar -xzf /tmp/audit-pack.tgz -O audit-pack-report.json | jq '.requirements'
+```

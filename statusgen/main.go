@@ -1541,6 +1541,18 @@ func main() {
 	// Takes two positional args <from> <to> (YYYY-MM-DD) and requires -o <path>.
 	// -o is parsed from flag.Args() because positional args stop flag parsing.
 	exportEvidenceMode := flag.Bool("export-evidence", false, "export an evidence bundle tarball for the given date range (positional <from> <to>; -o <path>; optional -generated <RFC3339> for byte-reproducible output)")
+	// Release-keyed audit-pack export (sdlc/08): a sibling of --export-evidence
+	// keyed on a release tag (docs/release-notes/<tag>.md) rather than a date
+	// range — "show me everything behind release Y", walking
+	// release -> brief -> requirement -> Evidence/review verdict. Reuses
+	// writeEvidenceBundle's manifest.json shape verbatim (auditpack.go);
+	// -o and -generated are declared as ordinary flags (unlike
+	// --export-evidence's manual flag.Args() scan) because this mode takes no
+	// positional argument to stop flag parsing early.
+	exportAuditPackMode := flag.Bool("export-audit-pack", false, "export a release-keyed audit pack: manifest.json (identical shape to --export-evidence) plus audit-pack-report.json, a per-requirement chain of briefs/PR/review verdicts for --release <tag> (docs/release-notes/<tag>.md). Requires -release and -o; optional -generated <RFC3339> for byte-reproducible output")
+	auditPackRelease := flag.String("release", "", "--export-audit-pack: the release tag to scope the pack to (resolved against docs/release-notes/<tag>.md)")
+	auditPackOutput := flag.String("o", "", "--export-audit-pack: output tarball path")
+	auditPackGenerated := flag.String("generated", "", "--export-audit-pack: optional RFC3339 manifest timestamp for byte-reproducible output")
 	// Derived graph export (landscape-followups/06): read-only DOT/JSONL of the
 	// typed brief/finding/intake/issue graph, emitted from the existing parse
 	// tree. No new store; never reads or writes STATUS.md or any register view.
@@ -1645,6 +1657,7 @@ func main() {
 			"--launch":                *launchMode,
 			"--requirements-rollup":   *requirementsRollupMode,
 			"--export-evidence":       *exportEvidenceMode,
+			"--export-audit-pack":     *exportAuditPackMode,
 			"--graph":                 *graphMode != "",
 			"--gate-scores":           *gateScoresMode,
 			"--next-up":               *nextUpMode,
@@ -2034,6 +2047,29 @@ func main() {
 			generated = g
 		}
 		os.Exit(runEvidenceExport(*root, from, to, output, generated))
+	}
+	// Release-keyed audit-pack export (sdlc/08). Unlike --export-evidence, this
+	// mode takes no positional argument, so -release/-o/-generated are ordinary
+	// registered flags that flag.Parse() already consumed above.
+	if *exportAuditPackMode {
+		if strings.TrimSpace(*auditPackRelease) == "" {
+			fmt.Fprintln(os.Stderr, "statusgen: --export-audit-pack requires -release <tag>")
+			os.Exit(2)
+		}
+		if strings.TrimSpace(*auditPackOutput) == "" {
+			fmt.Fprintln(os.Stderr, "statusgen: --export-audit-pack requires -o <output>")
+			os.Exit(2)
+		}
+		var generated time.Time
+		if strings.TrimSpace(*auditPackGenerated) != "" {
+			g, err := time.Parse(time.RFC3339, *auditPackGenerated)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "statusgen: -generated must be RFC3339 (e.g. 2026-08-03T00:00:00Z), got %q\n", *auditPackGenerated)
+				os.Exit(2)
+			}
+			generated = g
+		}
+		os.Exit(runAuditPackExport(*root, *auditPackRelease, *auditPackOutput, generated))
 	}
 	if *registerLinksFlag {
 		n, err := backfillRegisterRefs(*root)
