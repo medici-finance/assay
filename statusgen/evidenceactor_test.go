@@ -615,3 +615,137 @@ func TestEvidenceActorRealRepoShallowGraftIsCouldNotCheck(t *testing.T) {
 		t.Fatalf("on a FULL clone the verifier-authored Evidence must read as backed, not flagged.\nnotices:\n%s", fullJoined)
 	}
 }
+
+// TestEvidenceCommitIdentityProblem is the FAIL-FIRST control for
+// verify-integrity/04 item 2: a `verified`/`done` brief this branch newly
+// closes (not present as verified/done at merge-base(HEAD, origin/main)) whose
+// Evidence section is committed by the WORKER App, not the roster's verifier
+// role, must be a PROBLEM naming the actual (rejected) author — not the
+// grandfathered NOTICE the pre-cutover backlog gets. Perturbing the same row so
+// its Evidence is committed by the verifier App instead must go clean (no
+// PROBLEM, no NOTICE for that row).
+//
+// Against the PRE-promotion evidenceActorNotices (still exercised directly
+// below as the red run this fail-first rule asks for), the worker-authored row
+// was ALREADY visible — but only as a NOTICE lumped into the whole-repo
+// backlog line, indistinguishable from a pre-existing closure and never a
+// PROBLEM. evidenceActorGate is what tells the two apart.
+func TestEvidenceCommitIdentityProblem(t *testing.T) {
+	build := func(t *testing.T, authorName, authorEmail string) (root string, streams []*Stream) {
+		root = t.TempDir()
+		evActorGit(t, root, "init", "-q", "-b", "main")
+		dir := filepath.Join(root, "docs", "streams", "identityproblem")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		evidenceTable := "| # | Command | Result | Date | Runner |\n" +
+			"|---|---------|--------|------|--------|\n" +
+			"| 1 | `true` | pass exit=0 | 2026-09-18 | independent verifier |\n"
+		if err := os.WriteFile(filepath.Join(dir, "brief-01-x.md"),
+			[]byte(briefWithEvidence(evidenceTable)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitCommitAs(t, root, authorName, authorEmail, "closure: land the Evidence commit")
+		streams = []*Stream{{
+			Name: "identityproblem",
+			Dir:  dir,
+			Briefs: []Brief{{
+				Num: "01", Status: "verified", Verified: "2026-09-18 opus-verifier"}}}}
+		return root, streams
+	}
+
+	// RED: the Evidence commit is authored by the worker App, and this closure
+	// is NEW (closedAtBase reports it absent from the merge-base) — must be a
+	// PROBLEM naming the worker App, not a backlog NOTICE.
+	t.Run("worker-authored new closure is a PROBLEM", func(t *testing.T) {
+		root, streams := build(t, fixtureWorkerName, fixtureWorkerEmail)
+		withBase(t, true) // baseOK=true, nothing grandfathered: this is a NEW closure
+		problems, notices := evidenceActorGate(root, streams)
+		joined := strings.Join(problems, "\n")
+		if !strings.Contains(joined, "identityproblem/01") {
+			t.Fatalf("RED RUN MISSING: a worker-authored NEW closure must be a PROBLEM naming the row; "+
+				"problems:\n%s\nnotices:\n%s", joined, strings.Join(notices, "\n"))
+		}
+		if !strings.Contains(joined, fixtureWorkerName) && !strings.Contains(joined, "assay-worker-app") {
+			t.Errorf("the PROBLEM must name the actual (rejected) author; got:\n%s", joined)
+		}
+		// It must not ALSO be reported as ordinary backlog NOTICE — that would
+		// double-count the same closure as both a PROBLEM and a NOTICE.
+		if strings.Contains(strings.Join(notices, "\n"), "identityproblem/01") {
+			t.Errorf("a row promoted to PROBLEM must not also appear in the backlog NOTICE; notices:\n%s",
+				strings.Join(notices, "\n"))
+		}
+	})
+
+	// GREEN: perturb the author to the verifier App — same NEW-closure scoping,
+	// clean verdict, no PROBLEM and no NOTICE for this row.
+	t.Run("verifier-authored new closure is clean", func(t *testing.T) {
+		root, streams := build(t, fixtureVerifierName, fixtureVerifierEmail)
+		withBase(t, true)
+		problems, notices := evidenceActorGate(root, streams)
+		if len(problems) != 0 {
+			t.Fatalf("FALSE POSITIVE: a verifier-committed NEW closure must not be a PROBLEM; got: %v", problems)
+		}
+		if strings.Contains(strings.Join(notices, "\n"), "identityproblem/01") {
+			t.Fatalf("FALSE POSITIVE: a verifier-committed NEW closure must not be flagged at all; notices: %v", notices)
+		}
+	})
+}
+
+// TestEvidenceActorShallowClone is the Verify-row control for verify-integrity/04
+// item: a shallow/grafted checkout must render as COULD-NOT-CHECK, and the
+// output must never contain "unbacked" — the at#2000 failure mode (a shallow
+// clone reporting 246/249 "unbacked" instead of degrading loudly) this brief's
+// facts name as the one to close first. evidenceActorGate is exercised (not
+// just the NOTICE-only wrapper) so the PROBLEM half is proved innocent of this
+// failure mode too: a could-not-check row must never surface as a PROBLEM.
+func TestEvidenceActorShallowClone(t *testing.T) {
+	origin := t.TempDir()
+	evActorGit(t, origin, "init", "-q", "-b", "main")
+	dir := filepath.Join(origin, "docs", "streams", "shallowclone")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "brief-01-x.md"),
+		[]byte(briefWithEvidence("| 1 | `true` | pass exit=0 | 2026-09-18 | verify-desk |\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAs(t, origin, fixtureVerifierName, fixtureVerifierEmail, "verifier writes the brief")
+	if err := os.WriteFile(filepath.Join(origin, "unrelated.txt"), []byte("noise\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAs(t, origin, fixtureWorkerName, fixtureWorkerEmail, "worker: unrelated commit")
+
+	clone := t.TempDir()
+	cmd := exec.Command("git", "clone", "-q", "--depth=1", "file://"+origin, clone)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone --depth=1: %v\n%s", err, out)
+	}
+	if !isShallowRepository(clone) {
+		t.Fatal("the --depth=1 clone is not shallow; the test fixture is wrong")
+	}
+
+	streams := []*Stream{{
+		Name: "shallowclone",
+		Dir:  filepath.Join(clone, "docs", "streams", "shallowclone"),
+		Briefs: []Brief{{
+			Num: "01", Status: "verified", Verified: "2026-09-18 opus-verifier"}}}}
+
+	// Even a NEW closure (baseOK true, nothing grandfathered) must stay
+	// could-not-check, never a PROBLEM: a shallow blind spot is not proof of
+	// anything, so it cannot be promoted.
+	withBase(t, true)
+	problems, notices := evidenceActorGate(clone, streams)
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "could-not-check") || !strings.Contains(joined, "shallowclone/01") {
+		t.Fatalf("a shallow/grafted clone must report the row could-not-check; notices:\n%s", joined)
+	}
+	if strings.Contains(joined, "F-verify-self-attest") || strings.Contains(joined, "no accepted verifier actor committed") {
+		t.Fatalf("REGRESSION (at#2000): a shallow clone must never render as an unbacked self-attest "+
+			"finding; notices:\n%s", joined)
+	}
+	if len(problems) != 0 {
+		t.Fatalf("a could-not-check row must never be promoted to a PROBLEM, even for a new closure; got: %v", problems)
+	}
+}

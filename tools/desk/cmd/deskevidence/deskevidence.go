@@ -98,6 +98,15 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// forced for any file; --allow-shrink is the intentional-edit override.
 	appendOnlyFlag := fs.Bool("append-only", false, "refuse the commit if it would reduce the target's row count below the current remote (auto-enabled for .jsonl sidecars)")
 	allowShrink := fs.Bool("allow-shrink", false, "override the append-only shrink guard when a row reduction is genuinely intended")
+	// --dry-run (verify-integrity/04 item 1): print the commits-API landing plan and stop
+	// before the write. It still mints the verifier App token, resolves the forge, fetches
+	// the remote content, merges/scans it and runs the statusgen PROBLEM-diff guard — every
+	// gate that can fail BEFORE a write is exercised for real, so a clean dry-run is real
+	// evidence the landing would succeed. It stops short of AllowWrite (never spends the
+	// write-rate-limit budget) and fg.WriteFile (never writes). There is no local-git branch
+	// anywhere in this tool to fall back to: an unmintable token refuses at the mint step
+	// above, dry-run or not.
+	dryRun := fs.Bool("dry-run", false, "print the commits-API landing plan without committing")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
@@ -349,6 +358,26 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
+	}
+
+	// --dry-run stops HERE — after every gate that can refuse a landing has already run
+	// (mint, forge resolution, remote read, merge, secret scan, public-repo gate, noop/shrink
+	// checks, statusgen PROBLEM-diff), before the write-rate-limit spend and the write itself.
+	// The plan below names the commits-API call this run WOULD make; it never mentions a
+	// local `git commit` because there is no such path in this tool to fall back to.
+	if *dryRun {
+		verb := "create"
+		if remoteExists {
+			verb = "update"
+		}
+		added, removed := rowDelta(remoteContent, commitContent)
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = fmt.Sprintf("dry-run: would %s %s on %s via contents API for %s (sha256 %s, +%d/-%d rows)",
+			verb, targetRepoPath, branch, repoSlug, bodyDig, added, removed)
+		fmt.Fprintf(stdout, "dry-run plan: commits-API PUT to %s (contents endpoint) — %s %s on branch %s, "+
+			"authenticated as the verifier App (%s); sha256 %s; no local `git commit` in this plan\n",
+			repoSlug, verb, targetRepoPath, branch, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig)
+		return nil
 	}
 
 	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
