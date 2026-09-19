@@ -246,7 +246,18 @@ export CELLCTL_TEST_OUT="$T/launch-glm-persisted.env"
 assert "after --set, a plain run (CELL_PROVIDER from cell.env, no flags) uses the persisted default" 'grep -qxF "ANTHROPIC_MODEL=persisted-mid" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=persisted-mid" "$CELLCTL_TEST_OUT"'
 sed -i.bak '/^CELL_PROVIDER_GLM_MODEL_MID=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
 out="$(DRY_RUN=1 CELL_TIER_MODEL_MID=env-threaded-mid "$CELLCTL" desk example-cell worker-desk --provider glm 2>&1)" && rc=0 || rc=$?
-assert "CELL_TIER_MODEL_MID (up's threading env) reaches desk as the tier default" '[[ $rc -eq 0 ]] && grep -q "model=env-threaded-mid (provider:glm (tier MID: --model-mid flag)" <<<"$out"'
+assert "CELL_TIER_MODEL_MID (up's threading env) reaches desk, labelled as env not flag" '[[ $rc -eq 0 ]] && grep -q "model=env-threaded-mid (provider:glm (tier MID: env CELL_TIER_MODEL_MID, up threading))" <<<"$out"'
+sed -i.bak '/^CELL_PROVIDER=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+out="$(DRY_RUN=1 CELL_TIER_MODEL_MID=orphan-mid "$CELLCTL" desk example-cell worker-desk 2>&1)" && rc=0 || rc=$?
+assert "an env-threaded tier value with no provider is refused on desk too (up-refusal symmetry)" '[[ $rc -ne 0 ]] && grep -q "need a provider" <<<"$out"'
+printf 'CELL_PROVIDER=glm\n' >> "$CELL/cell.env"'
+out="$(DRY_RUN=1 "$CELLCTL" up example-cell --provider glm --model-mid up-set-mid --set 2>&1)" && rc=0 || rc=$?
+assert "up --set with a tier flag persists the provider-keyed tier key (dry-run persist plan)" '[[ $rc -eq 0 ]] && grep -q -- "--set: would persist CELL_PROVIDER_GLM_MODEL_MID=up-set-mid into" <<<"$out"'
+assert "up dry-run shows no per-role tier keys (tier keys are provider-keyed, not per-role)" '[[ $(grep -c -- "--set: would persist DESK_MODEL_" <<<"$out") -eq 0 ]]'
+out="$(CELL_PROVIDER_GLM_MODEL=glm-custom "$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
+assert "check omits the sonnet-slot row when an operator flat model suppresses the preset split (launch predicate mirrored)" '[[ $rc -eq 0 ]] && ! grep -q "sonnet slot" <<<"$out"'
+assert "cellctl set accepts the three tier keys without --force" '"$CELLCTL" set example-cell CELL_PROVIDER_GLM_MODEL_MID=set-written >/dev/null 2>&1 && grep -qx "CELL_PROVIDER_GLM_MODEL_MID=set-written" "$CELL/cell.env" && ! grep -q "not a known cell.env key" <("$CELLCTL" set example-cell CELL_PROVIDER_GLM_MODEL_FAST=x 2>&1)'
+sed -i.bak '/^CELL_PROVIDER_GLM_MODEL_MID=/d;/^CELL_PROVIDER_GLM_MODEL_FAST=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"'
 
 echo "[glm per-tier: an operator-set flat model suppresses preset tier splits; an explicit tier key wins]"
 export CELL_PROVIDER_GLM_MODEL_MID="glm-custom-mid"

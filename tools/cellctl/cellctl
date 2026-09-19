@@ -1155,8 +1155,11 @@ cmd_check(){
     if [[ -n "$pv_model" ]]; then
       # Per-tier provider models (assay#1352) show in their own row when one differs from the flat
       # model, so `cellctl check` answers "what would the sonnet slot run" without a launch.
-      local pv_mid; provider_value "$CELL_PROVIDER" MODEL_MID; pv_mid="$PROVIDER_VALUE"
-      if [[ -n "$pv_mid" && "$pv_mid" != "$pv_model" ]]; then
+      local pv_mid pv_mid_src; provider_value "$CELL_PROVIDER" MODEL_MID; pv_mid="$PROVIDER_VALUE"; pv_mid_src="$PROVIDER_VALUE_SRC"
+      # Same predicate the launch applies (role arm + alias block): a PRESET tier model is
+      # suppressed when the flat model is operator-set — in that case the sonnet slot runs the
+      # flat model the model row already names, so no differing sonnet row is shown.
+      if [[ -n "$pv_mid" && "$pv_mid" != "$pv_model" && ! ( "$pv_model_src" == "cell.env" && "$pv_mid_src" == "preset" ) ]]; then
         chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
         chk "provider $CELL_PROVIDER: sonnet slot (MID tier)=$pv_mid ($PROVIDER_VALUE_SRC; ANTHROPIC_DEFAULT_SONNET_MODEL + mid-tier role launches)" 'true'
       else
@@ -1827,13 +1830,13 @@ cmd_desk(){
   local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 cfg_in="" provider="" harness="$CELL_HARNESS"
   local harness_flag="" cockpit_flag="" provider_flag=""
   local tier_top="${CELL_TIER_MODEL_TOP:-}" tier_mid="${CELL_TIER_MODEL_MID:-}" tier_fast="${CELL_TIER_MODEL_FAST:-}"
-  local tier_flag=0
+  local tier_top_src="" tier_mid_src="" tier_fast_src="" tier_flag=0
   while [[ $# -gt 0 ]]; do case "$1" in
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --set) persist=1; shift;;
-    --model-top) tier_top="${2:?--model-top needs a value}"; tier_flag=1; shift 2;;
-    --model-mid) tier_mid="${2:?--model-mid needs a value}"; tier_flag=1; shift 2;;
-    --model-fast) tier_fast="${2:?--model-fast needs a value}"; tier_flag=1; shift 2;;
+    --model-top) tier_top="${2:?--model-top needs a value}"; tier_top_src="flag"; tier_flag=1; shift 2;;
+    --model-mid) tier_mid="${2:?--model-mid needs a value}"; tier_mid_src="flag"; tier_flag=1; shift 2;;
+    --model-fast) tier_fast="${2:?--model-fast needs a value}"; tier_fast_src="flag"; tier_flag=1; shift 2;;
     --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
     --harness) harness="${2:?--harness needs a value (claude|codex)}"; harness_flag="$harness"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
@@ -1866,8 +1869,10 @@ cmd_desk(){
   # Per-tier provider models are provider-KEYED (CELL_PROVIDER_<NAME>_MODEL_<TIER>), so a tier
   # flag with no provider to hang it on is refused rather than silently ignored — the operator
   # naming a tier model is naming it FOR a provider.
-  if [[ "$tier_flag" == "1" ]]; then
-    [[ -n "$provider" ]] || die "desk: --model-top/mid/fast need a provider — pass --provider <name> (or set CELL_PROVIDER in cell.env); a tier model is provider-keyed (CELL_PROVIDER_<NAME>_MODEL_<TIER>)"
+  # Any tier value reaching desk — a --model-* flag or a CELL_TIER_MODEL_* env (what up threads)
+  # — needs a provider to hang on; up refuses the same shape, so desk must too, not silently ignore.
+  if [[ -n "$tier_top$tier_mid$tier_fast" ]]; then
+    [[ -n "$provider" ]] || die "desk: --model-top/mid/fast (or a CELL_TIER_MODEL_TOP/MID/FAST in the environment) need a provider — pass --provider <name> (or set CELL_PROVIDER in cell.env); a tier model is provider-keyed (CELL_PROVIDER_<NAME>_MODEL_<TIER>)"
   fi
   local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL="" PROVIDER_MODEL_SRC=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
@@ -1929,13 +1934,24 @@ cmd_desk(){
     # owns every tier unless they also name the tier key — while an operator-set MODEL_<TIER>
     # always applies.
     local ptier; ptier="$(printf '%s' "$(role_tier "$role")" | tr '[:lower:]' '[:upper:]')"
-    local cli_tier=""
-    case "$ptier" in TOP) cli_tier="$tier_top" ;; MID) cli_tier="$tier_mid" ;; FAST) cli_tier="$tier_fast" ;; esac
+    local cli_tier="" cli_tier_src=""
+    case "$ptier" in
+      TOP)  cli_tier="$tier_top";  cli_tier_src="${tier_top_src:-env}" ;;
+      MID)  cli_tier="$tier_mid";  cli_tier_src="${tier_mid_src:-env}" ;;
+      FAST) cli_tier="$tier_fast"; cli_tier_src="${tier_fast_src:-env}" ;;
+    esac
     provider_value "$provider" "MODEL_${ptier}"
     if [[ -n "$cli_tier" ]]; then
-      # The CLI tier flag beats the preset AND a cell.env tier line for this run (--set is what
+      # A CLI tier value beats the preset AND a cell.env tier line for this run (--set is what
       # promotes it to the cell's default); it still loses to --model and per-role pins above.
-      model="$cli_tier"; RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: --model-$(printf '%s' "$ptier" | tr '[:upper:]' '[:lower:]') flag)"
+      # The source label says which surface it came from: a --model-* flag, or the
+      # CELL_TIER_MODEL_* env `up` threads.
+      model="$cli_tier"
+      if [[ "$cli_tier_src" == "flag" ]]; then
+        RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: --model-$(printf '%s' "$ptier" | tr '[:upper:]' '[:lower:]') flag)"
+      else
+        RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: env CELL_TIER_MODEL_${ptier}, up threading)"
+      fi
     elif [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]]; then
       model="$PROVIDER_VALUE"; RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: $(provider_var "$provider" "MODEL_${ptier}") ${PROVIDER_VALUE_SRC})"
     fi
@@ -2321,6 +2337,16 @@ cmd_up(){
     [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
     [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
     [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
+    # Tier flags persist to the same provider-keyed keys cmd_desk writes (--provider flag, else
+    # the cell.env CELL_PROVIDER the run resolved; up's guard already refused tier-without-provider).
+    if [[ -n "$tier_top_flag$tier_mid_flag$tier_fast_flag" ]]; then
+      local up_tier_provider tkey_pfx
+      up_tier_provider="${provider_flag:-${CELL_PROVIDER:-}}"
+      tkey_pfx="$(printf '%s' "$up_tier_provider" | tr '[:lower:]-' '[:upper:]_')"
+      [[ -n "$tier_top_flag"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_TOP=$tier_top_flag")
+      [[ -n "$tier_mid_flag"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_MID=$tier_mid_flag")
+      [[ -n "$tier_fast_flag" ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_FAST=$tier_fast_flag")
+    fi
   fi
   first_window
   if [[ "${DRY_RUN:-0}" == "1" ]]; then

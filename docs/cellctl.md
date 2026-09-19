@@ -1080,8 +1080,8 @@ persists `--model` per the widened-scope rules above, into `DESK_MODEL_<role>`.
 - `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` as before.
 - `ANTHROPIC_MODEL` = the model this window launches with, and
   `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` /
-  `ANTHROPIC_DEFAULT_HAIKU_MODEL` = the provider model (else the launch model) — so every tier alias
-  this window or its subagents use resolves to a name the endpoint accepts.
+  `ANTHROPIC_DEFAULT_HAIKU_MODEL` = a name the endpoint accepts — the provider model (else the
+  launch model), or that tier's per-tier model where one applies (next paragraph).
 
 **Per-tier provider models** (`assay#1352`): a provider may name a DIFFERENT model for one tier —
 `CELL_PROVIDER_<NAME>_MODEL_TOP` / `_MODEL_MID` / `_MODEL_FAST` (cell.env line, else the preset) —
@@ -1099,6 +1099,13 @@ per-tier models for ONE run — refused without a provider (the keys are provide
 cell's default. `cellctl up` accepts the same three flags and threads them onto every role
 window it opens (via the `CELL_TIER_MODEL_<TIER>` environment), and the raw keys are settable
 directly: `cellctl set <cell> CELL_PROVIDER_GLM_MODEL_MID=glm-5.3-flash[1m]`.
+
+One guard inherited from the provider arm: a tier model applies on the provider's launch path,
+which requires the provider to also have a flat model (`MODEL`, preset or cell.env line) — a
+provider configured with only a tier key refuses loudly at the first launch that would need it,
+naming the pin/tier/`--model` options. Configure the flat model too. A tier flag or
+`CELL_TIER_MODEL_*` value reaching `desk` with no provider at all is refused the same way `up`
+refuses it.
 
 A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
 is refused rather than launching codex against Anthropic with a provider the operator asked for.
