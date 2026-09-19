@@ -85,7 +85,7 @@ or removing any human gate (spec §5 states the divergence).
 | 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 1 | L | todo | — | — |
 | 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 2 | L | todo | — | — |
 | 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 3 | L | todo | — | — |
-| 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | todo | — | — |
+| 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
 | 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
