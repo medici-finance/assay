@@ -152,6 +152,31 @@ Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=
 
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
+### Non-implementer verifier re-run — 2026-09-16 verify-desk (desk-tools/09 dispatched verifier) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Independent re-run following the 2026-09-06 `opus-4.8[1m]-verifier` FAIL (row 7 — `go test ./...` whole-module red in `internal/deskkit`, unrelated to this brief's own deliverable, filed `medici-finance/assay#555`). Merged main `e9fa19d3`.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, clean | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 2 | `go test ./cmd/desktoken/ -run '^TestCoverageListsEveryInstallation$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 3 | `go test ./cmd/desktoken/ -run '^TestCoverageRepoFilterExitCodes$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 4 | `go test ./cmd/desktoken/ -run '^TestCoveragePageFailureIsUnverifiable$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 5 | `go test ./cmd/desktoken/ -run '^TestCoverageWritesNoCacheAndPrintsNoToken$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 6 | `go test ./cmd/desktoken/ -run '^TestCoverageRefusesGitLabForge$' -count=1` | exit 0 | exit 0 — PASS | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 7 | `cd tools/desk && go test ./... -count=1` | exit 0 | **exit 0** — every package `ok`, including `internal/deskkit` and `cmd/deskinstall`; the 2026-09-06 red (assay#555) no longer reproduces on this main. **Row 7 flips this brief from FAIL to PASS.** | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 8 | `gofmt -l tools/desk/cmd/desktoken` | empty | exit 0, empty output | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+| 9 | `cd statusgen && go run . --root .. --lint` | rc 0 | rc 0 — LINT: PASS | 2026-09-16 | verify-desk (desk-tools/09 dispatched verifier) |
+
+No invented scope, no unrun rows. Structural corroboration: `deskkit.Refused` (exit 5) used for both `--forge gitlab` and a `--repo` miss; `deskkit.Unverifiable` (exit 6) used for installation-list/page failures — matches the brief's exit-code contract exactly. `--repo` filter matches on `full_name`, not bare `name` (excludes the same-named-repo-under-another-owner false-positive the brief's pre-mortem names). No cache/`.perms` write path in `coverage.go`; token exchange result used only in-memory. README contract present at `tools/desk/README.md:2051`.
+
+**Risk-bearing value.**
+
+**RISK-VALUE: DERIVED** — `coveragePerPage = 100` @ `tools/desk/cmd/desktoken/coverage.go:58` — GitHub REST's documented `/installation/repositories` per_page maximum. The pagination-completion test (`len(pg.Repositories) < coveragePerPage`, `coverage.go:323`) is sound only when the requested page size doesn't exceed the server's own cap — a value above 100 would silently truncate and drop later pages, exactly the "short list read as complete" failure mode the brief's pre-mortem names. 100 sits exactly at GitHub's cap. It's a package `var`, not a compiled `const`, specifically so tests can force pagination without a 100-repo fixture.
+
+**RISK-VALUE: N/A** — token-redaction and fail-closed-on-unreadable-installations are absence-of-output/control-flow properties, not bound literals (confirmed structurally: `exchangeJWT`'s result never reaches `fmt.Print*`/audit; page-read errors route through `deskkit.Unverifiable` before any partial render) — the "guard, not the value inside it" case, correctly not treated as risk-bearing.
+
+**VERIFY: PASS** — all 9 rows pass on merged main; the sole prior blocker (row 7's unrelated pre-existing red) no longer reproduces.
 
 ## Review
 
