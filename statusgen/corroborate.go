@@ -401,15 +401,27 @@ var humanStampRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z_-])human:([0-9A-Za-z_]+)
 // as an unmapped "name" (the login is a map value, not a key) or, when a login happens
 // to equal a name, as an uncorroborated stamp on a PR nobody has approved. Neither is
 // a forgery; both are the checker reading an attribution as a sign-off. Stripping the
-// annotation is the ONLY exemption: every human:<name> outside it stays fully gated.
-var onBehalfOfAnnotationRe = regexp.MustCompile(`(?i)\bon-behalf-of:?\s+human:[0-9A-Za-z_-]+`)
+// MARKER (never the login — see stripOnBehalfOf) is the ONLY exemption: every
+// human:<name> outside it, and every sign-off the login is then read to have made,
+// stays fully gated.
+var onBehalfOfAnnotationRe = regexp.MustCompile(`(?i)\bon-behalf-of:?\s+human:([0-9A-Za-z_-]+)`)
 
-// stripOnBehalfOf removes every on-behalf-of annotation / trailer from s so the
-// sign-off scans that follow judge only what is left. Length-preserving is NOT
-// required: callers re-split cells from the stripped text but record the ORIGINAL
-// cell, so the pre-existing byte-identity comparison still sees the real cell.
+// stripOnBehalfOf removes the on-behalf-of MARKER (`on-behalf-of[:] human:`) from
+// every annotation / trailer in s and keeps the login token that followed it, so the
+// sign-off scans that follow judge only what is left — and still see everything the
+// human WROTE. Stripping the login too would hide a real sign-off that follows the
+// trailer: "On-behalf-of: human:ada approved the prod flip on #12" must still read as
+// "ada approved …" to the citation lane (a reviewer-found case, pinned in both lanes'
+// tests). What remains is a bare `<login>`, which is not a human:<name> stamp (the
+// stamp regex needs the `human:` prefix) and is a citation only when a sign-off verb
+// follows it. RE2 has no lookahead, so the marker is dropped by a replacement func
+// returning the captured login. Length-preserving is NOT required: callers re-split
+// cells from the stripped text but record the ORIGINAL cell, so the pre-existing
+// byte-identity comparison still sees the real cell.
 func stripOnBehalfOf(s string) string {
-	return onBehalfOfAnnotationRe.ReplaceAllString(s, "")
+	return onBehalfOfAnnotationRe.ReplaceAllStringFunc(s, func(m string) string {
+		return onBehalfOfAnnotationRe.FindStringSubmatch(m)[1]
+	})
 }
 
 // looseHumanStampRe matches the same boundary-anchored "human:" prefix followed by

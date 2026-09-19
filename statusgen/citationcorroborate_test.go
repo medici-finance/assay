@@ -329,3 +329,22 @@ func TestDetectCitations_OnBehalfOfIsAttribution(t *testing.T) {
 		t.Fatalf("mixed line: want exactly the alex/approved/#12 citation, got %+v", cits)
 	}
 }
+
+// TestDetectCitations_SignOffAfterTrailerIsStillJudged pins the reviewer's case on
+// #1337: stripping the on-behalf-of MARKER must keep the login, so a real sign-off
+// written right after the trailer is still a citation — ada (a configured login)
+// approved, cited on #12. Stripping the whole annotation lost "ada" and the claim
+// went unjudged.
+func TestDetectCitations_SignOffAfterTrailerIsStillJudged(t *testing.T) {
+	cits := detectCitations("commit abc1234", "On-behalf-of: human:ada approved the prod flip on #12")
+	if len(cits) != 1 {
+		t.Fatalf("want exactly one citation (ada approved, #12), got %+v", cits)
+	}
+	c := cits[0]
+	if c.Name != "ada" || c.Marker != "approved" || c.Number != 12 || !c.HasRef {
+		t.Fatalf("citation = %+v, want Name=ada Marker=approved Number=12 HasRef=true", c)
+	}
+	if login, ok := citedHumanLogin(c.Name); !ok || login != "ada" {
+		t.Fatalf("ada must resolve as the cited login, got %q ok=%v", login, ok)
+	}
+}

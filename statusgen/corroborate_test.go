@@ -873,3 +873,20 @@ func TestStampsInDiff_MixedLineJudgesOnlySignOffHalf(t *testing.T) {
 		t.Fatalf("alex must still resolve to its login for corroboration, got %q", login)
 	}
 }
+
+// (4) The reviewer's case: a sign-off that FOLLOWS the trailer on the same line. The
+// stamp lane must still see no stamp (the marker is gone and a bare login is not a
+// human:<name>), while the citation lane (TestDetectCitations_SignOffAfterTrailerIsStillJudged)
+// must still see "ada approved". Stripping the login with the marker broke the
+// second half; this pins the first half stays true after the fix.
+func TestStampsInDiff_SignOffAfterTrailerIsNotAStamp(t *testing.T) {
+	diff := "diff --git a/docs/notes.md b/docs/notes.md\n--- a/docs/notes.md\n+++ b/docs/notes.md\n@@ -1,0 +1,1 @@\n" +
+		"+On-behalf-of: human:ada approved the prod flip on #12\n"
+	if stamps := stampsInDiff("", diff); len(stamps) != 0 {
+		t.Fatalf("attribution marker + trailing sign-off must yield no STAMP (the citation lane judges it): %+v", stamps)
+	}
+	// And the marker strip keeps the login: the sign-off text survives verbatim.
+	if got, want := stripOnBehalfOf("On-behalf-of: human:ada approved the prod flip on #12"), "ada approved the prod flip on #12"; got != want {
+		t.Fatalf("stripOnBehalfOf = %q, want %q (marker gone, login kept)", got, want)
+	}
+}
