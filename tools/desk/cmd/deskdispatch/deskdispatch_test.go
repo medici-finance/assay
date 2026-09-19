@@ -902,13 +902,13 @@ func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
 		t.Fatal("the claim tool was never invoked")
 	}
 
-	// The worktree and branch stay on the ORIGINAL item key (verdict-lane-05), NOT the
-	// translated claim key (assay--verdict-lane--05). The worktree DIR gains a session suffix
-	// so a foreign session's leftover canonical dir cannot dead-end the dispatch; the BRANCH
-	// stays bare — it is the deliverable's cross-session identity. (install sets
+	// The worktree stays on the ORIGINAL item key (verdict-lane-05), NOT the translated claim
+	// key (assay--verdict-lane--05). A verifier's worktree is cut DETACHED off origin/main under
+	// its own `verify-<item>` name with a session suffix (#1309 item 6) — no feature branch is
+	// named, so a delivered brief's `feat/<id>` cannot refuse the verify pass. (install sets
 	// DESK_SESSION=deskdispatch-test.)
-	if !s.ran("deskwt add verdict-lane-05-deskdispatch-test --branch feat/verdict-lane-05") {
-		t.Error("the worktree/branch were not derived from the ORIGINAL item key (session-scoped dir, bare branch)")
+	if !s.ran("deskwt add verify-verdict-lane-05-deskdispatch-test --detach --base refs/remotes/origin/main") {
+		t.Error("the verifier worktree was not derived from the ORIGINAL item key as a detached, verify-named worktree")
 	}
 
 	body, err := os.ReadFile(promptFile)
