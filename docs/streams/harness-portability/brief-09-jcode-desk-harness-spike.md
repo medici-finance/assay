@@ -84,6 +84,25 @@ jcode desk-harness capability spike. Diff = one research/design doc (prose, reve
 **RISK-VALUE: DERIVED** — freshness config literals: `max-age-days = 45` (matches sibling empirical-doc entry HP/10 at 45d; reversible), `last-reviewed = "2026-08-24"` (matches authored + HEAD commit date), `path = docs/research/jcode-desk-harness-capabilities.md` (matches the file row 1 confirms). The doc's §6 density table is vendor figures explicitly NOT asserted as findings — **RISK-VALUE: N/A** (no measured literal introduced; nothing binds). Top irreversibility = the staleness window (lowest-consequence, reversible). No irreversible literal in this diff.
 
 **VERIFY: PASS** — all 5 rows pass; the Verify table gates only doc existence/content + dereference intent (the live-measurement Tasks 1/2/6 are honestly marked `BLOCKED (needs live jcode)` per the stream's "Blocked is a state, not a failure" convention, with a live follow-up recommended). gate:model + all-risk-no → flipped `implemented → verified`.
+### Non-implementer verifier re-run — VERIFY: FAIL (de-house re-home dropped the deliverable, already tracked) — sonnet-5-verifier (verify-desk dispatch), @ merged main `5fbf75834e1d2e5a80b44524649b4030f50e80f1`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `test -f docs/research/jcode-desk-harness-capabilities.md` | exit 0 | **FAIL — exit 1**, file absent everywhere on merged main (confirmed via git history too — never added in this repo) | 2026-09-18 | sonnet-5-verifier |
+| 2 | grep absent/workaround in the capability matrix | exit 0 | **FAIL** — target file doesn't exist, grep cannot evaluate | 2026-09-18 | sonnet-5-verifier |
+| 3 | dereference: measured RAM/boot figures backed by named commands | verdicts present | **could-not-check** — no doc to dereference | 2026-09-18 | sonnet-5-verifier |
+| 4 | dereference: exec-tier probe + prose-vs-discrete split recorded | verdicts present | **could-not-check** — same reason | 2026-09-18 | sonnet-5-verifier |
+| 5 | `grep -q jcode-desk-harness-capabilities freshness.yaml` | exit 0 | **FAIL** — no match, no jcode entry in freshness.yaml on this repo | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 5 rows map 1:1 to Verify rows; no invented scope.
+
+**Finding — confirmed already tracked, not a fresh defect.** The brief's own pre-existing Evidence table (dated 2026-08-24, "opus-4.8[1m]-verifier", claiming VERIFY: PASS) is real historical evidence from the house source tree (`medici-finance/assay-toolkit`), where the deliverable genuinely existed at that time (commit `6d7efb9d2`, 2026-08-24, docs/research/jcode-desk-harness-capabilities.md, 330 lines). The re-home commit `527a938be` (2026-08-26, "re-home stream + per-harness bindings to public assay") carried only the brief markdown — including its now-stale Evidence table — into the public repo, never the actual deliverable file (docs/research/jcode-desk-harness-capabilities.md, name given plainly, not as a resolvable link) or its freshness.yaml registration. This is not fabrication by a verifier; it's a migration gap. Already tracked at medici-finance/assay#393 (OPEN), which names harness-portability/09 explicitly by number with the identical root cause and the identical row 1/2/5 failures. No new issue filed.
+
+RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo found no literal; nothing was actually introduced here to enumerate a constant from.
+
+VERIFY: FAIL — held at implemented (matches what the README already shows, and what #393 already asks: hp/09 must not advance until the deliverable is actually ported/landed in this repo). Not a stale-anchor / renamed-test situation and not fabricated evidence — a real, reproducible gap from an incomplete re-home, already tracked.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.
