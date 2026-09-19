@@ -167,6 +167,34 @@ Ran the Verify table against public medici-finance/assay merged main `553dc2ae53
 **Why FAIL — a stale probe, not a Change Failure.** Row 8's specified probe targets `plugins/assay/skills/adopt/SKILL.md` for the Cursor install scenario (this brief's `consumers` frontmatter marks it `fixed-here`, "section 2c"). That file is now a thin router that defers to `docs/adopting-assay.md`, and the adopter-facing Cursor substance DID land — a full "Running Assay on Cursor — a second first-class harness" section in `docs/adopting-assay.md` (referencing `plugins/assay/references/cursor.md`) plus the Cursor column in `docs/how-assay-works.md`. So the deliverable INTENT (an adopter can install Assay on Cursor) is satisfied; only the brief's own probe against the SKILL.md is stale after the adopt-skill was converted to a router. This is distinct from harness-portability/06's row 7, where the AGENTS-assay Codex resident-rules step is genuinely absent adopter-facing (a real content gap, #872). Folded under #870 (re-home Verify-row staleness family) with the retarget fix: point row 8 at `docs/adopting-assay.md` / confirm the router design. Brief stays at `implemented`; re-run row 8 after the retarget (or after a section-2c amendment to adopt/SKILL.md, if that placement is still intended — a spec call).
 
 **Risk-bearing value:** `RISK-VALUE: DERIVED — the fail-closed three-state exit gate (0 clean / 1 drift / 2 could-not-check) in tools/harnessgen is the top risk-bearing literal; a coverage or binding skew must hard-error, never silently pass. Re-derived live: exit 2 on the coverage mutation (row 4, naming probe-skill) and the binding-skew mutation (row 5, naming the-desk) against the built binary (exit 2 is observable only on a built binary; go run collapses 2→1); clean=0 (rows 2/7), drift=1 (row 3). Secondary DERIVED: alwaysApply: true at plugins/assay/cursor/assay.mdc line 3; live-confirm count 9 >= 5.`
+### Non-implementer verifier re-run — VERIFY: FAIL (row 8 stale spec pointer, already tracked) — sonnet-5-verifier (verify-desk dispatch), @ merged main `5fbf75834e1d2e5a80b44524649b4030f50e80f1`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Second independent verify pass (prior: 2026-09-11).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/harnessgen && go test ./...` | exit 0 | exit 0, all named TestCursor* subtests pass | 2026-09-18 | sonnet-5-verifier |
+| 2 | `harnessgen cursor --check` | exit 0 | exit 0, clean — matches resident source | 2026-09-18 | sonnet-5-verifier |
+| 3 | mutation: append line, check, regenerate, recheck | 1 then 0 | checked-failed then checked-clean, working tree clean after | 2026-09-18 | sonnet-5-verifier |
+| 4 | mutation: plant undeclared skill | exit 2 naming it | checked-failed (could-not-check) as expected | 2026-09-18 | sonnet-5-verifier |
+| 5 | mutation: strip a degradation cell | exit 2 naming it | checked-failed as expected | 2026-09-18 | sonnet-5-verifier |
+| 6 | `harnesslint bodies` + `bindings` | exit 0 | both checked-clean, 3 non-matrix skips correctly excluded | 2026-09-18 | sonnet-5-verifier |
+| 7 | `harnessgen resident --check` + `codex --check` | exit 0 | both checked-clean | 2026-09-18 | sonnet-5-verifier |
+| 8 | grep Cursor mentions + cursor/assay.mdc reference in adopt/SKILL.md | exit 0 | **FAIL** — zero cursor occurrences in the 58-line file | 2026-09-18 | sonnet-5-verifier |
+| 8a | control: grep an absent token | exit 1 | correctly absent | 2026-09-18 | sonnet-5-verifier |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc` | exit 0 | present at line 3 | 2026-09-18 | sonnet-5-verifier |
+| 10 | live-install-confirmation flag count in cursor-harness-capabilities.md | ≥5 | 9 | 2026-09-18 | sonnet-5-verifier |
+| 11 | freshness tool run, cursor entries | fresh | both entries FRESH, reviewed 2026-08-26, within 45d window | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all rows map 1:1 to Verify rows; no invented scope.
+
+**Root-cause confirmation, not re-derived from scratch.** Rows 1,2,3,6,7,11's module-aware command forms already reflect the fix from PR #878 (merged 2026-09-11, closing #870's go.mod-scoping half) — confirmed via `gh pr diff 878`. Row 8 is unchanged since the 2026-09-11 pass: `plugins/assay/skills/adopt/SKILL.md` is a thin 58-line router deferring to `docs/adopting-assay.md`, which DOES carry the real Cursor install-scenario content (confirmed at line 1232: "Running Assay on Cursor — a second first-class harness"). This exact row-8 staleness for hp/12 is named in #870's comment thread (distinct from #872, the genuine hp/06 content gap) — the row-8/consumers-frontmatter retarget was flagged but not yet executed as a brief edit. Already tracked, no new issue filed.
+
+RISK-VALUE: DERIVED — exitClean=0, exitDrift=1, exitCouldNotCheck=2 @ tools/harnessgen/main.go:22-24 — all four values re-derived live this pass (rows 3,4,5).
+RISK-VALUE: DERIVED — `alwaysApply: true` @ plugins/assay/cursor/assay.mdc:3 — confirmed present.
+RISK-VALUE: DERIVED — live-confirm flag count = 9 (≥5 threshold) @ docs/research/cursor-harness-capabilities.md — confirmed via grep.
+
+VERIFY: FAIL — held at implemented. Row 8 fails on a spec-pointer staleness (the brief's own consumers frontmatter and Verify row 8 still target adopt/SKILL.md directly rather than docs/adopting-assay.md's Cursor section, which is where the real content actually landed) — a decision call (retarget the row, or add a pointer into adopt/SKILL.md itself), already tracked at medici-finance/assay#870 (OPEN). Every other row passes clean, including the full mutation battery. No new issue filed.
 
 ## Review
 

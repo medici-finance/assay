@@ -202,6 +202,27 @@ verify pass with no change to the blocking file: escalating as a `help wanted`
 issue on this repo (the human hand-off was previously described only in PR
 bodies, never durably filed) so this stops silently recurring across verify
 passes.
+### Non-implementer verifier re-run — VERIFY: HELD (blocked-on-human workflow-file gap, already tracked) — sonnet-5-verifier (verify-desk dispatch), @ merged main `951ca784d100a7d201a28a34033da6709ec2ec8f`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `go test . -run ReadmeTable -count=1` | ok | exit 0 — ok (0.293s) | 2026-09-18 | sonnet-5-verifier |
+| 2 | `regen --readmes --offline`, diff table region vs non-table | non-table diff=0 | exit 0 — git diff empty, non-table diff-line count=0 | 2026-09-18 | sonnet-5-verifier |
+| 3 | two consecutive regen runs, porcelain count | 0 | exit 0 — porcelain=0 (idempotent) | 2026-09-18 | sonnet-5-verifier |
+| 4 | mutation: hand-edit row 01 title cell, `--lint --root ..` | rc=1, names hand-edit + derived-board | exit 1 — PROBLEM matched verbatim; file restored, tree clean after | 2026-09-18 | sonnet-5-verifier |
+| 5 | check `.github/workflows/assay-statusgen.yml` for `schedule:` trigger | ok | **FAIL** — KeyError, no schedule trigger anywhere in the file | 2026-09-18 | sonnet-5-verifier |
+| 6 | check reconcile-job permissions for `pull-requests: read`/`issues: read` | 2 | **FAIL** — 0; only `contents: read`/`write` declared | 2026-09-18 | sonnet-5-verifier |
+| 7 | `grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md` | 1 | exit 0 — 1 | 2026-09-18 | sonnet-5-verifier |
+| 8 | `go run . init --dry-run /tmp/adopter-x` names reconcile | ≥1 | exit 0 — 1 | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 8 rows map 1:1 to their Verify rows. `git log` confirms the workflow file's last relevant commit (ca2df898f) is unrelated to schedule/reconcile — the workflow-file half remains unlanded, unchanged since the 2026-09-06 and 2026-09-15 passes.
+
+RISK-VALUE: DERIVED — `[skip-status-regen]` loop-guard marker @ .github/workflows/assay-statusgen.yml:161 (matched by skip conditions @ lines 92,194; reused unchanged from statusgen/init.go:560,772) — confirmed present, matched, unchanged. Reversible string literal.
+RISK-VALUE: N/A — enumeration over readmetable.go + parse.go found no other bound/threshold/timeout; briefsMarkerBegin/End and board:generated are inert marker/opt-in strings, fail-safe by construction.
+
+VERIFY: HELD — rows 1,2,3,4,7,8 pass on shipped code. Rows 5,6 fail because the `.github/workflows/assay-statusgen.yml` schedule trigger + reconcile-job permissions are the documented BLOCKED-ON-HUMAN half (an App cannot push .github/workflows/**) — a human-activation wait, not a shipped-code defect. Already tracked at medici-finance/assay#1175 (OPEN, help wanted, 9+ days) — no new issue filed. Third consecutive non-implementer pass with the identical shape. Status stays implemented, no flip.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

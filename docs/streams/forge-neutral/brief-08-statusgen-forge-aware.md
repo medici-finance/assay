@@ -189,6 +189,31 @@ Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null
 `RISK-VALUE: N/A` — enumeration over the full diff (init.go, autoflip.go, claimdecay.go, forge.go, main.go) found no literal risk-bearing value; the change is routing/control-flow (which CI template to write, which read path/identity to corroborate against) plus one cosmetic template-placeholder string constant, not risk-bearing. The operative act is a corroboration-routing decision governed by an already-derived rule (forge-neutral/02), not a new constant.
 
 **VERIFY: PARTIAL.** Rows 1-12 pass cleanly and mechanically, including all three negative-path rows (4, 7, 9). Row 13 could not be corroborated for a reason demonstrably unrelated to this brief's own diff — a pre-existing, repo-wide brief-ID format mismatch (#954 in this repo), not evidence against this brief. Given `gate: model` and all four risk answers `no`, rows 1-12 clean with RISK-VALUE: N/A, this is close to a normal auto-flip candidate, but row 13's unresolved anomaly means this verifier does not consider it a fully clean pass without that row being resolved (#954 in this repo) or explicitly waived.
+### Non-implementer verifier re-run — VERIFY: PASS — sonnet-5-verifier (verify-desk dispatch), @ merged main `48d0e8165`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main, fast-forwarded from a 4-commits-stale branch (pure fast-forward, no local content lost). Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd statusgen && go build ./... && go test ./... -count=1` | exit 0 | exit 0, ok (28.562s) | 2026-09-18 | sonnet-5-verifier |
+| 2 | `TestInitScaffoldsGitLabCIHalf` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 3 | `TestInitScaffoldsGitHubCIHalfUnchanged` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 4 | `TestInitUnresolvedForgeWritesNoCIHalf` (negative path) | exit 0 | PASS, no default-to-GitHub | 2026-09-18 | sonnet-5-verifier |
+| 5 | `TestInitNextStepsNamesWrittenFile` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 6 | `TestAutoFlipGitLabCorroboration` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 7 | `TestAutoFlipUncorroboratedStaysVerified` (negative path) | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 8 | `TestAutoFlipReviewerLoginFromRoster` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 9 | `TestClaimDecayThreeStates` (negative path) | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 10 | `TestInitGitLabPipelineIsTwoHalves` | exit 0 | PASS | 2026-09-18 | sonnet-5-verifier |
+| 11 | `statusgen --root . --lint` | exit 0, LINT: PASS | exit 0, LINT: PASS (pre-existing NOTICEs only, unrelated) | 2026-09-18 | sonnet-5-verifier |
+| 12 | `grep -c 'gitlab' docs/adopting-assay.md` | ≥2 | 10 | 2026-09-18 | sonnet-5-verifier |
+| 13 | `statusgen --root . --consumers --brief forge-neutral/08` | exit 0 | **could-not-check** — the brief's authoring PR and implementation PR never share one diff (structural tool limitation), already tracked at medici-finance/assay#1281 (raised for forge-neutral/15). Probed two plausible --base values to confirm this is not evidence against the brief's content: one gives a false-clean (frontmatter predates that commit), the other gives 4 CORROBORATED + 1 accurate UNCHECKED + 1 false DISPROVED traced to unrelated intervening commits touching the same file for other reasons. forge-neutral/08 is a second confirmed instance of #1281, not a new defect | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 13 rows map 1:1 to Verify rows; no invented scope.
+
+RISK-VALUE: N/A — enumerated the full diff (init.go, autoflip.go, claimdecay.go, forge.go, main.go + tests): no numeric constant/threshold/timeout/ratio/limit/authority-binding introduced. The only new literals are string constants (initHostPlaceholder placeholder, a next-steps template string) and a corroboration-matching rule requiring the full head SHA as substring (never a prefix) — the latter is consumed unchanged from forge-neutral/02's already-derived rule, not a new tolerance this brief invented. The irreversible act (auto-flip advancing a row to done) is guarded structurally by the two negative-path rows (6/7), both passed clean.
+
+VERIFY: PASS — all 12 substantive rows pass cleanly on merged main with real observed output, including every negative-path control (4, 7, 9) that discriminates against this brief's actual failure modes. Row 13 is could-not-check for a documented, pre-existing, repo-wide tool limitation (#1281), independent of this brief's own diff — not a defect in the shipped code, and not one of the brief's own pre-mortem failure-mode discriminators. Flips implemented → verified.
 
 ## Review
 Gate: **model** (from frontmatter; all four risk answers are `no` — see the note in

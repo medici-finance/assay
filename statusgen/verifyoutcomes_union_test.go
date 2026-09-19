@@ -92,6 +92,70 @@ func TestVerifyOutcomesUnionMergeInEitherOrder(t *testing.T) {
 	}
 }
 
+// TestReadVerifyOutcomesUnionAcrossShards is #1338 part 2's read-side acceptance: once a
+// rotation shard exists ALONGSIDE the canonical unsharded file — the only shape a rotation can
+// take, since the forge write path refuses shrinking a file at all (the
+// write_file_shrink_refused golden) — a reader going through readVerifyOutcomesUnion sees rows
+// from BOTH files, not just the canonical one. This is the property that must hold BEFORE any
+// rotation is attempted; without it, the moment a rotation shard is created every existing
+// direct reader of docs/streams/verify-outcomes.jsonl goes silently blind to whatever rows
+// moved into the new shard.
+func TestReadVerifyOutcomesUnionAcrossShards(t *testing.T) {
+	root := t.TempDir()
+	streamsDir := filepath.Join(root, "docs", "streams")
+	if err := os.MkdirAll(streamsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	voWriteFile(t, filepath.Join(streamsDir, "verify-outcomes.jsonl"), `{"brief":"unsharded/00"}`+"\n")
+	// A dated rotation shard. "-" sorts before "." byte-wise, so a hyphenated shard name
+	// sorts BEFORE the plain unsharded file in verifyOutcomesShardPaths' lexical order.
+	voWriteFile(t, filepath.Join(streamsDir, "verify-outcomes-2026-10.jsonl"), `{"brief":"shard-2026-10/00"}`+"\n")
+	// A row missing its own trailing newline must not fuse with the next shard's first row.
+	voWriteFile(t, filepath.Join(streamsDir, "verify-outcomes-2026-11.jsonl"), `{"brief":"shard-2026-11/00"}`)
+
+	paths, err := verifyOutcomesShardPaths(root)
+	if err != nil {
+		t.Fatalf("verifyOutcomesShardPaths: %v", err)
+	}
+	if len(paths) != 3 {
+		t.Fatalf("shard paths = %v, want 3 entries", paths)
+	}
+	wantOrder := []string{"verify-outcomes-2026-10.jsonl", "verify-outcomes-2026-11.jsonl", "verify-outcomes.jsonl"}
+	for i, p := range paths {
+		if filepath.Base(p) != wantOrder[i] {
+			t.Fatalf("shard path[%d] = %s, want %s (sorted order)", i, filepath.Base(p), wantOrder[i])
+		}
+	}
+
+	union, err := readVerifyOutcomesUnion(root)
+	if err != nil {
+		t.Fatalf("readVerifyOutcomesUnion: %v", err)
+	}
+	s := string(union)
+	for _, want := range []string{"unsharded/00", "shard-2026-10/00", "shard-2026-11/00"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("row %q missing from the cross-shard union:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, `"shard-2026-11/00"}{"`) {
+		t.Fatalf("a shard missing its own trailing newline fused with the next shard's row:\n%s", s)
+	}
+}
+
+// TestReadVerifyOutcomesUnionNoShards asserts the "nothing to union yet" case is not an
+// error — an adopter tree that has never written a verify-outcomes row (or one with no
+// docs/streams directory at all) gets (nil, nil), not a failure.
+func TestReadVerifyOutcomesUnionNoShards(t *testing.T) {
+	root := t.TempDir()
+	union, err := readVerifyOutcomesUnion(root)
+	if err != nil {
+		t.Fatalf("readVerifyOutcomesUnion on an empty tree: %v", err)
+	}
+	if len(union) != 0 {
+		t.Fatalf("union = %q, want empty", union)
+	}
+}
+
 // TestRepoMarksVerifyOutcomesUnion asserts the repo's OWN .gitattributes gives the append-only
 // evidence log the union merge driver (#588), so the acceptance above applies to the real file.
 // It skips when the test tree is not a git checkout (e.g. a vendored source copy), because the
