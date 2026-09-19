@@ -6,7 +6,7 @@ import (
 	"sort"
 )
 
-// verifyoutcomes.go — the READ side of #1338 part 2 (assay-toolkit#1338): a rotation-aware
+// verifyoutcomes.go — the READ side of #1338 part 2: a rotation-aware
 // union reader for the docs/streams/verify-outcomes.jsonl append-only aggregate sidecar.
 //
 // WHY THIS EXISTS. #1338 raised deskevidence's per-file cap for verify-outcomes.jsonl itself
