@@ -300,3 +300,32 @@ func TestGhErrIsNotFound(t *testing.T) {
 		t.Error("a non-ExitError must NOT be treated as not-found")
 	}
 }
+
+// TestDetectCitations_OnBehalfOfIsAttribution pins the citation lane's half of
+// #1335: the on-behalf-of annotation / trailer is stripped before the sign-off scan,
+// a real uncited "<name> approved" is still a citation, and a mixed line yields only
+// the sign-off half. (alex is the configured name, ada its login.)
+func TestDetectCitations_OnBehalfOfIsAttribution(t *testing.T) {
+	// (1) attribution only — no citation, in either spelling.
+	for _, line := range []string{
+		"| 1 | `go test ./...` | pass exit=0 | sha256:1 | 2026-09-18 | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:ada) |",
+		"On-behalf-of: human:ada",
+	} {
+		if cits := detectCitations("docs/streams/x/brief-01.md", line); len(cits) != 0 {
+			t.Errorf("detectCitations(%q): attribution read as a sign-off claim: %+v", line, cits)
+		}
+	}
+	// (2) a real, uncited sign-off claim is still detected, unlinked.
+	cits := detectCitations("docs/runbook.md", "alex approved the prod flip")
+	if len(cits) != 1 || cits[0].HasRef {
+		t.Fatalf("uncited sign-off must still be a citation: %+v", cits)
+	}
+	if r := corroborateCitations(cits, nil, "o/r"); len(r) != 1 || r[0].Verdict != verdictMissing {
+		t.Fatalf("uncited sign-off must be MISSING-CORROBORATION: %+v", r)
+	}
+	// (3) both on one line: only the sign-off half is judged.
+	cits = detectCitations("commit abc1234", "On-behalf-of: human:ada — alex approved the prod flip on #12")
+	if len(cits) != 1 || cits[0].Name != "alex" || cits[0].Marker != "approved" || cits[0].Number != 12 {
+		t.Fatalf("mixed line: want exactly the alex/approved/#12 citation, got %+v", cits)
+	}
+}

@@ -379,6 +379,39 @@ func hasApprovalPhrase(body string) bool {
 // existing call site keeps working.
 var humanStampRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z_-])human:([0-9A-Za-z_]+)`)
 
+// onBehalfOfAnnotationRe matches the on-behalf-of ATTRIBUTION form — the Runner-cell
+// annotation `on-behalf-of human:<login>` and the commit/body trailer
+// `On-behalf-of: human:<login>` — so both corroboration lanes can strip it BEFORE
+// they look for sign-off vocabulary. It is attribution, never an acceptance / ruling /
+// sign-off claim: it records which human an App identity acted FOR, not that the
+// human approved anything, so there is nothing on the PR to corroborate and matching
+// it as a stamp only reddens every App-authored Evidence row the attribution lint
+// REQUIRES to carry it.
+//
+// TWO PRINCIPAL SPELLINGS, ON PURPOSE — do not "fix" one into the other:
+//
+//   - on-behalf-of is LOGIN-keyed (docs/on-behalf-of.md; principal.go): the token
+//     after `human:` is the GitHub login, resolved against the roster's human map
+//     VALUES (onBehalfOfPrincipalOf / attribution.go).
+//   - a human:<name> STAMP and a prose citation are NAME-keyed (this file;
+//     citationcorroborate.go): the token is the configured NAME, the human map KEY,
+//     resolved to a login by HumanLogin.
+//
+// Fed to the stamp regex, a login-keyed annotation therefore fails one of two ways —
+// as an unmapped "name" (the login is a map value, not a key) or, when a login happens
+// to equal a name, as an uncorroborated stamp on a PR nobody has approved. Neither is
+// a forgery; both are the checker reading an attribution as a sign-off. Stripping the
+// annotation is the ONLY exemption: every human:<name> outside it stays fully gated.
+var onBehalfOfAnnotationRe = regexp.MustCompile(`(?i)\bon-behalf-of:?\s+human:[0-9A-Za-z_-]+`)
+
+// stripOnBehalfOf removes every on-behalf-of annotation / trailer from s so the
+// sign-off scans that follow judge only what is left. Length-preserving is NOT
+// required: callers re-split cells from the stripped text but record the ORIGINAL
+// cell, so the pre-existing byte-identity comparison still sees the real cell.
+func stripOnBehalfOf(s string) string {
+	return onBehalfOfAnnotationRe.ReplaceAllString(s, "")
+}
+
 // looseHumanStampRe matches the same boundary-anchored "human:" prefix followed by
 // any run of non-space characters. It exists only to find the stamps humanStampRe
 // deliberately cannot parse — see confusableStampNames.
@@ -848,7 +881,16 @@ func stampsInDiff(root, diff string) []stamp {
 		if briefKey != "" {
 			cells = splitTableCells(content)
 		}
-		for _, m := range humanStampRe.FindAllStringSubmatch(content, -1) {
+		// Judge only the sign-off half of the line: the on-behalf-of ATTRIBUTION
+		// annotation is not a stamp (see onBehalfOfAnnotationRe). Cells are re-split
+		// from the stripped text ONLY to locate the stamp's column; the recorded cell
+		// is the original, so base-row byte-identity is unaffected.
+		scan := stripOnBehalfOf(content)
+		var scanCells []string
+		if briefKey != "" {
+			scanCells = splitTableCells(scan)
+		}
+		for _, m := range humanStampRe.FindAllStringSubmatch(scan, -1) {
 			name := strings.ToLower(m[1])
 			s := stamp{
 				Name: name,
@@ -861,7 +903,10 @@ func stampsInDiff(root, diff string) []stamp {
 			// Unresolved => fail closed, never exempt.
 			resolved := false
 			if briefKey != "" {
-				if idx, cell, ok := findStampCell(cells, name); ok {
+				if idx, cell, ok := findStampCell(scanCells, name); ok {
+					if idx < len(cells) {
+						cell = cells[idx]
+					}
 					// Record the branch column's header NAME (e.g. "Reviewed") when the
 					// branch table's header was seen, so the base cell can be located by
 					// name rather than by an index the migration may have shifted.
@@ -879,7 +924,7 @@ func stampsInDiff(root, diff string) []stamp {
 		// A confusable-name stamp is recorded too, under its raw name. It will
 		// fail the human-login lookup and report MISSING-CORROBORATION — loud
 		// refusal rather than the silent "no stamps — clean" it used to produce.
-		for _, name := range confusableStampNames(content) {
+		for _, name := range confusableStampNames(scan) {
 			out = append(out, stamp{
 				Name:       strings.ToLower(name),
 				File:       curFile,

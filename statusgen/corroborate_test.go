@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -794,4 +795,81 @@ func TestRepoFromOrigin(t *testing.T) {
 	// This is best-effort in unit tests (depends on the git remote).
 	// Just verify it doesn't panic and returns something or empty string.
 	_ = repoFromOrigin()
+}
+
+// ---- on-behalf-of attribution is NOT a stamp (#1335) ------------------------------
+//
+// The on-behalf-of annotation the Evidence write path stamps into an App-authored
+// Runner cell (`<app>[bot] @ <tree> (on-behalf-of human:<login>)`) is attribution,
+// not a sign-off. The stamp scan must not read it as a human:<name> stamp — it is
+// LOGIN-keyed, so it either fails the name map or, when the login equals a name,
+// demands an approval nobody was asked for. Sign-off vocabulary stays fully gated.
+
+// onBehalfOfEvidenceDiff is the live consumer shape: N App-authored Evidence rows,
+// each carrying the on-behalf-of principal the attribution lint REQUIRES.
+func onBehalfOfEvidenceDiff(rows int) string {
+	var b strings.Builder
+	b.WriteString("diff --git a/docs/streams/example/brief-01.md b/docs/streams/example/brief-01.md\n")
+	b.WriteString("--- a/docs/streams/example/brief-01.md\n+++ b/docs/streams/example/brief-01.md\n@@ -1,0 +1,12 @@\n")
+	b.WriteString("+## Evidence\n")
+	for i := 1; i <= rows; i++ {
+		fmt.Fprintf(&b, "+| %d | `go test ./...` | pass exit=0 | sha256:%012x | 2026-09-18 | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:alice) (GITHUB_ACTOR) |\n", i, i)
+	}
+	return b.String()
+}
+
+// (1) An on-behalf-of Runner cell produces no stamp — and therefore no finding.
+func TestStampsInDiff_OnBehalfOfIsNotAStamp(t *testing.T) {
+	stamps := stampsInDiff("", onBehalfOfEvidenceDiff(11))
+	if len(stamps) != 0 {
+		t.Fatalf("on-behalf-of attribution matched as a stamp: got %d stamps, want 0: %+v", len(stamps), stamps)
+	}
+	// The trailer form, in a body/commit-shaped added line, is attribution too.
+	trailer := "diff --git a/docs/notes.md b/docs/notes.md\n--- a/docs/notes.md\n+++ b/docs/notes.md\n@@ -1,0 +1,1 @@\n+On-behalf-of: human:alice\n"
+	if stamps := stampsInDiff("", trailer); len(stamps) != 0 {
+		t.Fatalf("On-behalf-of: trailer matched as a stamp: %+v", stamps)
+	}
+}
+
+// (2) A real, unmapped sign-off claim on the same shape of row is still caught —
+// the exemption is the annotation, not the vocabulary.
+func TestStampsInDiff_OnBehalfOfDoesNotShieldRealStamp(t *testing.T) {
+	diff := "diff --git a/docs/streams/example/brief-01.md b/docs/streams/example/brief-01.md\n" +
+		"--- a/docs/streams/example/brief-01.md\n+++ b/docs/streams/example/brief-01.md\n@@ -1,0 +1,1 @@\n" +
+		"+| 1 | `go test ./...` | pass exit=0 | sha256:1 | 2026-09-18 | human:zed approved |\n"
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 || stamps[0].Name != "zed" {
+		t.Fatalf("real stamp lost: got %+v, want one stamp named zed", stamps)
+	}
+	results := corroborateStamps(stamps, &ghPRData{}, "example-org/tracker", 1, nil)
+	if len(results) != 1 || results[0].Verdict != verdictMissing {
+		t.Fatalf("uncited sign-off must be MISSING-CORROBORATION: %+v", results)
+	}
+}
+
+// (3) Both forms on one line: only the sign-off half is judged. The attribution
+// names alice; the Reviewed cell stamps alex (configured, login ada). Exactly one
+// stamp — alex — comes out, located in ITS cell, and the recorded cell is the
+// original text.
+func TestStampsInDiff_MixedLineJudgesOnlySignOffHalf(t *testing.T) {
+	row := "| 01 | [Brief](brief-01.md) | 0 | S | done | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:alice) | 2026-09-18 human:alex |"
+	diff := "diff --git a/docs/streams/example/README.md b/docs/streams/example/README.md\n" +
+		"--- a/docs/streams/example/README.md\n+++ b/docs/streams/example/README.md\n@@ -1,0 +1,1 @@\n+" + row + "\n"
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 {
+		t.Fatalf("got %d stamps, want exactly the sign-off stamp: %+v", len(stamps), stamps)
+	}
+	s := stamps[0]
+	if s.Name != "alex" {
+		t.Fatalf("stamp name = %q, want alex (the on-behalf-of login alice must not be judged)", s.Name)
+	}
+	if s.Unresolved || len(s.Rows) != 1 {
+		t.Fatalf("sign-off stamp must resolve to its board row: %+v", s)
+	}
+	if got, want := s.Rows[0].Cell, "2026-09-18 human:alex"; strings.TrimSpace(got) != want {
+		t.Fatalf("recorded cell = %q, want the original Reviewed cell %q", got, want)
+	}
+	if login, _ := HumanLogin(s.Name); login != "ada" {
+		t.Fatalf("alex must still resolve to its login for corroboration, got %q", login)
+	}
 }
