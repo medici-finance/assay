@@ -233,6 +233,35 @@ Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=
 
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
+### Non-implementer verifier re-run — VERIFY: FAIL (stale Verify-row anchors, not a regression in this brief's own diff) — sonnet-5-verifier (verify-desk dispatch), @ merged main `ee79ed43e920d933e2dabd00d9b5c485ebf30f0b`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main (HEAD already at origin/main). Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Brief's implementation commit `9109b4176` (PR #373).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | pair-existence loop (4 pairs) | OK | exit 0, OK | 2026-09-18 | sonnet-5-verifier |
+| 2 | `_unix.go` build-constraint grep | OK | exit 0, OK | 2026-09-18 | sonnet-5-verifier |
+| 3 | statusgen GOOS=windows amd64+arm64 build + file | PE32/MS Windows both | exit 0, both confirmed | 2026-09-18 | sonnet-5-verifier |
+| 4 | deskpost GOOS=windows amd64+arm64 build + file | PE32/MS Windows both | exit 0, both confirmed | 2026-09-18 | sonnet-5-verifier |
+| 5 | `GOOS=windows go build ./...` (tools/desk) | 0 | RC=0 | 2026-09-18 | sonnet-5-verifier |
+| 6 | `GOOS=windows go vet ./...` both modules | 0/0 | sg=0, dt=0 | 2026-09-18 | sonnet-5-verifier |
+| 7 | host go test both modules with the #555 -skip | 0/0 | sg=0, dt=0. Note: #555's -skip is now stale (all 5 packages pass with no -skip either, since #547/#550 are ancestors of HEAD) — documentation-debt, not a Verify failure | 2026-09-18 | sonnet-5-verifier |
+| 8 | grep for bare syscall.(Flock/Kill/Stat_t/SysProcAttr{Setpgid) outside _unix.go | rc=1 (no output) | **FAIL — rc=0**, one match: a prose comment inside a _windows.go file, not real syscall use, in a file this brief never touched (added by unrelated commit 763d46ca8). Same false-positive already flagged by the 2026-09-06 pass, apparently not yet re-baselined. Stale/too-broad grep, not a regression | 2026-09-18 | sonnet-5-verifier |
+| 9 | positive control, grep with _unix.go: kept | ≥4 | 9 | 2026-09-18 | sonnet-5-verifier |
+| 10 | both rosterowner_windows.go contain NOTICE | 0 | **FAIL — rc=1**, neither file has NOTICE. Root cause: both files were superseded by later, unrelated fixes (a0152b54b #640/#641, c30ea03e7 #667) that replaced the loud-skip stub with full ACL-based enforcement — not a weakening, it exceeds this brief's own bar. Stale anchor from later superseding work, not a fresh regression | 2026-09-18 | sonnet-5-verifier |
+| 11 | windows procgroup caveat grep | 0 | exit 0 | 2026-09-18 | sonnet-5-verifier |
+| 12 | windows lock ErrLockBusy reference | 0 | exit 0 | 2026-09-18 | sonnet-5-verifier |
+| 13 | prune.go untouched, pinned base | 0 | 0 — vacuous on a post-merge run (HEAD==base by construction), same shape the 2026-09-06 pass hit | 2026-09-18 | sonnet-5-verifier |
+| 14 | no go.sum/statusgen-module diff, pinned base | 0 | 0 — vacuous, same reason | 2026-09-18 | sonnet-5-verifier |
+| 14a | x/sys still v0.46.0 | 1 | 1 | 2026-09-18 | sonnet-5-verifier |
+| 15 | `statusgen --consumers windows-port/00` | 0, every claim proved by the diff | exit 0 but vacuous (no brief files in the diff against a synced HEAD); corroborated manually against 9109b4176's own diff instead — fixed-here files present, prune.go/statusgen-module absent, matching rows 13/14 | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 15 rows map 1:1 to Verify rows; rows 13-15's vacuous-on-post-merge shape is expected, not a defect.
+
+RISK-VALUE: DERIVED — windows advisory-lock byte range (offsetLow=0, nBytesLow=1, offsetHigh=0) @ tools/desk/internal/deskkit/filelock_windows.go:29,43 — lock and unlock cover the identical range; a mismatch is the sole correctness failure mode named in this brief's own ground rules. Confirmed matching this pass. Fail-closed selection and error mapping mirror the unix side exactly, proven live by rows 7/12.
+RISK-VALUE: N/A — enumeration over the rest of the diff found no other literal the diff itself introduces; unix signal semantics moved verbatim, the 0o022 mask predates this diff.
+
+VERIFY: FAIL — held at implemented. 13/15 rows checked-clean. Rows 8 and 10 are both stale Verify-row anchors from later, unrelated commits (763d46ca8; a0152b54b/c30ea03e7) that superseded implementation details the rows literally check for — the underlying security intent is met or exceeded on current main (no real syscall leak; the windows owner-check is now full ACL enforcement, stronger than the original design). Not a regression in this brief's own diff, which passes cleanly against its own tree. Recommend re-baselining row 8's grep (exclude comment lines / already-excluded files) and either re-baselining row 10 to assert the ACL enforcement or retiring it as permanently superseded — a driver/coordinator call, not this verifier's. Not filed as a new issue this pass: this session's deskfile budget on medici-finance/assay is fully exhausted for the next ~21h (3 regular + 1 audited override already used today); recording here so it's visible for the next verify pass or another session to file.
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
