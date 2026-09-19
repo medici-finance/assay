@@ -23,6 +23,254 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.13 — 2026-09-19
+
+### Added
+- A scrubbed cell is single-occupancy, enforced by two independent layers: a private-socket tmux
+  session and an atomic-`mkdir` session lock; a second `desk` while one is live is refused (exit
+  4) naming the running pid and session.
+- Draft scoping doc `docs/streams/forge-neutral/reviewer-write-boundary.md` and briefs forge-neutral/20–25 and 28–31: where a cell keeps its dispatch claims becomes a store resolved in the desk-tool layer — a directory on the host (`file`, plain host processes) or the same store served over HTTP (`service`, anything in a container or pod) — so the reviewer role needs repository read only. The forge-ref claim store is planned for removal over one release window: release N keeps it only as what an unset `ASSAY_CLAIM_STORE` resolves to, under a boot notice; release N+1 deletes it and refuses an unset key. Authoring only — no tool behaviour changes until the spec is approved and the briefs land.
+- Every desk write verb (`deskpost`, `deskreply`, `deskpr`, `deskfile`, `deskevidence`,
+  `deskflip`) now stamps an `On-behalf-of: human:<login>` composite-identity trailer —
+  GitLab's "service account on behalf of `@human`" model, generalised to the shared-App
+  fleet — resolved exclusively from the roster's config-home file (never an environment
+  variable) and refusing (exit 5) rather than writing without one. `--dry-run` prints the
+  trailer it would have written. See `docs/on-behalf-of.md`.
+- New **`server-controls`** stream (parked, pending human scope approval): the server-side control
+  posture, reframed. It replaces the impossible ask "provision fine-grained privileges" with the
+  three primitives a forge actually offers — a uniform ruleset menu, one readable ruleset API
+  (retiring classic protection, `#1020`), and required status checks reported by a runner the
+  policed party cannot control. Ships a scoping doc, the design record `DR-server-controls`,
+  and five briefs: a uniform-ruleset audit, readable standardization, the required-check enforcement
+  pattern (with its self-attestation caveat), a credential/identity decision-dependency note
+  (`#900`/`#903`/`#942`), and a reference cross-operator anti-collusion check for the `#997` residual
+  that remains after `require_last_push_approval` already enforces author≠approver.
+- New **desktools-v2** stream (proposed — `status: parked`, citing a `**Status:** draft`
+  scoping doc): the architectural rebuild of the desk tools' forge access, on three first-class
+  principles — **custody** (explicit minted-token only, key-presence as the custody boundary,
+  the desktop made to behave like a locked container), **the read path covers statusgen across
+  the `deskread` verb boundary** (the migration stays with the sibling `forge-neutral` brief
+  that owns it; this stream brings `statusgen/**` under the ban and then holds the zero), and
+  **purpose-built queries** (typed access-pattern operations, one tuned query per backend:
+  N+1 → one consistent snapshot).
+- New `auto-triage` stream (`status: parked`, draft spec): a scoping doc + four briefs that
+  automate the RESPONSE to an all-stop CI signal — identify the culprit, file the bug, and
+  either open a fixing draft PR (mechanical) or route it (judgement), with a never-invisible
+  watchdog escalating any red no responder acted on. Authoring-only; nothing is implemented,
+  no gate is weakened, and the three autonomous-action briefs are `gate: human` pending
+  `DR-auto-triage` approval. (#1119)
+- New stream `fresh-views` (parked, pending approval): a scoping doc plus 6 `todo` briefs
+  proposing that every derived view — a dispatch plan, a board snapshot, the open-PR set, a
+  mergeability verdict, a mirrored version string, a reconciled lifecycle cell, a landed sha —
+  be treated as a pure function of `main` at a known sha, stamped with its input sha, and made
+  to refuse (not guess) when that input is stale. Authoring only; implements nothing. (#334)
+- Next-up (`eligibleBase`) and the drive frontier (`briefFrontierState`) now
+  read the evaluator's verdict for a brief-v1/v2 brief's `depends:`/`gates:`
+  decision, instead of walking `depends:` in isolation — closing a gap where a
+  brief-v2 brief fell through to the legacy whole-wave rule and its
+  `depends:`/`gates:` were never consulted at all.
+- Scoping doc plus ten briefs. Authored-only; no tool changed. Boundaries with `forge-neutral`,
+  `desktools-go-git`, and `desk-tools` are stated in the scoping doc.
+- The same stream scopes **one outbound-write check at the forge write seam**, keyed on the
+  target repository's configured visibility, with a deployment-supplied callout on the existing
+  callout plumbing — so what may be written to a forge is enforced by the tools rather than by
+  skill prose. The scoping doc tabulates which outward verb runs which check today.
+- `--lint` NOTICEs a `[eligibility-could-not-check]` line naming any brief
+  held by an unresolvable edge (an unpublished cross-repo alias, an absent
+  sibling checkout, a forge-backed target), so the gap is visible on a full
+  lint run, not only in a dispatcher's output.
+- `cellctl check` gains scrubbed-specific rows: config-home real-directory + 0700 mode, every PEM
+  regular/non-symlink/0600, the roster's `ASSAY_ALLOWED_REPOS` scoped to exactly one repo, and
+  harness login proven under the cell's own home.
+- `cellctl new --kind scrubbed`: a host-local harness cell whose launch environment is fully
+  COMPOSED (`env -i` plus an explicit allowlist) rather than inherited — nothing from the
+  launching shell reaches the harness. Its own real (never symlinked) config home, scoped to
+  exactly one repo, with its own harness login.
+- `cellctl smoke <cell>`: a one-shot, tool-free, read-only readiness probe for a scrubbed cell —
+  the harness answers `READY` or the verb names what it said instead.
+- `cellctl status <cell>`: `running <session>` / `stopped` / `stale-lock <pid>` — a read, not a
+  check.
+- `desk-supervision` stream: three new briefs (13-15, renumbered from 10-12 to clear a collision
+  with the workflow-App-landing lane that landed on main as 10-12) scoping the **worker-operations
+  vitals** delta — a self-reported `resource` block (context-%, tokens, session age,
+  subagents, model) filling the reserved `desksupervise-status-v1` `tokens` stub, a
+  budget-driven graceful recycle of a healthy-but-full worker, and a local supervisor host
+  (`cellctl` + a fleet-vitals aggregation contract) so supervision reaches non-k8s operator
+  desks.
+- `deskdispatch --kit worker-objective`: an alternative objective-plus-status-map worker
+  prompt kit, measured two-arm against the procedural `worker` kit with `tools/skillbench`
+  over a five-task fixture set (`tools/skillbench/fixtures/worker-kit/`); not the default,
+  `--kit worker` is unchanged. Report and decision: `docs/streams/desk-supervision/08-report.md`.
+- `deskpathguard check` — a PR that touches a protected verifier path (a brief's `## Verify`
+  table, `.github/workflows/**`, `.claude/guardrails/**`, `tools/skillslint/**`, a
+  `verify.d/**` scripted-rows directory, or `**/testdata/**`) alongside a non-brief,
+  non-fixture file is labelled `wrote-to-the-test` and force-gated to `gate: human` at the
+  status transition, unless the author is the desk/verifier identity, the PR carries a
+  `regen:` label, or the diff is pure authoring (brief/fixture files only). See
+  `docs/protected-paths.md`.
+- `deskpathguard rederive` — verify-desk's pre-change re-read: reports a Verify-table row
+  present only at HEAD (not at the merge-base with `origin/main`) as `author-added`, and
+  runs every other row using the merge-base's own command/expect text.
+- `docs/statusgen-lint-reach.md`: a short contract stating exactly what
+  `statusgen --lint` may reach on the network, with and without `--forge`.
+- `docs/streams/decisions/DR-workflow-app-landing.md` and a three-brief
+  `desk-supervision/10 → 11 → 12` chain proposing that a workflow change land as
+  a single workflow-only pull request the workflow App writes, replacing the
+  staged-copy hand-landing that stalls and drifts. Author-only: nothing is
+  implemented, the record is `proposed`, and the briefs are `blocked` pending a
+  human ruling.
+- `docs/streams/measured-status/`: authored the `measured-status` stream — a scoping doc, six
+  `todo` briefs, and a `DR-independence-gate` design-decision record scoping the
+  derive-not-assert and verifier-independence fixes for #1216, #1171, #1065, #862, #1116, #336.
+- `pr-review-desk` runs the check at every new head before an APPROVE verdict; `verify-desk`
+  runs the re-derivation on a labelled brief before any row.
+- `spec/workflow-pattern-v1.md`: the workflow-pattern schema — a node contract
+  (kind, role, inputs, outputs, evidence, effects, budget, outcomes), risk
+  class as a declared `risk-input`, and the integration-check `join` node —
+  plus `schemas/workflow-pattern-v1.json`, so a workflow's shape can be
+  reviewed as one versioned artifact and validated by an independent tool.
+- `spec/workflow-patterns/implementation-v1.yaml` and `research-v1.yaml`: the
+  two workflow patterns the fleet already runs, stated as reviewed pattern
+  files rather than left implicit across desk-skill procedure text.
+- `statusgen --eligibility` (`--json` for the full structure): the eligibility
+  evaluator computes, per brief, `eligible` / `held` / `eligible-with-notice`
+  from its `gates:`/`feathers:`/`depends:` declarations — three-state
+  (`satisfied` / `unsatisfied` / `could-not-check`), offline by construction.
+- `statusgen --lint --changed-only <paths>`: a local pre-push convenience, on
+  the same plumbing `--changed` already has, that demotes a pre-existing
+  defect outside a stated path set — in the DAR-sync, stream-cap,
+  stream-source, register-integrity and verify-script-diff checks — from
+  PROBLEM to NOTICE, and prints a banner naming exactly that (every check
+  still runs across the whole tree). Refuses outright, non-zero, with no
+  override, when it detects it is running inside the CI gate.
+- `statusgen --lint` flags an App-authored Evidence row whose on-behalf-of annotation
+  names a login outside the roster's human map as a hard PROBLEM, and one with no
+  annotation at all as a hard PROBLEM once dated at or after the write path's own
+  landing date (a NOTICE for a row grandfathered from before it — no write path existed
+  yet to stamp it).
+- `statusgen patterns --lint [--root DIR]`: validates every
+  `spec/workflow-patterns/*.yaml` file against the schema and five MUST rules
+  — `pattern-effect-target-not-owned` (a non-`effect`-kind node's effect
+  target must be among its own outputs), `pattern-effect-exceeds-role` (a node
+  cannot declare an effect kind its role does not hold),
+  `pattern-review-same-role` (a review node cannot share the role of whoever
+  it is reviewing), `pattern-join-not-check` (the integration check must be a
+  `check`-kind node), and `pattern-risk-input-missing-verdict` (all four
+  risk-class verdicts must be mapped). All five are registered in
+  `statusgen enforcement-status`.
+- `statusgen verifyrun`'s witness Runner cell annotates an App/bot runner with
+  `on-behalf-of human:<login>` when a principal resolves.
+- `the-desk` and `intake-desk` now state a shared carve-out: when an inbound issue is authored by the driver identity itself, its body reads as an instruction to the desk, and it names no existing work item, the coordinator (`the-desk`) acts on it directly — receipt comment, dispatch behind draft PRs, and the intake register entry filed in the same deliverable PR — instead of it routing to `intake-desk`. (#1258)
+- `tools/release/check-spec-header-version.sh`: a release-time check that
+  `spec/brief-v1.md`'s `Describes reference implementation:` version matches
+  the tag being cut — the release-time floor brief-13's Task 4 named but
+  never shipped, closing the recurring staleness class (v0.8.0-vs-v0.19.0,
+  then v0.22.0-vs-v1.0.9). Wiring it into `release.yml`'s `guard` job is
+  **staged, not yet activated** under `tools/release/` (see
+  `tools/release/README.md`) — the worker-desk App cannot push under
+  `.github/workflows/` (server-side workflows-scope block); a
+  workflows-capable identity applies `tools/release/release.yml.patch` to
+  activate it. (#1192)
+- `topology.yaml`'s `apps:` role names are now compiled into a derivation
+  (`topologyAppRoles`) bound to the source by `TestTopologyValuesMatchSource`,
+  the same derive-or-diff convention as the rest of `topologyvalues.go`.
+
+### Fixed
+- A `fixed-here` claim that is genuinely DISPROVED now names WHICH check actually failed —
+  `tree-lookup` (does the path resolve under the root?) vs `diff-lookup`/`diff-deletion-lookup`
+  (does the diff touch it, or name it as a delete/rename?) — instead of one conflated sentence
+  that left a reader unable to tell which predicate returned false. (#1077)
+- Added test coverage proving `--lint` (no `--forge`) makes no forge process
+  start against a fixture that genuinely exercises dead-claim decay's forge
+  read, and that every check reading through the run's forge reader renders
+  could-not-check offline rather than a fabricated clean result.
+- The `capability:dispatch-worker` row of `plugins/assay/references/codex.md` and the Codex
+  dispatch config step in `docs/adopting-assay.md` §3 are corrected against **codex-cli 0.154.0**:
+  the `[features] multi_agent` flag has graduated (`codex features list` reports `stable`/`true`)
+  and no longer gates the subagent tools — a child spawns with it set `false` — so the retired
+  "`multi_agent` off → dispatch unavailable" reading is replaced. The convenience-degradation
+  floor still stands as the design contract, now keyed to the reachable trigger: the `[agents]
+  max_concurrent_threads_per_session` concurrency cap. The dependent per-skill degradation rows
+  are re-worded from "if `multi_agent` is off" to "where parallel dispatch is unavailable" for
+  consistency. (#939)
+- The `statusgen-board` workflow now also runs on `changelog/**`, so a release commit that clears changelog fragments a brief still cites reddens the lint on its own commit instead of on an unrelated later PR (#722).
+- `cellctl gen_shims`: a shimmed desk verb's `gh` subprocess now authenticates. gh's ambient
+  credential (keychain on macOS, hosts.yml-adjacent elsewhere) is keyed to the REAL `HOME`, so it
+  is resolved *before* the shim swaps `HOME` to the cell home, then threaded through as `GH_TOKEN`
+  — the verb's own config/state stays isolated to the cell exactly as before. An explicit
+  `GH_TOKEN`/`GH_ENTERPRISE_TOKEN` already set by the caller is never overridden.
+- `deskpushguard`'s foreign-commit/merge-masquerade base check no longer hardcodes the remote
+  name `"origin"` when resolving the pushed branch's base (`refs/remotes/<remote>/main`) or
+  excluding a branch's own already-published commits. It now resolves the ACTUAL push-target
+  remote from the pre-push hook's own `<remote-name>` argument (falling back to `"origin"` only
+  when that argument is absent), so a worktree whose `origin` remote points at a different repo
+  than the branch actually being pushed no longer has every genuine commit on the branch
+  misreported as a "foreign commit dragged in from a sibling branch" against the wrong repo's
+  history. (#1201)
+- `docs/streams/forge-gitlab/README.md`'s Briefs table lists brief 13 (the
+  per-row degrade for `classifyPR`'s whole-sweep error returns) as `todo` even
+  though its fix, regression tests, and changelog fragment already merged to
+  `main` in #1084 — the board-honesty `already-merged-unflipped` class. This
+  PR does not hand-flip the Status cell: that table's single writer is
+  `statusgen`, never a hand-committed hunk. Neither of `statusgen`'s two write
+  paths performs the flip today — `regen --readmes` preserves lifecycle cells
+  by design rather than deriving them, and `reconcile --backfill --apply` (the
+  verb that would write one) is not wired into this repo's CI — so the row
+  stays `todo` pending that follow-up. (The PR's own title previously read
+  "flip board row to implemented" — retitled to match: no flip happens here.)
+- `newbrief`'s own row write into a `board: generated` stream's Briefs table now reuses `regen --readmes`'s exact renderer instead of a separate hand-rolled writer, so the row it writes is byte-identical to a fresh regen and never immediately trips `--lint`'s "hand edit to a generated table" — closing the only remaining gap in adding a brief-v2 stream's row (`statusgen regen --readmes` already covers the row-less-brief case).
+- `plugins/assay/references/standing-note.md` now carries the
+  `<!-- assay:harnesslint non-matrix-reference — ... -->` declaration that its harness-neutral
+  siblings `desk-shell.md` and `tick-contract.md` already carry. Without it, `tools/harnesslint`'s
+  `bindings` mode mistook the file (added 2026-09-14) for a capability-binding matrix and checked
+  it against the full closed vocabulary it was never written to satisfy, redding an independent
+  `harnesslint bindings plugins/assay/references` pass. (#1182)
+- `spec/brief-v1.md`'s header freshened from the stale `statusgen v0.22.0` to
+  the actual current release, `v1.0.12`. (#1192)
+- `statusgen --consumers`'s `fixed-here` gate no longer wrongly DISPROVES a site token written
+  with Markdown emphasis — a path wrapped in backticks or `**bold**` — around it: the wrapping
+  delimiters are now stripped before the token is resolved as a path, so a backticked entry
+  corroborates exactly like its bare equivalent. (#1077)
+- `statusgen newbrief` now DETECTS a target stream's brief schema off its existing briefs and, for a brief-v2 stream, emits `schema: brief-v2`, the hierarchical `<cell>:<repo-alias>:<stream>:<NN>` `brief:` id (resolved from `docs/streams/graph-repos.yaml`, the same registry `--lint` validates against), and derives the wave from the stream's OWN existing waves rather than a hardcoded 0 — several live streams (forge-neutral, desk-tools, …) start their first wave at 1, not 0.
+- `tools/ci-load/activation/ci.yml`, `assay-statusgen.yml`, and `evidence-automerge.yml`
+  refreshed against current `.github/workflows/` so the staged trigger/concurrency edit no
+  longer silently reverts three independent fixes already landed on `main` (the `tools/desk`
+  `go test ./...` leg, `fetch-depth: 0` on the statusgen lint checkout, and the
+  evidence-automerge script-based refusal decision + default-branch checkout). `ci-load.diff`
+  regenerated to match. (#1187)
+
+### Changed
+- **Behavior change, not just a new field:** a `brief-v2` todo brief stops
+  being whole-wave gated. Previously every lower-wave sibling in the same
+  stream had to be `done`/`verified` before a v2 brief was eligible; now a v2
+  brief is gated by the evaluator's verdict on its own `depends:`/`gates:`
+  alone, so an unfinished wave-0 sibling no longer holds it. This is a
+  loosening on any brief-v2 tree with unsatisfied whole-wave gating but
+  satisfied `depends:` — on this repo's own board it admits two previously
+  held briefs (`apps-installer/02`, `desk-supervision/08`) to Next-up.
+- Draft scoping doc `docs/streams/forge-neutral/reviewer-write-boundary.md` and its briefs amended for three rulings of 2026-09-17. A host process that points the `file` claim store at a network filesystem gets a notice on every boot — whether the filesystem is identified or its type cannot be determined — and is never refused on that ground; the single-host declaration remains the refusing guard (brief forge-neutral/23). Brief forge-neutral/30 becomes the release-N cutover only, and the release-N+1 deletion of the forge-ref claim store becomes its own human-gated brief, forge-neutral/32. The claim serve mode stands alone, with a six-verb contract specified independently of its transport and one conformance row proving it (brief forge-neutral/24). Authoring only — no tool behaviour changes.
+- Every write verb that appends the on-behalf-of trailer (`AppendOnBehalfOf`) now strips
+  any On-behalf-of line the caller-supplied body already contains, wherever it sits,
+  before appending its own — a caller can no longer plant or shadow the annotation.
+- The `gates:`/`feathers:` "(reserved, not gating)" `--lint` NOTICE is
+  retired: those fields are executed as of this change, so restating
+  "reserved" would be false.
+- `LoadHistory` (the `docs/streams/.history.jsonl` reader) is memoised on
+  `(path, mtime, size)`, the same shape the brief-file parse memo already
+  uses — one `--lint` previously re-read and re-decoded the same history log
+  from multiple call sites in a single run.
+- `deskpr edit`'s noop compare now strips a prior on-behalf-of trailer from the PR's live
+  body before comparing against the caller's replacement, so a trailer-only delta still
+  noops instead of re-posting.
+- `docs/codex-smoke-protocol.md` **Step 5** is re-baselined from the now-unreachable
+  `multi_agent`-off precondition to forcing `max_concurrent_threads_per_session = 1`, per the
+  2026-09-17 human ruling on `#939`. It asserts the serial-dispatch floor observably: the fan-out
+  degrades to serial (non-overlapping child lifetimes) with every item completed and every
+  guarantee — isolation, evidence, review — intact, and carries a re-open condition for when a
+  future CLI re-gates dispatch. (#939)
+- `docs/lifecycle.md` §Review gates names which `implementation-v1` pattern
+  node each existing review gate is.
+
 ## v1.0.12 — 2026-09-17
 
 ### Added
