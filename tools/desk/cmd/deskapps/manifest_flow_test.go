@@ -148,10 +148,13 @@ func TestManifestAppSpecKeyedByName(t *testing.T) {
 }
 
 // TestBuildManifestJSONFromManifest — the manifest-derived AppSpec's fields (url,
-// description, public, default_events, hook_attributes) reach the built GitHub Manifest
-// JSON, and the tool's OWN redirect_url — never one from the file — is what is sent, the
-// exact machinery the --tier path already uses (manifest_test.go's TestBuildManifestJSON is
-// the tier-path sibling of this test).
+// description, public, default_events) reach the built GitHub Manifest JSON, and the
+// tool's OWN redirect_url — never one from the file — is what is sent, the exact machinery
+// the --tier path already uses (manifest_test.go's TestBuildManifestJSON is the tier-path
+// sibling of this test). A manifest that names hook_attributes.active with no url (the only
+// shape LoadManifestFile allows — it refuses hook_attributes.url outright) posts NO
+// hook_attributes key at all (assay#1260): see
+// TestBuildManifestJSONOmitsHookAttributesManifestPath for the dedicated pin.
 func TestBuildManifestJSONFromManifest(t *testing.T) {
 	p := writeManifestFile(t, `{
 		"name": "assay-leaksweep-app",
@@ -197,18 +200,17 @@ func TestBuildManifestJSONFromManifest(t *testing.T) {
 	if !ok || len(events) != 1 || events[0] != "pull_request" {
 		t.Fatalf("default_events = %v", got["default_events"])
 	}
-	hook, ok := got["hook_attributes"].(map[string]any)
-	if !ok || hook["active"] != true {
-		t.Fatalf("hook_attributes = %v", got["hook_attributes"])
-	}
-	if _, ok := hook["url"]; ok {
-		t.Fatalf("hook_attributes carries a url — must never be set by this flow: %v", hook)
+	// assay#1260: hook_attributes named active:true but no url — the only shape reachable
+	// through this flow — must NOT reach the posted JSON at all (GitHub rejects a url-less
+	// hook_attributes regardless of active's value).
+	if _, ok := got["hook_attributes"]; ok {
+		t.Fatalf("hook_attributes = %v, want the key absent entirely (assay#1260)", got["hook_attributes"])
 	}
 }
 
 // TestBuildManifestJSONFromManifestDefaultsHookActiveFalse — a manifest that does not name
-// hook_attributes.active at all still gets the tier path's original active:false default,
-// not an absent/undefined field.
+// hook_attributes at all also gets no hook_attributes key in the posted JSON (assay#1260) —
+// never an absent-url {"active": false} that GitHub's schema rejects.
 func TestBuildManifestJSONFromManifestDefaultsHookActiveFalse(t *testing.T) {
 	p := writeManifestFile(t, `{"name": "assay-leaksweep-app", "url": "https://github.com/medici-finance/assay"}`)
 	m, err := LoadManifestFile(p)
@@ -224,9 +226,41 @@ func TestBuildManifestJSONFromManifestDefaultsHookActiveFalse(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	hook, ok := got["hook_attributes"].(map[string]any)
-	if !ok || hook["active"] != false {
-		t.Fatalf("hook_attributes = %v, want active:false default", got["hook_attributes"])
+	if _, ok := got["hook_attributes"]; ok {
+		t.Fatalf("hook_attributes = %v, want the key absent (assay#1260)", got["hook_attributes"])
+	}
+}
+
+// TestBuildManifestJSONOmitsHookAttributesManifestPath pins medici-finance/assay#1260 for
+// the --manifest path specifically: a manifest file that names hook_attributes.active:false
+// and no url (the exact shape Ian's report reproduced — GitHub's new-App page replied
+// `"url" wasn't supplied`) must post NO "hook_attributes" key at all in the raw JSON, not
+// {"active": false}. Before the fix this test fails: the raw JSON contains
+// `"hook_attributes":{"active":false}`.
+func TestBuildManifestJSONOmitsHookAttributesManifestPath(t *testing.T) {
+	p := writeManifestFile(t, `{
+		"name": "assay-worker-app",
+		"url": "https://github.com/medici-finance/assay",
+		"hook_attributes": {"active": false}
+	}`)
+	m, err := LoadManifestFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := ManifestAppSpec(m)
+	raw, err := BuildManifestJSON(spec, "http://127.0.0.1:41873/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "hook_attributes") {
+		t.Fatalf("raw manifest JSON must not mention hook_attributes at all: %s", raw)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["hook_attributes"]; ok {
+		t.Fatalf("decoded manifest carries hook_attributes = %v, want the key absent", got["hook_attributes"])
 	}
 }
 
