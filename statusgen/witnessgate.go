@@ -52,7 +52,10 @@ import (
 )
 
 // witnessGateChecks reports briefs whose `verified`/`done` cell is contradicted
-// by a failing execution witness in their own Evidence.
+// by a failing execution witness in their own Evidence, OR — for a closure THIS
+// branch made — whose Evidence carries no witness table at all. A closure with
+// zero witnesses used to reach only witnessNotices' rolled-up, per-stream
+// NOTICE, which is the same self-report the witness exists to replace.
 func witnessGateChecks(root string, streams []*Stream) (problems, notices []string) {
 	grandfathered, baseOK := closedAtBase(root, streams)
 	degraded := false
@@ -69,23 +72,41 @@ func witnessGateChecks(root string, streams []*Stream) (problems, notices []stri
 			if len(briefVerifyRows(art.Verify)) == 0 {
 				continue // no Verify table: verifySectionProblems' business
 			}
+			id := s.Name + "/brief-" + br.Num
 			failed := failedWitnessRows(checkWitnesses(art.Verify, art.Evidence))
-			if len(failed) == 0 {
+			if len(failed) > 0 {
+				if !baseOK || grandfathered[s.Name+"/"+br.Num] {
+					if !baseOK {
+						degraded = true
+					}
+					notices = append(notices, fmt.Sprintf(
+						"%s: %s over Verify row(s) %s whose EXECUTION WITNESS records a failure — pre-existing closure, grandfathered to a NOTICE. The cell is derived from the witness: it reads `implemented` until the row passes again, and the re-baseline belongs in the PR that turned it red (brief-rule 31)",
+						id, br.Status, strings.Join(failed, ", ")))
+					continue
+				}
+				problems = append(problems, fmt.Sprintf(
+					"%s: cannot close as %s — the brief's own Evidence carries an EXECUTION WITNESS recording a FAILURE for Verify row(s) %s, so the cell contradicts the record it rests on. Either fix the work and re-run `statusgen verifyrun --brief %s` (runs APPEND; the red run stays), or set the Status cell to `implemented` — `verified` is derived from the witness, not asserted (brief-rule 30)",
+					id, br.Status, strings.Join(failed, ", "), relDisplayPath(s.Root, art.Path)))
 				continue
 			}
-			id := s.Name + "/brief-" + br.Num
+			if hasAnyWitness(art.Evidence) {
+				continue
+			}
+			// Total absence — no witness row anywhere in Evidence for this
+			// brief's Verify rows. A brief closed before the witness mechanism
+			// existed (or before this pin) keeps its established per-stream
+			// rollup (witnessNotices); only a closure THIS branch made is a
+			// hard PROBLEM — the same post-base scoping the contradiction case
+			// above already uses, reused rather than a second predicate.
 			if !baseOK || grandfathered[s.Name+"/"+br.Num] {
 				if !baseOK {
 					degraded = true
 				}
-				notices = append(notices, fmt.Sprintf(
-					"%s: %s over Verify row(s) %s whose EXECUTION WITNESS records a failure — pre-existing closure, grandfathered to a NOTICE. The cell is derived from the witness: it reads `implemented` until the row passes again, and the re-baseline belongs in the PR that turned it red (brief-rule 31)",
-					id, br.Status, strings.Join(failed, ", ")))
 				continue
 			}
 			problems = append(problems, fmt.Sprintf(
-				"%s: cannot close as %s — the brief's own Evidence carries an EXECUTION WITNESS recording a FAILURE for Verify row(s) %s, so the cell contradicts the record it rests on. Either fix the work and re-run `statusgen verifyrun --brief %s` (runs APPEND; the red run stays), or set the Status cell to `implemented` — `verified` is derived from the witness, not asserted (brief-rule 30)",
-				id, br.Status, strings.Join(failed, ", "), relDisplayPath(s.Root, art.Path)))
+				"%s: cannot close as %s — the brief's own Evidence carries NO EXECUTION WITNESS table for its Verify rows, so the cell asserts a claim nothing records as having run. Run `statusgen verifyrun --brief %s` and commit the witness, or set the Status cell back to `implemented` — `verified` is derived from the witness, not asserted (brief-rule 30)",
+				id, br.Status, relDisplayPath(s.Root, art.Path)))
 		}
 	}
 	if degraded {
@@ -94,6 +115,21 @@ func witnessGateChecks(root string, streams []*Stream) (problems, notices []stri
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices
+}
+
+// hasAnyWitness reports whether Evidence carries a witness row for ANY Verify
+// row — used to distinguish total absence (no witness table for this brief at
+// all) from partial coverage, which witnessNotices already reports per row,
+// rolled up per stream.
+func hasAnyWitness(evidenceSection string) bool {
+	for _, rows := range parseEvidenceRows(evidenceSection) {
+		for _, er := range rows {
+			if isWitnessRow(er.Text) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // failedWitnessRows lists the row IDs whose audit verdict is `fail`, rendered

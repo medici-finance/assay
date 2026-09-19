@@ -184,6 +184,13 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
+- **Run `statusgen verifyrun`, then commit the witness with the Evidence.** `statusgen verifyrun
+  --brief <path>` is what turns "the row was run" from prose into an execution witness — command,
+  exit code, output hash, date, runner — appended to the brief's own `## Evidence` table. Run it
+  before writing Evidence by hand, land its output IN the same commit as the Evidence row it
+  backs, and never write a `verified`/`done` closure with no witness table behind it: since this
+  pin a closure THIS branch makes with none is a hard PROBLEM at `--lint`, not merely the
+  pre-existing per-stream NOTICE (`witnessGateChecks`, `statusgen/witnessgate.go`).
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
   copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the

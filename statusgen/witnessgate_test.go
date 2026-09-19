@@ -139,17 +139,68 @@ func TestWitnessGateSilentOnAPassingWitness(t *testing.T) {
 }
 
 // THE MEASURED BLAST RADIUS, as a test. On 2026-08-13, 319 of 320 brief files
-// carried no witness at all. If absence were folded into this check it would
-// fire on essentially the whole corpus; witnessNotices owns that state, rolled
-// up per stream. This test is what stops a later edit from quietly widening the
-// check into the inherited backlog.
-func TestWitnessGateIgnoresAMissingWitness(t *testing.T) {
+// carried no witness at all — every one of them a PRE-EXISTING closure. If
+// absence were folded into this check with no post-base scoping it would fire
+// on essentially the whole corpus. Scoped to a closure THIS branch made
+// (empty grandfathered set), it fires on exactly one — the same scoping the
+// contradiction case above already uses.
+func TestWitnessGateBlocksAClosureThisBranchMadeWithNoWitnessTable(t *testing.T) {
 	withBaseClosures(t, map[string]bool{}, true)
 	streams := witnessGateFixture(t, "verified", "No witness table here — just prose.")
 
 	problems, notices := witnessGateChecks("/repo", streams)
+	if len(problems) != 1 {
+		t.Fatalf("got %d problems, want 1: %v", len(problems), problems)
+	}
+	for _, want := range []string{"wg/brief-01", "cannot close as verified", "NO EXECUTION WITNESS table", "brief-rule 30"} {
+		if !strings.Contains(problems[0], want) {
+			t.Errorf("problem does not mention %q: %s", want, problems[0])
+		}
+	}
+	if len(notices) != 0 {
+		t.Errorf("a blocked closure must not also notice: %v", notices)
+	}
+}
+
+// The pre-existing half of the same shape: a closure already at the
+// merge-base with no witness table stays OUT of this check — that absence is
+// witnessNotices' rolled-up, per-stream business, unchanged by this brief.
+func TestWitnessGateIgnoresAPreExistingMissingWitness(t *testing.T) {
+	withBaseClosures(t, map[string]bool{"wg/01": true}, true)
+	streams := witnessGateFixture(t, "verified", "No witness table here — just prose.")
+
+	problems, notices := witnessGateChecks("/repo", streams)
 	if len(problems) != 0 || len(notices) != 0 {
-		t.Fatalf("absence is witnessNotices' business: problems=%v notices=%v", problems, notices)
+		t.Fatalf("pre-existing absence is witnessNotices' business: problems=%v notices=%v", problems, notices)
+	}
+}
+
+// An unresolvable base must degrade the absence case exactly as it degrades
+// the contradiction case — no PROBLEM, and the run says it is degraded.
+func TestWitnessGateDegradesTheAbsenceCaseWhenTheBaseIsUnresolvable(t *testing.T) {
+	withBaseClosures(t, nil, false)
+	streams := witnessGateFixture(t, "verified", "No witness table here — just prose.")
+
+	problems, notices := witnessGateChecks("/repo", streams)
+	if len(problems) != 0 {
+		t.Fatalf("an unresolvable base must not produce PROBLEMs: %v", problems)
+	}
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "degraded") {
+		t.Errorf("a degraded run must announce itself: %v", notices)
+	}
+}
+
+// Partial coverage — at least one row witnessed, at least one not, no
+// failures — is NOT "no witness table": that shape stays witnessNotices'
+// per-row, per-stream business, same as before this brief.
+func TestWitnessGateIgnoresPartialCoverageWithNoFailure(t *testing.T) {
+	withBaseClosures(t, map[string]bool{}, true)
+	streams := witnessGateFixture(t, "verified", witnessTableFor(witnessRowOnePass))
+
+	problems, notices := witnessGateChecks("/repo", streams)
+	if len(problems) != 0 || len(notices) != 0 {
+		t.Fatalf("partial coverage with no failure is witnessNotices' business: problems=%v notices=%v", problems, notices)
 	}
 }
 
