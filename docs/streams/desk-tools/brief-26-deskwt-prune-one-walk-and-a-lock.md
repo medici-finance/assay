@@ -497,6 +497,43 @@ Pre-mortem → detection map:
 | # | Exit | Key observed output |
 |---|------|---------------------|
 | — | — | not yet run — this brief is authored, not implemented |
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PARTIAL** — HELD at `implemented`
+
+Runner ≠ implementer. Brief's own Evidence section was never filled in despite `implemented` status — nothing self-reported to void. Deliverable squash-merge `b02ea2b35` (PR #1064) confirmed an ancestor of `origin/main` `e5f2b89dbab1e4be255fe15ca73ba00dc8764995`.
+
+Methodology note: an initial concurrent-execution mistake (running the row-11 mutation harness in the background while running other rows in the foreground against the same mutable worktree) produced 3 spurious transient FAILs; re-run sequentially after the harness finished (tree confirmed clean) and got consistent, reproducible results below.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go vet ./...` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 2 | `TestPruneRemovalSetUnchanged` | exit 0, removal set identical | exit 0 — literal expected set `{mergedClean}` asserted, only that path removed | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestPruneHoldsAll*` | exit 0, fail-closed | exit 0 both subtests — 0 removed, could-not-check/unverifiable correctly reported | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestMergeGateBeforeStatus` | exit 0 | exit 0 — `Status()` called 0 times for the merge-held candidate, 1 for the merged one | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestPruneSkips*` | exit 0, positive+negative controls | exit 0 both | 2026-09-17 | sonnet-5-verifier |
+| 6 | `TestPruneDryRunIsReadOnly` | exit 0, byte-identical tree | exit 0 — hash before/after equal, lock not retired, both findings still reported | 2026-09-17 | sonnet-5-verifier |
+| 7 | `TestPruneBatch*` | exit 0 | exit 0 both subtests | 2026-09-17 | sonnet-5-verifier |
+| 8 | `TestRemove*` | exit 0 | exit 0, all 7 subtests | 2026-09-17 | sonnet-5-verifier |
+| 9 | `TestOpenWithShares`/`TestOpenStillBuilds` | exit 0 | exit 0 both — the literal un-anchored patterns `-run '^TestOpenWithShares'`/`-run '^TestOpenStillBuilds'` (no trailing `$` in the table) prefix-match `TestOpenWithSharesCache`/`TestOpenStillBuildsItsOwnCache` and genuinely PASS AS WRITTEN (corrected 2026-09-18 — see correction note below) | 2026-09-17 | sonnet-5-verifier |
+| 10 | `TestPruneSingleton*` | exit 0, (a)-(e) | exit 0 — 5 subtests (held/recent/ttl-zero/4 bad-stamp shapes/missing-stamp) | 2026-09-17 | sonnet-5-verifier |
+| 11 | `muhar -spec prune-mutations.json` | baseline GREEN, all mutations CAUGHT | exit 0 — **10/10 caught** (1 control + 9 mutations incl. ancestor-set inversion, dry-run-reaches-real-prune, TTL fail-closed, lock fail-open) | 2026-09-17 | sonnet-5-verifier |
+| 12 | `TestPruneInterval*` | exit 0 | exit 0, 3 subtests | 2026-09-17 | sonnet-5-verifier |
+| 13 | `DESKWT_PERF_N=50` scaling test | exit 0, walk==1 | exit 0 — N=50, sweep=444ms, walks=1 | 2026-09-17 | sonnet-5-verifier |
+| 14 | N=200/600 scaling | exit 0, N=600 <30s walk==1 | exit 0 both — N=600 sweep=2.12s, well under budget | 2026-09-17 | sonnet-5-verifier |
+| 15 | `TestConcurrentPrunes` | exit 0 | exit 0 — the literal un-anchored pattern `-run '^TestConcurrentPrunes'` prefix-matches `TestConcurrentPrunesCostOne` and genuinely PASSes AS WRITTEN, ratio 1.37x < 1.5x gate (corrected 2026-09-18 — see correction note below) | 2026-09-17 | sonnet-5-verifier |
+| 16 | benchmark | exit 0, exists | exit 0 — 10.63ms/candidate | 2026-09-17 | sonnet-5-verifier |
+| 16b | `TestLegacyPerCandidate` | exit 0 | exit 0 — the literal un-anchored pattern `-run '^TestLegacyPerCandidate'` prefix-matches `TestLegacyPerCandidateWalkCost` and genuinely PASSes AS WRITTEN, legacy 334.99ms/candidate vs whole-sweep 381ms (corrected 2026-09-18 — see correction note below) | 2026-09-17 | sonnet-5-verifier |
+| 17 | full package test | exit 0 | exit 0 on clean sequential re-run (both packages) | 2026-09-17 | sonnet-5-verifier |
+| 18 | `gofmt -l` | exit 0 | exit 0, empty | 2026-09-17 | sonnet-5-verifier |
+| 19 | `statusgen --lint` | exit 0 | exit 0, LINT: PASS | 2026-09-17 | sonnet-5-verifier |
+| 20 | `statusgen --consumers` via `go run` | exit 0 or 2 could-not-check | substance correct (genuine COULD-NOT-CHECK reported), but the literal `echo $?` shows 1 not 2 — `go run` never propagates a wrapped program's real exit code (independently verified with a trivial `os.Exit(2)` test program); a pre-existing Go-tooling property, not a desk-tools defect, but the row's literal assertion is unreachable via `go run` as written | 2026-09-17 | sonnet-5-verifier |
+
+**Correction (2026-09-18, per pr-review-desk request-changes on PR #1300):** the text originally here (and at rows 9, 15, 16b and the closing VERIFY line below) claimed the Verify table's `-run` anchors for rows 9, 15, 16b were `-run '^TestX$'`, matched no test in the shipped code, and silently false-passed via "no tests to run" / exit 0. Both halves of that claim were wrong: the table's actual patterns carry no trailing `$`, and Go's `-run` match is an unanchored-at-the-end regex, so the un-`$`-terminated `^TestOpenWithShares`/`^TestOpenStillBuilds`/`^TestConcurrentPrunes`/`^TestLegacyPerCandidate` prefixes directly match `TestOpenWithSharesCache`, `TestOpenStillBuildsItsOwnCache`, `TestConcurrentPrunesCostOne`, and `TestLegacyPerCandidateWalkCost` respectively. Independently reran all four literal commands against this PR's head and confirmed each runs and passes exactly as written. There is no Verify-table defect in rows 9, 15, or 16b, and no fixing-PR is needed against them.
+
+**RISK-VALUE: DERIVED** — the ancestor-set correctness (`mainAncestors` from `refs/remotes/origin/main`, per issue #885's disambiguation) is the SPOF this brief names; independently verified via row 2 (real removal-set equality), row 3 (fail-closed on missing ref), and row 11's control mutation (ancestor-set inversion caught). `defaultSingletonTTL=10min` (`prunesingleton.go:57`) — any malformed/missing/future stamp treated as "no stamp" (fail-open to a delayed sweep, never data loss), confirmed by row 10(d) and row 11's TTL-fail-closed mutation. Lock file mode `0600`/dir `0700` — cosmetic, state lives outside the target repo. The tip-guard/ancestor-set independence design (a documented "DO NOT hoist" comment against correlated-failure of two gates) confirmed present exactly as described.
+
+**Invented-scope note (benign):** `lockreclaim.go` modified but not in the brief's `files:` list — legitimate, required for deliverable F6 (dry-run must not retire locks), not scope creep, just a bookkeeping omission. Two test files shipped as new rather than edits to existing ones (functionally equivalent). `deskwt_test.go` helper signatures generalized to `testing.TB` (benign, needed for benchmark reuse).
+
+**VERIFY: PARTIAL** — all safety-critical rows (2,3,4,6,7,10,11,12,17) — the ones guarding the worst-case failure mode of a wrong prune/reclaim rule deleting live work — pass genuinely and rigorously, including a 10/10 mutation-catch rate. Rows 9, 15, 16b genuinely PASS as literally written (the earlier "false-pass" claim was wrong — retracted; see correction above) and carry no Verify-table defect. Row 20's exit-code assertion remains unreachable via `go run` (a pre-existing Go-tooling property, not a desk-tools defect) — that is the sole remaining open note. The implementation is sound. Held at `implemented` pending a verify-desk re-adjudication of the overall verdict in light of this correction.
 
 ## Review
 
