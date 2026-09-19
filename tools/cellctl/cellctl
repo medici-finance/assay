@@ -154,6 +154,15 @@
 # (TIER_MODEL_<TIER>_<HARNESS>, e.g. TIER_MODEL_TOP_CODEX) — the same one-key-one-value override shape
 # DESK_MODEL_<role> and CELL_PROVIDER_<NAME>_* already use elsewhere in this file.
 #
+# PROVIDERS (#1303). `--provider <name>` / CELL_PROVIDER switches the claude harness to an
+# Anthropic-compatible endpoint: CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} in cell.env, with
+# built-in presets `kimi` (https://api.kimi.com/coding, $KIMI_API_KEY, k3[1m]) and `glm`
+# (https://api.z.ai/api/anthropic, $ZAI_API_KEY, glm-5.3[1m]) that need no cell.env line — a line
+# overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
+# cellctl never stores, prints or persists a token value. With a provider the launch unsets
+# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL
+# (provider_preset / resolve_provider / cmd_desk's claude arm below; docs/cellctl.md Providers).
+#
 # `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
 # pin for one run without touching cell.env, PASSED THROUGH VERBATIM to the selected harness — it is
 # never remapped through the namespace/tier resolution above, whichever harness is active. `cellctl set`
@@ -616,11 +625,40 @@ provider_var(){ printf 'CELL_PROVIDER_%s_%s' "$(printf '%s' "$1" | tr '[:lower:]
 # credential switched, which is what this does. The TOKEN VALUE is never stored in cell.env — only
 # the name of an env var the OPERATOR's shell is expected to already carry (CELL_PROVIDER_<NAME>_TOKEN_ENV),
 # so a leaked cell.env (or a public-repo mistake committing one) never leaks a credential itself.
+#
+# Built-in PRESETS (#1303): `kimi` and `glm` resolve without any CELL_PROVIDER_<NAME>_* line —
+# an Anthropic-compatible endpoint each, the NAME of the env var the operator exports for it, and
+# a default model. Any CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} line in cell.env (or the
+# environment) overrides the matching preset value; a name with no preset still needs its own
+# lines exactly as before. Presets carry no credential of any kind — only the env var's NAME.
+provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL> → the compiled default, or nothing
+  case "$1:$2" in
+    kimi:BASE_URL)  printf '%s' 'https://api.kimi.com/coding' ;;
+    kimi:TOKEN_ENV) printf '%s' 'KIMI_API_KEY' ;;
+    kimi:MODEL)     printf '%s' 'k3[1m]' ;;
+    glm:BASE_URL)   printf '%s' 'https://api.z.ai/api/anthropic' ;;
+    glm:TOKEN_ENV)  printf '%s' 'ZAI_API_KEY' ;;
+    glm:MODEL)      printf '%s' 'glm-5.3[1m]' ;;
+  esac
+  return 0
+}
+# provider_value <name> <suffix>: sets PROVIDER_VALUE to the EFFECTIVE value (cell.env/env line,
+# else the preset, else empty) and PROVIDER_VALUE_SRC to where it came from (`cell.env`, `preset`,
+# `unset`). Globals rather than stdout, so the source survives — a `$(...)` would lose it.
+provider_value(){
+  local name="$1" suffix="$2" var
+  var="$(provider_var "$name" "$suffix")"; PROVIDER_VALUE="${!var:-}"
+  if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="cell.env"; return 0; fi
+  PROVIDER_VALUE="$(provider_preset "$name" "$suffix")"
+  if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="preset"; return 0; fi
+  PROVIDER_VALUE_SRC="unset"; return 0
+}
 resolve_provider(){
   local name="$1" base_var token_var
   base_var="$(provider_var "$name" BASE_URL)"; token_var="$(provider_var "$name" TOKEN_ENV)"
-  PROVIDER_BASE_URL="${!base_var:-}"
-  PROVIDER_TOKEN_ENV="${!token_var:-}"
+  provider_value "$name" BASE_URL;  PROVIDER_BASE_URL="$PROVIDER_VALUE"
+  provider_value "$name" TOKEN_ENV; PROVIDER_TOKEN_ENV="$PROVIDER_VALUE"
+  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"
   [[ -n "$PROVIDER_BASE_URL" ]] || die "cell.env: $base_var is not set — declare it for provider '$name' (e.g. $base_var=https://api.$name.example)"
   local upname; upname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
   [[ -n "$PROVIDER_TOKEN_ENV" ]] || die "cell.env: $token_var is not set — declare it for provider '$name' as the NAME of an env var carrying the token (never the token itself), e.g. $token_var=${upname}_API_KEY"
@@ -630,7 +668,7 @@ resolve_provider(){
 
 # ---------------------------------------------------------------- cellctl set
 # The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>,
-# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV}
+# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL}
 # families (a typo'd role/tier/provider name is refused rather than silently scaffolding a variable
 # nothing ever reads).
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
@@ -657,7 +695,7 @@ known_cell_env_key(){
       r="${k#CODEX_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
-    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV) return 0 ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL) return 0 ;;
   esac
   return 1
 }
@@ -833,7 +871,7 @@ cmd_set(){
     # written, and a kind change is subject to validate_kind_change like any CELL_KIND=… pair.
     --kind) kind="${2:?--kind needs a value (${KIND_VALUES// /|})}"; shift 2;;
     --cockpit) cockpit="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
-    --provider) provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
+    --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --*) die "set: unknown flag $1";;
     *=*) kvs+=("$1"); shift;;
     the-desk|worker-desk|pr-review-desk|verify-desk|intake-desk)
@@ -972,7 +1010,18 @@ cmd_show(){
   local harness="${harness_flag:-$CELL_HARNESS}"
   show_line CELL_HARNESS "$harness_flag" "$harness"
   local provider="${provider_flag:-${CELL_PROVIDER:-}}"
-  if [[ -n "$provider" ]]; then show_line CELL_PROVIDER "$provider_flag" "$provider"
+  if [[ -n "$provider" ]]; then
+    show_line CELL_PROVIDER "$provider_flag" "$provider"
+    # The provider's effective endpoint, token env NAME (+ set/unset — never its value) and model,
+    # each tagged cell.env / preset / unset.
+    local pb pt pm pbs pts pms tokstate
+    provider_value "$provider" BASE_URL;  pb="$PROVIDER_VALUE"; pbs="$PROVIDER_VALUE_SRC"
+    provider_value "$provider" TOKEN_ENV; pt="$PROVIDER_VALUE"; pts="$PROVIDER_VALUE_SRC"
+    provider_value "$provider" MODEL;     pm="$PROVIDER_VALUE"; pms="$PROVIDER_VALUE_SRC"
+    tokstate="unset"; [[ -n "$pt" && -n "${!pt:-}" ]] && tokstate="set"
+    printf '[show] provider %s base_url=%s (%s)\n' "$provider" "${pb:-<unset>}" "$pbs"
+    printf '[show] provider %s token_env=%s (%s; %s in this shell)\n' "$provider" "${pt:-<unset>}" "$pts" "$tokstate"
+    printf '[show] provider %s model=%s (%s)\n' "$provider" "${pm:-<unset>}" "$pms"
   else printf '[show] CELL_PROVIDER=%s (%s)\n' "unset" "default: anthropic"
   fi
   local r src
@@ -1059,14 +1108,24 @@ cmd_check(){
   # The cell's DEFAULT provider (CELL_PROVIDER), same resolution `cellctl desk` uses absent an
   # explicit --provider for the run. Unset is a legitimate n/a (Anthropic, cellctl's long-standing
   # default) rather than a MISS — a provider is opt-in per cell.
+  # Values shown here are the endpoint, the token env var's NAME, the model and whether the named
+  # variable is set — never a token value (#1303). A preset (`kimi`/`glm`) fills what cell.env
+  # does not declare, and each row says which it was.
   if [[ -n "${CELL_PROVIDER:-}" ]]; then
-    local pv_base pv_tokvar pv_base_val pv_tokvar_val
+    local pv_base pv_tokvar pv_base_val pv_tokvar_val pv_base_src pv_tok_src pv_model pv_model_src
     pv_base="$(provider_var "$CELL_PROVIDER" BASE_URL)"; pv_tokvar="$(provider_var "$CELL_PROVIDER" TOKEN_ENV)"
-    pv_base_val="${!pv_base:-}"; pv_tokvar_val="${!pv_tokvar:-}"
-    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>}" '[[ -n "$pv_base_val" ]]'
-    chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)" '[[ -n "$pv_tokvar_val" ]]'
+    provider_value "$CELL_PROVIDER" BASE_URL;  pv_base_val="$PROVIDER_VALUE";   pv_base_src="$PROVIDER_VALUE_SRC"
+    provider_value "$CELL_PROVIDER" TOKEN_ENV; pv_tokvar_val="$PROVIDER_VALUE"; pv_tok_src="$PROVIDER_VALUE_SRC"
+    provider_value "$CELL_PROVIDER" MODEL;     pv_model="$PROVIDER_VALUE";      pv_model_src="$PROVIDER_VALUE_SRC"
+    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>} ($pv_base_src)" '[[ -n "$pv_base_val" ]]'
+    chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)${pv_tokvar_val:+=$pv_tokvar_val} ($pv_tok_src)" '[[ -n "$pv_tokvar_val" ]]'
     if [[ -n "$pv_tokvar_val" ]]; then
       chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
+    fi
+    if [[ -n "$pv_model" ]]; then
+      chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+    else
+      na "provider $CELL_PROVIDER: model — no $(provider_var "$CELL_PROVIDER" MODEL) and no preset; the role pin is exported as is"
     fi
   else
     na "provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)"
@@ -1732,7 +1791,7 @@ cmd_desk(){
   while [[ $# -gt 0 ]]; do case "$1" in
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --set) persist=1; shift;;
-    --provider) provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
+    --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
     --harness) harness="${2:?--harness needs a value (claude|codex)}"; harness_flag="$harness"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
@@ -1761,7 +1820,7 @@ cmd_desk(){
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
   # (unset = Anthropic, cellctl's own long-standing default).
   provider="${provider:-${CELL_PROVIDER:-}}"
-  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL=""
+  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
@@ -1790,11 +1849,21 @@ cmd_desk(){
   [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
   [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
   [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
+  # A provider is a claude-harness seam (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN); codex has no
+  # equivalent here, so the combination is refused rather than silently launching codex against
+  # Anthropic with a provider the operator asked for.
+  [[ "$harness" == "codex" && -n "$provider" ]] \
+    && die "desk: --provider '$provider' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude"
   local model
   if [[ -n "$model_override" ]]; then
     # An explicit --model (or DESK_MODEL_OVERRIDE) passes through VERBATIM to the selected harness
     # — it is never run through the namespace/tier resolution below, on either harness.
     model="$model_override"
+  elif [[ -n "$provider" && -z "${!mvar-}" && -n "${PROVIDER_MODEL:-}" ]]; then
+    # A provider's own model (CELL_PROVIDER_<NAME>_MODEL, or the preset's) is what a provider
+    # window runs when neither --model nor a PER-ROLE pin names one (#1303): the harness-wide
+    # DESK_MODEL_DEFAULT / tier fallback are Anthropic names the provider's endpoint would reject.
+    model="$PROVIDER_MODEL"; RESOLVED_MODEL_SRC="provider:$provider ($(provider_var "$provider" MODEL))"
   else
     resolve_role_model "$role" "$harness" \
       || die "desk: $RESOLVED_MODEL_SRC — set $mvar in cell.env, or the harness default, or a tier fallback (docs/cellctl.md Pinned models), or pass --model explicitly"
@@ -1818,7 +1887,7 @@ cmd_desk(){
   # the name — `claude --model`/`codex -m` themselves always get the bare $model.
   local model_disp="$model"
   if [[ -n "$model_override" ]]; then model_disp="$model (override)"
-  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
+  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* || "${RESOLVED_MODEL_SRC:-}" == provider:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
   fi
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
@@ -1943,11 +2012,20 @@ cmd_desk(){
   else
     # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
     # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
-    # Anthropic and fails, which is exactly the gap this closes. Unset provider → neither var is
-    # exported, and `claude` behaves exactly as it always has.
-    exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    # Anthropic and fails, which is exactly the gap this closes. Unset provider → none of the
+    # ANTHROPIC_* vars below is touched, and `claude` behaves exactly as it always has.
+    # With a provider (#1303): ANTHROPIC_API_KEY is UNSET first (an inherited API key wins over the
+    # auth token and silently routes to Anthropic), and ANTHROPIC_MODEL plus the three tier
+    # aliases ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL are pinned to the provider model so every
+    # alias this window or its subagents use resolves to a name the endpoint accepts. The tier
+    # aliases take the provider's own model (CELL_PROVIDER_<NAME>_MODEL / preset) when it has one,
+    # else the model this window launches with.
+    local pmodel="${PROVIDER_MODEL:-$model}"
+    exec env ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
+      ${provider:+ANTHROPIC_MODEL="$model"} \
+      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel"} \
       claude --name "$session" --model "$model" "/assay:$role"
   fi
 }
@@ -2099,7 +2177,7 @@ cmd_up(){
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
     --model) model_override="${2:?--model needs a value}"; shift 2;;
-    --provider) provider_flag="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
     --set) persist=1; shift;;

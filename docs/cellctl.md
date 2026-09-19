@@ -1020,7 +1020,7 @@ cellctl desk <cell> worker-desk --provider zai                 # override for on
 cellctl up   <cell> --provider zai                              # every role window this run opens
 ```
 
-A provider name (`zai`, `kimi`, anything) resolves to two `cell.env` variables,
+A provider name (`zai`, anything — or a built-in preset, below) resolves to two `cell.env` variables,
 `CELL_PROVIDER_<NAME>_BASE_URL` and `CELL_PROVIDER_<NAME>_TOKEN_ENV` (the name upper-cased, `-` as
 `_`). The launched `claude` process gets `ANTHROPIC_BASE_URL` from the first and
 `ANTHROPIC_AUTH_TOKEN` from `${!CELL_PROVIDER_<NAME>_TOKEN_ENV}` — the **value** of whichever
@@ -1037,8 +1037,54 @@ the `CELL_PROVIDER_<NAME>_*` keys) persist a default the way any other `cellctl 
 Both `cellctl desk`'s launch line and `DRY_RUN=1` plan print `provider=<name>` (or `provider=anthropic`
 when none is set), so which endpoint a window is on is visible without reading `cell.env`.
 `cellctl check` carries three rows for a cell's default `CELL_PROVIDER` (base URL declared, token-env
-variable named, and that variable actually set in *this* shell) — unset `CELL_PROVIDER` is `n/a`, not
-a `MISS`, because a provider is opt-in.
+variable named, and that variable actually set in *this* shell) plus a model row — unset
+`CELL_PROVIDER` is `n/a`, not a `MISS`, because a provider is opt-in. Every row prints the endpoint,
+the env var's **name**, the model and *set*/*unset* — never a token value.
+
+### Built-in presets: `kimi` and `glm` (`#1303`)
+
+Two providers resolve with **no** `CELL_PROVIDER_<NAME>_*` line at all — the operator exports the
+one env var and boots:
+
+| Preset | `ANTHROPIC_BASE_URL` | token env NAME | default model |
+|---|---|---|---|
+| `kimi` | `https://api.kimi.com/coding` | `KIMI_API_KEY` | `k3[1m]` |
+| `glm` | `https://api.z.ai/api/anthropic` | `ZAI_API_KEY` | `glm-5.3[1m]` |
+
+```bash
+export KIMI_API_KEY=…                                 # in your shell, never in cell.env
+cellctl desk <cell> worker-desk --provider kimi       # this window, this run
+cellctl up   <cell> --provider glm --set              # every window, and persist CELL_PROVIDER=glm
+cellctl set  <cell> --provider kimi                   # persist without booting
+cellctl show <cell> --provider kimi                   # the effective endpoint / env NAME (set|unset) / model
+```
+
+Any `CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL}` line overrides the matching preset value
+**piecewise** (a proxy endpoint for `glm` with the preset's token env and model, say); a name with
+no preset needs its own lines exactly as before. `cellctl check`/`show` tag each value `preset`,
+`cell.env` or `unset`.
+
+**`CELL_PROVIDER_<NAME>_MODEL` — the provider's model.** A provider window resolves its model as
+`--model` (or `DESK_MODEL_OVERRIDE`) > the role's own `DESK_MODEL_<role>` pin > the provider model
+(`CELL_PROVIDER_<NAME>_MODEL`, else the preset's) > the usual `DESK_MODEL_DEFAULT`/tier chain. The
+harness-wide default and the tier map are Anthropic names a provider endpoint rejects, which is why
+the provider model sits above them; a per-role pin is still honoured because it was set on purpose
+(`cellctl new` pins the-desk to `fable`, so a provider the-desk needs that pin changed — or
+`--model` — to run on the provider's model; `[dry-run]`/`show` print what resolved). `--set`
+persists `--model` per the widened-scope rules above, into `DESK_MODEL_<role>`.
+
+**What the launch exports with a provider active** (and touches not at all without one):
+
+- `ANTHROPIC_API_KEY` is **unset** for the launched process — an inherited API key wins over the
+  auth token and silently routes to Anthropic.
+- `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` as before.
+- `ANTHROPIC_MODEL` = the model this window launches with, and
+  `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` /
+  `ANTHROPIC_DEFAULT_HAIKU_MODEL` = the provider model (else the launch model) — so every tier alias
+  this window or its subagents use resolves to a name the endpoint accepts.
+
+A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
+is refused rather than launching codex against Anthropic with a provider the operator asked for.
 
 ---
 

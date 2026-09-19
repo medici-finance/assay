@@ -254,19 +254,23 @@ echo "[desk --set: every override given is persisted, each to its own key, one b
 "$CELLCTL" set wide-cell --harness claude --cockpit auto >/dev/null
 "$CELLCTL" set wide-cell CELL_PROVIDER_ZAI_BASE_URL=https://api.example.invalid CELL_PROVIDER_ZAI_TOKEN_ENV=ZAI_TEST_KEY >/dev/null
 export ZAI_TEST_KEY=fixture-not-a-secret
-out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell worker-desk --harness codex --model cm --provider zai --cockpit herdr --set 2>&1)" && rc=0 || rc=$?
-assert "dry-run lists every key it would persist" '[[ $rc -eq 0 ]] && grep -q "would persist CODEX_MODEL_worker_desk=cm" <<<"$out" && grep -q "would persist CELL_HARNESS=codex" <<<"$out" && grep -q "would persist CELL_PROVIDER=zai" <<<"$out" && grep -q "would persist CELL_COCKPIT=herdr" <<<"$out"'
-assert "dry-run writes nothing" 'grep -qx "CELL_HARNESS=claude" "$WCELL/cell.env" && ! grep -q "^CODEX_MODEL_worker_desk=" "$WCELL/cell.env"'
+"$CELLCTL" set wide-cell --harness codex >/dev/null
+out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell worker-desk --harness codex --provider zai 2>&1)" && rc=0 || rc=$?
+assert "codex harness + a provider is refused (a provider is a claude-harness seam)" '[[ $rc -ne 0 ]] && grep -q "no codex equivalent" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell worker-desk --harness claude --model cm --provider zai --cockpit herdr --set 2>&1)" && rc=0 || rc=$?
+assert "dry-run lists every key it would persist" '[[ $rc -eq 0 ]] && grep -q "would persist DESK_MODEL_worker_desk=cm" <<<"$out" && grep -q "would persist CELL_HARNESS=claude" <<<"$out" && grep -q "would persist CELL_PROVIDER=zai" <<<"$out" && grep -q "would persist CELL_COCKPIT=herdr" <<<"$out"'
+assert "dry-run writes nothing" 'grep -qx "CELL_HARNESS=codex" "$WCELL/cell.env" && ! grep -q "^DESK_MODEL_worker_desk=cm" "$WCELL/cell.env"'
 n0="$(backups "$WCELL")"
 export CELLCTL_TEST_OUT="$T/launch-wide.env"
-out="$("$CELLCTL" desk wide-cell worker-desk --harness codex --model cm --provider zai --cockpit herdr --set 2>&1)" && rc=0 || rc=$?
+out="$("$CELLCTL" desk wide-cell worker-desk --harness claude --model cm --provider zai --cockpit herdr --set 2>&1)" && rc=0 || rc=$?
 assert "live desk --set exits 0" '[[ $rc -eq 0 ]]'
-assert "CODEX_MODEL_worker_desk=cm persisted (the ACTIVE harness namespace)" 'grep -qx "CODEX_MODEL_worker_desk=cm" "$WCELL/cell.env" && ! grep -q "^DESK_MODEL_worker_desk=cm" "$WCELL/cell.env"'
-assert "CELL_HARNESS=codex persisted" 'grep -qx "CELL_HARNESS=codex" "$WCELL/cell.env"'
+assert "DESK_MODEL_worker_desk=cm persisted (the ACTIVE harness namespace)" 'grep -qx "DESK_MODEL_worker_desk=cm" "$WCELL/cell.env" && ! grep -q "^CODEX_MODEL_worker_desk=cm" "$WCELL/cell.env"'
+assert "CELL_HARNESS=claude persisted (the flag was given)" 'grep -qx "CELL_HARNESS=claude" "$WCELL/cell.env"'
 assert "CELL_PROVIDER=zai persisted" 'grep -qx "CELL_PROVIDER=zai" "$WCELL/cell.env"'
 assert "CELL_COCKPIT=herdr persisted" 'grep -qx "CELL_COCKPIT=herdr" "$WCELL/cell.env"'
 assert "exactly one backup written for the whole --set" '[[ "$(grep -c "backup written" <<<"$out")" -eq 1 ]]'
-assert "the run itself used the overrides (codex stub launched with -m cm)" 'grep -q -- "-m cm" "$CELLCTL_TEST_OUT"'
+assert "the run itself used the overrides (claude stub launched with --model cm)" 'grep -q -- "--model cm" "$CELLCTL_TEST_OUT"'
+grep -v '^CELL_PROVIDER=' "$WCELL/cell.env" > "$WCELL/cell.env.tmp" && mv "$WCELL/cell.env.tmp" "$WCELL/cell.env"
 out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell worker-desk --harness codex --set 2>&1)" && rc=0 || rc=$?
 assert "--set with only --harness (no --model) is accepted and persists just CELL_HARNESS" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_HARNESS=codex" <<<"$out" && ! grep -q "would persist .*_MODEL_" <<<"$out"'
 out="$("$CELLCTL" desk wide-cell worker-desk --set 2>&1)" && rc=0 || rc=$?
@@ -274,7 +278,6 @@ assert "--set with nothing to persist is still refused" '[[ $rc -ne 0 ]] && grep
 out="$(DRY_RUN=1 "$CELLCTL" desk wide-cell the-desk --kind container --set 2>&1)" && rc=0 || rc=$?
 assert "desk --kind container --set on a house cell with no launcher refuses at load, naming the launcher, before writing" '[[ $rc -ne 0 ]] && grep -q "CELL_CONTAINER_LAUNCHER" <<<"$out" && grep -qx "CELL_KIND=house" "$WCELL/cell.env"'
 "$CELLCTL" set wide-cell --harness claude --cockpit auto >/dev/null
-grep -v '^CELL_PROVIDER=' "$WCELL/cell.env" > "$WCELL/cell.env.tmp" && mv "$WCELL/cell.env.tmp" "$WCELL/cell.env"
 
 # ---------------------------------------------------------------- up --set
 echo "[up --set: persists the cockpit/harness/kind and --model per role window]"
