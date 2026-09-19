@@ -30,7 +30,7 @@ import (
 const usage = `deskwt — add, remove, or prune git worktrees, only under sanctioned prefixes.
 
 USAGE:
-  deskwt add <name> [--branch B] [--base origin/main]
+  deskwt add <name> [--branch B | --detach] [--base origin/main]
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks [--lock-ttl <dur>]]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
