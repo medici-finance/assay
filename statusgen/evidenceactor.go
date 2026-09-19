@@ -703,12 +703,37 @@ func evidenceActorJudge(p evidenceActorPolicy, shallow bool, rows []evidenceActo
 	return out
 }
 
-// evidenceActorNotices is the --lint entry point. It returns NOTICE strings only —
-// see the severity note in the file header for why this is not a PROBLEM.
+// evidenceActorNotices is the --lint entry point used by callers (and tests)
+// that only need the NOTICE half of evidenceActorGate. It is a thin wrapper —
+// see evidenceActorGate's header for why the check now splits into a PROBLEM
+// half (post-base closures) and a NOTICE half (the grandfathered backlog).
 func evidenceActorNotices(root string, streams []*Stream) []string {
+	_, notices := evidenceActorGate(root, streams)
+	return notices
+}
+
+// evidenceActorGate is the --lint entry point (verify-integrity/04, item 2).
+//
+// Promotion from NOTICE-only. The check below this comment used to report
+// every self-attesting row (an implementer's own identity behind its
+// Evidence section) as a NOTICE, unconditionally — see the file header's
+// severity note, written when 92 of 141 rows were measured unbacked at
+// adoption and a hard gate against that backlog would have redded every
+// unrelated PR. That backlog is still real and still gets the NOTICE below,
+// unchanged. But a row this branch is CLOSING NOW (a `verified`/`done`
+// transition that did not exist at merge-base(HEAD, origin/main)) is not
+// backlog — it is a fresh self-attestation the gate can still stop, so it is
+// now a PROBLEM naming the actual (rejected) committer identity, exactly the
+// merge-base-scoped promotion shape unrunGateChecks (unrun.go) and
+// witnessGate (witnessgate.go) already use for the same reason: new closures
+// are gated, the standing backlog is grandfathered to a NOTICE so it stays
+// visible without reddening main. `closedAtBase` is the one shared helper for
+// "did this branch make this closure" — see its own header for why ok=false
+// (the base could not be resolved) must grandfather rather than guess.
+func evidenceActorGate(root string, streams []*Stream) (problems, notices []string) {
 	p := evidenceActorPolicyFromRoster()
 	if p.Unavailable != "" {
-		return []string{fmt.Sprintf(
+		return nil, []string{fmt.Sprintf(
 			"could-not-check: Evidence-actor (desk-apps/07, F-verify-self-attest) did not run — %s. "+
 				"No `verified`/`done` row is reported clean or unbacked by this run.", p.Unavailable)}
 	}
@@ -769,7 +794,7 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 	}
 
 	if len(work) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	rows := make([]evidenceActorRow, len(work))
@@ -781,7 +806,17 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 		return blameEvidenceAuthors(root, work[i].rel, work[i].start, work[i].end)
 	})
 
-	var flagged, impostors, unreadable, graftHidden []string
+	// Merge-base scoping (verify-integrity/04 item 2, same helper unrunGateChecks
+	// and witnessGate use): a rejected row already `verified`/`done` at
+	// merge-base(HEAD, origin/main) is backlog and keeps its NOTICE below; a
+	// rejected row that is a NEW closure on this branch is promoted to a PROBLEM.
+	// !baseOK (the base could not be resolved — e.g. no git, or a checkout with
+	// no origin/main to diff against) cannot tell new from backlog, so it
+	// grandfathers everything to the NOTICE path, same as unrunGateChecks, and
+	// says so once below rather than silently promoting nothing.
+	grandfathered, baseOK := closedAtBase(root, streams)
+
+	var flagged, newClosures, impostors, unreadable, graftHidden []string
 	clean := 0
 	for _, r := range judged {
 		switch {
@@ -798,15 +833,24 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 			impostors = append(impostors, fmt.Sprintf("%s (row is %q, Verified cell %q) — %s",
 				r.ID, r.Status, r.Verified, r.Reason))
 		default:
-			flagged = append(flagged, r.ID)
+			if baseOK && !grandfathered[r.ID] {
+				newClosures = append(newClosures, fmt.Sprintf(
+					"%s: %s Evidence section is not backed by the roster's verifier role — %s. This is a "+
+						"NEW closure (not present as verified/done at merge-base(HEAD, origin/main)), so "+
+						"it is a PROBLEM, not backlog (verify-integrity/04): re-run the table and land the "+
+						"Evidence commit as the verifier App, or route to a named non-implementer runner",
+					r.ID, r.Status, r.Reason))
+			} else {
+				flagged = append(flagged, r.ID)
+			}
 		}
 	}
 	sort.Strings(flagged)
+	sort.Strings(newClosures)
 	sort.Strings(impostors)
 	sort.Strings(unreadable)
 	sort.Strings(graftHidden)
-
-	var notices []string
+	problems = append(problems, newClosures...)
 
 	// The tamper signals first — one line each. These are not backlog.
 	for _, im := range impostors {
@@ -829,7 +873,13 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 				"NOTICE this phase, not a PROBLEM: the backlog predates the verifier-App Evidence cutover "+
 				"(desk-apps/04), and arming a hard gate against it would red every unrelated PR. A row "+
 				"clears by re-verification whose Evidence the verifier App commits. Rows: %s",
-			len(flagged), clean+len(flagged)+len(impostors), clean, pin, strings.Join(flagged, ", ")))
+			len(flagged), clean+len(flagged)+len(impostors)+len(newClosures), clean, pin, strings.Join(flagged, ", ")))
+	}
+	if !baseOK && len(flagged) > 0 {
+		notices = append(notices, "Evidence-actor PROBLEM promotion is running degraded: "+
+			"origin/main could not be resolved, so no rejected row can be shown to be a closure THIS "+
+			"branch made, and every rejected row above is grandfathered to a NOTICE. If this is CI, "+
+			"fetch origin/main before the lint step (verify-integrity/04)")
 	}
 
 	if len(graftHidden) > 0 {
@@ -852,5 +902,6 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 			len(skipped), strings.Join(skipped, "; ")))
 	}
 
-	return notices
+	sort.Strings(problems)
+	return problems, notices
 }
