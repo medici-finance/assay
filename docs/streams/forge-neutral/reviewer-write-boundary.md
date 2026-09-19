@@ -79,6 +79,54 @@ Out of scope: how verdicts, comments and the ready flip are posted.
 | T12 | The session roster is machine-local state (`<config home>/roster/<session>.json`) — it cannot show what another host is dispatching | `tools/desk/cmd/deskroster/main.go:1-10` |
 | T13 | The pr-review-desk skill states the grant set inline | `plugins/assay/skills/pr-review-desk/SKILL.md:660` |
 
+### 3.1a Reviewer write inventory (brief 20, task 1)
+
+Read at `4f9ed47c` (origin/main, 2026-09-18). Every desk-tool site that constructs a `Forge`
+under the reviewer identity — literally (`ForgeFor(repo, "reviewer")`, `ReviewDispatcherRole`)
+or via the session's minted role (`DESK_LOOP=pr-review-desk` → role `reviewer`, per
+`tools/desk/internal/deskkit/roletoken.go:41-47`) — with the forge operations it performs
+under that identity and the permission each needs. **Read** / **PR write** / **issue write**
+follow GitHub's own split (labels and comments on a PR are the Issues API, so they are issue
+write even when the target is a PR); **repository write** is `contents` or a ref push.
+
+| Site | Forge ops performed as `reviewer` | Permission |
+|---|---|---|
+| `tools/desk/cmd/deskdispatch/dispatch.go:872-918,1271` (review-kit claim acquire, `ReviewDispatcherRole`) | mints the reviewer token and hands it to `deskclaim-ref`, which does a compare-and-swap push of `refs/heads/dispatch/<key>` | **repository write** (the dispatch claim — the one row Task 1 expects) |
+| `tools/desk/cmd/deskpost/claimliveness.go:53` | `Forge.RefExists` on the claim ref (age-out read for the model-floor stamp) | read |
+| `tools/desk/cmd/deskpost/forgeclient.go:75-81` (`forgeForReviewer`) + its consumers in the same package | `GetPullRequest`, `GetIssue(Typed)`, `ListChangedFiles`, `ListReviews`, `ChecksAtHead`, `combinedStatusAt`, `RefExists` (claim liveness, mirrors claimliveness.go) — all read; `PostReview` (`/pulls/{n}/reviews`) — **PR write**; `MarkReadyForReview` (the ready-flip GraphQL mutation) — **PR write**; `SetMergeHold`/`ReadMergeHold` — on GitHub `SetMergeHold` is `ErrMergeHoldNotApplicable` (no-op); on GitLab it adds/resolves a merge-request discussion note — **PR write**, never repository write | read + PR write |
+| `tools/desk/cmd/deskpost/comment.go:176` | `PostComment` → `/issues/{n}/comments` (posts as the reviewer App) | issue write |
+| `tools/desk/cmd/deskpost/label.go:158` | `ApplyLabels` (verdict/size/surface labels) → create-label + issue-labels endpoints | issue write |
+| `tools/desk/internal/deskkit/modelstamp.go:607-634` | declares the `ReviewDispatcherRole = "reviewer"` constant the model-capability floor accepts; **makes no forge call itself** — it is why the grep in Verify row 4 finds it, not a site to add a permission to | n/a (declaration, not a call site) |
+| `tools/desk/cmd/deskflip/flip.go` (`RequireRole("reviewer")`; `flipRole = "pr-review-desk"` → role `reviewer` via `TokenRoleForLoop`) | reads: `ReadMergeHold`, `ListLabelEvents`, `GetPullRequest`, `ChecksAtHead`, `RequiredStatusChecks`, `ReviewsAtHead`, `ListChangedFiles`; writes: `ApplyLabels` (queue labels, `flip.go:1316`) — issue write; `SetMergeHold` (`flip.go:856`) — PR write on GitLab, no-op on GitHub | read + issue write + PR write |
+| `tools/desk/cmd/deskclose/superseded.go` (reviewer's confirm/dispute half of the supersession lane; `mintedRole` from `DESK_LOOP`) | reads: `ListCommentsTyped`, `GetIssueTyped`/`GetIssue`, `GetPullRequest`; writes on confirm/dispute: `PostCommentTyped` (verdict/back-reference), `ApplyLabels` (`needs-decision`), `CloseIssueTyped` (confirm path) — all issue write | read + issue write |
+| `tools/desk/cmd/desklabel/` (`mintedRole` from `DESK_LOOP`; reviewer when run under `pr-review-desk`) | reads: `GetIssueTyped`/`GetIssue`; writes: `ApplyLabels` | read + issue write |
+
+**Result: repository write — the dispatch claim only.** Every other reviewer-role site is read,
+PR write or issue write; no finding to file for Task 1.
+
+### 3.1b Claim reader inventory (brief 20, task 2 — brief 22's work list)
+
+Every site outside `cmd/deskclaim-ref` (the claim tool itself) that the Verify row 5 grep
+(`ClaimRefsPrefix` / `ClaimRefPath` / `refs/dispatch`) turns up, with what it does when the
+namespace is empty.
+
+| Site | What it does | On an empty namespace |
+|---|---|---|
+| `tools/desk/cmd/desksupervise/live.go:29-70` | lists the claim namespace on the remote (in-process `gitcore.List`, authenticated as the session's role) to get live claim keys, then shells to the consumer's own `tools/dispatch-claim.sh show <key>` per key (T8) | no keys enumerated — reports zero live claims |
+| `tools/desk/cmd/desksupervise/actions.go:60-88` (`doReclaim`) | resolves a `Forge` under the session's own role and calls `Forge.DeleteRef` directly on `dispatch/<key>` — releases a stale claim WITHOUT going through `deskclaim-ref` | a ref already gone (404/422) is treated as a no-op, not a failure |
+| `tools/desk/cmd/deskpost/claimliveness.go:41-61` | direct `Forge.RefExists` read of the claim ref for the model-floor stamp age-out (§3.1a) | `RefExists` false → `ClaimLivenessFromRefPresence` reports the claim released, ages the stamp out |
+| `tools/desk/cmd/deskpost/forgeclient.go:229-241` | the same read, mirrored onto `forgeBackend` so the GitLab-capable path doesn't need a second `ForgeFor` construction | same as above |
+| `tools/desk/cmd/fanoutloop/land.go:81-154` | releases the worker-dispatch claim once a PR lands, again via `Forge.DeleteRef`, not `deskclaim-ref` | `IsForgeNotFound` → no-op (already released) |
+| `tools/desk/internal/loopengine/writescope_io.go:14-65` | reads the local git object store for `claimRefPrefix = deskkit.ClaimRefsPrefix` to derive in-flight write scope, a local-repo read rather than a forge one | no matching refs → empty write-scope, not an error |
+| `tools/desk/cmd/deskroster/` (list join, per the brief's own facts) | joins the roster listing against live claim state for display | an empty claim set just means no roster row is annotated as claimed |
+| `plugins/assay/skills/pr-shepherd/SKILL.md:27-41`, `plugins/assay/skills/worker-desk/SKILL.md:140` | tell the human/agent reader to run `git ls-remote origin 'refs/heads/dispatch/*'` directly — a documented reader outside every tool | an empty `ls-remote` output means no held claims (the skill text does not special-case it) |
+| `tools/desk/internal/deskkit/claimref.go`, `tools/desk/internal/gitcore/claimref.go` | **not readers**: `claimref.go` is the single namespace-definition file (`ClaimRefsPrefix`, `ClaimRefPath`) every writer and reader above derives its path from; `gitcore/claimref.go` is the legacy tag-naming-scheme note the in-process `gitcore.List` reader above is built on. Library/definition code, not independent call sites | n/a |
+| `tools/desk/internal/deskkit/forge.go:1219-1223`, `tools/desk/internal/deskkit/forge_gitlab.go:3072-3126` | the `Forge.RefExists`/`DeleteRef` interface doc and the GitLab backend's own guard restricting a non-`refs/heads` ref read/delete to the claim namespace. Library/guard code the sites above call through — not itself a claim read | n/a |
+| `tools/desk/cmd/deskdispatch/dispatch.go` (comment at `:89`), `tools/desk/cmd/deskdispatch/main.go` (comment at `:30`) | comment-only mentions of the `refs/dispatch/<id>` namespace (documenting the wire protocol the claim tool speaks); dispatch.go's actual claim acquisition goes through `deskclaim-ref` (§3.1a) | n/a — no functional read here |
+
+**Every file the Verify row 5 grep names is accounted for above** (either as a reader, or,
+for `deskclaim-ref/claim.go` and `deskclaim-ref/main.go`, as the claim tool itself).
+
 ### 3.2 What the adopter docs say about topology — this decides the default store
 
 | # | Statement | Where | Status |
@@ -103,8 +151,8 @@ window (§7).
 | # | Claim | Status | How checked |
 |---|---|---|---|
 | S1 | Exclusive create plus a directory lock gives mutual exclusion between processes on one host's local filesystem | established — in-tree | T6: the primitive and its race tests ship in this tree and gate the non-dispatch claim kinds today |
-| S2 | The same guarantees hold on a network filesystem (NFS, SMB) or a cluster read-write-many volume | **could-not-check** | not measured; not asserted from memory. It matters only if a host process points `file` at such a path, which §6 answers with a NOTICE on every boot and never a refusal (§10 L). Brief 20 measures what it can reach; anything unmeasured stays unsupported |
-| S4 | The tool can reliably detect that a directory is on a network filesystem, on every supported OS | **could-not-check** | not investigated. Brief 20. It decides no refusal — the filesystem guard is a NOTICE in every case (§10 L) — but it fixes the NOTICE's wording: whether the tool can name the filesystem type it found, or can only say the type was not determined |
+| S2 | The same guarantees hold on a network filesystem (NFS, SMB) or a cluster read-write-many volume | **local disk: established (2026-09-18). Network filesystem: COULD-NOT-CHECK** | Local-disk control: `go test ./internal/deskkit/... -run '^TestAcquireConcurrentExactlyOneWinner$' -count=1 -v` against `internal/deskkit/claim_test.go`'s shipped race test (16 goroutine racers, `t.TempDir()` under the OS default temp dir — APFS, local) → `PASS`, exactly 1 of 16 succeeded. Network filesystem: the measuring host exposed exactly one reachable mount, an NFS export under the operator's home directory (a local VM-bridge mount, `nfs` per `mount`); a write probe against it (`mkdir`/`touch`) was refused (`Permission denied`) although the mount's ownership matched the measuring account's uid — the refusal is the operating envelope this measurement ran under (a sandboxed agent's writable root is its own worktree/scratch area), not a property of NFS. No other network filesystem was reachable from a plain host process this session could use, so the race probe could not be run there: **COULD-NOT-CHECK**, reason above. The local-disk half of S1/S2 is now measured, not just T6's in-tree claim |
+| S4 | The tool can reliably detect that a directory is on a network filesystem, on every supported OS | **darwin: established (type NAMED). linux: established (type determined, naming needs a table). container detection: established on linux; not applicable on darwin.** | **(a) filesystem-type name — darwin:** a Go process gets the name directly, no table needed: `syscall.Statfs_t.Fstypename` on `/` inside this worktree → `"apfs"`; on the one reachable network mount described in S2 → `"nfs"` (both read-only `statfs(2)` calls, no write). **(a) linux:** `syscall.Statfs_t` on linux has no name field, only a numeric `Type` magic; measured inside a local Linux container (`assay-product-cell:codex-pilot-20260915`, digest `sha256:a048e391…`, `uname -a` → `Linux … 7.0.14-orbstack… x86_64 GNU/Linux`, `go version go1.25.9 linux/amd64`, no network image pull): `statfs("/")` → `Type = 0x794c7630`. That magic resolves to `overlay` via Linux's own `magic.h` table (e.g. `NFS_SUPER_MAGIC=0x6969`, `CIFS_MAGIC_NUMBER=0xFF534D42`, `SMB2_MAGIC_NUMBER=0xFE534D42`) — so on linux the type CAN be named, but only if the tool ships and maintains that magic-number table itself; the stdlib gives the number, not the name. Neither OS has a "type not determined" case in what was measured — both determine it, by different reads (a direct name field vs. a magic number that needs a maintained table). **(b) container/pod — linux:** inside the same container, `os.Stat("/.dockerenv")` → present (positive signal); `os.ReadFile("/proc/1/cgroup")` → `"0::/\n"` — cgroup v2's unified hierarchy carries no `docker`/`kubepods` substring here, so a cgroup-content heuristic would MISS this runtime even though `/.dockerenv` catches it; `os.Stat("/run/.containerenv")` (Podman's marker) → absent. **(b) darwin:** no container/pod concept for a native macOS process to detect (no `/proc`, no `/.dockerenv` equivalent) — not applicable, not "cannot be determined." Windows: not reached this session — **could-not-check** |
 
 (S3 — a Docker volume shared between containers — was withdrawn: containers use `service`,
 §10 H, so the question no longer decides anything.)
