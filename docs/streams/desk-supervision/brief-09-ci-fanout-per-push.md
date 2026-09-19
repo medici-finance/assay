@@ -331,6 +331,33 @@ Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: model; ris
 
 RISK-VALUE: DERIVED (re-affirmed, literal unchanged since 2026-09-05) — `evidence-automerge` `enable`-job `if:` login = `assay-verifier-app[bot]` @ `tools/ci-load/activation/evidence-automerge.yml` (confirmed present in this session's row-9 YAML read) — must equal the verify-desk App that authors Evidence PRs; fail-safe by construction (pre-filter in front of an unchanged default-deny in-job guard), so drift narrows the lane or is declined, never widens automerge authority.
 RISK-VALUE: DERIVED (re-affirmed, literal unchanged since 2026-09-05) — `ci`/`plugin-drift` `paths-ignore` = `["docs/**", "changelog/**", "CHANGELOG.md", "STATUS.md"]` @ `tools/ci-load/activation/ci.yml` (confirmed present in this session's row-9 YAML read) — exactly the documentary paths no build/test/plugin job reads; row 3 (re-run this session) proves mixed/go-only/plugin-only diffs still run, and the two leak/security workflows remain unfiltered (confirmed unchanged in the live tree this session, row 5's grep). Reversible knob (single `git revert` of the eventual landing commit).
+### Non-implementer verifier re-run — VERIFY: BLOCKED, HELD at implemented (unchanged), infra loss mid-session — sonnet-5-verifier (verify-desk dispatch), @ merged main `951ca784d100a7d201a28a34033da6709ec2ec8f`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main, confirmed present/writable at task start (`git rev-parse --show-toplevel` matched). Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+**Session note**: after row 6 and before row 7, the home worktree vanished from disk entirely — no `git worktree list` registration anywhere, no destructive call made from this session (the one Edit attempt, row 3b, was blocked by the auto-mode classifier before touching disk). Rows 9-11 could not be run as a direct result and are recorded could-not-check, not rounded up to pass. Flagged separately as an infra finding (worktree-prune/active-dispatch race suspected), not restated here.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | PR/branch run-list for verifier's own recent Evidence PR (#1301) → workflow run list | after-landing: no `ci/push`, `ci/pull_request`, `plugin-drift/pull_request` | exit 0; all three still present — unchanged BEFORE state (documented, not a regression) | 2026-09-18 | sonnet-5-verifier |
+| 2 | commit status + rulesets check on PR #1301 head | leak-sweep present + ruleset named + no-such-check=0 | exit 0; statuses=["leak-sweep"]; rulesets=["leak-sweep","protect-main","protect-release-tags"]; no-such-check=0 — checked-clean, full PASS | 2026-09-18 | sonnet-5-verifier |
+| 3 | `python3 tools/ci-load/pathsemantics.py` | exit 0 PASS | exit 0; PASS; mixed=False go-only=False plugin-only=False docs-only=True status-regen=True | 2026-09-18 | sonnet-5-verifier |
+| 3b | mutation on `skipped()` (`all(`→`any(`) | exit 1 on mutant, exit 0 after restore | **could-not-check** — Edit blocked verbatim by the auto-mode classifier ("Modify Shared Resources"); not re-attempted via another tool (no-evasion); `git status --porcelain` confirmed clean immediately after | 2026-09-18 | sonnet-5-verifier |
+| 4 | byte-diff leak workflows across the landing commit | exit 0, no output | **UNRUN as after-measurement** — no landing commit exists yet; live `ci.yml` still has no concurrency/paths-ignore/branches block | 2026-09-18 | sonnet-5-verifier |
+| 5 | `grep -n cancel-in-progress .github/workflows/*.yml` | exactly two event-conditioned settings | **UNRUN as after-measurement** — both files still read bare `cancel-in-progress: false`; unchanged BEFORE state | 2026-09-18 | sonnet-5-verifier |
+| 6 | `go test ./cmd/deskboard/ -run TestWouldFire` then `-run TestZeroCI` | exit 0 twice | exit 0 (0.302s) ok; exit 0 (0.956s) ok — checked-clean | 2026-09-18 | sonnet-5-verifier |
+| 7 | `statusCheckRollup` length on PR #1301 | ≥4 | 23 — informative only, not the row's designed after-measurement (nothing has landed yet) | 2026-09-18 | sonnet-5-verifier |
+| 8 | byte-diff staged vs landed (5 files) | exit 0, no output | **UNRUN** — all 5 files under tools/ci-load/activation/ still differ from .github/workflows/*, unchanged since 2026-09-05/09-15 | 2026-09-18 | sonnet-5-verifier |
+| 9 | yaml structure of staged files | 5 lines; specified shapes | **could-not-check** — home worktree vanished before this row ran | 2026-09-18 | sonnet-5-verifier |
+| 10 | `statusgen --root .. --lint` | exit 0, no PROBLEM naming ds/09 or ci-load | **could-not-check** — same reason | 2026-09-18 | sonnet-5-verifier |
+| 11 | `statusgen --consumers` block for desk-supervision/09 | 4 entries; activation CORROBORATED, 3 UNCHECKED | **could-not-check** — same reason | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 11 rows map 1:1 to the brief's own Verify table; no invented scope.
+
+RISK-VALUE: DERIVED (re-affirmed via row 3's live output this session) — `ci`/`plugin-drift` `paths-ignore` = `["docs/**","changelog/**","CHANGELOG.md","STATUS.md"]` @ tools/ci-load/activation/ci.yml — row 3 (real output this session) proves mixed/go-only/plugin-only diffs still run; the two leak/security workflows remain unfiltered in the live tree (row 5, re-run this session). Reversible knob.
+RISK-VALUE: DERIVED (carried forward from the 2026-09-05/09-15 confirmed reads — not independently re-read this session since the worktree vanished before that file's content could be re-cat'd) — `evidence-automerge` enable-job `if:` login = `assay-verifier-app[bot]` @ tools/ci-load/activation/evidence-automerge.yml:93 — flagging the provenance gap explicitly rather than claiming a fresh read.
+
+**VERIFY: BLOCKED — HELD at implemented (unchanged).** Third consecutive pass (2026-09-05, 2026-09-15, 2026-09-18) finding the identical state: the human copy of the five staged workflow files into `.github/workflows/` has still not landed, 13 days after `implemented`. No row that ran contradicts the brief's claims. `help wanted` issue medici-finance/assay#1185 remains the tracked blocker — not re-filed. Rows 9-11 went could-not-check this session due to an infra loss (worktree vanished mid-session, not a code or brief defect) — flagged separately, not counted as a regression against the brief.
 
 ## Review
 
