@@ -60,7 +60,7 @@ func TestWriteFileOpBothBackends(t *testing.T) {
 				s.contentsGet = map[string]any{"sha": "blob-gh", "content": ghB64("row one\n")}
 				s.contentsPut = map[string]any{
 					"content": map[string]any{"sha": "blob-gh-2"},
-					"commit":  map[string]any{"author": map[string]any{"name": "assay-verifier-app[bot]"}},
+					"commit": map[string]any{"author": map[string]any{"name": "assay-verifier-app[bot]"}},
 				}
 			},
 			setupGL: func(s *glServer) {
@@ -155,7 +155,7 @@ func TestWriteFileOpBothBackends(t *testing.T) {
 				s.contentsGetStatus = 404 // absent → create
 				s.contentsPut = map[string]any{
 					"content": map[string]any{"sha": "blob-gh-new"},
-					"commit":  map[string]any{"author": map[string]any{"name": "assay-verifier-app[bot]"}},
+					"commit": map[string]any{"author": map[string]any{"name": "assay-verifier-app[bot]"}},
 				}
 			},
 			setupGL: func(s *glServer) {
