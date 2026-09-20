@@ -1,6 +1,6 @@
 package main
 
-// authority_kind_test.go — the residual half of #1019 (desktools-v2/04).
+// authority_kind_test.go — the residual half of #1019.
 //
 // #1019 reported that deskclose could not close on an issue because the comment read assumed a
 // pull request. Most of that was already fixed at head — the superseded lane and the triage
