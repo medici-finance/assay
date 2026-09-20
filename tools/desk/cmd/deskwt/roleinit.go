@@ -29,11 +29,14 @@ import (
 //   - a worktree LOCK (cooperative half of the prune liveness guard);
 //   - the role's App commit identity as a PER-WORKTREE config (bot USER id, #638), scoped via
 //     extensions.worktreeConfig so it never bleeds into the primary checkout;
-//   - the role's App CREDENTIAL HELPER as a per-worktree config too (#1309 item 7): the helper
-//     chain is reset at worktree scope and one inline helper reading the role's 0600 token file
-//     is added, so https fetch/push authenticate as the role and never fall through to a
-//     sibling role's leftover helper in shared config — followed by the role's own PREFLIGHT,
-//     run against the provisioned worktree, so a red envelope is found here and not at boot;
+//   - the role's App CREDENTIAL HELPER as a per-worktree config too (#1309 item 7): the unscoped
+//     helper chain is reset at worktree scope and one inline helper reading the role's 0600 token
+//     file is added under the HOST-SCOPED key `credential.https://<origin-host>.helper` (#1374
+//     security review — an unscoped helper hands the token to any host/protocol), so https
+//     fetch/push to the origin authenticate as the role and never fall through to a sibling
+//     role's leftover helper in shared config, while a foreign host or plaintext http gets
+//     nothing — followed by the role's own PREFLIGHT, run against the provisioned worktree, so a
+//     red envelope is found here and not at boot;
 //   - an ORIGIN identity guard: an existing target whose origin is a different repo is
 //     REFUSED, never re-pointed or reset (fail closed);
 //   - idempotency: a valid existing worktree is reused (noop), not clobbered or errored.
@@ -480,16 +483,40 @@ func roleInitPreflightRun(p roleInitParams, repo string) error {
 }
 
 // wireRoleCredential writes the WORKTREE-SCOPED credential helper for the role's App token
-// (#1309 item 7), so every https fetch/push this worktree makes authenticates as the role —
-// never as whatever ambient keychain entry or sibling role's leftover helper the shared
-// .git/config happens to carry.
+// (#1309 item 7), so every https fetch/push this worktree makes to the ORIGIN's host
+// authenticates as the role — never as whatever ambient keychain entry or sibling role's
+// leftover helper the shared .git/config happens to carry.
 //
-// Shape: the helper chain is RESET at worktree scope (an empty `credential.helper` clears every
-// helper accumulated from system/global/shared config — the shadowing that produced the
-// "Invalid username or token" 401s), then ONE inline helper is added that reads the 0600 token
-// file at auth time inside git's own shell. The token never appears in argv, in a URL, on
-// stdout, or in the audit line — only its PATH does. Scoped via extensions.worktreeConfig
-// (already on from setCommitIdentity), so the primary checkout's config is never mutated.
+// WHY THIS IS NOT ROUTED THROUGH `deskgit --as` (the sanctioned inline-helper replacement,
+// README §"Authenticated transport"). `deskgit --as` authenticates ONE git child it spawns
+// itself, with an ephemeral GIT_ASKPASS, and persists NOTHING in config. role-init's
+// deliverable is the opposite: a provisioned worktree whose OWN later raw-`git` operations
+// authenticate — starting with the write-transport probe in the preflight this verb runs next
+// (deskkit.writeTransportProbe shells raw `git push --dry-run`), and every subsequent desk-role
+// fetch/push from the worktree. Routing those through deskgit would mean rewriting the shared,
+// forge-neutral preflight probe (and the GitLab custody arm) to call deskgit — out of this PR's
+// scope. deskgit --as also refuses unless `--as <role>` equals the SESSION's own bound loop
+// role, but role-init provisions ANY of the six roles (deskboot runs it per-role), so a session
+// provisioning a role other than its own would be refused. Persisting a per-host helper is the
+// only mechanism that satisfies both. Both constraints are structural, not effort.
+//
+// SECURITY — the key is SCOPED to the origin's https host (#1374 security review). The helper
+// MUST NOT be installed under the unscoped `credential.helper` key: that key answers for EVERY
+// host over EVERY protocol, and this helper ignores git's stdin request (it emits a fixed
+// username/password), so an unscoped install hands the role's App token to any host — a foreign
+// https host, or even plaintext http on the real host — that `git credential fill` is ever asked
+// about. Instead the helper is added under `credential.https://<origin-host>.helper`, where the
+// host is RESOLVED FROM THE ORIGIN remote (never a wildcard, never hardcoded — the tool is
+// forge-neutral and serves GitLab too). git's per-URL matching then offers the token ONLY on
+// https to that exact host; a foreign host or plaintext http matches no helper and gets nothing.
+//
+// Shape: the chain is still RESET at worktree scope (an empty unscoped `credential.helper`
+// clears every helper accumulated from system/global/shared config — the shadowing that
+// produced the "Invalid username or token" 401s — for ALL hosts), THEN the one inline helper is
+// added under the host-scoped key. The inline helper reads the 0600 token file at auth time
+// inside git's own shell; the token never appears in argv, in a URL, on stdout, or in the audit
+// line — only its PATH does. Scoped via extensions.worktreeConfig (already on from
+// setCommitIdentity), so the primary checkout's config is never mutated.
 func wireRoleCredential(target, role, repo, username string) error {
 	owner := deskkit.OwnerOf(repo)
 	path, err := roleTokenPath(role, owner)
@@ -502,14 +529,39 @@ func wireRoleCredential(target, role, repo, username string) error {
 	if strings.ContainsAny(path, "'\n") {
 		return deskkit.Refused("refused: token path " + path + " cannot be quoted into a credential helper")
 	}
+	// The scoping HOST is read from the worktree's own origin remote (effective URL, so an
+	// insteadOf rewrite is honoured) and parsed with the scp-aware deskkit parser rather than a
+	// hand-rolled split. A host we cannot resolve is could-not-check (exit 6): we refuse to
+	// install a credential helper we cannot scope, rather than fall back to the leaky unscoped key.
+	originURL, oerr := runGit(target, "remote", "get-url", "origin")
+	if oerr != nil {
+		return deskkit.Unverifiable("cannot read the origin remote URL at "+target+" to scope the credential helper", oerr)
+	}
+	host, herr := deskkit.HostOfRemote(strings.TrimSpace(originURL))
+	if herr != nil || strings.TrimSpace(host) == "" {
+		// A hostless origin — a local filesystem path (a fixture, or a directory clone) — is
+		// served by git's local transport, which consults NO credential helper, so there is no
+		// https host to authenticate to and no token to wire. Skip (fail-safe): installing an
+		// unscoped helper "just in case" is exactly the leak this fix removes, so the absence of a
+		// host is a reason to wire NOTHING, never to fall back to the unscoped key. Still reset the
+		// worktree chain so a stale sibling helper cannot answer from shared config.
+		if _, rerr := runGit(target, "config", "--worktree", "--replace-all", "credential.helper", ""); rerr != nil {
+			return deskkit.Unverifiable("cannot reset the worktree-scoped credential helper chain at "+target, rerr)
+		}
+		fmt.Fprintln(os.Stderr, "deskwt: origin at "+target+" has no https host (local transport) — no role credential helper wired")
+		return nil
+	}
+	scopedKey := "credential.https://" + host + ".helper"
 	helper := "!f(){ echo username=" + username + "; echo \"password=$(cat '" + path + "')\"; }; f"
+	// Reset the whole (unscoped) chain first — this clears any stale sibling helper from shared
+	// config for every host — then add the role helper ONLY under the host-scoped key.
 	if _, err := runGit(target, "config", "--worktree", "--replace-all", "credential.helper", ""); err != nil {
 		return deskkit.Unverifiable("cannot reset the worktree-scoped credential helper chain at "+target, err)
 	}
-	if _, err := runGit(target, "config", "--worktree", "--add", "credential.helper", helper); err != nil {
-		return deskkit.Unverifiable("cannot set the worktree-scoped credential helper at "+target, err)
+	if _, err := runGit(target, "config", "--worktree", "--replace-all", scopedKey, helper); err != nil {
+		return deskkit.Unverifiable("cannot set the host-scoped credential helper ("+scopedKey+") at "+target, err)
 	}
-	fmt.Fprintln(os.Stderr, "deskwt: worktree-scoped credential helper set for the "+role+" App (token file "+path+")")
+	fmt.Fprintln(os.Stderr, "deskwt: host-scoped credential helper set for the "+role+" App (https://"+host+", token file "+path+")")
 	return nil
 }
 
