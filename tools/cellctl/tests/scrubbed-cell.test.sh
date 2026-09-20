@@ -338,7 +338,9 @@ case_lock(){
   "$CELLCTL" down "$cell" >/dev/null 2>&1
   local dead; dead="$(fresh_deadpid)"
   mkdir -p "$C/run/lock.d"; printf '%s' "$dead" > "$C/run/lock.d/pid"
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  # stdout-only, exactly as case_status: `stale-lock <pid>` is the status stdout contract, so this
+  # capture must not merge the Go port's stderr P3 echo (see the note above case_status).
+  out="$("$CELLCTL" status "$cell")"
   assert "lock: status reports stale-lock on a dead pid" '[[ "$out" == "stale-lock $dead" ]]'
   "$CELLCTL" down "$cell" >/dev/null 2>&1
   assert "lock: down clears the stale lock" '[[ ! -d "$C/run/lock.d" ]]'
@@ -349,17 +351,25 @@ case_lock(){
 }
 
 # ---------------------------------------------------------------- status
+# `status` has a MACHINE-READABLE stdout contract — exactly one token per state (`stopped`,
+# `running <session>`, `stale-lock <pid>`) — so these captures assert stdout alone and do NOT
+# merge stderr with `2>&1`. The Go port writes deskkit's P3 effective-config echo to stderr once
+# per run, like every roster-reading desk main; the bash oracle writes none. Merging stderr into
+# an EXACT-MATCH capture was the bug: it is not part of the status contract, and dropping the
+# `2>&1` is what asserts the contract, not a filter over a polluted stream. The grep-based
+# captures elsewhere in this file keep their `2>&1` on purpose — they assert on refusal text that
+# cellctl prints to stderr, and a substring match tolerates the echo lines.
 case_status(){
   local cell="case-status"
   "$CELLCTL" new "$cell" --kind scrubbed --repo "$REPO" --repo-slug example-org/example-repo >/dev/null
   local out
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  out="$("$CELLCTL" status "$cell")"
   assert "status: a fresh cell is stopped" '[[ "$out" == "stopped" ]]'
   "$CELLCTL" desk "$cell" worker-desk </dev/null >/dev/null 2>&1
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  out="$("$CELLCTL" status "$cell")"
   assert "status: a live cell reports running <session>" '[[ "$out" == "running ${cell}-cell" ]]'
   "$CELLCTL" down "$cell" >/dev/null 2>&1
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  out="$("$CELLCTL" status "$cell")"
   assert "status: after down, stopped again" '[[ "$out" == "stopped" ]]'
 }
 
