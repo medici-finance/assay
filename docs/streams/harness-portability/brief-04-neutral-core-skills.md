@@ -207,6 +207,30 @@ and two of the literal Verify commands now fail for reasons outside this brief's
 Both literals are reversible CI/prose knobs (frontmatter `risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}` — confirmed accurate; nothing above binds money, auth, or an external contract).
 
 **VERIFY: FAIL** — rows 3 and 7 fail the literal command as written against merged main `0bf1166a`. Both are root-caused to work OUTSIDE this brief's own diff (row 3: a 2026-09-14 reference-file addition from a different stream, medici-finance/assay#1182 filed; row 7: the already-tracked hp/15 CI-wiring follow-up, still itself `implemented`). Brief-04's own deliverable — the seven rewritten skill bodies, the `claude-code.md`/`codex.md` binding files, and the harnesslint tool's own logic — verifies clean on every row that exercises it directly (1, 2, 2a, 3a's closure-detection, 4, 4a, 5, 6). Per this brief's Verify table being literal and unscoped for rows 3/7 (unlike row 6, which carries an explicit scoping caveat), the honest verdict on the table as written is FAIL, not a silent PASS that papers over live drift. Status stays `implemented` — no README flip.
+### Non-implementer verifier re-run — VERIFY: FAIL (row 7 pre-existing gap, already tracked; row 3 newly confirmed fixed) — sonnet-5-verifier (verify-desk dispatch), @ merged main `5fbf75834e1d2e5a80b44524649b4030f50e80f1`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Third independent verify pass (prior: 2026-08-22, 2026-09-16).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/harnesslint && go test ./... -v` | exit 0 | exit 0, 21 PASS incl. red-fixture subtests | 2026-09-18 | sonnet-5-verifier |
+| 2 | `hl bodies plugins/assay/skills` | exit 0 | checked-clean, no violations | 2026-09-18 | sonnet-5-verifier |
+| 2a | mutation: inject banned harness tokens into a copy | exit 1 | checked-failed as expected, both tokens named | 2026-09-18 | sonnet-5-verifier |
+| 3 | `hl bindings plugins/assay/references` | exit 0 | **checked-clean this pass** — 3 non-matrix files correctly skipped (desk-shell.md, standing-note.md, tick-contract.md). Previously failed on standing-note.md (20 violations, filed #1182); fixed by merged PR #1293 (2026-09-17) which added the non-matrix declaration. Confirmed the fix landed — recommending #1182 be closed | 2026-09-18 | sonnet-5-verifier |
+| 3a | mutation: strip a capability binding from a copy | exit 1 | checked-failed as expected, missing capability named, clean isolation | 2026-09-18 | sonnet-5-verifier |
+| 4 | grep for SendMessage in skill bodies | exit 0, empty | exit 0, empty | 2026-09-18 | sonnet-5-verifier |
+| 4a | control: same grep on claude-code.md | count ≥1 | count 2, confirms row 4 isn't blind | 2026-09-18 | sonnet-5-verifier |
+| 5 | 5-capability loop grep + control | exit 0, empty; control fires | exit 0, empty; control MISSING fires correctly | 2026-09-18 | sonnet-5-verifier |
+| 6 | plugindrift run | exit 0 | PLUGINDRIFT: CLEAN, 0 pinned/6 canonical/7 unported/0 unaccounted | 2026-09-18 | sonnet-5-verifier |
+| 7 | grep for harnesslint wiring in .github/workflows | exit 0 (present) | **FAIL — absent.** Never wired, confirmed via full workflow history (0 hits ever). Root-caused to unrelated follow-up harness-portability/15 (still implemented, not done) — App tokens lack workflows scope | 2026-09-18 | sonnet-5-verifier |
+| 8 | live-session loop-cycle regression | n/a | UNRUN — not runnable by a dispatched non-interactive verifier, same as both prior passes | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all rows map 1:1 to Verify rows; no invented scope.
+
+RISK-VALUE: DERIVED — exitClean=0, exitFailed=1, exitCannot=2, exitUsage=2 @ tools/harnesslint/lint.go:36-39 — matches the three-state instrument invariant exactly; all three states exercised live this pass (rows 1, 2a, 3a).
+RISK-VALUE: DERIVED — 7-entry closed capability vocabulary @ docs/streams/harness-portability/README.md:377-385, scoped to this pass's cited base `5fbf75834e1d2e5a80b44524649b4030f50e80f1` — confirmed the lint reads and enforces this exact live set (rows 3/3a/5), not a stale copy. (Reviewer note 2026-09-19: the merge-target main advanced past this base one commit later, PR #1318, adding an 8th entry `cadence-tick` at lines 380-389; that growth is outside this row's own diff and does not change the pass/fail verdict on rows 3/3a/5, which are independently reproduced clean against current main in the reviewer's own re-run.)
+
+VERIFY: FAIL — held at implemented. Row 7 fails, root-caused to the still-unlanded harness-portability/15 (CI wiring, App-token scope constraint) — not a regression in this brief's own diff, already tracked. Every row exercising this brief's own deliverable directly (1,2,2a,3,3a,4,4a,5,6) passes clean, including row 3 which newly confirms a prior regression (#1182) is fixed on merged main. Housekeeping: closed #1182 (fix landed via #1293, never auto-closed since the PR used "Issue:" not "Closes:").
 
 ## Review
 

@@ -249,11 +249,16 @@ func dispatch(o dispatchOpts) error {
 	// this step delegates rather than re-deriving any of it — INCLUDING where the
 	// worktree lands: the path the prompt names is the one deskwt printed, never one this
 	// verb predicted.
+	// Both arms take the SAME base expression: worktreeBase already answers mainlineRef for a
+	// verifier kit (o.pr<=0 || reviewKit || verifierKit), so the detached lane is unchanged by
+	// using it, while the branch lane keeps the PR-resume base main introduced. The only
+	// difference between the arms is --detach vs --branch, which is the verifier's whole point:
+	// it reads merged main and touches no feature branch.
 	var wt runResult
 	if plan.detached {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", "refs/remotes/origin/main")
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch))
 	} else {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", "refs/remotes/origin/main")
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch))
 	}
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so
