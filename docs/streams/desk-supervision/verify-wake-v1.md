@@ -78,7 +78,7 @@ could-not-check until an authorized online reader supplies it).
 | **could-not-check** | a declared input could not be read | surfaced as could-not-check — never rounded up to unchanged, never an empty queue or a pass |
 | **unclassified** | a legacy or incomplete receipt (missing schema/id, unknown vocabulary, or an empty input scope for `relevant-input-changed`) | eligible for exactly one ordinary classification pass; never a fabricated hold |
 
-Invariants the tests pin (`cmd/verifyloop/wake_test.go`, `internal/deskkit/verifywake_test.go`):
+Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/internal/deskkit/verifywake_test.go`):
 
 - An unchanged receipt stays a WAIT across a process restart (the receipt lives in the sidecar;
   the classifier is stateless).
