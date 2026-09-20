@@ -70,9 +70,13 @@ func cmdKeygen(args []string) int {
 
 	fmt.Fprint(stdout, string(pubPEM))
 	fmt.Fprintf(stderr, "deskverdict keygen: wrote private key to %s (keep it local; 0600).\n", *privPath)
-	fmt.Fprintf(stderr, "deskverdict keygen: set %s to the public key above (a PEM string or base64-of-PEM).\n", deskkit.VerifierPubkeyVar)
+	// keygen is role-agnostic (Task 1: the operator decides which role's
+	// variable this keypair provisions) — the hint names BOTH variables rather
+	// than defaulting to the verifier's, so an issue-loop keygen run is not
+	// pointed at the wrong one.
+	fmt.Fprintf(stderr, "deskverdict keygen: set the matching role's variable (%s or %s) to the public key above (a PEM string or base64-of-PEM).\n", deskkit.VerifierPubkeyVar, deskkit.IssueLoopPubkeyVar)
 	if *b64 {
-		fmt.Fprintf(stderr, "%s=%s\n", deskkit.VerifierPubkeyVar, base64.StdEncoding.EncodeToString(pubPEM))
+		fmt.Fprintf(stderr, "<%s or %s>=%s\n", deskkit.VerifierPubkeyVar, deskkit.IssueLoopPubkeyVar, base64.StdEncoding.EncodeToString(pubPEM))
 	}
 	return deskkit.ExitOK
 }

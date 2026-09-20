@@ -82,8 +82,8 @@ drift tooling:
 
 1. **METHOD (single source):** the seven skill bodies and the resident rules are written
    in harness-neutral *capability vocabulary* — `dispatch-worker`, `message-agent`,
-   `isolate-workspace`, `invoke-skill`, `session-notifications`, `durable-monitor`, `stop-worker` — never
-   harness tool names. One text, every harness reads the same method.
+   `isolate-workspace`, `invoke-skill`, `session-notifications`, `durable-monitor`, `stop-worker`,
+   `cadence-tick` — never harness tool names. One text, every harness reads the same method.
 2. **BINDINGS (one small file per harness):** `plugins/assay/references/<harness>.md`
    maps each capability to that harness's mechanism (Claude: the `Agent` tool,
    `SendMessage`, background task notifications; Codex: `spawn_agent`/`wait_agent`/
@@ -366,13 +366,16 @@ constraint, not a risk gate.)
 
 ## Shared conventions
 
-- **Capability vocabulary is closed**: the seven capability names above are the whole
+- **Capability vocabulary is closed**: the eight capability names above are the whole
   set until a brief amends this README. A skill body naming a capability not in the set
   is a lint error (04). The block below is the **machine-readable** copy of that set —
   `tools/harnesslint` reads it from here, so amending the vocabulary means editing this
   block in the same PR (the lint reads the set from one place, this one). Keep it in step
   with the prose list in "The seam" above. (`stop-worker` was added by desk-supervision/02
-  — the desk window's cadence sweep stops a dispatched worker whose per-run stop is armed.)
+  — the desk window's cadence sweep stops a dispatched worker whose per-run stop is armed.
+  `cadence-tick` was added by the verify-desk liveness fix (#1310) — the scheduled recurring
+  prompt that wakes a desk-role window on the clock; the fixed-cadence sweep every liveness
+  contract already names, now a named, required boot step rather than an assumed one.)
 
 <!-- assay:capability-vocabulary
 dispatch-worker
@@ -382,6 +385,7 @@ invoke-skill
 session-notifications
 durable-monitor
 stop-worker
+cadence-tick
 -->
 
 - **Blocked is a state, not a failure**: Verify rows requiring the live harness are

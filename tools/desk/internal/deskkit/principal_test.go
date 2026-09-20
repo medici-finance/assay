@@ -19,7 +19,7 @@ func TestPrincipalNeverFromEnv(t *testing.T) {
 
 	// 1. No roster configured: unresolvable, exit 5.
 	plantRoster(t, "")
-	_, err := ResolvePrincipal("")
+	_, err := ResolvePrincipal("", privateFixtureRepo)
 	if err == nil {
 		t.Fatalf("ResolvePrincipal() with no roster and DESK_PRINCIPAL=evil = nil error, want a refusal")
 	}
@@ -34,7 +34,7 @@ func TestPrincipalNeverFromEnv(t *testing.T) {
 	// 2. Perturb: add the roster. Resolves to the bless login — DESK_PRINCIPAL=evil is
 	// still exported and must have contributed nothing.
 	plantRoster(t, raisedByFixtureRoster)
-	p, err := ResolvePrincipal("")
+	p, err := ResolvePrincipal("", privateFixtureRepo)
 	if err != nil {
 		t.Fatalf("ResolvePrincipal() with roster configured = %v, want a resolved principal", err)
 	}
@@ -53,7 +53,7 @@ func TestPrincipalNeverFromEnv(t *testing.T) {
 func TestPrincipalUnattendedByDefault(t *testing.T) {
 	plantRoster(t, raisedByFixtureRoster)
 	t.Setenv("DESK_SESSION", "no-such-session-"+t.Name())
-	p, err := ResolvePrincipal("")
+	p, err := ResolvePrincipal("", privateFixtureRepo)
 	if err != nil {
 		t.Fatalf("ResolvePrincipal() = %v, want a resolved principal", err)
 	}
@@ -82,7 +82,7 @@ func TestPrincipalAttendedWithLiveBeacon(t *testing.T) {
 		t.Fatalf("writeTestBeaconRole: %v", werr)
 	}
 
-	p, err := ResolvePrincipal("")
+	p, err := ResolvePrincipal("", privateFixtureRepo)
 	if err != nil {
 		t.Fatalf("ResolvePrincipal() = %v, want a resolved principal", err)
 	}
@@ -114,7 +114,7 @@ func TestAppendOnBehalfOfStripsPlantedTrailer(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out, err := AppendOnBehalfOf([]byte(c.body), "")
+			out, err := AppendOnBehalfOf([]byte(c.body), "", privateFixtureRepo)
 			if err != nil {
 				t.Fatalf("AppendOnBehalfOf() = %v, want a resolved principal", err)
 			}

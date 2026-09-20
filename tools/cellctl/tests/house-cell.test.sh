@@ -3,6 +3,8 @@
 #
 # What it proves (each an `assert` below):
 #   new    scaffolds cell.env (CELL_KIND=house, CELL_ROOTS) + home/ with the operator config home
+#   --kind (#1303) a one-run kind override on desk/up/show, refused naming CELL_ROOTS when the
+#          cell lacks it, never persisted without --set; the next plain boot is unchanged
 #          reached by symlink, never copied; a second `new` on the same name REFUSES
 #   check  passes on a well-formed house cell and FAILS (exit 1, a MISS row) when a root lacks docs/streams/
 #   desk   creates the role worktree under <cell>/worktrees/<role>, LOCKS it, starts the (stubbed)
@@ -20,7 +22,13 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
+# is_shell_impl: is the implementation under test the shell oracle? A case that observes a
+# SHELL-OUT's side effect, or reads the implementation's own source, can only apply to that one;
+# it states itself n/a against the Go binary rather than failing (desk-containers/10).
+is_shell_impl(){ head -c2 "$CELLCTL" 2>/dev/null | grep -q '#!'; }
 # Resolved with pwd -P: a TMPDIR with a trailing slash or a symlinked temp root would otherwise
 # make the paths cellctl prints (it normalises) differ from the ones the test compares against.
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" && pwd -P)"
@@ -30,6 +38,14 @@ assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$(
 sha(){ if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 real(){ (cd "$1" && pwd -P); }
 
+# A caller's shell may already carry a cell's exported environment (cellctl sources cell.env with
+# `set -a`), which would leak into every cell loaded here — including the [legacy] k8s-default
+# assertions below, which assume no CELL_KIND/CELL_ROOTS is already set. Clear it, same convention
+# as every other file in this suite.
+unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_ROOTS CELLS_CONFIG \
+      CELL_COCKPIT ROLES DESKD DESKD_ADDR DESKD_INDEX DESK_MODEL_DEFAULT TMUX_SESSION \
+      CELL_ATTENDED
+
 # ---------------------------------------------------------------- fixtures
 # A private HOME so nothing of the operator's is read or linked; git identity via its .gitconfig.
 export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
@@ -37,7 +53,7 @@ printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n'
 export GIT_CONFIG_NOSYSTEM=1
 # The operator config home the house cell links to.
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 # Fixture repo: a bare "origin" with a main branch carrying docs/streams/, cloned as CELL_REPO.
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
@@ -100,7 +116,17 @@ echo "[check]"
 out="$("$CELLCTL" check example-cell 2>&1)"; rc=$?
 assert "check exits 0 on the house cell" '[[ $rc -eq 0 ]]'
 assert "check reports all preconditions met" 'grep -q "all preconditions met" <<<"$out"'
-assert "check ran deskroster under the CELL home" '[[ "$(cat "$T/deskroster.home")" == "$CELL/home" ]]'
+# The roster read happens UNDER THE CELL HOME — but HOW it happens is implementation-specific,
+# and this case observes the mechanism, so it applies only to the shell oracle. The oracle shells
+# out to `deskroster` (the stub records $HOME, which is what is checked here); the Go port asks
+# deskkit the same question IN-PROCESS with HOME pointed at the cell home, which is the reuse
+# brief desk-containers/10 requires, and no subprocess exists to record anything. The port's own
+# equivalent is TestRosterParsesReadsTheCellHome in tools/desk/cmd/cellctl.
+if is_shell_impl; then
+  assert "check ran deskroster under the CELL home" '[[ "$(cat "$T/deskroster.home")" == "$CELL/home" ]]'
+else
+  echo "  n/a   check ran deskroster under the CELL home — the Go port reads the roster in-process (no shell-out to observe); covered by TestRosterParsesReadsTheCellHome"
+fi
 assert "check proves every root carries docs/streams/" '[[ "$(grep -c "carries docs/streams/" <<<"$out")" -eq 2 ]]'
 assert "check reports deskd n/a on a house cell" 'grep -q "n/a   deskd" <<<"$out"'
 assert "check reports the plugin row ok" 'grep -q "ok    plugin assay@assay" <<<"$out"'
@@ -174,6 +200,27 @@ out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk 2>&1)"
 assert "cell.env without CELL_KIND loads as k8s" 'grep -q "kind=k8s role=the-desk" <<<"$out"'
 assert "k8s cell without CELL_ROOTS says so (NOTICE) and boots with desk_roots=unset" 'grep -q "NOTICE: cell.env has no CELL_ROOTS" <<<"$out" && grep -q "desk_roots=unset" <<<"$out"'
 assert "k8s session name keeps <cell>-<short role>" 'grep -q "session=legacy-the-desk " <<<"$out"'
+
+# ---------------------------------------------------------------- --kind per-run override (#1303 scope 2)
+echo "[--kind: one-run kind override, cell.env untouched, preconditions still asserted]"
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk --kind house 2>&1)" && rc=0 || rc=$?
+assert "k8s cell → --kind house without CELL_ROOTS is refused naming CELL_ROOTS" '[[ $rc -ne 0 ]] && grep -q "CELL_ROOTS" <<<"$out"'
+assert "cell.env is untouched by the refused override" '! grep -q "^CELL_KIND=" "$CELLS_ROOT/legacy/cell.env"'
+printf 'CELL_ROOTS=%s\n' "$ROOTS" >> "$CELLS_ROOT/legacy/cell.env"
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk --kind house 2>&1)" && rc=0 || rc=$?
+assert "with CELL_ROOTS present, --kind house loads the cell as house for this run" '[[ $rc -eq 0 ]] && grep -q "kind=house (override) role=the-desk" <<<"$out"'
+assert "the run takes the house shape (stamped session name)" 'grep -qE "session=legacy-the-desk-[0-9]{8}T[0-9]{6}Z" <<<"$out"'
+assert "cell.env still carries no CELL_KIND (override never persisted without --set)" '! grep -q "^CELL_KIND=" "$CELLS_ROOT/legacy/cell.env"'
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk 2>&1)" && rc=0 || rc=$?
+assert "the next plain boot is k8s again" 'grep -q "kind=k8s role=the-desk" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk --kind bogus 2>&1)" && rc=0 || rc=$?
+assert "an unknown --kind is refused before loading" '[[ $rc -ne 0 ]] && grep -q -- "--kind must be one of k8s|house|container|scrubbed" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" up legacy --cockpit tmux --kind house 2>&1)" && rc=0 || rc=$?
+assert "up --kind house threads the override into the up plan" '[[ $rc -eq 0 ]] && grep -q "kind=house (override)" <<<"$out"'
+out="$("$CELLCTL" show legacy --kind house 2>&1)" && rc=0 || rc=$?
+assert "show --kind reports the flag as the source" '[[ $rc -eq 0 ]] && grep -qx "\[show\] CELL_KIND=house (flag)" <<<"$out"'
+out="$("$CELLCTL" show legacy 2>&1)" && rc=0 || rc=$?
+assert "show on the legacy cell reports the compiled k8s default as such" '[[ $rc -eq 0 ]] && grep -qx "\[show\] CELL_KIND=k8s (default)" <<<"$out"'
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "house-cell.test.sh: OK"; else echo "house-cell.test.sh: $fails FAILED"; exit 1; fi

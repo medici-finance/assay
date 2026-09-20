@@ -1,2 +1,6 @@
 /dist/
 /MANIFEST.sha256
+# The locally built cellctl binary (tools/desk/cellctl), which the parity harness and the
+# behavioural suites are pointed at. Anchored with a leading slash: a bare `cellctl` would also
+# ignore the cmd/cellctl/ SOURCE DIRECTORY.
+/cellctl

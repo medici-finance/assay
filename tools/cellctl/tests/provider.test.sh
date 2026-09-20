@@ -21,6 +21,11 @@
 #          mechanism --model uses, verified in model-override.test.sh)
 #   set    `cellctl set <cell> CELL_PROVIDER=<name>` and the CELL_PROVIDER_<NAME>_* keys are
 #          accepted without --force (an unrelated key still needs it)
+#   #1303  built-in `kimi`/`glm` presets (endpoint, token env NAME, default model) resolve with no
+#          CELL_PROVIDER_<NAME>_* line and are overridden piecewise by one; CELL_PROVIDER_<NAME>_MODEL;
+#          the launch unsets ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + the three
+#          ANTHROPIC_DEFAULT_*_MODEL aliases; model precedence --model > per-role pin > provider
+#          model; codex + provider refused; check/show rows name the env var and set/unset only
 #
 # No network: the "provider" here is a fake base URL, and the token is a fixture string in an
 # env var this suite sets — nothing is sent anywhere. `claude` is a stub that records its argv
@@ -30,7 +35,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-provider.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$T"' EXIT
 fails=0
@@ -46,7 +53,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"
@@ -73,6 +80,11 @@ esac
 {
   echo "ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}"
   echo "ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}"
+  echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY-<unset>}"
+  echo "ANTHROPIC_MODEL=${ANTHROPIC_MODEL-<unset>}"
+  echo "ANTHROPIC_DEFAULT_OPUS_MODEL=${ANTHROPIC_DEFAULT_OPUS_MODEL-<unset>}"
+  echo "ANTHROPIC_DEFAULT_SONNET_MODEL=${ANTHROPIC_DEFAULT_SONNET_MODEL-<unset>}"
+  echo "ANTHROPIC_DEFAULT_HAIKU_MODEL=${ANTHROPIC_DEFAULT_HAIKU_MODEL-<unset>}"
   echo "ARGS=$*"
 } > "$CELLCTL_TEST_OUT"
 EOF
@@ -107,8 +119,8 @@ assert "the model NAME is unaffected by the provider" 'grep -q -- "--model sonne
 
 # ---------------------------------------------------------------- desk: missing pieces refuse cleanly
 echo "[desk: provider misconfiguration refuses, never guesses]"
-out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
-assert "unknown provider (no BASE_URL declared) is refused" '[[ $rc -ne 0 ]] && grep -q "CELL_PROVIDER_KIMI_BASE_URL is not set" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider nope 2>&1)" && rc=0 || rc=$?
+assert "unknown provider (no BASE_URL declared) is refused" '[[ $rc -ne 0 ]] && grep -q "CELL_PROVIDER_NOPE_BASE_URL is not set" <<<"$out"'
 
 unset CELL_PROVIDER_ZAI_TOKEN_ENV
 out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider zai 2>&1)" && rc=0 || rc=$?
@@ -167,6 +179,89 @@ out="$("$CELLCTL" set example-cell CELL_PROVIDER_ZAI_TOKEN_ENV=ZAI_API_KEY 2>&1)
 assert "'cellctl set' accepts CELL_PROVIDER_<NAME>_TOKEN_ENV without --force" '[[ $rc -eq 0 ]]'
 out="$("$CELLCTL" set example-cell SOME_RANDOM_KEY=x 2>&1)" && rc=0 || rc=$?
 assert "an unrelated unknown key still needs --force (the allowlist is not wide open)" '[[ $rc -ne 0 ]] && grep -q "not a known cell.env key" <<<"$out"'
+
+out="$("$CELLCTL" set example-cell CELL_PROVIDER_ZAI_MODEL=glm-custom 2>&1)" && rc=0 || rc=$?
+assert "'cellctl set' accepts CELL_PROVIDER_<NAME>_MODEL without --force (#1303)" '[[ $rc -eq 0 ]]'
+sed -i.bak '/^CELL_PROVIDER=zai$/d; /^CELL_PROVIDER_ZAI_/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+unset CELL_PROVIDER_ZAI_BASE_URL CELL_PROVIDER_ZAI_TOKEN_ENV
+
+# ================================================================ #1303: presets, _MODEL, launch env
+echo "[presets: kimi/glm resolve with no CELL_PROVIDER_<NAME>_* line]"
+unset KIMI_API_KEY ZAI_API_KEY
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "preset kimi with \$KIMI_API_KEY unset is refused naming the env var (never a value)" '[[ $rc -ne 0 ]] && grep -q "\$KIMI_API_KEY" <<<"$out" && grep -q "not set in this shell" <<<"$out"'
+export KIMI_API_KEY="fixture-kimi-token-not-real"
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "preset kimi resolves with only the env var exported (exit 0)" '[[ $rc -eq 0 ]] && grep -q "provider=kimi" <<<"$out"'
+assert "with no --model and no per-role pin the preset model is used, tagged with its source" 'grep -q "model=k3\[1m\] (provider:kimi (CELL_PROVIDER_KIMI_MODEL))" <<<"$out"'
+export CELLCTL_TEST_OUT="$T/launch-kimi.env"
+ANTHROPIC_API_KEY="inherited-api-key-fixture" "$CELLCTL" desk example-cell worker-desk --provider kimi >/dev/null 2>&1
+assert "ANTHROPIC_BASE_URL is the kimi preset endpoint" 'grep -qxF "ANTHROPIC_BASE_URL=https://api.kimi.com/coding" "$CELLCTL_TEST_OUT"'
+assert "ANTHROPIC_AUTH_TOKEN comes from \$KIMI_API_KEY" 'grep -qxF "ANTHROPIC_AUTH_TOKEN=fixture-kimi-token-not-real" "$CELLCTL_TEST_OUT"'
+assert "an inherited ANTHROPIC_API_KEY is UNSET for the launched process" 'grep -qxF "ANTHROPIC_API_KEY=<unset>" "$CELLCTL_TEST_OUT"'
+assert "ANTHROPIC_MODEL is exported as the launch model" 'grep -qxF "ANTHROPIC_MODEL=k3[1m]" "$CELLCTL_TEST_OUT"'
+assert "the three tier aliases are pinned to the provider model" 'grep -qxF "ANTHROPIC_DEFAULT_OPUS_MODEL=k3[1m]" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=k3[1m]" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_HAIKU_MODEL=k3[1m]" "$CELLCTL_TEST_OUT"'
+assert "claude is launched with --model k3[1m]" 'grep -q -- "--model k3\[1m\]" "$CELLCTL_TEST_OUT"'
+
+export CELLCTL_TEST_OUT="$T/launch-none.env"
+ANTHROPIC_API_KEY="inherited-api-key-fixture" "$CELLCTL" desk example-cell worker-desk >/dev/null 2>&1
+assert "no provider → ANTHROPIC_API_KEY is left alone and no model vars are exported (unchanged arm)" 'grep -qxF "ANTHROPIC_API_KEY=inherited-api-key-fixture" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_MODEL=<unset>" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=<unset>" "$CELLCTL_TEST_OUT"'
+
+echo "[presets: glm]"
+export ZAI_API_KEY="fixture-zai-token-not-real"
+export CELLCTL_TEST_OUT="$T/launch-glm.env"
+"$CELLCTL" desk example-cell worker-desk --provider glm >/dev/null 2>&1
+assert "glm preset endpoint + token env + model" 'grep -qxF "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_AUTH_TOKEN=fixture-zai-token-not-real" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_MODEL=glm-5.3[1m]" "$CELLCTL_TEST_OUT"'
+
+echo "[presets: cell.env lines override the preset piecewise]"
+export CELL_PROVIDER_GLM_MODEL="glm-custom"
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider glm 2>&1)" && rc=0 || rc=$?
+assert "CELL_PROVIDER_GLM_MODEL overrides the preset model" '[[ $rc -eq 0 ]] && grep -q "model=glm-custom (provider:glm" <<<"$out"'
+export CELL_PROVIDER_GLM_BASE_URL="https://proxy.example.invalid/anthropic"
+export CELLCTL_TEST_OUT="$T/launch-glm2.env"
+"$CELLCTL" desk example-cell worker-desk --provider glm >/dev/null 2>&1
+assert "CELL_PROVIDER_GLM_BASE_URL overrides the preset endpoint; token env stays the preset" 'grep -qxF "ANTHROPIC_BASE_URL=https://proxy.example.invalid/anthropic" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_AUTH_TOKEN=fixture-zai-token-not-real" "$CELLCTL_TEST_OUT"'
+unset CELL_PROVIDER_GLM_MODEL CELL_PROVIDER_GLM_BASE_URL
+
+echo "[presets: model precedence — --model, then the per-role pin, then the provider model]"
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider kimi --model my-explicit 2>&1)" && rc=0 || rc=$?
+assert "--model still overrides for one run" '[[ $rc -eq 0 ]] && grep -q "model=my-explicit (override)" <<<"$out"'
+export CELLCTL_TEST_OUT="$T/launch-kimi-explicit.env"
+"$CELLCTL" desk example-cell worker-desk --provider kimi --model my-explicit >/dev/null 2>&1
+assert "ANTHROPIC_MODEL follows the launch model while the tier aliases keep the provider model" 'grep -qxF "ANTHROPIC_MODEL=my-explicit" "$CELLCTL_TEST_OUT" && grep -qxF "ANTHROPIC_DEFAULT_SONNET_MODEL=k3[1m]" "$CELLCTL_TEST_OUT"'
+printf 'DESK_MODEL_worker_desk=pinned-role-model\n' >> "$CELL/cell.env"
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "a per-role pin wins over the provider model" '[[ $rc -eq 0 ]] && grep -q "model=pinned-role-model" <<<"$out" && ! grep -q "provider:kimi" <<<"$out"'
+sed -i.bak '/^DESK_MODEL_worker_desk=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk --provider kimi --harness codex 2>&1)" && rc=0 || rc=$?
+assert "codex harness + provider is refused" '[[ $rc -ne 0 ]] && grep -q "no codex equivalent" <<<"$out"'
+
+echo "[check: preset provider rows name the env var and set/unset, never a value]"
+printf 'CELL_PROVIDER=kimi\n' >> "$CELL/cell.env"
+out="$("$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
+assert "check passes on the kimi preset with \$KIMI_API_KEY set" '[[ $rc -eq 0 ]]'
+assert "base URL row shows the preset endpoint tagged (preset)" 'grep -q "ok    provider kimi: CELL_PROVIDER_KIMI_BASE_URL=https://api.kimi.com/coding (preset)" <<<"$out"'
+assert "token-env row names KIMI_API_KEY tagged (preset)" 'grep -q "ok    provider kimi: CELL_PROVIDER_KIMI_TOKEN_ENV (names the token env var, never the token)=KIMI_API_KEY (preset)" <<<"$out"'
+assert "token-present row says set, never the value" 'grep -q "ok    provider kimi: \$KIMI_API_KEY is set in this shell" <<<"$out" && ! grep -q "fixture-kimi-token-not-real" <<<"$out"'
+assert "model row shows the preset model" 'grep -q "ok    provider kimi: model=k3\[1m\] (preset" <<<"$out"'
+unset KIMI_API_KEY
+out="$("$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
+assert "\$KIMI_API_KEY unset → MISS, check fails, no value anywhere" '[[ $rc -eq 1 ]] && grep -q "MISS  provider kimi: \$KIMI_API_KEY is set in this shell" <<<"$out"'
+export KIMI_API_KEY="fixture-kimi-token-not-real"
+
+echo "[show: provider lines]"
+out="$("$CELLCTL" show example-cell 2>&1)" && rc=0 || rc=$?
+assert "show reports the provider from cell.env and its preset detail with set/unset only" '[[ $rc -eq 0 ]] && grep -qx "\[show\] CELL_PROVIDER=kimi (cell.env)" <<<"$out" && grep -qx "\[show\] provider kimi base_url=https://api.kimi.com/coding (preset)" <<<"$out" && grep -qx "\[show\] provider kimi token_env=KIMI_API_KEY (preset; set in this shell)" <<<"$out" && grep -qx "\[show\] provider kimi model=k3\[1m\] (preset)" <<<"$out" && ! grep -q "fixture-kimi" <<<"$out"'
+out="$("$CELLCTL" show example-cell --provider glm 2>&1)" && rc=0 || rc=$?
+assert "show --provider glm: flag source + glm preset" 'grep -qx "\[show\] CELL_PROVIDER=glm (flag)" <<<"$out" && grep -qx "\[show\] provider glm model=glm-5.3\[1m\] (preset)" <<<"$out"'
+sed -i.bak '/^CELL_PROVIDER=kimi$/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+
+echo "[set/up: --provider kimi|glm]"
+out="$("$CELLCTL" set example-cell --provider glm 2>&1)" && rc=0 || rc=$?
+assert "cellctl set --provider glm persists CELL_PROVIDER=glm" '[[ $rc -eq 0 ]] && grep -qx "CELL_PROVIDER=glm" "$CELL/cell.env"'
+out="$(DRY_RUN=1 "$CELLCTL" up example-cell --cockpit tmux --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "up --provider kimi threads onto every role window" "[[ \$rc -eq 0 ]] && grep -q \"worker-desk: .*desk 'example-cell' 'worker-desk' --provider 'kimi'\" <<<\"\$out\""
+sed -i.bak '/^CELL_PROVIDER=glm$/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "provider.test.sh: OK"; else echo "provider.test.sh: $fails FAILED"; exit 1; fi

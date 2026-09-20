@@ -24,7 +24,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-override.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$T"' EXIT
 fails=0
@@ -44,7 +46,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"
@@ -133,6 +135,21 @@ assert "up --model dry-run exits 0" '[[ $rc -eq 0 ]]'
 assert "up announces the override once" 'grep -q "model=sonnet (override) — applied to every role window below" <<<"$out"'
 assert "the-desk window command carries --model sonnet" "grep -q \"the-desk: .*desk 'house-cell' 'the-desk' --model 'sonnet'\" <<<\"\$out\""
 assert "worker-desk window command carries --model sonnet too" "grep -q \"worker-desk: .*desk 'house-cell' 'worker-desk' --model 'sonnet'\" <<<\"\$out\""
+
+# ---------------------------------------------------------------- --model with a provider preset (#1303)
+echo "[--model + --provider: the override still wins, the provider only changes the endpoint]"
+export KIMI_API_KEY="fixture-kimi-token-not-real"
+out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "no --model, no per-role pin: the kimi preset model resolves" '[[ $rc -eq 0 ]] && grep -q "model=k3\[1m\] (provider:kimi" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk --provider kimi --model sonnet 2>&1)" && rc=0 || rc=$?
+assert "--model overrides the provider model for one run" '[[ $rc -eq 0 ]] && grep -q "model=sonnet (override)" <<<"$out" && grep -q "provider=kimi" <<<"$out"'
+out="$(DRY_RUN=1 DESK_MODEL_OVERRIDE=haiku "$CELLCTL" desk house-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "DESK_MODEL_OVERRIDE overrides the provider model too" '[[ $rc -eq 0 ]] && grep -q "model=haiku (override)" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "the-desk keeps its per-role pin (fable) over the provider model — pin it to a provider model to switch" '[[ $rc -eq 0 ]] && grep -q "model=fable" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" up house-cell --cockpit tmux --model sonnet --provider glm 2>&1)" && rc=0 || rc=$?
+assert "up threads --model and --provider glm onto every role window" "[[ \$rc -eq 0 ]] && grep -q \"worker-desk: .*desk 'house-cell' 'worker-desk' --model 'sonnet' --provider 'glm'\" <<<\"\$out\""
+unset KIMI_API_KEY
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "model-override.test.sh: OK"; else echo "model-override.test.sh: $fails FAILED"; exit 1; fi

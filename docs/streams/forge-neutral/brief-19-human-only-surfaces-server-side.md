@@ -19,6 +19,7 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-19
 exec-tier: strong
 exec-tier-why: "getting item 1 wrong in either direction is a security judgment: understating the gap leaves a real merge-bypass unflagged, and a proposed fix that is subtly mis-specified (a required check a bot can also satisfy, a review-login match that accepts the wrong identity class) would read as closed when it is not — this is not a fact a model self-certifies (question c)."
 gate-why: >-
@@ -318,6 +319,29 @@ one component in isolation).
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+
+Authorization for filling this section now: `DR-forge-neutral-19` (this repo,
+`docs/streams/decisions/DR-forge-neutral-19.md`) records the driver's ruling — answer A,
+relayed on
+[PR #1256](https://github.com/medici-finance/assay/pull/1256#issuecomment-5737614997) — and
+landed merged via [PR #1316](https://github.com/medici-finance/assay/pull/1316). Per
+`spec/lifecycle-v1.md` §4.4, that approved design-decision record is the precondition this
+risk-gated (`gate: human`, `sensitive-data: yes`) brief needed before its Evidence could be
+recorded; it is now satisfied.
+
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `gh api repos/medici-finance/assay/rulesets` then `gh api repos/medici-finance/assay/rulesets/<id>` for each returned id | 0 | Live read against `medici-finance/assay` today: `protect-main` (20301257) rules include a `pull_request` entry with `"required_approving_review_count":1"` and no key anywhere in the ruleset restricting which identity may supply that approval (no `dismissal_restriction.allowed_actors`, no reviewer-login restriction); neither `protect-main` nor `leak-sweep`'s JSON carries a `bypass_actors` key at all. `leak-sweep` (20872509) rules include a `required_status_checks` entry `[{"context":"leak-sweep"}]` and a `pull_request` entry with `"required_approving_review_count":0`. Matches this brief's frozen `sources:` facts exactly — re-run confirms the characterisation still holds live, not merely as originally recorded. | 2026-09-19 | sonnet-5-worker |
+| 2 | `grep -n -A5 '^var requiredDuties = \[\]Duty{' tools/desk/internal/deskkit/preflight.go` | 0 | Block lists exactly 3 `Duty` entries — `pull_requests` (write), `issues` (write), `contents` (write) — and no `workflows` entry anywhere in it. Confirms item 2's GitHub half: no role App installation is required or checked to carry the `workflows` scope. | 2026-09-19 | sonnet-5-worker |
+| 3 | fixture-repo-only, per Ground rules — NOT RUN | — | **could-not-check.** This row exercises the proposed `human-approved` check against a throwaway fixture repo carrying a stub workflow. That workflow does not exist yet — Task 1 only specifies its contract; a follow-on brief builds `.github/workflows/human-approved-gate.yml` (planned). No fixture carrying it exists to run this row against, and the Ground rules forbid ever pointing this row at `medici-finance/assay` itself. Reported as could-not-check, not rounded to a pass. | — | — |
+| 4 | fixture-repo-only, per Ground rules — NOT RUN | — | **could-not-check**, same root cause as row 3 — the positive-control fixture and stub workflow do not exist yet. | — | — |
+| 5 | future re-run after the ruleset edit lands — NOT RUN | — | **could-not-check.** Task 2 names adding `human-approved` to `protect-main`'s required-status-checks list as a separate human/repo-admin act, performed once the workflow (row 3/4's prerequisite) exists and has run green. Neither has happened yet, so there is nothing yet for this row to observe; the brief's own Verify table scopes this row as a "future re-run", not executable at this pass. | — | — |
+
+Rows 3-5 are not gaps in this pass — they are exactly the follow-on-gated rows the brief's
+own Ground rules and Task 1/2 describe as out of scope until the named follow-on work (the
+workflow file, the fixture, and the ruleset edit) lands. Rows 1 and 2 are the two rows the
+brief's own Verify table marks as executable without that follow-on, and both were re-run
+live rather than copied from the brief's frozen `sources:` facts.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`; this brief documents and proposes
