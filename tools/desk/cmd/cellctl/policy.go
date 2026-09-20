@@ -14,7 +14,7 @@ import (
 
 // This file ports the CELL_MODEL_POLICY semantics #1388 added to the shell oracle
 // (tools/cellctl/cellctl's model_policy()/apply_model_policy()/policy_claude_preflight()) into
-// the Go binary — desk-containers/10 shipped the Go port without them (assay#1390). The oracle
+// the Go binary — example-stream/10 shipped the Go port without them (assay#1390). The oracle
 // and docs/cellctl-model-policy.md are the spec; tools/cellctl/tests/model-policy.test.py is the
 // behavioural ORACLE this file's tests port cases from. See the PR body for exactly which
 // oracle behaviours this file does, and does not, carry over — some of the oracle's launch-time
@@ -484,18 +484,33 @@ var claudeMinVersion = [3]int{2, 1, 251}
 
 var semverRe = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 
+// claudeBinary is a package-level constant so the forge-CLI-shellout ban (tools/desk/internal/
+// forgeban) can resolve checkClaudeMinVersion's exec.Command argv[0] at scan time — it is not a
+// forge CLI, but an unresolved (non-constant) argv[0] is exactly the shape that ban cannot tell
+// apart from one, so it is spelled as a literal here rather than threaded through as a
+// parameter.
+const claudeBinary = "claude"
+
 // checkClaudeMinVersion is the version half of the oracle's `policy_claude_preflight` — the
 // settings.json/managed-settings allowlist-conflict scan that function also runs is NOT ported
-// (see this file's header comment and the PR body). It shells out to `<bin> --version` (a local
-// binary invocation, not a network call) and refuses below the floor above.
-func checkClaudeMinVersion(bin string) error {
-	out, err := exec.Command(bin, "--version").Output()
+// (see this file's header comment and the PR body). It shells out to `claude --version` (a
+// local binary invocation, not a network call) and refuses below the floor above.
+func checkClaudeMinVersion() error {
+	out, err := exec.Command(claudeBinary, "--version").Output()
 	if err != nil {
-		return policyFail("cannot read %s version for model policy: %v", bin, err)
+		return policyFail("cannot read %s version for model policy: %v", claudeBinary, err)
 	}
-	m := semverRe.FindStringSubmatch(string(out))
+	return checkClaudeVersionOutput(string(out))
+}
+
+// checkClaudeVersionOutput is the pure (no exec) half: parse a `claude --version` transcript
+// and compare it to the floor. Split out so tests exercise the parsing/comparison logic
+// directly, without needing a binary literally named "claude" resolvable on PATH for every
+// case.
+func checkClaudeVersionOutput(out string) error {
+	m := semverRe.FindStringSubmatch(out)
 	if m == nil {
-		return policyFail("cannot parse %s version output for model policy: %q", bin, strings.TrimSpace(string(out)))
+		return policyFail("cannot parse %s version output for model policy: %q", claudeBinary, strings.TrimSpace(out))
 	}
 	var v [3]int
 	for i := 0; i < 3; i++ {

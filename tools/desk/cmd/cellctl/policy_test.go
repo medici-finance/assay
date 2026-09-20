@@ -334,29 +334,56 @@ func TestClaudeEnvAndCodexArgsPropagateEffort(t *testing.T) {
 	_ = joined
 }
 
-func TestCheckClaudeMinVersion(t *testing.T) {
-	dir := t.TempDir()
-	write := func(version string) string {
-		p := filepath.Join(dir, "claude-"+version)
-		script := "#!/bin/sh\necho '" + version + " (stub)'\n"
-		if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	if err := checkClaudeMinVersion(write("2.1.251")); err != nil {
+// TestCheckClaudeVersionOutput exercises the pure parsing/comparison half directly — no exec,
+// no PATH, no binary literally named "claude" required. checkClaudeMinVersion's own argv[0] is
+// the package constant claudeBinary precisely so the forge-CLI-shellout ban can resolve it; this
+// test covers the logic behind it without threading a variable binary path through that call.
+func TestCheckClaudeVersionOutput(t *testing.T) {
+	if err := checkClaudeVersionOutput("2.1.251 (stub)"); err != nil {
 		t.Errorf("exactly the floor must pass: %v", err)
 	}
-	if err := checkClaudeMinVersion(write("2.1.278")); err != nil {
+	if err := checkClaudeVersionOutput("2.1.278 (stub)"); err != nil {
 		t.Errorf("above the floor must pass: %v", err)
 	}
-	if err := checkClaudeMinVersion(write("2.1.200")); err == nil {
+	if err := checkClaudeVersionOutput("2.1.200 (stub)"); err == nil {
 		t.Error("below the floor must refuse")
 	}
-	if err := checkClaudeMinVersion(write("1.9.999")); err == nil {
+	if err := checkClaudeVersionOutput("1.9.999 (stub)"); err == nil {
 		t.Error("an old major version must refuse")
 	}
-	if err := checkClaudeMinVersion(filepath.Join(dir, "does-not-exist")); err == nil {
-		t.Error("a harness binary that cannot even report --version must refuse")
+	if err := checkClaudeVersionOutput("not a version string"); err == nil {
+		t.Error("unparseable --version output must refuse")
 	}
+}
+
+// TestCheckClaudeMinVersionExecPath is the exec half, at the built-binary boundary: a stub
+// literally named "claude" (matching the claudeBinary constant) on PATH, in both directions.
+func TestCheckClaudeMinVersionExecPath(t *testing.T) {
+	writeStubOnPath := func(t *testing.T, version string) {
+		t.Helper()
+		dir := t.TempDir()
+		script := "#!/bin/sh\necho '" + version + " (stub)'\n"
+		if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir)
+	}
+	t.Run("above floor passes", func(t *testing.T) {
+		writeStubOnPath(t, "2.1.278")
+		if err := checkClaudeMinVersion(); err != nil {
+			t.Errorf("above the floor must pass: %v", err)
+		}
+	})
+	t.Run("below floor refuses", func(t *testing.T) {
+		writeStubOnPath(t, "2.1.200")
+		if err := checkClaudeMinVersion(); err == nil {
+			t.Error("below the floor must refuse")
+		}
+	})
+	t.Run("no claude on PATH refuses", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		if err := checkClaudeMinVersion(); err == nil {
+			t.Error("a harness binary that cannot even report --version must refuse")
+		}
+	})
 }

@@ -131,7 +131,7 @@ func cmdDesk(cell string, args []string) {
 	// local/managed settings.json availableModels/modelOverrides conflict scan that same
 	// function also runs is NOT ported — see policy.go's header comment and the PR body).
 	if policyRes != nil && harness == "claude" {
-		if err := checkClaudeMinVersion("claude"); err != nil {
+		if err := checkClaudeMinVersion(); err != nil {
 			die("%s", err)
 		}
 	}
