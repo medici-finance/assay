@@ -48,7 +48,11 @@ func TestFlow(t *testing.T) {
 	streams := flowFixtureStreams()
 	history := flowFixtureHistory()
 	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	since, until, err := resolveBFWindow("", "", now)
+	// Explicit window covering the fixture's August dwells. The default window
+	// (28 days back from `now`) would start 2026-08-21, AFTER every fixture
+	// dwell — the report must be asked for the window it measures, and
+	// --since/--until now actually scope the emitted durations.
+	since, until, err := resolveBFWindow("2026-08-01", "2026-09-01", now)
 	if err != nil {
 		t.Fatalf("resolveBFWindow: %v", err)
 	}
@@ -99,7 +103,7 @@ func TestFlowRefusesOpenInterval(t *testing.T) {
 	streams := flowFixtureStreams()
 	history := flowFixtureHistory()
 	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	since, until, err := resolveBFWindow("", "", now)
+	since, until, err := resolveBFWindow("2026-08-01", "2026-09-01", now)
 	if err != nil {
 		t.Fatalf("resolveBFWindow: %v", err)
 	}
@@ -120,6 +124,67 @@ func TestFlowRefusesOpenInterval(t *testing.T) {
 	}
 	if row.ActiveWorkTime.Seconds != 0 {
 		t.Fatalf("example-app/03 active_work_time.seconds = %d, want 0 — a could-not-check duration must never also carry a number", row.ActiveWorkTime.Seconds)
+	}
+}
+
+// TestFlowWindowExcludesOutOfRange proves --since/--until actually SCOPE the
+// emitted durations (not merely stamp a window on the report): a dwell whose
+// terminal instant falls outside [since, until) must NOT be counted, mirroring
+// --flow-efficiency's [since, until) edge rule (briefefficiency.go). The
+// contrast is the assertion — the SAME fixture measures under a window that
+// contains the dwell and reports could-not-check under one that excludes it.
+func TestFlowWindowExcludesOutOfRange(t *testing.T) {
+	streams := flowFixtureStreams()
+	history := flowFixtureHistory()
+	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+
+	verificationOf := func(rep FlowReport, id string) FlowDuration {
+		for i := range rep.Briefs {
+			if rep.Briefs[i].ID == id {
+				return rep.Briefs[i].VerificationTime
+			}
+		}
+		t.Fatalf("%s missing from report briefs", id)
+		return FlowDuration{}
+	}
+
+	// Wide window: example-app/01's implemented→verified dwell (2026-08-03 →
+	// 2026-08-04, terminal 2026-08-04) is inside [2026-08-01, 2026-09-01).
+	wideSince, wideUntil, err := resolveBFWindow("2026-08-01", "2026-09-01", now)
+	if err != nil {
+		t.Fatalf("resolveBFWindow (wide): %v", err)
+	}
+	wide := computeFlowReport(streams, history, "testdata/flow/window-a", false, 0, wideSince, wideUntil, now)
+	if v := verificationOf(wide, "example-app/01"); v.Status != "measured" || v.Seconds != 24*3600 {
+		t.Fatalf("example-app/01 verification_time (wide window) = %+v, want measured/86400s", v)
+	}
+
+	// Narrow window [2026-08-08, 2026-09-01): 01's dwell (terminal 2026-08-04)
+	// is now BEFORE `since` and must drop to could-not-check, while 02's
+	// implemented→verified dwell (2026-08-08 → 2026-08-09, terminal 2026-08-09)
+	// is inside the window and stays measured.
+	narrowSince, narrowUntil, err := resolveBFWindow("2026-08-08", "2026-09-01", now)
+	if err != nil {
+		t.Fatalf("resolveBFWindow (narrow): %v", err)
+	}
+	narrow := computeFlowReport(streams, history, "testdata/flow/window-a", false, 0, narrowSince, narrowUntil, now)
+
+	if v := verificationOf(narrow, "example-app/01"); v.Status != "could-not-check" {
+		t.Fatalf("example-app/01 verification_time (narrow window) = %+v, want could-not-check — its dwell's terminal instant precedes `since`", v)
+	} else if v.Seconds != 0 {
+		t.Fatalf("example-app/01 verification_time.seconds = %d, want 0 — a windowed-out duration must never also carry a number", v.Seconds)
+	}
+	if v := verificationOf(narrow, "example-app/02"); v.Status != "measured" || v.Seconds != 24*3600 {
+		t.Fatalf("example-app/02 verification_time (narrow window) = %+v, want measured/86400s (its dwell's terminal instant is inside the window)", v)
+	}
+
+	// The fleet median honours the same scope: under the narrow window it is
+	// built only from the in-window durations, never the excluded ones.
+	if narrow.Medians.VerificationTime.Status == "ok" && wide.Medians.VerificationTime.Status == "ok" {
+		if narrow.Medians.VerificationTime.N >= wide.Medians.VerificationTime.N {
+			t.Fatalf("narrow-window verification_time median N (%d) must be smaller than the wide window's (%d) — the median must drop the out-of-window durations",
+				narrow.Medians.VerificationTime.N, wide.Medians.VerificationTime.N)
+		}
 	}
 }
 

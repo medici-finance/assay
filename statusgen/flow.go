@@ -251,7 +251,19 @@ func finalizeDuration(secs int64, from, to time.Time, resolutionSecs int64, reso
 	}
 }
 
-func computeEligibleToStart(history []HistoryEntry, id string, deps []string, resSecs int64, resKnown bool) FlowDuration {
+// instantInWindow reports whether a dwell's TERMINAL instant falls in the
+// half-open window [since, until) — the same rule --flow-efficiency applies
+// (briefefficiency.go): a duration is attributed to the window in which the
+// brief LEFT the stage, so --since/--until actually scope the emitted numbers
+// and the medians built from them, matching the report's own window stamp.
+// (doratiming.go's inWindow is the RFC3339-string twin; these edges already
+// carry parsed time.Time instants, so a time-typed variant avoids a needless
+// format-then-reparse round trip.)
+func instantInWindow(terminal, since, until time.Time) bool {
+	return !terminal.Before(since) && terminal.Before(until)
+}
+
+func computeEligibleToStart(history []HistoryEntry, id string, deps []string, resSecs int64, resKnown bool, since, until time.Time) FlowDuration {
 	at, ok, reason := eligibleAt(history, id, deps)
 	if !ok {
 		return FlowDuration{Status: "could-not-check", Reason: reason}
@@ -259,6 +271,9 @@ func computeEligibleToStart(history []HistoryEntry, id string, deps []string, re
 	start, ok := firstInProgressAtOrAfter(history, id, at)
 	if !ok {
 		return FlowDuration{Status: "could-not-check", Reason: id + ": no recorded in-progress observation at/after its eligible-at instant"}
+	}
+	if !instantInWindow(start, since, until) {
+		return FlowDuration{Status: "could-not-check", Reason: id + ": in-progress instant falls outside the requested [since, until) window"}
 	}
 	secs := int64(start.Sub(at).Seconds())
 	if secs < 0 {
@@ -301,12 +316,15 @@ func flowTransitionEdges(history []HistoryEntry) []flowTransitionEdge {
 	return out
 }
 
-func computeActiveWorkTime(history []HistoryEntry, id string, resSecs int64, resKnown bool) FlowDuration {
+func computeActiveWorkTime(history []HistoryEntry, id string, resSecs int64, resKnown bool, since, until time.Time) FlowDuration {
 	var secs int64
 	var from, to time.Time
 	n := 0
 	for _, e := range flowTransitionEdges(history) {
 		if e.Brief != id || e.Status != "in-progress" {
+			continue
+		}
+		if !instantInWindow(e.End, since, until) {
 			continue
 		}
 		secs += int64(e.End.Sub(e.Start).Seconds())
@@ -334,7 +352,7 @@ func computeActiveWorkTime(history []HistoryEntry, id string, resSecs int64, res
 // computed here — it needs a forge/issue-register read this Task's items
 // never gate on --forge, so it is left could-not-check-by-omission rather than
 // guessed; see the PR notes and the doc paragraph.
-func computeExternalWait(history []HistoryEntry, id string, resSecs int64, resKnown bool) FlowDuration {
+func computeExternalWait(history []HistoryEntry, id string, resSecs int64, resKnown bool, since, until time.Time) FlowDuration {
 	var secs int64
 	var from, to time.Time
 	n := 0
@@ -343,6 +361,9 @@ func computeExternalWait(history []HistoryEntry, id string, resSecs int64, resKn
 			continue
 		}
 		if !(e.Status == "blocked" || (e.Status == "implemented" && e.NextStatus == "blocked")) {
+			continue
+		}
+		if !instantInWindow(e.End, since, until) {
 			continue
 		}
 		secs += int64(e.End.Sub(e.Start).Seconds())
@@ -362,12 +383,15 @@ func computeExternalWait(history []HistoryEntry, id string, resSecs int64, resKn
 
 // computeVerificationTime sums completed "implemented" dwells that did NOT
 // close into blocked (implemented → verified/done, the ordinary path).
-func computeVerificationTime(history []HistoryEntry, id string, resSecs int64, resKnown bool) FlowDuration {
+func computeVerificationTime(history []HistoryEntry, id string, resSecs int64, resKnown bool, since, until time.Time) FlowDuration {
 	var secs int64
 	var from, to time.Time
 	n := 0
 	for _, e := range flowTransitionEdges(history) {
 		if e.Brief != id || e.Status != "implemented" || e.NextStatus == "blocked" {
+			continue
+		}
+		if !instantInWindow(e.End, since, until) {
 			continue
 		}
 		secs += int64(e.End.Sub(e.Start).Seconds())
@@ -549,10 +573,10 @@ func computeFlowReport(streams []*Stream, history []HistoryEntry, root string, f
 			id := s.Name + "/" + b.Num
 			rows = append(rows, FlowBriefRow{
 				ID:               id,
-				EligibleToStart:  computeEligibleToStart(history, id, b.Depends, res.Seconds, resKnown),
-				ActiveWorkTime:   computeActiveWorkTime(history, id, res.Seconds, resKnown),
-				ExternalWait:     computeExternalWait(history, id, res.Seconds, resKnown),
-				VerificationTime: computeVerificationTime(history, id, res.Seconds, resKnown),
+				EligibleToStart:  computeEligibleToStart(history, id, b.Depends, res.Seconds, resKnown, since, until),
+				ActiveWorkTime:   computeActiveWorkTime(history, id, res.Seconds, resKnown, since, until),
+				ExternalWait:     computeExternalWait(history, id, res.Seconds, resKnown, since, until),
+				VerificationTime: computeVerificationTime(history, id, res.Seconds, resKnown, since, until),
 			})
 		}
 	}
