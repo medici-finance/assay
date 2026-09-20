@@ -71,7 +71,7 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 		// the CALLER-supplied body, so the same semantic comment retried from a different
 		// session still dedupes; the trailer would otherwise make an identical retry look
 		// like a new write.
-		postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+		postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 		if oerr != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", oerr), dig)
 		}
