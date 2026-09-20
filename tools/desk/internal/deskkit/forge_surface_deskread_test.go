@@ -66,8 +66,11 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 
 	// forgeban's ceiling at this work's own base (freshness-checked against this branch before
 	// any statusgen/deskread work landed). statusgen carries no allowlist rows of its own to
-	// migrate off, so this diff must never move it.
-	const baseCeiling = 5
+	// migrate off, so this diff must never move it. Re-based 5→6 for this branch's stacked
+	// base: the deskapps manifest-flow work (#1260) carries the driver-ruled allowlist row
+	// that legitimately raised the ceiling — the "whatever change legitimately moved it" the
+	// failure message itself names.
+	const baseCeiling = 6
 	if c := forgeban.Ceiling(); c != baseCeiling {
 		t.Fatalf("forgeban.Ceiling() = %d, want %d — this diff must not move the shell-exec ban's "+
 			"ceiling (statusgen is a separate module with no allowlist rows to migrate here; any "+
