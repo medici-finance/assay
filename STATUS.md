@@ -16,7 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-20 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-20 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-20 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/15 | 2026-09-20 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/16 | 2026-09-20 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-20 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-20 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-20 |  |
@@ -58,14 +58,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (38 desk-actionable of 58 total — 58 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (39 desk-actionable of 59 total — 59 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (38)
+### Desk-actionable (39)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -92,6 +92,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | iso-9001 | 04 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-supervision | 22 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -224,7 +225,7 @@ _None._
 - 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — todo (wave 1)
 - 11 retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH — todo (wave 2)
 
-### desk-supervision (9 open)
+### desk-supervision (10 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — implemented (wave 1)
@@ -235,6 +236,7 @@ _None._
 - 13 Worker-operations vitals — the self-report resource block — todo (wave 2)
 - 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
+- 22 Configure provider, model and effort per cell role — implemented (wave 0)
 
 ### desk-tools (14 open)
 
@@ -520,4 +522,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**21** streams (**16** active, **0** paused, **5** parked) · **88/237** briefs done · completed initiatives: see `docs/archive/`
+**21** streams (**16** active, **0** paused, **5** parked) · **88/238** briefs done · completed initiatives: see `docs/archive/`
