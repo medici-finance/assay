@@ -661,9 +661,58 @@ func TestResolveHostAliasRefusalNamesAliasAndAttempt(t *testing.T) {
 		t.Fatal("resolveHostAlias with no resolver = nil error, want a fail-closed refusal")
 	}
 	got := err.Error()
-	for _, want := range []string{"work-github", "ssh -G work-github", "exit status 255"} {
+	for _, want := range []string{"work-github", "ssh -G -- work-github", "exit status 255"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("refusal message missing %q — an operator cannot see WHICH alias or WHAT was tried:\n%s", want, got)
+		}
+	}
+}
+
+// Security: the alias comes from parsing a git remote URL, so it is untrusted. A value shaped
+// like an ssh flag (the textbook `-oProxyCommand=...` argv-injection payload) must never reach
+// `ssh -G` in a position where ssh's own flag parser could mistake it for an option — it must be
+// refused OUTRIGHT, before any exec.Command is even built, never merely hoped to be neutralised
+// by the `--` end-of-options marker sshConfigHostname also carries (belt AND suspenders).
+func TestResolveHostAliasRefusesLeadingDashHost(t *testing.T) {
+	old := sshConfigHostname
+	defer func() { sshConfigHostname = old }()
+	sshConfigHostname = func(alias string) (string, error) {
+		t.Fatalf("sshConfigHostname called with %q — a leading-dash host must be refused before any exec", alias)
+		return "", nil
+	}
+	for _, bad := range []string{"-oProxyCommand=touch /tmp/pwned", "-G", "--", "-"} {
+		_, err := resolveHostAlias(bad)
+		if err == nil {
+			t.Fatalf("resolveHostAlias(%q) = nil error, want a refusal (a leading '-' is never a real Host alias)", bad)
+		}
+		if !strings.Contains(err.Error(), bad) {
+			t.Errorf("refusal for %q does not name it: %s", bad, err.Error())
+		}
+	}
+}
+
+// Security: the exact argv `ssh -G` is invoked with must carry the `--` end-of-options marker
+// immediately before the alias, for ANY alias value — including one shaped like an ssh flag
+// (the textbook `-oProxyCommand=...` argv-injection payload). This asserts the argv SLICE
+// sshConfigHostname builds (sshGConfigArgv), not behaviour observed from a live `ssh` process:
+// go's exec.Command never invokes a shell, so the only question is whether the alias lands
+// strictly after `--` (a positional argument to ssh's own getopt-style parser, unconditionally)
+// or could ever land before it (a position ssh would parse as an option). Driving the real
+// argv-building function — never a stub — is what makes this a proof rather than a restatement
+// of the leading-dash refusal resolveHostAlias applies first: even an alias that reached
+// sshConfigHostname directly (bypassing that guard) cannot be parsed as a flag.
+func TestSSHGConfigArgvCarriesEndOfOptionsMarker(t *testing.T) {
+	for _, alias := range []string{
+		"work-github",
+		"-oProxyCommand=touch /tmp/pwned",
+		"-G",
+		"--",
+		"-",
+	} {
+		got := sshGConfigArgv(alias)
+		want := []string{"-G", "--", alias}
+		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+			t.Fatalf("sshGConfigArgv(%q) = %q, want %q — the alias must land strictly after the `--` marker", alias, got, want)
 		}
 	}
 }
