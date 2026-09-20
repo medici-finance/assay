@@ -260,8 +260,12 @@ func branchSafeToDelete(repo *gitcore.Repo) (string, error) {
 // moment of deletion. A branch that advanced between the two (a push landing mid-sweep)
 // trips git's check even though ours passed, and the branch survives. `-D` would silently
 // delete it.
+// The name is passed after an explicit `--` end-of-options marker. The name is read from a
+// worktree's own HEAD rather than typed by anyone, so this is belt-and-braces — but it is the
+// braces that matter: a value that reaches an argv position where an option could be parsed
+// is exactly the shape this tool refuses everywhere else, and the cost of the marker is nil.
 func deleteLocalBranch(dir, branch string) error {
-	if _, err := runGit(dir, "branch", "-d", branch); err != nil {
+	if _, err := runGit(dir, "branch", "-d", "--", branch); err != nil {
 		return err
 	}
 	return nil
