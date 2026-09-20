@@ -26,7 +26,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-gitlab-fetch.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$T"' EXIT
 fails=0
@@ -46,7 +48,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 "$REALGIT" init -q --bare -b main "$T/origin.git"
 "$REALGIT" clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"
@@ -90,7 +92,7 @@ printf 'cells: []\n' > "$T/cells.yaml"
 # roster.env is a file-EXISTENCE precondition only ($CELL_CONFIG/roster.env, both in cmd_desk and
 # cmd_check's common rows) — `new` never writes one for a k8s cell (unlike house, which symlinks
 # the operator's), so both fixture cells need one written by hand.
-write_roster(){ mkdir -p "$1/home/.config/assay"; printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$1/home/.config/assay/roster.env"; }
+write_roster(){ mkdir -p "$1/home/.config/assay"; printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$1/home/.config/assay/roster.env"; }
 
 # ---------------------------------------------------------------- gitlab cell: boot fetch
 echo "[desk: gitlab arm boot fetch]"

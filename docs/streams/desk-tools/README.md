@@ -193,6 +193,7 @@ refuse — that needs its own brief and its own reset rule.
 | 25 | [One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id](brief-25-token-memo-and-cache-before-install-id.md) | 2 | M | done | 2026-09-18 sonnet-5-verifier (desk-tools/25 dispatched verifier; 18/19 rows checked-clean direct, 1 pre-existing unrelated drift filed separately; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1315 @ 7d1c1e09e432ce88ced8b65151708d06702c1e8f) |
 | 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
 | 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | in-progress | — | — |
+| 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

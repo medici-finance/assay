@@ -21,7 +21,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-down.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$T"' EXIT
 fails=0
@@ -38,7 +40,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"

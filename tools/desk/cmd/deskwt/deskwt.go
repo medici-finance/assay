@@ -350,9 +350,16 @@ func strandedAfterDeregister(guard *pathGuard, dir string, paths []string) ([]st
 	return stranded, nil
 }
 
-// cmdAdd implements `deskwt add <name> [--branch B] [--base origin/main]`: create a
+// cmdAdd implements `deskwt add <name> [--branch B | --detach] [--base origin/main]`: create a
 // worktree at `<tmpBaseDir>/tracker-<name>` on a NEW branch that TRACKS the base (so a
 // fresh worktree is immediately clean & up-to-date, satisfying remove's upstream check).
+//
+// --detach (#1309 item 6) cuts the worktree as a DETACHED HEAD at the base instead: no branch
+// is created, named, or collided with. It is the verifier's shape — a verifier runs a Verify
+// table against merged main and never pushes a branch, so a brief's still-existing feature
+// branch (delivered, sitting in a stale worker worktree) must not be able to refuse it.
+// `deskwt remove` already accepts a detached HEAD whose commit is proven on a remote (#851),
+// so the lifecycle closes. --detach and --branch are mutually exclusive.
 func cmdAdd(args []string) (err error) {
 	ac := &auditCtx{verb: "add"}
 	defer func() { ac.finalize(err) }()
@@ -360,6 +367,7 @@ func cmdAdd(args []string) (err error) {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
 	branch := fs.String("branch", "", "new branch name for the worktree (default: the worktree name)")
+	detach := fs.Bool("detach", false, "check the base out as a DETACHED HEAD — no branch created or touched (the verifier shape)")
 	base := fs.String("base", "origin/main", "start-point ref for the new worktree")
 	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing")
 	// Usage puts <name> first, but Go's flag stops at the first positional;
@@ -381,11 +389,14 @@ func cmdAdd(args []string) (err error) {
 	if !nameRe.MatchString(name) || strings.Contains(name, "..") {
 		return deskkit.Refused("refused: <name> must be a single safe segment (no slashes, no leading dash/dot, no '..')")
 	}
+	if *detach && *branch != "" {
+		return deskkit.Refused("refused: --detach and --branch are mutually exclusive — a detached worktree names no branch")
+	}
 	br := *branch
 	if br == "" {
 		br = name
 	}
-	if !branchRe.MatchString(br) || strings.Contains(br, "..") {
+	if !*detach && (!branchRe.MatchString(br) || strings.Contains(br, "..")) {
 		return deskkit.Refused("refused: --branch must be a plain branch name (no leading dash, no '..')")
 	}
 	if !refRe.MatchString(*base) || strings.Contains(*base, "..") {
@@ -462,12 +473,17 @@ func cmdAdd(args []string) (err error) {
 	// with a message no wrapper surfaces, so the collision is resolved HERE, by name:
 	// reclaimed when it is a proven-empty leftover, refused (naming the holding worktree or
 	// the unpushed commit count) when it is not. See branchcollision.go.
-	reclaimed, cerr := reclaimStaleBranch(dir, br, *base)
-	if cerr != nil {
-		return cerr
-	}
-	if reclaimed != "" {
-		fmt.Fprintln(os.Stderr, "deskwt: "+reclaimed)
+	// A detached worktree touches no branch, so there is no collision to resolve.
+	reclaimed := ""
+	if !*detach {
+		var cerr error
+		reclaimed, cerr = reclaimStaleBranch(dir, br, *base)
+		if cerr != nil {
+			return cerr
+		}
+		if reclaimed != "" {
+			fmt.Fprintln(os.Stderr, "deskwt: "+reclaimed)
+		}
 	}
 
 	// Ensure the sanctioned parent prefix exists. On POSIX `/private/tmp` is already there;
@@ -479,7 +495,11 @@ func cmdAdd(args []string) (err error) {
 	}
 	// Local-only verb: NO AllowWrite (deskkit/ratelimit.go "Verb classes"). Constructed
 	// argv only; no caller flag reaches git, and no --force exists.
-	if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
+	if *detach {
+		if _, aerr := runGit(dir, "worktree", "add", "--detach", target, *base); aerr != nil {
+			return deskkit.Unverifiable("git worktree add --detach failed: could not check out "+*base+" at "+target, aerr)
+		}
+	} else if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
 		// Name what was attempted. A failure here is the operator's work item, and a message
 		// that says only "it failed" sends them to raw git to find out what.
 		return deskkit.Unverifiable("git worktree add failed: could not create branch "+br+" at "+target+
@@ -508,6 +528,9 @@ func cmdAdd(args []string) (err error) {
 	}
 
 	ac.detail = "added " + target + " (branch " + br + " tracking " + *base + ")"
+	if *detach {
+		ac.detail = "added " + target + " (detached HEAD at " + *base + ", no branch)"
+	}
 	if reclaimed != "" {
 		ac.detail += "; " + reclaimed
 	}

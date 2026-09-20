@@ -649,7 +649,7 @@ func cmdNew(args []string) (err error) {
 	// On-behalf-of trailer (multi-principal/01), appended to the filed body only — every
 	// gate above (dedupe/title checks, the secret/self-contain scans) already ran against
 	// the caller-supplied body.
-	fileBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	fileBody, oerr := deskkit.AppendOnBehalfOf(body, "", *repo)
 	if oerr != nil {
 		return oerr
 	}
@@ -805,7 +805,7 @@ func cmdAttach(args []string) (err error) {
 	// On-behalf-of trailer (multi-principal/01), appended to the posted body only —
 	// ac.bodyDigest above (audit-only here; attach has no body-keyed idempotency gate)
 	// stays keyed on the caller-supplied body.
-	attachBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	attachBody, oerr := deskkit.AppendOnBehalfOf(body, "", *repo)
 	if oerr != nil {
 		return oerr
 	}

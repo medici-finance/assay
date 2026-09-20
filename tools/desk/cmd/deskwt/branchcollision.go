@@ -81,13 +81,38 @@ func branchHolders(dir string) (map[string]string, error) {
 	return holders, nil
 }
 
-// resolveComparisonRef picks the ref a candidate stale branch is measured against: its
-// configured upstream when that upstream RESOLVES to a commit, else the --base the caller
-// asked to branch from. The fallback matters: a branch whose upstream config points at a
-// ref that no longer exists would otherwise be unmeasurable, and an unmeasurable branch is
-// a permanently stuck dispatch — the exact failure this file exists to end.
+// resolveComparisonRef picks the ref a candidate stale branch is measured against, in this
+// order: the branch's OWN remote counterpart (refs/remotes/<its remote>/<its own name>)
+// when that resolves, else its configured upstream when THAT resolves, else the --base the
+// caller asked to branch from.
+//
+// WHY THE OWN COUNTERPART COMES FIRST. A branch this tool created was made with
+// `worktree add --track -b <br> … <base>`, so its configured upstream is the ref it was cut
+// FROM — the mainline — and stays the mainline even after its work is pushed to
+// `refs/remotes/origin/<br>`. Measuring against that upstream measures against main, and
+// every real feature branch is ahead of main by construction: a branch byte-identical to
+// its own pushed counterpart read as "unfinished work, not a leftover" and the collision
+// was refused permanently, for the one case where reclaiming is provably safe. The branch's
+// own counterpart is the ref that answers the question actually being asked — "does this
+// branch carry anything that is not already safe on the forge?" — so it is consulted first,
+// and the mainline is never the answer while it exists.
+//
+// The `<br>@{upstream}` arm is the SHORT branch name deliberately: git resolves @{upstream}
+// only against a branch shorthand, and the full `refs/heads/<br>@{upstream}` spelling this
+// code used before fails with `fatal: no such branch`, which made the whole upstream arm
+// dead and silently collapsed every comparison onto --base.
+//
+// The --base fallback matters: a branch with neither a remote counterpart nor a resolvable
+// upstream would otherwise be unmeasurable, and an unmeasurable branch is a permanently
+// stuck dispatch — the exact failure this file exists to end. Reaching it means the branch
+// has never been pushed under its own name, so whatever it carries beyond --base is by
+// definition unpushed work and the refusal below is the right answer.
 func resolveComparisonRef(dir, ref, base string) string {
-	up, err := runGit(dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", ref+"@{upstream}")
+	br := strings.TrimPrefix(ref, "refs/heads/")
+	if own := ownRemoteRef(dir, br); own != "" {
+		return own
+	}
+	up, err := runGit(dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", br+"@{upstream}")
 	if err != nil || up == "" {
 		return base
 	}
@@ -95,6 +120,25 @@ func resolveComparisonRef(dir, ref, base string) string {
 		return base
 	}
 	return up
+}
+
+// ownRemoteRef returns the branch's own same-named remote-tracking ref when it resolves to
+// a commit, else "". The remote is the branch's configured one (`branch.<br>.remote`) when
+// that names a plain remote, else `origin` — the name every desk checkout's forge remote
+// carries. A configured value holding a URL rather than a remote NAME (git permits it) is
+// ignored rather than pasted into a ref path.
+func ownRemoteRef(dir, br string) string {
+	remote := "origin"
+	if r, err := runGit(dir, "config", "--get", "branch."+br+".remote"); err == nil {
+		if r = strings.TrimSpace(r); r != "" && !strings.ContainsAny(r, "/:") {
+			remote = r
+		}
+	}
+	ref := "refs/remotes/" + remote + "/" + br
+	if _, err := runGit(dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); err != nil {
+		return ""
+	}
+	return ref
 }
 
 // reclaimStaleBranch resolves a local-branch collision BEFORE `git worktree add -b` can
@@ -143,8 +187,15 @@ func reclaimStaleBranch(dir, br, base string) (string, error) {
 	if still, serr := runGit(dir, "rev-parse", "--verify", "--quiet", ref); serr == nil && still != "" {
 		return "", deskkit.Unverifiable("branch "+br+" still resolves after its ref was deleted", nil)
 	}
-	return "reclaimed stale local branch " + br + " (was " + shortSHA(sha) + ", 0 commits ahead of " + cmp +
-		", checked out in no worktree)", nil
+	note := "reclaimed stale local branch " + br + " (was " + shortSHA(sha) + ", 0 commits ahead of " + cmp +
+		", checked out in no worktree)"
+	if cmp != base {
+		// The ref is about to be recreated somewhere OTHER than the ref that proved it
+		// redundant — safe (every commit it held is on cmp) but not silent: an operator
+		// reading this line can see the branch was re-pointed and at what.
+		note += "; it is recreated at " + base
+	}
+	return note, nil
 }
 
 // shortSHA abbreviates a full object id for a human-readable audit line, leaving anything

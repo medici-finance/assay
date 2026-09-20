@@ -1683,6 +1683,7 @@ deskwt add <name> [--branch B] [--base origin/main]   # create tracker-<name> on
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
+deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
 deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
@@ -1784,6 +1785,45 @@ deliberately weak:
 - Anything else is held: an unreadable roster, an unparseable beacon timestamp, a missing
   admin file. None of them are evidence of death, so none of them reclaim a lock.
 - Every unlock prints the worktree, the lock reason it carried, and why it was judged stale.
+
+### `--reap-dead-sessions` — clearing what a dead session left behind
+
+Retiring the lock is not enough on its own. Once `--reclaim-stale-locks` has unlocked a dead
+session's worktree, Step B's rules decide — and they require HEAD to be an ancestor of the
+remote mainline. A session that died *with work in flight* was sitting on a branch behind an
+open PR, which is by definition **not** an ancestor of the mainline, so Step B reads it as
+active work and holds it. Forever. The same is true of the unlocked half of the population,
+which Step B never distinguished from a live worker's tree in the first place.
+
+That backlog is not merely untidy: git permits exactly **one worktree per branch**, so every
+later resume or dispatch of such a branch fails at worktree-create, and the queue wedges on
+the leftovers it produced.
+
+`--reap-dead-sessions` (default **OFF**) answers a different question from Step B's. Not "has
+this landed?" but "does anything LIVE still own this, and is deleting it lossless?" — two
+independent gates, both of which must hold:
+
+- **Ownership.** A lock naming a session is judged by the *same* `session=<id>` evidence
+  `--reclaim-stale-locks` uses, so one definition of "that session is gone" governs both.
+  A **live** session's lock holds its worktree unconditionally, past any TTL. A worktree with
+  no lock at all is **unowned** — the lock is what a live session takes — and continues to the
+  safety gate, which is then the only thing between it and removal.
+- **Safety.** The tree must be clean with **untracked files counted** — stricter than Step B's
+  tracked-only gate on purpose, because an untracked file is reachable from no commit and this
+  directory is its only copy — *and* HEAD must already be reachable from its own upstream, or
+  (no upstream) from `refs/remotes/origin/main`. Every commit is then on the remote and the
+  directory is the only thing deleted.
+
+On a reap it also deletes the **stale local branch**, when that branch is equal to or behind
+its upstream, with the non-force `git branch -d` — whose own merged-into-upstream refusal is a
+second, independent layer over the ancestry check the sweep already made. Without that, the
+next `deskwt add --branch` collides on the leftover ref instead of on the worktree.
+
+Anything that fails a gate is **listed with the reason that failed it** (dirty / unpushed /
+no-upstream-and-not-on-main / could-not-check) and left alone — never silently skipped. Pair
+it with `--dry-run` first: that prints the whole plan — path, session (or `unowned`),
+`REAP`/`KEEP`, reason — for every registered worktree, including the ones the identity
+refusals put out of reach, and changes nothing at all.
 
 ### The prune loop — one command, two supervisors
 

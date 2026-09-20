@@ -73,6 +73,10 @@ func newForgeStore(repo, tokenFile string) (claimStore, error) {
 		return nil, fmt.Errorf("repo %q is not an owner/name slug", repo)
 	}
 	originHost, _ := parseRemote(originRemoteURL())
+	originHost, aerr := resolveHostAlias(originHost)
+	if aerr != nil {
+		return nil, aerr
+	}
 	kind, host, err := deskkit.ForgeKindFromSlugAndHost(repo, originHost)
 	if err != nil {
 		return nil, err
@@ -453,6 +457,104 @@ func parseRemote(raw string) (host, slug string) {
 		slug = parts[len(parts)-2] + "/" + parts[len(parts)-1]
 	}
 	return host, slug
+}
+
+// sshConfigHostname resolves an OpenSSH `Host` alias to the real hostname its config maps it
+// to, by shelling `ssh -G <alias>` and reading the `hostname` line from its (fully-resolved,
+// lower-cased) output — exactly the lookup the `ssh` child real `git` invokes performs
+// implicitly for an scp-like origin. It is a package var so a test can stub it without a real
+// `~/.ssh/config` or an `ssh` binary on PATH. Empty output or a non-zero exit is reported as an
+// error; this function never guesses.
+//
+// The `--` before alias is load-bearing, not decorative: alias is the host segment parsed out
+// of a git remote URL — attacker-influenceable input (a crafted `origin`, or a claim resolved
+// against a repo/checkout this process does not fully control). Without `--`, a value shaped
+// like a flag (`-oProxyCommand=...` is the textbook ssh argv-injection payload) would be parsed
+// by `ssh` as an OPTION rather than a positional hostname: exec.Command invokes `ssh` directly
+// with no shell, so there is no shell-quoting fault here, but `ssh` still does its own argv flag
+// parsing on whatever argument lands in that position. `--` is OpenSSH's own end-of-options
+// marker, so everything after it is forced positional regardless of its shape. resolveHostAlias
+// below additionally refuses a leading-`-` alias before ever reaching this function, as a second,
+// independent layer that holds even if a future edit here ever dropped the `--`.
+var sshConfigHostname = func(alias string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ssh", sshGConfigArgv(alias)...)
+	outb, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("ssh -G -- %s: %w", alias, err)
+	}
+	sc := bufio.NewScanner(strings.NewReader(string(outb)))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if h, ok := strings.CutPrefix(line, "hostname "); ok {
+			if h = strings.TrimSpace(h); h != "" {
+				return h, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("ssh -G -- %s printed no hostname line", alias)
+}
+
+// sshGConfigArgv builds the literal argv `ssh -G` runs with — separated out from
+// sshConfigHostname so the argv SHAPE is assertable without executing a real `ssh` process
+// (TestSSHGConfigArgvCarriesEndOfOptionsMarker). alias always lands as argv[2], strictly after
+// the `--` end-of-options marker at argv[1], so `ssh`'s own getopt-style argument parser can
+// never treat it as a flag regardless of what it starts with — this is what makes the leading-
+// dash refusal in resolveHostAlias a second, redundant layer rather than the only one.
+func sshGConfigArgv(alias string) []string {
+	return []string{"-G", "--", alias}
+}
+
+// resolveHostAlias resolves host to a dialable forge hostname when it looks like an SSH config
+// `Host` alias rather than a DNS name — issue #1371: an scp-like origin (`git@alias:owner/name`)
+// with an alias mapping to a real forge host and a per-identity key. parseRemote takes the
+// literal host segment of such a URL, and ForgeKindFromSlugAndHost (by design, #727) never
+// substitutes a SaaS default for it, so an unresolved alias would otherwise be dialed verbatim
+// as if it were a DNS name and fail with a bare "no such host".
+//
+// The test here is deliberately narrow: an alias is never a DNS name, so it never contains a
+// dot (`git@github.com:...` has one; `git@work-github:...` does not). host == "" or already
+// containing a dot is returned unchanged — this function has nothing to add to either case, and
+// leaves them to the caller / ForgeKindFromSlugAndHost as before.
+//
+// A host beginning with `-` is refused HERE, before sshConfigHostname (or any exec.Command) is
+// ever reached: the host segment comes from parsing a git remote URL, so it is untrusted, and a
+// leading `-` is what an ssh argv-injection payload (`-oProxyCommand=...`) needs to be mistaken
+// for a flag. sshConfigHostname independently passes `--` to `ssh -G` so this can never reach an
+// option position even without this check; the two are deliberately redundant layers, not one
+// control restated (a dash-leading alias is nonsensical as a `Host` name in any case, so refusing
+// it costs nothing real).
+//
+// Resolution shells `ssh -G <host>` and takes its `hostname` line — the same source real `git`
+// consults via the `ssh` child it launches for an scp-like origin, so this honours whatever the
+// operator already has in `~/.ssh/config` without this tool ever reading that file itself. When
+// the resolver is unavailable or yields nothing, this keeps today's fail-closed refusal — but
+// the error NAMES the alias and the resolution attempted, per the issue's fix shape, rather than
+// collapsing to a bare "no such host" once the caller later tries to dial the alias directly.
+func resolveHostAlias(host string) (string, error) {
+	h := strings.TrimSpace(host)
+	if h == "" || strings.Contains(h, ".") {
+		return h, nil
+	}
+	if strings.HasPrefix(h, "-") {
+		return "", fmt.Errorf(
+			"origin host %q looks like an SSH config Host alias, but it starts with %q, which is never a "+
+				"legitimate Host name and is refused outright rather than risked as an argument to `ssh -G` "+
+				"(an alias shaped like an ssh flag, e.g. -oProxyCommand=..., is an argv-injection attempt, not "+
+				"a real Host block). Point origin at the real forge host directly.",
+			h, "-")
+	}
+	resolved, err := sshConfigHostname(h)
+	if err != nil {
+		return "", fmt.Errorf(
+			"origin host %q looks like an SSH config Host alias (no dot, so it cannot be a DNS name), but "+
+				"it could not be resolved to a real hostname: tried `ssh -G -- %s` and got: %s. Add a Host "+
+				"block for %s in ~/.ssh/config with a HostName, or point origin at the real forge host "+
+				"directly.",
+			h, h, err.Error(), h)
+	}
+	return strings.ToLower(strings.TrimSpace(resolved)), nil
 }
 
 func splitSlug(slug string) (owner, name string, ok bool) {
