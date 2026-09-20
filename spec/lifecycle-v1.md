@@ -310,6 +310,26 @@ A conforming implementation:
    specification prevents a single actor from authoring both the work and an Evidence
    row naming someone else — role separation is a convention, and a conforming
    implementation MUST NOT claim it as a boundary.
+
+   A conforming implementation MAY additionally run a genuine identity check on top
+   of the attribution check above: comparing the git identity that actually
+   committed a brief's Evidence lines against a roster-bound verifier role, and
+   rejecting a mismatch. Unlike clause 2's attribution check, this one does not read
+   authored text — it reads commit metadata a single authoring session cannot also
+   author as someone else, without forging a commit under a role it does not hold.
+   Its scope is exactly two-fold and MUST be stated wherever it is claimed:
+   (a) it binds Evidence commits made under the identity-check cutover the
+   implementation records (an earlier landing predates the check and is
+   grandfathered, never silently accepted as checked); and (b) it is evaluated
+   per-transition, not per-brief — a brief already standing at `verified`/`done` at
+   merge-base(HEAD, origin/main) is pre-existing and is reported as a NOTICE
+   (visible, not blocking), while a brief a branch newly closes to `verified`/`done`
+   is the transition the check gates, and a mismatch there MUST be a PROBLEM. A
+   checkout that cannot resolve its own history (a shallow/grafted clone, or an
+   unresolvable merge-base) MUST render as could-not-check, never as a pass and
+   never as the failure this check exists to catch. Outside this check's scope —
+   the Verified cell always, and any Evidence commit outside (a) or (b) — clause 2's
+   attribution-on-text check is the only one in force, exactly as stated above.
 3. MUST require dated, attributed Verified/Reviewed cells.
 4. MUST derive `gate` from `risk` answers exclusively.
 5. MUST require a human-named review for `gate: human` briefs at `done`.
