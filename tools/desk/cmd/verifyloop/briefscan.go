@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -20,6 +23,10 @@ type briefRow struct {
 	BriefPath     string // repo-relative
 	fm            briefFrontmatter
 	evidenceEmpty bool
+	// couldNotCheck is non-empty when the row's brief file could not be resolved or read
+	// (#1309 item 5): the gate and every risk answer are then UNKNOWN, not "model / all no",
+	// so the row is bucketed could-not-check and never dispatched.
+	couldNotCheck string
 }
 
 // briefFrontmatter is the subset of brief-v1 frontmatter the verify adapter needs. It is
@@ -51,6 +58,13 @@ type briefFrontmatter struct {
 	// brief's Verify table (a stale-artifact re-baseline). Its value is the pipeline reference,
 	// carried into the "why it waits" note. Presence buckets the brief as in-repair.
 	InRepair string
+
+	// DeferredRows is NOT a frontmatter field: it is the per-ROW derivation result (#1309 item
+	// 4) for a brief that stays dispatchable — the Verify rows whose Command cell names an
+	// online lane or a longitudinal window, listed as "<num>: <why>; …" so the dispatched
+	// verifier records exactly those rows as explicitly unrun and runs the rest. Rows are
+	// deferred; the brief is deferred only when EVERY row is.
+	DeferredRows string
 }
 
 // scanAwaiting reads every stream README under <root>/docs/streams/*/README.md, applies the
@@ -62,11 +76,49 @@ type briefFrontmatter struct {
 // This is the deterministic board read; there is NO code path that produces a verify verdict
 // without going through the engine's Dispatch — the inline-verify path is unrepresentable.
 func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
+	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA)
+}
+
+// scanAwaitingRoots is the MULTI-ROOT board read: one scanAwaitingIn per configured root, in
+// the order given (deskkit.ConfiguredRoots sorts by repo), then ONE global tier ordering so a
+// tier-1 brief on the last root is never crowded out by tier-2 free-closes on the first. Within
+// a class the per-root order (root order, then stream, then brief-num) is preserved — the sort
+// is stable. A root whose streams cannot be read is an error naming the root, never a silent
+// omission: the whole point of the multi-root plan is that a repo's queue cannot vanish.
+func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string) ([]loopengine.Item, error) {
+	var all []loopengine.Item
+	for _, r := range roots {
+		items, err := scanAwaitingIn(r, targetSHA)
+		if err != nil {
+			return nil, fmt.Errorf("root %s (%s): %w", r.Repo, r.Path, err)
+		}
+		all = append(all, items...)
+	}
+	sort.SliceStable(all, func(i, j int) bool { return itemWorkClass(all[i]) < itemWorkClass(all[j]) })
+	return all, nil
+}
+
+// itemWorkClass is workClass read back off a scanned Item's payload (status + Evidence
+// emptiness), so the cross-root ordering uses exactly the per-root tier rule.
+func itemWorkClass(it loopengine.Item) int {
+	if strings.ToLower(payloadValue(it, "status")) == "implemented" && payloadValue(it, "evidence_empty") == "yes" {
+		return 0
+	}
+	return 1
+}
+
+// scanAwaitingIn scans ONE root. With r.Repo empty this is the single-root read exactly as
+// before (bare `<stream>/<NN>` IDs, no provenance). With r.Repo set — the multi-root plan — every
+// item's ID is `<owner>/<repo>:<stream>/<NN>` and its payload carries `repo` and `root`, so the
+// root is named on every printed item and two roots carrying a same-named stream cannot alias.
+func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, error) {
+	root := r.Path
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
 	if err != nil {
 		return nil, err
 	}
+	outcomes := readOutcomeSidecar(filepath.Join(streamsDir, outcomeSidecarName))
 	var rows []briefRow
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -78,14 +130,14 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 			continue // a stream dir without a README is not a fatal scan error
 		}
 		stream, tableRows := parseStreamTable(string(raw), e.Name())
-		for _, r := range tableRows {
-			st := strings.ToLower(r.Status)
+		for _, row := range tableRows {
+			st := strings.ToLower(row.Status)
 			if st != "implemented" && st != "verified" {
 				continue // Awaiting filter
 			}
-			r.Stream = stream
-			r.BriefPath, r.fm, r.evidenceEmpty = resolveBrief(root, streamsDir, e.Name(), r.Num)
-			rows = append(rows, r)
+			row.Stream = stream
+			row.BriefPath, row.fm, row.evidenceEmpty, row.couldNotCheck = resolveBrief(root, streamsDir, e.Name(), row.Num)
+			rows = append(rows, row)
 		}
 	}
 
@@ -104,27 +156,88 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 	})
 
 	items := make([]loopengine.Item, 0, len(rows))
-	for _, r := range rows {
+	for _, br := range rows {
+		id := br.Stream + "/" + br.Num
+		payload := map[string]string{
+			"status":         br.Status,
+			"verified":       br.Verified,
+			"reviewed":       br.Reviewed,
+			"blocked_until":  br.fm.BlockedUntil,
+			"verify_lane":    br.fm.VerifyLane,
+			"in_repair":      br.fm.InRepair,
+			"evidence_empty": yesNo(br.evidenceEmpty),
+			"deferred_rows":  br.fm.DeferredRows,
+		}
+		if br.couldNotCheck != "" {
+			payload["could_not_check"] = br.couldNotCheck
+		}
+		if oc, ok := outcomes[br.Stream+"/"+br.Num]; ok {
+			payload["sidecar_outcome"] = oc.Outcome
+			payload["sidecar_ts"] = oc.TS
+			payload["sidecar_sha"] = oc.SHA
+		}
+		if r.Repo != "" {
+			id = r.Repo + ":" + id
+			payload["repo"] = r.Repo
+			payload["root"] = root
+		}
 		items = append(items, loopengine.Item{
-			ID:          r.Stream + "/" + r.Num,
-			BriefPath:   r.BriefPath,
+			ID:          id,
+			BriefPath:   br.BriefPath,
 			TargetSHA:   targetSHA,
-			Risk:        r.fm.Risk,
-			Gate:        r.fm.Gate,
-			Effort:      r.fm.Effort,
-			ExecTier:    r.fm.ExecTier,
-			Implementer: r.fm.Implementer,
-			Payload: map[string]string{
-				"status":        r.Status,
-				"verified":      r.Verified,
-				"reviewed":      r.Reviewed,
-				"blocked_until": r.fm.BlockedUntil,
-				"verify_lane":   r.fm.VerifyLane,
-				"in_repair":     r.fm.InRepair,
-			},
+			Risk:        br.fm.Risk,
+			Gate:        br.fm.Gate,
+			Effort:      br.fm.Effort,
+			ExecTier:    br.fm.ExecTier,
+			Implementer: br.fm.Implementer,
+			Payload:     payload,
 		})
 	}
 	return items, nil
+}
+
+// outcomeSidecarName is the append-only verify-outcomes log under docs/streams/ (the verify
+// desk's single-writer sidecar; the Change Failure Rate sensor's input). Each line is one JSON
+// row: {"ts","brief":"<stream>/<NN>","outcome":"verified"|"verify-fail",…,"sha"}.
+const outcomeSidecarName = "verify-outcomes.jsonl"
+
+// outcomeRow is the subset of a sidecar row the stuck-flip bucket keys on.
+type outcomeRow struct {
+	TS      string `json:"ts"`
+	Brief   string `json:"brief"`
+	Outcome string `json:"outcome"`
+	SHA     string `json:"sha"`
+}
+
+// readOutcomeSidecar returns the LATEST sidecar row per brief key (the log is append-only, so
+// the last line for a brief is its current outcome). An absent or unreadable sidecar is an
+// empty map — no brief is then stuck-flip, which is the pre-#1309 behaviour; a malformed line
+// is skipped, never fatal to the board read.
+func readOutcomeSidecar(path string) map[string]outcomeRow {
+	out := map[string]outcomeRow{}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var row outcomeRow
+		if json.Unmarshal([]byte(line), &row) != nil || row.Brief == "" {
+			continue
+		}
+		out[row.Brief] = row
+	}
+	return out
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // workClass returns 0 for tier-1 (the real verify work: implemented with an EMPTY Evidence
@@ -214,48 +327,90 @@ func normalizeMark(s string) string {
 
 // resolveBrief finds the brief file for a row (docs/streams/<dir>/brief-<num>-*.md), parses
 // the frontmatter subset, and reports whether its ## Evidence section is empty.
-func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool) {
-	matches, _ := filepath.Glob(filepath.Join(streamsDir, dir, "brief-"+num+"-*.md"))
+//
+// FAIL CLOSED (#1309 item 5). A row whose brief file is not found, or cannot be read, returns
+// a non-empty couldNotCheck reason and the ZERO frontmatter — and the caller must treat that
+// row as could-not-check, never dispatchable. Before this the zero value flowed straight into
+// classification: gate "" and every risk flag false read as a risk-clear model-gated brief, so
+// an unresolvable row was routed to DISPATCH with its human gate erased.
+func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool, couldNotCheck string) {
+	pattern := filepath.Join(streamsDir, dir, "brief-"+num+"-*.md")
+	matches, _ := filepath.Glob(pattern)
 	if len(matches) == 0 {
-		// no resolvable brief file — treat as empty-evidence so it is not silently dropped
-		return "", briefFrontmatter{}, true
+		return "", briefFrontmatter{}, true, "brief file not found: " + relTo(root, pattern)
 	}
 	path := matches[0]
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", briefFrontmatter{}, true
+		return "", briefFrontmatter{}, true, "brief file unreadable: " + relTo(root, path) + " (" + err.Error() + ")"
 	}
-	rel, rerr := filepath.Rel(root, path)
-	if rerr != nil || rel == "" {
-		rel = path
-	}
+	rel := relTo(root, path)
 	fm = parseFrontmatter(string(raw))
 	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
-	return rel, fm, evidenceEmpty
+	return rel, fm, evidenceEmpty, ""
+}
+
+// relTo is path relative to root, or path itself when it cannot be made relative.
+func relTo(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "" {
+		return path
+	}
+	return rel
 }
 
 // deriveContentSignals fills the two queue-truthfulness markers a real brief usually EXPRESSES in
 // its Verify rows rather than declaring in frontmatter — an online/cluster verify lane and a
 // longitudinal observation/accrual window. An explicit frontmatter marker always wins: derivation
 // only runs when the field is empty, so an author's stated condition/lane (and its exact reason
-// text) is never overwritten. The signals are read ONLY from the brief's own `## Verify` section,
-// never invented, and each keyword set is deliberately narrow so a genuinely-actionable brief is
-// not falsely bucketed (false-deferring an actionable brief is a worse harm than the over-report
-// this fixes).
+// text) is never overwritten.
+//
+// PER ROW, FROM THE COMMAND CELL ONLY (#1309 item 4). The signals are read from each Verify
+// row's Command cell — never from its Expect prose — because prose EXPLAINS: a row whose
+// expectation says "kubectl is refused here" is an offline row, and a row whose expectation
+// mentions "the shadow window" while its command is `git ls-files … | wc -l` runs offline today.
+// Both were live false positives that deferred a whole brief on one row's wording. And rows are
+// deferred, not briefs: when at least one row is runnable offline the brief stays dispatchable
+// and DeferredRows names the rows to record as explicitly unrun; only a brief whose EVERY row
+// names an online lane / a window is bucketed as a whole. A Verify section with no parseable
+// Command column derives nothing (there is no command cell to read) and stays dispatchable.
 func deriveContentSignals(fm *briefFrontmatter, verifyText string) {
-	if verifyText == "" {
+	rows := parseVerifyRowsIn(verifyText)
+	if len(rows) == 0 {
 		return
 	}
-	if fm.VerifyLane == "" {
-		if lane := deriveOnlineLane(verifyText); lane != "" {
-			fm.VerifyLane = lane
+	var notes []string
+	runnable := 0
+	lane, blocked := "", ""
+	for _, r := range rows {
+		rl := deriveOnlineLane(r.Command)
+		rb := deriveBlockedUntil(r.Command)
+		if rl == "" && rb == "" {
+			runnable++
+			continue
+		}
+		if rl != "" {
+			notes = append(notes, fmt.Sprintf("%d: online lane (%s)", r.Num, rl))
+			if lane == "" {
+				lane = rl
+			}
+		} else {
+			notes = append(notes, fmt.Sprintf("%d: longitudinal window", r.Num))
+		}
+		if rb != "" && blocked == "" {
+			blocked = rb
 		}
 	}
-	if fm.BlockedUntil == "" {
-		if reason := deriveBlockedUntil(verifyText); reason != "" {
-			fm.BlockedUntil = reason
-		}
+	if runnable > 0 {
+		fm.DeferredRows = strings.Join(notes, "; ")
+		return
+	}
+	if fm.VerifyLane == "" && lane != "" {
+		fm.VerifyLane = lane
+	}
+	if fm.BlockedUntil == "" && blocked != "" {
+		fm.BlockedUntil = blocked
 	}
 }
 
@@ -290,10 +445,10 @@ var onlineLanePhrases = []struct {
 	{"live-session", "live-session"},
 }
 
-// deriveOnlineLane returns the canonical lane if the Verify text names an online/cluster substrate,
-// else "". Case-insensitive.
-func deriveOnlineLane(verifyText string) string {
-	lc := strings.ToLower(verifyText)
+// deriveOnlineLane returns the canonical lane if a Verify row's COMMAND cell names an
+// online/cluster substrate, else "". Case-insensitive.
+func deriveOnlineLane(command string) string {
+	lc := strings.ToLower(command)
 	for _, p := range onlineLanePhrases {
 		if strings.Contains(lc, p.phrase) {
 			return p.lane
@@ -322,10 +477,10 @@ var longitudinalPhrases = []string{
 	"observation period",
 }
 
-// deriveBlockedUntil returns a human-facing defer reason if the Verify text's exit criteria are a
+// deriveBlockedUntil returns a human-facing defer reason if a Verify row's COMMAND cell names a
 // longitudinal observation/accrual window, else "". Case-insensitive.
-func deriveBlockedUntil(verifyText string) string {
-	lc := strings.ToLower(verifyText)
+func deriveBlockedUntil(command string) string {
+	lc := strings.ToLower(command)
 	for _, p := range longitudinalPhrases {
 		if strings.Contains(lc, p) {
 			return "longitudinal: Verify exit criteria depend on an observation/accrual window (derived from the brief's Verify rows) — add an explicit `blocked-until:` marker to state the date/condition"

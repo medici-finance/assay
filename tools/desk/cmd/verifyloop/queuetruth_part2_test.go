@@ -85,7 +85,7 @@ func TestGap2_ClusterVerifyRowsBucketWithoutMarker(t *testing.T) {
 		"| 01 | cluster-lane | 0 | S | implemented | — | — |\n"
 	brief := "---\nbrief: cluster-lane\ngate: model\n" +
 		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\neffort: S\n---\n\n" +
-		"# Brief\n\n## Verify\n\n| # | Command | Expect |\n" +
+		"# Brief\n\n## Verify\n\n| # | Command | Expect |\n|---|---------|--------|\n" +
 		"| 1 | `kubectl -n prod get pods` against the live cluster | pod Running |\n\n" +
 		"## Evidence\n<!-- appended at verification time -->\n"
 	writeFixtureStream(t, root, "example-stream", table, map[string]string{"01": brief})
@@ -113,7 +113,7 @@ func TestGap1_LongitudinalWindowDefersWithoutMarker(t *testing.T) {
 		"| 01 | longitudinal | 0 | S | implemented | — | — |\n"
 	brief := "---\nbrief: longitudinal\ngate: model\n" +
 		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\neffort: S\n---\n\n" +
-		"# Brief\n\n## Verify\n\n| # | Command | Expect |\n" +
+		"# Brief\n\n## Verify\n\n| # | Command | Expect |\n|---|---------|--------|\n" +
 		"| 1 | observe the shadow window and confirm it has accrued | shadow window elapsed |\n\n" +
 		"## Evidence\n<!-- appended at verification time -->\n"
 	writeFixtureStream(t, root, "example-stream", table, map[string]string{"01": brief})
