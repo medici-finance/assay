@@ -74,6 +74,36 @@ func cmdDesk(cell string, args []string) {
 		die("desk: --harness must be claude or codex, got '%s'", harness)
 	}
 
+	// CELL_MODEL_POLICY (assay#1390, porting #1388) supersedes the legacy namespace/tier
+	// resolution below entirely — provider, model AND effort come from the policy file. It is
+	// resolved here, before the kind switch, because a container/scrubbed cell refuses it
+	// outright (same ordering as the oracle's apply_model_policy) and --set combined with an
+	// active policy is refused as ambiguous before any other flag is even inspected.
+	var policyRes *PolicyResolution
+	policyPath := c.Env.Get("CELL_MODEL_POLICY")
+	policyAbsPath := ""
+	if policyPath != "" {
+		if persist {
+			die("desk: --set with a model policy is ambiguous; edit the policy file instead")
+		}
+		if c.Kind == "container" || c.Kind == "scrubbed" {
+			die("model policy currently requires a house or k8s cell; %s cannot apply it", c.Kind)
+		}
+		policyAbsPath = policyPath
+		if !filepath.IsAbs(policyAbsPath) {
+			policyAbsPath = filepath.Join(c.Dir, policyAbsPath)
+		}
+		policy, err := loadModelPolicy(policyAbsPath)
+		if err != nil {
+			die("%s", err)
+		}
+		policyRes, err = policy.Resolve(role, providerFlag, modelOverride, harnessFlag)
+		if err != nil {
+			die("%s", err)
+		}
+		harness = policyRes.Harness
+	}
+
 	cfg := ""
 	switch c.Kind {
 	case "container":
@@ -97,7 +127,26 @@ func cmdDesk(cell string, args []string) {
 		cfg = resolveCfg(c.Env, cfgIn)
 	}
 
-	if provider == "" {
+	// The minimum-Claude-Code-version half of the oracle's policy_claude_preflight (the
+	// local/managed settings.json availableModels/modelOverrides conflict scan that same
+	// function also runs is NOT ported — see policy.go's header comment and the PR body).
+	if policyRes != nil && harness == "claude" {
+		if err := checkClaudeMinVersion("claude"); err != nil {
+			die("%s", err)
+		}
+	}
+
+	if policyRes != nil {
+		// Native providers (anthropic/codex) carry no CELL_PROVIDER_* credential row of their
+		// own — the policy's env/args ARE the credential switch. glm/kimi still resolve through
+		// the existing preset/cell.env provider machinery below for BASE_URL/TOKEN_ENV/TOKEN_VAL;
+		// only the MODEL comes from the policy, never from the provider's own preset model.
+		if policyRes.Provider == "anthropic" || policyRes.Provider == "codex" {
+			provider = ""
+		} else {
+			provider = policyRes.Provider
+		}
+	} else if provider == "" {
 		provider = c.Env.Get("CELL_PROVIDER")
 	}
 	var prov Provider
@@ -159,6 +208,12 @@ func cmdDesk(cell string, args []string) {
 	var model string
 	resolvedSrc := ""
 	switch {
+	case policyRes != nil:
+		// The policy already resolved provider, model AND effort (including its own the-desk
+		// non-Opus rule and deny-list check) — never run through the legacy namespace/tier
+		// resolution below.
+		model = policyRes.Model
+		resolvedSrc = "policy:" + policyAbsPath + "@" + policyRes.PolicySHA256
 	case modelOverride != "":
 		// An explicit --model (or DESK_MODEL_OVERRIDE) passes through VERBATIM to the selected
 		// harness — never run through the namespace/tier resolution, on either harness.
@@ -178,7 +233,8 @@ func cmdDesk(cell string, args []string) {
 	}
 	// The Opus refusal binds the RESOLVED model, override or pin alike, on the CLAUDE arm ONLY:
 	// an override is not an escape hatch from it, but Opus is a Claude-family alias with no
-	// meaning to codex, where this refuses nothing.
+	// meaning to codex, where this refuses nothing. Under a policy this is also already enforced
+	// by ModelPolicy.Resolve; re-checking here is a no-op, never a conflicting second opinion.
 	if role == "the-desk" && harness == "claude" {
 		refuseOpusForTheDesk(model)
 	}
@@ -196,11 +252,25 @@ func cmdDesk(cell string, args []string) {
 	// modelDisp is what every line below PRINTS: the resolved model, plus "(override)" when
 	// --model/DESK_MODEL_OVERRIDE is the reason, or the tier/provider source when the namespace
 	// pin fell all the way through — the harness itself always gets the bare model.
+	// Mirrors the oracle exactly, including its quirk under a policy: an explicit --model/
+	// DESK_MODEL_OVERRIDE still displays "(override)" even though the value was actually
+	// resolved (tier/alias/exact-ID, deny-checked) through the policy, because model_override
+	// is never cleared once apply_model_policy consumes it as the "requested" argument.
 	modelDisp := model
 	if modelOverride != "" {
 		modelDisp = model + " (override)"
-	} else if strings.HasPrefix(resolvedSrc, "tier:") || strings.HasPrefix(resolvedSrc, "provider:") {
+	} else if strings.HasPrefix(resolvedSrc, "tier:") || strings.HasPrefix(resolvedSrc, "provider:") || strings.HasPrefix(resolvedSrc, "policy:") {
 		modelDisp = model + " (" + resolvedSrc + ")"
+	}
+
+	// providerDisp/effortDisp are what the [dry-run]/[launch] lines print for provider/effort —
+	// the REAL policy provider name (never blanked, unlike `provider` above, which is blanked for
+	// anthropic/codex so the legacy credential-resolution block below is skipped for them) and
+	// the policy's resolved effort, or "harness-default" with no policy (docs/cellctl-model-policy.md
+	// "Inspect, launch and verify adoption").
+	providerDisp, effortDisp := provider, "harness-default"
+	if policyRes != nil {
+		providerDisp, effortDisp = policyRes.Provider, policyRes.Effort
 	}
 
 	deskRoots := c.Env.Get("CELL_ROOTS")
@@ -220,8 +290,8 @@ func cmdDesk(cell string, args []string) {
 		if c.KindOverride != "" {
 			kindShown += " (override)"
 		}
-		fmt.Printf("[dry-run] cell=%s kind=%s role=%s model=%s provider=%s harness=%s cfg=%s wt=%s session=%s desk_roots=%s shims→HOME=%s\n",
-			c.Name, kindShown, role, modelDisp, orDefault(provider, "anthropic"), harness, cfg, wt, session,
+		fmt.Printf("[dry-run] cell=%s kind=%s role=%s model=%s effort=%s provider=%s harness=%s cfg=%s wt=%s session=%s desk_roots=%s shims→HOME=%s\n",
+			c.Name, kindShown, role, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, cfg, wt, session,
 			orDefault(deskRoots, "unset"), c.Home)
 		if persist {
 			for _, kv := range persistKVs {
@@ -237,7 +307,7 @@ func cmdDesk(cell string, args []string) {
 		return
 	}
 
-	c.deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider, prov, deskRoots, persist, persistKVs)
+	c.deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider, prov, deskRoots, persist, persistKVs, policyRes)
 }
 
 func needFlagValue(args []string, i *int, msg string) string {

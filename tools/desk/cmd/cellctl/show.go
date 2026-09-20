@@ -93,7 +93,36 @@ func cmdShow(cell string, args []string) {
 	} else {
 		fmt.Printf("[show] CELL_PROVIDER=%s (%s)\n", "unset", "default: anthropic")
 	}
+
+	// A model policy SUPERSEDES the legacy per-role pin/tier resolution below (#1390, porting
+	// #1388): every role row comes from the policy instead, and the file's own sha256 is shown
+	// once so `show`'s output matches what a `desk`/dry-run boot would actually run.
+	policyPath := c.Env.Get("CELL_MODEL_POLICY")
+	var policy *ModelPolicy
+	if policyPath != "" {
+		abs := policyPath
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(c.Dir, abs)
+		}
+		var err error
+		policy, err = loadModelPolicy(abs)
+		if err != nil {
+			die("%s", err)
+		}
+		fmt.Printf("[show] policy=%s sha256=%s (role rows supersede legacy cell defaults below)\n", policyPath, policy.SHA256)
+	}
+
 	for _, r := range c.Roles {
+		if policy != nil {
+			res, err := policy.Resolve(r, providerFlag, modelFlag, harnessFlag)
+			if err != nil {
+				fmt.Printf("[show] model %s=%s (%s)\n", r, "unresolved", err)
+				continue
+			}
+			fmt.Printf("[show] model %s=%s provider=%s harness=%s effort=%s (policy:%s@%s)\n",
+				r, res.Model, res.Provider, res.Harness, res.Effort, policyPath, res.PolicySHA256)
+			continue
+		}
 		if modelFlag != "" {
 			fmt.Printf("[show] model %s=%s (flag)\n", r, modelFlag)
 			continue

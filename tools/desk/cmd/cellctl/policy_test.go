@@ -1,0 +1,362 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// examplePolicyPath is the same fixture tools/cellctl/tests/model-policy.test.py loads
+// (EXAMPLE = CELLCTL.parent / 'examples/model-policy.json'), reached the same way
+// usage_test.go reaches the shell oracle: relative to this package's directory.
+const examplePolicyPath = "../../../cellctl/examples/model-policy.json"
+
+func readExamplePolicy(t *testing.T) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(examplePolicyPath)
+	if err != nil {
+		t.Skipf("example policy not readable from this checkout (%v)", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("example policy is not valid JSON: %v", err)
+	}
+	return m
+}
+
+// writeMutatedPolicy re-marshals a mutated copy of the example policy into a fresh temp file and
+// returns its path — the pattern every negative test below uses to reach one specific refusal
+// without hand-writing a whole policy body.
+func writeMutatedPolicy(t *testing.T, mutate func(map[string]any)) string {
+	t.Helper()
+	m := readExamplePolicy(t)
+	if mutate != nil {
+		mutate(m)
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("re-marshal mutated policy: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "policy.json")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func loadExamplePolicy(t *testing.T) *ModelPolicy {
+	t.Helper()
+	readExamplePolicy(t) // triggers the skip when the checkout does not carry the fixture
+	m, err := loadModelPolicy(examplePolicyAbsPath(t))
+	if err != nil {
+		t.Fatalf("loading the example policy should succeed: %v", err)
+	}
+	return m
+}
+
+func examplePolicyAbsPath(t *testing.T) string {
+	t.Helper()
+	abs, err := filepath.Abs(examplePolicyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return abs
+}
+
+func TestLoadModelPolicyExampleValid(t *testing.T) {
+	m := loadExamplePolicy(t)
+	if m.Schema != 1 {
+		t.Errorf("schema = %d, want 1", m.Schema)
+	}
+	if len(m.Providers) != 4 {
+		t.Errorf("providers = %d, want 4 (anthropic, glm, kimi, codex)", len(m.Providers))
+	}
+	if len(m.Roles) != 5 {
+		t.Errorf("roles = %d, want 5", len(m.Roles))
+	}
+	if len(m.SHA256) != 64 {
+		t.Errorf("sha256 = %q, want a 64-hex-char digest", m.SHA256)
+	}
+}
+
+func TestLoadModelPolicyMissingFileRefuses(t *testing.T) {
+	_, err := loadModelPolicy(filepath.Join(t.TempDir(), "does-not-exist.json"))
+	if err == nil {
+		t.Fatal("a missing policy file must refuse, not silently pass")
+	}
+}
+
+func TestLoadModelPolicyRejectsUnknownTopLevelField(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) { m["extra"] = true })
+	if _, err := loadModelPolicy(path); err == nil {
+		t.Fatal("an unknown top-level policy field must refuse")
+	}
+}
+
+func TestLoadModelPolicyRejectsMissingEffortField(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		tier := m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["strong"].(map[string]any)
+		delete(tier, "effort")
+	})
+	if _, err := loadModelPolicy(path); err == nil {
+		t.Fatal("a tier missing its required effort field must refuse")
+	}
+}
+
+// TestLoadModelPolicyRejectsExtraRoleField ports model-policy.test.py's
+// test_unknown_effort_field_refuses: a role assignment naming provider+tier+effort (effort does
+// not belong on a role — it belongs on the tier) is an unknown-key refusal, not a silent ignore.
+func TestLoadModelPolicyRejectsExtraRoleField(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		m["roles"].(map[string]any)["pr-review-desk"].(map[string]any)["effort"] = "max"
+	})
+	if _, err := loadModelPolicy(path); err == nil {
+		t.Fatal("a role assignment with an extra field must refuse")
+	}
+}
+
+func TestLoadModelPolicyRejectsUnknownRoleName(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		roles := m["roles"].(map[string]any)
+		roles["typo-desk"] = map[string]any{"provider": "anthropic", "tier": "mid"}
+	})
+	if _, err := loadModelPolicy(path); err == nil {
+		t.Fatal("a role name outside the fixed five must refuse")
+	}
+}
+
+// TestLoadModelPolicyDenyCannotBeRemoved ports test_ban_cannot_be_removed_by_omitting_deny: the
+// Opus-5 prohibition applies even when `deny` is emptied out.
+func TestLoadModelPolicyDenyCannotBeRemoved(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		m["deny"] = []any{}
+		m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["strong"].(map[string]any)["model"] = "claude-opus-5"
+	})
+	if _, err := loadModelPolicy(path); err == nil {
+		t.Fatal("an Opus-5 tier target must refuse even with an empty deny list")
+	}
+}
+
+// TestLoadModelPolicyValidatesUnusedProvider ports test_invalid_unused_provider_still_fails: the
+// whole file is validated, including a provider no role currently routes to.
+func TestLoadModelPolicyValidatesUnusedProvider(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		m["providers"].(map[string]any)["kimi"].(map[string]any)["tiers"].(map[string]any)["fast"].(map[string]any)["model"] = "opus"
+	})
+	if _, err := loadModelPolicy(path); err == nil {
+		t.Fatal("a floating alias in an unused provider's tier must still refuse")
+	}
+}
+
+func TestLoadModelPolicyUnsupportedEfforts(t *testing.T) {
+	cases := []struct{ provider, effort string }{
+		{"glm", "medium"}, {"kimi", "xhigh"}, {"codex", "max"},
+	}
+	for _, c := range cases {
+		path := writeMutatedPolicy(t, func(m map[string]any) {
+			spec := m["providers"].(map[string]any)[c.provider].(map[string]any)["tiers"].(map[string]any)["mid"].(map[string]any)
+			spec["effort"] = c.effort
+			spec["supported_efforts"] = append(spec["supported_efforts"].([]any), c.effort)
+		})
+		if _, err := loadModelPolicy(path); err == nil {
+			t.Errorf("%s/%s: an effort outside that harness/provider's allowed set must refuse", c.provider, c.effort)
+		}
+	}
+}
+
+func TestResolveRoleResolution(t *testing.T) {
+	m := loadExamplePolicy(t)
+	res, err := m.Resolve("pr-review-desk", "", "", "")
+	if err != nil {
+		t.Fatalf("resolve pr-review-desk: %v", err)
+	}
+	if res.Model != "claude-opus-4-8[1m]" || res.Effort != "high" || res.Provider != "anthropic" {
+		t.Errorf("pr-review-desk resolved %+v", res)
+	}
+	if res, err := m.Resolve("worker-desk", "", "", ""); err != nil || res.Provider != "glm" {
+		t.Errorf("worker-desk provider = %+v, err=%v", res, err)
+	}
+	res, err = m.Resolve("intake-desk", "", "", "")
+	if err != nil || res.Harness != "codex" || res.Effort != "medium" {
+		t.Errorf("intake-desk = %+v, err=%v", res, err)
+	}
+}
+
+// TestResolveDirectAndAliasRequestsDeniesOpus5Variants ports test_direct_and_alias_requests.
+func TestResolveDirectAndAliasRequestsDeniesOpus5Variants(t *testing.T) {
+	m := loadExamplePolicy(t)
+	res, err := m.Resolve("pr-review-desk", "", "opus", "")
+	if err != nil || res.Model != "claude-opus-4-8[1m]" {
+		t.Fatalf("alias 'opus' = %+v, err=%v", res, err)
+	}
+	for _, v := range []string{"claude-opus-5", "Opus5", "claude-opus-5[1m]", "gateway/claude-opus-5", "latest", "opusplan"} {
+		if _, err := m.Resolve("pr-review-desk", "", v, ""); err == nil {
+			t.Errorf("requested=%q must refuse, resolved instead", v)
+		}
+	}
+}
+
+func TestResolveUnknownRoleAndProvider(t *testing.T) {
+	m := loadExamplePolicy(t)
+	if _, err := m.Resolve("typo", "", "", ""); err == nil {
+		t.Error("an unknown role must refuse")
+	}
+	if _, err := m.Resolve("pr-review-desk", "typo", "", ""); err == nil {
+		t.Error("an unknown provider override must refuse")
+	}
+	if _, err := m.Resolve("pr-review-desk", "glm", "", "codex"); err == nil {
+		t.Error("a provider/harness override mismatch must refuse")
+	}
+}
+
+func TestResolveExplicitOverrideRoutesProviderAndTier(t *testing.T) {
+	m := loadExamplePolicy(t)
+	res, err := m.Resolve("pr-review-desk", "kimi", "opus", "")
+	if err != nil || res.Model != "k3[1m]" || res.Effort != "high" {
+		t.Fatalf("provider override = %+v, err=%v", res, err)
+	}
+	res, err = m.Resolve("pr-review-desk", "", "", "codex")
+	if err != nil || res.Provider != "codex" || res.Harness != "codex" {
+		t.Fatalf("harness override = %+v, err=%v", res, err)
+	}
+}
+
+// TestResolveDigestChangesWithEffort ports test_digest_changes_with_effort: the sha256 is of the
+// raw file bytes, so any edit — including one that changes nothing about role routing — changes
+// the digest `show`/dry-run print.
+func TestResolveDigestChangesWithEffort(t *testing.T) {
+	before := loadExamplePolicy(t).SHA256
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["strong"].(map[string]any)["effort"] = "xhigh"
+	})
+	after, err := loadModelPolicy(path)
+	if err != nil {
+		t.Fatalf("mutated policy should still load: %v", err)
+	}
+	if before == after.SHA256 {
+		t.Error("changing the policy body must change its sha256")
+	}
+}
+
+// TestResolveChildMappingEffortPropagation ports test_child_mapping_allowlist_and_hooks' table —
+// against ResolveChild directly rather than the oracle's PreToolUse hook subprocess, which this
+// port does not implement (see policy.go's header comment and the PR body).
+func TestResolveChildMappingEffortPropagation(t *testing.T) {
+	m := loadExamplePolicy(t)
+	res, err := m.Resolve("pr-review-desk", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Effort != "high" {
+		t.Fatalf("parent effort = %q, want high", res.Effort)
+	}
+	cases := []struct {
+		requested string
+		wantErr   bool
+		wantModel string
+	}{
+		{"opus", false, "claude-opus-4-8[1m]"},
+		{"inherit", false, res.Model},
+		{"", false, res.Model},
+		{"claude-opus-5", true, ""},
+		{"unknown-model", true, ""},
+	}
+	for _, c := range cases {
+		model, effort, err := res.ResolveChild(c.requested)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("child request %q must refuse, got model=%q effort=%q", c.requested, model, effort)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("child request %q: %v", c.requested, err)
+			continue
+		}
+		if model != c.wantModel || effort != res.Effort {
+			t.Errorf("child request %q = (%q,%q), want (%q,%q)", c.requested, model, effort, c.wantModel, res.Effort)
+		}
+	}
+}
+
+// TestResolveChildRefusesUnsupportedInheritedEffort is the negative half of effort propagation:
+// a child tier whose supported_efforts does not include the PARENT's effort is refused rather
+// than silently dropping to a different effort.
+func TestResolveChildRefusesUnsupportedInheritedEffort(t *testing.T) {
+	path := writeMutatedPolicy(t, func(m map[string]any) {
+		spec := m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["mid"].(map[string]any)
+		spec["supported_efforts"] = []any{"low"}
+		spec["effort"] = "low"
+	})
+	m, err := loadModelPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := m.Resolve("pr-review-desk", "", "", "") // strong tier, effort=high
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := res.ResolveChild("sonnet"); err == nil {
+		t.Error("a child tier that does not support the parent's effort must refuse")
+	}
+}
+
+func TestClaudeEnvAndCodexArgsPropagateEffort(t *testing.T) {
+	m := loadExamplePolicy(t)
+	res, err := m.Resolve("pr-review-desk", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"] != "high" {
+		t.Errorf("CLAUDE_CODE_EFFORT_LEVEL = %q", res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"])
+	}
+	if res.ClaudeEnv["ANTHROPIC_MODEL"] != res.Model || res.ClaudeEnv["CLAUDE_CODE_SUBAGENT_MODEL"] != res.Model {
+		t.Errorf("ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL should mirror the resolved model, got %+v", res.ClaudeEnv)
+	}
+	if res.ClaudeEnv["ANTHROPIC_BASE_URL"] != "https://api.anthropic.com" {
+		t.Errorf("ANTHROPIC_BASE_URL = %q, want the native anthropic endpoint", res.ClaudeEnv["ANTHROPIC_BASE_URL"])
+	}
+
+	intake, err := m.Resolve("intake-desk", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := ""
+	for _, a := range intake.CodexArgs {
+		joined += a + " "
+	}
+	for _, want := range []string{`model_provider="openai"`, `model_reasoning_effort="medium"`, `agents.default_subagent_model="gpt-5.6-terra"`, `agents.default_subagent_reasoning_effort="medium"`} {
+		if !contains(intake.CodexArgs, want) {
+			t.Errorf("codex args %v missing %q", intake.CodexArgs, want)
+		}
+	}
+	_ = joined
+}
+
+func TestCheckClaudeMinVersion(t *testing.T) {
+	dir := t.TempDir()
+	write := func(version string) string {
+		p := filepath.Join(dir, "claude-"+version)
+		script := "#!/bin/sh\necho '" + version + " (stub)'\n"
+		if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if err := checkClaudeMinVersion(write("2.1.251")); err != nil {
+		t.Errorf("exactly the floor must pass: %v", err)
+	}
+	if err := checkClaudeMinVersion(write("2.1.278")); err != nil {
+		t.Errorf("above the floor must pass: %v", err)
+	}
+	if err := checkClaudeMinVersion(write("2.1.200")); err == nil {
+		t.Error("below the floor must refuse")
+	}
+	if err := checkClaudeMinVersion(write("1.9.999")); err == nil {
+		t.Error("an old major version must refuse")
+	}
+	if err := checkClaudeMinVersion(filepath.Join(dir, "does-not-exist")); err == nil {
+		t.Error("a harness binary that cannot even report --version must refuse")
+	}
+}

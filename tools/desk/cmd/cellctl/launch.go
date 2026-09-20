@@ -17,7 +17,7 @@ import (
 //
 // Every process here goes through os/exec — no syscall, no shell — so the Windows consequence
 // this brief names is not made worse.
-func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string) {
+func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution) {
 	if persist {
 		applyEnvKVs(c.Env, filepath.Join(c.Dir, "cell.env"), false, persistKVs)
 	}
@@ -70,8 +70,16 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.scrubbedDeskLaunch(role, harness, model, session, wt)
 		return
 	}
-	fmt.Printf("[launch] %s/%s kind=%s model=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
-		c.Name, role, c.Kind, modelDisp, orDefault(provider, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
+	providerDisp := provider
+	if policyRes != nil {
+		providerDisp = policyRes.Provider
+	}
+	effortDisp := "harness-default"
+	if policyRes != nil {
+		effortDisp = policyRes.Effort
+	}
+	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
+		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
 	env := os.Environ()
 	env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+":"+c.Env.Get("PATH"))
@@ -84,9 +92,15 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if harness == "codex" {
 		// The same exported env the claude arm gets; CLAUDE_CONFIG_DIR is irrelevant on this
 		// arm, so it is not passed, and a provider is a claude-endpoint switch with no codex
-		// equivalent, so it is not threaded on either.
-		argv = []string{"codex", "--sandbox", "danger-full-access", "-C", wt, "-m", model,
-			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role)}
+		// equivalent, so it is not threaded on either. Under a policy, its -c overrides
+		// (model_provider/model_reasoning_effort/agents.default_subagent_*) are propagated —
+		// effort propagation into the actual launch argv, not just the model name.
+		argv = []string{"codex"}
+		if policyRes != nil {
+			argv = append(argv, policyRes.CodexArgs...)
+		}
+		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
+			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		if provider != "" {
@@ -106,6 +120,18 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			env = envSet(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", pmodel)
 		}
 		argv = []string{"claude", "--name", session, "--model", model, "/assay:" + role}
+		if policyRes != nil {
+			// The policy's own env block (ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL/
+			// CLAUDE_CODE_EFFORT_LEVEL/ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the
+			// anthropic provider) is applied on top of whatever the glm/kimi credential block
+			// above just set — this is effort propagation into the launch record: the harness
+			// receives the pinned effort both as `--effort` and as CLAUDE_CODE_EFFORT_LEVEL.
+			for k, v := range policyRes.ClaudeEnv {
+				env = envSet(env, k, v)
+			}
+			env = envUnset(env, "MAX_THINKING_TOKENS")
+			argv = []string{"claude", "--effort", policyRes.Effort, "--name", session, "--model", model, "/assay:" + role}
+		}
 	}
 	runForeground(argv, env, wt)
 }
