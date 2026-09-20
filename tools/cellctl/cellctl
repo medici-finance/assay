@@ -3019,7 +3019,7 @@ so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
 
 1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
    \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=github:<slug>:<id>\`
-   bindings to THIS cell's Apps (per forge-neutral/02's grammar), \`ASSAY_REPO_FORGES\` binding
+   bindings to THIS cell's Apps (the forge-qualified grammar), \`ASSAY_REPO_FORGES\` binding
    the cell's repos to \`github\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the
    cell's repos ONLY. Start from another cell's file as a template and replace every App — a
    copied binding points this cell's writes at another cell's identity.
@@ -3078,13 +3078,13 @@ rotate by hand. Then run \`cellctl check $cell\`.
 
 1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
    \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=gitlab:<slug>:<id>\`
-   bindings to THIS cell's bot accounts (per forge-neutral/02's grammar — a bare slug is refused,
+   bindings to THIS cell's bot accounts (the forge-qualified grammar — a bare slug is refused,
    and a \`gitlab:\` entry against a github repo is refused), \`ASSAY_REPO_FORGES\` binding the
    cell's repos to \`gitlab\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's
    repos ONLY. A cell stood up for GitLab MUST write forge-qualified entries or the verbs refuse.
 2. The role token store — \`$store\` — holds one \`gitlab-<role>.token\` file per role (0600),
    provisioned BY HAND: \`gitlab-deskd.token\` for the read daemon, plus one per write role
-   (\`gitlab-worker.token\`, \`gitlab-reviewer.token\`, …) per forge-neutral/01's custody binding.
+   (\`gitlab-worker.token\`, \`gitlab-reviewer.token\`, …) per the role-token custody binding.
    These are GitLab group/project access tokens you mint in GitLab and place here yourself;
    cellctl never mints or rotates them. Lock each to 0600.
 3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
@@ -3218,7 +3218,7 @@ new_scrubbed(){
   chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay" "$d/tmp"
   cat > "$d/home/.config/assay/roster.env" <<EOF
 # scrubbed cell roster — this cell is scoped to exactly one repo; a different or additional
-# ASSAY_ALLOWED_REPOS entry is a MISS at \`cellctl check\` by design (desk-containers/09).
+# ASSAY_ALLOWED_REPOS entry is a MISS at \`cellctl check\` by design.
 ASSAY_ALLOWED_REPOS=$slug
 # Fill in by hand: ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_BOT_SLUGS (this cell's
 # own App bindings — never copied from another cell), ASSAY_REPO_FORGES, ASSAY_SCAN_REPOS.
