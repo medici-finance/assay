@@ -2,6 +2,12 @@
 - `cellctl` is now a Go program (`tools/desk/cmd/cellctl`), built and shipped like every other
   desk verb instead of being a `sed`-stamped shell script copied into the release tarball. The
   shell launcher stays in the tree as the parity ORACLE: `tools/cellctl/tests/parity.test.sh`
-  diffs both implementations' `DRY_RUN=1` plans across every kind × harness × cockpit × verb,
-  and the existing behavioural suites now run against either implementation through a `CELLCTL`
-  override. The binary is unix-only until the windows-port stream lands its build-tag split.
+  diffs both implementations' `DRY_RUN=1` plans across every kind × harness × cockpit × verb —
+  200 cells, byte for byte, including the whole tree `new` scaffolds — and the existing
+  behavioural suites now run against either implementation through a `CELLCTL` override.
+- The per-platform tarballs now carry a real `cellctl` built for their own platform, the windows
+  legs included, where before every platform got the same shell script. The Windows build
+  compiles today but is UNPROVEN: standing a Windows cell up belongs to the windows-port stream.
+- `cellctl new` no longer writes internal stream identifiers into the README and roster it
+  scaffolds. The grammar, custody and check sentences keep their meaning; only the citations are
+  gone, so a scaffolded cell no longer carries pointers to material an adopter cannot read.
