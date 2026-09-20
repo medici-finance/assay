@@ -27,6 +27,20 @@ type pruneResult struct {
 	skips      []skipEntry
 	reclaimed  []reclaimEntry // locks retired this sweep (only with --reclaim-stale-locks)
 	warns      []string       // things the sweep could not do, said out loud
+
+	// reaped counts the worktrees the DEAD-SESSION arm removed (deadsession.go). It is
+	// kept apart from `removed` because the two arms cleared different populations under
+	// different gates, and one number that merged them could not tell an operator whether
+	// the leftover backlog is draining at all.
+	reaped int
+	// branches are the stale local branches deleted alongside those worktrees.
+	branches []string
+	// plan is the reap arm's judgement for every worktree it considered, REAP and KEEP
+	// alike — what `--dry-run` prints in full.
+	plan []reapVerdict
+	// dryRun records which mode produced this result, so the renderer prints the FULL plan
+	// for an inspection run and only the acted-on rows for a live one.
+	dryRun bool
 }
 
 // pruneOpts carries the sweep's opt-in behaviour. The zero value is the historical sweep:
@@ -35,6 +49,11 @@ type pruneOpts struct {
 	// reclaimStaleLocks turns on the lock-lifecycle pass (lockreclaim.go): unlock locks
 	// proven stale so the ORDINARY eligibility rules can then apply to those worktrees.
 	reclaimStaleLocks bool
+	// reapDeadSessions turns on the DEAD-SESSION arm (deadsession.go): remove a worktree
+	// no live session owns, gated on clean-AND-pushed rather than on the mainline merge
+	// the ordinary arm requires. Default OFF, exactly like reclaimStaleLocks: a sweep that
+	// was not asked to reap behaves precisely as it always has.
+	reapDeadSessions bool
 	// lockTTL is the age fallback for locks that name no session. 0 disables it.
 	lockTTL time.Duration
 	// dryRun reports what a sweep WOULD remove (and the before_remove hook plan) without
@@ -64,6 +83,18 @@ type pruneOpts struct {
 //	  the roster beacons, or the lock is older than --lock-ttl — and then re-runs Step A so
 //	  newly-unlockable dangling entries are dropped too. Every unlock prints the worktree,
 //	  the lock reason, and the evidence. See lockreclaim.go.
+//
+//	Step A3 (OPT-IN, --reap-dead-sessions): the DEAD-SESSION arm. Step A2 retires a lock and
+//	  then hands the worktree to Step B's rules, which require HEAD to be merged into the
+//	  remote mainline — so a dead session's OPEN-PR worktree (an unmerged branch, by
+//	  definition) is held by Step B however certainly its session is gone, and a leftover
+//	  population accumulates that no sweep can ever clear. This arm judges those trees by a
+//	  different, narrower question: does any LIVE session still own this worktree, and is
+//	  removing it provably lossless (clean INCLUDING untracked files, and HEAD already
+//	  reachable from its upstream or from the mainline)? It removes the ones that pass and
+//	  deletes their stale local branch, so the next `deskwt add --branch` cuts fresh from
+//	  origin instead of colliding. A LIVE session's lock still holds its worktree
+//	  unconditionally. See deadsession.go.
 //
 //	Step B (count reduction, safe gate): walk the registered worktrees under the sanctioned
 //	  prefixes and REMOVE (via the exact same safe-remove primitive as `remove`) ONLY the
@@ -108,7 +139,12 @@ func cmdPrune(args []string) (err error) {
 	// --lock-ttl is the age fallback for locks that name no session. Default 0 = disabled,
 	// because "old" is not by itself evidence that a session is gone.
 	lockTTLStr := fs.String("lock-ttl", "0",
-		"with --reclaim-stale-locks: also treat any lock older than this (e.g. 24h) as stale; 0 disables the age test")
+		"with --reclaim-stale-locks or --reap-dead-sessions: also treat any lock older than this (e.g. 24h) as stale; 0 disables the age test")
+	// --reap-dead-sessions is the DEAD-SESSION arm's opt-in. Default OFF for the same
+	// reason --reclaim-stale-locks is: it is a new destructive capability, and the operator
+	// arms it deliberately after reading a --dry-run plan.
+	reapDead := fs.Bool("reap-dead-sessions", false,
+		"remove a worktree no live session owns (dead-session lock, or no lock at all) when it is clean AND fully pushed, deleting its stale local branch too; default off")
 	dryRun := fs.Bool("dry-run", false, "report what a sweep would remove and the before_remove hook plan; delete nothing (one-shot only)")
 	// --singleton-ttl is the RECENCY half of the prune singleton (prunesingleton.go): a
 	// sweep that completed less than this ago holds a new one, so N desk windows booting
@@ -121,14 +157,19 @@ func cmdPrune(args []string) (err error) {
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
-			"--reclaim-stale-locks, --lock-ttl, --dry-run, --singleton-ttl and --no-singleton " +
+			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl and --no-singleton " +
 			"(there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
 		return deskkit.Refused("refused: prune takes no positional arguments")
 	}
 
-	opts := pruneOpts{reclaimStaleLocks: *reclaim, dryRun: *dryRun, singletonTTL: defaultSingletonTTL}
+	opts := pruneOpts{
+		reclaimStaleLocks: *reclaim,
+		reapDeadSessions:  *reapDead,
+		dryRun:            *dryRun,
+		singletonTTL:      defaultSingletonTTL,
+	}
 	if s := strings.TrimSpace(*singletonTTLStr); s != "" {
 		d, derr := time.ParseDuration(s)
 		if derr != nil {
@@ -152,10 +193,11 @@ func cmdPrune(args []string) (err error) {
 		}
 		opts.lockTTL = d
 	}
-	// A TTL without the opt-in would be silently inert — the exact shape of failure this
-	// tool refuses everywhere else. Say so instead of accepting a knob that does nothing.
-	if opts.lockTTL > 0 && !opts.reclaimStaleLocks {
-		return deskkit.Refused("refused: --lock-ttl has no effect without --reclaim-stale-locks")
+	// A TTL without one of the passes that reads it would be silently inert — the exact
+	// shape of failure this tool refuses everywhere else. Say so instead of accepting a
+	// knob that does nothing. Both passes reach judgeLock, so both arm the age fallback.
+	if opts.lockTTL > 0 && !opts.reclaimStaleLocks && !opts.reapDeadSessions {
+		return deskkit.Refused("refused: --lock-ttl has no effect without --reclaim-stale-locks or --reap-dead-sessions")
 	}
 
 	var interval time.Duration
@@ -227,7 +269,7 @@ func cmdPrune(args []string) (err error) {
 			fmt.Fprintf(os.Stderr, "  skipped %s — %s\n", s.path, s.reason)
 		}
 		ac.detail = pruneAuditDetail(res)
-		if res.bookkept == 0 && res.removed == 0 && len(res.reclaimed) == 0 {
+		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 {
 			ac.successResult = deskkit.ResultNoop
 		}
 		return nil
@@ -248,16 +290,16 @@ func cmdPrune(args []string) (err error) {
 // number that used to grow without bound), and how many locks were retired.
 func pruneSummaryLine(res pruneResult) string {
 	return fmt.Sprintf(
-		"deskwt prune: pruned %d bookkeeping entr%s, removed %d merged+clean worktree%s, held %d (locked-held %d), locks-reclaimed %d",
+		"deskwt prune: pruned %d bookkeeping entr%s, removed %d merged+clean worktree%s, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, plural(res.bookkept, "y", "ies"),
 		res.removed, plural(res.removed, "", "s"),
-		len(res.skips), res.lockedHeld, len(res.reclaimed))
+		len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
 }
 
-// pruneAuditDetail is the same four counts in the audit line's detail field.
+// pruneAuditDetail is the same counts in the audit line's detail field.
 func pruneAuditDetail(res pruneResult) string {
-	return fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d",
-		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+	return fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
+		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
 }
 
 // renderSweepDetail writes the lines that must never be reduced to a count: every lock this
@@ -267,6 +309,19 @@ func pruneAuditDetail(res pruneResult) string {
 func renderSweepDetail(w io.Writer, res pruneResult) {
 	for _, r := range res.reclaimed {
 		fmt.Fprintf(w, "  reclaimed lock on %s — reason %s — stale: %s\n", r.path, lockReasonText(r.reason), r.why)
+	}
+	// The dead-session plan. A DRY RUN prints it whole — every worktree the arm considered,
+	// REAP and KEEP alike, with the session it attributed and the reason — because
+	// inspecting the plan before arming the supervisor is what the dry run is FOR. A live
+	// sweep prints the rows it acted on; the KEEPs are already reported, one per line, by
+	// the caller's skip listing.
+	for _, v := range res.plan {
+		if res.dryRun || v.reap {
+			fmt.Fprintln(w, v.planLine())
+		}
+		if v.reap && v.branch != "" {
+			fmt.Fprintf(w, "    deleted stale local branch %s (equal to or behind its upstream)\n", v.branch)
+		}
 	}
 	for _, warn := range res.warns {
 		fmt.Fprintf(w, "  warning: %s\n", warn)
@@ -478,6 +533,7 @@ func (sc *sweepCtx) isMergedToOriginMain(rt string) (bool, error) {
 // current directory (never removed).
 func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult, error) {
 	var res pruneResult
+	res.dryRun = opts.dryRun
 
 	// Step A — bookkeeping prune (always safe: only drops entries for dirs already gone).
 	// --verbose prints one line per dropped entry so we can report the count.
@@ -546,24 +602,94 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	// pendingRemoved collects the trees deleted in this loop. Their admin entries are
 	// dropped ONCE after the loop (see the batched deregistration below), not per removal.
 	var pendingRemoved []string
+	// reapedPaths / pendingBranch are the dead-session arm's half of that batch: which of
+	// the deleted trees this arm cleared, and which stale local branch goes with each.
+	// The branch delete CANNOT run inside the loop — git refuses to delete a branch that is
+	// still checked out in a registered worktree, and the deregistration is batched — so it
+	// happens after the one deregistration pass, and only for paths that actually left the
+	// registration.
+	reapedPaths := map[string]bool{}
+	pendingBranch := map[string]string{}
+
+	// Dead-session arm state, resolved ONCE per sweep rather than per worktree: one stat of
+	// the lock admin files, one roster-directory resolution, one clock read.
+	var (
+		reapMtimes map[string]time.Time
+		reapRoster string
+		reapNow    time.Time
+	)
+	if opts.reapDeadSessions {
+		reapMtimes = guard.lockFileMtimes()
+		reapRoster = rosterBeaconDir()
+		reapNow = time.Now()
+		if reapRoster == "" {
+			res.warns = append(res.warns,
+				"could-not-check: roster beacons are unreadable, so no locked worktree can be proven to belong to a DEAD session — "+
+					"the reap arm holds every locked worktree this sweep"+ttlHint(opts.lockTTL))
+		}
+	}
 
 	for _, rt := range roots {
+		reason, isLocked := locked[rt]
+
+		// The identity gates bind the dead-session arm too, and must therefore be decided
+		// BEFORE it runs: that arm may act on a LOCKED worktree, which is the one case the
+		// ordinary order (lock gate first, identity second) never reached. The shared
+		// checkout, the current worktree and anything outside a sanctioned prefix are
+		// refused here exactly as they are below; only the point at which the question is
+		// asked moved, and the reported reason for each is unchanged.
+		protected := rt == guard.sharedCheckout || rt == cwd || !guard.allowed(rt)
+
+		if opts.reapDeadSessions && protected {
+			// Named in the plan rather than omitted from it: a plan an operator signs off
+			// must account for every registered worktree, and "this path was never a
+			// candidate" is an answer the plan has to be able to give.
+			res.plan = append(res.plan, reapVerdict{path: rt, reason: "protected: " + protectedReason(guard, cwd, rt)})
+		}
+
+		if opts.reapDeadSessions && !protected {
+			mt, haveMtime := reapMtimes[rt]
+			v := judgeReap(sc, rt, reason, isLocked, mt, haveMtime, opts.lockTTL, reapRoster, reapNow)
+			if v.reap {
+				// --dry-run stops here exactly as the ordinary arm does: count the
+				// would-be reap, record the plan row, delete nothing and unlock nothing.
+				if opts.dryRun {
+					res.reaped++
+					res.plan = append(res.plan, v)
+					continue
+				}
+				branch, rerr := reapWorktree(sc, dir, rt, isLocked)
+				if rerr != nil {
+					v.reap = false
+					v.reason += "; reap failed: " + errText(rerr)
+					res.plan = append(res.plan, v)
+					res.skips = append(res.skips, skipEntry{rt, "dead-session reap failed: " + errText(rerr)})
+					continue
+				}
+				v.branch = branch
+				res.plan = append(res.plan, v)
+				reapedPaths[rt] = true
+				if branch != "" {
+					pendingBranch[rt] = branch
+				}
+				pendingRemoved = append(pendingRemoved, rt)
+				continue
+			}
+			// A KEEP is recorded and the worktree falls through to the ordinary arm,
+			// which may still clear it under the merge rule. The reap arm only ever ADDS
+			// removals; it takes none away.
+			res.plan = append(res.plan, v)
+		}
+
 		// Lock gate FIRST: a locked worktree is never deleted, whatever its content state
 		// says (a live agent's worktree was spared here only by luck of a content heuristic).
-		if reason, isLocked := locked[rt]; isLocked {
+		if isLocked {
 			res.skips = append(res.skips, skipEntry{rt, lockedReason(reason)})
 			res.lockedHeld++
 			continue
 		}
-		switch {
-		case rt == guard.sharedCheckout:
-			res.skips = append(res.skips, skipEntry{rt, "shared checkout (refused by identity — never removed)"})
-			continue
-		case rt == cwd:
-			res.skips = append(res.skips, skipEntry{rt, "current worktree"})
-			continue
-		case !guard.allowed(rt):
-			res.skips = append(res.skips, skipEntry{rt, "not under a sanctioned prefix"})
+		if protected {
+			res.skips = append(res.skips, skipEntry{rt, protectedReason(guard, cwd, rt)})
 			continue
 		}
 
@@ -675,12 +801,86 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			res.skips = append(res.skips, skipEntry{rt, "removed from disk but still registered after prune"})
 		}
 		for _, rt := range pendingRemoved {
-			if !strandedSet[rt] {
+			if strandedSet[rt] {
+				continue
+			}
+			if reapedPaths[rt] {
+				res.reaped++
+			} else {
 				res.removed++
 			}
 		}
+
+		// Stale local branches, deleted only now: the branch of a worktree that is still
+		// registered is still checked out, and git would (rightly) refuse. A path that
+		// stranded keeps its branch — the collision it would cause is the lesser harm
+		// against deleting the ref of a tree whose registration we could not clear.
+		for _, rt := range pendingRemoved {
+			branch := pendingBranch[rt]
+			if branch == "" || strandedSet[rt] {
+				continue
+			}
+			if derr := deleteLocalBranch(dir, branch); derr != nil {
+				res.warns = append(res.warns,
+					"worktree "+rt+" was reaped but its local branch "+branch+" could not be deleted "+
+						"(a later `deskwt add --branch "+branch+"` will still collide): "+errText(derr))
+				continue
+			}
+			res.branches = append(res.branches, branch)
+		}
 	}
 	return res, nil
+}
+
+// reapWorktree performs the dead-session arm's destructive step for ONE worktree a caller
+// has already proven ownerless, clean and pushed, and returns the stale local branch that
+// should be deleted once the batch deregistration has run (or "" when there is none).
+//
+// The unlock comes first and is not optional: `git worktree prune` will not drop the admin
+// entry of a LOCKED worktree, so deleting the directory of one without unlocking it strands
+// the registration — the half-destroyed outcome of #264, reached from the other side.
+//
+// The branch is resolved BEFORE the directory is deleted, because it is read from the
+// worktree's own HEAD and upstream config, which stop being readable the moment the tree
+// goes. The sweep's handle on rt is dropped for the same reason the ordinary arm drops it:
+// nothing reads the tree again, and holding a repo handle on a deleted path is a footgun.
+func reapWorktree(sc *sweepCtx, dir, rt string, isLocked bool) (string, error) {
+	if isLocked {
+		if _, uerr := runGit(dir, "worktree", "unlock", rt); uerr != nil {
+			return "", deskkit.Unverifiable("cannot unlock the dead session's worktree "+rt, uerr)
+		}
+	}
+
+	// A branch that cannot be resolved is not a reason to abandon the reap — the worktree
+	// itself is what wedges the queue. The unresolvable branch is reported as a warning by
+	// the caller only if a DELETE fails; an unreadable one simply yields "" and is left.
+	var branch string
+	if repo, oerr := sc.open(rt); oerr == nil {
+		if b, berr := branchSafeToDelete(repo); berr == nil {
+			branch = b
+		}
+	}
+
+	delete(sc.repos, rt)
+	if rmErr := removeWorktreeTree(rt); rmErr != nil {
+		return "", rmErr
+	}
+	return branch, nil
+}
+
+// protectedReason names WHY a registered worktree is not a removal candidate at all, for
+// the three identity refusals no content gate can ever override. It is the single source of
+// those three strings, so the skip listing and the dead-session plan can never describe the
+// same refusal in two different ways. The order matches the order the checks are made in.
+func protectedReason(guard *pathGuard, cwd, rt string) string {
+	switch {
+	case rt == guard.sharedCheckout:
+		return "shared checkout (refused by identity — never removed)"
+	case rt == cwd:
+		return "current worktree"
+	default:
+		return "not under a sanctioned prefix"
+	}
 }
 
 // dirtyTrackedIn runs the tracked-clean gate against the sweep's own handle on rt, so the
