@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
@@ -26,7 +27,12 @@ import (
 type VerifyLoop struct {
 	Root      string // repo root the Awaiting scan runs against
 	TargetSHA string // merged-main SHA verifiers run against (stamped onto every Item)
-	RunnerID  string // this session's identity (engine's author!=runner left-hand side)
+	// Roots, when non-empty, is the MULTI-ROOT queue: the configured stream roots (the same
+	// deskkit.ConfiguredRoots map deskboard reads) that survived their own per-root preflight.
+	// SelectQueue then scans every one of them and names the root on every item. Empty keeps
+	// the single-Root read exactly as before.
+	Roots    []deskkit.RootConfig
+	RunnerID string // this session's identity (engine's author!=runner left-hand side)
 
 	// F16ReversibleRiskToSession is the arch-doc §9.2 middle rung — the owner's OPEN decision, left
 	// OFF. Flipping it to true is the ENTIRE change to restore the session-tier
@@ -84,6 +90,9 @@ func (v *VerifyLoop) Name() string { return "verify-desk" }
 // (implemented + empty Evidence) before tier-2 (free-closes / Evidence-present), oldest-first
 // within class. See briefscan.go.
 func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
+	if len(v.Roots) > 0 {
+		return scanAwaitingRoots(v.Roots, v.TargetSHA)
+	}
 	return scanAwaiting(v.Root, v.TargetSHA)
 }
 
