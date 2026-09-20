@@ -9,4 +9,7 @@
   every resource field `could-not-check`.
 - `deskroster set` refuses a `--session` value that does not resolve to a single path
   segment (no `/`, no `..`), closing a beacon-path-join hardening gap identified in
-  security review.
+  security review. `desksupervise status` applies the same single-segment check to the
+  claim `holder` before joining it into the roster beacon read path, so a holder carrying
+  `/` or `..` renders `could-not-check` rather than reading a file outside the roster
+  directory.

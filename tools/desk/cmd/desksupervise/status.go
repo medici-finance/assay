@@ -117,6 +117,15 @@ func liveResourceSource() resourceSource {
 		if strings.TrimSpace(holder) == "" || holder == notApplicable {
 			return blindResource()
 		}
+		// Security S-1 (see deskkit.ValidSessionSegment): holder is the claim's
+		// Owner field, an `\S+`-unconstrained string parsed from a remote
+		// refs/dispatch claim, so it is session-influenced input. Bind it to a
+		// single path segment before the join — a holder carrying `/` or `..`
+		// renders BLIND (as a no-beacon holder does), never a read outside the
+		// roster directory. This mirrors deskroster set's write-side refusal.
+		if !deskkit.ValidSessionSegment(holder) {
+			return blindResource()
+		}
 		stateDir, err := deskkit.StateDir()
 		if err != nil {
 			return blindResource()

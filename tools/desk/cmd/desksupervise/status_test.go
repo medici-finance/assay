@@ -396,3 +396,52 @@ func oneTypeMatches(name string, value interface{}) bool {
 func jsonEqual(a, b interface{}) bool {
 	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
+
+// TestLiveResourceSourceRejectsHolderTraversal pins the read-side S-1 boundary: liveResourceSource
+// binds `holder` to a single path segment before joining it under <StateDir>/roster/, so a holder
+// carrying a traversal (`..`) or separator renders BLIND — never a read of a file outside the roster
+// directory. holder is the claim Owner field, an `\S+`-unconstrained string parsed from a remote
+// dispatch claim, so it is session-influenced input; this is the read twin of deskroster set's
+// ValidSessionSegment write-side refusal.
+//
+// Fail-first: removing the `if !deskkit.ValidSessionSegment(holder)` guard in liveResourceSource
+// makes the `../decoy` holder read the decoy beacon and return its model ("leaked-model") instead
+// of could-not-check, and this test goes red. See scripts/mutate/desk-supervision-13.sh.
+func TestLiveResourceSourceRejectsHolderTraversal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rosterDir := home + "/.config/assay/roster"
+	if err := os.MkdirAll(rosterDir, 0o755); err != nil {
+		t.Fatalf("mkdir roster: %v", err)
+	}
+	// A decoy beacon OUTSIDE roster/, one directory up (still under ~/.config/assay, the
+	// dir that also holds this house's trust config and the kill switch). A `../decoy`
+	// holder would resolve to it if the guard were absent.
+	decoy := home + "/.config/assay/decoy.json"
+	if err := os.WriteFile(decoy, []byte(`{"resource":{"model":"leaked-model"}}`), 0o644); err != nil {
+		t.Fatalf("write decoy: %v", err)
+	}
+	src := liveResourceSource()
+
+	// Traversal holder → BLIND, and specifically NOT the decoy's model.
+	got := src("../decoy")
+	if string(got.Model) == `"leaked-model"` {
+		t.Fatalf("holder %q read the decoy beacon (model=%s) — path-segment guard missing", "../decoy", got.Model)
+	}
+	if string(got.Model) != string(couldNotCheckRaw) {
+		t.Errorf("traversal holder: Model = %s, want %s (blind)", got.Model, couldNotCheckRaw)
+	}
+	// A separator holder is likewise blind.
+	if got := src("sub/dir"); string(got.Model) != string(couldNotCheckRaw) {
+		t.Errorf("separator holder: Model = %s, want %s (blind)", got.Model, couldNotCheckRaw)
+	}
+
+	// Positive control: a legitimate single-segment holder reads its own beacon (the guard
+	// does not over-block a valid session name).
+	if err := os.WriteFile(rosterDir+"/worker-42.json", []byte(`{"resource":{"model":"real-model"}}`), 0o644); err != nil {
+		t.Fatalf("write beacon: %v", err)
+	}
+	if got := src("worker-42"); string(got.Model) != `"real-model"` {
+		t.Errorf("valid holder: Model = %s, want %q", got.Model, "real-model")
+	}
+}
