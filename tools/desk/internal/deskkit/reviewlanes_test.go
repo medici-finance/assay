@@ -244,8 +244,57 @@ func TestClaimEveryClaimCarriesAState(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // referencePath is the dispatch reference this package's lane table is held to.
-// The path is relative to this package's directory, up to the repository root.
-var referencePath = filepath.Join("..", "..", "..", "..", "tools", "desk", "cmd", "deskdispatch", "references", "review-lanes.md")
+// The path is relative to this package's directory and MUST stay inside this
+// module (tools/desk) — it may never climb above the module root and descend
+// again. The mutation harness (cmd/muhar) runs the suite against an isolated
+// COPY of the module root whenever more than one mutation is in flight (`-j 0`
+// on a multi-core runner, which is what the truth-suite mutation gate uses), and
+// in that copy nothing exists above the module root. A path that round-tripped
+// up to the repository root and back down (`../../../../tools/desk/...`)
+// resolved in a full checkout but not in the copy, so the harness read a red
+// baseline it could not distinguish from a pre-existing failure and discarded
+// the whole run — the gate for this package went red on every push to main.
+var referencePath = filepath.Join("..", "..", "cmd", "deskdispatch", "references", "review-lanes.md")
+
+// TestReviewLanesReferencePathStaysInsideTheModule holds the invariant the
+// comment above states, so the path cannot silently drift back out of the
+// module and redden the mutation gate again. It asserts two things: the
+// reference resolves UNDER the module root (the nearest go.mod above this
+// package — the exact tree cmd/muhar copies per worker), and a file is
+// actually there. A reference reachable only from a full checkout is a
+// could-not-check for the mutation harness, not a pass.
+func TestReviewLanesReferencePathStaysInsideTheModule(t *testing.T) {
+	abs, err := filepath.Abs(referencePath)
+	if err != nil {
+		t.Fatalf("cannot resolve the dispatch reference path %s: %v", referencePath, err)
+	}
+	dir, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("cannot resolve this package's directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod found above this package's directory — cannot locate the module root")
+		}
+		dir = parent
+	}
+	rel, err := filepath.Rel(dir, abs)
+	if err != nil {
+		t.Fatalf("cannot relate the dispatch reference to the module root %s: %v", dir, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		t.Errorf("the dispatch reference path %s escapes the module root (resolves to %s, outside %s) — "+
+			"the mutation harness runs the suite against a copy of the module root alone, where nothing above it exists",
+			referencePath, abs, dir)
+	}
+	if _, err := os.Stat(abs); err != nil {
+		t.Errorf("no dispatch reference at %s (resolved to %s): %v", referencePath, abs, err)
+	}
+}
 
 // TestReviewLanesReferenceMatchesTable: the dispatch reference's per-tier lane
 // sets are PARSED out of the machine-checkable block in the reference document
