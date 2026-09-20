@@ -102,18 +102,21 @@ func TestVersionStampedFromReleaseWorkflow(t *testing.T) {
 	}
 }
 
-// TestCellctlPackagedInReleaseWorkflow guards #850: tools/cellctl/cellctl must ship inside
-// desk-tools-<platform>.tar.gz, stamped with the release tag the way the Go binaries above are
-// stamped by -ldflags. A shell script cannot take -ldflags, so the workflow instead `sed`s the
-// STAGED copy's CELLCTL_VERSION line (see the comment beside that variable in
-// tools/cellctl/cellctl) — this test goes RED if either half regresses: cellctl silently
-// dropping back out of the tarball, or the tarball shipping an unstamped "dev" copy.
-// tools/cellctl/tests/version-stamp.test.sh proves the stamping mechanism itself works; this
-// test proves it is actually WIRED into release.yml.
+// TestCellctlPackagedInReleaseWorkflow guards #850: cellctl must ship inside
+// desk-tools-<platform>.tar.gz, stamped with the release tag.
+//
+// The CLAIM is unchanged; the MECHANISM changed when cellctl was ported to Go. It used to be a
+// hand-maintained shell script the workflow `sed`-stamped and copied in as a packaging
+// EXCEPTION. It is now tools/desk/cmd/cellctl, so the generic `for cmd in cmd/*/` loop builds
+// and stages it like every other verb, and `-X main.cellctlVersion` in the shared LDFLAGS stamps
+// it the way -ldflags stamps the rest. This test goes RED if either half regresses: the package
+// disappearing (nothing to build, nothing in the tarball) or the stamp being dropped (a released
+// copy reporting "dev", which defeats `cellctl --version`).
 func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
 	// internal/deskkit sits at tools/desk/internal/deskkit; the repo root is four
 	// levels up.
-	path := filepath.Join("..", "..", "..", "..", ".github", "workflows", "release.yml")
+	root := filepath.Join("..", "..", "..", "..")
+	path := filepath.Join(root, ".github", "workflows", "release.yml")
 	skipIfFixtureAbsent(t, path,
 		".github/ is not part of this repository's published file set")
 	raw, err := os.ReadFile(path)
@@ -121,13 +124,20 @@ func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
 		t.Fatalf("release workflow not readable at %s: %v", path, err)
 	}
 	wf := string(raw)
-	if !strings.Contains(wf, "tools/cellctl/cellctl") {
-		t.Error("release.yml's desk-tools packaging step does not reference tools/cellctl/cellctl — cellctl would ship nowhere (#850)")
+	// The package is what makes cellctl one of the cmd/*/ builds. Without it the loop has
+	// nothing to build and the tarball carries no cellctl at all.
+	if _, serr := os.Stat(filepath.Join(root, "tools", "desk", "cmd", "cellctl")); serr != nil {
+		t.Errorf("tools/desk/cmd/cellctl is missing (%v) — cellctl would ship nowhere (#850)", serr)
 	}
-	if !strings.Contains(wf, `"$stage/cellctl"`) {
-		t.Error("release.yml does not stage cellctl into the desk-tools tarball's $stage dir (#850)")
+	if !strings.Contains(wf, "for cmd in cmd/*/") {
+		t.Error("release.yml no longer builds every tools/desk/cmd/*/ — cellctl ships only because it is one of them (#850)")
 	}
-	if !strings.Contains(wf, "CELLCTL_VERSION") {
-		t.Error("release.yml does not stamp CELLCTL_VERSION into the packaged cellctl copy — a released copy would report \"dev\" and defeat `cellctl --version` (#850)")
+	if !strings.Contains(wf, "-X main.cellctlVersion=${RELEASE_TAG}") {
+		t.Error("release.yml does not stamp main.cellctlVersion with the release tag — a released cellctl would report \"dev\" and defeat `cellctl --version` (#850)")
+	}
+	// The packaging EXCEPTION is gone and must not come back: a sed-stamped script copied in
+	// beside the binaries is exactly the drift the Go port retired.
+	if strings.Contains(wf, "CELLCTL_VERSION") {
+		t.Error("release.yml still sed-stamps CELLCTL_VERSION — the shell-script packaging exception was removed when cellctl was ported to Go; it is stamped by -ldflags like every other verb")
 	}
 }

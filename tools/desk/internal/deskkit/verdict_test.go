@@ -285,3 +285,138 @@ func flipB64(sig string) string {
 	}
 	return string(b)
 }
+
+// ---------------------------------------------------------------------------
+// Role-keyed signing (house-private brief, Task 1)
+// ---------------------------------------------------------------------------
+
+func TestValidVerdictRole(t *testing.T) {
+	if !ValidVerdictRole(VerdictRoleVerifier) || !ValidVerdictRole(VerdictRoleIssueLoop) {
+		t.Fatal("the two defined roles must be valid")
+	}
+	if ValidVerdictRole("issueloop") || ValidVerdictRole("Verifier") || ValidVerdictRole("") {
+		t.Fatal("a near-miss or empty role must not be valid — no fuzzy matching")
+	}
+}
+
+func TestPubkeyVarForRole(t *testing.T) {
+	if v, err := PubkeyVarForRole(VerdictRoleVerifier); err != nil || v != VerifierPubkeyVar {
+		t.Fatalf("PubkeyVarForRole(verifier) = %q, %v; want %q, nil", v, err, VerifierPubkeyVar)
+	}
+	if v, err := PubkeyVarForRole(VerdictRoleIssueLoop); err != nil || v != IssueLoopPubkeyVar {
+		t.Fatalf("PubkeyVarForRole(issue-loop) = %q, %v; want %q, nil", v, err, IssueLoopPubkeyVar)
+	}
+	if v, err := PubkeyVarForRole("bogus"); err == nil {
+		t.Fatalf("PubkeyVarForRole(bogus) = %q, nil; want an error, never a fall-back variable", v)
+	}
+}
+
+// TestIssueLoopRoleRoundtrip is the positive path: a body signed FOR the
+// issue-loop role, verified AGAINST the issue-loop role, verifies clean — the
+// two-role scheme is additive, not merely "does not break verifier".
+func TestIssueLoopRoleRoundtrip(t *testing.T) {
+	key := testKey(t)
+	pub := &key.PublicKey
+
+	payload := `{"schema":"scan-delta-v1","repo":"medici-finance/widget","entries":[{"issue":42}]}`
+	canon, err := CanonicalizeJSON([]byte(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := SignVerdictCanonical(canon, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := AssembleVerdictBodyForRole(canon, sig, VerdictRoleIssueLoop)
+	if !strings.Contains(body, "role=issue-loop") {
+		t.Fatalf("assembled body does not declare role=issue-loop:\n%s", body)
+	}
+
+	state, msg := VerifyVerdictBodyForRole(body, pub, VerdictRoleIssueLoop)
+	if state != VerdictVerified {
+		t.Fatalf("issue-loop-signed body checked against issue-loop should verify, got %v (%s)", state, msg)
+	}
+}
+
+// TestRoleMismatchRefusedBeforeCrypto is the SECOND trust layer's own test: a
+// body signed for one role, verified against the OTHER role using the SAME
+// keypair (so the signature is cryptographically perfect) must still be
+// REFUSED — the declaration mismatch is caught before signature arithmetic
+// ever runs. Without this layer, a verifier-signed artifact would be silently
+// accepted on the issue-loop lane whenever the two roles' keys were ever
+// interchanged or mis-provisioned.
+func TestRoleMismatchRefusedBeforeCrypto(t *testing.T) {
+	key := testKey(t)
+	pub := &key.PublicKey
+
+	canon, _ := CanonicalizeJSON([]byte(`{"a":1}`))
+	sig, err := SignVerdictCanonical(canon, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := AssembleVerdictBodyForRole(canon, sig, VerdictRoleVerifier)
+
+	// Sanity: this body DOES verify against its own declared role.
+	if s, m := VerifyVerdictBodyForRole(body, pub, VerdictRoleVerifier); s != VerdictVerified {
+		t.Fatalf("baseline (matching role) should verify, got %v (%s)", s, m)
+	}
+
+	// Same body, same (valid) signature, same public key — but asked to check
+	// the issue-loop role. Must REFUSE, not verify.
+	state, msg := VerifyVerdictBodyForRole(body, pub, VerdictRoleIssueLoop)
+	if state != VerdictRefused {
+		t.Fatalf("role mismatch must be REFUSED even with a cryptographically valid signature, got %v (%s)", state, msg)
+	}
+	if !strings.Contains(msg, "refused") {
+		t.Fatalf("refusal message must contain \"refused\": %s", msg)
+	}
+	if !strings.Contains(msg, "verifier") || !strings.Contains(msg, "issue-loop") {
+		t.Fatalf("refusal message should name both the declared and the wanted role: %s", msg)
+	}
+}
+
+// TestUnrecognizedRoleNeverFallsBackToVerifier proves the fail-closed contract
+// on BOTH sides of the role selector: signing an unrecognized role's body is
+// never attempted here (AssembleVerdictBodyForRole is a pure formatter and has
+// no role validation of its own — the CLI validates before calling it, see
+// deskverdict/sign.go), but verifying against an unrecognized wantRole must be
+// CouldNotCheck, never VerdictVerified and never a silent alias to "verifier".
+func TestUnrecognizedRoleNeverFallsBackToVerifier(t *testing.T) {
+	key := testKey(t)
+	pub := &key.PublicKey
+	canon, _ := CanonicalizeJSON([]byte(`{"a":1}`))
+	sig, _ := SignVerdictCanonical(canon, key)
+	body := AssembleVerdictBodyForRole(canon, sig, VerdictRoleVerifier)
+
+	state, msg := VerifyVerdictBodyForRole(body, pub, "bogus-role")
+	if state != VerdictCouldNotCheck {
+		t.Fatalf("an unrecognized wantRole must be CouldNotCheck, got %v (%s)", state, msg)
+	}
+	if !strings.Contains(msg, "could not check") {
+		t.Fatalf("CouldNotCheck message must contain \"could not check\": %s", msg)
+	}
+}
+
+// TestNoRoleFieldDefaultsToVerifier pins the backward-compatibility contract
+// explicitly (TestReflowToleratedByVerify already exercises this incidentally;
+// this test names it as its own assertion): a hand-built body with NO role=
+// field at all — the shape every body assembled before this brief has — is
+// treated as declaring VerdictRoleVerifier, so it verifies under the
+// VerdictRoleVerifier shorthand and refuses under VerdictRoleIssueLoop.
+func TestNoRoleFieldDefaultsToVerifier(t *testing.T) {
+	key := testKey(t)
+	pub := &key.PublicKey
+	canon, _ := CanonicalizeJSON([]byte(`{"a":1}`))
+	sig, _ := SignVerdictCanonical(canon, key)
+
+	// Hand-build a body with the OLD (pre-role) trailer shape.
+	body := "```" + verdictFenceTag + "\n" + string(canon) + "\n```\n\n" +
+		"<!-- " + verdictSigMarker + " v1 alg=" + verdictSigAlg + " sig=" + sig + " -->\n"
+
+	if s, m := VerifyVerdictBody(body, pub); s != VerdictVerified {
+		t.Fatalf("no-role-field body must verify under the implicit verifier default, got %v (%s)", s, m)
+	}
+	if s, _ := VerifyVerdictBodyForRole(body, pub, VerdictRoleIssueLoop); s != VerdictRefused {
+		t.Fatalf("no-role-field body must be REFUSED when checked against issue-loop, got %v", s)
+	}
+}

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -228,6 +228,48 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tsortReviewsAscending(out)\n\treturn out, nil",
       "new": "\treturn out, nil"
+    },
+    {
+      "name": "widen the contributor tier to the deep lane set (the blanket slowdown nobody asked for - a known contributor's pull request silently gets the fact-check and fail-first lanes)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "\tTierContributor: {LaneCorrectness, LaneSecurity},\n\tTierMaintainer:  {LaneCorrectness, LaneSecurity},",
+      "new": "\tTierContributor: {LaneCorrectness, LaneSecurity, LaneFactCheck, LaneFailFirst},\n\tTierMaintainer:  {LaneCorrectness, LaneSecurity},"
+    },
+    {
+      "name": "confirm bullet claims on extraction (a body's highlight bullets are recorded as checked without anyone looking)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "\t\t\tif text != \"\" {\n\t\t\t\tclaims = append(claims, BodyClaim{Text: text, State: ClaimUnverified})\n\t\t\t}",
+      "new": "\t\t\tif text != \"\" {\n\t\t\t\tclaims = append(claims, BodyClaim{Text: text, State: ClaimConfirmed})\n\t\t\t}"
+    },
+    {
+      "name": "confirm sentence claims on extraction (the canonical 'fixed, all tests pass' body claim is recorded as confirmed without anyone looking)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "\t\t\tif claimMarkerRe.MatchString(sent) {\n\t\t\t\tclaims = append(claims, BodyClaim{Text: sent, State: ClaimUnverified})\n\t\t\t}",
+      "new": "\t\t\tif claimMarkerRe.MatchString(sent) {\n\t\t\t\tclaims = append(claims, BodyClaim{Text: sent, State: ClaimConfirmed})\n\t\t\t}"
+    },
+    {
+      "name": "let a claim carry any state (an invented or missing disposition reads as a checked claim - the three-state contract stops binding)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "func (c BodyClaim) CarriesState() bool {\n\tswitch c.State {\n\tcase ClaimConfirmed, ClaimContradicted, ClaimUnverified:\n\t\treturn true\n\tdefault:\n\t\treturn false\n\t}\n}",
+      "new": "func (c BodyClaim) CarriesState() bool {\n\treturn true\n}"
+    },
+    {
+      "name": "drop the fail-first lane from the unknown tier's set (an unknown author's pull request loses the mandatory reproduction)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "\tTierUnknown:     {strongTier(LaneCorrectness), LaneSecurity, LaneFactCheck, LaneFailFirst},\n\tTierBlessedOnce: {strongTier(LaneCorrectness), LaneSecurity, LaneFactCheck, LaneFailFirst},",
+      "new": "\tTierUnknown:     {strongTier(LaneCorrectness), LaneSecurity, LaneFactCheck},\n\tTierBlessedOnce: {strongTier(LaneCorrectness), LaneSecurity, LaneFactCheck, LaneFailFirst},"
+    },
+    {
+      "name": "select the lane set without the resolved tier (every author is dispatched as a contributor - the tier input is read and discarded)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "\ttier, prov := ResolveTier(repo, login, id)\n\treturn LanesFor(tier), tier, prov",
+      "new": "\ttier, prov := ResolveTier(repo, login, id)\n\treturn LanesFor(TierContributor), tier, prov"
+    },
+    {
+      "name": "drop the fail-closed default from LanesFor (an out-of-range tier dispatches an empty lane set - no review at all)",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "\tset, ok := laneTable[tier]\n\tif !ok || len(set) == 0 {\n\t\tset = laneTable[TierUnknown]\n\t}",
+      "new": "\tset := laneTable[tier]\n\tif false {\n\t\tset = laneTable[TierUnknown]\n\t}"
     }
   ],
   "_not_mutated": {
