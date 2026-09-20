@@ -49,7 +49,7 @@ trap 'rm -rf "$T"' EXIT
 ONLY="${PARITY_ONLY:-}"
 cells=0; divergent=0; divergent_names=()
 
-# ---------------------------------------------------------------- stubs
+# -------------------- stubs
 # Written once into $T/stub and symlinked into every fixture's own bin, so the two implementations
 # see the SAME stub behaviour and a stub's own path normalises away with the fixture root.
 mk_stubs(){
@@ -141,7 +141,7 @@ mk_deskbin(){
   done
 }
 
-# ---------------------------------------------------------------- fixture
+# -------------------- fixture
 # mk_fixture <root> <kind> <harness> <cockpit> <forge> — a complete, self-contained world: a HOME,
 # an operator config home, a git checkout, a stub PATH, a desk-tools bindir and one cell named
 # `cell`. Written by HAND, never by `cellctl new`: the fixture must not depend on the
@@ -275,16 +275,20 @@ EOF
   esac
 }
 
-# ---------------------------------------------------------------- run + normalise
+# -------------------- run + normalise
 # The ONLY things normalised: the implementation's own path (each copy is at a different path by
 # construction), the fixture root (each copy gets its own), and the two clock-derived tokens the
 # oracle itself stamps into a session name / backup filename (`<8>T<6>Z`, `<8>-<6>`) plus the
 # scaffold date. Everything else is compared byte for byte.
 normalise(){
   local root="$1" impl="$2"
+  # ROOT FIRST, then the implementation path. The other order is a real bug: a build placed at
+  # /tmp/cellctl-parity is a PREFIX of a fixture root at /private/tmp/cellctl-parity.XXXX, so
+  # substituting the implementation first eats half of every root path and the two sides diff on
+  # paths that are actually identical.
   sed \
-    -e "s#$impl#<cellctl>#g" \
     -e "s#$root#<root>#g" \
+    -e "s#$impl#<cellctl>#g" \
     -e 's#[0-9]\{8\}T[0-9]\{6\}Z#<ts>#g' \
     -e 's#[0-9]\{8\}-[0-9]\{6\}#<ts>#g' \
     -e 's#scaffolded [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}#scaffolded <date>#g'
@@ -360,7 +364,7 @@ verdict(){
   fi
 }
 
-# ---------------------------------------------------------------- one matrix cell
+# -------------------- one matrix cell
 # cell_case <id> <kind> <harness> <cockpit> <verb-and-args...>
 cell_case(){
   local id="$1" kind="$2" harness="$3" cockpit="$4"; shift 4
@@ -409,7 +413,7 @@ new_case(){
   rm -rf "$rootA" "$rootB"
 }
 
-# ---------------------------------------------------------------- the matrix
+# -------------------- the matrix
 echo "parity: A=$CELLCTL_A"
 echo "parity: B=$CELLCTL_B"
 for kind in k8s house container scrubbed; do
