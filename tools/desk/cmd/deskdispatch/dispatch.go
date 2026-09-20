@@ -245,7 +245,7 @@ func dispatch(o dispatchOpts) error {
 	// this step delegates rather than re-deriving any of it — INCLUDING where the
 	// worktree lands: the path the prompt names is the one deskwt printed, never one this
 	// verb predicted.
-	wt := runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", "refs/remotes/origin/main")
+	wt := runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch))
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so
 		// RELEASE it — exactly as the before_run failure path below does — rather than leave it
