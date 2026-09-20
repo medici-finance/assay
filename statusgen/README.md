@@ -94,8 +94,11 @@ GitHub Actions, otherwise the repo's git identity. There is no flag for it, and
 passing one is refused: a witness you can caption is a witness you can forge. With
 no derivable identity `verifyrun` writes nothing and exits 2.
 
-`--lint` never executes anything; it only NOTICEs a `verified`/`done` brief whose
-Evidence carries no witness, one line per stream.
+`--lint` never executes anything. For a `verified`/`done` brief whose Evidence
+carries no witness it is **merge-base scoped** (see `spec/lifecycle-v1.md` §2.4): a
+closure already on `main` at the merge-base is a NOTICE (the inherited corpus lacks
+witnesses by construction), while a NEW closure made after statusgen v1.0.13 with no
+witness behind one or more Verify rows is a hard PROBLEM, one line per stream.
 
 `--consumers` has three exit codes, and the third is the point of it:
 **0** nothing was disproved · **1** a routing claim is contradicted by the diff ·

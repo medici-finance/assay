@@ -450,7 +450,7 @@ func flip(o flipOpts) error {
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
 
 	if o.dryRun {
-		obo, oerr := deskkit.OnBehalfOfLine("")
+		obo, oerr := deskkit.OnBehalfOfLine("", repo)
 		if oerr != nil {
 			return oerr
 		}
@@ -484,7 +484,7 @@ func flip(o flipOpts) error {
 	// refusing (exit 5) rather than flip without one, and name it in the success line so
 	// the record of WHO this flip was on behalf of survives in the same place every other
 	// deskflip decision does (stdout, which the desk's audit capture already retains).
-	obo, oerr := deskkit.OnBehalfOfLine("")
+	obo, oerr := deskkit.OnBehalfOfLine("", repo)
 	if oerr != nil {
 		return oerr
 	}

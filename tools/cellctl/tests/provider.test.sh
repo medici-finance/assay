@@ -35,7 +35,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-provider.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$T"' EXIT
 fails=0
@@ -51,7 +53,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"
@@ -257,7 +259,7 @@ assert "up dry-run shows no per-role tier keys (tier keys are provider-keyed, no
 out="$(CELL_PROVIDER_GLM_MODEL=glm-custom "$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
 assert "check omits the sonnet-slot row when an operator flat model suppresses the preset split (launch predicate mirrored)" '[[ $rc -eq 0 ]] && ! grep -q "sonnet slot" <<<"$out"'
 assert "cellctl set accepts the three tier keys without --force" '"$CELLCTL" set example-cell CELL_PROVIDER_GLM_MODEL_MID=set-written >/dev/null 2>&1 && grep -qx "CELL_PROVIDER_GLM_MODEL_MID=set-written" "$CELL/cell.env" && ! grep -q "not a known cell.env key" <("$CELLCTL" set example-cell CELL_PROVIDER_GLM_MODEL_FAST=x 2>&1)'
-sed -i.bak '/^CELL_PROVIDER_GLM_MODEL_MID=/d;/^CELL_PROVIDER_GLM_MODEL_FAST=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"'
+sed -i.bak '/^CELL_PROVIDER_GLM_MODEL_MID=/d;/^CELL_PROVIDER_GLM_MODEL_FAST=/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
 
 echo "[glm per-tier: an operator-set flat model suppresses preset tier splits; an explicit tier key wins]"
 export CELL_PROVIDER_GLM_MODEL_MID="glm-custom-mid"

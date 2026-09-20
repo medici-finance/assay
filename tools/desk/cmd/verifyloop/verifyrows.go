@@ -32,7 +32,14 @@ func (r verifyRow) runnerExecuted() bool {
 // `Class` column is legacy: every row defaults to `check`. Rows whose `#` cell is not an
 // integer (a separator, a stray line) are skipped.
 func parseVerifyRows(briefContent string) []verifyRow {
-	section := extractSection(briefContent, "## Verify")
+	return parseVerifyRowsIn(extractSection(briefContent, "## Verify"))
+}
+
+// parseVerifyRowsIn parses the rows of an already-extracted Verify SECTION body. It is the
+// shared half of parseVerifyRows (exact `## Verify` heading, the runner's contract) and the
+// per-row content derivation in briefscan.go, which reads the qualifier-aware extractVerify
+// section — so both read the Command cell by the same header-named rule.
+func parseVerifyRowsIn(section string) []verifyRow {
 	if section == "" {
 		return nil
 	}

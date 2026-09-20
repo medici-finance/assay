@@ -293,7 +293,7 @@ func cmdReply(args []string) (err error) {
 	// immediately before the one mutating call, exactly where --workpad's own dry-run
 	// stops before its write.
 	if *dryRun {
-		obo, oerr := deskkit.OnBehalfOfLine("")
+		obo, oerr := deskkit.OnBehalfOfLine("", repo)
 		if oerr != nil {
 			return oerr
 		}
@@ -308,7 +308,7 @@ func cmdReply(args []string) (err error) {
 	// identical retry from a different session still dedupes. Resolved this late
 	// (immediately before the one mutating call) so every check above it — including the
 	// write-budget gate — still runs on a body-shape refusal before this one is reached.
-	postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 	if oerr != nil {
 		return oerr
 	}

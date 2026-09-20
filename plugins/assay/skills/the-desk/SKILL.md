@@ -203,6 +203,10 @@ not own.
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+- **A relayed ruling is recorded, then awaits ratification:** where this desk relays the driver's
+  answer on a decision issue, the relay comment follows `ask-decision` §"Ratification — a relay is
+  not yet a ruling" — five parts, and the ruling binds only once the driver ratifies it in their
+  own identity.
 - **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
   `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
   runsheet is the exact command the driver runs.
