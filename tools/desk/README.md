@@ -4126,6 +4126,19 @@ gather Evidence for such a brief — its member line reads `Evidence-only (never
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
 
+**`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
+`docs/streams/desk-supervision/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
+WAKE RECEIPT on the append-only verify-outcomes sidecar row: the inputs it observed, the blocker
+class, and the checkable condition that must change before re-running is worth a slot. On the next
+`plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at
+scan time in `briefscan.go` against an already-authorized, offline, probe-free reader): a complete
+unchanged receipt is a visible **`wait`** bucket (naming its blocker + next actor), excluded from
+dispatch; a changed relevant input / tool / Verify definition / completed action wakes it; an
+unreadable declared input is **could-not-check**, never rounded up to unchanged; a legacy or
+incomplete receipt stays dispatchable for one classification pass. A partial hold dispatches the
+newly-runnable rows while recording the held rows as explicitly unrun, and no partial result flips
+the brief — a receipt is scheduling evidence only, never a grant of `verified`/`done`.
+
 ### Tier→runner config — the `ASSAY_RUNNER_*` table
 
 Native ACP dispatch spawns a real agent per verify item. **Which** agent it

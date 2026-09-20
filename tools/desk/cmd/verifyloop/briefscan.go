@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -27,6 +29,11 @@ type briefRow struct {
 	// (#1309 item 5): the gate and every risk answer are then UNKNOWN, not "model / all no",
 	// so the row is bucketed could-not-check and never dispatched.
 	couldNotCheck string
+	// verifyRows are the brief's `## Verify` table row numbers (desk-supervision/16). They let a
+	// wake receipt that holds only SOME rows be compared against the whole set: rows not held by
+	// an unchanged receipt are still runnable, so the brief dispatches for them while the held
+	// rows stay held. Empty when the Verify table is absent or unparseable.
+	verifyRows []int
 }
 
 // briefFrontmatter is the subset of brief-v1 frontmatter the verify adapter needs. It is
@@ -76,7 +83,7 @@ type briefFrontmatter struct {
 // This is the deterministic board read; there is NO code path that produces a verify verdict
 // without going through the engine's Dispatch — the inline-verify path is unrepresentable.
 func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
-	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA)
+	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA, nil, time.Time{})
 }
 
 // scanAwaitingRoots is the MULTI-ROOT board read: one scanAwaitingIn per configured root, in
@@ -85,10 +92,10 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 // a class the per-root order (root order, then stream, then brief-num) is preserved — the sort
 // is stable. A root whose streams cannot be read is an error naming the root, never a silent
 // omission: the whole point of the multi-root plan is that a repo's queue cannot vanish.
-func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string) ([]loopengine.Item, error) {
+func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, now time.Time) ([]loopengine.Item, error) {
 	var all []loopengine.Item
 	for _, r := range roots {
-		items, err := scanAwaitingIn(r, targetSHA)
+		items, err := scanAwaitingIn(r, targetSHA, reader, now)
 		if err != nil {
 			return nil, fmt.Errorf("root %s (%s): %w", r.Repo, r.Path, err)
 		}
@@ -111,14 +118,24 @@ func itemWorkClass(it loopengine.Item) int {
 // before (bare `<stream>/<NN>` IDs, no provenance). With r.Repo set — the multi-root plan — every
 // item's ID is `<owner>/<repo>:<stream>/<NN>` and its payload carries `repo` and `root`, so the
 // root is named on every printed item and two roots carrying a same-named stream cannot alias.
-func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, error) {
+func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, now time.Time) ([]loopengine.Item, error) {
 	root := r.Path
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
 	if err != nil {
 		return nil, err
 	}
+	// Wake evaluation reads external observation only through an already-authorized reader and a
+	// clock — both injectable in tests. The default is the OFFLINE, probe-free reader over this
+	// root's tree (content hashes + the tool version; it never observes an external action).
+	if reader == nil {
+		reader = deskkit.NewRootRevisionReader(root, deskkit.ReleaseTagOrDev())
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	outcomes := readOutcomeSidecar(filepath.Join(streamsDir, outcomeSidecarName))
+	receipts := readWakeReceipts(filepath.Join(streamsDir, outcomeSidecarName))
 	var rows []briefRow
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -136,7 +153,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 				continue // Awaiting filter
 			}
 			row.Stream = stream
-			row.BriefPath, row.fm, row.evidenceEmpty, row.couldNotCheck = resolveBrief(root, streamsDir, e.Name(), row.Num)
+			row.BriefPath, row.fm, row.evidenceEmpty, row.couldNotCheck, row.verifyRows = resolveBrief(root, streamsDir, e.Name(), row.Num)
 			rows = append(rows, row)
 		}
 	}
@@ -175,6 +192,13 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string) ([]loopengine.Item, 
 			payload["sidecar_outcome"] = oc.Outcome
 			payload["sidecar_ts"] = oc.TS
 			payload["sidecar_sha"] = oc.SHA
+		}
+		// WAKE (desk-supervision/16): a failed/blocked verification's latest receipt decides
+		// whether re-running is worth a slot. Evaluated here (where the reader + clock live) and
+		// carried onto the payload as strings, so classifyItem reads it exactly like the other
+		// queue-truthfulness markers. A verified receipt is the stuck-flip lane's, not this one.
+		if rec, ok := receipts[br.Stream+"/"+br.Num]; ok && rec.IsFailedOrBlocked() {
+			deriveWakePayload(payload, rec, br.verifyRows, reader, now)
 		}
 		if r.Repo != "" {
 			id = r.Repo + ":" + id
@@ -333,22 +357,115 @@ func normalizeMark(s string) string {
 // row as could-not-check, never dispatchable. Before this the zero value flowed straight into
 // classification: gate "" and every risk flag false read as a risk-clear model-gated brief, so
 // an unresolvable row was routed to DISPATCH with its human gate erased.
-func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool, couldNotCheck string) {
+func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool, couldNotCheck string, verifyRows []int) {
 	pattern := filepath.Join(streamsDir, dir, "brief-"+num+"-*.md")
 	matches, _ := filepath.Glob(pattern)
 	if len(matches) == 0 {
-		return "", briefFrontmatter{}, true, "brief file not found: " + relTo(root, pattern)
+		return "", briefFrontmatter{}, true, "brief file not found: " + relTo(root, pattern), nil
 	}
 	path := matches[0]
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", briefFrontmatter{}, true, "brief file unreadable: " + relTo(root, path) + " (" + err.Error() + ")"
+		return "", briefFrontmatter{}, true, "brief file unreadable: " + relTo(root, path) + " (" + err.Error() + ")", nil
 	}
 	rel := relTo(root, path)
 	fm = parseFrontmatter(string(raw))
 	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
-	return rel, fm, evidenceEmpty, ""
+	for _, vr := range parseVerifyRows(string(raw)) {
+		verifyRows = append(verifyRows, vr.Num)
+	}
+	return rel, fm, evidenceEmpty, "", verifyRows
+}
+
+// readWakeReceipts returns the LATEST verify-wake receipt per brief key from the append-only
+// sidecar (the last line for a brief is its current receipt). An absent/unreadable sidecar is an
+// empty map; a malformed line is skipped, never fatal — the same tolerance readOutcomeSidecar has.
+func readWakeReceipts(path string) map[string]deskkit.WakeReceipt {
+	out := map[string]deskkit.WakeReceipt{}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if rec, ok := deskkit.ParseWakeReceipt([]byte(line)); ok {
+			out[rec.Brief] = rec
+		}
+	}
+	return out
+}
+
+// deriveWakePayload evaluates one failed/blocked receipt and writes the wake markers classifyItem
+// reads. The states map to dispositions there:
+//   - hold, and the receipt holds EVERY runnable Verify row (or names no rows) → a whole-brief
+//     WAIT: wake_state=hold. Re-running reproduces the same non-verdict.
+//   - hold, but some Verify rows are NOT held → those rows are still runnable: wake_state=fire,
+//     wake_held_rows names the held rows to record as explicitly unrun (mirrors deferred_rows), so
+//     one newly-runnable row executes without repeating the held rows.
+//   - fire → the wake condition was met: wake_state=fire, dispatch the whole brief.
+//   - could-not-check → wake_state=could-not-check (an unreadable declared input; never a hold).
+//   - unclassified → no wake_state written: a legacy/incomplete receipt falls through to one
+//     ordinary classification pass, never a fabricated hold.
+func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reader deskkit.WakeInputs, now time.Time) {
+	dec := rec.EvaluateWake(reader, now)
+	switch dec.State {
+	case deskkit.WakeCouldNotCheck:
+		payload["wake_state"] = "could-not-check"
+		payload["wake_reason"] = dec.Reason
+	case deskkit.WakeUnclassified:
+		// leave unset — one ordinary classification pass
+	case deskkit.WakeFire:
+		payload["wake_state"] = "fire"
+		payload["wake_reason"] = dec.Reason
+	case deskkit.WakeHold:
+		held := heldRowSet(rec.Rows)
+		remaining := runnableRemainder(verifyRows, held)
+		if len(rec.Rows) > 0 && len(remaining) > 0 {
+			// Partial: the receipt holds only some rows; the rest are runnable now.
+			payload["wake_state"] = "fire"
+			payload["wake_held_rows"] = joinInts(rec.Rows)
+			payload["wake_reason"] = dec.Reason + " — holding rows " + joinInts(rec.Rows) +
+				"; dispatching runnable row(s) " + joinInts(remaining)
+		} else {
+			payload["wake_state"] = "hold"
+			payload["wake_reason"] = dec.Reason
+			if len(rec.Rows) > 0 {
+				payload["wake_held_rows"] = joinInts(rec.Rows)
+			}
+		}
+	}
+}
+
+func heldRowSet(rows []int) map[int]bool {
+	s := map[int]bool{}
+	for _, r := range rows {
+		s[r] = true
+	}
+	return s
+}
+
+// runnableRemainder is the brief's Verify rows that the receipt does NOT hold — the rows still
+// runnable this pass. Empty when every row is held (or the row set is unknown).
+func runnableRemainder(all []int, held map[int]bool) []int {
+	var out []int
+	for _, r := range all {
+		if !held[r] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func joinInts(xs []int) string {
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = strconv.Itoa(x)
+	}
+	return strings.Join(parts, ",")
 }
 
 // relTo is path relative to root, or path itself when it cannot be made relative.

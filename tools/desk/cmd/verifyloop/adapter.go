@@ -52,6 +52,14 @@ type VerifyLoop struct {
 	// Now is injectable for deterministic Evidence dates in tests.
 	Now func() time.Time
 
+	// WakeReader is the already-authorized reader the wake evaluator asks for the current
+	// revision of a declared input and whether a referenced action has completed
+	// (desk-supervision/16). nil defaults to the OFFLINE, probe-free reader over each scanned
+	// root's tree (deskkit.RootRevisionReader) — it content-hashes declared files and reads the
+	// tool version, and NEVER observes an external action (that stays could-not-check offline).
+	// Injected in tests so every wake path is exercised without touching the filesystem.
+	WakeReader deskkit.WakeInputs
+
 	// --- Native ACP dispatch --------------------------------
 	// Native selects the dispatch MODE. false (the zero value, the default) keeps
 	// today's interim emit-and-await behaviour BYTE-FOR-BYTE. true drives the
@@ -90,10 +98,21 @@ func (v *VerifyLoop) Name() string { return "verify-desk" }
 // (implemented + empty Evidence) before tier-2 (free-closes / Evidence-present), oldest-first
 // within class. See briefscan.go.
 func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
+	now := v.wakeNow()
 	if len(v.Roots) > 0 {
-		return scanAwaitingRoots(v.Roots, v.TargetSHA)
+		return scanAwaitingRoots(v.Roots, v.TargetSHA, v.WakeReader, now)
 	}
-	return scanAwaiting(v.Root, v.TargetSHA)
+	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.TargetSHA, v.WakeReader, now)
+}
+
+// wakeNow is the clock the wake evaluator uses — v.Now when injected (deterministic in tests),
+// else the real UTC clock. Kept beside SelectQueue so the single source of the loop's time is
+// obvious.
+func (v *VerifyLoop) wakeNow() time.Time {
+	if v.Now != nil {
+		return v.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // Dispatch is the ONE method the native-primitive upgrade swaps (arch doc §9.1; loopengine

@@ -266,6 +266,12 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 		// window in their Command cell. They are recorded as explicitly unrun — the rest run.
 		fmt.Fprintf(&b, "Rows to record as explicitly UNRUN (not runnable offline; run every other row): %s\n\n", deferred)
 	}
+	if held := payloadValue(it, "wake_held_rows"); held != "" {
+		// Wake partial (desk-supervision/16): a still-unchanged wake receipt holds these rows.
+		// Record them as explicitly unrun and run only the newly-runnable rows — a partial run
+		// must NOT report a whole-brief PASS, so the held rows can never be closed by this run.
+		fmt.Fprintf(&b, "Rows still WAKE-HELD (unchanged blocker; record as explicitly UNRUN — do NOT re-run them, and do NOT report a whole-brief PASS): %s\n\n", held)
+	}
 	b.WriteString("You are NOT this brief's implementer (verifier != author). Fresh agent only.\n")
 	b.WriteString("Report back a STRUCTURED result: one Evidence row per Verify row (command, exit, output),\n")
 	b.WriteString("a clear verdict PASS|FAIL|BLOCKED, and your runner identity. Free-text verdicts are not accepted.\n")
