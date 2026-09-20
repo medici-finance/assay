@@ -314,13 +314,18 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// row is backed only when an ACCEPTED actor — the roster-bound verifier App or
 	// a roster-known human — committed at least one line of its `## Evidence`
 	// section. Everything else on a verified row is prose the verifying session
-	// wrote about itself. NOTICE only this phase: 92 of 141 rows were measured
-	// unbacked at adoption, and arming a PROBLEM against that would red every
-	// unrelated PR (the mergedstatus.go precedent, one line above). Skipped on a
-	// tree with no .git, exactly like the reconciliation above; every other
+	// wrote about itself. The pre-cutover backlog (92 of 141 rows measured
+	// unbacked at adoption) stays a NOTICE — arming a PROBLEM against it would red
+	// every unrelated PR (the mergedstatus.go precedent, one line above) — but a
+	// row THIS BRANCH newly closes to verified/done is no longer backlog, so
+	// evidenceActorGate promotes that case to a PROBLEM (verify-integrity/04 item
+	// 2), merge-base scoped exactly like unrunGateChecks above. Skipped on a tree
+	// with no .git, exactly like the reconciliation above; every other
 	// unreachable input reports could-not-check by name rather than clean.
 	if !hasNoGitDir(root) {
-		notices = append(notices, evidenceActorNotices(root, checkStreams)...)
+		eaProblems, eaNotices := evidenceActorGate(root, checkStreams)
+		problems = append(problems, eaProblems...)
+		notices = append(notices, eaNotices...)
 	}
 	// `repo:` frontmatter validation: form + one-repo-per-
 	// root agreement. Runs on the FULL stream set, not the scoped subset — repo
@@ -514,6 +519,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
+	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a
+	// brief flipped to verified/done post-merge-base with no witness for one
+	// or more Verify rows is a PROBLEM, not the
+	// per-stream NOTICE above the inherited corpus still gets. Reuses the SAME
+	// closedAtBase predicate — never a second one. See witnessgate.go.
+	waProblems, waNotices := witnessAbsenceGateChecks(root, checkStreams)
+	problems = append(problems, waProblems...)
+	notices = append(notices, waNotices...)
 	// Dead-link lint. BLOCKING: docFiles(root) is CLAUDE.md plus every
 	// *.md under docs/**, so its inputs INCLUDE every stream README and brief
 	// file. It is also the only check that catches a README row whose brief file

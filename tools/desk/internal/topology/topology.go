@@ -118,6 +118,68 @@ func (r Relationship) String() string {
 	return "upstream"
 }
 
+// CommsMode is a cell's stated inter-desk message-plane enablement mode — one
+// of the THREE independent off-switches the enablement contract requires (a
+// topology `comms:` key, ASSAY_COMMS_* env, and the gateway process actually
+// deployed — see cmd/commsgw/config.go's own doc comment, which already names
+// this key as its sibling gate and states the full three-part contract). This
+// package reads and validates the key ONLY: it never reaches into
+// commsgw/commsloop to wire anything, by design — each of the three gates is
+// checked by a DIFFERENT component so a defect in one does not silently
+// disarm the others (the same independent-layers posture cmd/commsgw's own
+// defense-in-depth stack relies on). A CommsMode value is therefore INERT
+// by itself: stating `comms: full` here fires nothing on its own.
+type CommsMode int
+
+const (
+	// CommsDisabled — the zero value. The `comms:` key is ABSENT. Absence must
+	// never read as enabled, mirroring VisibilityUnknown/RelationshipUpstream's
+	// fail-closed zero values in this same file.
+	CommsDisabled CommsMode = iota
+	// CommsInterim — receive-and-route is live (messages flow, are checked and
+	// judged, routed and logged) but every execution lands as a PROPOSED
+	// dispatch a person fires; no autonomous session-firing. This is the
+	// chosen rung of a 2026-09-17 human ruling (Option 2, over the recorded
+	// full-enable target — the ruling itself is recorded outside this public
+	// repo; tracked publicly as #1289) and matches commsloop's own
+	// Loop.Native=false "interim/rollback position" default.
+	CommsInterim
+	// CommsFull — full autonomous enablement: desks act on each other's
+	// messages and start worker sessions without a person relaying each step
+	// (commsloop's Loop.Native=true path). NOT the ruled state as of this
+	// package's last change — see the CommsInterim doc.
+	CommsFull
+)
+
+func (m CommsMode) String() string {
+	switch m {
+	case CommsInterim:
+		return "interim"
+	case CommsFull:
+		return "full"
+	default:
+		return "disabled"
+	}
+}
+
+// parseCommsMode maps a stated `comms:` value to a CommsMode. Only the exact
+// strings "interim" and "full" parse; anything else (including "", which the
+// caller never passes for an absent key — see Parse) is invalid. Unlike
+// Relationship, there is no default an unrecognised-but-present value falls
+// back to: a stated-but-unrecognised comms mode is a parse ERROR naming the
+// line (the file's own header: "unrecognized value = parse ERROR, the
+// topology posture"), never silently treated as disabled or as the safer of
+// the two known modes.
+func parseCommsMode(s string) (CommsMode, bool) {
+	switch s {
+	case "interim":
+		return CommsInterim, true
+	case "full":
+		return CommsFull, true
+	}
+	return CommsDisabled, false
+}
+
 // parseRelationship maps a stated relationship to a Relationship. ok is false
 // for anything that is not exactly "owned" or "upstream" — including the empty
 // string. Unlike visibility, there is no third value that means "not stated":
@@ -212,7 +274,11 @@ type Topology struct {
 	// such a file cannot state `owned` anywhere (the field did not exist), so it
 	// carries no unattributable ownership claim. Parse REFUSES the one dangerous
 	// combination — an `owned` repo in a file that names no cell.
-	Cell  string
+	Cell string
+	// Comms is this cell's stated inter-desk message-plane enablement mode —
+	// see CommsMode's doc. Absent (the zero value, CommsDisabled) is legal on
+	// every topology-v1 file, including one written before this key existed.
+	Comms CommsMode
 	Repos []Repo
 	// ReleaseRepo is the repo `deskrelease` cuts from by default.
 	ReleaseRepo string
@@ -280,6 +346,29 @@ func Parse(data []byte) (Topology, error) {
 		return Topology{}, fmt.Errorf("line %d: `cell:` is stated but EMPTY — name the cell this file is the instance of, or remove the key", lineOf(root, "cell"))
 	}
 	t.Cell = strings.TrimSpace(cell)
+
+	// comms — the message-plane enablement mode (CommsMode's doc). ABSENT IS
+	// DISABLED, not a parse error (the topology.yaml convention an absent
+	// optional key means off, never a default-on guess — see CommsMode's doc
+	// comment and cmd/commsgw/config.go). A stated-but-unrecognised value IS a parse error
+	// naming the line: this key is a closed vocabulary of two live modes
+	// (interim, full), and guessing at a typo is how a silent full-enable
+	// ships as a spelling mistake.
+	comms, commsPresent, err := root.str("comms")
+	if err != nil {
+		return Topology{}, err
+	}
+	if commsPresent {
+		mode, valid := parseCommsMode(comms)
+		if !valid {
+			return Topology{}, fmt.Errorf(
+				"line %d: `comms:` = %q is neither `interim` nor `full` — an unrecognised comms mode is "+
+					"refused rather than defaulted, because a typo that silently read as `disabled` (or, worse, "+
+					"as the more permissive mode) would look exactly like a stated fact. Remove the key entirely "+
+					"for `disabled`", lineOf(root, "comms"), comms)
+		}
+		t.Comms = mode
+	}
 
 	repos, ok, err := root.mapSeq("repos")
 	if err != nil {
@@ -619,6 +708,14 @@ func labelNames(in []Label) []string {
 	sort.Strings(out)
 	return out
 }
+
+// CommsEnabled reports whether this cell states ANY message-plane mode
+// (interim or full) — i.e. whether Comms != CommsDisabled. This is ONE of the
+// three independent enablement gates (CommsMode's doc): it answers only "did
+// the topology file say anything", never "is the plane actually live" — that
+// also needs ASSAY_COMMS_* env AND a deployed gateway, checked by wholly
+// separate code this package does not call.
+func (t Topology) CommsEnabled() bool { return t.Comms != CommsDisabled }
 
 // AppRoles returns every stated App role, sorted.
 func (t Topology) AppRoles() []string {
