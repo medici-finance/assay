@@ -208,7 +208,12 @@ func deployRegisterProblems(root string) []string {
 			rb := strings.TrimSpace(e.Rollback)
 			if rb == "" {
 				add("%s: rollback is required — a deploy declaration with no reverse path does not pass the gate (docs/deploy-model.md \"Rollback\")", p)
-			} else if rb == deployRollbackNoneAccepted {
+			} else if strings.EqualFold(rb, deployRollbackNoneAccepted) {
+				// EqualFold, not ==: the sentinel is case-INSENSITIVE. A byte-sensitive
+				// compare fails OPEN — "None-Accepted"/"NONE-ACCEPTED" would fall through
+				// as an ordinary stated reverse path and silently skip the
+				// rollback-approver-must-name-a-human check, defeating the one gate this
+				// record shape exists to enforce.
 				if !hasHumanReviewer(e.RollbackApprover) {
 					add(`%s: rollback: %s requires rollback-approver to name a human ("human:<name>") — where the reverse path genuinely does not exist, that is an accepted consequence with a NAMED approver, never an omission`, p, deployRollbackNoneAccepted)
 				}

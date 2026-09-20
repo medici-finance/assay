@@ -64,6 +64,16 @@ func TestDeployTransition(t *testing.T) {
 		}
 	})
 
+	t.Run("RollbackNoneAcceptedCaseVariantWithoutApproverIsFlagged", func(t *testing.T) {
+		// Fail-first guard for the fail-OPEN sentinel bug: a mis-cased sentinel
+		// ("None-Accepted") with no named approver must be flagged exactly like the
+		// lowercase form. A byte-sensitive compare would let it fall through as free
+		// text and skip the rollback-approver check.
+		if !strings.Contains(joined, "DEPLOY-rollback-case.md: rollback:") || !strings.Contains(joined, "rollback-approver") {
+			t.Errorf("rollback: None-Accepted (case variant) with no named approver must be flagged; got:\n%s", joined)
+		}
+	})
+
 	t.Run("RunbookWithNoDrillRowsIsFlagged", func(t *testing.T) {
 		if !strings.Contains(joined, "RUNBOOK-fixture-nodrills") || !strings.Contains(joined, "no drill rows") {
 			t.Errorf("a runbook with no drill rows at all must be a hard PROBLEM; got:\n%s", joined)
