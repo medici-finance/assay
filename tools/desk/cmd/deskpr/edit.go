@@ -260,7 +260,7 @@ func cmdEdit(args []string) (err error) {
 	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
 	// only — the trailer grammar/self-contain scans above and the noop compare just above
 	// both ran against the caller-supplied body.
-	editBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	editBody, oerr := deskkit.AppendOnBehalfOf(body, "", facts.repo)
 	if oerr != nil {
 		return oerr
 	}

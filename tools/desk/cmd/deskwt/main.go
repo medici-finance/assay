@@ -32,7 +32,8 @@ const usage = `deskwt — add, remove, or prune git worktrees, only under sancti
 USAGE:
   deskwt add <name> [--branch B] [--base origin/main]
   deskwt remove <path>
-  deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks [--lock-ttl <dur>]]
+  deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
+               [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
@@ -81,8 +82,8 @@ ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/mai
 UNMERGED branch (an open PR in flight) is LEFT untouched — that is the active-worker guard.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
-Every sweep reports four counts: pruned (bookkeeping), removed, held (and locked-held), and
-locks-reclaimed.
+Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
+dead-session-reaped, and branches-deleted.
 
 A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
 session that has since died is permanent and the locked population only grows.
@@ -91,6 +92,19 @@ prove stale — the ` + "`session=<id>`" + ` in the lock reason has no live rost
 --lock-ttl 24h) the lock is older than the TTL — and then the ORDINARY rules decide, unchanged.
 It never removes anything itself: a reclaimed worktree that is dirty, unpushed or unmerged is
 still LEFT. Every unlock prints the worktree, the lock reason, and why it was judged stale.
+
+That leaves the worktrees of sessions that died with work in flight: an unmerged branch is
+"active work" to the ordinary rules, so a dead session's open-PR worktree is held forever and
+every later resume of that branch fails at worktree-create (git allows one worktree per
+branch). --reap-dead-sessions (default OFF) judges those by a different question — does a
+LIVE session still own this tree, and is deleting it provably lossless? A tree is reaped only
+when no live session owns it (its lock names a session the roster shows is gone, or it
+carries no lock at all) AND it is clean with UNTRACKED FILES COUNTED AND HEAD is already
+reachable from its upstream or from refs/remotes/origin/main. Its stale local branch is
+deleted with it (non-force ` + "`git branch -d`" + `) so the next add cuts fresh from origin. A live
+session's lock holds its worktree unconditionally, and anything dirty, unpushed or
+unverifiable is LISTED with the reason and left. Pair it with --dry-run first: that prints
+the full plan — path, session, REAP/KEEP, reason — and changes nothing.
 
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.
 
