@@ -157,6 +157,26 @@ RISK-VALUE: DERIVED — `.claude/worktrees` sanctioned-suffix path @ worktree.go
 RISK-VALUE: DERIVED — exit code `deskkit.ExitRefused = 5` @ exitcodes.go:27, used throughout the three refusal paths, matching the brief's stated requirement.
 
 VERIFY: PARTIAL — held at implemented. Rows 1-5,7 checked-clean; row 6 fails exactly as written, but the cause (phantom_test.go, drifted by a separate commit two days before this brief's merge) is confirmed pre-existing and unrelated, tracked at assay#1119. Matches both prior recorded verdicts (2026-09-15 implementer, 2026-09-17 non-implementer) — this third pass reaches the same result independently. No new issue filed.
+### Non-implementer verifier run — VERIFY: FAIL (row 6 only: pre-existing, unrelated gofmt finding, tracked #1119; rows 1-5, 7 checked-clean; 3rd independent pass, same result) — verify-desk-dispatch-20260920T0246Z (verify-desk dispatch), @ merged main `e4109205`, 2026-09-20
+
+Own detached worktree off origin/main; deliverable commit 622400754 (PR-landed 2026-09-08) confirmed ancestor. Offline envelope, non-implementer, read-only.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | cd tools/desk && go build ./... && go vet ./... | exit 0 | exit 0 — build OK, vet OK | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 2 | go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRendersVerifiedPath$' -count=1 | exit 0 — path at both sites, no placeholder, banner "operator-supplied, verified" | exit 0 — PASS; test asserts the path at both sites, no homeUnknown placeholder, banner substring present | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 3 | go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRefusesUnverifiablePaths$' -count=1 | exit 0 — 4 negative cases each exit 5 with own reason | exit 0 — all 4 subtests PASS: outside-prefix, not-a-worktree, other-repo, shared-checkout; each names its reason, no prompt printed | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 4 | go test ./cmd/deskdispatch/ -run '^TestWorktreeFlagRefusedOnRealDispatch$' -count=1 | exit 0 — exit 5, zero child processes | exit 0 — PASS; asserts rc==5 and no child process ran | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 5 | go test ./cmd/deskdispatch/ -count=1 | exit 0 | exit 0 — ok 9.075s (whole package) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 6 | gofmt -l tools/desk/cmd/deskdispatch; test ! -s <listing> | exit 0 | **exit 1** — gofmt lists tools/desk/cmd/deskdispatch/phantom_test.go. Freshly attributed at this SHA: last touched by unrelated commit 91a7f9208 (2026-09-06), two days BEFORE deliverable 622400754 (2026-09-08); that commit's stat does not include the file. Pre-existing, unrelated to this brief's diff, tracked at #1119 — not re-filed | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 7 | cd statusgen && go run . --root .. --lint | exit 0 | exit 0 — LINT: PASS (repo-wide NOTICEs only, none fatal) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+
+RISK-VALUE: DERIVED — worktreeTmpBase = /private/tmp @ tools/desk/cmd/deskdispatch/worktree.go:30 — byte-identical to the pinned isolation-floor constant tmpBaseDir @ tools/desk/cmd/deskwt/deskwt.go:26; the brief required duplicating deskwt's pathGuard rule "no looser", and it is duplicated, not independently chosen or loosened.
+RISK-VALUE: DERIVED — "tracker-" worktree-name prefix @ worktree.go:100 and the .claude/worktrees sanctioned-suffix join @ :103 — identical literal and shape to deskwt.go:166 / deskwt.go:118 (strict child-prefix test with separator in both).
+RISK-VALUE: DERIVED — refusal exit code ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:27 (ExitUnverifiable = 6 @ :31) — matches the brief's requirement and the verb family convention.
+Ranking note: all four gate a DRY-RUN-ONLY render (dispatch.go:455 refuses --worktree on any real dispatch; row 4 pins zero child processes) — wrongness breaks an operator preview, reversible by edit + rebuild.
+
+VERIFY: FAIL — row 6 exactly as written: gofmt -l over cmd/deskdispatch lists phantom_test.go (test exit 1). Cause confirmed pre-existing and unrelated to this brief's diff (91a7f9208, 2026-09-06, before the 2026-09-08 merge; tracked #1119). Rows 1-5 and 7 checked-clean. Item does NOT advance; stays implemented.
 
 ## Review
 
