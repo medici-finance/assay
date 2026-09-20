@@ -82,6 +82,24 @@ sys.exit(int(code.read_text()) if code.exists() else 0)
         self.call('desk','sample','the-desk','--harness','codex','--model','example-code-model','--set')
         self.assertEqual(self.recorded()['args'],['desk','the-desk','--harness','codex','--model','example-code-model'])
         self.assertIn('CODEX_MODEL_the_desk=example-code-model',(self.directory/'cell.env').read_text())
+        # #1303 scope 2: --set persists EVERY override given — the --harness flag too.
+        self.assertIn('CELL_HARNESS=codex',(self.directory/'cell.env').read_text())
+
+    def test_kind_override_and_kind_change_refuse_without_the_target_preconditions(self):
+        before=(self.directory/'cell.env').read_bytes()
+        # a one-run --kind house on a container cell with no CELL_ROOTS refuses at load, naming it
+        result=self.call('desk','sample','the-desk','--kind','house',code=3)
+        self.assertIn('CELL_ROOTS',result.stderr)
+        self.assertFalse((self.directory/'calls.json').exists())
+        # the persisted form refuses before writing, naming the same key
+        result=self.call('set','sample','--kind','house',code=3)
+        self.assertIn('CELL_KIND=house needs CELL_ROOTS',result.stderr)
+        self.assertEqual((self.directory/'cell.env').read_bytes(),before)
+        # show is a read: kind from cell.env, launcher never called
+        result=self.call('show','sample')
+        self.assertIn('[show] CELL_KIND=container (cell.env)',result.stdout)
+        self.assertIn('[show] model the-desk=fable (cell.env DESK_MODEL_the_desk)',result.stdout)
+        self.assertFalse((self.directory/'calls.json').exists())
 
     def test_unsupported_host_options_and_disabled_roles_refuse(self):
         for args in [('desk','sample','the-desk','--provider','sample'),

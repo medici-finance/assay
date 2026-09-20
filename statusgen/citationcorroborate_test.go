@@ -300,3 +300,72 @@ func TestGhErrIsNotFound(t *testing.T) {
 		t.Error("a non-ExitError must NOT be treated as not-found")
 	}
 }
+
+// TestDetectCitations_OnBehalfOfIsAttribution pins the citation lane's half of
+// #1335: the on-behalf-of annotation / trailer is stripped before the sign-off scan,
+// a real uncited "<name> approved" is still a citation, and a mixed line yields only
+// the sign-off half. (alex is the configured name, ada its login.)
+func TestDetectCitations_OnBehalfOfIsAttribution(t *testing.T) {
+	// (1) attribution only — no citation, in either spelling.
+	for _, line := range []string{
+		"| 1 | `go test ./...` | pass exit=0 | sha256:1 | 2026-09-18 | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:ada) |",
+		"On-behalf-of: human:ada",
+	} {
+		if cits := detectCitations("docs/streams/x/brief-01.md", line); len(cits) != 0 {
+			t.Errorf("detectCitations(%q): attribution read as a sign-off claim: %+v", line, cits)
+		}
+	}
+	// (2) a real, uncited sign-off claim is still detected, unlinked.
+	cits := detectCitations("docs/runbook.md", "alex approved the prod flip")
+	if len(cits) != 1 || cits[0].HasRef {
+		t.Fatalf("uncited sign-off must still be a citation: %+v", cits)
+	}
+	if r := corroborateCitations(cits, nil, "o/r"); len(r) != 1 || r[0].Verdict != verdictMissing {
+		t.Fatalf("uncited sign-off must be MISSING-CORROBORATION: %+v", r)
+	}
+	// (3) both on one line: only the sign-off half is judged.
+	cits = detectCitations("commit abc1234", "On-behalf-of: human:ada — alex approved the prod flip on #12")
+	if len(cits) != 1 || cits[0].Name != "alex" || cits[0].Marker != "approved" || cits[0].Number != 12 {
+		t.Fatalf("mixed line: want exactly the alex/approved/#12 citation, got %+v", cits)
+	}
+}
+
+// TestDetectCitations_SignOffAfterTrailerIsStillJudged pins the reviewer's case on
+// #1337: stripping the on-behalf-of MARKER must keep the login, so a real sign-off
+// written right after the trailer is still a citation — ada (a configured login)
+// approved, cited on #12. Stripping the whole annotation lost "ada" and the claim
+// went unjudged.
+func TestDetectCitations_SignOffAfterTrailerIsStillJudged(t *testing.T) {
+	cits := detectCitations("commit abc1234", "On-behalf-of: human:ada approved the prod flip on #12")
+	if len(cits) != 1 {
+		t.Fatalf("want exactly one citation (ada approved, #12), got %+v", cits)
+	}
+	c := cits[0]
+	if c.Name != "ada" || c.Marker != "approved" || c.Number != 12 || !c.HasRef {
+		t.Fatalf("citation = %+v, want Name=ada Marker=approved Number=12 HasRef=true", c)
+	}
+	if login, ok := citedHumanLogin(c.Name); !ok || login != "ada" {
+		t.Fatalf("ada must resolve as the cited login, got %q ok=%v", login, ok)
+	}
+}
+
+// TestDetectCitations_HyphenJoinedVerbIsNotSwallowed pins the security-lane finding
+// on #1337: `human:ada-approved` / `human:ada_approved` are not configured principals,
+// so the annotation is left intact and the line is judged as written. Neither token
+// reads as "ada approved" (no adjacency), and nothing is deleted in front of them; a
+// real sign-off later on the same line is still found.
+func TestDetectCitations_HyphenJoinedVerbIsNotSwallowed(t *testing.T) {
+	for _, line := range []string{
+		"On-behalf-of: human:ada-approved the prod flip on #12",
+		"On-behalf-of: human:ada_approved the prod flip on #12",
+	} {
+		if cits := detectCitations("commit abc1234", line); len(cits) != 0 {
+			t.Errorf("detectCitations(%q): a glued token is not a sign-off claim, got %+v", line, cits)
+		}
+	}
+	// Glued token AND a real sign-off on one line: the sign-off is still judged.
+	cits := detectCitations("commit abc1234", "On-behalf-of: human:ada-approved; ada approved the prod flip on #12")
+	if len(cits) != 1 || cits[0].Name != "ada" || cits[0].Marker != "approved" || cits[0].Number != 12 {
+		t.Fatalf("want the ada/approved/#12 citation to survive an unstripped glued token, got %+v", cits)
+	}
+}

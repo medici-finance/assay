@@ -134,5 +134,20 @@ assert "up announces the override once" 'grep -q "model=sonnet (override) — ap
 assert "the-desk window command carries --model sonnet" "grep -q \"the-desk: .*desk 'house-cell' 'the-desk' --model 'sonnet'\" <<<\"\$out\""
 assert "worker-desk window command carries --model sonnet too" "grep -q \"worker-desk: .*desk 'house-cell' 'worker-desk' --model 'sonnet'\" <<<\"\$out\""
 
+# ---------------------------------------------------------------- --model with a provider preset (#1303)
+echo "[--model + --provider: the override still wins, the provider only changes the endpoint]"
+export KIMI_API_KEY="fixture-kimi-token-not-real"
+out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "no --model, no per-role pin: the kimi preset model resolves" '[[ $rc -eq 0 ]] && grep -q "model=k3\[1m\] (provider:kimi" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk --provider kimi --model sonnet 2>&1)" && rc=0 || rc=$?
+assert "--model overrides the provider model for one run" '[[ $rc -eq 0 ]] && grep -q "model=sonnet (override)" <<<"$out" && grep -q "provider=kimi" <<<"$out"'
+out="$(DRY_RUN=1 DESK_MODEL_OVERRIDE=haiku "$CELLCTL" desk house-cell worker-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "DESK_MODEL_OVERRIDE overrides the provider model too" '[[ $rc -eq 0 ]] && grep -q "model=haiku (override)" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk house-cell the-desk --provider kimi 2>&1)" && rc=0 || rc=$?
+assert "the-desk keeps its per-role pin (fable) over the provider model — pin it to a provider model to switch" '[[ $rc -eq 0 ]] && grep -q "model=fable" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" up house-cell --cockpit tmux --model sonnet --provider glm 2>&1)" && rc=0 || rc=$?
+assert "up threads --model and --provider glm onto every role window" "[[ \$rc -eq 0 ]] && grep -q \"worker-desk: .*desk 'house-cell' 'worker-desk' --model 'sonnet' --provider 'glm'\" <<<\"\$out\""
+unset KIMI_API_KEY
+
 echo
 if [[ "$fails" -eq 0 ]]; then echo "model-override.test.sh: OK"; else echo "model-override.test.sh: $fails FAILED"; exit 1; fi
