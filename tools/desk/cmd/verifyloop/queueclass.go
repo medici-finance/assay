@@ -66,10 +66,10 @@ const (
 	// nothing: the row is listed under could-not-check with the reason and is never
 	// dispatchable — before this it fell through as a zero-value (risk-clear, model-gated)
 	// brief and reached DISPATCH with its human gate erased. A wake receipt whose declared
-	// inputs could not be read (desk-supervision/16) is bucketed here too, with a wake reason.
+	// inputs could not be read (example-stream/16) is bucketed here too, with a wake reason.
 	dispCouldNotCheck
 	// dispWaitReceipt: a failed/blocked verification carries a COMPLETE, still-UNCHANGED wake
-	// receipt (desk-supervision/16). Its wake condition has not been met — re-verifying now only
+	// receipt (example-stream/16). Its wake condition has not been met — re-verifying now only
 	// reproduces the same non-verdict — so the failure stays VISIBLE as a WAIT row (naming its
 	// blocker and next actor) and is excluded from costly dispatch. A receipt is scheduling
 	// evidence only: it never authorizes verified/done or a write. Legacy/incomplete receipts
@@ -203,7 +203,7 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 	if reason, stuck := stuckFlip(it); stuck {
 		return dispStuckFlip, reason
 	}
-	// WAKE (desk-supervision/16): a failed/blocked verification's evaluated receipt state,
+	// WAKE (example-stream/16): a failed/blocked verification's evaluated receipt state,
 	// computed at scan time (briefscan.deriveWakePayload). `hold` is a WAIT row excluded from
 	// dispatch; `could-not-check` is bucketed with its wake reason (an unreadable declared input
 	// never rounds up to unchanged); `fire` (the wake condition was met, or a partial with some

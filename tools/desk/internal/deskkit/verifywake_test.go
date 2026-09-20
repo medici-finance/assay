@@ -1,6 +1,6 @@
 package deskkit
 
-// verifywake_test.go — unit coverage for the pure wake-receipt evaluator (desk-supervision/16).
+// verifywake_test.go — unit coverage for the pure wake-receipt evaluator (example-stream/16).
 //
 // FAIL-FIRST: these pin the evaluator's four states directly. A mutation that makes
 // EvaluateWake return WakeHold whenever it is unsure (the exact "fabricate an unchanged claim"

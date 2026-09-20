@@ -54,7 +54,7 @@ type VerifyLoop struct {
 
 	// WakeReader is the already-authorized reader the wake evaluator asks for the current
 	// revision of a declared input and whether a referenced action has completed
-	// (desk-supervision/16). nil defaults to the OFFLINE, probe-free reader over each scanned
+	// (example-stream/16). nil defaults to the OFFLINE, probe-free reader over each scanned
 	// root's tree (deskkit.RootRevisionReader) — it content-hashes declared files and reads the
 	// tool version, and NEVER observes an external action (that stays could-not-check offline).
 	// Injected in tests so every wake path is exercised without touching the filesystem.

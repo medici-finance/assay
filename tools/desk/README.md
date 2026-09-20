@@ -4127,7 +4127,7 @@ but never flips it; the Evidence-only lane in `Land` writes Evidence with no sta
 human's merge of the checkpoint PR is the flip.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
-`docs/streams/desk-supervision/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
+`docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
 WAKE RECEIPT on the append-only verify-outcomes sidecar row: the inputs it observed, the blocker
 class, and the checkable condition that must change before re-running is worth a slot. On the next
 `plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at

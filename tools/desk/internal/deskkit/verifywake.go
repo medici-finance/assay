@@ -1,6 +1,6 @@
 package deskkit
 
-// verifywake.go — the verification WAKE receipt (desk-supervision/16).
+// verifywake.go — the verification WAKE receipt (example-stream/16).
 //
 // A verifier run that ends in a failed or blocked outcome records WHY the next expensive run
 // should not simply repeat: what it observed, what inputs it observed it against, what class of
@@ -12,7 +12,7 @@ package deskkit
 // The receipt is an OPTIONAL, VERSIONED extension of the existing append-only verify-outcomes
 // sidecar row — not a second lifecycle database. A legacy row (no schema, no wake fields) parses
 // as an INCOMPLETE receipt and stays visibly unclassified; the additive fields never invalidate
-// an older reader, which simply ignores them. See docs/streams/desk-supervision/verify-wake-v1.md.
+// an older reader, which simply ignores them. See docs/streams/example-stream/verify-wake-v1.md.
 //
 // The three-state instrument rule (common-clause C4) is the spine of the evaluator: an input the
 // reader could not read is reported AS could-not-check, never rounded up to "unchanged" and never

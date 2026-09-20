@@ -29,7 +29,7 @@ type briefRow struct {
 	// (#1309 item 5): the gate and every risk answer are then UNKNOWN, not "model / all no",
 	// so the row is bucketed could-not-check and never dispatched.
 	couldNotCheck string
-	// verifyRows are the brief's `## Verify` table row numbers (desk-supervision/16). They let a
+	// verifyRows are the brief's `## Verify` table row numbers (example-stream/16). They let a
 	// wake receipt that holds only SOME rows be compared against the whole set: rows not held by
 	// an unchanged receipt are still runnable, so the brief dispatches for them while the held
 	// rows stay held. Empty when the Verify table is absent or unparseable.
@@ -193,7 +193,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 			payload["sidecar_ts"] = oc.TS
 			payload["sidecar_sha"] = oc.SHA
 		}
-		// WAKE (desk-supervision/16): a failed/blocked verification's latest receipt decides
+		// WAKE (example-stream/16): a failed/blocked verification's latest receipt decides
 		// whether re-running is worth a slot. Evaluated here (where the reader + clock live) and
 		// carried onto the payload as strings, so classifyItem reads it exactly like the other
 		// queue-truthfulness markers. A verified receipt is the stuck-flip lane's, not this one.

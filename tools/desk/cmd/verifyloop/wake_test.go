@@ -1,6 +1,6 @@
 package main
 
-// wake_test.go — the desk-supervision/16 acceptance tests (verification wake conditions).
+// wake_test.go — the example-stream/16 acceptance tests (verification wake conditions).
 //
 // THE DEFECT. A failed or blocked verification was re-listed as a DISPATCH candidate every plan
 // and re-run each pass, reproducing the identical non-verdict, even though nothing its outcome
