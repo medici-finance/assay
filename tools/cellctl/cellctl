@@ -210,6 +210,10 @@
 #                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
 #                         PATH are identical in every cockpit.
 #
+# Model policy: CELL_MODEL_POLICY=<JSON path relative to cell dir, or absolute> enables
+# per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
+# Without that key, legacy pins and defaults retain their existing behavior.
+#
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
@@ -666,6 +670,231 @@ resolve_provider(){
   [[ -n "$PROVIDER_TOKEN_VAL" ]] || die "provider '$name': \$$PROVIDER_TOKEN_ENV (named by $token_var) is not set in this shell — export it before running cellctl, cellctl does not manage credential values"
 }
 
+
+# Optional operator-owned model policy. Embedded to keep cellctl a single release artifact.
+# The policy contains IDs and effort capabilities, never credentials or network lookups.
+model_policy(){
+  python3 -c '
+import fnmatch, hashlib, json, os, re, shlex, sys
+
+def fail(message):
+    print("model-policy: " + message, file=sys.stderr)
+    sys.exit(2)
+
+try:
+    action, path, provider_override, role, requested, launcher, harness_override = sys.argv[1:]
+    raw = open(path, "rb").read()
+    policy = json.loads(raw)
+    if policy.get("schema") != 1:
+        fail("unsupported schema (expected 1)")
+    if set(policy) - {"schema", "deny", "providers", "roles"}:
+        fail("unknown policy field")
+    banned = policy.get("deny", [])
+    if not isinstance(banned, list) or not all(isinstance(x, str) and x for x in banned):
+        fail("deny must contain nonempty model patterns")
+    # This policy version prohibits Opus 5, including direct IDs and context suffixes.
+    banned = banned + ["*opus-5*", "*opus5*"]
+    names = ("top", "strong", "mid", "fast")
+    aliases = {"fable": "top", "opus": "strong", "sonnet": "mid", "haiku": "fast"}
+    def base(value):
+        return re.sub(r"\[1m\]$", "", value, flags=re.I).lower()
+    def denied(value):
+        return any(fnmatch.fnmatchcase(base(value), x.lower()) for x in banned)
+    providers = policy["providers"]
+    for name, item in providers.items():
+        if not re.fullmatch(r"[a-z][a-z0-9_-]*", name):
+            fail("invalid provider name")
+        if set(item) != {"harness", "tiers"}:
+            fail("provider must contain harness and tiers")
+        harness = item["harness"]
+        if harness not in ("claude", "codex") or (harness == "codex") != (name == "codex"):
+            fail("codex provider requires codex harness; other providers require claude")
+        tiers = item["tiers"]
+        if set(tiers) != set(names):
+            fail(name + " must pin top, strong, mid and fast")
+        for tier, spec in tiers.items():
+            if set(spec) != {"model", "effort", "supported_efforts"}:
+                fail("tier must contain model, effort and supported_efforts")
+            value, effort, supported = spec["model"], spec["effort"], spec["supported_efforts"]
+            if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]+(?:\[1m\])?", value):
+                fail("invalid exact model ID")
+            if base(value) in set(names) | set(aliases) | {"default", "best", "latest", "inherit", "opusplan"} or base(value).endswith("-latest"):
+                fail("tier targets must be exact IDs, not floating aliases")
+            if denied(value):
+                fail("tier map contains denied model " + value)
+            levels = {"minimal", "low", "medium", "high", "xhigh"} if harness == "codex" else {"low", "medium", "high", "xhigh", "max"}
+            if not isinstance(supported, list) or not supported or any(x not in levels for x in supported) or effort not in supported:
+                fail("unsupported effort for " + name + "/" + tier)
+            if (value.startswith("glm-5.3") or base(value) == "k3") and any(x not in {"low", "high", "max"} for x in supported):
+                fail("GLM 5.3 and Kimi K3 support low, high or max effort")
+    roles = policy["roles"]
+    for name, assignment in roles.items():
+        if name not in ("the-desk", "worker-desk", "pr-review-desk", "verify-desk", "intake-desk"):
+            fail("unknown role " + name)
+        if set(assignment) != {"provider", "tier"}:
+            fail("role must contain provider and tier")
+        if assignment["provider"] not in providers or assignment["tier"] not in names:
+            fail("unknown provider or tier for " + name)
+    assignment = roles[role]
+    provider = provider_override or ("codex" if harness_override == "codex" else assignment["provider"])
+    entry = providers[provider]
+    harness = entry["harness"]
+    if harness_override and harness_override != harness:
+        fail("harness override disagrees with provider; select a matching --provider")
+    tiers = entry["tiers"]
+    def resolve(value):
+        if not isinstance(value, str) or not value:
+            fail("empty model request")
+        if denied(value):
+            fail("denied model " + value)
+        tier = aliases.get(base(value), base(value))
+        if tier in tiers:
+            spec = tiers[tier]
+            if value.lower().endswith("[1m]") and not spec["model"].lower().endswith("[1m]"):
+                fail("context suffix not pinned for " + value)
+            return spec
+        # Exact IDs must be exact: no implicit context-window upgrade.
+        matches = [spec for spec in tiers.values() if value == spec["model"]]
+        if matches:
+            if len({x["effort"] for x in matches}) != 1:
+                fail("ambiguous effort for model ID; request a tier instead")
+            return matches[0]
+        fail("unmapped model " + value + " for provider " + provider)
+    selected = resolve(requested) if requested else tiers[assignment["tier"]]
+    model, effort = selected["model"], selected["effort"]
+    if role == "the-desk" and harness == "claude" and "opus" in model.lower():
+        fail("the-desk requires a non-Opus top-tier model")
+    if action == "hook":
+        event = json.load(sys.stdin)
+        if event.get("hook_event_name") == "PreModelSwitch":
+            target = event.get("to_model", "")
+            if target not in [s["model"] for s in tiers.values()]:
+                fail("model switch outside pinned IDs: " + str(target))
+            resolve(target)
+        elif event.get("hook_event_name") == "PreToolUse" and event.get("tool_name") in ("Agent", "Task"):
+            value = event.get("tool_input", {}).get("model")
+            if value and value != "inherit":
+                target = resolve(value)
+                if effort not in target["supported_efforts"]:
+                    fail("child model does not support inherited effort " + effort)
+        else:
+            fail("unexpected hook event")
+        sys.exit(0)
+    if action not in ("resolve", "launch"):
+        fail("expected resolve, launch or hook")
+    digest = hashlib.sha256(raw).hexdigest()
+    env, settings = {}, {}
+    if harness == "claude":
+        env = {"ANTHROPIC_DEFAULT_" + alias.upper() + "_MODEL": tiers[tier]["model"] for alias, tier in aliases.items()}
+        env.update(ANTHROPIC_MODEL=model, CLAUDE_CODE_SUBAGENT_MODEL=model, CLAUDE_CODE_EFFORT_LEVEL=effort)
+        if provider == "anthropic":
+            env["ANTHROPIC_BASE_URL"] = "https://api.anthropic.com"
+        command = " ".join(shlex.quote(x) for x in (launcher, "model-policy", "hook", os.path.abspath(path), provider, role, requested, launcher, harness))
+        settings = {"env": env, "availableModels": sorted({s["model"] for s in tiers.values()}), "hooks": {
+            "PreModelSwitch": [{"hooks": [{"type": "command", "command": command}]}],
+            "PreToolUse": [{"matcher": "Agent|Task", "hooks": [{"type": "command", "command": command}]}]
+        }}
+    result = {"provider": provider, "harness": harness, "role": role, "model": model, "effort": effort, "policy_sha256": digest, "env": env, "settings": settings}
+    if action == "resolve":
+        print(json.dumps(result, sort_keys=True))
+    else:
+        for value in (harness, provider, model, effort, digest, json.dumps(settings, separators=(",", ":"))):
+            print(value)
+        for key, value in env.items():
+            print(key + "=" + value)
+except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+    fail(str(error))
+' "$@"
+}
+
+# Sets the callers model/provider/harness before credential selection or worktree writes.
+apply_model_policy(){ # <explicit-harness> <explicit-provider> <role> <explicit-model>
+  MODEL_POLICY_ENV=(); MODEL_POLICY_ARGS=(); MODEL_POLICY_SETTINGS=""
+  [[ -n "${CELL_MODEL_POLICY:-}" ]] || return 0
+  local file="$CELL_MODEL_POLICY" payload line index=0
+  [[ "$file" == /* ]] || file="$CELL_DIR/$file"
+  [[ "$CELL_KIND" != container && "$CELL_KIND" != scrubbed ]] \
+    || die "model policy currently requires a house or k8s cell; $CELL_KIND cannot apply it"
+  payload="$(model_policy launch "$file" "$2" "$3" "$4" "$SELF" "$1")" \
+    || die "model policy refused the launch"
+  while IFS= read -r line; do
+    case "$index" in
+      0) harness="$line" ;;
+      1) provider="$line"; MODEL_POLICY_PROVIDER="$line" ;;
+      2) model="$line" ;;
+      3) MODEL_POLICY_EFFORT="$line" ;;
+      4) MODEL_POLICY_SHA="$line" ;;
+      5) MODEL_POLICY_SETTINGS="$line" ;;
+      *) MODEL_POLICY_ENV+=("$line") ;;
+    esac
+    index=$((index+1))
+  done <<< "$payload"
+  if [[ "$harness" == claude ]]; then
+    MODEL_POLICY_ARGS=(--settings "$MODEL_POLICY_SETTINGS" --effort "$MODEL_POLICY_EFFORT")
+  else
+    MODEL_POLICY_ARGS=(-c 'model_provider="openai"' -c "model_reasoning_effort=\"$MODEL_POLICY_EFFORT\""
+      -c "agents.default_subagent_model=\"$model\""
+      -c "agents.default_subagent_reasoning_effort=\"$MODEL_POLICY_EFFORT\"")
+  fi
+  # Native providers do not use the Anthropic-compatible credential adapter.
+  [[ "$provider" != anthropic && "$provider" != codex ]] || provider=""
+  RESOLVED_MODEL_SRC="policy:$file@$MODEL_POLICY_SHA"
+}
+
+# Local settings arrays merge in Claude Code. Refuse a conflicting model allowlist
+# rather than let a user/project file widen the policy. Managed/cloud policy remains
+# an administrator boundary; this is launch validation, not a security sandbox.
+policy_claude_preflight(){ # <config-dir> <project-dir>
+  [[ -n "${CELL_MODEL_POLICY:-}" && "$harness" == claude ]] || return 0
+  local version
+  version="$(claude --version)" || die "cannot read Claude Code version for model policy"
+  python3 - "$MODEL_POLICY_SETTINGS" "$1" "$2" "$version" <<'PY_POLICY_SETTINGS'
+import json, pathlib, re, sys
+settings, config, project, version = sys.argv[1:]
+try:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match or tuple(map(int, match.groups())) < (2, 1, 251):
+        raise ValueError("model policy requires Claude Code >=2.1.251")
+    wanted = json.loads(settings)
+    def base(value):
+        return value.lower().removesuffix("[1m]")
+    allowed = {base(x) for x in wanted["availableModels"]}
+    paths = [pathlib.Path(config)/"settings.json"]
+    directory = pathlib.Path(project).resolve()
+    for parent in [directory, *directory.parents]:
+        paths.extend(parent/".claude"/name for name in ("settings.json", "settings.local.json"))
+    for root in (pathlib.Path("/Library/Application Support/ClaudeCode"), pathlib.Path("/etc/claude-code")):
+        paths.append(root/"managed-settings.json")
+        paths.extend(sorted((root/"managed-settings.d").glob("*.json")))
+    for path in paths:
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        if "availableModels" in data:
+            values = data["availableModels"]
+            if not isinstance(values, list) or not values or any(not isinstance(x,str) or base(x) not in allowed for x in values):
+                raise ValueError(str(path)+": availableModels conflicts with cell policy")
+        overrides = data.get("modelOverrides", {})
+        if overrides:
+            raise ValueError(str(path)+": modelOverrides must be removed or reconciled before using a cell policy")
+except (OSError, ValueError, TypeError, AttributeError) as error:
+    print("model-policy: "+str(error), file=sys.stderr)
+    sys.exit(2)
+PY_POLICY_SETTINGS
+}
+
+policy_preflight(){ (
+  local model="" provider="" harness="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
+  apply_model_policy "$2" "$3" "$1" "$4"
+  [[ -z "$provider" ]] || resolve_provider "$provider"
+  command -v "$harness" >/dev/null || die "policy harness is not on PATH: $harness"
+  policy_claude_preflight "${5:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}" "$CELL_REPO" || exit $?
+  if [[ -e "$CELL_DIR/worktrees/$1/.git" ]]; then
+    policy_claude_preflight "${5:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}" "$CELL_DIR/worktrees/$1" || exit $?
+  fi
+  printf "[model-policy] role=%s provider=%s harness=%s model=%s effort=%s sha256=%s\n"     "$1" "$MODEL_POLICY_PROVIDER" "$harness" "$model" "$MODEL_POLICY_EFFORT" "$MODEL_POLICY_SHA"
+); }
+
 # ---------------------------------------------------------------- cellctl set
 # The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>,
 # CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL}
@@ -674,7 +903,7 @@ resolve_provider(){
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
-CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH \
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY \
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
 TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX"
 
@@ -1007,6 +1236,7 @@ cmd_show(){
   show_line CELL_KIND "$CELL_KIND_OVERRIDE" "$CELL_KIND"
   cockpit_want "$cockpit_flag"
   show_line CELL_COCKPIT "$cockpit_flag" "$COCKPIT_WANT"
+  [[ -z "${CELL_MODEL_POLICY:-}" ]] || echo "[show] policy=$CELL_MODEL_POLICY (role rows supersede legacy cell defaults below)"
   local harness="${harness_flag:-$CELL_HARNESS}"
   show_line CELL_HARNESS "$harness_flag" "$harness"
   local provider="${provider_flag:-${CELL_PROVIDER:-}}"
@@ -1026,7 +1256,11 @@ cmd_show(){
   fi
   local r src
   for r in $ROLES; do
-    if [[ -n "$model_flag" ]]; then
+    if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+      local model=""
+      apply_model_policy "$harness_flag" "$provider_flag" "$r" "$model_flag"
+      printf "[show] model %s=%s provider=%s harness=%s effort=%s (%s)\n" "$r" "$model" "$MODEL_POLICY_PROVIDER" "$harness" "$MODEL_POLICY_EFFORT" "$RESOLVED_MODEL_SRC"
+    elif [[ -n "$model_flag" ]]; then
       printf '[show] model %s=%s (flag)\n' "$r" "$model_flag"
     elif resolve_role_model "$r" "$harness"; then
       case "$RESOLVED_MODEL_SRC" in
@@ -1044,6 +1278,9 @@ cmd_show(){
 # shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
 cmd_check(){
   load_cell "$1"; local ok=1
+  if [[ -n "${CELL_MODEL_POLICY:-}" && ( "$CELL_KIND" == container || "$CELL_KIND" == scrubbed ) ]]; then
+    die "model policy currently requires a house or k8s cell"
+  fi
   if [[ "$CELL_KIND" == "container" ]]; then
     [[ -z "${2:-}" ]] || die "container check does not accept a host config directory"
     local container_role
@@ -1080,6 +1317,16 @@ cmd_check(){
   # `check` is deliberately never affected by --model / DESK_MODEL_OVERRIDE: it has no --model flag
   # and does not read DESK_MODEL_OVERRIDE, so this row reports what a plain boot (no override)
   # would resolve to, not the value a would-be override run would launch on.
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    local policy_role
+    for policy_role in $ROLES; do
+      if policy_preflight "$policy_role" "" "" "" "${2:-}"; then
+        chk "model policy: $policy_role" true
+      else
+        chk "model policy: $policy_role" false
+      fi
+    done
+  else
   local the_desk_model="${DESK_MODEL_the_desk:-$DESK_MODEL_DEFAULT}"
   if is_opus_pin "$the_desk_model"; then
     chk "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$the_desk_model (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
@@ -1130,7 +1377,18 @@ cmd_check(){
   else
     na "provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)"
   fi
-  check_codex_harness
+  fi
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    for policy_role in $ROLES; do
+      if (apply_model_policy "" "" "$policy_role" ""; [[ "$harness" == codex ]]); then
+        local CELL_HARNESS=codex
+        check_codex_harness
+        break
+      fi
+    done
+  else
+    check_codex_harness
+  fi
   case "$CELL_KIND" in
     house) check_house "${2:-}" ;;
     scrubbed)
@@ -1803,6 +2061,13 @@ cmd_desk(){
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
     || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
   case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
+  local model="" MODEL_POLICY_SETTINGS="" MODEL_POLICY_SHA="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
+  local -a MODEL_POLICY_ENV=() MODEL_POLICY_ARGS=() MODEL_POLICY_UNSET=()
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    [[ "$persist" == 0 ]] || die "--set with a model policy is ambiguous; edit the policy file instead"
+    apply_model_policy "$harness_flag" "$provider_flag" "$role" "$model_override"
+    MODEL_POLICY_UNSET=(-u MAX_THINKING_TOKENS)
+  fi
   local cfg=""
   if [[ "$CELL_KIND" == "container" ]]; then
     [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
@@ -1817,9 +2082,10 @@ cmd_desk(){
   else
     cfg="$(resolve_cfg "$cfg_in")"
   fi
+  policy_claude_preflight "$cfg" "$CELL_REPO" || die "model policy settings preflight failed"
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
   # (unset = Anthropic, cellctl's own long-standing default).
-  provider="${provider:-${CELL_PROVIDER:-}}"
+  [[ -n "${CELL_MODEL_POLICY:-}" ]] || provider="${provider:-${CELL_PROVIDER:-}}"
   local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
@@ -1854,8 +2120,9 @@ cmd_desk(){
   # Anthropic with a provider the operator asked for.
   [[ "$harness" == "codex" && -n "$provider" ]] \
     && die "desk: --provider '$provider' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude"
-  local model
-  if [[ -n "$model_override" ]]; then
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    : # Already resolved before selecting the harness and credential adapter.
+  elif [[ -n "$model_override" ]]; then
     # An explicit --model (or DESK_MODEL_OVERRIDE) passes through VERBATIM to the selected harness
     # — it is never run through the namespace/tier resolution below, on either harness.
     model="$model_override"
@@ -1887,7 +2154,7 @@ cmd_desk(){
   # the name — `claude --model`/`codex -m` themselves always get the bare $model.
   local model_disp="$model"
   if [[ -n "$model_override" ]]; then model_disp="$model (override)"
-  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* || "${RESOLVED_MODEL_SRC:-}" == provider:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
+  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* || "${RESOLVED_MODEL_SRC:-}" == provider:* || "${RESOLVED_MODEL_SRC:-}" == policy:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
   fi
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
@@ -1906,7 +2173,7 @@ cmd_desk(){
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} role=$role model=$model_disp provider=${provider:-anthropic} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} role=$role model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
     if [[ "$persist" == "1" ]]; then
       local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
     fi
@@ -1998,8 +2265,9 @@ cmd_desk(){
     scrubbed_desk_launch "$role" "$harness" "$model" "$session" "$wt"
     return $?
   fi
+  policy_claude_preflight "$cfg" "$wt" || die "model policy settings preflight failed"
   cd "$wt"
-  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp provider=${provider:-anthropic} harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
+  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
   if [[ "$harness" == "codex" ]]; then
     # The same exported env the claude arm gets (DESK_LOOP, DESK_SESSION, DESK_ROOTS, shim PATH);
     # CLAUDE_CONFIG_DIR is irrelevant on this arm, so it is not passed. `-C "$wt"` is redundant with
@@ -2008,7 +2276,7 @@ cmd_desk(){
     # and has no codex equivalent here, so it is not threaded onto this arm.
     exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
-      codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
+      codex "${MODEL_POLICY_ARGS[@]}" --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
   else
     # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
     # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
@@ -2021,12 +2289,13 @@ cmd_desk(){
     # aliases take the provider's own model (CELL_PROVIDER_<NAME>_MODEL / preset) when it has one,
     # else the model this window launches with.
     local pmodel="${PROVIDER_MODEL:-$model}"
-    exec env ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       ${provider:+ANTHROPIC_MODEL="$model"} \
       ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel"} \
-      claude --name "$session" --model "$model" "/assay:$role"
+      "${MODEL_POLICY_ENV[@]}" \
+      claude "${MODEL_POLICY_ARGS[@]}" --name "$session" --model "$model" "/assay:$role"
   fi
 }
 
@@ -2205,6 +2474,14 @@ cmd_up(){
   [[ -z "$automate" || "$COCKPIT" == "orca" ]] \
     || die "up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is $COCKPIT"
   local roles; roles="$(up_roles "$no_the_desk")"
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    [[ "$persist" == 0 ]] || die "--set with a model policy is ambiguous; edit the policy file instead"
+    [[ -z "$automate" ]] || die "model policy is not supported by Orca automation launches"
+    local policy_role
+    for policy_role in $roles; do
+      policy_preflight "$policy_role" "$harness_flag" "$provider_flag" "$model_override" "$cfg"         || die "up: policy preflight failed; no role windows launched"
+    done
+  fi
   # --set persists every override GIVEN on this invocation (#1303 scope 2) through the same
   # one-backup apply_env_kvs path `cellctl set` uses: CELL_KIND / CELL_COCKPIT / CELL_HARNESS /
   # CELL_PROVIDER to their own keys, and --model to the ACTIVE harness's <FAMILY>_MODEL_<role> for
@@ -3003,6 +3280,7 @@ EOF
 # second parameter really is a single optional positional (a config dir), not a flag set, so the
 # fixed-arity form does not have this failure mode.
 case "${1:-}" in
+  model-policy) shift; model_policy "$@" ;;
   ls) cmd_ls ;;
   check) cmd_check "${2:?cell}" "${3:-}" ;;
   deskd) cmd_deskd "${2:?cell}" ;;
