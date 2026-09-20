@@ -184,7 +184,10 @@ CELL_HARNESS=$harness"
       ln -s "$home/.gitconfig" "$d/home/.gitconfig"
       printf 'DESK_APP_ID=1\n' > "$d/home/.config/assay/apps.env"
       printf 'ASSAY_ALLOWED_REPOS=example-org/example-repo\n' > "$d/home/.config/assay/roster.env"
-      printf -- '-----BEGIN PRIVATE KEY-----\nstub\n-----END PRIVATE KEY-----\n' > "$d/home/.config/assay/deskd-app.pem"
+      # Deliberately NOT a PEM-shaped literal: `check`'s row only asserts the file is readable
+      # ([[ -r ]]), nothing here ever parses a key, and a real BEGIN/END block in a committed
+      # fixture is exactly what the outbound-write scan refuses.
+      printf 'stub deskd app key placeholder (never parsed)\n' > "$d/home/.config/assay/deskd-app.pem"
       printf 'cells: []\n' > "$d/cells-cell.yaml"
       if [[ "$forge" == "gitlab" ]]; then
         printf 'stub\n' > "$d/home/.config/assay/gitlab-deskd.token"
