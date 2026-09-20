@@ -16,7 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-20 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-20 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-20 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/16 | 2026-09-20 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-20 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-20 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-20 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-20 |  |
@@ -50,8 +50,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| desk-supervision | 16 — Verification wake conditions — stop repeating unchanged blocked checks [exec:strong] | 0 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
+| desk-supervision | 19 — Persist review findings and apply the existing round cap across sessions [exec:strong] | 0 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
+| desk-supervision | 20 — Review scope and first-pass completeness [exec:strong] | 0 | 1000 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
 ## Intake queue
@@ -225,7 +228,7 @@ _None._
 - 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — todo (wave 1)
 - 11 retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH — todo (wave 2)
 
-### desk-supervision (10 open)
+### desk-supervision (16 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — implemented (wave 1)
@@ -236,6 +239,12 @@ _None._
 - 13 Worker-operations vitals — the self-report resource block — todo (wave 2)
 - 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
+- 16 Verification wake conditions — stop repeating unchanged blocked checks — todo (wave 0)
+- 17 Verification failures create durable worker repair obligations — todo (wave 1)
+- 18 Enforce repair reservations at worker dispatch — todo (wave 2)
+- 19 Persist review findings and apply the existing round cap across sessions — todo (wave 0)
+- 20 Review scope and first-pass completeness — todo (wave 0)
+- 21 Reverify changed external prerequisites without a synthetic push — todo (wave 1)
 - 22 Configure provider, model and effort per cell role — implemented (wave 0)
 
 ### desk-tools (14 open)
@@ -522,4 +531,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**21** streams (**16** active, **0** paused, **5** parked) · **88/238** briefs done · completed initiatives: see `docs/archive/`
+**21** streams (**16** active, **0** paused, **5** parked) · **88/244** briefs done · completed initiatives: see `docs/archive/`
