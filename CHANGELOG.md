@@ -23,6 +23,133 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.17 — 2026-09-20
+
+### Added
+- A `**VERIFY: PASS**` marker is no longer a flip signal on its own when the same Evidence
+  entry also reads `HELD` or `could-not-check` on a row that is not genuinely routed —
+  enforced in both the model autoflip (`autoflip.go`) and the verify-gate card/`closeVerify`
+  (`verifyissues.go`). The routed-row exclusion anchors on `unrun.go`'s own definition
+  (`routingKeywordRe` + `routingRefRe`: a routing phrase such as "deferred to" PLUS a
+  corroborating reference), not a bare substring "deferred", so negated prose
+  ("NOT deferred to anyone, still broken") fails CLOSED instead of silently suppressing the
+  contradiction.
+- A new DEPLOYS register (`docs/streams/deploys/`, reference implementation
+  `statusgen/deploygate.go`): a DEPLOY record's `brief:` precondition (the carried brief
+  must be `verified` or `done`, never merely `implemented`) is a hard `--lint` PROBLEM when
+  unmet or dangling; the rollback grammar (`rollback: none-accepted` requires a named
+  `rollback-approver`) is validated; and an undrilled RUNBOOK drill row is reported
+  `could-not-check` — visible, never a silent pass and never a hard failure. Reuses the
+  existing `blocked-by: env` marker for a deploy waiting on an environment, rather than
+  minting a second one.
+- The deploy model (sdlc/06): `docs/deploy-model.md` specifies environments as a typed
+  declaration, deploy as a gated transition on its own record (never a sixth brief-lifecycle
+  state — `spec/lifecycle-v1.md` §9), the rollback obligation (a stated reverse path, or an
+  explicitly accepted absence naming an approver — reconciled against, never contradicting,
+  `docs/distribution.md`'s "there is no rollback" release statement), and runbooks as a
+  typed recovery artefact with drill rows whose Evidence is filled by whoever ran the drill.
+- `TestVerifyrunPipelineExit` pins a measured pipe-masked false-clean
+  (`<bad cmd> 2>/dev/null | head -c1`) directly, alongside the existing pipefail regression
+  coverage.
+- `deskevidence` gains `--dry-run`: it mints the verifier App token, resolves the forge,
+  fetches the remote content, merges/scans it and runs the statusgen PROBLEM-diff guard —
+  every gate that can refuse a landing still runs — then prints the commits-API landing plan
+  (create/update, target path, branch, sha256, row delta) and stops before the write-rate-limit
+  spend and the write itself. There is no local-git fallback anywhere in this tool: an
+  unmintable verifier App token refuses at the mint step, `--dry-run` or not.
+- `deskroster set` gains optional resource-vitals flags (`--tokens`, `--context-pct`,
+  `--session-age-seconds`, `--subagents`, `--model`) so a desk session can self-report its
+  own tokens/context/age/subagent/model state onto its roster beacon, each field
+  three-state (measured / could-not-check / unset) and never a fabricated zero.
+- `deskroster set` refuses a `--session` value that does not resolve to a single path
+  segment (no `/`, no `..`), closing a beacon-path-join hardening gap identified in
+  security review. `desksupervise status` applies the same single-segment check to the
+  claim `holder` before joining it into the roster beacon read path, so a holder carrying
+  `/` or `..` renders `could-not-check` rather than reading a file outside the roster
+  directory.
+- `desksupervise status --json` fills the previously-reserved `tokens` stub with a full
+  `resource` block per claim, joined from the claim holder's own roster beacon (or a new
+  `--beacons-fixture` for offline Verify runs); a claim with no readable beacon renders
+  every resource field `could-not-check`.
+- `hasVerifyPass` now matches a ratified bold `**VERIFY: (PASS|FAIL)**` regex instead of a
+  fixed substring, so a real verifier line carrying prose before its closing `**`
+  (`**VERIFY: PASS (4/4 offline-runnable rows)**`) is recognised; `BLOCKED` still never
+  matches.
+- `statusgen --export-audit-pack --release <tag>`: a release-keyed audit pack, walking
+  release -> brief -> requirement -> Evidence/review verdict via `docs/release-notes/<tag>.md`'s
+  optional scope frontmatter. Reuses `--export-evidence`'s existing `manifest.json` shape
+  verbatim and refuses to write when an independent completeness comparison against the
+  sdlc/02 rollup disagrees, naming both counts. See `docs/evidence-bundle.md`'s release-keyed
+  section.
+- `statusgen --flow` (graph-execution/07): per-brief `eligible_to_start` /
+  `active_work_time` / `external_wait` / `verification_time` durations derived
+  from the historian, fleet-wide medians (gated on `gtSmallN`), `ci_slot_saturation`
+  (real network access only with `--forge`, never on credential presence alone)
+  and `gate_catch_override` (re-emitted from `--gate-telemetry`'s own sources),
+  with an environment stamp on every report. `--bottleneck`'s stage-age heuristic
+  is unchanged and renders unaffected beside it.
+- `statusgen --lint` gains `witnessAbsenceGateChecks`: a `verified`/`done` closure THIS
+  branch makes with no execution witness (`statusgen verifyrun`) for one or more Verify
+  rows is now a hard PROBLEM, merge-base scoped exactly like the existing contradiction
+  and UNRUN gates — a pre-existing closure at the merge-base stays the per-stream NOTICE
+  it already got.
+- `topology.yaml` gains a strict-parse `comms:` key (`tools/desk/internal/topology`'s
+  `CommsMode`) — one of the three independent off-switches (topology key, `ASSAY_COMMS_*`
+  env, deployed gateway) the cell-comms enablement contract requires. Absent reads as
+  disabled; an unrecognised value is a parse error naming the line; the key is declarative
+  only and wires nothing on its own.
+
+### Fixed
+- `deskclose` derives the authorizing comment's kind from its own permalink (`/pull/` → change,
+  `/issues/` → issue, falling back to change only on could-not-check) instead of always reading
+  the change/pull-request thread — a human ruling recorded on an ISSUE now authorizes instead of
+  coming back could-not-check every time (#1019).
+- `tools/desk/cmd/cellctl` (the shipped Go binary) now honours `CELL_MODEL_POLICY`: `set`/`show`
+  accept and display the key, the policy JSON is schema-validated (harness/tier shape, exact
+  model IDs, per-harness effort levels, deny list), per-role provider/model/effort resolution
+  drives `desk` and `DRY_RUN=1` dry-run output (including the policy file's sha256), effort
+  propagates into the Claude/Codex launch env and argv, a denied model (e.g. `*opus-5*`) refuses
+  the launch outright, and a child-model request is resolved and effort-checked against the same
+  provider's tiers. Previously the Go binary silently ignored the key entirely (assay#1390).
+
+### Changed
+- Planning only: no runtime behavior, model installation or operational authority changes.
+- Prefer an optional CPU-first Laya evaluation; retain deterministic graph operation and
+  existing human gates. Amend unimplemented coverage/recovery/replay contracts in place.
+- Route a proposed graph extension into ten bounded briefs for instances, local advice,
+  admission, Cell recovery, evidence exports and lifecycle links.
+- `cmd/commsgw`: `TestInertWithoutAllKeys` proves each `ASSAY_COMMS_*` key refuses
+  individually, not just all-absent.
+- `commsgw`'s README documents the full three-part enablement contract and reflects a
+  2026-09-17 human ruling on this cutover decision (Option 2, "Interim rung first", over
+  the recorded full-enable target — the ruling itself is recorded outside this public
+  repo; tracked publicly as #1289): receive-and-route live, every execution a proposed
+  dispatch a person fires, full autonomous enablement not implemented by this change.
+- `docs/evidence-bundle.md` and `statusgen/README.md` now describe witness *absence* as
+  merge-base scoped (grandfathered NOTICE vs. hard PROBLEM for a new post-pin closure),
+  matching `spec/lifecycle-v1.md` §2.4 — they previously asserted the flat pre-PR "NOTICE,
+  not a block" behaviour unconditionally.
+- `internal/topology`: `TestTopologyComms` / `TestTopologyCommsPositiveControl` pin the
+  `comms:` key's parse and drift-detection behaviour.
+- `spec/lifecycle-v1.md` §2.4's "no execution witness" sentence is now date-bounded to
+  closures before statusgen v1.0.13; `plugins/assay/skills/verify-desk/SKILL.md` names
+  `statusgen verifyrun` as the run step and the commit-with-Evidence step explicitly.
+- `spec/lifecycle-v1.md` §7.1 clause 2 names the new identity check and its exact scope (a
+  post-cutover Evidence commit, evaluated per-transition against `closedAtBase`) so the spec
+  never claims more independence than the lint enforces; the Verified cell and any Evidence
+  commit outside that scope remain attribution-on-text, not identity, as before.
+- `statusgen`'s Evidence-actor check (desk-apps/07, F-verify-self-attest) is now merge-base
+  scoped, the same shape `unrunGateChecks` and `witnessGate` already use: a `verified`/`done`
+  brief whose Evidence section is not backed by the roster's verifier role is still a NOTICE
+  when the closure predates `merge-base(HEAD, origin/main)` (the pre-cutover backlog), but is
+  now a PROBLEM naming the actual rejected identity when the closure is one this branch newly
+  made. The deliberate-spoof/tamper subclass (an Evidence commit dressed as the verifier —
+  right name, wrong-or-absent account id) gets the SAME new-vs-backlog scoping and the stronger
+  disposition: a new-closure impostor is a build-blocking PROBLEM naming the TAMPER signal, not
+  the NOTICE it previously always was, while a backlog impostor stays a NOTICE. A shallow/grafted
+  clone or an unresolvable merge-base still renders as could-not-check, never as either a pass or
+  a failure.
+
 ## v1.0.16 — 2026-09-20
 
 ### Added
