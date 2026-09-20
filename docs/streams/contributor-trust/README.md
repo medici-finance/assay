@@ -95,7 +95,7 @@ precisely the case where prior good behaviour predicts nothing.
 | 03 | [`deskbless` — a structured blessing act with a machine marker, a scope, a reason and an audit row](brief-03-bless-verb-and-audit.md) | 1 | M | todo | — | — |
 | 04 | [Review depth by tier — an unknown author's pull request gets a claims-versus-diff fact check and a fail-first reproduction](brief-04-review-depth-by-tier.md) | 1 | M | todo | — | — |
 | 05 | [Fork-safe continuous-integration posture — audited workflows, tier-keyed approve-and-run, and never-build-unblessed enforced by a check](brief-05-fork-safe-ci-posture.md) | 2 | M | todo | — | — |
-| 06 | [Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion](brief-06-contributor-facing-docs.md) | 0 | S | todo | — | — |
+| 06 | [Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion](brief-06-contributor-facing-docs.md) | 0 | S | implemented | — | — |
 | 07 | [Agent contributors — disclosure of automated authorship, and tiering the operating human rather than the tool](brief-07-agent-contributors.md) | 1 | S | todo | — | — |
 | 08 | [External-contribution metrics — inbound pull requests by tier and outcome, on the board](brief-08-external-contribution-metrics.md) | 1 | S | todo | — | — |
 | 09 | [External-contributor credit in release notes — the aggregator names the author a fork change came from](brief-09-external-contributor-credit.md) | 1 | S | todo | — | — |
