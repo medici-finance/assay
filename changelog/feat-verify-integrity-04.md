@@ -12,8 +12,12 @@
   brief whose Evidence section is not backed by the roster's verifier role is still a NOTICE
   when the closure predates `merge-base(HEAD, origin/main)` (the pre-cutover backlog), but is
   now a PROBLEM naming the actual rejected identity when the closure is one this branch newly
-  made. A shallow/grafted clone or an unresolvable merge-base still renders as could-not-check,
-  never as either a pass or a failure.
+  made. The deliberate-spoof/tamper subclass (an Evidence commit dressed as the verifier —
+  right name, wrong-or-absent account id) gets the SAME new-vs-backlog scoping and the stronger
+  disposition: a new-closure impostor is a build-blocking PROBLEM naming the TAMPER signal, not
+  the NOTICE it previously always was, while a backlog impostor stays a NOTICE. A shallow/grafted
+  clone or an unresolvable merge-base still renders as could-not-check, never as either a pass or
+  a failure.
 - `spec/lifecycle-v1.md` §7.1 clause 2 names the new identity check and its exact scope (a
   post-cutover Evidence commit, evaluated per-transition against `closedAtBase`) so the spec
   never claims more independence than the lint enforces; the Verified cell and any Evidence

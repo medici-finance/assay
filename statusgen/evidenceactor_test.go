@@ -690,6 +690,46 @@ func TestEvidenceCommitIdentityProblem(t *testing.T) {
 			t.Fatalf("FALSE POSITIVE: a verifier-committed NEW closure must not be flagged at all; notices: %v", notices)
 		}
 	})
+
+	// RED: the Evidence commit is authored under the verifier's NAME but a spoofed
+	// address (free-text email → actorImpostor, the deliberate-spoof/tamper shape),
+	// and the closure is NEW. The impostor class is strictly more adversarial than
+	// the plain rejected case above, so it must ALSO be promoted to a build-blocking
+	// PROBLEM — never land as a mere NOTICE (the gap two reviewers flagged on #1348).
+	t.Run("impostor-authored new closure is a PROBLEM", func(t *testing.T) {
+		root, streams := build(t, fixtureVerifierName, "me@example.com")
+		withBase(t, true) // baseOK=true, nothing grandfathered: NEW closure
+		problems, notices := evidenceActorGate(root, streams)
+		joined := strings.Join(problems, "\n")
+		if !strings.Contains(joined, "identityproblem/01") {
+			t.Fatalf("RED RUN MISSING: an impostor-authored NEW closure must be a PROBLEM naming the row; "+
+				"problems:\n%s\nnotices:\n%s", joined, strings.Join(notices, "\n"))
+		}
+		if !strings.Contains(joined, "TAMPER") {
+			t.Errorf("the impostor PROBLEM must name the TAMPER signal; got:\n%s", joined)
+		}
+		if strings.Contains(strings.Join(notices, "\n"), "identityproblem/01") {
+			t.Errorf("a row promoted to PROBLEM must not also appear in the impostor NOTICE; notices:\n%s",
+				strings.Join(notices, "\n"))
+		}
+	})
+
+	// GREEN: the SAME spoofed identity on a BACKLOG closure (grandfathered at the
+	// merge-base) stays a NOTICE, never a PROBLEM — the new-vs-backlog scoping is
+	// identical to the default case, so arming the promotion never reddens the
+	// pre-cutover backlog.
+	t.Run("impostor-authored backlog closure stays a NOTICE", func(t *testing.T) {
+		root, streams := build(t, fixtureVerifierName, "me@example.com")
+		withBase(t, true, "identityproblem/01") // grandfathered: this is BACKLOG
+		problems, notices := evidenceActorGate(root, streams)
+		if len(problems) != 0 {
+			t.Fatalf("FALSE POSITIVE: a backlog impostor closure must not be a PROBLEM; got: %v", problems)
+		}
+		if !strings.Contains(strings.Join(notices, "\n"), "identityproblem/01") {
+			t.Fatalf("a backlog impostor closure must still surface as a NOTICE; notices:\n%s",
+				strings.Join(notices, "\n"))
+		}
+	})
 }
 
 // TestEvidenceActorShallowClone is the Verify-row control for verify-integrity/04

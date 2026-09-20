@@ -816,7 +816,7 @@ func evidenceActorGate(root string, streams []*Stream) (problems, notices []stri
 	// says so once below rather than silently promoting nothing.
 	grandfathered, baseOK := closedAtBase(root, streams)
 
-	var flagged, newClosures, impostors, unreadable, graftHidden []string
+	var flagged, newClosures, impostors, newImpostors, unreadable, graftHidden []string
 	clean := 0
 	for _, r := range judged {
 		switch {
@@ -827,11 +827,27 @@ func evidenceActorGate(root string, streams []*Stream) (problems, notices []stri
 		case r.Verdict == actorVerifier || r.Verdict == actorHuman:
 			clean++
 		case r.Verdict == actorImpostor:
-			// The per-row line carries the cell it contradicts: this class needs a
-			// human to read one commit, and the Verified cell is what they are
-			// deciding whether to keep believing.
-			impostors = append(impostors, fmt.Sprintf("%s (row is %q, Verified cell %q) — %s",
-				r.ID, r.Status, r.Verified, r.Reason))
+			// The tamper/spoof class is strictly more adversarial than a plain
+			// unbacked row, so it gets the SAME new-vs-backlog scoping and the
+			// stronger disposition: a NEW-closure impostor is a build-blocking
+			// PROBLEM (never let a freshly-dressed verifier identity land as a
+			// mere NOTICE), while a backlog impostor keeps the NOTICE below, same
+			// grandfathering as the default case.
+			if baseOK && !grandfathered[r.ID] {
+				newImpostors = append(newImpostors, fmt.Sprintf(
+					"%s: Evidence commit carries a TAMPER signal — the committer identity is dressed as the "+
+						"verifier but backs no accepted verifier actor (%s). This is a NEW closure (not "+
+						"present as verified/done at merge-base(HEAD, origin/main)), so it is a PROBLEM, not "+
+						"backlog (verify-integrity/04): a human must read the commit (row is %q, Verified cell "+
+						"%q), and the row clears only by re-verification whose Evidence the verifier App commits",
+					r.ID, r.Reason, r.Status, r.Verified))
+			} else {
+				// The per-row line carries the cell it contradicts: this class needs a
+				// human to read one commit, and the Verified cell is what they are
+				// deciding whether to keep believing.
+				impostors = append(impostors, fmt.Sprintf("%s (row is %q, Verified cell %q) — %s",
+					r.ID, r.Status, r.Verified, r.Reason))
+			}
 		default:
 			if baseOK && !grandfathered[r.ID] {
 				newClosures = append(newClosures, fmt.Sprintf(
@@ -847,9 +863,11 @@ func evidenceActorGate(root string, streams []*Stream) (problems, notices []stri
 	}
 	sort.Strings(flagged)
 	sort.Strings(newClosures)
+	sort.Strings(newImpostors)
 	sort.Strings(impostors)
 	sort.Strings(unreadable)
 	sort.Strings(graftHidden)
+	problems = append(problems, newImpostors...)
 	problems = append(problems, newClosures...)
 
 	// The tamper signals first — one line each. These are not backlog.
@@ -873,7 +891,7 @@ func evidenceActorGate(root string, streams []*Stream) (problems, notices []stri
 				"NOTICE this phase, not a PROBLEM: the backlog predates the verifier-App Evidence cutover "+
 				"(desk-apps/04), and arming a hard gate against it would red every unrelated PR. A row "+
 				"clears by re-verification whose Evidence the verifier App commits. Rows: %s",
-			len(flagged), clean+len(flagged)+len(impostors)+len(newClosures), clean, pin, strings.Join(flagged, ", ")))
+			len(flagged), clean+len(flagged)+len(impostors)+len(newImpostors)+len(newClosures), clean, pin, strings.Join(flagged, ", ")))
 	}
 	if !baseOK && len(flagged) > 0 {
 		notices = append(notices, "Evidence-actor PROBLEM promotion is running degraded: "+
