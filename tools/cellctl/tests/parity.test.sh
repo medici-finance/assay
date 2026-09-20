@@ -312,8 +312,14 @@ normalise(){
   # /tmp/cellctl-parity is a PREFIX of a fixture root at /private/tmp/cellctl-parity.XXXX, so
   # substituting the implementation first eats half of every root path and the two sides diff on
   # paths that are actually identical.
+  # Both SPELLINGS of the implementation path, longest first. The oracle re-invokes itself by a
+  # path it resolved for itself ($SELF: dirname, cd, pwd), which is not the string CELLCTL_A was
+  # given when that string goes through a symlink or a `tests/../` hop — and `up`'s per-role
+  # command lines print exactly that resolved form.
+  local implreal; implreal="$(cd "$(dirname "$impl")" && pwd -P)/$(basename "$impl")"
   sed \
     -e "s#$root#<root>#g" \
+    -e "s#$implreal#<cellctl>#g" \
     -e "s#$impl#<cellctl>#g" \
     -e 's#[0-9]\{8\}T[0-9]\{6\}Z#<ts>#g' \
     -e 's#[0-9]\{8\}-[0-9]\{6\}#<ts>#g' \

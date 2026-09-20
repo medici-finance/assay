@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
@@ -206,10 +208,13 @@ func short8(s string) string {
 	return s
 }
 
+// isTTY is bash's `[[ -t 0 ]]` — a real isatty(3), not a mode test.
+//
+// This FAILS CLOSED and the distinction matters: `os.ModeCharDevice` is set for /dev/null too,
+// so a mode test reports an unattended run (stdin from /dev/null, a pipe, cron, CI) as attended.
+// On `cellctl up` that is exactly the widening the attended affirmation exists to prevent — from
+// "an operator ran this" to "anything that ran cellctl at all" — and it would carry that
+// affirmation into a credential mint. Anything that is not a terminal answers false.
 func isTTY(f *os.File) bool {
-	st, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return st.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(f.Fd()))
 }
