@@ -204,6 +204,28 @@ flags as the highest-severity outcome for a derivation-engine bug. Status stays 
 — no flip. Bug filed on `medici-finance/assay` (the repo the defect lives in) per the
 verify-desk escalation contract; see the filed issue for the reproduction and root-cause
 detail above.
+### Non-implementer verifier re-run — VERIFY: FAIL (stale Verify-row anchors, not engine defects) — sonnet-5-verifier (verify-desk dispatch), @ merged main `951ca784d100a7d201a28a34033da6709ec2ec8f`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `go test . -run Lifecycle/BriefV2/GHFetch -v` (x3) | ≥14 PASS | exit 0 each — Lifecycle=17, BriefV2=14, GHFetch=5, sum=36 | 2026-09-18 | sonnet-5-verifier |
+| 2 | `reconcile --root . --offline --json`, assert every PR-source cell unknown | exit 0, ok | exit 0, ok | 2026-09-18 | sonnet-5-verifier |
+| 3 | `GITHUB_TOKEN=invalid reconcile ... --json` | lookedAt=False, HTTP reason | exit 0, ok — reason "HTTP 401: Bad credentials" | 2026-09-18 | sonnet-5-verifier |
+| 4 | `reconcile --repo medici-finance/assay --json`, lookup derived-board/02 by short id | rc=0 | **FAIL — rc=1, IndexError.** `id` field is now the brief-v2 hierarchical form (`assay:assay:derived-board:02`), not the short string this row's literal expects — a staleness from the derived-board/07 flag-day (bb2079bd, #736), separate from the trailer-join bug the 2026-09-15 pass found (now fixed on this HEAD via #1194). Re-queried by the correct id: engine is sound — `cell: implemented`, `witness: PR #80 (merged c93ae91)` | 2026-09-18 | sonnet-5-verifier |
+| 5 | `--lint` on smoke tree, expect "gates: 1 edge (reserved, not gating)" | rc=0, substring present | **FAIL — rc=0 (LINT: PASS) but substring absent.** Commit 92aa88273 (#1251) intentionally made `gates:` an active gate, superseding this row's wording. Observed instead: `NOTICE: [eligibility-could-not-check] demo/01: held by rec:ingest/06...` — a deliberate later in-scope change, not a regression | 2026-09-18 | sonnet-5-verifier |
+| 6 | `go test . -run Demotion -v` | ≥3 PASS | exit 0 — 13 | 2026-09-18 | sonnet-5-verifier |
+| 7 | `grep -c reconcile statusgen/README.md` | ≥1 | exit 0 — 5 | 2026-09-18 | sonnet-5-verifier |
+| 8 | `go vet ./...` + no graphql refs | exit 0 | exit 0, vet clean, no graphql match | 2026-09-18 | sonnet-5-verifier |
+
+Full-package sanity: `go test ./...` ok (30.4s), `go build ./...` clean. Scope traceability: all 8 rows map 1:1 to their Verify rows; no invented scope.
+
+RISK-VALUE: DERIVED — fail-closed guard `status != http.StatusOK` @ statusgen/ghfetch.go:113,173 — re-proven live via row 3 (invalid token → clean lookedAt=false). Top-ranked per the brief's own exec-tier-why ("a board that lies with more authority than before").
+RISK-VALUE: DERIVED — `maxPages=20`/`perPage=100` @ statusgen/ghfetch.go:105-106 — bounds 2000 PRs; headroom vs real max PR# has shrunk from >4x (2026-09-06) to ~1.54x now (PR #1301) — still safe, flagged as a watch-item for the coordinator.
+RISK-VALUE: NAMED, NOT DERIVED — `version := 1` legacy default @ statusgen/reconcile.go:203/207 — reversible operational default, unrelated to either failing row.
+
+VERIFY: FAIL — rows 1,2,3,6,7,8 checked-clean. Rows 4 and 5 fail as literally written but both are stale Verify-row anchors from later, unrelated, in-scope changes (id-format flag-day; gates: becoming gating), not regressions in this brief's own code — third consecutive verify cycle (2026-09-06, 2026-09-15, 2026-09-18) hitting a different staleness cause on the same table. Filed medici-finance/assay#1305 recommending a re-baseline of rows 4 and 5. Status stays implemented, not advanced.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

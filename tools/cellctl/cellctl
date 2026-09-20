@@ -48,7 +48,8 @@
 #                                                tier-map fallback) — a role with no per-harness pin and no tier
 #                                                match is a MISS here, before boot, not a startup failure (#986).
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
-#   cellctl desk  <cell> <role> [--model <m>] [--set] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
+#   cellctl desk  <cell> <role> [--model <m>] [--set] [--harness <claude|codex>]
+#                        [--kind <k>] [--cockpit <c>] [--provider <p>] [CLAUDE_CONFIG_DIR]
 #                                                one role window (own worktree, real HOME, shims).
 #                                                --model overrides the cell.env pin for THIS run only
 #                                                (wins over DESK_MODEL_<role> and DESK_MODEL_DEFAULT);
@@ -67,8 +68,17 @@
 #                                                see Pinned models / Per-harness namespaces below. An explicit
 #                                                --model always passes through verbatim to the selected harness,
 #                                                bypassing the namespace/tier resolution entirely.
+#                                                --kind / --cockpit / --provider override cell.env's CELL_KIND /
+#                                                CELL_COCKPIT / CELL_PROVIDER for this run (#1303 scope 2; a
+#                                                --kind the cell is not provisioned for is refused naming the
+#                                                missing key; --cockpit on a single desk window only matters
+#                                                when persisted). --set persists EVERY override given —
+#                                                the model pin, CELL_HARNESS, CELL_PROVIDER, CELL_KIND,
+#                                                CELL_COCKPIT — through the same one-backup path `cellctl set`
+#                                                uses; an override not given is never re-written.
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
-#                        [--automate '<cron>'] [--model <m>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
+#                        [--automate '<cron>'] [--model <m>] [--harness <claude|codex>]
+#                        [--kind <k>] [--provider <p>] [--set] [CLAUDE_CONFIG_DIR]
 #                                                one window per role in the resolved COCKPIT: a tmux session
 #                                                "<cell>-cell", a labelled herdr tab per role, or an orca
 #                                                terminal per role (deskd + the-desk + the loop roles; a house
@@ -79,7 +89,11 @@
 #                                                `cellctl desk --model`; no per-role `--model-<role>` form).
 #                                                --harness overrides CELL_HARNESS for EVERY role window this
 #                                                run opens (same per-run, not persisted, precedence as
-#                                                `cellctl desk --harness`).
+#                                                `cellctl desk --harness`). --kind and --provider likewise.
+#                                                --set persists every override given (CELL_KIND, CELL_COCKPIT,
+#                                                CELL_HARNESS, CELL_PROVIDER, and --model into the active
+#                                                harness's <FAMILY>_MODEL_<role> for every role window this
+#                                                run opens), one cell.env backup first.
 #                                                --automate '<cron>' is an ORCA-only shape: one scheduled
 #                                                automation per role, fronted by an exit-code precheck, instead
 #                                                of a live terminal.
@@ -91,6 +105,7 @@
 #                                                for it, and named for you to close by hand where it does not
 #   cellctl set   <cell> KEY=VALUE [KEY=VALUE...] [--force]
 #                        <cell> <role> [--harness claude|codex] --model <m>
+#                        <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]
 #                                                persist a change into <cell>/cell.env in place — rewrites an
 #                                                existing KEY= line or appends a new one, comment lines and
 #                                                ordering otherwise untouched. Writes one backup
@@ -101,8 +116,23 @@
 #                                                for the model pin specifically: it computes the KEY itself from
 #                                                the ACTIVE harness (--harness given, else the cell's own
 #                                                CELL_HARNESS) — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
-#                                                on codex — so `cellctl set <cell> <role> --harness codex --model
-#                                                X` writes CODEX_MODEL_<role>=X, never DESK_MODEL_<role>.
+#                                                on codex — so `cellctl set <cell>
+#                                                <role> --harness codex --model X` writes CODEX_MODEL_<role>=X,
+#                                                never DESK_MODEL_<role>. The third form is sugar for the
+#                                                matching KEY=VALUE (CELL_KIND / CELL_COCKPIT / CELL_HARNESS /
+#                                                CELL_PROVIDER), validated by the same rules: an unknown
+#                                                kind/cockpit/harness is refused before anything is written,
+#                                                and a kind change refuses when the target kind's own
+#                                                precondition (container: CELL_CONTAINER_LAUNCHER; house:
+#                                                CELL_ROOTS; scrubbed: CELL_REPO_SLUG) is neither in cell.env
+#                                                nor given in the same call.
+#   cellctl show  <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]
+#                                                a READ: one `[show] KEY=VALUE (flag|cell.env|default)` line
+#                                                per per-run choice (CELL_KIND, CELL_COCKPIT, CELL_HARNESS,
+#                                                CELL_PROVIDER) and one `[show] model <role>=<m> (source)`
+#                                                line per role — the effective values, with the flags given
+#                                                applied, so what an invocation would resolve to is greppable
+#                                                before booting it. Launches and writes nothing.
 #   cellctl --version | version                  the release tag this copy ships at ("dev" for a source
 #                                                checkout — see the CELLCTL_VERSION comment below), the same
 #                                                contract `statusgen --version` uses, so a stale copy is
@@ -123,6 +153,15 @@
 # tier map's compiled defaults are themselves overridable per entry via cell.env
 # (TIER_MODEL_<TIER>_<HARNESS>, e.g. TIER_MODEL_TOP_CODEX) — the same one-key-one-value override shape
 # DESK_MODEL_<role> and CELL_PROVIDER_<NAME>_* already use elsewhere in this file.
+#
+# PROVIDERS (#1303). `--provider <name>` / CELL_PROVIDER switches the claude harness to an
+# Anthropic-compatible endpoint: CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} in cell.env, with
+# built-in presets `kimi` (https://api.kimi.com/coding, $KIMI_API_KEY, k3[1m]) and `glm`
+# (https://api.z.ai/api/anthropic, $ZAI_API_KEY, glm-5.3[1m]) that need no cell.env line — a line
+# overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
+# cellctl never stores, prints or persists a token value. With a provider the launch unsets
+# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL
+# (provider_preset / resolve_provider / cmd_desk's claude arm below; docs/cellctl.md Providers).
 #
 # `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
 # pin for one run without touching cell.env, PASSED THROUGH VERBATIM to the selected harness — it is
@@ -234,6 +273,10 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   # working. A house cell is the operator's own desks: no deskd unless asked for (DESKD=1), and the
   # stream-root map (CELL_ROOTS) is REQUIRED because it is the whole reason the desks boot at all.
   CELL_KIND="${CELL_KIND:-k8s}"
+  # A per-run `--kind` (prescan_kind_override, #1303 scope 2) wins over the file for THIS load only
+  # — cell.env is untouched — and is subject to exactly the same per-kind preconditions below, so a
+  # kind the cell is not provisioned for refuses here, naming what is missing.
+  [[ -n "${CELL_KIND_OVERRIDE:-}" ]] && CELL_KIND="$CELL_KIND_OVERRIDE"
   case "$CELL_KIND" in
     k8s) DESKD="${DESKD:-1}" ;;
     container)
@@ -582,11 +625,40 @@ provider_var(){ printf 'CELL_PROVIDER_%s_%s' "$(printf '%s' "$1" | tr '[:lower:]
 # credential switched, which is what this does. The TOKEN VALUE is never stored in cell.env — only
 # the name of an env var the OPERATOR's shell is expected to already carry (CELL_PROVIDER_<NAME>_TOKEN_ENV),
 # so a leaked cell.env (or a public-repo mistake committing one) never leaks a credential itself.
+#
+# Built-in PRESETS (#1303): `kimi` and `glm` resolve without any CELL_PROVIDER_<NAME>_* line —
+# an Anthropic-compatible endpoint each, the NAME of the env var the operator exports for it, and
+# a default model. Any CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} line in cell.env (or the
+# environment) overrides the matching preset value; a name with no preset still needs its own
+# lines exactly as before. Presets carry no credential of any kind — only the env var's NAME.
+provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL> → the compiled default, or nothing
+  case "$1:$2" in
+    kimi:BASE_URL)  printf '%s' 'https://api.kimi.com/coding' ;;
+    kimi:TOKEN_ENV) printf '%s' 'KIMI_API_KEY' ;;
+    kimi:MODEL)     printf '%s' 'k3[1m]' ;;
+    glm:BASE_URL)   printf '%s' 'https://api.z.ai/api/anthropic' ;;
+    glm:TOKEN_ENV)  printf '%s' 'ZAI_API_KEY' ;;
+    glm:MODEL)      printf '%s' 'glm-5.3[1m]' ;;
+  esac
+  return 0
+}
+# provider_value <name> <suffix>: sets PROVIDER_VALUE to the EFFECTIVE value (cell.env/env line,
+# else the preset, else empty) and PROVIDER_VALUE_SRC to where it came from (`cell.env`, `preset`,
+# `unset`). Globals rather than stdout, so the source survives — a `$(...)` would lose it.
+provider_value(){
+  local name="$1" suffix="$2" var
+  var="$(provider_var "$name" "$suffix")"; PROVIDER_VALUE="${!var:-}"
+  if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="cell.env"; return 0; fi
+  PROVIDER_VALUE="$(provider_preset "$name" "$suffix")"
+  if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="preset"; return 0; fi
+  PROVIDER_VALUE_SRC="unset"; return 0
+}
 resolve_provider(){
   local name="$1" base_var token_var
   base_var="$(provider_var "$name" BASE_URL)"; token_var="$(provider_var "$name" TOKEN_ENV)"
-  PROVIDER_BASE_URL="${!base_var:-}"
-  PROVIDER_TOKEN_ENV="${!token_var:-}"
+  provider_value "$name" BASE_URL;  PROVIDER_BASE_URL="$PROVIDER_VALUE"
+  provider_value "$name" TOKEN_ENV; PROVIDER_TOKEN_ENV="$PROVIDER_VALUE"
+  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"
   [[ -n "$PROVIDER_BASE_URL" ]] || die "cell.env: $base_var is not set — declare it for provider '$name' (e.g. $base_var=https://api.$name.example)"
   local upname; upname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
   [[ -n "$PROVIDER_TOKEN_ENV" ]] || die "cell.env: $token_var is not set — declare it for provider '$name' as the NAME of an env var carrying the token (never the token itself), e.g. $token_var=${upname}_API_KEY"
@@ -596,7 +668,7 @@ resolve_provider(){
 
 # ---------------------------------------------------------------- cellctl set
 # The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>,
-# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV}
+# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL}
 # families (a typo'd role/tier/provider name is refused rather than silently scaffolding a variable
 # nothing ever reads).
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
@@ -623,7 +695,7 @@ known_cell_env_key(){
       r="${k#CODEX_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
-    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV) return 0 ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL) return 0 ;;
   esac
   return 1
 }
@@ -642,14 +714,116 @@ validate_env_key(){
   [[ "$key" == "DESK_MODEL_the_desk" ]] && refuse_opus_for_the_desk "$value"
   # A value check, same footing as the Opus rule above (never bypassable by --force, which only
   # widens the KEY allowlist) — a persisted CELL_HARNESS that is neither harness would only surface
-  # as a refusal at the NEXT boot, which `set` can catch here instead.
+  # as a refusal at the NEXT boot, which `set` can catch here instead. CELL_KIND and CELL_COCKPIT
+  # get the same treatment (#1303 scope 2): the value sets load_cell / cockpit_want accept.
   if [[ "$key" == "CELL_HARNESS" ]]; then
     case "$value" in
       claude|codex) ;;
       *) die "set: CELL_HARNESS must be claude or codex, got '$value'" ;;
     esac
   fi
+  if [[ "$key" == "CELL_KIND" ]]; then
+    value_in "$value" $KIND_VALUES || die "set: CELL_KIND must be one of ${KIND_VALUES// /|}, got '$value'"
+  fi
+  if [[ "$key" == "CELL_COCKPIT" ]]; then
+    value_in "$value" $COCKPIT_VALUES || die "set: CELL_COCKPIT must be one of ${COCKPIT_VALUES// /|}, got '$value'"
+  fi
   return 0
+}
+
+# ---------------------------------------------------------------- per-run overrides (#1303 scope 2)
+# The value sets a per-run `--kind` / `--cockpit` / `--harness` flag (and the matching cell.env key)
+# may take. One list each, read by validate_env_key, the flag parsers and `show`, so a new value is
+# added in exactly one place.
+KIND_VALUES="k8s house container scrubbed"
+COCKPIT_VALUES="auto tmux herdr orca"
+HARNESS_VALUES="claude codex"
+# Only prescan_kind_override in THIS process may set it — cleared here so a value inherited from a
+# launching shell (a nested cellctl inside a booted window) never re-kinds a cell silently.
+CELL_KIND_OVERRIDE=""
+value_in(){ local v="$1" w; shift; for w in "$@"; do [[ "$v" == "$w" ]] && return 0; done; return 1; }
+
+# env_file_value <envfile> <key>: the LAST active `KEY=` line's value in a cell.env, printed; returns
+# 1 (prints nothing) when the file carries no such line. File-level like active_harness_of, and for
+# the same reason: `set`/`show` must never source an operator-writable file to answer "what does
+# cell.env say" — and this is also how `show` tells a cell.env value from a compiled default.
+env_file_value(){
+  local envfile="$1" key="$2" line
+  line="$(grep -E "^${key}=" "$envfile" 2>/dev/null | tail -n1)" || true
+  [[ -n "$line" ]] || return 1
+  printf '%s\n' "${line#*=}"
+}
+
+# prescan_kind_override "$@": a `--kind <k>` anywhere in a verb's arguments is applied BEFORE
+# load_cell runs (the verbs parse their flags after loading the cell, but load_cell is where the
+# kind's own preconditions are asserted — CELL_ROOTS for house, CELL_CONTAINER_LAUNCHER for
+# container, CELL_REPO_SLUG for scrubbed — and where every kind-dependent default is set, so the
+# override has to be in force by then). Sets CELL_KIND_OVERRIDE, which load_cell honours over the
+# file's own CELL_KIND; an unknown value is refused here, before anything is loaded.
+prescan_kind_override(){
+  CELL_KIND_OVERRIDE=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--kind" ]]; then
+      [[ -n "${2:-}" ]] || die "--kind needs a value (${KIND_VALUES// /|})"
+      value_in "$2" $KIND_VALUES || die "--kind must be one of ${KIND_VALUES// /|}, got '$2'"
+      CELL_KIND_OVERRIDE="$2"; shift 2
+    else shift; fi
+  done
+  return 0
+}
+
+# validate_kind_change <envfile> <kind> [KEY=VALUE...]: the target kind's own precondition, checked
+# against the EFFECTIVE value of the key it needs — given in this same call's KEY=VALUE list, else
+# the file's current line — so `cellctl set <cell> CELL_KIND=house CELL_ROOTS=…` in one call passes
+# while `CELL_KIND=house` alone on a cell with no CELL_ROOTS refuses, naming the missing key, before
+# a backup or an edit is made. The check mirrors load_cell's own per-kind assertions: a kind change
+# that would make the next boot refuse is refused here instead.
+validate_kind_change(){
+  local envfile="$1" kind="$2"; shift 2
+  local need=""
+  case "$kind" in
+    container) need="CELL_CONTAINER_LAUNCHER" ;;
+    house)     need="CELL_ROOTS" ;;
+    scrubbed)  need="CELL_REPO_SLUG" ;;
+    *) return 0 ;;
+  esac
+  local v="" kv
+  for kv in "$@"; do [[ "${kv%%=*}" == "$need" ]] && v="${kv#*=}"; done
+  [[ -n "$v" ]] || v="$(env_file_value "$envfile" "$need" || true)"
+  # A line `cellctl new` wrote with %q may be shell-quoted (`CELL_ROOTS=''` on a container cell is
+  # the empty string once sourced, not two characters) — strip one matching pair of quotes so the
+  # file-level read agrees with what load_cell would see.
+  if [[ "$v" == \'*\' || "$v" == \"*\" ]]; then v="${v:1:${#v}-2}"; fi
+  [[ -n "$v" ]] || die "set: CELL_KIND=$kind needs $need, which is neither set in $envfile nor given in this call — a $kind cell cannot load without it (set both in one call, or $need first); nothing written"
+  if [[ "$kind" == "container" ]]; then
+    [[ "$v" == /* && -f "$v" && -x "$v" ]] || die "set: CELL_KIND=container needs an absolute executable CELL_CONTAINER_LAUNCHER, got '$v'; nothing written"
+  fi
+  return 0
+}
+
+# apply_env_kvs <envfile> <force> KEY=VALUE...: the ONE write path for every persisted change —
+# `cellctl set` (both forms) and `desk`/`up --set` alike. Pass 1 validates every pair (key shape,
+# known key unless force, the Opus rule, the harness/kind/cockpit value sets, the kind change's
+# precondition) and touches nothing on a refusal; pass 2 writes exactly one backup, then applies
+# each pair in order through set_env_key.
+apply_env_kvs(){
+  local envfile="$1" force="$2"; shift 2
+  local -a kvs=("$@")
+  [[ ${#kvs[@]} -gt 0 ]] || die "set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])"
+  local kv key value
+  for kv in "${kvs[@]}"; do
+    key="${kv%%=*}"; value="${kv#*=}"
+    validate_env_key "$key" "$value" "$force"
+    [[ "$key" == "CELL_KIND" ]] && validate_kind_change "$envfile" "$value" "${kvs[@]}"
+  done
+  local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  local backup="$envfile.bak-$ts"
+  cp "$envfile" "$backup"
+  echo "[set] backup written: $backup"
+  for kv in "${kvs[@]}"; do
+    key="${kv%%=*}"; value="${kv#*=}"
+    set_env_key "$envfile" "$key" "$value" "$force"
+  done
 }
 
 # set_env_key <envfile> <key> <value> <force> — the single-key rewrite/append `cmd_set` and
@@ -682,16 +856,22 @@ active_harness_of(){
 }
 
 cmd_set(){
-  local usage_msg="cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex] --model <m>"
+  local usage_msg="cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
   local cell="${1:?$usage_msg}"; shift || true
   local d; d="$(cell_dir "$cell")"; d="$(cd "$d" && pwd)"
   local envfile="$d/cell.env"
-  local force=0 role="" harness="" model=""
-  local -a kvs=()
+  local force=0 role="" harness="" model="" kind="" cockpit="" provider=""
+  local -a kvs=() sugar=()
   while [[ $# -gt 0 ]]; do case "$1" in
     --force) force=1; shift;;
     --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --model) model="${2:?--model needs a value}"; shift 2;;
+    # Sugar for the equivalent KEY=VALUE (#1303 scope 2): validated by the same validate_env_key
+    # rules as the long form, so an unknown kind/cockpit/harness is refused before anything is
+    # written, and a kind change is subject to validate_kind_change like any CELL_KIND=… pair.
+    --kind) kind="${2:?--kind needs a value (${KIND_VALUES// /|})}"; shift 2;;
+    --cockpit) cockpit="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
+    --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --*) die "set: unknown flag $1";;
     *=*) kvs+=("$1"); shift;;
     the-desk|worker-desk|pr-review-desk|verify-desk|intake-desk)
@@ -699,34 +879,28 @@ cmd_set(){
       role="$1"; shift;;
     *) die "set: '$1' is not KEY=VALUE (or a role name, with --model and optionally --harness)";;
   esac; done
+  [[ -n "$kind" ]] && sugar+=("CELL_KIND=$kind")
+  [[ -n "$cockpit" ]] && sugar+=("CELL_COCKPIT=$cockpit")
+  [[ -n "$provider" ]] && sugar+=("CELL_PROVIDER=$provider")
   if [[ -n "$role" ]]; then
     # Role-sugar form: `cellctl set <cell> <role> [--harness claude|codex] --model <m>` — computes
     # the model-pin KEY itself from the ACTIVE harness (the flag given here, else the cell's own
     # CELL_HARNESS) so a codex-harness call writes CODEX_MODEL_<role>, never DESK_MODEL_<role>
     # (#986) — the same namespace `cmd_desk --set` persists into for a live boot.
+    # With a role, --harness SELECTS the namespace and is not itself persisted (unchanged from #986);
+    # without one it is the CELL_HARNESS sugar below.
     [[ -n "$model" ]] || die "set: '$role' needs --model <m> (role-sugar form: cellctl set <cell> <role> [--harness claude|codex] --model <m>)"
     [[ ${#kvs[@]} -eq 0 ]] || die "set: the role-sugar form and KEY=VALUE pairs cannot be combined in one call"
     case "${harness:-claude}" in claude|codex) ;; *) die "set: --harness must be claude or codex, got '$harness'";; esac
     local active="${harness:-$(active_harness_of "$envfile")}"
     local mvar; if [[ "$active" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
     kvs=("$mvar=$model")
+  else
+    [[ -z "$model" ]] || die "set: --model needs a role (cellctl set <cell> <role> --model <m>); the harness-wide default is the KEY=VALUE form (DESK_MODEL_DEFAULT / CODEX_MODEL_default)"
+    [[ -n "$harness" ]] && sugar+=("CELL_HARNESS=$harness")
   fi
-  [[ ${#kvs[@]} -gt 0 ]] || die "set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])"
-  local kv key value
-  # Pass 1: validate every KEY=VALUE — a refusal here touches nothing.
-  for kv in "${kvs[@]}"; do
-    key="${kv%%=*}"; value="${kv#*=}"
-    validate_env_key "$key" "$value" "$force"
-  done
-  # Pass 2: one backup, then apply each in order.
-  local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
-  local backup="$envfile.bak-$ts"
-  cp "$envfile" "$backup"
-  echo "[set] backup written: $backup"
-  for kv in "${kvs[@]}"; do
-    key="${kv%%=*}"; value="${kv#*=}"
-    set_env_key "$envfile" "$key" "$value" "$force"
-  done
+  [[ ${#sugar[@]} -gt 0 ]] && kvs+=("${sugar[@]}")
+  apply_env_kvs "$envfile" "$force" "${kvs[@]}"
 }
 
 gen_shims(){
@@ -795,6 +969,78 @@ sys.exit(0 if any(p.get("id") == "assay@assay" and p.get("enabled") for p in ps)
 # print nothing and exit 0.
 cmd_ls(){ local d; for d in "$CELLS_ROOT"/*/; do [[ -f "$d/cell.env" ]] && basename "$d"; done; return 0; }
 
+# cmd_show <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]: the
+# EFFECTIVE value of every per-run choice, one greppable `[show] KEY=VALUE (source)` line each,
+# where source is `flag` (given on this invocation), `cell.env` (the file's own line) or `default`
+# (cellctl's compiled fallback) — plus one `[show] model <role>=<m> (source)` line per role, the
+# same resolution a plain `desk` boot would make on the shown harness (an explicit --model shows
+# as `flag`, verbatim). A read: it launches nothing and writes nothing (#1303 scope 2). The same
+# flags `desk`/`up` take are accepted so "what would THIS invocation resolve to" is answerable
+# before booting it; a `--kind` the cell is not provisioned for refuses exactly as `desk` would.
+cmd_show(){
+  local usage_msg="cellctl show <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]"
+  local cell="${1:?$usage_msg}"; shift || true
+  prescan_kind_override "$@"
+  load_cell "$cell"
+  local envfile="$CELL_DIR/cell.env" harness_flag="" cockpit_flag="" provider_flag="" model_flag=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --kind) shift 2;;
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
+    --harness) harness_flag="${2:?--harness needs a value (${HARNESS_VALUES// /|})}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value}"; shift 2;;
+    --model) model_flag="${2:?--model needs a value}"; shift 2;;
+    --*) die "show: unknown flag $1";;
+    *) die "show: unexpected argument '$1'";;
+  esac; done
+  [[ -z "$harness_flag" ]] || value_in "$harness_flag" $HARNESS_VALUES || die "show: --harness must be one of ${HARNESS_VALUES// /|}, got '$harness_flag'"
+  [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES || die "show: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
+  # show_line <key> <flag-value> <effective-value>: source is flag > cell.env line > default.
+  show_line(){
+    local key="$1" flag="$2" eff="$3" src
+    if [[ -n "$flag" ]]; then src="flag"
+    elif env_file_value "$envfile" "$key" >/dev/null; then src="cell.env"
+    else src="default"
+    fi
+    printf '[show] %s=%s (%s)\n' "$key" "$eff" "$src"
+  }
+  echo "[show] cell=$CELL dir=$CELL_DIR"
+  show_line CELL_KIND "$CELL_KIND_OVERRIDE" "$CELL_KIND"
+  cockpit_want "$cockpit_flag"
+  show_line CELL_COCKPIT "$cockpit_flag" "$COCKPIT_WANT"
+  local harness="${harness_flag:-$CELL_HARNESS}"
+  show_line CELL_HARNESS "$harness_flag" "$harness"
+  local provider="${provider_flag:-${CELL_PROVIDER:-}}"
+  if [[ -n "$provider" ]]; then
+    show_line CELL_PROVIDER "$provider_flag" "$provider"
+    # The provider's effective endpoint, token env NAME (+ set/unset — never its value) and model,
+    # each tagged cell.env / preset / unset.
+    local pb pt pm pbs pts pms tokstate
+    provider_value "$provider" BASE_URL;  pb="$PROVIDER_VALUE"; pbs="$PROVIDER_VALUE_SRC"
+    provider_value "$provider" TOKEN_ENV; pt="$PROVIDER_VALUE"; pts="$PROVIDER_VALUE_SRC"
+    provider_value "$provider" MODEL;     pm="$PROVIDER_VALUE"; pms="$PROVIDER_VALUE_SRC"
+    tokstate="unset"; [[ -n "$pt" && -n "${!pt:-}" ]] && tokstate="set"
+    printf '[show] provider %s base_url=%s (%s)\n' "$provider" "${pb:-<unset>}" "$pbs"
+    printf '[show] provider %s token_env=%s (%s; %s in this shell)\n' "$provider" "${pt:-<unset>}" "$pts" "$tokstate"
+    printf '[show] provider %s model=%s (%s)\n' "$provider" "${pm:-<unset>}" "$pms"
+  else printf '[show] CELL_PROVIDER=%s (%s)\n' "unset" "default: anthropic"
+  fi
+  local r src
+  for r in $ROLES; do
+    if [[ -n "$model_flag" ]]; then
+      printf '[show] model %s=%s (flag)\n' "$r" "$model_flag"
+    elif resolve_role_model "$r" "$harness"; then
+      case "$RESOLVED_MODEL_SRC" in
+        tier:*) src="default: $RESOLVED_MODEL_SRC" ;;
+        *) if env_file_value "$envfile" "$RESOLVED_MODEL_SRC" >/dev/null; then src="cell.env $RESOLVED_MODEL_SRC"; else src="default: $RESOLVED_MODEL_SRC"; fi ;;
+      esac
+      printf '[show] model %s=%s (%s)\n' "$r" "$RESOLVED_MODEL" "$src"
+    else
+      printf '[show] model %s=%s (%s)\n' "$r" "unresolved" "$RESOLVED_MODEL_SRC"
+    fi
+  done
+  return 0
+}
+
 # shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
 cmd_check(){
   load_cell "$1"; local ok=1
@@ -862,14 +1108,24 @@ cmd_check(){
   # The cell's DEFAULT provider (CELL_PROVIDER), same resolution `cellctl desk` uses absent an
   # explicit --provider for the run. Unset is a legitimate n/a (Anthropic, cellctl's long-standing
   # default) rather than a MISS — a provider is opt-in per cell.
+  # Values shown here are the endpoint, the token env var's NAME, the model and whether the named
+  # variable is set — never a token value (#1303). A preset (`kimi`/`glm`) fills what cell.env
+  # does not declare, and each row says which it was.
   if [[ -n "${CELL_PROVIDER:-}" ]]; then
-    local pv_base pv_tokvar pv_base_val pv_tokvar_val
+    local pv_base pv_tokvar pv_base_val pv_tokvar_val pv_base_src pv_tok_src pv_model pv_model_src
     pv_base="$(provider_var "$CELL_PROVIDER" BASE_URL)"; pv_tokvar="$(provider_var "$CELL_PROVIDER" TOKEN_ENV)"
-    pv_base_val="${!pv_base:-}"; pv_tokvar_val="${!pv_tokvar:-}"
-    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>}" '[[ -n "$pv_base_val" ]]'
-    chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)" '[[ -n "$pv_tokvar_val" ]]'
+    provider_value "$CELL_PROVIDER" BASE_URL;  pv_base_val="$PROVIDER_VALUE";   pv_base_src="$PROVIDER_VALUE_SRC"
+    provider_value "$CELL_PROVIDER" TOKEN_ENV; pv_tokvar_val="$PROVIDER_VALUE"; pv_tok_src="$PROVIDER_VALUE_SRC"
+    provider_value "$CELL_PROVIDER" MODEL;     pv_model="$PROVIDER_VALUE";      pv_model_src="$PROVIDER_VALUE_SRC"
+    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>} ($pv_base_src)" '[[ -n "$pv_base_val" ]]'
+    chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)${pv_tokvar_val:+=$pv_tokvar_val} ($pv_tok_src)" '[[ -n "$pv_tokvar_val" ]]'
     if [[ -n "$pv_tokvar_val" ]]; then
       chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
+    fi
+    if [[ -n "$pv_model" ]]; then
+      chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+    else
+      na "provider $CELL_PROVIDER: model — no $(provider_var "$CELL_PROVIDER" MODEL) and no preset; the role pin is exported as is"
     fi
   else
     na "provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)"
@@ -1507,9 +1763,12 @@ scrubbed_desk_launch(){
 }
 
 cmd_desk(){
-  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]"
+  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [--kind <k>] [--cockpit <c>] [CLAUDE_CONFIG_DIR]"
   local cell="${1:?$usage_msg}"; shift || true
   local role="${1:?$usage_msg}"; shift || true
+  # --kind is applied BEFORE load_cell (see prescan_kind_override): the kind's preconditions and
+  # defaults are asserted there, so an override has to be in force by then.
+  prescan_kind_override "$@"
   load_cell "$cell"
   case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
   # --model overrides the cell.env pin for THIS run only — it wins over DESK_MODEL_<role> and
@@ -1521,17 +1780,28 @@ cmd_desk(){
   # model NAME) — see resolve_provider. --harness overrides cell.env CELL_HARNESS for THIS run
   # only — it never touches cell.env. No env form (unlike --model's DESK_MODEL_OVERRIDE): the
   # issue's ask is the flag plus the cell.env pin.
+  # #1303 scope 2 widens this to EVERY per-run choice: --kind (applied above), --cockpit (accepted
+  # and validated here so `--set` can persist it — a single `desk` window opens in the calling
+  # terminal and uses no cockpit itself; `up` is where the value drives anything), --harness and
+  # --provider join --model as things `--set` persists, each into its own cell.env key, through
+  # the same one-backup apply_env_kvs path `cellctl set` uses. A flag persists only when GIVEN:
+  # the cell's own values are never re-written by a `--set` that did not name them.
   local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 cfg_in="" provider="" harness="$CELL_HARNESS"
+  local harness_flag="" cockpit_flag="" provider_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --set) persist=1; shift;;
-    --provider) provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
-    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; harness_flag="$harness"; shift 2;;
+    --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
     --*) die "desk: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
-  [[ "$persist" == "0" || -n "$model_override" ]] \
-    || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment) — nothing to persist otherwise"
+  [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
+    || die "desk: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
+  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
+    || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
   case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
   local cfg=""
   if [[ "$CELL_KIND" == "container" ]]; then
@@ -1550,7 +1820,7 @@ cmd_desk(){
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
   # (unset = Anthropic, cellctl's own long-standing default).
   provider="${provider:-${CELL_PROVIDER:-}}"
-  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL=""
+  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
@@ -1571,11 +1841,29 @@ cmd_desk(){
   # CODEX_MODEL_<role> on codex, DESK_MODEL_<role> on claude — never the other one, whichever
   # harness this run resolves to.
   local mvar; if [[ "$harness" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+  # What --set persists: every override GIVEN on this invocation, each to its own key (#1303
+  # scope 2). Built once here so the container, dry-run and live branches below agree.
+  local -a persist_kvs=()
+  [[ -n "$model_override" ]] && persist_kvs+=("$mvar=$model_override")
+  [[ -n "$harness_flag" ]] && persist_kvs+=("CELL_HARNESS=$harness_flag")
+  [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
+  [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
+  [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
+  # A provider is a claude-harness seam (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN); codex has no
+  # equivalent here, so the combination is refused rather than silently launching codex against
+  # Anthropic with a provider the operator asked for.
+  [[ "$harness" == "codex" && -n "$provider" ]] \
+    && die "desk: --provider '$provider' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude"
   local model
   if [[ -n "$model_override" ]]; then
     # An explicit --model (or DESK_MODEL_OVERRIDE) passes through VERBATIM to the selected harness
     # — it is never run through the namespace/tier resolution below, on either harness.
     model="$model_override"
+  elif [[ -n "$provider" && -z "${!mvar-}" && -n "${PROVIDER_MODEL:-}" ]]; then
+    # A provider's own model (CELL_PROVIDER_<NAME>_MODEL, or the preset's) is what a provider
+    # window runs when neither --model nor a PER-ROLE pin names one (#1303): the harness-wide
+    # DESK_MODEL_DEFAULT / tier fallback are Anthropic names the provider's endpoint would reject.
+    model="$PROVIDER_MODEL"; RESOLVED_MODEL_SRC="provider:$provider ($(provider_var "$provider" MODEL))"
   else
     resolve_role_model "$role" "$harness" \
       || die "desk: $RESOLVED_MODEL_SRC — set $mvar in cell.env, or the harness default, or a tier fallback (docs/cellctl.md Pinned models), or pass --model explicitly"
@@ -1588,7 +1876,7 @@ cmd_desk(){
   [[ "$role" == "the-desk" && "$harness" == "claude" ]] && refuse_opus_for_the_desk "$model"
   if [[ "$CELL_KIND" == "container" ]]; then
     if [[ "$persist" == "1" && "${DRY_RUN:-0}" != "1" ]]; then
-      set_env_key "$CELL_DIR/cell.env" "$mvar" "$model_override" 0
+      apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
     fi
     container_run desk "$role" --harness "$harness" --model "$model"
     return $?
@@ -1599,7 +1887,7 @@ cmd_desk(){
   # the name — `claude --model`/`codex -m` themselves always get the bare $model.
   local model_disp="$model"
   if [[ -n "$model_override" ]]; then model_disp="$model (override)"
-  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
+  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* || "${RESOLVED_MODEL_SRC:-}" == provider:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
   fi
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
@@ -1618,8 +1906,10 @@ cmd_desk(){
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model_disp provider=${provider:-anthropic} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
-    [[ "$persist" == "1" ]] && echo "[dry-run] --set: would persist $mvar=$model_override into $CELL_DIR/cell.env (not written — dry run)"
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} role=$role model=$model_disp provider=${provider:-anthropic} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
+    if [[ "$persist" == "1" ]]; then
+      local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
+    fi
     if [[ "$CELL_KIND" == "scrubbed" ]]; then
       # The existing [dry-run] line above stays — this ADDS the plan grammar brief
       # desk-containers/09 defines (and desk-containers/10 diffs against): one [plan] env line per
@@ -1636,7 +1926,7 @@ cmd_desk(){
     return 0
   fi
   if [[ "$persist" == "1" ]]; then
-    set_env_key "$CELL_DIR/cell.env" "$mvar" "$model_override" 0
+    apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
   fi
   # Enabling the assay@assay plugin is a CLAUDE-specific action (it shells out to `claude plugin
   # enable`) — skipped on the codex arm (skills are discovered per the codex harness check block)
@@ -1722,11 +2012,20 @@ cmd_desk(){
   else
     # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
     # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
-    # Anthropic and fails, which is exactly the gap this closes. Unset provider → neither var is
-    # exported, and `claude` behaves exactly as it always has.
-    exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    # Anthropic and fails, which is exactly the gap this closes. Unset provider → none of the
+    # ANTHROPIC_* vars below is touched, and `claude` behaves exactly as it always has.
+    # With a provider (#1303): ANTHROPIC_API_KEY is UNSET first (an inherited API key wins over the
+    # auth token and silently routes to Anthropic), and ANTHROPIC_MODEL plus the three tier
+    # aliases ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL are pinned to the provider model so every
+    # alias this window or its subagents use resolves to a name the endpoint accepts. The tier
+    # aliases take the provider's own model (CELL_PROVIDER_<NAME>_MODEL / preset) when it has one,
+    # else the model this window launches with.
+    local pmodel="${PROVIDER_MODEL:-$model}"
+    exec env ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
+      ${provider:+ANTHROPIC_MODEL="$model"} \
+      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel"} \
       claude --name "$session" --model "$model" "/assay:$role"
   fi
 }
@@ -1850,7 +2149,10 @@ up_roles(){
 }
 
 cmd_up(){
-  load_cell "$1"; shift
+  # --kind is applied BEFORE load_cell (prescan_kind_override, #1303 scope 2), same as `desk`.
+  local _up_cell="$1"; shift
+  prescan_kind_override "$@"
+  load_cell "$_up_cell"
   if [[ "$CELL_KIND" == "container" ]]; then
     [[ "$ROLES" == "the-desk" ]] || die "container up currently requires ROLES=the-desk; use desk for explicit roles"
     cmd_desk "$CELL" the-desk "$@"
@@ -1867,7 +2169,7 @@ cmd_up(){
     cmd_desk "$CELL" "$first_role" "$@"
     return $?
   fi
-  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag=""
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag="" persist=0
   while [[ $# -gt 0 ]]; do case "$1" in
     --no-the-desk) no_the_desk=1; shift;;
     --with-the-desk) shift;;
@@ -1875,12 +2177,18 @@ cmd_up(){
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
     --model) model_override="${2:?--model needs a value}"; shift 2;;
-    --provider) provider_flag="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
+    --set) persist=1; shift;;
     --*) die "up: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
   case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
+  [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
+    || die "up: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
+  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
+    || die "up: --set needs --model, --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
   # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads these to
   # thread --model / --harness / --provider onto each role's own `cellctl desk` invocation.
   # Applies to EVERY role window this run opens, the-desk included — there is deliberately no
@@ -1897,9 +2205,32 @@ cmd_up(){
   [[ -z "$automate" || "$COCKPIT" == "orca" ]] \
     || die "up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is $COCKPIT"
   local roles; roles="$(up_roles "$no_the_desk")"
+  # --set persists every override GIVEN on this invocation (#1303 scope 2) through the same
+  # one-backup apply_env_kvs path `cellctl set` uses: CELL_KIND / CELL_COCKPIT / CELL_HARNESS /
+  # CELL_PROVIDER to their own keys, and --model to the ACTIVE harness's <FAMILY>_MODEL_<role> for
+  # every role window this run opens (the-desk included unless --no-the-desk) — the per-role keys,
+  # because that is exactly the set of windows the override applied to. The the-desk Opus rule
+  # applies to the persisted pin as it does to the run itself.
+  local -a persist_kvs=()
+  if [[ "$persist" == "1" ]]; then
+    local eff_harness="${harness_flag:-$CELL_HARNESS}" prole pmvar
+    if [[ -n "$model_override" ]]; then
+      for prole in $roles; do
+        if [[ "$eff_harness" == "codex" ]]; then pmvar="CODEX_MODEL_${prole//-/_}"; else pmvar="DESK_MODEL_${prole//-/_}"; fi
+        persist_kvs+=("$pmvar=$model_override")
+      done
+    fi
+    [[ -n "$harness_flag" ]] && persist_kvs+=("CELL_HARNESS=$harness_flag")
+    [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
+    [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
+    [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
+  fi
   first_window
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND cockpit=$COCKPIT session=$SESSION config=$cfg"
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} cockpit=$COCKPIT session=$SESSION config=$cfg"
+    if [[ "$persist" == "1" ]]; then
+      local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
+    fi
     [[ -n "$MODEL_OVERRIDE" ]] && echo "[dry-run] model=$MODEL_OVERRIDE (override) — applied to every role window below"
     [[ -n "$HARNESS_OVERRIDE" ]] && echo "[dry-run] harness=$HARNESS_OVERRIDE — applied to every role window below"
     [[ -n "$up_provider" ]] && echo "[dry-run] provider=$up_provider (override) — applied to every role window below"
@@ -1913,6 +2244,9 @@ cmd_up(){
       fi
     done
     return 0
+  fi
+  if [[ "$persist" == "1" ]]; then
+    apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
   fi
   case "$COCKPIT" in
     tmux)  up_tmux  "$cfg" "$roles" "$attach" ;;
@@ -2679,6 +3013,7 @@ case "${1:-}" in
   down) shift; cmd_down "${1:?cell}" "${@:2}" ;;
   new) shift; cmd_new "$@" ;;
   set) shift; cmd_set "${1:?cell}" "${@:2}" ;;
+  show) shift; cmd_show "${1:?cell}" "${@:2}" ;;
   -h|--help|"") usage 0 ;;
   *) die "unknown verb '$1' (try --help)" ;;
 esac
