@@ -106,6 +106,11 @@ facts:
   where desk-containers/11 later touches it, and is what the parity harness runs the Go
   binary AGAINST. It is not shipped in the tarball once the Go binary is (release.yml hunk),
   and it is not deleted here — its removal is a separate brief this stream has not authored.
+  AMENDMENT (desk ruling on #1193, 2026-09-20): the oracle may be edited only to remove text
+  the leak gate refuses, and the edit ships with the parity proof. The rule exists to keep
+  parity HONEST, not to preserve text the corpus gate classifies as withheld: a scaffold that
+  writes private stream identifiers into every adopter's README and roster is a defect in the
+  oracle, and both implementations are corrected together in one PR so the matrix stays whole.
 - **Parity harness (`tools/cellctl/tests/parity.test.sh` (planned)):** for each cell fixture in the
   matrix below, runs `DRY_RUN=1 <impl> <verb> <args>` under both implementations with the
   same `CELLS_ROOT`, `DESK_TOOLS_BIN`, stub `PATH` and env, normalises (the implementation's
