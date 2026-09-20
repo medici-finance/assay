@@ -1,2 +1,0 @@
-### Added
-- Release notes now close with an `authorized-by` line naming who authorized the cut — the dispatch actor on a dispatched release, an explicit not-recorded on a tag push, never blank — with the honest boundary stated beside it: it records authorization, not who or what built the artifact, and the pipeline carries no signature or provenance attestation. A source-coupling test (with a mutation positive control) reddens if the wiring is dropped from the release workflow.
