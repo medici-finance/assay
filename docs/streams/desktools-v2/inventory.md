@@ -70,7 +70,7 @@ from two *other* statusgen modes (rows 20's own function is dead on the `--scan-
 
 Already permitted in `tools/desk/internal/forgeban/allowlist.go`'s `AllowedInvocations` (ceiling 5). Per this
 brief's own facts: these are a **separable, token-custody-gated follow-wave, not transport gaps** — routed here
-as such, not to a v2 transport migration. `deskpushguard/main.go`'s line has **drifted** from the allowlist's own
+as such, not to a v2 transport migration. `tools/desk/cmd/deskpushguard/main.go`'s line has **drifted** from the allowlist's own
 (line-less) key since the allowlist was last touched: the fix for #1201 (row 41 below) added 23 lines above it.
 
 | # | file:line | tool/skill | shape | issue | seam op it should use (or GAP) | migrating brief |
@@ -137,7 +137,7 @@ group because it is a structural duplicate of the seam, not a scattered leak.
 
 | # | file:line | tool/skill | shape | issue | seam op it should use (or GAP) | migrating brief |
 |---|---|---|---|---|---|---|
-| 36 | tools/desk/cmd/deskpost/github.go:570 | deskpost (`ghClient.getPR`) | (c) | — | `GetPullRequest` | unrouted — new finding, no v2 brief names `deskpost/github.go` |
+| 36 | tools/desk/cmd/deskpost/github.go:570 | deskpost (`ghClient.getPR`) | (c) | — | `GetPullRequest` | unrouted — new finding, no v2 brief names `tools/desk/cmd/deskpost/github.go` |
 | 37 | tools/desk/cmd/deskpost/github.go:582 | deskpost (`ghClient.getIssue`/`getIssueTyped`) | (c) | — | `GetIssueTyped` | unrouted |
 | 38 | tools/desk/cmd/deskpost/github.go:656 | deskpost (`ghClient.headCommitAuthor`) | (c) | — | `GetCommit` | unrouted |
 | 39 | tools/desk/cmd/deskpost/github.go:668 | deskpost (`ghClient.listReviews`, paginated) | (c) | — | `ReviewsAtHead` | unrouted |
@@ -150,13 +150,13 @@ group because it is a structural duplicate of the seam, not a scattered leak.
 | 46 | tools/desk/cmd/deskpost/github.go:872 | deskpost (`ghClient.postComment`) | (c) | — | `PostComment`/`PostCommentTyped` | unrouted |
 | 47 | tools/desk/cmd/deskpost/github.go:896 | deskpost (`ghClient.getRepoFile`) | (c) | — | `ReadFile` | unrouted |
 | 48 | tools/desk/cmd/deskpost/github.go:926 | deskpost (`ghClient.listCommentBodies`) | (c) | — | `ListComments`/`ListCommentsTyped` | unrouted |
-| 49 | tools/desk/cmd/deskpost/github.go:947 | deskpost (`ghClient.fetchPRTrustPayload`, raw POST `/graphql` using `deskkit.PRTrustQuery`) | (c) | — | `PRTrustEvents` (the query constant is already shared/centralized in `deskkit/trustfetch.go` — only the transport differs) | unrouted |
+| 49 | tools/desk/cmd/deskpost/github.go:947 | deskpost (`ghClient.fetchPRTrustPayload`, raw POST `/graphql` using `deskkit.PRTrustQuery`) | (c) | — | `PRTrustEvents` (the query constant is already shared/centralized in `tools/desk/internal/deskkit/trustfetch.go` — only the transport differs) | unrouted |
 | 50 | tools/desk/cmd/deskpost/github.go:964 | deskpost (`ghClient.fetchIssueTrustPayload`, raw POST `/graphql` using `deskkit.IssueTrustQuery`) | (c) | — | `IssueTrustEvents` | unrouted |
 | 51 | tools/desk/cmd/deskpost/github.go:1056 | deskpost (`ghClient.markReadyForReview`, raw GraphQL mutation) | (c) | — | `MarkReadyForReview` (already enumerated — exact duplicate) | unrouted |
 | 52 | tools/desk/cmd/deskpost/github.go:1082 | deskpost (`ghClient.RepoVisibility`) | (c) | — | `RepoVisibility` (already enumerated, same name, different transport) | unrouted |
 
-`deskpost/github.go:1068,1072` (`readMergeHold`/`setMergeHold`) are **not** rows: both are unconditional
-GitHub-typed-not-applicable stubs that issue no request. `deskboard/board.go` and `issueboard/board.go`'s own
+`tools/desk/cmd/deskpost/github.go:1068,1072` (`readMergeHold`/`setMergeHold`) are **not** rows: both are unconditional
+GitHub-typed-not-applicable stubs that issue no request. `tools/desk/cmd/deskboard/board.go` and `tools/desk/cmd/issueboard/board.go`'s own
 `PRTrustQuery`/`IssueTrustQuery` consumers (rows their code comments still describe as `gh api graphql`) have
 **already migrated** onto `f.PRTrustEvents`/`f.IssueTrustEvents` — `deskboard/board.go:581` and
 `issueboard/board.go:265` call the typed `Forge` methods directly; the comments are stale, the code is not. Not
@@ -171,9 +171,9 @@ rows; not reach-arounds.
 | 55 | tools/desk/internal/deskkit/forgeresolve.go:87 (`originRemoteHost`, consulted at :145) | deskkit (`resolveForgeKind`) | (b) | — | GAP-adjacent — a documented, tested **fallback of last resort**: the roster (`ASSAY_REPO_FORGES`) is always consulted first (`TestForgeForResolvesFromRepoConfig` panics if `originRemoteHost` is reached while the roster can answer), so this is lower-severity than #1201's class (no unconditional misattribution), but it is still a hardcoded `"origin"` read used to decide which *forge* answers a caller with no roster entry, for a repo assumed to be the CWD's own checkout | unrouted — no v2 brief targets general forge-kind resolution |
 
 Excluded from this table by design, not by oversight: `tools/desk/**` has ~30 further `"origin"` literals
-(`deskflip/flip.go`, `deskmerge/{merge,currency}.go`, `deskdispatch/dispatch.go`, `deskclaim-ref/gogit.go`,
+(`tools/desk/cmd/deskflip/flip.go`, `deskmerge/{merge,currency}.go`, `tools/desk/cmd/deskdispatch/dispatch.go`, `tools/desk/cmd/deskclaim-ref/gogit.go`,
 `deskpr/{exec,deskpr}.go`, `deskwt/{deskwt,exec,roleinit}.go`, `verifyloop/{durable,preflight}.go`,
-`deskboot/boot.go`, `scanloop/{plan,lane}.go`, `deskreply/deskreply.go`, `deskroster/preflight.go`,
+`tools/desk/cmd/deskboot/boot.go`, `scanloop/{plan,lane}.go`, `tools/desk/cmd/deskreply/deskreply.go`, `tools/desk/cmd/deskroster/preflight.go`,
 `deskkit/{pushtransport,preflight}.go`). Every one of those is ordinary git-transport plumbing — "push/fetch this
 worktree's own configured `origin` remote" — not a forge-identity assumption: none of them decides *which forge
 or which repo* a Forge op targets, which is what shape (b) is about. That class is git-transport, not a
@@ -234,23 +234,23 @@ Cross-check against `tools/desk/internal/forgeban/allowlist.go` (`const allowedI
 commit), so no Go call site is double-counted or dropped between the two registers.
 
 - **`AllowedInvocations` (5 rows) → inventory rows 27–31, one-to-one.** All five map cleanly by
-  `<file>::<enclosing decl>::gh` key; only `deskpushguard/main.go`'s line number has drifted (allowlist keys
+  `<file>::<enclosing decl>::gh` key; only `tools/desk/cmd/deskpushguard/main.go`'s line number has drifted (allowlist keys
   carry no line number, only `file::func::bin`, so the drift is invisible to the allowlist itself — it only
   shows up here because this inventory cites concrete lines).
 - **`UnresolvedArgv` (16 rows) → one inventory row (32), the rest excluded with reasons already stated in the
   register itself.** `askassay/probe.go::execRead::<unresolved>` is the one row that the register's own text
   says "CAN launch `gh`" — inventory row 32. The other 15 `UnresolvedArgv` entries
-  (`clusterguard/shim.go`, `deskadvisory/advisory.go::runChecks`, four `deskboard/*.go` rows, `deskpreflight`,
-  `verifyloop/durable.go`, `internal/acp/client.go`, `internal/deskkit/callout.go`,
-  `internal/deskkit/preflight.go::coldMintProbe`, `internal/deskkit/riskcallout.go`,
+  (`tools/desk/cmd/clusterguard/shim.go`, `deskadvisory/advisory.go::runChecks`, four `deskboard/*.go` rows, `deskpreflight`,
+  `tools/desk/cmd/verifyloop/durable.go`, `tools/desk/internal/acp/client.go`, `tools/desk/internal/deskkit/callout.go`,
+  `internal/deskkit/preflight.go::coldMintProbe`, `tools/desk/internal/deskkit/riskcallout.go`,
   `internal/deskkit/untrustscan.go::runSemgrep`, `cmd/desksupervise/live.go::showClaim`, and the two
-  `internal/deskkit/migrate.go` statusgen-binary rows) are excluded per the register's own stated reasons:
+  `tools/desk/internal/deskkit/migrate.go` statusgen-binary rows) are excluded per the register's own stated reasons:
   each resolves to a non-forge binary (a cluster CLI, `desktoken`, `statusgen`, Semgrep, an agent-protocol
   server, an operator callout, or a consumer repo's own `dispatch-claim.sh`) that the checker cannot statically
   prove but that carries no forge path on any reachable branch. None is an inventory row.
 - **Inventory rows with no allowlist entry at all:** every row in groups A (statusgen — the allowlist counts
   `tools/desk/**` Go call sites only, never `statusgen/**`), C (row 33, cellctl shell), D (rows 34–35, not a
-  `gh`-subprocess shape at all), E (rows 36–52, `deskpost/github.go` — an HTTP client, not a `gh` subprocess, so
+  `gh`-subprocess shape at all), E (rows 36–52, `tools/desk/cmd/deskpost/github.go` — an HTTP client, not a `gh` subprocess, so
   `forgeban`'s AST checker — which greps for `exec.Command`/`gh` argv — cannot and does not see it), F (rows
   53–55, hardcoded-remote shape, not a `gh`-subprocess shape), G (rows 56–59, shell scripts outside
   `tools/desk/**`), and H (rows 60–69, YAML, not Go). `forgeban` is scoped to `tools/desk/**` Go `exec.Command`
@@ -263,7 +263,7 @@ One row per text-carrying `Forge` write call site and per push-path text surface
 Seeded from `docs/streams/desktools-v2/spec.md` §8.2 and re-verified line by line against `origin/main` @
 `951ca784d` for this inventory (`desktools-v2/10` ticks against this table). Every citation below was read
 directly, not copied — `deskpr edit`'s row corrects `spec.md`'s bare `edit.go:NNN` citations to their real
-package path, `tools/desk/cmd/deskpr/edit.go` (there is no `deskpost/edit.go`; `EditChange`'s only definition is
+package path, `tools/desk/cmd/deskpr/edit.go` (there is no deskpost/edit.go; `EditChange`'s only definition is
 in `deskpr`). All other citations from `spec.md` §8.2 checked out unchanged.
 
 | Verb (write) | Surface | Secret scan | Self-contained + withheld (public targets) | Override offered |
@@ -284,11 +284,11 @@ in `deskpr`). All other citations from `spec.md` §8.2 checked out unchanged.
 | `deskprovenance` (tools/desk/cmd/deskprovenance/main.go:238,241) | tool-composed comment | **no** | **no** | — |
 | `desklabel`, `deskpost label`, `deskflip`, `deskdispatch`, `deskfile new`, `deskclose superseded` (`ApplyLabels`) | label names | **no** | **no** | — |
 | `deskpushguard` (pre-push hook) | commit messages, ref names, diff | **no** — guards lineage and merged-branch pushes; scans no text | **no** | — |
-| **`deskpost/github.go`'s own `ghClient` writes** (rows 45–46, 51 above: `postReview`, `postComment`, `markReadyForReview`) | review body, comment body, ready-flip mutation | **outside the check inventory entirely** — these never construct a `Forge`, so `ResolveForge`'s wrap (§8.3) cannot reach them even after `desktools-v2/10` lands, until rows 36–52 are migrated onto the seam | **no** | no |
+| **`tools/desk/cmd/deskpost/github.go`'s own `ghClient` writes** (rows 45–46, 51 above: `postReview`, `postComment`, `markReadyForReview`) | review body, comment body, ready-flip mutation | **outside the check inventory entirely** — these never construct a `Forge`, so `ResolveForge`'s wrap (§8.3) cannot reach them even after `desktools-v2/10` lands, until rows 36–52 are migrated onto the seam | **no** | no |
 
 Access-pattern (N+1) candidates for `desktools-v2/09`, seeded here rather than re-derived there: a board sweep
-that calls `PRTrustEvents`/`ReviewsAtHead`/`ChecksAtHead` once per PR (`deskboard/board.go`'s `prBlessed` and its
-CI-rollup read) and once per issue (`issueboard/board.go`'s `fetchIssueBlessed`) is exactly the N+1 shape
+that calls `PRTrustEvents`/`ReviewsAtHead`/`ChecksAtHead` once per PR (`tools/desk/cmd/deskboard/board.go`'s `prBlessed` and its
+CI-rollup read) and once per issue (`tools/desk/cmd/issueboard/board.go`'s `fetchIssueBlessed`) is exactly the N+1 shape
 Principle 3 targets — each already routes through a typed `Forge` op (not a reach-around; the two migrated
 consumers noted in group E), so `desktools-v2/09`'s work is adding a *snapshot* operation (one review-queue /
 board-sweep GraphQL read) these can fold onto, not fixing a bypass.
