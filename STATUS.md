@@ -63,14 +63,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 61 total — 61 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (41 desk-actionable of 62 total — 62 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (40)
+### Desk-actionable (41)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -89,6 +89,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -244,7 +245,7 @@ _None._
 - 10 Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven — blocked (wave 0)
 - 11 The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it — blocked (wave 1)
 - 12 Retire the staged-copy hand-landing once the workflow App PR path is proven — blocked (wave 2)
-- 13 Worker-operations vitals — the self-report resource block — todo (wave 2)
+- 13 Worker-operations vitals — the self-report resource block — implemented (wave 2)
 - 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
 - 16 Verification wake conditions — stop repeating unchanged blocked checks — todo (wave 0)
