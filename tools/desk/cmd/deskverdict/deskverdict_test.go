@@ -239,6 +239,198 @@ func TestCLIKeygenRequiresPriv(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Role-keyed signing (house-private brief, Task 1)
+// ---------------------------------------------------------------------------
+
+// writeRolePEM writes a fresh RSA private key PEM at <role>-app.pem, mirroring
+// writePrivPEM but for an arbitrary role's App-credential filename.
+func writeRolePEM(t *testing.T, dir, role string) (string, *rsa.PrivateKey) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der := x509.MarshalPKCS1PrivateKey(key)
+	pth := filepath.Join(dir, role+"-app.pem")
+	if err := os.WriteFile(pth, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return pth, key
+}
+
+// TestCLIIssueLoopRoundtrip is the positive path end to end through the CLI:
+// sign --key issue-loop, verify --key issue-loop against ASSAY_ISSUE_LOOP_PUBKEY
+// (never ASSAY_VERIFIER_PUBKEY, which stays unset for the whole test) — proving
+// the selector actually reads the ISSUE-LOOP variable, not merely defaulting
+// somewhere that happens to work.
+func TestCLIIssueLoopRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	privPath, _ := writeRolePEM(t, dir, "issue-loop")
+
+	pubOut, _, code := capture(func() int { return cmdPubkey([]string{"--pem", privPath}) })
+	if code != 0 {
+		t.Fatalf("pubkey exit %d", code)
+	}
+
+	payloadPath := filepath.Join(dir, "sd.json")
+	os.WriteFile(payloadPath, []byte(`{"schema":"scan-delta-v1","entries":[]}`), 0o644)
+	signOut, sErr, code := capture(func() int {
+		return cmdSign([]string{"--payload", payloadPath, "--key", "issue-loop", "--pem", privPath})
+	})
+	if code != 0 {
+		t.Fatalf("sign --key issue-loop exit %d (%s)", code, sErr)
+	}
+	if !strings.Contains(signOut, "role=issue-loop") {
+		t.Fatalf("signed body does not declare role=issue-loop:\n%s", signOut)
+	}
+
+	t.Setenv(deskkit.IssueLoopPubkeyVar, pubOut)
+	t.Setenv(deskkit.VerifierPubkeyVar, "") // must NOT be consulted for this role
+	_, vErr, code := capture(func() int {
+		return cmdVerify([]string{"--body", filepath.Join(dir, "sd.out"), "--key", "issue-loop"})
+	})
+	if code != 0 {
+		t.Fatalf("verify --key issue-loop should exit 0, got %d (%s)", code, vErr)
+	}
+	if !strings.Contains(vErr, "verified") {
+		t.Fatalf("verify stderr missing 'verified': %s", vErr)
+	}
+}
+
+// TestCLIRoleMismatchExit1: sign --key issue-loop, then verify --key verifier
+// against the SAME signature and the correct verifier pubkey for a DIFFERENT
+// keypair — irrelevant, because the declared-role check must refuse before the
+// crypto step is ever reached. This is the CLI-level twin of
+// deskkit.TestRoleMismatchRefusedBeforeCrypto.
+func TestCLIRoleMismatchExit1(t *testing.T) {
+	dir := t.TempDir()
+	ilPriv, _ := writeRolePEM(t, dir, "issue-loop")
+	ilPubOut, _, _ := capture(func() int { return cmdPubkey([]string{"--pem", ilPriv}) })
+
+	payloadPath := filepath.Join(dir, "sd.json")
+	os.WriteFile(payloadPath, []byte(`{"a":1}`), 0o644)
+	capture(func() int {
+		return cmdSign([]string{"--payload", payloadPath, "--key", "issue-loop", "--pem", ilPriv})
+	})
+
+	// Verify the SAME body/signature against --key verifier, using the SAME
+	// keypair's public half in ASSAY_VERIFIER_PUBKEY — so if the role check were
+	// missing, the crypto alone would pass.
+	t.Setenv(deskkit.VerifierPubkeyVar, ilPubOut)
+	_, vErr, code := capture(func() int {
+		return cmdVerify([]string{"--body", filepath.Join(dir, "sd.out"), "--key", "verifier"})
+	})
+	if code != 1 {
+		t.Fatalf("cross-role verify must exit 1 (refused), got %d (%s)", code, vErr)
+	}
+	if !strings.Contains(vErr, "refused") {
+		t.Fatalf("stderr must contain 'refused': %s", vErr)
+	}
+}
+
+// TestCLISignUnknownKeyExit5: an unrecognized --key role on sign is refused
+// (exit 5) and never falls back to verifier.
+func TestCLISignUnknownKeyExit5(t *testing.T) {
+	dir := t.TempDir()
+	payloadPath := filepath.Join(dir, "p.json")
+	os.WriteFile(payloadPath, []byte(`{}`), 0o644)
+	_, sErr, code := capture(func() int {
+		return cmdSign([]string{"--payload", payloadPath, "--key", "bogus-role"})
+	})
+	if code != 5 {
+		t.Fatalf("unrecognized --key on sign should exit 5, got %d (%s)", code, sErr)
+	}
+	if !strings.Contains(sErr, "unrecognized") {
+		t.Fatalf("stderr should name the role as unrecognized: %s", sErr)
+	}
+}
+
+// TestCLIVerifyUnknownKeyExit6: an unrecognized --key role on verify is
+// could-not-check (exit 6), never a pass and never a fall-back to verifier.
+func TestCLIVerifyUnknownKeyExit6(t *testing.T) {
+	dir := t.TempDir()
+	bodyPath, _ := signBodyWithNewKey(t, dir)
+	_, vErr, code := capture(func() int {
+		return cmdVerify([]string{"--body", bodyPath, "--key", "bogus-role"})
+	})
+	if code != 6 {
+		t.Fatalf("unrecognized --key on verify should exit 6, got %d (%s)", code, vErr)
+	}
+	if !strings.Contains(vErr, "could not check") {
+		t.Fatalf("stderr must contain 'could not check': %s", vErr)
+	}
+}
+
+// TestCLIIssueLoopEnvVarBase64: ASSAY_ISSUE_LOOP_PUBKEY also accepts
+// base64-of-PEM, the newline-safe Actions-variable form — the issue-loop twin
+// of TestCLIVerifyFromEnvVarBase64.
+func TestCLIIssueLoopEnvVarBase64(t *testing.T) {
+	dir := t.TempDir()
+	privPath, _ := writeRolePEM(t, dir, "issue-loop")
+	pubOut, _, _ := capture(func() int { return cmdPubkey([]string{"--pem", privPath}) })
+
+	payloadPath := filepath.Join(dir, "sd.json")
+	os.WriteFile(payloadPath, []byte(`{"entries":[]}`), 0o644)
+	capture(func() int {
+		return cmdSign([]string{"--payload", payloadPath, "--key", "issue-loop", "--pem", privPath})
+	})
+
+	t.Setenv(deskkit.IssueLoopPubkeyVar, base64.StdEncoding.EncodeToString([]byte(pubOut)))
+	_, vErr, code := capture(func() int {
+		return cmdVerify([]string{"--body", filepath.Join(dir, "sd.out"), "--key", "issue-loop"})
+	})
+	if code != 0 {
+		t.Fatalf("verify via issue-loop env base64 should exit 0, got %d (%s)", code, vErr)
+	}
+}
+
+// TestCLIIssueLoopNoPubkeyConfiguredExit6: neither --pubkey nor
+// ASSAY_ISSUE_LOOP_PUBKEY is set — could-not-check (exit 6), never a silent
+// pass, and the message names the issue-loop role/variable, not the
+// verifier's.
+func TestCLIIssueLoopNoPubkeyConfiguredExit6(t *testing.T) {
+	dir := t.TempDir()
+	privPath, _ := writeRolePEM(t, dir, "issue-loop")
+	payloadPath := filepath.Join(dir, "sd.json")
+	os.WriteFile(payloadPath, []byte(`{}`), 0o644)
+	capture(func() int {
+		return cmdSign([]string{"--payload", payloadPath, "--key", "issue-loop", "--pem", privPath})
+	})
+
+	t.Setenv(deskkit.IssueLoopPubkeyVar, "")
+	_, vErr, code := capture(func() int {
+		return cmdVerify([]string{"--body", filepath.Join(dir, "sd.out"), "--key", "issue-loop"})
+	})
+	if code != 6 {
+		t.Fatalf("unconfigured issue-loop verify should exit 6, got %d (%s)", code, vErr)
+	}
+	if !strings.Contains(vErr, deskkit.IssueLoopPubkeyVar) {
+		t.Fatalf("stderr should name %s, not the verifier's variable: %s", deskkit.IssueLoopPubkeyVar, vErr)
+	}
+}
+
+// TestCLISignIssueLoopPEMFromEnv proves the PRIVATE-key resolution is also
+// role-keyed: with no --pem, sign --key issue-loop must read ISSUE_LOOP_PEM
+// (never VERIFIER_PEM).
+func TestCLISignIssueLoopPEMFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	privPath, _ := writeRolePEM(t, dir, "issue-loop")
+
+	t.Setenv("ISSUE_LOOP_PEM", privPath)
+	payloadPath := filepath.Join(dir, "sd.json")
+	os.WriteFile(payloadPath, []byte(`{"a":1}`), 0o644)
+	signOut, sErr, code := capture(func() int {
+		return cmdSign([]string{"--payload", payloadPath, "--key", "issue-loop"})
+	})
+	if code != 0 {
+		t.Fatalf("sign --key issue-loop via ISSUE_LOOP_PEM should exit 0, got %d (%s)", code, sErr)
+	}
+	if !strings.Contains(signOut, "role=issue-loop") {
+		t.Fatalf("signed body does not declare role=issue-loop:\n%s", signOut)
+	}
+}
+
 func TestCLIUsageAndUnknown(t *testing.T) {
 	if _, _, code := capture(func() int { return run(nil) }); code != 5 {
 		t.Fatalf("no args should exit 5, got %d", code)

@@ -14,7 +14,60 @@ import (
 const (
 	toolName = "deskevidence"
 	maxBytes = 256 * 1024 // generous but bounded; brief files are ~a few KB
+
+	// verifyOutcomesMaxBytes is the override cap for the verify-outcomes.jsonl append-only
+	// AGGREGATE sidecar and its future date-sharded rotation files (see
+	// verifyOutcomesGlobPattern below) — kept as its own named constant, sitting next to its
+	// own justification, the same pattern deskevidenceUnnumberedCap already uses
+	// (internal/deskkit/ratelimit.go) for a per-tool override that must not read as an
+	// unexplained magic number beside the general cap it overrides.
+	//
+	// #1338: maxBytes was sized for a BRIEF file — one file per stream item, a few KB — and
+	// was never meant to bound this file's shape. verify-outcomes.jsonl is a single
+	// fleet-wide log that every verify-desk flip, across every stream in every consuming
+	// repo, appends exactly one row to; it grows monotonically with no natural per-write
+	// ceiling. At 291722 bytes the general cap already refused every further append,
+	// fleet-wide, with no route through except raising THIS file's own ceiling.
+	//
+	// 4 MiB is a throughput-derived CEILING, not a measurement of the file's eventual
+	// steady-state size (same honesty as the ratelimit.go constants this mirrors): at
+	// roughly 100-200 bytes/row it holds on the order of 20,000-40,000 verify-outcome rows —
+	// comfortably past the 291722-byte trigger that filed #1338 — while still refusing an
+	// unbounded write (a corrupted or hostile evidence file cannot grow this one sidecar past
+	// 4 MiB in a single commit). It is NOT a substitute for rotation: see
+	// verifyOutcomesGlobPattern and statusgen/verifyoutcomes_union_test.go for the read-side
+	// support a future rotation needs BEFORE the forge's write-path shrink-refusal
+	// (write_file_shrink_refused) is ever exercised against this file. Lowering this
+	// constant is the safe direction to be wrong in; raising it further needs the kind of
+	// argument this comment gives, not a bare bump.
+	verifyOutcomesMaxBytes = 4 * 1024 * 1024
 )
+
+// verifyOutcomesGlobPattern is the ONE glob shape that names the aggregate verify-outcomes
+// sidecar AND every future rotation shard of it. It deliberately matches both the canonical
+// unsharded file (docs/streams/verify-outcomes.jsonl) and any dated shard a future rotation
+// creates (docs/streams/verify-outcomes-2026-10.jsonl, …) with a single pattern, so the write
+// side (the raised cap below) and the read side (statusgen's shard-glob union, which must use
+// this identical literal — the two live in separate Go modules and cannot share the constant
+// directly) never drift onto two different naming rules. #1338 part 2: the reader must exist
+// BEFORE any rotation is attempted, because the forge write path refuses shrinking a file at
+// all (the write_file_shrink_refused golden) — a rotation that shrinks the unsharded file with
+// no shard-aware reader in place would make an already-written row invisible to every reader
+// at the moment it lands.
+const verifyOutcomesGlobPattern = "verify-outcomes*.jsonl"
+
+// isVerifyOutcomesSidecar reports whether repoPath (already known to be underDocsStreams)
+// names the aggregate verify-outcomes sidecar or one of its rotation shards, directly under
+// docs/streams/ — not a same-named file nested in a stream subdirectory, which would be a
+// different, unrelated artifact this override must not reach.
+func isVerifyOutcomesSidecar(repoPath string) bool {
+	cleaned := path.Clean(repoPath)
+	if path.Dir(cleaned) != "docs/streams" {
+		return false
+	}
+	matched, err := path.Match(verifyOutcomesGlobPattern, path.Base(cleaned))
+	return err == nil && matched
+}
 
 // cmdEvidence implements the evidence-commit logic. Flow:
 //  1. Parse args, validate repo + evidence file
@@ -165,8 +218,19 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
 	}
-	if len(localContent) > maxBytes {
-		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxBytes, len(localContent)))
+	// The general per-file cap is sized for a brief file, not the verify-outcomes aggregate
+	// sidecar (or a future rotation shard of it) — see verifyOutcomesMaxBytes's comment for
+	// why that file needs its own, larger ceiling (#1338). Keyed on evidenceRepoPath (the
+	// path localContent was actually read from) rather than targetRepoPath: with --brief-path
+	// set, evidenceRepoPath names the small evidence snippet being merged in, not the brief
+	// it lands in, and this override must never widen the cap for an unrelated snippet just
+	// because it happens to land inside a big brief.
+	effectiveMaxBytes := maxBytes
+	if isVerifyOutcomesSidecar(evidenceRepoPath) {
+		effectiveMaxBytes = verifyOutcomesMaxBytes
+	}
+	if len(localContent) > effectiveMaxBytes {
+		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", effectiveMaxBytes, len(localContent)))
 	}
 
 	// docs/streams/ scoping guard (deskevidence: refuse a landing that adds a statusgen
@@ -390,7 +454,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// principal it is on behalf of as a git trailer, or refuses (exit 5) rather than land
 	// one without it. Resolved immediately before the write — every gate above it (the
 	// lint-diff check, the rate limit) already ran.
-	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("")
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
 	}
@@ -443,7 +507,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
 	// On-behalf-of trailer (multi-principal/01) — see the direct-write path above.
-	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("")
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
 	}

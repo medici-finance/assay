@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Container delegation tests: no Docker, network, credentials, or host worktree.
 set -euo pipefail
-CELLCTL_UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL_UNDER_TEST="${CELLCTL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cellctl}"
+[[ "$CELLCTL_UNDER_TEST" == /* ]] || CELLCTL_UNDER_TEST="$PWD/$CELLCTL_UNDER_TEST"
 export CELLCTL_UNDER_TEST
 python3 - <<'PY'
 import json, os, pathlib, subprocess, tempfile, unittest

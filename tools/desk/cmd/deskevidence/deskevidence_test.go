@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -398,6 +399,101 @@ func TestOversizeRefused(t *testing.T) {
 	root := rootWithFile(t, evidencePath, big)
 	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
 		t.Fatalf("oversize exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("oversize refusal still reached the forge: %v", f.hits)
+	}
+}
+
+// bigVerifyOutcomesContent returns synthetic verify-outcomes.jsonl content of AT LEAST
+// minBytes, built from repeated realistic rows — not a single run of one repeated byte the
+// way strings.Repeat("x", n) is. It exercises the sidecar's real shape (many short JSON
+// lines) without also tripping BodyCheck's long-high-entropy-run secret heuristic, which a
+// giant single unbroken token (over a few hundred bytes) is exactly shaped to trip.
+func bigVerifyOutcomesContent(minBytes int) string {
+	var b strings.Builder
+	for i := 0; b.Len() < minBytes; i++ {
+		fmt.Fprintf(&b, `{"ts": "2026-09-07T01:19:23Z", "brief": "desk-tools/%d", "outcome": "verified", "rows_passed": 5, "rows_total": 5, "sha": "67abbac"}`+"\n", i)
+	}
+	return b.String()
+}
+
+// TestVerifyOutcomesSidecarOversizeAllowed is #1338's fail-first case: a sidecar just over the
+// general 262144-byte cap — the same size class that filed the issue (whose own trigger was
+// 291722 bytes). Before the fix this refused with "evidence file exceeds 262144 bytes (N)" —
+// the same shape as the cited "…(291722)" — because verify-outcomes.jsonl was judged against
+// the general maxBytes cap like any other evidence file. After the fix the override cap
+// (verifyOutcomesMaxBytes, 4 MiB) applies instead and the commit succeeds.
+func TestVerifyOutcomesSidecarOversizeAllowed(t *testing.T) {
+	f, errBuf := setupFake(t)
+	content := bigVerifyOutcomesContent(maxBytes + 1) // over the general cap, #1338's own size class
+	evidencePath := "docs/streams/verify-outcomes.jsonl"
+	root := rootWithFile(t, evidencePath, content)
+
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
+		t.Fatalf("verify-outcomes.jsonl at %d bytes exit = %d (stderr %q), want %d",
+			len(content), code, errBuf.String(), deskkit.ExitOK)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected exactly 1 write to land, got %d (hits %v)", f.putCalls, f.hits)
+	}
+	if got := len(f.putContent); got != len(content) {
+		t.Fatalf("landed content length = %d, want %d", got, len(content))
+	}
+}
+
+// TestVerifyOutcomesSidecarStillCapped: the override is a raised ceiling, not an exemption
+// (#439's "an unscoped exemption fails OPEN" property, restated for this cap) — a
+// verify-outcomes.jsonl write past verifyOutcomesMaxBytes still refuses, naming that cap in
+// the message rather than the general one.
+func TestVerifyOutcomesSidecarStillCapped(t *testing.T) {
+	f, errBuf := setupFake(t)
+	content := strings.Repeat("x", verifyOutcomesMaxBytes+1)
+	evidencePath := "docs/streams/verify-outcomes.jsonl"
+	root := rootWithFile(t, evidencePath, content)
+
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
+		t.Fatalf("over-the-override-cap exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("oversize refusal still reached the forge: %v", f.hits)
+	}
+	wantMsg := fmt.Sprintf("evidence file exceeds %d bytes (%d)", verifyOutcomesMaxBytes, len(content))
+	if !strings.Contains(errBuf.String(), wantMsg) {
+		t.Fatalf("stderr = %q, want it to contain %q", errBuf.String(), wantMsg)
+	}
+}
+
+// TestVerifyOutcomesShardOversizeAllowed: a future ROTATION shard (verify-outcomes-<tag>.jsonl,
+// #1338 part 2) gets the same raised cap as the canonical unsharded file — the write side must
+// not silently drop back to the general cap the moment the file is renamed for rotation.
+func TestVerifyOutcomesShardOversizeAllowed(t *testing.T) {
+	f, errBuf := setupFake(t)
+	content := bigVerifyOutcomesContent(maxBytes + 1)
+	evidencePath := "docs/streams/verify-outcomes-2026-10.jsonl"
+	root := rootWithFile(t, evidencePath, content)
+
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
+		t.Fatalf("rotation shard at %d bytes exit = %d (stderr %q), want %d",
+			len(content), code, errBuf.String(), deskkit.ExitOK)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected exactly 1 write to land, got %d", f.putCalls)
+	}
+}
+
+// TestVerifyOutcomesSidecarNameNotOverridenOutsideDocsStreamsRoot: the override is keyed on
+// the file sitting DIRECTLY under docs/streams/ — a same-named file nested one level deeper
+// (a different stream's own artifact that happens to share the basename) must NOT inherit the
+// raised cap.
+func TestVerifyOutcomesSidecarNameNotOverridenOutsideDocsStreamsRoot(t *testing.T) {
+	f, _ := setupFake(t)
+	content := strings.Repeat("x", maxBytes+1)
+	evidencePath := "docs/streams/some-stream/verify-outcomes.jsonl"
+	root := rootWithFile(t, evidencePath, content)
+
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
+		t.Fatalf("nested same-named file exit = %d, want %d (must NOT inherit the override cap)", code, deskkit.ExitRefused)
 	}
 	if len(f.hits) != 0 {
 		t.Fatalf("oversize refusal still reached the forge: %v", f.hits)

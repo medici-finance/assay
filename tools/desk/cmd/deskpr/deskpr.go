@@ -324,7 +324,7 @@ func cmdCreate(args []string) (err error) {
 	// only — every gate above (the Brief:/Issue: trailer parse, the secret/self-contain
 	// scans) already ran against the caller-supplied body, so this cannot change what any
 	// of them saw.
-	prBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	prBody, oerr := deskkit.AppendOnBehalfOf(body, "", facts.repo)
 	if oerr != nil {
 		return oerr
 	}
