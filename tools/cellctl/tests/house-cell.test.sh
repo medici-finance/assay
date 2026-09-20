@@ -3,6 +3,8 @@
 #
 # What it proves (each an `assert` below):
 #   new    scaffolds cell.env (CELL_KIND=house, CELL_ROOTS) + home/ with the operator config home
+#   --kind (#1303) a one-run kind override on desk/up/show, refused naming CELL_ROOTS when the
+#          cell lacks it, never persisted without --set; the next plain boot is unchanged
 #          reached by symlink, never copied; a second `new` on the same name REFUSES
 #   check  passes on a well-formed house cell and FAILS (exit 1, a MISS row) when a root lacks docs/streams/
 #   desk   creates the role worktree under <cell>/worktrees/<role>, LOCKS it, starts the (stubbed)
@@ -29,6 +31,14 @@ fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 sha(){ if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 real(){ (cd "$1" && pwd -P); }
+
+# A caller's shell may already carry a cell's exported environment (cellctl sources cell.env with
+# `set -a`), which would leak into every cell loaded here — including the [legacy] k8s-default
+# assertions below, which assume no CELL_KIND/CELL_ROOTS is already set. Clear it, same convention
+# as every other file in this suite.
+unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_ROOTS CELLS_CONFIG \
+      CELL_COCKPIT ROLES DESKD DESKD_ADDR DESKD_INDEX DESK_MODEL_DEFAULT TMUX_SESSION \
+      CELL_ATTENDED
 
 # ---------------------------------------------------------------- fixtures
 # A private HOME so nothing of the operator's is read or linked; git identity via its .gitconfig.
@@ -174,6 +184,27 @@ out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk 2>&1)"
 assert "cell.env without CELL_KIND loads as k8s" 'grep -q "kind=k8s role=the-desk" <<<"$out"'
 assert "k8s cell without CELL_ROOTS says so (NOTICE) and boots with desk_roots=unset" 'grep -q "NOTICE: cell.env has no CELL_ROOTS" <<<"$out" && grep -q "desk_roots=unset" <<<"$out"'
 assert "k8s session name keeps <cell>-<short role>" 'grep -q "session=legacy-the-desk " <<<"$out"'
+
+# ---------------------------------------------------------------- --kind per-run override (#1303 scope 2)
+echo "[--kind: one-run kind override, cell.env untouched, preconditions still asserted]"
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk --kind house 2>&1)" && rc=0 || rc=$?
+assert "k8s cell → --kind house without CELL_ROOTS is refused naming CELL_ROOTS" '[[ $rc -ne 0 ]] && grep -q "CELL_ROOTS" <<<"$out"'
+assert "cell.env is untouched by the refused override" '! grep -q "^CELL_KIND=" "$CELLS_ROOT/legacy/cell.env"'
+printf 'CELL_ROOTS=%s\n' "$ROOTS" >> "$CELLS_ROOT/legacy/cell.env"
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk --kind house 2>&1)" && rc=0 || rc=$?
+assert "with CELL_ROOTS present, --kind house loads the cell as house for this run" '[[ $rc -eq 0 ]] && grep -q "kind=house (override) role=the-desk" <<<"$out"'
+assert "the run takes the house shape (stamped session name)" 'grep -qE "session=legacy-the-desk-[0-9]{8}T[0-9]{6}Z" <<<"$out"'
+assert "cell.env still carries no CELL_KIND (override never persisted without --set)" '! grep -q "^CELL_KIND=" "$CELLS_ROOT/legacy/cell.env"'
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk 2>&1)" && rc=0 || rc=$?
+assert "the next plain boot is k8s again" 'grep -q "kind=k8s role=the-desk" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk legacy the-desk --kind bogus 2>&1)" && rc=0 || rc=$?
+assert "an unknown --kind is refused before loading" '[[ $rc -ne 0 ]] && grep -q -- "--kind must be one of k8s|house|container|scrubbed" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" up legacy --cockpit tmux --kind house 2>&1)" && rc=0 || rc=$?
+assert "up --kind house threads the override into the up plan" '[[ $rc -eq 0 ]] && grep -q "kind=house (override)" <<<"$out"'
+out="$("$CELLCTL" show legacy --kind house 2>&1)" && rc=0 || rc=$?
+assert "show --kind reports the flag as the source" '[[ $rc -eq 0 ]] && grep -qx "\[show\] CELL_KIND=house (flag)" <<<"$out"'
+out="$("$CELLCTL" show legacy 2>&1)" && rc=0 || rc=$?
+assert "show on the legacy cell reports the compiled k8s default as such" '[[ $rc -eq 0 ]] && grep -qx "\[show\] CELL_KIND=k8s (default)" <<<"$out"'
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "house-cell.test.sh: OK"; else echo "house-cell.test.sh: $fails FAILED"; exit 1; fi

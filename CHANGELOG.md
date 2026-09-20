@@ -23,6 +23,50 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.15 — 2026-09-19
+
+### Added
+- A rotation-aware `verify-outcomes*.jsonl` glob-union reader in `statusgen`, so a future
+  date-sharded rotation of the verify-outcomes sidecar has read-side support in place before
+  any rotation is attempted.
+- Every per-run `cellctl` choice is now a flag, persistable and readable (#1303): `desk`/`up`
+  accept `--kind`, `--cockpit`, `--harness`, `--provider`, `--model` for one run; `--set` persists
+  every override given in that invocation (each to its own `cell.env` key, one backup first);
+  `cellctl set <cell> --kind/--cockpit/--harness/--provider` is sugar for the matching
+  `KEY=VALUE` under the same validation; a kind change refuses before writing when the target
+  kind's precondition (`CELL_CONTAINER_LAUNCHER`, `CELL_ROOTS`, `CELL_REPO_SLUG`) is missing; and
+  a new `cellctl show <cell>` prints each effective value with its source
+  (`flag` / `cell.env` / `default`).
+- `cellctl` gains built-in provider presets `kimi` and `glm` for running the claude harness against
+  Anthropic-compatible endpoints (#1303): `--provider kimi|glm` on `desk`/`up`/`set` works with no
+  `cell.env` line beyond the operator exporting `KIMI_API_KEY` / `ZAI_API_KEY` in their shell
+  (cellctl never stores or prints a token value); a new `CELL_PROVIDER_<NAME>_MODEL` key (preset
+  defaults `k3[1m]` / `glm-5.3[1m]`) is the model a provider window runs absent `--model` or a
+  per-role pin; the launch unsets `ANTHROPIC_API_KEY` and exports `ANTHROPIC_MODEL` plus the three
+  `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` aliases; `cellctl check`/`show` report the endpoint,
+  the token env var's name, set/unset and the model, each tagged preset/cell.env; codex + provider
+  is refused.
+
+### Fixed
+- `deskevidence` no longer refuses appends to `docs/streams/verify-outcomes.jsonl` past the
+  general 256 KiB per-file cap — the append-only aggregate sidecar now carries its own
+  documented 4 MiB ceiling (#1338).
+- `statusgen --corroborate` no longer reads the on-behalf-of attribution form (`on-behalf-of human:<login>` in a Runner cell or prose, and the `On-behalf-of:` trailer) as a `human:<name>` sign-off stamp or an acceptance citation; only sign-off vocabulary is judged, so App-authored Evidence rows carrying the principal the attribution lint requires no longer red the checker (#1335).
+
+## v1.0.14 — 2026-09-19
+
+### Added
+- `DR-forge-neutral-19` design-decision record: transcribes the driver's ruling on #1256
+  that merge to the protected branch is not server-side enforced today and that the fix
+  shape is the `human-approved` required status check `forge-neutral/19` specifies; the
+  brief now cites it via `design:`. Record-only — the workflow file and the ruleset entry
+  stay the repo admin's follow-on acts.
+- `capability:cadence-tick` joins the closed capability vocabulary: the scheduled recurring prompt that wakes a desk-role window on the clock, bound per harness in `plugins/assay/references/{claude-code,codex,cursor}.md` (Claude Code: the recurring-prompt loop the coordinator window already arms; Codex/Cursor: the launcher's or an outer scheduler's tick-mode interval, stated as a degradation).
+
+### Changed
+- `deskroster`: the verify-desk default width is now 6 (the measured safe width, equal to its declared ceiling) instead of the sequential 1 it decayed back to after the one-hour width TTL.
+- `verify-desk` skill: arming the cadence tick is a REQUIRED, named boot step (a window that cannot arm it says `could-not-check` and files it, never runs keystroke-driven); "never end a turn with a non-empty dispatchable queue" plus a printed stand-down checklist replace the round-summary-as-stopping-point; a desk-set width is re-asserted on every tick so it no longer decays mid-drain; the stale-heartbeat case is named in the default-forward list as a STOP class, never a question for the driver (#1310).
+
 ## v1.0.13 — 2026-09-19
 
 ### Added

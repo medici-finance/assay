@@ -19,6 +19,9 @@
 #   guard   --automate is refused unless the resolved cockpit is orca
 #   check   carries a cockpit row, and states orca reachability whenever orca is installed
 #
+#   #1303   `up --cockpit <c> --set` would persist CELL_COCKPIT (dry-run), `set --cockpit` sugar
+#           drives the next up, `show` names the cockpit's source, `desk --cockpit --set` accepted
+#
 # No network, no tmux server, no real cockpit and no real desk-tools: every binary the script
 # probes is a stub on a private PATH, and `DRY_RUN=1` means nothing is ever launched.
 # The assert strings are single-quoted on purpose (expanded by eval at assert time), and the
@@ -223,6 +226,28 @@ herdr_off; orca_off
 sed -i.bak 's/^CELL_COCKPIT=auto$/CELL_COCKPIT=herdr/' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
 out="$("$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
 assert "an explicit cockpit that is not installed is a MISS row, and check fails" '[[ $rc -eq 1 ]] && grep -q "MISS  cockpit: cockpit herdr" <<<"$out"'
+
+# ---------------------------------------------------------------- --cockpit --set / show (#1303 scope 2)
+echo "[--set: up --cockpit <c> --set persists CELL_COCKPIT; show names the source]"
+sed -i.bak 's/^CELL_COCKPIT=.*$/CELL_COCKPIT=auto/' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+herdr_on
+out="$(plan --cockpit herdr --set)" && rc=0 || rc=$?
+assert "up --cockpit herdr --set dry-run exits 0" '[[ $rc -eq 0 ]]'
+assert "dry-run says it would persist CELL_COCKPIT=herdr" 'grep -q "would persist CELL_COCKPIT=herdr" <<<"$out"'
+assert "dry-run does not write cell.env" 'grep -qx "CELL_COCKPIT=auto" "$CELL/cell.env"'
+out="$(plan --cockpit bogus)" && rc=0 || rc=$?
+assert "up --cockpit bogus is refused" '[[ $rc -ne 0 ]]'
+out="$("$CELLCTL" show example-cell --cockpit herdr 2>&1)" && rc=0 || rc=$?
+assert "show --cockpit herdr: source=flag" '[[ $rc -eq 0 ]] && grep -qx "\[show\] CELL_COCKPIT=herdr (flag)" <<<"$out"'
+out="$("$CELLCTL" show example-cell 2>&1)" && rc=0 || rc=$?
+assert "show without a flag: the cell.env value and source" 'grep -qx "\[show\] CELL_COCKPIT=auto (cell.env)" <<<"$out"'
+"$CELLCTL" set example-cell --cockpit tmux >/dev/null
+out="$(plan)" && rc=0 || rc=$?
+assert "cellctl set --cockpit tmux sugar drives the next up (explicit: cell.env CELL_COCKPIT)" 'grep -qF "[cockpit] tmux (explicit: cell.env CELL_COCKPIT)" <<<"$out"'
+out="$(DRY_RUN=1 "$CELLCTL" desk example-cell the-desk --cockpit herdr --set 2>&1)" && rc=0 || rc=$?
+assert "desk --cockpit <c> --set is accepted and would persist CELL_COCKPIT (a single window uses no cockpit itself)" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_COCKPIT=herdr" <<<"$out"'
+"$CELLCTL" set example-cell --cockpit auto >/dev/null
+herdr_off
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "cockpit.test.sh: OK"; else echo "cockpit.test.sh: $fails FAILED"; exit 1; fi
