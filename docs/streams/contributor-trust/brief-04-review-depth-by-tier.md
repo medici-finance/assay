@@ -29,9 +29,9 @@ exec-tier-why: >-
   the dispatcher's existing lane selection and against the verdict shape the review gate
   already expects.
 consumers:
-  - "tools/desk/cmd/deskdispatch/references/review-lanes.md: follow-up contributor-trust/04 (this brief; the per-tier lane set)"
-  - "tools/desk/internal/deskkit/reviewlanes.go: follow-up contributor-trust/04 (this brief; lane selection gains the tier input)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up contributor-trust/04 (this brief; one paragraph stating that lane depth is tier-keyed, with the neutral body resolving the tier source from the project layer)"
+  - "tools/desk/cmd/deskdispatch/references/review-lanes.md: fixed-here (the per-tier lane sets, the fact-check output contract and the fail-first reproduction's two required records land in this reference)"
+  - "tools/desk/internal/deskkit/reviewlanes.go: fixed-here (the tier-to-lane table with LanesFor, the dispatch selection path ReviewLanesForAuthor, and the claims-extraction helper land in this file)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here (one neutral paragraph: lane depth is tier-keyed, the tier source resolved from the project layer, never inlined)"
   - "tools/desk/internal/deskkit/trusttier.go: out-of-scope (defined by contributor-trust/02; this brief is a consumer of that reader and adds nothing to it)"
 version: 1
 ---
