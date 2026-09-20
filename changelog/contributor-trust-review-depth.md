@@ -1,0 +1,4 @@
+### Added
+- Review lane sets keyed on the pull-request author's contributor-trust tier (`deskkit.LanesFor`, and the dispatch selection path `deskkit.ReviewLanesForAuthor`): `unknown` and `blessed-once` authors are reviewed with a claims-versus-diff fact check and a mandatory fail-first reproduction beside the correctness and security lanes; `contributor` and `maintainer` authors keep today's standard path unchanged.
+- The fact-check claims contract (`deskkit.ClaimState`, `deskkit.ExtractClaims`): every body claim carries exactly one of `confirmed` / `contradicted` / `unverified`, and `unverified` is never rounded to `confirmed`.
+- The `deskdispatch` review-lanes dispatch reference (`tools/desk/cmd/deskdispatch/references/review-lanes.md`): the per-tier lane sets, the fact-check output contract, and the fail-first reproduction's two required records — held to the lane table by test.
