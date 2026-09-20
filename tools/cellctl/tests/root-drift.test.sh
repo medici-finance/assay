@@ -52,7 +52,7 @@ git -C "$T/root" fetch -q origin main   # remote-tracking ref current, local bra
 
 # A github k8s cell, hand-written (the shape cellctl new cannot scaffold: k8s + DESKD=0).
 d="$CELLS_ROOT/tcell"; mkdir -p "$d/home/.config/assay" "$d/bin" "$d/index" "$d/worktrees"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$d/home/.config/assay/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$d/home/.config/assay/roster.env"
 printf 'DESK_APP_ID=1\n' > "$d/home/.config/assay/apps.env"
 mkdir -p "$d/home/.config/gh"
 printf 'cells:\n  - name: tcell\n' > "$d/cells-tcell.yaml"
@@ -78,7 +78,10 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
 export PATH="$T/bin:$PATH"
 export DESK_TOOLS_BIN="$T/bin"
 
-run_check(){ env DESK_TOOLS_BIN="$T/bin" bash "$CELLCTL" check tcell 2>&1; }
+# Invoked directly, never `bash "$CELLCTL"`: the suite runs against either implementation
+# (desk-containers/10) and an interpreter prefix only works for the shell one. The oracle has a
+# shebang and is executable, so dropping the prefix changes nothing for it.
+run_check(){ env DESK_TOOLS_BIN="$T/bin" "$CELLCTL" check tcell 2>&1; }
 
 # ---------------------------------------------------------------- deskd gating
 out="$(run_check || true)"; rc=0; run_check >/dev/null 2>&1 || rc=$?
@@ -109,12 +112,12 @@ assert 'behind root is reported as a warn row naming the gap' \
 assert 'a behind root does NOT fail check (warn is non-fatal)' '[[ "$rc" == "0" ]]'
 
 # ---------------------------------------------------------------- boot: default leaves roots alone
-env DESK_TOOLS_BIN="$T/bin" bash "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
+env DESK_TOOLS_BIN="$T/bin" "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
 assert 'without CELL_FF_ROOTS the root is NOT moved' \
   '[[ "$(git -C "$T/root" rev-parse HEAD)" == "$BASE" ]]'
 
 # ---------------------------------------------------------------- boot: opt-in fast-forwards
-env DESK_TOOLS_BIN="$T/bin" CELL_FF_ROOTS=1 bash "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
+env DESK_TOOLS_BIN="$T/bin" CELL_FF_ROOTS=1 "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
 assert 'CELL_FF_ROOTS=1 fast-forwards the clean, 0-ahead root' \
   '[[ "$(git -C "$T/root" rev-parse HEAD)" == "$AHEADSHA" ]]'
 assert 'the root is current after the ff, so check reports it ok' \
@@ -125,7 +128,7 @@ echo "local edit" >> "$T/root/docs/streams/README.md"
 before="$(git -C "$T/root" rev-parse HEAD)"
 echo "third" > "$T/pusher/docs/streams/THIRD.md"
 git -C "$T/pusher" add -A && git -C "$T/pusher" commit -q -m third && git -C "$T/pusher" push -q origin main
-env DESK_TOOLS_BIN="$T/bin" CELL_FF_ROOTS=1 bash "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
+env DESK_TOOLS_BIN="$T/bin" CELL_FF_ROOTS=1 "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
 assert 'a DIRTY root is never fast-forwarded, even with CELL_FF_ROOTS=1' \
   '[[ "$(git -C "$T/root" rev-parse HEAD)" == "$before" ]]'
 git -C "$T/root" checkout -q -- docs/streams/README.md
@@ -134,7 +137,7 @@ git -C "$T/root" merge -q --ff-only origin/main
 echo "mine" > "$T/root/docs/streams/MINE.md"
 git -C "$T/root" add -A && git -C "$T/root" commit -q -m mine
 ahead_sha="$(git -C "$T/root" rev-parse HEAD)"
-env DESK_TOOLS_BIN="$T/bin" CELL_FF_ROOTS=1 bash "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
+env DESK_TOOLS_BIN="$T/bin" CELL_FF_ROOTS=1 "$CELLCTL" desk tcell the-desk >/dev/null 2>&1 || true
 assert 'an AHEAD root is never moved, even with CELL_FF_ROOTS=1' \
   '[[ "$(git -C "$T/root" rev-parse HEAD)" == "$ahead_sha" ]]'
 

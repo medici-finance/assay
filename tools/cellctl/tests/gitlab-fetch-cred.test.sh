@@ -48,7 +48,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 "$REALGIT" init -q --bare -b main "$T/origin.git"
 "$REALGIT" clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"
@@ -92,7 +92,7 @@ printf 'cells: []\n' > "$T/cells.yaml"
 # roster.env is a file-EXISTENCE precondition only ($CELL_CONFIG/roster.env, both in cmd_desk and
 # cmd_check's common rows) — `new` never writes one for a k8s cell (unlike house, which symlinks
 # the operator's), so both fixture cells need one written by hand.
-write_roster(){ mkdir -p "$1/home/.config/assay"; printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$1/home/.config/assay/roster.env"; }
+write_roster(){ mkdir -p "$1/home/.config/assay"; printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$1/home/.config/assay/roster.env"; }
 
 # ---------------------------------------------------------------- gitlab cell: boot fetch
 echo "[desk: gitlab arm boot fetch]"

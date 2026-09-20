@@ -146,6 +146,12 @@ case_check_pass(){
   local C="$CELLS_ROOT/$cell"
   printf 'CELL_HARNESS=codex\n' >> "$C/cell.env"
   printf 'fake pem\n' > "$C/home/.config/assay/worker-desk-app.pem"; chmod 600 "$C/home/.config/assay/worker-desk-app.pem"
+  # FULLY provisioned means the roster hand step the scaffold's own README names has run too.
+  # `cellctl new --kind scrubbed` writes ASSAY_ALLOWED_REPOS and a "fill in by hand" comment for
+  # the rest, and a roster with no bless authority does not LOAD — the real `deskroster` exits 6
+  # on one. Without these two lines the case was asserting "all preconditions met" on a cell
+  # whose roster no desk verb would accept.
+  printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' >> "$C/home/.config/assay/roster.env"
   rm -rf "$CODEX_STATE"; mkdir -p "$CODEX_STATE"
   touch "$CODEX_STATE/authed"
   printf 'true\n' > "$CODEX_STATE/multiagent"
@@ -267,7 +273,12 @@ case_plan_grammar(){
   # Dereferencing: the set of [plan] env KEYs must equal the script's own SCRUBBED_ENV_KEYS, minus
   # the INACTIVE harness's namespaced var (the-desk here boots the default claude harness, so
   # CODEX_HOME never appears) — a KEY added to one and not the other fails right here.
-  local want; want="$(grep -oE 'SCRUBBED_ENV_KEYS="[^"]*"' "$CELLCTL" | sed -E 's/^SCRUBBED_ENV_KEYS="//; s/"$//' | tr ' ' '\n' | grep -vx 'CODEX_HOME' | sort)"
+  # The declared allowlist is read from the SHELL ORACLE's source, at its fixed path, not from
+  # "$CELLCTL": the suite runs against either implementation (desk-containers/10) and a compiled
+  # binary has no source to grep. The oracle stays in the tree as the reference until the cutover,
+  # so this keeps the dereference honest for BOTH — the Go port has to emit the same set the
+  # declared allowlist names, which is exactly the claim worth proving.
+  local want; want="$(grep -oE 'SCRUBBED_ENV_KEYS="[^"]*"' "$HERE/../cellctl" | sed -E 's/^SCRUBBED_ENV_KEYS="//; s/"$//' | tr ' ' '\n' | grep -vx 'CODEX_HOME' | sort)"
   local got; got="$(sort <<<"$env_keys")"
   assert "plan-grammar: [plan] env KEY set equals SCRUBBED_ENV_KEYS minus the inactive harness var" '[[ "$got" == "$want" ]]'
 }

@@ -25,6 +25,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
+# is_shell_impl: is the implementation under test the shell oracle? A case that observes a
+# SHELL-OUT's side effect, or reads the implementation's own source, can only apply to that one;
+# it states itself n/a against the Go binary rather than failing (desk-containers/10).
+is_shell_impl(){ head -c2 "$CELLCTL" 2>/dev/null | grep -q '#!'; }
 # Resolved with pwd -P: a TMPDIR with a trailing slash or a symlinked temp root would otherwise
 # make the paths cellctl prints (it normalises) differ from the ones the test compares against.
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" && pwd -P)"
@@ -49,7 +53,7 @@ printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n'
 export GIT_CONFIG_NOSYSTEM=1
 # The operator config home the house cell links to.
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 # Fixture repo: a bare "origin" with a main branch carrying docs/streams/, cloned as CELL_REPO.
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
@@ -112,7 +116,17 @@ echo "[check]"
 out="$("$CELLCTL" check example-cell 2>&1)"; rc=$?
 assert "check exits 0 on the house cell" '[[ $rc -eq 0 ]]'
 assert "check reports all preconditions met" 'grep -q "all preconditions met" <<<"$out"'
-assert "check ran deskroster under the CELL home" '[[ "$(cat "$T/deskroster.home")" == "$CELL/home" ]]'
+# The roster read happens UNDER THE CELL HOME — but HOW it happens is implementation-specific,
+# and this case observes the mechanism, so it applies only to the shell oracle. The oracle shells
+# out to `deskroster` (the stub records $HOME, which is what is checked here); the Go port asks
+# deskkit the same question IN-PROCESS with HOME pointed at the cell home, which is the reuse
+# brief desk-containers/10 requires, and no subprocess exists to record anything. The port's own
+# equivalent is TestRosterParsesReadsTheCellHome in tools/desk/cmd/cellctl.
+if is_shell_impl; then
+  assert "check ran deskroster under the CELL home" '[[ "$(cat "$T/deskroster.home")" == "$CELL/home" ]]'
+else
+  echo "  n/a   check ran deskroster under the CELL home — the Go port reads the roster in-process (no shell-out to observe); covered by TestRosterParsesReadsTheCellHome"
+fi
 assert "check proves every root carries docs/streams/" '[[ "$(grep -c "carries docs/streams/" <<<"$out")" -eq 2 ]]'
 assert "check reports deskd n/a on a house cell" 'grep -q "n/a   deskd" <<<"$out"'
 assert "check reports the plugin row ok" 'grep -q "ok    plugin assay@assay" <<<"$out"'

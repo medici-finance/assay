@@ -53,7 +53,7 @@ export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export ASSAY_CONFIG_HOME="$T/operator-config"; mkdir -p "$ASSAY_CONFIG_HOME"
-printf 'ASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
+printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' > "$ASSAY_CONFIG_HOME/roster.env"
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/seed" 2>/dev/null
 mkdir -p "$T/seed/docs/streams"; echo "# streams" > "$T/seed/docs/streams/README.md"
