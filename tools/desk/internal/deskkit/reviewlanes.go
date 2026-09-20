@@ -303,7 +303,8 @@ func stripBullet(line string) (string, bool) {
 
 // splitSentences splits one line of prose into sentences on sentence-ending
 // punctuation followed by whitespace or end-of-line. Abbreviation stops ("e.g.",
-// "i.e.") are left alone deliberately: over-splitting costs an unverified row,
+// "i.e.") are NOT special-cased — a split there costs one unverified candidate
+// row, and the sweep's failure direction is deliberately that one, since
 // under-splitting can hide a claim.
 func splitSentences(line string) []string {
 	var out []string
