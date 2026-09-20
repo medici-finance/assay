@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://medici-finance.github.io/assay/schemas/desksupervise-status-v1.json",
   "title": "desksupervise-status-v1 runtime snapshot",
-  "description": "Machine-readable contract for the JSON document `desksupervise status --json` emits: the liveness observer's per-claim runtime state as one structured record, so a console can consume it without reading Go. Every field follows the three-state-instrument rule (docs/three-state-instrument-rule.md): an unreadable or not-applicable source renders `n/a` (durations, timestamps) or `could-not-check` (tokens), never a default zero. `tokens` is could-not-check BY DESIGN at this layer — a dispatched worker's usage is held by the harness, not by desk tools, and no read path exists; the field is present so a future harness binding can fill it. The human table `desksupervise status` (without --json) is NOT a contract and is not described here.",
+  "description": "Machine-readable contract for the JSON document `desksupervise status --json` emits: the liveness observer's per-claim runtime state as one structured record, so a console can consume it without reading Go. Every field follows the three-state-instrument rule (docs/three-state-instrument-rule.md): an unreadable or not-applicable source renders `n/a` (durations, timestamps), `could-not-check` (the `resource` block's fields), or `null` (a `resource` field the reporting session left unset this tick) — never a default zero. `tokens` used to be a permanently could-not-check stub at the claim level; a later revision (example-stream/13) fills that binding by moving it into `resource`, a self-reported vitals block joined from the claim holder's own roster beacon (tokens, context-% used, session age, subagent count, model) — still three-state throughout, and a measured 0 is a legitimate reading that must never be read as \"unknown\". The human table `desksupervise status` (without --json) is NOT a contract and is not described here.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -39,7 +39,7 @@
           "liveness",
           "timers",
           "stop",
-          "tokens"
+          "resource"
         ],
         "properties": {
           "key": { "description": "The dispatch claim key (refs/dispatch/<key>).", "type": "string" },
@@ -81,9 +81,33 @@
               "reason": { "description": "Why the stop was armed.", "type": "string" }
             }
           },
-          "tokens": {
-            "description": "Token accounting for the dispatched worker. could-not-check BY DESIGN at this layer (the harness holds usage; no desk read path exists) — never rendered as zero.",
-            "const": "could-not-check"
+          "resource": {
+            "description": "Self-reported vitals from the claim's holder session (example-stream/13): tokens burned, percent of the context window used, session age, subagents spawned, and the model id. Only the session itself can know these — they are joined from its own roster beacon (deskkit's MergeResourceVitals write). Each field is three-state: a measured value, the string could-not-check (no readable beacon for the holder, or the session's own read of that source failed), or null (the reporting session's emitter simply left the field unset this tick). A measured 0 is a legitimate reading and is never rendered as could-not-check or dropped to null.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tokens", "context_pct_used", "session_age_seconds", "subagents_spawned", "model"],
+            "properties": {
+              "tokens": {
+                "description": "Cumulative tokens the session has consumed.",
+                "oneOf": [{ "type": "integer" }, { "const": "could-not-check" }, { "type": "null" }]
+              },
+              "context_pct_used": {
+                "description": "Percent of the context window in use, 0-100.",
+                "oneOf": [{ "type": "number" }, { "const": "could-not-check" }, { "type": "null" }]
+              },
+              "session_age_seconds": {
+                "description": "Wall seconds since the session booted.",
+                "oneOf": [{ "type": "integer" }, { "const": "could-not-check" }, { "type": "null" }]
+              },
+              "subagents_spawned": {
+                "description": "Count of subagents this session has launched.",
+                "oneOf": [{ "type": "integer" }, { "const": "could-not-check" }, { "type": "null" }]
+              },
+              "model": {
+                "description": "The model id the session runs.",
+                "oneOf": [{ "type": "string" }, { "const": "could-not-check" }, { "type": "null" }]
+              }
+            }
           }
         }
       }
