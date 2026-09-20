@@ -229,8 +229,8 @@ func cmdDesk(cell string, args []string) {
 			}
 		}
 		if c.Kind == "scrubbed" {
-			// The [dry-run] line above stays — this ADDS the plan grammar desk-containers/09
-			// defines and desk-containers/10 diffs against.
+			// The [dry-run] line above stays — this ADDS the plan grammar the scrubbed-cell
+			// brief defines and the parity harness diffs against.
 			env := c.scrubbedComposeEnv(role, harness, session)
 			c.printPlan(env, wt, harnessArgv(harness, role, model, session, wt))
 		}

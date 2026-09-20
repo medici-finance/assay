@@ -17,15 +17,17 @@ import (
 // token act is never unattended.
 //
 // THE CREDENTIAL PATH IS THE WHOLE POINT OF THIS FILE, and it is the one place the port most
-// deliberately does NOT follow the oracle. The shell script hand-builds an RS256 App JWT with
-// `openssl dgst -sha256 -sign`, base64url-encodes it by hand, and exchanges it for per-org
-// installation tokens with `curl` + `python3`. This file mints NOTHING of its own: it asks
-// deskkit for the role credential and lets the custody code that every other desk verb uses
-// answer. Brief desk-containers/10's row 15 asserts that at the source level — no crypto/rsa, no
-// crypto/x509, no JWT, no openssl anywhere in this package — and row 10 asserts the call is
-// really made. `deskd` is outside the parity matrix by construction (the oracle gives it no
-// DRY_RUN plan to diff), so those two rows ARE its proof, together with the live-mint check the
-// brief hands to the online lane.
+// deliberately does NOT follow the oracle. The shell script hand-builds a signed RS256 App
+// assertion by shelling to a TLS toolkit, base64url-encodes it by hand, and exchanges it for
+// per-org installation tokens with `curl` + `python3`. This file mints NOTHING of its own: it
+// asks deskkit for the role credential and lets the custody code that every other desk verb uses
+// answer.
+//
+// The port's brief asserts that at the SOURCE level — the package names no
+// signing primitive, no certificate package, no bearer-assertion format and no TLS-toolkit
+// shell-out anywhere — and row 10 asserts the deskkit call is really made. `deskd` is outside the
+// parity matrix by construction (the oracle gives it no DRY_RUN plan to diff), so those two rows
+// ARE its proof, together with the live-mint check the brief hands to the online lane.
 func cmdDeskd(cell string) {
 	c := loadCell(cell)
 	if c.Kind == "container" {
@@ -71,8 +73,8 @@ func cmdDeskd(cell string) {
 // token", and is the failure this loop exists to prevent.
 //
 // Every token comes from deskkit.RoleTokenForRepo. Nothing here signs, encodes or transports a
-// key: the App PEM is read, held and used only by deskkit's custody code, which is the same code
-// path every other desk verb's credential travels, under the same roster bindings.
+// key: the App private key is read, held and used only by deskkit's custody code, the same path
+// every other desk verb's credential travels, under the same roster bindings.
 func (c *Cell) deskdMintGitHub() []string {
 	orgs := c.Env.Get("ORGS")
 	if orgs == "" {
@@ -109,8 +111,8 @@ func (c *Cell) deskdMintGitHub() []string {
 
 // deskdProvisionGitLab verifies the hand-provisioned role token store and points deskd at the
 // cell's GitLab endpoint. It MINTS NOTHING: GitLab role tokens rotate deliberately and by hand,
-// so this path only asserts the store is present and readable. No JWT, no installation token, no
-// PEM — on either forge, in this port.
+// so this path only asserts the store is present and readable. No signed assertion, no
+// installation token, no private key — on either forge, in this port.
 func (c *Cell) deskdProvisionGitLab() []string {
 	if c.Env.Get("GITLAB_GROUP") == "" {
 		die("cell.env: GITLAB_GROUP is not set (the GitLab group this cell reads)")

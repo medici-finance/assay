@@ -152,7 +152,7 @@ func cmdNew(args []string) {
 
 	if forge == "github" {
 		// The gh CLI config is a GitHub custody artifact; linked only on a github cell.
-		linkIfPresent(filepath.Join(e.Get("HOME"), ".config", "gh"), filepath.Join(d, "home", ".config", "gh"))
+		linkIfPresent(filepath.Join(e.Get("HOME"), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
 		// The endpoint is DERIVED from the host, never spelled as a literal.
 		forgeAPIBase := "https://api." + githubHost
 		writeFile(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (k8s, github, scaffolded %s)
@@ -226,7 +226,7 @@ so ` + "`cellctl new`" + ` does not do them for you. Then run ` + "`cellctl chec
 
 1. ` + "`home/.config/assay/roster.env`" + ` — THIS cell's roster: ` + "`ASSAY_TRUSTED_LOGINS`" + `,
    ` + "`ASSAY_BLESS_LOGIN`" + `, ` + "`ASSAY_TRUSTED_BOT_SLUGS`" + ` with forge-qualified ` + "`role=github:<slug>:<id>`" + `
-   bindings to THIS cell's Apps (per forge-neutral/02's grammar), ` + "`ASSAY_REPO_FORGES`" + ` binding
+   bindings to THIS cell's Apps (the forge-qualified grammar), ` + "`ASSAY_REPO_FORGES`" + ` binding
    the cell's repos to ` + "`github`" + `, and ` + "`ASSAY_ALLOWED_REPOS`" + ` / ` + "`ASSAY_SCAN_REPOS`" + ` naming the
    cell's repos ONLY. Start from another cell's file as a template and replace every App — a
    copied binding points this cell's writes at another cell's identity.
@@ -250,13 +250,13 @@ rotate by hand. Then run ` + "`cellctl check %s`" + `.
 
 1. ` + "`home/.config/assay/roster.env`" + ` — THIS cell's roster: ` + "`ASSAY_TRUSTED_LOGINS`" + `,
    ` + "`ASSAY_BLESS_LOGIN`" + `, ` + "`ASSAY_TRUSTED_BOT_SLUGS`" + ` with forge-qualified ` + "`role=gitlab:<slug>:<id>`" + `
-   bindings to THIS cell's bot accounts (per forge-neutral/02's grammar — a bare slug is refused,
+   bindings to THIS cell's bot accounts (the forge-qualified grammar — a bare slug is refused,
    and a ` + "`gitlab:`" + ` entry against a github repo is refused), ` + "`ASSAY_REPO_FORGES`" + ` binding the
    cell's repos to ` + "`gitlab`" + `, and ` + "`ASSAY_ALLOWED_REPOS`" + ` / ` + "`ASSAY_SCAN_REPOS`" + ` naming the cell's
    repos ONLY. A cell stood up for GitLab MUST write forge-qualified entries or the verbs refuse.
 2. The role token store — ` + "`%s`" + ` — holds one ` + "`gitlab-<role>.token`" + ` file per role (0600),
    provisioned BY HAND: ` + "`gitlab-deskd.token`" + ` for the read daemon, plus one per write role
-   (` + "`gitlab-worker.token`" + `, ` + "`gitlab-reviewer.token`" + `, …) per forge-neutral/01's custody binding.
+   (` + "`gitlab-worker.token`" + `, ` + "`gitlab-reviewer.token`" + `, …) per the role-token custody binding.
    These are GitLab group/project access tokens you mint in GitLab and place here yourself;
    cellctl never mints or rotates them. Lock each to 0600.
 3. ` + "`bin/deskd`" + `, ` + "`bin/deskcli`" + ` — from the desk console (build its ` + "`cmd/deskd`" + ` and
@@ -340,7 +340,7 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	if err := os.Symlink(realCfg, filepath.Join(d, "home", ".config", "assay")); err != nil {
 		die("new: cannot link the config home: %v", err)
 	}
-	linkIfPresent(filepath.Join(e.Get("HOME"), ".config", "gh"), filepath.Join(d, "home", ".config", "gh"))
+	linkIfPresent(filepath.Join(e.Get("HOME"), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
 	linkIfPresent(filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
 	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
@@ -415,14 +415,14 @@ func newScrubbed(e *Env, root, cell, repo, slug, roots, roles string) {
 	if exists(d) {
 		die("%s already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)", d)
 	}
-	mustMkdirAll(filepath.Join(d, "home", ".config", "assay"), filepath.Join(d, "home", ".config", "gh"),
+	mustMkdirAll(filepath.Join(d, "home", ".config", "assay"), filepath.Join(d, "home", ghConfigRelPath),
 		filepath.Join(d, "worktrees"), filepath.Join(d, "tmp"), filepath.Join(d, "run"))
 	writeFile(filepath.Join(d, "home", ".gitconfig"), "")
 	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"),
 		filepath.Join(d, "home", ".config", "assay"), filepath.Join(d, "tmp"))
 	writeFile(filepath.Join(d, "home", ".config", "assay", "roster.env"),
 		"# scrubbed cell roster — this cell is scoped to exactly one repo; a different or additional\n"+
-			"# ASSAY_ALLOWED_REPOS entry is a MISS at `cellctl check` by design (desk-containers/09).\n"+
+			"# ASSAY_ALLOWED_REPOS entry is a MISS at `cellctl check` by design.\n"+
 			"ASSAY_ALLOWED_REPOS="+slug+"\n"+
 			"# Fill in by hand: ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_BOT_SLUGS (this cell's\n"+
 			"# own App bindings — never copied from another cell), ASSAY_REPO_FORGES, ASSAY_SCAN_REPOS.\n")

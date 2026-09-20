@@ -105,7 +105,7 @@ func TestVersionStampedFromReleaseWorkflow(t *testing.T) {
 // TestCellctlPackagedInReleaseWorkflow guards #850: cellctl must ship inside
 // desk-tools-<platform>.tar.gz, stamped with the release tag.
 //
-// The CLAIM is unchanged; the MECHANISM changed at desk-containers/10. cellctl used to be a
+// The CLAIM is unchanged; the MECHANISM changed when cellctl was ported to Go. It used to be a
 // hand-maintained shell script the workflow `sed`-stamped and copied in as a packaging
 // EXCEPTION. It is now tools/desk/cmd/cellctl, so the generic `for cmd in cmd/*/` loop builds
 // and stages it like every other verb, and `-X main.cellctlVersion` in the shared LDFLAGS stamps
@@ -136,8 +136,8 @@ func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
 		t.Error("release.yml does not stamp main.cellctlVersion with the release tag — a released cellctl would report \"dev\" and defeat `cellctl --version` (#850)")
 	}
 	// The packaging EXCEPTION is gone and must not come back: a sed-stamped script copied in
-	// beside the binaries is exactly the drift desk-containers/10 retired.
+	// beside the binaries is exactly the drift the Go port retired.
 	if strings.Contains(wf, "CELLCTL_VERSION") {
-		t.Error("release.yml still sed-stamps CELLCTL_VERSION — the shell-script packaging exception was removed at desk-containers/10; cellctl is stamped by -ldflags like every other verb")
+		t.Error("release.yml still sed-stamps CELLCTL_VERSION — the shell-script packaging exception was removed when cellctl was ported to Go; it is stamped by -ldflags like every other verb")
 	}
 }

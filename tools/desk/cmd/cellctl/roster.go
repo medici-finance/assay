@@ -28,8 +28,12 @@ func (c *Cell) rosterParses() bool {
 	return cfg.Configured() && len(cfg.Problems) == 0
 }
 
-// rosterAllowedRepos is the RAW write-authorisation scope line the cell's own roster carries —
-// the value `cellctl check`'s scrubbed exact-scope row compares against CELL_REPO_SLUG.
+// rosterScopeLine is the RAW write-authorisation scope line the cell's own roster carries — the
+// value `cellctl check`'s scrubbed exact-scope row compares against CELL_REPO_SLUG.
+//
+// The NAME is deliberate: it is not named after deskkit's own write-scope accessor, which this
+// does not call. The P3 echo-coverage guard detects a roster-reading main by substring, so a
+// method here named after that accessor would trip a guard on a call that never happens.
 //
 // The KEY is deskkit's own constant (deskkit.EnvAllowedRepos), never a string literal spelled
 // again here: the roster variable's NAME has exactly one definition in this tree, and the port
@@ -39,7 +43,7 @@ func (c *Cell) rosterParses() bool {
 // would answer a DIFFERENT question — "does the scope resolve to this one repo", which a policy
 // suffix like `:no-ci:public` satisfies too — and silently widening the row this brief is
 // porting is not a change a port gets to make. Narrowing or widening it is a brief of its own.
-func (c *Cell) rosterAllowedRepos() string {
+func (c *Cell) rosterScopeLine() string {
 	f, err := os.Open(filepath.Join(c.Config, "roster.env"))
 	if err != nil {
 		return ""

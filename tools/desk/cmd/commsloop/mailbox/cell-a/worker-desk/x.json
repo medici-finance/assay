@@ -1,0 +1,10 @@
+{
+  "id": "x",
+  "from": {
+    "cell": "cell-a",
+    "role": "the-desk"
+  },
+  "verb": "handoff",
+  "class": "routine",
+  "sent": "0001-01-01T00:00:00Z"
+}

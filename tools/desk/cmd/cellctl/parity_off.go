@@ -6,7 +6,7 @@ package main
 // because this file — the one a tagless `go build` compiles — names none.
 //
 // The test-only injector lives in parity_on.go behind `//go:build parity`. Brief
-// desk-containers/10 demands the fail-open guard be proven closed in what ships, not asserted:
+// The port's brief demands the fail-open guard be proven closed in what ships, not asserted:
 // row 14 greps every file naming CELLCTL_PARITY_MUTATE and requires `//go:build parity` on each,
 // and row 13 builds with NO tag and shows the mutated and unmutated dry-run plans are
 // byte-identical AND still carry KUBECONFIG=/dev/null.

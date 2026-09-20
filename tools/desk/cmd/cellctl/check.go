@@ -215,7 +215,7 @@ func (c *Cell) checkK8s(k *checker) {
 	switch c.Forge {
 	case "github":
 		k.chk(isRegular(filepath.Join(c.Config, "apps.env")), "apps.env: %s/apps.env", c.Config)
-		k.chk(exists(filepath.Join(c.Home, ".config", "gh")), "gh config linked: %s/.config/gh", c.Home)
+		k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
 		// The App key and the org list exist to mint deskd's per-org tokens, so they are
 		// preconditions only when this cell requires a deskd.
 		if c.Deskd == "1" {
@@ -262,7 +262,7 @@ func (c *Cell) checkHouse(k *checker, cfgArg string) {
 	link, _ := os.Readlink(c.Config)
 	k.chk(link == realConfigHome(c.Env), "config home linked to the operator's: %s -> %s", c.Config, realConfigHome(c.Env))
 	k.chk(exists(filepath.Join(c.Home, ".gitconfig")), "gitconfig linked: %s/.gitconfig", c.Home)
-	k.chk(exists(filepath.Join(c.Home, ".config", "gh")), "gh config linked: %s/.config/gh", c.Home)
+	k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
 	k.chk(c.rosterParses(), "roster parses under the cell home: deskroster repos --scope scan")
 	k.chk(rootsValid(c.Env.Get("CELL_ROOTS")), "CELL_ROOTS well-formed: %s", c.Env.Get("CELL_ROOTS"))
 	for _, e := range rootEntries(c.Env.Get("CELL_ROOTS")) {
@@ -331,7 +331,7 @@ func (c *Cell) checkScrubbed(k *checker) {
 		}
 	}
 
-	allowed := c.rosterAllowedRepos()
+	allowed := c.rosterScopeLine()
 	k.chk(allowed == c.Env.Get("CELL_REPO_SLUG"),
 		"roster ASSAY_ALLOWED_REPOS is exactly %s (a scrubbed cell is scoped to one repo)", c.Env.Get("CELL_REPO_SLUG"))
 

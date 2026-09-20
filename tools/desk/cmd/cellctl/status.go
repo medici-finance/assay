@@ -67,9 +67,9 @@ func readPid(lockdir string) string {
 //
 // It shells to `kill` rather than sending signal 0 in-process ON PURPOSE. Signal 0 in Go needs
 // the low-level system-call package, and this package uses NONE of it — brief
-// desk-containers/10's row 9 asserts exactly that, because a native-Windows cellctl is a
+// the port's brief asserts exactly that, because a native-Windows cellctl is a
 // consequence this work must not make worse (internal/deskkit already carries the unix-only
-// system-call sites windows-port/00 owns; cellctl adds none of its own). One fork on a rare path
+// system-call sites the Windows-port stream owns; cellctl adds none of its own). One fork on a rare path
 // is the price of that.
 func pidAlive(pid string) bool {
 	n, err := strconv.Atoi(pid)

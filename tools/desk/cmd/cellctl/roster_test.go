@@ -13,7 +13,7 @@ import (
 //
 // The oracle shells out to `env HOME=<cell home> deskroster …` and a stub can record the $HOME it
 // was handed; the port asks deskkit the SAME question in-process — the reuse brief
-// desk-containers/10 requires — so there is no subprocess to observe. What still has to be true
+// the port's brief requires — so there is no subprocess to observe. What still has to be true
 // is the property, not the mechanism: the roster that answers is the CELL's, and the caller's own
 // HOME is restored afterwards.
 func TestRosterParsesReadsTheCellHome(t *testing.T) {
@@ -71,12 +71,12 @@ func TestRosterAllowedReposUsesDeskkitsKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &Cell{Env: envWith(map[string]string{}), Home: dir, Config: cfg}
-	if got := c.rosterAllowedRepos(); got != "example-org/example-repo" {
-		t.Errorf("rosterAllowedRepos = %q — want the LAST active line, raw", got)
+	if got := c.rosterScopeLine(); got != "example-org/example-repo" {
+		t.Errorf("rosterScopeLine = %q — want the LAST active line, raw", got)
 	}
 	// No roster at all is "", never a panic and never a match.
 	c2 := &Cell{Env: envWith(map[string]string{}), Home: t.TempDir(), Config: t.TempDir()}
-	if got := c2.rosterAllowedRepos(); got != "" {
+	if got := c2.rosterScopeLine(); got != "" {
 		t.Errorf("no roster ⇒ %q, want empty", got)
 	}
 }

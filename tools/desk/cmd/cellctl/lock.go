@@ -11,7 +11,7 @@ import (
 // every filesystem this runs on, holding the pid of whatever should be judged "alive".
 //
 // A mkdir lock, deliberately, and NOT a build-tagged flock: os.Mkdir is portable, and a native
-// Windows cellctl is a consequence this brief must not make harder (the windows-port stream owns
+// Windows cellctl is a consequence this brief must not make harder (the Windows-port stream owns
 // delivering one). It is refused with exit 4 and the exact message the oracle pins ONLY when the
 // held pid is still alive — a stale lock (a dead pid, or an unreadable pid file) is taken over
 // rather than left to wedge every future boot. `status`/`down` are the tools that report/clear a

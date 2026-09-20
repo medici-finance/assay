@@ -431,10 +431,17 @@ new_case(){
     container) args=(new fresh --kind container --repo example-org/example-repo --launcher "ROOT/bin/launcher") ;;
     scrubbed)  args=(new fresh --kind scrubbed --repo "REPO" --repo-slug example-org/example-repo --roots "example-org/example-repo=REPO") ;;
   esac
-  local -a argsA=() argsB=() a
+  # Two substitutions per argument, into a scalar, THEN appended. Never `arr[-1]=`: a negative
+  # array subscript is bash 4.2+, and macOS ships bash 3.2 as /bin/bash — where that line is a
+  # "bad array subscript" error that, without `set -e`, skipped every `new` cell and still
+  # printed `parity: 0 cells, 0 divergent` and exited 0. A green run with no coverage is the
+  # exact failure this harness exists to catch, so it is now impossible twice over: the code is
+  # portable, and the cell-count assertion at the end refuses a short run.
+  local -a argsA=() argsB=()
+  local a sa sb
   for a in "${args[@]}"; do
-    argsA+=("${a//ROOT/$rootA}"); argsA[-1]="${argsA[-1]//REPO/$rootA/repo}"
-    argsB+=("${a//ROOT/$rootB}"); argsB[-1]="${argsB[-1]//REPO/$rootB/repo}"
+    sa="${a//ROOT/$rootA}"; sa="${sa//REPO/$rootA/repo}"; argsA+=("$sa")
+    sb="${a//ROOT/$rootB}"; sb="${sb//REPO/$rootB/repo}"; argsB+=("$sb")
   done
   run_impl "$rootA" "$CELLCTL_A" "$T/outA" "${argsA[@]}"
   run_impl "$rootB" "$CELLCTL_B" "$T/outB" "${argsB[@]}"
@@ -446,11 +453,24 @@ new_case(){
 }
 
 # -------------------- the matrix
+KINDS="k8s house container scrubbed"
+HARNESSES="claude codex"
+COCKPITS="tmux herdr orca"
+VERBS="check desk up down set ls smoke status"
+FORGES="github gitlab"
+# The count the matrix DECLARES, computed from the same lists the loops walk — never a literal,
+# which would drift the moment an axis grows.
+n_kinds=$(set -- $KINDS; echo $#); n_harn=$(set -- $HARNESSES; echo $#)
+n_cock=$(set -- $COCKPITS; echo $#); n_verbs=$(set -- $VERBS; echo $#)
+n_forges=$(set -- $FORGES; echo $#)
+EXPECTED_CELLS=$(( n_kinds * n_harn * n_cock * n_verbs + n_kinds * n_forges ))
+
 echo "parity: A=$CELLCTL_A"
 echo "parity: B=$CELLCTL_B"
-for kind in k8s house container scrubbed; do
-  for harness in claude codex; do
-    for cockpit in tmux herdr orca; do
+echo "parity: matrix declares $EXPECTED_CELLS cells"
+for kind in $KINDS; do
+  for harness in $HARNESSES; do
+    for cockpit in $COCKPITS; do
       base="$kind/$harness/$cockpit"
       cell_case "$base/check"  "$kind" "$harness" "$cockpit" check cell
       cell_case "$base/desk"   "$kind" "$harness" "$cockpit" desk cell the-desk
@@ -463,8 +483,8 @@ for kind in k8s house container scrubbed; do
     done
   done
 done
-for kind in k8s house container scrubbed; do
-  for forge in github gitlab; do
+for kind in $KINDS; do
+  for forge in $FORGES; do
     # Only a k8s cell has a forge axis at `new`; the other kinds scaffold one shape, so their
     # gitlab leg is the SAME call and proves the flag is refused/ignored identically.
     new_case "$kind" "$forge"
@@ -472,6 +492,23 @@ for kind in k8s house container scrubbed; do
 done
 
 echo "parity: $cells cells, $divergent divergent"
+
+# COVERAGE FIRST, verdict second. A harness that ran fewer cells than its matrix declares has
+# lost coverage — a shell too old for a construct used here, a fixture that would not build, an
+# axis quietly emptied — and reporting "0 divergent" on a short run is a green lamp wired to
+# nothing. That is refused with its own exit code (2), distinct from a real divergence (1), so a
+# caller can tell "the two implementations differ" from "this run did not actually look".
+if [[ "$cells" -eq 0 ]]; then
+  echo "parity: COVERAGE LOSS — 0 cells ran. Nothing was compared; this is NOT a pass." >&2
+  echo "parity: (bash in use: ${BASH_VERSION:-unknown}) — check the errors above." >&2
+  exit 2
+fi
+if [[ -z "$ONLY" && "$cells" -ne "$EXPECTED_CELLS" ]]; then
+  echo "parity: COVERAGE LOSS — ran $cells cells, the matrix declares $EXPECTED_CELLS." >&2
+  echo "parity: a full run must cover every declared cell; a short one is NOT a pass." >&2
+  echo "parity: (bash in use: ${BASH_VERSION:-unknown})" >&2
+  exit 2
+fi
 if [[ "$divergent" -gt 0 ]]; then
   echo "parity: divergent cells: ${divergent_names[*]}" >&2
   exit 1

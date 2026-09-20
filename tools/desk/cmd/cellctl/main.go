@@ -1,6 +1,6 @@
 // Command cellctl starts, stops and scaffolds an Assay CELL on one laptop.
 //
-// This is the Go port of tools/cellctl/cellctl (desk-containers/10). The shell script stays in
+// This is the Go port of tools/cellctl/cellctl. The shell script stays in
 // the tree as the parity ORACLE: tools/cellctl/tests/parity.test.sh runs both implementations
 // over the same fixtures and diffs their DRY_RUN plans, stdout, stderr and exit codes, so every
 // line this program prints is a CONTRACT with that script until a human signs the cutover.

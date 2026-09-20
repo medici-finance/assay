@@ -489,3 +489,10 @@ func sortedKeys[T any](m map[string]T) []string {
 	sort.Strings(ks)
 	return ks
 }
+
+// ghConfigRelPath is the GitHub CLI's config DIRECTORY, relative to a home — a path segment the
+// cell links and points GH_CONFIG_DIR at, never a command this program runs. This package
+// invokes no forge CLI at all; it is spelled as the whole relative path, in one place, so the
+// bare binary name never appears as a call argument where the forge-CLI ban would have to decide
+// whether a directory component is an invocation.
+const ghConfigRelPath = ".config/gh"

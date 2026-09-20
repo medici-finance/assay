@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// printPlan emits the [plan] grammar desk-containers/09 froze: one `env` line per exported
+// printPlan emits the [plan] grammar the scrubbed-cell brief froze: one `env` line per exported
 // variable (KEY-sorted), then argv, cwd, lock. It is printed after the [dry-run] line under
 // DRY_RUN=1, and this exact grammar is what the parity harness diffs — part of the contract,
 // not a courtesy. A change to it is a change to BOTH implementations in one PR or it is a

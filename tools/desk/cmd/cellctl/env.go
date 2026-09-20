@@ -10,8 +10,8 @@ import (
 // scrubbedEnvKeys is the allowlist a scrubbed cell's launch is COMPOSED from: `env -i` plus
 // exactly these, in this order — the parent shell contributes nothing by default. This list is
 // the SINGLE source the [plan] lines, the live `env -i` launch and docs/cellctl.md's env table
-// all read (desk-containers/09 states it once; desk-containers/10 diffs the two implementations
-// against each other).
+// all read — the scrubbed-cell brief states it once, and the port's own brief diffs the two
+// implementations against each other.
 //
 // The two harness-namespaced entries (CODEX_HOME / CLAUDE_CONFIG_DIR) are mutually exclusive —
 // only the ACTIVE harness's var is ever exported — and DESK_ROOTS/TERM/LANG are present only
@@ -69,7 +69,7 @@ func (c *Cell) scrubbedEnvValue(key, role, harness, session, composedPath string
 	case "ASSAY_CONFIG_HOME":
 		return c.Config
 	case "GH_CONFIG_DIR":
-		return filepath.Join(c.Home, ".config", "gh")
+		return filepath.Join(c.Home, ghConfigRelPath)
 	case "GIT_CONFIG_GLOBAL":
 		return filepath.Join(c.Home, ".gitconfig")
 	case "GIT_CONFIG_NOSYSTEM":
