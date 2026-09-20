@@ -381,6 +381,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// register at root. Declared source: statusgen/designgate.go.
 	problems = append(problems, designGateProblems(root, checkStreams)...)
 	notices = append(notices, designGateNotices(root, checkStreams)...)
+	// Deploy transition + DEPLOYS register (sdlc/06, docs/deploy-model.md): a
+	// DEPLOY record's precondition — its brief: reference is at least
+	// `verified` — plus RUNBOOK record shape and the undrilled-drill-row
+	// could-not-check. Declared source: statusgen/deploygate.go.
+	problems = append(problems, deployTransitionProblems(root, checkStreams)...)
+	notices = append(notices, deployTransitionNotices(root, checkStreams)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against
