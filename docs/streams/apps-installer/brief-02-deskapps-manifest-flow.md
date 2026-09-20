@@ -141,12 +141,20 @@ facts:
 | 10 | `grep -cE -e '^## Measured' docs/desk-tools/deskapps.md && grep -cE -e 'throttle' -e 'org owner' -e 'Enterprise Server' docs/desk-tools/deskapps.md` | 1 then ≥ 3 | check:ci |
 | 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — both mutants are caught by rows 5 and 6 | check:ci |
 | 12 | `statusgen --root . --consumers --brief apps-installer/02` | exit 0 (routing claims corroborated against the diff) | check:ci |
+| 13 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRunInitManifestAndTierMutuallyExclusive' -count=1 -v` | exit 0 — `--manifest` together with an explicit `--tier` is refused, at the flag layer, before any manifest file is read or port bound; stderr names "mutually exclusive" | check:ci |
+| 14 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesRedirectURL\|TestRunInitManifestBadFileReportsAndExits' -count=1 -v` | exit 0 — a manifest carrying its own top-level `redirect_url` is refused with a clear error naming `redirect_url`, both at the loader (`LoadManifestFile`) and end-to-end through `deskapps init --manifest` (non-zero exit, nothing written) | check:ci |
+| 15 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesHookURL' -count=1 -v` | exit 0 — a manifest carrying `hook_attributes.url` is refused with a clear error naming `hook_attributes.url`, the same way and for the same reason as `redirect_url` | check:ci |
 
 ## Evidence
 
-Implemented on branch `feat/apps-installer-02`. All twelve Verify rows run locally (offline —
+Implemented on branch `feat/apps-installer-02`. All fifteen Verify rows run locally (offline —
 every conversion/`gh` call is a test double; `KUBECONFIG=/dev/null`, no live GitHub contact from
-this session).
+this session). Rows 13-15 were added in a follow-up review round (clause 7): the `--manifest`
+mode's two refusal paths and its mutual exclusivity with `--tier` already had passing tests
+(`manifest_flow_test.go`) but no executable Verify row citing them, so there was no traceable
+proof-of-behaviour for that deliverable — these rows cite the existing tests rather than
+duplicating them, per the fail-first rule (nothing new is being pinned, so no new fail-first
+run applies).
 
 | # | Result |
 |---|--------|
@@ -162,6 +170,9 @@ this session).
 | 10 | PASS — `docs/desk-tools/deskapps.md` carries `## Measured` (count 1) and `throttle`/`org owner`/`Enterprise Server` (count 8, ≥3) |
 | 11 | PASS — `TestMutationCorpus*` confirm both `mutations.json` mutants are present verbatim against the real source; independently **hand-applied both mutants** (see fail-first below) and confirmed the named guard tests genuinely fail, then reverted |
 | 12 | PASS (exit 0) once this Evidence edit puts the brief file itself in the diff — `--consumers` is diff-scoped by design (its own `--help`: "corroborate ... against its own diff") and reports `no brief files in the diff — nothing to corroborate` for a diff that never touches a `docs/streams/*/brief-*.md` file, which was true before this edit landed. Both id forms accepted (`apps-installer/02` and the frontmatter's own `assay:assay:apps-installer:02`) — the `#822` slash-form rejection brief 01's Evidence records did not reproduce here. The four `consumers:` entries print **UNCHECKED**, not corroborated: statusgen's own diff-corroboration heuristic did not match the claimed file edits to a recognizable pattern in this diff, even though `git diff refs/remotes/origin/main -- tools/desk/README.md docs/desk-tools/deskapps.md` shows both were genuinely added/extended. Per the tool's own text ("UNCHECKED entries are NOT passes — each one's truth is the reviewer's call") and the row's literal Expect column (exit 0), this is recorded as PASS on the exit code with the UNCHECKED nuance named for the reviewer. |
+| 13 | PASS — `TestRunInitManifestAndTierMutuallyExclusive`: `deskapps init --manifest <file> --tier family --dry-run` exits non-zero and stderr reads `deskapps init: --manifest and --tier are mutually exclusive` (main.go's `runInit`, checked via `fs.Visit` before either path runs) |
+| 14 | PASS — `TestLoadManifestFileRefusesRedirectURL` (loader-level: `LoadManifestFile` returns an error naming `redirect_url` for a manifest carrying its own top-level `redirect_url`) and `TestRunInitManifestBadFileReportsAndExits` (end-to-end: `deskapps init --manifest <that file> --dry-run` exits non-zero, stderr names `redirect_url`, no port bound, nothing written) both pass |
+| 15 | PASS — `TestLoadManifestFileRefusesHookURL`: `LoadManifestFile` returns an error naming `hook_attributes.url` for a manifest whose `hook_attributes` carries its own `url`, presence-checked on the raw JSON before the typed unmarshal (so the field is refused, never silently dropped) |
 
 **Fail-first (Task 7 / mutations.json).** Hand-applied both required mutants directly against
 the built package (not just corpus presence):
