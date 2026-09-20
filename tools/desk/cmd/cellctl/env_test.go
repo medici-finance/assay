@@ -1,13 +1,34 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// stubHarnessesOnPath puts executable `claude` and `codex` stubs on PATH for the duration of a
+// test. scrubbedComposeEnv resolves the harness binary on the PARENT PATH — that is the one
+// parent-derived element a scrubbed launch keeps, named and pinned — and REFUSES when it cannot
+// find one. Without this the tests below pass on a developer laptop (where a harness is
+// installed) and die on a CI runner (where none is), which is a test that measures the machine
+// rather than the code.
+func stubHarnessesOnPath(t *testing.T) string {
+	t.Helper()
+	bin := t.TempDir()
+	for _, h := range []string{"claude", "codex"} {
+		p := filepath.Join(bin, h)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return bin
+}
+
 func scrubbedFixture(t *testing.T) *Cell {
 	t.Helper()
+	stubHarnessesOnPath(t)
 	dir := t.TempDir()
 	return &Cell{
 		Env: envWith(map[string]string{
