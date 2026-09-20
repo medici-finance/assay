@@ -79,7 +79,6 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestLayaAdvisor" ./...` | exit 0; output includes PASS for TestLayaAdvisor, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestLayaAdvisorUnauthorizedFallback" ./...` | exit 0; output includes PASS for TestLayaAdvisorUnauthorizedFallback, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestLayaAdvisorRoundTrip" ./...` | exit 0; output includes PASS for TestLayaAdvisorRoundTrip, with no [no tests to run] for its owning package |
-
 | 4 | check:ci +mutation | `python3 -m unittest discover -s providers/laya/tests -p test_adapter.py -v` | exit 0; network-attempt, input-overflow, artifact-tamper and device-fallback tests execute using stubs without model downloads |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
