@@ -58,7 +58,7 @@ visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` token, read with no ne
 | Everything else — `:public`, an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
 
 The rule is stated in the fail-closed direction on purpose, exactly as
-`VisibilityRiskClassed` states its own: *everything except a stated-private repo takes the
+`VisibilityRiskClassed` states its own: *everything except a repo declared private takes the
 neutral form.* A wrong "public" costs audit precision; a wrong "private" is a disclosure
 that cannot be withdrawn. Every entry point therefore takes the target repo as a
 **mandatory** argument — a verb cannot resolve a principal without saying where the write
