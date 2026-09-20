@@ -81,7 +81,8 @@ proof of execution. See `spec/README.md` § "Known divergences from the referenc
 implementation".
 
 **Date-bounded successor.** The "no execution witness" sentence
-above describes every closure made **before statusgen v1.0.13**. From that pin,
+above describes every closure made **before statusgen v1.0.13**
+<!-- TRACKING: v1.0.13 is the anticipated pin; confirm/correct this version string at cut-release time if the actual next tag differs. The gate itself is git-merge-base scoped and does not depend on this string. -->. From that pin,
 `statusgen verifyrun` writes the witness (command, exit code, output hash, date,
 runner) into the Evidence section, and a `verified`/`done` transition made on a branch
 merging after the pin with no witness behind one or more Verify rows is a hard lint

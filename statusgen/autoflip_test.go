@@ -428,11 +428,31 @@ func TestAutoflipRefusesHeldPass(t *testing.T) {
 		"| # | Command | Exit | Result | Date | Runner |\n" +
 		"|---|---------|------|--------|------|--------|\n" +
 		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
-		"| 2 | `go test ./missing/...` | — | could-not-check: deferred to a follow-up brief | 2026-07-08 | fixture-verifier |\n"
+		"| 2 | `go test ./missing/...` | — | could-not-check: deferred to follow-up brief verify-integrity/05 | 2026-07-08 | fixture-verifier |\n"
 
 	got2 := decideModelFlip(root, s, path, "af/01", deferredEvidence, src, ghReviewer(afReviewer))
 	if got2.Outcome != flipDone {
-		t.Fatalf("the same row marked deferred must flip once the App approval corroborates it, got %v (%s)", got2.Outcome, got2.Reason)
+		t.Fatalf("the same row deferred to a NAMED follow-up (routing phrase + reference) must flip once the App approval corroborates it, got %v (%s)", got2.Outcome, got2.Reason)
+	}
+
+	// Regression (reviewer PR #1304): the exclusion must anchor on a genuine
+	// routed deferral (routing phrase AND a corroborating reference), never a
+	// bare or NEGATED substring "deferred". Ordinary prose that says a row was
+	// NOT deferred and is still broken must NOT suppress the contradiction —
+	// the gate fails CLOSED. This string contains "deferred to" but no
+	// reference, so it is not a routed row.
+	negatedEvidence := "**VERIFY: PASS (1/1 offline-runnable rows)**\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
+		"| 2 | `go test ./missing/...` | — | could-not-check: this was NOT deferred to anyone, still broken | 2026-07-08 | fixture-verifier |\n"
+
+	got3 := decideModelFlip(root, s, path, "af/01", negatedEvidence, src, ghReviewer(afReviewer))
+	if got3.Outcome == flipDone {
+		t.Fatalf("a negated/unreferenced \"deferred\" must NOT suppress the could-not-check contradiction — the gate must fail closed, got flipDone (%s)", got3.Reason)
+	}
+	if !strings.Contains(strings.ToLower(got3.Reason), "could-not-check") {
+		t.Errorf("refusal reason must name the contradicting row; got %q", got3.Reason)
 	}
 }
 

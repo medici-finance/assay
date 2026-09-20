@@ -296,19 +296,21 @@ var strikethroughRe = regexp.MustCompile(`~~[^~]*~~`)
 var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 
 // verifyPassHeldContradiction reports whether evidence both carries a strict
-// hasVerifyPass marker AND, on some line not itself marked "deferred" (the
-// same word unrun.go's unrunMarkerRe already treats as an authored deferral),
-// also says HELD or could-not-check. The first offending line is returned for
-// the caller's message.
+// hasVerifyPass marker AND, on some line that is not a genuinely routed
+// deferral, also says HELD or could-not-check. The first offending line is
+// returned for the caller's message.
 //
 // A **VERIFY: PASS** line is NOT a flip signal
 // on its own when the same Evidence entry contradicts it this way — the model
 // autoflip (autoflip.go's decideModelFlip) and the verify-gate card/closeVerify
 // below both refuse on a true return rather than trusting the whole-brief
-// marker. A row the verifier explicitly deferred (naming a follow-up — the
-// same "deferred to <ref>" shape unrun.go's routingKeywordRe recognises) does
-// NOT contradict the marker: that row was knowingly excluded from the PASS,
-// not silently left unsettled.
+// marker. A row the verifier explicitly routed to a follow-up does NOT
+// contradict the marker: that row was knowingly excluded from the PASS, not
+// silently left unsettled. "Routed" is the SAME shape unrun.go requires (its
+// routingKeywordRe + routingRefRe pair) — a routing phrase such as "deferred
+// to" PLUS a corroborating reference — never a bare substring "deferred", so
+// negated prose ("NOT deferred, still broken") cannot suppress the
+// contradiction: the gate fails closed.
 //
 // Fenced code, blockquotes and struck-through spans are stripped first — the
 // same hygiene lastVerifyVerdict applies — so a marker QUOTED inside one of
@@ -331,8 +333,14 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 		if !heldOrCouldNotCheckRe.MatchString(clean) {
 			continue
 		}
-		if strings.Contains(strings.ToLower(clean), "deferred") {
-			continue // explicitly deferred — excluded from the PASS, not contradicting it
+		// Only a GENUINELY routed row is excluded — the exact shape unrun.go
+		// treats as a routed deferral: a routing phrase ("deferred to", a
+		// follow-up/tracking keyword) AND a corroborating reference (#N, a
+		// stream/NN id, or /issues/N). A bare or negated "deferred" ("NOT
+		// deferred", "deferred? no") carries no such reference and so still
+		// contradicts the PASS — the gate fails CLOSED, not open.
+		if routingKeywordRe.MatchString(clean) && routingRefRe.MatchString(clean) {
+			continue // knowingly routed to a named follow-up — excluded from the PASS, not contradicting it
 		}
 		return true, strings.TrimSpace(clean)
 	}
