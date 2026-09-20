@@ -33,6 +33,7 @@ files:
 - tools/cellctl/cellctl
 - tools/cellctl/examples/model-policy.json
 - tools/cellctl/tests/model-policy.test.py
+- tools/cellctl/tests/scrubbed-cell.test.sh
 - docs/cellctl.md
 - docs/cellctl-model-policy.md
 - changelog/cellctl-model-policy.md
