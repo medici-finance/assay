@@ -21,7 +21,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-20 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-20 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-20 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/8 | 2026-09-20 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-20 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-20 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-20 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-20 |  |
@@ -34,6 +34,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-20 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-20 |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-20 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-20 |
@@ -47,6 +48,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| graph-execution | 10 — Typed advice and separate deterministic policy records [exec:strong] | 0 | 4500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -61,19 +63,19 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (39 desk-actionable of 59 total — 59 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 61 total — 61 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (39)
+### Desk-actionable (40)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| graph-execution | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
@@ -83,6 +85,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -129,9 +132,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| iso-9001 | 01 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
-| iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -141,11 +144,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Parked stream (1)
+### Parked stream (2)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
+| desktools-v2 | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -182,6 +186,10 @@ _None._
 - 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
 - 08 Solo identity mode — spec and decision for running the desk verbs on the operator's own token — implemented (wave 0)
+
+### audit-pack-example (1 open)
+
+- 01 Fixture brief for the sdlc/08 audit-pack worked example — todo (wave 0)
 
 ### auto-triage (4 open)
 
@@ -276,7 +284,7 @@ _None._
 - 01 audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line) — implemented (wave 1)
 - 02 the v2 seam contract + the ban-lint (advisory/counting first) — todo (wave 2)
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — todo (wave 3)
-- 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — todo (wave 2)
+- 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — implemented (wave 2)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — todo (wave 2)
 - 06 installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146) — todo (wave 4)
 - 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 6)
@@ -329,15 +337,25 @@ _None._
 - 05 mirror-freshness gate: fail the release/CI when a mirrored stamped value drifts from its source — todo (wave 0)
 - 06 reconcile ref-resolution across the brief-v2 id flag-day — todo (wave 0)
 
-### graph-execution (7 open)
+### graph-execution (17 open)
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
 - 05 Offline two-pattern experiment on frozen fixtures — todo (wave 2)
 - 06 Run records and the replay/learning loop — todo (wave 3)
-- 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — todo (wave 1)
+- 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
+- 09 Versioned workflow instances and shared identity — todo (wave 1)
+- 10 Typed advice and separate deterministic policy records — todo (wave 0)
+- 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
+- 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
+- 13 Deterministic admission over facts and bounded probabilistic advice — todo (wave 1)
+- 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 3)
+- 15 Control profiles and complete scoped evidence exports — todo (wave 4)
+- 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 2)
+- 17 Graph-linked release and outcome records without new authority — todo (wave 4)
+- 18 Offline graph, advice and assurance integration proof — todo (wave 5)
 
 ### harness-portability (10 open)
 
@@ -531,4 +549,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**21** streams (**16** active, **0** paused, **5** parked) · **88/244** briefs done · completed initiatives: see `docs/archive/`
+**22** streams (**16** active, **0** paused, **6** parked) · **88/255** briefs done · completed initiatives: see `docs/archive/`
