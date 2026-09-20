@@ -24,8 +24,8 @@
 #   - desk:      tools/desk/** (Go + shell), tools/cellctl/** (shell), plugins/assay/**
 #                (skill shell scripts) — this stream's own territory.
 #   - statusgen: statusgen/** (Go) — NOT under `forgeban` today; brought under this ban so
-#                forge-neutral/18's migration progress is visible as a falling count
-#                (desktools-v2/08 holds the zero once it reaches it).
+#                a sibling migration's progress (example-stream/18) is visible as a falling
+#                count (desktools-v2/08 holds the zero once it reaches it).
 # .github/workflows/** is deliberately NOT scanned: its `gh` calls run as standalone CI steps
 # under the workflow's own token, in a different execution context with no Go seam to reach
 # (desktools-v2/01 inventory group H).
