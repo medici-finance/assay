@@ -191,8 +191,12 @@ func dispatch(o dispatchOpts) error {
 			// when it does not know where the worktree will land.
 			wtBanner = fmt.Sprintf(" worktree=%s (operator-supplied, verified)", plan.home)
 		}
+		shownBranch := branch
+		if plan.detached {
+			shownBranch = "(detached off origin/main — verifier touches no branch)"
+		}
 		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s%s\n",
-			o.item, repo, o.tier, o.kit, branch, wtBanner)
+			o.item, repo, o.tier, o.kit, shownBranch, wtBanner)
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
@@ -245,7 +249,17 @@ func dispatch(o dispatchOpts) error {
 	// this step delegates rather than re-deriving any of it — INCLUDING where the
 	// worktree lands: the path the prompt names is the one deskwt printed, never one this
 	// verb predicted.
-	wt := runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", "refs/remotes/origin/main")
+	// Both arms take the SAME base expression: worktreeBase already answers mainlineRef for a
+	// verifier kit (o.pr<=0 || reviewKit || verifierKit), so the detached lane is unchanged by
+	// using it, while the branch lane keeps the PR-resume base main introduced. The only
+	// difference between the arms is --detach vs --branch, which is the verifier's whole point:
+	// it reads merged main and touches no feature branch.
+	var wt runResult
+	if plan.detached {
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch))
+	} else {
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch))
+	}
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so
 		// RELEASE it — exactly as the before_run failure path below does — rather than leave it
@@ -267,7 +281,7 @@ func dispatch(o dispatchOpts) error {
 		// key can create its own.
 		msg := fmt.Sprintf(
 			"step %s: `deskwt add %s` failed in %s. The claim was %s. %s deskwt said:\n%s",
-			stepWorktreeCreate, wtName, o.root, released, worktreeCreateHint(o.kit, branch), toolMessage(wt.stderr))
+			stepWorktreeCreate, wtName, o.root, released, worktreeCreateHint(o.kit, branch, toolMessage(wt.stderr)), toolMessage(wt.stderr))
 		// deskwt's exit code passes THROUGH: a refusal (5) is a decision it made — the branch
 		// is held by a live worktree, or carries unpushed work — and flattening a decision
 		// into "could not be established" tells the operator to retry something that will
@@ -301,7 +315,11 @@ func dispatch(o dispatchOpts) error {
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
 				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil)
 	}
-	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
+	if plan.detached {
+		o.say("%s OK: %s detached off origin/main (verifier: no branch)", stepWorktreeCreate, home)
+	} else {
+		o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
+	}
 
 	// Record the run key worktree-locally (assay.runKey) so the per-run stop layer
 	// (deskkit.Guard's STOP.run.<key> check) resolves it from cwd with
@@ -415,6 +433,10 @@ type dispatchPlan struct {
 	// validateOperatorWorktree — an empty value renders the not-yet-known placeholder, so a
 	// real dispatch, which never sets it, is unaffected.
 	home string
+	// detached is set for a VERIFIER dispatch (#1309 item 6): the worktree is cut as a detached
+	// HEAD off origin/main under a `verify-<item>` name (`deskwt add --detach`), branch is empty,
+	// and no feature branch is created, named, or collided with.
+	detached bool
 	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
 	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
 	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
@@ -524,18 +546,33 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.forgeKind = kind
 	}
 
-	plan.branch = o.branch
-	if plan.branch == "" {
-		plan.branch = "feat/" + sanitizeSegment(o.item)
-	}
-	// The worktree verb is the AUTHORITY on what branch and worktree names it accepts; this
-	// is a pre-check, deliberately no looser than its constraint, whose only job is to keep
-	// a name it would reject from costing a held claim. It does not replace that check.
-	if !branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..") {
-		return plan, deskkit.Refused(fmt.Sprintf(
-			"step %s: --branch %q is not a plain branch name (letters, digits, dot, dash, underscore, "+
-				"slash; no leading dash, no '..'), so the worktree verb would refuse it.",
-			stepWorktreeCreate, plan.branch))
+	// A VERIFIER dispatch names no branch (#1309 item 6): its worktree is cut DETACHED off
+	// origin/main under its own `verify-<item>` name and never touches the brief's feature
+	// branch — a delivered brief's `feat/<id>` still sitting in a stale worker worktree used to
+	// refuse the verifier with "already delivered or in progress", which is true of the brief
+	// and irrelevant to a verify pass against merged main. An explicit --branch on a verifier
+	// dispatch contradicts that shape and is refused here, pre-claim.
+	if verifierKit(o.kit) {
+		if strings.TrimSpace(o.branch) != "" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --branch is not accepted with --kit verifier — a verifier's worktree is cut DETACHED "+
+					"off origin/main under its own name and never touches a feature branch.", stepWorktreeCreate))
+		}
+		plan.detached = true
+	} else {
+		plan.branch = o.branch
+		if plan.branch == "" {
+			plan.branch = "feat/" + sanitizeSegment(o.item)
+		}
+		// The worktree verb is the AUTHORITY on what branch and worktree names it accepts; this
+		// is a pre-check, deliberately no looser than its constraint, whose only job is to keep
+		// a name it would reject from costing a held claim. It does not replace that check.
+		if !branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..") {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --branch %q is not a plain branch name (letters, digits, dot, dash, underscore, "+
+					"slash; no leading dash, no '..'), so the worktree verb would refuse it.",
+				stepWorktreeCreate, plan.branch))
+		}
 	}
 	// The worktree DIR name is session-scoped so a FOREIGN session's leftover canonical dir
 	// (`/private/tmp/tracker-<item>`) cannot dead-end an otherwise-valid dispatch with
@@ -549,6 +586,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// worktree-name grammar, falls back to the bare item-derived name (the pre-session
 	// behaviour), so this never turns a usable name unusable.
 	base := sanitizeSegment(o.item)
+	if plan.detached {
+		// The verifier's OWN name: a worker worktree for the same item (tracker-<item>-<sess>)
+		// must never be the dir a verifier lands in or is refused by.
+		base = "verify-" + base
+	}
 	if !worktreeNameRe.MatchString(base) {
 		return plan, deskkit.Refused(fmt.Sprintf(
 			"step %s: the item key %q does not reduce to a usable worktree name — pass --branch and a key "+
