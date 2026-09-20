@@ -196,3 +196,11 @@ three reviewed patterns, the coverage rule, the recovery contract, the offline e
 the run-record/replay loop, and the flow instruments — all in this repository. An adopter's
 real-work trial, its admission-control policy, its console integration and its public-facing
 description of the direction are the adopter's own briefs, in the adopter's tree.
+
+
+## Proposed extension — 2026-09-18
+
+[Admission, local decisions and assurance](admission-assurance-spec.md) is a proposed,
+routed amendment. It keeps this stream as the execution foundation and adds briefs
+09–18; it does not change deployed behavior, remove human gates or require Laya for
+the original offline experiment. Existing 03–06 are revised only at shared contracts.

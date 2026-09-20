@@ -326,6 +326,20 @@ as the planner and acts on its rows.
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
   `yes`) gets a strong-tier (opus+) or human reviewer. Read the item's risk frontmatter — do not default all reviews to one tier.
 
+  **Lane depth is tier-keyed for external authors.** The lane SET is not the same for every author:
+  resolve the pull request's author through the contributor-trust tier resolver the project layer
+  configures (`deskkit.ReviewLanesForAuthor` — the tier source is a project-layer value resolved from
+  its own configuration, the ledger behind it operator-side and never a file in this tree) and dispatch
+  the set it names: `unknown` and `blessed-once` authors get the deep set — correctness at strong tier,
+  the security lane, a claims-versus-diff fact check and a mandatory fail-first reproduction;
+  `contributor` and `maintainer` authors keep the standard path. The lane sets, the fact-check output
+  contract and the fail-first reproduction's two required records are stated once in the desk tools'
+  dispatch reference (`tools/desk/cmd/deskdispatch/references/review-lanes.md`), held to the code by
+  test — never restate them here. Only the lane set varies: the verdict shape, the reviewer identity,
+  the ready flip and the merge authority are unchanged at every tier, and no tier merges anything.
+  Until the project layer configures a ledger this is inert: every external identity resolves
+  `unknown` and gets the deep set, roster identities are unaffected.
+
   **Risk-classed PRs get a SECOND, separate `/security-review` agent, dispatched CONCURRENTLY with
   the correctness reviewer** — never folded into it (dispatch-neutral-wording rule), and never queued
   behind its verdict. Classification is the flip gate's `riskClassed`, read at dispatch time: brief

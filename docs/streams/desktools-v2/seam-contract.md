@@ -64,7 +64,7 @@ without `forge`/`resolve` in its name would not be caught by class (b) today. Cl
 (c) and (d) are NOT narrowed this way — a `gh` subprocess literal, a GraphQL `pullRequest(`/
 `mergeRequest(` block, and the `api.github.com` host string are precise enough patterns that a
 whole-tree grep does not dilute (calibrated against the tree at this brief's baseline: class
-(d) surfaces real sites outside the seam, e.g. `deskkit/compositionsource.go` (planned)'s
+(d) surfaces real sites outside the seam, e.g. `tools/desk/internal/deskkit/compositionsource.go`'s
 hardcoded release-URL construction, that a narrower scope would have hidden).
 
 ## Known limitations of a grep-based counter (v1, advisory)
@@ -73,12 +73,12 @@ hardcoded release-URL construction, that a narrower scope would have hidden).
   a comment counts the same as a literal in a URL construction). The count is therefore an
   upper bound, not an exact reach-around tally — consistent with `desktools-go-git`'s
   `count-git-exec.sh`, which counts every `git` spawn the same way, advisory first.
-- `deskkit/trustfetch.go` (planned)'s `PRTrustQuery`/`IssueTrustQuery` constants are a single
+- `tools/desk/internal/deskkit/trustfetch.go`'s `PRTrustQuery`/`IssueTrustQuery` constants are a single
   shared definition (like `GitHubAPIBase`) consumed by both a backend and
-  `deskpost/github.go` (planned)'s duplicate client; they are **not** exempted the way
+  `tools/desk/cmd/deskpost/github.go`'s duplicate client; they are **not** exempted the way
   `GitHubAPIBase` is, so they count under class (c). A future brief may want to extend the
   (d)-style carve-out to this pair once the query constants have exactly one canonical home
   the way the host literal does.
-- `deskpost/github.go` (planned) (17 sites, `desktools-v2/01` inventory group E) is the largest single
+- `tools/desk/cmd/deskpost/github.go` (17 sites, `desktools-v2/01` inventory group E) is the largest single
   finding: a second, hand-rolled GitHub REST+GraphQL client, entirely outside both backends.
   No v2 brief currently names it — it is counted, not hidden, and its migration is unrouted.

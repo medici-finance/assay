@@ -130,6 +130,44 @@ Where the project keeps a decision log — an operation's drive-plan record, a r
 stream doc — the relay is copied there too, with the issue as its source. This skill does not
 define that log; it feeds it.
 
+## Ratification — a relay is not yet a ruling
+
+The relay above records an answer; it is not itself the ruling. Until the driver ratifies it in
+their own identity, what stands on the issue is a well-formed record of something the desk said
+the driver said — which is exactly the artifact a confidently-worded comment can counterfeit.
+Ratification is what makes the distinction visible on the issue itself, independent of how the
+relaying session worded anything: the issue carries the state, not the prose.
+
+The ratification relay comment has five parts, every time:
+
+1. **The relay header.** Names the driver's answer as relayed, with the date it was given.
+2. **The disclaimer.** States explicitly that this comment is a relay RECORD and not itself the
+   ruling — the ruling is what the ratifying identity writes.
+3. **The chosen option, with the rationale as given.** The letter or word answered, and the
+   reasoning the driver actually voiced — never an inferred one. If no rationale was given,
+   the part says so rather than supplying one.
+4. **What happens once ratified.** Who does what next, and which label comes off — stated so
+   the ratifier can see, before acting, exactly what ratifying authorises.
+5. **The state line.** Awaiting ratification, and by whom.
+
+**Ratification is an act only the driver can perform.** No agent ratifies on the driver's
+behalf under any phrasing: the ratifying comment is written in the ratifying identity's own
+hand. Being an act owed to the driver, it is handed over as a `RUNSHEET.md` entry in the
+`human-runsheet` skill's four-part shape — the exact act, why it is owed, what the desk did
+instead, and the resume step. That skill owns the entry shape; this section does not restate
+it.
+
+**A relay is not a wait state for the desk.** Record the relay, move the labels the recording
+section above allows, and continue with the queue: the issue itself holds the
+awaiting-ratification state, visible to any reader, and the desk does not park on it. What the
+desk must not do is act on the relayed answer as if ratified where the gate is a human gate —
+a relayed ruling authorises nothing a human gate still holds.
+
+**After ratification: the amendment dispatch.** The follow-on work the ruling implies is
+dispatched in the normal way, citing the ratified comment — `deskdispatch` is the verb, and
+its flags belong to that verb's own documentation. Until the ratifying comment lands, the
+amendment does not go out on the relay alone.
+
 ## Verification, then the next item
 
 Do not present item `k+1` until item `k`'s act is verified:

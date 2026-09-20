@@ -246,6 +246,37 @@ wired house-style even when the launch env is right.
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Non-implementer verifier run — VERIFY: FAIL (row 1 only: shellcheck regression introduced by this item's own merged commit; rows 2-15 + full suite green) — verify-desk-dispatch-20260920T0246Z (verify-desk dispatch), @ merged main `e4109205`, 2026-09-19/20
+
+Own temp worktree off origin/main, offline envelope, not the implementer. Implementation commit in scope: 58a019271 (PR #1263). Filed: #1355 (the row-1 bug).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | shellcheck tools/cellctl/cellctl | exit 0 | exit 1 — 7 SC2086 (info) findings, lines 726, 729, 768, 995, 996, 1801, 2188 (unquoted $KIND_VALUES/$COCKPIT_VALUES/$HARNESS_VALUES in value_in calls); parent 58a019271^ shellchecks clean (exit 0), so the findings were introduced by this item's own commit. **FAIL — filed #1355** | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 2 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pass | exit 0 | exit 0 — 8 ok rows (PEM row, roster ASSAY_ALLOWED_REPOS row, harness login under cell home, config home real-dir + mode 0700) | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 3 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub | exit 0 | exit 0 — 12 ok rows: no GH_TOKEN / SSH_AUTH_SOCK / ANTHROPIC_API_KEY canary reaches the harness; allowlist keys present with cell-relative values; composed PATH is EXACTLY the 7 named elements in order — no canary dir | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 4 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case plan-grammar | exit 0 | exit 0 — 6 ok rows: existing [dry-run] line first, [plan] env KEY-sorted, then argv, cwd, lock; KEY set dereferences SCRUBBED_ENV_KEYS minus the inactive harness var | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 5 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-ready | exit 0 | exit 0 — 8 ok rows, both arms: claude invoked with -p, codex invoked with exec --ephemeral --sandbox read-only, each under the cell HOME; prints READY | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 6 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-not-ready | exit 0 | exit 0 — 4 ok rows: READY-but-exit-2 → exit 1 with "smoke: not ready:"; wrong-but-well-formed answer → exit 1, names what it said | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 7 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case lock | exit 0 | exit 0 — 6 ok rows: second desk while pid alive exits 4 naming "cellctl down"; dead pid → status prints stale-lock; down clears; after down, desk proceeds | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 8 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pem | exit 0 | exit 0 — 5 ok rows: symlink PEM → MISS naming symlink, exit 1; regular 0644 → MISS naming 0600, exit 1; regular 0600 → ok | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 9 | bash tools/cellctl/tests/house-cell.test.sh | exit 0 | exit 0 — 53 ok, 0 FAIL (house kind untouched) | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 10 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-roster | exit 0 | exit 0 — 3 ok rows: two-slug value MISS, empty value MISS, exact slug ok | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 11 | bare cell.env in a temp CELLS_ROOT: cellctl check x; test $? -eq 1 | exit 0 (overall) | exit 0 overall — check loaded kind=scrubbed (no exit-3 die), printed MISS rows and exited 1; find stderr noise on the absent .config dir is cosmetic | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 12 | all 15 SCRUBBED_ENV_KEYS names present in the docs env table (grep per key) | exit 0 | exit 0 — all 15 variable names found in the docs env table; no missing env row | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 13 | grep -c '^## Scrubbed cells' docs/cellctl.md | exit 0; prints 1 | exit 0, printed 1 | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 14 | statusgen --consumers --root . --base $(git merge-base origin/main HEAD) | exit 0 | exit 0 — no brief files in the diff (post-merge base == HEAD, empty diff, trivially green); a wider corroboration run at base 58a019271^ exits 1 but judges other briefs' claims in that window, not this item's | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+| 15 | bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode | exit 0 | exit 0 — 3 ok rows: 0755 config home → MISS naming 0700, exit 1; 0700 → ok | 2026-09-19 | verify-desk-dispatch-20260920T0246Z |
+
+Supplementary (DoD corroboration): full suite scrubbed-cell.test.sh (all 13 cases incl. new, status, down, legacy-kinds) exit 0, 77 ok / 0 FAIL — including a retired CELL_KIND=local registration still refuses (exit 3) and k8s default untouched; neighbour suites harness.test.sh, container-cell.test.sh, cockpit.test.sh each exit 0 (byte-identical-behaviour clause).
+
+RISK-BEARING VALUE (brief risk all-no, gate model, diff touches no risk-classed path — the fail-safe trigger does not strictly fire; enumerated anyway):
+- RISK-VALUE: DERIVED — pem-mode = 0600 @ tools/cellctl/cellctl:1312 — the repo's standing custody convention for key/token files (same 0600 at cellctl:1417, :2808-2812); check fails closed on widening (row 8 green).
+- RISK-VALUE: DERIVED — config-home-mode = 0700 @ tools/cellctl/cellctl:1288 (created 0700 at cellctl:2941) — owner-only traversal for the directory holding the 0600 PEMs; check fails closed (row 15 green).
+- RISK-VALUE: DERIVED — scrubbed-path-tail = /usr/bin:/bin:/usr/sbin:/sbin @ tools/cellctl/cellctl:1670, full composed order at cellctl:1674 — fixed system tail (never wholesale parent PATH) behind the shim prefix and the one named parent-derived element; row 3 proves the exact 7-element order and canary-dir absence.
+- Remaining literals (SCRUBBED_ENV_KEYS 19-key allowlist @ cellctl:1616; lock-refusal exit 4 + message @ cellctl:1711-1712; unknown-kind exit 3) are reversible operational knobs — rows 3/4/7/11 pin each; rank last, no derivation owed.
+
+VERIFY: FAIL — Verify row 1 only (shellcheck exit 1, seven SC2086 findings, NEW in merged commit 58a019271; filed #1355). The unquoted expansions are functionally intentional (value_in takes multiple words) but need disable directives or quoting to satisfy the row's exit-0 expectation. Class: lint regression introduced by the merged implementation. Rows 2-15 all green — the feature behaviour itself is verified sound. Per the fail rule the item does NOT advance: status stays implemented, no flip.
 
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;

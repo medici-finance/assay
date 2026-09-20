@@ -228,6 +228,22 @@ brief's `depends:`/`gates:` decision instead of walking `b.Depends` in isolation
 map, computed once per board build. Nothing about the score changes (F-09 boundary):
 eligibility is a gate, never a score input.
 
+**What instant the graph actually records, after graph-execution/01 + 07.** The evaluator
+above computes a live *verdict* — it does not itself write a timestamp anywhere. The only
+recorded instants this pair of briefs adds are derived, after the fact, from
+`docs/streams/.history.jsonl` (`statusgen/flow.go`, graph-execution/07): for a brief with
+`depends:`, its `eligible_to_start` instant is the LATEST of its dependencies' own earliest
+recorded transition to `done`/`verified`; for a brief with none, it is that brief's own
+earliest historian record. This is a **replay against `depends:` only** — a `gates:`/
+`feathers:` edge (cross-repo or forge-backed) is not walked, since replaying it would need
+either a forge read this evaluator deliberately never makes or a sibling checkout's own
+historian, neither of which graph-execution/07 takes on. What the lifecycle graph **still
+does not record**, after both briefs: a true work-start event. "Active work time" remains
+the `in-progress`-dwell PROXY `--flow-efficiency` already shipped (a stage dwell, not a
+work-start-to-first-commit measurement); "eligible_to_start" is a *replayed* instant, not a
+live one — a brief-history append still never writes an "eligible now" record the moment its
+last dependency clears.
+
 ## 4. The derived graph
 
 ### 4.1 Source of truth: distributed frontmatter — there is no graph file

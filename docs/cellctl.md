@@ -97,23 +97,32 @@ automatically.
 `cellctl` ships inside `desk-tools-<platform>.tar.gz` (#850) — the same tarball, on the same
 `checksums.txt`-pinned channel, as every other desk-tools binary; the `install-desk-tools`
 PRIMITIVE (`docs/adopting-assay.md`) and `deskinstall` both extract it onto your bindir alongside
-the rest, no extra step. It is a shell script, not a Go build, so the SAME file ships in every
-platform's tarball. `make desk-install` in this repo installs it too.
+the rest, no extra step. It is a Go program (`tools/desk/cmd/cellctl`), cross-compiled PER
+PLATFORM like every other desk verb, so each platform's tarball carries its own build.
+`make desk-install` in this repo installs it too, from the same `desk-build` output.
 
-Two lines cover every other case — a checkout of this repo, or a tarball you extracted by hand:
+The filename inside the tarball is unchanged, so the from-tarball line still reads:
 
 ```bash
-install -m 0755 tools/cellctl/cellctl ~/.local/bin/cellctl     # from a checkout of this repo
-# or, from an extracted release tarball:
-install -m 0755 ./cellctl ~/.local/bin/cellctl
+install -m 0755 ./cellctl ~/.local/bin/cellctl                 # from an extracted release tarball
+# or, from a checkout of this repo (needs a Go toolchain):
+cd tools/desk && go build -o ~/.local/bin/cellctl ./cmd/cellctl
 ```
 
-`cellctl` needs `git`, `tmux` (the default cockpit), `curl`, `openssl` and `python3` on `PATH` — `cellctl check` reports
-each one. It does not need a Go toolchain.
+`cellctl` needs `git` and `tmux` (the default cockpit) on `PATH` — `cellctl check` reports each
+one. A checkout build needs a Go toolchain; a tarball install does not.
 
 A packaged copy reports the umbrella release tag it shipped at via `cellctl --version` (or
-`cellctl version`) — the same contract `statusgen --version` uses, so a stale copy is detectable. A
-checkout install (the two-line form above) honestly reports `dev`.
+`cellctl version`) — the same contract `statusgen --version` uses, so a stale copy is detectable.
+The tag is stamped at link time (`-ldflags -X main.cellctlVersion=<tag>`) exactly as every other
+desk binary's is; a plain source build honestly reports `dev`.
+
+**Windows.** The tarball's `windows-amd64` / `windows-arm64` legs carry a real `cellctl.exe`
+rather than a shell script no Windows shell runs — the package itself cross-compiles for
+`GOOS=windows` today. That is a BUILD, not a delivered Windows launcher: proving a Windows cell
+actually boots (and the `internal/deskkit` unix-only syscall sites brief
+`docs/streams/windows-port/` 00 owns) belongs to the windows-port stream, not here. Until that
+stream delivers, treat the Windows binaries as untested.
 
 ---
 
@@ -1199,3 +1208,77 @@ The existing [container credential contract](../containers/secrets.md) still
 applies to deployments using the published desk images. A container launcher
 must not mount the operator's whole home, credentials directory or engine socket
 into an agent merely because those paths are available on its host.
+
+---
+
+## Parity with the shell oracle
+
+`cellctl` was a 3,000-line shell script before it was a Go program, and the script is still in
+the tree at `tools/cellctl/cellctl`. It is not dead weight and it is not a fallback: it is the
+**ORACLE** the Go program is proved against, and it stays until a human signs the cutover.
+
+**The harness.** `tools/cellctl/tests/parity.test.sh` runs both implementations over the same
+hand-built fixtures and diffs what they produce:
+
+```bash
+CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh
+```
+
+For every cell in the matrix it runs `DRY_RUN=1 <impl> <verb> <args>` under both, normalises the
+two things that legitimately differ (each copy's own path, and the fixture root each was given,
+plus the clock-derived tokens the launcher itself stamps into a session name or a backup
+filename), and diffs stdout, stderr and the exit code. Any difference is a divergence naming
+`<kind>/<harness>/<cockpit>/<verb>`, and the harness exits 1.
+
+**The matrix** is 200 cells: kinds {k8s, house, container, scrubbed} × harness {claude, codex} ×
+cockpit {tmux, herdr, orca} × verbs {check, desk, up, down, set, ls, smoke, status}, plus `new`
+per kind × forge {github, gitlab}. `new` has no dry run, so parity there is a byte-diff of the
+whole tree each implementation scaffolds — paths, mode bits and file contents. `PARITY_ONLY=<substring>`
+narrows a run to one cell or one verb.
+
+**`deskd` is deliberately outside the matrix.** It has no `DRY_RUN` plan path in the oracle, so
+there is nothing to diff, and giving it one would mean editing the oracle. It is also the single
+most credential-sensitive verb — the script hand-built an RS256 App JWT with `openssl` and
+exchanged it for per-org installation tokens. The Go port mints nothing of its own: it goes
+through `deskkit.RoleTokenForRepo`, the same custody code every other desk verb's credential
+travels, and the package contains no `crypto/rsa`, no `crypto/x509`, no JWT and no `openssl`
+shell-out. That is asserted at the source level rather than by diff.
+
+**Two independent layers, not one.** The plan diff above is the first. The second is the
+seventeen behavioural suites beside it (`tools/cellctl/tests/*.test.sh`), which assert what was
+WRITTEN, what a stub RECORDED and which exit code came back — so they fail for different reasons
+than a textual diff:
+
+```bash
+for s in tools/cellctl/tests/*.test.sh; do
+  case "$s" in *parity*) continue;; esac
+  CELLCTL=tools/desk/cellctl bash "$s" || echo "suite red: $s"
+done
+```
+
+Each suite honours `$CELLCTL`, defaulting to the oracle, so the SAME suite runs against either
+implementation. A handful of cases observe a MECHANISM the two implementations do not share — a
+stub recording the `$HOME` of a shell-out, a grep of the implementation's own source, the
+sed-stamp packaging exception — and those state themselves `n/a` against the binary rather than
+failing.
+
+**The negative control.** A harness that diffs nothing is a green lamp wired to nothing. Building
+with `-tags parity` compiles in a divergence injector that drops one named `[plan] env` line, and
+the harness must then go RED:
+
+```bash
+cd tools/desk && go build -tags parity -o /tmp/cellctl-parity ./cmd/cellctl && cd ../..
+CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=/tmp/cellctl-parity \
+  bash tools/cellctl/tests/parity.test.sh     # expected: exit 1, naming scrubbed/…/desk cells
+```
+
+`KUBECONFIG` is the canary on purpose: it is the cluster-isolation control, the most damaging
+line to lose silently. The injector lives in exactly one file, behind `//go:build parity`, so a
+release build — the one a tagless `go build` produces — contains none of that code and ignores
+the variable entirely.
+
+## Per-role provider, model and effort policy
+
+For explicit mixed-provider role assignments, model-version pins and effort configuration,
+see [Cell model policy](cellctl-model-policy.md). `CELL_MODEL_POLICY` enables this opt-in
+path; existing cell pins continue to apply when it is absent.

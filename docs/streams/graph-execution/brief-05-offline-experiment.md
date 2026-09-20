@@ -9,7 +9,7 @@ why: >-
   declaration cannot change what gets dispatched without touching routing code, the stream
   has not earned a real-work trial.
 wave: 2
-depends: ["graph-execution/01", "graph-execution/02", "graph-execution/03", "graph-execution/04"]
+depends: ["graph-execution/01", "graph-execution/02", "graph-execution/03", "graph-execution/04", "graph-execution/09"]
 unblocks: ["graph-execution/06"]
 effort: L
 gate: model
@@ -18,6 +18,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
+  - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
+  - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
   - "docs/streams/graph-execution/spec.md §4 (the eight cases, the baseline comparison, the three pass criteria) and §2 (the first correctness milestone: a declaration change alters dispatch with zero routing-code diff)"
   - "graph-execution/01 (the `statusgen --eligibility --json` verdicts the harness reads), graph-execution/02 (`spec/workflow-patterns/implementation-v1.yaml` (planned) and `research-v1.yaml` (planned) — the two patterns under test), graph-execution/03 (`statusgen --coverage --json`), graph-execution/04, id assay:assay:graph-execution:04 (the drainloop Effect/Receipt/Reconcile layer the recovery case exercises; this brief is the follow-up 04 routes its harness consumer to)"
   - "statusgen/testdata/ (the fixture-tree convention this brief follows: one directory per check, e.g. `statusgen/testdata/v2-smoke`, `statusgen/testdata/verifyrun`) and fixtures/ (the untrusted-corpus convention, NOT used here — those fixtures are adversarial inputs, these are frozen repo trees)"
@@ -26,7 +28,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "(b) correctness depends on cross-artifact reasoning — the harness joins four briefs' outputs (eligibility, patterns, coverage, recovery) into one verdict per case, and a harness that quietly exercises only one of them still prints a full table; (a) the fixture design for the 'reviewed revision to pending work' case is not pre-specified by the facts."
 domain: complicated
-version: 1
+version: 2
 id: 83c0aedc-ef16-4e28-9b89-5d3e8bdafb3a
 ---
 
@@ -49,6 +51,10 @@ facts:
 - Do not edit the sibling briefs' code to make a case pass; a case that cannot pass is recorded as `fail` in the report with the reason, and the report is still the deliverable.
 - Stop at `implemented` — you do not set verified/done.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
+
+## Integration amendment — 2026-09-18
+
+Consume workflow instances from 09 rather than define a private harness instance shape. The original eight cases, baseline and zero-routing-code-diff proof remain unchanged. This experiment stays deterministic and offline, with no model weights, provider service or calibration requirement. The expanded advice/assurance integration is 18.
 
 ## Task
 1. **Fixtures.** Create `statusgen/testdata/graph-execution/<NN>-<case>/` (planned) for the eight cases, each a minimal streams tree (README + briefs with brief-v2 frontmatter, the pattern instance, Evidence rows or witness files where the case needs them) plus `case.yaml`: `pattern:`, `edit:` (the one-line declaration change, cases 2 and 5), `expect:` (eligibility verdict, coverage released yes/no, effect count, journal kinds).
