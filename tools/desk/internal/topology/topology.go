@@ -349,8 +349,8 @@ func Parse(data []byte) (Topology, error) {
 
 	// comms — the message-plane enablement mode (CommsMode's doc). ABSENT IS
 	// DISABLED, not a parse error (the topology.yaml convention an absent
-	// optional key means off, never a default-on guess — docs/acp-cell-comms-
-	// spec.md §8 item 1). A stated-but-unrecognised value IS a parse error
+	// optional key means off, never a default-on guess — see CommsMode's doc
+	// comment and cmd/commsgw/config.go). A stated-but-unrecognised value IS a parse error
 	// naming the line: this key is a closed vocabulary of two live modes
 	// (interim, full), and guessing at a typo is how a silent full-enable
 	// ships as a spelling mistake.
