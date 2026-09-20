@@ -71,12 +71,12 @@ func TestRosterAllowedReposUsesDeskkitsKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &Cell{Env: envWith(map[string]string{}), Home: dir, Config: cfg}
-	if got := c.rosterScopeLine(); got != "example-org/example-repo" {
-		t.Errorf("rosterScopeLine = %q — want the LAST active line, raw", got)
+	if got := c.rosterAllowedRepos(); got != "example-org/example-repo" {
+		t.Errorf("rosterAllowedRepos = %q — want the LAST active line, raw", got)
 	}
 	// No roster at all is "", never a panic and never a match.
 	c2 := &Cell{Env: envWith(map[string]string{}), Home: t.TempDir(), Config: t.TempDir()}
-	if got := c2.rosterScopeLine(); got != "" {
+	if got := c2.rosterAllowedRepos(); got != "" {
 		t.Errorf("no roster ⇒ %q, want empty", got)
 	}
 }

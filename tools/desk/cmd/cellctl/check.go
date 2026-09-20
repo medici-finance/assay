@@ -331,7 +331,7 @@ func (c *Cell) checkScrubbed(k *checker) {
 		}
 	}
 
-	allowed := c.rosterScopeLine()
+	allowed := c.rosterAllowedRepos()
 	k.chk(allowed == c.Env.Get("CELL_REPO_SLUG"),
 		"roster ASSAY_ALLOWED_REPOS is exactly %s (a scrubbed cell is scoped to one repo)", c.Env.Get("CELL_REPO_SLUG"))
 

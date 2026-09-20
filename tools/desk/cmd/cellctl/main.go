@@ -12,6 +12,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // cellctlVersion is the release tag this binary ships at, stamped at link time exactly like
@@ -38,6 +40,21 @@ func die(format string, args ...any) {
 func exitWith(code int) { panic(exitCode{code}) }
 
 func main() {
+	// The roster class is an EXPLICIT declaration, never the zero value by accident
+	// (a correctness review found SetToolClass had no caller anywhere, so "ClassWrite is the
+	// safe default" was true only by luck — and TestEveryRosterReadingMainDeclaresClassAndEchoes
+	// fails any main that reads the roster without one). cellctl reads the cell home's roster to
+	// answer `check`'s write-authorisation rows — rosterParses() via deskkit.LoadConfig, and
+	// rosterAllowedRepos() for the scrubbed exact-scope row — so ciEligible=false, matching
+	// deskpr/deskboard/deskfile: the answer must come from the cell's config-home FILE and never
+	// from the environment. That is not a stylistic match. ClassCI would let the surrounding
+	// environment supply the very scope line `check` exists to audit, so a cell whose roster file
+	// is missing or wider than its CELL_REPO_SLUG could pass its own check on inherited env vars.
+	// The cell home's file is the thing under audit, so it is the only admissible source.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	// P3: echo the effective roster once per run. A control surface that lives in settings rather
+	// than in a diff is visible only at RUN time; without the echo a NARROWING is invisible.
+	deskkit.EchoEffectiveConfig(os.Stderr)
 	code := run()
 	os.Exit(code)
 }

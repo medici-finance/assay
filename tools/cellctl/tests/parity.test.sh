@@ -317,7 +317,20 @@ normalise(){
   # given when that string goes through a symlink or a `tests/../` hop — and `up`'s per-role
   # command lines print exactly that resolved form.
   local implreal; implreal="$(cd "$(dirname "$impl")" && pwd -P)/$(basename "$impl")"
+  # The P3 effective-config echo is deskkit's, not cellctl's grammar. Every roster-reading main in
+  # tools/desk writes it to stderr once per run, and the Go port is one of those mains: it consults
+  # the cell home's roster for `check`'s write-authorisation rows, so
+  # TestEveryRosterReadingMainDeclaresClassAndEchoes requires the echo (the alternative — a name
+  # that hides the read from that guard's detector — was ruled out). The shell oracle predates the
+  # echo and makes no in-process trust decision, so it emits none of these lines.
+  #
+  # Dropping them here is therefore the same kind of normalisation as <ts> and <root>: it removes
+  # what is NOT part of the contract being compared, so the diff keeps saying what it is for —
+  # whether the two implementations agree on cellctl's own plans, refusals and verb output. It is
+  # applied to BOTH sides, so it can only ever hide a line the oracle never prints; it cannot mask
+  # a divergence in cellctl's own output, none of which is prefixed "assay-config: ".
   sed \
+    -e '/^assay-config: /d' \
     -e "s#$root#<root>#g" \
     -e "s#$implreal#<cellctl>#g" \
     -e "s#$impl#<cellctl>#g" \
