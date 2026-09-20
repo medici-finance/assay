@@ -209,6 +209,10 @@
 #                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
 #                         PATH are identical in every cockpit.
 #
+# Model policy: CELL_MODEL_POLICY=<JSON path relative to cell dir, or absolute> enables
+# per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
+# Without that key, legacy pins and defaults retain their existing behavior.
+#
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
