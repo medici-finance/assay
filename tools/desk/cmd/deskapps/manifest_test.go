@@ -128,11 +128,37 @@ func TestBuildManifestJSON(t *testing.T) {
 	if !ok || perms["contents"] != "write" || perms["metadata"] != "read" {
 		t.Fatalf("default_permissions = %v", m["default_permissions"])
 	}
-	hook, ok := m["hook_attributes"].(map[string]any)
-	if !ok || hook["active"] != false {
-		t.Fatalf("hook_attributes = %v, want active:false", m["hook_attributes"])
+	// assay#1260: a webhook-less spec (no HookExtra at all, this spec's case) posts NO
+	// hook_attributes key — see TestBuildManifestJSONOmitsHookAttributesTierPath.
+	if _, ok := m["hook_attributes"]; ok {
+		t.Fatalf("hook_attributes = %v, want the key absent entirely (assay#1260)", m["hook_attributes"])
 	}
 	if strings.Contains(string(raw), "\"url\":\"\"") {
 		t.Fatal("manifest url must not be empty")
+	}
+}
+
+// TestBuildManifestJSONOmitsHookAttributesTierPath pins medici-finance/assay#1260: a
+// --tier spec never names a webhook (AppSpec.HookExtra is always nil on this path), so the
+// posted manifest JSON must carry NO "hook_attributes" key at all — not
+// {"hook_attributes": {"active": false}} with no url, which GitHub's own new-App manifest
+// page rejects with `"url" wasn't supplied` (reported live against feat/apps-installer-02,
+// deskapps init --manifest). Before the fix this test fails: the raw JSON contains
+// `"hook_attributes":{"active":false}`.
+func TestBuildManifestJSONOmitsHookAttributesTierPath(t *testing.T) {
+	spec := AppSpec{Name: "assay-worker-app", Permissions: []string{"contents:write"}}
+	raw, err := BuildManifestJSON(spec, "http://127.0.0.1:41873/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "hook_attributes") {
+		t.Fatalf("raw manifest JSON must not mention hook_attributes at all: %s", raw)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["hook_attributes"]; ok {
+		t.Fatalf("decoded manifest carries hook_attributes = %v, want the key absent", m["hook_attributes"])
 	}
 }
