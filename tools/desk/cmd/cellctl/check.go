@@ -458,7 +458,7 @@ func (c *Cell) codexSkillsDiscoverable() bool {
 	return false
 }
 
-// ---- small filesystem predicates, one spelling each --------------------------------------
+// ---- small filesystem predicates, one spelling each ----
 
 func exists(p string) bool {
 	_, err := os.Lstat(p)

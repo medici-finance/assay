@@ -85,13 +85,13 @@ func cmdNew(args []string) {
 		if !rolesSet {
 			roles = "the-desk"
 		}
-		if yaml+orgs+pem+group+tokenStore != "" {
+		if anyGiven(yaml, orgs, pem, group, tokenStore) {
 			die("container new does not accept host credential or deskd configuration")
 		}
 		newContainer(e, root, cell, repo, launcher, roles, roots)
 		return
 	case "scrubbed":
-		if yaml+orgs+pem+group+tokenStore+launcher != "" {
+		if anyGiven(yaml, orgs, pem, group, tokenStore, launcher) {
 			die("scrubbed new does not accept host credential, deskd or container-launcher configuration")
 		}
 		newScrubbed(e, root, cell, repo, repoSlug, roots, roles)
@@ -354,12 +354,19 @@ CELL_REPO=%s
 CELL_ROOTS=%s
 FORGE_API_BASE=https://api.%s
 ROLES="%s"
-`+cockpitBlock+pinnedBlock+houseProviderBlock+`DESKD=0
-DESKD_ADDR=127.0.0.1:%s
-`, cell, today, cell, repo, roots, githubHost, roles, cell, cell, port))
+`+houseCellEnvTail, cell, today, cell, repo, roots, githubHost, roles, cell, cell, port))
 	writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
 	fmt.Printf("[new] scaffolded %s (house cell) — cellctl check %s, then cellctl desk %s <role>\n", d, cell, cell)
 }
+
+// houseCellEnvTail is every trailing block a house cell.env carries, in order. Assembled with a
+// Join rather than a chain of `+` so the expression stays readable as the list of blocks it is.
+var houseCellEnvTail = strings.Join([]string{
+	cockpitBlock, pinnedBlock, houseProviderBlock, deskdBlock,
+}, "")
+
+// deskdBlock closes a house cell.env: no deskd by default, and the address one would listen on.
+const deskdBlock = "DESKD=0\nDESKD_ADDR=127.0.0.1:%s\n"
 
 const houseProviderBlock = "# Provider (optional; unset = Anthropic). `--model` alone only changes the model NAME — a\n" +
 	"# non-Anthropic model additionally needs its endpoint and credential switched, which a provider\n" +
@@ -474,7 +481,7 @@ private-socket tmux session (` + "`run/tmux.sock`" + `) and one session lock (` 
 a second ` + "`desk`" + ` while one is live is refused, naming the live pid and session.
 `
 
-// ---- small write helpers --------------------------------------------------------------------
+// ---- small write helpers ----
 
 func nextOrEmpty(args []string, i *int) string {
 	if *i+1 >= len(args) {
