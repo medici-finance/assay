@@ -35,7 +35,7 @@ unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_RO
   DESK_ROOTS DESK_LOOP DESK_SESSION 2>/dev/null || true
 
 # ---------------------------------------------------------------- shared fixture
-export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
+export HOME="$T/home"; mkdir -p "$HOME/.config/gh" "$HOME/.claude"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 git init -q --bare -b main "$T/origin.git"

@@ -124,6 +124,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 13 | [Worker-operations vitals — the self-report resource block](brief-13-worker-operations-vitals.md) | 2 | M | todo | — | — |
 | 14 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-14-budget-driven-recycle.md) | 3 | M | todo | — | — |
 | 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
+| 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
