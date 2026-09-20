@@ -142,7 +142,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// — `dig` (and every idempotency key derived from it, including the kind/dedup
 		// reads below that parse `body`) stays keyed on the CALLER-supplied body, so the
 		// same verdict retried from a different session still dedupes.
-		postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+		postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 		if oerr != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", oerr), dig)
 		}
