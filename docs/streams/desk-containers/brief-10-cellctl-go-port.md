@@ -54,7 +54,7 @@ consumers:
   - ".github/workflows/release.yml: follow-up desk-containers/10 (this brief; the packaging exception at :1133-1152 is removed — the implementer's App token has no `workflows` scope, so this hunk lands as a separate commit a human pushes, noted on the PR)"
   - "Makefile: follow-up desk-containers/10 (this brief; `CELLCTL_SRC` re-pointed)"
   - "docs/cellctl.md: follow-up desk-containers/10 (this brief; §Install rewritten, plan-grammar section cross-referenced)"
-  - "tools/cellctl/cellctl: out-of-scope (the bash stays in the tree as the oracle; its removal is a later brief this stream has not authored — never this one)"
+  - "tools/cellctl/cellctl: follow-up desk-containers/10 (this brief, NARROWLY — the bash stays in the tree as the oracle and its removal is a later brief this stream has not authored. Per the desk ruling recorded on the decision issue and the AMENDMENT under §The oracle, the ONLY edit this brief makes to it is dropping four withheld stream cites from its emitted scaffold text, shipped with the parity proof; nothing else in the script changes)"
   - "docs/streams/windows-port/: out-of-scope (a native-Windows cellctl is a consequence this brief NAMES for that stream and does not deliver; the build-tag split its brief 00 owns is the precondition)"
 ---
 
