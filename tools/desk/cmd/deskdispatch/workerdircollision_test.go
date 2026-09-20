@@ -32,7 +32,7 @@ import (
 // test rather than silently re-merging the two classes.
 const (
 	deskwtDirCollisionSaid = "refused: target already exists (never clobbered): " +
-		"/private/tmp/tracker-assay--item-1-stale"
+		"/private/tmp/tracker-item-1-stale"
 	deskwtBranchDeliveredSaid = "refused: branch feat/item-1 already exists, is checked out in NO worktree, " +
 		"and carries 2 commit(s) not in origin/main"
 	deskwtBranchUnverifiableSaid = "branch feat/item-1 already exists and no worktree holds it, but its commits " +
@@ -86,7 +86,7 @@ func TestWorkerHintStillDeliversOnTheUnverifiableBranchWording(t *testing.T) {
 func TestWorkerHintRendersThreeDistinctClasses(t *testing.T) {
 	checkedOut := worktreeCreateHint("worker", "feat/item-1",
 		"refused: branch feat/item-1 already exists and is CHECKED OUT in the worktree "+
-			"/private/tmp/tracker-assay--item-1 — that worktree owns it")
+			"/private/tmp/tracker-item-1 — that worktree owns it")
 	delivered := worktreeCreateHint("worker", "feat/item-1", deskwtBranchDeliveredSaid)
 	dir := worktreeCreateHint("worker", "feat/item-1", deskwtDirCollisionSaid)
 
