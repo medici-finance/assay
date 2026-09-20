@@ -47,7 +47,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -59,14 +58,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (34 desk-actionable of 52 total — 52 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (36 desk-actionable of 55 total — 55 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (34)
+### Desk-actionable (36)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -77,17 +76,19 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 02 | implemented | 3000 | 4 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| iso-9001 | 04 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -115,7 +116,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 
-### Awaiting implementer rework (13)
+### Awaiting implementer rework (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -125,6 +126,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -188,9 +190,9 @@ _None._
 - 01 Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card — implemented (wave 0)
 - 02 Trust tiers + the contributor ledger — one vocabulary for how much automation an external identity gets — implemented (wave 0)
 - 03 `deskbless` — a structured blessing act with a machine marker, a scope, a reason and an audit row — todo (wave 1)
-- 04 Review depth by tier — an unknown author's pull request gets a claims-versus-diff fact check and a fail-first reproduction — todo (wave 1)
+- 04 Review depth by tier — an unknown author's pull request gets a claims-versus-diff fact check and a fail-first reproduction — implemented (wave 1)
 - 05 Fork-safe continuous-integration posture — audited workflows, tier-keyed approve-and-run, and never-build-unblessed enforced by a check — todo (wave 2)
-- 06 Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion — todo (wave 0)
+- 06 Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion — implemented (wave 0)
 - 07 Agent contributors — disclosure of automated authorship, and tiering the operating human rather than the tool — todo (wave 1)
 - 08 External-contribution metrics — inbound pull requests by tier and outcome, on the board — todo (wave 1)
 - 09 External-contributor credit in release notes — the aggregator names the author a fork change came from — todo (wave 1)
@@ -334,7 +336,7 @@ _None._
 
 - 01 Emit the tool-validation evidence pack as a release asset — implemented (wave 0)
 - 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
-- 04 Record the authorizing human in the release itself — todo (wave 1)
+- 04 Record the authorizing human in the release itself — implemented (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
 ### measured-status (6 open)
