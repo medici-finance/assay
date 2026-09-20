@@ -1,6 +1,3 @@
-# Plan incremental completion recovery
+### Added
 
-Add desk-supervision briefs 16–21 for verification wake conditions, durable repair
-obligations, dispatch admission review finding continuity, first-pass review scope and external-prerequisite reverification. Reuse existing
-verification repair work and the existing review round cap. Planning only; no
-runtime behavior or defaults change.
+- Plan six incremental review and verification repairs: verification wake conditions, durable worker obligations, repair admission, persistent review findings, first-pass scope and external-prerequisite reverification. Reuse existing verifier repair work and the current review round cap; this change authors briefs without activating new runtime behavior.
