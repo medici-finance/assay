@@ -403,6 +403,36 @@ recorded ruling).
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). Rows 7 and 8 need a
      provisioned auditor identity and are run by the human gate. -->
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — gate: human, risk.sensitive-data: yes — Evidence only, HELD at `implemented`
+
+Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` origin/main at `57509073b9b7c989b850c7e5d251f7443ef3794c`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go test ./...` | exit 0 | exit 0, all ~55 packages ok | 2026-09-17 | sonnet-5-verifier |
+| 2 | grep for gh/glab exec.Command shell-outs | `0` | `0` | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestNoForgeCLIShellout`, `TestForgeNoPassthrough`, `TestForgeGitlabCoverage`, `TestForgeGithubGolden` | exit 0 | exit 0 all — ratchet ceiling 5, frozen surface 46 ops, coverage reconciles | 2026-09-17 | sonnet-5-verifier |
+| 4 | permit-row grep + ceiling check | first line `0`, ceiling ≤6 | `0`; `allowedInvocationCeiling = 5` | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestForgeGithubGolden/hardening_read_unknown_kind` | exit 0, zero requests | exit 0 PASS; golden fixture directly confirms `"requests": []` | 2026-09-17 | sonnet-5-verifier |
+| 6 | 4 named repohardenguard tests | exit 0 | exit 0, all 4 PASS | 2026-09-17 | sonnet-5-verifier |
+| 7 | live `repohardenguard --json` run (needs auditor token) | exit 0 | **could-not-check: `auditor` App not provisioned in this environment** (see finding below) | 2026-09-17 | sonnet-5-verifier |
+| 8 | live PATCH probe with auditor token | `403` | **could-not-check: same reason as row 7** — `desktoken auditor` fails to mint (no `AUDITOR_APP_ID`, no `auditor-app.pem`) | 2026-09-17 | sonnet-5-verifier |
+| 9 | `desktoken --version \| grep -c 'auditor=auditor-app'` | `1` | `1` — binding exists even though the App itself isn't provisioned | 2026-09-17 | sonnet-5-verifier |
+| 10 | `statusgen --root . --consumers` | exit 0 | exit 0 — no pending diff (post-merge); frontmatter itself already shows every consumer `fixed-here` | 2026-09-17 | sonnet-5-verifier |
+| 11 | `TestAdopterDocsEnumerateEveryRole` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 12 | 3-part adopter-docs grep | exit 0 | exit 0 — GitHub page names the read-only grant; GitLab role table has the auditor/Reporter(20)/read_api row; per-role token list includes auditor | 2026-09-17 | sonnet-5-verifier |
+| 13 | negative control — no auditor+write line | exit 1 (no match) | **exit 1 expected, got a match (exit 0)** — `docs/adopting-assay.md:329` names `auditor` on the same line as a `: write` reference, but on inspection the write belongs to the UNRELATED `cell-issues` App ("a narrower... `write-issues` identity... the model **the auditor role above** follows") — a control-precision false-positive, not an actual write grant to auditor. Flagged for human judgment, not resolved by this verifier | 2026-09-17 | sonnet-5-verifier |
+
+**Finding, filed separately (tracked internally — not resolvable from this repo):** the `auditor` App is not provisioned in this house environment. This means rows 7/8 — the actual runtime proof of the security boundary this brief exists to establish — cannot be independently verified by ANY verify-desk session until the App is provisioned, not just this one.
+
+**RISK-VALUE — layered, one layer unverified this cycle:**
+- Layer 1 (code-level containment): op 40 takes a closed kind, not a path; zero-request refusal on an unknown kind. VERIFIED (rows 3, 5).
+- Layer 2 (forge-level containment — the actual point of the human gate): the live 403 refusal of a write attempt with the auditor's own token. **NOT VERIFIED this cycle** — could-not-check per the provisioning gap above, not a pass by default.
+- GitHub grant documented (`docs/adopting-assay.md:328`): Metadata:read, Contents:read, Administration:read, explicitly no write. GitLab grant documented (`docs/adopting-assay-gitlab.md:121`, §5a): Reporter(20) for reads, Maintainer(40) for protected-branches/tags/approvals/push-rules reads — Maintainer is not inherently read-only on GitLab in general; the docs assert the write boundary comes from the PAT's `read_api` scope, server-enforced regardless of role. Architecturally consistent with the brief's own design principle (scope, not role, is the boundary), but not independently re-verified against a live GitLab instance this cycle (no credential available, and out of this brief's own scope).
+
+**Net:** code-level containment solidly verified; forge-level containment — the actual human-gate substance — unverified this cycle for GitHub due to missing App provisioning, and row 13's negative control did not cleanly pass on the literal command (false-positive match, flagged not resolved). Both are directly relevant to the sign-off this item asks for.
+
+**Gate statement:** `gate: human` + `sensitive-data: yes` — Evidence only, no verdict/flip made or attempted.
 
 ## Review
 Gate: human (from frontmatter — a risk answer is yes). Human gate is MANDATORY. Reviewer records

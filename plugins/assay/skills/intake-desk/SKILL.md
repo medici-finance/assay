@@ -261,6 +261,13 @@ human?**
   is unaffected; so is its own board-sweep autonomous-drive rule.)
 - **Human-directed → the session that received the instruction owns it**, no claim needed — only one
   window got the instruction, so there is no race to arbitrate.
+- **Exception — a driver-authored instruction naming no work item is `the-desk`'s, not this desk's**:
+  when the issue is authored by the driver identity itself (`human:<name>`, not merely a trusted
+  login or a blessed comment), its body reads as an instruction to the desk, and it names no
+  existing work item (a brief, PR, or tracked issue), the coordinator acts directly — receipt
+  comment, dispatch behind draft PRs, and the intake register entry filed in the same deliverable PR
+  (mandatory). Any inbound issue that fails one of those three conditions stays this desk's under
+  the two cases above.
 
 This partitions **autonomous** reactions only: a coordinator working an issue because a human pointed
 at it is NOT a violation. **Exclusivity, not a claim, because coordination-by-announcement does not

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -794,4 +795,149 @@ func TestRepoFromOrigin(t *testing.T) {
 	// This is best-effort in unit tests (depends on the git remote).
 	// Just verify it doesn't panic and returns something or empty string.
 	_ = repoFromOrigin()
+}
+
+// ---- on-behalf-of attribution is NOT a stamp (#1335) ------------------------------
+//
+// The on-behalf-of annotation the Evidence write path stamps into an App-authored
+// Runner cell (`<app>[bot] @ <tree> (on-behalf-of human:<login>)`) is attribution,
+// not a sign-off. The stamp scan must not read it as a human:<name> stamp — it is
+// LOGIN-keyed, so it either fails the name map or, when the login equals a name,
+// demands an approval nobody was asked for. Sign-off vocabulary stays fully gated.
+
+// onBehalfOfEvidenceDiff is the live consumer shape: N App-authored Evidence rows,
+// each carrying the on-behalf-of principal the attribution lint REQUIRES.
+func onBehalfOfEvidenceDiff(rows int) string {
+	var b strings.Builder
+	b.WriteString("diff --git a/docs/streams/example/brief-01.md b/docs/streams/example/brief-01.md\n")
+	b.WriteString("--- a/docs/streams/example/brief-01.md\n+++ b/docs/streams/example/brief-01.md\n@@ -1,0 +1,12 @@\n")
+	b.WriteString("+## Evidence\n")
+	for i := 1; i <= rows; i++ {
+		fmt.Fprintf(&b, "+| %d | `go test ./...` | pass exit=0 | sha256:%012x | 2026-09-18 | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:ada) (GITHUB_ACTOR) |\n", i, i)
+	}
+	return b.String()
+}
+
+// (1) An on-behalf-of Runner cell produces no stamp — and therefore no finding.
+func TestStampsInDiff_OnBehalfOfIsNotAStamp(t *testing.T) {
+	stamps := stampsInDiff("", onBehalfOfEvidenceDiff(11))
+	if len(stamps) != 0 {
+		t.Fatalf("on-behalf-of attribution matched as a stamp: got %d stamps, want 0: %+v", len(stamps), stamps)
+	}
+	// The trailer form, in a body/commit-shaped added line, is attribution too.
+	trailer := "diff --git a/docs/notes.md b/docs/notes.md\n--- a/docs/notes.md\n+++ b/docs/notes.md\n@@ -1,0 +1,1 @@\n+On-behalf-of: human:ada\n"
+	if stamps := stampsInDiff("", trailer); len(stamps) != 0 {
+		t.Fatalf("On-behalf-of: trailer matched as a stamp: %+v", stamps)
+	}
+}
+
+// (2) A real, unmapped sign-off claim on the same shape of row is still caught —
+// the exemption is the annotation, not the vocabulary.
+func TestStampsInDiff_OnBehalfOfDoesNotShieldRealStamp(t *testing.T) {
+	diff := "diff --git a/docs/streams/example/brief-01.md b/docs/streams/example/brief-01.md\n" +
+		"--- a/docs/streams/example/brief-01.md\n+++ b/docs/streams/example/brief-01.md\n@@ -1,0 +1,1 @@\n" +
+		"+| 1 | `go test ./...` | pass exit=0 | sha256:1 | 2026-09-18 | human:zed approved |\n"
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 || stamps[0].Name != "zed" {
+		t.Fatalf("real stamp lost: got %+v, want one stamp named zed", stamps)
+	}
+	results := corroborateStamps(stamps, &ghPRData{}, "example-org/tracker", 1, nil)
+	if len(results) != 1 || results[0].Verdict != verdictMissing {
+		t.Fatalf("uncited sign-off must be MISSING-CORROBORATION: %+v", results)
+	}
+}
+
+// (3) Both forms on one line: only the sign-off half is judged. The attribution
+// names ada (the configured login); the Reviewed cell stamps alex (configured, login ada). Exactly one
+// stamp — alex — comes out, located in ITS cell, and the recorded cell is the
+// original text.
+func TestStampsInDiff_MixedLineJudgesOnlySignOffHalf(t *testing.T) {
+	row := "| 01 | [Brief](brief-01.md) | 0 | S | done | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:ada) | 2026-09-18 human:alex |"
+	diff := "diff --git a/docs/streams/example/README.md b/docs/streams/example/README.md\n" +
+		"--- a/docs/streams/example/README.md\n+++ b/docs/streams/example/README.md\n@@ -1,0 +1,1 @@\n+" + row + "\n"
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 {
+		t.Fatalf("got %d stamps, want exactly the sign-off stamp: %+v", len(stamps), stamps)
+	}
+	s := stamps[0]
+	if s.Name != "alex" {
+		t.Fatalf("stamp name = %q, want alex (the on-behalf-of login ada must not be judged)", s.Name)
+	}
+	if s.Unresolved || len(s.Rows) != 1 {
+		t.Fatalf("sign-off stamp must resolve to its board row: %+v", s)
+	}
+	if got, want := s.Rows[0].Cell, "2026-09-18 human:alex"; strings.TrimSpace(got) != want {
+		t.Fatalf("recorded cell = %q, want the original Reviewed cell %q", got, want)
+	}
+	if login, _ := HumanLogin(s.Name); login != "ada" {
+		t.Fatalf("alex must still resolve to its login for corroboration, got %q", login)
+	}
+}
+
+// (4) The reviewer's case: a sign-off that FOLLOWS the trailer on the same line. The
+// stamp lane must still see no stamp (the marker is gone and a bare login is not a
+// human:<name>), while the citation lane (TestDetectCitations_SignOffAfterTrailerIsStillJudged)
+// must still see "ada approved". Stripping the login with the marker broke the
+// second half; this pins the first half stays true after the fix.
+func TestStampsInDiff_SignOffAfterTrailerIsNotAStamp(t *testing.T) {
+	diff := "diff --git a/docs/notes.md b/docs/notes.md\n--- a/docs/notes.md\n+++ b/docs/notes.md\n@@ -1,0 +1,1 @@\n" +
+		"+On-behalf-of: human:ada approved the prod flip on #12\n"
+	if stamps := stampsInDiff("", diff); len(stamps) != 0 {
+		t.Fatalf("attribution marker + trailing sign-off must yield no STAMP (the citation lane judges it): %+v", stamps)
+	}
+	// And the marker strip keeps the login: the sign-off text survives verbatim.
+	if got, want := stripOnBehalfOf("On-behalf-of: human:ada approved the prod flip on #12"), "ada approved the prod flip on #12"; got != want {
+		t.Fatalf("stripOnBehalfOf = %q, want %q (marker gone, login kept)", got, want)
+	}
+}
+
+// (5) Security-lane finding: the principal token must be a CONFIGURED, login-shaped
+// login, whole, up to a boundary — otherwise the annotation is not stripped and the
+// stamp lane gates it exactly as before. `ada-approved` is login-shaped but not a
+// declared login; `ada_approved` is not login-shaped at all. Neither may lose its
+// `human:` prefix, and a wider token class must not swallow a hyphen-joined verb.
+func TestStampsInDiff_OnBehalfOfNonLoginTokenStaysAStamp(t *testing.T) {
+	for _, tc := range []struct{ in, wantStamp string }{
+		{"| 1 | `x` | pass exit=0 | sha256:1 | 2026-09-18 | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:ada-approved) |", "ada"},
+		{"| 1 | `x` | pass exit=0 | sha256:1 | 2026-09-18 | assay-worker-app[bot] @ b988d175ab12 (on-behalf-of human:ada_approved) |", "ada_approved"},
+		{"On-behalf-of: human:ada-approved the prod flip on #12", "ada"},
+	} {
+		if got := stripOnBehalfOf(tc.in); got != tc.in {
+			t.Errorf("stripOnBehalfOf(%q) altered a non-configured principal: %q", tc.in, got)
+		}
+		diff := "diff --git a/docs/streams/example/brief-01.md b/docs/streams/example/brief-01.md\n" +
+			"--- a/docs/streams/example/brief-01.md\n+++ b/docs/streams/example/brief-01.md\n@@ -1,0 +1,1 @@\n+" + tc.in + "\n"
+		stamps := stampsInDiff("", diff)
+		if len(stamps) != 1 || stamps[0].Name != tc.wantStamp {
+			t.Errorf("stampsInDiff(%q): want one stamp %q (still gated), got %+v", tc.in, tc.wantStamp, stamps)
+		}
+	}
+	// The boundary rule: a configured login followed by `)`, `|`, whitespace or EOL
+	// is stripped; the same login glued to more token characters is not a login.
+	for in, want := range map[string]string{
+		"(on-behalf-of human:ada)":     "(ada)",
+		"on-behalf-of human:ada|":      "ada|",
+		"On-behalf-of: human:ada":      "ada",
+		"On-behalf-of: human:ada done": "ada done",
+		"on-behalf-of human:ada_x)":    "on-behalf-of human:ada_x)",
+		"on-behalf-of human:ADA)":      "ADA)", // login case-insensitive, text kept as written
+	} {
+		if got := stripOnBehalfOf(in); got != want {
+			t.Errorf("stripOnBehalfOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestIsConfiguredHumanLogin(t *testing.T) {
+	for tok, want := range map[string]bool{
+		"ada": true, "ADA": true,
+		"ada-approved": false, // login-shaped, not configured
+		"ada_approved": false, // underscore: not login-shaped
+		"-ada":         false, "ada-": false, "a--b": false, "": false,
+		strings.Repeat("a", 40): false,
+	} {
+		if got := isConfiguredHumanLogin(tok); got != want {
+			t.Errorf("isConfiguredHumanLogin(%q) = %v, want %v", tok, got, want)
+		}
+	}
 }

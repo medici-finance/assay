@@ -1,3 +1,4 @@
+<!-- common-clauses:begin -->
 # common clauses
 
 The clauses EVERY dispatched agent receives, whatever its class. They are emitted ahead of
@@ -88,3 +89,4 @@ edit cannot represent — a distinct finding reply, an announcement of adoption 
 stay visible in the thread on its own. Everything that is this agent's own running state —
 what it intends to do, what it has verified, what is blocking it — belongs in the ONE
 workpad, edited, never appended as a new comment.
+<!-- common-clauses:end -->

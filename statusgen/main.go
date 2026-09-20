@@ -1231,6 +1231,19 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen patterns --lint [--root DIR]` — validate every
+	// spec/workflow-patterns/*.yaml workflow-pattern-v1 file against
+	// schemas/workflow-pattern-v1.json and the cross-field MUST rules a schema
+	// cannot express (graph-execution/02, patterns.go).
+	//
+	// Intercepted before flag parsing for conform's reason: it owns --root and
+	// its own --lint verb flag, and it is a DISTINCT artifact-class surface
+	// (pattern files, not briefs) from the board `--lint`, so it is a subcommand
+	// rather than a `--lint` leg — same shape as `conform`.
+	if len(os.Args) > 1 && os.Args[1] == "patterns" {
+		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
 	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
 	// before flag parsing for verifyrun's reason: it owns its own target
@@ -1416,6 +1429,18 @@ func main() {
 	// lane (not forced file-only) and --dry-run is its no-write "--check" surface.
 	transcribeVerdictMode := flag.Bool("transcribe-verdict", false, "verify verdict transcriber (R-6): land the Evidence-append + model-tier-flip delta from signed verifier verdict issues on the candidate tree behind authorship + RS256 signature + check:ci re-execution + the enactment gate; INERT until R-6 is signed. --dry-run = --check")
 	verdictPubkey := flag.String("pubkey", "", "--transcribe-verdict: verifier public-key PEM path; falls back to the ASSAY_VERIFIER_PUBKEY variable (PEM or base64-of-PEM)")
+	// --transcribe-scan-delta is the CROSS-REPO scan-delta transcriber
+	// (the house-private brief, R-7 clause 4): it sweeps open issues on the home
+	// repo for a scan-delta payload block signed with the issue-loop role key
+	// (deskverdict --key issue-loop), verifies it under the SAME R-7 enactment
+	// gate as --transcribe-scan, and lands the cross-repo placeholder delta
+	// behind the full clause-4 battery — container author (an identity fact),
+	// role-declared RS256 signature, body-unedited timeline, per-entry API
+	// re-check where readable, and same-repo-entry refusal. It ships INERT: it
+	// evaluates no clause until R-7's sign-off resolves, and it adds NO second
+	// arming path. --dry-run is its no-write "--check" surface.
+	transcribeScanDeltaMode := flag.Bool("transcribe-scan-delta", false, "cross-repo scan-delta transcriber (R-7 cl.4): re-derive the cross-repo placeholder delta from signed issue-loop-role scan-delta issues behind the clause-4 battery + the SAME R-7 enactment gate as --transcribe-scan; INERT until R-7 is signed. --dry-run = --check")
+	scanDeltaPubkey := flag.String("scan-delta-pubkey", "", "--transcribe-scan-delta: issue-loop public-key PEM path; falls back to the ASSAY_ISSUE_LOOP_PUBKEY variable (PEM or base64-of-PEM)")
 	closeVerifyID := flag.String("close-verify", "", "flip <stream>/<NN> verified→done with a human:<name> sign-off (refuses if not verified/gate:human)")
 	// Model-path auto-flip (methodology-metrics/39). The gate:human counterpart
 	// is --close-verify above, and the two never meet: this mode's candidate
@@ -1560,6 +1585,7 @@ func main() {
 	// product override (serves:), skipping auto-derivation. Both apply to --lint;
 	// absent = today's whole-house behavior (main regen never passes them).
 	changedFile := flag.String("changed", "", "file of changed repo-relative paths (one per line); path-scopes the DAR check and auto-derives --scope")
+	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	flag.Parse()
 
@@ -1604,6 +1630,7 @@ func main() {
 			"--signoff-digest":        *signoffDigestMode,
 			"--scan-issues":           *scanIssuesMode,
 			"--transcribe-scan":       *transcribeScanMode,
+			"--transcribe-scan-delta": *transcribeScanDeltaMode,
 			"--transcribe-verdict":    *transcribeVerdictMode,
 			"--close-verify":          *closeVerifyID != "",
 			"--auto-flip-model":       *autoFlipModelMode,
@@ -1761,6 +1788,13 @@ func main() {
 	if *transcribeScanMode {
 		os.Exit(runTranscribeScan(*root, *scanDryRun,
 			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+	}
+	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
+	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
+	// resolves as --transcribe-scan; --dry-run is the no-write "--check" surface.
+	if *transcribeScanDeltaMode {
+		os.Exit(runTranscribeScanDelta(*root, *scanDryRun, *scanDeltaPubkey,
+			ghIssueLister, ghVerdictIssueResolver, ghAuthorResolver, ghCommentResolver))
 	}
 	// Verify verdict transcriber (verdict-lane/03, R-6): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-6 sign-off
@@ -2076,6 +2110,23 @@ func main() {
 			if p := strings.TrimSpace(line); p != "" {
 				changedPaths = append(changedPaths, p)
 			}
+		}
+	}
+	// --changed-only: the louder, CI-refusing local sibling of --changed (task 5,
+	// forge-neutral/18). resolveChangedOnly is the pure decision core (see changedonly.go);
+	// main() only performs the print/exit its result names, so the CI-gate refusal is a
+	// table-driven unit test rather than a subprocess spawn.
+	if r := resolveChangedOnly(*changedOnlyFlag, *changedFile != "", mode == "lint", scanInCI()); *changedOnlyFlag != "" {
+		switch {
+		case r.Refusal != "":
+			fmt.Fprintln(os.Stderr, r.Refusal)
+			os.Exit(1)
+		case r.UsageErr != "":
+			fmt.Fprintln(os.Stderr, "statusgen:", r.UsageErr)
+			os.Exit(2)
+		default:
+			fmt.Fprintln(os.Stderr, r.Banner)
+			changedPaths = append(changedPaths, r.Paths...)
 		}
 	}
 	// Differential register lint: --diff-base makes --lint compare the

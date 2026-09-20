@@ -55,6 +55,12 @@ coordinator never autonomously responds to inbound ISSUE or COMMENT events** —
 is `intake-desk`'s alone (the origin test is stated ONCE, in `skills/intake-desk/SKILL.md` § "The
 loop — issue lane"). That scopes issue/comment inbound only: this desk still watches the open-PR
 queue and files `review-request` issues, and the autonomous-drive rule fires off its own board sweep.
+**Carve-out:** when an inbound issue is authored by the driver identity itself (`human:<name>`, not
+merely a trusted login or a blessed comment), its body reads as an instruction to the desk, and it
+names no existing work item (a brief, PR, or tracked issue), this coordinator acts on it directly
+rather than leaving it to `intake-desk`: it posts a receipt comment on the issue, dispatches behind
+draft PRs as usual, and files the intake register entry in the SAME deliverable PR (mandatory, so
+the front-door register stays complete). Anything else inbound stays `intake-desk`'s.
 
 ## Boot
 
@@ -197,6 +203,10 @@ not own.
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+- **A relayed ruling is recorded, then awaits ratification:** where this desk relays the driver's
+  answer on a decision issue, the relay comment follows `ask-decision` §"Ratification — a relay is
+  not yet a ruling" — five parts, and the ruling binds only once the driver ratifies it in their
+  own identity.
 - **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
   `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
   runsheet is the exact command the driver runs.

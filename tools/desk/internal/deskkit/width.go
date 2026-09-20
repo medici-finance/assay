@@ -236,7 +236,7 @@ var widthPolicies = map[string]widthPolicy{
 			"— which is the reason this pool has always been narrower than the worker pool.",
 	},
 	"verify-desk": {
-		Default:       1,
+		Default:       6,
 		DeclaredMax:   6,
 		WriteTool:     "deskevidence",
 		chargedCap:    func() int { return UnnumberedCapFor("deskevidence") },
@@ -244,8 +244,12 @@ var widthPolicies = map[string]widthPolicy{
 		TokenBound:    false,
 		Why: "a verified flip charges TWO writes (Evidence + README) into deskevidence's " +
 			"unnumbered bucket, which is exactly the pacing constraint that bucket's raised " +
-			"cap was sized around. Default 1 because this desk has always drained " +
-			"sequentially; the ceiling is what a widened drain may reach.",
+			"cap was sized around. Default 6 is the MEASURED safe width (#1310): a hand-set " +
+			"width of 6 was carried for a full window without a rate-limit trip, while the " +
+			"old default of 1 (\"this desk has always drained sequentially\") is what the " +
+			"widening decayed back to after WidthTTL, mid-drain, with no session that knew " +
+			"why. The default and the ceiling now coincide: the pool rests at the width the " +
+			"budget arm already admits, and the knob narrows it rather than widening it.",
 	},
 	"intake-desk": {
 		Default:       1,

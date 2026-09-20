@@ -31,11 +31,16 @@ package main
 // membership, never on any text an issue author controls.
 
 import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -593,6 +598,488 @@ func runTranscribeScan(root string, dryRun bool,
 				return 1
 			}
 			fmt.Printf("transcribe-scan: created %s\n", p.Rel)
+		}
+	}
+	return 0
+}
+
+// ===========================================================================
+// R-7 clause 4 — the CROSS-REPO scan-delta verify path (the house-private
+// brief, Task 3).
+//
+// RELATION TO THE SAME-REPO LANE ABOVE. planTranscribeScan re-derives its own
+// delta from a live API read of the home repo's open issues — the API access
+// itself is the trust primitive. A foreign repo this box cannot always read
+// (a private downstream repo) has no such API-re-derivation
+// available for every entry, so the cross-repo lane substitutes a SIGNATURE:
+// the intake loop's existing scan already computes the foreign delta in an
+// isolated worktree, signs the canonical payload with the issue-loop role key
+// (deskverdict --key issue-loop, Task 1), and files it as ONE scan-delta issue
+// on THIS (home) repo. That issue IS the R-7 cl.4 trust primitive.
+//
+// FIVE INDEPENDENT LAYERS, each naming the clause it refuses under:
+//
+//  1. clause-4 (author)        — the CONTAINER issue (the scan-delta issue
+//     itself) must be authored by the issue-loop App's own API-read identity
+//     (login+id+type) — an identity fact, mirrors R-6 clause-1.
+//  2. clause-4 (signature)     — the payload block verifies against the
+//     issue-loop role's public key (scanDeltaVerifyBody), AND the block must
+//     DECLARE role=issue-loop before any signature arithmetic runs (Task 1's
+//     declared-role invariant, reused here as its own layer: a
+//     verifier-signed artifact is refused on this lane even with a valid sig).
+//  3. clause-4 (body-unedited) — the CONTAINER issue's body was not edited
+//     since creation (GitHub `last_edited_at`), mirroring R-6's timeline check
+//     — an edited container could carry a payload the signature no longer
+//     covers byte-for-byte... except it always covers the payload it was
+//     computed over; the edit check exists because an editable container
+//     could otherwise be used to SUBSTITUTE a stale-but-still-valid signed
+//     block after the fact (re-pasting an old payload+signature pair into a
+//     newer-looking issue). Refusing ANY edit, not just payload edits, is the
+//     simple, auditable rule R-6 already established.
+//  4. clause-4 (per-entry API re-check) — for an entry whose Repo this box
+//     CAN read via the API, the entry's claimed author identity is
+//     re-verified; a contradiction refuses THAT ENTRY (not the whole issue).
+//     An entry whose repo is NOT readable (a private foreign repo) rests on
+//     the signature + the PRODUCER's own clause-1 check — R-7 cl.4's stated
+//     two-tier honesty, never silently dropped and never silently promoted to
+//     "verified via API".
+//  5. clause-4 (same-repo)     — an entry whose Repo equals homeRepo is
+//     refused: same-repo issues have their OWN lane (planTranscribeScan
+//     above), and accepting one here would let a signed artifact bypass that
+//     lane's independent re-derivation.
+//
+// The lane stays INERT behind the SAME R-7 enactment gate as the same-repo
+// lane (transcribeEnactmentGate) — this file adds NO second arming path.
+// ===========================================================================
+
+// scanDeltaSchemaVersion is the payload schema this build speaks. A payload
+// naming a version this build does not recognise is refused, never guessed —
+// same posture as verdictSchemaVersion.
+const scanDeltaSchemaVersion = "scan-delta-v1"
+
+// scanDeltaPubkeyVar carries the issue-loop role's PUBLIC key. A repo/Actions
+// VARIABLE, never a secret, and NOT committed to the tree — the second
+// role-keyed variable alongside verdictPubkeyVar (verdict-lane/01's landed
+// invariant, which this brief EXTENDS to a second role rather than carving an
+// exception to). Matches deskkit.IssueLoopPubkeyVar byte-for-byte; the two are
+// separate Go modules that share no code (see transcribeverdict.go's package
+// doc), so this name is a documented cross-tree duplicate.
+const scanDeltaPubkeyVar = "ASSAY_ISSUE_LOOP_PUBKEY"
+
+// scanDeltaWantRole is the ONE role this lane ever accepts. Matches
+// deskkit.VerdictRoleIssueLoop.
+const scanDeltaWantRole = "issue-loop"
+
+// scanDeltaRoleRE extracts the declared signing ROLE from a deskverdict-signed
+// body's trailer comment (`role=<role>`). Absent entirely (a body signed
+// before role-keying existed) means the implicit default "verifier" — the
+// SAME default deskkit.extractDeclaredRole applies, so the two independently
+// duplicated implementations agree on every input.
+var scanDeltaRoleRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\brole=([a-z-]+)`)
+
+func scanDeltaDeclaredRole(body string) string {
+	if m := scanDeltaRoleRE.FindStringSubmatch(body); m != nil {
+		return m[1]
+	}
+	return "verifier"
+}
+
+// scanDeltaEntry is ONE cross-repo delta item inside a scan-delta payload —
+// the producer's canonical per-entry shape (brief fact: "repo, issue number,
+// author identity as read, trust basis, delta class, rendered placeholder
+// body"). Body is the byte-identical output of the producer's own
+// renderPlaceholder call: the trust primitive is the SIGNATURE over this
+// content, not a local re-derivation (which is not always possible — the
+// entry's repo may be private to this box).
+type scanDeltaEntry struct {
+	Repo        string `json:"repo"`
+	Issue       int    `json:"issue"`
+	AuthorLogin string `json:"author_login"`
+	AuthorID    int64  `json:"author_id"`
+	AuthorType  string `json:"author_type"`
+	TrustBasis  string `json:"trust_basis"` // "rostered" | "blessed:<comment-id>"
+	Class       string `json:"class"`       // this lane handles "create" only; any other class is could-not-check
+	Body        string `json:"body"`        // rendered placeholder-v1 file body
+}
+
+// scanDeltaPayload is the canonical cross-repo scan-delta payload — the
+// signed block's JSON content.
+type scanDeltaPayload struct {
+	Schema  string           `json:"schema"`
+	TS      string           `json:"ts"`
+	Entries []scanDeltaEntry `json:"entries"`
+}
+
+// scanDeltaResolvePubkey resolves the issue-loop role's PUBLIC key: an
+// explicit --pubkey PEM path, then the ASSAY_ISSUE_LOOP_PUBKEY variable (a
+// PEM string OR base64-of-PEM via the SAME decoder verdictResolvePubkey uses,
+// generalised by varName — Task 3), else an error — never a silent pass.
+// Mirrors verdictResolvePubkey for the second role.
+func scanDeltaResolvePubkey(pubkeyPath string) (*rsa.PublicKey, error) {
+	if strings.TrimSpace(pubkeyPath) != "" {
+		data, err := os.ReadFile(pubkeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading --scan-delta-pubkey %s: %w", pubkeyPath, err)
+		}
+		return verdictParseRSAPublicKeyPEM(data)
+	}
+	if v := strings.TrimSpace(os.Getenv(scanDeltaPubkeyVar)); v != "" {
+		pemBytes, err := verdictDecodePubkeyVar(scanDeltaPubkeyVar, v)
+		if err != nil {
+			return nil, err
+		}
+		return verdictParseRSAPublicKeyPEM(pemBytes)
+	}
+	return nil, fmt.Errorf("no issue-loop public key: pass --scan-delta-pubkey <file> or set %s (a missing key is could-not-check, never trust)", scanDeltaPubkeyVar)
+}
+
+// scanDeltaVerifyBody is verdictVerifyBody generalised for the issue-loop
+// role's declared-role invariant (Task 1's second trust layer, reused here):
+// it refuses a block whose trailer declares a role OTHER than "issue-loop"
+// BEFORE any signature arithmetic runs — a verifier-signed artifact is
+// refused on this lane even with an otherwise-valid signature, and even if
+// the wrong key were somehow reachable from this lane's pubkey resolution.
+func scanDeltaVerifyBody(body string, pub *rsa.PublicKey) (verdictVerifyState, string) {
+	rawPayload, sigB64, err := verdictParseBody(body)
+	if err != nil {
+		return verdictCouldNotCheck, "could not check: " + err.Error()
+	}
+	if declared := scanDeltaDeclaredRole(body); declared != scanDeltaWantRole {
+		return verdictRefused, fmt.Sprintf("refused: signed block declares role %q, but the scan-delta lane requires role %q", declared, scanDeltaWantRole)
+	}
+	if pub == nil {
+		return verdictCouldNotCheck, "could not check: no issue-loop public key configured (" + scanDeltaPubkeyVar + ")"
+	}
+	canonical, cerr := verdictCanonicalizeJSON(rawPayload)
+	if cerr != nil {
+		return verdictCouldNotCheck, "could not check: " + cerr.Error()
+	}
+	sig, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(sigB64))
+	if derr != nil {
+		return verdictRefused, "refused: signature is not valid base64: " + derr.Error()
+	}
+	sum := sha256.Sum256(canonical)
+	if verr := rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig); verr != nil {
+		return verdictRefused, "refused: signature does not verify against the issue-loop public key"
+	}
+	return verdictVerified, "verified: signature matches the canonical scan-delta payload (role=issue-loop)"
+}
+
+// scanDeltaIssueLoopIdentity resolves the issue-loop App's identity from the
+// roster (role key "issue-loop"), mirroring verdictVerifierIdentity for the
+// verifier role. Absent from the roster is NOT trust: clause-4 (author)
+// refuses to arm for any issue without it.
+func scanDeltaIssueLoopIdentity() (authorIdentity, bool) {
+	c := scanEffectiveConfig()
+	slug := c.RoleBots["issue-loop"]
+	if slug == "" {
+		return authorIdentity{}, false
+	}
+	id := c.Bots[slug]
+	if id == 0 {
+		return authorIdentity{}, false
+	}
+	return authorIdentity{Login: slug + "[bot]", ID: id, Type: "Bot"}, true
+}
+
+// scanDeltaEntryOutcome is the three-state per-entry result — same discipline
+// as VerdictVerifyState: CouldNotCheck is a structural surprise, never a pass
+// and never rounded down to Refused.
+type scanDeltaEntryOutcome int
+
+const (
+	scanDeltaAccepted scanDeltaEntryOutcome = iota
+	scanDeltaEntryRefused
+	scanDeltaEntryCouldNotCheck
+)
+
+// scanDeltaEntryResult names the clause an entry was accepted or refused
+// under — never a bare pass/fail with no attribution.
+type scanDeltaEntryResult struct {
+	Entry   scanDeltaEntry
+	Outcome scanDeltaEntryOutcome
+	Clause  string
+	Reason  string
+}
+
+// verifyScanDeltaEntry runs the two PER-ENTRY clause-4 layers — same-repo
+// refusal and the API re-check where readable — against one entry. It never
+// touches the filesystem or the network beyond resolveAuthor.
+func verifyScanDeltaEntry(homeRepo string, e scanDeltaEntry, resolveAuthor authorResolver) scanDeltaEntryResult {
+	if e.Repo == "" || e.Issue <= 0 {
+		return scanDeltaEntryResult{e, scanDeltaEntryCouldNotCheck, "clause-4 (structure)",
+			"entry carries no repo or a non-positive issue number"}
+	}
+	if e.Class != "create" {
+		return scanDeltaEntryResult{e, scanDeltaEntryCouldNotCheck, "clause-4 (class)",
+			fmt.Sprintf("unsupported delta class %q — this lane handles \"create\" only", e.Class)}
+	}
+	// --- clause-4 (same-repo): a same-repo entry has its OWN lane above. ---
+	if strings.EqualFold(e.Repo, homeRepo) {
+		return scanDeltaEntryResult{e, scanDeltaEntryRefused, "clause-4 (same-repo)",
+			fmt.Sprintf("entry targets %s, this transcriber's OWN home repo — same-repo entries have their own lane (R-7 cl.2a) and are refused here so a signed artifact can never bypass that lane's independent re-derivation", e.Repo)}
+	}
+	if e.TrustBasis != "rostered" && !strings.HasPrefix(e.TrustBasis, "blessed:") {
+		return scanDeltaEntryResult{e, scanDeltaEntryCouldNotCheck, "clause-4 (trust-basis)",
+			fmt.Sprintf("unrecognized trust basis %q (want \"rostered\" or \"blessed:<comment-id>\")", e.TrustBasis)}
+	}
+	if e.AuthorLogin == "" || e.AuthorID == 0 || e.AuthorType == "" {
+		return scanDeltaEntryResult{e, scanDeltaEntryCouldNotCheck, "clause-4 (per-entry author)",
+			"entry carries no author identity triple (login/id/type) to check"}
+	}
+	// --- clause-4 (per-entry API re-check), where readable. ---
+	if resolveAuthor == nil {
+		return scanDeltaEntryResult{e, scanDeltaAccepted, "clause-4 (per-entry author, unreadable)",
+			fmt.Sprintf("%s#%d: no author resolver available — resting on the signed producer body (R-7 cl.4 two-tier honesty)", e.Repo, e.Issue)}
+	}
+	ident, aerr := resolveAuthor(e.Repo, e.Issue)
+	if aerr != nil {
+		// Unreadable (private foreign repo, deleted issue, rate limit, ...): the
+		// two-tier honesty this clause is named for — rest on the signature and
+		// the PRODUCER's own clause-1 check. NOT a refusal, and the caller
+		// surfaces the reason as a NOTICE rather than silently dropping it.
+		return scanDeltaEntryResult{e, scanDeltaAccepted, "clause-4 (per-entry author, unreadable)",
+			fmt.Sprintf("%s#%d: author identity not API-readable from here (%v) — resting on the signed producer body (R-7 cl.4 two-tier honesty)", e.Repo, e.Issue, aerr)}
+	}
+	if !strings.EqualFold(ident.Login, e.AuthorLogin) || ident.ID != e.AuthorID || ident.Type != e.AuthorType {
+		return scanDeltaEntryResult{e, scanDeltaEntryRefused, "clause-4 (per-entry author contradicted)",
+			fmt.Sprintf("%s#%d: entry declares author %s:%d:%s but the API reads %s:%d:%s — contradicted, refused",
+				e.Repo, e.Issue, e.AuthorLogin, e.AuthorID, e.AuthorType, ident.Login, ident.ID, ident.Type)}
+	}
+	return scanDeltaEntryResult{e, scanDeltaAccepted, "clause-4 (per-entry author, confirmed)",
+		fmt.Sprintf("%s#%d: author confirmed via API re-check", e.Repo, e.Issue)}
+}
+
+// planScanDelta derives the R-7 clause-4 delta from ONE candidate scan-delta
+// issue: the container-level checks (author, signature+role, body-unedited),
+// then the payload parse, then the PER-ENTRY battery for every entry. It NEVER
+// writes. armed must already be true (the caller checks the R-7 enactment
+// gate via transcribeEnactmentGate) — this function evaluates no enactment
+// logic of its own, mirroring planTranscribeScan's separation of gate from
+// derivation. existing is the repo-agnostic "repo#issue" set of placeholders
+// already on the board (existingPlaceholderIssues(streams) plus any archived
+// ones), so a cross-repo entry never collides with a placeholder any lane
+// already created for the same foreign issue.
+func planScanDelta(root string, containerIssue int, vi verdictIssue, pub *rsa.PublicKey,
+	homeRepo string, issueLoop authorIdentity, resolveAuthor authorResolver,
+	existing map[string]bool) (creates []scanPlan, results []scanDeltaEntryResult, notices []string, refuseClause, refuseReason string) {
+
+	// --- clause-4 (author): the CONTAINER issue must be authored by the
+	// issue-loop App's own API-read identity — an identity fact, not a crypto
+	// fact (single-point-of-failure note, layer 1). ---
+	if !strings.EqualFold(vi.Author.Login, issueLoop.Login) || vi.Author.ID == 0 ||
+		vi.Author.ID != issueLoop.ID || vi.Author.Type != "Bot" {
+		return nil, nil, nil, "clause-4 (author)",
+			fmt.Sprintf("issue author %s:%d (%s) is not the issue-loop App %s:%d — an author login alone is spoofable; only the API-read issue-loop identity is trusted",
+				vi.Author.Login, vi.Author.ID, vi.Author.Type, issueLoop.Login, issueLoop.ID)
+	}
+
+	// --- clause-4 (signature): role-declared + RS256, BEFORE any per-entry
+	// work — an unsigned or wrongly-signed container trusts nothing inside it. ---
+	state, msg := scanDeltaVerifyBody(vi.Body, pub)
+	if state != verdictVerified {
+		return nil, nil, nil, "clause-4 (signature)", msg
+	}
+
+	// --- clause-4 (body-unedited): mirrors R-6's timeline check — an edited
+	// container could substitute a stale-but-still-valid signed block. ---
+	if vi.Edited {
+		return nil, nil, nil, "clause-4 (body-unedited)",
+			"the scan-delta issue body was edited after creation — refused; the signature is trustworthy only for the ORIGINAL body GitHub's last_edited_at reports as unedited"
+	}
+
+	rawPayload, _, _ := verdictParseBody(vi.Body) // already succeeded inside scanDeltaVerifyBody
+	var payload scanDeltaPayload
+	if uerr := json.Unmarshal(rawPayload, &payload); uerr != nil {
+		return nil, nil, nil, "clause-4 (payload)", fmt.Sprintf("scan-delta payload does not parse as JSON: %v", uerr)
+	}
+	if payload.Schema != scanDeltaSchemaVersion {
+		return nil, nil, nil, "clause-4 (schema)",
+			fmt.Sprintf("unrecognized scan-delta schema %q (want %q) — refused rather than guessed", payload.Schema, scanDeltaSchemaVersion)
+	}
+
+	dir := filepath.Join(root, "docs", "streams", scanStreamName)
+	for _, e := range payload.Entries {
+		res := verifyScanDeltaEntry(homeRepo, e, resolveAuthor)
+		results = append(results, res)
+		if res.Outcome != scanDeltaAccepted {
+			continue
+		}
+		if strings.Contains(res.Clause, "unreadable") {
+			notices = append(notices, res.Reason)
+		}
+		key := e.Repo + "#" + strconv.Itoa(e.Issue)
+		if existing[key] {
+			notices = append(notices, fmt.Sprintf("%s: a placeholder already exists on the board — skipped, never duplicated", key))
+			continue
+		}
+		path := filepath.Join(dir, placeholderFileName(e.Repo, e.Issue))
+		if _, serr := os.Stat(path); serr == nil {
+			notices = append(notices, fmt.Sprintf("%s: a file already occupies %s — skipped, never overwritten", key, path))
+			continue
+		}
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			rel = path
+		}
+		creates = append(creates, scanPlan{
+			Repo:    e.Repo,
+			Issue:   e.Issue,
+			Path:    path,
+			Rel:     filepath.ToSlash(rel),
+			Content: e.Body,
+		})
+	}
+	sort.Slice(creates, func(i, j int) bool {
+		if creates[i].Repo != creates[j].Repo {
+			return creates[i].Repo < creates[j].Repo
+		}
+		return creates[i].Issue < creates[j].Issue
+	})
+	return creates, results, notices, "", ""
+}
+
+// runTranscribeScanDelta is the --transcribe-scan-delta entrypoint (the R-7
+// clause-4 cross-repo verify path). It ships behind the SAME R-7 enactment
+// gate as runTranscribeScan — this task adds NO second arming path — and
+// sweeps every open issue on the home repo the same way runTranscribeVerdict
+// sweeps verdict issues: a cheap body-shape test (verdictHasPayloadBlock)
+// selects candidates, and an issue with no payload block is not a scan-delta
+// issue and is skipped silently (no log noise). dryRun is the no-write
+// "--check" surface.
+func runTranscribeScanDelta(root string, dryRun bool, pubkeyPath string,
+	list issueLister, resolveIssue verdictIssueResolver, resolveAuthor authorResolver,
+	resolveSignoff commentResolver) int {
+
+	if err := scanRosterUnconfiguredError(); err != nil {
+		fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta REFUSED:", err)
+		return 2
+	}
+	if !dryRun && !scanInCI() {
+		if reason := scanIsolationRefusal(root); reason != "" {
+			fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta REFUSED:", reason)
+			return 2
+		}
+	}
+
+	armed, reason := transcribeEnactmentGate(root, resolveSignoff)
+	if !armed {
+		fmt.Println("transcribe-scan-delta: INERT —", reason)
+		fmt.Println("transcribe-scan-delta: evaluating no clause; the lane is disarmed until R-7 is signed")
+		return 0
+	}
+	fmt.Println("transcribe-scan-delta:", reason)
+
+	issueLoop, ok := scanDeltaIssueLoopIdentity()
+	if !ok {
+		fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta REFUSED: no `issue-loop=` App bound in ASSAY_TRUSTED_BOT_SLUGS with a numeric id — there is no issue-loop identity whose scan-delta issues could be trusted.")
+		return 2
+	}
+
+	homeRepo := scanHomeRepo()
+	if homeRepo == "" {
+		fmt.Println("transcribe-scan-delta: no home repo configured (ASSAY_HOME_REPO) — nothing to sweep")
+		return 0
+	}
+
+	pub, perr := scanDeltaResolvePubkey(pubkeyPath)
+	if perr != nil {
+		// A missing/unreadable issue-loop public key is could-not-check for
+		// EVERY candidate issue, not a crash: report it and let clause-4
+		// (signature) name the same fact per issue (pub stays nil).
+		fmt.Println("transcribe-scan-delta: could-not-check — no usable issue-loop public key:", perr)
+	}
+
+	streams, _, serr := loadStreams(root)
+	if serr != nil {
+		fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta:", serr)
+		return 1
+	}
+	attachPlaceholders(streams)
+	existing := existingPlaceholderIssues(streams)
+	for _, s := range streams {
+		for _, path := range archivedPlaceholderFilePaths(s) {
+			if ph, ok, perr := parsePlaceholderFile(path); perr == nil && ok {
+				existing[ph.Repo+"#"+strconv.Itoa(ph.Issue)] = true
+			}
+		}
+	}
+
+	issues, lerr := list(homeRepo)
+	if lerr != nil {
+		fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta:", lerr)
+		return 1
+	}
+	sort.Slice(issues, func(i, j int) bool { return issues[i].Number < issues[j].Number })
+
+	var allCreates []scanPlan
+	var allResults []scanDeltaEntryResult
+	var notices []string
+	seen := 0
+	for _, iss := range issues {
+		vi, rerr := resolveIssue(homeRepo, iss.Number)
+		if rerr != nil {
+			notices = append(notices, fmt.Sprintf("%s#%d could not be read: %v", homeRepo, iss.Number, rerr))
+			continue
+		}
+		if !verdictHasPayloadBlock(vi.Body) {
+			continue // not a scan-delta issue
+		}
+		seen++
+		creates, results, ns, clause, why := planScanDelta(root, iss.Number, vi, pub, homeRepo, issueLoop, resolveAuthor, existing)
+		notices = append(notices, ns...)
+		if clause != "" {
+			fmt.Printf("transcribe-scan-delta: REFUSE %s#%d — %s: %s\n", homeRepo, iss.Number, clause, why)
+			continue
+		}
+		allResults = append(allResults, results...)
+		// --- R-7 cl.6 flood tripwire, applied to THIS payload as a whole
+		// (brief fact: "the tripwire applies to the payload as a whole"). ---
+		if len(creates) > transcribeFloodThreshold {
+			fmt.Printf("transcribe-scan-delta: FLOOD %s#%d — clause-6 tripwire: %d CREATEs exceed the threshold of %d; refusing this issue's delta (nothing written for it)\n",
+				homeRepo, iss.Number, len(creates), transcribeFloodThreshold)
+			continue
+		}
+		for _, key := range creates {
+			existing[key.Repo+"#"+strconv.Itoa(key.Issue)] = true // dedupe across issues in the same sweep
+		}
+		allCreates = append(allCreates, creates...)
+	}
+	fmt.Printf("transcribe-scan-delta: swept %d open issue(s), %d carried a scan-delta payload block\n", len(issues), seen)
+
+	for _, r := range allResults {
+		switch r.Outcome {
+		case scanDeltaEntryRefused:
+			fmt.Printf("transcribe-scan-delta: REFUSE %s#%d — %s: %s\n", r.Entry.Repo, r.Entry.Issue, r.Clause, r.Reason)
+		case scanDeltaEntryCouldNotCheck:
+			fmt.Printf("transcribe-scan-delta: COULD-NOT-CHECK %s#%d — %s: %s\n", r.Entry.Repo, r.Entry.Issue, r.Clause, r.Reason)
+		}
+	}
+	for _, n := range notices {
+		fmt.Println("transcribe-scan-delta: NOTICE —", n)
+	}
+	for _, c := range allCreates {
+		fmt.Printf("transcribe-scan-delta: CREATE %s  (%s#%d)\n", c.Rel, c.Repo, c.Issue)
+	}
+
+	if dryRun {
+		if len(allCreates) == 0 {
+			fmt.Println("transcribe-scan-delta: no changes — nothing to create")
+		}
+		return 0
+	}
+
+	if len(allCreates) > 0 {
+		if merr := os.MkdirAll(filepath.Join(root, "docs", "streams", scanStreamName), 0o755); merr != nil {
+			fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta:", merr)
+			return 1
+		}
+		for _, p := range allCreates {
+			if werr := os.WriteFile(p.Path, []byte(p.Content), 0o644); werr != nil {
+				fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta:", werr)
+				return 1
+			}
+			fmt.Printf("transcribe-scan-delta: created %s\n", p.Rel)
 		}
 	}
 	return 0
