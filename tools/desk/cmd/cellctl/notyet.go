@@ -18,14 +18,12 @@ func notYetPorted(verb string) {
 	die("%s: not yet ported to the Go cellctl (desk-containers/10 is widening verb by verb) — use the shell oracle at tools/cellctl/cellctl for this verb", verb)
 }
 
-func cmdCheck(cell, cfg string) { notYetPorted("check") }
 func cmdUp(cell string, args []string) {
 	notYetPorted("up")
 }
 func cmdDown(cell string, args []string) { notYetPorted("down") }
 func cmdNew(args []string)               { notYetPorted("new") }
 func cmdShow(cell string, args []string) { notYetPorted("show") }
-func cmdDeskd(cell string)               { notYetPorted("deskd") }
 
 // usage prints the same help the oracle prints — its own header comment. The Go binary cannot
 // read its source, so the text is embedded (see usage.go) and a unit test proves the embedded

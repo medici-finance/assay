@@ -132,6 +132,28 @@ EOF
   chmod +x "$b"/*
 }
 
+# mk_roster <file> <slug> — a roster that actually LOADS, not a one-line stub.
+#
+# `check`'s "roster parses" row is the oracle shelling to `deskroster repos --scope scan`, and
+# the REAL deskroster exits 6 on an unconfigured roster (verified: a file carrying only
+# ASSAY_ALLOWED_REPOS is refused). The Go port asks deskkit the same question in-process. A
+# fixture roster too thin to load would therefore make the row disagree only because the STUB
+# here always exits 0 — a harness artefact, not a divergence — so the fixture carries a roster a
+# real cell would carry: a bless authority, trusted logins, forge-qualified bot bindings and the
+# write scope.
+mk_roster(){
+  local f="$1" slug="$2"
+  cat > "$f" <<ROSTER
+ASSAY_BLESS_LOGIN=example-operator:1001
+ASSAY_TRUSTED_LOGINS=example-operator:1001
+ASSAY_TRUSTED_BOT_SLUGS=github:example-worker-app:2001,github:example-reviewer-app:2002
+ASSAY_REPO_FORGES=$slug=github
+ASSAY_ALLOWED_REPOS=$slug
+ASSAY_SCAN_REPOS=$slug
+ROSTER
+  chmod 600 "$f"
+}
+
 mk_deskbin(){
   local b="$1" v
   mkdir -p "$b"
@@ -158,7 +180,7 @@ mk_fixture(){
   mkdir -p "$home/.config/gh" "$home/.claude" "$home/.codex" "$real" "$cellsdir"
   printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$home/.gitconfig"
   printf '[features]\nmulti_agent = true\n' > "$home/.codex/config.toml"
-  printf 'ASSAY_ALLOWED_REPOS=example-org/example-repo\n' > "$real/roster.env"
+  mk_roster "$real/roster.env" example-org/example-repo
   printf 'DESK_APP_ID=1\n' > "$real/apps.env"
   mk_stubs "$root/bin"
   mk_deskbin "$root/deskbin"
@@ -183,7 +205,7 @@ CELL_HARNESS=$harness"
       ln -s "$home/.config/gh" "$d/home/.config/gh"
       ln -s "$home/.gitconfig" "$d/home/.gitconfig"
       printf 'DESK_APP_ID=1\n' > "$d/home/.config/assay/apps.env"
-      printf 'ASSAY_ALLOWED_REPOS=example-org/example-repo\n' > "$d/home/.config/assay/roster.env"
+      mk_roster "$d/home/.config/assay/roster.env" example-org/example-repo
       # Deliberately NOT a PEM-shaped literal: `check`'s row only asserts the file is readable
       # ([[ -r ]]), nothing here ever parses a key, and a real BEGIN/END block in a committed
       # fixture is exactly what the outbound-write scan refuses.
@@ -226,6 +248,10 @@ EOF
       fi
       ;;
     house)
+      # The common part above created .config/assay as a DIRECTORY; a house cell's is a SYMLINK
+      # to the operator's own config home, so the directory is removed first — otherwise `ln -s`
+      # lands a link INSIDE it and the cell has no roster at all.
+      rmdir "$d/home/.config/assay"
       ln -s "$real" "$d/home/.config/assay"
       ln -s "$home/.config/gh" "$d/home/.config/gh"
       ln -s "$home/.gitconfig" "$d/home/.gitconfig"
@@ -259,7 +285,7 @@ EOF
     scrubbed)
       mkdir -p "$d/tmp" "$d/run" "$d/home/.config/gh" "$d/home/.claude" "$d/home/.codex"
       : > "$d/home/.gitconfig"
-      printf 'ASSAY_ALLOWED_REPOS=example-org/example-repo\n' > "$d/home/.config/assay/roster.env"
+      mk_roster "$d/home/.config/assay/roster.env" example-org/example-repo
       chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay" "$d/tmp"
       chmod 600 "$d/home/.config/assay/roster.env"
       cat > "$d/cell.env" <<EOF
