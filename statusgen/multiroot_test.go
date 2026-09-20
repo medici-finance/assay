@@ -479,13 +479,18 @@ func TestSingleRootOnlySubcommandIsWiredToExit2(t *testing.T) {
 	if idx < 0 {
 		t.Fatal("unreachable")
 	}
-	// Window sized to span the whole single-root-only map (which grows as
-	// self-contained sub-commands are added — e.g. --drive-issues, mm drives
-	// phase 2; the seven brief-flow metrics, statusgen/07) plus the refusal
-	// block that follows it. It only needs to be large enough to reach the
-	// os.Exit(2); the assertion's intent is that the refusal exists and exits
-	// 2, not that it sits within any exact byte count.
-	window := src[idx:min(idx+2600, len(src))]
+	// Anchor the check on the refusal guard that CLOSES the (variable-length)
+	// single-root-only map, not a fixed byte count from the call site: the map
+	// grows as self-contained sub-commands are added, and a fixed 2600-byte
+	// window silently slid os.Exit(2) out of scope the moment --export-audit-pack
+	// was appended. The assertion's intent is only that the refusal exists right
+	// after the guard and exits 2, so measure from the guard, which sits
+	// immediately after the map regardless of its size.
+	guard := strings.Index(src[idx:], "); name != \"\" {")
+	if guard < 0 {
+		t.Fatal("the singleRootOnlySubcommand call is not followed by a `); name != \"\" {` refusal guard")
+	}
+	window := src[idx+guard : min(idx+guard+400, len(src))]
 	if !strings.Contains(window, "os.Exit(2)") && !strings.Contains(window, "return 2") {
 		t.Errorf("the singleRootOnlySubcommand refusal does not exit 2:\n%s", window)
 	}

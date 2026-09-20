@@ -58,7 +58,7 @@ None. This file exists to be cited by `satisfies:`, not to be worked.
 ## Verify
 
 The pack format this brief demonstrates is verified by sdlc/08's own Verify table
-(the sdlc brief, `sdlc/brief-08-audit-pack-export.md`). This brief's own row is
+(the sdlc/08 brief in the methodology tracker). This brief's own row is
 a structural placeholder only — it is never dispatched, so there is nothing behavioral to
 assert here.
 
