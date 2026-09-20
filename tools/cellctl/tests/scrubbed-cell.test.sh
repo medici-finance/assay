@@ -16,7 +16,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 # /tmp, never $TMPDIR: a scrubbed cell's session lives on a private UNIX-socket tmux server
 # (`<cell>/run/tmux.sock`), and `sun_path` has a hard ~104-108 byte limit every platform enforces
 # — macOS's default $TMPDIR (/var/folders/.../T/, ~50 bytes on its own) blows that budget once

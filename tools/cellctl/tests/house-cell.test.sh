@@ -22,7 +22,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 # Resolved with pwd -P: a TMPDIR with a trailing slash or a symlinked temp root would otherwise
 # make the paths cellctl prints (it normalises) differ from the ones the test compares against.
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" && pwd -P)"
