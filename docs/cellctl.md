@@ -1276,3 +1276,9 @@ CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=/tmp/
 line to lose silently. The injector lives in exactly one file, behind `//go:build parity`, so a
 release build — the one a tagless `go build` produces — contains none of that code and ignores
 the variable entirely.
+
+## Per-role provider, model and effort policy
+
+For explicit mixed-provider role assignments, model-version pins and effort configuration,
+see [Cell model policy](cellctl-model-policy.md). `CELL_MODEL_POLICY` enables this opt-in
+path; existing cell pins continue to apply when it is absent.
