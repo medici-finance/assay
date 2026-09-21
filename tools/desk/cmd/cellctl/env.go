@@ -7,19 +7,29 @@ import (
 	"strings"
 )
 
+// envClaudeCodePromptSuggestion is the Claude-only knob that turns off Claude Code's next-prompt
+// suggestions. It is composed as a LAUNCH-TIME DEFAULT (assay#1436) on every claude-arm launch —
+// scrubbed, house/k8s, and the shell-parity oracle alike — so it covers a scrubbed desk/smoke
+// session and a scheduler the same way an interactive `export` never does. Codex has no
+// equivalent surface, so this key is never composed on the codex arm; see harnessArgv/deskLaunch.
+const envClaudeCodePromptSuggestion = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
+
 // scrubbedEnvKeys is the allowlist a scrubbed cell's launch is COMPOSED from: `env -i` plus
 // exactly these, in this order — the parent shell contributes nothing by default. This list is
 // the SINGLE source the [plan] lines, the live `env -i` launch and docs/cellctl.md's env table
 // all read — the scrubbed-cell brief states it once, and the port's own brief diffs the two
 // implementations against each other.
 //
-// The two harness-namespaced entries (CODEX_HOME / CLAUDE_CONFIG_DIR) are mutually exclusive —
-// only the ACTIVE harness's var is ever exported — and DESK_ROOTS/TERM/LANG are present only
-// when the source they come from (cell.env CELL_ROOTS; the launching shell) carries one.
+// The three harness-conditional entries (CODEX_HOME / CLAUDE_CONFIG_DIR / the prompt-suggestion
+// default) are gated the same way: CODEX_HOME and CLAUDE_CONFIG_DIR are mutually exclusive on the
+// ACTIVE harness, and the prompt-suggestion default is claude-only — codex never carries it. On
+// top of that, DESK_ROOTS/TERM/LANG are present only when the source they come from (cell.env
+// CELL_ROOTS; the launching shell) carries one.
 var scrubbedEnvKeys = []string{
 	"HOME", "ZDOTDIR", "SHELL", "PATH", "TMPDIR", "KUBECONFIG", "ASSAY_CONFIG_HOME",
 	"GH_CONFIG_DIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_TERMINAL_PROMPT",
-	"CODEX_HOME", "CLAUDE_CONFIG_DIR", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "TERM", "LANG",
+	"CODEX_HOME", "CLAUDE_CONFIG_DIR", envClaudeCodePromptSuggestion,
+	"DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "TERM", "LANG",
 }
 
 // scrubbedHarnessPath resolves the harness binary ONCE, on the PARENT shell's PATH — the one
@@ -84,6 +94,14 @@ func (c *Cell) scrubbedEnvValue(key, role, harness, session, composedPath string
 	case "CLAUDE_CONFIG_DIR":
 		if harness == "claude" {
 			return filepath.Join(c.Home, ".claude")
+		}
+		return ""
+	case envClaudeCodePromptSuggestion:
+		// Claude-only default (assay#1436): disable next-prompt suggestions for a scrubbed
+		// desk/smoke session the same way the non-scrubbed launch does — codex has no
+		// equivalent knob, so this key is absent on that arm.
+		if harness == "claude" {
+			return "false"
 		}
 		return ""
 	case "DESK_LOOP":

@@ -229,6 +229,22 @@
 # be turned on for a cell rather than only via a one-off shell export. off and unset are
 # identical: the key is simply absent from the launched environment. Default: off.
 #
+# Claude next-prompt suggestions: CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false is composed into
+# every claude-arm launch by DEFAULT — a house/k8s desk, a scrubbed desk/smoke session (the
+# composed `env -i` allowlist carries it too), and a GLM/Kimi provider window (still the claude
+# binary underneath) alike — so an inherited =true from the launching shell is overridden, not
+# merely left alone; DRY_RUN=1 shows the composed value as `[dry-run] env
+# CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` (or, on a scrubbed cell, as a `[plan] env` line).
+# codex has no equivalent surface and this key is never composed on that arm. PRECEDENCE: this is
+# cellctl's own launch-time default, applied to the process env handed to `claude`, not a value
+# baked into Claude Code itself — an operator's `~/.claude/settings.json`
+# (env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION or a managed-settings equivalent) is read by the
+# harness AFTER it starts and wins over this process-env default the same way it wins over any
+# other inherited env var; a container/scheduler launch outside cellctl (an external orchestrator,
+# a cron-fired container run) is covered by the base/harness image ENV default
+# (images/assay-harness/Dockerfile, containers/base/Dockerfile) instead — cellctl only ever
+# composes the env for a launch it itself execs.
+#
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.

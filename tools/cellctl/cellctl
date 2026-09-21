@@ -230,6 +230,22 @@
 # be turned on for a cell rather than only via a one-off shell export. off and unset are
 # identical: the key is simply absent from the launched environment. Default: off.
 #
+# Claude next-prompt suggestions: CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false is composed into
+# every claude-arm launch by DEFAULT — a house/k8s desk, a scrubbed desk/smoke session (the
+# composed `env -i` allowlist carries it too), and a GLM/Kimi provider window (still the claude
+# binary underneath) alike — so an inherited =true from the launching shell is overridden, not
+# merely left alone; DRY_RUN=1 shows the composed value as `[dry-run] env
+# CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` (or, on a scrubbed cell, as a `[plan] env` line).
+# codex has no equivalent surface and this key is never composed on that arm. PRECEDENCE: this is
+# cellctl's own launch-time default, applied to the process env handed to `claude`, not a value
+# baked into Claude Code itself — an operator's `~/.claude/settings.json`
+# (env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION or a managed-settings equivalent) is read by the
+# harness AFTER it starts and wins over this process-env default the same way it wins over any
+# other inherited env var; a container/scheduler launch outside cellctl (an external orchestrator,
+# a cron-fired container run) is covered by the base/harness image ENV default
+# (images/assay-harness/Dockerfile, containers/base/Dockerfile) instead — cellctl only ever
+# composes the env for a launch it itself execs.
+#
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
@@ -1936,11 +1952,12 @@ check_codex_harness(){
 # A scrubbed cell's launch is COMPOSED, not filtered: `env -i` plus this exact allowlist — the
 # parent shell contributes nothing by default. This block is the SINGLE source the [plan] lines,
 # the live `env -i` launch, and docs/cellctl.md's env table all read (state it once; see the
-# brief's facts). The two harness-namespaced entries (CODEX_HOME / CLAUDE_CONFIG_DIR) are mutually
-# exclusive — only the active harness's var is ever exported — and DESK_ROOTS/TERM/LANG are
-# present only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries
-# one.
-SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
+# brief's facts). The three harness-conditional entries (CODEX_HOME / CLAUDE_CONFIG_DIR / the
+# prompt-suggestion default) are gated the same way: CODEX_HOME and CLAUDE_CONFIG_DIR are mutually
+# exclusive — only the active harness's var is ever exported — and the prompt-suggestion default
+# is claude-only, never composed on the codex arm (assay#1436). DESK_ROOTS/TERM/LANG are present
+# only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries one.
+SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
 
 # scrubbed_harness_path <harness>: resolves the harness binary ONCE, on the PARENT shell's PATH —
 # the one parent-derived element the composed PATH below keeps (named and pinned, never a bare
@@ -1975,6 +1992,9 @@ scrubbed_env_value(){
     GIT_TERMINAL_PROMPT) printf '%s' "0" ;;
     CODEX_HOME) [[ "$harness" == "codex" ]] && printf '%s' "$CELL_HOME/.codex" ;;
     CLAUDE_CONFIG_DIR) [[ "$harness" == "claude" ]] && printf '%s' "$CELL_HOME/.claude" ;;
+    # Claude-only default (assay#1436): disable next-prompt suggestions for a scrubbed desk/smoke
+    # session the same way the non-scrubbed launch does — codex has no equivalent knob.
+    CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION) [[ "$harness" == "claude" ]] && printf '%s' "false" ;;
     DESK_LOOP) printf '%s' "$role" ;;
     DESK_SESSION) printf '%s' "$session" ;;
     DESK_ROOTS) printf '%s' "${CELL_ROOTS:-}" ;;
@@ -2303,6 +2323,16 @@ cmd_desk(){
     if [[ -n "$repair_admission" ]]; then
       echo "[dry-run] env ASSAY_REPAIR_ADMISSION=$repair_admission (repair-admission dispatch gate opt-in)"
     fi
+    # Claude Code's next-prompt suggestions are disabled by DEFAULT on the claude arm
+    # (assay#1436) — always composed, unlike the opt-in above, so it prints unconditionally
+    # rather than only when non-default. Codex has no equivalent knob, so nothing prints there.
+    # Skipped on a scrubbed cell: its own [plan] block below shows the SAME key composed through
+    # scrubbed_compose_env, at its fixed position in the plan-grammar contract the parity harness
+    # diffs — a second, differently-worded line here would duplicate it and shift that grammar's
+    # line count.
+    if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
+      echo "[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (Claude Code next-prompt suggestions — launcher default; external scheduler/Claude-settings env still wins if set after this point, see docs/cellctl.md)"
+    fi
     if [[ "$persist" == "1" ]]; then
       local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
     fi
@@ -2432,7 +2462,12 @@ cmd_desk(){
     [[ -n "$tier_top"  ]] && pmodel_opus="$tier_top"
     [[ -n "$tier_mid"  ]] && pmodel_sonnet="$tier_mid"
     [[ -n "$tier_fast" ]] && pmodel_haiku="$tier_fast"
-    exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    # CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false is the launcher's own default (assay#1436) —
+    # given unconditionally (never `${…:+…}`-gated) so it REPLACES whatever the launching shell
+    # — a one-off export, a scrubbed session, a scheduler's ambient environment — already carried,
+    # exactly like CLAUDE_CONFIG_DIR above it. Claude-only: the codex `exec env` branch below
+    # never sets or touches this key.
+    exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \

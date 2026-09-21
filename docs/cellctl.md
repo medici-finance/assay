@@ -295,6 +295,7 @@ is the single source this table, the `[plan]` lines below, and the live launch a
 | GIT_TERMINAL_PROMPT | `0` |
 | CODEX_HOME | `<cell>/home/.codex` — codex arm only |
 | CLAUDE_CONFIG_DIR | `<cell>/home/.claude` — claude arm only |
+| CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION | `false` — claude arm only; see *Claude next-prompt suggestions* below |
 | DESK_LOOP | the role (or `smoke`) |
 | DESK_SESSION | `<cell>-<role>-<UTC boot stamp>[-codex]` |
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
@@ -305,7 +306,8 @@ is the single source this table, the `[plan]` lines below, and the live launch a
 is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
 wholesale parent `PATH` — the harness's own directory is the ONE parent-derived `PATH` element,
 resolved once (`command -v`) before the launch switches to `env -i`, and named rather than
-inherited wholesale.
+inherited wholesale. `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION` is claude-only, the same shape as
+`CLAUDE_CONFIG_DIR` — see *Claude next-prompt suggestions* below.
 
 The App PEM reaches the tools through the cell, never the parent shell: exporting
 `ASSAY_CONFIG_HOME` is the whole custody path, since the desk tools resolve a role's key from
@@ -949,10 +951,43 @@ uses. The source is visible without reading the config: `[dry-run]`/`[launch]` p
 and a non-claude window's `DESK_SESSION` carries a `-codex` suffix (see *`cellctl desk`, `up`,
 `down`* above).
 
-### The claude arm — unchanged
+### The claude arm
 
 Exactly what this document already describes above: `claude --name <session> --model <model>
-"/assay:<role>"`, with the `assay@assay` plugin enabled in the config dir first.
+"/assay:<role>"`, with the `assay@assay` plugin enabled in the config dir first — plus one
+launch-time default this arm always composes: see *Claude next-prompt suggestions* below.
+
+#### Claude next-prompt suggestions
+
+`CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` is composed into **every** claude-arm launch by
+default (assay#1436) — a house/k8s desk, a scrubbed desk/smoke session (the composed `env -i`
+allowlist carries it, per the *Scrubbed cells* env table above), and a GLM/Kimi provider window
+(still the `claude` binary underneath — the provider only switches the endpoint/credential, not
+the harness) alike. This is a real DEFAULT, not merely "leave it alone if unset": it is set
+**unconditionally**, so it overrides an inherited `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true` from
+the launching shell the same way it composes on a shell that never set it at all — a one-off
+`export` in an interactive session never covered a scrubbed launch or a scheduler, which is the
+gap this closes. `DRY_RUN=1` shows the composed value: `[dry-run] env
+CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` on a house/k8s cell, or the equivalent `[plan] env`
+line on a scrubbed cell. Codex has no equivalent surface, so this key is never composed on that
+arm and whatever Codex already does is untouched.
+
+**Precedence — this is a process-env default, not a setting Claude Code itself ships with.** It is
+what `cellctl` puts in the child process's environment before it execs `claude`; two things can
+still take it further:
+
+- **Claude Code's own settings** (`~/.claude/settings.json`, a project `.claude/settings.json`, or
+  a managed-settings file under `env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION`) are read by the
+  harness *after* it starts, and win over this process-env default the same way any
+  settings-file value wins over any other inherited env var — cellctl does not read or write that
+  file, and does not attempt to override a settings-file value from outside the process.
+- **A container-based direct or scheduled launch that does not go through `cellctl desk`/`up` at
+  all** (an external orchestrator, a cron-fired container run) is covered instead by the
+  **base/harness image default**: `images/assay-harness/Dockerfile` and `containers/base/Dockerfile`
+  both set `ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`, so a Claude-harness process started
+  from either image inherits the disabled default even when `cellctl` itself never runs. cellctl
+  only ever composes the env for a launch it directly execs; it cannot reach into a launch it
+  never starts.
 
 ### The codex arm
 

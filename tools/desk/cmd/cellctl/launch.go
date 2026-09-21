@@ -128,6 +128,14 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
+		// The launcher's own default (assay#1436): disable Claude Code's next-prompt
+		// suggestions unless the operator's own cell.env/policy overrides it below. envSet
+		// REPLACES any same-named entry already in `env` (line 101's os.Environ() copy), so an
+		// inherited CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true from the launching shell — a
+		// scrubbed session, a scheduler, an ambient export — never reaches the child; this value
+		// wins by construction, not by luck of ordering. Claude-only: the codex arm (the other
+		// branch of this if) never sets or touches this key.
+		env = envSet(env, envClaudeCodePromptSuggestion, "false")
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a

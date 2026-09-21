@@ -155,6 +155,12 @@ RUN set -eux; \
 #   HOME=/work            — e.g. ~/.config/assay (minted-token cache) -> /work/.config/assay
 #   NPM_CONFIG_PREFIX     — the agent CLI installs under /work and stays there
 #   GOPATH / GOCACHE      — go module + build caches on the volume
+#   CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (assay#1436) — disables Claude Code's next-prompt
+#     suggestions by default for every desk container built FROM this base (direct or scheduled
+#     launch alike): a container has no interactive shell to `export` it into, so the image is the
+#     only durable place this default can live. An operator's own settings.json, mounted or baked
+#     into a per-desk image on top of this one, still takes precedence — this is a process-env
+#     default, not a value baked into the CLI itself.
 ENV HOME=/work \
     XDG_CONFIG_HOME=/work/.config \
     XDG_CACHE_HOME=/work/.cache \
@@ -164,6 +170,7 @@ ENV HOME=/work \
     GOCACHE=/work/.cache/go-build \
     NPM_CONFIG_PREFIX=/work/.npm-global \
     ASSAY_PLUGIN_DIR=/opt/assay/plugin \
+    CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false \
     PATH=/usr/local/go/bin:/work/.npm-global/bin:/work/go/bin:/usr/local/bin:/usr/bin:/bin
 
 # Create /work owned by desk BEFORE declaring the volume, so a fresh named

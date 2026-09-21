@@ -142,8 +142,15 @@ LABEL org.opencontainers.image.title="assay-harness" \
 # uid is fixed so a securityContext can pin runAsUser without reading the image.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness
 USER 10001
+# CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (assay#1436): a headless agent in a pod has no
+# interactive shell to `export` the disabled default into, and no scheduler here threads it
+# either — the image ITSELF is the only place a container-based direct or scheduled launch can
+# pick it up, so a Claude-harness process started from this image inherits it. An operator's own
+# ~/.claude/settings.json (mounted or baked separately) still wins if it sets this key, same as
+# any other env default this image ships.
 ENV HOME=/home/harness \
-    GIT_TERMINAL_PROMPT=0
+    GIT_TERMINAL_PROMPT=0 \
+    CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false
 WORKDIR /home/harness
 
 # tini reaps the agent runtime's children; the default command prints the stamp

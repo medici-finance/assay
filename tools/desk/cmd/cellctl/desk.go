@@ -295,6 +295,16 @@ func cmdDesk(cell string, args []string) {
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
 		}
+		// Claude Code's next-prompt suggestions are disabled by DEFAULT on the claude arm
+		// (assay#1436) — always composed, unlike the opt-in above, so it is shown unconditionally
+		// rather than only when non-default. Codex has no equivalent knob, so nothing prints on
+		// that arm. Skipped on a scrubbed cell: its own [plan] block below shows the SAME key
+		// composed through scrubbedComposeEnv, at its fixed position in the plan-grammar contract
+		// the parity harness diffs — a second, differently-worded line here would duplicate it and
+		// shift that grammar's line count.
+		if harness == "claude" && c.Kind != "scrubbed" {
+			fmt.Printf("[dry-run] env %s=false (Claude Code next-prompt suggestions — launcher default; external scheduler/Claude-settings env still wins if set after this point, see docs/cellctl.md)\n", envClaudeCodePromptSuggestion)
+		}
 		if persist {
 			for _, kv := range persistKVs {
 				fmt.Printf("[dry-run] --set: would persist %s into %s/cell.env (not written — dry run)\n", kv, c.Dir)

@@ -96,6 +96,24 @@ func TestScrubbedHarnessNsExclusive(t *testing.T) {
 	}
 }
 
+// TestScrubbedPromptSuggestionClaudeOnly is the scrubbed-launch half of assay#1436: a scrubbed
+// desk/smoke session composes its whole environment through scrubbedComposeEnv (never inherits
+// anything from the launching shell — TestScrubbedEnvIsComposedNotInherited above), so the
+// prompt-suggestion default has to be an entry in the allowlist itself, not something set after
+// the fact the way the non-scrubbed launch does it. Retains Codex behavior: the codex arm never
+// carries this key at all, matching the claude-only knob it is.
+func TestScrubbedPromptSuggestionClaudeOnly(t *testing.T) {
+	c := scrubbedFixture(t)
+	claude := c.scrubbedComposeEnv("the-desk", "claude", "s")
+	if got := envValue(claude.Pairs, envClaudeCodePromptSuggestion); got != "false" {
+		t.Errorf("the claude arm must export %s=false, got %q (pairs: %v)", envClaudeCodePromptSuggestion, got, claude.Pairs)
+	}
+	codex := c.scrubbedComposeEnv("the-desk", "codex", "s")
+	if _, ok := envLookup(codex.Pairs, envClaudeCodePromptSuggestion); ok {
+		t.Errorf("the codex arm must NOT export %s — Codex has no equivalent knob", envClaudeCodePromptSuggestion)
+	}
+}
+
 func TestScrubbedPathKeepsShimPrefix(t *testing.T) {
 	c := scrubbedFixture(t)
 	c.Env.Put("CELL_PATH", "/only/this")
