@@ -23,6 +23,52 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.21 — 2026-09-21
+
+### Added
+- Persistent review findings survive agent replacement and restarts. A reviewer
+  verdict or worker reply may now carry a versioned `review-finding/v1` block
+  (embedded additively in the forge body, invisible to a legacy reader), and
+  `reviewloop` derives the outstanding findings, disputed responses and per-class
+  round counts from those durable records rather than from an agent's memory —
+  identical after a replacement or restart because the ledger is a pure function
+  of the records.
+- The Go `cellctl` launcher reads shared provider model and desk-effort defaults from `CELLS_ROOT/providers.json`, with partial per-cell overrides. `cellctl providers init` creates the editable catalog without overwriting it, and Claude launches export the selected provider's Fable, Opus, Sonnet and Haiku mappings. Existing complete model policies retain precedence.
+- `reviewloop plan --records <thread.json>` renders the derived finding ledger for
+  one PR: outstanding blocking findings, per-class rounds against the existing
+  cap, the single arbiter packet at the cap, and every could-not-check reason.
+
+### Fixed
+- statusgen's brief-parse memo now keys on a hash of the file's content instead of
+  an `(mtime, size)` stamp. The old stamp could not tell two same-size versions of
+  a brief apart when a coarse-granularity filesystem recorded both writes under one
+  mtime tick, so a length-preserving in-place edit (e.g. flipping a `gates:` target
+  from one brief to another of equal-length id) could be served from the stale
+  pre-edit parse. This made `TestEligibilityDeclarationChangesDispatch` flake on the
+  self-hosted release runner while passing on nanosecond-mtime macOS, and — more
+  importantly — could have let any consumer read a stale gate/eligibility verdict for
+  a brief edited during a run. The cache is now correct on every filesystem regardless
+  of its timestamp resolution.
+
+### Changed
+- Review scope is now bounded by a declared first pass and an impact-based blocking
+  boundary. A reviewer inventories the related occurrences of a false-claim class on
+  the first pass — recording the search, its scope, its exclusions and the input
+  revision — and an incomplete search is reported incomplete, never certified clean.
+  A blocking finding must name a concrete failure and its scope basis (changed
+  behaviour, an explicit acceptance obligation, a material PR-body/Verify claim, or a
+  demonstrated safety consequence of the change); unrelated pre-existing prose is
+  routed to a follow-up instead of holding the PR. A missed sibling occurrence keeps
+  its original claim class and round count, and a previously non-blocking occurrence
+  cannot become blocking merely because another file was edited — a promotion requires
+  changed impact or new evidence, explicitly recorded. The existing three-round cap
+  and the independent security review are unchanged.
+- `deskpost review` and `deskreply` validate an embedded finding block before any
+  network call: a worker reply cannot author a reviewer's resolution of a blocking
+  finding or hand-assert the arbitration cap, and a blocking finding must carry a
+  concrete reproduction or evidence-based explanation. Bodies with no block are
+  unaffected.
+
 ## v1.0.20 — 2026-09-21
 
 ### Added
