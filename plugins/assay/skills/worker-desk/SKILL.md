@@ -107,6 +107,18 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
   class with nothing queued, which is what keeps this a floor and not a second cap. worker-desk
   ships `resume=2`; the "resuming started work outranks a fresh brief" prose below is what that
   floor is FOR, not a second, unenforced statement of it.
+  - **The repair (`rework`) floor is ENFORCED at the dispatch boundary** (desk-supervision/18),
+    OPT-IN via `ASSAY_REPAIR_ADMISSION=on` (recorded policy `repair-admission-v1`). With it on,
+    `deskdispatch` refuses a **fresh** dispatch — exit 5, naming the waiting repair — that would
+    drop the free slots to or below the floor while a repair obligation is RUNNABLE (assignable
+    now, per the reconciled `docs/streams/repair-obligations.jsonl`); the repair itself is
+    admitted. A waiting-EXTERNAL repair is not runnable, so it never idles a slot. The item's class
+    is resolved from the obligation store, so a caller cannot relabel fresh work as a repair to jump
+    the floor. The gate serializes across dispatchers with a compare-and-swap lease in the same
+    claim backend, so two dispatchers cannot both admit into the last slot. It ships **OFF** — with
+    it unset, dispatch is unchanged and the floor stays the planner's advisory line above; that
+    unset state is also the rollback. A raw harness launch that does not go through `deskdispatch`
+    is outside this enforcement, exactly as it is outside the durable claim.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
   NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
