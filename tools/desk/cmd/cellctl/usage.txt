@@ -1,6 +1,8 @@
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
 #   cellctl ls                                   cells under $CELLS_ROOT
+#   cellctl providers init                       Go launcher: create shared $CELLS_ROOT/providers.json
+#                                                per-provider desk models/effort; <cell>/providers.json overrides
 #   cellctl new   <cell> [--kind k8s|house|container|scrubbed] [--forge github|gitlab] --repo <checkout> ...
 #                        --kind k8s   (default) a full cell: its own deskd, roster and App keys under home/
 #                                     --cells-yaml <file> [forge custody flags]

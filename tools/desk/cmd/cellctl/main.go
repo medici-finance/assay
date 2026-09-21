@@ -89,6 +89,8 @@ func run() (code int) {
 	}
 
 	switch verb {
+	case "providers":
+		cmdProviders(rest)
 	case "ls":
 		cmdLs()
 	case "check":

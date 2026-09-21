@@ -1,5 +1,9 @@
 # Cell model policy
 
+For shared provider defaults with per-cell exceptions, see
+[Shared provider defaults](cellctl-provider-defaults.md). A complete
+`CELL_MODEL_POLICY` remains authoritative when set.
+
 `CELL_MODEL_POLICY` selects one operator-owned JSON file for role/provider/model/effort
 configuration. Paths are absolute or relative to the cell directory. Start from
 [`model-policy.json`](../tools/cellctl/examples/model-policy.json), copy it into the cell,

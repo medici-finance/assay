@@ -156,6 +156,26 @@ func cmdUp(cell string, args []string) {
 	}
 	roles := c.upRoles(noTheDesk)
 
+	policy, policySource, err := c.cellModelPolicy()
+	if err != nil {
+		die("%s", err)
+	}
+	if policy != nil {
+		if automate != "" {
+			die("up: --automate cannot propagate model policy; use live desk windows")
+		}
+		if persist {
+			die("up: --set with a model policy is ambiguous; edit the policy or provider defaults instead")
+		}
+		for _, role := range roles {
+			route, err := policy.Resolve(role, o.Provider, o.Model, o.Harness)
+			if err != nil {
+				die("%s", err)
+			}
+			fmt.Printf("[policy] role=%s provider=%s model=%s effort=%s source=%s sha256=%s\n", role, route.Provider, route.Model, route.Effort, policySource, policy.SHA256)
+		}
+	}
+
 	// --set persists every override GIVEN, through the same one-backup path `cellctl set` uses:
 	// CELL_KIND / CELL_COCKPIT / CELL_HARNESS / CELL_PROVIDER to their own keys, and --model to
 	// the ACTIVE harness's <FAMILY>_MODEL_<role> for every role window this run opens — the

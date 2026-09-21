@@ -63,10 +63,11 @@ type PolicyRole struct {
 // typo in an unused provider still refuses the whole policy (docs/cellctl-model-policy.md
 // "Resolution").
 type ModelPolicy struct {
-	Schema    int
-	Deny      []string
-	Providers map[string]PolicyProvider
-	Roles     map[string]PolicyRole
+	Schema        int
+	Deny          []string
+	Providers     map[string]PolicyProvider
+	Roles         map[string]PolicyRole
+	ProviderDesks map[string]map[string]ProviderDesk
 	// Banned is Deny plus the two built-in Opus-5 patterns, which apply even when `deny` is
 	// empty or omitted — the prohibition is not something a policy file can lift.
 	Banned []string
@@ -180,6 +181,10 @@ func loadModelPolicy(path string) (*ModelPolicy, error) {
 	if err != nil {
 		return nil, policyFail("cannot read policy file %s: %v", path, err)
 	}
+	return parseModelPolicy(raw, path)
+}
+
+func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 	sum := sha256.Sum256(raw)
 	m := &ModelPolicy{SHA256: hex.EncodeToString(sum[:])}
 
@@ -412,6 +417,10 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 		return nil, policyFail("harness override disagrees with provider; select a matching --provider")
 	}
 
+	desk, hasDesk := m.ProviderDesks[provider][role]
+	if hasDesk {
+		assignment.Tier = desk.Tier
+	}
 	var selected *PolicyTier
 	var tierName string
 	if requested != "" {
@@ -428,6 +437,9 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 		selected, tierName = &t, assignment.Tier
 	}
 	model, effort := selected.Model, selected.Effort
+	if hasDesk && requested == "" && desk.Effort != "" {
+		effort = desk.Effort
+	}
 	if role == "the-desk" && harness == "claude" && strings.Contains(strings.ToLower(model), "opus") {
 		return nil, policyFail("the-desk requires a non-Opus top-tier model")
 	}
