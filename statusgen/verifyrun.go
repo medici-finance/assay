@@ -1325,6 +1325,17 @@ Flags:
   --ci              CI context: EXPLICITLY-classed check (env-bound) rows are
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
+  --in-container    run the rows inside the PINNED harness container instead of on
+                    the host — the supported execution-witness runner on Windows,
+                    where a native pipefail bash is unreliable (#1418). Reads the
+                    image (digest-pinned, never latest) from the harness block of
+                    plugins/assay/paired-versions.yaml and REFUSES fail-closed on an
+                    unpinned/placeholder digest. Bind-mounts the checkout at /work,
+                    maps --user to the host uid:gid (POSIX) so Evidence lands
+                    host-owned, and passes ONLY --env-file through for credentials.
+  --env-file <path> role env-file forwarded to the container as --env-file (the
+                    PATH only; its contents are never read or logged). Defaults to
+                    the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
 
 Result is three-state. could-not-run (command not found, unsubstituted
 placeholder, timeout, or a verdict that could not be derived) is NEVER pass: a
@@ -1381,6 +1392,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	rootDir := fs.String("root", "", "repo root the commands run in")
 	timeout := fs.Duration("timeout", witnessTimeoutDefault, "per-row wall-clock limit")
 	ci := fs.Bool("ci", false, "CI context: skip explicitly-classed env-bound `check` rows")
+	inContainer := fs.Bool("in-container", false, "run the Verify rows inside the pinned harness container (the supported witness runner on Windows) instead of on the host")
+	envFile := fs.String("env-file", "", "role env-file passed to the container as --env-file (path only; contents never read/logged); defaults to $"+inContainerEnvFileVar)
 	// --help is handled by ContinueOnError returning flag.ErrHelp; print the
 	// usage and exit 0, because asking for help is not an error.
 	if err := fs.Parse(args); err != nil {
@@ -1399,6 +1412,27 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if path == "" {
 		fmt.Fprint(stderr, verifyrunUsage)
 		return verifyrunExitUsageError
+	}
+
+	// --in-container hands the whole run off to a `statusgen verifyrun` inside the
+	// pinned harness container (windows-port/10). The host does no Verify-row
+	// execution and does not need to parse the brief here — the inner run reads it
+	// against the bind-mounted /work. The pass-through flags (--check/--dry-run/--ci
+	// and a non-default --timeout) travel into the container.
+	if *inContainer {
+		root := *rootDir
+		if root == "" {
+			root = repoRootFor(path)
+		}
+		ef := *envFile
+		if ef == "" {
+			ef = strings.TrimSpace(os.Getenv(inContainerEnvFileVar))
+		}
+		innerTimeout := ""
+		if *timeout != witnessTimeoutDefault {
+			innerTimeout = timeout.String()
+		}
+		return runInContainer(path, root, ef, *checkMode, *dryRun, *ci, innerTimeout, stdout, stderr)
 	}
 
 	verify, evidence, err := briefSections(path)
