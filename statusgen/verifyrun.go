@@ -606,6 +606,59 @@ func resolveShellPlan() shellPlan {
 		reason: "no pipefail-capable POSIX shell could be started (never falling back to PowerShell/cmd): " + strings.Join(tried, "; ")}
 }
 
+// ---------------------------------------------------------------------------
+// Per-row shell dispatch (issue #1424)
+// ---------------------------------------------------------------------------
+
+// verifyOS is the OS the per-row shell-availability policy is evaluated against.
+// It is runtime.GOOS in production; tests override it (with restore) to exercise
+// the Windows `cmd`/`pwsh` dispatch AND the off-Windows could-not-run path on a
+// POSIX host, through a fake interpreter on PATH — the same fake-on-PATH
+// technique issue #1418's tests established for bash. It never widens what a real
+// run does: on a real host verifyOS == runtime.GOOS, so a `cmd` row is dispatched
+// only on Windows and is could-not-run everywhere else exactly as documented.
+var verifyOS = runtime.GOOS
+
+// shellDispatch resolves the interpreter argv PREFIX a row of the declared shell
+// runs under (everything before the command string), or returns a could-not-run
+// runResult when that shell cannot run on this OS.
+//
+//	sh   → the resolved bash plan (`<bash> -o pipefail -c`). Threads the once-per
+//	       run probe: an un-bootstrapped shell is could-not-run (issue #1418), so
+//	       every inherited `sh` row is byte-for-byte unchanged.
+//	cmd  → `cmd /d /s /c` on Windows; could-not-run on any other OS. `/d` skips
+//	       AutoRun, `/s /c` keeps the command string's quoting intact.
+//	pwsh → `powershell -NoProfile -Command` on Windows; could-not-run otherwise.
+//
+// It NEVER rewrites a row's command into a different shell's syntax and never
+// substitutes one shell for another: a shell the OS does not provide is reported
+// as could-not-run WITH the reason, the honest three-state answer, never `fail`.
+func shellDispatch(shell string, plan shellPlan) (argv []string, notRun *runResult) {
+	switch shell {
+	case rowShellCmd:
+		if verifyOS != "windows" {
+			return nil, &runResult{exit: -1, couldNotRun: true,
+				reason: "cmd not available on this OS (" + verifyOS + ") — the row is marked `cmd` (Windows cmd.exe), which runs only on Windows; could-not-run here, never a product-check `fail` and never silently rewritten for another shell (issue #1424)"}
+		}
+		return []string{"cmd", "/d", "/s", "/c"}, nil
+	case rowShellPwsh:
+		if verifyOS != "windows" {
+			return nil, &runResult{exit: -1, couldNotRun: true,
+				reason: "pwsh not available on this OS (" + verifyOS + ") — the row is marked `pwsh` (PowerShell), which this fix dispatches only on Windows; could-not-run here, never a product-check `fail` and never silently rewritten for another shell (issue #1424)"}
+		}
+		return []string{"powershell", "-NoProfile", "-Command"}, nil
+	default: // rowShellSh and the resolved legacy default
+		if !plan.ok {
+			return nil, &runResult{exit: -1, couldNotRun: true, reason: "shell bootstrap failed: " + plan.reason}
+		}
+		bash := plan.bash
+		if bash == "" {
+			bash = "bash"
+		}
+		return []string{bash, "-o", "pipefail", "-c"}, nil
+	}
+}
+
 // runVerifyCommand executes one Verify command.
 //
 // "Clean subshell" means a FRESH shell per row, at the repo root, with no state
@@ -623,7 +676,7 @@ func resolveShellPlan() shellPlan {
 // it once and threads it (runWitnesses → runVerifyCommandWith), so a run probes
 // the shell once, not once per row.
 func runVerifyCommand(root, command string, timeout time.Duration) runResult {
-	return runVerifyCommandWith(root, command, timeout, nil, resolveShellPlan())
+	return runVerifyCommandWith(root, command, timeout, nil, resolveShellPlan(), rowShellSh)
 }
 
 // runHermetically executes a `check:ci` row with the network DISABLED.
@@ -636,26 +689,29 @@ func runVerifyCommand(root, command string, timeout time.Duration) runResult {
 // a hermetic check that could not be run hermetically established nothing, and
 // the honest three-state answer is "I could not look", reported with the reason.
 func runHermetically(root, command string, timeout time.Duration) runResult {
-	return runHermeticallyWith(root, command, timeout, resolveShellPlan())
+	return runHermeticallyWith(root, command, timeout, resolveShellPlan(), rowShellSh)
 }
 
 // runHermeticallyWith is runHermetically with the shell plan resolved ONCE by the
 // caller (runWitnesses resolves it a single time for the whole run and threads it
-// here), so a multi-row run probes the shell once rather than once per row.
-func runHermeticallyWith(root, command string, timeout time.Duration, plan shellPlan) runResult {
+// here), so a multi-row run probes the shell once rather than once per row. shell
+// is the row's declared shell (issue #1424); check:ci rows are POSIX-shaped in
+// the corpus, so this is `sh` in practice, but it is threaded through faithfully.
+func runHermeticallyWith(root, command string, timeout time.Duration, plan shellPlan, shell string) runResult {
 	wrapper, ok, why := networkOffWrapper()
 	if !ok {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "check:ci hermetic execution requires a network-off sandbox, unavailable on this host: " + why + ". check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net`"}
 	}
-	return runVerifyCommandWith(root, command, timeout, wrapper, plan)
+	return runVerifyCommandWith(root, command, timeout, wrapper, plan, shell)
 }
 
 // runVerifyCommandWith executes one Verify command, optionally under a wrapper
 // argv prefix (the network-off sandbox for check:ci rows), in the shell the
-// caller has already resolved (plan). A nil wrapper runs the command directly,
-// which is the env-bound `check`/legacy path.
-func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper []string, plan shellPlan) runResult {
+// caller has already resolved (plan) and the row declared (shell — issue #1424:
+// sh/cmd/pwsh, default sh). A nil wrapper runs the command directly, which is the
+// env-bound `check`/legacy path.
+func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper []string, plan shellPlan, shell string) runResult {
 	if strings.TrimSpace(command) == "" {
 		return runResult{exit: -1, couldNotRun: true, reason: "the Verify row has no command"}
 	}
@@ -667,20 +723,19 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "unsubstituted placeholder(s) " + strings.Join(mv, ", ") + " — the row cannot run as written"}
 	}
-	// The shell was resolved and PROBED once for this run (resolveShellPlan). When
-	// no pipefail-capable POSIX shell could be started, the row NEVER RAN — the
-	// shell would exit before the row's own command. Record could-not-run with the
-	// full resolution detail; do NOT fabricate output or a `fail`. This is the
-	// Windows WSL-launcher defect (issue #1418): `bash.exe` is the WSL shim and no
-	// distro is installed, so it exits 1 up front, which a bare exit-1 check would
-	// otherwise misread as a genuine product-check failure.
-	if !plan.ok {
-		return runResult{exit: -1, couldNotRun: true, reason: "shell bootstrap failed: " + plan.reason}
+	// Resolve the concrete interpreter argv for the row's declared shell (issue
+	// #1424). For `sh` this is the bash plan resolved and PROBED once for this run
+	// (resolveShellPlan): when no pipefail-capable POSIX shell could be started the
+	// row NEVER RAN — the shell would exit before the row's own command — so it is
+	// could-not-run with the full resolution detail, never a fabricated `fail`
+	// (the Windows WSL-launcher defect, issue #1418). For `cmd`/`pwsh` this is the
+	// Windows interpreter, or a could-not-run when the runner's OS does not provide
+	// it — never a silent rewrite into another shell's syntax.
+	shellArgv, notRun := shellDispatch(shell, plan)
+	if notRun != nil {
+		return *notRun
 	}
-	bash := plan.bash
-	if bash == "" {
-		bash = "bash"
-	}
+	posixShell := shell != rowShellCmd && shell != rowShellPwsh
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -689,17 +744,22 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// invocation, so the network namespace is entered before any of the row's
 	// own shell runs.
 	//
-	// The shell is `bash -o pipefail`, NOT plain `sh`. Without pipefail, a
-	// pipeline reports only its LAST stage's exit status, so a row shaped
-	// `<a check that can silently fail> | head/tail/grep -c ...` scores the
+	// For an `sh` row the shell is `bash -o pipefail`, NOT plain `sh`. Without
+	// pipefail, a pipeline reports only its LAST stage's exit status, so a row
+	// shaped `<a check that can silently fail> | head/tail/grep -c ...` scores the
 	// trailing reader's exit — a FAILED left-hand command with a succeeding
 	// reader is recorded `pass exit=0`, the worst-direction false clean (a
 	// witness that a check passed when it never really ran). pipefail makes ANY
 	// failing stage surface as the pipeline's own non-zero exit, so the row
 	// FAILS. Non-piped commands are unaffected: a single command's exit is its
 	// pipeline's exit with or without pipefail. This matches how the repo's CI
-	// shell steps run.
-	argv := append(append([]string{}, wrapper...), bash, "-o", "pipefail", "-c", unescapePipes(command))
+	// shell steps run. A `cmd`/`pwsh` row carries its interpreter's OWN
+	// failure-propagation semantics (cmd and PowerShell do not have bash's
+	// pipefail); its exit code is read faithfully from the process, and a piped
+	// command in such a row is the author's to get right (issue #1424). The
+	// `\|`-unescaping is a MARKDOWN-table convention, so it applies to every shell.
+	argv := append(append([]string{}, wrapper...), shellArgv...)
+	argv = append(argv, unescapePipes(command))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
@@ -721,8 +781,11 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		code := exitErr.ExitCode()
 		// 127 = command not found, 126 = found but not executable. These are
 		// the shell saying it never ran the check, and they are the only two
-		// "did not run" signals a POSIX shell reports distinctly.
-		if code == 127 || code == 126 {
+		// "did not run" signals a POSIX shell reports distinctly. cmd/PowerShell
+		// use different codes for the same conditions (cmd's 9009), so these
+		// POSIX-shell heuristics apply ONLY to an `sh` row (issue #1424) — a
+		// `cmd`/`pwsh` exit is read literally as the row's own verdict.
+		if posixShell && (code == 127 || code == 126) {
 			return runResult{exit: code, output: out, couldNotRun: true,
 				reason: "the shell could not execute the command (exit " + strconv.Itoa(code) + ")"}
 		}
@@ -731,8 +794,9 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		// runs. That is the shell failing to bootstrap, not the row's command
 		// failing, so it is could-not-run, never fail. Keyed to the exact launcher
 		// signature (wslLauncherSignatureRe) so a genuine check that merely exits 1
-		// is unaffected.
-		if wslLauncherSignatureRe.Match(out) {
+		// is unaffected. Only meaningful for an `sh` row (the WSL launcher IS the
+		// bash on PATH); a `cmd`/`pwsh` row never reaches this shim.
+		if posixShell && wslLauncherSignatureRe.Match(out) {
 			return runResult{exit: code, output: out, couldNotRun: true,
 				reason: "shell bootstrap failed (Windows WSL launcher, no distro installed)" + shellProbeSnippet(out)}
 		}
@@ -970,6 +1034,10 @@ type verifyRow struct {
 	// (skipped in CI) from a legacy-default `check` (CI still re-executes it).
 	Class   string
 	Classed bool
+	// Shell is the resolved per-row shell (issue #1424): sh (the default and the
+	// whole inherited corpus), cmd, or pwsh. runWitnesses dispatches the row to
+	// this shell; a shell unavailable on the runner's OS is could-not-run.
+	Shell string
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
@@ -985,7 +1053,7 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed})
+		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell()})
 	})
 	return rows
 }
@@ -1048,14 +1116,14 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 		}
 		var res runResult
 		if r.Class == classCheckCI {
-			res = runHermeticallyWith(root, r.Command, timeout, plan)
+			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
 		} else {
-			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan)
+			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
 		out = append(out, witness{
-			ID:      r.ID,
-			Command: r.Command,
+			ID:           r.ID,
+			Command:      r.Command,
 			State:        state,
 			Exit:         res.exit,
 			OutHash:      hashOutput(res.output),
