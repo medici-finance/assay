@@ -19,6 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-21 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-21 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-21 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-21 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-21 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-21 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-21 |  |
@@ -36,7 +37,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 |---|---|---|---|
 | [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-21 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-21 |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-21 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-21 |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-21 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-21 |
@@ -62,23 +62,25 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (42 desk-actionable of 64 total — 64 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (46 desk-actionable of 65 total — 65 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (42)
+### Desk-actionable (46)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
+| desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 02 | implemented | 3000 | 4 | — | — | — |
+| desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -93,6 +95,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -109,6 +112,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 28 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desktools-v2 | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -144,14 +148,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-
-### Parked stream (3)
-
-| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
-|---|---|---|---|---|---|---|---|
-| desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
-| desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
-| desktools-v2 | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -250,7 +246,7 @@ _None._
 - 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
 - 16 Verification wake conditions — stop repeating unchanged blocked checks — implemented (wave 0)
-- 17 Verification failures create durable worker repair obligations — todo (wave 1)
+- 17 Verification failures create durable worker repair obligations — implemented (wave 1)
 - 18 Enforce repair reservations at worker dispatch — todo (wave 2)
 - 19 Persist review findings and apply the existing round cap across sessions — todo (wave 0)
 - 20 Review scope and first-pass completeness — todo (wave 0)
@@ -551,4 +547,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**22** streams (**16** active, **0** paused, **6** parked) · **88/255** briefs done · completed initiatives: see `docs/archive/`
+**22** streams (**17** active, **0** paused, **5** parked) · **88/255** briefs done · completed initiatives: see `docs/archive/`
