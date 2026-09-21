@@ -1,0 +1,54 @@
+{
+  "test": "cd tools/desk && GOWORK=off go test ./cmd/deskpost/ -run '^TestExternalPrerequisite' -count=1",
+  "note": "Fail-first evidence for brief 21's same-head external-prerequisite exemption. Each mutation disarms ONE fail-closed guard in the deskkit decision; re-applying it turns the named negative-path test GREEN (the block it was proving is gone), which is the proof the test actually pins that guard. The control makes the positive path fail, proving the suite runs.",
+  "control": {
+    "name": "CONTROL — never grant the exemption (the positive path must go red)",
+    "file": "internal/deskkit/externalprerequisite.go",
+    "old": "\tdec.Cleared = true\n\tdec.Reason = \"every declared external prerequisite independently verified as changed after the rejection, at the unchanged head\"",
+    "new": "\tdec.Cleared = false\n\tdec.Reason = \"every declared external prerequisite independently verified as changed after the rejection, at the unchanged head\""
+  },
+  "mutations": [
+    {
+      "name": "disarm the mixed-content-finding guard (a code/content blocker no longer blocks) — TestExternalPrerequisiteMixedAndForged/mixed_content_finding_blocks goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\tif d.HasContentBlocker {",
+      "new": "\tif false && d.HasContentBlocker {"
+    },
+    {
+      "name": "disarm the could-not-check guard (unreadable evidence clears) — TestExternalPrerequisiteMixedAndForged/unreadable_source_data_blocks goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\t\tif !ok || !obs.Readable {",
+      "new": "\t\tif false && (!ok || !obs.Readable) {"
+    },
+    {
+      "name": "disarm the unrelated-object guard (any object clears) — TestExternalPrerequisiteMixedAndForged/unrelated_object_cannot_clear goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\t\tif !sameObjectRef(cond.Object, obs.Object) || !sameObjectRef(cond.Object, c.Object) {",
+      "new": "\t\tif false && (!sameObjectRef(cond.Object, obs.Object) || !sameObjectRef(cond.Object, c.Object)) {"
+    },
+    {
+      "name": "disarm the revocation guard (a revoked prerequisite still clears) — TestExternalPrerequisiteFreshnessAndLanes/later_revocation_blocks goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\t\tif obs.Revoked {",
+      "new": "\t\tif false && obs.Revoked {"
+    },
+    {
+      "name": "disarm the wrong-revision guard (any satisfying ref clears) — TestExternalPrerequisiteFreshnessAndLanes/wrong_revision_blocks goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\t\tif obs.SatisfyingRef == \"\" || obs.SatisfyingRef != c.SatisfyingRef {",
+      "new": "\t\tif false && (obs.SatisfyingRef == \"\" || obs.SatisfyingRef != c.SatisfyingRef) {"
+    },
+    {
+      "name": "disarm the freshness guard (a prerequisite predating the rejection clears) — TestExternalPrerequisiteFreshnessAndLanes/prerequisite_predating_the_rejection_blocks goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\t\tif in.CRSubmittedAt.IsZero() || !obs.ObservedAt.After(in.CRSubmittedAt) {",
+      "new": "\t\tif false && (in.CRSubmittedAt.IsZero() || !obs.ObservedAt.After(in.CRSubmittedAt)) {"
+    },
+    {
+      "name": "disarm the standing-security-failure guard (a security retraction is ignored) — TestExternalPrerequisiteFreshnessAndLanes/standing_security_failure_blocks goes green",
+      "file": "internal/deskkit/externalprerequisite.go",
+      "old": "\tif in.SecurityFail {",
+      "new": "\tif false && in.SecurityFail {"
+    }
+  ]
+}

@@ -264,7 +264,11 @@ failure this section prevents**, and there is no state in this loop called "the 
   into every freed slot — the re-invocation IS the cue.
 - **What stays ORDERED — parallelise the reviews, never these.** A RE-review runs only AFTER the
   push that answers a finding (a same-head APPROVE over a standing CHANGES_REQUESTED is not
-  re-verification); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
+  re-verification — with the two declared exemptions in `references/review-prompt.md` §11:
+  a check-only CR whose required check greened, and an external-prerequisite-only CR whose
+  named upstream prerequisites all landed; the ready gate independently re-verifies the
+  second from fresh evidence and fails closed, so a same-head clear still needs no synthetic
+  push only when the declaration substantiates); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
   green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
   out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
   each other); the human gates (public-repo human +1 before any verdict post, `needs-decision`, the
