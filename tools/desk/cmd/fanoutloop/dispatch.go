@@ -30,6 +30,8 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 			fmt.Fprintf(&b, "Open findings to work:\n%s\n", fnd)
 		}
 		b.WriteString("\n")
+	} else if strings.TrimSpace(it.Payload[payloadObligationID]) != "" {
+		renderRepairPrompt(&b, it, tier)
 	} else {
 		fmt.Fprintf(&b, "IMPLEMENT %s (tier=%s)\n\n", it.ID, tier)
 		fmt.Fprintf(&b, "Brief: %s\n", it.BriefPath)
@@ -120,6 +122,50 @@ const gateHumanClause = "This brief is gate:human. The gate binds APPROVAL, not 
 	"normally and stop at `implemented`; sign-off (review, merge, verify) is a human's. If the brief's Task " +
 	"has an explicit human co-execution / cutover step (a cutover, a repo bootstrap), prepare everything, " +
 	"STOP at that documented point, and report BLOCKED-ON-IAN on the PR rather than performing it."
+
+// renderRepairPrompt emits the REPAIR-OBLIGATION framing (example-stream/17): the worker is
+// resuming a failed verification's durable obligation, not implementing a fresh brief. It carries
+// the obligation onto the worker's CLAIM (the immutable obligation id is the claim key) and its
+// WORKPAD (the reproduction + expected behaviour so the fix starts from the failure, not a cold
+// re-read of the brief), states the deliverable repository resolved from the obligation, and — when
+// the original deliverable PR MERGED — instructs a fresh FOLLOW-UP branch and forbids resuming the
+// merged branch (immutable history). The obligation resolves ONLY on an independent reverification
+// at the repaired revision, so the prompt closes with the stop-at-implemented boundary the workflow
+// clause already carries: a worker's own completion never closes the obligation.
+func renderRepairPrompt(b *strings.Builder, it loopengine.Item, tier loopengine.Tier) {
+	fmt.Fprintf(b, "REPAIR OBLIGATION %s (tier=%s) — a failed verification owes a durable repair; resume takes priority over fresh dispatch.\n\n", it.Payload[payloadObligationID], tier)
+	if brief := strings.TrimSpace(it.Payload[payloadBrief]); brief != "" {
+		fmt.Fprintf(b, "Brief: %s\n", brief)
+	}
+	if it.BriefPath != "" {
+		fmt.Fprintf(b, "Brief file: %s\n", it.BriefPath)
+	}
+	if repo := strings.TrimSpace(it.Payload["repo"]); repo != "" {
+		fmt.Fprintf(b, "Deliverable repo (the fix lands HERE, resolved from the obligation): %s\n", repo)
+	}
+	if rows := strings.TrimSpace(it.Payload[payloadRows]); rows != "" {
+		fmt.Fprintf(b, "Failing Verify row(s): %s\n", rows)
+	}
+	if rid := strings.TrimSpace(it.Payload[payloadReceiptID]); rid != "" {
+		fmt.Fprintf(b, "Source failure receipt: %s\n", rid)
+	}
+	if repro := strings.TrimSpace(it.Payload[payloadReproduction]); repro != "" {
+		fmt.Fprintf(b, "Reproduction:\n%s\n", repro)
+	}
+	if exp := strings.TrimSpace(it.Payload[payloadExpected]); exp != "" {
+		fmt.Fprintf(b, "Expected behaviour:\n%s\n", exp)
+	}
+	// A MERGED original is immutable history: branch fresh, never resume it.
+	if fb := strings.TrimSpace(it.Payload[payloadFollowUpBranch]); fb != "" {
+		fmt.Fprintf(b, "\nThe original deliverable PR %s has MERGED — immutable history. Do NOT resume or push that branch. Open a FRESH follow-up branch: %s\n",
+			strings.TrimSpace(it.Payload[payloadOriginalPR]), fb)
+	} else if opr := strings.TrimSpace(it.Payload[payloadOriginalPR]); opr != "" {
+		fmt.Fprintf(b, "\nThe original deliverable PR is %s (not merged): continue it if it is still open, else open a repair PR.\n", opr)
+	}
+	// The obligation is attached to the CLAIM and the WORKPAD so a replacement worker (after a dead
+	// lease) resumes the SAME obligation and its running state, never a duplicate.
+	fmt.Fprintf(b, "\nCarry this obligation id (%s) on your dispatch claim and in your PR workpad; it is the durable key a replacement worker resumes on. Your repair does NOT close the obligation — only an INDEPENDENT reverification at the repaired revision resolves it.\n\n", it.Payload[payloadObligationID])
+}
 
 // assertNoSharedCheckout is the in-code backstop: the emitted dispatch instruction must never name a
 // shared-checkout path (prompt-carried paths override every isolation layer — F-35). If the rendered

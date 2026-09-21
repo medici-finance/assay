@@ -12,6 +12,18 @@
       "file": "cmd/fanoutloop/board.go",
       "old": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", false\n\t}",
       "new": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", true\n\t}"
+    },
+    {
+      "name": "example-stream/17 repair obligation — DROP the same-actor self-certification guard in RepairObligation.Resolve so the worker that produced a repair could resolve its own obligation at the repaired revision; TestRepairObligationMergeIsNotResolved must go red (a worker cannot independently verify itself)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "\tif o.RepairedBy != \"\" && strings.EqualFold(verifier, o.RepairedBy) {",
+      "new": "\tif false && o.RepairedBy != \"\" && strings.EqualFold(verifier, o.RepairedBy) {"
+    },
+    {
+      "name": "example-stream/17 repair obligation — REGRESS the reconcile state-advance rule (> becomes <) so a duplicate/lost-ack append-only log folds to the LEAST-progressed state instead of the furthest; TestRepairObligationRestartAndDuplicate must go red (a claim then a lost-ack re-post would drop back to needs-assignment)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "\tif repairStateRank[b.State] > repairStateRank[out.State] {",
+      "new": "\tif repairStateRank[b.State] < repairStateRank[out.State] {"
     }
   ]
 }

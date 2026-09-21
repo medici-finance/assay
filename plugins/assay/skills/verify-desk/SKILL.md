@@ -317,6 +317,19 @@ row with `"outcome":"verified"`, so the denominator is complete.
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
 ```
 
+**A failed/blocked verify also creates a durable REPAIR OBLIGATION** (`repair-obligation-v1`;
+`docs/streams/desk-supervision/repair-obligation-v1.md`) — a versioned marker in the sibling
+`docs/streams/repair-obligations.jsonl` projection, keyed by (repo, brief, source receipt, failing
+rows) so a re-land of the same failure reconciles to the SAME obligation, never a second. It is the
+durable unit that stops a filed failure from sitting unassigned while new briefs consume workers: an
+`implementation`/`check-definition` blocker becomes worker rework (worker-desk row 5b), a
+`human-action`/`environment` blocker stays `waiting-external` with its exact required action, and an
+`unknown` blocker is explicit triage — never an invented implementation bug. **A merge WAKES
+reverification, it does not resolve the obligation:** only a valid INDEPENDENT verification at the
+repaired revision resolves it (a same-actor or wrong-revision pass is refused) — which is this desk's
+own reverification pass, run as a NON-implementer on merged main. In the reference/interim build the
+obligation-creating sink is a SAFE dry-run default; the real filing sink is the human-gated cutover.
+
 ## Landing — `deskevidence` is the SOLE main-push carve-out (narrow, dated)
 
 **The witness lands WITH the Evidence, in the same file, same invocation.** `verifyrun`'s output rows

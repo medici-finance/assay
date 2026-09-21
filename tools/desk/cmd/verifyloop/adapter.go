@@ -49,6 +49,12 @@ type VerifyLoop struct {
 	// DurableSink makes results durable. nil defaults to the SAFE dry-run sink (must
 	// not push to main). The real git-pushing sink is wired only at cutover.
 	DurableSink Durable
+	// RepairSink creates or reconciles the durable REPAIR OBLIGATION a failed/blocked verify owes
+	// (example-stream/17). nil defaults to the SAFE dry-run sink (records nothing durable, prints
+	// what it WOULD append/file). It is a SEPARATE sink from DurableSink because obligation
+	// creation is additive to the existing FileBug landing and must not change what a PASS/flip
+	// does. Tests inject a capture here.
+	RepairSink RepairObligationSink
 	// Now is injectable for deterministic Evidence dates in tests.
 	Now func() time.Time
 
@@ -174,6 +180,13 @@ func (v *VerifyLoop) durable() Durable {
 		return v.DurableSink
 	}
 	return dryRunDurable{out: v.emit()}
+}
+
+func (v *VerifyLoop) repairSink() RepairObligationSink {
+	if v.RepairSink != nil {
+		return v.RepairSink
+	}
+	return dryRunRepairSink{out: v.emit()}
 }
 
 // handle is the interim in-flight tracker: Done() fires when Feeder returns the structured
