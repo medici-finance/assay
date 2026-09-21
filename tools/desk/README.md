@@ -4139,6 +4139,23 @@ incomplete receipt stays dispatchable for one classification pass. A partial hol
 newly-runnable rows while recording the held rows as explicitly unrun, and no partial result flips
 the brief — a receipt is scheduling evidence only, never a grant of `verified`/`done`.
 
+**A failed verification owes a durable REPAIR OBLIGATION — the OTHER half** (`repair-obligation-v1`;
+`docs/streams/example-stream/repair-obligation-v1.md`). Where a wake receipt records WHY a failed
+verification should not simply re-run, a repair obligation is the durable worker WORK it owes:
+`verifyloop`'s `Land` creates/reconciles a versioned marker in the sibling
+`docs/streams/repair-obligations.jsonl` projection (`cmd/verifyloop/repair.go`; the SAFE dry-run sink
+is the default, the real filing sink is the human-gated cutover), keyed by (repo, brief, source
+receipt, failing rows) so a duplicate delivery or a lost acknowledgement reconciles to the SAME
+obligation via `deskkit.ReconcileObligations`. `fanoutloop` reads the reconciled obligations across
+the configured roots and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or
+dead-lease) in its **rework lane** (`cmd/fanoutloop/repair.go`), the item keyed by the IMMUTABLE
+obligation id so a replacement worker resumes the SAME obligation after a dead lease. The
+load-bearing invariant (`deskkit.RepairObligation.Resolve`): worker completion, issue closure and a
+merge ALONE never resolve an implementation obligation — a merge WAKES independent reverification, and
+only a valid INDEPENDENT pass at the repaired revision (not the worker that produced the repair, not a
+stale revision) resolves it. A merged original deliverable PR is immutable history, so the repair
+opens a fresh follow-up branch (`RequiresFollowUpBranch`/`FollowUpBranch`).
+
 ### Tier→runner config — the `ASSAY_RUNNER_*` table
 
 Native ACP dispatch spawns a real agent per verify item. **Which** agent it

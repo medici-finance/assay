@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -55,6 +56,18 @@ type FanoutLoop struct {
 	// fresh brief. nil uses readAwaitingRework(Root), the SAME origin/main-ref read the Next-up
 	// board uses (statusMDContent). Tests inject fixtures here.
 	Rework func() ([]BoardRow, error)
+	// RepairObligations is the durable REPAIR-OBLIGATION source (example-stream/17): the
+	// reconciled, CURRENT obligation per immutable key across the configured roots' append-only
+	// repair-obligations.jsonl sidecars. It shares the rework lane (kind=kindRework) so a repair
+	// obligation inherits the rework reservation floor and orphan-behind priority. nil uses the
+	// default cross-root reader (defaultRepairObligations). Tests inject fixtures here. Only the
+	// ASSIGNABLE obligations (actionable, unresolved, awaiting-assignment or dead-lease) become
+	// items — a live repairing claim, a resolved obligation and a waiting-external obligation are
+	// withheld by deskkit's Assignable rule, never dispatched.
+	RepairObligations func() ([]deskkit.RepairObligation, error)
+	// Now is the clock the obligation lease horizon is evaluated against. nil uses time.Now. Tests
+	// inject a fixed clock so a dead-lease reassignment is deterministic.
+	Now func() time.Time
 	// InFlight is the in-flight-claim source for the ADVISORY write-scope overlap warning:
 	// the items already claimed for this root, carried as their derived
 	// write-scopes. nil reads the root repo's local `refs/heads/dispatch/*` claims (offline). Tests
@@ -149,6 +162,22 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 			continue
 		}
 		items = append(items, r.toReworkItem(f.TargetSHA))
+	}
+
+	// 2b. Durable REPAIR OBLIGATIONS (example-stream/17) — the OTHER rework source: a failed
+	// verification's actionable, still-unresolved obligation, reconciled across roots and filtered
+	// to the assignable ones. Same lane, same priority as the STATUS.md rework rows above: resuming
+	// owed repair outranks a fresh brief. Each item's ID is the IMMUTABLE obligation key, so a
+	// replacement worker (after a dead lease) resumes the SAME obligation rather than a duplicate.
+	repairs, err := f.repairSource()
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range repairs {
+		if f.isHandled(it.ID) {
+			continue
+		}
+		items = append(items, it)
 	}
 
 	// 3. Fresh Next-up rows, board order preserved.
@@ -337,6 +366,47 @@ func (f *FanoutLoop) reworkSource() ([]BoardRow, error) {
 		return f.Rework()
 	}
 	return readAwaitingRework(f.Root)
+}
+
+// repairSource returns the ASSIGNABLE repair obligations as rework items, evaluated against this
+// loop's clock and the repair lease horizon. It reads the reconciled obligations from
+// RepairObligations (default: the cross-root sidecar reader) and maps each assignable one to a
+// rework item. The roots are needed both to read the sidecars AND to resolve each obligation's brief
+// frontmatter for tiering, so the default reader and the item mapper share one roots list.
+func (f *FanoutLoop) repairSource() ([]loopengine.Item, error) {
+	roots := f.repairRoots()
+	var obligs []deskkit.RepairObligation
+	var err error
+	if f.RepairObligations != nil {
+		obligs, err = f.RepairObligations()
+	} else {
+		obligs, err = collectRepairObligations(roots)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return assignableRepairItems(obligs, roots, f.TargetSHA, f.clock(), repairLeaseTTL), nil
+}
+
+// repairRoots is the roots list the default repair reader and the brief-frontmatter resolver use.
+// It prefers the multi-repo configured roots (example-stream/17: "across configured roots"); a
+// malformed roots configuration degrades to this loop's single reference Root rather than wedging
+// the whole plan — the cross-root read is an enhancement over the single-root reference build, not a
+// new hard precondition on it.
+func (f *FanoutLoop) repairRoots() []deskkit.RootConfig {
+	if roots, err := deskkit.ConfiguredRoots(); err == nil && len(roots) > 0 {
+		return roots
+	}
+	return []deskkit.RootConfig{{Path: f.Root}}
+}
+
+// clock returns this loop's time source (default time.Now), used to evaluate a repair obligation's
+// lease horizon deterministically under test.
+func (f *FanoutLoop) clock() time.Time {
+	if f.Now != nil {
+		return f.Now()
+	}
+	return time.Now()
 }
 
 // representedSource returns the already-represented brief-id set (open/merged PRs). nil Represented
