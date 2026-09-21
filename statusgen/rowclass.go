@@ -229,6 +229,11 @@ type verifyRowCells struct {
 	Command string
 	Expect  string
 	Classed bool
+	// Shell is the RAW `Shell` cell text (issue #1424): the per-row shell a
+	// Verify row is executed under. Empty — or a table with no `Shell` column —
+	// resolves to the default `sh` (POSIX bash), which is byte-for-byte today's
+	// behaviour for the whole inherited corpus. resolveRowShell normalises it.
+	Shell string
 }
 
 // resolveRowClass normalises a Class cell to one of the class constants and
@@ -262,6 +267,89 @@ func (r verifyRowCells) class() string {
 	}
 	c, _ := resolveRowClass(execCell)
 	return c
+}
+
+// ---------------------------------------------------------------------------
+// Verify row SHELLS (issue #1424)
+// ---------------------------------------------------------------------------
+//
+// A Verify row is executed IN a shell, and which shell is a PER-ROW property the
+// author declares — never a heuristic guessed from the command text. Sniffing a
+// row for `findstr`, `cmd`-specific flags or backslash paths to pick a shell is
+// exactly the guess this design forbids: a row that happens to mention `findstr`
+// in a comment, or a bash row that uses a backslash, would misroute.
+//
+// The default — and the resolved value for EVERY inherited row — is `sh` (POSIX
+// bash). Some rows are authored in NATIVE-Windows syntax, e.g.
+//
+//	findstr /c:"…" docs\streams\<stream>\spec.md
+//
+// which means what the author intended only under `cmd.exe`: run under bash the
+// `*`, the quotes and the backslash path are interpreted by bash BEFORE the
+// Windows tool ever sees them, so the row fails with a bash-level error while the
+// identical row passes under `cmd /c`. That is a WRONG-SHELL row, not a failing
+// check. The author marks such a row's shell in an optional `Shell` column:
+//
+//	| # | Shell | Command | Expect |
+//
+// Three shells, DEFAULT `sh`:
+//
+//	sh    POSIX bash — the default when the column is absent OR the cell is empty.
+//	      Every inherited row is `sh`; its behaviour is byte-for-byte unchanged.
+//	cmd   Windows cmd.exe (`cmd /d /s /c <command>`). could-not-run off Windows.
+//	pwsh  PowerShell (`powershell -NoProfile -Command <command>`). could-not-run
+//	      off Windows.
+//
+// A row marked for a shell the runner's OS does not provide (a `cmd`/`pwsh` row
+// on Linux/macOS) is could-not-run WITH the reason — never `fail`, and never a
+// silent rewrite of the command into another shell's syntax. See verifyrun.go's
+// shellDispatch. The `Shell` column is INDEPENDENT of the `Class` column: a
+// legacy table (no `Class` column) may still carry a `Shell` column, and vice
+// versa.
+
+// The row shells. Stable identifiers — verifyrun dispatch and the lint select on
+// these exact strings.
+const (
+	rowShellSh   = "sh"   // POSIX bash — the default, today's behaviour
+	rowShellCmd  = "cmd"  // Windows cmd.exe
+	rowShellPwsh = "pwsh" // PowerShell
+)
+
+// legacyRowShell is what a row resolves to when no `Shell` column is present, or
+// its cell is empty: `sh`. This is the single fact that makes the column additive
+// — an unmarked corpus runs exactly as it did before the column existed.
+const legacyRowShell = rowShellSh
+
+// knownRowShells is the closed set the lint validates against. A `Shell` cell
+// outside it (a typo like `bash` or `powershell`, or `shell`) is a PROBLEM — a
+// shell the tool cannot resolve would route nowhere — never a silent default.
+var knownRowShells = map[string]bool{
+	rowShellSh:   true,
+	rowShellCmd:  true,
+	rowShellPwsh: true,
+}
+
+// resolveRowShell normalises a `Shell` cell to one of the shell constants and
+// reports whether it names a KNOWN shell. An empty cell — or a row from a table
+// with no `Shell` column — resolves to the legacy default `sh` and is known. A
+// non-empty cell that matches no shell is returned verbatim (lowercased) with
+// known=false, so the lint can name exactly what the author wrote.
+func resolveRowShell(raw string) (shell string, known bool) {
+	s := strings.ToLower(strings.TrimSpace(normalizeRowID(raw))) // strip backticks/emphasis, trim
+	if s == "" {
+		return legacyRowShell, true
+	}
+	return s, knownRowShells[s]
+}
+
+// shell returns the resolved shell for a parsed row: the declared shell when the
+// table opted into the `Shell` column, else the legacy default `sh`. Like
+// class(), it does NOT report known-ness — the lint (verifyRowClassProblems) is
+// the sole place an unknown shell is judged; every other consumer wants a shell
+// to route on.
+func (r verifyRowCells) shell() string {
+	s, _ := resolveRowShell(r.Shell)
+	return s
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +396,12 @@ func scriptPath(command string) string {
 //	    real, executable files.
 //
 // gate:model / gate:human rows are never scripted and are not checked here.
+//
+//	(c) an unknown SHELL (issue #1424) — a `Shell` cell that names no defined
+//	    shell. Always a PROBLEM, on the same reasoning as (a): a shell the tool
+//	    cannot resolve would route the row nowhere. The `Shell` column is
+//	    independent of the `Class` column, so this fires whether or not the table
+//	    declares a `Class` column.
 func verifyRowClassProblems(streams []*Stream) []string {
 	var problems []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -332,6 +426,14 @@ func verifyRowClassProblems(streams []*Stream) []string {
 				where := "a Verify row"
 				if r.Num != "" {
 					where = "Verify row " + r.Num
+				}
+				// (c) unknown shell (issue #1424). Independent of the Class
+				// column and checked first: an empty cell (or no Shell column)
+				// resolves to the default `sh` and is silent, so this only fires
+				// on a cell that names a shell the tool does not recognise — a
+				// typo like `bash`/`powershell`/`shell` that would route nowhere.
+				if sh, known := resolveRowShell(r.Shell); !known {
+					add("%s: %s declares shell %q, which is not a defined Verify row shell — the recognised shells are `sh` (POSIX bash, the default when the `Shell` column is absent or the cell is empty), `cmd` (Windows cmd.exe) and `pwsh` (PowerShell). A row whose shell the tool cannot resolve routes nowhere; fix the marker or leave the cell empty for the default `sh` — issue #1424", path, where, sh)
 				}
 				// (a) unknown class OR unknown obligation. A compound cell
 				// (`check +mutation`, mistake-proofing/03) is split into its
