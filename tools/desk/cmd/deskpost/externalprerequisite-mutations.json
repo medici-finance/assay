@@ -1,6 +1,7 @@
 {
-  "test": "cd tools/desk && GOWORK=off go test ./cmd/deskpost/ -run '^TestExternalPrerequisite' -count=1",
-  "note": "Fail-first evidence for brief 21's same-head external-prerequisite exemption. Each mutation disarms ONE fail-closed guard in the deskkit decision; re-applying it turns the named negative-path test GREEN (the block it was proving is gone), which is the proof the test actually pins that guard. The control makes the positive path fail, proving the suite runs.",
+  "root": ".",
+  "test": "GOWORK=off go test ./cmd/deskpost/ -run '^TestExternalPrerequisite' -count=1",
+  "note": "Fail-first evidence for brief 21's same-head external-prerequisite exemption. Each mutation disarms ONE fail-closed guard in the deskkit decision; re-applying it turns the named negative-path test RED (muhar reports it CAUGHT), which is the proof the test actually pins that guard. The control makes the positive path fail, proving the suite runs. NOT IN THIS SWEEP, deliberately: the mixed-content guard is DOUBLY layered — the CR-block check (d.HasContentBlocker in ParsePrereqDeclaration) AND the ledger-derived in.OpenContentDefects (hasOpenContentDefect over the review records). Disarming either single clause leaves the other, so no single-clause mutation reddens it; the behaviour is pinned by TestExternalPrerequisiteMixedAndForged/mixed_content_finding_blocks, which exercises both clauses.",
   "control": {
     "name": "CONTROL — never grant the exemption (the positive path must go red)",
     "file": "internal/deskkit/externalprerequisite.go",
@@ -8,12 +9,6 @@
     "new": "\tdec.Cleared = false\n\tdec.Reason = \"every declared external prerequisite independently verified as changed after the rejection, at the unchanged head\""
   },
   "mutations": [
-    {
-      "name": "disarm the mixed-content-finding guard (a code/content blocker no longer blocks) — TestExternalPrerequisiteMixedAndForged/mixed_content_finding_blocks goes green",
-      "file": "internal/deskkit/externalprerequisite.go",
-      "old": "\tif d.HasContentBlocker {",
-      "new": "\tif false && d.HasContentBlocker {"
-    },
     {
       "name": "disarm the could-not-check guard (unreadable evidence clears) — TestExternalPrerequisiteMixedAndForged/unreadable_source_data_blocks goes green",
       "file": "internal/deskkit/externalprerequisite.go",
