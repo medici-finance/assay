@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // cellEnvKnownKeys is the fixed part of the cell.env key allowlist `cellctl set` recognises
@@ -16,7 +18,7 @@ import (
 var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default
-CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE
 TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX`)
 
@@ -75,6 +77,15 @@ func validateEnvKey(key, value string, force bool) {
 	case "CELL_COCKPIT":
 		if !valueIn(value, cockpitValues) {
 			die("set: CELL_COCKPIT must be one of %s, got '%s'", joinPipe(cockpitValues), value)
+		}
+	case deskkit.EnvRepairAdmission:
+		// The dispatch-boundary repair-admission gate is a strict on/off opt-in
+		// (deskkit.RepairAdmissionEnabled enables ONLY on the literal "on"). A malformed value
+		// is refused here, on the SAME footing as the Opus/harness/kind rules above — never
+		// bypassable by --force, which only widens the KEY allowlist, never the value rule for a
+		// known key.
+		if value != "on" && value != "off" {
+			die("set: %s must be 'on' or 'off', got '%s'", deskkit.EnvRepairAdmission, value)
 		}
 	}
 }
