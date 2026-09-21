@@ -71,6 +71,31 @@ reviewable artifact, not a run.
 Already activated (`windows-port/04`) — see "Already live" above for how a later change to
 this file is promoted now that it exists at `.github/workflows/windows-ci-leg.yml`.
 
+**`windows-port/10` adds two jobs to this file** (pending re-promotion by a maintainer copying
+this staged copy over the live one, exactly as `windows-port/06` was):
+- `verify-in-container` — the execution-witness runner leg. On `ubuntu-latest` it builds
+  `statusgen`, asserts the wrapper REFUSES an un-digest-pinned harness image (the fail-closed pin
+  control, green on promotion), and — once a maintainer harvests and pins the harness image's real
+  registry digest — runs a fixture Verify table THROUGH the pinned container and asserts the
+  witness lands in Evidence, host-owned. It runs on `ubuntu-latest` because the harness image is a
+  Linux image whichever host launches it; the Windows value is that Windows adopters USE the
+  container because a native pipefail `bash` is unreliable there (#1418).
+- `windows-verify-in-container` — the native-Windows-host proof, HELD BLOCKED (`if: false`):
+  `windows-latest` has no Linux-container Docker backend to run the Linux harness image, so this
+  awaits a Windows runner configured with one. Never inferred from the ubuntu result — the same
+  "blocked is a state" contract `arm64-native-smoke` uses.
+
+**Landing-mechanism caveat — read before promoting.** This staged CI-leg addition rides the same
+staged-copy → maintainer-hand-copy pattern `windows-port/04`/`/06` used. That pattern is the
+subject of an OPEN, unratified decision record (`docs/streams/decisions/DR-workflow-app-landing.md`)
+and an in-flight retirement brief (`docs/streams/desk-supervision/brief-12-...`), which cite real
+drift (a staged copy authored against one base silently reverts intervening fixes when the live
+file moves — #1187) and indefinite stalls (a hand-copy step sitting `BLOCKED-ON-HUMAN` 9+ days —
+#1175/#1185). Whoever promotes this addition should check `desk-supervision/12`'s current state
+first: if the workflow-App PR path has landed, this change should travel through THAT path (a
+single workflow-only PR the workflow App authors) rather than a verbatim hand-copy — and this
+staged copy may itself be reduced to a pointer by that brief.
+
 The leg runs on `push`/`pull_request`; a green `windows-smoke` job is the
 authoritative evidence for the brief's rows 2-3 (record its run URL, the `--lint` exit, and the
 `--version` smoke result on the brief). The `failfirst` fail-first demo is run on demand via

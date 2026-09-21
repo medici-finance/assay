@@ -182,3 +182,105 @@ jobs:
         run: |
           echo "native windows/arm64 smoke is BLOCKED: no windows-11-arm runner available"
           exit 1
+
+  # verify-in-container: windows-port/10 — the EXECUTION-WITNESS runner leg. It proves
+  # `statusgen verifyrun --in-container` runs a real fixture Verify table THROUGH the
+  # pinned harness container and the witness lands in Evidence, host-owned.
+  #
+  # RUNS ON ubuntu-latest, and that is deliberate, not a dodge of Windows. The harness
+  # image is a LINUX image whichever host launches it; the Windows value is that a
+  # Windows adopter USES this container BECAUSE a native pipefail `bash` is unreliable
+  # there (#1418 — verifyrun records could-not-run, never a false fail, when no POSIX
+  # shell bootstraps). The container path is identical on any host with a
+  # Linux-container Docker backend, so ubuntu-latest — which has one — is the substrate
+  # that can actually run it. The NATIVE-Windows-host proof (Docker Desktop on Windows
+  # with its Linux-container backend) is the held `windows-verify-in-container` job
+  # below; it is NEVER inferred from this ubuntu result.
+  verify-in-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build statusgen
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd statusgen
+          go build -o "${RUNNER_TEMP}/statusgen" .
+
+      - name: Fail-closed control — the wrapper REFUSES an un-digest-pinned image
+        shell: bash
+        run: |
+          set -uo pipefail
+          # The committed harness pin (plugins/assay/paired-versions.yaml `harness:`)
+          # carries a PLACEHOLDER digest until a maintainer harvests the real registry
+          # digest. The wrapper MUST refuse it — an un-digest-pinned image is never run.
+          # Invert the assertion: the job FAILS unless the wrapper refuses. This step is
+          # green the moment the leg is promoted; it does not wait on the digest harvest.
+          if "${RUNNER_TEMP}/statusgen" verifyrun --in-container --root . \
+               --brief docs/streams/windows-port/brief-10-verify-in-container.md; then
+            echo "::error::the wrapper accepted an un-digest-pinned image — the fail-closed pin control is broken"
+            exit 1
+          fi
+          echo "fail-closed OK — the wrapper refused the placeholder digest (an un-digest-pinned image is never run)"
+
+      - name: Witness lands through the pinned container (live; runs once the real digest is pinned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # LIVE proof — apply-gated on the digest harvest, not fakeable here. It runs
+          # ONLY when the committed harness digest is a real `sha256:<64hex>` (i.e. a
+          # maintainer has harvested and pinned the published image's registry digest).
+          # Until then it is skipped and reported, never greened from the control above.
+          digest=$(grep -E '^[[:space:]]*digest:' plugins/assay/paired-versions.yaml | head -1 | awk '{print $2}')
+          case "${digest}" in
+            sha256:*)
+              # A fixture brief with one trivial, offline Verify row; run it THROUGH the
+              # container and assert the witness landed AND is owned by the runner user
+              # (the --user host-ownership mapping), not root.
+              fix="${RUNNER_TEMP}/fixture"
+              mkdir -p "${fix}"
+              cp -r plugins "${fix}/plugins"
+              cp -r .git "${fix}/.git" 2>/dev/null || true
+              cat > "${fix}/brief.md" <<'BRIEF'
+          ## Verify
+          | # | Command | Expect |
+          |---|---------|--------|
+          | 1 | `echo witness-lands` | output is `witness-lands` |
+
+          ## Evidence
+          BRIEF
+              "${RUNNER_TEMP}/statusgen" verifyrun --in-container --root "${fix}" --brief "${fix}/brief.md"
+              grep -q 'sha256:' "${fix}/brief.md" || { echo "::error::no witness row landed in Evidence"; exit 1; }
+              owner=$(stat -c %u "${fix}/brief.md")
+              test "${owner}" = "$(id -u)" || { echo "::error::witness file is owned by ${owner}, not the host user $(id -u) — the --user mapping did not apply"; exit 1; }
+              echo "witness landed host-owned through the pinned container"
+              ;;
+            *)
+              echo "held: the harness digest is a placeholder (${digest}); the live witness-lands proof runs once a maintainer harvests and pins the real registry digest. Not greened from the fail-closed control."
+              ;;
+          esac
+
+  # windows-verify-in-container: the NATIVE-Windows-host proof — Docker Desktop on
+  # Windows with its Linux-container backend runs the SAME wrapper. HELD BLOCKED
+  # (`if: false`): GitHub-hosted `windows-latest` provides the Windows-container moby
+  # engine only, with no Linux-container backend, so it cannot pull/run the Linux
+  # harness image. This needs a Windows runner configured with Docker Desktop's
+  # Linux-container backend (or a self-hosted equivalent). Held with its reason, never
+  # inferred from the ubuntu `verify-in-container` result — the same "blocked is a
+  # state, not a failure" contract the `arm64-native-smoke` row above uses. Flip it to
+  # such a runner when one is available; the harness image itself is Linux regardless.
+  windows-verify-in-container:
+    if: false
+    runs-on: windows-latest
+    steps:
+      - name: BLOCKED — native-Windows container run awaits a Linux-container Docker backend
+        shell: bash
+        run: |
+          echo "native-Windows verify-in-container is BLOCKED: windows-latest has no Linux-container Docker backend to run the Linux harness image"
+          exit 1
