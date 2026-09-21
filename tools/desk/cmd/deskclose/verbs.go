@@ -35,9 +35,10 @@ func modeList() string { return strings.Join(modes(), " | ") }
 // manifest row cannot invoke one under a ruling that never named it as a granted lane.
 func rowModes() []string { return []string{modeDuplicate, modeSuperseded, modeReviewRequest} }
 
-// GitHub state_reason values.
+// REST state_reason values. The gh CLI's "not planned" spelling is not an
+// API value: the forge adapter sends these strings directly in the JSON body.
 const (
-	reasonNotPlanned = "not planned"
+	reasonNotPlanned = "not_planned"
 	reasonCompleted  = "completed"
 )
 
