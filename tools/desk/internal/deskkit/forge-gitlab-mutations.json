@@ -270,6 +270,30 @@
       "file": "internal/deskkit/forge_github.go",
       "old": "\tif err := refuseHardeningKindForForge(ForgeGitHub, kind); err != nil {",
       "new": "\tif err := refuseHardeningKindForForge(ForgeGitHub, kind); false && err != nil {"
+    },
+    {
+      "name": "issue #1415 Part 1 — stop preserving GitLab's structured error body in mapErr (a refusal reaches the caller as a bare HTTP 400)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tbody = StripControl(strings.TrimSpace(er.Message))",
+      "new": "\t\t\tbody = \"\""
+    },
+    {
+      "name": "issue #1415 Part 2 — never retry the transient post-push missing-source-branch 400 (surface it on the first response like the unfixed code)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts {",
+      "new": "\t\tif false && gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts {"
+    },
+    {
+      "name": "issue #1415 Part 2 — widen the transient classifier to any 'source branch' 400 (drop the 'does not exist' requirement so a genuine validation 400 gets retried)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn strings.Contains(b, \"source branch\") && strings.Contains(b, \"does not exist\")",
+      "new": "\treturn strings.Contains(b, \"source branch\")"
+    },
+    {
+      "name": "issue #1415 Part 2 — loosen the bounded retry by one attempt (the give-up bound is off by one)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts {",
+      "new": "\t\tif gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts+1 {"
     }
   ]
 }

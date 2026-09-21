@@ -193,21 +193,39 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 - An APPROVED that immediately follows a CHANGES_REQUESTED at the SAME commit, with no
   push in between, cannot be a re-verification — there is nothing new to verify. Do not
   post one; the flip gate refuses it.
-- ONE EXEMPTION, and only this one: when the only thing that changed since the
-  CHANGES_REQUESTED is a LABEL, and that label turned a REQUIRED CHECK green, a same-head
-  re-approve IS a re-verification — of a condition that was genuinely unsatisfied when the
-  block was written and is satisfied now. The premise of the rule above is that nothing
-  changed; here something did, and it is simply not something a head sha can carry (a
-  label moves no head, which is exactly why the sha looks unchanged). Post it, and say so
-  IN THE BODY: name the label, name the check it greened, and state that the diff is
-  byte-identical to the one reviewed. Without those three facts the review is
-  indistinguishable from the no-op the rule above forbids, and should be read as one.
-  The exemption covers a re-approve whose ONLY basis is the label; a finding about the
-  code still stands until the code changes, and no label clears it.
-  Know what this does and does not unblock: the flip gate compares head shas, so it still
-  reads the re-approve as same-head and still refuses on its own terms. The re-approve
-  records the correct verdict on the PR; clearing the standing rejection for the flip
-  remains with whoever owns that gate.
+- TWO EXEMPTIONS, and only these two. Both share one premise: the rule above assumes
+  nothing changed, and in each of these something DID — just not something a head sha can
+  carry. Both are established by an EXPLICIT declaration in the body, never by prose, and
+  both leave every code finding standing until the code changes.
+
+  1. **Check-only.** When the only thing that changed since the CHANGES_REQUESTED is a
+     LABEL that turned a REQUIRED CHECK green, a same-head re-approve IS a re-verification
+     of a condition that was genuinely unsatisfied when the block was written. Post it, and
+     say so IN THE BODY: name the label, name the check it greened, and state that the diff
+     is byte-identical to the one reviewed. The machine form is a `Blocked-On-Check: <check>`
+     line on the CR and a `Cleared-Check-Run: <run-id>` line on the re-approve.
+
+  2. **External-prerequisite.** When the CHANGES_REQUESTED's ONLY blockers were external
+     prerequisites — an upstream PR that had not merged, a decision that had not been made —
+     and every one of them has since been satisfied, a same-head re-approve IS a
+     re-verification of a fact that genuinely changed AFTER the rejection. To claim it, the
+     ORIGINAL CR must have been typed for it: a `External-Prereq-Only: <summary>` line, AND a
+     review-finding block (clause 13) in which EVERY blocking finding is
+     `blocker: external-prerequisite` with the external object in `sharedRepair` — a single
+     code/content blocking finding makes the CR "mixed" and no longer eligible. The
+     re-approve then cites each satisfied prerequisite with one
+     `Cleared-Prereq: <condition-id> <object> <satisfying-ref>` line (the condition id is the
+     finding id; the satisfying ref is the merge commit or decision event you observed). The
+     ready gate RE-VERIFIES every prerequisite from fresh evidence at flip time and fails
+     closed on a wrong revision, a prerequisite that predates the rejection, a later
+     revocation, an unrelated object, unreadable evidence, a standing security failure, or
+     any code/content finding — so a citation you cannot substantiate clears nothing.
+
+  Know what these do and do not unblock: the flip gate still compares head shas and reads
+  the re-approve as same-head. The re-approve records the correct verdict on the PR; the
+  ready gate (`deskpost ready`) is the ONLY place that acts on the declaration, and only
+  after its own independent re-verification. Neither exemption is a merge, and neither is a
+  licence to clear a code finding without a code change.
 - Findings first, scope second: re-read the PR's reviews before and after every push you
   make to it.
 - Escalate per the common kit's escalate-durably rule: anything the loop cannot resolve

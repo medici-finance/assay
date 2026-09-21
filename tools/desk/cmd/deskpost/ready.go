@@ -128,11 +128,29 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// without a single new line of diff being read. Refuse loudly rather than let this
 		// silently satisfy gate (b) as an ordinary APPROVED.
 		if noOpApproval {
-			return refused("ready", repo, pr, head,
-				"latest App correctness verdict at "+short(vhead)+" is an APPROVED that immediately follows "+
-					"a CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a "+
-					"re-verification (#37); refusing to flip until a new commit lands, or a human clears the "+
-					"standing rejection directly on GitHub")
+			// brief 21: the ONE narrow exemption to the unchanged-head refusal.
+			// A standing CHANGES_REQUESTED whose declared, typed blockers are all external
+			// prerequisites may clear at the unchanged head once EVERY prerequisite is
+			// independently verified as changed AFTER the rejection — re-validated HERE, at
+			// the ready boundary, from fresh evidence, never trusted from the citation.
+			// securityFail is passed in so the exemption and gate (e0) cannot disagree about
+			// the same retraction. A declared-but-unverified claim refuses WITH its reason;
+			// an undeclared CR keeps the ordinary refusal verbatim.
+			out := clearedByExternalPrereq(reviews, head, securityVerdictStanding(reviews, head) == secFail)
+			if out.declared && out.decision.Cleared {
+				fmt.Fprintln(stderr, "deskpost: external-prerequisite exemption cleared the standing "+
+					"CHANGES_REQUESTED at "+short(head)+" — "+out.decision.Reason)
+				state, noOpApproval = "APPROVED", false
+			} else {
+				msg := "latest App correctness verdict at " + short(vhead) + " is an APPROVED that immediately follows " +
+					"a CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a " +
+					"re-verification (#37); refusing to flip until a new commit lands, or a human clears the " +
+					"standing rejection directly on GitHub"
+				if out.declared {
+					msg += ". The CR declared an external-prerequisite exemption but it did not clear: " + out.decision.Reason
+				}
+				return refused("ready", repo, pr, head, msg)
+			}
 		}
 		if state != "APPROVED" {
 			return refused("ready", repo, pr, head, "latest App correctness verdict is "+state+" — blocked (not APPROVED)")

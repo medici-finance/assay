@@ -23,6 +23,6 @@
     }
   ],
   "result": null,
-  "err": "could-not-check: PUT /projects/medici-finance%2Fassay/repository/files/EVIDENCE.md — HTTP 400: forge API PUT /projects/medici-finance%2Fassay/repository/files/EVIDENCE.md returned HTTP 400",
+  "err": "could-not-check: PUT /projects/medici-finance%2Fassay/repository/files/EVIDENCE.md — HTTP 400: forge API PUT /projects/medici-finance%2Fassay/repository/files/EVIDENCE.md returned HTTP 400: {message: 400 Bad Request}",
   "not_found": false
 }

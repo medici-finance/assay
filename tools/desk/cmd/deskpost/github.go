@@ -454,6 +454,13 @@ type prInfo struct {
 	Head struct {
 		SHA string `json:"sha"`
 	} `json:"head"`
+	// MergedAt / MergeCommitSHA are the fresh evidence the external-prerequisite reader
+	// binds to when a declared prerequisite is a referenced PR: GitHub sets both once and
+	// only once the PR merges (merged_at is null on an open or plain-closed PR), and
+	// merge_commit_sha names the commit that landed. They are additive — every other reader
+	// ignores them — so carrying them here does not change any existing gate.
+	MergedAt       string `json:"merged_at"`
+	MergeCommitSHA string `json:"merge_commit_sha"`
 }
 
 type reviewInfo struct {

@@ -28,6 +28,15 @@ package deskkit
 // a grant. The FAIL-direction asymmetry that HasSecurityReviewFail carries has no analogue
 // here: neither of these lines can ever BLOCK anything, so there is no retraction that a
 // fence could hide.
+//
+// SIBLING EXEMPTION. externalprerequisite.go is the parallel reader for the OTHER same-head
+// exemption — a CHANGES_REQUESTED whose sole blockers were external prerequisites that later
+// changed (brief 21). It follows this file's discipline exactly: an EXPLICIT typed
+// declaration, never prose; grant-direction markers that skip fenced code; and a decision
+// that fails closed on every unestablished clause. The two exemptions are the only two ways
+// an unchanged-head APPROVED over a standing rejection may be honoured, and keeping them
+// side by side is deliberate — neither can be widened without the other's discipline being
+// visible next to it.
 
 import "regexp"
 
