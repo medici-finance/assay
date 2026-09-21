@@ -411,6 +411,35 @@ as the planner and acts on its rows.
 **A merged/closed PR is DONE** — its worker stops; residual work is a NEW PR. A commit
 pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
 
+### First-pass inventory + blocking boundary — bounding a small change's review scope
+
+An incremental search that keeps discovering old instances of the same false claim after
+each fix turns a small change into unbounded cleanup. Two rules bound it; both are in
+`review-prompt` clause 12, and this is the DESK's reading of them.
+
+- **First pass inventories, then declares.** On the FIRST review of a false-claim class, the
+  reviewer inventories the class's related occurrences BEFORE the verdict — the changed
+  surface, the item's required deliverables, and references to the affected entity — and
+  records the search, its scope, its exclusions and the input revision. An incomplete search
+  is reported incomplete, **never certified clean** (the three-state rule applied to
+  discovery). The desk treats a "clean" verdict resting on an unrecorded or incomplete search
+  as could-not-check, not an approval.
+- **A blocker names a concrete failure and its scope basis** — changed behaviour, an explicit
+  acceptance obligation, a material PR-body/Verify claim, or a demonstrated safety consequence
+  of the change. Unrelated pre-existing prose is a **linked follow-up**
+  (`references/out-of-scope-filing.md`), not a hold. Untouched files are not automatically
+  exempt (a required operator-state table is a deliverable even when omitted from the diff);
+  co-location — the same directory or a substring — is not a basis.
+- **Class continuity.** A late or missed sibling occurrence keeps its original claim class and
+  round count; it is review coverage failure, not a fresh class, so it does not reset the
+  counter below or charge the author a new class. A previously non-blocking occurrence cannot
+  become blocking merely because another file was edited — the reviewer records changed impact
+  or new evidence, or it stays a follow-up. This is the line between genuine changed evidence
+  and a bypass of a standing rejection.
+
+This narrows what counts as a NEW blocker. It does **not** touch the round cap below or the
+independent security review — both stand unchanged.
+
 ### Round cap + arbiter packet — bounding the fix-to-re-review cycle
 
 **Default cap N = 3** full verdict→fix→re-review rounds on the SAME finding class on one PR

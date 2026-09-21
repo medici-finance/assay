@@ -156,6 +156,11 @@ single falsehood costs several review rounds instead of one.
   already have a sibling copy the diff never touches.
 - **Report every surviving instance together, in the same verdict.** Naming one and leaving
   the next round to discover another is the failure this clause exists to stop.
+- **On the FIRST review, run clause 12's declared inventory before the verdict, and hold
+  each hit to clause 12's blocking boundary.** The sweep here is discovery; it is not licence
+  to make every occurrence a blocker. A swept occurrence that names no concrete failure and
+  no scope basis is a follow-up, not a hold, and a late-found sibling keeps its class and
+  round count rather than opening a fresh one.
 
 ## 9. No-default-probe convention on any committed tool or script
 
@@ -209,7 +214,51 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
   becomes a filed issue or a PR comment carrying the escalation label and a statement of
   exactly what is needed and from whom.
 
-## 12. Persist findings so the round survives your replacement
+## 12. First-pass inventory and the blocking boundary
+
+Clause 8 sweeps a false-claim finding across the diff on re-review. This clause bounds that
+sweep at BOTH ends: it requires the search to be COMPLETE and DECLARED on the first pass,
+and it requires each hit that HOLDS the pull request to name a concrete failure — so a small
+change does not acquire unbounded cleanup scope.
+
+**First pass — inventory before the verdict.** On the FIRST review of a false-claim class,
+inventory its related occurrences before issuing the verdict. Search three surfaces: the
+changed surface, the item's required deliverables, and references to the affected entity
+across the repository; read the matches in context. RECORD the search command, its scope,
+its exclusions, and the input revision. An incomplete search is reported INCOMPLETE, never
+certified clean — a search that did not look has cleared nothing. Repository search is
+DISCOVERY, not authority to make every hit a merge blocker.
+
+**Blocking boundary — a blocker names a concrete failure.** Every blocking finding names a
+concrete failure and its SCOPE BASIS, one of:
+
+<!-- reviewscope:begin -->
+| basis | a blocking finding names it when |
+|---|---|
+| changed-behaviour | the change alters observable behaviour and the finding is a defect in it |
+| acceptance-obligation | the finding is an explicit acceptance deliverable this change owes, even if omitted from the diff |
+| material-claim | the finding contradicts a material PR-body or Verify-table claim of this change |
+| safety-consequence | the finding is a demonstrated safety consequence of this change, including outside the edited lines |
+<!-- reviewscope:end -->
+
+Unrelated pre-existing prose belongs in a LINKED FOLLOW-UP, not a blocker. "Untouched" does
+not automatically mean irrelevant — a required operator-state table can be a deliverable even
+when it was omitted from the diff — and conversely sharing a directory or a substring is
+insufficient scope on its own.
+
+**Class continuity.** Group every occurrence of one proposition under ONE claim class. A late
+or missed sibling occurrence retains that class and its existing round count: it is review
+coverage failure, not a fresh class, so it does not reset or re-open the counter, and you do
+not charge the author another fresh class for it. A previously non-blocking occurrence cannot
+become blocking merely because another file was edited — require CHANGED IMPACT or NEW
+evidence, and record the reason. This is what separates genuine changed evidence from a
+bypass of a standing rejection.
+
+**Unchanged by this clause.** The three-round cap on a finding class and the independent
+security review stand exactly as before; this clause narrows what counts as a NEW blocker, it
+does not touch the round counter or any verdict lane.
+
+## 13. Persist findings so the round survives your replacement
 
 Your verdict prose is lost the moment you are replaced by a fresh reviewer: it rereads the
 whole PR and restates old objections under new IDs, and the round counter resets. Carry the
