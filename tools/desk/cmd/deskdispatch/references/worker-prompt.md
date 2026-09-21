@@ -131,6 +131,15 @@ reliably caught an inverted or false desk claim.
 ## 8. Scope and reporting
 
 - Implement to the contract; do not expand scope. Report `NEEDS_CONTEXT` rather than guess.
+- **Fix a false-claim finding by its whole claim CLASS, not just the cited line.** When a
+  reviewer's finding is that a statement is false or unsupported (as opposed to a defect at
+  one location), read the reviewer's first-pass inventory for that class and repair EVERY
+  in-scope occurrence it names — sibling files, adjacent paragraphs, the contradictory tail,
+  and any required acceptance deliverable — in the SAME push. Clearing one copy while another
+  survives is what turns a single falsehood into several review rounds. A class fixed whole
+  is ONE round on that class; a late-found sibling of a class you already touched stays in
+  that class and does not open a fresh one. Route genuinely unrelated pre-existing prose to a
+  linked follow-up rather than folding it into this change.
 - Climb the reuse ladder and stop at the first rung that satisfies the item: (1) does this
   need to exist at all — except that the item's own declared scope outranks this rung, a
   briefed deliverable is never re-litigated as YAGNI; (2) is it already in this repo;
