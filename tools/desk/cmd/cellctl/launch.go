@@ -8,8 +8,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"golang.org/x/term"
 )
+
+// repairAdmissionValue is the ASSAY_REPAIR_ADMISSION value this cell composes into a launched
+// desk's environment, or "" when the gate is off or unset. Only the literal "on" composes the
+// key — "off", unset, and any other value are IDENTICAL absence, exactly as the deskdispatch
+// consumer treats them: deskkit.RepairAdmissionEnabled enables the dispatch-boundary gate ONLY
+// on "on", so composing the key with any other value (or an explicit "off") would be
+// indistinguishable to the consumer from omitting it, and the shipped default is off. Reading
+// c.Env is what makes this durable: it is the process environment with cell.env overlaid, so a
+// cell that writes ASSAY_REPAIR_ADMISSION=on into its cell.env turns the gate on for every desk
+// it launches, not only for a shell that happened to `export` it once.
+func (c *Cell) repairAdmissionValue() string {
+	if strings.TrimSpace(c.Env.Get(deskkit.EnvRepairAdmission)) == "on" {
+		return "on"
+	}
+	return ""
+}
 
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
 // plugin on the claude arm, fetch the shared checkout under a lock, bring the role worktree up
@@ -87,6 +104,14 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	env = envSet(env, "DESK_SESSION", session)
 	if deskRoots != "" {
 		env = envSet(env, "DESK_ROOTS", deskRoots)
+	}
+	// The dispatch-boundary repair-admission opt-in (deskkit.EnvRepairAdmission), composed here
+	// so a cell can turn the gate on DURABLY through its cell.env rather than only via a one-off
+	// `export`. Composed for every role — the gate only actually runs inside deskdispatch (a
+	// worker-desk verb), so carrying the key for the other roles is a harmless no-op. Off/unset
+	// leaves the key ABSENT, which the consumer reads identically to "off".
+	if rav := c.repairAdmissionValue(); rav != "" {
+		env = envSet(env, deskkit.EnvRepairAdmission, rav)
 	}
 	var argv []string
 	if harness == "codex" {

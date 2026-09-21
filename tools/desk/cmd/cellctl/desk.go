@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const deskUsage = "cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [--kind <k>] [--cockpit <c>] [CLAUDE_CONFIG_DIR]"
@@ -287,6 +289,12 @@ func cmdDesk(cell string, args []string) {
 		fmt.Printf("[dry-run] cell=%s kind=%s role=%s model=%s effort=%s provider=%s harness=%s cfg=%s wt=%s session=%s desk_roots=%s shims→HOME=%s\n",
 			c.Name, kindShown, role, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, cfg, wt, session,
 			orDefault(deskRoots, "unset"), c.Home)
+		// When the repair-admission opt-in is on, show it composed into the launch — the exact
+		// KEY=VALUE the child process (and, through it, deskdispatch) will carry. Off/unset is
+		// absent here, matching the composed environment (deskLaunch omits it).
+		if rav := c.repairAdmissionValue(); rav != "" {
+			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
+		}
 		if persist {
 			for _, kv := range persistKVs {
 				fmt.Printf("[dry-run] --set: would persist %s into %s/cell.env (not written — dry run)\n", kv, c.Dir)

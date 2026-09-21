@@ -224,6 +224,12 @@
 # per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
 # Without that key, legacy pins and defaults retain their existing behavior.
 #
+# Repair-admission opt-in: ASSAY_REPAIR_ADMISSION=on|off durably enables (or disables) the
+# dispatch-boundary repair-admission gate for a cell. Set it in cell.env (cellctl set accepts
+# on|off only) and every desk this cell launches carries it in its environment, so the gate can
+# be turned on for a cell rather than only via a one-off shell export. off and unset are
+# identical: the key is simply absent from the launched environment. Default: off.
+#
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
@@ -935,7 +941,7 @@ policy_preflight(){ (
 CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
-CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY \
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY ASSAY_REPAIR_ADMISSION \
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
 TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX"
 
@@ -988,6 +994,15 @@ validate_env_key(){
   fi
   if [[ "$key" == "CELL_COCKPIT" ]]; then
     value_in "$value" $COCKPIT_VALUES || die "set: CELL_COCKPIT must be one of ${COCKPIT_VALUES// /|}, got '$value'"
+  fi
+  # The dispatch-boundary repair-admission gate is a strict on/off opt-in (the gate enables ONLY
+  # on the literal "on"). A malformed value is refused here, on the same footing as the rules
+  # above — never bypassable by --force, which only widens the KEY allowlist.
+  if [[ "$key" == "ASSAY_REPAIR_ADMISSION" ]]; then
+    case "$value" in
+      on|off) ;;
+      *) die "set: ASSAY_REPAIR_ADMISSION must be 'on' or 'off', got '$value'" ;;
+    esac
   fi
   return 0
 }
@@ -1265,6 +1280,17 @@ cmd_show(){
     printf '[show] %s=%s (%s)\n' "$key" "$eff" "$src"
   }
   echo "[show] cell=$CELL dir=$CELL_DIR"
+  # Surface the repair-admission opt-in whenever cell.env carries it, on or off — so `show`
+  # answers "would a desk booted from this cell turn the dispatch gate on" the same way a
+  # DRY_RUN boot would. "on" is what the launch composes; anything else is identical absence.
+  local ra_val
+  if ra_val="$(env_file_value "$envfile" ASSAY_REPAIR_ADMISSION)"; then
+    if [[ "$ra_val" == "on" ]]; then
+      printf '[show] ASSAY_REPAIR_ADMISSION=%s (cell.env; composed into every desk launch)\n' "$ra_val"
+    else
+      printf '[show] ASSAY_REPAIR_ADMISSION=%s (cell.env; not composed — off/unset behaves identically to the deskdispatch gate)\n' "$ra_val"
+    fi
+  fi
   show_line CELL_KIND "$CELL_KIND_OVERRIDE" "$CELL_KIND"
   cockpit_want "$cockpit_flag"
   show_line CELL_COCKPIT "$cockpit_flag" "$COCKPIT_WANT"
@@ -2265,8 +2291,18 @@ cmd_desk(){
   else
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
+  # The dispatch-boundary repair-admission opt-in, composed into the launch below so a cell can
+  # turn the gate on DURABLY through its cell.env rather than only via a one-off `export`. Only
+  # the literal "on" composes the key; off/unset leaves it absent, which the deskdispatch
+  # consumer reads identically. Written as a full `if` (never `[[ … ]] && x=y`) so the unset
+  # default does not abort the boot under `set -e`.
+  local repair_admission=""
+  if [[ "${ASSAY_REPAIR_ADMISSION:-}" == "on" ]]; then repair_admission="on"; fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} role=$role model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
+    if [[ -n "$repair_admission" ]]; then
+      echo "[dry-run] env ASSAY_REPAIR_ADMISSION=$repair_admission (repair-admission dispatch gate opt-in)"
+    fi
     if [[ "$persist" == "1" ]]; then
       local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
     fi
@@ -2369,6 +2405,7 @@ cmd_desk(){
     # and has no codex equivalent here, so it is not threaded onto this arm.
     exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
       codex "${MODEL_POLICY_ARGS[@]}" --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
   else
     # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
@@ -2397,6 +2434,7 @@ cmd_desk(){
     [[ -n "$tier_fast" ]] && pmodel_haiku="$tier_fast"
     exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       ${provider:+ANTHROPIC_MODEL="$model"} \
       ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel_opus"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel_sonnet"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel_haiku"} \

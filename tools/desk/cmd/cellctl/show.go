@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const showUsage = "cellctl show <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]"
@@ -69,6 +71,17 @@ func cmdShow(cell string, args []string) {
 	}
 
 	fmt.Printf("[show] cell=%s dir=%s\n", c.Name, c.Dir)
+	// Surface the repair-admission opt-in whenever cell.env carries it, on or off, so `show`
+	// answers "would a desk booted from this cell turn the dispatch gate on" the same way a
+	// DRY_RUN boot would. "on" is what deskLaunch composes; anything else is identical absence
+	// to the deskdispatch consumer.
+	if v, ok := envFileValue(envfile, deskkit.EnvRepairAdmission); ok {
+		composed := "not composed — off/unset behaves identically to the deskdispatch gate"
+		if strings.TrimSpace(v) == "on" {
+			composed = "composed into every desk launch"
+		}
+		fmt.Printf("[show] %s=%s (cell.env; %s)\n", deskkit.EnvRepairAdmission, v, composed)
+	}
 	showLine("CELL_KIND", c.KindOverride, c.Kind)
 	want, _ := c.cockpitWant(cockpitFlag)
 	showLine("CELL_COCKPIT", cockpitFlag, want)

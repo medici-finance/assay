@@ -223,6 +223,12 @@
 # per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
 # Without that key, legacy pins and defaults retain their existing behavior.
 #
+# Repair-admission opt-in: ASSAY_REPAIR_ADMISSION=on|off durably enables (or disables) the
+# dispatch-boundary repair-admission gate for a cell. Set it in cell.env (cellctl set accepts
+# on|off only) and every desk this cell launches carries it in its environment, so the gate can
+# be turned on for a cell rather than only via a one-off shell export. off and unset are
+# identical: the key is simply absent from the launched environment. Default: off.
+#
 # Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 # harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
