@@ -63,6 +63,11 @@ func cmdShow(cell string, args []string) {
 		fmt.Printf("[show] %s=%s (%s)\n", key, eff, src)
 	}
 
+	policy, policyPath, err := c.cellModelPolicy()
+	if err != nil {
+		die("%s", err)
+	}
+
 	fmt.Printf("[show] cell=%s dir=%s\n", c.Name, c.Dir)
 	showLine("CELL_KIND", c.KindOverride, c.Kind)
 	want, _ := c.cockpitWant(cockpitFlag)
@@ -76,7 +81,9 @@ func cmdShow(cell string, args []string) {
 	if provider == "" {
 		provider = c.Env.Get("CELL_PROVIDER")
 	}
-	if provider != "" {
+	if policy != nil {
+		showLine("CELL_PROVIDER", providerFlag, orDefault(provider, "unset (resolved per role by policy)"))
+	} else if provider != "" {
 		showLine("CELL_PROVIDER", providerFlag, provider)
 		// The provider's effective endpoint, token env NAME (+ set/unset — never its value) and
 		// model, each tagged cell.env / preset / unset.
@@ -97,18 +104,7 @@ func cmdShow(cell string, args []string) {
 	// A model policy SUPERSEDES the legacy per-role pin/tier resolution below (#1390, porting
 	// #1388): every role row comes from the policy instead, and the file's own sha256 is shown
 	// once so `show`'s output matches what a `desk`/dry-run boot would actually run.
-	policyPath := c.Env.Get("CELL_MODEL_POLICY")
-	var policy *ModelPolicy
-	if policyPath != "" {
-		abs := policyPath
-		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(c.Dir, abs)
-		}
-		var err error
-		policy, err = loadModelPolicy(abs)
-		if err != nil {
-			die("%s", err)
-		}
+	if policy != nil {
 		fmt.Printf("[show] policy=%s sha256=%s (role rows supersede legacy cell defaults below)\n", policyPath, policy.SHA256)
 	}
 

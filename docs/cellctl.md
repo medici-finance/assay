@@ -1307,6 +1307,7 @@ the variable entirely.
 
 ## Per-role provider, model and effort policy
 
-For explicit mixed-provider role assignments, model-version pins and effort configuration,
-see [Cell model policy](cellctl-model-policy.md). `CELL_MODEL_POLICY` enables this opt-in
-path; existing cell pins continue to apply when it is absent.
+For shared provider model defaults and per-desk effort with cell-level exceptions,
+see [Shared provider defaults](cellctl-provider-defaults.md). For a complete standalone
+policy, see [Cell model policy](cellctl-model-policy.md); `CELL_MODEL_POLICY` takes
+precedence over shared defaults. Existing legacy cell pins apply when neither is configured.

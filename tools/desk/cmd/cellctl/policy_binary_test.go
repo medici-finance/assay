@@ -61,7 +61,7 @@ func cellctlBinary(t *testing.T) string {
 
 // policyFixture is one house cell, complete enough for `set`/`show`/`desk --model … DRY_RUN=1`
 // but never for a real (non-dry-run) launch — that needs a real git checkout, worktree creation
-// and desk-verb shims this suite does not stand up (see the PR body's "not covered" section).
+// and desk-verb shims (provider_defaults_test.go adds a filesystem-only launch fixture).
 type policyFixture struct {
 	cellsRoot string
 	cellDir   string

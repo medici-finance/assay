@@ -80,22 +80,16 @@ func cmdDesk(cell string, args []string) {
 	// outright (same ordering as the oracle's apply_model_policy) and --set combined with an
 	// active policy is refused as ambiguous before any other flag is even inspected.
 	var policyRes *PolicyResolution
-	policyPath := c.Env.Get("CELL_MODEL_POLICY")
-	policyAbsPath := ""
-	if policyPath != "" {
+	policy, policyAbsPath, err := c.cellModelPolicy()
+	if err != nil {
+		die("%s", err)
+	}
+	if policy != nil {
 		if persist {
-			die("desk: --set with a model policy is ambiguous; edit the policy file instead")
+			die("desk: --set with a model policy is ambiguous; edit the policy or provider defaults instead")
 		}
 		if c.Kind == "container" || c.Kind == "scrubbed" {
 			die("model policy currently requires a house or k8s cell; %s cannot apply it", c.Kind)
-		}
-		policyAbsPath = policyPath
-		if !filepath.IsAbs(policyAbsPath) {
-			policyAbsPath = filepath.Join(c.Dir, policyAbsPath)
-		}
-		policy, err := loadModelPolicy(policyAbsPath)
-		if err != nil {
-			die("%s", err)
 		}
 		policyRes, err = policy.Resolve(role, providerFlag, modelOverride, harnessFlag)
 		if err != nil {

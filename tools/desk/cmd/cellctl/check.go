@@ -41,6 +41,14 @@ func cmdCheck(cell, cfgArg string) {
 	c := loadCell(cell)
 	k := &checker{ok: true}
 
+	policy, policySource, policyErr := c.cellModelPolicy()
+	if policyErr != nil {
+		die("%s", policyErr)
+	}
+	if policy != nil && (c.Kind == "container" || c.Kind == "scrubbed") {
+		die("model policy requires a house or k8s cell")
+	}
+
 	if c.Kind == "container" {
 		if cfgArg != "" {
 			die("container check does not accept a host config directory")
@@ -77,7 +85,9 @@ func cmdCheck(cell, cfgArg string) {
 	// affected by --model / DESK_MODEL_OVERRIDE: it has no --model flag and does not read the
 	// override, so this row reports what a PLAIN boot would resolve to.
 	theDeskModel := c.Env.GetOr("DESK_MODEL_the_desk", c.Env.Get("DESK_MODEL_DEFAULT"))
-	if isOpusPin(theDeskModel) {
+	if policy != nil {
+		k.na("legacy coordinator pin — model policy takes precedence")
+	} else if isOpusPin(theDeskModel) {
 		k.chk(false, "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=%s (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env", theDeskModel)
 	} else {
 		k.chk(true, "the-desk model: %s", theDeskModel)
@@ -88,6 +98,15 @@ func cmdCheck(cell, cfgArg string) {
 	// with no per-harness pin and no tier match is a MISS naming exactly what was checked,
 	// surfaced HERE rather than discovered as a startup failure.
 	for _, role := range c.Roles {
+		if policy != nil {
+			route, err := policy.Resolve(role, "", "", "")
+			if err != nil {
+				k.chk(false, "%s", err)
+				continue
+			}
+			k.chk(true, "role %s: provider=%s harness=%s model=%s effort=%s source=%s sha256=%s", role, route.Provider, route.Harness, route.Model, route.Effort, policySource, policy.SHA256)
+			continue
+		}
 		rm := c.resolveRoleModel(role, c.Harness)
 		switch {
 		case !rm.OK:
@@ -103,7 +122,24 @@ func cmdCheck(cell, cfgArg string) {
 	// default) rather than a MISS — a provider is opt-in per cell. Values shown are the
 	// endpoint, the token env var's NAME, the model and whether the named variable is set —
 	// never a token value.
-	if p := c.Env.Get("CELL_PROVIDER"); p != "" {
+	if policy != nil {
+		seen := map[string]bool{}
+		for _, role := range c.Roles {
+			route, err := policy.Resolve(role, "", "", "")
+			if err != nil || seen[route.Provider] {
+				continue
+			}
+			seen[route.Provider] = true
+			if route.Provider == "anthropic" || route.Provider == "codex" {
+				k.na("provider %s uses native harness authentication", route.Provider)
+				continue
+			}
+			base, _ := c.providerValue(route.Provider, "BASE_URL")
+			tokenVar, _ := c.providerValue(route.Provider, "TOKEN_ENV")
+			k.chk(base != "", "provider %s endpoint: %s", route.Provider, base)
+			k.chk(tokenVar != "" && c.Env.Get(tokenVar) != "", "provider %s: token environment variable %s is set", route.Provider, tokenVar)
+		}
+	} else if p := c.Env.Get("CELL_PROVIDER"); p != "" {
 		baseVar, tokVar := providerVar(p, "BASE_URL"), providerVar(p, "TOKEN_ENV")
 		baseVal, baseSrc := c.providerValue(p, "BASE_URL")
 		tokVal, tokSrc := c.providerValue(p, "TOKEN_ENV")
@@ -126,7 +162,16 @@ func cmdCheck(cell, cfgArg string) {
 		k.na("provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)")
 	}
 
-	c.checkCodexHarness(k)
+	harnessCheck := *c
+	if policy != nil {
+		harnessCheck.Harness = "claude"
+		for _, role := range c.Roles {
+			if route, err := policy.Resolve(role, "", "", ""); err == nil && route.Harness == "codex" {
+				harnessCheck.Harness = "codex"
+			}
+		}
+	}
+	harnessCheck.checkCodexHarness(k)
 	switch c.Kind {
 	case "house":
 		c.checkHouse(k, cfgArg)
