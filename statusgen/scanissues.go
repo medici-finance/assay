@@ -245,10 +245,19 @@ func placeholderFileName(repo string, issue int) string {
 // quoted. The same yaml.v3 that reads these files back (parsePlaceholderFile) is
 // the one that writes them, so writer and reader can never disagree on what needs
 // quoting.
+//
+// Every scalar is tagged `!!str` explicitly (#1431): each label is Go data, not a
+// YAML literal, but the encoder still resolves a bare scalar by CONTENT. A label
+// whose text is a YAML type keyword or number — `null`/`~`, `true`/`false`/
+// `yes`/`no`/`on`/`off`, `123`, `1.5` — carries no flow-indicator character, so
+// #1429's fix left it emitted bare and it round-trips to the wrong type on read:
+// `null` parses to nil and is silently dropped from the list, a bool/number label
+// is retyped. Forcing the string tag makes every entry re-parse as the exact
+// string it was, independent of what its text happens to look like.
 func yamlFlowList(items []string) string {
 	seq := &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
 	for _, it := range items {
-		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: it})
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: it})
 	}
 	out, err := yaml.Marshal(seq)
 	if err != nil {
