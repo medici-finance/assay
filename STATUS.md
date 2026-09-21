@@ -11,22 +11,22 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-20 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-20 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-20 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-20 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-20 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-20 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-20 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-20 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-20 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-20 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-20 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-20 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-20 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-20 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-20 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/10 | 2026-09-20 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-21 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-21 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-21 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-21 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-21 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-21 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-21 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-21 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-21 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-21 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-21 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-21 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-21 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-21 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-21 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/10 | 2026-09-21 |  |
 
 ## Parked
 
@@ -34,12 +34,12 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-20 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-20 |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-20 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-20 |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-20 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-20 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-21 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-21 |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | 0/10 | 2026-09-21 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-21 |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-21 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-21 |
 
 ## Next up
 
@@ -52,7 +52,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
-| desk-supervision | 16 — Verification wake conditions — stop repeating unchanged blocked checks [exec:strong] | 0 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | desk-supervision | 19 — Persist review findings and apply the existing round cap across sessions [exec:strong] | 0 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
@@ -63,14 +62,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (41 desk-actionable of 62 total — 62 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (42 desk-actionable of 63 total — 63 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (41)
+### Desk-actionable (42)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -90,6 +89,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desk-supervision | 16 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -248,7 +248,7 @@ _None._
 - 13 Worker-operations vitals — the self-report resource block — implemented (wave 2)
 - 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
-- 16 Verification wake conditions — stop repeating unchanged blocked checks — todo (wave 0)
+- 16 Verification wake conditions — stop repeating unchanged blocked checks — implemented (wave 0)
 - 17 Verification failures create durable worker repair obligations — todo (wave 1)
 - 18 Enforce repair reservations at worker dispatch — todo (wave 2)
 - 19 Persist review findings and apply the existing round cap across sessions — todo (wave 0)
