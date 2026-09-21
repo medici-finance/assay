@@ -164,6 +164,15 @@ out-of-repo files: <exact paths outside the repo (e.g. ~/.claude/skills/...), if
 see rule 7; omit the line entirely when none>
 facts: <the 3-5 project facts needed — key: value, no narrative. The implementer
 must never need to explore the repo.>
+layering: <REQUIRED when the Task creates a new component/service/tool or substantially
+moves where an existing one's logic lives (domain extracted or dissolved, first or
+second external adapter, logic crossing a process or trust boundary); omit the line
+entirely otherwise. One or two lines naming the shape and the trigger that chose it:
+"domain-core — <the adapters/entrypoints that forced it>" (pure center importing only
+the stdlib, adapters pointing inward, a mechanical purity gate) or "flat tool — <the
+one adapter/consumer>" (single package, seams only where a second implementation
+already exists). Decide on adapter count and expected lifespan, never code volume;
+extraction happens when the second adapter ARRIVES, not in anticipation.>
 
 ## Human decision
 <!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
@@ -533,7 +542,9 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
-[ ] 8. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
+[ ] 8. New or re-layered component → `layering:` present, naming shape + trigger (the
+       second adapter is the extraction trigger, never anticipation).
+[ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```
 
 Item 1 is the negative control: a Verify table that cannot fail is a green lamp wired to nothing.

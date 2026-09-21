@@ -165,6 +165,25 @@ component reads), the Context section MUST include a `consumers:` line that grep
 every reader and lists each with a disposition: `fixed-here`, `follow-up <stream>/NN`,
 or `out-of-scope <reason>`.
 
+If the brief's Task creates a new component, service, or tool — or substantially
+changes where an existing component's logic lives (extracting or dissolving a domain
+layer, adding its first or second external adapter, moving logic across a process or
+trust boundary) — the Context section MUST include a `layering:` line of one or two
+lines naming the chosen shape and the trigger that chose it:
+
+- `domain-core` — a pure domain package at the center that imports only the language
+  standard library, external systems (forge, database, transport, UI) reached only
+  through adapters that depend inward, and a mechanical purity gate that fails when
+  platform-shaped identifiers leak into the domain.
+- `flat tool` — a single package, no extracted domain, interface seams only where a
+  second implementation already exists.
+
+The shape is chosen on adapter count and expected lifespan, never on code volume: a
+component with two or more external adapters, or more than one entrypoint, is
+`domain-core` from creation; a bounded single-purpose tool with one adapter stays
+`flat tool` and is extracted when its second adapter actually arrives — never
+speculatively. The extraction is itself a brief whose `layering:` line records the flip.
+
 ### 4.2 Ground rules
 
 The body MUST contain a `## Ground rules` section. At minimum, it MUST state:
