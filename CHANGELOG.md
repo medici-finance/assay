@@ -23,6 +23,55 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.22 — 2026-09-21
+
+### Added
+- New reader and fail-closed decision in `deskkit` (`External-Prereq-Only:` on the CR,
+  `Cleared-Prereq:` on the re-approve), the sibling of the existing check-only exemption.
+- The desk's ready gate now recognises a **same-head external-prerequisite exemption**: a
+  standing `CHANGES_REQUESTED` whose only blockers were external prerequisites (an upstream
+  PR that had not merged, a decision that had not been made) can clear at an unchanged head —
+  with no synthetic no-op push — once the reviewer declares it in a typed record and every
+  named prerequisite is independently re-verified from fresh evidence at flip time.
+
+### Fixed
+- GitLab `ChecksAtHead` now publishes the head pipeline as the required `pipeline` status
+  context even when the commit document's `last_pipeline` is empty or stamped with a
+  different SHA — the ordinary `merge_request_event` shape. It falls back to the same by-SHA
+  read (`pipelines?sha=`) the board already uses, still reconciling on the exact head SHA, so
+  `deskflip` checks-green no longer refuses a genuinely green MR pipeline. A head with no
+  pipeline from either source stays could-not-check, never a pass.
+- The GitLab forge adapter now preserves GitLab's own structured error body (`message` /
+  `error`) on every write and read verb: `mapErr` carries the forge's message onto the
+  `ForgeAPIError` and into the rendered refusal, so a rejection that used to reach the caller
+  as a bare `HTTP 400` now names the actual cause (a permission message, a validation
+  message, a missing branch). Redaction rules are unchanged; the body is only control-stripped
+  like every other forge-origin string this tree renders.
+- `CreateDraftChange` now rides out GitLab's transient post-push "source branch does not
+  exist" rejection with a bounded, same-identity retry (3 attempts, 2s apart) for that one
+  specifically identified condition — the race where a just-pushed branch is readable through
+  Git and the branches API but the merge-request create briefly still 400s. Every other error,
+  including every other 400, is surfaced on the first response and never retried; exhausting
+  the bounded attempts is reported as could-not-check, never rounded up to a pass.
+- `deskevidence` on a GitLab-hosted repo now lands Evidence into an **existing**
+  brief. The GitLab file-write path probed the not-yet-created target branch for
+  the file, always missed it, and issued a create (`POST`) that GitLab rejects
+  `HTTP 400` when the path already exists on the base — so post-merge verify could
+  produce a PASS but never land the Evidence row or the `implemented → verified`
+  flip. The existence probe now reads the branch the write is based on (the start
+  branch, for the inline side-branch lane), so an existing path is updated with a
+  `PUT` and only a genuinely new path is created with a `POST`. (#1412)
+
+### Changed
+- `deskboard` surfaces a declared external-prerequisite re-review as `EXTERNAL-PREREQ-REVIEW`
+  rather than `SUSPECT-APPROVAL`, and `reviewloop` routes the new action; the board, planner
+  and ready gate agree on what the row is. The three-round finding cap, the independent
+  security review, the check-only exemption, and the human merge/ready authority are unchanged.
+- `deskpost ready` clears the unchanged-head `CHANGES_REQUESTED` refusal only for a declared,
+  fully re-verified external-prerequisite rejection; it still fails closed on a wrong
+  revision, a prerequisite predating the rejection, a later revocation, an unrelated object,
+  unreadable evidence, a standing `Security-Review: fail`, or any code/content finding.
+
 ## v1.0.21 — 2026-09-21
 
 ### Added
