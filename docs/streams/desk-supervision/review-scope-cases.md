@@ -21,9 +21,10 @@ four scope bases a blocker may name are `changed-behaviour`, `acceptance-obligat
 
 ## Case A — first-pass inventory over a multi-file class (Verify row 1)
 
-A change to `src/pay.go` asserts, in a code comment and a doc, that a payment "settles in one
-block". The claim is false: settlement takes up to three blocks. This is one false-claim
-class with occurrences in more than one file.
+A change to a payment source file asserts, in a code comment and a doc, that a payment
+"settles in one block". The claim is false: settlement takes up to three blocks. This is one
+false-claim class with occurrences in more than one file. (All file names below are
+synthetic illustration, shown inside code blocks; they name no real path in this repository.)
 
 ### A.1 — first-pass review packet (complete)
 
@@ -68,7 +69,7 @@ never certified clean: this packet searched one file and cannot assert the class
 
 ## Case B — required, unrelated, and safety findings (Verify row 2)
 
-A change adds a new settlement mode to `src/pay.go`.
+A change adds a new settlement mode to the same synthetic payment source file.
 
 ### B.1 — omitted required operator-state table → BLOCKING
 

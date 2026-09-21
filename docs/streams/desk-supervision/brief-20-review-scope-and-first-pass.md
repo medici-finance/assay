@@ -10,10 +10,11 @@ gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 gate-why: "Changes which review findings can hold a PR or how a standing rejection can clear; approve the precise rule before changing that control."
 decision-trigger: "start"
+design: "DR-review-scope-20"
 issues: [1387]
 schema: "brief-v2"
 authored: "2026-09-20 by recovery planning session"
-sources: ["https://github.com/medici-finance/assay/issues/1387", "docs/streams/desk-supervision/recovery-increments.md", "source freshness 2026-09-20 @ 3db05fb44"]
+sources: ["https://github.com/medici-finance/assay/issues/1387", "docs/streams/desk-supervision/recovery-increments.md", "../decisions/DR-review-scope-20.md — the design record this brief's human gate dereferences; it transcribes the approved ruling", "source freshness 2026-09-20 @ 3db05fb44"]
 consumers: ["tools/desk/cmd/deskdispatch/references/review-prompt.md: fixed-here", "tools/desk/cmd/deskdispatch/references/worker-prompt.md: fixed-here", "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here"]
 exec-tier: "strong"
 exec-tier-why: "Must distinguish genuine changed evidence from a bypass of a standing review rejection."
@@ -60,7 +61,7 @@ Default if no answer: none — blocks implementation.
 
 ### Recorded ruling
 
-Approved — **option 1** — by Ian on his own login (`kryton`), 2026-09-21,
+Approved — **option 1** — by the driver (`human:<name>`) on his own GitHub login, 2026-09-21,
 [issue 1402 comment](https://github.com/medici-finance/assay/issues/1402#issuecomment-5762179072):
 
 > Approve desk-supervision/20's first-pass inventory and impact-based blocking
