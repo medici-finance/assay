@@ -150,7 +150,7 @@ it.
 | 07 | [deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings](brief-07-deskinstall-harness-cursor.md) | 3 | M | done | 2026-09-17 sonnet-5-verifier (16/16 PASS, fail-first + roster-dereference independently re-derived; risk-values DERIVED) | 2026-09-18 assay-reviewer-app[bot] (approved PR #1301 @ 2bd81462a7e030b265b429c3e8fe529fc4fcd8e3) |
 | 08 | [Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency](brief-08-go-native-gitlab-fleet-provisioning.md) | 1 | L | todo | — | — |
 | 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | todo | — | — |
-| 10 | [Verify in the harness container — the supported execution-witness runner on Windows](brief-10-verify-in-container.md) | 3 | M | implemented | — | — |
+| 10 | [Verify in the harness container: the supported execution-witness runner on Windows](brief-10-verify-in-container.md) | 3 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and

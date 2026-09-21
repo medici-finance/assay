@@ -31,6 +31,7 @@ gate-why: >-
   choosing the landing mechanism given desk-supervision/12's in-flight retirement of the staged-copy
   pattern this leg rides.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
+design: DR-verify-in-container
 issues: []
 schema: brief-v2
 authored: 2026-09-21 by windows-port authoring session
@@ -42,7 +43,7 @@ exec-tier-why: >-
   a token, or running an un-digest-pinned image) is a supply-chain gap a happy-path test would not
   show.
 sources:
-  - "Ian's direction (2026-09-21, driver-directed): the container is the supported execution-witness runner on Windows; a digest-pinned wrapper, bind-mount caveats, a Windows CI leg proving the witness lands, adoption-doc delta, and no change to the four `sh -c` sites."
+  - "The driver's direction (2026-09-21, driver-directed): the container is the supported execution-witness runner on Windows; a digest-pinned wrapper, bind-mount caveats, a Windows CI leg proving the witness lands, adoption-doc delta, and no change to the four `sh -c` sites."
   - "statusgen/verifyrun.go: verifyrun runs each Verify row under `bash -o pipefail`; resolveShellPlan probes the shell once and records could-not-run (never a false fail) when no pipefail-capable POSIX shell bootstraps — the #1418 Windows WSL-launcher defect this brief routes around by running verifyrun inside a Linux container."
   - "#1418: on native Windows `bash.exe` is often the WSL launcher; with no distro it exits 1 with `execvpe(/bin/bash) failed` BEFORE the row runs — verifyrun records could-not-run, which is honest but not runnable. The container supplies the missing runnable shell."
   - "#1410: parseBriefFile's memo cache keys on CONTENT HASH, not mtime, precisely so a coarse-mtime filesystem cannot serve a stale parse — the property the bind-mount NTFS-coarse-mtime caveat relies on."
@@ -128,13 +129,13 @@ file, and promotion needs a workflow-scoped human credential. Two human acts are
 
 2. **Choose the landing mechanism — and know the tension before you do.** This leg rides the SAME
    staged-copy → maintainer-hand-copy pattern windows-port/04 and /06 used. That pattern is the
-   subject of an OPEN, unratified decision record (`decisions/DR-workflow-app-landing.md`) and an
-   in-flight retirement brief (`desk-supervision/12`), which cite REAL failure modes: a staged copy
+   subject of an OPEN, unratified decision record (`../decisions/DR-workflow-app-landing.md`) and an
+   in-flight retirement brief (`../desk-supervision/brief-12-retire-staged-copy-landing.md`), which cite REAL failure modes: a staged copy
    authored against one base silently REVERTS intervening fixes when the live file moves (#1187),
    and the hand-copy step has left briefs `BLOCKED-ON-HUMAN` 9+ days (#1175, #1185). This brief does
    NOT resolve that tension and was directed to proceed on the established, known-working precedent —
    but it names it here rather than following it silently. **Whoever promotes this leg should check
-   `desk-supervision/12`'s current state first:** if the workflow-App PR path has landed, this
+   desk-supervision/12's current state first:** if the workflow-App PR path has landed, this
    change should travel through THAT path (a single workflow-only PR the workflow App authors), and
    this staged addition may itself be reduced to a pointer by that brief.
 
@@ -186,14 +187,16 @@ Default if no answer: the leg stays staged and the digest stays a placeholder �
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd statusgen && go build -o /tmp/wp10-sg . && /tmp/wp10-sg verifyrun --help \| grep -c -e '--in-container' -e '--env-file'` | `≥ 2` — the two flags are documented | check |
-| 2 | `cd statusgen && go test -run 'TestHarnessPin\|TestComposeDockerArgs\|TestBuildInnerCommand\|TestReadHarnessPin\|TestRunInContainer' -count=1 .` | exit 0 — the launcher's hermetic suite passes (fake `docker` on PATH; no real container) | check |
-| 3 | `(cd statusgen && go build -o /tmp/wp10-sg .) && /tmp/wp10-sg verifyrun --in-container --root . --brief docs/streams/windows-port/brief-10-verify-in-container.md; echo "exit=$?"` | exit non-zero (`exit=2`) — the launcher REFUSES the committed placeholder digest (fail-closed pin control), never runs an un-digest-pinned image | check |
+| 2 | `cd statusgen && go test -run TestVIC -count=1 .` | exit 0 — the launcher's hermetic suite passes (fake `docker` on PATH; no real container): argv composition, digest-pin validation, and the fake-docker end-to-end are all under this one prefix | check +dereference |
+| 3 | `(cd statusgen && go build -o /tmp/wp10-sg .) && /tmp/wp10-sg verifyrun --in-container --root . --brief docs/streams/windows-port/brief-10-verify-in-container.md; echo "exit=$?"` | exit non-zero (`exit=2`) — the launcher REFUSES the committed placeholder digest (fail-closed pin control), never runs an un-digest-pinned image | check +dereference |
 | 4 | `bash plugins/assay/scripts/check-paired-versions.sh` | exit 0 — the new `harness:` block keeps the manifest's single-tag + hash-shape invariants | check |
 | 5 | `grep -qE '^[[:space:]]*image:[[:space:]]+ghcr\.io/.+/desk-tools$' plugins/assay/paired-versions.yaml && grep -qE '^[[:space:]]*digest:' plugins/assay/paired-versions.yaml; echo $?` | `0` — the harness image is pinned (image + digest fields present) | check |
-| 6 | The CI leg exists and runs the wrapper: `grep -rlE 'verifyrun --in-container' ci/staged-workflows/windows-ci-leg.yml` | at least one file listed — the execution-witness CI leg is present | check:ci |
+| 6 | The CI leg drives the full path (statusgen → docker → verifyrun → Evidence): `grep -rlE 'verifyrun --in-container' ci/staged-workflows/windows-ci-leg.yml` | at least one file listed — the `verify-in-container` leg exercises the wrapper end to end; its LIVE discharge (the witness landing host-owned) is the promoted-leg run on a Docker+Linux-container runner once the real digest is pinned (apply-gated, not fakeable here) | check:ci +flow |
 | 7 | **Offline envelope** — the CI leg's mechanism job names no live-forge verb: `grep -A60 'verify-in-container:' ci/staged-workflows/windows-ci-leg.yml \| grep -qiE -e 'deskpost' -e 'deskpr' -e 'gh pr create' -e 'gh issue create' -e 'git push'; echo $?` | `1` (no mutating/forge verb) | check |
 | 8 | **Boundary** — the diff touches none of the four `sh -c` sites: `git diff $(git merge-base refs/remotes/origin/main HEAD)..HEAD -- statusgen/mergecheck.go tools/desk/cmd/muhar/main.go tools/desk/cmd/verifyloop/verdictrun.go tools/desk/internal/deskkit/hooks.go \| wc -l` | `0` — the four `sh -c` execution sites are untouched | check |
-| 9 | The adoption doc names the container as the Windows execution-witness runner: `grep -qiE 'container.*(supported\|execution.witness).*windows\|execution.witness runner' docs/adopting-assay.md; echo $?` | `0` | check |
+| 9 | The adoption doc names the container as the Windows execution-witness runner: `grep -qi 'supported execution-witness runner on Windows' docs/adopting-assay.md; echo $?` | `0` | check |
+| 10 | Consumers routing corroborated by the diff (run on the implementer's branch): `statusgen --root . --consumers windows-port/10; echo $?` | `0` — the four declared consumers (launcher, pin, CI leg, adoption doc) are proved by the branch diff | check |
+| 11 | **Mutation** — the digest-pin control reddens when broken: `cp statusgen/verifyincontainer.go /tmp/wp10-vic.bak && perl -0pi -e 's/if !pinDigestRe\.MatchString/if false \&\& !pinDigestRe.MatchString/' statusgen/verifyincontainer.go && (cd statusgen && go test -run TestVICRunRefusePlaceholder -count=1 . >/dev/null 2>&1); rc=$?; cp /tmp/wp10-vic.bak statusgen/verifyincontainer.go; echo "mutated-rc=$rc"` | output is `mutated-rc=1` — bypassing the digest check makes the fail-closed refusal test FAIL, proving the control is load-bearing (the file is restored) | check +mutation |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item (command, exit, output hash, date,

@@ -23,7 +23,7 @@ func testPin() harnessPin {
 // validate — fail-closed on anything that is not a concrete digest pin
 // ---------------------------------------------------------------------------
 
-func TestHarnessPinValidate(t *testing.T) {
+func TestVICPinValidate(t *testing.T) {
 	cases := []struct {
 		name    string
 		pin     harnessPin
@@ -50,7 +50,7 @@ func TestHarnessPinValidate(t *testing.T) {
 	}
 }
 
-func TestHarnessPinRefIsDigestPinned(t *testing.T) {
+func TestVICRefDigest(t *testing.T) {
 	got := testPin().ref()
 	want := "ghcr.io/medici-finance/assay/desk-tools@" + testHarnessDigest
 	if got != want {
@@ -65,7 +65,7 @@ func TestHarnessPinRefIsDigestPinned(t *testing.T) {
 // composeDockerArgs — the pure argv the wrapper would hand docker
 // ---------------------------------------------------------------------------
 
-func TestComposeDockerArgsPOSIX(t *testing.T) {
+func TestVICComposePosix(t *testing.T) {
 	inv := containerInvocation{
 		pin:      testPin(),
 		root:     "/home/me/checkout",
@@ -115,7 +115,7 @@ func TestComposeDockerArgsPOSIX(t *testing.T) {
 	}
 }
 
-func TestComposeDockerArgsWindowsOmitsUser(t *testing.T) {
+func TestVICComposeWin(t *testing.T) {
 	// On Windows there is no POSIX uid (os.Getuid() == -1); --user is omitted and
 	// Docker Desktop maps ownership to the host user itself.
 	inv := containerInvocation{
@@ -132,7 +132,7 @@ func TestComposeDockerArgsWindowsOmitsUser(t *testing.T) {
 	}
 }
 
-func TestComposeDockerArgsOmitsEnvFileWhenEmpty(t *testing.T) {
+func TestVICComposeNoEnv(t *testing.T) {
 	inv := containerInvocation{
 		pin:      testPin(),
 		root:     "/r",
@@ -146,7 +146,7 @@ func TestComposeDockerArgsOmitsEnvFileWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestBuildInnerCommandPassesFlags(t *testing.T) {
+func TestVICInnerFlags(t *testing.T) {
 	inner := buildInnerCommand("b.md", true, true, true, "30s")
 	joined := strings.Join(inner, " ")
 	for _, want := range []string{"--check", "--dry-run", "--ci", "--timeout 30s"} {
@@ -160,7 +160,7 @@ func TestBuildInnerCommandPassesFlags(t *testing.T) {
 // readHarnessPin — reads the harness: block from paired-versions.yaml
 // ---------------------------------------------------------------------------
 
-func TestReadHarnessPin(t *testing.T) {
+func TestVICReadPin(t *testing.T) {
 	root := t.TempDir()
 	writePairedVersions(t, root, "  digest: "+testHarnessDigest+"\n")
 	pin, err := readHarnessPin(root)
@@ -172,7 +172,7 @@ func TestReadHarnessPin(t *testing.T) {
 	}
 }
 
-func TestReadHarnessPinMissingBlockIsError(t *testing.T) {
+func TestVICReadPinMissing(t *testing.T) {
 	root := t.TempDir()
 	// A paired-versions.yaml with no harness: block at all.
 	dir := filepath.Join(root, "plugins", "assay")
@@ -191,7 +191,7 @@ func TestReadHarnessPinMissingBlockIsError(t *testing.T) {
 // End-to-end with a FAKE docker on PATH — no real container ever runs
 // ---------------------------------------------------------------------------
 
-func TestRunInContainerInvokesDockerWithComposedArgs(t *testing.T) {
+func TestVICRunDocker(t *testing.T) {
 	root := t.TempDir()
 	writePairedVersions(t, root, "  digest: "+testHarnessDigest+"\n")
 	briefRel := filepath.Join("docs", "streams", "windows-port", "brief-10.md")
@@ -229,7 +229,7 @@ func TestRunInContainerInvokesDockerWithComposedArgs(t *testing.T) {
 	}
 }
 
-func TestRunInContainerRefusesPlaceholderDigest(t *testing.T) {
+func TestVICRunRefusePlaceholder(t *testing.T) {
 	root := t.TempDir()
 	writePairedVersions(t, root, "  digest: PENDING-HARVEST-x\n")
 	writeFileWP10(t, filepath.Join(root, "b.md"), "# b\n")
@@ -245,7 +245,7 @@ func TestRunInContainerRefusesPlaceholderDigest(t *testing.T) {
 	}
 }
 
-func TestRunInContainerRefusesBriefOutsideRoot(t *testing.T) {
+func TestVICRunRefuseOutside(t *testing.T) {
 	root := t.TempDir()
 	writePairedVersions(t, root, "  digest: "+testHarnessDigest+"\n")
 	other := t.TempDir()
