@@ -167,22 +167,48 @@ or `out-of-scope <reason>`.
 
 If the brief's Task creates a new component, service, or tool — or substantially
 changes where an existing component's logic lives (extracting or dissolving a domain
-layer, adding its first or second external adapter, moving logic across a process or
-trust boundary) — the Context section MUST include a `layering:` line of one or two
-lines naming the chosen shape and the trigger that chose it:
+layer, adding an external adapter or entrypoint, moving logic across a process or
+trust boundary) — the Context section MUST include a `layering:` line. In one or two
+lines, name the chosen structure, the meaningful rules and external effects it
+separates (or why no extracted boundary is warranted), and the current reason for
+that choice. Reference the Task and Verify rows that implement and check the boundary;
+put detailed contracts there rather than expanding the Context into a design document.
 
-- `domain-core` — a pure domain package at the center that imports only the language
-  standard library, external systems (forge, database, transport, UI) reached only
-  through adapters that depend inward, and a mechanical purity gate that fails when
-  platform-shaped identifiers leak into the domain.
-- `flat tool` — a single package, no extracted domain, interface seams only where a
-  second implementation already exists.
+Choose the simplest structure that keeps meaningful rules independent of changing
+infrastructure. These are defaults, not an exhaustive set of permitted architectures:
 
-The shape is chosen on adapter count and expected lifespan, never on code volume: a
-component with two or more external adapters, or more than one entrypoint, is
-`domain-core` from creation; a bounded single-purpose tool with one adapter stays
-`flat tool` and is extracted when its second adapter actually arrives — never
-speculatively. The extraction is itself a brief whose `layering:` line records the flip.
+- `domain-core` — prefer an isolated core when there are meaningful rules that should
+  remain unchanged as external systems change. Adapters for the forge, database,
+  transport or UI depend inward; infrastructure types and effects stay outside the
+  core. Core behavior is determined by explicit inputs: time, randomness and external
+  state are supplied as values rather than read implicitly. A pure third-party
+  calculation library can be appropriate; standard-library-only imports do not prove
+  purity, because the standard library also exposes I/O, clocks and mutable global state.
+- `flat tool` — prefer a simple package for bounded orchestration with little independent
+  domain logic. Keep decisions separate from effects where useful, without requiring an
+  extracted package or a layer of forwarding interfaces. A small copy command can remain
+  flat even though it talks to two external systems; a substantial calculation engine can
+  justify an isolated core with only one external adapter.
+
+Adapter/entrypoint count, expected lifespan, complexity and change patterns inform the
+choice; none alone dictates it. Additional adapters or entrypoints trigger reconsideration,
+not automatic extraction. An interface MUST have a concrete current purpose, such as
+isolating an unreliable dependency, testing important rules without external services,
+or supporting existing alternative implementations. A second implementation is not a
+prerequisite, and hypothetical future implementations alone do not justify an abstraction.
+Other structures are allowed when the same `layering:` record explains their boundaries
+and present justification. A later extraction or dissolution records the changed decision
+in its own brief.
+
+A structure label is not evidence. The Task MUST name the rules, external effects and
+allowed dependency direction at any claimed boundary. The Verify table MUST check that
+boundary with focused tests and/or mechanical dependency/effect checks, naming the
+properties covered and their limits. For an isolated core, include tests of its important
+rules without external services. An import allowlist or identifier scan alone MUST NOT be
+presented as proof of freedom from side effects. A new mechanical check also carries the
+negative control required by §4.4. For a flat tool with no extracted boundary, verify its
+observable behavior and relevant failure paths; do not invent a package boundary just to
+satisfy this requirement.
 
 ### 4.2 Ground rules
 

@@ -164,15 +164,18 @@ out-of-repo files: <exact paths outside the repo (e.g. ~/.claude/skills/...), if
 see rule 7; omit the line entirely when none>
 facts: <the 3-5 project facts needed — key: value, no narrative. The implementer
 must never need to explore the repo.>
-layering: <REQUIRED when the Task creates a new component/service/tool or substantially
-moves where an existing one's logic lives (domain extracted or dissolved, first or
-second external adapter, logic crossing a process or trust boundary); omit the line
-entirely otherwise. One or two lines naming the shape and the trigger that chose it:
-"domain-core — <the adapters/entrypoints that forced it>" (pure center importing only
-the stdlib, adapters pointing inward, a mechanical purity gate) or "flat tool — <the
-one adapter/consumer>" (single package, seams only where a second implementation
-already exists). Decide on adapter count and expected lifespan, never code volume;
-extraction happens when the second adapter ARRIVES, not in anticipation.>
+layering: <REQUIRED for a new component/service/tool or a substantial boundary change
+(domain extraction/dissolution, added adapter/entrypoint, logic crossing a process or
+trust boundary); omit otherwise. One or two lines: simplest justified structure +
+meaningful rules vs external effects (or why no extraction is warranted) + current
+reason + Task/Verify references. Defaults: domain-core for independently meaningful
+rules, flat tool for bounded orchestration; justified alternatives allowed. Adapter
+count triggers reconsideration, not mandatory extraction. Interfaces need a current
+purpose, not a second implementation. Dependency provenance does not establish purity:
+keep infrastructure and implicit effects outside a pure core. In Task/Verify, name and
+check the actual boundary and the checks' limits; test core rules without external
+services. A flat tool verifies behavior/failure paths without inventing a boundary.
+See brief-v1 §4.1; do not justify abstractions only by hypothetical future needs.>
 
 ## Human decision
 <!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
@@ -542,8 +545,8 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
-[ ] 8. New or re-layered component → `layering:` present, naming shape + trigger (the
-       second adapter is the extraction trigger, never anticipation).
+[ ] 8. New or re-layered component → `layering:` records structure, boundary and current
+       reason; Task/Verify check the claimed separation (or flat-tool behavior), not its label.
 [ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```
 
