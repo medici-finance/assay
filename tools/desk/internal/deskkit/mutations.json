@@ -230,6 +230,12 @@
       "new": "\treturn out, nil"
     },
     {
+      "name": "disable ChecksAtHead's by-SHA pipeline fallback (a merge_request_event head whose commit.last_pipeline is empty never gets its `pipeline` context, so deskflip refuses checks-green on a real success — the #1411 regression)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tsc, ok := gitlabPipelineStatusAt(pipe, sha)\n\tif !ok {\n\t\tif hp := g.headPipelineAt(cl, repo, sha); hp != nil {",
+      "new": "\tsc, ok := gitlabPipelineStatusAt(pipe, sha)\n\tif false && !ok {\n\t\tif hp := g.headPipelineAt(cl, repo, sha); hp != nil {"
+    },
+    {
       "name": "widen the contributor tier to the deep lane set (the blanket slowdown nobody asked for - a known contributor's pull request silently gets the fact-check and fail-first lanes)",
       "file": "internal/deskkit/reviewlanes.go",
       "old": "\tTierContributor: {LaneCorrectness, LaneSecurity},\n\tTierMaintainer:  {LaneCorrectness, LaneSecurity},",

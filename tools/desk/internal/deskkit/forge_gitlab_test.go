@@ -878,11 +878,51 @@ func glCases() []glCase {
 		},
 		{
 			// No pipeline at the head: empty check-runs and a zero count is a truthful "no
-			// jobs", which the caller must be able to tell apart from a could-not-check.
+			// jobs", which the caller must be able to tell apart from a could-not-check. The
+			// request trace pins the #1411 fallback: with commit.last_pipeline absent the
+			// backend STILL issues the by-SHA read (`pipelines?sha=`) before concluding there is
+			// no pipeline — it does not assume absence from the commit document alone.
 			name: "checks_at_head_no_pipeline", method: "ChecksAtHead",
 			setup: func(s *glServer) {
 				s.commit = map[string]any{"id": "abc123", "status": "success"}
 				s.statuses = []map[string]any{{"name": "leak-sweep", "status": "success"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// issue #1411 — the merge_request_event shape #1125 / PR #1134 missed: the commit
+			// document carries NO `last_pipeline`, yet a GREEN pipeline exists at the head SHA
+			// and is reachable through the SAME by-SHA read ListOpenChanges already uses
+			// (`pipelines?sha=`). The golden pins that ChecksAtHead falls back to that read and
+			// publishes the head pipeline as the `pipeline` status context — the very name a
+			// pipeline-gated project REQUIRES — so `deskflip` checks-green matches instead of
+			// refusing a real success. The job of that fallback pipeline arrives alongside it.
+			name: "checks_at_head_mr_pipeline_via_shalist", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success"}
+				s.statuses = []map[string]any{}
+				s.pipelines = []map[string]any{
+					{"id": 77, "sha": "abc123", "status": "success", "source": "merge_request_event",
+						"created_at": "2026-09-15T10:00:00Z"},
+				}
+				s.jobs = []map[string]any{
+					{"id": 9101, "name": "statusgen-lint", "status": "success",
+						"finished_at": "2026-09-15T10:04:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// The fail-closed twin of the case above: commit.last_pipeline absent AND no pipeline
+			// at the head SHA via the by-SHA read either. The fallback read is issued (the trace
+			// shows the `pipelines?sha=` GET) and comes back empty, so NO `pipeline` context is
+			// published — a pipeline-gated head with no verdict stays could-not-check, never a
+			// pass. This proves the #1411 fallback does not paper over a genuinely missing check.
+			name: "checks_at_head_mr_pipeline_absent_via_shalist", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success"}
+				s.statuses = []map[string]any{}
+				// No s.pipelines fixture: the by-SHA read answers empty for this head.
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
 		},
