@@ -19,6 +19,11 @@ const toolName = "deskdispatch"
 // Step names — the verb's contract. A caller reads which step stopped the dispatch out of
 // the failure line, so these strings are as load-bearing as the exit codes.
 const (
+	// stepAdmission is the reservation gate (example-stream/18). It is NOT a member of
+	// dispatchSteps below — that slice is the always-run 7-step contract, and this gate runs
+	// ONLY when ASSAY_REPAIR_ADMISSION=on, before the claim. Naming it here lets its OK/refusal
+	// lines identify themselves exactly as the numbered steps do.
+	stepAdmission      = "admission"
 	stepClaimAcquire   = "claim-acquire"
 	stepWorktreeCreate = "worktree-create"
 	stepRosterRegister = "roster-register"
@@ -238,8 +243,31 @@ func dispatch(o dispatchOpts) error {
 	if aerr != nil {
 		return aerr
 	}
+
+	// ADMISSION (example-stream/18) — the per-class reservation gate, serialized across
+	// dispatchers, BEFORE the durable item claim. It is inert unless ASSAY_REPAIR_ADMISSION=on
+	// (returns a nil release and no error), so the shipped default flow is unchanged. When on, an
+	// ADMIT hands back a lease-release that stays held THROUGH stepClaim so the count->decide->claim
+	// window is atomic across hosts; a HOLD or a could-not-check refuses HERE, before any durable
+	// item state exists — a refused fresh dispatch never wedges the item because no claim was taken.
+	admitRelease, admitErr := enforceAdmission(o, plan, repo, auth)
+	if admitErr != nil {
+		return admitErr
+	}
+
 	if err := stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey); err != nil {
+		// The admission lease was taken and no item claim was placed — release it so a corrected
+		// re-run is not serialized behind a dispatcher that never claimed. The recovery order
+		// (reserve -> claim -> release) holds: with no item claim there is no occupancy to leak.
+		if admitRelease != nil {
+			admitRelease()
+		}
 		return err
+	}
+	// The item claim is now the durable occupancy; the count->decide->claim window is closed, so
+	// release the serialization lease (a crash before here would have expired it by TTL anyway).
+	if admitRelease != nil {
+		admitRelease()
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, authenticated by %s",
 		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, auth.source)

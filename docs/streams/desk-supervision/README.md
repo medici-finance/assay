@@ -126,7 +126,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
 | 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | implemented | — | — |
 | 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
-| 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | todo | — | — |
+| 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
 | 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | todo | — | — |
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | todo | — | — |
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | todo | — | — |

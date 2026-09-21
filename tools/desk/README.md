@@ -1083,6 +1083,23 @@ there was no way to say which stage that was — nor any value to move once you 
   `resume=2` (protecting orphan-PR resumes, the highest-priority source) and `rework=0`.
   `deskboard throughput` prints the same reservation as an extra column beside the width it
   never subtracts from.
+  - **The repair (`rework`) floor is ENFORCED at the dispatch boundary** (example-stream/18),
+    OPT-IN via `ASSAY_REPAIR_ADMISSION=on` (recorded policy `repair-admission-v1`). With it on,
+    `deskdispatch` holds a **fresh** dispatch — exit 5, naming the waiting repair — that would
+    drop the free slots to or below the floor while a repair obligation is RUNNABLE (assignable
+    now, from the reconciled `docs/streams/repair-obligations.jsonl`); the repair is admitted. The
+    gate serialises across dispatchers with a compare-and-swap lease in the same claim backend
+    (a process mutex would serialise one host and nothing across two), and its recovery order is
+    reserve → item-claim → release: a crash before the item claim leaks no slot (the item claim is
+    the durable occupancy; the lease is TTL-bounded) and the item-claim CAS makes a resume
+    idempotent, so no worker is duplicated. Unreadable occupancy/demand is a visible
+    could-not-check (exit 6), never a fabricated free slot. **Limits:** it enforces the rework
+    floor only (the resume floor's orphan-PR demand is a forge read outside the gate's offline
+    envelope and stays the planner's advisory line); occupancy is the target repo's claim
+    namespace (a multi-repo pool is counted per namespace, over-counting toward HOLD, the safe
+    direction); and a raw harness launch outside `deskdispatch` is outside this enforcement.
+    **Rollback:** unset `ASSAY_REPAIR_ADMISSION` (or pin the prior binary) — the gate is then
+    inert with no state to unwind, and repair obligations remain readable by the older reader.
 - **The bound.** A width the role's write budget or the shared App token's concurrency ceiling
   cannot carry is **refused (exit 5) naming the maximum it will accept**. Widening buys no
   budget — every meter in the rate limiter applies to the wider pool unchanged — and an **open
