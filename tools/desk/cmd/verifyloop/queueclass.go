@@ -65,8 +65,16 @@ const (
 	// its gate and risk answers are UNKNOWN. An instrument that did not look has cleared
 	// nothing: the row is listed under could-not-check with the reason and is never
 	// dispatchable — before this it fell through as a zero-value (risk-clear, model-gated)
-	// brief and reached DISPATCH with its human gate erased.
+	// brief and reached DISPATCH with its human gate erased. A wake receipt whose declared
+	// inputs could not be read (example-stream/16) is bucketed here too, with a wake reason.
 	dispCouldNotCheck
+	// dispWaitReceipt: a failed/blocked verification carries a COMPLETE, still-UNCHANGED wake
+	// receipt (example-stream/16). Its wake condition has not been met — re-verifying now only
+	// reproduces the same non-verdict — so the failure stays VISIBLE as a WAIT row (naming its
+	// blocker and next actor) and is excluded from costly dispatch. A receipt is scheduling
+	// evidence only: it never authorizes verified/done or a write. Legacy/incomplete receipts
+	// are NOT bucketed here — they stay eligible for one classification pass.
+	dispWaitReceipt
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -88,6 +96,8 @@ func (d disposition) String() string {
 		return "stuck-flip"
 	case dispCouldNotCheck:
 		return "could-not-check"
+	case dispWaitReceipt:
+		return "wait"
 	default:
 		return "unknown"
 	}
@@ -126,6 +136,8 @@ func (d disposition) whyItWaits() string {
 		return "the brief file could not be resolved/read — gate and risk answers are UNKNOWN, so it is never dispatchable; fix the board row or the file"
 	case dispStuckFlip:
 		return "a verified outcome is in the sidecar and Evidence is filled, but the status flip has not landed — file/point at the stuck flip, never re-run"
+	case dispWaitReceipt:
+		return "a failed/blocked verification whose wake condition is unchanged — re-verifying now reproduces the same non-verdict; the line names the blocker, the next actor, and what will wake it"
 	default:
 		return ""
 	}
@@ -190,6 +202,18 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 	}
 	if reason, stuck := stuckFlip(it); stuck {
 		return dispStuckFlip, reason
+	}
+	// WAKE (example-stream/16): a failed/blocked verification's evaluated receipt state,
+	// computed at scan time (briefscan.deriveWakePayload). `hold` is a WAIT row excluded from
+	// dispatch; `could-not-check` is bucketed with its wake reason (an unreadable declared input
+	// never rounds up to unchanged); `fire` (the wake condition was met, or a partial with some
+	// rows still runnable) falls through to DISPATCH; an absent/`unclassified` state falls
+	// through so a legacy/incomplete receipt gets one ordinary classification pass.
+	switch payloadValue(it, "wake_state") {
+	case "hold":
+		return dispWaitReceipt, payloadValue(it, "wake_reason")
+	case "could-not-check":
+		return dispCouldNotCheck, payloadValue(it, "wake_reason")
 	}
 	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
 		return dispInRepair, ir

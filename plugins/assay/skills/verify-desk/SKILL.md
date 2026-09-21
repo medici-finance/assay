@@ -157,6 +157,30 @@ not own.
    issue Boot step 5 filed. That is the precondition §Liveness contract already states, made
    printable; anything less and the desk is mid-drain, not standing down.
 
+**Wake receipts — a failed/blocked brief is not re-run just to reproduce its failure**
+(`verify-wake-v1`; `docs/streams/desk-supervision/verify-wake-v1.md`). When a verifier run ends
+`verify-fail`/`blocked`, its landed outcome sidecar row carries a WAKE RECEIPT: the inputs it
+observed, the blocker class, and the checkable condition that must change before re-running is
+worth a slot. `verifyloop plan` reads it and buckets the brief accordingly — **consume the
+plan's decision, do not second-guess it**:
+
+- **`wait`** — a complete, still-UNCHANGED receipt. The line names the blocker and the next actor
+  (worker / brief-author / human / operator) and what will wake it. It is VISIBLE but NOT
+  dispatchable: **do not re-dispatch it**, and do not treat it as done — the failure stands, held
+  until its wake condition is met. Route the next action to the named actor if it is not already
+  moving (an `implementation`/`check-definition` blocker is worker work; `human-action` is a
+  human gate; `environment` is an operator/prerequisite condition).
+- **`could-not-check`** on a wake reason — a declared input could not be read. Never rounded up to
+  unchanged, never a pass; hold and surface it exactly as any other could-not-check.
+- A **legacy or incomplete** receipt (pre-v1 rows, or a receipt missing its schema/blocker/wake
+  fields) is NOT held — it stays dispatchable for exactly one classification pass, which produces
+  a complete receipt. This is the migration path: existing rows keep today's behaviour until the
+  first complete receipt lands.
+- **Explicit recheck** is the escape hatch: to force a held brief back into dispatch, land an
+  `explicit-recheck-with-reason` receipt (the reason is recorded). A receipt never grants
+  `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
+  implemented→verified→done path a NON-implementer runs on merged main.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
