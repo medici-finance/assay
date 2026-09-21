@@ -1630,23 +1630,42 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	}
 	out.StatusTotalCount = gitlabTotal(lastResp, len(out.Statuses))
 
-	if commit.LastPipeline == nil {
-		// No pipeline ran for this head. Nothing is appended and nothing is invented: the
-		// caller sees a rollup with no GitLabPipelineContext entry, which against a
-		// pipeline-gated project is could-not-check — never a pass.
+	// Resolve the pipeline whose verdict stands for THIS head. GitLab's own
+	// `commit.last_pipeline` is the first source, but for a `merge_request_event` head it is
+	// routinely empty or stamped with a SHA that is not this head — the exact hole #1411
+	// reports, one step past #1125 / PR #1134, which published the pipeline only from
+	// `commit.last_pipeline`. When that field does not reconcile to this head, fall back to the
+	// SAME by-SHA read ListOpenChanges already uses (headPipelineAt, `pipelines?sha=`) and
+	// reconcile THAT one too. gitlabPipelineStatusAt fails closed on SHA in both cases, so a
+	// pipeline that is not a verdict on this head is never mapped, and a head with no pipeline
+	// from either source stays could-not-check — never a pass.
+	pipe := commit.LastPipeline
+	sc, ok := gitlabPipelineStatusAt(pipe, sha)
+	if !ok {
+		if hp := g.headPipelineAt(cl, repo, sha); hp != nil {
+			if hpSC, hpOK := gitlabPipelineStatusAt(hp, sha); hpOK {
+				pipe, sc, ok = hp, hpSC, true
+			}
+		}
+	}
+	if !ok {
+		// No pipeline reconciles to this head from either source. Nothing is appended and
+		// nothing is invented: the caller sees a rollup with no GitLabPipelineContext entry,
+		// which against a pipeline-gated project is could-not-check — never a pass.
 		return out, nil
 	}
-	if pipe, ok := gitlabPipelineStatusAt(commit.LastPipeline, sha); ok {
-		out.Statuses = append(out.Statuses, pipe)
-		// The forge's own asserted total is raised by the one entry mapped from the pipeline,
-		// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
-		// rather than reading the appended entry as an over-serve.
-		out.StatusTotalCount++
-	}
-	jobsPath := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", proj, commit.LastPipeline.ID)
+	out.Statuses = append(out.Statuses, sc)
+	// The forge's own asserted total is raised by the one entry mapped from the pipeline,
+	// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
+	// rather than reading the appended entry as an over-serve.
+	out.StatusTotalCount++
+	// Enumerate the JOBS of the pipeline resolved above — `commit.last_pipeline` when it
+	// reconciled, else the by-SHA head pipeline — so the named-job rollup belongs to the same
+	// pipeline whose verdict was just published, never a pipeline stamped with a different SHA.
+	jobsPath := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", proj, pipe.ID)
 	lastResp = nil
 	for page := 1; page <= gitlabMaxCIPage; page++ {
-		chunk, resp, jerr := cl.Jobs.ListPipelineJobs(repo.Slug(), commit.LastPipeline.ID,
+		chunk, resp, jerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pipe.ID,
 			&gitlab.ListJobsOptions{
 				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
 			})

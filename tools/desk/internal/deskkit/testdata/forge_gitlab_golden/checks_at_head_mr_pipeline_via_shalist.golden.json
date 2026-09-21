@@ -13,6 +13,11 @@
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/pipelines",
       "query": "per_page=1\u0026sha=abc123"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/77/jobs",
+      "query": "page=1\u0026per_page=100"
     }
   ],
   "result": {
@@ -21,11 +26,20 @@
     "Statuses": [
       {
         "State": "success",
-        "Context": "leak-sweep",
-        "CreatedAt": ""
+        "Context": "pipeline",
+        "CreatedAt": "2026-09-15T10:00:00Z"
       }
     ],
-    "CheckRunsTotalCount": 0,
-    "CheckRuns": null
+    "CheckRunsTotalCount": 1,
+    "CheckRuns": [
+      {
+        "ID": "9101",
+        "Name": "statusgen-lint",
+        "Status": "completed",
+        "Conclusion": "success",
+        "StartedAt": "",
+        "CompletedAt": "2026-09-15T10:04:00Z"
+      }
+    ]
   }
 }
