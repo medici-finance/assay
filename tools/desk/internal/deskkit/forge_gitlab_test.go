@@ -81,6 +81,20 @@ type glServer struct {
 	createMR    map[string]any
 	createIssue map[string]any
 	updateMR    map[string]any
+	// createMRStatus, when non-zero, is the status the merge-request CREATE route
+	// (`POST /projects/:id/merge_requests`) answers instead of 201, and createMRErrBody the
+	// JSON body served with it — the shapes issue #1415 turns on: GitLab rejecting the create
+	// with a structured error body the adapter must now preserve. Absent → the create
+	// succeeds with createMR.
+	createMRStatus  int
+	createMRErrBody map[string]any
+	// createMRTransientFails, when > 0, makes the CREATE route answer that many leading
+	// attempts with GitLab's transient "source branch does not exist" 400 (the post-push
+	// visibility race of issue #1415) before succeeding with createMR. It DECREMENTS per
+	// attempt, so it drives both the retry-then-succeed path (set it below the attempt cap)
+	// and the give-up path (set it at/above the cap). It names the request's own
+	// source_branch in the message, so a fixture cannot fake a branch it was not asked for.
+	createMRTransientFails int
 	labelEvents []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
@@ -339,6 +353,28 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && lMRRoot.MatchString(path):
 		enc(s.mrList)
 	case r.Method == http.MethodPost && lMRRoot.MatchString(path):
+		if s.createMRTransientFails > 0 {
+			s.createMRTransientFails--
+			// GitLab's own transient post-push shape: a 400 whose message names the source
+			// branch as absent. The branch is read back off the request body so the fixture
+			// answers about the branch it was actually asked to open (a "/"-containing name
+			// travels here as an ordinary JSON string field, not a URL segment).
+			var reqBody struct {
+				SourceBranch string `json:"source_branch"`
+			}
+			_ = json.Unmarshal(body, &reqBody)
+			w.WriteHeader(http.StatusBadRequest)
+			enc(map[string]any{"message": []string{
+				fmt.Sprintf("Source branch %q does not exist", reqBody.SourceBranch)}})
+			return
+		}
+		if s.createMRStatus != 0 {
+			w.WriteHeader(s.createMRStatus)
+			if s.createMRErrBody != nil {
+				enc(s.createMRErrBody)
+			}
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createMR)
 	case r.Method == http.MethodGet && lAwards.MatchString(path):
@@ -1035,6 +1071,23 @@ func glCases() []glCase {
 			name: "create_draft_change_not_marked_draft", method: "CreateDraftChange",
 			setup: func(s *glServer) {
 				s.createMR = glMR(map[string]any{"iid": 23, "title": "t", "draft": false})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.CreateDraftChange(glRepo, DraftChangeInput{Title: "t", Body: "b", Head: "feat/x", Base: "main"})
+			},
+		},
+		{
+			// issue #1415, Part 1 — DIAGNOSTICS. A 400 carrying a GitLab `{"message": …}`
+			// body must reach the caller with that message preserved, not as a bare "HTTP
+			// 400". The chosen body is a GENUINE validation refusal (a duplicate MR already
+			// open on this source branch) — it names "source branch" but NOT "does not
+			// exist", so it is NEVER matched by the transient-retry guard: the golden's single
+			// captured request proves it was surfaced on the first response, not retried.
+			name: "create_draft_change_400_preserves_message", method: "CreateDraftChange",
+			setup: func(s *glServer) {
+				s.createMRStatus = http.StatusBadRequest
+				s.createMRErrBody = map[string]any{"message": []string{
+					"Another open merge request already exists for this source branch: !5"}}
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.CreateDraftChange(glRepo, DraftChangeInput{Title: "t", Body: "b", Head: "feat/x", Base: "main"})
