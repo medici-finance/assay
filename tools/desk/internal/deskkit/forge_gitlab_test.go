@@ -81,6 +81,20 @@ type glServer struct {
 	createMR    map[string]any
 	createIssue map[string]any
 	updateMR    map[string]any
+	// createMRStatus, when non-zero, is the status the merge-request CREATE route
+	// (`POST /projects/:id/merge_requests`) answers instead of 201, and createMRErrBody the
+	// JSON body served with it — the shapes issue #1415 turns on: GitLab rejecting the create
+	// with a structured error body the adapter must now preserve. Absent → the create
+	// succeeds with createMR.
+	createMRStatus  int
+	createMRErrBody map[string]any
+	// createMRTransientFails, when > 0, makes the CREATE route answer that many leading
+	// attempts with GitLab's transient "source branch does not exist" 400 (the post-push
+	// visibility race of issue #1415) before succeeding with createMR. It DECREMENTS per
+	// attempt, so it drives both the retry-then-succeed path (set it below the attempt cap)
+	// and the give-up path (set it at/above the cap). It names the request's own
+	// source_branch in the message, so a fixture cannot fake a branch it was not asked for.
+	createMRTransientFails int
 	labelEvents []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
@@ -89,6 +103,18 @@ type glServer struct {
 	// repoFile is the Repository-Files GET payload (ReadFile / WriteFile idempotency read),
 	// keyed by the ESCAPED file path segment. Absent → 404.
 	repoFile map[string]map[string]any
+	// repoFileRefs, when non-nil, restricts which refs a GET file read finds the file on: the
+	// file is served only when the request's `ref` query is a key here (AND repoFile carries
+	// the segment); any other ref answers 404. It exists to model the case at the heart of the
+	// side-branch Evidence lane (issue #1412): a file that EXISTS on the base/start branch but
+	// not yet on the not-yet-created target branch. When nil, the GET is ref-agnostic — a file
+	// in repoFile is served on any ref, which is what every pre-existing case relies on.
+	repoFileRefs map[string]bool
+	// updateFileStatus, when set, is the status the Repository-Files PUT (update) route returns
+	// instead of 200 — the failed-update case (a race that removed the path between the probe
+	// and the write, or a caller bug), which must surface as could-not-check and NEVER be
+	// retried as a create (issue #1412's widening guard).
+	updateFileStatus int
 	// createFileResp / updateFileResp are the Repository-Files write responses (FileInfo).
 	createFileResp map[string]any
 	updateFileResp map[string]any
@@ -217,6 +243,11 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			f, ok := s.repoFile[seg]
+			// repoFileRefs, when set, gates the read on the requested ref — the file exists only
+			// on the refs it names (the base/start branch), not on a not-yet-created target.
+			if ok && s.repoFileRefs != nil && !s.repoFileRefs[r.URL.Query().Get("ref")] {
+				ok = false
+			}
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				enc(map[string]any{"message": "404 File Not Found"})
@@ -224,9 +255,23 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			}
 			enc(f)
 		case http.MethodPost:
+			// GitLab's Repository-Files CREATE rejects a path that already exists on the
+			// (start) branch with HTTP 400 — the exact failure of issue #1412. Model it, so a
+			// backend that creates-instead-of-updates an existing path is caught here rather
+			// than silently accepted.
+			if _, present := s.repoFile[seg]; present {
+				w.WriteHeader(http.StatusBadRequest)
+				enc(map[string]any{"message": "A file with this name already exists"})
+				return
+			}
 			w.WriteHeader(http.StatusCreated)
 			enc(s.createFileResp)
 		case http.MethodPut:
+			if s.updateFileStatus != 0 {
+				w.WriteHeader(s.updateFileStatus)
+				enc(map[string]any{"message": "400 Bad Request"})
+				return
+			}
 			enc(s.updateFileResp)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -308,6 +353,28 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && lMRRoot.MatchString(path):
 		enc(s.mrList)
 	case r.Method == http.MethodPost && lMRRoot.MatchString(path):
+		if s.createMRTransientFails > 0 {
+			s.createMRTransientFails--
+			// GitLab's own transient post-push shape: a 400 whose message names the source
+			// branch as absent. The branch is read back off the request body so the fixture
+			// answers about the branch it was actually asked to open (a "/"-containing name
+			// travels here as an ordinary JSON string field, not a URL segment).
+			var reqBody struct {
+				SourceBranch string `json:"source_branch"`
+			}
+			_ = json.Unmarshal(body, &reqBody)
+			w.WriteHeader(http.StatusBadRequest)
+			enc(map[string]any{"message": []string{
+				fmt.Sprintf("Source branch %q does not exist", reqBody.SourceBranch)}})
+			return
+		}
+		if s.createMRStatus != 0 {
+			w.WriteHeader(s.createMRStatus)
+			if s.createMRErrBody != nil {
+				enc(s.createMRErrBody)
+			}
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createMR)
 	case r.Method == http.MethodGet && lAwards.MatchString(path):
@@ -878,11 +945,51 @@ func glCases() []glCase {
 		},
 		{
 			// No pipeline at the head: empty check-runs and a zero count is a truthful "no
-			// jobs", which the caller must be able to tell apart from a could-not-check.
+			// jobs", which the caller must be able to tell apart from a could-not-check. The
+			// request trace pins the #1411 fallback: with commit.last_pipeline absent the
+			// backend STILL issues the by-SHA read (`pipelines?sha=`) before concluding there is
+			// no pipeline — it does not assume absence from the commit document alone.
 			name: "checks_at_head_no_pipeline", method: "ChecksAtHead",
 			setup: func(s *glServer) {
 				s.commit = map[string]any{"id": "abc123", "status": "success"}
 				s.statuses = []map[string]any{{"name": "leak-sweep", "status": "success"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// issue #1411 — the merge_request_event shape #1125 / PR #1134 missed: the commit
+			// document carries NO `last_pipeline`, yet a GREEN pipeline exists at the head SHA
+			// and is reachable through the SAME by-SHA read ListOpenChanges already uses
+			// (`pipelines?sha=`). The golden pins that ChecksAtHead falls back to that read and
+			// publishes the head pipeline as the `pipeline` status context — the very name a
+			// pipeline-gated project REQUIRES — so `deskflip` checks-green matches instead of
+			// refusing a real success. The job of that fallback pipeline arrives alongside it.
+			name: "checks_at_head_mr_pipeline_via_shalist", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success"}
+				s.statuses = []map[string]any{}
+				s.pipelines = []map[string]any{
+					{"id": 77, "sha": "abc123", "status": "success", "source": "merge_request_event",
+						"created_at": "2026-09-15T10:00:00Z"},
+				}
+				s.jobs = []map[string]any{
+					{"id": 9101, "name": "statusgen-lint", "status": "success",
+						"finished_at": "2026-09-15T10:04:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
+		},
+		{
+			// The fail-closed twin of the case above: commit.last_pipeline absent AND no pipeline
+			// at the head SHA via the by-SHA read either. The fallback read is issued (the trace
+			// shows the `pipelines?sha=` GET) and comes back empty, so NO `pipeline` context is
+			// published — a pipeline-gated head with no verdict stays could-not-check, never a
+			// pass. This proves the #1411 fallback does not paper over a genuinely missing check.
+			name: "checks_at_head_mr_pipeline_absent_via_shalist", method: "ChecksAtHead",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{"id": "abc123", "status": "success"}
+				s.statuses = []map[string]any{}
+				// No s.pipelines fixture: the by-SHA read answers empty for this head.
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
 		},
@@ -964,6 +1071,23 @@ func glCases() []glCase {
 			name: "create_draft_change_not_marked_draft", method: "CreateDraftChange",
 			setup: func(s *glServer) {
 				s.createMR = glMR(map[string]any{"iid": 23, "title": "t", "draft": false})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.CreateDraftChange(glRepo, DraftChangeInput{Title: "t", Body: "b", Head: "feat/x", Base: "main"})
+			},
+		},
+		{
+			// issue #1415, Part 1 — DIAGNOSTICS. A 400 carrying a GitLab `{"message": …}`
+			// body must reach the caller with that message preserved, not as a bare "HTTP
+			// 400". The chosen body is a GENUINE validation refusal (a duplicate MR already
+			// open on this source branch) — it names "source branch" but NOT "does not
+			// exist", so it is NEVER matched by the transient-retry guard: the golden's single
+			// captured request proves it was surfaced on the first response, not retried.
+			name: "create_draft_change_400_preserves_message", method: "CreateDraftChange",
+			setup: func(s *glServer) {
+				s.createMRStatus = http.StatusBadRequest
+				s.createMRErrBody = map[string]any{"message": []string{
+					"Another open merge request already exists for this source branch: !5"}}
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.CreateDraftChange(glRepo, DraftChangeInput{Title: "t", Body: "b", Head: "feat/x", Base: "main"})
@@ -1465,18 +1589,75 @@ func glCases() []glCase {
 			},
 		},
 		{
-			// Create path: the file is absent on the branch (404), so the write is a POST that
-			// creates it, with StartBranch naming the base the side branch is cut from — the
-			// inline branch-creation fallback, so no separate CreateRef op is needed.
+			// Create path: the file is genuinely new — absent on the START branch (`main`) the
+			// side branch is cut from — so the existence probe reads `ref=main`, 404s, and the
+			// write is a POST that creates it, with StartBranch naming the base for the inline
+			// branch-creation (no separate CreateRef op needed). This is the only remaining POST
+			// path on the side-branch lane: a genuinely new sidecar file.
 			name: "write_file_creates_with_start_branch", method: "WriteFile",
 			setup: func(s *glServer) {
 				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
-				s.repoFile = map[string]map[string]any{} // absent → 404 → create
+				s.repoFile = map[string]map[string]any{} // absent everywhere → 404 → create
 				s.createFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "evidence/row"}
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.WriteFile(glRepo, WriteFileInput{
 					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\n"),
+					Message: "Evidence: verification row", StartBranch: "main",
+				})
+			},
+		},
+		{
+			// issue #1412: landing Evidence into an EXISTING brief via the side-branch lane. The
+			// target branch (`evidence/row`) does not yet exist — StartBranch cuts it inline from
+			// the base — and the file ALREADY exists on that base (`main`). The existence probe
+			// therefore reads the START branch, finds the file, and the write is a PUT that carries
+			// start_branch to create the side branch inline (and last_commit_id from the base as
+			// the optimistic lock). Before the fix the probe read the not-yet-created target branch,
+			// 404'd, and issued a create (POST) that GitLab rejects HTTP 400 because the path exists
+			// on the base — the exact defect this case pins.
+			name: "write_file_updates_existing_via_start_branch", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"EVIDENCE.md": {
+						"file_name": "EVIDENCE.md", "file_path": "EVIDENCE.md",
+						"content": glB64("row one\n"), "encoding": "base64",
+						"ref": "main", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+				s.repoFileRefs = map[string]bool{"main": true} // on the base, NOT on the side branch
+				s.updateFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "evidence/row"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\nrow two\n"),
+					Message: "Evidence: verification row", StartBranch: "main",
+				})
+			},
+		},
+		{
+			// issue #1412's widening guard: the probe reports the file present (so the write is a
+			// PUT), but the PUT itself fails — a race that removed the path between probe and write,
+			// or a caller bug. The failure surfaces as could-not-check; it is NEVER retried as a
+			// create. The request list ends at the failed PUT with NO POST behind it, which is what
+			// proves the fix did not widen into "always succeed".
+			name: "write_file_update_race_is_could_not_check", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"EVIDENCE.md": {
+						"file_name": "EVIDENCE.md", "file_path": "EVIDENCE.md",
+						"content": glB64("row one\n"), "encoding": "base64",
+						"ref": "main", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+				s.repoFileRefs = map[string]bool{"main": true}
+				s.updateFileStatus = http.StatusBadRequest // the PUT fails
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\nrow two\n"),
 					Message: "Evidence: verification row", StartBranch: "main",
 				})
 			},

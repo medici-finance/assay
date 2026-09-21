@@ -7,7 +7,7 @@
     {
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/EVIDENCE%2Emd",
-      "query": "ref=evidence%2Frow"
+      "query": "ref=main"
     },
     {
       "method": "POST",

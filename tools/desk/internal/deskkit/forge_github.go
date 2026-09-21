@@ -99,13 +99,28 @@ func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
 // ForgeAPIError is a non-2xx REST/GraphQL response. A caller maps it to Unverifiable (an
 // API error mid-check means the precondition could not be positively verified). A 404 is
 // distinguished via IsForgeNotFound — the only status that licenses a kind re-resolution.
+//
+// Body, when non-empty, is the forge's OWN structured error message for the failure —
+// GitLab renders both its response shapes (`{"message": …}` and `{"error": …}`) into one
+// readable string, and preserving it here is what turns a bare "HTTP 400" into an
+// actionable refusal a caller can act on rather than guess at (issue #1415). It is
+// control-stripped at the point it is captured (mapErr), like every other forge-origin
+// string this tree renders, and it is OPTIONAL: a backend or status that carries no body
+// leaves it empty and Error() falls back to the status-only form. Being a struct field, it
+// is also available to programmatic classification via errors.As — the one narrow use is
+// gitlabIsTransientMissingSourceBranch, which reads it to tell GitLab's post-push
+// "source branch does not exist" race apart from every other 400.
 type ForgeAPIError struct {
 	Status int
 	Method string
 	Path   string
+	Body   string
 }
 
 func (e *ForgeAPIError) Error() string {
+	if e.Body != "" {
+		return fmt.Sprintf("forge API %s %s returned HTTP %d: %s", e.Method, e.Path, e.Status, e.Body)
+	}
 	return fmt.Sprintf("forge API %s %s returned HTTP %d", e.Method, e.Path, e.Status)
 }
 

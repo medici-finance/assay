@@ -156,6 +156,11 @@ single falsehood costs several review rounds instead of one.
   already have a sibling copy the diff never touches.
 - **Report every surviving instance together, in the same verdict.** Naming one and leaving
   the next round to discover another is the failure this clause exists to stop.
+- **On the FIRST review, run clause 12's declared inventory before the verdict, and hold
+  each hit to clause 12's blocking boundary.** The sweep here is discovery; it is not licence
+  to make every occurrence a blocker. A swept occurrence that names no concrete failure and
+  no scope basis is a follow-up, not a hold, and a late-found sibling keeps its class and
+  round count rather than opening a fresh one.
 
 ## 9. No-default-probe convention on any committed tool or script
 
@@ -188,23 +193,114 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 - An APPROVED that immediately follows a CHANGES_REQUESTED at the SAME commit, with no
   push in between, cannot be a re-verification — there is nothing new to verify. Do not
   post one; the flip gate refuses it.
-- ONE EXEMPTION, and only this one: when the only thing that changed since the
-  CHANGES_REQUESTED is a LABEL, and that label turned a REQUIRED CHECK green, a same-head
-  re-approve IS a re-verification — of a condition that was genuinely unsatisfied when the
-  block was written and is satisfied now. The premise of the rule above is that nothing
-  changed; here something did, and it is simply not something a head sha can carry (a
-  label moves no head, which is exactly why the sha looks unchanged). Post it, and say so
-  IN THE BODY: name the label, name the check it greened, and state that the diff is
-  byte-identical to the one reviewed. Without those three facts the review is
-  indistinguishable from the no-op the rule above forbids, and should be read as one.
-  The exemption covers a re-approve whose ONLY basis is the label; a finding about the
-  code still stands until the code changes, and no label clears it.
-  Know what this does and does not unblock: the flip gate compares head shas, so it still
-  reads the re-approve as same-head and still refuses on its own terms. The re-approve
-  records the correct verdict on the PR; clearing the standing rejection for the flip
-  remains with whoever owns that gate.
+- TWO EXEMPTIONS, and only these two. Both share one premise: the rule above assumes
+  nothing changed, and in each of these something DID — just not something a head sha can
+  carry. Both are established by an EXPLICIT declaration in the body, never by prose, and
+  both leave every code finding standing until the code changes.
+
+  1. **Check-only.** When the only thing that changed since the CHANGES_REQUESTED is a
+     LABEL that turned a REQUIRED CHECK green, a same-head re-approve IS a re-verification
+     of a condition that was genuinely unsatisfied when the block was written. Post it, and
+     say so IN THE BODY: name the label, name the check it greened, and state that the diff
+     is byte-identical to the one reviewed. The machine form is a `Blocked-On-Check: <check>`
+     line on the CR and a `Cleared-Check-Run: <run-id>` line on the re-approve.
+
+  2. **External-prerequisite.** When the CHANGES_REQUESTED's ONLY blockers were external
+     prerequisites — an upstream PR that had not merged, a decision that had not been made —
+     and every one of them has since been satisfied, a same-head re-approve IS a
+     re-verification of a fact that genuinely changed AFTER the rejection. To claim it, the
+     ORIGINAL CR must have been typed for it: a `External-Prereq-Only: <summary>` line, AND a
+     review-finding block (clause 13) in which EVERY blocking finding is
+     `blocker: external-prerequisite` with the external object in `sharedRepair` — a single
+     code/content blocking finding makes the CR "mixed" and no longer eligible. The
+     re-approve then cites each satisfied prerequisite with one
+     `Cleared-Prereq: <condition-id> <object> <satisfying-ref>` line (the condition id is the
+     finding id; the satisfying ref is the merge commit or decision event you observed). The
+     ready gate RE-VERIFIES every prerequisite from fresh evidence at flip time and fails
+     closed on a wrong revision, a prerequisite that predates the rejection, a later
+     revocation, an unrelated object, unreadable evidence, a standing security failure, or
+     any code/content finding — so a citation you cannot substantiate clears nothing.
+
+  Know what these do and do not unblock: the flip gate still compares head shas and reads
+  the re-approve as same-head. The re-approve records the correct verdict on the PR; the
+  ready gate (`deskpost ready`) is the ONLY place that acts on the declaration, and only
+  after its own independent re-verification. Neither exemption is a merge, and neither is a
+  licence to clear a code finding without a code change.
 - Findings first, scope second: re-read the PR's reviews before and after every push you
   make to it.
 - Escalate per the common kit's escalate-durably rule: anything the loop cannot resolve
   becomes a filed issue or a PR comment carrying the escalation label and a statement of
   exactly what is needed and from whom.
+
+## 12. First-pass inventory and the blocking boundary
+
+Clause 8 sweeps a false-claim finding across the diff on re-review. This clause bounds that
+sweep at BOTH ends: it requires the search to be COMPLETE and DECLARED on the first pass,
+and it requires each hit that HOLDS the pull request to name a concrete failure — so a small
+change does not acquire unbounded cleanup scope.
+
+**First pass — inventory before the verdict.** On the FIRST review of a false-claim class,
+inventory its related occurrences before issuing the verdict. Search three surfaces: the
+changed surface, the item's required deliverables, and references to the affected entity
+across the repository; read the matches in context. RECORD the search command, its scope,
+its exclusions, and the input revision. An incomplete search is reported INCOMPLETE, never
+certified clean — a search that did not look has cleared nothing. Repository search is
+DISCOVERY, not authority to make every hit a merge blocker.
+
+**Blocking boundary — a blocker names a concrete failure.** Every blocking finding names a
+concrete failure and its SCOPE BASIS, one of:
+
+<!-- reviewscope:begin -->
+| basis | a blocking finding names it when |
+|---|---|
+| changed-behaviour | the change alters observable behaviour and the finding is a defect in it |
+| acceptance-obligation | the finding is an explicit acceptance deliverable this change owes, even if omitted from the diff |
+| material-claim | the finding contradicts a material PR-body or Verify-table claim of this change |
+| safety-consequence | the finding is a demonstrated safety consequence of this change, including outside the edited lines |
+<!-- reviewscope:end -->
+
+Unrelated pre-existing prose belongs in a LINKED FOLLOW-UP, not a blocker. "Untouched" does
+not automatically mean irrelevant — a required operator-state table can be a deliverable even
+when it was omitted from the diff — and conversely sharing a directory or a substring is
+insufficient scope on its own.
+
+**Class continuity.** Group every occurrence of one proposition under ONE claim class. A late
+or missed sibling occurrence retains that class and its existing round count: it is review
+coverage failure, not a fresh class, so it does not reset or re-open the counter, and you do
+not charge the author another fresh class for it. A previously non-blocking occurrence cannot
+become blocking merely because another file was edited — require CHANGED IMPACT or NEW
+evidence, and record the reason. This is what separates genuine changed evidence from a
+bypass of a standing rejection.
+
+**Unchanged by this clause.** The three-round cap on a finding class and the independent
+security review stand exactly as before; this clause narrows what counts as a NEW blocker, it
+does not touch the round counter or any verdict lane.
+
+## 13. Persist findings so the round survives your replacement
+
+Your verdict prose is lost the moment you are replaced by a fresh reviewer: it rereads the
+whole PR and restates old objections under new IDs, and the round counter resets. Carry the
+disputed state in a DURABLE, typed record instead, embedded additively in your review body
+(`review-finding/v1`; schema and helper in `deskkit.RenderFindingBlock`, contract in the
+review-finding record doc). The record is what makes the existing per-class round cap and
+the finding identities survive an agent change.
+
+- **Give every blocking finding a stable `id` and a `class`, and reuse them.** A newly
+  noticed OCCURRENCE of a proposition you already raised keeps the same class ID and its
+  round history — fixing one sentence never resets the class, and a sibling sentence is not
+  a fresh finding. A genuinely new proposition gets a new ID.
+- **A blocking finding needs a concrete reproduction or an evidence-based explanation** — a
+  bare assertion cannot block (the write gate refuses one that carries neither).
+- **Resolve at the current head, with current-head evidence.** A resolution whose evidence
+  was gathered at a stale head does not clear the finding, and an approval at an old head is
+  never carried across a change.
+- **Distinguish a shared external prerequisite (a red shared-CI leg) from a code/content
+  defect.** A shared prerequisite is ONE shared repair cited across the PRs that hit it, not
+  a per-PR correctness defect — but it still blocks a ready-flip until the applicable checks
+  pass.
+- **The round cap is derived, not something you assert.** At the existing three-round-per-
+  class cap the derived ledger files ONE arbiter packet to the human decision lane and holds
+  the class. You never overrule a reviewer and never manufacture a cap breach; a promotion
+  from advisory to blocking is recorded with changed impact or new evidence.
+- **A record missing its authenticated actor or head is could-not-check** — it clears
+  nothing. Report it as itself; never round it up to a resolution.

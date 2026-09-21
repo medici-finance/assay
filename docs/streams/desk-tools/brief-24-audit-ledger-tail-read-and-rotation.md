@@ -409,6 +409,35 @@ Pre-mortem → detection map:
 | # | Exit | Key observed output |
 |---|------|---------------------|
 | — | — | not yet run — this brief is authored, not implemented |
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Brief's own Evidence section was never filled in by the implementer despite merge ("not yet run — this brief is authored, not implemented") — nothing self-reported to void; verified from scratch. Deliverable squash-merge `497239d9c` (PR #1061) confirmed an ancestor of `origin/main` `e5f2b89dbab1e4be255fe15ca73ba00dc8764995`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./... && go vet ./...` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 2 | `TestGuardOnHundredMegabyteLedgerMedianUnderFiftyMilliseconds` | exit 0, bounded p50 <50ms | exit 0 — 109MB/460k rows: bounded p50=158.792µs, whole-parse=904.78ms | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestLastEntryReadsBoundedBytes` | exit 0, equal+bounded byte count | exit 0 (asserts <128KiB AND identical bytes between 1k/100k-row ledgers) | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestLastEntryThreeStates` | exit 0, 3(+1) states | exit 0, 4 subtests (missing/empty/malformed-final-line/empty-live-after-rotation) | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestBoundedPointsForMatchesFullParseVerdicts` (SPOF row) | exit 0, verdict equivalence | exit 0 — 9 probes incl. `BreakerTrip` with a 96h-old oldest member (defeats a time-horizon reader), verdict (not count) equality asserted with a fixture-too-weak guard | 2026-09-17 | sonnet-5-verifier |
+| 6 | `TestBoundedPointsForFallsBackWhenUndetermined` | exit 0, fail-closed fallback | exit 0, 3 subtests (hard-cap discard, malformed-line refusal, unparseable-timestamp fail-closed) | 2026-09-17 | sonnet-5-verifier |
+| 7 | `TestCacheReuseWritesNoAuditRowAndMintWritesOne` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 8 | `TestRotationCarriesCounterAndIdempotencyForward` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 9 | `TestRecoverAcrossSegments` + `TestTailAcrossSegmentsAndThreeStates` | exit 0 | exit 0 both | 2026-09-17 | sonnet-5-verifier |
+| 10 | `muhar -spec audittail-mutations.json` | baseline GREEN, all mutations CAUGHT | exit 0 — 10 caught, 0 not-caught, 0 could-not-mutate | 2026-09-17 | sonnet-5-verifier |
+| 11 | whole-module test (`deskkit`/`desktoken`/`deskaudit`/`deskpost`) | exit 0 | exit 0, all packages ok | 2026-09-17 | sonnet-5-verifier |
+| 12 | `gofmt -l` | empty | empty | 2026-09-17 | sonnet-5-verifier |
+| 13 | `--lint` | exit 0 | exit 0, LINT: PASS | 2026-09-17 | sonnet-5-verifier |
+| 14 | `--consumers --brief` on fully-merged tree | exit 0 or 2 could-not-check | **exit 2, could-not-check as expected on a fully-merged tree — but the underlying report was itself wrong**: ran `--consumers --base <real parent>` directly, which reported all six `fixed-here` claims DISPROVED. Traced the cause: a genuine `statusgen` tool bug — it never strips markdown backticks from a `consumers:` site token, so a backtick-quoted path (this house's standard convention) always fails to resolve. Independently corroborated every claim by hand-diffing (`git diff --name-only <parent> <merge>`): all six `fixed-here` paths genuinely present, both `out-of-scope` paths genuinely absent — the brief's own claims are accurate; only the tool's parsing is wrong. Filed: `medici-finance/assay#1296` | 2026-09-17 | sonnet-5-verifier |
+
+**RISK-VALUE: DERIVED**
+- `boundedReadMaxLines=200_000` / `boundedReadMaxBytes=200MiB` (`ratelimitread.go:49-50`) — top-ranked: on exceeding the cap the code discards the partial read and falls back to `LoadEntries()` (`:128`), confirmed fail-closed (row 6), never fail-open.
+- `segmentPattern = ^audit\.jsonl\.\d{4}-\d{2}-\d{2}(\.\d+)?$` (`audit.go:101`) — governs which files rotation/recovery treat as segments; row 10's mutation confirms a prefix-relaxation is caught, row 8 confirms decoys untouched.
+- `tailBlockSize=64KiB` (`audittail.go:42`) — read granularity only, no correctness exposure.
+- No retention/deletion call exists anywhere in the diff (grepped for `os.Remove`/`RemoveAll`/`Truncate` — only hit is a pre-existing atomic-rename temp-cleanup, not data-destroying). The worst-case failure mode this brief names (rotation silently destroying audit history) has no code path that can do it.
+- `desktoken`'s pre-existing `cacheMaxAge=50min` is unchanged; the brief only adds a `suppress` flag scoped strictly to the cache-reuse success path, confirmed at source.
+
+**VERIFY: PASS** — 13 of 14 rows executed with real, non-vacuous passes (incl. the SPOF equivalence row, the fail-closed fallback row, and a fully-caught mutation gate 10/10); row 14 produced exactly the could-not-check the brief documents for a fully-merged tree, plus an independent manual corroboration after finding (and filing) a pre-existing, unrelated statusgen tool bug. No invented scope — diff matches the brief's declared files exactly.
 
 ## Review
 

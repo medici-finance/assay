@@ -164,6 +164,18 @@ out-of-repo files: <exact paths outside the repo (e.g. ~/.claude/skills/...), if
 see rule 7; omit the line entirely when none>
 facts: <the 3-5 project facts needed — key: value, no narrative. The implementer
 must never need to explore the repo.>
+layering: <REQUIRED for a new component/service/tool or a substantial boundary change
+(domain extraction/dissolution, added adapter/entrypoint, logic crossing a process or
+trust boundary); omit otherwise. One or two lines: simplest justified structure +
+meaningful rules vs external effects (or why no extraction is warranted) + current
+reason + Task/Verify references. Defaults: domain-core for independently meaningful
+rules, flat tool for bounded orchestration; justified alternatives allowed. Adapter
+count triggers reconsideration, not mandatory extraction. Interfaces need a current
+purpose, not a second implementation. Dependency provenance does not establish purity:
+keep infrastructure and implicit effects outside a pure core. In Task/Verify, name and
+check the actual boundary and the checks' limits; test core rules without external
+services. A flat tool verifies behavior/failure paths without inventing a boundary.
+See brief-v1 §4.1; do not justify abstractions only by hypothetical future needs.>
 
 ## Human decision
 <!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
@@ -474,6 +486,11 @@ it is an authoring convention only.
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
 | `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
 | `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
+| `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |
+| `pattern-effect-target-not-owned` | a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary | fatal |
+| `pattern-join-not-check` | a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check | fatal |
+| `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
+| `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
@@ -528,7 +545,9 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
-[ ] 8. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
+[ ] 8. New or re-layered component → `layering:` records structure, boundary and current
+       reason; Task/Verify check the claimed separation (or flat-tool behavior), not its label.
+[ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```
 
 Item 1 is the negative control: a Verify table that cannot fail is a green lamp wired to nothing.

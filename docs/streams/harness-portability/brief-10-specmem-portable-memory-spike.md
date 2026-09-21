@@ -75,6 +75,24 @@ SpecMem portable-memory spike. Documentary/architectural spike (no code, no gati
 **RISK-VALUE: DERIVED** — top value = `go/no-go verdict = NO-GO (watch-list)`, DERIVED in §5 from the §4 register-mapping (SpecMem ships no adapter for brief-v1/Verify/freshness/STATUS; only CLAUDE.md natively ingested; adoption would re-lock registers to Kiro's SDD triad) — internally sound, follows from documented upstream facts, not a bare assertion. `max-age-days=45`, `last-reviewed="2026-08-24"`/`upstreams:[]` — NAMED, house-consistent, reversible (empty-upstreams justified inline: SpecMem not a locally-tracked clone). No irreversible operational literal.
 
 **VERIFY: PASS** — all 3 mechanically-runnable rows (1,2,4) pass; row 3 is a genuinely unrunnable live cross-harness comparison, honestly declared BLOCKED §7 with a positive-control reproduction protocol §6 and no fabricated output (matching the brief-01 house pattern). The go/no-go read does not hinge on the blocked row — it turns on the statically-assessable register-mapping. gate:model + all-risk-no → flipped `implemented → verified`.
+### Non-implementer verifier re-run — VERIFY: FAIL (de-house re-home dropped the deliverable, already tracked) — sonnet-5-verifier (verify-desk dispatch), @ merged main `5fbf75834e1d2e5a80b44524649b4030f50e80f1`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `test -f docs/research/specmem-portability-spike.md` | exit 0 | **FAIL — exit 1**, file absent on merged main | 2026-09-18 | sonnet-5-verifier |
+| 2 | grep identical/degraded/portable/native-only in the doc | exit 0 | **FAIL — exit 2**, target file absent | 2026-09-18 | sonnet-5-verifier |
+| 3 | dereference: same query run from both harnesses, quoted output | verdicts present | **could-not-check** — nothing to dereference, doc absent | 2026-09-18 | sonnet-5-verifier |
+| 4 | `grep -q specmem-portability-spike freshness.yaml` | exit 0 | **FAIL — exit 1**, no specmem entry (case-insensitive re-check also confirms absence) | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all 4 rows map 1:1 to Verify rows; no invented scope.
+
+**Finding — confirmed already tracked, same de-house-drop class as harness-portability/09.** The brief's own pre-existing Evidence table is real historical evidence from the house source tree, carried into the public repo by the re-home commit `527a938be` (2026-08-26) without the actual deliverable or freshness.yaml registration. The table's own text even says "Verified in-tree at the source repo." Already tracked at medici-finance/assay#393 (OPEN), which names harness-portability/10 explicitly with the identical root cause and identical row 1/2/4 failures. The README board status already correctly shows `implemented` with empty Verify/Review cells — the real tracked status was never corrupted, only the in-brief inline text is stale. No new issue filed.
+
+RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo found no literal; the one candidate irreversible act the brief guards against (treating SpecMem as authoritative over git) never happened — frontmatter risk.irreversible: no, and the brief states the desk registers stay authoritative in-git during the spike.
+
+VERIFY: FAIL — held at implemented, matching what #393 already asks (route to worker-desk to land the deliverable, porting the real house-repo findings, before any re-verify). Recommend the coordinator also consider #393's Ask item 2: stripping/marking the brief's own inline Evidence table as detached/non-authoritative, since as written it misleadingly reads as a completed verified-here pass.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.

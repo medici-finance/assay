@@ -19,6 +19,7 @@ The specification covers three domains:
 | [`brief-v1.md`](./brief-v1.md) | The brief-v1 schema: frontmatter fields, body structure, dependency rules, Verify tables, execution tiering, mid-flight change routing, and conformance requirements. |
 | [`registers-v1.md`](./registers-v1.md) | The append-only registers (FINDINGS, INTAKE; RETRO informative): per-entry-file storage and generated views, slug IDs, append-only and tombstone rules, deletion detection, and linter conformance. |
 | [`lifecycle-v1.md`](./lifecycle-v1.md) | The brief lifecycle (`todo` through `done`), the single-writer STATUS.md board, the Next-up work-queue semantics, review gates, and what the board does and does not measure. |
+| [`workflow-pattern-v1.md`](./workflow-pattern-v1.md) | The workflow-pattern-v1 schema: the node contract (kind, role, inputs, outputs, evidence, effects), risk class as a declared input (`risk-input`), the integration-check `join` node, and the role-to-effect-kind permission table. |
 
 This specification does not state which repository or licence the Assay artifacts ship
 under, and does not describe any particular deployment. That mapping is out of scope

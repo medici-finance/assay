@@ -35,9 +35,9 @@ sources:
 design: DR-contrib-disclosure
 decision-trigger: creation
 consumers:
-  - "CONTRIBUTING.md: follow-up contributor-trust/06 (this brief; the trust-bar section)"
-  - ".github/PULL_REQUEST_TEMPLATE.md: follow-up contributor-trust/06 (this brief; the claims checklist and the how-I-verified prompt)"
-  - "docs/contributor-trust.md: follow-up contributor-trust/06 (this brief; the published model gains its contributor-facing entry point)"
+  - "CONTRIBUTING.md: fixed-here (this change lands the trust-bar section — the provenance card, the tiers and what each unlocks, item admission, and the not-published boundary; the template and fork changelog-proxy sections landed earlier with the partial)"
+  - ".github/PULL_REQUEST_TEMPLATE.md: follow-up contributor-trust/06 (this brief; the claims checklist and the how-I-verified prompt — landed by the partial, outside this branch's diff)"
+  - "docs/contributor-trust.md: fixed-here (this change lands the provenance-card hop — the published model gains its contributor-facing entry point into what a submission is measured on)"
   - "SECURITY.md: out-of-scope (the reporting path is unchanged; the new sections link to it rather than restating it, since a second copy of a security contact is the copy that goes stale)"
 version: 1
 ---
@@ -173,6 +173,39 @@ gate's judgement and this table explicitly gates presence only.
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+
+Implemented in two motions: the pull-request template, the CONTRIBUTING.md template section and
+the fork changelog-proxy note landed earlier as the partial (PR #965), which deferred the
+disclosure sections pending the decision issue; this change completes the remainder — the
+`## The trust bar` section in `CONTRIBUTING.md` (provenance card, tiers and unlocks, item
+admission, the not-published boundary), the provenance-card hop in `docs/contributor-trust.md`,
+and the changelog fragment (re-cut; the partial's fragment was aggregated at v1.0.15).
+The decision issue for this brief's human gate remains open and unrated at implementation
+time; this implements the design record's recommended option (publish the model and the
+measured signals, never the rows) — the same disclosure boundary already published by the
+landed tier and provenance pages — and nothing here closes or pre-answers that issue.
+
+Fail-first: rows 4, 6 and both halves of 10 are new presence checks introduced by this change,
+and each was observed RED on the pre-fix base `e4109205` (`grep -n -i provenance CONTRIBUTING.md`
+→ rc=1, `grep -n -i 'not published' CONTRIBUTING.md` → rc=1, `grep -n -i contributor-trust
+CONTRIBUTING.md` → rc=1, `grep -n -i provenance docs/contributor-trust.md` → rc=1) and green at
+the branch head. Rows 1–3, 5, 7 and 9 assert content that predates this change (the template
+and the partial's CONTRIBUTING sections) and were green at the base; this change does not alter
+what they pin. No code, no test suite: the changed paths are markdown only.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `test -f .github/PULL_REQUEST_TEMPLATE.md` | exit 0 | exit 0 (present since the partial) | 2026-09-20 | glm-5.3[1m]-worker |
+| 2 | `grep -n -i 'how you verified' .github/PULL_REQUEST_TEMPLATE.md` | exit 0; ≥1 line | exit 0; line 11 `## Claims and how you verified them` (+ lines 14, 18) | 2026-09-20 | glm-5.3[1m]-worker |
+| 3 | `grep -n -i 'automated' .github/PULL_REQUEST_TEMPLATE.md` | exit 0; ≥1 line | exit 0; line 20 `## Automated assistance` | 2026-09-20 | glm-5.3[1m]-worker |
+| 4 | `grep -n -i 'provenance' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; lines 58, 70 (`provenance card`, link to `docs/contributor-provenance.md`); RED (rc=1) at base | 2026-09-20 | glm-5.3[1m]-worker |
+| 5 | `grep -n -i 'advisory' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; lines 35, 41, 44 — unchanged by this PR; the new section restates "the guidelines stay advisory" | 2026-09-20 | glm-5.3[1m]-worker |
+| 6 | `grep -n -i 'not published' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; line 78 `**Who holds which tier is not published**`; RED (rc=1) at base | 2026-09-20 | glm-5.3[1m]-worker |
+| 7 | `grep -n 'changelog' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; lines 76, 103–104 (proxy note landed by the partial; the new section links it) | 2026-09-20 | glm-5.3[1m]-worker |
+| 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | exit 1; no match | exit 1; no line printed (also no match at base) | 2026-09-20 | glm-5.3[1m]-worker |
+| 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; line 24 (pre-existing) + line 91 (new section links it, does not restate the path) | 2026-09-20 | glm-5.3[1m]-worker |
+| 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; ≥1 line each | exit 0; line 76 (link to `docs/contributor-trust.md`) and lines 69, 74 (`provenance card`, link to `contributor-provenance.md`); both halves RED (rc=1) at base | 2026-09-20 | glm-5.3[1m]-worker |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; `corroborated`; no `DISPROVED`/`COULD-NOT-CHECK` | exit 0; `summary: 3 corroborated, 0 disproved, 1 unchecked` against merge-base `e4109205` (the unchecked entry is SECURITY.md `out-of-scope`, byte-identical to the merge-base — a reviewer judgement by design, never a pass); requires the brief file itself in the branch diff, which its Evidence edit supplies | 2026-09-20 | glm-5.3[1m]-worker |
 
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.

@@ -150,3 +150,6 @@ WORKDIR /home/harness
 # so `docker run <image>` with no args is a self-identifying smoke check.
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["statusgen", "--version"]
+
+# Disable next-prompt generation for interactive and scheduled Claude processes.
+ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false

@@ -899,6 +899,45 @@ func (r *Repo) DirtyTrackedPorcelain() (string, error) {
 	return strings.TrimRight(b.String(), "\n"), nil
 }
 
+// DirtyPorcelain returns the porcelain-style status of ALL changes — tracked AND
+// untracked — matching `git status --porcelain` with its default
+// `--untracked-files=normal`; an empty string means the worktree holds nothing at all
+// that is not committed.
+//
+// It is the STRICTER sibling of DirtyTrackedPorcelain, and the two are deliberately both
+// kept. DirtyTrackedPorcelain answers "is there work in progress on tracked files",
+// which is the right question when untracked build output (node_modules/, dist/) must not
+// block an operation. This one answers "is this tree provably empty of anything not on
+// the remote", which is the only question that may precede DELETING a tree that no
+// session is left to speak for: an untracked file is unreachable from any commit, so a
+// gate that ignored it could destroy the only copy of new source.
+func (r *Repo) DirtyPorcelain() (string, error) {
+	wt, err := r.repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("gitcore: status: %w", err)
+	}
+	st, err := wt.Status()
+	if err != nil {
+		return "", fmt.Errorf("gitcore: status: %w", err)
+	}
+	type row struct{ path, line string }
+	var rows []row
+	for path, fs := range st {
+		disp := path
+		if fs.Staging == git.Renamed && fs.Extra != "" {
+			disp = fs.Extra + " -> " + path
+		}
+		rows = append(rows, row{path: path, line: fmt.Sprintf("%c%c %s", fs.Staging, fs.Worktree, disp)})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].path < rows[j].path })
+	var b strings.Builder
+	for _, rr := range rows {
+		b.WriteString(rr.line)
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
+}
+
 // Diff returns the unified diff between the trees at from and to (each a revision
 // expression), matching `git diff <from> <to>` at the given context-line count —
 // full patch text, headers included, with the same rename detection DiffNames uses.

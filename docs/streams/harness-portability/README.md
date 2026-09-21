@@ -82,8 +82,8 @@ drift tooling:
 
 1. **METHOD (single source):** the seven skill bodies and the resident rules are written
    in harness-neutral *capability vocabulary* — `dispatch-worker`, `message-agent`,
-   `isolate-workspace`, `invoke-skill`, `session-notifications`, `durable-monitor`, `stop-worker` — never
-   harness tool names. One text, every harness reads the same method.
+   `isolate-workspace`, `invoke-skill`, `session-notifications`, `durable-monitor`, `stop-worker`,
+   `cadence-tick` — never harness tool names. One text, every harness reads the same method.
 2. **BINDINGS (one small file per harness):** `plugins/assay/references/<harness>.md`
    maps each capability to that harness's mechanism (Claude: the `Agent` tool,
    `SendMessage`, background task notifications; Codex: `spawn_agent`/`wait_agent`/
@@ -200,7 +200,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 02 | [Kill the drift debt — re-sync the bundle, flip the canonical home](brief-02-drift-debt-authority-flip.md) | 0 | L | done | 2026-09-11 opus-4.8[1m]-verifier (assay 553dc2ae; 10/10 executable PASS, 3 could-not-check cross-repo/machine/tool) | 2026-09-11 assay-reviewer-app[bot] (approved PR #878 @ 353845668ede560a672dd0986c0687435c37b9ff) |
 | 03 | [Ruling: target harnesses, delivery channel, degradation matrix](brief-03-target-channel-ruling.md) | 1 | S | implemented | — | — |
 | 04 | [Neutral-core skill bodies + per-harness binding files + neutrality lint](brief-04-neutral-core-skills.md) | 2 | L | implemented | — | — |
-| 05 | [Resident rules — one source, per-harness delivery generated](brief-05-resident-rules-single-source.md) | 2 | M | implemented | — | — |
+| 05 | [Resident rules — one source, per-harness delivery generated](brief-05-resident-rules-single-source.md) | 2 | M | done | 2026-09-17 sonnet-5-verifier (re-run against today's main, 8/8 checks PASS; sha256 chain re-derived; CI-gating-cadence finding filed #1278) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1279 @ b2883682b6fa8e0b9b5cb72ffdb0958f13907e9f) |
 | 06 | [Codex packaging — generated manifest, coverage rule, install path](brief-06-codex-packaging.md) | 3 | M | implemented | — | — |
 | 07 | [Adoption docs, freshness registration, live Codex smoke protocol + first run](brief-07-adoption-live-smoke.md) | 4 | M | implemented | — | — |
 | 09 | [jcode desk-harness spike — measured parity + fleet-density for driving desks](brief-09-jcode-desk-harness-spike.md) | 0 | L | implemented | — | — |
@@ -366,13 +366,16 @@ constraint, not a risk gate.)
 
 ## Shared conventions
 
-- **Capability vocabulary is closed**: the seven capability names above are the whole
+- **Capability vocabulary is closed**: the eight capability names above are the whole
   set until a brief amends this README. A skill body naming a capability not in the set
   is a lint error (04). The block below is the **machine-readable** copy of that set —
   `tools/harnesslint` reads it from here, so amending the vocabulary means editing this
   block in the same PR (the lint reads the set from one place, this one). Keep it in step
   with the prose list in "The seam" above. (`stop-worker` was added by desk-supervision/02
-  — the desk window's cadence sweep stops a dispatched worker whose per-run stop is armed.)
+  — the desk window's cadence sweep stops a dispatched worker whose per-run stop is armed.
+  `cadence-tick` was added by the verify-desk liveness fix (#1310) — the scheduled recurring
+  prompt that wakes a desk-role window on the clock; the fixed-cadence sweep every liveness
+  contract already names, now a named, required boot step rather than an assumed one.)
 
 <!-- assay:capability-vocabulary
 dispatch-worker
@@ -382,6 +385,7 @@ invoke-skill
 session-notifications
 durable-monitor
 stop-worker
+cadence-tick
 -->
 
 - **Blocked is a state, not a failure**: Verify rows requiring the live harness are

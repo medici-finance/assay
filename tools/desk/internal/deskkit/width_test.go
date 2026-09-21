@@ -18,7 +18,7 @@ func TestDefaultWidthsArePinned(t *testing.T) {
 	want := map[string]int{
 		"worker-desk":    8,
 		"pr-review-desk": 5,
-		"verify-desk":    1,
+		"verify-desk":    6,
 		"intake-desk":    1,
 		"the-desk":       1,
 	}

@@ -8,6 +8,11 @@
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123/statuses",
       "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines",
+      "query": "per_page=1\u0026sha=abc123"
     }
   ],
   "result": {

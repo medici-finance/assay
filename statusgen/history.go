@@ -40,6 +40,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -73,7 +74,103 @@ var nowFunc = func() time.Time { return time.Now().UTC() }
 // error — it means no transitions have ever been recorded (first run ever).
 // Blank lines are skipped; a malformed line is a hard error (the log is a
 // machine format with no free-text tolerance, unlike FINDINGS.md/INTAKE.md).
+//
+// Memoised on (path, mtime, size) — the same stamped-key shape parseBriefFile uses
+// (brieffile.go), and for the same reason: one `--lint` reads the same
+// `docs/streams/.history.jsonl` from THREE call sites in main.go's run() alone, each
+// re-opening and re-decoding the whole append-only log. A file whose stamp changes between
+// calls is re-read, so the memo can never serve content that is no longer on disk — the one
+// way a cache here could change a run's verdict.
 func LoadHistory(path string) ([]HistoryEntry, error) {
+	key, keyed := historyLoadKey(path)
+	if keyed {
+		if hit, ok := historyLoadMemoGet(key); ok {
+			return hit.copy(), hit.err
+		}
+	}
+	entries, err := loadHistoryUncached(path)
+	if keyed {
+		historyLoadMemoPut(key, entries, err)
+	}
+	return entries, err
+}
+
+// historyLoadKey stamps a path with its mtime and size. (The brief-parse memo keys on a content
+// hash instead — see briefParseKey, medici-finance/assay#1407 — because a brief is edited in
+// place with a length-preserving substitution; the append-only history file this stamps is not.)
+// A path that
+// cannot be stat-ed (including the ordinary "no history yet" case, where the file is simply
+// absent) is NOT memoised — it is re-read every time rather than cached under a key that could
+// never detect the file coming into existence between calls.
+func historyLoadKey(path string) (string, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s|%d|%d", path, fi.ModTime().UnixNano(), fi.Size()), true
+}
+
+// historyLoadEntry is one memoised load. Entries are stored and handed back as a fresh COPY of
+// the slice, so a caller that appends to or mutates the result cannot reach into the cache and
+// change what a later caller sees (the same defensive copy parseBriefFile's memo makes).
+type historyLoadEntry struct {
+	entries []HistoryEntry
+	err     error
+}
+
+func (e historyLoadEntry) copy() []HistoryEntry {
+	if e.entries == nil {
+		return nil
+	}
+	cp := make([]HistoryEntry, len(e.entries))
+	copy(cp, e.entries)
+	return cp
+}
+
+var (
+	historyLoadMemoMu sync.RWMutex
+	historyLoadMemo   = map[string]historyLoadEntry{}
+	// historyLoadCount counts DISTINCT (path, stamp) loads actually performed — the instrument a
+	// test can assert against to show the memo, not just the call count it exists to decouple
+	// from the work.
+	historyLoadCount int
+)
+
+func historyLoadMemoGet(key string) (historyLoadEntry, bool) {
+	historyLoadMemoMu.RLock()
+	defer historyLoadMemoMu.RUnlock()
+	e, ok := historyLoadMemo[key]
+	return e, ok
+}
+
+func historyLoadMemoPut(key string, entries []HistoryEntry, err error) {
+	historyLoadMemoMu.Lock()
+	historyLoadMemo[key] = historyLoadEntry{entries: entries, err: err}
+	historyLoadCount++
+	historyLoadMemoMu.Unlock()
+}
+
+// historyLoadCountValue reads the distinct-load instrument.
+func historyLoadCountValue() int {
+	historyLoadMemoMu.RLock()
+	defer historyLoadMemoMu.RUnlock()
+	return historyLoadCount
+}
+
+// resetHistoryLoadMemo clears the memo and its instrument. Tests use it so one test's loads do
+// not satisfy another's assertions.
+func resetHistoryLoadMemo() {
+	historyLoadMemoMu.Lock()
+	historyLoadMemo = map[string]historyLoadEntry{}
+	historyLoadCount = 0
+	historyLoadMemoMu.Unlock()
+}
+
+// loadHistoryUncached is the ORIGINAL, unmemoised reader — the one that actually opens and
+// decodes the file. LoadHistory's memo wraps this; nothing else should call it directly, so a
+// future caller cannot accidentally bypass the memo the same way every parseBriefFile caller
+// goes through the one memoised entry point.
+func loadHistoryUncached(path string) ([]HistoryEntry, error) {
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil, nil

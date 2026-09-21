@@ -107,6 +107,18 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
   class with nothing queued, which is what keeps this a floor and not a second cap. worker-desk
   ships `resume=2`; the "resuming started work outranks a fresh brief" prose below is what that
   floor is FOR, not a second, unenforced statement of it.
+  - **The repair (`rework`) floor is ENFORCED at the dispatch boundary** (desk-supervision/18),
+    OPT-IN via `ASSAY_REPAIR_ADMISSION=on` (recorded policy `repair-admission-v1`). With it on,
+    `deskdispatch` refuses a **fresh** dispatch — exit 5, naming the waiting repair — that would
+    drop the free slots to or below the floor while a repair obligation is RUNNABLE (assignable
+    now, per the reconciled `docs/streams/repair-obligations.jsonl`); the repair itself is
+    admitted. A waiting-EXTERNAL repair is not runnable, so it never idles a slot. The item's class
+    is resolved from the obligation store, so a caller cannot relabel fresh work as a repair to jump
+    the floor. The gate serializes across dispatchers with a compare-and-swap lease in the same
+    claim backend, so two dispatchers cannot both admit into the last slot. It ships **OFF** — with
+    it unset, dispatch is unchanged and the floor stays the planner's advisory line above; that
+    unset state is also the rollback. A raw harness launch that does not go through `deskdispatch`
+    is outside this enforcement, exactly as it is outside the durable claim.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
   NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
@@ -134,13 +146,22 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
+| 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
 | 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the claim tool's `list`/`show` verbs (`deskclaim-ref`, installed with desk-tools; a repo that ships its own `tools/dispatch-claim.sh` uses that instead) stay as the fallback — run BOTH, since the tool lists the `refs/dispatch/*` namespace it acquires in while that `ls-remote` pattern lists the `refs/heads/dispatch/*` branch refs the Go claim readers use |
 
-**Rows 5 and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
+**Rows 5, 5b and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
+
+**A repair obligation (row 5b) is NOT completed by a worker exiting.** Opening the repair PR, closing
+the tracking issue, or even MERGING the repair only advances the obligation to `awaiting-reverification`
+— a merge WAKES independent reverification, it does not close the obligation. Only a valid INDEPENDENT
+verification at the repaired revision resolves it (a same-actor or wrong-revision pass is refused). When
+the original deliverable PR has MERGED, the obligation's item carries a fresh follow-up branch: branch
+from it, never resume the merged branch (immutable history). Carry the obligation id on your dispatch
+claim and in your PR workpad so a replacement worker resumes exactly where you left off.
 
 **Row 9 is why a stream can offer nothing while holding work.** A claim subtracts twice: once as an
 eligibility exclusion and again as a per-stream cap decrement, so a handful of branch-claim corpses on

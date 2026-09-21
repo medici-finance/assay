@@ -995,6 +995,37 @@ func TestHasVerifyPass(t *testing.T) {
 	}
 }
 
+// TestVerifyMarkerRegex pins the ratified marker regex
+// (verifyVerdictBoldRe / hasVerifyPass): a bold VERIFY verdict token followed
+// by arbitrary prose up to the closing `**` matches, but the verdict token
+// itself is anchored to PASS|FAIL — BLOCKED (or any other spelling) never
+// does, whatever prose surrounds it. The pre-fix `strings.Contains(evidence,
+// "**VERIFY: PASS**")` failed the first two rows below: a marker with any
+// prose before its closing `**` did not literally contain that fixed
+// substring, so a real verifier line was read as no pass at all.
+func TestVerifyMarkerRegex(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"bare bold pass", "**VERIFY: PASS**", true},
+		{"bold pass with row-count prose", "**VERIFY: PASS (4/4 offline-runnable rows)**", true},
+		{"bold pass with em-dash summary", "**VERIFY: PASS — all 6 rows green.**", true},
+		{"bold BLOCKED never matches", "**VERIFY: BLOCKED (human-gate)**", false},
+		{"bold FAIL is not a pass", "**VERIFY: FAIL (row #3)**", false},
+		{"no marker at all", "no marker here", false},
+		{"non-bold VERIFY: PASS does not satisfy the strict gate", "VERIFY: PASS", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := hasVerifyPass(c.text); got != c.want {
+				t.Errorf("hasVerifyPass(%q) = %v, want %v", c.text, got, c.want)
+			}
+		})
+	}
+}
+
 // TestUnrunRowsText confirms unrunRowsText extracts UNRUN rows.
 func TestUnrunRowsText(t *testing.T) {
 	evidence := `| # | Command | Exit | Result | Date | Runner |

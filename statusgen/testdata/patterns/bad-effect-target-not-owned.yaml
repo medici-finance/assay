@@ -1,0 +1,35 @@
+# Fixture for TestPatternsEffectTargetNotOwnedIsProblem — the `implement` node
+# (kind: artifact, so it is not itself the durable effect boundary) declares a
+# `push` effect targeting `not-an-output`, which is not among its own `outputs`
+# (`branch`). `push` IS a permitted effect kind for `implement`'s `worker` role,
+# so this fixture trips pattern-effect-target-not-owned only — never
+# pattern-effect-exceeds-role. A non-effect-kind node's effect target MUST be
+# among its own outputs (spec/workflow-pattern-v1.md §4.2 rule 2). This MUST
+# make `statusgen patterns --lint` exit 1, naming
+# pattern-effect-target-not-owned.
+schema: workflow-pattern-v1
+pattern: bad-effect-target-not-owned
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review]
+  human: [review]
+nodes:
+  - id: implement
+    kind: artifact
+    role: worker
+    outputs: [branch]
+    effects:
+      - {kind: push, target: not-an-output}
+  - id: review
+    kind: check
+    role: reviewer
+    inputs:
+      - {artifact: branch}
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "reviewer APPROVED", mandatory: true}
+edges:
+  - {from: implement, to: review}
+join: review

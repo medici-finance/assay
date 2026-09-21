@@ -911,3 +911,30 @@ func TestAttributionIdentityUntrackedDegradesLoudly(t *testing.T) {
 		t.Errorf("an untracked brief under a .git repo must degrade loudly with a per-brief NOTICE; got:\n%s", joined)
 	}
 }
+
+// TestSelfLabelHole is the assay#766 fixture the Verify table names directly
+// (verify-integrity/04 item 3): a `verified` brief cannot be greened by having
+// its Evidence Runner cell — or its Verified cell — self-label
+// "(non-implementer)" instead of naming a real independent runner. Both paths
+// (evidenceHasIndependentRow via the shared testdata/attribution corpus'
+// brief-09, and selfVerificationReason directly) are exercised so the fixture
+// pins the whole issue, not just one of its two holes.
+func TestSelfLabelHole(t *testing.T) {
+	// Evidence-row path: brief-09's Evidence Runner cell reads
+	// "sonnet verifier (non-implementer)" — a self-label, not an independent
+	// runner — and must still raise the independence problem (assay#766 hole-1).
+	problems := attrProblems(t)
+	if !hasProblem(problems, "attr/brief-09", "independent (non-implementer) Evidence row") {
+		t.Errorf(`assay#766: a "(non-implementer)" self-labelled Evidence Runner cell must not count `+
+			"as an independent row; got:\n%s", strings.Join(problems, "\n"))
+	}
+
+	// Verified-cell path: the cell's runner TOKEN (verifiedTokenRe captures one
+	// \S+ word after the date, matching the board's single-token Verified-cell
+	// convention) is itself the bare self-label and must be flagged as
+	// self-verification, not accepted as a distinct runner.
+	if r := selfVerificationReason("2026-07-08 by Fable session", "2026-07-08 non-implementer"); r == "" {
+		t.Error(`assay#766: a Verified cell reading "non-implementer" is a self-assertion and ` +
+			"must be flagged as self-verification, not accepted as independent")
+	}
+}

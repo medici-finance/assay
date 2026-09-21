@@ -23,7 +23,7 @@ schema: paired-versions-v1
 
 # LEFT side of the pairing: the plugin version this manifest is paired for.
 # Must match plugins/assay/.claude-plugin/plugin.json `version`.
-plugin: "1.0.13"
+plugin: "1.0.24"
 
 # RIGHT side: the statusgen release the plugin above is paired with.
 statusgen:
@@ -69,3 +69,30 @@ desk-tools:
     #   (never guesses) when the pin line for a detected platform is absent — same as statusgen.
     # The two windows arms above mirror the statusgen ones: v1.0.6 publishes
     #   `desk-tools-windows-{amd64,arm64}.tar.gz`, so they are pinned rather than deferred.
+
+# The HARNESS CONTAINER IMAGE — the witness-runner container `statusgen verifyrun --in-container`
+# runs a brief's Verify rows inside (windows-port/10). It is the SAME combined desk-tools image the
+# desk containers run (statusgen + the desk binaries ship in one Linux image; see docs/docker.md),
+# published from the SAME release. On Windows a native pipefail `bash` is unreliable (#1418), so the
+# supported execution-witness runner is this LINUX container, not a native shell — the host OS never
+# executes the rows.
+#
+# PINNED BY TAG **AND DIGEST**, never `latest`. `statusgen verifyrun --in-container` resolves the
+# image by its `digest` (`<image>@sha256:<64hex>`) and REFUSES fail-closed on a `latest` tag, an
+# absent digest, or a placeholder — the same "never a floating ref, never a hand-invented hash"
+# contract the per-platform pins above hold. The `tag` is kept for human/audit legibility; the
+# digest is authoritative.
+#
+# The `digest` below is a PLACEHOLDER, not a hash: a container image digest is a REGISTRY digest
+# (`docker manifest inspect ghcr.io/medici-finance/assay/desk-tools:v1.0.6`), harvested online from
+# the published image — it is not the release `checksums.txt` sha256, and it must never be invented.
+# Until a maintainer with registry access harvests the real digest and pins it here, the wrapper
+# REFUSES to run (fail-closed) rather than run an un-digest-pinned image. This is the same
+# "apply-gated, proven-on-apply" shape windows-port/04's staged CI rows use. The `tag: v1.0.6`
+# below is kept equal to the statusgen/desk-tools tag on purpose — `check-paired-versions.sh`
+# asserts every `tag:` in this file is the one release tag.
+harness:
+  release_home: medici-finance/assay
+  image: ghcr.io/medici-finance/assay/desk-tools
+  tag: v1.0.6
+  digest: PENDING-HARVEST-registry-digest-see-windows-port-10
