@@ -62,7 +62,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (42 desk-actionable of 63 total — 63 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (42 desk-actionable of 64 total — 64 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -145,11 +145,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Parked stream (2)
+### Parked stream (3)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
+| desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | desktools-v2 | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
@@ -283,7 +284,7 @@ _None._
 ### desktools-v2 (10 open)
 
 - 01 audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line) — implemented (wave 1)
-- 02 the v2 seam contract + the ban-lint (advisory/counting first) — todo (wave 2)
+- 02 the v2 seam contract + the ban-lint (advisory/counting first) — implemented (wave 2)
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — todo (wave 3)
 - 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — implemented (wave 2)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — todo (wave 2)
