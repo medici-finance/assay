@@ -1121,6 +1121,19 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
+		// Record WHICH shell actually executed the row (issue #1424) — but only
+		// when it ACTUALLY RAN under a NON-DEFAULT shell. A could-not-run row never
+		// ran (its note already names the shell/OS it could not use), and every
+		// `sh` row keeps a byte-identical note so the whole inherited corpus's
+		// Evidence is untouched.
+		if !res.couldNotRun && r.Shell != "" && r.Shell != rowShellSh {
+			ran := "ran under `" + r.Shell + "`"
+			if note == "" {
+				note = ran
+			} else {
+				note = ran + "; " + note
+			}
+		}
 		out = append(out, witness{
 			ID:           r.ID,
 			Command:      r.Command,

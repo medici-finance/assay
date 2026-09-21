@@ -988,6 +988,10 @@ func TestRunWitnesses_CmdRow_BashFailsCmdPasses(t *testing.T) {
 	if mw[0].State != statePass {
 		t.Fatalf("findstr row marked cmd: state %q, want pass — note %q", mw[0].State, mw[0].Note)
 	}
+	// The witness records WHICH shell actually ran the row.
+	if !strings.Contains(mw[0].Note, "ran under `cmd`") {
+		t.Errorf("witness note %q does not record that the row ran under cmd", mw[0].Note)
+	}
 	// The authored command reached cmd intact — a dispatch, not a rewrite.
 	raw, err := os.ReadFile(log)
 	if err != nil {
