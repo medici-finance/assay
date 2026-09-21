@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -723,4 +724,146 @@ func gitInit(t *testing.T, root, name, email string) {
 	runGit(t, root, "init")
 	runGit(t, root, "config", "user.name", name)
 	runGit(t, root, "config", "user.email", email)
+}
+
+// ---------------------------------------------------------------------------
+// Shell bootstrap failure — issue #1418
+// ---------------------------------------------------------------------------
+//
+// The Windows-specific behaviour (the WSL-launcher stderr signature, the shell
+// probe, the Git-for-Windows / override shell selection) is exercised here
+// ENTIRELY through a fake `bash` on PATH. No live Windows/WSL environment is used
+// or available; the fake reproduces exactly what the WSL launcher does when no
+// distro is installed — exit 1 with `CreateProcessCommon: execvpe(/bin/bash)
+// failed` BEFORE the intended command runs.
+
+// withFakeBashOnPath writes an executable `bash` whose body is `script` into a
+// fresh temp dir, prepends that dir to PATH for the test (restored automatically),
+// and returns the dir. POSIX-only: the interception relies on PATH resolution and
+// a `#!/bin/sh` shebang, so it is skipped on Windows itself — which is fine,
+// because it is the Windows CODE PATH that is under test, reproduced on a POSIX
+// host, not a Windows host.
+func withFakeBashOnPath(t *testing.T, script string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-bash-on-PATH interception is POSIX-only; the Windows code path is exercised through this fake on non-Windows hosts")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "bash"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
+
+// TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun is the core issue-1418
+// regression. A `bash` on PATH that is really the Windows WSL launcher with no
+// distro installed exits 1 with a launcher error BEFORE the row's own command
+// runs. verifyrun must record every such row as could-not-run — never as an
+// ordinary `fail exit=1`, which a human or closure process would then have to
+// manually roll back — and it must NOT write a witness that claims a command ran.
+func TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun(t *testing.T) {
+	withFakeBashOnPath(t, "#!/bin/sh\n"+
+		"echo 'bash: CreateProcessCommon:669: execvpe(/bin/bash) failed: No such file or directory' 1>&2\n"+
+		"exit 1\n")
+
+	rows := []verifyRow{
+		{ID: "1", Command: "go test ./...", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "2", Command: "grep -c foo bar", Expect: "exit 0", Class: classCheck, Classed: false},
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+
+	for _, w := range ws {
+		if w.State != stateCouldNotRun {
+			t.Errorf("row %s: state %q, want %q — a shell that never bootstrapped is could-not-run, not a product-check failure", w.ID, w.State, stateCouldNotRun)
+		}
+		if w.State == stateFail || w.State == statePass {
+			t.Errorf("row %s: recorded %q — the WSL launcher exited before the row ran; nothing may claim it ran", w.ID, w.State)
+		}
+		if !strings.Contains(w.Note, "bootstrap") {
+			t.Errorf("row %s: note %q does not explain the bootstrap failure", w.ID, w.Note)
+		}
+	}
+
+	// The rendered witness table must not claim any command ran: no pass/fail
+	// result cell may appear, only could-not-run.
+	table := witnessTable(ws)
+	if strings.Contains(table, "pass exit=") || strings.Contains(table, "fail exit=") {
+		t.Errorf("witness table claims a command ran (must be could-not-run only):\n%s", table)
+	}
+
+	// The low-level executor classifies it the same way.
+	if got := runVerifyCommand(t.TempDir(), "go test ./...", 30*time.Second); !got.couldNotRun {
+		t.Errorf("runVerifyCommand under a WSL-launcher bash: %+v, want could-not-run (never fail)", got)
+	}
+}
+
+// TestRunWitnesses_ProbesTheShellOncePerRunNotPerRow pins the cost contract: the
+// shell bootstrap probe fires exactly ONCE per run (before any row's own command),
+// not once per row — O(rows) probes would add real subprocess overhead. A counting
+// fake `bash` logs every invocation's LAST argument; the probe's is the fixed
+// `exit 0`, which isolates it from the rows' own commands.
+func TestRunWitnesses_ProbesTheShellOncePerRunNotPerRow(t *testing.T) {
+	dir := withFakeBashOnPath(t, "#!/bin/sh\n"+
+		"last=\n"+
+		"for a in \"$@\"; do last=$a; done\n"+
+		"printf '%s\\n' \"$last\" >> \"$FAKE_BASH_LOG\"\n"+
+		"exit 0\n")
+	log := filepath.Join(dir, "invocations.log")
+	t.Setenv("FAKE_BASH_LOG", log)
+
+	rows := []verifyRow{
+		{ID: "1", Command: "row-one-command", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "2", Command: "row-two-command", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "3", Command: "row-three-command", Expect: "exit 0", Class: classCheck, Classed: false},
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if len(ws) != 3 {
+		t.Fatalf("got %d witnesses, want 3", len(ws))
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("reading the invocation log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	probes := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "exit 0" {
+			probes++
+		}
+	}
+	if probes != 1 {
+		t.Errorf("shell probed %d time(s), want exactly 1 (one probe per run, not one per row); invocation log:\n%s", probes, strings.Join(lines, "\n"))
+	}
+	// And the probe must come FIRST — before any row's own command runs.
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "exit 0" {
+		first := ""
+		if len(lines) > 0 {
+			first = lines[0]
+		}
+		t.Errorf("first shell invocation was %q, want the probe (`exit 0`) ahead of any row", first)
+	}
+}
+
+// TestRunWitnesses_RealBashUnchanged guards the hard constraint that a working
+// bash on PATH runs every row exactly as before — the probe adds one subprocess
+// but changes no verdict. It uses the test-runner's own real bash (no fake): a
+// passing row stays pass, and a genuinely failing row (`false`) stays fail, never
+// could-not-run.
+func TestRunWitnesses_RealBashUnchanged(t *testing.T) {
+	rows := []verifyRow{
+		{ID: "1", Command: "true", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "2", Command: "false", Expect: "exit 0", Class: classCheck, Classed: false},
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if ws[0].State != statePass {
+		t.Errorf("row 1 (`true`): %q, want pass — a working bash must run rows as before", ws[0].State)
+	}
+	if ws[1].State != stateFail {
+		t.Errorf("row 2 (`false`): %q, want fail — a genuine non-zero exit is a failure, never could-not-run", ws[1].State)
+	}
+	if !strings.Contains(witnessTable(ws), "pass exit=0") {
+		t.Error("a passing row was not recorded in the witness table — the witness must still be appended on the happy path")
+	}
 }
