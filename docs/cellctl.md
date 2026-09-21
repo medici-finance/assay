@@ -1089,8 +1089,36 @@ persists `--model` per the widened-scope rules above, into `DESK_MODEL_<role>`.
 - `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` as before.
 - `ANTHROPIC_MODEL` = the model this window launches with, and
   `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` /
-  `ANTHROPIC_DEFAULT_HAIKU_MODEL` = the provider model (else the launch model) — so every tier alias
-  this window or its subagents use resolves to a name the endpoint accepts.
+  `ANTHROPIC_DEFAULT_HAIKU_MODEL` = a name the endpoint accepts — the provider model (else the
+  launch model), or that tier's per-tier model where one applies (next paragraph).
+
+**Per-tier provider models** (`assay#1352`): a provider may name a DIFFERENT model for one tier —
+`CELL_PROVIDER_<NAME>_MODEL_TOP` / `_MODEL_MID` / `_MODEL_FAST` (cell.env line, else the preset) —
+and it applies in two places: a role window whose cellctl tier is that one launches on it (the
+flat `MODEL` stays every other tier's default), and the matching launch alias
+(`OPUS`→`MODEL_TOP`, `SONNET`→`MODEL_MID`, `HAIKU`→`MODEL_FAST`) maps to it, else to the flat
+provider model. The built-in `glm` preset ships one: `MODEL_MID` = `glm-5.3-flash[1m]`, so on a
+glm cell every mid-tier window and every sonnet ask inside any window runs the flash variant,
+while the-desk (TOP) keeps the full `glm-5.3[1m]`. `cellctl check` prints the sonnet slot as its
+own row when it differs. A per-role pin or `--model` still wins over both, verbatim as ever.
+
+**Tier flags** (`--model-top` / `--model-mid` / `--model-fast`): override the provider's
+per-tier models for ONE run — refused without a provider (the keys are provider-keyed), and
+`--set` persists each given flag to its `CELL_PROVIDER_<NAME>_MODEL_<TIER>` key, making it the
+cell's default. `cellctl up` accepts the same three flags and threads them onto every role
+window it opens (via the `CELL_TIER_MODEL_<TIER>` environment), and the raw keys are settable
+directly: `cellctl set <cell> CELL_PROVIDER_GLM_MODEL_MID=glm-5.3-flash[1m]`.
+
+A per-tier provider model refines the launch path — it does not replace the flat model. The
+launch `--model` resolves through the normal precedence (`--model` > per-role pin > provider flat
+`MODEL` (preset or cell.env line) > harness default), so a provider configured with only a tier
+key and no flat `MODEL` launches on that resolved default model NAME — the model name is
+unaffected by the provider — while the per-tier aliases (`ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`)
+still take the provider's tier/flat model. Configure the provider's flat `MODEL` too when you want
+the launch model itself to be provider-sourced rather than the harness default. The one refusal
+here that IS enforced: a tier flag or `CELL_TIER_MODEL_*` value reaching `desk` with no provider
+at all is refused, the same way `up` refuses it — a tier model is provider-keyed and has nothing to
+hang on without one.
 
 A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
 is refused rather than launching codex against Anthropic with a provider the operator asked for.

@@ -67,6 +67,12 @@
 #                                                see Pinned models / Per-harness namespaces below. An explicit
 #                                                --model always passes through verbatim to the selected harness,
 #                                                bypassing the namespace/tier resolution entirely.
+#                                                --model-top/mid/fast <m> override the provider's per-tier
+#                                                models for THIS run (assay#1352; refused without a provider —
+#                                                the keys are provider-keyed); with --set they persist as
+#                                                CELL_PROVIDER_<NAME>_MODEL_<TIER>, making the tier model the
+#                                                cell's default. cellctl up threads the same flags onto every
+#                                                role window via the CELL_TIER_MODEL_<TIER> env.
 #                                                --kind / --cockpit / --provider override cell.env's CELL_KIND /
 #                                                CELL_COCKPIT / CELL_PROVIDER for this run (#1303 scope 2; a
 #                                                --kind the cell is not provisioned for is refused naming the
@@ -159,7 +165,9 @@
 # (https://api.z.ai/api/anthropic, $ZAI_API_KEY, glm-5.3[1m]) that need no cell.env line — a line
 # overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
 # cellctl never stores, prints or persists a token value. With a provider the launch unsets
-# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL
+# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
+# each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
+# the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
 # (provider_preset / resolve_provider / cmd_desk's claude arm below; docs/cellctl.md Providers).
 #
 # `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
