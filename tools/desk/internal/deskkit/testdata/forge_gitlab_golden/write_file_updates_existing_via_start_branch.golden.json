@@ -10,14 +10,15 @@
       "query": "ref=main"
     },
     {
-      "method": "POST",
+      "method": "PUT",
       "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/EVIDENCE%2Emd",
       "body": {
         "branch": "evidence/row",
         "start_branch": "main",
         "encoding": "base64",
-        "content": "cm93IG9uZQo=",
-        "commit_message": "Evidence: verification row"
+        "content": "cm93IG9uZQpyb3cgdHdvCg==",
+        "commit_message": "Evidence: verification row",
+        "last_commit_id": "commit-1"
       }
     }
   ],
