@@ -276,6 +276,12 @@
       "file": "internal/deskkit/reviewlanes.go",
       "old": "\tset, ok := laneTable[tier]\n\tif !ok || len(set) == 0 {\n\t\tset = laneTable[TierUnknown]\n\t}",
       "new": "\tset := laneTable[tier]\n\tif false {\n\t\tset = laneTable[TierUnknown]\n\t}"
+    },
+    {
+      "name": "probe the not-yet-created target branch instead of the start branch on a GitLab file write (issue #1412: a create of a path that already exists on the base is rejected HTTP 400, so Evidence never lands on the side-branch lane)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tprobeRef := in.Branch\n\tif in.StartBranch != \"\" {\n\t\tprobeRef = in.StartBranch\n\t}\n\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})",
+      "new": "\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})"
     }
   ],
   "_not_mutated": {

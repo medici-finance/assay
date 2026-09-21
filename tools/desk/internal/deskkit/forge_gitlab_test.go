@@ -89,6 +89,18 @@ type glServer struct {
 	// repoFile is the Repository-Files GET payload (ReadFile / WriteFile idempotency read),
 	// keyed by the ESCAPED file path segment. Absent → 404.
 	repoFile map[string]map[string]any
+	// repoFileRefs, when non-nil, restricts which refs a GET file read finds the file on: the
+	// file is served only when the request's `ref` query is a key here (AND repoFile carries
+	// the segment); any other ref answers 404. It exists to model the case at the heart of the
+	// side-branch Evidence lane (issue #1412): a file that EXISTS on the base/start branch but
+	// not yet on the not-yet-created target branch. When nil, the GET is ref-agnostic — a file
+	// in repoFile is served on any ref, which is what every pre-existing case relies on.
+	repoFileRefs map[string]bool
+	// updateFileStatus, when set, is the status the Repository-Files PUT (update) route returns
+	// instead of 200 — the failed-update case (a race that removed the path between the probe
+	// and the write, or a caller bug), which must surface as could-not-check and NEVER be
+	// retried as a create (issue #1412's widening guard).
+	updateFileStatus int
 	// createFileResp / updateFileResp are the Repository-Files write responses (FileInfo).
 	createFileResp map[string]any
 	updateFileResp map[string]any
@@ -217,6 +229,11 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			f, ok := s.repoFile[seg]
+			// repoFileRefs, when set, gates the read on the requested ref — the file exists only
+			// on the refs it names (the base/start branch), not on a not-yet-created target.
+			if ok && s.repoFileRefs != nil && !s.repoFileRefs[r.URL.Query().Get("ref")] {
+				ok = false
+			}
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				enc(map[string]any{"message": "404 File Not Found"})
@@ -224,9 +241,23 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			}
 			enc(f)
 		case http.MethodPost:
+			// GitLab's Repository-Files CREATE rejects a path that already exists on the
+			// (start) branch with HTTP 400 — the exact failure of issue #1412. Model it, so a
+			// backend that creates-instead-of-updates an existing path is caught here rather
+			// than silently accepted.
+			if _, present := s.repoFile[seg]; present {
+				w.WriteHeader(http.StatusBadRequest)
+				enc(map[string]any{"message": "A file with this name already exists"})
+				return
+			}
 			w.WriteHeader(http.StatusCreated)
 			enc(s.createFileResp)
 		case http.MethodPut:
+			if s.updateFileStatus != 0 {
+				w.WriteHeader(s.updateFileStatus)
+				enc(map[string]any{"message": "400 Bad Request"})
+				return
+			}
 			enc(s.updateFileResp)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -1505,18 +1536,75 @@ func glCases() []glCase {
 			},
 		},
 		{
-			// Create path: the file is absent on the branch (404), so the write is a POST that
-			// creates it, with StartBranch naming the base the side branch is cut from — the
-			// inline branch-creation fallback, so no separate CreateRef op is needed.
+			// Create path: the file is genuinely new — absent on the START branch (`main`) the
+			// side branch is cut from — so the existence probe reads `ref=main`, 404s, and the
+			// write is a POST that creates it, with StartBranch naming the base for the inline
+			// branch-creation (no separate CreateRef op needed). This is the only remaining POST
+			// path on the side-branch lane: a genuinely new sidecar file.
 			name: "write_file_creates_with_start_branch", method: "WriteFile",
 			setup: func(s *glServer) {
 				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
-				s.repoFile = map[string]map[string]any{} // absent → 404 → create
+				s.repoFile = map[string]map[string]any{} // absent everywhere → 404 → create
 				s.createFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "evidence/row"}
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.WriteFile(glRepo, WriteFileInput{
 					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\n"),
+					Message: "Evidence: verification row", StartBranch: "main",
+				})
+			},
+		},
+		{
+			// issue #1412: landing Evidence into an EXISTING brief via the side-branch lane. The
+			// target branch (`evidence/row`) does not yet exist — StartBranch cuts it inline from
+			// the base — and the file ALREADY exists on that base (`main`). The existence probe
+			// therefore reads the START branch, finds the file, and the write is a PUT that carries
+			// start_branch to create the side branch inline (and last_commit_id from the base as
+			// the optimistic lock). Before the fix the probe read the not-yet-created target branch,
+			// 404'd, and issued a create (POST) that GitLab rejects HTTP 400 because the path exists
+			// on the base — the exact defect this case pins.
+			name: "write_file_updates_existing_via_start_branch", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"EVIDENCE.md": {
+						"file_name": "EVIDENCE.md", "file_path": "EVIDENCE.md",
+						"content": glB64("row one\n"), "encoding": "base64",
+						"ref": "main", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+				s.repoFileRefs = map[string]bool{"main": true} // on the base, NOT on the side branch
+				s.updateFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "evidence/row"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\nrow two\n"),
+					Message: "Evidence: verification row", StartBranch: "main",
+				})
+			},
+		},
+		{
+			// issue #1412's widening guard: the probe reports the file present (so the write is a
+			// PUT), but the PUT itself fails — a race that removed the path between probe and write,
+			// or a caller bug. The failure surfaces as could-not-check; it is NEVER retried as a
+			// create. The request list ends at the failed PUT with NO POST behind it, which is what
+			// proves the fix did not widen into "always succeed".
+			name: "write_file_update_race_is_could_not_check", method: "WriteFile",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"visibility": "private", "default_branch": "main"}
+				s.repoFile = map[string]map[string]any{
+					"EVIDENCE.md": {
+						"file_name": "EVIDENCE.md", "file_path": "EVIDENCE.md",
+						"content": glB64("row one\n"), "encoding": "base64",
+						"ref": "main", "blob_id": "blob-1", "last_commit_id": "commit-1",
+					},
+				}
+				s.repoFileRefs = map[string]bool{"main": true}
+				s.updateFileStatus = http.StatusBadRequest // the PUT fails
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.WriteFile(glRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "evidence/row", Content: []byte("row one\nrow two\n"),
 					Message: "Evidence: verification row", StartBranch: "main",
 				})
 			},

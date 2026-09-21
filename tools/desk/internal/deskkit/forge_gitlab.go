@@ -3602,7 +3602,19 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	var priorSHA string
 	var priorContent []byte
 	exists := false
-	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
+	// The existence probe reads the ref the write's CONTENT is based on. For a direct write
+	// that is the target branch itself; for an inline branch-creation (StartBranch set, Branch
+	// not yet on the forge) it is the START branch — the ref the new branch is cut from and the
+	// only ref the file can already exist on. Probing the not-yet-created target branch 404s for
+	// every file and forces a create (POST); on GitLab a create of a path that already exists on
+	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update (PUT)
+	// with StartBranch carried through to create the side branch inline. The GitHub Contents-API
+	// path is unaffected: it has one create-or-update verb and no create-vs-update split to miss.
+	probeRef := in.Branch
+	if in.StartBranch != "" {
+		probeRef = in.StartBranch
+	}
+	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr
