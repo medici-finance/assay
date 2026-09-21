@@ -148,3 +148,17 @@ func envValue(pairs []string, k string) string {
 	v, _ := envLookup(pairs, k)
 	return v
 }
+
+func TestScrubbedPromptSuggestionsDisabled(t *testing.T) {
+	c := scrubbedFixture(t)
+	c.Env.Put("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "true")
+	for _, role := range []string{"the-desk", "worker-desk", "pr-review-desk", "verify-desk", "intake-desk", "smoke"} {
+		env := c.scrubbedComposeEnv(role, "claude", "s")
+		if got := envValue(env.Pairs, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"); got != "false" {
+			t.Errorf("%s suggestions = %q, want false", role, got)
+		}
+	}
+	if _, ok := envLookup(c.scrubbedComposeEnv("worker-desk", "codex", "s").Pairs, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"); ok {
+		t.Error("Claude-only setting exported to scrubbed Codex launch")
+	}
+}

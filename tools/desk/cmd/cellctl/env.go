@@ -19,7 +19,7 @@ import (
 var scrubbedEnvKeys = []string{
 	"HOME", "ZDOTDIR", "SHELL", "PATH", "TMPDIR", "KUBECONFIG", "ASSAY_CONFIG_HOME",
 	"GH_CONFIG_DIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_TERMINAL_PROMPT",
-	"CODEX_HOME", "CLAUDE_CONFIG_DIR", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "TERM", "LANG",
+	"CODEX_HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "TERM", "LANG",
 }
 
 // scrubbedHarnessPath resolves the harness binary ONCE, on the PARENT shell's PATH — the one
@@ -84,6 +84,11 @@ func (c *Cell) scrubbedEnvValue(key, role, harness, session, composedPath string
 	case "CLAUDE_CONFIG_DIR":
 		if harness == "claude" {
 			return filepath.Join(c.Home, ".claude")
+		}
+		return ""
+	case "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION":
+		if harness == "claude" {
+			return "false"
 		}
 		return ""
 	case "DESK_LOOP":
