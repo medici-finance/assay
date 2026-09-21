@@ -128,7 +128,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
 | 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
 | 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | todo | — | — |
-| 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | todo | — | — |
+| 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | in-progress | — | — |
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | todo | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->

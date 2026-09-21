@@ -58,6 +58,22 @@ Options:
 
 Default if no answer: none — blocks implementation.
 
+### Recorded ruling
+
+Approved — **option 1** — by Ian on his own login (`kryton`), 2026-09-21,
+[issue 1402 comment](https://github.com/medici-finance/assay/issues/1402#issuecomment-5762179072):
+
+> Approve desk-supervision/20's first-pass inventory and impact-based blocking
+> boundary. A blocker must demonstrate changed behavior, an explicit acceptance
+> obligation, a material PR-body/Verify claim, or a concrete safety consequence.
+> Unrelated pre-existing prose goes to a follow-up. Untouched files are not
+> automatically exempt. Sibling occurrences retain their class and round count.
+> Preserve the existing three-round policy and independent security review.
+
+This ruling authorises the implementation below. It narrows what counts as a NEW
+blocker; it does not touch the three-round cap mechanics or the independent security
+review, both of which remain unchanged.
+
 ## Interface contract
 
 The first review of a false-claim class must inventory its relevant occurrences before issuing the verdict. Search the changed surface, the brief's required deliverables and references to the affected entity across the repository; read matches in context. Record command, scope, exclusions and input revision. An incomplete search is reported incomplete, never certified clean. Repository search is discovery, not authority to make every hit a merge blocker.
