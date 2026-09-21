@@ -408,6 +408,11 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 		// the token layer already flagged is already a hard PROBLEM from that
 		// layer and is not re-flagged here.
 		selfLabeledIndependent bool
+		// root and rel locate this brief's file for the precision refinement pass
+		// below (evidenceSectionTouchedByOtherIdentity) — only run on escalation
+		// candidates, so it costs nothing for the common case of a distinct
+		// authoring/last-toucher identity.
+		root, rel string
 	}
 	var sameIdentity []identPair
 	idents := map[string]bool{}
@@ -498,7 +503,7 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			idents[authoringID] = true
 			idents[evidenceID] = true
 			if authoringID == evidenceID {
-				sameIdentity = append(sameIdentity, identPair{label, authoringID, selfLabeledIndependent})
+				sameIdentity = append(sameIdentity, identPair{label, authoringID, selfLabeledIndependent, s.Root, rel})
 			}
 		}
 	}
@@ -550,14 +555,66 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 				}
 			}
 			sort.Slice(escalated, func(i, j int) bool { return escalated[i].label < escalated[j].label })
+
+			// Precision refinement (assay#1277 review findings, two rounds): the fast
+			// index's "most recent commit touching the path" is a whole-FILE,
+			// most-recent-only signal, and BOTH of those properties can be wrong.
+			// Whole-file: a later, unrelated, repo-wide mechanical commit (a
+			// formatting pass, a brief-schema migration) that never went near the
+			// Evidence section resets it back to the authoring identity, masking a
+			// genuinely distinct identity that landed the real Evidence commit in
+			// between. Most-recent-only: even scoped to the Evidence section alone, a
+			// later SAME-identity commit that adds a caveat/addendum next to an
+			// already-independently-verified row would read as "the last toucher is
+			// the author" even though independence was genuinely established earlier
+			// in that same section's history. evidenceSectionTouchedByOtherIdentity
+			// answers the question that is actually at stake — did an identity OTHER
+			// than the author EVER touch the Evidence section, not only most recently.
+			// Only escalation CANDIDATES need this refinement — a brief already
+			// reading as distinct-identity from the fast index is unaffected either
+			// way, and a brief the token layer already flagged (the `corroborating`
+			// bucket below) is already a hard PROBLEM regardless of this refinement.
+			var confirmed, unconfirmed []identPair
 			for _, p := range escalated {
+				touchedByOther, pok := evidenceSectionTouchedByOtherIdentity(p.root, p.rel, p.id)
+				switch {
+				case !pok:
+					// Could not determine the Evidence section's own history (no
+					// "## Evidence" heading found, unreadable history, git
+					// unavailable) — fail OPEN to advisory here: never turn an
+					// undetermined case into a false hard PROBLEM.
+					unconfirmed = append(unconfirmed, p)
+				case touchedByOther:
+					// An identity other than the author touched the Evidence section at
+					// some point in its history — independence was genuinely
+					// established; not a problem, and not even worth a NOTICE.
+				default:
+					// Confirmed: every commit that ever touched the Evidence section
+					// shares the author's identity — a real selfVerification, not an
+					// artifact of a later commit resetting a most-recent-only signal.
+					confirmed = append(confirmed, p)
+				}
+			}
+			for _, p := range confirmed {
 				add("%s: verification independence FAILS the committer-identity cross-check — the authoring "+
-					"commit and the most-recent (Evidence-adding) commit for this brief share one git identity "+
-					"(%q), even though the Verified/Evidence tokens self-label as independent; this repo's brief "+
-					"history carries more than one git identity, so identity IS discriminating here — this is "+
-					"the security-hardening/27 selfVerification failure (same identity + self-labeled "+
-					"independence): confirm the Evidence was genuinely run by someone other than the author, or "+
-					"correct the runner/author token", p.label, p.id)
+					"commit and every commit that ever touched this brief's Evidence section share one git "+
+					"identity (%q), even though the Verified/Evidence tokens self-label as independent; this "+
+					"repo's brief history carries more than one git identity, so identity IS discriminating "+
+					"here — this is the security-hardening/27 selfVerification failure (same identity + "+
+					"self-labeled independence): confirm the Evidence was genuinely run by someone other than "+
+					"the author, or correct the runner/author token", p.label, p.id)
+			}
+			if len(unconfirmed) > 0 {
+				labels := make([]string, 0, len(unconfirmed))
+				for _, p := range unconfirmed {
+					labels = append(labels, fmt.Sprintf("%s (%s)", p.label, p.id))
+				}
+				sort.Strings(labels)
+				addNotice("verification-independence: committer-identity cross-check — could not precisely "+
+					"identify the commit that landed the Evidence content for %d brief(s) whose whole-file "+
+					"authoring and most-recent commit share one identity (no \"## Evidence\" heading found, or "+
+					"its history was unreadable); token-level attribution is the only independence signal for "+
+					"these until that resolves: %s", len(unconfirmed), strings.Join(labels, ", "))
 			}
 			if len(corroborating) > 0 {
 				labels := make([]string, 0, len(corroborating))

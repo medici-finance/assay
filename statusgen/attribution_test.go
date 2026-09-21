@@ -747,6 +747,124 @@ sources: ["s"]
 	}
 }
 
+// TestAttributionIdentityCrossCheckMechanicalTouchNotMasked: the false-positive
+// shape assay#1277's own review demonstrated live against this repo's tree — a
+// brief IS genuinely independently verified (a distinct identity's commit lands
+// inside its "## Evidence" section), but a LATER, UNRELATED, repo-wide mechanical
+// commit (a formatting pass, a brief-schema migration) also touches the file
+// OUTSIDE the Evidence section and, under the whole-file "most recent commit
+// touching the path" signal, resets the apparent last-toucher back to the
+// authoring identity. That must not read as a same-identity selfVerification
+// PROBLEM: evidenceSectionTouchedByOtherIdentity's precision refinement asks
+// whether an identity other than the author EVER touched the "## Evidence"
+// section specifically, not just who touched the file (or even the section)
+// most recently, and must see straight through the later, unrelated commit.
+func TestAttributionIdentityCrossCheckMechanicalTouchNotMasked(t *testing.T) {
+	gitAvailable(t)
+	root := t.TempDir()
+	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
+	attrGitInit(t, root)
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice authors brief-01")
+
+	b1 := filepath.Join(root, "docs", "streams", "gitattr", "brief-01-t.md")
+
+	// Bob genuinely, independently re-verifies: a real edit INSIDE the "##
+	// Evidence" section (which runs to EOF in this fixture, so any append lands
+	// there).
+	f, err := os.OpenFile(b1, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("| 2 | `go vet ./...` | 0 | ok | 2026-07-09 | bob-verifier |\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	gitCommitAs(t, root, "Bob", "bob@example.com", "bob independently re-verifies brief-01")
+
+	// A LATER, unrelated, repo-wide mechanical commit by Alice touches brief-01
+	// again — but only its title line, well OUTSIDE the "## Evidence" section —
+	// the exact shape of the repo-wide brief-v1->v2 migration commit the review
+	// traced. Pre-fix, this reset the whole-file "last toucher" back to Alice
+	// (== the authoring identity) and masked Bob's genuinely independent commit.
+	body, err := os.ReadFile(b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mechanical := strings.Replace(string(body), "# Brief 01", "# Brief 01 (mechanical title touch)", 1)
+	if mechanical == string(body) {
+		t.Fatal("test fixture assumption broke: title line not found to rewrite")
+	}
+	if err := os.WriteFile(b1, []byte(mechanical), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice: unrelated mechanical title touch")
+
+	problems, _ := attrProblemsAndNotices(t, root)
+	joinedProblems := strings.Join(problems, "\n")
+	if strings.Contains(joinedProblems, "brief-01") {
+		t.Fatalf("brief-01 was independently re-verified by bob inside the Evidence section; a later, unrelated "+
+			"mechanical commit by alice outside that section must not mask that and false-flag a "+
+			"selfVerification PROBLEM; got:\n%s", joinedProblems)
+	}
+}
+
+// TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked: a second,
+// distinct false-positive shape found live against this repo's own tree
+// (docs/streams/desk-tools/brief-08, docs/streams/forge-gitlab/brief-08) once
+// the mechanical-touch case above was fixed: a brief IS genuinely independently
+// verified (a distinct identity's commit lands inside "## Evidence"), and a
+// LATER commit by the ORIGINAL AUTHOR also touches the Evidence section — but
+// only to append a caveat/addendum (e.g. a security-review residual note) next
+// to the already-independent row, never to re-verify or replace it. Scoping the
+// signal to "whoever touched Evidence MOST RECENTLY" (even when correctly
+// scoped to the section, not the whole file) gets this wrong: the independent
+// commit is still in that section's history, just not the newest entry.
+// evidenceSectionTouchedByOtherIdentity must see the independent commit
+// wherever it sits in the section's history, not only at the top.
+func TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked(t *testing.T) {
+	gitAvailable(t)
+	root := t.TempDir()
+	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
+	attrGitInit(t, root)
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice authors brief-01")
+
+	b1 := filepath.Join(root, "docs", "streams", "gitattr", "brief-01-t.md")
+
+	// Bob genuinely, independently re-verifies: a real edit INSIDE the "##
+	// Evidence" section.
+	f, err := os.OpenFile(b1, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("| 2 | `go vet ./...` | 0 | ok | 2026-07-09 | bob-verifier |\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	gitCommitAs(t, root, "Bob", "bob@example.com", "bob independently re-verifies brief-01")
+
+	// A LATER commit by Alice — the ORIGINAL AUTHOR — appends a caveat next to
+	// Bob's already-independent verification, still INSIDE the "## Evidence"
+	// section. This is the desk-tools/brief-08 shape: the implementer recording
+	// a residual found by security review, not re-verifying anything.
+	f2, err := os.OpenFile(b1, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f2.WriteString("\nCarried residual — could-not-close: see #1234.\n"); err != nil {
+		t.Fatal(err)
+	}
+	f2.Close()
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice: record carried residual in Evidence")
+
+	problems, _ := attrProblemsAndNotices(t, root)
+	joinedProblems := strings.Join(problems, "\n")
+	if strings.Contains(joinedProblems, "brief-01") {
+		t.Fatalf("brief-01 was independently re-verified by bob inside the Evidence section; alice's later "+
+			"same-section addendum (a caveat, not a re-verification) must not mask that earlier independent "+
+			"commit and false-flag a selfVerification PROBLEM; got:\n%s", joinedProblems)
+	}
+}
+
 // TestAttributionIdentitySingleIdentityInconclusive: a repo whose entire brief
 // history is one git identity emits exactly one aggregate "inconclusive" NOTICE
 // — the loud, honest degradation that commit metadata cannot corroborate
