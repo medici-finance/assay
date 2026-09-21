@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -398,36 +399,48 @@ func expectedBriefID(path string) (id, num string, ok bool) {
 //
 // Callers MUST test err before ok.
 func parseBriefFile(path string) (*BriefFile, bool, error) {
-	// Memo on (path, mtime, size). Measured before this cache: one --lint made 3,351
+	// Memo on (path, content-hash). Measured before this cache: one --lint made 3,351
 	// parseBriefFile calls over 172 distinct paths — up to 23 re-parses of a single file —
 	// because the thirty-odd checks that walk the brief tree each walk it independently and
 	// none of them shared a result.
 	//
-	// The key is a STAMP, not just the path: a file edited mid-run is re-read, so the memo can
-	// never serve content that is no longer on disk. Speed bought with a stale answer is not
-	// speed, and this is the one way a cache here could change a lint's verdict.
-	key, keyed := briefParseKey(path)
-	if keyed {
-		if hit, ok := briefParseMemoGet(key); ok {
-			return hit.value(), hit.found, hit.err
-		}
+	// The key hashes the FILE CONTENT, not an (mtime, size) stamp: a file edited mid-run is
+	// re-read, so the memo can never serve content that is no longer on disk. An earlier
+	// (path, mtime, size) stamp could not tell two same-size versions of a file apart when a
+	// coarse-granularity filesystem recorded both writes under one mtime tick — medici-finance/
+	// assay#1407, the length-preserving "example-a/01" -> "example-a/03" gate flip that flaked
+	// TestEligibilityDeclarationChangesDispatch on the release runner while passing on
+	// nanosecond-mtime APFS. A content hash changes with the bytes on every filesystem, whatever
+	// its timestamp resolution. Speed bought with a stale answer is not speed, and this is the
+	// one way a cache here could change a lint's verdict.
+	//
+	// parseBriefFile owns the single read so the key can hash the same bytes it parses;
+	// parseBriefFileBytes does the parse without re-reading.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		// Unreadable: NOT memoised (a transient read error must never be cached), and the read
+		// error is itself the parse result — the same (nil, false, err) contract the parse
+		// returns on an unreadable file.
+		return nil, false, err
 	}
-	bf, found, err := parseBriefFileUncached(path)
-	if keyed {
-		briefParseMemoPut(key, bf, found, err)
+	key := briefParseKey(path, raw)
+	if hit, ok := briefParseMemoGet(key); ok {
+		return hit.value(), hit.found, hit.err
 	}
-	return bf, found, err
+	bf, found, perr := parseBriefFileBytes(path, raw)
+	briefParseMemoPut(key, bf, found, perr)
+	return bf, found, perr
 }
 
-// briefParseKey stamps a path with its mtime and size. A file that cannot be stat-ed is NOT
-// memoised (keyed=false) — an unstampable file is re-read every time rather than cached under a
-// key that cannot detect a change.
-func briefParseKey(path string) (string, bool) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return "", false
-	}
-	return fmt.Sprintf("%s|%d|%d", path, fi.ModTime().UnixNano(), fi.Size()), true
+// briefParseKey keys a parse on the path and a strong hash of the file's CONTENT. Keying on
+// content rather than an (mtime, size) stamp makes the memo correct on every filesystem: a
+// same-size in-place edit changes the hash even where a coarse-granularity filesystem leaves the
+// mtime unchanged (medici-finance/assay#1407). The path stays in the key because a parse error is
+// rendered with the path — two identical-content files at different paths must not share one
+// cached error string.
+func briefParseKey(path string, raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return fmt.Sprintf("%s|%x", path, sum)
 }
 
 // briefParseEntry is one memoised parse. The BriefFile is stored by value and handed back as a
@@ -485,11 +498,10 @@ func resetBriefParseMemo() {
 	briefParseCount.Store(0)
 }
 
-func parseBriefFileUncached(path string) (*BriefFile, bool, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false, err
-	}
+// parseBriefFileBytes parses already-read brief bytes. parseBriefFile owns the single read (so
+// the memo can key on a content hash of the same bytes) and hands them here; nothing else calls
+// it. It is the non-memoised half of parseBriefFile.
+func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	// Normalize CRLF so a Windows-authored brief is not silently exempted.
 	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
 
