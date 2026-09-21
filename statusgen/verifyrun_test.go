@@ -756,13 +756,13 @@ func withFakeBashOnPath(t *testing.T, script string) string {
 	return dir
 }
 
-// TestRunWitnesses_WSLLauncherBootstrapFailureIsCouldNotRun is the core issue-1418
+// TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun is the core issue-1418
 // regression. A `bash` on PATH that is really the Windows WSL launcher with no
 // distro installed exits 1 with a launcher error BEFORE the row's own command
 // runs. verifyrun must record every such row as could-not-run — never as an
 // ordinary `fail exit=1`, which a human or closure process would then have to
 // manually roll back — and it must NOT write a witness that claims a command ran.
-func TestRunWitnesses_WSLLauncherBootstrapFailureIsCouldNotRun(t *testing.T) {
+func TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun(t *testing.T) {
 	withFakeBashOnPath(t, "#!/bin/sh\n"+
 		"echo 'bash: CreateProcessCommon:669: execvpe(/bin/bash) failed: No such file or directory' 1>&2\n"+
 		"exit 1\n")
