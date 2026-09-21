@@ -23,6 +23,72 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.23 — 2026-09-21
+
+### Added
+- Verify tables may declare a per-row **shell** in an optional `Shell` column
+  (`sh` / `cmd` / `pwsh`, default `sh`). `statusgen verifyrun` dispatches each row
+  to its declared shell — `bash -o pipefail -c` for `sh` (every inherited row,
+  unchanged), `cmd /d /s /c` for `cmd`, `powershell -NoProfile -Command` for
+  `pwsh` — so a native-Windows row such as `findstr /c:"…" a\b.md`, which only
+  works under `cmd.exe`, keeps its authored meaning instead of failing with a
+  bash-level error under Git-for-Windows bash. The shell is declared, never
+  guessed from the command text.
+- `cellctl` recognises `ASSAY_REPAIR_ADMISSION=on|off` as a cell.env key, so the
+  dispatch-boundary repair-admission gate can be turned on durably for a cell rather than only
+  via a one-off shell `export`. `cellctl set` accepts `on`/`off` only (a malformed value is
+  refused, and `--force` does not lift the value rule), `cellctl show` and `DRY_RUN=1 cellctl
+  desk` surface it, and every desk the cell launches carries it in its environment. `off` and
+  unset are identical: the key is simply absent from the launched environment.
+- `statusgen verifyrun` selects a platform-appropriate shell when the default `bash` cannot
+  bootstrap: an explicit `ASSAY_VERIFY_SHELL` override first, then Git-for-Windows bash at its
+  well-known install paths, and could-not-run (never a silent pass) if neither works.
+  `pipefail` semantics are preserved on whatever shell is finally used — a candidate that does
+  not support `-o pipefail` is treated as unusable — and it never falls back to PowerShell or
+  `cmd`. On Linux/macOS a working `bash` on PATH runs every row exactly as before, at the cost
+  of one cheap probe per run.
+
+### Fixed
+- A native-Windows Verify row that passes under `cmd` but fails under bash no
+  longer blocks a brief's closure with a false `fail exit=1`: it is either run
+  under its declared shell (`cmd`/`pwsh`), or, when that shell is unavailable on
+  the runner's OS (a `cmd`/`pwsh` row on Linux/macOS), recorded **could-not-run**
+  with the reason — never `fail`, and never silently rewritten into another
+  shell. `cmd`/PowerShell exit codes are read faithfully.
+- `deskclose` now sends the REST `not_planned` state reason when closing superseded, duplicate or triaged issues, avoiding a validation failure after the closing comment has posted.
+- `fanoutloop plan` no longer offers `Awaiting implementer rework` board rows that have
+  already moved on. The rework lane now cross-checks each row against its own stream
+  README Status cell (read from the same `origin/main` ref the board is read from) and
+  drops any row that has left the awaiting-rework state — the rework already landed
+  (`done`) or the deliverable was reset (`todo`) — the same rendered-board lag the Next-up
+  lane already guards against.
+- `fanoutloop plan`'s already-represented exclusion (a brief that already has an open or
+  merged pull request, matched on the PR's `Brief:` trailer rather than a derived branch
+  name) now also covers `Awaiting implementer rework` rows, so a rework row whose
+  deliverable already merged is not offered for a fresh dispatch. Orphan resumes and
+  durable repair obligations stay exempt, since a representing PR is expected there rather
+  than a phantom.
+- `statusgen --lint` now flags an unrecognised `Shell` marker (a typo like `bash`
+  or `powershell`) as a hard PROBLEM at authoring time, so a marker the tool
+  cannot resolve is never silently treated as the default.
+- `statusgen --scan-issues` now quotes issue labels correctly in the generated
+  `placeholder-v1` frontmatter. A label containing a YAML flow-indicator character
+  (for example a trailing `?`) was previously emitted unquoted inside the
+  `labels: [...]` flow sequence, producing frontmatter that failed to parse
+  (`did not find expected ',' or ']'`) and reddening lint on every scan. The label
+  list is now rendered through the YAML encoder, so each element is quoted exactly
+  when — and only when — YAML requires it.
+- `statusgen verifyrun` no longer records a Verify row as a false `fail` when the shell
+  itself never started. On native Windows, `bash.exe` on PATH is often the WSL launcher; with
+  no WSL distro installed it exits 1 with `execvpe(/bin/bash) failed` *before* the row's own
+  command runs. verifyrun now resolves and probes the shell once per run and, when no
+  pipefail-capable POSIX shell can be started, records the affected rows as **could-not-run**
+  (with the reason) rather than `fail` — so a shell-bootstrap failure is never mistaken for a
+  genuine product-check failure that a human then has to roll back.
+
+### Changed
+- Brief authoring now records a justified component structure, the rules and effects it separates, and how verification checks the boundary. The `domain-core` and `flat tool` defaults allow justified alternatives; adapter count prompts reconsideration rather than mandatory extraction.
+
 ## v1.0.22 — 2026-09-21
 
 ### Added
