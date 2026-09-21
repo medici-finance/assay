@@ -23,6 +23,38 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.18 — 2026-09-21
+
+### Added
+- Verification **wake receipts** (`verify-wake-v1`): a failed or blocked verifier run records a
+  checkable wake condition — the inputs it observed, the blocker class, and what must change
+  before re-running is worth a slot. An unchanged receipt keeps the failure visible as a `wait`
+  row (naming its blocker and next actor) but no longer consumes a verifier dispatch every pass;
+  a changed relevant input, tool version, Verify definition, or completed action wakes it, while
+  an unrelated change does not.
+- `--model-top/mid/fast <m>` flags on `cellctl desk`/`up` override a provider's per-tier models for one run (refused without a provider); `--set` persists them as `CELL_PROVIDER_<NAME>_MODEL_<TIER>` cell defaults, and `up` threads them onto every role window
+- `.github/workflows/forge-surface-control.yml`: an advisory step running the new counter
+  alongside the existing shell-exec ban / no-passthrough / single-construction-site checks.
+- `cellctl` per-tier provider models: a provider may name a different model for one tier (`CELL_PROVIDER_<NAME>_MODEL_TOP|_MID|_FAST`, cell.env line or preset) — the tier's role windows launch on it and the matching `ANTHROPIC_DEFAULT_*_MODEL` alias maps to it, else the flat provider model
+- `docs/streams/desktools-v2/seam-contract.md`: the one-page statement of the v2 seam
+  contract — the four GitHub-fact classes (`gh` subprocess, hardcoded `"origin"`,
+  `pullRequest`/`mergeRequest` GraphQL block, `api.github.com` host literal) and where each may
+  legitimately appear (the two `Forge` backends and their tests, plus `forge.go`'s
+  `GitHubAPIBase` for the host literal).
+- `tools/desk/scripts/forge-ban.sh`: a portable (macOS + Linux) advisory counter for
+  reach-around sites, covering `tools/desk/**`, `tools/cellctl/**`, `plugins/assay/**` and
+  `statusgen/**` (the last of which is not under the existing `forgeban` register), reporting
+  desk/statusgen counts separately and per class; `--baseline` records the total to
+  `docs/streams/desktools-v2/forge-ban-baseline.txt`.
+- the `glm` preset maps the MID (sonnet) slot to `glm-5.3-flash[1m]`, so mid-tier desk windows and every sonnet ask inside any window run the flash variant while the top tier keeps the full model; an operator-set flat model suppresses preset tier splits, and `cellctl check` prints the sonnet slot as its own row when it differs
+
+### Changed
+- `verifyloop plan` classifies a failed/blocked brief with an unchanged wake receipt into a new
+  `wait` bucket instead of re-dispatching it. Unreadable declared inputs stay visibly
+  could-not-check (never rounded up to unchanged), and legacy or incomplete receipts stay
+  eligible for one classification pass. A partial hold lets a newly-runnable row dispatch while
+  the held rows are recorded as explicitly unrun — no partial result closes the whole brief.
+
 ## v1.0.17 — 2026-09-20
 
 ### Added
