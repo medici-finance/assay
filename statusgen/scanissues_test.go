@@ -315,6 +315,51 @@ func TestScanIssuesEmittedFilesRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRenderPlaceholderLabelsQuotedForFlowIndicators is the regression for #1428:
+// the scanner writes an issue's GitHub labels as a YAML flow sequence
+// (`labels: [...]`). A label carrying a YAML flow-indicator character MUST be
+// quoted, or the emitted frontmatter fails to parse with
+// `did not find expected ',' or ']'` — the exact break reported across a batch of
+// generated scan-carrier files, recurring on every fresh scan until the emitter is
+// fixed.
+//
+// A representative corpus shape is `labels: [bug, "raised-by:desk", superseded?]`:
+// a label ending in `?` is common, and `?` is a YAML flow indicator. Before the
+// yaml.v3-encoder fix, the hand-rolled quote predicate omitted `?`, so
+// `superseded?` was emitted BARE and every fresh scan re-planted the parse break.
+// (Note the original report's "unquoted title" theory was a misdiagnosis — the
+// scanner emits no `title:` field at all; the defect is entirely the label list.)
+func TestRenderPlaceholderLabelsQuotedForFlowIndicators(t *testing.T) {
+	labels := []string{"bug", "raised-by:desk", "superseded?"}
+	body := renderPlaceholder(scanHomeRepo(), 1088, "model", labels)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "issue-1088.md")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil {
+		// #1428: a bare flow-indicator label breaks the sequence here with
+		// "did not find expected ',' or ']'".
+		t.Fatalf("emitted placeholder frontmatter did not parse (#1428):\n  %v\nrendered body:\n%s", err, body)
+	}
+	if !ok {
+		t.Fatalf("emitted placeholder was not recognised as placeholder-v1:\n%s", body)
+	}
+	// Round-trip: every label survives intact (quoting must not drop or mangle one).
+	got := map[string]bool{}
+	for _, l := range ph.Labels {
+		got[l] = true
+	}
+	for _, want := range labels {
+		if !got[want] {
+			t.Errorf("label %q missing after round-trip; parsed labels = %v", want, ph.Labels)
+		}
+	}
+}
+
 // TestScanIssuesPartialReadIsCouldNotCheck pins the #186 fix: a run that
 // could not read one or more scanned repos (rate limit / 404 / auth) must NOT be
 // mistaken for a clean read of an empty world. It must:
