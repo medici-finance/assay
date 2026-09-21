@@ -894,6 +894,159 @@ func TestReadNextUp_DropsRowsWhoseOwnReadmeStatusHasMovedOn(t *testing.T) {
 	}
 }
 
+// TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn is the fail-first regression proof
+// for the REWORK-lane half of medici-finance/assay#1028. The `### Awaiting implementer rework`
+// STATUS.md section is statusgen's RENDERED classifyAwaiting output; it keeps listing a row after a
+// LATER commit flips that row's own stream README Status cell out of the awaiting-rework state (the
+// rework landed → `done`; the deliverable was reset → `todo`), before the next status-regen commit
+// re-renders the section. readNextUp got this cross-check in #1047; the rework lane never did, which
+// is why the field evidence AFTER #1047 merged was all rework-bucket rows (issue #1028 comments
+// 2026-09-19/21). readAwaitingRework must cross-check every row against its OWN stream README, at the
+// same origin/main ref, and drop exactly the ones that have left `implemented`/`verified` — while
+// KEEPING a row it cannot independently verify (no README = could-not-check, never a licence to drop).
+//
+// The fixtures span the shapes seen across the three roots in the evidence log: a rework row flipped
+// to `done` (the rework merged), one reset to `todo` (deliverable withdrawn), a still-genuine
+// `implemented` rework row, a `verified` one, and a stream with no README at all.
+func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	status := "# STATUS\n\n### Awaiting implementer rework (5)\n\n" +
+		"| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |\n" +
+		"|---|---|---|---|---|---|---|---|\n" +
+		"| donestream | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |\n" +
+		"| resetstream | 02 | implemented | 3000 | 4 | — | — | — |\n" +
+		"| genuine | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |\n" +
+		"| verifiedstream | 08 | implemented | 1000 | 0 | — | — | — |\n" +
+		"| orphanstream | 07 | implemented | 1000 | 0 | — | — | — |\n"
+	if err := os.WriteFile(filepath.Join(root, "STATUS.md"), []byte(status), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeReadme := func(stream, num, liveStatus string) {
+		readme := "## Briefs\n\n" +
+			"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+			"|---|-------|------|--------|--------|----------|----------|\n" +
+			"| " + num + " | a brief | 1 | M | " + liveStatus + " | — | — |\n"
+		dir := filepath.Join(root, "docs", "streams", stream)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeReadme("donestream", "05", "done")          // rework landed → no longer awaiting rework → DROP
+	writeReadme("resetstream", "02", "todo")         // deliverable reset → not implemented → DROP
+	writeReadme("genuine", "03", "implemented")      // still awaiting rework → KEEP
+	writeReadme("verifiedstream", "08", "verified")  // verified is in classifyAwaiting's set → KEEP
+	// orphanstream has NO README on purpose — could-not-check → KEEP.
+
+	git("init", "-q")
+	git("add", "STATUS.md", "docs")
+	git("commit", "-qm", "board")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+
+	rows, err := readAwaitingRework(root)
+	if err != nil {
+		t.Fatalf("readAwaitingRework: %v", err)
+	}
+	var ids []string
+	for _, r := range rows {
+		ids = append(ids, r.ID())
+	}
+	if contains(ids, "donestream/05") {
+		t.Errorf("donestream/05 leaked into the rework lane despite its own README reading `done` (#1028): %v", ids)
+	}
+	if contains(ids, "resetstream/02") {
+		t.Errorf("resetstream/02 leaked into the rework lane despite its own README reading `todo` (#1028): %v", ids)
+	}
+	if !contains(ids, "genuine/03") {
+		t.Errorf("genuine/03 (still `implemented`, genuinely awaiting rework) was wrongly dropped: %v", ids)
+	}
+	if !contains(ids, "verifiedstream/08") {
+		t.Errorf("verifiedstream/08 (`verified` — inside classifyAwaiting's set) was wrongly dropped: %v", ids)
+	}
+	if !contains(ids, "orphanstream/07") {
+		t.Errorf("orphanstream/07 (no README to cross-check — could-not-check) was wrongly dropped: %v", ids)
+	}
+}
+
+// TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR is the fail-first proof for the merged-PR
+// half of the rework-lane fix (#1028 / at#2026's second defect). A `### Awaiting implementer rework`
+// STATUS.md row whose brief already has a MERGED PR — matched on that PR's `Brief:` trailer, so the
+// modern `feat/<repo>--<stream>--<NN>` branch spelling that the phantom-check used to miss is
+// irrelevant — is a phantom and must NOT be offered. Two lanes stay EXEMPT because a representing PR
+// is expected there rather than a phantom: an ORPHAN resume (the open PR it acts on) and a DURABLE
+// repair obligation (which reworks a MERGED original via a fresh follow-up branch, §row 5b).
+func TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR(t *testing.T) {
+	setupDeskHome(t)
+	now := at(t, "2026-09-20T12:00:00Z")
+
+	// The represented set is what deskkit.RepresentedBriefSet builds over open+merged PRs, keyed on
+	// the `Brief:` trailer. `phantomrework/04` here stands for a row whose deliverable merged under a
+	// branch the derived-name phantom-check would not have matched. `repairstream/09` is ALSO
+	// represented on purpose: it proves the repair-obligation lane is exempt even when its brief is in
+	// the set (a repair obligation reworks a MERGED original by design, §row 5b).
+	represented := map[string]bool{"phantomrework/04": true, "repairstream/09": true}
+
+	reworkRows := []BoardRow{
+		briefRow("phantomrework", "04", "M", "", "model", false), // merged deliverable → phantom → DROP
+		briefRow("genuinerework", "06", "M", "", "model", false), // no PR → genuine rework → KEEP
+	}
+	// A durable repair obligation whose ORIGINAL deliverable has MERGED — it is represented, yet it is
+	// legitimate work (reworked via a fresh follow-up branch), so it must survive the exclusion.
+	repairOblig := deskkit.NewRepairObligation(
+		"medici-finance/assay", "repairstream/09", "receipt/xyz",
+		[]int{3}, deskkit.BlockerImplementation,
+		"`go test ./x -run ^TestY$` exited 1", "`go test ./x -run ^TestY$` exits 0", "",
+		now.Format(time.RFC3339))
+	orphan := OrphanPR{Repo: "medici-finance/assay", Number: 55, ID: "resume:pr-55", Branch: "feat/x", Findings: "address review"}
+
+	loop := &FanoutLoop{
+		Root:      t.TempDir(),
+		TargetSHA: "sha",
+		Board:     func() ([]BoardRow, error) { return nil, nil },
+		Rework:    func() ([]BoardRow, error) { return reworkRows, nil },
+		Orphans:   func() ([]OrphanPR, error) { return []OrphanPR{orphan}, nil },
+		RepairObligations: func() ([]deskkit.RepairObligation, error) {
+			return []deskkit.RepairObligation{repairOblig}, nil
+		},
+		Now:         func() time.Time { return now },
+		Represented: func() (map[string]bool, error) { return represented, nil },
+	}
+
+	items, err := loop.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	var ids []string
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	if contains(ids, "phantomrework/04") {
+		t.Errorf("a STATUS.md rework row whose deliverable already MERGED was offered — it is a phantom (#1028/at#2026): %v", ids)
+	}
+	if !contains(ids, "genuinerework/06") {
+		t.Errorf("an unrepresented genuine rework row was wrongly dropped: %v", ids)
+	}
+	if !contains(ids, repairOblig.ID) {
+		t.Errorf("a durable repair obligation was wrongly excluded — it reworks a MERGED original via a fresh branch and must survive: %v", ids)
+	}
+	if !contains(ids, "resume:pr-55") {
+		t.Errorf("an orphan resume was wrongly excluded — it acts on the open PR that represents it: %v", ids)
+	}
+}
+
 // TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens is the direct, engine-free proof of the
 // dispatch-selection fix: an unclaimed `todo` `issue-<NN>` work placeholder SURVIVES SelectQueue (it
 // is this loop's work — worker-desk dispatch spec, Procedure 2), a normal brief row survives, and a
@@ -927,22 +1080,24 @@ func TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens(t *testing.T) {
 
 // TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR is the fanoutloop half of the phantom fix:
 // a fresh Next-up row whose brief already has an OPEN or MERGED PR is NOT offered for dispatch,
-// while an unrepresented row survives. Orphan-resume and rework items are never subject to the
-// exclusion (they act on an existing PR by design) — proven by leaving the represented set to
-// carry a brief that is ALSO the rework row's, and asserting the rework item still appears.
+// while an unrepresented row survives. Since #1028/at#2026 the SAME exclusion also gates the
+// `### Awaiting implementer rework` STATUS.md lane (proven here by carrying the rework brief in the
+// represented set and asserting the rework item is now DROPPED) — the deeper rework-lane / repair-
+// obligation split is proven in TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR.
 func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
 	rows := []BoardRow{
 		briefRow("example-a", "00", "M", "", "model", false), // has an open PR — a phantom
 		briefRow("example-b", "08", "M", "", "model", false), // has a MERGED PR — a phantom
 		briefRow("live", "03", "M", "", "model", false),      // no PR — dispatchable
 	}
-	reworkRows := []BoardRow{briefRow("rew", "09", "M", "", "model", false)} // rework, acts on its PR
+	reworkRows := []BoardRow{briefRow("rew", "09", "M", "", "model", false)} // rework whose brief is represented
 	loop := &FanoutLoop{
 		Board:  func() ([]BoardRow, error) { return rows, nil },
 		Rework: func() ([]BoardRow, error) { return reworkRows, nil },
 		Represented: func() (map[string]bool, error) {
-			// The exclusion set carries the two phantom briefs AND the rework brief; the rework row
-			// must survive regardless — the exclusion applies to FRESH rows only.
+			// The exclusion set carries the two phantom fresh briefs AND the rework brief; all three
+			// must be dropped — a STATUS.md rework row whose deliverable already has a PR is the
+			// at#2026 phantom this lane used to skip.
 			return map[string]bool{"example-a/00": true, "example-b/08": true, "rew/09": true}, nil
 		},
 		TargetSHA: "sha",
@@ -965,8 +1120,8 @@ func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
 	if !contains(ids, "live/03") {
 		t.Errorf("an unrepresented fresh row was dropped: %v", ids)
 	}
-	if !contains(ids, "rew/09") {
-		t.Errorf("a rework row was excluded by the represented set — the exclusion is for FRESH rows only: %v", ids)
+	if contains(ids, "rew/09") {
+		t.Errorf("a STATUS.md rework row whose brief is represented by a PR was offered — it is a phantom (#1028/at#2026): %v", ids)
 	}
 }
 

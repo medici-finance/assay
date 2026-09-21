@@ -81,9 +81,11 @@ type FanoutLoop struct {
 	// wired only at the live cutover, where the source builds the set with
 	// deskkit.RepresentedBriefSet over the repo's open+merged PRs — keyed on each PR's `Brief:`
 	// trailer, NEVER a branch name (a branch spelled differently from the derived pattern is exactly
-	// the phantom this exclusion exists to catch). Tests inject fixtures here. It applies ONLY to
-	// fresh Next-up rows: orphan-resume and Awaiting-rework items act on an existing PR by design and
-	// are never excluded by it.
+	// the phantom this exclusion exists to catch). Tests inject fixtures here. It gates FRESH Next-up
+	// rows AND `### Awaiting implementer rework` STATUS.md rows (#1028/at#2026: a rework row whose
+	// deliverable already merged is a phantom this lane used to skip). Two lanes stay EXEMPT because a
+	// representing PR is expected, not a phantom: ORPHAN resumes (the open PR they act on) and DURABLE
+	// repair obligations (which rework a MERGED original via a fresh follow-up branch, §row 5b).
 	Represented func() (map[string]bool, error)
 
 	// Emit is where interim-mode dispatch instructions are printed. nil = stdout.
@@ -140,7 +142,20 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	var addressed []loopengine.Item
 	inbox := f.inboxRole()
 
-	// 1. Orphan resumes — highest priority (drain started work before starting new).
+	// The already-represented exclusion set (brief IDs with an OPEN or MERGED PR, keyed on each PR's
+	// `Brief:` trailer — NEVER a branch name, so a branch spelled `feat/<repo>--<stream>--<NN>`
+	// instead of the derived `feat/<stream>-<NN>` cannot hide a phantom, at#2026). Resolved up front
+	// because it now gates two lanes: FRESH Next-up rows (below) and the `Awaiting implementer
+	// rework` STATUS.md rows (step 2). nil = the OFFLINE reference build (no PR sweep) — the exclusion
+	// is inert and every row is offered exactly as before.
+	represented, err := f.representedSource()
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. Orphan resumes — highest priority (drain started work before starting new). NEVER subject to
+	// the represented exclusion: an orphan resume IS an open PR by construction, so the PR that
+	// represents it is exactly the one it acts on.
 	orphans, err := f.orphanSource()
 	if err != nil {
 		return nil, err
@@ -152,13 +167,24 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		items = append(items, o.toItem())
 	}
 
-	// 2. Awaiting-implementer-rework rows — second priority, ahead of fresh dispatch.
+	// 2. Awaiting-implementer-rework STATUS.md rows — second priority, ahead of fresh dispatch.
+	// These ARE subject to the represented exclusion (#1028/at#2026): a `### Awaiting implementer
+	// rework` row whose brief already has an OPEN or MERGED PR is a phantom — the field evidence is
+	// rework-bucket rows whose deliverable was already merged, dispatched anyway because this lane
+	// skipped the reconciliation the fresh lane already does. Matched on the brief id (`<stream>/<NN>`)
+	// the represented set keys against the PR `Brief:` trailer, so the branch-name mismatch never
+	// hides it. The DURABLE repair obligations (step 2b) stay EXEMPT: a repair obligation legitimately
+	// reworks a MERGED original deliverable via a fresh follow-up branch (§Sources of work row 5b), so
+	// a representing PR is expected there, not a phantom.
 	rework, err := f.reworkSource()
 	if err != nil {
 		return nil, err
 	}
 	for _, r := range rework {
 		if f.isHandled(r.ID()) {
+			continue
+		}
+		if represented[strings.ToLower(r.Stream+"/"+r.Num)] {
 			continue
 		}
 		items = append(items, r.toReworkItem(f.TargetSHA))
@@ -180,14 +206,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		items = append(items, it)
 	}
 
-	// 3. Fresh Next-up rows, board order preserved.
+	// 3. Fresh Next-up rows, board order preserved. Subject to the same `represented` exclusion
+	// resolved up front, which now also gated the rework lane (step 2).
 	rows, err := f.boardSource()
-	if err != nil {
-		return nil, err
-	}
-	// The already-represented exclusion set (brief IDs with an OPEN or MERGED PR). Applied to FRESH
-	// rows ONLY — orphan-resume and rework items above act on an existing PR by design.
-	represented, err := f.representedSource()
 	if err != nil {
 		return nil, err
 	}
