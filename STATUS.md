@@ -62,14 +62,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (46 desk-actionable of 65 total — 65 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (47 desk-actionable of 66 total — 66 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (46)
+### Desk-actionable (47)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -102,6 +102,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | iso-9001 | 04 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-supervision | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 22 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
@@ -247,7 +248,7 @@ _None._
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
 - 16 Verification wake conditions — stop repeating unchanged blocked checks — implemented (wave 0)
 - 17 Verification failures create durable worker repair obligations — implemented (wave 1)
-- 18 Enforce repair reservations at worker dispatch — todo (wave 2)
+- 18 Enforce repair reservations at worker dispatch — implemented (wave 2)
 - 19 Persist review findings and apply the existing round cap across sessions — todo (wave 0)
 - 20 Review scope and first-pass completeness — todo (wave 0)
 - 21 Reverify changed external prerequisites without a synthetic push — todo (wave 1)
