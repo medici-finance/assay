@@ -2,7 +2,7 @@
 stream: desktools-v2
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
 track: platform
 spec: docs/streams/desktools-v2/spec.md
@@ -12,12 +12,8 @@ board: generated
 
 # desktools-v2 Stream
 
-**Proposed, not yet approved.** This stream is `status: parked` and cites a `**Status:**
-draft` scoping doc ([spec.md](spec.md)) — the sanctioned representation of a not-yet-ruled
-stream (`spec/lifecycle-v1.md` §8; `statusgen` `streamSourceProblem`: "a parked stream may
-cite a `draft`"). Its briefs are authored and kept but shelved out of Next-up and never
-dispatched until a human rules the spec `approved` and flips this stream `active`.
-`approved` is the human's call.
+**Approved and unparked.** Ruled 2026-09-21 on #1319: the spec is `**Status:** approved`
+([spec.md](spec.md)) and this stream is `status: active`.
 
 Rebuild the desk tools' forge access **properly**, now that the flows have solidified. A
 `Forge` interface already exists (`tools/desk/internal/deskkit/forge.go`, two complete
