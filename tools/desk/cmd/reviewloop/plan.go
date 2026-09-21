@@ -24,6 +24,7 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	actionsPath := fs.String("actions", "", "path to `deskboard actions` JSON (or - for stdin) — REQUIRED")
 	prsPath := fs.String("prs", "", "path to `deskboard prs` JSON — supplies the head SHAs the actions verb omits")
+	recordsPath := fs.String("records", "", "path to a review-thread records JSON — derives the persistent finding ledger and the per-class round count for one PR")
 	nowStr := fs.String("now", "", "RFC3339 instant to age the board against (default: wall clock)")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("reviewloop plan: bad flags: " + err.Error())
@@ -96,6 +97,23 @@ func cmdPlan(args []string, stdout io.Writer) error {
 		}
 	}
 	fmt.Fprintf(stdout, "  the desk NEVER merges: `ready` flips a MERGE-NOW draft to ready under deskpost's existing gates; the merge stays the human's.\n")
+
+	// Optional: the review-finding continuity ledger for ONE PR's review thread.
+	// Additive — absent, the plan output is unchanged. A records
+	// payload that cannot be positively read is could-not-check (exit 6), the same
+	// direction the board read takes, so an unreadable thread never renders as "no findings".
+	if strings.TrimSpace(*recordsPath) != "" {
+		recordsJSON, rerr := readInput(*recordsPath)
+		if rerr != nil {
+			return deskkit.Unverifiable("reviewloop plan: cannot read the records payload", rerr)
+		}
+		rep, records, derr := ReadRecords(recordsJSON)
+		if derr != nil {
+			return derr // typed deskkit error carrying its exit code
+		}
+		ledger := DeriveContinuity(records)
+		RenderFindings(stdout, rep, ledger)
+	}
 
 	verdict := Idle(board, now)
 	fmt.Fprintf(stdout, "\nIDLE GATE (#79, in code — a model cannot declare all-clear): %s\n", verdict)

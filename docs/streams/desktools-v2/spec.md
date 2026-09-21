@@ -1,6 +1,9 @@
 # desktools-v2 — scoping document
 
-**Status:** draft — proposed 2026-09-16; not yet ruled. Per `spec/lifecycle-v1.md` §8.2 a
+**Status:** approved — ruled 2026-09-21 on #1319.
+**Routes-to:** docs/streams/desktools-v2/
+
+Per `spec/lifecycle-v1.md` §8.2 a
 `draft` document is the plan of record for nothing and no downstream control watches it. The
 stream that cites it (`docs/streams/desktools-v2/README.md`) is therefore `status: parked`:
 its briefs are authored and kept, but shelved out of Next-up and never dispatched until a

@@ -121,9 +121,16 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | blocked | — | — |
 | 11 | [The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it](brief-11-workflow-only-pr-contract.md) | 1 | M | blocked | — | — |
 | 12 | [Retire the staged-copy hand-landing once the workflow App PR path is proven](brief-12-retire-staged-copy-landing.md) | 2 | M | blocked | — | — |
-| 13 | [Worker-operations vitals — the self-report resource block](brief-13-worker-operations-vitals.md) | 2 | M | todo | — | — |
+| 13 | [Worker-operations vitals — the self-report resource block](brief-13-worker-operations-vitals.md) | 2 | M | implemented | — | — |
 | 14 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-14-budget-driven-recycle.md) | 3 | M | todo | — | — |
 | 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
+| 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | implemented | — | — |
+| 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
+| 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
+| 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | implemented | — | — |
+| 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
+| 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
+| 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -196,3 +203,10 @@ Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` (workflow l
   never a PR write, never a worktree delete.
 - Nothing in this stream weakens a guard. A stop flag can only halt; it cannot authorise.
 - Public-tree self-containment: briefs here name no private repo, machine path or session.
+
+## Completion recovery increments (16–21)
+
+[Recovery increments](recovery-increments.md) maps existing work, immediate recovery and the
+new briefs. The additional dependency chain is `16 → 17 → 18`; the review chain is `19 → 21`, with the smaller first-pass scope change in `20`.
+Start by finishing the existing verification repair, PR 1374, rather than duplicating it.
+These briefs are planned; no scheduler activation is claimed.

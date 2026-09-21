@@ -73,6 +73,19 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
    [ "$(git -C "$WT" remote get-url origin)" = "$(git -C <repo> remote get-url origin)" ] || { echo STOP; exit 1; }
    git -C "$WT" fetch origin && git -C "$WT" reset --hard origin/main
    ```
+5. **Arm the cadence tick — a REQUIRED, named boot step, BEFORE the first sweep**
+   (`capability:cadence-tick`; the harness binding in `../../references/<harness>.md` names the
+   mechanism). This is the window's wake signal, and nothing else in this boot creates one: the
+   `capability:durable-monitor` loop §Liveness contract names is best-effort and is not armed by this
+   desk at all, so a window that skips this step wakes only on a human keystroke. The tick re-prompts
+   THIS window every **30 minutes** (the fleet cadence floor the coordinator's tick already runs on)
+   with the same prompt the coordinator's tick carries — *fresh `verifyloop plan` sweep → drain what
+   it prints, up to the declared width → ONE quiet line* — copied, never redesigned. Read back that
+   it is armed (the binding's check) and print `cadence-tick: armed 30m` once. A window that cannot
+   arm it prints `cadence-tick: could-not-check — <reason>` at boot and FILES it; it never runs
+   keystroke-driven in silence. A width this desk set is re-asserted inside the same tick prompt
+   (§The loop, item 3). A tick-mode run (§Tick mode) skips this step — the scheduled caller IS the
+   tick, and a one-shot pass arms no wake.
 
 ## Tick mode
 
@@ -113,13 +126,60 @@ not own.
    table-size branch — see **Verification quality** below), still one verifier session per item.
 3. **Land each verdict as it returns** via `deskevidence` (below) — never a wave buffered to the end.
    **How many verifiers may be in flight at once is `deskroster width --role verify-desk`, re-read
-   every tick.** This desk's declared default is a SEQUENTIAL drain (width 1), which is what it has
-   always done; the width exists so the coordinator can widen it when `deskboard throughput` names
-   verify as the bottleneck, without this body carrying a number that could drift from the tools.
-   Narrowing never stops a verifier mid-pass — stop dispatching and let the pool converge as
-   verdicts land. A width that cannot be read is could-not-check: hold at the last-read number.
-4. Repeat as a CONTINUOUS drain, reporting incrementally. `verifyloop verdict` is the
-   deterministic-runner half; filing its signed payload is the autonomous cutover, `gate: human`.
+   every tick.** This desk's declared default is the MEASURED SAFE WIDTH — the shipped default in
+   the tools' width table is the number (a parallel drain of six was carried for a full window
+   without a rate-limit trip; the sequential width-1 drain it replaced is retired as the default),
+   and the width exists so the coordinator can move it when `deskboard throughput` names verify as
+   the bottleneck, without this body carrying a number that could drift from the tools. **A width
+   this desk sets itself persists for the life of the window:** a set width decays to the default
+   after one hour by design, so the tick prompt (Boot step 5) re-asserts it — `deskroster set
+   --role verify-desk --width <N>` on every tick, the same N — rather than letting a widening
+   expire mid-drain with no session that knows why. Narrowing never stops a verifier mid-pass —
+   stop dispatching and let the pool converge as verdicts land. A width that cannot be read is
+   could-not-check: hold at the last-read number.
+4. Repeat as a CONTINUOUS drain, reporting incrementally. **Never end a turn with a non-empty
+   dispatchable queue: re-run `verifyloop plan` and dispatch the next batch in the SAME turn; a
+   round summary ("all N of this round landed") is not a stopping point.** Standing down is not
+   something a turn drifts into — before ANY wrap-up the stand-down checklist below is printed,
+   every line answered, and a `no` on any line means the turn continues with the next batch
+   instead. `verifyloop verdict` is the deterministic-runner half; filing its signed payload is
+   the autonomous cutover, `gate: human`.
+
+   **Stand-down checklist — printed before any wrap-up, never satisfied by a summary line:**
+   ```
+   stand-down: fresh sweep run this turn (verifyloop plan, exit 0, printed queue)?   yes/no
+   stand-down: dispatchable queue EMPTY on that sweep (every configured root)?         yes/no
+   stand-down: in-flight verifiers all landed or surfaced as open waits?                yes/no
+   stand-down: hand-off artifact written on the driver surface (§Liveness contract)?    yes/no
+   stand-down: cadence tick still armed (Boot step 5) to wake the next sweep?           yes/no
+   ```
+   The first four lines must read `yes`; the fifth reads `yes`, or `could-not-check` citing the
+   issue Boot step 5 filed. That is the precondition §Liveness contract already states, made
+   printable; anything less and the desk is mid-drain, not standing down.
+
+**Wake receipts — a failed/blocked brief is not re-run just to reproduce its failure**
+(`verify-wake-v1`; `docs/streams/desk-supervision/verify-wake-v1.md`). When a verifier run ends
+`verify-fail`/`blocked`, its landed outcome sidecar row carries a WAKE RECEIPT: the inputs it
+observed, the blocker class, and the checkable condition that must change before re-running is
+worth a slot. `verifyloop plan` reads it and buckets the brief accordingly — **consume the
+plan's decision, do not second-guess it**:
+
+- **`wait`** — a complete, still-UNCHANGED receipt. The line names the blocker and the next actor
+  (worker / brief-author / human / operator) and what will wake it. It is VISIBLE but NOT
+  dispatchable: **do not re-dispatch it**, and do not treat it as done — the failure stands, held
+  until its wake condition is met. Route the next action to the named actor if it is not already
+  moving (an `implementation`/`check-definition` blocker is worker work; `human-action` is a
+  human gate; `environment` is an operator/prerequisite condition).
+- **`could-not-check`** on a wake reason — a declared input could not be read. Never rounded up to
+  unchanged, never a pass; hold and surface it exactly as any other could-not-check.
+- A **legacy or incomplete** receipt (pre-v1 rows, or a receipt missing its schema/blocker/wake
+  fields) is NOT held — it stays dispatchable for exactly one classification pass, which produces
+  a complete receipt. This is the migration path: existing rows keep today's behaviour until the
+  first complete receipt lands.
+- **Explicit recheck** is the escape hatch: to force a held brief back into dispatch, land an
+  `explicit-recheck-with-reason` receipt (the reason is recorded). A receipt never grants
+  `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
+  implemented→verified→done path a NON-implementer runs on merged main.
 
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
@@ -148,6 +208,12 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
+- **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
+  verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
+  command, exit code, an output hash, the date and the runner identity; that witness table is what
+  turns an Evidence row from prose into something a reviewer can re-run and compare.
+  A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
+  PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
   copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
@@ -251,7 +317,25 @@ row with `"outcome":"verified"`, so the denominator is complete.
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
 ```
 
+**A failed/blocked verify also creates a durable REPAIR OBLIGATION** (`repair-obligation-v1`;
+`docs/streams/desk-supervision/repair-obligation-v1.md`) — a versioned marker in the sibling
+`docs/streams/repair-obligations.jsonl` projection, keyed by (repo, brief, source receipt, failing
+rows) so a re-land of the same failure reconciles to the SAME obligation, never a second. It is the
+durable unit that stops a filed failure from sitting unassigned while new briefs consume workers: an
+`implementation`/`check-definition` blocker becomes worker rework (worker-desk row 5b), a
+`human-action`/`environment` blocker stays `waiting-external` with its exact required action, and an
+`unknown` blocker is explicit triage — never an invented implementation bug. **A merge WAKES
+reverification, it does not resolve the obligation:** only a valid INDEPENDENT verification at the
+repaired revision resolves it (a same-actor or wrong-revision pass is refused) — which is this desk's
+own reverification pass, run as a NON-implementer on merged main. In the reference/interim build the
+obligation-creating sink is a SAFE dry-run default; the real filing sink is the human-gated cutover.
+
 ## Landing — `deskevidence` is the SOLE main-push carve-out (narrow, dated)
+
+**The witness lands WITH the Evidence, in the same file, same invocation.** `verifyrun`'s output rows
+(Result/Output/Date/Runner) ARE the Evidence table's rows — there is no separate landing step for the
+witness. Commit it alongside the Evidence row it backs; an Evidence row landed without first running
+`verifyrun` is the self-report this desk exists to replace.
 
 **The whole fleet is branch + draft PR; push-to-main and merge are human-gated. The one exception, and it
 is this desk's alone: `deskevidence` Evidence-row landings and the status flips that accompany them
@@ -558,6 +642,14 @@ human ruling re-derived from scratch each time.
   data; and anything that leaves the repo — publishing to a public or external surface, sending
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
+  - Desk-specific — **the stale-heartbeat case, named so it is never asked:** a `heartbeat stale
+    (age …)` refusal is the dead-man lease firing — STOP-ALL by construction, and renewal is a HUMAN
+    act — so the default is fixed, not a question for the driver: never touch, renew or delete the
+    lease file; quote the refusal verbatim in the hand-off note; print ONE loud line naming it;
+    stand down. File it with the desk filing verb the moment the lease is renewed (the verb itself
+    refuses while the lease is stale, so until then the hand-off note IS the filed record). Asking
+    "how should I proceed?" on a stale heartbeat is the manual-kick incident §Liveness contract
+    names, not a checkpoint.
 
 ### Stop-flag check — run at every iteration boundary
 
@@ -629,7 +721,10 @@ A standing liveness contract binds this window from boot: start the standing
 self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
 wake signal; the fixed-cadence board sweep is the real liveness backstop and the
 always-on observability service its durable home) BEFORE the first sweep and keep
-it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
+it ticking for the life of the window. **The fixed-cadence sweep is CREATED by Boot step 5 —
+`capability:cadence-tick`, armed before the first sweep — not assumed**: a window with no armed
+tick has no wake signal, and this contract is then unmet from boot, whatever the transcript's
+first round looks like. Every tick re-sweeps this desk's own queue fresh; every relay (a
 cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
 assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:

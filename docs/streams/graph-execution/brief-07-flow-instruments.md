@@ -27,7 +27,7 @@ exec-tier: strong
 exec-tier-why: "(b) correctness depends on joining three independent logs (.history.jsonl, .dora-timing.jsonl, forge checks/reviews) on one brief identity without fabricating an interval; (a) which observed instant stands in for each unrecorded event is a design decision the facts do not pre-specify"
 domain: complicated
 consumers:
-  - "docs/iso9001-mapping.md (the row that names --flow-efficiency / --gate-telemetry as monitoring instruments): follow-up graph-execution/07 (this brief; flips to fixed-here when the implementation adds the --flow row)"
+  - "docs/iso9001-mapping.md (the 9.1.1 monitoring-and-measurement row that names --bottleneck / --gate-telemetry as monitoring instruments): fixed-here (this brief's implementation adds the --flow instrument to that row)"
   - "statusgen/bottleneck.go (the stage-age score): out-of-scope (deliberately NOT replaced — this brief joins it with a second reading; replacing the score is a later decision from data this brief produces)"
 version: 1
 id: 76e53f95-97ce-4244-9a45-e88cb56244ec

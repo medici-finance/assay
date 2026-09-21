@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
@@ -26,7 +27,12 @@ import (
 type VerifyLoop struct {
 	Root      string // repo root the Awaiting scan runs against
 	TargetSHA string // merged-main SHA verifiers run against (stamped onto every Item)
-	RunnerID  string // this session's identity (engine's author!=runner left-hand side)
+	// Roots, when non-empty, is the MULTI-ROOT queue: the configured stream roots (the same
+	// deskkit.ConfiguredRoots map deskboard reads) that survived their own per-root preflight.
+	// SelectQueue then scans every one of them and names the root on every item. Empty keeps
+	// the single-Root read exactly as before.
+	Roots    []deskkit.RootConfig
+	RunnerID string // this session's identity (engine's author!=runner left-hand side)
 
 	// F16ReversibleRiskToSession is the arch-doc §9.2 middle rung — the owner's OPEN decision, left
 	// OFF. Flipping it to true is the ENTIRE change to restore the session-tier
@@ -43,8 +49,22 @@ type VerifyLoop struct {
 	// DurableSink makes results durable. nil defaults to the SAFE dry-run sink (must
 	// not push to main). The real git-pushing sink is wired only at cutover.
 	DurableSink Durable
+	// RepairSink creates or reconciles the durable REPAIR OBLIGATION a failed/blocked verify owes
+	// (example-stream/17). nil defaults to the SAFE dry-run sink (records nothing durable, prints
+	// what it WOULD append/file). It is a SEPARATE sink from DurableSink because obligation
+	// creation is additive to the existing FileBug landing and must not change what a PASS/flip
+	// does. Tests inject a capture here.
+	RepairSink RepairObligationSink
 	// Now is injectable for deterministic Evidence dates in tests.
 	Now func() time.Time
+
+	// WakeReader is the already-authorized reader the wake evaluator asks for the current
+	// revision of a declared input and whether a referenced action has completed
+	// (example-stream/16). nil defaults to the OFFLINE, probe-free reader over each scanned
+	// root's tree (deskkit.RootRevisionReader) — it content-hashes declared files and reads the
+	// tool version, and NEVER observes an external action (that stays could-not-check offline).
+	// Injected in tests so every wake path is exercised without touching the filesystem.
+	WakeReader deskkit.WakeInputs
 
 	// --- Native ACP dispatch --------------------------------
 	// Native selects the dispatch MODE. false (the zero value, the default) keeps
@@ -84,7 +104,21 @@ func (v *VerifyLoop) Name() string { return "verify-desk" }
 // (implemented + empty Evidence) before tier-2 (free-closes / Evidence-present), oldest-first
 // within class. See briefscan.go.
 func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
-	return scanAwaiting(v.Root, v.TargetSHA)
+	now := v.wakeNow()
+	if len(v.Roots) > 0 {
+		return scanAwaitingRoots(v.Roots, v.TargetSHA, v.WakeReader, now)
+	}
+	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.TargetSHA, v.WakeReader, now)
+}
+
+// wakeNow is the clock the wake evaluator uses — v.Now when injected (deterministic in tests),
+// else the real UTC clock. Kept beside SelectQueue so the single source of the loop's time is
+// obvious.
+func (v *VerifyLoop) wakeNow() time.Time {
+	if v.Now != nil {
+		return v.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // Dispatch is the ONE method the native-primitive upgrade swaps (arch doc §9.1; loopengine
@@ -146,6 +180,13 @@ func (v *VerifyLoop) durable() Durable {
 		return v.DurableSink
 	}
 	return dryRunDurable{out: v.emit()}
+}
+
+func (v *VerifyLoop) repairSink() RepairObligationSink {
+	if v.RepairSink != nil {
+		return v.RepairSink
+	}
+	return dryRunRepairSink{out: v.emit()}
 }
 
 // handle is the interim in-flight tracker: Done() fires when Feeder returns the structured

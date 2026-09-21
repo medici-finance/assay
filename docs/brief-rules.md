@@ -580,6 +580,32 @@ passing run — which is why they are lint rules and not review vigilance.
     it raises a conspicuous NOTICE naming every `verify.d/**` script a PR's diff
     touches, so a change to runner-executed code is reviewed as code.
 
+    A Verify table MAY ALSO declare each row's **SHELL** in an optional `Shell`
+    column (issue #1424) — `| # | Shell | Command | Expect |` — for a row whose
+    command is written in a native-Windows syntax that only means what the author
+    intended under `cmd.exe`, e.g. `findstr /c:"…" docs\streams\…\spec.md` (under
+    bash the quotes and backslash path are reinterpreted before the Windows tool
+    sees them, so the row fails with a bash-level error while the identical row
+    passes under `cmd /c`). Three shells, **default `sh`**:
+    - `sh` — POSIX bash (`bash -o pipefail -c`), the default when the column is
+      **absent or the cell is empty**. Every inherited row is `sh`; behaviour is
+      byte-for-byte unchanged, and the shell is **never guessed** from the command
+      text.
+    - `cmd` — Windows `cmd.exe` (`cmd /d /s /c`).
+    - `pwsh` — PowerShell (`powershell -NoProfile -Command`).
+
+    `verifyrun` dispatches each row to its declared shell, reading that shell's own
+    exit code faithfully (`cmd`/PowerShell do not have bash's `pipefail`; a piped
+    command in such a row is the author's to get right). A row marked for a shell
+    the runner's OS does not provide — a `cmd`/`pwsh` row on Linux/macOS — is
+    **could-not-run** with the reason, **never a `fail`** and never silently
+    rewritten into another shell. The `Shell` column is INDEPENDENT of `Class` (a
+    legacy table with no `Class` column may still carry a `Shell` column).
+    `statusgen --lint` hard-errors (PROBLEM) on an **unknown shell** — a typo like
+    `bash` (meaning `sh`) or `powershell` (meaning `pwsh`) — caught at authoring
+    time, so a marker the tool cannot resolve is never silently treated as the
+    default.
+
     *(Numbering note: the authoring repo's copy of this file allocated this rule and
     the typed-edge rule in the Dependencies section the same number in parallel —
     the collision class rule 40's detector exists for. This file allocates cleanly:

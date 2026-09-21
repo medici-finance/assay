@@ -80,6 +80,21 @@ type GitLabForge struct {
 	// authors pays the users lookup once per address. "" is cached too: an address that
 	// resolved to no account stays UNKNOWN for the sweep rather than being re-asked.
 	emailLogin map[string]string
+	// sleep, when non-nil, overrides the wait between the bounded CreateDraftChange retries
+	// (issue #1415). It exists ONLY so a test can drive the retry path without real elapsed
+	// time; production leaves it nil and gitlabSleep falls back to time.Sleep. It is not a
+	// general retry knob — the ONE bounded retry in this backend reads it.
+	sleep func(time.Duration)
+}
+
+// gitlabSleep waits d, using the injected sleep when a test set one and time.Sleep
+// otherwise. See CreateDraftChange for the one caller.
+func (g *GitLabForge) gitlabSleep(d time.Duration) {
+	if g.sleep != nil {
+		g.sleep(d)
+		return
+	}
+	time.Sleep(d)
 }
 
 var _ Forge = (*GitLabForge)(nil)
@@ -180,11 +195,24 @@ func gitlabStatusReason(status int) string {
 //
 // gitlab.ErrNotFound is a SENTINEL — the library discards the response for 404s — so it is
 // re-inflated to a 404 *ForgeAPIError here rather than falling into the statusless branch.
+//
+// GitLab's OWN error body is preserved (issue #1415). The library's CheckResponse already
+// parses both response shapes GitLab uses — `{"message": …}` and `{"error": …}` — into
+// ErrorResponse.Message, so a refusal that used to reach the caller as a bare "HTTP 400"
+// now carries the forge's own words (a permission message, a validation message, a
+// "source branch does not exist"). It is captured onto the *ForgeAPIError (so it survives
+// errors.As for programmatic classification) and, through ForgeAPIError.Error(), into the
+// rendered refusal string. It is control-stripped like every other forge-origin string
+// this tree renders — that is sanitisation of a terminal-active channel, NOT redaction:
+// this function adds and removes no redaction rule, and if a forge body could itself carry
+// something the redaction layer must scrub, that remains that layer's job elsewhere. The
+// 404 sentinel branch carries no body because the library discards the 404 response.
 func (g *GitLabForge) mapErr(method, path string, err error) error {
 	if err == nil {
 		return nil
 	}
 	status := 0
+	body := ""
 	switch {
 	case errors.Is(err, gitlab.ErrNotFound):
 		status = http.StatusNotFound
@@ -192,6 +220,7 @@ func (g *GitLabForge) mapErr(method, path string, err error) error {
 		var er *gitlab.ErrorResponse
 		if errors.As(err, &er) && er.Response != nil {
 			status = er.Response.StatusCode
+			body = StripControl(strings.TrimSpace(er.Message))
 		}
 	}
 	if status == 0 {
@@ -201,7 +230,7 @@ func (g *GitLabForge) mapErr(method, path string, err error) error {
 	}
 	return Unverifiable(
 		fmt.Sprintf("could-not-check: %s %s — %s", method, path, gitlabStatusReason(status)),
-		&ForgeAPIError{Status: status, Method: method, Path: path},
+		&ForgeAPIError{Status: status, Method: method, Path: path, Body: body},
 	)
 }
 
@@ -1630,23 +1659,42 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	}
 	out.StatusTotalCount = gitlabTotal(lastResp, len(out.Statuses))
 
-	if commit.LastPipeline == nil {
-		// No pipeline ran for this head. Nothing is appended and nothing is invented: the
-		// caller sees a rollup with no GitLabPipelineContext entry, which against a
-		// pipeline-gated project is could-not-check — never a pass.
+	// Resolve the pipeline whose verdict stands for THIS head. GitLab's own
+	// `commit.last_pipeline` is the first source, but for a `merge_request_event` head it is
+	// routinely empty or stamped with a SHA that is not this head — the exact hole #1411
+	// reports, one step past #1125 / PR #1134, which published the pipeline only from
+	// `commit.last_pipeline`. When that field does not reconcile to this head, fall back to the
+	// SAME by-SHA read ListOpenChanges already uses (headPipelineAt, `pipelines?sha=`) and
+	// reconcile THAT one too. gitlabPipelineStatusAt fails closed on SHA in both cases, so a
+	// pipeline that is not a verdict on this head is never mapped, and a head with no pipeline
+	// from either source stays could-not-check — never a pass.
+	pipe := commit.LastPipeline
+	sc, ok := gitlabPipelineStatusAt(pipe, sha)
+	if !ok {
+		if hp := g.headPipelineAt(cl, repo, sha); hp != nil {
+			if hpSC, hpOK := gitlabPipelineStatusAt(hp, sha); hpOK {
+				pipe, sc, ok = hp, hpSC, true
+			}
+		}
+	}
+	if !ok {
+		// No pipeline reconciles to this head from either source. Nothing is appended and
+		// nothing is invented: the caller sees a rollup with no GitLabPipelineContext entry,
+		// which against a pipeline-gated project is could-not-check — never a pass.
 		return out, nil
 	}
-	if pipe, ok := gitlabPipelineStatusAt(commit.LastPipeline, sha); ok {
-		out.Statuses = append(out.Statuses, pipe)
-		// The forge's own asserted total is raised by the one entry mapped from the pipeline,
-		// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
-		// rather than reading the appended entry as an over-serve.
-		out.StatusTotalCount++
-	}
-	jobsPath := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", proj, commit.LastPipeline.ID)
+	out.Statuses = append(out.Statuses, sc)
+	// The forge's own asserted total is raised by the one entry mapped from the pipeline,
+	// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
+	// rather than reading the appended entry as an over-serve.
+	out.StatusTotalCount++
+	// Enumerate the JOBS of the pipeline resolved above — `commit.last_pipeline` when it
+	// reconciled, else the by-SHA head pipeline — so the named-job rollup belongs to the same
+	// pipeline whose verdict was just published, never a pipeline stamped with a different SHA.
+	jobsPath := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", proj, pipe.ID)
 	lastResp = nil
 	for page := 1; page <= gitlabMaxCIPage; page++ {
-		chunk, resp, jerr := cl.Jobs.ListPipelineJobs(repo.Slug(), commit.LastPipeline.ID,
+		chunk, resp, jerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pipe.ID,
 			&gitlab.ListJobsOptions{
 				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
 			})
@@ -2369,6 +2417,42 @@ func (g *GitLabForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 
 // --- Writes ---
 
+// gitlabCreateMRAttempts / gitlabCreateMRRetryDelay bound the same-identity retry
+// CreateDraftChange applies to ONE specifically identified transient condition — GitLab
+// answering "source branch does not exist" on the create-MR call immediately after a
+// successful push (issue #1415). GitLab's post-push branch visibility is not always
+// instantaneous on self-managed/CE setups: the ref is written and readable through Git and
+// the branches API, yet the merge-request create can briefly still not see it and reject
+// with a 400. Three attempts two seconds apart cover that convergence window without
+// turning into an unbounded loop. These bound ONLY that condition; see the guard in the
+// loop below — no other 400 is ever retried.
+const (
+	gitlabCreateMRAttempts   = 3
+	gitlabCreateMRRetryDelay = 2 * time.Second
+)
+
+// gitlabIsTransientMissingSourceBranch reports whether err is GitLab's transient
+// "source branch does not exist" refusal on the create-MR endpoint immediately after a
+// push (issue #1415) — the ONE 400 CreateDraftChange retries.
+//
+// It is deliberately NARROW. It matches only a 400 (never a 401/403/404/409/5xx) whose
+// preserved forge body (ForgeAPIError.Body, populated by mapErr since #1415) names BOTH
+// "source branch" and "does not exist". GitLab spells this rejection
+// `{"message":["Source branch \"<name>\" does not exist"]}`, which the client library
+// renders into that body. A genuine validation 400 (a duplicate MR, a bad target, a
+// malformed field) carries a DIFFERENT message and is therefore never matched — so this
+// can never widen into a retry-on-any-400, which would mask exactly the diagnostic the
+// #1415 body-preservation fix exists to surface. The body is required: a 400 that carried
+// no body (empty ForgeAPIError.Body) is not this condition and is not retried.
+func gitlabIsTransientMissingSourceBranch(err error) bool {
+	var ae *ForgeAPIError
+	if !errors.As(err, &ae) || ae.Status != http.StatusBadRequest || ae.Body == "" {
+		return false
+	}
+	b := strings.ToLower(ae.Body)
+	return strings.Contains(b, "source branch") && strings.Contains(b, "does not exist")
+}
+
 // CreateDraftChange opens a merge request as a DRAFT.
 //
 // GitLab has no draft boolean: draft-ness IS the `Draft:` title prefix, which GitLab parses
@@ -2376,6 +2460,14 @@ func (g *GitLabForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 // title does not already carry one, so a caller that spelled it itself does not end up with
 // "Draft: Draft: …". Opening as a draft is the frozen property of this seam — it opens
 // changes as drafts, never ready.
+//
+// The create call is retried — bounded, same identity, same request — for the ONE
+// specifically identified transient condition of issue #1415: GitLab rejecting the create
+// with "source branch does not exist" right after this desk's own successful push, its
+// post-push branch visibility not yet converged. Every OTHER error, including every other
+// 400, is surfaced on the first response with GitLab's own body preserved (#1415) — never
+// retried. Exhausting the bounded attempts on the transient condition is itself a
+// could-not-check (clause C4), reported as one; it is never rounded up to a pass.
 func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*PullRef, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -2386,14 +2478,34 @@ func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*P
 		title = gitlabDraftPrefix + title
 	}
 	path := fmt.Sprintf("/projects/%s/merge_requests", g.projectPath(repo))
-	mr, _, err := cl.MergeRequests.CreateMergeRequest(repo.Slug(), &gitlab.CreateMergeRequestOptions{
+	opts := &gitlab.CreateMergeRequestOptions{
 		Title:        gitlab.Ptr(title),
 		Description:  gitlab.Ptr(in.Body),
 		SourceBranch: gitlab.Ptr(in.Head),
 		TargetBranch: gitlab.Ptr(in.Base),
-	})
-	if err != nil {
-		return nil, g.mapErr(http.MethodPost, path, err)
+	}
+	var mr *gitlab.MergeRequest
+	for attempt := 1; ; attempt++ {
+		var cerr error
+		mr, _, cerr = cl.MergeRequests.CreateMergeRequest(repo.Slug(), opts)
+		if cerr == nil {
+			break
+		}
+		mapped := g.mapErr(http.MethodPost, path, cerr)
+		if gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts {
+			g.gitlabSleep(gitlabCreateMRRetryDelay)
+			continue
+		}
+		if gitlabIsTransientMissingSourceBranch(mapped) {
+			// The bounded retry gave up: GitLab still could not see the branch this desk
+			// pushed. That is could-not-check (the push landed, the create could not be
+			// confirmed), never a pass — surfaced as one, naming the exhausted window.
+			return nil, Unverifiable(fmt.Sprintf(
+				"could-not-check: POST %s — GitLab still reported source branch %q absent after %d attempts %s apart "+
+					"following a successful push (post-push branch visibility did not converge)",
+				path, StripControl(in.Head), gitlabCreateMRAttempts, gitlabCreateMRRetryDelay), mapped)
+		}
+		return nil, mapped
 	}
 	if !mr.Draft {
 		// The prefix is the only draft mechanism; if GitLab did not read it back as a
@@ -3583,7 +3695,19 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	var priorSHA string
 	var priorContent []byte
 	exists := false
-	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
+	// The existence probe reads the ref the write's CONTENT is based on. For a direct write
+	// that is the target branch itself; for an inline branch-creation (StartBranch set, Branch
+	// not yet on the forge) it is the START branch — the ref the new branch is cut from and the
+	// only ref the file can already exist on. Probing the not-yet-created target branch 404s for
+	// every file and forces a create (POST); on GitLab a create of a path that already exists on
+	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update (PUT)
+	// with StartBranch carried through to create the side branch inline. The GitHub Contents-API
+	// path is unaffected: it has one create-or-update verb and no create-vs-update split to miss.
+	probeRef := in.Branch
+	if in.StartBranch != "" {
+		probeRef = in.StartBranch
+	}
+	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr

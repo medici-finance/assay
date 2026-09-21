@@ -264,7 +264,11 @@ failure this section prevents**, and there is no state in this loop called "the 
   into every freed slot — the re-invocation IS the cue.
 - **What stays ORDERED — parallelise the reviews, never these.** A RE-review runs only AFTER the
   push that answers a finding (a same-head APPROVE over a standing CHANGES_REQUESTED is not
-  re-verification); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
+  re-verification — with the two declared exemptions in `references/review-prompt.md` §11:
+  a check-only CR whose required check greened, and an external-prerequisite-only CR whose
+  named upstream prerequisites all landed; the ready gate independently re-verifies the
+  second from fresh evidence and fails closed, so a same-head clear still needs no synthetic
+  push only when the declaration substantiates); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
   green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
   out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
   each other); the human gates (public-repo human +1 before any verdict post, `needs-decision`, the
@@ -325,6 +329,20 @@ as the planner and acts on its rows.
   **Tiering is risk-keyed, not a blanket rule (methodology/19):** a risk-clear item (all four risk answers `no`,
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
   `yes`) gets a strong-tier (opus+) or human reviewer. Read the item's risk frontmatter — do not default all reviews to one tier.
+
+  **Lane depth is tier-keyed for external authors.** The lane SET is not the same for every author:
+  resolve the pull request's author through the contributor-trust tier resolver the project layer
+  configures (`deskkit.ReviewLanesForAuthor` — the tier source is a project-layer value resolved from
+  its own configuration, the ledger behind it operator-side and never a file in this tree) and dispatch
+  the set it names: `unknown` and `blessed-once` authors get the deep set — correctness at strong tier,
+  the security lane, a claims-versus-diff fact check and a mandatory fail-first reproduction;
+  `contributor` and `maintainer` authors keep the standard path. The lane sets, the fact-check output
+  contract and the fail-first reproduction's two required records are stated once in the desk tools'
+  dispatch reference (`tools/desk/cmd/deskdispatch/references/review-lanes.md`), held to the code by
+  test — never restate them here. Only the lane set varies: the verdict shape, the reviewer identity,
+  the ready flip and the merge authority are unchanged at every tier, and no tier merges anything.
+  Until the project layer configures a ledger this is inert: every external identity resolves
+  `unknown` and gets the deep set, roster identities are unaffected.
 
   **Risk-classed PRs get a SECOND, separate `/security-review` agent, dispatched CONCURRENTLY with
   the correctness reviewer** — never folded into it (dispatch-neutral-wording rule), and never queued
@@ -397,6 +415,35 @@ as the planner and acts on its rows.
 **A merged/closed PR is DONE** — its worker stops; residual work is a NEW PR. A commit
 pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
 
+### First-pass inventory + blocking boundary — bounding a small change's review scope
+
+An incremental search that keeps discovering old instances of the same false claim after
+each fix turns a small change into unbounded cleanup. Two rules bound it; both are in
+`review-prompt` clause 12, and this is the DESK's reading of them.
+
+- **First pass inventories, then declares.** On the FIRST review of a false-claim class, the
+  reviewer inventories the class's related occurrences BEFORE the verdict — the changed
+  surface, the item's required deliverables, and references to the affected entity — and
+  records the search, its scope, its exclusions and the input revision. An incomplete search
+  is reported incomplete, **never certified clean** (the three-state rule applied to
+  discovery). The desk treats a "clean" verdict resting on an unrecorded or incomplete search
+  as could-not-check, not an approval.
+- **A blocker names a concrete failure and its scope basis** — changed behaviour, an explicit
+  acceptance obligation, a material PR-body/Verify claim, or a demonstrated safety consequence
+  of the change. Unrelated pre-existing prose is a **linked follow-up**
+  (`references/out-of-scope-filing.md`), not a hold. Untouched files are not automatically
+  exempt (a required operator-state table is a deliverable even when omitted from the diff);
+  co-location — the same directory or a substring — is not a basis.
+- **Class continuity.** A late or missed sibling occurrence keeps its original claim class and
+  round count; it is review coverage failure, not a fresh class, so it does not reset the
+  counter below or charge the author a new class. A previously non-blocking occurrence cannot
+  become blocking merely because another file was edited — the reviewer records changed impact
+  or new evidence, or it stays a follow-up. This is the line between genuine changed evidence
+  and a bypass of a standing rejection.
+
+This narrows what counts as a NEW blocker. It does **not** touch the round cap below or the
+independent security review — both stand unchanged.
+
 ### Round cap + arbiter packet — bounding the fix-to-re-review cycle
 
 **Default cap N = 3** full verdict→fix→re-review rounds on the SAME finding class on one PR
@@ -421,6 +468,19 @@ plus the PR link, then comment on the PR pointing at the filed issue
 (`references/out-of-scope-filing.md`'s dual-track dedupe applies if a packet for this class is
 already open). `authorization-needed` stays on the PR — the packet is a human fork, not a flip,
 and does not touch ready-flip ownership, human merge, or the security carve-out.
+
+**Persistence — the cap and the finding identities survive an agent change.** The round
+count and each finding's identity are **derived from a durable, typed record** carried in the
+review/reply bodies (`review-finding/v1`, embedded additively so a legacy reader ignores it;
+tool support in `reviewloop` and `deskkit`), not from any one agent's memory. That is what
+lets a replacement reviewer resume the round rather than reread the whole PR and restart the
+counter: re-deriving the same forge records always yields the same finding IDs, the same
+per-class rounds and — at the cap — the same single arbiter packet, so a duplicate sweep or a
+restart files nothing new and a newly noticed sibling sentence keeps its class rather than
+opening a fresh one. A worker cannot author your resolution of a blocking finding (the
+`deskreply` write gate and the derivation both refuse it), and a record missing its
+authenticated actor or head is could-not-check — it clears nothing. Blocking policy and the
+cap threshold are unchanged; the record only makes them survive replacement.
 
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition of the same finding, not rounds on one PR) is itself worth filing as

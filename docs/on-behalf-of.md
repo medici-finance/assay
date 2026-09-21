@@ -17,11 +17,15 @@ place before it needs to disambiguate between two.
 ## The trailer
 
 ```
-On-behalf-of: human:<login>
-On-behalf-of: human:<login> mode:unattended
+On-behalf-of: human:<who>
+On-behalf-of: human:<who> mode:unattended
 ```
 
-- `human:<login>` — the lowercased human login the write is on behalf of.
+- `human:<who>` — the human the write is on behalf of, in the form the TARGET REPO'S
+  VISIBILITY calls for: the lowercased human **login** on a repo the roster states is
+  `:private`, and the roster's neutral **name** for that same human — the
+  `ASSAY_HUMAN_LOGIN_MAP` key, i.e. the given name the map already carries as that
+  human's public form — on every other target. See "Which form" below.
 - ` mode:unattended` — appended only when the resolving session carried no live
   interactive roster beacon (a cron loop: `scanloop`, `verifyloop`, …, as opposed to a
   desk/worker session with a registered role). Its absence means the session was
@@ -39,6 +43,40 @@ The witness-cell form omits the `On-behalf-of:` key (it is a table cell, not a
 line-oriented record) and is never suffixed with `mode:unattended` — `verifiedrunneragree.go`'s
 `runnerKey` already drops everything from the first `(` onward, so any text placed inside
 a trailing parenthetical never perturbs the runner-agreement comparison.
+
+## Which form: the target repo's visibility decides
+
+A trailer stamped onto a write to a **public** repo is world-readable for good — a posted
+review cannot be edited afterwards, and a commit message cannot be taken back out of
+history. So the form the trailer names is chosen from the target repo's **configured**
+visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` token, read with no network call
+— the same value `VisibilityRiskClassed` reads):
+
+| Target | The trailer names |
+|---|---|
+| A repo the roster states is `:private` | the mapped login — unchanged |
+| Everything else — `:public`, an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
+
+The rule is stated in the fail-closed direction on purpose, exactly as
+`VisibilityRiskClassed` states its own: *everything except a repo declared private takes the
+neutral form.* A wrong "public" costs audit precision; a wrong "private" is a disclosure
+that cannot be withdrawn. Every entry point therefore takes the target repo as a
+**mandatory** argument — a verb cannot resolve a principal without saying where the write
+is going, and a package test (`TestEveryWriteVerbNamesItsTarget`) reads the verbs' source
+to hold that.
+
+**When the roster carries no neutral name** for the blessing authority, a public-target
+write **refuses** (exit 5) naming the `ASSAY_HUMAN_LOGIN_MAP` entry to add. The two
+alternatives were both rejected: stamping the login is the disclosure this split exists to
+prevent, and writing with no trailer at all would retire the presence guarantee every
+check downstream is built on. The refusal text does not quote the login it is declining to
+disclose.
+
+**Not yet covered: the witness annotation.** The `statusgen` witness cell (below) is a
+separate module's read-only mirror and still renders the login. It lands in a brief's
+`## Evidence` table, so on a public repo it carries the same exposure; closing it means
+teaching the attribution lint to accept the neutral name as well, which is a change to the
+lint's contract rather than to this resolver, and is tracked separately.
 
 ## Resolution
 
@@ -63,7 +101,7 @@ the login.
 
 | State | Meaning |
 |---|---|
-| `PrincipalUnresolved` (zero value) | No roster is configured. Every write verb **refuses** (exit 5) rather than write without a principal. |
+| `PrincipalUnresolved` (zero value) | No roster is configured — or the target needs the neutral form and the roster states none. Every write verb **refuses** (exit 5) rather than write without a principal. |
 | `PrincipalAttended` | Resolved to the bless login; the calling session has a live roster beacon. |
 | `PrincipalUnattended` | Resolved to the **same** bless login; no live session beacon was found. |
 

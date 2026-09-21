@@ -90,6 +90,28 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Brief's own Evidence section was empty going in — nothing self-reported to void. Verified from scratch against `medici-finance/assay` origin/main `e5f2b89dbab1e4be255fe15ca73ba00dc8764995` (deliverable already squash-merged as `92aa88273`). `GOWORK=off`, `KUBECONFIG=/dev/null`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `TestEligibility` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 2 | `TestEligibilityDeclarationChangesDispatch` | exit 0, verdict flips held→eligible on one gates: line change | exit 0 — run1 `verdict=held holds=[...unsatisfied...]`; run2 (retargeted) `verdict=eligible holds=[]` | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestEligibilityCouldNotCheckHolds` | exit 0; unpublished-alias gate → could-not-check/held; feather → eligible-with-notice | exit 0 — confirmed exactly this behavior by reading the test body | 2026-09-17 | sonnet-5-verifier |
+| 4 | `--eligibility --json` verdict-set check | ⊆ {eligible, eligible-with-notice, held} | exit 0, `['eligible', 'held']` | 2026-09-17 | sonnet-5-verifier |
+| 5 | grep "reserved, not gating" retired | count 0 | count 0 | 2026-09-17 | sonnet-5-verifier |
+| 6 | next-up/eligibility/held cross-check | count 0 | **count 1** (`derived-board/07`) — root-caused: pre-existing behavior, not a regression. Ran the PRE-fix binary (built from the merge's parent `a8418f1e1`) against the SAME current tree — identical row set including the same brief. `--next-up` shows already-claimed/in-progress items regardless of the evaluator's verdict, by explicit design comment in nextup.go; the row's literal wording doesn't carve that out | 2026-09-17 | sonnet-5-verifier |
+| 7 | `TestDriveFrontier` + `TestNextUp` | exit 0 | exit 0 both | 2026-09-17 | sonnet-5-verifier |
+| 8 | grep "eligible-with-notice" across 3 docs | each ≥1 | 1,1,1 | 2026-09-17 | sonnet-5-verifier |
+| 9 | `statusgen --lint` | rc=0 | rc=0 | 2026-09-17 | sonnet-5-verifier |
+| 10 | `statusgen --consumers --brief graph-execution/01` | rc=2 acceptable, could-not-check | rc=2, could-not-check as instructed (no diff to check on fully-merged main) | 2026-09-17 | sonnet-5-verifier |
+| 11 | the v2-cross-stream wave-gate-escape test | exit 0 | exit 0 — confirmed both arms directly in test source | 2026-09-17 | sonnet-5-verifier |
+| 12 | `--next-up` eligible-count delta, main vs branch (expect 9→11) | delta = 2 named briefs | **Could not reproduce literally** — brief is squash-merged so "main" and "branch" are now the same commit. Built the actual pre-merge binary and ran against today's tree: zero delta today, neither named brief appears under either binary — both now have open draft PRs (`#1260`,`#1266`, created today, AFTER this fix), excluded from Next-up by the pre-existing claim-check, unrelated to eligibility. The original 9→11 delta is independently confirmed accurate at authoring time via the merge commit's own message — board content drift since merge, not a code defect | 2026-09-17 | sonnet-5-verifier |
+
+**RISK-VALUE: DERIVED** — `EligibilityVerdict = eligible/held/eligible-with-notice` (`statusgen/eligibility.go:43-53`), rule id `eligibility-could-not-check` (`eligibilitycli.go:73`). `VerdictHeld` ranked highest (the sole gate keeping a brief off Next-up/drive-frontier dispatch) — verified directly against source and tests (rows 1-3,7,11) that `held` is reached only via unsatisfied `gates:`/`depends:` or unresolvable `gates:`, never via `feathers:`. Traced both consumer call sites (`nextup.go eligibleBase`, `drivefrontier.go briefFrontierState`): the residual `for _, dep := range b.Depends` loops in both files are fail-closed fallbacks used ONLY when no evaluator verdict exists (defensive "should not happen" path) — never a bypass. Directly answers the brief's own Reviewer question (no normal-path bypass found).
+
+**VERIFY: PASS** — rows 1-5,7-9,11 clean; row 10 correctly could-not-check (not a fail); rows 6 and 12 are literal-fail-shaped but independently proven to be pre-existing display/board-drift artifacts unrelated to this brief's own mechanism, not regressions it introduced. No invented scope.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

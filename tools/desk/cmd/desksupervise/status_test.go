@@ -38,7 +38,12 @@ func mustLoadSnapshot(t *testing.T, claimsFile, obsFile, stopsFile string, stops
 			t.Fatalf("loadStopsFixture(%s): %v", stopsFile, err)
 		}
 	}
-	snap, anyBlind, err := buildSnapshot(claims, fixtureStatusObs(byKey), stopsByKey, stopsOnly, loopengine.DefaultLivenessPolicy(), mustParseTS(t, now))
+	// mustLoadSnapshot's callers pin the LIVENESS behaviour, not the resource join, so it
+	// always joins from an empty --beacons-fixture-shaped map: every claim's resource
+	// renders could-not-check (blindResource()), which is itself a valid three-state
+	// reading and never fails the schema (each field's oneOf admits the could-not-check
+	// const).
+	snap, anyBlind, err := buildSnapshot(claims, fixtureStatusObs(byKey), fixtureResourceSource(map[string]StatusResource{}), stopsByKey, stopsOnly, loopengine.DefaultLivenessPolicy(), mustParseTS(t, now))
 	if err != nil {
 		t.Fatalf("buildSnapshot: %v", err)
 	}
@@ -58,8 +63,8 @@ func TestStatusSnapshotMixed(t *testing.T) {
 	if len(snap.Claims) != 3 {
 		t.Fatalf("len(claims) = %d, want 3", len(snap.Claims))
 	}
-	if snap.Claims[0].Tokens != "could-not-check" {
-		t.Fatalf("claims[0].tokens = %q, want could-not-check", snap.Claims[0].Tokens)
+	if string(snap.Claims[0].Resource.Tokens) != `"could-not-check"` {
+		t.Fatalf("claims[0].resource.tokens = %s, want \"could-not-check\"", snap.Claims[0].Resource.Tokens)
 	}
 	// Liveness classification is the SAME taxonomy tick runs.
 	wantLiveness := map[string]string{
@@ -74,14 +79,15 @@ func TestStatusSnapshotMixed(t *testing.T) {
 	}
 }
 
-// TestStatusTokensNeverZero is the guard: EVERY claim's tokens field is could-not-check, never
-// a numeric zero. A mutation that filled tokens with a count (the "renders as 0 and someone
-// reads it as free" pre-mortem, Verify row 2) trips this. See the PR body's Fail-first section.
+// TestStatusTokensNeverZero is the guard: EVERY claim's resource.tokens field is
+// could-not-check (this test's fixtures join from no beacon), never a numeric zero. A
+// mutation that filled tokens with a count (the "renders as 0 and someone reads it as
+// free" pre-mortem, Verify row 2) trips this. See the PR body's Fail-first section.
 func TestStatusTokensNeverZero(t *testing.T) {
 	snap, _ := mustLoadSnapshot(t, "testdata/mixed.json", "testdata/mixed-obs.json", "", false, "2026-09-02T12:00:00Z")
 	for _, c := range snap.Claims {
-		if c.Tokens != "could-not-check" {
-			t.Errorf("%s tokens = %q, want could-not-check (never a zero)", c.Key, c.Tokens)
+		if string(c.Resource.Tokens) != `"could-not-check"` {
+			t.Errorf("%s resource.tokens = %s, want \"could-not-check\" (never a zero)", c.Key, c.Resource.Tokens)
 		}
 	}
 }
@@ -185,6 +191,11 @@ func TestStatusJSONValidatesAgainstSchema(t *testing.T) {
 // validate against the schema, and no .tmp file may survive a successful write (the rename is
 // atomic, and a reader never sees a half-written file).
 func TestSnapshotFromSweepAtomicWrite(t *testing.T) {
+	// snapshotFromSweep's resource join now reads the live roster beacon dir
+	// (deskkit.StateDir()); isolate it under a fresh HOME rather than the ambient one —
+	// holder "o" below has no beacon there either way, so the join renders could-not-check,
+	// but this keeps the test hermetic.
+	t.Setenv("HOME", t.TempDir())
 	now := mustParseTS(t, "2026-09-02T12:00:00Z")
 	results := []sweepResult{
 		{
@@ -204,8 +215,8 @@ func TestSnapshotFromSweepAtomicWrite(t *testing.T) {
 		t.Fatalf("blind_sources = %v, want exactly one (s--02)", snap.Aggregates.BlindSources)
 	}
 	for _, c := range snap.Claims {
-		if c.Tokens != "could-not-check" {
-			t.Errorf("%s tokens = %q, want could-not-check", c.Key, c.Tokens)
+		if string(c.Resource.Tokens) != `"could-not-check"` {
+			t.Errorf("%s resource.tokens = %s, want \"could-not-check\"", c.Key, c.Resource.Tokens)
 		}
 	}
 
@@ -255,6 +266,28 @@ func TestSnapshotFromSweepAtomicWrite(t *testing.T) {
 
 func validateAgainstSchema(schema map[string]interface{}, value interface{}, path string) []string {
 	var errs []string
+
+	// oneOf (example-stream/13's resource fields: [measured type, {const: could-not-check},
+	// null]) is checked on its own and returns immediately — a value need only satisfy ONE
+	// alternative, so the ordinary const/enum/type/properties checks below (which all AND
+	// together) do not apply to the oneOf wrapper schema itself.
+	if oneOf, ok := schema["oneOf"].([]interface{}); ok {
+		matched := false
+		var lastErrs []string
+		for _, sub := range oneOf {
+			ss, _ := sub.(map[string]interface{})
+			subErrs := validateAgainstSchema(ss, value, path)
+			if len(subErrs) == 0 {
+				matched = true
+				break
+			}
+			lastErrs = subErrs
+		}
+		if !matched {
+			errs = append(errs, fmt.Sprintf("%s: value %v matched none of the oneOf alternatives (last tried: %v)", path, value, lastErrs))
+		}
+		return errs
+	}
 
 	if c, ok := schema["const"]; ok {
 		if !jsonEqual(c, value) {
@@ -362,4 +395,53 @@ func oneTypeMatches(name string, value interface{}) bool {
 
 func jsonEqual(a, b interface{}) bool {
 	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+}
+
+// TestLiveResourceSourceRejectsHolderTraversal pins the read-side S-1 boundary: liveResourceSource
+// binds `holder` to a single path segment before joining it under <StateDir>/roster/, so a holder
+// carrying a traversal (`..`) or separator renders BLIND — never a read of a file outside the roster
+// directory. holder is the claim Owner field, an `\S+`-unconstrained string parsed from a remote
+// dispatch claim, so it is session-influenced input; this is the read twin of deskroster set's
+// ValidSessionSegment write-side refusal.
+//
+// Fail-first: removing the `if !deskkit.ValidSessionSegment(holder)` guard in liveResourceSource
+// makes the `../decoy` holder read the decoy beacon and return its model ("leaked-model") instead
+// of could-not-check, and this test goes red. See scripts/mutate/desk-supervision-13.sh.
+func TestLiveResourceSourceRejectsHolderTraversal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rosterDir := home + "/.config/assay/roster"
+	if err := os.MkdirAll(rosterDir, 0o755); err != nil {
+		t.Fatalf("mkdir roster: %v", err)
+	}
+	// A decoy beacon OUTSIDE roster/, one directory up (still under ~/.config/assay, the
+	// dir that also holds this house's trust config and the kill switch). A `../decoy`
+	// holder would resolve to it if the guard were absent.
+	decoy := home + "/.config/assay/decoy.json"
+	if err := os.WriteFile(decoy, []byte(`{"resource":{"model":"leaked-model"}}`), 0o644); err != nil {
+		t.Fatalf("write decoy: %v", err)
+	}
+	src := liveResourceSource()
+
+	// Traversal holder → BLIND, and specifically NOT the decoy's model.
+	got := src("../decoy")
+	if string(got.Model) == `"leaked-model"` {
+		t.Fatalf("holder %q read the decoy beacon (model=%s) — path-segment guard missing", "../decoy", got.Model)
+	}
+	if string(got.Model) != string(couldNotCheckRaw) {
+		t.Errorf("traversal holder: Model = %s, want %s (blind)", got.Model, couldNotCheckRaw)
+	}
+	// A separator holder is likewise blind.
+	if got := src("sub/dir"); string(got.Model) != string(couldNotCheckRaw) {
+		t.Errorf("separator holder: Model = %s, want %s (blind)", got.Model, couldNotCheckRaw)
+	}
+
+	// Positive control: a legitimate single-segment holder reads its own beacon (the guard
+	// does not over-block a valid session name).
+	if err := os.WriteFile(rosterDir+"/worker-42.json", []byte(`{"resource":{"model":"real-model"}}`), 0o644); err != nil {
+		t.Fatalf("write beacon: %v", err)
+	}
+	if got := src("worker-42"); string(got.Model) != `"real-model"` {
+		t.Errorf("valid holder: Model = %s, want %q", got.Model, "real-model")
+	}
 }

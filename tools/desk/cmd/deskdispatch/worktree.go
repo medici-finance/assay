@@ -23,6 +23,52 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// mainlineRef is the start point of a FRESH dispatch, spelled in full. The full spelling is
+// load-bearing: git resolves `refs/heads/` ahead of `refs/remotes/`, so a bare `origin/main`
+// silently prefers a stray LOCAL branch of that name where one exists, warns only on stderr,
+// and exits 0.
+const mainlineRef = "refs/remotes/origin/main"
+
+// worktreeBase returns the ref the agent's worktree is cut from.
+//
+// A FRESH dispatch cuts from the mainline: there is nothing else to cut from.
+//
+// A RESUME — `--pr <N>`, an already-open change whose branch exists on the forge — cuts
+// from THAT BRANCH's own remote ref. Cutting a resume from the mainline is the defect this
+// exists to close: `deskwt` creates the branch with `-b <branch> <base>`, so with the
+// mainline as base the new worktree's branch sat at MAIN's tip while the change's commits
+// existed only on `refs/remotes/origin/<branch>`. Nothing said so — the branch name and the
+// PR were right, only the commit was wrong — so a resuming agent that did not compare its
+// HEAD against the change's reported head either lost the existing work or produced a diff
+// that read as a full rewrite of it.
+//
+// The branch's remote tip is REFRESHED first: a remote-tracking ref this checkout last
+// fetched hours ago is not the change's real tip either. The fetch is best-effort — it
+// touches exactly one ref, and a failure (offline, no such branch) falls through to the
+// checks below rather than failing a dispatch over a refresh.
+//
+// A READ-ONLY lane carries `--pr` as the change it is READING, not as a branch to resume:
+// a reviewer checks the change's head out itself, as a detached HEAD, and a verifier reads
+// merged main. Both keep the mainline as their start point.
+//
+// Every arm falls back to the mainline, so a `--pr` whose branch cannot be resolved here is
+// the behaviour this verb has always had, never a base `deskwt` would refuse.
+func worktreeBase(o dispatchOpts, branch string) string {
+	if o.pr <= 0 || reviewKit(o.kit) || verifierKit(o.kit) {
+		return mainlineRef
+	}
+	ref := "refs/remotes/origin/" + branch
+	// Constructed argv, no shell: the branch name is already bounded by branchNameRe, and
+	// the refspec is built from it rather than from any caller-supplied ref.
+	_ = runCmd(o.root, "git", "fetch", "--quiet", "origin",
+		"+refs/heads/"+branch+":"+ref)
+	r := runCmd(o.root, "git", "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	if r.err != nil || strings.TrimSpace(r.stdout) == "" {
+		return mainlineRef
+	}
+	return ref
+}
+
 // worktreeTmpBase is the parent of the sanctioned `tracker-*` worktree prefix. It is a
 // package var ONLY so tests can point it at a temp dir; production keeps the compiled-in
 // `/private/tmp`, matching the worktree verb's own fixed allowlist. It is deliberately NOT

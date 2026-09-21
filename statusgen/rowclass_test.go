@@ -267,6 +267,51 @@ func TestRowClass_LintUnknownClassIsProblem(t *testing.T) {
 	}
 }
 
+// TestRowShell_LintUnknownMarkerIsProblem is the unknown-value refusal for the
+// per-row SHELL column (issue #1424): a typo like `bash` (meaning `sh`) or
+// `powershell` (meaning `pwsh`) is a hard PROBLEM caught at authoring time, while
+// a well-formed `cmd` cell, an empty cell, and a table with no `Shell` column are
+// all clean (the empty/absent case is the default `sh`).
+func TestRowShell_LintUnknownMarkerIsProblem(t *testing.T) {
+	dir := t.TempDir()
+	briefV1WithVerify(t, dir, "01", strings.Join([]string{
+		"| # | Shell | Command | Expect |",
+		"|---|-------|---------|--------|",
+		"| 1 | bash  | `true`  | exit 0 |", // typo: bash, not sh
+	}, "\n"))
+	s := &Stream{Name: "t", Dir: dir, Root: dir}
+	probs := verifyRowClassProblems([]*Stream{s})
+	if len(probs) != 1 || !strings.Contains(probs[0], `shell "bash"`) {
+		t.Fatalf("unknown shell: got %v, want one PROBLEM naming bash", probs)
+	}
+
+	// A well-formed `cmd` cell is clean — and it coexists with an empty (default
+	// sh) cell in the same table without either being flagged.
+	dir2 := t.TempDir()
+	briefV1WithVerify(t, dir2, "01", strings.Join([]string{
+		"| # | Shell | Command | Expect |",
+		"|---|-------|---------|--------|",
+		`| 1 | cmd | ` + "`findstr /c:\"x\" a\\b.md`" + ` | exit 0 |`,
+		"| 2 |     | `true` | exit 0 |",
+	}, "\n"))
+	s2 := &Stream{Name: "t", Dir: dir2, Root: dir2}
+	if probs := verifyRowClassProblems([]*Stream{s2}); len(probs) != 0 {
+		t.Errorf("well-formed cmd cell + empty default cell: got %v, want none", probs)
+	}
+
+	// A legacy table with NO Shell column is clean — the whole inherited corpus.
+	dir3 := t.TempDir()
+	briefV1WithVerify(t, dir3, "01", strings.Join([]string{
+		"| # | Command | Expect |",
+		"|---|---------|--------|",
+		"| 1 | `true`  | exit 0 |",
+	}, "\n"))
+	s3 := &Stream{Name: "t", Dir: dir3, Root: dir3}
+	if probs := verifyRowClassProblems([]*Stream{s3}); len(probs) != 0 {
+		t.Errorf("legacy table with no Shell column: got %v, want none", probs)
+	}
+}
+
 func TestRowClass_LintMissingScriptScopedToNonTodo(t *testing.T) {
 	writeBrief := func(dir string) {
 		briefV1WithVerify(t, dir, "01", strings.Join([]string{

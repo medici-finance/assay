@@ -221,24 +221,7 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 	// inclusion of the row. A stream/brief the cross-check cannot resolve (no README, no matching
 	// row, unparseable table) is COULD-NOT-CHECK, not a reason to drop the row — resolveBrief's own
 	// missing-brief-file case sets the same precedent (degrade, never silently drop).
-	readmeCache := map[string]readmeCacheEntry{}
-	liveStatus := func(stream, num string) (string, bool) {
-		entry, cached := readmeCache[stream]
-		if !cached {
-			content, cerr := streamReadmeContent(root, stream)
-			entry = readmeCacheEntry{content: content, ok: cerr == nil}
-			readmeCache[stream] = entry
-		}
-		if !entry.ok {
-			return "", false
-		}
-		for _, cells := range briefsTableRows(entry.content) {
-			if strings.EqualFold(strings.TrimSpace(cells["#"]), num) {
-				return strings.TrimSpace(cells["status"]), true
-			}
-		}
-		return "", false
-	}
+	liveStatus := newLiveStatusReader(root)
 	var rows []BoardRow
 	for _, cells := range nextUpTableRows(raw) {
 		stream := strings.TrimSpace(cells["stream"])
@@ -266,11 +249,42 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 }
 
 // readmeCacheEntry memoizes one stream's README content (and whether it could be read at all)
-// across the many Next-up rows readNextUp's liveStatus re-check may ask about the same stream —
-// one git-show per stream per readNextUp call, not one per row.
+// across the many rows a live-status re-check may ask about the same stream — one git-show per
+// stream per board read, not one per row.
 type readmeCacheEntry struct {
 	content string
 	ok      bool
+}
+
+// newLiveStatusReader returns a memoized reader of a brief's OWN stream README Status cell, read
+// from the SAME already-fetched refs/remotes/origin/main ref STATUS.md is read from (#1028). It is
+// the shared machinery behind BOTH board-section lags: readNextUp's `## Next up` re-check and
+// readAwaitingRework's `### Awaiting implementer rework` re-check. It caches one git-show per stream
+// (streamReadmeContent), so a board with many rows on one stream reads that README once.
+//
+// The result is three-state honest: (status, true) is the live Status cell, and ("", false) is
+// COULD-NOT-CHECK — no README on origin/main, or no `## Briefs` row whose `#` matches num. A caller
+// must NEVER round ("", false) down to a drop: an unresolvable row degrades to "keep and let the
+// downstream gates decide", exactly as resolveBrief degrades a missing brief file.
+func newLiveStatusReader(root string) func(stream, num string) (string, bool) {
+	readmeCache := map[string]readmeCacheEntry{}
+	return func(stream, num string) (string, bool) {
+		entry, cached := readmeCache[stream]
+		if !cached {
+			content, cerr := streamReadmeContent(root, stream)
+			entry = readmeCacheEntry{content: content, ok: cerr == nil}
+			readmeCache[stream] = entry
+		}
+		if !entry.ok {
+			return "", false
+		}
+		for _, cells := range briefsTableRows(entry.content) {
+			if strings.EqualFold(strings.TrimSpace(cells["#"]), num) {
+				return strings.TrimSpace(cells["status"]), true
+			}
+		}
+		return "", false
+	}
 }
 
 // isDispatchableStatus reports whether a bare lifecycle token is one `plan` may still offer as
@@ -280,6 +294,29 @@ type readmeCacheEntry struct {
 func isDispatchableStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "todo", "in-progress":
+		return true
+	default:
+		return false
+	}
+}
+
+// dispatchableAsRework reports whether a bare lifecycle token is one the `Awaiting implementer
+// rework` lane may still offer for RESUME. It is exactly the two statuses statusgen's own
+// classifyAwaiting operates on — `implemented` and `verified` — because a brief awaiting implementer
+// rework is one whose deliverable is implemented (or verified) but whose LAST verification verdict
+// was FAIL (statusgen/emit.go classifyAwaiting → segmentRework). Every other token means the row has
+// LEFT that state since STATUS.md was rendered: `done` (the rework already landed and the brief is
+// complete), or `todo`/`in-progress`/`blocked` (the deliverable was reset or held). A rework row on
+// any of those is a stale render and must not be re-offered.
+//
+// This is the rework-lane analogue of isDispatchableStatus: readNextUp (#1047) cross-checks a
+// `## Next up` row against `todo`/`in-progress`; readAwaitingRework cross-checks a rework row against
+// `implemented`/`verified`. The two lanes carry DIFFERENT valid sets because they schedule different
+// work (fresh dispatch vs resume-of-failed), but both close the identical STATUS.md-render-lag hole
+// (#1028): the rendered section keeps listing a row after its own README Status cell has moved on.
+func dispatchableAsRework(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "implemented", "verified":
 		return true
 	default:
 		return false
@@ -320,6 +357,17 @@ func readAwaitingRework(root string) ([]BoardRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The `### Awaiting implementer rework` section is statusgen's RENDERED classifyAwaiting output,
+	// carrying the identical render-lag readNextUp's `## Next up` re-check closes (#1028/#1047): the
+	// section still lists a row whose own README Status cell has since moved past the awaiting-rework
+	// state (the rework landed and the brief flipped to `done`, or the deliverable was reset to
+	// `todo`), because a merge flips the README before the next status-regen commit re-renders this
+	// section. Reading the section alone never notices, and a worker dispatched to the phantom rework
+	// row re-derives at a large token cost that there is nothing to rework (#1028 evidence: rework-
+	// bucket rows returning NEEDS_CONTEXT). So cross-check every row against its OWN stream README,
+	// at the SAME origin/main ref, before offering it. A row the cross-check cannot resolve (no
+	// README, no matching `## Briefs` row) is COULD-NOT-CHECK and is KEPT, never dropped.
+	liveStatus := newLiveStatusReader(root)
 	var rows []BoardRow
 	for _, cells := range sectionTableRows(raw, "Awaiting implementer rework") {
 		stream := strings.TrimSpace(cells["stream"])
@@ -332,6 +380,12 @@ func readAwaitingRework(root string) ([]BoardRow, error) {
 			continue
 		}
 		num := fields[0]
+		if live, ok := liveStatus(stream, num); ok && !dispatchableAsRework(live) {
+			fmt.Fprintf(os.Stderr,
+				"fanoutloop: NOTE: dropping %s/%s from Awaiting-implementer-rework — its own README Status cell reads %q, no longer awaiting implementer rework (the rework section lagged the row's live status, #1028)\n",
+				stream, num, live)
+			continue
+		}
 		br := BoardRow{Stream: stream, Num: num}
 		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
 		rows = append(rows, br)
