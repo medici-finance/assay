@@ -250,7 +250,7 @@ func TestReviewFindingSharedCIBlocker(t *testing.T) {
 		return deskkit.Finding{ID: id, Class: "shared-ci", Severity: deskkit.SeverityBlocking,
 			Blocker: deskkit.BlockerExternalPrereq, State: deskkit.StateOpen, OriginHead: head,
 			EvidenceHead: head, Failure: "shared CI leg red", Evidence: []string{"run-123"},
-			SharedRepair: "assay-toolkit#999"}
+			SharedRepair: "assay#999"}
 	}
 
 	// PR one: a shared-CI blocker plus a genuine code-content defect of its own.
