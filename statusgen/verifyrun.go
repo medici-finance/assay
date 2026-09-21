@@ -40,9 +40,10 @@ package main
 // it.
 //
 // could-not-run covers two shapes, deliberately: the command never ran (not
-// found, not executable, timed out, unsubstituted placeholder), AND it ran but
-// yielded no verdict (Expect declares a numeric floor and the output carries no
-// number). Both are "the instrument did not look"; neither may render green.
+// found, not executable, timed out, unsubstituted placeholder, or the shell
+// itself could not bootstrap — issue #1418), AND it ran but yielded no verdict
+// (Expect declares a numeric floor and the output carries no number). Both are
+// "the instrument did not look"; neither may render green.
 //
 // It is a LOWER BOUND on the class, never the complete set. A shell reports only
 // 126/127 distinctly; a row whose fixture is missing and whose command reports
@@ -472,6 +473,139 @@ type runResult struct {
 	reason      string
 }
 
+// ---------------------------------------------------------------------------
+// Shell selection — resolved ONCE per run, before any row executes
+// ---------------------------------------------------------------------------
+
+// verifyShellEnv is the explicit shell override, consulted ONLY when the default
+// `bash` on PATH cannot bootstrap. Named in the house `ASSAY_*` env convention
+// (the same prefix ASSAY_ALLOW_CLUSTER, ASSAY_STREAM_CAP, … already use).
+const verifyShellEnv = "ASSAY_VERIFY_SHELL"
+
+// shellProbeTimeout bounds the one-shot bootstrap probe. The probe does no work
+// (`<bash> -o pipefail -c 'exit 0'`), so this only has to cover process start on
+// a loaded host.
+const shellProbeTimeout = 30 * time.Second
+
+// wslLauncherSignatureRe matches the distinctive stderr the Windows WSL launcher
+// (`bash.exe` that is really the `wsl.exe` shim) prints when NO WSL distro is
+// installed: it exits 1 with `CreateProcessCommon: execvpe(/bin/bash) failed`
+// BEFORE the intended command ever runs. It is matched to (a) enrich the
+// could-not-run reason and (b) back up the up-front probe should a row ever reach
+// this signature; the PRIMARY detection is the probe, which fails positively on
+// this launcher. Keyed to the launcher's own words so a genuine check that merely
+// exits 1 is never mistaken for a bootstrap failure.
+var wslLauncherSignatureRe = regexp.MustCompile(`(?i)execvpe\(/bin/bash\)|CreateProcessCommon`)
+
+// shellPlan is the POSIX shell verifyrun runs Verify rows with, resolved ONCE per
+// run by resolveShellPlan (never per row). A row is executed only when ok is
+// true; otherwise the row is could-not-run — the shell never started, so the
+// row's own command never ran, and recording it `fail` would be a false product
+// check (issue #1418: a Windows WSL launcher with no distro exits 1 before the
+// row runs).
+type shellPlan struct {
+	bash   string // the bash executable to invoke; "" when none is usable
+	ok     bool   // a pipefail-capable bash was found AND probed clean
+	reason string // when !ok, exactly what was tried, for the could-not-run row
+}
+
+// gitForWindowsBashPaths are the well-known Git-for-Windows bash locations, tried
+// (in order) only when the default `bash` failed to bootstrap. Empty off Windows,
+// so this whole arm is inert on Linux/macOS.
+func gitForWindowsBashPaths() []string {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return []string{
+		`C:\Program Files\Git\bin\bash.exe`,
+		`C:\Program Files\Git\usr\bin\bash.exe`,
+		`C:\Program Files (x86)\Git\bin\bash.exe`,
+	}
+}
+
+// probeShell runs the one-shot bootstrap probe: `<bash> -o pipefail -c 'exit 0'`.
+// It returns ok only when the shell STARTED, ACCEPTED `-o pipefail`, and exited 0.
+// A shell that does not support pipefail the same way bash does fails the `-o
+// pipefail` parse and is rejected here — which is exactly what keeps a non-POSIX
+// shell (PowerShell, cmd) from ever being selected: none of them accept this argv,
+// so pipefail semantics can never be silently lost by substituting one.
+func probeShell(bash string) (ok bool, output []byte) {
+	ctx, cancel := context.WithTimeout(context.Background(), shellProbeTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bash, "-o", "pipefail", "-c", "exit 0").CombinedOutput()
+	return err == nil && ctx.Err() == nil, out
+}
+
+// shellProbeSnippet renders a short, single-line tail of a failed probe's output
+// for the could-not-run reason, flagging the WSL-launcher signature when present.
+func shellProbeSnippet(out []byte) string {
+	s := strings.Join(strings.Fields(string(out)), " ")
+	if s == "" {
+		return ""
+	}
+	if len(s) > 200 {
+		s = s[:200] + "…"
+	}
+	if wslLauncherSignatureRe.MatchString(s) {
+		return " (looks like the Windows WSL launcher with no distro installed): " + s
+	}
+	return ": " + s
+}
+
+// resolveShellPlan picks the shell every Verify row in this run will execute
+// under, probing it ONCE before any row's own command runs.
+//
+// Order:
+//  1. `bash` on PATH — the ONLY shell consulted on a healthy POSIX host, so a
+//     working bash means Linux/macOS behaviour is UNCHANGED (rows run exactly as
+//     before, at the cost of one cheap probe per run). The Windows fallbacks below
+//     are reached only when this bash cannot bootstrap.
+//  2. The explicit override ($ASSAY_VERIFY_SHELL), if set.
+//  3. Git-for-Windows bash at its well-known install path(s).
+//  4. None usable → ok=false, with a reason naming every candidate tried.
+//
+// It NEVER falls back to PowerShell or cmd: their quoting and exit-code semantics
+// would silently reinterpret a Verify row's command, and none of them survives the
+// `-o pipefail` probe in any case.
+func resolveShellPlan() shellPlan {
+	var tried []string
+
+	if path, err := exec.LookPath("bash"); err == nil {
+		ok, out := probeShell("bash")
+		if ok {
+			return shellPlan{bash: "bash", ok: true}
+		}
+		tried = append(tried, fmt.Sprintf("`bash` on PATH (%s): probe `bash -o pipefail -c 'exit 0'` failed%s", path, shellProbeSnippet(out)))
+	} else {
+		tried = append(tried, "`bash` is not on PATH")
+	}
+
+	if override := strings.TrimSpace(os.Getenv(verifyShellEnv)); override != "" {
+		ok, out := probeShell(override)
+		if ok {
+			return shellPlan{bash: override, ok: true}
+		}
+		tried = append(tried, fmt.Sprintf("%s=%q: probe failed%s", verifyShellEnv, override, shellProbeSnippet(out)))
+	} else {
+		tried = append(tried, verifyShellEnv+" is unset")
+	}
+
+	for _, cand := range gitForWindowsBashPaths() {
+		if _, err := os.Stat(cand); err != nil {
+			tried = append(tried, fmt.Sprintf("%s: not present", cand))
+			continue
+		}
+		ok, out := probeShell(cand)
+		if ok {
+			return shellPlan{bash: cand, ok: true}
+		}
+		tried = append(tried, fmt.Sprintf("%s: present but probe failed%s", cand, shellProbeSnippet(out)))
+	}
+
+	return shellPlan{ok: false,
+		reason: "no pipefail-capable POSIX shell could be started (never falling back to PowerShell/cmd): " + strings.Join(tried, "; ")}
+}
+
 // runVerifyCommand executes one Verify command.
 //
 // "Clean subshell" means a FRESH shell per row, at the repo root, with no state
@@ -484,8 +618,12 @@ type runResult struct {
 // stdout and stderr are captured COMBINED, in interleaved order, because that is
 // what a person running the row in a terminal sees and what the Expect cells in
 // the corpus are written against (`2>&1` appears in them constantly).
+//
+// The shell plan is resolved here for a single-row call; a MULTI-row run resolves
+// it once and threads it (runWitnesses → runVerifyCommandWith), so a run probes
+// the shell once, not once per row.
 func runVerifyCommand(root, command string, timeout time.Duration) runResult {
-	return runVerifyCommandWith(root, command, timeout, nil)
+	return runVerifyCommandWith(root, command, timeout, nil, resolveShellPlan())
 }
 
 // runHermetically executes a `check:ci` row with the network DISABLED.
@@ -498,18 +636,26 @@ func runVerifyCommand(root, command string, timeout time.Duration) runResult {
 // a hermetic check that could not be run hermetically established nothing, and
 // the honest three-state answer is "I could not look", reported with the reason.
 func runHermetically(root, command string, timeout time.Duration) runResult {
+	return runHermeticallyWith(root, command, timeout, resolveShellPlan())
+}
+
+// runHermeticallyWith is runHermetically with the shell plan resolved ONCE by the
+// caller (runWitnesses resolves it a single time for the whole run and threads it
+// here), so a multi-row run probes the shell once rather than once per row.
+func runHermeticallyWith(root, command string, timeout time.Duration, plan shellPlan) runResult {
 	wrapper, ok, why := networkOffWrapper()
 	if !ok {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "check:ci hermetic execution requires a network-off sandbox, unavailable on this host: " + why + ". check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net`"}
 	}
-	return runVerifyCommandWith(root, command, timeout, wrapper)
+	return runVerifyCommandWith(root, command, timeout, wrapper, plan)
 }
 
 // runVerifyCommandWith executes one Verify command, optionally under a wrapper
-// argv prefix (the network-off sandbox for check:ci rows). A nil wrapper runs
-// the command directly, which is the env-bound `check`/legacy path.
-func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper []string) runResult {
+// argv prefix (the network-off sandbox for check:ci rows), in the shell the
+// caller has already resolved (plan). A nil wrapper runs the command directly,
+// which is the env-bound `check`/legacy path.
+func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper []string, plan shellPlan) runResult {
 	if strings.TrimSpace(command) == "" {
 		return runResult{exit: -1, couldNotRun: true, reason: "the Verify row has no command"}
 	}
@@ -520,6 +666,20 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	if mv := unsubstitutedMetavars(command); len(mv) > 0 {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "unsubstituted placeholder(s) " + strings.Join(mv, ", ") + " — the row cannot run as written"}
+	}
+	// The shell was resolved and PROBED once for this run (resolveShellPlan). When
+	// no pipefail-capable POSIX shell could be started, the row NEVER RAN — the
+	// shell would exit before the row's own command. Record could-not-run with the
+	// full resolution detail; do NOT fabricate output or a `fail`. This is the
+	// Windows WSL-launcher defect (issue #1418): `bash.exe` is the WSL shim and no
+	// distro is installed, so it exits 1 up front, which a bare exit-1 check would
+	// otherwise misread as a genuine product-check failure.
+	if !plan.ok {
+		return runResult{exit: -1, couldNotRun: true, reason: "shell bootstrap failed: " + plan.reason}
+	}
+	bash := plan.bash
+	if bash == "" {
+		bash = "bash"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -539,7 +699,7 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// FAILS. Non-piped commands are unaffected: a single command's exit is its
 	// pipeline's exit with or without pipefail. This matches how the repo's CI
 	// shell steps run.
-	argv := append(append([]string{}, wrapper...), "bash", "-o", "pipefail", "-c", unescapePipes(command))
+	argv := append(append([]string{}, wrapper...), bash, "-o", "pipefail", "-c", unescapePipes(command))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
@@ -565,6 +725,16 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		if code == 127 || code == 126 {
 			return runResult{exit: code, output: out, couldNotRun: true,
 				reason: "the shell could not execute the command (exit " + strconv.Itoa(code) + ")"}
+		}
+		// Backstop to the up-front probe: a Windows WSL launcher with no distro
+		// installed exits 1 with its own distinctive error BEFORE the row's command
+		// runs. That is the shell failing to bootstrap, not the row's command
+		// failing, so it is could-not-run, never fail. Keyed to the exact launcher
+		// signature (wslLauncherSignatureRe) so a genuine check that merely exits 1
+		// is unaffected.
+		if wslLauncherSignatureRe.Match(out) {
+			return runResult{exit: code, output: out, couldNotRun: true,
+				reason: "shell bootstrap failed (Windows WSL launcher, no distro installed)" + shellProbeSnippet(out)}
 		}
 		return runResult{exit: code, output: out}
 	default:
@@ -848,6 +1018,11 @@ func briefSections(path string) (verify, evidence string, err error) {
 //   - everything else (legacy check off-CI, gate:*) — executed as before.
 func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	out := make([]witness, 0, len(rows))
+	// The shell is resolved and probed ONCE for the whole run, not once per row:
+	// the probe is a subprocess, and O(rows) probes would add real overhead while
+	// telling us nothing a single probe does not. It is threaded into every row's
+	// execution below (runVerifyCommandWith / runHermeticallyWith).
+	plan := resolveShellPlan()
 	for _, r := range rows {
 		// A cluster row (verdict-lane/07) is env-bound to a live cluster, whose
 		// runner is the privileged pod runner. This is the OFFLINE lane — it holds
@@ -873,9 +1048,9 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 		}
 		var res runResult
 		if r.Class == classCheckCI {
-			res = runHermetically(root, r.Command, timeout)
+			res = runHermeticallyWith(root, r.Command, timeout, plan)
 		} else {
-			res = runVerifyCommand(root, r.Command, timeout)
+			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan)
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
 		out = append(out, witness{
