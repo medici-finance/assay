@@ -114,6 +114,48 @@
       "file": "cmd/reviewloop/plan.go",
       "old": "\tif verdict.State == IdleCouldNotCheck {",
       "new": "\tif false && verdict.State == IdleCouldNotCheck {"
+    },
+    {
+      "name": "a worker's self-resolution of a blocking finding stands — a worker clears its own blocker (finding continuity row 2)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\tif lf.blocking() && lf.State == StateResolved {",
+      "new": "\tif false && lf.blocking() && lf.State == StateResolved {"
+    },
+    {
+      "name": "a reviewer resolution on stale-head evidence clears the finding — no-stale-approval defeated (row 1/2)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\t\tif evHead != r.Head {",
+      "new": "\t\tif false && evHead != r.Head {"
+    },
+    {
+      "name": "the round cap stops firing — a class runs past three rounds and never files an arbiter packet (row 3)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\tif cs.rounds >= RoundCap {",
+      "new": "\tif false && cs.rounds >= RoundCap {"
+    },
+    {
+      "name": "a held class re-arms — a sibling sentence evades the cap after arbitration (row 3)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\tif cs.held {\n\t\t// The class is already at the cap: a further reviewer verdict (including one that",
+      "new": "\tif false && cs.held {\n\t\t// The class is already at the cap: a further reviewer verdict (including one that"
+    },
+    {
+      "name": "a poll counts as a round — consecutive reviewer verdicts with no worker response inflate the count (row 3)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\tif !cs.pendingResponse {",
+      "new": "\tif false && !cs.pendingResponse {"
+    },
+    {
+      "name": "a fix overwrites the finding's original evidence — continuity across heads loses the raise evidence (row 1)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\t\tmerged.Evidence = mergeEvidence(lf.Evidence, f.Evidence)",
+      "new": "\t\tmerged.Evidence = f.Evidence"
+    },
+    {
+      "name": "a shared-CI blocker is invented as a per-PR content defect — the external-prerequisite distinction is lost (row 4)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\t\tif f.blocking() && f.Blocker == BlockerCodeContent && f.State != StateResolved {",
+      "new": "\t\tif f.blocking() && f.State != StateResolved {"
     }
   ]
 }

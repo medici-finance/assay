@@ -257,3 +257,32 @@ bypass of a standing rejection.
 **Unchanged by this clause.** The three-round cap on a finding class and the independent
 security review stand exactly as before; this clause narrows what counts as a NEW blocker, it
 does not touch the round counter or any verdict lane.
+
+## 13. Persist findings so the round survives your replacement
+
+Your verdict prose is lost the moment you are replaced by a fresh reviewer: it rereads the
+whole PR and restates old objections under new IDs, and the round counter resets. Carry the
+disputed state in a DURABLE, typed record instead, embedded additively in your review body
+(`review-finding/v1`; schema and helper in `deskkit.RenderFindingBlock`, contract in the
+review-finding record doc). The record is what makes the existing per-class round cap and
+the finding identities survive an agent change.
+
+- **Give every blocking finding a stable `id` and a `class`, and reuse them.** A newly
+  noticed OCCURRENCE of a proposition you already raised keeps the same class ID and its
+  round history — fixing one sentence never resets the class, and a sibling sentence is not
+  a fresh finding. A genuinely new proposition gets a new ID.
+- **A blocking finding needs a concrete reproduction or an evidence-based explanation** — a
+  bare assertion cannot block (the write gate refuses one that carries neither).
+- **Resolve at the current head, with current-head evidence.** A resolution whose evidence
+  was gathered at a stale head does not clear the finding, and an approval at an old head is
+  never carried across a change.
+- **Distinguish a shared external prerequisite (a red shared-CI leg) from a code/content
+  defect.** A shared prerequisite is ONE shared repair cited across the PRs that hit it, not
+  a per-PR correctness defect — but it still blocks a ready-flip until the applicable checks
+  pass.
+- **The round cap is derived, not something you assert.** At the existing three-round-per-
+  class cap the derived ledger files ONE arbiter packet to the human decision lane and holds
+  the class. You never overrule a reviewer and never manufacture a cap breach; a promotion
+  from advisory to blocking is recorded with changed impact or new evidence.
+- **A record missing its authenticated actor or head is could-not-check** — it clears
+  nothing. Report it as itself; never round it up to a resolution.

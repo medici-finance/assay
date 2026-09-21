@@ -465,6 +465,19 @@ plus the PR link, then comment on the PR pointing at the filed issue
 already open). `authorization-needed` stays on the PR — the packet is a human fork, not a flip,
 and does not touch ready-flip ownership, human merge, or the security carve-out.
 
+**Persistence — the cap and the finding identities survive an agent change.** The round
+count and each finding's identity are **derived from a durable, typed record** carried in the
+review/reply bodies (`review-finding/v1`, embedded additively so a legacy reader ignores it;
+tool support in `reviewloop` and `deskkit`), not from any one agent's memory. That is what
+lets a replacement reviewer resume the round rather than reread the whole PR and restart the
+counter: re-deriving the same forge records always yields the same finding IDs, the same
+per-class rounds and — at the cap — the same single arbiter packet, so a duplicate sweep or a
+restart files nothing new and a newly noticed sibling sentence keeps its class rather than
+opening a fresh one. A worker cannot author your resolution of a blocking finding (the
+`deskreply` write gate and the derivation both refuse it), and a record missing its
+authenticated actor or head is could-not-check — it clears nothing. Blocking policy and the
+cap threshold are unchanged; the record only makes them survive replacement.
+
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition of the same finding, not rounds on one PR) is itself worth filing as
 a guardrail-promotion candidate through the existing insight-routing lane — independent of

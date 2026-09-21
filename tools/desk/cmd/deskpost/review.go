@@ -129,6 +129,14 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
+		// A review body MAY carry a typed persistent finding block (additive — a legacy body
+		// carries none and this is a no-op). Validate it for the REVIEWER role before any
+		// network: a reviewer may raise, maintain and resolve findings, but a malformed block
+		// — a blocking finding with no concrete reproduction/evidence, an unknown state — is a
+		// refusal with zero side effects, the same as every other pre-network body check.
+		if err := deskkit.ValidateReviewFindingBlock(body, deskkit.RoleReviewer); err != nil {
+			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
+		}
 		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. A review body is the densest
 		// evidence surface the desk writes — it quotes paths, cites issues across repos and
 		// names streams — which is precisely why it is also the likeliest to carry a span

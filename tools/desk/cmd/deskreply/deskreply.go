@@ -183,6 +183,16 @@ func cmdReply(args []string) (err error) {
 		return cerr
 	}
 
+	// A worker reply MAY carry a typed persistent finding block referencing a finding's fix
+	// or counter-evidence (additive — a legacy reply carries none and this is a no-op).
+	// Validate it for the WORKER role before any preflight/mint/network: a worker may move a
+	// finding to fixed-awaiting-review or disputed, but it CANNOT author a reviewer's
+	// resolution of a blocking finding, nor hand-assert the arbitration cap — those refuse
+	// here, with zero side effects, the same as every other cheap body check above.
+	if verr := deskkit.ValidateReviewFindingBlock(body, deskkit.RoleWorker); verr != nil {
+		return verr
+	}
+
 	// --workpad posts/edits ONE marked comment; a body without the marker is a caller
 	// error (the body was meant for `deskreply <owner/repo> <pr> --body-file F`, the plain
 	// reply path) and is refused BEFORE any preflight/mint/gate work runs, exactly like
