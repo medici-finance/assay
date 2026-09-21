@@ -128,6 +128,8 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
+		// Automated desks do not need the extra next-prompt generation request.
+		env = envSet(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false")
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a

@@ -295,6 +295,7 @@ is the single source this table, the `[plan]` lines below, and the live launch a
 | GIT_TERMINAL_PROMPT | `0` |
 | CODEX_HOME | `<cell>/home/.codex` — codex arm only |
 | CLAUDE_CONFIG_DIR | `<cell>/home/.claude` — claude arm only |
+| CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION | `false` — claude arm only |
 | DESK_LOOP | the role (or `smoke`) |
 | DESK_SESSION | `<cell>-<role>-<UTC boot stamp>[-codex]` |
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
@@ -1311,3 +1312,21 @@ For shared provider model defaults and per-desk effort with cell-level exception
 see [Shared provider defaults](cellctl-provider-defaults.md). For a complete standalone
 policy, see [Cell model policy](cellctl-model-policy.md); `CELL_MODEL_POLICY` takes
 precedence over shared defaults. Existing legacy cell pins apply when neither is configured.
+
+
+### Claude prompt suggestions
+
+Every `cellctl desk` Claude launch, including provider-backed GLM/Kimi sessions,
+exports `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`. Scrubbed desk and smoke
+launches compose the same value; an inherited `true` does not override it.
+The dry-run output shows the value. Container base and harness images also default
+it to `false`, covering direct Claude processes started in those images.
+
+External schedulers that launch Claude themselves, such as Orca automations,
+do not inherit a future `cellctl desk` environment. Set the same variable in their
+job environment or the Claude configuration they load. For direct host invocations,
+set `"env": {"CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false"}` in the relevant
+Claude `settings.json`; this covers cron without relying on interactive shell rc
+files. Claude settings can override inherited environment variables, so remove any
+contradictory `true` from higher-priority settings. Existing processes do not acquire
+new shell exports; use `/config` or restart the affected session after rollout.

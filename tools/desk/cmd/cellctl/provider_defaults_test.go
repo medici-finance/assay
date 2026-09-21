@@ -193,6 +193,7 @@ printf 'OPUS=%s\n' "${ANTHROPIC_DEFAULT_OPUS_MODEL-}"
 printf 'SONNET=%s\n' "${ANTHROPIC_DEFAULT_SONNET_MODEL-}"
 printf 'HAIKU=%s\n' "${ANTHROPIC_DEFAULT_HAIKU_MODEL-}"
 printf 'EFFORT=%s\n' "${CLAUDE_CODE_EFFORT_LEVEL-}"
+printf 'PROMPT_SUGGESTION=%s\n' "${CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION-}"
 printf 'CHILD=%s\n' "${CLAUDE_CODE_SUBAGENT_MODEL-}"
 printf 'BASE_URL=%s\n' "${ANTHROPIC_BASE_URL-}"
 `
@@ -210,11 +211,11 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 		t.Run(tc.provider, func(t *testing.T) {
 			f := catalogFixture(t)
 			f.prepareLocalLaunch(t)
-			r := f.run(t, []string{"CELLCTL_DESKWT=0", "ANTHROPIC_DEFAULT_OPUS_MODEL=stale-alias", "CLAUDE_CODE_EFFORT_LEVEL=low"}, "desk", "example", tc.role, "--provider", tc.provider)
+			r := f.run(t, []string{"CELLCTL_DESKWT=0", "ANTHROPIC_DEFAULT_OPUS_MODEL=stale-alias", "CLAUDE_CODE_EFFORT_LEVEL=low", "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true"}, "desk", "example", tc.role, "--provider", tc.provider)
 			if r.code != 0 {
 				t.Fatalf("launch: %+v", r)
 			}
-			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base} {
+			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false"} {
 				if !strings.Contains(r.stdout, key+"="+value+"\n") {
 					t.Errorf("missing %s=%s in %s", key, value, r.stdout)
 				}

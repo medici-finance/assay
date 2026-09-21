@@ -231,7 +231,7 @@ case_env_scrub(){
   rm -f "$T/claude-launch.out"
   local expected_path="$C/shim:$DESK_TOOLS_BIN:$T/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   (
-    GH_TOKEN=canary-parent SSH_AUTH_SOCK=/nonexistent ANTHROPIC_API_KEY=canary \
+    GH_TOKEN=canary-parent SSH_AUTH_SOCK=/nonexistent ANTHROPIC_API_KEY=canary CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true \
     PATH="$T/canary:$PATH" TERM="${TERM:-xterm-256color}" LANG="${LANG:-en_US.UTF-8}" \
     "$CELLCTL" desk "$cell" worker-desk </dev/null >"$T/env-scrub-desk.out" 2>&1
   )
@@ -246,6 +246,7 @@ case_env_scrub(){
   assert "env-scrub: KUBECONFIG=/dev/null" 'grep -qx "KUBECONFIG=/dev/null" "$envf"'
   assert "env-scrub: GIT_TERMINAL_PROMPT=0" 'grep -qx "GIT_TERMINAL_PROMPT=0" "$envf"'
   assert "env-scrub: CLAUDE_CONFIG_DIR under the cell home (claude arm)" 'grep -qxF "CLAUDE_CONFIG_DIR=$C/home/.claude" "$envf"'
+  assert "env-scrub: suggestions disabled despite parent true" 'grep -qx "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false" "$envf"'
   assert "env-scrub: no CODEX_HOME on the claude arm (harness-namespaced, mutually exclusive)" '! grep -q "^CODEX_HOME=" "$envf"'
   assert "env-scrub: DESK_ROOTS exported from CELL_ROOTS" 'grep -qxF "DESK_ROOTS=example-org/example-repo=$REPO" "$envf"'
   assert "env-scrub: composed PATH is EXACTLY the 7 named elements, in order — no canary dir" 'grep -qxF "PATH=$expected_path" "$envf"'

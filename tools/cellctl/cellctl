@@ -1940,7 +1940,7 @@ check_codex_harness(){
 # exclusive — only the active harness's var is ever exported — and DESK_ROOTS/TERM/LANG are
 # present only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries
 # one.
-SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
+SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
 
 # scrubbed_harness_path <harness>: resolves the harness binary ONCE, on the PARENT shell's PATH —
 # the one parent-derived element the composed PATH below keeps (named and pinned, never a bare
@@ -1975,6 +1975,7 @@ scrubbed_env_value(){
     GIT_TERMINAL_PROMPT) printf '%s' "0" ;;
     CODEX_HOME) [[ "$harness" == "codex" ]] && printf '%s' "$CELL_HOME/.codex" ;;
     CLAUDE_CONFIG_DIR) [[ "$harness" == "claude" ]] && printf '%s' "$CELL_HOME/.claude" ;;
+    CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION) [[ "$harness" == "claude" ]] && printf false ;;
     DESK_LOOP) printf '%s' "$role" ;;
     DESK_SESSION) printf '%s' "$session" ;;
     DESK_ROOTS) printf '%s' "${CELL_ROOTS:-}" ;;
@@ -2303,6 +2304,9 @@ cmd_desk(){
     if [[ -n "$repair_admission" ]]; then
       echo "[dry-run] env ASSAY_REPAIR_ADMISSION=$repair_admission (repair-admission dispatch gate opt-in)"
     fi
+    if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
+      echo "[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false"
+    fi
     if [[ "$persist" == "1" ]]; then
       local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
     fi
@@ -2432,7 +2436,7 @@ cmd_desk(){
     [[ -n "$tier_top"  ]] && pmodel_opus="$tier_top"
     [[ -n "$tier_mid"  ]] && pmodel_sonnet="$tier_mid"
     [[ -n "$tier_fast" ]] && pmodel_haiku="$tier_fast"
-    exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \

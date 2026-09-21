@@ -295,6 +295,9 @@ func cmdDesk(cell string, args []string) {
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
 		}
+		if harness == "claude" && c.Kind != "scrubbed" {
+			fmt.Println("[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false")
+		}
 		if persist {
 			for _, kv := range persistKVs {
 				fmt.Printf("[dry-run] --set: would persist %s into %s/cell.env (not written — dry run)\n", kv, c.Dir)
