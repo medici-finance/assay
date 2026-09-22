@@ -759,33 +759,49 @@ sources: ["s"]
 // whether an identity other than the author EVER touched the "## Evidence"
 // section specifically, not just who touched the file (or even the section)
 // most recently, and must see straight through the later, unrelated commit.
+//
+// brief-02 here is NOT decoration: without a second brief whose first/last git
+// identities genuinely differ, this repo's `idents` set collapses to exactly
+// one member ({alice}) — brief-01's own first (oldest: alice) and last
+// (newest: alice's mechanical touch) identities are equal by this test's own
+// design — and attributionProblems takes the single-identity "inconclusive"
+// branch for the WHOLE repo before ever building the escalation candidate list,
+// so evidenceSectionTouchedByOtherIdentity is never even called. brief-02
+// establishes that identity genuinely discriminates in this repo (its own
+// first=alice, last=bob) without itself becoming a same-identity candidate.
 func TestAttributionIdentityCrossCheckMechanicalTouchNotMasked(t *testing.T) {
 	gitAvailable(t)
 	root := t.TempDir()
-	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
+	writeIdentStream(t, root, []struct{ num, file string }{
+		{"01", "brief-01-t.md"}, // the brief under test
+		{"02", "brief-02-t.md"}, // control: establishes multi-identity, not itself a candidate
+	})
 	attrGitInit(t, root)
-	gitCommitAs(t, root, "Alice", "alice@example.com", "alice authors brief-01")
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice authors brief-01 and brief-02")
 
 	b1 := filepath.Join(root, "docs", "streams", "gitattr", "brief-01-t.md")
+	b2 := filepath.Join(root, "docs", "streams", "gitattr", "brief-02-t.md")
 
-	// Bob genuinely, independently re-verifies: a real edit INSIDE the "##
-	// Evidence" section (which runs to EOF in this fixture, so any append lands
-	// there).
-	f, err := os.OpenFile(b1, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.WriteString("| 2 | `go vet ./...` | 0 | ok | 2026-07-09 | bob-verifier |\n"); err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
+	// Control: Bob touches brief-02 only, giving it a distinct last identity
+	// (first=alice, last=bob) so this repo's `idents` set has more than one
+	// member — identity genuinely discriminates here — without brief-02
+	// itself becoming a same-identity candidate.
+	appendLine(t, b2, "<!-- bob's independent touch on the control brief -->")
+	gitCommitAs(t, root, "Bob", "bob@example.com", "bob touches brief-02 (control, distinct identity)")
+
+	// Bob genuinely, independently re-verifies brief-01: a real edit INSIDE the
+	// "## Evidence" section (which runs to EOF in this fixture, so any append
+	// lands there).
+	appendLine(t, b1, "| 2 | `go vet ./...` | 0 | ok | 2026-07-09 | bob-verifier |")
 	gitCommitAs(t, root, "Bob", "bob@example.com", "bob independently re-verifies brief-01")
 
 	// A LATER, unrelated, repo-wide mechanical commit by Alice touches brief-01
 	// again — but only its title line, well OUTSIDE the "## Evidence" section —
 	// the exact shape of the repo-wide brief-v1->v2 migration commit the review
-	// traced. Pre-fix, this reset the whole-file "last toucher" back to Alice
-	// (== the authoring identity) and masked Bob's genuinely independent commit.
+	// traced. This is also the LAST commit to touch brief-01, so the fast
+	// whole-file index now reads first=alice, last=alice for brief-01 — a
+	// same-identity escalation CANDIDATE — even though bob's genuinely
+	// independent commit sits in its Evidence-section history in between.
 	body, err := os.ReadFile(b1)
 	if err != nil {
 		t.Fatal(err)
@@ -806,6 +822,9 @@ func TestAttributionIdentityCrossCheckMechanicalTouchNotMasked(t *testing.T) {
 			"mechanical commit by alice outside that section must not mask that and false-flag a "+
 			"selfVerification PROBLEM; got:\n%s", joinedProblems)
 	}
+	if strings.Contains(joinedProblems, "brief-02") {
+		t.Errorf("brief-02 has distinct authoring/last-toucher identities and must NOT be flagged; got:\n%s", joinedProblems)
+	}
 }
 
 // TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked: a second,
@@ -821,39 +840,44 @@ func TestAttributionIdentityCrossCheckMechanicalTouchNotMasked(t *testing.T) {
 // commit is still in that section's history, just not the newest entry.
 // evidenceSectionTouchedByOtherIdentity must see the independent commit
 // wherever it sits in the section's history, not only at the top.
+//
+// brief-02 here plays the same load-bearing role as in the test above: without
+// it, brief-01's own first (alice) and last (alice's addendum) identities are
+// this repo's ONLY identities, the `idents` set collapses to one member, and
+// attributionProblems never reaches the escalation-candidate path at all.
 func TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked(t *testing.T) {
 	gitAvailable(t)
 	root := t.TempDir()
-	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
+	writeIdentStream(t, root, []struct{ num, file string }{
+		{"01", "brief-01-t.md"}, // the brief under test
+		{"02", "brief-02-t.md"}, // control: establishes multi-identity, not itself a candidate
+	})
 	attrGitInit(t, root)
-	gitCommitAs(t, root, "Alice", "alice@example.com", "alice authors brief-01")
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice authors brief-01 and brief-02")
 
 	b1 := filepath.Join(root, "docs", "streams", "gitattr", "brief-01-t.md")
+	b2 := filepath.Join(root, "docs", "streams", "gitattr", "brief-02-t.md")
 
-	// Bob genuinely, independently re-verifies: a real edit INSIDE the "##
-	// Evidence" section.
-	f, err := os.OpenFile(b1, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.WriteString("| 2 | `go vet ./...` | 0 | ok | 2026-07-09 | bob-verifier |\n"); err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
+	// Control: Bob touches brief-02 only — same role as the test above.
+	appendLine(t, b2, "<!-- bob's independent touch on the control brief -->")
+	gitCommitAs(t, root, "Bob", "bob@example.com", "bob touches brief-02 (control, distinct identity)")
+
+	// Bob genuinely, independently re-verifies brief-01: a real edit INSIDE the
+	// "## Evidence" section.
+	appendLine(t, b1, "| 2 | `go vet ./...` | 0 | ok | 2026-07-09 | bob-verifier |")
 	gitCommitAs(t, root, "Bob", "bob@example.com", "bob independently re-verifies brief-01")
 
 	// A LATER commit by Alice — the ORIGINAL AUTHOR — appends a caveat next to
 	// Bob's already-independent verification, still INSIDE the "## Evidence"
-	// section. This is the desk-tools/brief-08 shape: the implementer recording
-	// a residual found by security review, not re-verifying anything.
-	f2, err := os.OpenFile(b1, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f2.WriteString("\nCarried residual — could-not-close: see #1234.\n"); err != nil {
-		t.Fatal(err)
-	}
-	f2.Close()
+	// section, and is the LAST commit to touch brief-01. This is the
+	// desk-tools/brief-08 shape: the implementer recording a residual found by
+	// security review, not re-verifying anything. The fast whole-file index now
+	// reads first=alice, last=alice for brief-01 (a same-identity candidate),
+	// and — unlike the test above — bob's independent commit sits INSIDE the
+	// same Evidence-section line range alice's own last commit touches, so a
+	// signal scoped only to "most recently touched within Evidence" would still
+	// get this wrong.
+	appendLine(t, b1, "Carried residual -- could-not-close: see #1234.")
 	gitCommitAs(t, root, "Alice", "alice@example.com", "alice: record carried residual in Evidence")
 
 	problems, _ := attrProblemsAndNotices(t, root)
@@ -862,6 +886,9 @@ func TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked(t *test
 		t.Fatalf("brief-01 was independently re-verified by bob inside the Evidence section; alice's later "+
 			"same-section addendum (a caveat, not a re-verification) must not mask that earlier independent "+
 			"commit and false-flag a selfVerification PROBLEM; got:\n%s", joinedProblems)
+	}
+	if strings.Contains(joinedProblems, "brief-02") {
+		t.Errorf("brief-02 has distinct authoring/last-toucher identities and must NOT be flagged; got:\n%s", joinedProblems)
 	}
 }
 
