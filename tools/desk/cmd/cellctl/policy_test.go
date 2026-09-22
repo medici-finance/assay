@@ -138,35 +138,41 @@ func TestLoadModelPolicyDenyCannotBeRemoved(t *testing.T) {
 	}
 }
 
-// TestLoadModelPolicyAllowsOpusFiveFiveTierTarget is the positive twin of DenyCannotBeRemoved: the
-// built-in Opus-5.0 prohibition must NOT over-reach to Opus 5.5, which is a valid top tier. Pinned
-// as the-desk's top tier it both loads and resolves WITHOUT the coordinator's non-Opus refusal —
-// whereas an older opus tier (Opus 4.8) in the same slot is still refused for the-desk.
-func TestLoadModelPolicyAllowsOpusFiveFiveTierTarget(t *testing.T) {
+// TestLoadModelPolicyOpusTopTierFloor is the positive twin of DenyCannotBeRemoved: the built-in
+// Opus-5.0 prohibition must NOT over-reach to opus tiers AT OR ABOVE the-desk's 5.5 floor, which
+// are valid top tiers. Pinned as the-desk's top tier, an opus >= 5.5 both loads and resolves
+// WITHOUT the coordinator's non-Opus refusal (5.5 at the floor, 6.0 above it), while an opus BELOW
+// the floor (5.0, 4.8) in the same slot is still refused for the-desk. The gate is a VERSION FLOOR,
+// not a fixed allowlist, so a future opus (6.0) auto-qualifies without a code edit.
+func TestLoadModelPolicyOpusTopTierFloor(t *testing.T) {
 	setTopModel := func(model string) func(map[string]any) {
 		return func(m map[string]any) {
 			m["deny"] = []any{}
 			m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["top"].(map[string]any)["model"] = model
 		}
 	}
-	m, err := loadModelPolicy(writeMutatedPolicy(t, setTopModel("claude-opus-5-5")))
+	// At or above the floor: accepted as the-desk's top tier.
+	for _, model := range []string{"claude-opus-5-5", "claude-opus-6-0"} {
+		m, err := loadModelPolicy(writeMutatedPolicy(t, setTopModel(model)))
+		if err != nil {
+			t.Fatalf("%s is a valid tier target and must load even with deny=[]: %v", model, err)
+		}
+		res, err := m.Resolve("the-desk", "", "", "")
+		if err != nil {
+			t.Fatalf("the-desk must accept %s (>= 5.5 floor) as its top tier: %v", model, err)
+		}
+		if res.Model != model {
+			t.Errorf("the-desk top tier = %q, want %q", res.Model, model)
+		}
+	}
+	// Below the floor, but not on the built-in deny list (5.0 spellings are denied at LOAD, tested
+	// separately): Opus 4.8 loads as a tier target yet the-desk's gate still refuses it at resolve.
+	m, err := loadModelPolicy(writeMutatedPolicy(t, setTopModel("claude-opus-4-8[1m]")))
 	if err != nil {
-		t.Fatalf("Opus 5.5 is a valid tier target and must load even with deny=[]: %v", err)
+		t.Fatalf("Opus 4.8 is not denied as a tier target and must load: %v", err)
 	}
-	res, err := m.Resolve("the-desk", "", "", "")
-	if err != nil {
-		t.Fatalf("the-desk must accept Opus 5.5 as its top tier: %v", err)
-	}
-	if res.Model != "claude-opus-5-5" {
-		t.Errorf("the-desk top tier = %q, want claude-opus-5-5", res.Model)
-	}
-	// The carve-out is Opus 5.5 ONLY: an older opus tier as the-desk's top is still refused.
-	m2, err := loadModelPolicy(writeMutatedPolicy(t, setTopModel("claude-opus-4-8[1m]")))
-	if err != nil {
-		t.Fatalf("Opus 4.8 is not denied and must load: %v", err)
-	}
-	if _, err := m2.Resolve("the-desk", "", "", ""); err == nil {
-		t.Error("the-desk must still refuse a non-5.5 opus top tier (Opus 4.8)")
+	if _, err := m.Resolve("the-desk", "", "", ""); err == nil {
+		t.Error("the-desk must still refuse a below-floor opus top tier (Opus 4.8)")
 	}
 }
 

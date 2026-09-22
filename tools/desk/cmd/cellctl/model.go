@@ -6,10 +6,11 @@ import (
 
 // isOpusPin is true when a resolved model value is an Opus pin the-desk must REFUSE: the `opus`
 // alias or a `claude-opus…` id, case-insensitive and `[1m]`-insensitive (an operator could type
-// Opus, OPUS, or a full id in any case, with or without a context suffix) — EXCEPT an opus tier
-// blessed as a valid TOP tier. Opus 5.5 (`claude-opus-5-5`) is such a tier, so it is NOT reported
-// as an Opus pin; the bare `opus` alias, `claude-opus-5` (5.0) and older opus tiers remain refused.
-// Any non-opus value — another full id or a different alias — is not an Opus pin.
+// Opus, OPUS, or a full id in any case, with or without a context suffix) — EXCEPT an opus tier AT
+// OR ABOVE the-desk's top-tier floor (Opus 5.5). So Opus 5.5, 5.6, 6.0 and any later tier are NOT
+// reported as an Opus pin; the bare `opus` alias (no version), Opus 5.0 (`claude-opus-5`) and older
+// tiers (Opus 4.8) remain refused. Any non-opus value — another full id or a different alias — is
+// not an Opus pin.
 //
 // This is the ONE place the "which opus tiers the-desk refuses" decision lives: the-desk policy
 // check (policy.go's Resolve) calls it too, so the deny/carve-out logic never forks between sites.
@@ -23,14 +24,70 @@ func isOpusPin(m string) bool {
 	return !isTheDeskTopTierOpus(l)
 }
 
-// isTheDeskTopTierOpus reports whether a policyBase-form opus id is Opus 5.5 — the one opus tier
-// currently accepted as a valid TOP tier for the-desk, and thus the carve-out from the otherwise
-// total opus refusal. It is anchored at end-of-token (mirroring the deny-list's `*opus-5`
-// anchoring) so `claude-opus-5-5`, its `[1m]` variant and gateway-prefixed spellings qualify while
-// `claude-opus-5` (5.0) does NOT — `claude-opus-5-5` ends in `opus-5-5`, not `opus-5`. When a
-// higher opus tier is later blessed as a valid top tier, extend it HERE only.
+// theDeskOpusFloorMajor / theDeskOpusFloorMinor is the MINIMUM opus tier the-desk accepts as a
+// valid TOP tier: Opus 5.5. Raising this floor is the reversal lever for the auto-adopt trade
+// documented on isTheDeskTopTierOpus.
+const (
+	theDeskOpusFloorMajor = 5
+	theDeskOpusFloorMinor = 5
+)
+
+// isTheDeskTopTierOpus reports whether a policyBase-form opus id names an opus tier AT OR ABOVE
+// the-desk's top-tier floor (Opus 5.5) — the carve-out from the otherwise total opus refusal. It
+// parses the major/minor version that follows the `opus` token and compares >= (5,5), so
+// `claude-opus-5-5`, `claude-opus-5-6`, `claude-opus-6(-0)` and a future `claude-opus-9` all
+// qualify, while `claude-opus-5` / `-5-0` / `-5.0` (Opus 5.0), `claude-opus-4-8` and the
+// unversioned `opus` alias do not.
+//
+// This is a VERSION FLOOR, not a fixed allowlist: a future opus tier auto-qualifies with no code
+// edit. That is a DELIBERATE, documented trade — a floor adopts a future opus sight-unseen, and the
+// "Opus 5.0 was a bad tier despite its number" lesson means that is a choice, not an oversight. It
+// is reversible by raising theDeskOpusFloor* above.
 func isTheDeskTopTierOpus(base string) bool {
-	return strings.HasSuffix(base, "opus-5-5") || strings.HasSuffix(base, "opus5-5")
+	major, minor, ok := opusVersion(base)
+	if !ok {
+		return false
+	}
+	return major > theDeskOpusFloorMajor || (major == theDeskOpusFloorMajor && minor >= theDeskOpusFloorMinor)
+}
+
+// opusVersion parses the MAJOR and MINOR version of a policyBase-form opus id — the digits that
+// follow the `opus` token, separated from it and from each other by `-` or `.` (so opus-5-5,
+// opus5-5, opus-5.5 all parse), with an absent minor read as 0 (opus-6 == 6.0). It returns
+// ok=false when the base names no parseable opus version: the unversioned `opus` / `claude-opus`
+// alias, or any non-opus id. Only ever reached for a value isOpusPin already classified as opus.
+func opusVersion(base string) (major, minor int, ok bool) {
+	i := strings.LastIndex(base, "opus")
+	if i < 0 {
+		return 0, 0, false
+	}
+	rest := strings.TrimLeft(base[i+len("opus"):], "-.") // optional separator between `opus` and the major
+	if rest == "" {
+		return 0, 0, false // the unversioned alias
+	}
+	major, n := leadingInt(rest)
+	if n == 0 {
+		return 0, 0, false
+	}
+	rest = rest[n:]
+	if rest == "" || (rest[0] != '-' && rest[0] != '.') {
+		return major, 0, true // no separator+digits after the major → minor is 0
+	}
+	minor, n = leadingInt(rest[1:])
+	if n == 0 {
+		return major, 0, true // a separator but no minor digits → minor is 0
+	}
+	return major, minor, true
+}
+
+// leadingInt reads the leading run of ASCII digits and returns its value and length (0,0 when the
+// string does not start with a digit).
+func leadingInt(s string) (val, n int) {
+	for n < len(s) && s[n] >= '0' && s[n] <= '9' {
+		val = val*10 + int(s[n]-'0')
+		n++
+	}
+	return val, n
 }
 
 // refuseOpusForTheDesk: the-desk is the one window that spends its tier on judgment, synthesis

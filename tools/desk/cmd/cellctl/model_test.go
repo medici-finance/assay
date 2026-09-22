@@ -43,32 +43,38 @@ func TestResolveRoleModelPrecedence(t *testing.T) {
 }
 
 func TestOpusRefusalBindsTheDeskOnly(t *testing.T) {
-	// Refused for the-desk: the bare `opus` strong-tier alias, Opus 5.0 (`claude-opus-5`, its
-	// `[1m]` variant and the explicit `-5-0` spelling), and every OTHER opus tier — older ones and
-	// any not yet blessed as a valid top tier (e.g. the hypothetical `claude-opus-9`).
+	// Refused for the-desk: the bare `opus` strong-tier alias (no version, so below the floor),
+	// and every opus tier BELOW the 5.5 floor — Opus 4.8 and Opus 5.0 (`claude-opus-5`, its
+	// `[1m]` variant and the explicit `-5-0` / `-5.0` spellings).
 	for _, m := range []string{
-		"opus", "Opus", "OPUS", "claude-opus-9", "CLAUDE-OPUS-9",
-		"claude-opus-5", "CLAUDE-OPUS-5", "claude-opus-5[1m]", "claude-opus-5-0",
+		"opus", "Opus", "OPUS",
+		"claude-opus-4-8", "claude-opus-4-8[1m]",
+		"claude-opus-5", "CLAUDE-OPUS-5", "claude-opus-5[1m]", "claude-opus-5-0", "claude-opus-5.0",
 	} {
 		if !isOpusPin(m) {
-			t.Errorf("isOpusPin(%q) = false, want true (an opus tier the-desk must refuse)", m)
+			t.Errorf("isOpusPin(%q) = false, want true (an opus tier below the 5.5 floor)", m)
 		}
 	}
-	// Allowed: non-opus tiers, AND Opus 5.5 — the one opus tier blessed as a valid top tier, so it
-	// is NOT treated as an opus pin the-desk refuses (case-insensitive, `[1m]`-insensitive).
+	// Allowed: non-opus tiers, AND every opus tier AT OR ABOVE the 5.5 floor. The-desk's opus gate
+	// is a VERSION FLOOR (>= 5.5), not a fixed 5.5-only allowlist, so 5.6, 6.0 and a future 9.0
+	// auto-qualify without a code edit (case-insensitive, `[1m]`-insensitive, `-`/`.`-insensitive).
 	for _, m := range []string{
 		"fable", "sonnet", "haiku", "gpt-5.6-terra", "opusculum",
-		"claude-opus-5-5", "Claude-Opus-5-5", "claude-opus-5-5[1m]",
+		"claude-opus-5-5", "Claude-Opus-5-5", "claude-opus-5-5[1m]", "claude-opus-5.5",
+		"claude-opus-5-6", "claude-opus-6-0", "claude-opus-6", "claude-opus-9", "CLAUDE-OPUS-9",
 	} {
 		if isOpusPin(m) {
-			t.Errorf("isOpusPin(%q) = true, want false", m)
+			t.Errorf("isOpusPin(%q) = true, want false (an opus tier at or above the 5.5 floor)", m)
 		}
 	}
 	assertDies(t, "opus for the-desk", func() { refuseOpusForTheDesk("opus") })
 	assertDies(t, "opus-5 for the-desk", func() { refuseOpusForTheDesk("claude-opus-5") })
+	assertDies(t, "opus-4-8 for the-desk", func() { refuseOpusForTheDesk("claude-opus-4-8") })
 	refuseOpusForTheDesk("fable")               // must not refuse
-	refuseOpusForTheDesk("claude-opus-5-5")     // Opus 5.5 is a valid top tier — must not refuse
+	refuseOpusForTheDesk("claude-opus-5-5")     // Opus 5.5 is at the floor — must not refuse
 	refuseOpusForTheDesk("claude-opus-5-5[1m]") // the [1m] variant too
+	refuseOpusForTheDesk("claude-opus-5-6")     // above the floor — must not refuse
+	refuseOpusForTheDesk("claude-opus-6-0")     // above the floor — must not refuse
 }
 
 func TestRoleTier(t *testing.T) {
