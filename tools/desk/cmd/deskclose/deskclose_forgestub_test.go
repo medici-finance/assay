@@ -370,6 +370,12 @@ func (s *stubRemote) CloseIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.T
 		return fmt.Errorf("close of the change %s!%d carried state reason %q, which no forge records",
 			fr.Slug(), n, reason)
 	}
+	// A forge that refuses the close (the field 422): the typed close is NOT recorded and the
+	// state is not flipped — nothing about the object changed.
+	if s.failClose[key] {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"HTTP 422: Unprocessable Entity — the close of %s#%d was refused by the forge", fr.Slug(), n), nil)
+	}
 	s.typedCloses = append(s.typedCloses, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
 	return s.closeAt(fr, n, key, reason)
 }
@@ -389,7 +395,13 @@ func (s *stubRemote) closeAt(fr deskkit.ForgeRepo, n int, key, reason string) er
 		}
 	}
 	s.calls = append(s.calls, argv)
-	// Reflect the close so a resumed run sees the item as already closed.
+	// closeNoReflect models the silent-success bug: the close call returned without error, but
+	// the item's state did NOT change (the HTTP layer "succeeded" without doing what was asked).
+	// The state is left open so a read-back after the call sees the item still open.
+	if s.closeNoReflect[key] {
+		return nil
+	}
+	// Reflect the close so a resumed run — and the post-close read-back — sees the item closed.
 	if v, ok := s.items[key]; ok {
 		s.items[key] = strings.Replace(v, `"state":"open"`, `"state":"closed"`, 1)
 	}
