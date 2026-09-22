@@ -484,8 +484,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 
 	// Post-condition: the write that landed must carry the verifier App's identity. Checked
-	// against what the forge reported the write recorded, not the token we sent (#228).
-	attr, aerr := checkAttribution(res.Author)
+	// against what the forge reported the write recorded, not the token we sent (#228). On a
+	// forge that reports no author (GitLab), checkAttribution resolves the landed commit's
+	// account online via the typed forge (res.SHA); on GitHub the author is populated and no
+	// online read happens.
+	attr, aerr := checkAttribution(fg, fr, res.SHA, res.Author)
 	// Name the net row delta so a success line can no longer hide a replace or a deletion
 	// behind a "committed … success" (#1709).
 	added, removed := rowDelta(remoteContent, commitContent)
@@ -547,7 +550,18 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		return perr
 	}
 
-	attr, aerr := checkAttribution(res.Author)
+	// On a forge that reports no author for the side-branch write (GitLab), resolve the landed
+	// commit's account ONLINE (#1477): fetch the side branch's head sha from the draft change
+	// just opened and hand it to checkAttribution, which maps it to the committing account's
+	// username via the typed forge. Only reached when the write carried no author — a populated
+	// author (GitHub) takes the ordinary path and issues no extra read.
+	headSHA := ""
+	if res.Author == "" && pr != nil {
+		if got, gerr := fg.GetPullRequest(fr, pr.Number); gerr == nil && got != nil {
+			headSHA = got.HeadSHA
+		}
+	}
+	attr, aerr := checkAttribution(fg, fr, headSHA, res.Author)
 	added, removed := rowDelta(remoteContent, content)
 	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
 	loc := fmt.Sprintf("change #%d", pr.Number)
