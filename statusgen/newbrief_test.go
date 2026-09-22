@@ -253,6 +253,95 @@ func TestNewBriefRefusesUntokenizableVerifyCommand(t *testing.T) {
 	nbAssertRefused(t, root, code, out, se, "usable Verify row")
 }
 
+// --- Shell / native-Windows Verify rows (issues #1466 / #1424). ---
+//
+// The defect #1466 item 3 fixes: author-brief emitting a native-Windows Verify
+// command (`findstr`, backslash paths) as the DEFAULT `bash -o pipefail` row with no
+// Shell marker. Under Git-bash and the `--in-container` harness that row FAILS the
+// first verify pass (bash eats the `*`/quotes/backslashes before the tool sees them,
+// #1424), and an Evidence-only PR cannot rewrite the Verify table, so a separate
+// worker PR is burned retrofitting `Shell: cmd`. The generator now refuses to emit
+// such a row: the author POSIX-izes it, or declares --shell so the marker is attached
+// in the SAME authoring pass.
+
+// A native-Windows command under the DEFAULT (sh) shell is refused — it can only land
+// broken. This is the red-before/green-after guard for #1466 item 3.
+func TestNewBriefRefusesFindstrUnderDefaultShell(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Win row",
+		"--verify-command", `findstr /c:"does not rotate" docs\streams\demo\spec.md`,
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	nbAssertRefused(t, root, code, out, se, "native-Windows command")
+}
+
+// Declaring --shell cmd/pwsh is the sanctioned path: the row is emitted WITH its
+// Shell marker (the `| # | Shell | Command | Expect |` shape), attached at authoring
+// time, never left for a later Evidence edit.
+func TestNewBriefMarksNativeRowShellAtAuthoring(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Win row",
+		"--verify-command", `findstr /c:"does not rotate" docs\streams\demo\spec.md`,
+		"--shell", "cmd",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("a native row WITH --shell cmd is legal; got exit %d; stderr=%s", code, se)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "streams", "demo", "brief-02-win-row.md"))
+	if err != nil {
+		t.Fatalf("brief not created: %v", err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "| # | Shell | Command | Expect |") {
+		t.Errorf("native-shell brief must emit the Shell column; body:\n%s", body)
+	}
+	if !strings.Contains(body, "| 1 | cmd | `findstr") {
+		t.Errorf("the row must carry its cmd shell marker at authoring time; body:\n%s", body)
+	}
+}
+
+// A non-sh shell with the default (POSIX) command is nonsense and refused — the
+// default `go test ./...` row is POSIX; a genuine native row must be supplied.
+func TestNewBriefRefusesNonShShellWithoutCommand(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Bare cmd",
+		"--shell", "cmd",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	nbAssertRefused(t, root, code, out, se, "needs a --verify-command")
+}
+
+// An unknown shell marker is caught at authoring time, never silently defaulted.
+func TestNewBriefRefusesUnknownShell(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Typo shell",
+		"--shell", "bash",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	nbAssertRefused(t, root, code, out, se, "invalid --shell")
+}
+
+// Regression guard: the default (sh) run keeps the legacy Shell-column-less table
+// byte-for-byte — the change is additive, an absent Shell column still means sh.
+func TestNewBriefDefaultRowHasNoShellColumn(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Plain",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("want exit 0, got %d; stderr=%s", code, se)
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, "docs", "streams", "demo", "brief-02-plain.md"))
+	body := string(raw)
+	if !strings.Contains(body, "| # | Command | Expect |") {
+		t.Errorf("default row must keep the legacy Command|Expect table; body:\n%s", body)
+	}
+	if strings.Contains(body, "Shell") {
+		t.Errorf("default (sh) row must NOT emit a Shell column; body:\n%s", body)
+	}
+}
+
 // TestNewBriefRefusesStampOnFailedFetch is the fetch half of the refusal battery:
 // a failed fetch produces NO stamp (the tool refuses to invent one) and reports
 // could-not-check — an absent stamp is honest, an invented one is the defect. The
