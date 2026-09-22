@@ -424,6 +424,18 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
 
+	// verified-sidecar acceptance gate (#1309 stuck-flip). When THIS landing appends one or
+	// more `"outcome":"verified"` rows to the verify-outcomes sidecar, refuse unless the landing
+	// tree presents a lint-valid `verified` closure for each such brief — the Verified stamp AND
+	// an execution witness — which statusgen's own board/witness read decides (verifyclosure).
+	// A sidecar that only advances Evidence while the brief's board stays `implemented` records a
+	// verified outcome the tree does not back; review then refuses that mismatch, so this refuses
+	// it at the source instead. Runs on the SAME lintRoot the PROBLEM-diff guard just used, and
+	// like it before the dry-run stop and the write budget. `verify-fail` rows are never gated.
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, lintRoot, remoteContent, commitContent, remoteExists); verr != nil {
+		return verr
+	}
+
 	// --dry-run stops HERE — after every gate that can refuse a landing has already run
 	// (mint, forge resolution, remote read, merge, secret scan, public-repo gate, noop/shrink
 	// checks, statusgen PROBLEM-diff), before the write-rate-limit spend and the write itself.
