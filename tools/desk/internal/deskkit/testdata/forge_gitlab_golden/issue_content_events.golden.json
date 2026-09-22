@@ -1,0 +1,21 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/12/notes",
+      "query": "order_by=created_at\u0026page=1\u0026per_page=100\u0026sort=asc"
+    }
+  ],
+  "result": {
+    "BodyEdited": "0001-01-01T00:00:00Z",
+    "Events": [
+      {
+        "Author": "ada",
+        "AuthorID": 2001,
+        "CreatedAt": "2026-09-02T10:00:00Z",
+        "EditedAt": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "Complete": true
+  }
+}

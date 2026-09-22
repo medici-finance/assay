@@ -117,8 +117,8 @@ facts:
 | 5 | **Mutation — binding consistency**: `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/`the-desk`/the-desk/g' plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit `2` naming `the-desk` — packaging↔binding skew is a build error |
 | 6 | Neutrality holds: `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | `0` — adopt's Cursor section stays neutral; `cursor.md` resolves every capability + has a cell per skill |
 | 7 | Neighbours unbroken: `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | `0` — the `resident` and `codex` verbs still pass beside the new one |
-| 8 | Adopt path present: `grep -qi 'cursor' plugins/assay/skills/adopt/SKILL.md && grep -qF 'cursor/assay.mdc' plugins/assay/skills/adopt/SKILL.md; echo $?` | `0` — install scenario + the generated-rule step both present |
-| 8a | **Positive control for row 8**: `grep -qF 'cursor/assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | `1` — the probe reports absence for an absent token |
+| 8 | Adopt path present: `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | `0` — the Cursor install scenario + the generated-rule step both present. (Retarget: the adopter-facing install scenario landed in `docs/adopting-assay.md` — §"Running Assay on Cursor — a second first-class harness" — after `plugins/assay/skills/adopt/SKILL.md` was converted to a thin router; the generated-rule step is the referenced `plugins/assay/cursor/` output, home of the generated `assay.mdc`.) |
+| 8a | **Positive control for row 8**: `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | `1` — the probe reports absence for an absent token |
 | 9 | `.mdc` frontmatter: `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | `0` — the generated rule carries the `.cursor/rules` always-apply contract |
 | 10 | Live-confirm rows flagged, not asserted: `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | `≥ 5` — the unrunnable rows are flagged, never greened |
 | 11 | New entries fresh: `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both new entries report `FRESH` (the tool's whole-repo exit is 1 only from pre-existing unrelated stale artifacts, never from these entries) |
@@ -195,6 +195,37 @@ RISK-VALUE: DERIVED — `alwaysApply: true` @ plugins/assay/cursor/assay.mdc:3 �
 RISK-VALUE: DERIVED — live-confirm flag count = 9 (≥5 threshold) @ docs/research/cursor-harness-capabilities.md — confirmed via grep.
 
 VERIFY: FAIL — held at implemented. Row 8 fails on a spec-pointer staleness (the brief's own consumers frontmatter and Verify row 8 still target adopt/SKILL.md directly rather than docs/adopting-assay.md's Cursor section, which is where the real content actually landed) — a decision call (retarget the row, or add a pointer into adopt/SKILL.md itself), already tracked at medici-finance/assay#870 (OPEN). Every other row passes clean, including the full mutation battery. No new issue filed.
+
+### Row-8 stale-probe retarget — implementer (worker-desk dispatch), opus-4.8[1m] — 2026-09-22
+
+The desk resolved the decision call the two prior passes flagged: **retarget Verify row 8 (and its
+positive control 8a) to the file where the de-house actually landed the adopter-facing Cursor
+install scenario** — `docs/adopting-assay.md` (§"Running Assay on Cursor — a second first-class
+harness") — rather than the pre-de-house target `plugins/assay/skills/adopt/SKILL.md`, which the
+de-house converted to a thin router. This corrects a STALE PROBE only; the underlying deliverable is
+sound (an adopter can install Assay on Cursor). No assertion was weakened: the pair still proves
+(a) the Cursor install scenario is documented and (b) the generated-rule step is present.
+
+Fail-first / then-pass evidence, run offline (`KUBECONFIG=/dev/null`) against this worktree
+(module-aware forms per PR #878):
+
+| # | Command | Exit | Note |
+|---|---------|------|------|
+| 8 (stale, pre-fix) | `grep -qi 'cursor' plugins/assay/skills/adopt/SKILL.md && grep -qF 'cursor/assay.mdc' plugins/assay/skills/adopt/SKILL.md` | `1` | FAIL — router file carries neither the install scenario nor the `cursor/assay.mdc` token |
+| 8 (retargeted) | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md` | `0` | PASS — install scenario heading + generated `plugins/assay/cursor/` output both present |
+| 8a (retargeted) | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md` | `1` | PASS — positive control reports absence for an absent token |
+
+Whole-table re-run this pass (all rows for real; row 3 mutate→regenerate→recheck restored
+`assay.mdc` byte-identical, tree left clean): rows 1,2,6,7 → exit 0; row 3 → 1 then 0; rows 4,5 →
+exit 2 naming `probe-skill` / `the-desk`; row 8 → 0 (retargeted); row 8a → 1; row 9 → 0; row 10 →
+9 (≥5); row 11 → both cursor entries FRESH. `assay.mdc` is now a TRACKED file (changed since
+authoring), so row 3's revert is equally a regenerate or `git checkout --`; either restores clean.
+Note (non-Verify residual, out of this dispatch's scope): the brief's `consumers:` frontmatter still
+reads `plugins/assay/skills/adopt/SKILL.md: fixed-here (… section 2c)` and
+`docs/adopting-assay.md: out-of-scope`; the actual landing is the reverse. Tracked under the
+Verify-row re-home family (#870); not corrected here to avoid frontmatter/lint side-effects beyond
+the probe fix. Implementer evidence — "verified" still requires a non-implementer re-run of the
+retargeted table.
 
 ## Review
 
