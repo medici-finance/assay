@@ -216,6 +216,29 @@ Supporting (offline): `go build ./cmd/deskinstall/` 0; `go vet` 0; full `go test
 **VERDICT: PASS on the mechanical/offline rows (1-6 + fail-first 5a + build/vet/test). Rows 8 could-not-check (online Windows CI leg); row 7 vacuous post-merge (by-presence). gate:human — a model does NOT sign off.** Evidence gathered; status stays at implemented; the flip is the human's.
 
 **Findings (for the human gate):** (1) Implementation matches the recommended Option 2 fork; the hash verify-or-refuse is genuinely load-bearing (fail-first 5a reds when disabled) and two-phase (verify all components before placing any). (2) Confirm before closing: the fork ruling was recorded before the build; and the `windows-bootstrap-smoke` leg is green (`OK 1/3..3/3` + `PASS`) — that green run is the only proof of the PowerShell bootstrap's runtime hash-verify, which no offline verifier can discharge. (3) Consistent with the prior run (2026-09-07 @ 9b1cf06); re-verified at newer head 8d799c6b, same conclusions.
+### Verify pass 2026-09-22 (non-implementer, VERIFY: PASS on offline rows — gate:human, verified pending human gate; row 8 online could-not-check)
+
+Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f2a86c8e0dce59edabdd22a`. Offline (`KUBECONFIG=/dev/null`). gate: human, risk all-no. Ruled fork = Option 2 (Go-native `deskinstall` + thin PowerShell bootstrap).
+
+| # | Command | Expect | Observed (exit + key line) | Date | Runner |
+|---|---------|--------|----------------------------|------|--------|
+| 1 | `ls scripts/install-windows.ps1 tools/desk/cmd/deskinstall/main.go` | Go fork present | 0 → `tools/desk/cmd/deskinstall/main.go` present, no monolithic .ps1 (correct for Option 2) | 2026-09-22 | opus-4.8-verifier |
+| 2 | grep paired-versions pin / never-latest | pinned, no latest | 0 → `pin=0` then `NO-LATEST` | 2026-09-22 | opus-4.8-verifier |
+| 3 | grep windows `.exe` + `.tar.gz` asset names | both arch selected | 0 → both amd64/arm64 selected | 2026-09-22 | opus-4.8-verifier |
+| 4 | `go test ./cmd/deskinstall/ -run 'TestWindowsInstall.*Verifies' -v` | positive path installs | 0 → `PASS: TestWindowsInstallVerifiesCorrectHash` (success line + ledger path asserted) | 2026-09-22 | opus-4.8-verifier |
+| 5 | `go test ...RefusesOnHashMismatch -v` | tampered binary refused, nothing placed | 0 → `PASS: TestWindowsInstallRefusesOnHashMismatch` — neither statusgen.exe nor deskboard.exe placed | 2026-09-22 | opus-4.8-verifier |
+| 5a | fail-first: disable `gotHex != wantHex` in worktree copy, rerun row 5, revert | RED when disabled | exit 1 → `install_test.go:169: SECURITY: tampered binary was accepted — install must REFUSE`; unmutated PASSes → guard load-bearing; reverted, tree clean | 2026-09-22 | opus-4.8-verifier |
+| 6 | success-line assertion + `go build`/`go vet`/full pkg test | asserted, clean | 0 → success line shape asserted (row 4); build 0, vet 0, full `go test ./cmd/deskinstall/` 0 (incl RefusesAbsentPin) | 2026-09-22 | opus-4.8-verifier |
+| 7 | `statusgen --root . --consumers windows-port/03` | exit 0 | 0 → "nothing to corroborate" — VACUOUS post-merge (empty diff, merged brief); consumer `tools/desk/cmd/deskinstall/` present (rows 1-6), corroborated by presence | 2026-09-22 | opus-4.8-verifier |
+| 8 | `windows-bootstrap-smoke` on windows-latest | green run, `PASS` | **could-not-check** — ONLINE + Windows-runtime row; offline macOS verifier cannot run GitHub Actions on windows-latest (envelope C3). Workflow + both PS scripts present; runtime hash-verify confirmed by INSPECTION (`if ($got -ne $Sha256){ throw "REFUSED: sha256 mismatch" }` @ bootstrap-windows.ps1:107); RUNTIME could-not-check offline. Wake: a green `windows-bootstrap-smoke` run showing `PASS` with run URL. | 2026-09-22 | opus-4.8-verifier |
+
+Scope traceability: every Evidence row maps 1:1 to its Verify row.
+
+RISK-VALUE: DERIVED — verify-or-refuse `gotHex != wantHex` @ `tools/desk/cmd/deskinstall/install.go:110` (over `sha256.Sum256` @ :108) — exact equality on a 256-bit digest; any single-byte tamper changes it (row 5 REFUSES); runs FIRST post-download, before ANY placement (two-phase: verify all, then place). The ONE control (the brief's named SPOF) between a substituted asset and unverified bytes on disk; proven load-bearing by row 5a.
+RISK-VALUE: DERIVED — `reTag = ^v[0-9]+\.[0-9]+\.[0-9]+` @ `install.go:63` + `tag != m.Tag` @ :86 — forces a pinned semver, rejects floating refs (row 2). Second independent layer: expected hash read from the version-committed paired-versions.yaml, so the check and the pin fail for different reasons (tampered download vs tampered pin file) — the brief's independence test.
+RISK-VALUE: NAMED, NOT DERIVED — windows asset sha256 trust anchors @ `plugins/assay/paired-versions.yaml` (tag v1.0.6) — deriving = recompute sha256 over the RELEASED windows assets, which requires downloading them (ONLINE) → could-not-check under the offline envelope. Set by the umbrella re-pin at the merged head, not by the installer diff; the online-only derivation CI/the human confirms.
+
+**VERIFY: PASS on offline rows 1-6 + 5a** (mechanical/security path fully green; the hash-verify SPOF is load-bearing). Row 7 exit-0 but vacuous post-merge. Row 8 could-not-check (environment: online GitHub-Actions leg on windows-latest + PowerShell runtime — dischargeable only by CI/a Windows runtime). gate: human → a model records Evidence and does NOT sign off `done`. Advances implemented → verified (first stamp); routed to the human verify-gate, who confirms the row-8 online `windows-bootstrap-smoke` run green before the `done` close.
 
 ## Review
 Gate: **human** (from frontmatter). The human confirms the fork ruling was recorded before the

@@ -945,10 +945,10 @@ func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	writeReadme("donestream", "05", "done")          // rework landed → no longer awaiting rework → DROP
-	writeReadme("resetstream", "02", "todo")         // deliverable reset → not implemented → DROP
-	writeReadme("genuine", "03", "implemented")      // still awaiting rework → KEEP
-	writeReadme("verifiedstream", "08", "verified")  // verified is in classifyAwaiting's set → KEEP
+	writeReadme("donestream", "05", "done")         // rework landed → no longer awaiting rework → DROP
+	writeReadme("resetstream", "02", "todo")        // deliverable reset → not implemented → DROP
+	writeReadme("genuine", "03", "implemented")     // still awaiting rework → KEEP
+	writeReadme("verifiedstream", "08", "verified") // verified is in classifyAwaiting's set → KEEP
 	// orphanstream has NO README on purpose — could-not-check → KEEP.
 
 	git("init", "-q")
@@ -997,7 +997,10 @@ func TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR(t *testing.T) {
 	// branch the derived-name phantom-check would not have matched. `repairstream/09` is ALSO
 	// represented on purpose: it proves the repair-obligation lane is exempt even when its brief is in
 	// the set (a repair obligation reworks a MERGED original by design, §row 5b).
-	represented := map[string]bool{"phantomrework/04": true, "repairstream/09": true}
+	represented := map[string]deskkit.RepresentedPR{
+		"phantomrework/04": {Number: 41, Merged: true},
+		"repairstream/09":  {Number: 42, Merged: true},
+	}
 
 	reworkRows := []BoardRow{
 		briefRow("phantomrework", "04", "M", "", "model", false), // merged deliverable → phantom → DROP
@@ -1022,7 +1025,7 @@ func TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR(t *testing.T) {
 			return []deskkit.RepairObligation{repairOblig}, nil
 		},
 		Now:         func() time.Time { return now },
-		Represented: func() (map[string]bool, error) { return represented, nil },
+		Represented: func() (map[string]deskkit.RepresentedPR, error) { return represented, nil },
 	}
 
 	items, err := loop.SelectQueue()
@@ -1094,11 +1097,16 @@ func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
 	loop := &FanoutLoop{
 		Board:  func() ([]BoardRow, error) { return rows, nil },
 		Rework: func() ([]BoardRow, error) { return reworkRows, nil },
-		Represented: func() (map[string]bool, error) {
-			// The exclusion set carries the two phantom fresh briefs AND the rework brief; all three
-			// must be dropped — a STATUS.md rework row whose deliverable already has a PR is the
-			// at#2026 phantom this lane used to skip.
-			return map[string]bool{"example-a/00": true, "example-b/08": true, "rew/09": true}, nil
+		Represented: func() (map[string]deskkit.RepresentedPR, error) {
+			// The map carries the two represented fresh briefs (one OPEN, one MERGED) AND the rework
+			// brief. Neither fresh row is offered as fresh DISPATCH: the OPEN one is ROUTED to RESUME
+			// (#1339), the MERGED one is landed-unreconciled; the rework row (represented, either state)
+			// is dropped — the at#2026 phantom this lane used to skip.
+			return map[string]deskkit.RepresentedPR{
+				"example-a/00": {Number: 100, Merged: false}, // OPEN → resume
+				"example-b/08": {Number: 108, Merged: true},  // MERGED → landed-unreconciled
+				"rew/09":       {Number: 109, Merged: true},  // rework, represented → drop
+			}, nil
 		},
 		TargetSHA: "sha",
 	}
@@ -1112,10 +1120,19 @@ func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
 		ids = append(ids, it.ID)
 	}
 	if contains(ids, "example-a/00") {
-		t.Errorf("a fresh row with an OPEN PR was offered — it is a phantom: %v", ids)
+		t.Errorf("a fresh row with an OPEN PR was offered as fresh dispatch — it must route to resume: %v", ids)
+	}
+	// The OPEN-PR row is routed to the RESUME lane, reusing the orphan-resume id namespace (#1339).
+	if !contains(ids, "resume:pr-100") {
+		t.Errorf("a fresh row with an OPEN PR (#100) was not routed to the resume lane: %v", ids)
 	}
 	if contains(ids, "example-b/08") {
-		t.Errorf("a fresh row with a MERGED PR was offered — it is a phantom: %v", ids)
+		t.Errorf("a fresh row with a MERGED PR was offered — it is landed-unreconciled, never dispatched: %v", ids)
+	}
+	// The MERGED-PR row is recorded as landed-unreconciled (a plan diagnostic), never dispatched.
+	landed := loop.landedUnreconciledRows()
+	if len(landed) != 1 || landed[0].briefID != "example-b/08" || landed[0].pr != 108 {
+		t.Errorf("MERGED fresh row not recorded as landed-unreconciled (want example-b/08 #108): %+v", landed)
 	}
 	if !contains(ids, "live/03") {
 		t.Errorf("an unrepresented fresh row was dropped: %v", ids)
