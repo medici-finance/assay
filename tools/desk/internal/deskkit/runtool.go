@@ -218,10 +218,19 @@ func (r ToolRun) Fail(code int, format string, a ...any) *DeskError {
 // repair a tree. Appending a second copy of the first stderr line to that would be noise, so
 // this constructor takes the message exactly as given and attaches only the out-of-band
 // detail DESK_TRACE prints. Same verdict rule as Fail: code is the caller's.
+//
+// msg is Scrubbed before it becomes DeskError.Msg. Fail's one-line message is already safe
+// by construction — it is built from Said(), which is Scrub(ToolMessage(...)) — but a
+// FailVerbatim caller composes msg itself, often by splicing in a tool's raw stderr (via
+// ToolMessage, not SaidAll), and Error() renders Msg UNCONDITIONALLY, whether DESK_TRACE is
+// on or off. A caller that forgets to scrub its own composition would otherwise put an
+// unredacted credential on the one line every operator and transcript reads. Scrubbing here,
+// at the single point every FailVerbatim message passes through on its way into the error, is
+// the choke point: it holds regardless of what a caller — this one or a future one — hands in.
 func (r ToolRun) FailVerbatim(code int, msg string) *DeskError {
 	return &DeskError{
 		Code:       code,
-		Msg:        msg,
+		Msg:        Scrub(msg),
 		Err:        r.Err,
 		Cmd:        r.CommandLine(),
 		Stderr:     r.SaidAll(),

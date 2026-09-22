@@ -296,20 +296,23 @@ func dispatch(o dispatchOpts) error {
 		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
 		// never released it is the field defect this line closes.
 		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-		// deskwt's OWN message is forwarded whole and verbatim (toolMessage strips only the
-		// config echo / unpinned-build warning), because it is the line that names the cause
-		// (which branch, which worktree holds it, what to do). The wrapper no longer frames this
-		// as a transient tree fault to "fix and re-run"; instead it names the commonest cause,
-		// which DIFFERS BY KIT and so must be selected by kit (#851). The brief-lane hint — the
-		// brief's `feat/<id>` branch already existing — is meaningless on the review lane, which
-		// has no brief and no feat branch; sending a reviewer to "look for a merged/open PR"
-		// explains nothing. The review-lane hint points instead at the reviewer-worktree
-		// lifecycle: a review kit checks the PR head out as a DETACHED HEAD, so the earlier
-		// reviewer worktree for this PR must be reclaimed before a re-dispatch on the same lane
-		// key can create its own.
+		// deskwt's OWN message is forwarded whole (SaidAll: preamble stripped, SCRUBBED —
+		// see runtool.go), because it is the line that names the cause (which branch, which
+		// worktree holds it, what to do). Not toolMessage(wt.stderr): that strips only the
+		// `assay-config:` preamble and never scrubs, and this message reaches the operator
+		// verbatim via FailVerbatim on every DESK_TRACE setting, on or off. The wrapper no
+		// longer frames this as a transient tree fault to "fix and re-run"; instead it names
+		// the commonest cause, which DIFFERS BY KIT and so must be selected by kit (#851). The
+		// brief-lane hint — the brief's `feat/<id>` branch already existing — is meaningless on
+		// the review lane, which has no brief and no feat branch; sending a reviewer to "look
+		// for a merged/open PR" explains nothing. The review-lane hint points instead at the
+		// reviewer-worktree lifecycle: a review kit checks the PR head out as a DETACHED HEAD,
+		// so the earlier reviewer worktree for this PR must be reclaimed before a re-dispatch
+		// on the same lane key can create its own.
+		said := wt.run.SaidAll()
 		msg := fmt.Sprintf(
 			"step %s: `deskwt add %s` failed in %s. The claim was %s. %s deskwt said:\n%s",
-			stepWorktreeCreate, wtName, o.root, released, worktreeCreateHint(o.kit, branch, toolMessage(wt.stderr)), toolMessage(wt.stderr))
+			stepWorktreeCreate, wtName, o.root, released, worktreeCreateHint(o.kit, branch, said), said)
 		// deskwt's exit code passes THROUGH: a refusal (5) is a decision it made — the branch
 		// is held by a live worktree, or carries unpushed work — and flattening a decision
 		// into "could not be established" tells the operator to retry something that will

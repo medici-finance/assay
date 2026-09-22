@@ -46,6 +46,7 @@ it on day one.
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
+| `deskreconcile` | (no verbs) `--worktree DIR [--issue N] [--dry-run]` — the desk-side board-reconcile writer: fetches origin/main into an isolated worktree, runs `statusgen reconcile --backfill --apply` (the only writer of a stream README Status cell: `todo`/`in-progress` → `implemented`, real merged-PR witness only), and — only when a stream README changed — commits ONLY those README files as ONE commit on the fixed branch `board/reconcile` and opens/UPDATES exactly one draft PR titled `chore(board): reconcile`. Removes the scheduled-CI dependency #1175 is blocked on (no App may push the workflow change). `--dry-run` reports the rows it would flip and writes nothing | outward write (the commit + `deskpr` carry) | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
@@ -1083,6 +1084,18 @@ there was no way to say which stage that was — nor any value to move once you 
   `resume=2` (protecting orphan-PR resumes, the highest-priority source) and `rework=0`.
   `deskboard throughput` prints the same reservation as an extra column beside the width it
   never subtracts from.
+  - **`fanoutloop plan` reconciles every fresh row against the repo's open+merged PRs** (#1339),
+    ONE list read per run, keyed on each PR's `Brief:` trailer (never a branch name). A board cell
+    is unreliable as an eligibility signal — a merged brief reads `todo` until a separate
+    `statusgen reconcile` flips it (#1175) — so a row whose brief already MERGED is printed under a
+    `LANDED-UNRECONCILED` heading (with its PR number) and NEVER dispatched, a row with an OPEN PR
+    is routed to the resume lane, and only unrepresented rows are dispatched. If the repo can't be
+    resolved (`--repo`, else the configured-roots map, else the checkout's origin) or the PR read
+    fails, the fresh lane is HELD with a `FRESH LANE HELD:` line — could-not-check is not
+    no-PR-exists. The PR-list transport is DEFERRED like the orphan sweep — the closed forge
+    surface ships no forge-CLI call and the typed open+merged-changes op is the cutover work — so
+    until it is wired the shipped `plan` performs no forge read and offers rows as before; the
+    classification, repo resolution and one-read reduction are in place, ready to activate.
   - **The repair (`rework`) floor is ENFORCED at the dispatch boundary** (example-stream/18),
     OPT-IN via `ASSAY_REPAIR_ADMISSION=on` (recorded policy `repair-admission-v1`). With it on,
     `deskdispatch` holds a **fresh** dispatch — exit 5, naming the waiting repair — that would

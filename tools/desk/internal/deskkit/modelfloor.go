@@ -47,6 +47,19 @@ package deskkit
 //	                                  applied a stamp this verb cannot trust, which is exactly
 //	                                  the forged-self-report case the floor exists to stop.
 //
+// RISK-CONDITIONAL, NOT BLANKET (ruling 3). The NO-strength-attestation outcome above —
+// proceed-with-NOTICE — is right for an unremarkable PR but wrong for a risk-classed one: an
+// authority-bearing write on a risk-classed PR must carry a trustable attestation of the tier
+// that produced it, and an unstamped one carries none, so "unstamped therefore proceed" left
+// the floor permissive against no attestation while strict against an honest below-tier one.
+// The fix is a thin overlay, ModelCapabilityFloorRiskAware (modelfloorrisk.go), which every
+// write verb calls: it converts THIS one outcome — FloorNoticeAllow, the single signal all
+// three unstamped-for-strength branches share — into a refusal when the PR is risk-classed,
+// and leaves every other outcome untouched. An unstamped NON-risk PR still proceeds with a
+// NOTICE. "Risk-classed" is the SAME RiskPathTriggered signal the security-review gate reads,
+// not a second scheme, and the review lane's trustable-stamp path (ruling 4,
+// `deskdispatch --kit review`) is what keeps this from bricking risk-classed review verdicts.
+//
 // WHY `any` IS ABSENT, NOT BELOW. The tier the dispatcher stamps is the brief's own
 // `exec-tier:` value, and in that schema `any` records the ABSENCE of a strength demand —
 // "this item does not require a particular runner" — never an assertion that a weak one was
@@ -296,6 +309,68 @@ func ModelCapabilityFloor(tl StampTimeline, isDispatcher func(applier string) bo
 			Message: unreadableStampMessage(tl, isDispatcher),
 		}
 	}
+}
+
+// ModelCapabilityFloorRiskAware is the floor with ruling 3's RISK-CONDITIONAL overlay: an
+// UNSTAMPED-for-strength PR still proceeds-with-NOTICE when it is NOT risk-classed, but
+// REFUSES when it is. It is the entry point every authority-bearing write verb calls; the bare
+// ModelCapabilityFloor above is the tier/attestation decision it builds on.
+//
+// The overlay touches exactly ONE outcome. FloorNoticeAllow is the single signal the base
+// floor emits for all three unstamped-for-strength branches (no stamp, an `any` tier, a stamp
+// aged out because its dispatch claim was released), so converting that one outcome is how
+// "unstamped risk-classed refuses" reaches all three at once, expressed here rather than at
+// three return points inside the base switch. Every other outcome — attested strong (allow),
+// attested below-strong (refuse), present-but-unreadable (refuse), and the loud override —
+// passes through unchanged, so this cannot loosen a case rulings 1/2/4 settled: a risk value
+// only ever turns a NOTICE into a refusal, never the reverse.
+//
+// risk is resolved by the calling verb from the SAME signal the security-review gate uses
+// (FloorRiskOf → RiskPathTriggered), against the PR's changed files. FloorRisk fails closed:
+// an unresolved (Unknown) risk refuses an unstamped write. The verb establishes diff
+// readability first and surfaces a could-not-read as its own could-not-check, so a genuine
+// refusal here is a risk-classed PR whose write carried no trustable strong-tier attestation.
+func ModelCapabilityFloorRiskAware(tl StampTimeline, isDispatcher func(applier string) bool, override bool, claim ClaimLiveness, risk FloorRisk) FloorDecision {
+	d := ModelCapabilityFloor(tl, isDispatcher, override, claim)
+	if d.Outcome != FloorNoticeAllow || !risk.RefusesUnstamped() {
+		return d
+	}
+	return FloorDecision{
+		Outcome: FloorRefuse,
+		State:   d.State,
+		Stamp:   d.Stamp,
+		Message: riskUnstampedRefusal(d, risk),
+	}
+}
+
+// riskUnstampedRefusal writes the RISK-CONDITIONAL refusal for an unstamped PR: it says the
+// write is on a risk-classed PR, WHICH way the attestation is missing (a naked absent stamp,
+// or an `any` tier that claims no strength), that a NON-risk PR would have proceeded here, and
+// the two remedies — dispatch from a strong-tier session whose dispatcher stamps it, or, for a
+// review verdict, the reviewer App's own `deskdispatch --kit review` stamp (the review lane's
+// trustable path, ruling 4). The talk-33 rule: say why AND what instead.
+func riskUnstampedRefusal(d FloorDecision, risk FloorRisk) string {
+	var missing string
+	if d.State == ModelStamped && tierClaimsNoStrength(d.Stamp.Tier) {
+		missing = fmt.Sprintf("carries %s%s (model %q), which records no strength claim — the same as no "+
+			"attestation for strength", DispatchedTierPrefix, NoStrengthClaimTier, d.Stamp.Model)
+	} else {
+		missing = "carries no dispatch attestation of the tier that produced it"
+	}
+	var couldNotRead string
+	if risk == FloorRiskUnknown {
+		couldNotRead = " (its risk class could not be established, and the floor fails CLOSED — an " +
+			"undetermined risk is treated as risk-classed, never waived)"
+	}
+	return fmt.Sprintf(
+		"model-capability floor: this authority-bearing write is on a RISK-CLASSED PR%s, which must carry a "+
+			"trustable %s-tier attestation of the session that produced it — but this PR %s. An unstamped "+
+			"NON-risk PR proceeds with a NOTICE; a risk-classed one REFUSES, because a stamp anyone could "+
+			"self-apply is not attestation and neither is the absence of one. Escalate this write to a "+
+			"strong-tier session whose DISPATCHER stamps it; for a review verdict, `deskdispatch --kit review` "+
+			"mints the reviewer App's own trusted stamp. (Incident-recovery override: set %s=1; it is logged "+
+			"loudly.)",
+		couldNotRead, ModelFloorTier, missing, ModelFloorOverrideEnv)
 }
 
 // unreadableStampMessage writes the present-but-UNREADABLE refusal, naming the CAUSE it

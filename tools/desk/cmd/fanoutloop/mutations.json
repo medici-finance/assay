@@ -24,6 +24,12 @@
       "file": "internal/deskkit/repairobligation.go",
       "old": "\tif repairStateRank[b.State] > repairStateRank[out.State] {",
       "new": "\tif repairStateRank[b.State] < repairStateRank[out.State] {"
+    },
+    {
+      "name": "#1339 — DISABLE the fresh-lane represented reconciliation so an already-represented row falls through to fresh DISPATCH exactly as before the fix: the landed-unreconciled and open-PR-resume routing never fires. TestPlan_MergedRowIsLandedUnreconciledNotDispatched and TestPlan_OpenPRRowRoutedToResume must both go red (the merged row is offered for dispatch and no LANDED-UNRECONCILED heading appears; the open-PR row is offered as fresh instead of resume).",
+      "file": "cmd/fanoutloop/adapter.go",
+      "old": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok {",
+      "new": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok && false {"
     }
   ]
 }

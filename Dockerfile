@@ -101,12 +101,15 @@ RUN set -eux; \
 # build stage below references it. Everything this image ships is built above.
 
 # ---- Final ----------------------------------------------------------------
-# Small runtime: Alpine + git + gh CLI + ca-certificates. github-cli lives in
+# Small runtime: Alpine + bash + git + gh CLI + ca-certificates. github-cli lives in
 # the Alpine community repo, so gh installs cleanly with apk — no third-party
 # package repo needed.
 FROM alpine:3.21
 
-RUN apk add --no-cache git github-cli ca-certificates \
+# verifyrun requires bash pipefail. The explicit /work bind mount may be owned
+# by root on Docker Desktop; trust only that checkout, keeping USER desk.
+RUN apk add --no-cache bash git github-cli ca-certificates \
+    && git config --system --add safe.directory /work \
     && addgroup -S desk \
     && adduser -S -G desk -h /home/desk desk
 

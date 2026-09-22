@@ -312,6 +312,15 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 // negated prose ("NOT deferred, still broken") cannot suppress the
 // contradiction: the gate fails closed.
 //
+// The routing check is per OCCURRENCE, not per line: a line can carry a
+// genuinely routed disposition and a second, unrelated, un-routed
+// HELD/could-not-check mention at once (e.g. "deferred to X; separately, the
+// smoke run HELD, no runner online"), and a routing keyword+reference that
+// merely appears somewhere on the line does not say WHICH occurrence it
+// corroborates. Each HELD/could-not-check occurrence is cleared only by a
+// routing keyword AND a corroborating reference that occur AT OR AFTER its
+// own position — never by routing tokens stated only before it.
+//
 // Fenced code, blockquotes and struck-through spans are stripped first — the
 // same hygiene lastVerifyVerdict applies — so a marker QUOTED inside one of
 // those is not read as a live disposition.
@@ -330,19 +339,55 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 			continue
 		}
 		clean := strikethroughRe.ReplaceAllString(line, "")
-		if !heldOrCouldNotCheckRe.MatchString(clean) {
+		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
+		if heldLocs == nil {
 			continue
 		}
-		// Only a GENUINELY routed row is excluded — the exact shape unrun.go
-		// treats as a routed deferral: a routing phrase ("deferred to", a
-		// follow-up/tracking keyword) AND a corroborating reference (#N, a
-		// stream/NN id, or /issues/N). A bare or negated "deferred" ("NOT
-		// deferred", "deferred? no") carries no such reference and so still
-		// contradicts the PASS — the gate fails CLOSED, not open.
-		if routingKeywordRe.MatchString(clean) && routingRefRe.MatchString(clean) {
-			continue // knowingly routed to a named follow-up — excluded from the PASS, not contradicting it
+		// Only a GENUINELY routed occurrence is excluded — the exact shape
+		// unrun.go treats as a routed deferral: a routing phrase ("deferred
+		// to", a follow-up/tracking keyword) AND a corroborating reference
+		// (#N, a stream/NN id, or /issues/N). A bare or negated "deferred"
+		// ("NOT deferred", "deferred? no") carries no such reference and so
+		// still contradicts the PASS — the gate fails CLOSED, not open.
+		//
+		// A whole-line "does this line contain routing tokens anywhere"
+		// test is not enough: a genuinely routed disposition and a second,
+		// unrelated, un-routed HELD/could-not-check mention can share one
+		// physical line (an ordinary shape — a verifier's Result cell often
+		// reads "deferred to X; separately, the smoke run HELD, no runner
+		// online"), and neither routingKeywordRe nor routingRefRe is bound
+		// to which occurrence it corroborates. So each occurrence is judged
+		// on its own: it is cleared only by a routing keyword AND a
+		// corroborating reference that occur AT OR AFTER its own position —
+		// never by routing tokens stated only BEFORE it. "row N is HELD ...
+		// deferred per X" (the deferral resolves an already-stated hold)
+		// still clears; "row N deferred per X ... [and] HELD ..." (a hold
+		// stated only after the deferral) does not — that hold is an
+		// independent claim the deferral could not have been about, and is
+		// refused exactly like an un-routed mention with no deferral at
+		// all. This is ordering, not bare same-line proximity.
+		keywordLocs := routingKeywordRe.FindAllStringIndex(clean, -1)
+		refLocs := routingRefRe.FindAllStringIndex(clean, -1)
+		for _, h := range heldLocs {
+			keywordAfter := false
+			for _, k := range keywordLocs {
+				if k[0] >= h[0] {
+					keywordAfter = true
+					break
+				}
+			}
+			refAfter := false
+			for _, r := range refLocs {
+				if r[0] >= h[0] {
+					refAfter = true
+					break
+				}
+			}
+			if keywordAfter && refAfter {
+				continue // knowingly routed to a named follow-up — excluded from the PASS, not contradicting it
+			}
+			return true, strings.TrimSpace(clean)
 		}
-		return true, strings.TrimSpace(clean)
 	}
 	return false, ""
 }

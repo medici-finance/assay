@@ -1,0 +1,33 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "order_by=updated_at\u0026page=1\u0026per_page=100\u0026sort=desc\u0026state=all"
+    }
+  ],
+  "result": {
+    "Changes": [
+      {
+        "Number": 7,
+        "State": "OPEN",
+        "HeadSHA": "aaa111",
+        "HeadRef": "feat/a",
+        "Title": "open work",
+        "Body": "Brief: example-a/00",
+        "MergedAt": ""
+      },
+      {
+        "Number": 8,
+        "State": "MERGED",
+        "HeadSHA": "bbb222",
+        "HeadRef": "feat/b",
+        "Title": "landed work",
+        "Body": "Brief: example-b/01",
+        "MergedAt": "2026-09-10T12:00:00Z"
+      }
+    ],
+    "Incomplete": false,
+    "PageCap": 25
+  }
+}

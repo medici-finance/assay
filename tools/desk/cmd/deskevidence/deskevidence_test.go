@@ -176,6 +176,9 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldLintDiff := lintDiffFn
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+	oldOutcome := outcomeGuardFn
+	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
+	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr

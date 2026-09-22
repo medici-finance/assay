@@ -95,7 +95,7 @@ type glServer struct {
 	// and the give-up path (set it at/above the cap). It names the request's own
 	// source_branch in the message, so a fixture cannot fake a branch it was not asked for.
 	createMRTransientFails int
-	labelEvents []map[string]any
+	labelEvents            []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
 	issueList  []map[string]any
@@ -1747,6 +1747,31 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
 		},
 		{
+			// #1339 — the states-scoped changes read behind the phantom / already-represented
+			// check. It over-requests `state=all` (ordered updated_at desc) and narrows
+			// client-side to exactly the OPEN+MERGED set: the golden pins that a MERGED MR
+			// survives as MERGED (distinct from CLOSED, which the board's ListOpenChanges
+			// collapses) with its merged_at, that a CLOSED-unmerged MR is dropped (it represents
+			// no brief), and that each ChangeRef carries the source branch, head sha and body —
+			// the body being where BriefRepresentedPR reads the `Brief:` trailer.
+			name: "list_changes", method: "ListChanges",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{
+					glMR(map[string]any{"iid": 7, "state": "opened",
+						"title": "Draft: open work", "description": "Brief: example-a/00",
+						"sha": "aaa111", "source_branch": "feat/a"}),
+					glMR(map[string]any{"iid": 8, "state": "merged",
+						"title": "landed work", "description": "Brief: example-b/01",
+						"sha": "bbb222", "source_branch": "feat/b",
+						"merged_at": "2026-09-10T12:00:00Z"}),
+					glMR(map[string]any{"iid": 9, "state": "closed",
+						"title": "abandoned", "description": "Brief: example-c/02",
+						"sha": "ccc333", "source_branch": "feat/c"}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListChanges(glRepo, OpenAndMerged()) },
+		},
+		{
 			// issue #1033. The issue-lane summary is now a REAL read: the gate it is consumed
 			// paired with (IssueTrustEvents) is served on GitLab, so deferring the list left the
 			// lane enumerable-by-nobody rather than protecting anything. The golden pins the
@@ -1808,6 +1833,28 @@ func glCases() []glCase {
 					[]map[string]any{}, false, false)
 			},
 			run: func(f *GitLabForge) (any, error) { return f.IssueTrustEvents(glRepo, 12) },
+		},
+		{
+			// The escalation-clock read (issue #2844). It reuses listNotes — the REST
+			// /issues/:iid/notes walk, oldest-first, system notes dropped — rather than the
+			// single-page trust GraphQL query, because the escalation clock needs the WHOLE
+			// thread to find the last human response (an overflowed thread must not fail the
+			// whole board). The golden pins that it touches /issues/:iid/notes, drops the system
+			// note, and maps each remaining note to a content event (bare username as the login,
+			// numeric id, created-at). Complete is reported true — the standard bounded notes
+			// reader every GitLab note consumer shares.
+			name: "issue_content_events", method: "IssueContentEvents",
+			setup: func(s *glServer) {
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "a human reply on the decision", "system": false,
+						"created_at": "2026-09-02T10:00:00Z",
+						"author":     map[string]any{"id": 2001, "username": "ada"}},
+					{"id": 951, "body": "changed the description", "system": true,
+						"created_at": "2026-09-02T11:00:00Z",
+						"author":     map[string]any{"id": 2001, "username": "ada"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.IssueContentEvents(glRepo, 12) },
 		},
 		{
 			// GitLab trust-events brief. A change with NO notes at all is a REAL, EMPTY payload — zero
