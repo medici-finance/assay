@@ -160,7 +160,7 @@ func TestRunnerTable(t *testing.T) {
 // product token is constructed at runtime so this test file does not itself carry the literal —
 // Verify row 4 greps these paths for it and must stay CLEAN.
 func TestRunnerTableNamespace(t *testing.T) {
-	productKey := "MEDICI" + "_LOAN_RUNNER_LOCAL" // never a literal in-file (Verify row 4)
+	productKey := "EXAMPLE" + "_WIDGET_RUNNER_LOCAL" // never a literal in-file (Verify row 4)
 	env := map[string]string{
 		productKey:             `{"cmd":["x"],"pin":"1"}`,
 		"PRODUCT_RUNNER_LOCAL": `{"cmd":["y"],"pin":"1"}`,
