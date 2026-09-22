@@ -479,13 +479,28 @@ func TestSingleRootOnlySubcommandIsWiredToExit2(t *testing.T) {
 	if idx < 0 {
 		t.Fatal("unreachable")
 	}
-	// Window sized to span the whole single-root-only map (which grows as
-	// self-contained sub-commands are added — e.g. --drive-issues, mm drives
-	// phase 2; the seven brief-flow metrics, statusgen/07) plus the refusal
-	// block that follows it. It only needs to be large enough to reach the
-	// os.Exit(2); the assertion's intent is that the refusal exists and exits
-	// 2, not that it sits within any exact byte count.
-	window := src[idx:min(idx+2600, len(src))]
+	// Anchor the window to the map literal's OWN structural close
+	// (`}); name != ""`) rather than to a fixed byte offset from the call
+	// site. The single-root-only map grows as self-contained sub-commands
+	// are added (e.g. --drive-issues, mm drives phase 2; the seven
+	// brief-flow metrics, statusgen/07; --transcribe-scan-delta,
+	// desk-tools/28), and a fixed-width window sized for today's map goes
+	// silently blind the moment a future entry — or its neighbouring
+	// comment — pushes the close past the window's edge (it did exactly
+	// this once already: desk-tools/28's own entry pushed the close 6
+	// bytes past a 2600-byte window). Anchoring to the map's own close
+	// keeps the window's size independent of how many entries it holds.
+	closeMarker := `}); name != ""`
+	closeIdx := strings.Index(src[idx:], closeMarker)
+	if closeIdx < 0 {
+		t.Fatal("could not find the single-root-only map's close (`}); name != \"\"`) after its call site — has the shape of the refusal changed?")
+	}
+	after := idx + closeIdx
+	// It only needs to be large enough to reach the os.Exit(2) that follows
+	// the map's close; the assertion's intent is that the refusal exists and
+	// exits 2 right after the map, not that it sits within any exact byte
+	// count of the call site.
+	window := src[after:min(after+700, len(src))]
 	if !strings.Contains(window, "os.Exit(2)") && !strings.Contains(window, "return 2") {
 		t.Errorf("the singleRootOnlySubcommand refusal does not exit 2:\n%s", window)
 	}

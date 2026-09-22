@@ -131,6 +131,15 @@ reliably caught an inverted or false desk claim.
 ## 8. Scope and reporting
 
 - Implement to the contract; do not expand scope. Report `NEEDS_CONTEXT` rather than guess.
+- **Fix a false-claim finding by its whole claim CLASS, not just the cited line.** When a
+  reviewer's finding is that a statement is false or unsupported (as opposed to a defect at
+  one location), read the reviewer's first-pass inventory for that class and repair EVERY
+  in-scope occurrence it names — sibling files, adjacent paragraphs, the contradictory tail,
+  and any required acceptance deliverable — in the SAME push. Clearing one copy while another
+  survives is what turns a single falsehood into several review rounds. A class fixed whole
+  is ONE round on that class; a late-found sibling of a class you already touched stays in
+  that class and does not open a fresh one. Route genuinely unrelated pre-existing prose to a
+  linked follow-up rather than folding it into this change.
 - Climb the reuse ladder and stop at the first rung that satisfies the item: (1) does this
   need to exist at all — except that the item's own declared scope outranks this rung, a
   briefed deliverable is never re-litigated as YAGNI; (2) is it already in this repo;
@@ -283,3 +292,22 @@ itself. The full module suite is exactly what CI runs, on a runner with no agent
 over it — leave the whole-matrix run to CI and keep the agent's own runs scoped to what the
 row in front of you needs to prove. This is the same boundary §9's fail-first run already
 draws: `go test ./<pkg>/... -run '<TestName>'`, never the bare `./...`.
+
+## 13. Reply against the reviewer's finding record, by ID
+
+When a reviewer's verdict carries a typed finding record (`review-finding/v1`), your reply
+references the finding by its `id` and states your fix or your counter-evidence — do not
+restate the objection in fresh prose that a later reviewer cannot tie back to the round it
+belongs to. The record is what carries your rounds and the disputed state across a
+replacement reviewer, so preserve it:
+
+- **Fix the whole class, not just the cited line.** A finding's `class` covers every
+  occurrence of the same proposition; fixing one sentence never clears the class, and a
+  sibling sentence the reviewer notices later keeps the same class and round count.
+- **You cannot clear your own blocking finding.** Your reply may move a finding to
+  `fixed-awaiting-review` (you assert a fix) or `disputed` (you contest it with
+  counter-evidence); only a reviewer resolves a blocker, at the current head. The write gate
+  refuses a worker block that marks a blocking finding `resolved` or hand-asserts the
+  arbitration cap.
+- **A verifier or reviewer failure is work to OWN**, retained through replacement, restart
+  and merge until an independent pass clears it — never a report to acknowledge and drop.

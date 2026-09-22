@@ -16,7 +16,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CELLCTL="$HERE/../cellctl"
+# The binary under test. $CELLCTL lets the SAME suite run against either implementation
+# (the bash oracle, the default, or the Go port) — desk-containers/10.
+CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 # /tmp, never $TMPDIR: a scrubbed cell's session lives on a private UNIX-socket tmux server
 # (`<cell>/run/tmux.sock`), and `sun_path` has a hard ~104-108 byte limit every platform enforces
 # — macOS's default $TMPDIR (/var/folders/.../T/, ~50 bytes on its own) blows that budget once
@@ -35,7 +37,7 @@ unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_RO
   DESK_ROOTS DESK_LOOP DESK_SESSION 2>/dev/null || true
 
 # ---------------------------------------------------------------- shared fixture
-export HOME="$T/home"; mkdir -p "$HOME/.config/gh"
+export HOME="$T/home"; mkdir -p "$HOME/.config/gh" "$HOME/.claude"
 printf '[user]\n\tname = Example Operator\n\temail = operator@example.invalid\n' > "$HOME/.gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 git init -q --bare -b main "$T/origin.git"
@@ -144,6 +146,12 @@ case_check_pass(){
   local C="$CELLS_ROOT/$cell"
   printf 'CELL_HARNESS=codex\n' >> "$C/cell.env"
   printf 'fake pem\n' > "$C/home/.config/assay/worker-desk-app.pem"; chmod 600 "$C/home/.config/assay/worker-desk-app.pem"
+  # FULLY provisioned means the roster hand step the scaffold's own README names has run too.
+  # `cellctl new --kind scrubbed` writes ASSAY_ALLOWED_REPOS and a "fill in by hand" comment for
+  # the rest, and a roster with no bless authority does not LOAD — the real `deskroster` exits 6
+  # on one. Without these two lines the case was asserting "all preconditions met" on a cell
+  # whose roster no desk verb would accept.
+  printf 'ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\n' >> "$C/home/.config/assay/roster.env"
   rm -rf "$CODEX_STATE"; mkdir -p "$CODEX_STATE"
   touch "$CODEX_STATE/authed"
   printf 'true\n' > "$CODEX_STATE/multiagent"
@@ -223,7 +231,7 @@ case_env_scrub(){
   rm -f "$T/claude-launch.out"
   local expected_path="$C/shim:$DESK_TOOLS_BIN:$T/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   (
-    GH_TOKEN=canary-parent SSH_AUTH_SOCK=/nonexistent ANTHROPIC_API_KEY=canary \
+    GH_TOKEN=canary-parent SSH_AUTH_SOCK=/nonexistent ANTHROPIC_API_KEY=canary CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true \
     PATH="$T/canary:$PATH" TERM="${TERM:-xterm-256color}" LANG="${LANG:-en_US.UTF-8}" \
     "$CELLCTL" desk "$cell" worker-desk </dev/null >"$T/env-scrub-desk.out" 2>&1
   )
@@ -238,6 +246,7 @@ case_env_scrub(){
   assert "env-scrub: KUBECONFIG=/dev/null" 'grep -qx "KUBECONFIG=/dev/null" "$envf"'
   assert "env-scrub: GIT_TERMINAL_PROMPT=0" 'grep -qx "GIT_TERMINAL_PROMPT=0" "$envf"'
   assert "env-scrub: CLAUDE_CONFIG_DIR under the cell home (claude arm)" 'grep -qxF "CLAUDE_CONFIG_DIR=$C/home/.claude" "$envf"'
+  assert "env-scrub: suggestions disabled despite parent true" 'grep -qx "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false" "$envf"'
   assert "env-scrub: no CODEX_HOME on the claude arm (harness-namespaced, mutually exclusive)" '! grep -q "^CODEX_HOME=" "$envf"'
   assert "env-scrub: DESK_ROOTS exported from CELL_ROOTS" 'grep -qxF "DESK_ROOTS=example-org/example-repo=$REPO" "$envf"'
   assert "env-scrub: composed PATH is EXACTLY the 7 named elements, in order — no canary dir" 'grep -qxF "PATH=$expected_path" "$envf"'
@@ -265,7 +274,12 @@ case_plan_grammar(){
   # Dereferencing: the set of [plan] env KEYs must equal the script's own SCRUBBED_ENV_KEYS, minus
   # the INACTIVE harness's namespaced var (the-desk here boots the default claude harness, so
   # CODEX_HOME never appears) — a KEY added to one and not the other fails right here.
-  local want; want="$(grep -oE 'SCRUBBED_ENV_KEYS="[^"]*"' "$CELLCTL" | sed -E 's/^SCRUBBED_ENV_KEYS="//; s/"$//' | tr ' ' '\n' | grep -vx 'CODEX_HOME' | sort)"
+  # The declared allowlist is read from the SHELL ORACLE's source, at its fixed path, not from
+  # "$CELLCTL": the suite runs against either implementation (desk-containers/10) and a compiled
+  # binary has no source to grep. The oracle stays in the tree as the reference until the cutover,
+  # so this keeps the dereference honest for BOTH — the Go port has to emit the same set the
+  # declared allowlist names, which is exactly the claim worth proving.
+  local want; want="$(grep -oE 'SCRUBBED_ENV_KEYS="[^"]*"' "$HERE/../cellctl" | sed -E 's/^SCRUBBED_ENV_KEYS="//; s/"$//' | tr ' ' '\n' | grep -vx 'CODEX_HOME' | sort)"
   local got; got="$(sort <<<"$env_keys")"
   assert "plan-grammar: [plan] env KEY set equals SCRUBBED_ENV_KEYS minus the inactive harness var" '[[ "$got" == "$want" ]]'
 }
@@ -325,7 +339,9 @@ case_lock(){
   "$CELLCTL" down "$cell" >/dev/null 2>&1
   local dead; dead="$(fresh_deadpid)"
   mkdir -p "$C/run/lock.d"; printf '%s' "$dead" > "$C/run/lock.d/pid"
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  # stdout-only, exactly as case_status: `stale-lock <pid>` is the status stdout contract, so this
+  # capture must not merge the Go port's stderr P3 echo (see the note above case_status).
+  out="$("$CELLCTL" status "$cell")"
   assert "lock: status reports stale-lock on a dead pid" '[[ "$out" == "stale-lock $dead" ]]'
   "$CELLCTL" down "$cell" >/dev/null 2>&1
   assert "lock: down clears the stale lock" '[[ ! -d "$C/run/lock.d" ]]'
@@ -336,17 +352,25 @@ case_lock(){
 }
 
 # ---------------------------------------------------------------- status
+# `status` has a MACHINE-READABLE stdout contract — exactly one token per state (`stopped`,
+# `running <session>`, `stale-lock <pid>`) — so these captures assert stdout alone and do NOT
+# merge stderr with `2>&1`. The Go port writes deskkit's P3 effective-config echo to stderr once
+# per run, like every roster-reading desk main; the bash oracle writes none. Merging stderr into
+# an EXACT-MATCH capture was the bug: it is not part of the status contract, and dropping the
+# `2>&1` is what asserts the contract, not a filter over a polluted stream. The grep-based
+# captures elsewhere in this file keep their `2>&1` on purpose — they assert on refusal text that
+# cellctl prints to stderr, and a substring match tolerates the echo lines.
 case_status(){
   local cell="case-status"
   "$CELLCTL" new "$cell" --kind scrubbed --repo "$REPO" --repo-slug example-org/example-repo >/dev/null
   local out
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  out="$("$CELLCTL" status "$cell")"
   assert "status: a fresh cell is stopped" '[[ "$out" == "stopped" ]]'
   "$CELLCTL" desk "$cell" worker-desk </dev/null >/dev/null 2>&1
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  out="$("$CELLCTL" status "$cell")"
   assert "status: a live cell reports running <session>" '[[ "$out" == "running ${cell}-cell" ]]'
   "$CELLCTL" down "$cell" >/dev/null 2>&1
-  out="$("$CELLCTL" status "$cell" 2>&1)"
+  out="$("$CELLCTL" status "$cell")"
   assert "status: after down, stopped again" '[[ "$out" == "stopped" ]]'
 }
 

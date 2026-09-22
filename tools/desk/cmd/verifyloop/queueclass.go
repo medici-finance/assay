@@ -46,6 +46,35 @@ const (
 	// dispInRepair: an in-flight table-repair pipeline already owns this brief's Verify table
 	// (a stale-artifact re-baseline). Dispatching a verifier at it races the repair.
 	dispInRepair
+	// dispDispatchForEvidence: the SECOND dispatchable class (#1309 item 2). A human-gated /
+	// risk-flagged brief whose Evidence section is still EMPTY and which is otherwise
+	// offline-runnable (not blocked, not in repair, not on an online lane): a model MAY gather
+	// its Evidence — Evidence rows plus the outcome sidecar row, and NEVER a status flip (Land
+	// enforces the no-flip structurally). It is emitted AFTER the DISPATCH set so the desk's
+	// declared worklist is the tool's output, not a hand-computed union of DISPATCH and the
+	// ROUTE-HUMAN bucket. A human-gated brief whose Evidence is already gathered stays in
+	// awaiting-human: re-gathering it every pass is the treadmill item 3 closes.
+	dispDispatchForEvidence
+	// dispStuckFlip: the sidecar's latest row for this brief is `outcome: verified` and its
+	// Evidence is FILLED, yet the board row still awaits (the implemented→verified flip — a
+	// `gate: model` row's CI flip — or the verified→done flip has not landed). Re-verifying it
+	// reproduces the same verified outcome every pass (#1309 item 3: it re-entered DISPATCH as
+	// item 1 on every plan); it is a finding to file / point the flip at, never a re-run.
+	dispStuckFlip
+	// dispCouldNotCheck: the row's brief file could not be resolved or read (#1309 item 5), so
+	// its gate and risk answers are UNKNOWN. An instrument that did not look has cleared
+	// nothing: the row is listed under could-not-check with the reason and is never
+	// dispatchable — before this it fell through as a zero-value (risk-clear, model-gated)
+	// brief and reached DISPATCH with its human gate erased. A wake receipt whose declared
+	// inputs could not be read (example-stream/16) is bucketed here too, with a wake reason.
+	dispCouldNotCheck
+	// dispWaitReceipt: a failed/blocked verification carries a COMPLETE, still-UNCHANGED wake
+	// receipt (example-stream/16). Its wake condition has not been met — re-verifying now only
+	// reproduces the same non-verdict — so the failure stays VISIBLE as a WAIT row (naming its
+	// blocker and next actor) and is excluded from costly dispatch. A receipt is scheduling
+	// evidence only: it never authorizes verified/done or a write. Legacy/incomplete receipts
+	// are NOT bucketed here — they stay eligible for one classification pass.
+	dispWaitReceipt
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -61,9 +90,35 @@ func (d disposition) String() string {
 		return "awaiting-online-lane"
 	case dispInRepair:
 		return "in-repair"
+	case dispDispatchForEvidence:
+		return "dispatch-for-evidence"
+	case dispStuckFlip:
+		return "stuck-flip"
+	case dispCouldNotCheck:
+		return "could-not-check"
+	case dispWaitReceipt:
+		return "wait"
 	default:
 		return "unknown"
 	}
+}
+
+// evidenceOnlyDispatchable reports whether an awaiting-human item is the DISPATCH-FOR-EVIDENCE
+// shape: its Evidence is KNOWN empty (the scan writes evidence_empty=yes; an item with no such
+// payload is not known and stays awaiting-human, fail-safe) and nothing below the human arm in
+// classifyItem's precedence — in-repair, online lane — would keep an offline run from producing
+// the Evidence.
+func evidenceOnlyDispatchable(it loopengine.Item) bool {
+	if payloadValue(it, "evidence_empty") != "yes" {
+		return false
+	}
+	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
+		return false
+	}
+	if lane := strings.ToLower(payloadValue(it, "verify_lane")); onlineLaneValues[lane] {
+		return false
+	}
+	return true
 }
 
 // whyItWaits is the one-line explanation printed once per non-dispatch disposition.
@@ -77,6 +132,12 @@ func (d disposition) whyItWaits() string {
 		return "needs a cluster / online / live-session hand-off — an offline verifier run cannot produce the verdict"
 	case dispInRepair:
 		return "an in-flight table-repair pipeline already owns this Verify table — leave it to the repair"
+	case dispCouldNotCheck:
+		return "the brief file could not be resolved/read — gate and risk answers are UNKNOWN, so it is never dispatchable; fix the board row or the file"
+	case dispStuckFlip:
+		return "a verified outcome is in the sidecar and Evidence is filled, but the status flip has not landed — file/point at the stuck flip, never re-run"
+	case dispWaitReceipt:
+		return "a failed/blocked verification whose wake condition is unchanged — re-verifying now reproduces the same non-verdict; the line names the blocker, the next actor, and what will wake it"
 	default:
 		return ""
 	}
@@ -112,6 +173,7 @@ var notInRepairValues = map[string]bool{
 // (whose why is the same for every member — carried by whyItWaits).
 //
 // Precedence, most-specific first:
+//  0. could-not-check — the brief file is unresolvable; nothing below can be read off it.
 //  1. blocked-until — the brief cannot even be attempted this run, whatever else is true of it.
 //  2. human gate / risk-flagged — FAIL SAFE. These items are never dispatched to a model. The
 //     arm is INDEPENDENT of the tier the risk-router computed: it admits an item when the tier is
@@ -120,15 +182,38 @@ var notInRepairValues = map[string]bool{
 //     control that catches a fail-open in TierPolicy (a re-cased gate, a future edit that hands a
 //     risk-bearing brief a dispatchable tier). A model may gather Evidence for such a brief but
 //     may never flip it, so the gate/risk answers decide here regardless of the computed tier.
-//  3. in-repair — a pipeline owns the table; do not race it.
-//  4. online lane — no offline verdict is possible.
-//  5. otherwise DISPATCH.
+//  3. stuck-flip — the sidecar already records a verified outcome and the Evidence is filled;
+//     only the flip is missing, and a re-run cannot land it.
+//  4. in-repair — a pipeline owns the table; do not race it.
+//  5. online lane — no offline verdict is possible.
+//  6. otherwise DISPATCH.
 func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string) {
+	if cnc := payloadValue(it, "could_not_check"); cnc != "" {
+		return dispCouldNotCheck, cnc
+	}
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
 	}
 	if tier == loopengine.TierHuman || loopengine.GateIsHuman(it.Gate) || it.Risk.Any() {
+		if evidenceOnlyDispatchable(it) {
+			return dispDispatchForEvidence, humanReason(it)
+		}
 		return dispAwaitingHuman, riskReason(it.Risk)
+	}
+	if reason, stuck := stuckFlip(it); stuck {
+		return dispStuckFlip, reason
+	}
+	// WAKE (example-stream/16): a failed/blocked verification's evaluated receipt state,
+	// computed at scan time (briefscan.deriveWakePayload). `hold` is a WAIT row excluded from
+	// dispatch; `could-not-check` is bucketed with its wake reason (an unreadable declared input
+	// never rounds up to unchanged); `fire` (the wake condition was met, or a partial with some
+	// rows still runnable) falls through to DISPATCH; an absent/`unclassified` state falls
+	// through so a legacy/incomplete receipt gets one ordinary classification pass.
+	switch payloadValue(it, "wake_state") {
+	case "hold":
+		return dispWaitReceipt, payloadValue(it, "wake_reason")
+	case "could-not-check":
+		return dispCouldNotCheck, payloadValue(it, "wake_reason")
 	}
 	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
 		return dispInRepair, ir
@@ -137,6 +222,28 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 		return dispAwaitingOnlineLane, lane
 	}
 	return dispDispatch, ""
+}
+
+// stuckFlip reports whether the item is the stuck-flip shape — latest sidecar outcome
+// `verified` AND Evidence known filled — with the member-line reason naming the landed outcome
+// (its timestamp and SHA) and the board status that failed to move. An item whose Evidence
+// state is unknown, or whose latest outcome is anything but verified (a verify-fail wants a
+// re-run once fixed), is not stuck.
+func stuckFlip(it loopengine.Item) (string, bool) {
+	if payloadValue(it, "sidecar_outcome") != "verified" || payloadValue(it, "evidence_empty") != "no" {
+		return "", false
+	}
+	return "sidecar outcome verified " + payloadValue(it, "sidecar_ts") + " (sha " + payloadValue(it, "sidecar_sha") +
+		"), Evidence filled, status still " + payloadValue(it, "status"), true
+}
+
+// humanReason is the DISPATCH-FOR-EVIDENCE header reason: the risk answers that are yes, else
+// the bare human gate — a for-evidence header always names WHY the flip is withheld.
+func humanReason(it loopengine.Item) string {
+	if r := riskReason(it.Risk); r != "" {
+		return r
+	}
+	return "gate: human"
 }
 
 // riskReason names the risk answers that are yes, in canonical key order, as

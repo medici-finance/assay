@@ -1,0 +1,17 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "body": {
+        "title": "Draft: t",
+        "description": "b",
+        "source_branch": "feat/x",
+        "target_branch": "main"
+      }
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: POST /projects/medici-finance%2Fassay/merge_requests — HTTP 400: forge API POST /projects/medici-finance%2Fassay/merge_requests returned HTTP 400: {message: [Another open merge request already exists for this source branch: !5]}",
+  "not_found": false
+}

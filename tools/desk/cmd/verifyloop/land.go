@@ -68,10 +68,16 @@ func (v *VerifyLoop) Land(r loopengine.Result) error {
 	case loopengine.VerdictFail:
 		// Record the failing Evidence AND file the change failure; brief stays implemented.
 		_ = d.WriteEvidenceAndFlip(r.Item, evidence, false)
+		// A change failure is durable worker work: create/reconcile the repair obligation beside
+		// the bug (example-stream/17). Additive to FileBug, never a replacement for it.
+		v.recordRepairObligation(r)
 		_, err := d.FileBug(r.Item, "VERIFY FAIL (change failure): "+failSummary(r))
 		return err
 
 	default: // BLOCKED / NEEDS_CONTEXT / unknown
+		// An unlandable verify also owes a durable obligation — left UNKNOWN (explicit triage,
+		// never an invented implementation bug) so a verifier classifies it, not a worker.
+		v.recordRepairObligation(r)
 		_, err := d.FileBug(r.Item, "verify could not complete ("+r.Verdict+")")
 		return err
 	}

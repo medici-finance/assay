@@ -72,6 +72,11 @@ statusgen --root <dir> --lint against the landing worktree, before vs. after the
 write) — both refused before the write, a pre-existing red elsewhere in the repo never
 blocks a clean landing.
 
+New verified outcome records additionally require a lint-clean tree and
+statusgen brief --check-verified (verified/done, dated stamp, passing witnesses).
+The brief and stream README must already match the target branch. Evidence-only
+implemented landings must not append verified outcomes; verify-fail is unchanged.
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {

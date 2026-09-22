@@ -136,6 +136,56 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	// cmd/cellctl — the cell launcher (the Go port of tools/cellctl/cellctl). It reaches NO forge
+	// at all: its one credential path goes through deskkit.RoleTokenForRepo, and its own brief
+	// asserts at the source level that the package carries no signing primitive, no certificate
+	// package, no bearer-assertion format and no TLS-toolkit shell-out. What it DOES launch is
+	// the local surface a launcher has to: the operator's harness, a terminal multiplexer, the
+	// two cockpit CLIs it probes by name, and the cell's own operator-owned binaries. None of
+	// those is a forge CLI, and none of the argv[0]s is a compile-time constant because the NAME
+	// is the thing being selected at run time.
+	{
+		Key: "cmd/cellctl/cockpit.go::onPath::<unresolved>",
+		Reason: "exec.LookPath of a cockpit/harness name held in a variable (tmux, herdr, orca, claude, " +
+			"codex); presence probe, launches nothing.",
+	},
+	{
+		Key: "cmd/cellctl/cockpit.go::runBounded::<unresolved>",
+		Reason: "the bounded probe runner. It launches whatever its caller names — in this package only " +
+			"`orca repo list`, the desktop-app reachability probe — optionally behind timeout/gtimeout. " +
+			"Two sites, because the bound is enforced natively when neither of those is installed.",
+	},
+	{
+		Key: "cmd/cellctl/cockpit.go::helpText::<unresolved>",
+		Reason: "runs `<cockpit CLI> --help` to probe which verbs and flags the INSTALLED build advertises " +
+			"(herdr and orca ship often and their spellings move); reads help text, acts on nothing else.",
+	},
+	{
+		Key: "cmd/cellctl/container.go::Cell.containerRun::<unresolved>",
+		Reason: "runs the operator-registered container launcher named by CELL_CONTAINER_LAUNCHER, which " +
+			"cell.env must give as an absolute executable path. Executable argv, never eval; the launcher " +
+			"is trusted host code that owns its own runtime custody.",
+	},
+	{
+		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",
+		Reason: "runs the cell's OWN deskd binary at <cell>/bin/deskd (a read daemon, not a forge CLI). " +
+			"Attended-only, and the credentials it is handed come from deskkit.RoleTokenForRepo.",
+	},
+	{
+		Key: "cmd/cellctl/env.go::scrubbedHarnessPath::<unresolved>",
+		Reason: "exec.LookPath of the harness name (claude|codex) to pin its directory into a scrubbed " +
+			"cell's composed PATH; presence probe, launches nothing.",
+	},
+	{
+		Key: "cmd/cellctl/launch.go::runForeground::<unresolved>",
+		Reason: "the hand-over site: replaces this process, as far as the caller can tell, with the harness " +
+			"or with tmux attach. argv is composed by the verb that calls it and is never a forge CLI.",
+	},
+	{
+		Key: "cmd/cellctl/smoke.go::cmdSmoke::<unresolved>",
+		Reason: "runs the harness once, read-only and tool-free, to prove a scrubbed cell answers READY. " +
+			"argv[0] is the selected harness (claude|codex).",
+	},
 	{
 		Key: "cmd/clusterguard/shim.go::passThrough::<unresolved>",
 		Reason: "the cluster-CLI shim's ONE pass-through site. argv[0] is the path clusterguard itself " +

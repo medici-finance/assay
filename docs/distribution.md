@@ -142,6 +142,12 @@ published release (never a nearest-match guess).
 
 ### There is no rollback
 
+**This is a statement about Assay's OWN release/distribution mechanism.** It is unchanged by
+[`deploy-model.md`](deploy-model.md), which specifies a DIFFERENT rollback obligation for an
+adopter's own DEPLOYMENTS (their own change, to their own environment). The two are unrelated
+operations that share a word — see `deploy-model.md` § "Rollback" for the distinction. Nothing
+below is reconciled away by that document; it stands exactly as written.
+
 The platform has no downgrade verb: `/plugin` can update but cannot downgrade, and cached prior
 versions are pruned after about 14 days. Moving to an older named version is a re-point and
 re-resolve — it is **not a rollback**, and `upgrade-assay` never calls it one. An artifact older

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -175,6 +176,9 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldLintDiff := lintDiffFn
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+	oldOutcome := outcomeGuardFn
+	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
+	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr
@@ -1347,5 +1351,68 @@ func TestLintDiffSkippedForNoop(t *testing.T) {
 	}
 	if called {
 		t.Fatal("lintDiffFn was called for a noop landing — nothing is landing, nothing to lint")
+	}
+}
+
+// TestDryRunPrintsPlanNoWrite (verify-integrity/04 item 1, Verify row 4): --dry-run on a
+// fixture brief prints the commits-API landing plan and performs ZERO writes — every gate
+// that can refuse the landing still runs (mint, forge resolution, remote read, secret scan,
+// lint-diff), only the write itself is skipped. There is no local `git commit` anywhere in
+// this tool's write path (mintTokenFn → forgeForFn → fg.WriteFile is the only path this
+// package has ever had), so a plan that never reaches fg.WriteFile is, by construction, a
+// plan with no local git commit in it.
+func TestDryRunPrintsPlanNoWrite(t *testing.T) {
+	f, _ := setupFake(t)
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
+	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root, "--dry-run"})
+	if code != deskkit.ExitOK {
+		t.Fatalf("dry-run exit = %d, want %d", code, deskkit.ExitOK)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("--dry-run must never write: got %d WriteFile call(s)", f.putCalls)
+	}
+	// The read (mint, forge resolve, remote fetch, secret scan, lint-diff) DID run — a
+	// dry-run is a real preview, not a no-op that skips validation too.
+	if len(f.reads) == 0 {
+		t.Fatal("--dry-run should still resolve the forge and read the remote content")
+	}
+	out := stdout.(*bytes.Buffer).String()
+	if !strings.Contains(out, "dry-run") {
+		t.Fatalf("stdout must print the dry-run plan; got:\n%s", out)
+	}
+	if !strings.Contains(out, evidencePath) || !strings.Contains(out, "main") {
+		t.Fatalf("the plan must name the target path and branch; got:\n%s", out)
+	}
+}
+
+// TestDryRunRefusesOnMintFailure (Verify row 4's perturbation): with the App token
+// unmintable, --dry-run refuses exactly like the non-dry-run path (TestMintFailureAbortsBeforeForge)
+// — it never falls back to a local git identity, because dry-run only skips the FINAL write
+// step and the mint happens far earlier, unconditionally.
+func TestDryRunRefusesOnMintFailure(t *testing.T) {
+	f, _ := setupFake(t)
+	mintErr := deskkit.Unverifiable("desktoken verifier --repo example-org/tracker: mint refused",
+		errors.New("mint boom"))
+
+	oldMint := mintTokenFn
+	mintTokenFn = func(string) error { return mintErr }
+	t.Cleanup(func() { mintTokenFn = oldMint })
+
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | row |\n")
+	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root, "--dry-run"})
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("dry-run with mint failure exit = %d, want %d", code, deskkit.ExitUnverifiable)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("mint failed but the forge was reached: %v", f.hits)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("mint failed but %d WriteFile call(s) were made", f.putCalls)
 	}
 }

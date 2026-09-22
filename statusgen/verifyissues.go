@@ -192,8 +192,22 @@ func extractSectionByPrefix(body, prefix string) string {
 	return strings.Join(out, "\n")
 }
 
-// hasVerifyPass reports whether evidence contains the **VERIFY: PASS** marker
-// indicating a model verifier has run and passed the brief's Verify table.
+// verifyVerdictBoldRe is the ratified regex for a BOLD VERIFY verdict marker:
+// `**VERIFY: PASS**` or `**VERIFY: FAIL**`, with
+// arbitrary prose between the verdict token and the closing `**` —
+// `**VERIFY: PASS (4/4 offline-runnable rows)**`, `**VERIFY: PASS — all 6
+// rows green.**` — but the verdict token itself is anchored to PASS|FAIL:
+// `**VERIFY: BLOCKED (human-gate)**` and any other spelling never match,
+// whatever prose surrounds it. Card and flip tooling (hasVerifyPass below,
+// and autoflip.go's decideModelFlip) both gate on THIS regex, never a looser
+// substring test — one wording, quoted, not two that can drift apart. Named
+// distinctly from verifyMarkerRe above, which matches a different thing (the
+// hidden `<!-- verify-gate: … -->` idempotency marker in an ISSUE body).
+var verifyVerdictBoldRe = regexp.MustCompile(`\*\*VERIFY: (PASS|FAIL)\b[^*]*\*\*`)
+
+// hasVerifyPass reports whether evidence contains a bold **VERIFY: PASS...**
+// marker indicating a model verifier has run and passed the brief's Verify
+// table.
 //
 // DELIBERATELY STRICT, and deliberately NOT the same test as
 // lastVerifyVerdict below. This one is a GATE: it decides whether a gate:human
@@ -203,7 +217,12 @@ func extractSectionByPrefix(body, prefix string) string {
 // canonical marker, not to loosen the gate. The two live side by side so the
 // asymmetry is visible rather than discovered.
 func hasVerifyPass(evidence string) bool {
-	return strings.Contains(evidence, "**VERIFY: PASS**")
+	for _, m := range verifyVerdictBoldRe.FindAllStringSubmatch(evidence, -1) {
+		if m[1] == "PASS" {
+			return true
+		}
+	}
+	return false
 }
 
 // verifyVerdictRe matches a VERIFY verdict marker anywhere in a line of an
@@ -269,6 +288,109 @@ func lastVerifyVerdict(evidence string) string {
 // strikethroughRe matches a struck-through span — a retracted or superseded
 // record, never a live verdict.
 var strikethroughRe = regexp.MustCompile(`~~[^~]*~~`)
+
+// heldOrCouldNotCheckRe matches a per-row "HELD" or "could-not-check"
+// disposition an Evidence row can carry — a verifier saying "this row is not
+// actually settled" even while the brief's Evidence also carries an overall
+// **VERIFY: PASS** marker.
+var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
+
+// verifyPassHeldContradiction reports whether evidence both carries a strict
+// hasVerifyPass marker AND, on some line that is not a genuinely routed
+// deferral, also says HELD or could-not-check. The first offending line is
+// returned for the caller's message.
+//
+// A **VERIFY: PASS** line is NOT a flip signal
+// on its own when the same Evidence entry contradicts it this way — the model
+// autoflip (autoflip.go's decideModelFlip) and the verify-gate card/closeVerify
+// below both refuse on a true return rather than trusting the whole-brief
+// marker. A row the verifier explicitly routed to a follow-up does NOT
+// contradict the marker: that row was knowingly excluded from the PASS, not
+// silently left unsettled. "Routed" is the SAME shape unrun.go requires (its
+// routingKeywordRe + routingRefRe pair) — a routing phrase such as "deferred
+// to" PLUS a corroborating reference — never a bare substring "deferred", so
+// negated prose ("NOT deferred, still broken") cannot suppress the
+// contradiction: the gate fails closed.
+//
+// The routing check is per OCCURRENCE, not per line: a line can carry a
+// genuinely routed disposition and a second, unrelated, un-routed
+// HELD/could-not-check mention at once (e.g. "deferred to X; separately, the
+// smoke run HELD, no runner online"), and a routing keyword+reference that
+// merely appears somewhere on the line does not say WHICH occurrence it
+// corroborates. Each HELD/could-not-check occurrence is cleared only by a
+// routing keyword AND a corroborating reference that occur AT OR AFTER its
+// own position — never by routing tokens stated only before it.
+//
+// Fenced code, blockquotes and struck-through spans are stripped first — the
+// same hygiene lastVerifyVerdict applies — so a marker QUOTED inside one of
+// those is not read as a live disposition.
+func verifyPassHeldContradiction(evidence string) (bool, string) {
+	if !hasVerifyPass(evidence) {
+		return false, ""
+	}
+	inFence := false
+	for _, line := range strings.Split(evidence, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || strings.HasPrefix(trimmed, ">") {
+			continue
+		}
+		clean := strikethroughRe.ReplaceAllString(line, "")
+		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
+		if heldLocs == nil {
+			continue
+		}
+		// Only a GENUINELY routed occurrence is excluded — the exact shape
+		// unrun.go treats as a routed deferral: a routing phrase ("deferred
+		// to", a follow-up/tracking keyword) AND a corroborating reference
+		// (#N, a stream/NN id, or /issues/N). A bare or negated "deferred"
+		// ("NOT deferred", "deferred? no") carries no such reference and so
+		// still contradicts the PASS — the gate fails CLOSED, not open.
+		//
+		// A whole-line "does this line contain routing tokens anywhere"
+		// test is not enough: a genuinely routed disposition and a second,
+		// unrelated, un-routed HELD/could-not-check mention can share one
+		// physical line (an ordinary shape — a verifier's Result cell often
+		// reads "deferred to X; separately, the smoke run HELD, no runner
+		// online"), and neither routingKeywordRe nor routingRefRe is bound
+		// to which occurrence it corroborates. So each occurrence is judged
+		// on its own: it is cleared only by a routing keyword AND a
+		// corroborating reference that occur AT OR AFTER its own position —
+		// never by routing tokens stated only BEFORE it. "row N is HELD ...
+		// deferred per X" (the deferral resolves an already-stated hold)
+		// still clears; "row N deferred per X ... [and] HELD ..." (a hold
+		// stated only after the deferral) does not — that hold is an
+		// independent claim the deferral could not have been about, and is
+		// refused exactly like an un-routed mention with no deferral at
+		// all. This is ordering, not bare same-line proximity.
+		keywordLocs := routingKeywordRe.FindAllStringIndex(clean, -1)
+		refLocs := routingRefRe.FindAllStringIndex(clean, -1)
+		for _, h := range heldLocs {
+			keywordAfter := false
+			for _, k := range keywordLocs {
+				if k[0] >= h[0] {
+					keywordAfter = true
+					break
+				}
+			}
+			refAfter := false
+			for _, r := range refLocs {
+				if r[0] >= h[0] {
+					refAfter = true
+					break
+				}
+			}
+			if keywordAfter && refAfter {
+				continue // knowingly routed to a named follow-up — excluded from the PASS, not contradicting it
+			}
+			return true, strings.TrimSpace(clean)
+		}
+	}
+	return false, ""
+}
 
 // evidenceVerifierInfo extracts the date and runner from the first data row of an
 // Evidence table. Returns empty strings when no Date or Runner column is found.
@@ -586,6 +708,12 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 			// hasVerifyPass marker is the fail-closed gate — WHICH briefs are eligible
 			// is loosened here; WHAT evidence is required is not.
 			if row.Status == "implemented" && hasVerifyPass(bf.Evidence) {
+				if held, _ := verifyPassHeldContradiction(bf.Evidence); held {
+					// A PASS line is not a flip signal while a non-deferred
+					// row still reads HELD/could-not-check — no card is
+					// raised on the strength of the marker alone.
+					continue
+				}
 				marker := verifyMarker(bf.Brief)
 				if existing[marker] {
 					continue
@@ -814,6 +942,9 @@ func closeVerify(root, briefID string, now time.Time) error {
 		// evidence is required.
 		if !hasVerifyPass(bf.Evidence) {
 			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
+		}
+		if held, why := verifyPassHeldContradiction(bf.Evidence); held {
+			return fmt.Errorf("refusing: brief %s carries **VERIFY: PASS** but Evidence also reads %q on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check", briefID, why)
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {

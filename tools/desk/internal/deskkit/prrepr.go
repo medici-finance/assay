@@ -52,13 +52,25 @@ func prRepresents(state string) bool {
 	return false
 }
 
-// RepresentedBriefs maps each brief id (`<stream>/<NN>`, lower-cased) to the number of an OPEN or
-// MERGED PR that delivers it, keyed on the PR body's `Brief:` link trailer — NEVER a branch name.
-// When several PRs represent one brief the FIRST in list order wins (deterministic; the caller needs
-// only one to report). A PR with no parseable `Brief:` trailer, or one carrying an `Issue:` link,
-// contributes nothing — it names no brief.
-func RepresentedBriefs(prs []PRRef) map[string]int {
-	out := map[string]int{}
+// RepresentedPR is one brief's representing PR reduced to the two facts a scheduler needs to route
+// it: the PR NUMBER (to name it) and whether it is MERGED. Merged=false is an OPEN PR — the only
+// other state prRepresents admits (a closed-unmerged PR represents nothing). The distinction is
+// load-bearing for `fanoutloop plan`: a brief with a MERGED PR is landed-unreconciled (its board
+// cell just never flipped) and must NOT be re-offered, while a brief with an OPEN PR is started work
+// to RESUME, not fresh dispatch.
+type RepresentedPR struct {
+	Number int
+	Merged bool
+}
+
+// RepresentedBriefPRs maps each brief id (`<stream>/<NN>`, lower-cased) to the OPEN or MERGED PR
+// that delivers it — its number AND its state — keyed on the PR body's `Brief:` link trailer, NEVER a
+// branch name. When several PRs represent one brief the FIRST in list order wins (deterministic; the
+// caller needs only one to report). A PR with no parseable `Brief:` trailer, or one carrying an
+// `Issue:` link, contributes nothing — it names no brief. It is the single source RepresentedBriefs
+// and RepresentedBriefSet reduce from, so the open/merged split can never drift from the number map.
+func RepresentedBriefPRs(prs []PRRef) map[string]RepresentedPR {
+	out := map[string]RepresentedPR{}
 	for _, pr := range prs {
 		if !prRepresents(pr.State) {
 			continue
@@ -69,6 +81,7 @@ func RepresentedBriefs(prs []PRRef) map[string]int {
 			// can trust; it is skipped rather than guessed at.
 			continue
 		}
+		merged := strings.EqualFold(strings.TrimSpace(pr.State), "MERGED")
 		for _, t := range trs {
 			if t.Kind != TrailerBrief {
 				continue
@@ -83,9 +96,21 @@ func RepresentedBriefs(prs []PRRef) map[string]int {
 				continue
 			}
 			if _, seen := out[id]; !seen {
-				out[id] = pr.Number
+				out[id] = RepresentedPR{Number: pr.Number, Merged: merged}
 			}
 		}
+	}
+	return out
+}
+
+// RepresentedBriefs maps each brief id (`<stream>/<NN>`, lower-cased) to the number of an OPEN or
+// MERGED PR that delivers it. It is RepresentedBriefPRs reduced to just the number — the shape a
+// caller (deskdispatch's phantom check) that needs only "which PR" consumes.
+func RepresentedBriefs(prs []PRRef) map[string]int {
+	m := RepresentedBriefPRs(prs)
+	out := make(map[string]int, len(m))
+	for id, rp := range m {
+		out[id] = rp.Number
 	}
 	return out
 }

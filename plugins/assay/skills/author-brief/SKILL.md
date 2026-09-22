@@ -164,6 +164,18 @@ out-of-repo files: <exact paths outside the repo (e.g. ~/.claude/skills/...), if
 see rule 7; omit the line entirely when none>
 facts: <the 3-5 project facts needed — key: value, no narrative. The implementer
 must never need to explore the repo.>
+layering: <REQUIRED for a new component/service/tool or a substantial boundary change
+(domain extraction/dissolution, added adapter/entrypoint, logic crossing a process or
+trust boundary); omit otherwise. One or two lines: simplest justified structure +
+meaningful rules vs external effects (or why no extraction is warranted) + current
+reason + Task/Verify references. Defaults: domain-core for independently meaningful
+rules, flat tool for bounded orchestration; justified alternatives allowed. Adapter
+count triggers reconsideration, not mandatory extraction. Interfaces need a current
+purpose, not a second implementation. Dependency provenance does not establish purity:
+keep infrastructure and implicit effects outside a pure core. In Task/Verify, name and
+check the actual boundary and the checks' limits; test core rules without external
+services. A flat tool verifies behavior/failure paths without inventing a boundary.
+See brief-v1 §4.1; do not justify abstractions only by hypothetical future needs.>
 
 ## Human decision
 <!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
@@ -228,6 +240,11 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    form for new briefs.
 3. **Verify rows must be runnable by someone who didn't do the work.** A DoD/Verify item with no
    literal command and no expected exit/output is not a DoD item — it's a hope.
+   Prefer POSIX commands (`grep -F`, forward-slash paths) for portable checks. For a genuinely
+   native Windows command, add a `Shell` column and explicitly mark the row `cmd` or `pwsh`
+   when authoring it. Never emit `findstr /c:"…"` with backslash paths under implicit `sh`:
+   bash reinterprets those arguments. Shell selection belongs in the reviewed Verify table;
+   an Evidence-only edit must not change the command or its shell to make a failing row pass.
 4. **`gate: human` is mandatory when any risk answer is `yes`.** Record all four risk answers
    (regulatory, customer, irreversible, sensitive-data), not just the resulting gate — the answers are
    what a reviewer audits, the gate is just their conclusion. **A risk-gated brief (`gate: human` OR
@@ -533,7 +550,9 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
-[ ] 8. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
+[ ] 8. New or re-layered component → `layering:` records structure, boundary and current
+       reason; Task/Verify check the claimed separation (or flat-tool behavior), not its label.
+[ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```
 
 Item 1 is the negative control: a Verify table that cannot fail is a green lamp wired to nothing.

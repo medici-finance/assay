@@ -242,6 +242,30 @@ Target: merged `origin/main` @ `a91bffd0ea73e49b85569549cb4a4521703e827d` (two-p
 **Scope-traceability:** all observed work maps to Verify rows 1–11 (resolver, custody enforcement, roster key, the one wired verb deskpost). No invented scope; negative-path rows 5/6/7 genuinely assert refusal semantics.
 
 **VERDICT: PASS** on rows 1–10; row 11 COULD-NOT-CHECK (statusgen environment limit, no diff defect) — **HELD at `implemented` (human sign-off owed via the verify-gate).** Open question for the human: none outstanding — the top-ranked risk-value (custody mode 0o600) is DERIVED and test-proven.
+### Verify pass 2026-09-22 (non-implementer, VERIFY: PASS on the code contract — gate:human, routes to human gate)
+
+Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f2a86c8e0dce59edabdd22a`. Offline (`KUBECONFIG=/dev/null`). gate: human, risk {sensitive-data: yes}.
+
+| # | Command | Expect | Observed (exit + key line) | Date | Runner |
+|---|---------|--------|----------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | build 0; test 0 on clean re-run (one transient loopengine parallel flake did not reproduce; isolation PASS) | 2026-09-22 | opus-4.8-verifier |
+| 2 | `go test ./internal/deskkit/ -run TestForgeSingleConstructionSite -v` | exit 0 | 0 — PASS; no backend literal outside the resolver | 2026-09-22 | opus-4.8-verifier |
+| 3 | grep `GitHubForge{`/`GitLabForge{` over tools/desk *.go (excl _test, forgeresolve.go) | `0` | `0` — only two live sites, both in forgeresolve.go:477,479 (the resolver) | 2026-09-22 | opus-4.8-verifier |
+| 4 | `TestForgeForRejectsCallerSuppliedForge -v` | exit 0, no forge arg | 0 PASS — ForgeFor takes no forge argument | 2026-09-22 | opus-4.8-verifier |
+| 5 | `TestForgeForUnconfiguredRepoRefuses -v` | Unverifiable(6), names repo+config, no backend | 0 PASS — unconfigured repo → Unverifiable naming repo+config, no backend | 2026-09-22 | opus-4.8-verifier |
+| 6 | `TestForgeForMissingTokenRefuses -v` | Refused, no ambient cred | 0 PASS incl subtests file_absent, insecure_mode (0o644 token rejected @ forgeresolve_test.go:166-172), no_ambient_fallback | 2026-09-22 | opus-4.8-verifier |
+| 7 | `TestUnsupportedOperationIsCouldNotCheck -v` | Unverifiable naming forge+op+gap | 0 PASS — unsupported op → Unverifiable; no cross-forge request; no zero-value success | 2026-09-22 | opus-4.8-verifier |
+| 8 | `go test ./cmd/deskpost/... -count=1` | exit 0 unmodified | 0 — ok deskpost/bodycheck/deskclose green with forge ops on the resolver | 2026-09-22 | opus-4.8-verifier |
+| 9 | forgeban tests + TestNoForgeCLIShellout + TestForgeNoPassthrough | exit 0, surface closed | 0 all three — no shell-out, no passthrough | 2026-09-22 | opus-4.8-verifier |
+| 10 | `TestRosterKnownKeySet -v` | exit 0 (forge key registered) | 0 PASS — ASSAY_REPO_FORGES registered in roster known-set | 2026-09-22 | opus-4.8-verifier |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/01` | exit 0 | **could-not-check (exit 2)** — statusgen refuses a merged brief not in the diff vs current main; traced the implementing merge (PR #367) and the merge-base too, still c-n-c because the brief markdown predates the impl branch. Environment/timing limitation, not a diff defect; consistent with all prior runs; structural gap tracked #1281. | 2026-09-22 | opus-4.8-verifier |
+
+Scope traceability: every Evidence row maps 1:1 to its Verify row; no invented scope.
+
+RISK-VALUE: DERIVED — custody token file mode `!= 0o600` → error @ `tools/desk/internal/deskkit/custodyowner_unix.go:23` (ranked #1 by irreversibility for the sensitive-data gate) — owner-only `rw-------` is the correct mode for a secret credential file; the check is EXACT (`!= 0o600`), so any group/world-readable mode (0640/0644/0660) fails closed with a `chmod 600` remedy. Row 6 `insecure_mode` proves a 0o644 file is Refused. A looser value would hand a group/other-readable token to a backend — the exact sensitive-data leak this gate guards.
+RISK-VALUE: DERIVED — well-known forge hosts = exact-match `{github.com→github, gitlab.com→gitlab}` @ `tools/desk/internal/deskkit/forgeresolve.go:79-80` — exact lowercased-hostname match only (no suffix/substring), so every self-hosted/unrecognised host fails the match and falls through to `Unverifiable` refusal rather than misrouting to a wrong forge/identity ("refusal is the only fallback"). Prevents a lookalike host resolving to a real identity.
+
+**VERIFY: PASS on rows 1-10** (the full code contract green). Row 11 could-not-check is the structural `statusgen --consumers` merged-brief limitation tracked #1281 (same accepted condition sibling briefs landed under). gate: human + sensitive-data: yes → a model records Evidence but does NOT sign off; both top-ranked risk values are DERIVED and test-proven, so there is NO open question for the human. Routed to the human verify-gate for the `done` close.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in

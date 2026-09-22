@@ -55,14 +55,17 @@ reviewable artifact, not a run.
 
   **Already live, like `evidence-automerge.yml` above** — this copy is kept as the reviewable
   edit surface for `.github/workflows/windows-ci-leg.yml`, no App may push a workflow-file
-  change. `windows-port/06` simplified the `windows-bootstrap-smoke` job's first step (the
-  bootstrap script now resolves its own tag+sha from `plugins/assay/paired-versions.yaml`, so
-  the step passes only the tag) and added a second step exercising the PATH write + bare-name
-  `statusgen --version` invocation. **Pending promotion** — a maintainer re-promotes by copying
-  this file over the live one:
+  change. The `windows-bootstrap-smoke` job resolves the pinned `windows-amd64` tag **and** its
+  sha256 from `plugins/assay/paired-versions.yaml` and hands both to
+  `scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), exercising the sha256
+  hash-verify at Windows runtime. **This staged copy has been re-based onto the live file so a
+  promotion is a byte-for-byte copy that only ADDS** — the live file's later changes (the
+  version-tag trigger and the lint job's `fetch-depth: 0`) are already present here, so promoting
+  no longer reverts them (the #1187-class drift the caveat below warns about). **Pending
+  promotion** — a maintainer re-promotes by copying this file over the live one:
   ```
   cp ci/staged-workflows/windows-ci-leg.yml .github/workflows/windows-ci-leg.yml
-  git commit -m "ci: promote windows-ci-leg.yml (windows-port/06)"
+  git commit -m "ci: promote windows-ci-leg.yml"
   git push
   ```
 
@@ -71,7 +74,33 @@ reviewable artifact, not a run.
 Already activated (`windows-port/04`) — see "Already live" above for how a later change to
 this file is promoted now that it exists at `.github/workflows/windows-ci-leg.yml`.
 
-The leg runs on `push`/`pull_request`; a green `windows-smoke` job is the
+**`windows-port/10` adds two jobs to this file** (pending re-promotion by a maintainer copying
+this staged copy over the live one, exactly as `windows-port/06` was):
+- `verify-in-container` — the execution-witness runner leg. On `ubuntu-latest` it builds
+  `statusgen`, asserts the wrapper REFUSES an un-digest-pinned harness image (the fail-closed pin
+  control, green on promotion), and — once a maintainer harvests and pins the harness image's real
+  registry digest — runs a fixture Verify table THROUGH the pinned container and asserts the
+  witness lands in Evidence, host-owned. It runs on `ubuntu-latest` because the harness image is a
+  Linux image whichever host launches it; the Windows value is that Windows adopters USE the
+  container because a native pipefail `bash` is unreliable there (#1418).
+- `windows-verify-in-container` — the native-Windows-host proof, HELD BLOCKED (`if: false`):
+  `windows-latest` has no Linux-container Docker backend to run the Linux harness image, so this
+  awaits a Windows runner configured with one. Never inferred from the ubuntu result — the same
+  "blocked is a state" contract `arm64-native-smoke` uses.
+
+**Landing-mechanism caveat — read before promoting.** This staged CI-leg addition rides the same
+staged-copy → maintainer-hand-copy pattern `windows-port/04`/`/06` used. That pattern is the
+subject of an OPEN, unratified decision record (`docs/streams/decisions/DR-workflow-app-landing.md`)
+and an in-flight retirement brief (`docs/streams/desk-supervision/brief-12-...`), which cite real
+drift (a staged copy authored against one base silently reverts intervening fixes when the live
+file moves — #1187) and indefinite stalls (a hand-copy step sitting `BLOCKED-ON-HUMAN` 9+ days —
+#1175/#1185). Whoever promotes this addition should check `desk-supervision/12`'s current state
+first: if the workflow-App PR path has landed, this change should travel through THAT path (a
+single workflow-only PR the workflow App authors) rather than a verbatim hand-copy — and this
+staged copy may itself be reduced to a pointer by that brief.
+
+The leg runs only on version tags (`push` with `tags: ['v*']`, #1215) plus on-demand
+`workflow_dispatch`; a green `windows-smoke` job is the
 authoritative evidence for the brief's rows 2-3 (record its run URL, the `--lint` exit, and the
 `--version` smoke result on the brief). The `failfirst` fail-first demo is run on demand via
 `workflow_dispatch`. The `arm64-native-smoke` row stays held until a `windows-11-arm` runner is
@@ -89,6 +118,6 @@ downloads a release asset (`Invoke-WebRequest` to the GitHub release CDN), so th
 deliberately kept SEPARATE from `windows-smoke` — the download is decision #508's sanctioned
 live-forge exception and does not weaken the offline invariant of the `windows-smoke` job. It is
 promoted with the rest of this file; a green `windows-bootstrap-smoke` run is the evidence for
-the brief's row 8 (record its run URL). Since `windows-port/06`, the job's second step also
-proves rows 6 and 14: the real bootstrap run (no operator-supplied sha) writes the user PATH,
-and a fresh process invokes the installed binary by its bare `statusgen` name.
+the brief's row 8 (record its run URL). The job hands the pinned tag **and** sha256 to
+`scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), so the untampered path
+downloads the real published asset while a tampered checksum still REFUSES.

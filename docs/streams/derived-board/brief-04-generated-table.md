@@ -223,6 +223,25 @@ RISK-VALUE: DERIVED — `[skip-status-regen]` loop-guard marker @ .github/workfl
 RISK-VALUE: N/A — enumeration over readmetable.go + parse.go found no other bound/threshold/timeout; briefsMarkerBegin/End and board:generated are inert marker/opt-in strings, fail-safe by construction.
 
 VERIFY: HELD — rows 1,2,3,4,7,8 pass on shipped code. Rows 5,6 fail because the `.github/workflows/assay-statusgen.yml` schedule trigger + reconcile-job permissions are the documented BLOCKED-ON-HUMAN half (an App cannot push .github/workflows/**) — a human-activation wait, not a shipped-code defect. Already tracked at medici-finance/assay#1175 (OPEN, help wanted, 9+ days) — no new issue filed. Third consecutive non-implementer pass with the identical shape. Status stays implemented, no flip.
+### Non-implementer verifier pass — VERIFY: HELD (rows 1,2,3,4,7,8 PASS; rows 5,6 FAIL on the documented BLOCKED-ON-HUMAN workflow-file half; 4th consecutive pass, shape unchanged since 2026-09-06) — verify-desk-dispatch-20260920T0246Z (verify-desk dispatch), @ merged main `e4109205`, 2026-09-20
+
+Isolated worktree at origin/main (0/0), offline envelope (`KUBECONFIG=/dev/null`), read-only, non-implementer.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | cd statusgen && go test . -run ReadmeTable -count=1 | ok | exit 0 — ok 0.293s | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 2 | go run . regen --readmes --root . --offline; git diff --stat -- docs/streams/derived-board/README.md + non-table filter | non-table diff = 0 | exit 0 — regen rc=0; diff empty (README canonical on main); non-table changed lines = 0 | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 3 | two consecutive regens; git status --porcelain docs/streams \| wc -l | 0 | exit 0 — porcelain 0 (idempotent) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 4 | MUTATION: hand-edit row 01 title cell inside the markers; go run . --lint --root ..; restore | rc=1 naming hand-edit + derived-board | exit 1 — PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells differ from brief frontmatter; file restored, tree clean. (BSD sed -i '' form fails under GNU sed 4.10 — dialect mismatch, not a guard block; identical edit re-executed GNU-compatibly, full lint path exercised) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 5 | python3 -c "import yaml;w=yaml.safe_load(open('.github/workflows/assay-statusgen.yml'));assert 'schedule' in w['on'];print('ok')" | ok | **FAIL** — exit 1, KeyError: 'on' (w[True] exists, no schedule key anywhere; unchanged since the 2026-09-06/15/18 passes) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 6 | grep -c -E -e 'pull-requests: read' -e 'issues: read' .github/workflows/assay-statusgen.yml | 2 | **FAIL** — rc=1, count 0; three permissions blocks (lines 57, 97, 196) declare only contents: read/write | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 7 | grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md | 1 | exit 0 — 1 (board generated at README line 8) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+| 8 | go run . init --dry-run /tmp/adopter-x \| grep -c 'reconcile' | ≥1 | exit 0 — 1 (scaffold parity) | 2026-09-20 | verify-desk-dispatch-20260920T0246Z |
+
+RISK-VALUE: DERIVED — the [skip-status-regen] loop-guard marker: writer at .github/workflows/assay-statusgen.yml:161 and both skip guards :92/:194 carry the identical literal on merged main (scaffold parity at statusgen/init.go:560,772), so the regen job's own commit cannot re-trigger the workflow; mismatch would loop CI, hence top-ranked. Reversible string literal.
+RISK-VALUE: N/A — enumeration over statusgen/readmetable.go + parse.go found no other bound/threshold/timeout/limit; briefsMarkerBegin @ readmetable.go:45, briefsMarkerEnd @ :46, board:"generated" opt-in @ parse.go:27 are inert marker/opt-in strings, fail-safe by construction (missing markers = hard error at readmetable.go:396, not a silent no-op). The pull-requests: read / issues: read scopes the Deliverables name are not on merged main to derive (rows 5-6, unlanded half).
+
+VERIFY: HELD — rows 1,2,3,4,7,8 PASS on shipped code (row 4 checked end-to-end this run); rows 5,6 FAIL on the documented BLOCKED-ON-HUMAN workflow-file half (schedule: trigger + read-only reconcile-job permissions in .github/workflows/assay-statusgen.yml — an App cannot push .github/workflows/**; the brief holds at implemented for exactly this). Board row stays implemented, Verified cell stays —; no flip. Activation wait tracked at #1175 (help wanted); not re-filed.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

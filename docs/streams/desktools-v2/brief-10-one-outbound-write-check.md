@@ -169,6 +169,8 @@ Options:
 
 Default if no answer: none — blocks until answered.
 
+Ruled 2026-09-21 (#1319): option 1 — layered overrides.
+
 ## Ground rules
 - NEVER git push to main / trigger workflows / run mutating infra commands. Feature branch +
   draft PR only.

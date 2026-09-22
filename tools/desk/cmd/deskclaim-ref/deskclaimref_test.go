@@ -613,3 +613,136 @@ func TestExitCodesAreTheDeskkitContract(t *testing.T) {
 			exitOK, exitRefused, exitUnverifiable)
 	}
 }
+
+// --- host-alias resolution (issue #1371) -------------------------------------------
+
+// An scp-like origin with an SSH config Host alias (`git@work-github:acme/widgets.git`, where
+// work-github is a Host block mapping to a real forge host) must resolve the alias to a real
+// host before ForgeKindFromSlugAndHost ever sees it — parseRemote takes the literal host
+// segment, and resolveHostAlias is the step that turns that alias into a dialable host. The
+// resolver is stubbed so this never shells a real `ssh` or depends on a real ~/.ssh/config.
+func TestParseRemoteScpLikeAliasThenResolveHostAlias(t *testing.T) {
+	host, slug := parseRemote("git@work-github:acme/widgets.git")
+	if host != "work-github" || slug != "acme/widgets" {
+		t.Fatalf("parseRemote = (%q, %q), want (work-github, acme/widgets)", host, slug)
+	}
+
+	old := sshConfigHostname
+	defer func() { sshConfigHostname = old }()
+	sshConfigHostname = func(alias string) (string, error) {
+		if alias != "work-github" {
+			t.Fatalf("sshConfigHostname called with %q, want work-github", alias)
+		}
+		return "github.com", nil
+	}
+
+	resolved, err := resolveHostAlias(host)
+	if err != nil {
+		t.Fatalf("resolveHostAlias returned an error: %v", err)
+	}
+	if resolved != "github.com" {
+		t.Fatalf("resolveHostAlias = %q, want github.com", resolved)
+	}
+}
+
+// The negative: no resolver available (or it yields nothing) is still a fail-closed refusal —
+// #727 stands, this never guesses a SaaS default — but the message must NAME the alias and the
+// resolution that was attempted, not collapse to a bare "no such host" once a caller later tries
+// to dial the alias literally as if it were a DNS name.
+func TestResolveHostAliasRefusalNamesAliasAndAttempt(t *testing.T) {
+	old := sshConfigHostname
+	defer func() { sshConfigHostname = old }()
+	sshConfigHostname = func(alias string) (string, error) {
+		return "", errors.New("exit status 255")
+	}
+
+	_, err := resolveHostAlias("work-github")
+	if err == nil {
+		t.Fatal("resolveHostAlias with no resolver = nil error, want a fail-closed refusal")
+	}
+	got := err.Error()
+	for _, want := range []string{"work-github", "ssh -G -- work-github", "exit status 255"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("refusal message missing %q — an operator cannot see WHICH alias or WHAT was tried:\n%s", want, got)
+		}
+	}
+}
+
+// Security: the alias comes from parsing a git remote URL, so it is untrusted. A value shaped
+// like an ssh flag (the textbook `-oProxyCommand=...` argv-injection payload) must never reach
+// `ssh -G` in a position where ssh's own flag parser could mistake it for an option — it must be
+// refused OUTRIGHT, before any exec.Command is even built, never merely hoped to be neutralised
+// by the `--` end-of-options marker sshConfigHostname also carries (belt AND suspenders).
+func TestResolveHostAliasRefusesLeadingDashHost(t *testing.T) {
+	old := sshConfigHostname
+	defer func() { sshConfigHostname = old }()
+	sshConfigHostname = func(alias string) (string, error) {
+		t.Fatalf("sshConfigHostname called with %q — a leading-dash host must be refused before any exec", alias)
+		return "", nil
+	}
+	for _, bad := range []string{"-oProxyCommand=touch /tmp/pwned", "-G", "--", "-"} {
+		_, err := resolveHostAlias(bad)
+		if err == nil {
+			t.Fatalf("resolveHostAlias(%q) = nil error, want a refusal (a leading '-' is never a real Host alias)", bad)
+		}
+		if !strings.Contains(err.Error(), bad) {
+			t.Errorf("refusal for %q does not name it: %s", bad, err.Error())
+		}
+	}
+}
+
+// Security: the exact argv `ssh -G` is invoked with must carry the `--` end-of-options marker
+// immediately before the alias, for ANY alias value — including one shaped like an ssh flag
+// (the textbook `-oProxyCommand=...` argv-injection payload). This asserts the argv SLICE
+// sshConfigHostname builds (sshGConfigArgv), not behaviour observed from a live `ssh` process:
+// go's exec.Command never invokes a shell, so the only question is whether the alias lands
+// strictly after `--` (a positional argument to ssh's own getopt-style parser, unconditionally)
+// or could ever land before it (a position ssh would parse as an option). Driving the real
+// argv-building function — never a stub — is what makes this a proof rather than a restatement
+// of the leading-dash refusal resolveHostAlias applies first: even an alias that reached
+// sshConfigHostname directly (bypassing that guard) cannot be parsed as a flag.
+func TestSSHGConfigArgvCarriesEndOfOptionsMarker(t *testing.T) {
+	for _, alias := range []string{
+		"work-github",
+		"-oProxyCommand=touch /tmp/pwned",
+		"-G",
+		"--",
+		"-",
+	} {
+		got := sshGConfigArgv(alias)
+		want := []string{"-G", "--", alias}
+		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+			t.Fatalf("sshGConfigArgv(%q) = %q, want %q — the alias must land strictly after the `--` marker", alias, got, want)
+		}
+	}
+}
+
+// A host that already looks like a DNS name (contains a dot) is not this function's concern — it
+// must pass through UNCHANGED and never even consult the resolver.
+func TestResolveHostAliasPassesThroughDNSHost(t *testing.T) {
+	old := sshConfigHostname
+	defer func() { sshConfigHostname = old }()
+	sshConfigHostname = func(alias string) (string, error) {
+		t.Fatalf("sshConfigHostname called for a DNS-shaped host %q — must not be consulted", alias)
+		return "", nil
+	}
+	got, err := resolveHostAlias("github.com")
+	if err != nil || got != "github.com" {
+		t.Fatalf("resolveHostAlias(github.com) = (%q, %v), want (github.com, nil)", got, err)
+	}
+}
+
+// An empty host (no origin at all) also passes through unchanged — ForgeKindFromSlugAndHost is
+// the one that refuses that case, not this function.
+func TestResolveHostAliasPassesThroughEmptyHost(t *testing.T) {
+	old := sshConfigHostname
+	defer func() { sshConfigHostname = old }()
+	sshConfigHostname = func(alias string) (string, error) {
+		t.Fatalf("sshConfigHostname called for an empty host — must not be consulted")
+		return "", nil
+	}
+	got, err := resolveHostAlias("")
+	if err != nil || got != "" {
+		t.Fatalf("resolveHostAlias(\"\") = (%q, %v), want (\"\", nil)", got, err)
+	}
+}
