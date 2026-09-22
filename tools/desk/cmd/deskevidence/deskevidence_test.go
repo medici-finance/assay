@@ -176,6 +176,9 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldLintDiff := lintDiffFn
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+	oldOutcome := outcomeGuardFn
+	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
+	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
 
 	// The verified-sidecar acceptance gate defaults to "accepts" so a verify-outcomes landing
 	// in the general suite never shells a real statusgen. Tests exercising the gate override

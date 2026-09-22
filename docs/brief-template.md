@@ -139,6 +139,9 @@ keep it to scope + intent, not a keystroke script.>
 # a native-Windows row (e.g. `findstr /c:"…" a\b.md`) that only works under cmd, not bash. A
 # cmd/pwsh row on a non-Windows runner is could-not-run (never fail); an unknown marker is a
 # `statusgen --lint` PROBLEM. The shell is never guessed from the command text.
+# AUTHORING: prefer `grep -F` and forward-slash paths for portable checks. Native Windows
+# syntax MUST have explicit `cmd` or `pwsh` in the Shell cell from the first draft; never
+# leave `findstr /c:"…" a\b.md` on implicit sh. Evidence-only edits cannot change the shell.
 # SCRIPTED rows: a check:ci / check row may be a reviewed script instead of an inline command —
 #   docs/streams/<stream>/verify.d/brief-NN/row-K.sh  (executable, exit 0 = PASS)
 # and then the row's Command cell IS that script path. The reviewer who approves the brief

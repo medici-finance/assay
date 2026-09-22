@@ -414,6 +414,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if lintRoot == "" {
 		lintRoot = "."
 	}
+	if err := outcomeGuardFn(lintRoot, targetRepoPath, remoteContent, commitContent, fg, fr, branch); err != nil {
+		return err
+	}
 	introduced, lerr := lintDiffFn(lintRoot, targetRepoPath, commitContent)
 	if lerr != nil {
 		return lerr

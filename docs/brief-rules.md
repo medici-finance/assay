@@ -606,6 +606,12 @@ passing run — which is why they are lint rules and not review vigilance.
     time, so a marker the tool cannot resolve is never silently treated as the
     default.
 
+    At authoring, prefer POSIX commands (`grep -F`, forward-slash paths) for portable
+    checks. A genuinely native Windows command MUST declare `Shell: cmd` or `Shell: pwsh`
+    via its table cell in the first draft. Do not leave `findstr` with cmd quoting and
+    backslash paths on implicit `sh`. Changing a command or its shell requires a reviewed
+    Verify-table change, never an Evidence-only edit by the verifier.
+
     *(Numbering note: the authoring repo's copy of this file allocated this rule and
     the typed-edge rule in the Dependencies section the same number in parallel —
     the collision class rule 40's detector exists for. This file allocates cleanly:

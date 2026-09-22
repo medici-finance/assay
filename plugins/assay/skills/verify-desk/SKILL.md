@@ -311,7 +311,13 @@ The brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/re
 IS the report. **In addition** append one row to the append-only sidecar
 `docs/streams/verify-outcomes.jsonl` (single-writer = this desk; the `VERIFY FAIL` commit-subject
 convention is grep-fragile, so bounce-back rate is not computable from prose). On PASS append the same
-row with `"outcome":"verified"`, so the denominator is complete.
+row with `"outcome":"verified"` only AFTER the Evidence, execution witnesses, Status
+`verified` (or `done`), and dated Verified stamp have landed on the target branch and
+`statusgen --lint` accepts that same tree. Refresh the local checkout before appending;
+`deskevidence` checks the closure and compares the brief and stream README with the target
+branch. Evidence-only landings that leave Status `implemented` MUST NOT append a verified
+outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
+recording is unchanged.
 
 ```
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
