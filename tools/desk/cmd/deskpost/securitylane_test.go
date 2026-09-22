@@ -271,6 +271,11 @@ func TestSecurityReviewPassPostsACommentEventReview(t *testing.T) {
 func TestSecurityReviewPassThenReadyFlips(t *testing.T) {
 	f, _ := setupFake(t)
 	f.files = riskyFiles()
+	// riskyFiles() is risk-classed, so ruling 3's floor refuses an UNSTAMPED security verdict
+	// on it. This end-to-end exercises the security-lane → flip pair, not the floor, so the PR
+	// carries a floor-clearing strong dispatcher stamp (the security verdict is exactly the
+	// security-review-bearing write ruling 3 requires an attestation for).
+	f.stamp(strongStampBy(deskDispatcherLogin(t))...)
 	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
 	f.status = greenStatus()
 	bf := writeBody(t, "sec.md", secBody)

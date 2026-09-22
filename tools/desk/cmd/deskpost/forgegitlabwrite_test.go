@@ -66,6 +66,12 @@ func (g *glReviewFake) ReviewsAtHead(deskkit.ForgeRepo, int) ([]deskkit.Review, 
 func (g *glReviewFake) ListLabelEvents(deskkit.ForgeRepo, int) ([]deskkit.LabelEvent, error) {
 	return nil, nil // unstamped → the model floor proceeds with a NOTICE
 }
+func (g *glReviewFake) ListChangedFiles(deskkit.ForgeRepo, int) ([]deskkit.ChangedFile, error) {
+	// One non-risk path, matching GetPullRequest's ChangedFiles:1 (no short read). The
+	// unstamped floor's ruling-3 risk overlay reads this on a NOTICE outcome: a private repo
+	// with a docs-only diff is NOT risk-classed, so the verdict proceeds with its NOTICE.
+	return []deskkit.ChangedFile{{Filename: "docs/desk-tools.md"}}, nil
+}
 func (g *glReviewFake) RepoVisibility(deskkit.ForgeRepo) (string, error) {
 	return "private", nil // the public-repo +1 gate is a no-op on a private repo
 }
