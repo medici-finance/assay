@@ -1,3 +1,0 @@
-### Fixed
-- The combined `desk-tools` CI-runner image now installs `bash`, so `statusgen verifyrun`'s `bash -o pipefail` Verify rows actually execute when `--in-container` re-invokes verifyrun inside the image. Previously the Alpine final stage shipped only git/gh/ca-certificates and every POSIX row recorded could-not-run for lack of a pipefail-capable shell.
-- `statusgen verifyrun --in-container` now marks exactly the bind-mounted `/work` tree safe for the inner git (`safe.directory=/work` via ephemeral `GIT_CONFIG_*` env), so attribution no longer fails on a Windows Docker backend where the mount is root-owned under the unprivileged container user. The trust is scoped to `/work` only — never a global `safe.directory=*`.

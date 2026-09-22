@@ -236,8 +236,18 @@ type evidenceActorPolicy struct {
 	// classify at all — evidenceActorPolicyFromRoster returns Unavailable for it, so
 	// an unrecognised forge is could-not-check, never a pass.
 	VerifierForge forgeKind
-	Humans        []actorRef
-	Unavailable   string
+	// VerifierDisplayName is the bound GitLab verifier's DISPLAY name, from the roster's
+	// ASSAY_GITLAB_DISPLAY_NAMES map (#1477). It is the OFFLINE fallback: a GitLab commit
+	// carries the account's display name in author_name while the roster binds the account by
+	// USERNAME, so on `--lint` (offline, network-free) the gate compares the commit's author
+	// name against this declared display name when it does not already match the username. It
+	// is set ONLY for a GitLab verifier and ONLY when the roster declares one; empty otherwise,
+	// in which case the display-name path is simply not available (the ONLINE resolution, which
+	// deskevidence performs via the typed forge, is the preferred path). Never consulted for a
+	// GitHub verifier — a GitHub display name is free text the header already refuses to trust.
+	VerifierDisplayName string
+	Humans              []actorRef
+	Unavailable         string
 }
 
 // idPinned reports whether acceptance of the verifier is keyed on the PERMANENT
@@ -325,6 +335,16 @@ func evidenceActorPolicyFromRoster() evidenceActorPolicy {
 		Verifier:      actorRef{Login: slug, ID: verifierID},
 		VerifierForge: verifierForge,
 	}
+	// The OFFLINE display-name fallback (#1477): a GitLab verifier's commit carries the
+	// account's DISPLAY name, not the roster username, so on `--lint` (offline) the gate needs
+	// a declared display name to compare against. Set it only for a GitLab verifier the roster
+	// declares one for; a GitHub verifier's display name stays untrusted free text (file
+	// header), so this is left empty there.
+	if verifierForge == forgeGitLab {
+		if dn := strings.TrimSpace(cfg.GitLabDisplayNames[strings.ToLower(slug)]); dn != "" {
+			p.VerifierDisplayName = dn
+		}
+	}
 	for login, id := range cfg.Humans {
 		p.Humans = append(p.Humans, actorRef{Login: login, ID: id})
 	}
@@ -376,18 +396,62 @@ func (p evidenceActorPolicy) classify(name, email string) (actorVerdict, string)
 func (p evidenceActorPolicy) classifyGitLab(name, email string) (actorVerdict, string) {
 	e := strings.ToLower(strings.TrimSpace(email))
 	if scanGitlabServiceAccountRe.MatchString(e) {
-		if p.Verifier.Login != "" && strings.EqualFold(strings.TrimSpace(name), p.Verifier.Login) {
+		trimmedName := strings.TrimSpace(name)
+		// ACCEPT 1 — the author name is the roster verifier USERNAME. The original exact
+		// match, still honoured: it fires on a deployment whose admin set the service
+		// account's display name equal to its username (the local workaround #1477 notes).
+		if p.Verifier.Login != "" && strings.EqualFold(trimmedName, p.Verifier.Login) {
 			return actorVerifier, fmt.Sprintf(
 				"committed by the bound GitLab verifier service account (author name %q matches the roster "+
 					"verifier username, commit address %q is the GitLab service-account form) — LOGIN-ONLY "+
 					"match: the address carries a per-account suffix, not the roster's numeric user id, so "+
 					"the id cannot pin it", name, email)
 		}
+		// ACCEPT 2 (#1477, offline fallback) — the author name is the bound verifier's declared
+		// DISPLAY name. GitLab writes the account's DISPLAY name into author_name, never the
+		// username the roster binds, so ACCEPT 1 could never fire on an ordinary deployment and
+		// `implemented -> verified` was permanently blocked. The roster's
+		// ASSAY_GITLAB_DISPLAY_NAMES declares the display name so the OFFLINE gate has a value
+		// to compare against instead of one it cannot derive. Still LOGIN-ONLY — the address
+		// pins no numeric id — and this is the same class of trust as ACCEPT 1: a declared
+		// value the roster owner set, not something inferred from the commit.
+		if p.VerifierDisplayName != "" && strings.EqualFold(trimmedName, p.VerifierDisplayName) {
+			return actorVerifier, fmt.Sprintf(
+				"committed by the bound GitLab verifier service account (author name %q matches the roster's "+
+					"declared display name for verifier username %q; commit address %q is the GitLab "+
+					"service-account form) — LOGIN-ONLY match by declared display name: the address carries a "+
+					"per-account suffix, not the roster's numeric user id, so the id cannot pin it",
+				name, p.Verifier.Login, email)
+		}
+		// A service-account address whose author name matches neither. NAME the
+		// display-name-vs-username gap (#1477 suggestion 3): as written this rejection reads
+		// like a wrong-account tamper signal, but the everyday cause is exactly that gap —
+		// GitLab put the account's DISPLAY name in author_name while the roster binds the
+		// USERNAME. State the remedy so a reader is not sent hunting a tamper that is not there.
 		return actorRejected, fmt.Sprintf(
-			"committed by GitLab service account %q, which the roster does not accept as the verifier "+
-				"(the bound verifier is %q)", name, p.Verifier.Login)
+			"committed by GitLab service account with author name %q, which matches neither the roster "+
+				"verifier username %q nor a declared display name for it. If this IS the bound verifier "+
+				"account, GitLab is writing its DISPLAY name into the commit while the roster binds its "+
+				"USERNAME — declare the display name in %s (`%s=<display name>`) so the offline gate accepts "+
+				"it, or let the account be resolved online (deskevidence resolves the commit's GitLab account "+
+				"to its username via the typed forge). If it is a DIFFERENT account, the row is genuinely "+
+				"unbacked.", name, p.Verifier.Login, scanEnvGitLabDisplayNames, p.Verifier.Login)
 	}
-	// Not a GitLab service-account address. A roster-known human still backs a row.
+	// A roster-known GitLab HUMAN backs a row via GitLab's PRIVATE commit noreply address
+	// (`<id>-<username>@users.noreply.<host>`, #1477). A human who verified on a GitLab
+	// deployment commits under that address, not the GitHub noreply form, so without this arm
+	// a GitLab human verifier was rejected exactly as the service account was. The numeric id
+	// IS carried in this address, so the match id-pins wherever the roster human entry pinned
+	// one — the stronger key, unlike the service-account form.
+	if user, id, ok := gitlabHumanIdentityFromEmail(email); ok {
+		for _, h := range p.Humans {
+			if h.matches(user, id) {
+				return actorHuman, fmt.Sprintf("committed by human:%s (GitLab private commit address)", h.Login)
+			}
+		}
+	}
+	// A roster-known human on the GitHub noreply form still backs a row (a human whose commits
+	// carry the GitHub-shaped address even on a GitLab-verifier deployment).
 	if login, id, ok := githubIdentityFromEmail(email); ok {
 		for _, h := range p.Humans {
 			if h.matches(login, id) {
@@ -396,7 +460,9 @@ func (p evidenceActorPolicy) classifyGitLab(name, email string) (actorVerdict, s
 		}
 	}
 	return actorRejected, fmt.Sprintf(
-		"address %q is not the bound verifier's GitLab service-account form and matches no accepted actor", email)
+		"address %q is neither the bound verifier's GitLab service-account form nor a roster-known "+
+			"human's commit address (GitLab private `<id>-<username>@users.noreply.<host>` or GitHub "+
+			"noreply) — it matches no accepted actor", email)
 }
 
 // classifyGitHub judges a commit author against a GitHub verifier binding — the
