@@ -64,6 +64,14 @@ type stubRemote struct {
 	failApply   bool            // ApplyLabels fails (the label write is could-not-check)
 	dispMissing bool
 
+	// failClose / closeNoReflect model the two ways a close can fail to take, keyed by the
+	// fixture key ("repo#N" or "repo!N"). failClose makes CloseIssueTyped RETURN an error (a
+	// forge 422 — the shape a state_reason PATCH on a PR returns). closeNoReflect makes it
+	// succeed at the HTTP layer (return nil, record the typed close) while leaving the item
+	// OPEN — the silent-success case the read-back exists to catch.
+	failClose      map[string]bool
+	closeNoReflect map[string]bool
+
 	// viewer is the login the forge reports for the token in use (`viewer { login }`);
 	// failViewer makes that read fail, which is the could-not-check arm of the
 	// two-role superseded lane. threads holds each item's comment list as JSON
@@ -92,8 +100,10 @@ func newStub(t *testing.T) *stubRemote {
 		t: t, items: map[string]string{}, pulls: map[string]string{},
 		disps: map[string]string{}, comment: map[string]string{},
 		failComment: map[string]bool{}, failItem: map[string]bool{},
-		failThread: map[string]bool{},
-		threads:    map[string][]string{},
+		failThread:     map[string]bool{},
+		failClose:      map[string]bool{},
+		closeNoReflect: map[string]bool{},
+		threads:        map[string][]string{},
 	}
 }
 
