@@ -63,5 +63,11 @@ with the host page's background in the host's own design tokens, so the player
 reads as an embedded presentation viewport while the surrounding page chrome is
 unchanged.
 
+When the demonstrated system numbers its own phases, rehearse the two numbering
+systems side by side so no beat reads as its host phase; check that any `00` cover
+beat frames the story before the promise; and for a comparative story, confirm that
+switching path focus changes emphasis without changing the scene or the work-item
+identity.
+
 A storyboard-only delivery explains how each scene will be captured. A rendered
 delivery also checks playback and reports any browser or capture limitations.
