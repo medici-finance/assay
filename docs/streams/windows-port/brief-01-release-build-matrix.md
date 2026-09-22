@@ -193,6 +193,27 @@ Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null
 `RISK-VALUE: DERIVED` — placeholder-sha256 = 64 zero-hex-digits @ examples/adopter-scaffold/.assay-versions (as merged in this brief's own PR, currently absent from main — see row 7 FAIL) — correct by construction: an all-zero digest cannot collide with any real release hash, and the brief's own ground rules require a clearly-marked placeholder here, never a real hash. This is illustrative documentation only (never read by an install/verify path), so it carries no operational risk on its own; the actual irreversible act this brief's `gate: human`/`irreversible: yes` answers is the human-only publish of the two new release assets under the existing pinned-hash contract, which this diff does not itself perform.
 
 **VERIFY: FAIL — row 7.** Rows 1-6, 4a all PASS. Row 8 is only meaningful run on the implementer's own branch (recording as could-not-meaningfully-check on a post-merge worktree, not a real pass or fail). Per frontmatter `gate: human`, `irreversible: yes`: this verifier does not sign off and status does not change regardless of the FAIL. Status stays `implemented`; re-run row 7 once the pin-restoration fix lands.
+### Verify pass 2026-09-22 (non-implementer, VERIFY: PASS — gate:human irreversible, held at implemented, routes to human gate #322)
+
+Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f2a86c8e0dce59edabdd22a`. Offline (`KUBECONFIG=/dev/null`; build/grep only, no release run). gate: human, risk {irreversible: yes}.
+
+| # | Command | Expect | Observed (exit + key line) | Date | Runner |
+|---|---------|--------|----------------------------|------|--------|
+| 1 | grep -cE `GOOS=windows GOARCH={amd64,arm64} go build` release.yml | ≥2 | 0 → count=4 | 2026-09-22 | opus-4.8-verifier |
+| 2 | grep -c `statusgen-windows-{amd64,arm64}.exe` release.yml | each ≥1 | 0 → 3 and 3 | 2026-09-22 | opus-4.8-verifier |
+| 3 | grep -oE `windows-{amd64,arm64}` \| sort -u \| wc -l | 2 | 0 → 2 | 2026-09-22 | opus-4.8-verifier |
+| 4 | loop grep -qF over 4 windows asset names | OK | 0 → OK; (4a positive control: bogus `-mips.exe` absent → exit 1 as expected) | 2026-09-22 | opus-4.8-verifier |
+| 5 | `cd statusgen && GOOS=windows GOARCH=amd64/arm64 go build; file` | exit 0, PE32/MS Windows | 0 → amd64 `PE32+ (console) x86-64, MS Windows`; arm64 `PE32+ (console) Aarch64, MS Windows` | 2026-09-22 | opus-4.8-verifier |
+| 6 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskpost; file` | exit 0, PE32/MS Windows | 0 → `PE32+ (console) x86-64, MS Windows` | 2026-09-22 | opus-4.8-verifier |
+| 7 | grep -cE `^statusgen-windows-{amd64,arm64} ` examples/adopter-scaffold/.assay-versions | 2 | 0 → count=2 (2026-09-12 regression healed by #974, lines 23-24 present at pin v0.28.0) | 2026-09-22 | opus-4.8-verifier |
+| 8 | `statusgen --root . --consumers windows-port/01` | exit 0 | 0 → "no brief files in the diff against 6204bb4f — nothing to corroborate" (expected post-merge; meaningful only on the implementer branch) | 2026-09-22 | opus-4.8-verifier |
+
+Scope traceability: every Evidence row maps 1:1 to its Verify row. Checksum step (`sha256sum … > checksums.txt`) lists all four windows assets; asset-name spelling identical across build/checksum/upload/pin surfaces (rows 2,4,7). Rows 5/6 produce real Windows PE executables, proving windows-port/00's build-tag split landed on this base.
+
+RISK-VALUE: DERIVED — placeholder-sha256 = 64×'e' @ `examples/adopter-scaffold/.assay-versions:23` (and 64×'f' @ :24) — a single hex digit repeated 64× is a recognizable FIXTURE placeholder matching the file's house convention + its explicit header ("The sha256 digests below are FIXTURE placeholders, not real release digests"); never read by any install/verify path, so it bears no operational risk and cannot be a real release digest.
+RISK-VALUE: N/A (for the true irreversible act) — the irreversible act is the human-only PUBLISH of the two Windows release assets under the pinned-hash contract; this diff performs no transfer/spend/publish and writes no real hash literal (the real digest is harvested from a published checksums.txt at release time).
+
+**VERIFY: PASS** — all 8 rows clean; rows 5/6 build real Windows PE executables; row 7 regression healed by #974. gate: human + irreversible: yes → a model records Evidence and does NOT sign off, and does NOT flip the verified cell. Status LEFT at `implemented`. Routed to the human publish-gate (decision issue #322): the go/no-go authorizes publishing the two Windows downloads under the existing pinned-hash contract AND landing the release.yml change by human hands (agent credentials lack workflow scope). On "go" the human lands; on "no" the windows-port stream stops.
 
 ## Review
 Gate: **human** (from frontmatter, risk-derived: `irreversible: yes`) — this edits

@@ -1185,9 +1185,25 @@ type Forge interface {
 	// map 1:1 returns could-not-check naming the gap.
 	PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// IssueTrustEvents is PRTrustEvents' issue twin (an issue has no reviews or review
-	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate and
-	// escalation clock, cmd/scanloop's queueing trust gate (freeze rule).
+	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate,
+	// cmd/scanloop's queueing trust gate (freeze rule).
 	IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
+	// IssueContentEvents reads an issue's comment content events for the ESCALATION CLOCK,
+	// paginating the comment connection to exhaustion under a HARD page cap (the returned
+	// TrustPayload carries no BodyEdited — the clock reads only Events' author+CreatedAt).
+	// It is the escalation-clock twin of IssueTrustEvents, and DELIBERATELY distinct from it:
+	// IssueTrustEvents reads ONE bounded page and fails closed to quarantine (an untrusted
+	// thread too busy to read in a page is never silently admitted), but the escalation clock
+	// is computed only for issues ALREADY past the trust gate and needs the WHOLE thread to
+	// find the last human response — so a decision-owed issue with a long thread must still
+	// yield an escalation verdict rather than take the board down (the single-page bound did
+	// exactly that: one overflowed thread failed the whole board with exit 6). Complete=false
+	// means the hard page cap was reached before the thread ended (or the forge advertised a
+	// next page with no cursor to advance on); the caller then treats that ONE issue's clock
+	// CONSERVATIVELY (escalate, could-not-check) and renders the rest of the board — an
+	// overflowed thread is NEVER read as "no escalation owed". Consumer: cmd/issueboard's
+	// fetchIssueEvents (freeze rule: this read lands with the call site that consumes it).
+	IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// ReviewsAtHead returns every review on a change (paginated to exhaustion), in
 	// ASCENDING SUBMITTED ORDER — oldest first.
 	//

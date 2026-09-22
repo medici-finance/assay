@@ -1211,6 +1211,31 @@ func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayloa
 	return g.trustEvents(repo, number, "issue", "IssueTrustEvents")
 }
 
+// IssueContentEvents reads an issue's comment content events for the escalation clock (see
+// the interface doc). It reuses listNotes — the SAME already-paginated, system-note-dropping,
+// oldest-first (sort=asc) notes reader every other GitLab note consumer uses (bounded by
+// gitlabMaxNotePage = 25 pages of gitlabPerPage = 100 notes = 2500 notes) — and maps each note
+// to a ContentEvent. Complete is reported true: the read walks the standard bounded reader to
+// its end. Where that reader's own cap truncates a pathological thread, the walk is oldest-first
+// so the omitted notes are the NEWEST — the clock therefore MISSES the most recent notes and the
+// last-human-response it derives can only move EARLIER (toward escalate), never later — the
+// conservative direction the escalation contract requires, never "no escalation owed".
+func (g *GitLabForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	notes, err := g.listNotes(repo, number, TargetIssue)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]ContentEvent, 0, len(notes))
+	for _, n := range notes {
+		ct, perr := parseTrustTime(n.CreatedAt)
+		if perr != nil {
+			return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), perr)
+		}
+		events = append(events, ContentEvent{Author: n.Author.Login, AuthorID: n.Author.ID, CreatedAt: ct})
+	}
+	return &TrustPayload{Events: events, Complete: true}, nil
+}
+
 // trustEvents runs gitlabTrustQuery through the library's GraphQL transport (the fixed
 // `/api/graphql` endpoint — no `glab` shell, no caller-supplied endpoint; the GitHub backend
 // posts to its `/graphql` the same way) and reduces the response through the SAME reader

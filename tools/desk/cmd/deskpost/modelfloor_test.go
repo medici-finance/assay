@@ -132,6 +132,48 @@ func TestModelFloorReviewAbsentProceedsWithNotice(t *testing.T) {
 	}
 }
 
+// RULING 3, at the review verb: an UNSTAMPED verdict is RISK-CONDITIONAL. The permissive
+// NOTICE branch above is right for a non-risk PR, but a verdict on a RISK-CLASSED PR is a
+// security-review-bearing write and must carry a trustable strong-tier attestation — so an
+// unstamped one REFUSES (exit 5) and posts nothing. The two cases share one fixture but for
+// the changed files: a risky diff refuses, a clean diff still proceeds. This is the paired
+// before/after the fix targets — the clean case is exactly TestModelFloorReviewAbsentProceeds-
+// WithNotice's behavior, preserved.
+func TestModelFloorReviewUnstampedIsRiskConditional(t *testing.T) {
+	t.Run("risk-classed diff REFUSES", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		f.files = riskyFiles() // secrets/ path → risk-classed; labelEvents nil → unstamped
+		bf := writeBody(t, "rev.md", okReviewBody)
+
+		if code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf)); code != 5 {
+			t.Fatalf("unstamped risk-classed verdict exit = %d, want 5 (refused):\n%s", code, errBuf.String())
+		}
+		if f.postedReview != 0 {
+			t.Fatalf("postedReview = %d, want 0 — a refused verdict must not post", f.postedReview)
+		}
+		if !strings.Contains(errBuf.String(), "RISK-CLASSED") ||
+			!strings.Contains(errBuf.String(), "deskdispatch --kit review") {
+			t.Fatalf("the refusal must name the risk class AND the review-lane remedy:\n%s", errBuf.String())
+		}
+	})
+
+	t.Run("non-risk diff still proceeds with a NOTICE", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		f.files = []string{"docs/desk-tools.md"} // a clean, non-risk diff; still unstamped
+		bf := writeBody(t, "rev.md", okReviewBody)
+
+		if code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf)); code != 0 {
+			t.Fatalf("unstamped non-risk verdict exit = %d, want 0 — the regression guard:\n%s", code, errBuf.String())
+		}
+		if f.postedReview != 1 {
+			t.Fatalf("postedReview = %d, want 1 — an unstamped non-risk lane must not be bricked", f.postedReview)
+		}
+		if !strings.Contains(errBuf.String(), "NOTICE") {
+			t.Fatalf("the non-risk unstamped PR produced no NOTICE:\n%s", errBuf.String())
+		}
+	})
+}
+
 // CASE override: the env override short-circuits the floor before the stamp state is
 // examined at all, and the bypass carries the loud grep-able marker.
 func TestModelFloorReviewOverrideProceedsLoudly(t *testing.T) {

@@ -1835,6 +1835,28 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.IssueTrustEvents(glRepo, 12) },
 		},
 		{
+			// The escalation-clock read (issue #2844). It reuses listNotes — the REST
+			// /issues/:iid/notes walk, oldest-first, system notes dropped — rather than the
+			// single-page trust GraphQL query, because the escalation clock needs the WHOLE
+			// thread to find the last human response (an overflowed thread must not fail the
+			// whole board). The golden pins that it touches /issues/:iid/notes, drops the system
+			// note, and maps each remaining note to a content event (bare username as the login,
+			// numeric id, created-at). Complete is reported true — the standard bounded notes
+			// reader every GitLab note consumer shares.
+			name: "issue_content_events", method: "IssueContentEvents",
+			setup: func(s *glServer) {
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "a human reply on the decision", "system": false,
+						"created_at": "2026-09-02T10:00:00Z",
+						"author":     map[string]any{"id": 2001, "username": "ada"}},
+					{"id": 951, "body": "changed the description", "system": true,
+						"created_at": "2026-09-02T11:00:00Z",
+						"author":     map[string]any{"id": 2001, "username": "ada"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.IssueContentEvents(glRepo, 12) },
+		},
+		{
 			// GitLab trust-events brief. A change with NO notes at all is a REAL, EMPTY payload — zero
 			// events, no body edit, Complete — distinct from a read that failed.
 			name: "pr_trust_events_empty", method: "PRTrustEvents",
