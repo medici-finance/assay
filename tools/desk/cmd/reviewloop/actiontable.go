@@ -127,6 +127,14 @@ var actionTable = map[string]rule{
 	// back into the routine bucket it was ranked above precisely to escape, and the reactor
 	// would say nothing about it. A human must see this row.
 	"SUSPECT-APPROVAL": {DispositionSurface, "", "an APPROVED at an unchanged head over a standing CHANGES_REQUESTED — it cannot be a re-verification, so the board suppressed it (#37); surfaced for a human, never a FLIP and never folded into BLOCKED"},
+	// brief 21: the declared external-prerequisite re-review — same shape as
+	// SUSPECT-APPROVAL, but the standing CR declared itself external-prereq-only, so it is
+	// a reviewer clearing a rejection whose only blockers were external prerequisites, not
+	// a forgery. SURFACE, not a dispatch and not a FLIP: the ready gate (deskpost) performs
+	// the authoritative independent verification of every prerequisite at the ready
+	// boundary. The planner does not re-derive that here — it agrees with the board that
+	// this is a declared external-prereq re-review and leaves the grant to the ready gate.
+	"EXTERNAL-PREREQ-REVIEW": {DispositionSurface, "", "a declared external-prerequisite re-review at an unchanged head — the ready gate independently verifies every prerequisite from fresh evidence before any flip; surfaced, never a planner FLIP (brief 21)"},
 
 	// ---- the CI three-state's could-not-check arms: not green, not red ----
 	"CI-UNKNOWN":    {DispositionSurface, "", "the rollup carried entries the board could not interpret — the CI verdict is NOT established"},

@@ -152,6 +152,15 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       message: ${{ steps.tag.outputs.message }}
+      # RELEASE-AUTHORIZER TRACEABILITY (iso-9001/04) — who authorized this
+      # release, as a job output the create-release step can put IN the release
+      # body. One value, derived once, from the same $ACTOR the tag message
+      # already uses: the dispatch actor on the dispatch path; an explicit
+      # not-recorded on the tag-push path (never blank, and never the pushing
+      # token's identity). A readable copy of the authorization that happens in
+      # the gated `release` environment — the environment, not this value, is
+      # the authority.
+      authorizer: ${{ steps.tag.outputs.authorizer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -200,6 +209,11 @@ jobs:
             fi
             tag="$v"
             emit message "assay $v (dispatched by $ACTOR)"
+            # The authorizing identity for the release body (iso-9001/04): the
+            # SAME $ACTOR the tag message above already interpolates — one
+            # source, one derivation. Named with its path so the body line
+            # cannot be read as naming the environment approver.
+            emit authorizer "$ACTOR (dispatch actor)"
           else
             # Push path: github.ref_name is the pushed tag. The trigger is
             # `tags: ["v*"]`, which matches far more than semver (v1, vX, v1.2,
@@ -217,6 +231,12 @@ jobs:
             fi
             tag="$REF_NAME"
             emit message ""
+            # No dispatch actor exists on this path — the tag already existed
+            # when the run started. The honest value is an explicit
+            # not-recorded, never blank (a blank reads as "nobody", a
+            # stronger claim than the truth) and never the pushing token's
+            # identity dressed up as an authorizer (iso-9001/04).
+            emit authorizer "not recorded (tag-push path: the tag pre-exists the run, so there is no dispatch actor)"
           fi
           emit tag "$tag"
           echo "Resolved release tag: $tag"
@@ -1106,9 +1126,16 @@ jobs:
           # the checksum + upload steps below expect the assets.
           SHA_SHORT=$(git rev-parse --short HEAD)
           TIMESTAMP=$(date -u +%FT%TZ)
+          # main.cellctlVersion is cmd/cellctl's own release-tag variable (desk-containers/10).
+          # It joins the shared LDFLAGS rather than getting a build of its own: the Go linker
+          # ignores an -X for a symbol a program does not define, so this is a no-op for every
+          # other cmd/* and the one binary that has the variable gets stamped. Before that brief
+          # cellctl was a shell script sed-stamped as a packaging exception; the exception is
+          # gone and cellctl is stamped like every other verb.
           LDFLAGS="-X github.com/medici-finance/assay/tools/desk/internal/deskkit.SourceSHA=${SHA_SHORT} \
                    -X github.com/medici-finance/assay/tools/desk/internal/deskkit.BuiltAt=${TIMESTAMP} \
-                   -X github.com/medici-finance/assay/tools/desk/internal/deskkit.ReleaseTag=${RELEASE_TAG}"
+                   -X github.com/medici-finance/assay/tools/desk/internal/deskkit.ReleaseTag=${RELEASE_TAG} \
+                   -X main.cellctlVersion=${RELEASE_TAG}"
           root="$PWD"
           cd tools/desk
           # windows-port/01: windows-amd64 / windows-arm64 cross-compile on this
@@ -1130,26 +1157,6 @@ jobs:
             # backstop alongside the binaries.
             mkdir -p "$stage/hooks"
             cp hooks/pre-push "$stage/hooks/pre-push"
-            # cellctl (#850) — a hand-maintained shell script (tools/cellctl/cellctl), not a
-            # tools/desk/cmd/* Go program, so it needs no per-platform cross-compile: the SAME
-            # file ships in every platform's tarball, at the tarball root next to the Go
-            # binaries (deskinstall's extractTarGz flattens every entry to its base name, and
-            # docs/cellctl.md's from-tarball install line already assumes this layout: `install
-            # -m 0755 ./cellctl ...`). It ships unmodified on the windows legs too, same as
-            # hooks/pre-push above — running it there is a WSL/git-bash question the tarball
-            # layout does not need to answer.
-            #
-            # A shell script takes no -ldflags, so it cannot be link-time stamped like the Go
-            # binaries above; instead this seds the release tag into the STAGED copy's
-            # CELLCTL_VERSION line — the committed source under tools/cellctl/cellctl keeps
-            # reading "dev" (see the comment beside that variable there). The grep after is a
-            # fail-closed check that the sed actually matched, so a future rewording of that line
-            # reds the release instead of silently shipping an unstamped "dev" cellctl.
-            sed "s/^CELLCTL_VERSION=\"dev\"\$/CELLCTL_VERSION=\"${RELEASE_TAG}\"/" \
-              "$root/tools/cellctl/cellctl" > "$stage/cellctl"
-            grep -q "^CELLCTL_VERSION=\"${RELEASE_TAG}\"\$" "$stage/cellctl" \
-              || { echo "::error::cellctl version stamp did not apply — CELLCTL_VERSION=\"dev\" line not found (as expected) in tools/cellctl/cellctl" >&2; exit 1; }
-            chmod 0755 "$stage/cellctl"
             tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
           done
 
@@ -1281,6 +1288,11 @@ jobs:
           # CHANGELOG discipline — the aggregated fragment highlights, lifted
           # ABOVE the asset-inventory boilerplate in the release body below.
           NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
+          # RELEASE-AUTHORIZER TRACEABILITY (iso-9001/04) — who authorized this
+          # cut, resolved upstream, named in the release body below. Rides in
+          # via env:, never a ${{ }} splice inside run: — a login is
+          # user-controlled and the tag-format gate does not cover it.
+          RELEASE_AUTHORIZER: ${{ needs.resolve.outputs.authorizer }}
         run: |
           set -euo pipefail
 
@@ -1319,7 +1331,15 @@ jobs:
             # boilerplate below a horizontal rule. Highlights first is the whole
             # point of the driver direction (2026-08-31): a reader sees what
             # changed before the pin table.
-            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            # RELEASE-AUTHORIZER TRACEABILITY (iso-9001/04) — the body closes
+            # with the labelled authorized-by line: who authorized this cut and
+            # the path the value came from (dispatch actor, or an explicit
+            # not-recorded on a tag push), plus the sentence that keeps the
+            # line honest — it records authorization, not build provenance,
+            # and claims no signature or attestation the pipeline does not
+            # perform. The authorizer rides in via env: and is read by the
+            # helper below exactly like RELEASE_TAG and DESK_IMAGE_REF.
+            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256.\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact; the pipeline carries no signature or provenance attestation, and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then

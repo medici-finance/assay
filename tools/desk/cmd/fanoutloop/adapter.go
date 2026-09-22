@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -55,23 +56,47 @@ type FanoutLoop struct {
 	// fresh brief. nil uses readAwaitingRework(Root), the SAME origin/main-ref read the Next-up
 	// board uses (statusMDContent). Tests inject fixtures here.
 	Rework func() ([]BoardRow, error)
+	// RepairObligations is the durable REPAIR-OBLIGATION source (example-stream/17): the
+	// reconciled, CURRENT obligation per immutable key across the configured roots' append-only
+	// repair-obligations.jsonl sidecars. It shares the rework lane (kind=kindRework) so a repair
+	// obligation inherits the rework reservation floor and orphan-behind priority. nil uses the
+	// default cross-root reader (defaultRepairObligations). Tests inject fixtures here. Only the
+	// ASSIGNABLE obligations (actionable, unresolved, awaiting-assignment or dead-lease) become
+	// items — a live repairing claim, a resolved obligation and a waiting-external obligation are
+	// withheld by deskkit's Assignable rule, never dispatched.
+	RepairObligations func() ([]deskkit.RepairObligation, error)
+	// Now is the clock the obligation lease horizon is evaluated against. nil uses time.Now. Tests
+	// inject a fixed clock so a dead-lease reassignment is deterministic.
+	Now func() time.Time
 	// InFlight is the in-flight-claim source for the ADVISORY write-scope overlap warning:
 	// the items already claimed for this root, carried as their derived
 	// write-scopes. nil reads the root repo's local `refs/heads/dispatch/*` claims (offline). Tests
 	// inject fixtures here. It is ADVISORY only — nothing dispatches or blocks on it.
 	InFlight func() ([]loopengine.Item, error)
 
-	// Represented is the ALREADY-REPRESENTED exclusion source: the set of brief IDs
-	// (`<stream>/<NN>`, lower-cased) that already have an OPEN or MERGED PR, so a phantom fresh row
-	// whose work is already in flight or merged is never offered for dispatch. nil = NONE: the
-	// OFFLINE reference build issues no `gh` PR sweep (exactly like Orphans), so the exclusion is
-	// wired only at the live cutover, where the source builds the set with
-	// deskkit.RepresentedBriefSet over the repo's open+merged PRs — keyed on each PR's `Brief:`
-	// trailer, NEVER a branch name (a branch spelled differently from the derived pattern is exactly
-	// the phantom this exclusion exists to catch). Tests inject fixtures here. It applies ONLY to
-	// fresh Next-up rows: orphan-resume and Awaiting-rework items act on an existing PR by design and
-	// are never excluded by it.
-	Represented func() (map[string]bool, error)
+	// Represented is the ALREADY-REPRESENTED reconciliation source: brief IDs (`<stream>/<NN>`,
+	// lower-cased) that already have an OPEN or MERGED PR, each carried as its PR number + merged flag
+	// (deskkit.RepresentedPR) so the fresh lane can ROUTE by state rather than merely drop. nil =
+	// NONE: the OFFLINE reference build reconciles against no PRs, so every fresh row is offered
+	// exactly as before; the reconciliation activates only when a source is wired (cmdPlan wires the
+	// live one; tests inject fixtures). The source builds the map with deskkit.RepresentedBriefPRs
+	// over the repo's open+merged PRs — keyed on each PR's `Brief:` trailer, NEVER a branch name (a
+	// branch spelled differently from the derived pattern is exactly the phantom this reconciliation
+	// exists to catch).
+	//
+	// It governs FRESH Next-up rows AND `### Awaiting implementer rework` STATUS.md rows
+	// (#1028/at#2026: a rework row whose deliverable already merged is a phantom this lane used to
+	// skip). In the FRESH lane the three outcomes are distinct (#1339): a MERGED PR → the row is
+	// landed-unreconciled and recorded for the plan's own heading, NEVER dispatched; an OPEN PR → the
+	// row is routed to the RESUME lane (started work outranks fresh); no PR → fresh dispatch. In the
+	// rework lane a represented row (either state) is dropped, as before. Two lanes stay EXEMPT because
+	// a representing PR is expected, not a phantom: ORPHAN resumes (the open PR they act on) and
+	// DURABLE repair obligations (which rework a MERGED original via a fresh follow-up branch, §row 5b).
+	//
+	// A source ERROR is could-not-check, NEVER rounded to "no PR exists": the fresh and rework lanes
+	// (the two that consult it) are HELD, so a phantom can never slip through on a failed read, while
+	// the exempt lanes still flow. SelectQueue records the hold reason in freshHeld for the plan output.
+	Represented func() (map[string]deskkit.RepresentedPR, error)
 
 	// Emit is where interim-mode dispatch instructions are printed. nil = stdout.
 	Emit io.Writer
@@ -102,6 +127,22 @@ type FanoutLoop struct {
 	// files:` may be in flight across ALL streams. Dispatch marks it; Land clears it; the engine's
 	// WorkEvidence probe (workEvidence) refuses a second one at claim time.
 	outOfRepo map[string]bool
+
+	// landedUnreconciled and freshHeld are PLAN DIAGNOSTICS the fresh-lane reconciliation writes and
+	// renderPlan reads (#1339). They are not queue state: the engine ignores them. landedUnreconciled
+	// lists every fresh row whose brief already MERGED — printed under the plan's own heading with the
+	// PR number, never dispatched. freshHeld, when non-empty, is the could-not-check reason the fresh
+	// (and rework) lanes were HELD for this run. Both are reset at the top of each SelectQueue call,
+	// under mu, so a re-poll never reports a stale run's diagnostics.
+	landedUnreconciled []landedRow
+	freshHeld          string
+}
+
+// landedRow is one fresh Next-up row whose brief already has a MERGED PR: its board cell simply never
+// reconciled after the merge (#1339). It is a plan DIAGNOSTIC, never a dispatch item.
+type landedRow struct {
+	briefID string // `<stream>/<NN>`
+	pr      int    // the merged PR's number
 }
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
@@ -118,80 +159,188 @@ func (f *FanoutLoop) Name() string { return "worker-desk" }
 // `review-request` token belongs to the review loop, not here) and anything already handed off.
 // It adds NO scoring pass of its own — the order it returns is the order the boards agreed on.
 func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
-	var items []loopengine.Item
-	// addressed holds fresh rows carrying this desk's inbox label (`to:worker`). They are
-	// a DIRECTED message to this desk, so they LEAD the whole queue — ahead of orphan
-	// resumes and rework — by construction (`fanoutloop plan` emits
-	// `to:<my role>` items first). Only fresh board rows can be addressed; orphan/rework
-	// items act on an existing PR and carry no board labels.
-	var addressed []loopengine.Item
+	// Reset the plan diagnostics up front so a re-poll never reports a stale run's landed/held state.
+	f.mu.Lock()
+	f.landedUnreconciled = nil
+	f.freshHeld = ""
+	f.mu.Unlock()
+
+	// Each lane is assembled into its own slice so the final concatenation states the priority order
+	// explicitly: addressed (a directed `to:worker` message) leads, then RESUME (orphan resumes plus
+	// fresh rows found to have an OPEN PR — started work outranks fresh), then rework, then repair,
+	// then fresh dispatch in board order.
+	var addressed, orphanItems, openResumeItems, reworkItems, repairItems, freshItems []loopengine.Item
 	inbox := f.inboxRole()
 
-	// 1. Orphan resumes — highest priority (drain started work before starting new).
+	// The already-represented reconciliation (brief IDs with an OPEN or MERGED PR, each with its PR
+	// number + merged flag, keyed on each PR's `Brief:` trailer — NEVER a branch name, so a branch
+	// spelled `feat/<repo>--<stream>--<NN>` instead of the derived `feat/<stream>-<NN>` cannot hide a
+	// phantom, at#2026). nil source = the OFFLINE reference default (no PR read) — the reconciliation
+	// is inert and every row is offered exactly as before.
+	//
+	// A source ERROR is could-not-check, NOT no-PR-exists (#1339): the fresh and rework lanes — the
+	// two that consult the map — are HELD (a phantom must never slip through a failed read), the reason
+	// is recorded for the plan output, and the exempt lanes (orphan resumes, repair obligations) still
+	// flow. It is NOT returned as an error, so the whole plan does not fail on it.
+	represented, repErr := f.representedSource()
+	held := repErr != nil
+	if held {
+		f.mu.Lock()
+		f.freshHeld = fmt.Sprintf("could not read the deliverable repo's open+merged PRs (%v) — "+
+			"the fresh and rework lanes are HELD this run; could-not-check is not no-PR-exists, so a "+
+			"phantom row is never offered on an unread forge", repErr)
+		f.mu.Unlock()
+	}
+
+	// 1. Orphan resumes — highest priority (drain started work before starting new). NEVER subject to
+	// the represented reconciliation: an orphan resume IS an open PR by construction, so the PR that
+	// represents it is exactly the one it acts on. Their PR numbers are recorded so a fresh row later
+	// found to have that same OPEN PR is not surfaced twice (once as an orphan, once as a resume).
 	orphans, err := f.orphanSource()
 	if err != nil {
 		return nil, err
 	}
+	orphanPRs := map[int]bool{}
 	for _, o := range orphans {
+		orphanPRs[o.Number] = true
 		if f.isHandled(o.ID) {
 			continue
 		}
-		items = append(items, o.toItem())
+		orphanItems = append(orphanItems, o.toItem())
 	}
 
-	// 2. Awaiting-implementer-rework rows — second priority, ahead of fresh dispatch.
+	// 2. Awaiting-implementer-rework STATUS.md rows — ahead of fresh dispatch. These ARE subject to the
+	// reconciliation (#1028/at#2026): a `### Awaiting implementer rework` row whose brief already has an
+	// OPEN or MERGED PR is a phantom this lane used to skip. Held on could-not-check. The DURABLE repair
+	// obligations (step 2b) stay EXEMPT: a repair obligation legitimately reworks a MERGED original via a
+	// fresh follow-up branch (§Sources of work row 5b), so a representing PR is expected there.
 	rework, err := f.reworkSource()
 	if err != nil {
 		return nil, err
 	}
-	for _, r := range rework {
-		if f.isHandled(r.ID()) {
-			continue
+	if !held {
+		for _, r := range rework {
+			if f.isHandled(r.ID()) {
+				continue
+			}
+			if _, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				continue
+			}
+			reworkItems = append(reworkItems, r.toReworkItem(f.TargetSHA))
 		}
-		items = append(items, r.toReworkItem(f.TargetSHA))
 	}
 
-	// 3. Fresh Next-up rows, board order preserved.
+	// 2b. Durable REPAIR OBLIGATIONS (example-stream/17) — the OTHER rework source, EXEMPT from the
+	// reconciliation and from the could-not-check hold (a repair obligation reworks a MERGED original by
+	// design). Same priority as the rework rows above: resuming owed repair outranks a fresh brief. Each
+	// item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation.
+	repairs, err := f.repairSource()
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range repairs {
+		if f.isHandled(it.ID) {
+			continue
+		}
+		repairItems = append(repairItems, it)
+	}
+
+	// 3. Fresh Next-up rows, board order preserved. On could-not-check the whole fresh lane is HELD.
+	// Otherwise each row is ROUTED by its representing PR's state (#1339): a MERGED PR → the row is
+	// landed-unreconciled (its board cell just never flipped after the merge) and is recorded for the
+	// plan's own heading, never dispatched; an OPEN PR → the row is started work, routed to the RESUME
+	// lane (deduped against an orphan already covering that PR); no PR → fresh dispatch. The match is on
+	// the brief id keyed against the PR's `Brief:` trailer, never a branch name.
 	rows, err := f.boardSource()
 	if err != nil {
 		return nil, err
 	}
-	// The already-represented exclusion set (brief IDs with an OPEN or MERGED PR). Applied to FRESH
-	// rows ONLY — orphan-resume and rework items above act on an existing PR by design.
-	represented, err := f.representedSource()
-	if err != nil {
-		return nil, err
+	if !held {
+		for _, r := range rows {
+			if isForeignDispatchToken(r) {
+				// A DIFFERENT loop's consumer (e.g. a `review-request` token owned by the review loop);
+				// skipped so the two consumers never double-dispatch. NOTE: `issue-<NN>` placeholders are
+				// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
+				continue
+			}
+			if f.isHandled(r.ID()) {
+				continue
+			}
+			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				if rp.Merged {
+					// Landed-unreconciled: the deliverable merged, the board row just never reconciled.
+					// A plan diagnostic, never a dispatch — recorded for renderPlan's own heading.
+					f.mu.Lock()
+					f.landedUnreconciled = append(f.landedUnreconciled, landedRow{briefID: r.Stream + "/" + r.Num, pr: rp.Number})
+					f.mu.Unlock()
+					continue
+				}
+				// An OPEN PR: started work. Route to the resume lane rather than fresh dispatch, unless
+				// an orphan already covers that PR (dedupe — do not surface the same PR twice).
+				if !orphanPRs[rp.Number] && !f.isHandled(openResumeID(rp.Number)) {
+					openResumeItems = append(openResumeItems, openResumeItem(r, rp.Number))
+				}
+				continue
+			}
+			it := r.toItem(f.TargetSHA)
+			if inbox != "" && addressedToRole(r, inbox) {
+				// A directed message to THIS desk. Stamp the addressee (so the plan output and
+				// any downstream reader can see the `to:` kind) and route it to the leading lane.
+				it.Payload["to"] = inbox
+				addressed = append(addressed, it)
+				continue
+			}
+			freshItems = append(freshItems, it)
+		}
 	}
-	for _, r := range rows {
-		if isForeignDispatchToken(r) {
-			// A DIFFERENT loop's consumer (e.g. a `review-request` token owned by the review loop);
-			// skipped so the two consumers never double-dispatch. NOTE: `issue-<NN>` placeholders are
-			// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
-			continue
-		}
-		if represented[strings.ToLower(r.Stream+"/"+r.Num)] {
-			// A fresh row whose brief already has an OPEN or MERGED PR — a phantom the board has not
-			// yet caught up with (the READMEs still read `todo`/`implemented` while the forge moved
-			// on). Excluded so a worker is never spent re-deriving that the PR already exists. The
-			// match is on the brief id (keyed against the PR's `Brief:` trailer at the source), never
-			// on a branch name.
-			continue
-		}
-		if f.isHandled(r.ID()) {
-			continue
-		}
-		it := r.toItem(f.TargetSHA)
-		if inbox != "" && addressedToRole(r, inbox) {
-			// A directed message to THIS desk. Stamp the addressee (so the plan output and
-			// any downstream reader can see the `to:` kind) and route it to the leading lane.
-			it.Payload["to"] = inbox
-			addressed = append(addressed, it)
-			continue
-		}
-		items = append(items, it)
+
+	// Concatenate in priority order: addressed, resume (orphans then open-PR resumes), rework, repair,
+	// fresh. Board order is preserved within each lane.
+	out := addressed
+	out = append(out, orphanItems...)
+	out = append(out, openResumeItems...)
+	out = append(out, reworkItems...)
+	out = append(out, repairItems...)
+	out = append(out, freshItems...)
+	return out, nil
+}
+
+// landedUnreconciledRows returns the fresh rows the last SelectQueue found already MERGED (a plan
+// diagnostic, never dispatched). renderPlan reads it after SelectQueue; it is copied under mu so the
+// caller never races a concurrent re-poll.
+func (f *FanoutLoop) landedUnreconciledRows() []landedRow {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]landedRow(nil), f.landedUnreconciled...)
+}
+
+// freshHoldReason returns the reason the last SelectQueue HELD the fresh lane (a could-not-check
+// represented read), or "" if it did not. renderPlan reads it after SelectQueue.
+func (f *FanoutLoop) freshHoldReason() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.freshHeld
+}
+
+// openResumeID is the resume claim key for a fresh row found to have an OPEN PR — the same
+// `resume:pr-<N>` shape the orphan-resume source uses, so the two lanes share one id namespace and a
+// PR covered by both dedupes to one item.
+func openResumeID(pr int) string { return fmt.Sprintf("resume:pr-%d", pr) }
+
+// openResumeItem turns a fresh Next-up row whose brief already has an OPEN PR into a RESUME item
+// (kindOrphan) — reusing the existing resume lane rather than inventing a second. The branch is left
+// unresolved (the reconciliation reads number+state, not the head branch); the resuming worker
+// checks the PR out by number. The findings line records WHY this is a resume, not fresh dispatch.
+func openResumeItem(r BoardRow, pr int) loopengine.Item {
+	o := OrphanPR{
+		Repo:   r.Repo,
+		Number: pr,
+		ID:     openResumeID(pr),
+		Findings: fmt.Sprintf(
+			"brief %s/%s already has an OPEN PR (#%d) — resume it rather than fresh-dispatch (the board row lagged the forge, #1339)",
+			r.Stream, r.Num, pr),
 	}
-	// Addressed items lead the whole queue; board order is preserved within each lane.
-	return append(addressed, items...), nil
+	return o.toItem()
 }
 
 // inboxRole is the desk role whose `to:<role>` inbox this loop leads with — the App role
@@ -339,10 +488,52 @@ func (f *FanoutLoop) reworkSource() ([]BoardRow, error) {
 	return readAwaitingRework(f.Root)
 }
 
-// representedSource returns the already-represented brief-id set (open/merged PRs). nil Represented
-// means NONE — the OFFLINE reference build reconciles against no PRs, so every fresh board row is
-// offered exactly as before; the exclusion activates only when the live cutover wires a source.
-func (f *FanoutLoop) representedSource() (map[string]bool, error) {
+// repairSource returns the ASSIGNABLE repair obligations as rework items, evaluated against this
+// loop's clock and the repair lease horizon. It reads the reconciled obligations from
+// RepairObligations (default: the cross-root sidecar reader) and maps each assignable one to a
+// rework item. The roots are needed both to read the sidecars AND to resolve each obligation's brief
+// frontmatter for tiering, so the default reader and the item mapper share one roots list.
+func (f *FanoutLoop) repairSource() ([]loopengine.Item, error) {
+	roots := f.repairRoots()
+	var obligs []deskkit.RepairObligation
+	var err error
+	if f.RepairObligations != nil {
+		obligs, err = f.RepairObligations()
+	} else {
+		obligs, err = collectRepairObligations(roots)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return assignableRepairItems(obligs, roots, f.TargetSHA, f.clock(), repairLeaseTTL), nil
+}
+
+// repairRoots is the roots list the default repair reader and the brief-frontmatter resolver use.
+// It prefers the multi-repo configured roots (example-stream/17: "across configured roots"); a
+// malformed roots configuration degrades to this loop's single reference Root rather than wedging
+// the whole plan — the cross-root read is an enhancement over the single-root reference build, not a
+// new hard precondition on it.
+func (f *FanoutLoop) repairRoots() []deskkit.RootConfig {
+	if roots, err := deskkit.ConfiguredRoots(); err == nil && len(roots) > 0 {
+		return roots
+	}
+	return []deskkit.RootConfig{{Path: f.Root}}
+}
+
+// clock returns this loop's time source (default time.Now), used to evaluate a repair obligation's
+// lease horizon deterministically under test.
+func (f *FanoutLoop) clock() time.Time {
+	if f.Now != nil {
+		return f.Now()
+	}
+	return time.Now()
+}
+
+// representedSource returns the already-represented brief map (open/merged PRs, each with its PR
+// number + merged flag). nil Represented means NONE — the OFFLINE reference default reconciles against
+// no PRs, so every fresh board row is offered exactly as before; the reconciliation activates only
+// when a source is wired (cmdPlan wires the live one; tests inject fixtures).
+func (f *FanoutLoop) representedSource() (map[string]deskkit.RepresentedPR, error) {
 	if f.Represented != nil {
 		return f.Represented()
 	}

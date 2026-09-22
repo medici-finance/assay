@@ -1,0 +1,24 @@
+diff --git a/STATUS.md b/STATUS.md
+index 19ef2c8..26b6bdb 100644
+--- a/STATUS.md
++++ b/STATUS.md
+@@ -1 +1 @@
+-Status: in-progress
++Status: implemented
+diff --git a/caps.go b/caps.go
+index 304415b..4c332c0 100644
+--- a/caps.go
++++ b/caps.go
+@@ -6,7 +6,9 @@ package caps
+ // current in-flight counts and the configured per-class caps. A class with no configured
+ // cap is uncapped.
+ func Allowed(class string, counts, caps map[string]int) bool {
+-	// TODO: implement the per-class cap check — currently always allows, so a capped
+-	// class never actually stops admitting new workers.
+-	return true
++	cap, capped := caps[class]
++	if !capped {
++		return true
++	}
++	return counts[class] < cap
+ }

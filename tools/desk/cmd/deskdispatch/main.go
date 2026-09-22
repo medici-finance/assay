@@ -66,7 +66,7 @@ import (
 const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DISPATCH).
 
 USAGE:
-  deskdispatch <item-key> [--tier strong|any] [--kit worker|review|verifier]
+  deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
                [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
@@ -168,6 +168,11 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
+	// Wire the phantom check's PR-list transport LIVE for the shipped binary (represented_live.go).
+	// Assigned here, in main(), not at package init: tests call run()/cmdDispatch directly and keep
+	// the nil default (the check stays inert unless a test wires its own recorded transport), while
+	// the real binary reads the repo's open+merged changes through the typed Forge seam.
+	listRepresentedPRs = liveRepresentedPRs
 	os.Exit(run(os.Args[1:]))
 }
 

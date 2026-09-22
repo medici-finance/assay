@@ -1083,6 +1083,40 @@ The install fork — a **Go-native installer with a thin PowerShell bootstrap**,
 PowerShell script — was a maintainer decision: it keeps the security-critical hash-verify in one
 tested Go implementation and confines PowerShell to a trivial, auditable download-and-verify.
 
+### Running a brief's Verify table on Windows — the harness container is the supported runner
+`statusgen verifyrun` executes each Verify row under `bash -o pipefail`. On native Windows a
+pipefail bash is unreliable — `bash.exe` is often the WSL launcher, which with no distro installed
+exits before the row runs — so verifyrun honestly records those rows **could-not-run**, not a false
+pass and not a false fail. The **supported execution-witness runner on Windows is therefore the
+Linux harness container, not a native shell**:
+
+```powershell
+statusgen verifyrun --in-container --brief docs\streams\<stream>\brief-NN.md
+```
+
+This runs `statusgen verifyrun` inside the pinned harness container (the combined
+`ghcr.io/medici-finance/assay/desk-tools` image, resolved by its **sha256 digest** from
+`paired-versions.yaml` — never a floating `latest`), with the checkout bind-mounted at `/work`, and
+writes the witness back into the brief's Evidence **host-owned** (Docker Desktop maps the mount's
+ownership to you). It needs Docker Desktop with the **Linux-container backend**; the harness image is
+Linux whichever host launches it. Credentials, if a row needs them, are supplied only via
+`--env-file <path>` (the role env-file — the path, never its contents; see `containers/secrets.md`).
+
+**Bind-mount caveats, so a could-not-run row's cause is legible:**
+- **NTFS mtime is coarse.** Nothing in this path keys a cache on mtime — the brief parse keys on
+  content hash — so a coarse-mtime bind mount cannot serve a stale parse.
+- **The exec bit may not survive the mount.** A row that runs a repo-local script directly
+  (`./x.sh`) can hit exit 126 (found, not executable) if the mount does not preserve the POSIX
+  executable bit; verifyrun records that as **could-not-run with the reason**, never a silent skip or
+  a forced pass. Invoke the interpreter explicitly (`bash ./x.sh`) for a row that must stay runnable
+  under the mount.
+
+**Native-Windows-shell rows — the `Shell` column is the narrow exception, not the default.** A
+Verify row that genuinely needs to test **Windows-native** shell behaviour (cmd/pwsh quoting, a
+`.ps1` code path) marks itself with the per-row `Shell` column (#1427) so it runs under that shell
+instead of bash. Use it ONLY when the row's subject *is* the native shell; the container above is the
+default runner for everything else, including the ordinary offline Verify rows a brief carries.
+
 ### Pin the Windows assets in `.assay-versions`
 **Channel E:** pin the Windows release exactly as any other platform (CORE `install-statusgen`): one
 line per platform you install on, `<artifact> <tag> <sha256>`, re-pinned — never edited in place —

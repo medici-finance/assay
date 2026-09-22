@@ -713,6 +713,81 @@ type OpenChanges struct {
 	Cap int
 }
 
+// ChangeStates is the set of change lifecycle states a ListChanges read is scoped to. It is a
+// struct of booleans rather than a slice so an EMPTY request is a compile-visible zero value
+// the op refuses (rather than a nil slice that could read as "all"): a states-less read is a
+// caller bug, never a silent whole-repo scan. Consumer: the phantom / already-represented
+// reconciliation (deskkit.RepresentedPRRefs), which asks for Open+Merged.
+type ChangeStates struct {
+	Open   bool
+	Merged bool
+	Closed bool
+}
+
+// OpenAndMerged is the ChangeStates the represented-PR reconciliation uses: a brief is
+// represented by an OPEN or a MERGED PR, and a CLOSED-unmerged one represents nothing (its work
+// was abandoned), so the closed state is deliberately NOT requested.
+func OpenAndMerged() ChangeStates { return ChangeStates{Open: true, Merged: true} }
+
+// Any reports whether at least one state is requested. A read with none requested is refused by
+// the backends before any request is built — the whole point of the struct is that the state
+// set was STATED.
+func (s ChangeStates) Any() bool { return s.Open || s.Merged || s.Closed }
+
+// Want reports whether an uppercased forge state (OPEN | MERGED | CLOSED) is in the requested
+// set. The backends filter with it so a forge query that cannot express the exact set (GitLab's
+// single-state `state=` param) can over-request and narrow client-side to exactly what was asked.
+func (s ChangeStates) Want(state string) bool {
+	switch strings.ToUpper(strings.TrimSpace(state)) {
+	case "OPEN":
+		return s.Open
+	case "MERGED":
+		return s.Merged
+	case "CLOSED":
+		return s.Closed
+	}
+	return false
+}
+
+// ChangeRef is one change (PR ↔ MR) in a ListChanges read, reduced to the facts the
+// already-represented / phantom reconciliation and a scheduler's routing need: the NUMBER, the
+// lifecycle STATE (OPEN | MERGED | CLOSED — MERGED kept DISTINCT from CLOSED, unlike the board's
+// OpenChange which collapses both to a single closed word, because the reconciliation routes a
+// merged brief differently from an abandoned one), the head SHA and source BRANCH, the TITLE and
+// BODY (the body carries the `Brief:`/`Issue:` link trailers BriefRepresentedPR matches on), and
+// MergedAt for a merged change. It deliberately carries NO CI rollup or merge-state enum: those
+// are the board's concern (OpenChange), and requesting them here would drag in the actions-scope
+// dependency and the per-change pipeline read the reconciliation has no use for.
+type ChangeRef struct {
+	Number   int
+	State    string // OPEN | MERGED | CLOSED
+	HeadSHA  string
+	HeadRef  string // source branch
+	Title    string
+	Body     string
+	MergedAt string // RFC3339, "" unless State == MERGED
+}
+
+// ChangeList is the result of a ListChanges read: the changes plus whether the bounded walk was
+// able to reach the end of the population. Incomplete=true means the page-count ceiling
+// (PageCap) was hit with the forge still reporting more — so a consumer that reads ABSENCE from
+// this list as evidence (the phantom check reads "no representing PR here" as "safe to
+// dispatch") must treat the absence as could-not-check, never as a confident negative. The
+// changes are ordered MOST-RECENTLY-UPDATED FIRST, so the bounded window is the changes most
+// likely to represent a currently-queued brief; an older change beyond the window is exactly the
+// one the reconciliation has least reason to find. Incomplete is reported, never hidden: a
+// truncated read is stated as truncated, not handed back as if it were the whole population.
+type ChangeList struct {
+	// Changes are the changes matching the requested states, most-recently-updated first, up to
+	// the page-count ceiling.
+	Changes []ChangeRef
+	// Incomplete is true when the walk hit PageCap pages with the forge still paginating — the
+	// population is larger than what Changes holds.
+	Incomplete bool
+	// PageCap is the page-count ceiling the walk was bounded to.
+	PageCap int
+}
+
 // IssueSummary is one open issue in the bulk issue-board read: the fields the issue lane
 // classifies on. Author.Login is the RENDERED login (a bot carries its "<slug>[bot]" suffix)
 // and Author.ID the permanent numeric id the trust gate pins on. CreatedAt is the escalation
@@ -1083,6 +1158,22 @@ type Forge interface {
 	// that consumes it). A forge whose CI rollup does not map to the two-shape union RollupNode
 	// carries returns could-not-check naming the gap rather than an approximation.
 	ListOpenChanges(repo ForgeRepo) (*OpenChanges, error)
+	// ListChanges reads a repo's changes (PRs ↔ MRs) in the requested lifecycle STATES —
+	// distinguishing MERGED from CLOSED, which ListOpenChanges does not — carrying per change
+	// the number, state, head sha, source branch, title, body (with its link trailers) and
+	// merged-at (see ChangeRef/ChangeStates/ChangeList). It exists because the already-
+	// represented / phantom reconciliation must know whether a brief has an OPEN or a MERGED PR,
+	// and ListOpenChanges serves OPEN only while collapsing state to a board word — so a raw
+	// `gh pr list --state all` was the only alternative, and the closed forge surface
+	// (TestNoForgeCLIShellout) forbids it. The read is bounded: it walks MOST-RECENTLY-UPDATED
+	// first to a hard page-count ceiling and reports ChangeList.Incomplete when the population
+	// exceeds it, so a consumer that reads absence as evidence treats a truncated read as
+	// could-not-check rather than a confident negative. A states-less request (ChangeStates.Any
+	// false) is REFUSED before any request is built — the state set must be STATED, never
+	// defaulted to a whole-repo scan. Consumer: cmd/deskdispatch's phantom check via
+	// deskkit.RepresentedPRRefs (freeze rule: this read lands with the call site that consumes
+	// it).
+	ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeList, error)
 	// ListOpenIssues reads a repo's OPEN issues (never changes) as classification summaries —
 	// number, title, rendered author, labels, creation time (see IssueSummary). Consumer:
 	// cmd/issueboard's fetchOpenIssues (freeze rule).
@@ -1094,9 +1185,25 @@ type Forge interface {
 	// map 1:1 returns could-not-check naming the gap.
 	PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// IssueTrustEvents is PRTrustEvents' issue twin (an issue has no reviews or review
-	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate and
-	// escalation clock, cmd/scanloop's queueing trust gate (freeze rule).
+	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate,
+	// cmd/scanloop's queueing trust gate (freeze rule).
 	IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
+	// IssueContentEvents reads an issue's comment content events for the ESCALATION CLOCK,
+	// paginating the comment connection to exhaustion under a HARD page cap (the returned
+	// TrustPayload carries no BodyEdited — the clock reads only Events' author+CreatedAt).
+	// It is the escalation-clock twin of IssueTrustEvents, and DELIBERATELY distinct from it:
+	// IssueTrustEvents reads ONE bounded page and fails closed to quarantine (an untrusted
+	// thread too busy to read in a page is never silently admitted), but the escalation clock
+	// is computed only for issues ALREADY past the trust gate and needs the WHOLE thread to
+	// find the last human response — so a decision-owed issue with a long thread must still
+	// yield an escalation verdict rather than take the board down (the single-page bound did
+	// exactly that: one overflowed thread failed the whole board with exit 6). Complete=false
+	// means the hard page cap was reached before the thread ended (or the forge advertised a
+	// next page with no cursor to advance on); the caller then treats that ONE issue's clock
+	// CONSERVATIVELY (escalate, could-not-check) and renders the rest of the board — an
+	// overflowed thread is NEVER read as "no escalation owed". Consumer: cmd/issueboard's
+	// fetchIssueEvents (freeze rule: this read lands with the call site that consumes it).
+	IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// ReviewsAtHead returns every review on a change (paginated to exhaustion), in
 	// ASCENDING SUBMITTED ORDER — oldest first.
 	//

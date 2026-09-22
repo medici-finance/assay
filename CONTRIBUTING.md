@@ -45,6 +45,52 @@ Both guidelines are **advisory** unless this page says otherwise: the automation
 labels, and a human maintainer decides. Maintainers, collaborators, and repository bots are
 exempt from both.
 
+## The trust bar
+
+The guidelines above are the half of the bar you see as rules. The other half is what the
+project's automation does with a submission from an account it does not recognise, and that is
+written down here too — so the bar is a policy you can read and meet, not something that
+simply happens to you. Nothing in this section changes anything above: the guidelines stay
+advisory, and a human maintainer still decides everything that matters.
+
+- **A submission from an unrecognised account may be measured.** There is tooling that gathers
+  a fixed list of mechanical facts about such a submission and posts them as a short
+  **provenance card** — a comment on the pull request. The facts are about the submission's
+  shape and timing, never about you as a person: how old the account is against when it first
+  did anything, how long the fork existed before the pull request was opened, how many
+  pull requests the author opened across repositories in a day, what proportion of the
+  author's earlier submissions were merged, whether the commits are signed, and whether the
+  diff touches the files that control what the build executes. The card states each fact with
+  the ordinary innocent
+  explanation beside it (a new account is how everybody starts; a fast fork-to-pull-request is
+  what a prepared patch looks like), renders no score and no verdict, and closes with the same
+  statement every time: it is not a judgement of the change, and the change is reviewed on its
+  merits. A fact that could not be gathered is shown as *could not check*, never as silence.
+  What the card measures, and what it deliberately never measures — no profile text, no
+  follower counts, no employer, no location — is published in full in
+  [docs/contributor-provenance.md](docs/contributor-provenance.md). The tooling never fetches,
+  builds or executes your branch; every fact comes from public metadata.
+- **Trust tiers exist, and what they unlock is published.** An account is not re-assessed as a
+  stranger forever. There are four tiers — `unknown`, `blessed-once`, `contributor`,
+  `maintainer` — and what each one unlocks (a deeper claims-versus-diff review, continuous
+  integration without a manual approve, automation acting on your items at all, and the fork
+  changelog arrangement below) is published in [docs/contributor-trust.md](docs/contributor-trust.md).
+  A tier gates how much automation runs without a human present; it never merges anything and
+  never stands in for a maintainer's judgement. **Who holds which tier is not published** —
+  the model is public, the records are not, because a public list of trust judgements about
+  named people would be a reputation register that serves nobody.
+- **How an item is admitted.** As above, automation ignores items from outside contributors
+  until a maintainer engages. A maintainer's comment on your item admits that one item — and
+  if new content is added after that comment, the admission lapses until a maintainer looks
+  again, so an edit does not ride in on an earlier approval. Continuous integration on a pull
+  request from a first-time fork also needs a maintainer's approve-and-run click. Moving an
+  account between tiers is a recorded human act with a reason: no amount of merged changes
+  promotes anybody automatically, and a good record is deliberately not allowed to predict
+  anything on its own.
+
+The aim of all of it is the one stated above: to filter, not to deter. And the one thing that
+is never filed in public is a security problem — see [SECURITY.md](SECURITY.md).
+
 ## Pull-request template
 
 Every pull request opens against a short template with two prompts: which factual claims the

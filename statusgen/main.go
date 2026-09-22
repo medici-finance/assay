@@ -314,13 +314,18 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// row is backed only when an ACCEPTED actor — the roster-bound verifier App or
 	// a roster-known human — committed at least one line of its `## Evidence`
 	// section. Everything else on a verified row is prose the verifying session
-	// wrote about itself. NOTICE only this phase: 92 of 141 rows were measured
-	// unbacked at adoption, and arming a PROBLEM against that would red every
-	// unrelated PR (the mergedstatus.go precedent, one line above). Skipped on a
-	// tree with no .git, exactly like the reconciliation above; every other
+	// wrote about itself. The pre-cutover backlog (92 of 141 rows measured
+	// unbacked at adoption) stays a NOTICE — arming a PROBLEM against it would red
+	// every unrelated PR (the mergedstatus.go precedent, one line above) — but a
+	// row THIS BRANCH newly closes to verified/done is no longer backlog, so
+	// evidenceActorGate promotes that case to a PROBLEM (verify-integrity/04 item
+	// 2), merge-base scoped exactly like unrunGateChecks above. Skipped on a tree
+	// with no .git, exactly like the reconciliation above; every other
 	// unreachable input reports could-not-check by name rather than clean.
 	if !hasNoGitDir(root) {
-		notices = append(notices, evidenceActorNotices(root, checkStreams)...)
+		eaProblems, eaNotices := evidenceActorGate(root, checkStreams)
+		problems = append(problems, eaProblems...)
+		notices = append(notices, eaNotices...)
 	}
 	// `repo:` frontmatter validation: form + one-repo-per-
 	// root agreement. Runs on the FULL stream set, not the scoped subset — repo
@@ -376,6 +381,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// register at root. Declared source: statusgen/designgate.go.
 	problems = append(problems, designGateProblems(root, checkStreams)...)
 	notices = append(notices, designGateNotices(root, checkStreams)...)
+	// Deploy transition + DEPLOYS register (sdlc/06, docs/deploy-model.md): a
+	// DEPLOY record's precondition — its brief: reference is at least
+	// `verified` — plus RUNBOOK record shape and the undrilled-drill-row
+	// could-not-check. Declared source: statusgen/deploygate.go.
+	problems = append(problems, deployTransitionProblems(root, checkStreams)...)
+	notices = append(notices, deployTransitionNotices(root, checkStreams)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against
@@ -514,6 +525,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
+	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a
+	// brief flipped to verified/done post-merge-base with no witness for one
+	// or more Verify rows is a PROBLEM, not the
+	// per-stream NOTICE above the inherited corpus still gets. Reuses the SAME
+	// closedAtBase predicate — never a second one. See witnessgate.go.
+	waProblems, waNotices := witnessAbsenceGateChecks(root, checkStreams)
+	problems = append(problems, waProblems...)
+	notices = append(notices, waNotices...)
 	// Dead-link lint. BLOCKING: docFiles(root) is CLAUDE.md plus every
 	// *.md under docs/**, so its inputs INCLUDE every stream README and brief
 	// file. It is also the only check that catches a README row whose brief file
@@ -1231,6 +1250,19 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen patterns --lint [--root DIR]` — validate every
+	// spec/workflow-patterns/*.yaml workflow-pattern-v1 file against
+	// schemas/workflow-pattern-v1.json and the cross-field MUST rules a schema
+	// cannot express (graph-execution/02, patterns.go).
+	//
+	// Intercepted before flag parsing for conform's reason: it owns --root and
+	// its own --lint verb flag, and it is a DISTINCT artifact-class surface
+	// (pattern files, not briefs) from the board `--lint`, so it is a subcommand
+	// rather than a `--lint` leg — same shape as `conform`.
+	if len(os.Args) > 1 && os.Args[1] == "patterns" {
+		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
 	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
 	// before flag parsing for verifyrun's reason: it owns its own target
@@ -1416,6 +1448,18 @@ func main() {
 	// lane (not forced file-only) and --dry-run is its no-write "--check" surface.
 	transcribeVerdictMode := flag.Bool("transcribe-verdict", false, "verify verdict transcriber (R-6): land the Evidence-append + model-tier-flip delta from signed verifier verdict issues on the candidate tree behind authorship + RS256 signature + check:ci re-execution + the enactment gate; INERT until R-6 is signed. --dry-run = --check")
 	verdictPubkey := flag.String("pubkey", "", "--transcribe-verdict: verifier public-key PEM path; falls back to the ASSAY_VERIFIER_PUBKEY variable (PEM or base64-of-PEM)")
+	// --transcribe-scan-delta is the CROSS-REPO scan-delta transcriber
+	// (the house-private brief, R-7 clause 4): it sweeps open issues on the home
+	// repo for a scan-delta payload block signed with the issue-loop role key
+	// (deskverdict --key issue-loop), verifies it under the SAME R-7 enactment
+	// gate as --transcribe-scan, and lands the cross-repo placeholder delta
+	// behind the full clause-4 battery — container author (an identity fact),
+	// role-declared RS256 signature, body-unedited timeline, per-entry API
+	// re-check where readable, and same-repo-entry refusal. It ships INERT: it
+	// evaluates no clause until R-7's sign-off resolves, and it adds NO second
+	// arming path. --dry-run is its no-write "--check" surface.
+	transcribeScanDeltaMode := flag.Bool("transcribe-scan-delta", false, "cross-repo scan-delta transcriber (R-7 cl.4): re-derive the cross-repo placeholder delta from signed issue-loop-role scan-delta issues behind the clause-4 battery + the SAME R-7 enactment gate as --transcribe-scan; INERT until R-7 is signed. --dry-run = --check")
+	scanDeltaPubkey := flag.String("scan-delta-pubkey", "", "--transcribe-scan-delta: issue-loop public-key PEM path; falls back to the ASSAY_ISSUE_LOOP_PUBKEY variable (PEM or base64-of-PEM)")
 	closeVerifyID := flag.String("close-verify", "", "flip <stream>/<NN> verified→done with a human:<name> sign-off (refuses if not verified/gate:human)")
 	// Model-path auto-flip (methodology-metrics/39). The gate:human counterpart
 	// is --close-verify above, and the two never meet: this mode's candidate
@@ -1510,6 +1554,13 @@ func main() {
 	leadtimeMode := flag.Bool("leadtime", false, "emit authored->done lead time (median + p85, with n) per S/M/L size bucket. Reuses --since / --until / --json; --by-size selects the (currently only) per-size breakdown")
 	leadtimeBySize := flag.Bool("by-size", false, "--leadtime: break the lead-time distribution down by S/M/L (currently the only supported --leadtime shape; the flag is accepted for forward compatibility with an aggregate-only mode)")
 	flowEfficiencyMode := flag.Bool("flow-efficiency", false, "emit touch/(touch+wait) flow efficiency from historian dwell (in-progress = touch; todo/implemented/verified = wait) — a proxy pending a real work-start event; could-not-check under thin data. Reuses --since / --until / --json")
+	// --flow (graph-execution/07): the scheduling-vs-service split the
+	// bottleneck/flow-efficiency proxies cannot answer — eligible-to-start
+	// delay, active work time, external wait, verification time — plus
+	// ci_slot_saturation and gate_catch_override. Reuses --since / --until /
+	// --json / --forge; never contacts the network unless --forge is set.
+	flowMode := flag.Bool("flow", false, "emit the flow-instruments report (graph-execution/07): per-brief eligible-to-start / active-work / external-wait / verification durations, fleet medians, ci_slot_saturation and gate_catch_override, with an environment stamp. Reuses --since / --until / --json / --forge / --ci-hours-per-day. Exit 0 only once every source was read; 3 when ci_slot_saturation or gate_catch_override is could-not-check")
+	ciHoursPerDay := flag.Float64("ci-hours-per-day", 0, "--flow: available CI wall-clock hours per day, the ci_slot_saturation divisor. Absent (0 or unset) ⇒ could-not-check, never an invented number")
 	firstPassYieldMode := flag.Bool("first-pass-yield", false, "emit first-pass yield: the share of to:\"done\" briefs, linked to their merged PR via the Brief: trailer, merged with 0 CHANGES_REQUESTED, no VERIFY:FAIL, and no unresolved finding naming them. Reuses --since / --until / --json; reads gh")
 	reviewReworkMode := flag.Bool("review-rework", false, "emit the CHANGES_REQUESTED rounds/PR distribution over brief-linked merged PRs, from the full (un-laundered) reviews array. Reuses --since / --until / --json; reads gh")
 	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads gh")
@@ -1528,6 +1579,18 @@ func main() {
 	// Takes two positional args <from> <to> (YYYY-MM-DD) and requires -o <path>.
 	// -o is parsed from flag.Args() because positional args stop flag parsing.
 	exportEvidenceMode := flag.Bool("export-evidence", false, "export an evidence bundle tarball for the given date range (positional <from> <to>; -o <path>; optional -generated <RFC3339> for byte-reproducible output)")
+	// Release-keyed audit-pack export (sdlc/08): a sibling of --export-evidence
+	// keyed on a release tag (docs/release-notes/<tag>.md) rather than a date
+	// range — "show me everything behind release Y", walking
+	// release -> brief -> requirement -> Evidence/review verdict. Reuses
+	// writeEvidenceBundle's manifest.json shape verbatim (auditpack.go);
+	// -o and -generated are declared as ordinary flags (unlike
+	// --export-evidence's manual flag.Args() scan) because this mode takes no
+	// positional argument to stop flag parsing early.
+	exportAuditPackMode := flag.Bool("export-audit-pack", false, "export a release-keyed audit pack: manifest.json (identical shape to --export-evidence) plus audit-pack-report.json, a per-requirement chain of briefs/PR/review verdicts for --release <tag> (docs/release-notes/<tag>.md). Requires -release and -o; optional -generated <RFC3339> for byte-reproducible output")
+	auditPackRelease := flag.String("release", "", "--export-audit-pack: the release tag to scope the pack to (resolved against docs/release-notes/<tag>.md)")
+	auditPackOutput := flag.String("o", "", "--export-audit-pack: output tarball path")
+	auditPackGenerated := flag.String("generated", "", "--export-audit-pack: optional RFC3339 manifest timestamp for byte-reproducible output")
 	// Derived graph export (landscape-followups/06): read-only DOT/JSONL of the
 	// typed brief/finding/intake/issue graph, emitted from the existing parse
 	// tree. No new store; never reads or writes STATUS.md or any register view.
@@ -1560,6 +1623,7 @@ func main() {
 	// product override (serves:), skipping auto-derivation. Both apply to --lint;
 	// absent = today's whole-house behavior (main regen never passes them).
 	changedFile := flag.String("changed", "", "file of changed repo-relative paths (one per line); path-scopes the DAR check and auto-derives --scope")
+	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	flag.Parse()
 
@@ -1604,6 +1668,7 @@ func main() {
 			"--signoff-digest":        *signoffDigestMode,
 			"--scan-issues":           *scanIssuesMode,
 			"--transcribe-scan":       *transcribeScanMode,
+			"--transcribe-scan-delta": *transcribeScanDeltaMode,
 			"--transcribe-verdict":    *transcribeVerdictMode,
 			"--close-verify":          *closeVerifyID != "",
 			"--auto-flip-model":       *autoFlipModelMode,
@@ -1631,6 +1696,7 @@ func main() {
 			"--launch":                *launchMode,
 			"--requirements-rollup":   *requirementsRollupMode,
 			"--export-evidence":       *exportEvidenceMode,
+			"--export-audit-pack":     *exportAuditPackMode,
 			"--graph":                 *graphMode != "",
 			"--gate-scores":           *gateScoresMode,
 			"--next-up":               *nextUpMode,
@@ -1639,6 +1705,7 @@ func main() {
 			"--register-links":        *registerLinksFlag,
 			"--gate-telemetry":        *gateTelemetryMode,
 			"--telemetry-dry-run":     *telemetryDryRun,
+			"--flow":                  *flowMode,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
 			// to the first root corroborates one repo's claims and reports
 			// the others clean, unread.
@@ -1761,6 +1828,13 @@ func main() {
 	if *transcribeScanMode {
 		os.Exit(runTranscribeScan(*root, *scanDryRun,
 			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+	}
+	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
+	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
+	// resolves as --transcribe-scan; --dry-run is the no-write "--check" surface.
+	if *transcribeScanDeltaMode {
+		os.Exit(runTranscribeScanDelta(*root, *scanDryRun, *scanDeltaPubkey,
+			ghIssueLister, ghVerdictIssueResolver, ghAuthorResolver, ghCommentResolver))
 	}
 	// Verify verdict transcriber (verdict-lane/03, R-6): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-6 sign-off
@@ -1894,6 +1968,9 @@ func main() {
 	if *flowEfficiencyMode {
 		os.Exit(runFlowEfficiency(*root, *since, *doraTimingUntil, *doraJSON))
 	}
+	if *flowMode {
+		os.Exit(runFlow(*root, *forgeMode, *doraJSON, *since, *doraTimingUntil, *ciHoursPerDay))
+	}
 	if *firstPassYieldMode {
 		os.Exit(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
 	}
@@ -2021,6 +2098,29 @@ func main() {
 		}
 		os.Exit(runEvidenceExport(*root, from, to, output, generated))
 	}
+	// Release-keyed audit-pack export (sdlc/08). Unlike --export-evidence, this
+	// mode takes no positional argument, so -release/-o/-generated are ordinary
+	// registered flags that flag.Parse() already consumed above.
+	if *exportAuditPackMode {
+		if strings.TrimSpace(*auditPackRelease) == "" {
+			fmt.Fprintln(os.Stderr, "statusgen: --export-audit-pack requires -release <tag>")
+			os.Exit(2)
+		}
+		if strings.TrimSpace(*auditPackOutput) == "" {
+			fmt.Fprintln(os.Stderr, "statusgen: --export-audit-pack requires -o <output>")
+			os.Exit(2)
+		}
+		var generated time.Time
+		if strings.TrimSpace(*auditPackGenerated) != "" {
+			g, err := time.Parse(time.RFC3339, *auditPackGenerated)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "statusgen: -generated must be RFC3339 (e.g. 2026-08-03T00:00:00Z), got %q\n", *auditPackGenerated)
+				os.Exit(2)
+			}
+			generated = g
+		}
+		os.Exit(runAuditPackExport(*root, *auditPackRelease, *auditPackOutput, generated))
+	}
 	if *registerLinksFlag {
 		n, err := backfillRegisterRefs(*root)
 		if err != nil {
@@ -2076,6 +2176,23 @@ func main() {
 			if p := strings.TrimSpace(line); p != "" {
 				changedPaths = append(changedPaths, p)
 			}
+		}
+	}
+	// --changed-only: the louder, CI-refusing local sibling of --changed (task 5,
+	// forge-neutral/18). resolveChangedOnly is the pure decision core (see changedonly.go);
+	// main() only performs the print/exit its result names, so the CI-gate refusal is a
+	// table-driven unit test rather than a subprocess spawn.
+	if r := resolveChangedOnly(*changedOnlyFlag, *changedFile != "", mode == "lint", scanInCI()); *changedOnlyFlag != "" {
+		switch {
+		case r.Refusal != "":
+			fmt.Fprintln(os.Stderr, r.Refusal)
+			os.Exit(1)
+		case r.UsageErr != "":
+			fmt.Fprintln(os.Stderr, "statusgen:", r.UsageErr)
+			os.Exit(2)
+		default:
+			fmt.Fprintln(os.Stderr, r.Banner)
+			changedPaths = append(changedPaths, r.Paths...)
 		}
 	}
 	// Differential register lint: --diff-base makes --lint compare the

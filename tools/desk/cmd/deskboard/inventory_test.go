@@ -357,7 +357,11 @@ var reviewFixtures = map[string]reviewState{
 	// ordinary CHANGES_REQUESTED with no suppressed approval behind it): the classifier
 	// must read this one as SUSPECT-APPROVAL, never BLOCKED.
 	"suspect-noop-approval": {ever: true, atHead: true, blocking: true, suspectNoOp: true},
-	"approved":              {ever: true, atHead: true, approved: true},
+	// brief 21: the SAME suppressed-approval shape, but the standing CR DECLARED itself
+	// external-prereq-only, so the row is a declared external-prerequisite re-review, not a
+	// forgery — the classifier must read it as EXTERNAL-PREREQ-REVIEW, never SUSPECT-APPROVAL.
+	"external-prereq-review": {ever: true, atHead: true, blocking: true, suspectNoOp: true, externalPrereqDeclared: true},
+	"approved":               {ever: true, atHead: true, approved: true},
 	"approved-secpass":      {ever: true, atHead: true, approved: true, securityPass: true},
 	"approved-no-secpass":   {ever: true, atHead: true, approved: true, securityPass: false},
 }
@@ -408,6 +412,11 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 			return actMergeCurr
 		}
 		return actReReview
+	// brief 21: a suppressed no-op APPROVED whose standing CR declared itself
+	// external-prereq-only is a declared external-prerequisite re-review, checked BEFORE
+	// the suspectNoOp arm exactly as classify() checks it.
+	case rs.blocking && rs.suspectNoOp && rs.externalPrereqDeclared:
+		return actExternalPrereqReview
 	// #37: a suppressed no-op APPROVED over a standing CHANGES_REQUESTED at the same
 	// head must read SUSPECT-APPROVAL, never an ordinary BLOCKED — checked first since
 	// classify()'s own switch checks it before the plain blocking arm.

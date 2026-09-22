@@ -154,6 +154,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	sensitiveData := fs.String("sensitive-data", "", "risk answer: yes|no")
 	gate := fs.String("gate", "", "REFUSED: the gate is DERIVED from the risk answers, never supplied — this flag exists only to refuse a supplied value with a clear message")
 	verifyCommand := fs.String("verify-command", "", "the first Verify row's command (optional; validated — an uncommand-spanned, untokenizable, or placeholder-carrying value is refused). Default: a `go test ./...` starter row")
+	shell := fs.String("shell", "sh", "the shell the first Verify row runs under: sh (POSIX bash, the DEFAULT — portable across Git-bash and `--in-container`), cmd (Windows cmd.exe) or pwsh (PowerShell). A native-Windows command (e.g. `findstr`) MUST declare cmd/pwsh here so the marker is attached at authoring time; the default POSIX row carries no Shell column (issues #1466 / #1424).")
 	offline := fs.Bool("offline", false, "skip the freshness fetch (no stamp is written; use when there is deliberately no network)")
 	dryRun := fs.Bool("dry-run", false, "print every file that would be written and its rendered body, and write NOTHING")
 	fs.SetOutput(stderr)
@@ -188,6 +189,21 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "statusgen newbrief: stream %q has no README at %s — a brief is added to an existing stream (scaffold the stream with `statusgen init` first)\n", *stream, readmePath)
 		return newBriefExitRefuse
 	}
+	streamMeta, err := parseStreamREADME(readmePath)
+	if err != nil {
+		fmt.Fprintf(stderr, "statusgen newbrief: %s: %v\n", readmePath, err)
+		return newBriefExitRefuse
+	}
+
+	// The target stream's brief SCHEMA (v1 vs v2) is DETECTED, never assumed: it is
+	// read off the stream's own existing briefs (issue #1280) — the same signal
+	// checkBriefFiles/parseBriefFile already use to opt a file into v1 or v2
+	// validation, so this reuses that reader rather than inventing a second
+	// detector. A brand-new, brief-less stream has no signal to detect and stays
+	// v1 (today's default) — a schema bump is something a stream's first brief
+	// declares, not something newbrief can guess.
+	schema := newBriefStreamSchema(streamDir)
+	isV2 := schema == briefSchemaV2
 
 	// Risk answers → the four canonical questions. Non-interactive: one flag per
 	// question, and an UNANSWERED question is a refusal. Interactive: prompt each.
@@ -234,13 +250,50 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return code
 	}
 
+	// The shell the first Verify row runs under (issues #1466 / #1424). Resolved to
+	// one of the three known shells; the DEFAULT is `sh` (POSIX bash), which is
+	// portable across Git-for-Windows bash and the `--in-container` harness and needs
+	// no Shell column. An unknown value is refused at authoring time rather than
+	// silently defaulted — a marker the runner cannot resolve routes nowhere.
+	rowShell := strings.TrimSpace(*shell)
+	rowShell = strings.ToLower(rowShell)
+	if rowShell == "" {
+		rowShell = legacyRowShell
+	}
+	if !knownRowShells[rowShell] {
+		fmt.Fprintf(stderr, "statusgen newbrief: invalid --shell %q (want sh, cmd or pwsh)\n", *shell)
+		return newBriefExitRefuse
+	}
+
 	// The first Verify row: a supplied command is validated (step 7 — an unusable
 	// row is not a Verify row); the default is a real, runnable starter row.
 	verifyCmd := strings.TrimSpace(*verifyCommand)
+	verifySupplied := verifyCmd != ""
 	if verifyCmd == "" {
 		verifyCmd = "go test ./..."
 	} else if err := usableVerifyCommand(verifyCmd); err != nil {
 		fmt.Fprintf(stderr, "statusgen newbrief: --verify-command is not a usable Verify row: %v\n", err)
+		return newBriefExitRefuse
+	}
+
+	// Shell / command consistency (issues #1466 / #1424). Two fail-closed checks so a
+	// freshly-generated brief never ships the #1424 defect — a native-Windows row
+	// (`findstr`, backslash paths) landing as the default `bash -o pipefail` row with
+	// no Shell marker, which then FAILS the first verify pass under Git-bash and
+	// `--in-container` and can only be repaired by a separate worker PR:
+	//   1. A non-sh shell with the DEFAULT command is nonsense — the default row is
+	//      POSIX; a genuine native row must be supplied.
+	//   2. A native-Windows command under the DEFAULT sh shell is refused: the author
+	//      POSIX-izes it (portable, no marker) or declares --shell so the marker is
+	//      attached in THIS pass, never left for a later Evidence-edit worker.
+	// Neither GUESSES a shell from the command text (the sniff rowclass.go forbids):
+	// they refuse an under-declared row and make the author choose.
+	if rowShell != legacyRowShell && !verifySupplied {
+		fmt.Fprintf(stderr, "statusgen newbrief: --shell %s needs a --verify-command — the default `go test ./...` starter row is POSIX and runs under sh\n", rowShell)
+		return newBriefExitRefuse
+	}
+	if rowShell == legacyRowShell && looksWindowsNative(verifyCmd) {
+		fmt.Fprintf(stderr, "statusgen newbrief: --verify-command %q is a native-Windows command that cannot run under the default POSIX shell — POSIX-ize it (e.g. `grep -F` and forward-slash paths) so Git-bash and `--in-container` both run it, or declare `--shell cmd`/`--shell pwsh` so the row is marked at authoring time, never left for a later Evidence edit (issues #1466 / #1424)\n", verifyCmd)
 		return newBriefExitRefuse
 	}
 
@@ -255,9 +308,26 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		freshness = fmt.Sprintf("freshness-checked %s @ %s (origin/main)", date, sha)
 	}
 
-	briefID := *stream + "/" + num
+	// The brief `brief:` id form is schema-dependent: v1 keeps the short
+	// `<stream>/<NN>` form; v2 is the hierarchical `<cell>:<repo-alias>:<stream>:<NN>`
+	// form (docs/dependency-graph-design.md §3.3, checkBriefV2Semantics) — reusing
+	// the SAME registry reader (loadGraphRepos) the v2 lint validates against, so
+	// newbrief's id can never diverge from what --lint accepts.
+	var briefID string
+	if isV2 {
+		id, code, msg := newBriefV2ID(*root, streamMeta.Repo, *stream, num)
+		if code != newBriefExitOK {
+			fmt.Fprintf(stderr, "statusgen newbrief: %s\n", msg)
+			return code
+		}
+		briefID = id
+	} else {
+		briefID = *stream + "/" + num
+	}
 	body := renderNewBrief(newBriefSpec{
 		id:        briefID,
+		num:       num,
+		schema:    schema,
 		title:     *title,
 		wave:      wave,
 		depends:   []string(deps),
@@ -268,6 +338,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		stream:    *stream,
 		freshness: freshness,
 		verifyCmd: verifyCmd,
+		shell:     rowShell,
 	})
 
 	// Assemble every planned write: the new brief, the README row, and the inverse
@@ -279,7 +350,22 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "statusgen newbrief: reading %s: %v\n", readmePath, err)
 		return newBriefExitWrite
 	}
-	newReadme, err := insertBriefRow(string(readmeRaw), num, *title, slug, wave, *effort)
+	// A `board: generated` stream's Briefs table is a SINGLE-WRITER generated
+	// region (readmetable.go, `statusgen regen --readmes`'s own job) — the row is
+	// rendered through the exact same pipeline regen uses (newBriefRegenReadme),
+	// never through insertBriefRow's independent hand-rolled row writer, so the
+	// brief this call creates never immediately trips `--lint`'s "hand edit to a
+	// generated table" the way the old direct-insert path did (issue #1280). A
+	// hand-maintained (not `board: generated`) stream keeps the pre-existing
+	// insertBriefRow path unchanged.
+	var newReadme string
+	if streamMeta.Board == "generated" {
+		newReadme, err = newBriefRegenReadme(string(readmeRaw), newBriefGenRows(streamDir, genRow{
+			num: num, title: *title, file: filepath.Base(briefPath), wave: wave, effort: *effort,
+		}))
+	} else {
+		newReadme, err = insertBriefRow(string(readmeRaw), num, *title, slug, wave, *effort)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "statusgen newbrief: %s: %v\n", readmePath, err)
 		return newBriefExitRefuse
@@ -444,11 +530,23 @@ type depResolved struct {
 }
 
 // newBriefDeriveWave derives the wave from the declared dependencies and resolves
-// each to its brief file for the inverse-edge write. No deps → wave 0. Otherwise
-// one more than the highest dependency wave. A dependency that does not resolve to
-// an existing brief file is a REFUSAL — never a dangling edge.
+// each to its brief file for the inverse-edge write. With no deps, the wave is
+// the stream's OWN base wave — the minimum wave among its existing briefs — not a
+// hardcoded 0 (issue #1280): several live streams (e.g. forge-neutral,
+// desk-tools) never use wave 0 at all, because their first wave was authored as
+// wave 1; a depless brief added later that defaulted to a hardcoded 0 would claim
+// a wave that does not exist anywhere else in the stream's own DAG and would read
+// as "runs before wave 1's already-implemented work", which is backwards for a
+// brief authored after it. A stream with no existing (parseable) briefs yet has
+// no base to read and falls back to 0, unchanged from before. With deps: one more
+// than the highest dependency wave, as before. A dependency that does not resolve
+// to an existing brief file is a REFUSAL — never a dangling edge.
 func newBriefDeriveWave(root, selfStream string, deps depList, stderr io.Writer) (int, []depResolved, int) {
 	if len(deps) == 0 {
+		streamDir := filepath.Join(root, "docs", "streams", selfStream)
+		if base, ok := newBriefStreamMinWave(streamDir); ok {
+			return base, nil, newBriefExitOK
+		}
 		return 0, nil, newBriefExitOK
 	}
 	var resolved []depResolved
@@ -503,6 +601,130 @@ func findBriefFile(dir, num string) string {
 	return found[0]
 }
 
+// newBriefStreamSchema DETECTS the target stream's brief schema by reading its
+// EXISTING briefs — the same opt-in parseBriefFile already performs for every
+// other check, reused here rather than a second detector (issue #1280). ANY
+// existing brief that parses as `schema: brief-v2` marks the whole stream v2:
+// brief-v2 is a fleet-wide flag-day per stream (briefv2.go's file header), so one
+// v2 brief is enough signal, and biasing toward v2 when there is ANY evidence is
+// the safe direction — it can never reintroduce a v1-shaped brief into an
+// already-migrated stream. A stream with no existing (parseable) briefs yet has
+// no signal and stays v1, unchanged from before newbrief knew about v2 at all.
+func newBriefStreamSchema(streamDir string) string {
+	entries, err := os.ReadDir(streamDir)
+	if err != nil {
+		return briefSchemaCurrent
+	}
+	for _, e := range entries {
+		if e.IsDir() || !newBriefNumRe.MatchString(e.Name()) {
+			continue
+		}
+		bf, ok, err := parseBriefFile(filepath.Join(streamDir, e.Name()))
+		if err != nil || !ok {
+			continue
+		}
+		if bf.Schema == briefSchemaV2 {
+			return briefSchemaV2
+		}
+	}
+	return briefSchemaCurrent
+}
+
+// newBriefStreamMinWave returns the minimum wave among a stream's existing
+// (parseable) briefs, and false when the stream has none to read — the base a
+// depless newBriefDeriveWave call anchors on (see its doc comment).
+func newBriefStreamMinWave(streamDir string) (int, bool) {
+	entries, err := os.ReadDir(streamDir)
+	if err != nil {
+		return 0, false
+	}
+	min := -1
+	for _, e := range entries {
+		if e.IsDir() || !newBriefNumRe.MatchString(e.Name()) {
+			continue
+		}
+		bf, ok, err := parseBriefFile(filepath.Join(streamDir, e.Name()))
+		if err != nil || !ok {
+			continue
+		}
+		if min == -1 || bf.Wave < min {
+			min = bf.Wave
+		}
+	}
+	if min == -1 {
+		return 0, false
+	}
+	return min, true
+}
+
+// newBriefV2ID resolves the hierarchical brief-v2 `brief:` id — `<cell>:<repo
+// alias>:<stream>:<NN>` (docs/dependency-graph-design.md §3.3) — for a new brief
+// in stream/num, whose owning repo is streamRepo (the stream README's `repo:`
+// field). It REUSES loadGraphRepos, the same registry reader
+// checkBriefV2Semantics validates a written brief against, so an id newbrief
+// mints can never diverge from what --lint independently accepts. The repo alias
+// is the one PUBLISHED (non-unpublished) registry entry whose repo matches
+// streamRepo; an absent registry, an unresolvable repo, or an ambiguous (more
+// than one alias for the same repo) registry are refusals, never a guessed id.
+func newBriefV2ID(root, streamRepo, stream, num string) (id string, code int, errMsg string) {
+	reg, ok, err := loadGraphRepos(root)
+	if err != nil {
+		return "", newBriefExitRefuse, fmt.Sprintf("docs/streams/graph-repos.yaml: %v", err)
+	}
+	if !ok || reg == nil {
+		return "", newBriefExitRefuse, "the target stream is brief-v2 but docs/streams/graph-repos.yaml (schema graph-repos-v1) is absent — a v2 tree requires the alias registry (see docs/dependency-graph-design.md §3.3)"
+	}
+	if strings.TrimSpace(streamRepo) == "" {
+		return "", newBriefExitRefuse, fmt.Sprintf("the target stream is brief-v2 but its README carries no `repo:` field — a v2 id needs the repo alias to resolve from docs/streams/graph-repos.yaml, and that resolution is keyed on the stream's own repo")
+	}
+	alias := ""
+	for a, e := range reg.Aliases {
+		if e.Unpublished || e.Repo != streamRepo {
+			continue
+		}
+		if alias != "" && alias != a {
+			return "", newBriefExitRefuse, fmt.Sprintf("docs/streams/graph-repos.yaml declares more than one alias for repo %q (at least %q and %q) — newbrief cannot pick one; author the `brief:` id by hand", streamRepo, alias, a)
+		}
+		alias = a
+	}
+	if alias == "" {
+		return "", newBriefExitRefuse, fmt.Sprintf("docs/streams/graph-repos.yaml has no published alias for this stream's repo %q — add one before authoring a brief-v2 brief here", streamRepo)
+	}
+	return fmt.Sprintf("%s:%s:%s:%s", reg.Cell, alias, stream, num), newBriefExitOK, ""
+}
+
+// newBriefGenRows returns the authoring-column rows a `board: generated` stream's
+// Briefs table would render for its EXISTING briefs (streamBriefRows, the same
+// reader `regen --readmes` uses) PLUS the one new brief being authored, which is
+// not yet on disk — sorted the same way the generated render sorts. Building the
+// new brief's row in memory (rather than writing it to disk first) keeps
+// newbrief's atomic all-or-nothing plan intact: nothing is written until every
+// planned file has been validated.
+func newBriefGenRows(streamDir string, extra genRow) []genRow {
+	rows := streamBriefRows(&Stream{Dir: streamDir})
+	rows = append(rows, extra)
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].num < rows[j].num })
+	return rows
+}
+
+// newBriefRegenReadme rewrites a `board: generated` README's marker-wrapped
+// Briefs region from rows, REUSING the exact extractRegion / parsePreservedRegion
+// / renderRowsRegion / framedRegion pipeline `regen --readmes` runs — so the row
+// newbrief writes is byte-IDENTICAL to what a fresh regen would produce, and a
+// brief authored into a generated stream never trips `--lint`'s "hand edit to a
+// generated table" the way the old direct-insert path did (issue #1280). An
+// absent marker pair is a refusal (error), matching rewriteReadmeRegion's own
+// contract for a `board: generated` README that has not opted into the markers.
+func newBriefRegenReadme(readme string, rows []genRow) (string, error) {
+	prefix, region, suffix, ok := extractRegion(readme)
+	if !ok {
+		return "", fmt.Errorf("board: generated but no %s / %s markers around the Briefs table", briefsMarkerBegin, briefsMarkerEnd)
+	}
+	preserved, extras := parsePreservedRegion(region)
+	rendered := renderRowsRegion(rows, preserved, extras)
+	return framedRegion(prefix, rendered, suffix), nil
+}
+
 // usableVerifyCommand reports whether a Verify command cell is a real, runnable row
 // (step 7). It REUSES the lint's own tokenizer and placeholder detector rather than
 // writing a second one: no code span → not a row; a code span that tokenizes to
@@ -526,6 +748,31 @@ func usableVerifyCommand(cell string) error {
 		return fmt.Errorf("the command carries the unsubstituted placeholder(s) %s — substitute a concrete value or derive it in the command", strings.Join(mv, ", "))
 	}
 	return nil
+}
+
+// looksWindowsNative reports whether a Verify command's first command WORD is a
+// categorically Windows-only tool that cannot run under a POSIX shell — today just
+// `findstr`, issue #1424's documented case (`findstr /c:"…" path\with\backslashes`
+// passes under cmd.exe but fails under bash, whose parsing eats the `*`, quotes and
+// backslashes before the tool sees them). It reuses the lint's own tokenizer and
+// judges the FIRST non-operator token only.
+//
+// This is NOT the "sniff the text to PICK a shell" that rowclass.go forbids: it
+// never selects a shell for the row. It only lets newbrief REFUSE an under-declared
+// default row and make the author choose (POSIX-ize, or declare --shell) — a
+// fail-closed authoring guard, not a run-time routing guess. Backslash-path
+// detection is deliberately left OUT here (too false-positive-prone against ordinary
+// bash escapes); the "use forward slashes" rule for hand-authoring lives in the
+// author-brief skill and brief-template prose, where a human reads it in context.
+func looksWindowsNative(cell string) bool {
+	for _, t := range tokenizeCommand(codeSpan(cell)) {
+		if t.op {
+			continue
+		}
+		word := strings.TrimSpace(t.text)
+		return strings.EqualFold(word, "findstr")
+	}
+	return false
 }
 
 // newBriefValidatePlan verifies every planned target PARSES after its edit, so a
@@ -613,6 +860,8 @@ var newBriefNow = time.Now
 // newBriefSpec carries the resolved inputs to renderNewBrief.
 type newBriefSpec struct {
 	id        string
+	num       string // the bare brief number NN — the `id` alone no longer carries it recoverably under a v2 hierarchical id (no "/")
+	schema    string // briefSchemaCurrent ("brief-v1") or briefSchemaV2 ("brief-v2")
 	title     string
 	wave      int
 	depends   []string
@@ -623,6 +872,7 @@ type newBriefSpec struct {
 	stream    string
 	freshness string
 	verifyCmd string
+	shell     string // the resolved shell for the first Verify row: sh (default, no Shell column) / cmd / pwsh (issues #1466 / #1424)
 }
 
 // renderNewBrief emits the brief document: every required key present (empty values
@@ -646,10 +896,11 @@ func yamlScalar(v string) string {
 
 func renderNewBrief(s newBriefSpec) string {
 	var b strings.Builder
-	num := s.id
-	if i := strings.LastIndex(s.id, "/"); i >= 0 {
-		num = s.id[i+1:]
-	}
+	// num is carried explicitly rather than parsed from s.id: a brief-v1 id has
+	// it after the last "/", but a brief-v2 hierarchical id (<cell>:<alias>:
+	// <stream>:<NN>) has no "/" at all, so parsing it out of s.id silently broke
+	// under v2 (issue #1280) — the caller resolves it once and passes it through.
+	num := s.num
 
 	// depends: rendered as an inline typed-id list, [] when none.
 	depItems := make([]string, 0, len(s.depends))
@@ -682,7 +933,14 @@ func renderNewBrief(s newBriefSpec) string {
 		b.WriteString("gate-why: \"\"\n")
 	}
 	b.WriteString("issues: []\n")
-	b.WriteString("schema: brief-v1\n")
+	b.WriteString("schema: " + s.schema + "\n")
+	if s.schema == briefSchemaV2 {
+		// version: the brief's own revision — 1 at authoring (briefv2.go's
+		// parseBriefV2Keys already defaults an ABSENT version: to 1, but this is
+		// written explicitly rather than relying on that default, matching every
+		// hand-authored brief-v2 file in the tree (e.g. forge-neutral/20).
+		b.WriteString("version: 1\n")
+	}
 	b.WriteString("authored: " + newBriefNow().UTC().Format("2006-01-02") + " by statusgen newbrief\n")
 	// sources: non-empty by construction (a stream provenance line), plus the
 	// freshness stamp when the fetch produced one — never an invented value.
@@ -717,9 +975,19 @@ func renderNewBrief(s newBriefSpec) string {
 	b.WriteString("1. \n\n")
 
 	b.WriteString("## Verify (executable — no prose-only DoD items)\n")
-	b.WriteString("| # | Command | Expect |\n")
-	b.WriteString("|---|---------|--------|\n")
-	b.WriteString(fmt.Sprintf("| 1 | `%s` | exit 0 |\n", s.verifyCmd))
+	// A native-Windows row (`--shell cmd`/`pwsh`) carries its shell marker IN the
+	// generated table (issues #1466 / #1424) — attached at authoring time, never left
+	// for a later Evidence-edit worker to retrofit. The default sh row keeps the
+	// legacy Shell-column-less shape byte-for-byte (an absent column == sh).
+	if s.shell != "" && s.shell != legacyRowShell {
+		b.WriteString("| # | Shell | Command | Expect |\n")
+		b.WriteString("|---|-------|---------|--------|\n")
+		b.WriteString(fmt.Sprintf("| 1 | %s | `%s` | exit 0 |\n", s.shell, s.verifyCmd))
+	} else {
+		b.WriteString("| # | Command | Expect |\n")
+		b.WriteString("|---|---------|--------|\n")
+		b.WriteString(fmt.Sprintf("| 1 | `%s` | exit 0 |\n", s.verifyCmd))
+	}
 	b.WriteString("<!-- Obligation classes this brief's change SHAPE may owe (brief-rules.md):\n")
 	b.WriteString("     - adds a CHECK/guard  -> a MUTATION-TEST row: break the guarded thing, confirm RED (rule 16, D1)\n")
 	b.WriteString("     - a lister/flag/query used elsewhere -> a NEIGHBOUR row exercising the adjacent reader (rule 17)\n")

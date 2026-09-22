@@ -118,21 +118,9 @@ type ghComment struct {
 	}
 }
 
-// fetchComment retrieves the comment a permalink names, through the resolved forge.
-//
-// The permalink gives the OWNER/REPO, the ITEM number and the comment id. deskclose lists the
-// comments on THAT item (ListComments) and finds the one whose database id matches — so the
-// permalink's item and the comment's actual thread are the SAME by construction (the old REST
-// path fetched the comment by id and then cross-checked its issue_url; listing on the named item
-// makes the cross-check inherent: a comment id that is not on the named item is refused).
-//
-// Fail-closed in every direction: an unparseable URL is refused, and a fetch that does not come
-// back is Unverifiable (exit 6) with ZERO closes performed. COULD-NOT-CHECK IS NOT AUTHORIZATION.
-func fetchComment(url string) (ghComment, error) { return fetchCommentKinded(url, "") }
-
-// fetchCommentTyped is fetchComment for a caller that KNOWS which kind of object the permalink
-// names. It is REQUIRED where the target is an ISSUE: the untyped ListComments reads a CHANGE's
-// thread on both backends (GitHub's pullRequest selection, forge_github.go; the same reason
+// fetchCommentTyped fetches the comment a permalink names, on the STATED kind's thread — the
+// only way to reach an ISSUE's own thread: the untyped ListComments reads a CHANGE's thread on
+// both backends (GitHub's pullRequest selection, forge_github.go; the same reason
 // superseded.go's readThread uses the typed read), so a comment on an issue is unreachable
 // through it and comes back as could-not-check every time. The human-decided triage lane fetches
 // a human ruling comment on an ISSUE and states TargetIssue so the real comment resolves.
@@ -140,9 +128,40 @@ func fetchCommentTyped(url string, kind deskkit.TargetKind) (ghComment, error) {
 	return fetchCommentKinded(url, kind)
 }
 
-// fetchCommentKinded is the shared body. kind == "" keeps the legacy untyped ListComments path
-// byte-for-byte — the ruling gate and the manifest gate are UNCHANGED — while a non-empty kind
-// uses the kind-aware ListCommentsTyped so an issue's own thread is actually reachable.
+// fetchComment retrieves the comment a permalink names, deriving which kind of object it
+// addresses from the permalink itself — deskclose has no kind-less read left to fall back to.
+//
+// `/pull/<N>` proves the object is a change (GitHub never renders an issue's own comment under
+// `/pull/`), so it reads TargetChange directly. `/issues/<N>` proves nothing on its own: a pull
+// request's comment can legitimately be linked under `/issues/<N>` too (the forge redirects it),
+// so it is read as TargetIssue first and, only when that answers could-not-check because the
+// number in fact names a change, retried as TargetChange. A could-not-check from BOTH reads
+// stays could-not-check — deskclose refuses and closes nothing.
+//
+// Trying the second kind never widens what a comment can authorize: fetchCommentKinded's id
+// match is what authorizes, and it is unchanged by which thread it was found on.
+func fetchComment(url string) (ghComment, error) {
+	kind := deskkit.TargetIssue
+	if m := commentURLRe.FindStringSubmatch(strings.TrimSpace(url)); m != nil && m[3] == "pull" {
+		kind = deskkit.TargetChange
+	}
+	c, err := fetchCommentKinded(url, kind)
+	if kind == deskkit.TargetIssue && deskkit.IsUnverifiable(err) {
+		return fetchCommentKinded(url, deskkit.TargetChange)
+	}
+	return c, err
+}
+
+// fetchCommentKinded is the shared body. The permalink gives the OWNER/REPO, the ITEM number and
+// the comment id. deskclose lists the comments on THAT item, of the STATED kind (ListCommentsTyped)
+// and finds the one whose database id matches — so the permalink's item and the comment's actual
+// thread are the SAME by construction (the old REST path fetched the comment by id and then
+// cross-checked its issue_url; listing on the named item makes the cross-check inherent: a
+// comment id that is not on the named item is refused).
+//
+// Fail-closed in every direction: an unparseable URL is refused, an unknown kind is refused (see
+// ListCommentsTyped), and a fetch that does not come back is Unverifiable (exit 6) with ZERO
+// closes performed. COULD-NOT-CHECK IS NOT AUTHORIZATION.
 func fetchCommentKinded(url string, kind deskkit.TargetKind) (ghComment, error) {
 	m := commentURLRe.FindStringSubmatch(strings.TrimSpace(url))
 	if m == nil {
@@ -164,13 +183,7 @@ func fetchCommentKinded(url string, kind deskkit.TargetKind) (ghComment, error) 
 	if ferr != nil {
 		return ghComment{}, ferr
 	}
-	var comments []deskkit.Comment
-	var err error
-	if kind == "" {
-		comments, err = fg.ListComments(fr, itemN)
-	} else {
-		comments, err = fg.ListCommentsTyped(fr, itemN, kind)
-	}
+	comments, err := fg.ListCommentsTyped(fr, itemN, kind)
 	if err != nil {
 		return ghComment{}, deskkit.Unverifiable(
 			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+

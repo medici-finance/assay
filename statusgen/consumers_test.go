@@ -1173,3 +1173,135 @@ func TestDisprovedFixedHereNamesDeferredDisposition(t *testing.T) {
 		assertDeferredHint(t, verdicts[0])
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Issue #1077 regressions
+// ---------------------------------------------------------------------------
+
+// TestBacktickedSiteTokenResolvesLikeUnbackticked is the regression fixture
+// for issue #1077 failure mode 2: a `consumers:` site token written with
+// Markdown backticks — the natural way to write a path inside a brief's own
+// prose, e.g. "`path/to/file.go`: fixed-here" — must resolve and corroborate
+// exactly like the bare, un-backticked equivalent.
+//
+// Before the fix, classifySite took the token as the first whitespace field
+// of the site text VERBATIM, backticks included, globbed it against the
+// tree, matched nothing (no file is literally named with backtick
+// characters), and the entry was DISPROVED even though the real path exists
+// and is touched by the diff.
+func TestBacktickedSiteTokenResolvesLikeUnbackticked(t *testing.T) {
+	extra := map[string]string{"web/one.go": "package web"}
+
+	t.Run("bare path corroborates", func(t *testing.T) {
+		root := consumersFixture(t, []string{"web/one.go: fixed-here"}, extra)
+		withDiff(t, "docs/streams/alpha/brief-01-claims.md", "web/one.go")
+		if code := runConsumers(root, "origin/main", ""); code != 0 {
+			t.Fatalf("bare path must corroborate; got exit %d", code)
+		}
+	})
+
+	t.Run("backtick-wrapped path corroborates identically", func(t *testing.T) {
+		root := consumersFixture(t, []string{"`web/one.go`: fixed-here"}, extra)
+		withDiff(t, "docs/streams/alpha/brief-01-claims.md", "web/one.go")
+		if code := runConsumers(root, "origin/main", ""); code != 0 {
+			t.Fatalf("backtick-wrapped path must corroborate exactly like the bare one; got exit %d", code)
+		}
+	})
+
+	t.Run("bold-wrapped path also strips", func(t *testing.T) {
+		root := consumersFixture(t, []string{"**web/one.go**: fixed-here"}, extra)
+		withDiff(t, "docs/streams/alpha/brief-01-claims.md", "web/one.go")
+		if code := runConsumers(root, "origin/main", ""); code != 0 {
+			t.Fatalf("bold-wrapped path must corroborate too; got exit %d", code)
+		}
+	})
+}
+
+func TestStripMarkdownWrap(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"web/one.go", "web/one.go"},
+		{"`web/one.go`", "web/one.go"},
+		{"**web/one.go**", "web/one.go"},
+		{"`**web/one.go**`", "web/one.go"},
+		{"`unbalanced", "`unbalanced"}, // no matching close: left alone
+		{"`", "`"},                     // a single stray backtick is not a pair
+	}
+	for _, c := range cases {
+		if got := stripMarkdownWrap(c.in); got != c.want {
+			t.Errorf("stripMarkdownWrap(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestDisprovedReasonNamesTheFailingCheck is the regression fixture for issue
+// #1077 failure mode 1: a genuinely-missing `fixed-here` path must still be
+// DISPROVED, but the reason string must name WHICH check failed — tree-lookup
+// vs diff-lookup — rather than one conflated sentence that leaves a reader
+// unable to tell which predicate actually returned false (the defect that
+// stranded desk-containers/08's debugging: no probe could tell which check
+// was failing).
+func TestDisprovedReasonNamesTheFailingCheck(t *testing.T) {
+	streamsAndBrief := func(t *testing.T, root string) (*BriefFile, []*Stream) {
+		t.Helper()
+		streams, _, err := loadStreams(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bf, ok, err := parseBriefFile(filepath.Join(root, "docs", "streams", "alpha", "brief-01-claims.md"))
+		if err != nil || !ok {
+			t.Fatalf("fixture must parse: %v", err)
+		}
+		return bf, streams
+	}
+
+	// Both the tree-lookup AND the diff-deletion-lookup fail: the path exists
+	// nowhere at all.
+	t.Run("both checks fail", func(t *testing.T) {
+		root := consumersFixture(t, []string{"web/does-not-exist.go: fixed-here"}, nil)
+		bf, streams := streamsAndBrief(t, root)
+		changed := map[string]bool{"docs/streams/alpha/brief-01-claims.md": true}
+		verdicts := corroborateBrief(root, streams, changed, nil, bf)
+		if len(verdicts) != 1 {
+			t.Fatalf("want 1 verdict, got %d: %+v", len(verdicts), verdicts)
+		}
+		v := verdicts[0]
+		if v.State != stateDisproved {
+			t.Fatalf("state = %s, want %s (reason: %s)", v.State, stateDisproved, v.Reason)
+		}
+		if !strings.Contains(v.Reason, "tree-lookup") {
+			t.Errorf("reason must name the tree-lookup check by name; got: %s", v.Reason)
+		}
+		if !strings.Contains(v.Reason, "diff-deletion-lookup") {
+			t.Errorf("reason must name the diff-deletion-lookup check by name; got: %s", v.Reason)
+		}
+		if strings.Count(v.Reason, "FAILED") < 2 {
+			t.Errorf("reason must state that BOTH checks FAILED individually; got: %s", v.Reason)
+		}
+	})
+
+	// The tree-lookup SUCCEEDS (the path is real) but the diff-lookup fails
+	// (the diff never touches it) — the desk-containers/08 shape: a path
+	// found by ls/git ls-files but the entry is still disproved because the
+	// branch's diff does not actually touch it.
+	t.Run("tree-lookup OK, diff-lookup fails", func(t *testing.T) {
+		root := consumersFixture(t, []string{"web/untouched.go: fixed-here"}, map[string]string{
+			"web/untouched.go": "package web",
+		})
+		bf, streams := streamsAndBrief(t, root)
+		changed := map[string]bool{"docs/streams/alpha/brief-01-claims.md": true}
+		verdicts := corroborateBrief(root, streams, changed, nil, bf)
+		if len(verdicts) != 1 {
+			t.Fatalf("want 1 verdict, got %d: %+v", len(verdicts), verdicts)
+		}
+		v := verdicts[0]
+		if v.State != stateDisproved {
+			t.Fatalf("state = %s, want %s (reason: %s)", v.State, stateDisproved, v.Reason)
+		}
+		if !strings.Contains(v.Reason, "tree-lookup: OK") {
+			t.Errorf("reason must say the tree-lookup check succeeded; got: %s", v.Reason)
+		}
+		if !strings.Contains(v.Reason, "diff-lookup: FAILED") {
+			t.Errorf("reason must say the diff-lookup check failed; got: %s", v.Reason)
+		}
+	})
+}

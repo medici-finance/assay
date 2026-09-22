@@ -288,6 +288,31 @@ Additional task-correctness spot checks: token relocation confirmed real (moved 
 Per frontmatter `gate: model`: this verifier does not sign off and status does not change. Evidence-only, for the dispatching session to route per the gate:model path.
 
 **Additional findings worth relaying (not Verify-row failures):** (1) this brief's own Verify rows 1, 2a, 3, and 9 have command-authoring bugs (an escaped-pipe-as-literal issue in two different regex dialects, and a moving-ref comparison) — statusgen's own lint independently flags all of these as NOTICEs; worth a small brief-hygiene fix. (2) statusgen also flags a risk-files-crossread NOTICE: this brief answers all four risk questions "no" but its files: list names a security-path-triggering CI workflow file — worth a human/desk glance even though the actual edit currently lands only as a sidecar patch rather than a live workflow change. (3) The unrelated drift causing rows 2/5's FAIL (a skill added without regenerating packaging/bindings) is a real, currently-live defect worth its own filing.
+### Non-implementer verifier re-run — VERIFY: FAIL (CI-wiring deliverable never landed, filed) — sonnet-5-verifier (verify-desk dispatch), @ merged main `ee79ed43e`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main (HEAD already at origin/main, no fetch needed). Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | grep for harnessgen/harnesslint/plugindrift in ci.yml | 3 module dirs appear in build-test's go test case | **FAIL** — 0 matches, confirmed by an independent direct grep of the whole file for all three tool names too. Genuinely absent, not a regex artifact | 2026-09-18 | sonnet-5-verifier |
+| 2 | `go test ./...` in all 3 tool modules | suites=0 | checked-clean, suites=0 — all three modules pass; unrelated drift from the 2026-09-12 pass (skill added without repackaging) no longer present | 2026-09-18 | sonnet-5-verifier |
+| 2a | mutation: plant a canary skill, re-run harnessgen filtered check | non-zero exit | checked-failed as expected once the row's own regex-escaping bug is corrected (same pre-existing authoring quirk flagged in the 2026-09-12 pass, reproduced identically); guard genuinely catches the canary | 2026-09-18 | sonnet-5-verifier |
+| 3 | grep for harnesslint bodies/bindings invocation in ci.yml | ≥2 | **FAIL** — 0, confirmed by row 1's direct grep too; the neutrality-gate CI leg is not present on main | 2026-09-18 | sonnet-5-verifier |
+| 4 | `harnesslint bodies` on real skills | exit 0 | checked-clean, no violations | 2026-09-18 | sonnet-5-verifier |
+| 4a | mutation: banned token replanted | exit 1 | checked-failed as expected | 2026-09-18 | sonnet-5-verifier |
+| 5 | `harnesslint bindings` on real references | exit 0 | checked-clean, no violations; 3 declared non-matrix files correctly skipped, all real matrices fully checked | 2026-09-18 | sonnet-5-verifier |
+| 5a | mutation: undeclared junk reference | exit 1 | checked-failed as expected, 8 violations — proves the skip is keyed on declaration not filename | 2026-09-18 | sonnet-5-verifier |
+| 6 | harnesslint's own NonMatrix/Skip/Bindings test suite | suite=0 | checked-clean, all named subtests pass | 2026-09-18 | sonnet-5-verifier |
+| 7 | `statusgen --lint --root .` | exit 0, no PROBLEM | checked-clean, LINT: PASS | 2026-09-18 | sonnet-5-verifier |
+| 8 | changelog aggregate check | exit 0 | checked-clean | 2026-09-18 | sonnet-5-verifier |
+| 9 | conflict-marker sweep + touch-set narrowness | 0 markers, narrow diffstat | checked-clean — 14 repo-wide `<<<<<<<` hits all confirmed legitimate (prose quoting the string, detection code/tests); merge-commit diffstat touches exactly the brief's declared files, .github/workflows/ci.yml itself untouched (only the sidecar .patch file) — confirms the CI wiring was never pushed, not that it drifted. `git apply --check` on the sidecar patch: exit 0, still applies cleanly against current main | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: rows map 1:1 to the brief's Deliverables items (a: CI wiring, rows 1/3/9; b: skill-body scrubs, rows 4/4a; c: harnesslint bindings declared-skip, rows 5/5a/6; plus board/changelog hygiene rows 7/8, and drift-oracle proof rows 2/2a).
+
+RISK-VALUE: DERIVED — version="1.0.14" @ plugins/assay/.codex-plugin/plugin.json:3 — mechanically regenerated to equal the Claude manifest's version (confirmed identical this pass); not an authored/picked value, reversible via a harnessgen re-run.
+RISK-VALUE: N/A — enumeration over the checkBindings/nonMatrixDeclaration diff found no literal threshold/timeout/ratio/authority-binding; it is pure string-marker parsing.
+
+VERIFY: FAIL — held at implemented. Items (b) skill-body scrubs and (c) harnesslint bindings declared-skip are fully landed and verified-clean (every row incl. positive/narrowness controls). Item (a) — wiring the three tools into public CI — has NOT landed: `.github/workflows/ci.yml` carries zero references to any of them. The fix exists as an unapplied sidecar patch (`tools/harnesslint/ci.yml.patch`, confirmed not stale, applies cleanly) but the authoring identity cannot push `.github/workflows/**` (App tokens lack workflows scope). This is exactly the blocker three sibling briefs (harness-portability/04, 06, 12) independently cited as their own unlanded CI-wiring dependency — hp/15 itself is still blocked on the same constraint. Filed medici-finance/assay#1332 (help wanted) asking for a human push via the human:<name> path.
 
 ## Review
 

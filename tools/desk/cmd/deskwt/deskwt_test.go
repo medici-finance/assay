@@ -79,6 +79,10 @@ func originBare(t *testing.T, work string) string {
 // withEnv points deskkit's runtime dir at a fresh HOME, binds getwd to work, overrides
 // the sanctioned tmp prefix at a fresh temp dir (so add/remove is portable & offline),
 // and installs the in-process command recorder. Returns the recorded argv slice.
+// fixtureTokenValue is what the fixture minter writes into the token file. It is a fixture,
+// not a credential; the credential-fill test reads it back through git's own helper chain.
+const fixtureTokenValue = "fixture-token-not-a-secret"
+
 func withEnv(t *testing.T, work string) *[][]string {
 	t.Helper()
 	fixtureHome := t.TempDir()
@@ -97,6 +101,22 @@ func withEnv(t *testing.T, work string) *[][]string {
 		t.Fatalf("mkdir tmpBaseDir: %v", err)
 	}
 	t.Cleanup(func() { tmpBaseDir = oldTmp })
+
+	// role-init's two envelope seams (#1309 item 7): a fixture has no App credential to mint
+	// and no forge to preflight against, so the minter hands back a fixture token FILE (its
+	// path, never a value on stdout) and the preflight is green unless a test says otherwise.
+	oldTok := roleTokenPath
+	roleTokenPath = func(role, owner string) (string, error) {
+		p := filepath.Join(fixtureHome, role+"-token-fixture")
+		if err := os.WriteFile(p, []byte(fixtureTokenValue+"\n"), 0o600); err != nil {
+			return "", err
+		}
+		return p, nil
+	}
+	t.Cleanup(func() { roleTokenPath = oldTok })
+	oldPf := roleInitPreflight
+	roleInitPreflight = func(deskkit.PreflightRequest) error { return nil }
+	t.Cleanup(func() { roleInitPreflight = oldPf })
 
 	calls := &[][]string{}
 	oldExec := execCommand

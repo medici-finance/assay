@@ -136,6 +136,28 @@ install location). This gives exactly one ACTIVE provider in this repo today and
 literal, file-presence answer to "mark a second adapter installed" for the mutation row.
 Flagging this explicitly since it is a modeling choice beyond the brief's literal text,
 for the reviewer to confirm or redirect.
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` origin/main. Deliverable PR #952 (`assay-worker-app[bot]`, own Evidence self-attributed/unverified per house rule) confirmed an ancestor of merged main. Every row independently re-run.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `ls components/harness-*/component.yaml \| wc -l` | 3 | exit 0, `3` | 2026-09-17 | sonnet-5-verifier |
+| 2 | `grep -l 'assay.harness' plugins/assay/skills/*/component.yaml \| wc -l` | equals # skill dirs | exit 0, `12`=`12`; manually inspected all 12, each genuinely has `assay.harness` under `inject.required` | 2026-09-17 | sonnet-5-verifier |
+| 3 | `grep -n 'exclusive: true' components/KEYS.md` | one line, `assay.harness` | exit 0, one line at :74 | 2026-09-17 | sonnet-5-verifier |
+| 4 | `deskmanifest lint --root .` | exit 0 | built from in-tree source, exit 0, "checked-clean: 26 manifest(s)" | 2026-09-17 | sonnet-5-verifier |
+| 5 | mutation: mark 2nd adapter installed, lint, restore | exit 1 naming both providers, restore exit 0 | exit 1, `PROBLEM: assay.harness has 2 ACTIVE providers: assay/harness-claude-code, assay/harness-codex` exact match; restored, clean | 2026-09-17 | sonnet-5-verifier |
+| 6 | codex-only fixture, `--activation` | exit 0, hooks INACTIVE, flavour mismatch named | built an independent fixture (not copied from the repo's own test) with codex-only provider + hooks requiring `flavour: claude-code`; ran the literal CLI form (not `go test`) — exit 0, "assay/hooks: INACTIVE — assay.harness flavour codex ≠ claude-code" | 2026-09-17 | sonnet-5-verifier |
+| 7 | `git diff --stat origin/main -- plugins/assay/.claude-plugin plugins/assay/.codex-plugin plugins/assay/cursor plugins/assay/hooks/hooks.json` | empty | exit 0, empty | 2026-09-17 | sonnet-5-verifier |
+| 8 | `go test ./cmd/deskmanifest/...` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 9 | `harnessgen cursor` idempotence | identical output | built from source, ran twice, identical stdout, tree clean | 2026-09-17 | sonnet-5-verifier |
+| 10 | `statusgen --lint` | exit 0 | exit 0, LINT: PASS, only pre-existing unrelated NOTICEs | 2026-09-17 | sonnet-5-verifier |
+
+**RISK-VALUE: DERIVED** — the three activation-evidence marker paths (`.claude-plugin/marketplace.json`, `AGENTS.md`, `.cursor/rules`) that `computeActivation` gates exclusivity on, cross-checked against `docs/streams/harness-portability/README.md:44,51,136-137` independently (not trusted from prose) — match. `assay.harness exclusive: true` in `components/KEYS.md:74` confirmed matched by the actual regex `loadExclusiveKeys` uses (read in `lint.go`, not assumed). `flavour: claude-code` constraint on the hooks component's `inject.required` confirmed in the shipped `component.yaml`. Lowest-ranked: `version: 0.28.0` pin, cosmetic only.
+
+**Existing-Evidence attribution:** the brief's own `## Evidence` is unattributed in body but its landing commit is authored by `assay-worker-app[bot]` (the implementer) — void per house rule; not relied on for any row above, every row independently re-run.
+
+**VERIFY: PASS** — all 10 rows independently reproduced clean. No invented scope — all rows map 1:1 to files actually in the diff.
 
 ## Review
 

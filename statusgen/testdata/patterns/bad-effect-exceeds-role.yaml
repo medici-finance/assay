@@ -1,0 +1,31 @@
+# Fixture for TestPatternsEffectExceedsRoleIsProblem — a `reviewer`-role node
+# declaring a `push` effect. `reviewer`'s permitted effect kinds are `review` and
+# `comment` only (spec/workflow-pattern-v1.md §7); `push` is a `worker`-only
+# effect kind. This MUST make `statusgen patterns --lint` exit 1, naming
+# pattern-effect-exceeds-role.
+schema: workflow-pattern-v1
+pattern: bad-effect-exceeds-role
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review]
+  human: [review]
+nodes:
+  - id: implement
+    kind: artifact
+    role: worker
+    outputs: [branch]
+  - id: review
+    kind: check
+    role: reviewer
+    inputs:
+      - {artifact: branch}
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "reviewer APPROVED", mandatory: true}
+    effects:
+      - {kind: push, target: approval}
+edges:
+  - {from: implement, to: review}
+join: review

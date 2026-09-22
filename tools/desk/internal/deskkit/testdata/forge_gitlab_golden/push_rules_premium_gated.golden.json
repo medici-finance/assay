@@ -6,6 +6,6 @@
     }
   ],
   "result": null,
-  "err": "could-not-check: GET /projects/medici-finance%2Fassay/push_rule — permission or tier gate (HTTP 403): the token's role, or the instance's GitLab tier, does not expose this endpoint — push rules are a Premium feature — on Community Edition the route does not exist; record the row as `not available — Premium`: forge API GET /projects/medici-finance%2Fassay/push_rule returned HTTP 403",
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/push_rule — permission or tier gate (HTTP 403): the token's role, or the instance's GitLab tier, does not expose this endpoint — push rules are a Premium feature — on Community Edition the route does not exist; record the row as `not available — Premium`: forge API GET /projects/medici-finance%2Fassay/push_rule returned HTTP 403: {message: 404 Not Found}",
   "not_found": false
 }

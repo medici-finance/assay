@@ -117,8 +117,8 @@ facts:
 | 5 | **Mutation — binding consistency**: `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/`the-desk`/the-desk/g' plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit `2` naming `the-desk` — packaging↔binding skew is a build error |
 | 6 | Neutrality holds: `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | `0` — adopt's Cursor section stays neutral; `cursor.md` resolves every capability + has a cell per skill |
 | 7 | Neighbours unbroken: `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | `0` — the `resident` and `codex` verbs still pass beside the new one |
-| 8 | Adopt path present: `grep -qi 'cursor' plugins/assay/skills/adopt/SKILL.md && grep -qF 'cursor/assay.mdc' plugins/assay/skills/adopt/SKILL.md; echo $?` | `0` — install scenario + the generated-rule step both present |
-| 8a | **Positive control for row 8**: `grep -qF 'cursor/assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | `1` — the probe reports absence for an absent token |
+| 8 | Adopt path present: `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | `0` — the Cursor install scenario + the generated-rule step both present. (Retarget: the adopter-facing install scenario landed in `docs/adopting-assay.md` — §"Running Assay on Cursor — a second first-class harness" — after `plugins/assay/skills/adopt/SKILL.md` was converted to a thin router; the generated-rule step is the referenced `plugins/assay/cursor/` output, home of the generated `assay.mdc`.) |
+| 8a | **Positive control for row 8**: `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | `1` — the probe reports absence for an absent token |
 | 9 | `.mdc` frontmatter: `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | `0` — the generated rule carries the `.cursor/rules` always-apply contract |
 | 10 | Live-confirm rows flagged, not asserted: `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | `≥ 5` — the unrunnable rows are flagged, never greened |
 | 11 | New entries fresh: `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both new entries report `FRESH` (the tool's whole-repo exit is 1 only from pre-existing unrelated stale artifacts, never from these entries) |
@@ -167,6 +167,65 @@ Ran the Verify table against public medici-finance/assay merged main `553dc2ae53
 **Why FAIL — a stale probe, not a Change Failure.** Row 8's specified probe targets `plugins/assay/skills/adopt/SKILL.md` for the Cursor install scenario (this brief's `consumers` frontmatter marks it `fixed-here`, "section 2c"). That file is now a thin router that defers to `docs/adopting-assay.md`, and the adopter-facing Cursor substance DID land — a full "Running Assay on Cursor — a second first-class harness" section in `docs/adopting-assay.md` (referencing `plugins/assay/references/cursor.md`) plus the Cursor column in `docs/how-assay-works.md`. So the deliverable INTENT (an adopter can install Assay on Cursor) is satisfied; only the brief's own probe against the SKILL.md is stale after the adopt-skill was converted to a router. This is distinct from harness-portability/06's row 7, where the AGENTS-assay Codex resident-rules step is genuinely absent adopter-facing (a real content gap, #872). Folded under #870 (re-home Verify-row staleness family) with the retarget fix: point row 8 at `docs/adopting-assay.md` / confirm the router design. Brief stays at `implemented`; re-run row 8 after the retarget (or after a section-2c amendment to adopt/SKILL.md, if that placement is still intended — a spec call).
 
 **Risk-bearing value:** `RISK-VALUE: DERIVED — the fail-closed three-state exit gate (0 clean / 1 drift / 2 could-not-check) in tools/harnessgen is the top risk-bearing literal; a coverage or binding skew must hard-error, never silently pass. Re-derived live: exit 2 on the coverage mutation (row 4, naming probe-skill) and the binding-skew mutation (row 5, naming the-desk) against the built binary (exit 2 is observable only on a built binary; go run collapses 2→1); clean=0 (rows 2/7), drift=1 (row 3). Secondary DERIVED: alwaysApply: true at plugins/assay/cursor/assay.mdc line 3; live-confirm count 9 >= 5.`
+### Non-implementer verifier re-run — VERIFY: FAIL (row 8 stale spec pointer, already tracked) — sonnet-5-verifier (verify-desk dispatch), @ merged main `5fbf75834e1d2e5a80b44524649b4030f50e80f1`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Second independent verify pass (prior: 2026-09-11).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/harnessgen && go test ./...` | exit 0 | exit 0, all named TestCursor* subtests pass | 2026-09-18 | sonnet-5-verifier |
+| 2 | `harnessgen cursor --check` | exit 0 | exit 0, clean — matches resident source | 2026-09-18 | sonnet-5-verifier |
+| 3 | mutation: append line, check, regenerate, recheck | 1 then 0 | checked-failed then checked-clean, working tree clean after | 2026-09-18 | sonnet-5-verifier |
+| 4 | mutation: plant undeclared skill | exit 2 naming it | checked-failed (could-not-check) as expected | 2026-09-18 | sonnet-5-verifier |
+| 5 | mutation: strip a degradation cell | exit 2 naming it | checked-failed as expected | 2026-09-18 | sonnet-5-verifier |
+| 6 | `harnesslint bodies` + `bindings` | exit 0 | both checked-clean, 3 non-matrix skips correctly excluded | 2026-09-18 | sonnet-5-verifier |
+| 7 | `harnessgen resident --check` + `codex --check` | exit 0 | both checked-clean | 2026-09-18 | sonnet-5-verifier |
+| 8 | grep Cursor mentions + cursor/assay.mdc reference in adopt/SKILL.md | exit 0 | **FAIL** — zero cursor occurrences in the 58-line file | 2026-09-18 | sonnet-5-verifier |
+| 8a | control: grep an absent token | exit 1 | correctly absent | 2026-09-18 | sonnet-5-verifier |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc` | exit 0 | present at line 3 | 2026-09-18 | sonnet-5-verifier |
+| 10 | live-install-confirmation flag count in cursor-harness-capabilities.md | ≥5 | 9 | 2026-09-18 | sonnet-5-verifier |
+| 11 | freshness tool run, cursor entries | fresh | both entries FRESH, reviewed 2026-08-26, within 45d window | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all rows map 1:1 to Verify rows; no invented scope.
+
+**Root-cause confirmation, not re-derived from scratch.** Rows 1,2,3,6,7,11's module-aware command forms already reflect the fix from PR #878 (merged 2026-09-11, closing #870's go.mod-scoping half) — confirmed via `gh pr diff 878`. Row 8 is unchanged since the 2026-09-11 pass: `plugins/assay/skills/adopt/SKILL.md` is a thin 58-line router deferring to `docs/adopting-assay.md`, which DOES carry the real Cursor install-scenario content (confirmed at line 1232: "Running Assay on Cursor — a second first-class harness"). This exact row-8 staleness for hp/12 is named in #870's comment thread (distinct from #872, the genuine hp/06 content gap) — the row-8/consumers-frontmatter retarget was flagged but not yet executed as a brief edit. Already tracked, no new issue filed.
+
+RISK-VALUE: DERIVED — exitClean=0, exitDrift=1, exitCouldNotCheck=2 @ tools/harnessgen/main.go:22-24 — all four values re-derived live this pass (rows 3,4,5).
+RISK-VALUE: DERIVED — `alwaysApply: true` @ plugins/assay/cursor/assay.mdc:3 — confirmed present.
+RISK-VALUE: DERIVED — live-confirm flag count = 9 (≥5 threshold) @ docs/research/cursor-harness-capabilities.md — confirmed via grep.
+
+VERIFY: FAIL — held at implemented. Row 8 fails on a spec-pointer staleness (the brief's own consumers frontmatter and Verify row 8 still target adopt/SKILL.md directly rather than docs/adopting-assay.md's Cursor section, which is where the real content actually landed) — a decision call (retarget the row, or add a pointer into adopt/SKILL.md itself), already tracked at medici-finance/assay#870 (OPEN). Every other row passes clean, including the full mutation battery. No new issue filed.
+
+### Row-8 stale-probe retarget — implementer (worker-desk dispatch), opus-4.8[1m] — 2026-09-22
+
+The desk resolved the decision call the two prior passes flagged: **retarget Verify row 8 (and its
+positive control 8a) to the file where the de-house actually landed the adopter-facing Cursor
+install scenario** — `docs/adopting-assay.md` (§"Running Assay on Cursor — a second first-class
+harness") — rather than the pre-de-house target `plugins/assay/skills/adopt/SKILL.md`, which the
+de-house converted to a thin router. This corrects a STALE PROBE only; the underlying deliverable is
+sound (an adopter can install Assay on Cursor). No assertion was weakened: the pair still proves
+(a) the Cursor install scenario is documented and (b) the generated-rule step is present.
+
+Fail-first / then-pass evidence, run offline (`KUBECONFIG=/dev/null`) against this worktree
+(module-aware forms per PR #878):
+
+| # | Command | Exit | Note |
+|---|---------|------|------|
+| 8 (stale, pre-fix) | `grep -qi 'cursor' plugins/assay/skills/adopt/SKILL.md && grep -qF 'cursor/assay.mdc' plugins/assay/skills/adopt/SKILL.md` | `1` | FAIL — router file carries neither the install scenario nor the `cursor/assay.mdc` token |
+| 8 (retargeted) | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md` | `0` | PASS — install scenario heading + generated `plugins/assay/cursor/` output both present |
+| 8a (retargeted) | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md` | `1` | PASS — positive control reports absence for an absent token |
+
+Whole-table re-run this pass (all rows for real; row 3 mutate→regenerate→recheck restored
+`assay.mdc` byte-identical, tree left clean): rows 1,2,6,7 → exit 0; row 3 → 1 then 0; rows 4,5 →
+exit 2 naming `probe-skill` / `the-desk`; row 8 → 0 (retargeted); row 8a → 1; row 9 → 0; row 10 →
+9 (≥5); row 11 → both cursor entries FRESH. `assay.mdc` is now a TRACKED file (changed since
+authoring), so row 3's revert is equally a regenerate or `git checkout --`; either restores clean.
+Note (non-Verify residual, out of this dispatch's scope): the brief's `consumers:` frontmatter still
+reads `plugins/assay/skills/adopt/SKILL.md: fixed-here (… section 2c)` and
+`docs/adopting-assay.md: out-of-scope`; the actual landing is the reverse. Tracked under the
+Verify-row re-home family (#870); not corrected here to avoid frontmatter/lint side-effects beyond
+the probe fix. Implementer evidence — "verified" still requires a non-implementer re-run of the
+retargeted table.
 
 ## Review
 

@@ -260,11 +260,13 @@ func fetchIssueBlessed(repo string, num int) (bool, error) {
 	return deskkit.Blessed(bodyEdited, events), nil
 }
 
-// fetchIssueTrustPayload is the shared GraphQL read behind fetchIssueBlessed (the
-// trust gate) and fetchIssueEvents (the escalation clock):
+// fetchIssueTrustPayload is the GraphQL read behind fetchIssueBlessed (the trust gate):
 // ONE bounded `gh api graphql` read (deskkit.IssueTrustQuery) per issue, parsed into
 // the item's body-edit time and its content events. A query, never a mutation — the
-// PATH-shim test allows graphql invocations only when no mutation appears.
+// PATH-shim test allows graphql invocations only when no mutation appears. The escalation
+// clock does NOT route through here: it reads the WHOLE thread (fetchIssueEvents →
+// Forge.IssueContentEvents, paginated) rather than the trust gate's deliberately-bounded
+// single page.
 func fetchIssueTrustPayload(repo string, num int) (bodyEdited time.Time, events []deskkit.ContentEvent, complete bool, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
@@ -277,21 +279,33 @@ func fetchIssueTrustPayload(repo string, num int) (bodyEdited time.Time, events 
 	return tp.BodyEdited, tp.Events, tp.Complete, nil
 }
 
-// fetchIssueEvents reads a decision-owed issue's content-event history for the
-// escalation clock: last-human-response timestamp. Only
-// decision-owed issues (needs-decision/question label) pay this extra read;
-// everything else costs nothing extra. An incomplete (overflowed) thread fails
-// closed (Unverifiable) rather than guessing the clock from a partial page — unlike
-// the trust gate, which can safely treat overflow as "not blessed".
-func fetchIssueEvents(repo string, num int) ([]deskkit.ContentEvent, error) {
-	_, events, complete, err := fetchIssueTrustPayload(repo, num)
-	if err != nil {
-		return nil, err
+// fetchIssueEvents reads a decision-owed / addressed issue's comment-event history for the
+// escalation clock: last-human-response timestamp. Only decision-owed (needs-decision/
+// question label) and addressed (`to:<role>`) issues pay this extra read; everything else
+// costs nothing extra.
+//
+// It reads the WHOLE thread — Forge.IssueContentEvents paginates the comment connection to a
+// hard page cap — rather than the trust gate's deliberately-bounded single page. That is the
+// fix for the whole-board defect: the old escalation read shared the trust gate's single page
+// and returned Unverifiable (exit 6) the moment ONE decision-owed thread overflowed 100
+// comments, taking the ENTIRE board down. The trust gate can safely treat overflow as "not
+// blessed" (quarantine is the safe default for an unreadable external thread); the escalation
+// clock cannot guess "no escalation owed" from a partial page, so it reads the whole thread.
+//
+// complete is false only when even the bounded pagination could not reach the end of the
+// thread. The caller then degrades THAT ONE row conservatively (escalate, could-not-check) and
+// renders the rest of the board — an overflowed thread is never read as "no escalation owed",
+// and one long thread never fails the whole board again.
+func fetchIssueEvents(repo string, num int) (events []deskkit.ContentEvent, complete bool, err error) {
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, false, ferr
 	}
-	if !complete {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("event history for %s#%d overflowed a single page — escalation clock needs the full thread", repo, num), nil)
+	tp, terr := f.IssueContentEvents(fr, num)
+	if terr != nil {
+		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
 	}
-	return events, nil
+	return tp.Events, tp.Complete, nil
 }
 
 // labelNames flattens gh's label objects to their names, dropping blanks.
@@ -597,6 +611,11 @@ type issueBoardRow struct {
 	Action   string
 	AgeDays  int    // escalation-clock age in days; meaningful only when Action is ESCALATE
 	AddrRole string // the addressed desk role; set only when the issue carries `to:<role>`
+	// EscalationUnverifiable is set when the escalation read could not reach the end of the
+	// issue's comment thread even after bounded pagination. The row is then treated as
+	// ESCALATE (conservative) and rendered with a could-not-check marker instead of an age —
+	// so one over-long thread surfaces for a human look rather than taking the whole board down.
+	EscalationUnverifiable bool
 }
 
 // externalRow is an open issue quarantined by the trust gate: untrusted author and no
@@ -694,20 +713,35 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 				continue
 			}
 
-			// Decision-owed AND addressed items each pay ONE bounded events read (the same
-			// discipline the trust gate uses); a plain issue costs nothing extra.
+			// Decision-owed AND addressed items each pay ONE escalation-clock events read
+			// (the whole thread, paginated); a plain issue costs nothing extra.
 			var ageDays int
-			var agedPastSLA, addresseeResponded bool
+			var agedPastSLA, addresseeResponded, escalationUnverifiable bool
 			if decisionOwed || addressed {
-				events, everr := fetchIssueEvents(repo, iss.Number)
+				events, complete, everr := fetchIssueEvents(repo, iss.Number)
 				if everr != nil {
+					// A genuine read failure (transport, permission, a missing issue) is a
+					// real could-not-check for the whole sweep, unchanged.
 					return nil, nil, everr
 				}
-				last := lastHumanResponseAt(iss.CreatedAt, events)
-				ageDays = escalationAgeDays(last, now)
-				agedPastSLA = escalationExceedsSLA(ageDays, slaDays)
-				if addressed {
-					addresseeResponded = addresseeHasResponded(addrRole, events)
+				if !complete {
+					// The escalation read could not reach the end of the thread even after
+					// bounded pagination (a pathological thread beyond the page cap). Degrade
+					// THIS ONE row: treat the clock as aged-past-SLA — the CONSERVATIVE
+					// direction, surfacing it rather than silently reading an overflowed thread
+					// as "no escalation owed" — and mark the row could-not-check, while the rest
+					// of the board renders. This is the whole-board-exit-6 fix: one long thread
+					// must never take the board down. addresseeResponded stays false: an
+					// addressed row we cannot fully read still surfaces.
+					agedPastSLA = true
+					escalationUnverifiable = true
+				} else {
+					last := lastHumanResponseAt(iss.CreatedAt, events)
+					ageDays = escalationAgeDays(last, now)
+					agedPastSLA = escalationExceedsSLA(ageDays, slaDays)
+					if addressed {
+						addresseeResponded = addresseeHasResponded(addrRole, events)
+					}
 				}
 			}
 
@@ -723,7 +757,7 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 				addressed:          addressed,
 				addresseeResponded: addresseeResponded,
 			})
-			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays}
+			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays, EscalationUnverifiable: escalationUnverifiable}
 			if addressed {
 				row.AddrRole = addrRole
 			}
@@ -832,7 +866,13 @@ func renderIssueLane(w io.Writer, rows []issueBoardRow) {
 	for _, r := range rows {
 		t := title(r.Title, 70)
 		if r.Action == actEscalate {
-			t = fmt.Sprintf("%s [age %dd]", t, r.AgeDays) // render age in the row
+			if r.EscalationUnverifiable {
+				// The clock could-not-check: the thread exceeded the bounded escalation read.
+				// Reported AS ITSELF (never rounded to a real age) and treated as ESCALATE.
+				t = fmt.Sprintf("%s [escalation clock could-not-check: thread exceeds the bounded read — treated as ESCALATE, verify by hand]", t)
+			} else {
+				t = fmt.Sprintf("%s [age %dd]", t, r.AgeDays) // render age in the row
+			}
 			if r.AddrRole != "" {
 				// An addressed item that aged out shows WHO it was waiting on.
 				t = fmt.Sprintf("%s [to %s, unanswered]", t, r.AddrRole)
