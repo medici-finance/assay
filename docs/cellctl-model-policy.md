@@ -39,9 +39,13 @@ must occur exactly in that provider's map. If an ID occurs in multiple tiers wit
 efforts, request a tier to disambiguate. Context suffixes must already be pinned; an override
 cannot silently add a larger context window.
 
-Opus 5 IDs are prohibited by the policy resolver even if `deny` is omitted. `deny` adds
-case-insensitive glob patterns. The example pins the Opus alias to `claude-opus-4-8[1m]`.
-The existing coordinator rule remains: `the-desk` on Claude requires a non-Opus top model.
+Opus 5.0 IDs are prohibited by the policy resolver even if `deny` is omitted — `claude-opus-5`
+and its `[1m]` / gateway / `Opus5` / `-5-0` / `-5.0` spellings. The prohibition is anchored at
+end-of-token, so Opus 5.5 (`claude-opus-5-5`) — a valid top tier — is NOT prohibited: it ends in
+`opus-5-5`, not `opus-5`. `deny` adds further case-insensitive glob patterns. The example pins the
+Opus alias to `claude-opus-4-8[1m]`. The coordinator rule remains but is version-aware: `the-desk`
+on Claude requires a non-Opus top model, with Opus 5.5 accepted as a valid top tier while the bare
+`opus` alias, Opus 5.0 and older opus tiers stay refused.
 Without `CELL_MODEL_POLICY`, existing launcher behavior is unchanged; rollout must enable
 it on each cell that needs the prohibition.
 

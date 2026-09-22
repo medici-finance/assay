@@ -43,18 +43,32 @@ func TestResolveRoleModelPrecedence(t *testing.T) {
 }
 
 func TestOpusRefusalBindsTheDeskOnly(t *testing.T) {
-	for _, m := range []string{"opus", "Opus", "OPUS", "claude-opus-9", "CLAUDE-OPUS-9"} {
+	// Refused for the-desk: the bare `opus` strong-tier alias, Opus 5.0 (`claude-opus-5`, its
+	// `[1m]` variant and the explicit `-5-0` spelling), and every OTHER opus tier — older ones and
+	// any not yet blessed as a valid top tier (e.g. the hypothetical `claude-opus-9`).
+	for _, m := range []string{
+		"opus", "Opus", "OPUS", "claude-opus-9", "CLAUDE-OPUS-9",
+		"claude-opus-5", "CLAUDE-OPUS-5", "claude-opus-5[1m]", "claude-opus-5-0",
+	} {
 		if !isOpusPin(m) {
-			t.Errorf("isOpusPin(%q) = false, want true", m)
+			t.Errorf("isOpusPin(%q) = false, want true (an opus tier the-desk must refuse)", m)
 		}
 	}
-	for _, m := range []string{"fable", "sonnet", "haiku", "gpt-5.6-terra", "opusculum"} {
+	// Allowed: non-opus tiers, AND Opus 5.5 — the one opus tier blessed as a valid top tier, so it
+	// is NOT treated as an opus pin the-desk refuses (case-insensitive, `[1m]`-insensitive).
+	for _, m := range []string{
+		"fable", "sonnet", "haiku", "gpt-5.6-terra", "opusculum",
+		"claude-opus-5-5", "Claude-Opus-5-5", "claude-opus-5-5[1m]",
+	} {
 		if isOpusPin(m) {
 			t.Errorf("isOpusPin(%q) = true, want false", m)
 		}
 	}
 	assertDies(t, "opus for the-desk", func() { refuseOpusForTheDesk("opus") })
-	refuseOpusForTheDesk("fable") // must not refuse
+	assertDies(t, "opus-5 for the-desk", func() { refuseOpusForTheDesk("claude-opus-5") })
+	refuseOpusForTheDesk("fable")               // must not refuse
+	refuseOpusForTheDesk("claude-opus-5-5")     // Opus 5.5 is a valid top tier — must not refuse
+	refuseOpusForTheDesk("claude-opus-5-5[1m]") // the [1m] variant too
 }
 
 func TestRoleTier(t *testing.T) {

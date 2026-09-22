@@ -4,12 +4,33 @@ import (
 	"strings"
 )
 
-// isOpusPin is true when a resolved model value is the `opus` alias or a `claude-opus…` id,
-// case-insensitive (an operator could type Opus, OPUS, or a full id in any case). Any other
-// value — including another full id or a different alias — is not an Opus pin.
+// isOpusPin is true when a resolved model value is an Opus pin the-desk must REFUSE: the `opus`
+// alias or a `claude-opus…` id, case-insensitive and `[1m]`-insensitive (an operator could type
+// Opus, OPUS, or a full id in any case, with or without a context suffix) — EXCEPT an opus tier
+// blessed as a valid TOP tier. Opus 5.5 (`claude-opus-5-5`) is such a tier, so it is NOT reported
+// as an Opus pin; the bare `opus` alias, `claude-opus-5` (5.0) and older opus tiers remain refused.
+// Any non-opus value — another full id or a different alias — is not an Opus pin.
+//
+// This is the ONE place the "which opus tiers the-desk refuses" decision lives: the-desk policy
+// check (policy.go's Resolve) calls it too, so the deny/carve-out logic never forks between sites.
 func isOpusPin(m string) bool {
-	l := strings.ToLower(m)
-	return l == "opus" || strings.HasPrefix(l, "claude-opus")
+	// policyBase lowercases and strips a trailing [1m] — the same normal form the deny-list and
+	// alias comparisons use, so `Opus`, `claude-opus-5[1m]` and `claude-opus-5` compare alike.
+	l := policyBase(m)
+	if l != "opus" && !strings.Contains(l, "claude-opus") {
+		return false
+	}
+	return !isTheDeskTopTierOpus(l)
+}
+
+// isTheDeskTopTierOpus reports whether a policyBase-form opus id is Opus 5.5 — the one opus tier
+// currently accepted as a valid TOP tier for the-desk, and thus the carve-out from the otherwise
+// total opus refusal. It is anchored at end-of-token (mirroring the deny-list's `*opus-5`
+// anchoring) so `claude-opus-5-5`, its `[1m]` variant and gateway-prefixed spellings qualify while
+// `claude-opus-5` (5.0) does NOT — `claude-opus-5-5` ends in `opus-5-5`, not `opus-5`. When a
+// higher opus tier is later blessed as a valid top tier, extend it HERE only.
+func isTheDeskTopTierOpus(base string) bool {
+	return strings.HasSuffix(base, "opus-5-5") || strings.HasSuffix(base, "opus5-5")
 }
 
 // refuseOpusForTheDesk: the-desk is the one window that spends its tier on judgment, synthesis
