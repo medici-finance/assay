@@ -91,6 +91,13 @@ var originRemoteHost = func() (string, error) {
 	return hostOfRemote(strings.TrimSpace(out))
 }
 
+// HostOfRemote is the exported wrapper over hostOfRemote: it extracts the host from a git
+// remote URL (scheme://host/... or the scp-like user@host:path), lower-cased, defending
+// against the scp-like `user@a@evil.test` shape url.Parse would silently swallow. A caller
+// outside this package that must scope a per-host config key to the origin's host uses this
+// rather than re-deriving the parse (cmd/deskwt's role credential helper, #1309 item 7 fix).
+func HostOfRemote(raw string) (string, error) { return hostOfRemote(raw) }
+
 // hostOfRemote extracts the host component from a git remote URL in either an
 // scheme://host/... form or an scp-like user@host:path form.
 func hostOfRemote(raw string) (string, error) {

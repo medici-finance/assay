@@ -99,13 +99,28 @@ func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
 // ForgeAPIError is a non-2xx REST/GraphQL response. A caller maps it to Unverifiable (an
 // API error mid-check means the precondition could not be positively verified). A 404 is
 // distinguished via IsForgeNotFound — the only status that licenses a kind re-resolution.
+//
+// Body, when non-empty, is the forge's OWN structured error message for the failure —
+// GitLab renders both its response shapes (`{"message": …}` and `{"error": …}`) into one
+// readable string, and preserving it here is what turns a bare "HTTP 400" into an
+// actionable refusal a caller can act on rather than guess at (issue #1415). It is
+// control-stripped at the point it is captured (mapErr), like every other forge-origin
+// string this tree renders, and it is OPTIONAL: a backend or status that carries no body
+// leaves it empty and Error() falls back to the status-only form. Being a struct field, it
+// is also available to programmatic classification via errors.As — the one narrow use is
+// gitlabIsTransientMissingSourceBranch, which reads it to tell GitLab's post-push
+// "source branch does not exist" race apart from every other 400.
 type ForgeAPIError struct {
 	Status int
 	Method string
 	Path   string
+	Body   string
 }
 
 func (e *ForgeAPIError) Error() string {
+	if e.Body != "" {
+		return fmt.Sprintf("forge API %s %s returned HTTP %d: %s", e.Method, e.Path, e.Status, e.Body)
+	}
 	return fmt.Sprintf("forge API %s %s returned HTTP %d", e.Method, e.Path, e.Status)
 }
 
@@ -572,6 +587,15 @@ const (
 	// twin): a forge still advertising more pages past it is a could-not-check, never a
 	// silently truncated listing.
 	forgeMaxIssuePages = 100
+	// forgeListChangesPerPage / forgeListChangesMaxPages bound the ListChanges read: up to
+	// forgeListChangesMaxPages pages of forgeListChangesPerPage, most-recently-updated first.
+	// Unlike the open-issue walk this does NOT refuse at the ceiling — the represented-PR
+	// reconciliation would rather work off the recent window than hold every dispatch on a repo
+	// whose lifetime merged-PR count exceeds the ceiling — so the ceiling is reported as
+	// ChangeList.Incomplete and the consumer decides. The window (500 recent changes) covers the
+	// currently-active briefs a phantom check reasons about.
+	forgeListChangesPerPage  = 100
+	forgeListChangesMaxPages = 5
 )
 
 // ghOpenChangesQuery is the bulk open-PR read, hand-authored so it requests EXACTLY the
@@ -583,6 +607,15 @@ const (
 // conclusion, StatusContext.state) is covered by `checks:read` alone, so requesting the
 // contexts ourselves without checkSuite/workflowRun drops the scope dependency entirely.
 const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+
+// ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
+// requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
+// title, body (with its link trailers), mergedAt — and no rollup, so it carries none of
+// ghOpenChangesQuery's actions:read/checks:read scope surface. `$states` is a
+// `[PullRequestState!]` variable (OPEN | MERGED | CLOSED) built from the ChangeStates the caller
+// asked for; ordering is UPDATED_AT DESC so the bounded window is the changes most likely to
+// represent a currently-queued brief; pageInfo drives the bounded cursor walk.
+const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName title body mergedAt}}}}`
 
 func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	in := map[string]any{
@@ -696,6 +729,94 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	}, nil
 }
 
+// ghChangeStates maps a ChangeStates to the GraphQL PullRequestState enum values, in a stable
+// order so the query variable (and the golden corpus) is deterministic.
+func ghChangeStates(states ChangeStates) []string {
+	var out []string
+	if states.Open {
+		out = append(out, "OPEN")
+	}
+	if states.Merged {
+		out = append(out, "MERGED")
+	}
+	if states.Closed {
+		out = append(out, "CLOSED")
+	}
+	return out
+}
+
+func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeList, error) {
+	if !states.Any() {
+		return nil, Unverifiable("ListChanges was asked for no states — the state set must be stated "+
+			"(open/merged/closed), never defaulted to a whole-repo scan", nil)
+	}
+	wantStates := ghChangeStates(states)
+	out := &ChangeList{PageCap: forgeListChangesMaxPages}
+	var after *string
+	for page := 1; page <= forgeListChangesMaxPages; page++ {
+		vars := map[string]any{
+			"owner": repo.Owner, "name": repo.Name,
+			"first": forgeListChangesPerPage, "states": wantStates,
+		}
+		// A nil `after` on page 1 is sent as GraphQL null — the connection's start.
+		vars["after"] = after
+		in := map[string]any{"query": ghListChangesQuery, "variables": vars}
+		var resp struct {
+			Data struct {
+				Repository struct {
+					PullRequests struct {
+						PageInfo struct {
+							HasNextPage bool   `json:"hasNextPage"`
+							EndCursor   string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []struct {
+							Number      int    `json:"number"`
+							State       string `json:"state"`
+							HeadRefOid  string `json:"headRefOid"`
+							HeadRefName string `json:"headRefName"`
+							Title       string `json:"title"`
+							Body        string `json:"body"`
+							MergedAt    string `json:"mergedAt"`
+						} `json:"nodes"`
+					} `json:"pullRequests"`
+				} `json:"repository"`
+			} `json:"data"`
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		}
+		if err := g.doJSON(http.MethodPost, "/graphql", in, &resp); err != nil {
+			return nil, err
+		}
+		if len(resp.Errors) > 0 {
+			msgs := make([]string, 0, len(resp.Errors))
+			for _, e := range resp.Errors {
+				msgs = append(msgs, e.Message)
+			}
+			return nil, Unverifiable("list-changes GraphQL error: "+strings.Join(msgs, "; "), nil)
+		}
+		conn := resp.Data.Repository.PullRequests
+		for _, n := range conn.Nodes {
+			out.Changes = append(out.Changes, ChangeRef{
+				Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
+				HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
+			})
+		}
+		if !conn.PageInfo.HasNextPage {
+			return out, nil
+		}
+		if page == forgeListChangesMaxPages {
+			// The ceiling was reached with the forge still paginating — report the population
+			// as larger than the window rather than hand back a silent partial.
+			out.Incomplete = true
+			return out, nil
+		}
+		cursor := conn.PageInfo.EndCursor
+		after = &cursor
+	}
+	return out, nil
+}
+
 // ListOpenIssues walks a repo's OPEN issues to exhaustion (per_page=100), PRs dropped.
 //
 // End-of-walk (#1032): the walk continues while EITHER the page came back full OR the
@@ -762,6 +883,103 @@ func (g *GitHubForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, 
 
 func (g *GitHubForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
 	return g.trustEvents(repo, number, IssueTrustQuery, false)
+}
+
+const (
+	// forgeMaxEventPages bounds the escalation-clock comment walk: 20 pages of first:100 =
+	// 2000 comments. A thread still advertising a next page past it is reported INCOMPLETE
+	// (TrustPayload.Complete=false), which the caller treats as one issue's conservative
+	// could-not-check (escalate) — never as a whole-board failure and never as "no escalation
+	// owed". The bound keeps the read finite regardless of thread length.
+	forgeMaxEventPages = 20
+)
+
+// ghIssueEventsRespWire decodes ONE page of IssueEventsQuery. A null `issue` (wrong number,
+// or no access) is distinguished from an issue with no comments — the pointer is nil in the
+// first case, which the caller maps to could-not-check rather than "no events".
+type ghIssueEventsRespWire struct {
+	Data struct {
+		Repository struct {
+			Issue *struct {
+				Comments struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						CreatedAt string    `json:"createdAt"`
+						Author    *gqlActor `json:"author"`
+					} `json:"nodes"`
+				} `json:"comments"`
+			} `json:"issue"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// IssueContentEvents walks an issue's comment thread to exhaustion under forgeMaxEventPages,
+// mapping each comment to a ContentEvent (author rendered as the trust set expects — a Bot
+// re-suffixed "<slug>[bot]" — plus its creation time) for the escalation clock. It is the
+// paginated counterpart of the single-page trustEvents read: see the interface doc on
+// IssueContentEvents for why the escalation clock must not share the trust gate's fail-closed
+// single-page bound. Complete=false means the hard cap was hit (or the forge advertised a next
+// page with no cursor); the caller then treats that issue conservatively without failing the
+// board.
+func (g *GitHubForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	var events []ContentEvent
+	after := ""
+	for page := 1; page <= forgeMaxEventPages; page++ {
+		vars := map[string]any{"owner": repo.Owner, "name": repo.Name, "number": number}
+		if after != "" {
+			vars["after"] = after
+		}
+		in := map[string]any{"query": IssueEventsQuery, "variables": vars}
+		var out ghIssueEventsRespWire
+		if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+			return nil, err
+		}
+		if len(out.Errors) > 0 {
+			msgs := make([]string, 0, len(out.Errors))
+			for _, e := range out.Errors {
+				msgs = append(msgs, e.Message)
+			}
+			return nil, Unverifiable("issue-events GraphQL error: "+strings.Join(msgs, "; "), nil)
+		}
+		iss := out.Data.Repository.Issue
+		if iss == nil {
+			return nil, Unverifiable(fmt.Sprintf(
+				"could-not-check: %s carries no issue at number %d, so its comment thread could not be read",
+				repo.Slug(), number), nil)
+		}
+		for i := range iss.Comments.Nodes {
+			n := &iss.Comments.Nodes[i]
+			if n.CreatedAt == "" {
+				continue
+			}
+			ct, err := parseTrustTime(n.CreatedAt)
+			if err != nil {
+				return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), err)
+			}
+			var id int64
+			if n.Author != nil {
+				id = n.Author.DatabaseID
+			}
+			events = append(events, ContentEvent{Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct})
+		}
+		if !iss.Comments.PageInfo.HasNextPage {
+			return &TrustPayload{Events: events, Complete: true}, nil
+		}
+		after = iss.Comments.PageInfo.EndCursor
+		if after == "" {
+			// A next page is advertised but no cursor was returned: the walk cannot advance,
+			// so report INCOMPLETE rather than loop the same page. The caller degrades that
+			// one issue conservatively.
+			break
+		}
+	}
+	return &TrustPayload{Events: events, Complete: false}, nil
 }
 
 // trustEvents runs one trust-gate GraphQL query through the backend's own authenticated

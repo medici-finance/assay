@@ -1,0 +1,36 @@
+{
+  "root": ".",
+  "test": "go test ./internal/deskkit/... ./cmd/deskroster/... ./cmd/desksupervise/... -count=1",
+  "control": {
+    "name": "control: MeasuredString fabricates could-not-check (must be caught)",
+    "file": "internal/deskkit/vitals.go",
+    "old": "func MeasuredString(v string) *VitalField { return &VitalField{Value: v} }",
+    "new": "func MeasuredString(v string) *VitalField { return &VitalField{CouldNotCheck: true} }"
+  },
+  "mutations": [
+    {
+      "name": "S-1 read guard removed (status.go liveResourceSource) -> TestLiveResourceSourceRejectsHolderTraversal",
+      "file": "cmd/desksupervise/status.go",
+      "old": "if !deskkit.ValidSessionSegment(holder) {",
+      "new": "if false && !deskkit.ValidSessionSegment(holder) {"
+    },
+    {
+      "name": "S-1 write guard removed (deskroster set) -> TestSetRefusesMultiSegmentSessionName",
+      "file": "cmd/deskroster/roster.go",
+      "old": "if !deskkit.ValidSessionSegment(sess) {",
+      "new": "if false && !deskkit.ValidSessionSegment(sess) {"
+    },
+    {
+      "name": "measured zero collapses to null -> TestMeasuredZeroSubagentsRoundTrips",
+      "file": "internal/deskkit/vitals.go",
+      "old": "\tif f.CouldNotCheck {\n\t\treturn json.Marshal(\"could-not-check\")\n\t}",
+      "new": "\tif f.CouldNotCheck || f.Value == int64(0) {\n\t\treturn json.Marshal(\"could-not-check\")\n\t}"
+    },
+    {
+      "name": "MergeResourceVitals stops preserving existing beacon fields -> TestMergeResourceVitalsPreservesAcks",
+      "file": "internal/deskkit/vitals.go",
+      "old": "if data, rerr := os.ReadFile(path); rerr == nil {",
+      "new": "if data, rerr := os.ReadFile(path); rerr != nil {"
+    }
+  ]
+}

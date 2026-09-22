@@ -269,6 +269,9 @@ func topologyDiffs(src, derived Topology) []string {
 	if src.Cell != derived.Cell {
 		add("cell: source %q, derivation %q", src.Cell, derived.Cell)
 	}
+	if src.Comms != derived.Comms {
+		add("comms: source %s, derivation %s", src.Comms, derived.Comms)
+	}
 	if got, want := derived.RepoSlugs(), src.RepoSlugs(); !reflect.DeepEqual(got, want) {
 		add("repos: source %v, derivation %v", want, got)
 	}

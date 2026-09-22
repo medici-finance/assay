@@ -140,6 +140,11 @@ canonical:
 # drift against. Declared here so the coverage check can tell "has no source"
 # apart from "somebody forgot to pin it".
 unported:
+  - path: skills/system-demo/SKILL.md
+    reason: >-
+      Independently authored portable demo-storyboarding instructions. Captain
+      Code's public walkthrough informed the narrative pattern; no upstream
+      skill, implementation, or assets are copied. No drift baseline applies.
   - path: skills/adopt/SKILL.md
     reason: >-
       Authored in this repo (3c33240) as the invokable entry to the adoption

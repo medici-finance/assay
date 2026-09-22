@@ -62,6 +62,21 @@ var topologyDecisionOwedLabels = []string{
 // topologyReleaseRepo is `release_repo` from the declared source.
 var topologyReleaseRepo = "medici-finance/assay"
 
+// topologyAppRoles is `apps[].role` from the declared source — the four App
+// role NAMES a node may bind (graph-execution/02, patterns.go). The file carries
+// no ids here (operator configuration); a listed role is KNOWN, not BOUND —
+// binding an identity to a role is the roster's job, never the pattern's. Bound
+// to the source field-for-field by TestTopologyValuesMatchSource, the same
+// derive-or-diff convention as every other value in this file: edit
+// topology.yaml FIRST, then mirror it here, then run
+// `cd statusgen && go test -run TestTopologyValuesMatchSource ./...`.
+var topologyAppRoles = []string{
+	"desk",
+	"reviewer",
+	"verifier",
+	"worker",
+}
+
 // topologyRiskPathTriggersByRepo is `repos[].risk_path_triggers` from the
 // declared source — the ADDITIONAL risk-classing path prefixes each repo layers
 // on top of the universal base list, keyed by owner/name slug. Only repos that

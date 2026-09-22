@@ -66,6 +66,7 @@ var reservedRegisterNames = map[string]bool{
 	"findings":          true,
 	requirementsDirName: true,
 	decisionsDirName:    true,
+	deploysDirName:      true,
 }
 
 // selfDeclaredRegisterRe matches the canonical self-declaration a register's

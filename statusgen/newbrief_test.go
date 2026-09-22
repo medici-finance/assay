@@ -253,6 +253,95 @@ func TestNewBriefRefusesUntokenizableVerifyCommand(t *testing.T) {
 	nbAssertRefused(t, root, code, out, se, "usable Verify row")
 }
 
+// --- Shell / native-Windows Verify rows (issues #1466 / #1424). ---
+//
+// The defect #1466 item 3 fixes: author-brief emitting a native-Windows Verify
+// command (`findstr`, backslash paths) as the DEFAULT `bash -o pipefail` row with no
+// Shell marker. Under Git-bash and the `--in-container` harness that row FAILS the
+// first verify pass (bash eats the `*`/quotes/backslashes before the tool sees them,
+// #1424), and an Evidence-only PR cannot rewrite the Verify table, so a separate
+// worker PR is burned retrofitting `Shell: cmd`. The generator now refuses to emit
+// such a row: the author POSIX-izes it, or declares --shell so the marker is attached
+// in the SAME authoring pass.
+
+// A native-Windows command under the DEFAULT (sh) shell is refused — it can only land
+// broken. This is the red-before/green-after guard for #1466 item 3.
+func TestNewBriefRefusesFindstr(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Win row",
+		"--verify-command", `findstr /c:"does not rotate" docs\streams\demo\spec.md`,
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	nbAssertRefused(t, root, code, out, se, "native-Windows command")
+}
+
+// Declaring --shell cmd/pwsh is the sanctioned path: the row is emitted WITH its
+// Shell marker (the `| # | Shell | Command | Expect |` shape), attached at authoring
+// time, never left for a later Evidence edit.
+func TestNewBriefShellMarked(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Win row",
+		"--verify-command", `findstr /c:"does not rotate" docs\streams\demo\spec.md`,
+		"--shell", "cmd",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("a native row WITH --shell cmd is legal; got exit %d; stderr=%s", code, se)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "streams", "demo", "brief-02-win-row.md"))
+	if err != nil {
+		t.Fatalf("brief not created: %v", err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "| # | Shell | Command | Expect |") {
+		t.Errorf("native-shell brief must emit the Shell column; body:\n%s", body)
+	}
+	if !strings.Contains(body, "| 1 | cmd | `findstr") {
+		t.Errorf("the row must carry its cmd shell marker at authoring time; body:\n%s", body)
+	}
+}
+
+// A non-sh shell with the default (POSIX) command is nonsense and refused — the
+// default `go test ./...` row is POSIX; a genuine native row must be supplied.
+func TestNewBriefRefusesNoCmd(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Bare cmd",
+		"--shell", "cmd",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	nbAssertRefused(t, root, code, out, se, "needs a --verify-command")
+}
+
+// An unknown shell marker is caught at authoring time, never silently defaulted.
+func TestNewBriefRefusesBadShell(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Typo shell",
+		"--shell", "bash",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	nbAssertRefused(t, root, code, out, se, "invalid --shell")
+}
+
+// Regression guard: the default (sh) run keeps the legacy Shell-column-less table
+// byte-for-byte — the change is additive, an absent Shell column still means sh.
+func TestNewBriefShellColOmitted(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Plain",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("want exit 0, got %d; stderr=%s", code, se)
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, "docs", "streams", "demo", "brief-02-plain.md"))
+	body := string(raw)
+	if !strings.Contains(body, "| # | Command | Expect |") {
+		t.Errorf("default row must keep the legacy Command|Expect table; body:\n%s", body)
+	}
+	if strings.Contains(body, "Shell") {
+		t.Errorf("default (sh) row must NOT emit a Shell column; body:\n%s", body)
+	}
+}
+
 // TestNewBriefRefusesStampOnFailedFetch is the fetch half of the refusal battery:
 // a failed fetch produces NO stamp (the tool refuses to invent one) and reports
 // could-not-check — an absent stamp is honest, an invented one is the defect. The
@@ -499,6 +588,195 @@ func TestNewBriefTitleWithNewlineRefusesCleanly(t *testing.T) {
 		t.Errorf("a refusal wrote an inverse edge into the dependency")
 	}
 	_ = out
+}
+
+// --- brief-v2 stream detection, id/schema/wave-base, and the generated-table
+// row path (issue #1280). ---
+
+// nbGraphReposV2 is the minimal alias registry (schema graph-repos-v1) a v2
+// stream's `brief:` id resolves against — one published alias ("assay") for the
+// same repo nbStreamReadmeV2 declares, mirroring the real
+// docs/streams/graph-repos.yaml shape.
+const nbGraphReposV2 = `schema: graph-repos-v1
+cell: assay
+repos:
+  assay: {cell: assay, repo: medici-finance/assay}
+`
+
+// nbStreamReadmeV2 is a `board: generated` stream README whose ONE existing
+// brief sits at wave 1 — deliberately NOT wave 0, mirroring live streams like
+// forge-neutral and desk-tools whose own first wave is 1. A depless newbrief
+// call against this stream must derive wave 1 (its own base), never a
+// hardcoded 0 (issue #1280).
+const nbStreamReadmeV2 = `---
+stream: demo2
+repo: medici-finance/assay
+status: active
+priority: P2
+track: platform
+board: generated
+---
+
+# demo2 (brief-v2 fixture)
+
+<!-- statusgen:briefs:begin -->
+| # | Brief | Wave | Effort | Status | Verified | Reviewed |
+|---|-------|------|--------|--------|----------|----------|
+| 01 | [First](brief-01-first.md) | 1 | S | todo | — | — |
+<!-- statusgen:briefs:end -->
+`
+
+// nbBrief01V2 is the wave-1, schema brief-v2 brief nbStreamReadmeV2's table
+// row already names — the signal newBriefStreamSchema/newBriefStreamMinWave
+// read to detect the stream is v2 and based at wave 1.
+const nbBrief01V2 = `---
+brief: assay:assay:demo2:01
+title: First
+why: "A worked wave-1 v2 brief so the stream's own base wave reads as non-zero."
+wave: 1
+depends: []
+unblocks: []
+effort: S
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v2
+version: 1
+authored: 2026-08-26 fixture
+sources: ["fixture: first"]
+---
+
+# Brief 01 — First
+
+## Context
+files:
+facts:
+- nothing
+
+## Task
+1. Nothing.
+
+## Verify
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | ` + "`true`" + ` | exit 0 |
+`
+
+// nbTreeV2 writes a brief-v2, board: generated demo2 stream (plus the alias
+// registry a v2 id resolves against) into a fresh temp root and returns the
+// root.
+func nbTreeV2(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	streamsDir := filepath.Join(root, "docs", "streams")
+	dir := filepath.Join(streamsDir, "demo2")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(streamsDir, "graph-repos.yaml"), []byte(nbGraphReposV2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(nbStreamReadmeV2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "brief-01-first.md"), []byte(nbBrief01V2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// TestNewBriefV2SchemaIDAndWave is the fail-first regression for
+// issue #1280's item 1: against the demo2 v2 stream, newbrief must (a) DETECT
+// the stream is brief-v2 from its existing brief rather than defaulting to
+// brief-v1, (b) emit the hierarchical <cell>:<alias>:<stream>:<NN> id form
+// (never the brief-v1 <stream>/<NN> shape), and (c) derive the wave from the
+// stream's OWN existing waves (1), never a hardcoded 0.
+func TestNewBriefV2SchemaIDAndWave(t *testing.T) {
+	root := nbTreeV2(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t,
+		"--root", root, "--stream", "demo2", "--title", "Second (v2 auto)",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("want exit 0, got %d; stderr=%s", code, se)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "streams", "demo2", "brief-02-second-v2-auto.md"))
+	if err != nil {
+		t.Fatalf("brief not created: %v", err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "\nschema: brief-v2\n") {
+		t.Errorf("a stream whose existing brief is schema brief-v2 must emit brief-v2, not brief-v1; body:\n%s", body)
+	}
+	if !strings.Contains(body, "\nversion: 1\n") {
+		t.Errorf("a brief-v2 emission must carry version: 1; body:\n%s", body)
+	}
+	if !strings.Contains(body, "\nbrief: assay:assay:demo2:02\n") {
+		t.Errorf("a v2 stream's brief: id must be the hierarchical <cell>:<alias>:<stream>:<NN> form; body:\n%s", body)
+	}
+	if !strings.Contains(body, "\nwave: 1\n") {
+		t.Errorf("a depless brief in a stream whose own briefs start at wave 1 must derive wave 1, not a hardcoded 0; body:\n%s", body)
+	}
+}
+
+// TestNewBriefV2RowNoHandEdit is the fail-first
+// regression for issue #1280's item 2: the row newbrief writes into a
+// `board: generated` stream must be byte-identical to what
+// `statusgen regen --readmes` itself would render — proven by running the
+// SAME rewriteReadmeRegion regen uses immediately after and asserting it is a
+// no-op. Before the fix, newbrief wrote the row through the legacy
+// insertBriefRow path (a `./brief-NN-....md` link target the generated
+// renderer never uses), which regen would immediately want to rewrite —
+// exactly the "hand edit to a generated table" --lint PROBLEM the issue
+// describes.
+func TestNewBriefV2RowNoHandEdit(t *testing.T) {
+	root := nbTreeV2(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t,
+		"--root", root, "--stream", "demo2", "--title", "Row via regen path",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("want exit 0, got %d; stderr=%s", code, se)
+	}
+	readmePath := filepath.Join(root, "docs", "streams", "demo2", "README.md")
+	before, _ := os.ReadFile(readmePath)
+	if !strings.Contains(string(before), "brief-02-row-via-regen-path.md") {
+		t.Fatalf("row for the new brief was not written into the generated table:\n%s", before)
+	}
+
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatalf("loadStreams: %v", err)
+	}
+	var s *Stream
+	for _, st := range streams {
+		if st.Name == "demo2" {
+			s = st
+		}
+	}
+	if s == nil {
+		t.Fatalf("demo2 stream not found among %d loaded streams", len(streams))
+	}
+	changed, err := rewriteReadmeRegion(s, readmePath)
+	if err != nil {
+		t.Fatalf("rewriteReadmeRegion: %v", err)
+	}
+	if changed {
+		after, _ := os.ReadFile(readmePath)
+		t.Errorf("statusgen regen --readmes changed the README right after newbrief wrote it — the two row writers drifted:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+
+	// Positive control: the whole tree still lints clean (checkBriefFiles +
+	// the marker-table check), the same bar TestNewBriefOutputLintsClean holds
+	// the v1/hand-maintained case to.
+	problems, _ := checkBriefFiles(streams, streams)
+	if len(problems) != 0 {
+		t.Errorf("generated v2 brief tripped checkBriefFiles PROBLEMs:\n%s", strings.Join(problems, "\n"))
+	}
+	tblProblems, _ := checkReadmeTables(streams)
+	if len(tblProblems) != 0 {
+		t.Errorf("generated v2 brief tripped checkReadmeTables PROBLEMs:\n%s", strings.Join(tblProblems, "\n"))
+	}
 }
 
 func nbMentions(lines []string, sub string) bool {

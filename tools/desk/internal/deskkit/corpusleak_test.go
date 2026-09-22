@@ -74,10 +74,11 @@ const corpusControlWitnessFile = "tools/desk/internal/deskkit/scanbody.go"
 // corpusOperationalStreams: docs/streams roots the published tools read/write live.
 // See the file header. NOT withheld, NOT flagged.
 var corpusOperationalStreams = map[string]string{
-	"issue-loop": "ScanDir / issueLoopDir — deskscanbody + issueboard read it live",
-	"intake":     "intakeDir / deskpushguard register root",
-	"findings":   "deskpushguard register root",
-	"issue-flow": "rulings.md register — deskclose/deskmerge/deskdigest read it live",
+	"issue-loop":   "ScanDir / issueLoopDir — deskscanbody + issueboard read it live",
+	"intake":       "intakeDir / deskpushguard register root",
+	"findings":     "deskpushguard register root",
+	"issue-flow":   "rulings.md register — deskclose/deskmerge/deskdigest read it live",
+	"desktools-v2": "forge-ban.sh --baseline mode reads and upserts docs/streams/desktools-v2/forge-ban-baseline.txt at runtime — its own persisted counter for this stream, not a copy-set reference",
 }
 
 // corpusCopySetExempt is the set of tools/desk files this guard does NOT scan

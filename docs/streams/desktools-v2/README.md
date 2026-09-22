@@ -2,7 +2,7 @@
 stream: desktools-v2
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
 track: platform
 spec: docs/streams/desktools-v2/spec.md
@@ -12,12 +12,8 @@ board: generated
 
 # desktools-v2 Stream
 
-**Proposed, not yet approved.** This stream is `status: parked` and cites a `**Status:**
-draft` scoping doc ([spec.md](spec.md)) — the sanctioned representation of a not-yet-ruled
-stream (`spec/lifecycle-v1.md` §8; `statusgen` `streamSourceProblem`: "a parked stream may
-cite a `draft`"). Its briefs are authored and kept but shelved out of Next-up and never
-dispatched until a human rules the spec `approved` and flips this stream `active`.
-`approved` is the human's call.
+**Approved and unparked.** Ruled 2026-09-21 on #1319: the spec is `**Status:** approved`
+([spec.md](spec.md)) and this stream is `status: active`.
 
 Rebuild the desk tools' forge access **properly**, now that the flows have solidified. A
 `Forge` interface already exists (`tools/desk/internal/deskkit/forge.go`, two complete
@@ -52,10 +48,10 @@ open questions for the approver are in [spec.md](spec.md) §4/§7.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line)](brief-01-audit-and-inventory.md) | 1 | M | todo | — | — |
-| 02 | [the v2 seam contract + the ban-lint (advisory/counting first)](brief-02-seam-contract-and-ban-lint.md) | 2 | M | todo | — | — |
+| 01 | [audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line)](brief-01-audit-and-inventory.md) | 1 | M | implemented | — | — |
+| 02 | [the v2 seam contract + the ban-lint (advisory/counting first)](brief-02-seam-contract-and-ban-lint.md) | 2 | M | implemented | — | — |
 | 03 | [native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot)](brief-03-native-read-client.md) | 3 | M | todo | — | — |
-| 04 | [deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019)](brief-04-deskclose-authorization-read-kind.md) | 2 | S | todo | — | — |
+| 04 | [deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019)](brief-04-deskclose-authorization-read-kind.md) | 2 | S | implemented | — | — |
 | 05 | [the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884)](brief-05-push-guards-judge-the-real-remote.md) | 2 | M | todo | — | — |
 | 06 | [installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146)](brief-06-installation-token-scoping.md) | 4 | M | todo | — | — |
 | 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 6 | S | todo | — | — |

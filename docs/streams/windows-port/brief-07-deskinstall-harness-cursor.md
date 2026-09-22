@@ -200,6 +200,34 @@ placement. Row 9 proves layer 2 with layer 1 bypassed.
      (command, exit code, output line(s) or hash, date, runner). Every row here is
      OS-neutral Go — a POSIX verifier can discharge all of them; there is no
      Windows-runtime row to defer. -->
+### Non-implementer verifier run — 2026-09-17 sonnet-5-verifier (verify-desk dispatch) — **VERIFY: PASS**
+
+Runner ≠ implementer. A prior verify attempt (branch `verify-desk/windows-port-07-20260915`) was stranded — never opened as a PR, never merged. This is a fresh, independent re-verification against current `medici-finance/assay` origin/main `35ec916f8dac03900725d4bc3f2cff7979db6a5a` (post desktools-v2 migration #1229).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `go build ./cmd/deskinstall/ && go vet ./cmd/deskinstall/` | exit 0 | exit 0 | 2026-09-17 | sonnet-5-verifier |
+| 2 | `deskinstall --help \| grep -c --harness/--repo` | ≥2 | exit 0, count 7 | 2026-09-17 | sonnet-5-verifier |
+| 3 | `TestHarnessCursorPlaces` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 4 | `TestHarnessCursorReferencesResolve` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 5 | `TestHarnessCursorIdempotent` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 6 | `TestHarnessCursorCheckDrift` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 7 | `TestHarnessCursorCheckClean` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 8 | fail-first, independently re-derived (2 fresh mutations, not trusted from the stranded draft) | both FAIL against their mutation | mutation 1 (`buildCursorPlan` drops refFiles): `FAIL TestHarnessCursorReferencesResolve`, "does not resolve"; mutation 2 (`HarnessCursorCheck` returns nil early): `FAIL TestHarnessCursorCheckDrift`, "check did not name ... among findings". Both reverted clean, both tests PASS again | 2026-09-17 | sonnet-5-verifier |
+| 9 | `TestHarnessCursorRosterExcludes` | exit 0 | exit 0 PASS (2 subtests) | 2026-09-17 | sonnet-5-verifier |
+| 10 | `TestHarnessCursorRefusesEscape` | exit 0 | exit 0 PASS (2 subtests) | 2026-09-17 | sonnet-5-verifier |
+| 11 | `TestHarnessCursorForgeBindings` | exit 0 | exit 0 PASS (gitlab, github) | 2026-09-17 | sonnet-5-verifier |
+| 12 | `TestHarnessCursorRefusesWithManifest` | exit 0 | exit 0 PASS | 2026-09-17 | sonnet-5-verifier |
+| 13 | `TestWindowsInstall*` | exit 0 | exit 0 PASS x3 | 2026-09-17 | sonnet-5-verifier |
+| 14 | roster vs placed set dereference | identical, no extra/missing | independently placed the real bundle into a fresh scratch adopter repo — 13 names identical to roster; walked every reference-include in the placed tree (3 targets, more than the brief's freshness-head count of 1 since skills were added since authoring) and confirmed every include resolves on disk | 2026-09-17 | sonnet-5-verifier |
+| 15 | `statusgen --consumers windows-port/07` | exit 0 | exit 0, no diff to corroborate (expected on a no-local-diff post-merge run) | 2026-09-17 | sonnet-5-verifier |
+| 16 | `statusgen --lint` | 0 PROBLEMs | exit 0, LINT: PASS, only pre-existing unrelated NOTICEs | 2026-09-17 | sonnet-5-verifier |
+
+**Path-portability rigor (this brief's core concern):** read `harness_cursor.go` end to end — every path operation uses `filepath.Join`/`filepath.Rel`/`filepath.Separator`, never a literal `/`or`\`; the one human-facing path surface (`DriftFinding.Path`) explicitly normalizes with `filepath.ToSlash`; the escape gate uses `filepath.Rel`+prefix-check, not string matching. Genuinely OS-neutral Go, confirming the brief's own claim that no Windows-runtime row needs deferring.
+
+**RISK-VALUE: DERIVED** — `bindingsBegin`/`bindingsEnd` delimiter markers (`harness_cursor.go:46-47`) match the repo's pre-existing delimiter convention, correctness proven by row 5 (exactly one block survives a second run), not merely asserted. `--check` exit triad 0/1/2 (`:53-55`) matches `tools/harnessgen cursor`'s pre-existing contract per the brief's own cited fact. `bundleDirDefault="plugins/assay"` and file-mode literals `0o755`/`0o644` are reversible structural conventions. All consistent with the brief's all-"no" risk block.
+
+**VERIFY: PASS** — all 16 rows pass on merged main. Rows 8 and 14 independently re-derived from scratch, not trusted from the stranded prior draft. No drift found.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no). The reviewer's two questions:

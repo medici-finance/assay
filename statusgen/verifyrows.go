@@ -1090,8 +1090,8 @@ func gnuOnlyConstructs(cmd string, toks []shellTok, greps []grepCall) []string {
 // The lint
 // ---------------------------------------------------------------------------
 
-// verifyRowTable locates the Command (and, when present, the Class and Expect)
-// columns of a Verify section's table and yields each data row's cells.
+// verifyRowTable locates the Command (and, when present, the Class, Shell and
+// Expect) columns of a Verify section's table and yields each data row's cells.
 //
 // The Class column is OPTIONAL (verdict-lane/02): a table whose header names it
 // (`| # | Class | Command | Expect |`) declares each row's class; a table
@@ -1100,11 +1100,11 @@ func gnuOnlyConstructs(cmd string, toks []shellTok, greps []grepCall) []string {
 // by header NAME, never position, so adding Class between # and Command does not
 // disturb any existing caller.
 func verifyRowTable(section string, fn func(verifyRowCells)) {
-	cmdIdx, expIdx, numIdx, classIdx := -1, -1, -1, -1
+	cmdIdx, expIdx, numIdx, classIdx, shellIdx := -1, -1, -1, -1, -1
 	for _, raw := range strings.Split(section, "\n") {
 		line := strings.TrimSpace(raw)
 		if !strings.HasPrefix(line, "|") {
-			cmdIdx, expIdx, numIdx, classIdx = -1, -1, -1, -1 // left the table
+			cmdIdx, expIdx, numIdx, classIdx, shellIdx = -1, -1, -1, -1, -1 // left the table
 			continue
 		}
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
@@ -1122,6 +1122,8 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 					numIdx = j
 				case "class":
 					classIdx = j
+				case "shell":
+					shellIdx = j
 				}
 			}
 			continue // the header row is not a data row
@@ -1141,7 +1143,15 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 		if classIdx >= 0 && classIdx < len(cells) {
 			class = strings.TrimSpace(cells[classIdx])
 		}
-		fn(verifyRowCells{Num: num, Class: class, Command: cells[cmdIdx], Expect: expect, Classed: classIdx >= 0})
+		// The `Shell` column is OPTIONAL and INDEPENDENT of `Class` (issue #1424):
+		// an absent column, or an empty cell, resolves to the default `sh` — the
+		// whole inherited corpus is untouched. Located by header NAME, never
+		// position, exactly like `Class`.
+		shell := ""
+		if shellIdx >= 0 && shellIdx < len(cells) {
+			shell = strings.TrimSpace(cells[shellIdx])
+		}
+		fn(verifyRowCells{Num: num, Class: class, Command: cells[cmdIdx], Expect: expect, Classed: classIdx >= 0, Shell: shell})
 	}
 }
 

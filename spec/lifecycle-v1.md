@@ -80,6 +80,17 @@ table is **self-reported**. A conforming implementation MUST NOT describe `verif
 proof of execution. See `spec/README.md` § "Known divergences from the reference
 implementation".
 
+**Date-bounded successor.** The "no execution witness" sentence
+above describes every closure made **before statusgen v1.0.13**
+<!-- TRACKING: v1.0.13 is the anticipated pin; confirm/correct this version string at cut-release time if the actual next tag differs. The gate itself is git-merge-base scoped and does not depend on this string. -->. From that pin,
+`statusgen verifyrun` writes the witness (command, exit code, output hash, date,
+runner) into the Evidence section, and a `verified`/`done` transition made on a branch
+merging after the pin with no witness behind one or more Verify rows is a hard lint
+PROBLEM, merge-base scoped (a closure already on `main` at the merge-base is
+grandfathered to a NOTICE — the inherited corpus is not retroactively falsified). A
+conforming implementation MUST NOT describe a POST-pin `verified`/`done` closure with
+no witness as adequately attested.
+
 ### 2.5 `done`
 
 The brief additionally carries the recorded review verdict. A `gate: human` brief
@@ -299,6 +310,26 @@ A conforming implementation:
    specification prevents a single actor from authoring both the work and an Evidence
    row naming someone else — role separation is a convention, and a conforming
    implementation MUST NOT claim it as a boundary.
+
+   A conforming implementation MAY additionally run a genuine identity check on top
+   of the attribution check above: comparing the git identity that actually
+   committed a brief's Evidence lines against a roster-bound verifier role, and
+   rejecting a mismatch. Unlike clause 2's attribution check, this one does not read
+   authored text — it reads commit metadata a single authoring session cannot also
+   author as someone else, without forging a commit under a role it does not hold.
+   Its scope is exactly two-fold and MUST be stated wherever it is claimed:
+   (a) it binds Evidence commits made under the identity-check cutover the
+   implementation records (an earlier landing predates the check and is
+   grandfathered, never silently accepted as checked); and (b) it is evaluated
+   per-transition, not per-brief — a brief already standing at `verified`/`done` at
+   merge-base(HEAD, origin/main) is pre-existing and is reported as a NOTICE
+   (visible, not blocking), while a brief a branch newly closes to `verified`/`done`
+   is the transition the check gates, and a mismatch there MUST be a PROBLEM. A
+   checkout that cannot resolve its own history (a shallow/grafted clone, or an
+   unresolvable merge-base) MUST render as could-not-check, never as a pass and
+   never as the failure this check exists to catch. Outside this check's scope —
+   the Verified cell always, and any Evidence commit outside (a) or (b) — clause 2's
+   attribution-on-text check is the only one in force, exactly as stated above.
 3. MUST require dated, attributed Verified/Reviewed cells.
 4. MUST derive `gate` from `risk` answers exclusively.
 5. MUST require a human-named review for `gate: human` briefs at `done`.
@@ -419,3 +450,49 @@ cited.
 When a legacy document's correct state cannot be determined, a conforming backfill MUST
 default it to `draft`. A wrongly-`draft` document is silent status quo; a wrongly-`approved`
 document makes owed-detection emit noise. The failure that costs least MUST be preferred.
+
+## 9. Deploy — a transition beyond the brief lifecycle
+
+Sections 2 through 8 govern a brief's own five-state sequence and the document upstream of
+it, ending at `done`. `done` records that a change was reviewed and merged; it does NOT
+record that the change reached a place where users are. A conforming implementation MUST
+NOT conflate the two: "done" and "deployed" answer different questions, and a brief may be
+`done` for infrastructure a deploy never touches at all.
+
+### 9.1 Deploy is a record, not a sixth lifecycle state
+
+A conforming implementation that models deployment MUST implement it as a transition on a
+**separate typed record** (a DEPLOY entry, normatively specified in
+[`../docs/deploy-model.md`](../docs/deploy-model.md) § "The deploy transition"), never as an
+additional position in section 2's ordered sequence. The five-state sequence plus the
+off-path `blocked` state (section 2.0) is unchanged by this section; deploy is incorporated
+by reference, not folded in as a new brief status.
+
+### 9.2 Precondition and reused markers
+
+The deploy transition's precondition set, the per-environment authority, and the rollback
+obligation are specified normatively in `docs/deploy-model.md`; this section does not
+duplicate them. Two points are stated here because they bind the lifecycle directly:
+
+- A DEPLOY record's transition MUST NOT be considered to have fired while the brief it
+  carries is at `implemented` or earlier — the same implementer-self-report boundary
+  section 2.3 already draws, extended to a deploy authority rather than restated as a new
+  rule.
+- A DEPLOY record waiting on an environment that does not yet exist reuses the existing
+  `blocked-by: env` marker (brief-v1 frontmatter) rather than a second marker minted for
+  deploys specifically — see `docs/deploy-model.md` § "Board handling".
+
+### 9.3 Conformance
+
+A conforming implementation that models deployment:
+
+1. MUST NOT add deployment as a sixth position in the section 2 sequence.
+2. MUST refuse a deploy transition whose carried brief is not `verified` or `done`.
+3. MUST require a named human deploy authority per environment; a model-gated identity
+   MUST NOT hold it.
+4. MUST require every deploy record to state a rollback obligation — a stated reverse path,
+   or an explicitly accepted absence naming an approver — never an omission.
+5. MUST NOT describe this section as changing `docs/distribution.md`'s release-rollback
+   statement: a release rollback and a deployment rollback are different operations
+   (`docs/deploy-model.md` § "Rollback"), and this section reconciles the vocabulary rather
+   than reversing either claim.
