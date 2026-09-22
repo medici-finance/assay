@@ -266,7 +266,7 @@ func TestNewBriefRefusesUntokenizableVerifyCommand(t *testing.T) {
 
 // A native-Windows command under the DEFAULT (sh) shell is refused — it can only land
 // broken. This is the red-before/green-after guard for #1466 item 3.
-func TestNewBriefRefusesFindstrUnderDefaultShell(t *testing.T) {
+func TestNewBriefRefusesFindstr(t *testing.T) {
 	root := nbTree(t)
 	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
 	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Win row",
@@ -278,7 +278,7 @@ func TestNewBriefRefusesFindstrUnderDefaultShell(t *testing.T) {
 // Declaring --shell cmd/pwsh is the sanctioned path: the row is emitted WITH its
 // Shell marker (the `| # | Shell | Command | Expect |` shape), attached at authoring
 // time, never left for a later Evidence edit.
-func TestNewBriefMarksNativeRowShellAtAuthoring(t *testing.T) {
+func TestNewBriefShellMarked(t *testing.T) {
 	root := nbTree(t)
 	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
 	code, _, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Win row",
@@ -303,7 +303,7 @@ func TestNewBriefMarksNativeRowShellAtAuthoring(t *testing.T) {
 
 // A non-sh shell with the default (POSIX) command is nonsense and refused — the
 // default `go test ./...` row is POSIX; a genuine native row must be supplied.
-func TestNewBriefRefusesNonShShellWithoutCommand(t *testing.T) {
+func TestNewBriefRefusesNoCmd(t *testing.T) {
 	root := nbTree(t)
 	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
 	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Bare cmd",
@@ -313,7 +313,7 @@ func TestNewBriefRefusesNonShShellWithoutCommand(t *testing.T) {
 }
 
 // An unknown shell marker is caught at authoring time, never silently defaulted.
-func TestNewBriefRefusesUnknownShell(t *testing.T) {
+func TestNewBriefRefusesBadShell(t *testing.T) {
 	root := nbTree(t)
 	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
 	code, out, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Typo shell",
@@ -324,7 +324,7 @@ func TestNewBriefRefusesUnknownShell(t *testing.T) {
 
 // Regression guard: the default (sh) run keeps the legacy Shell-column-less table
 // byte-for-byte — the change is additive, an absent Shell column still means sh.
-func TestNewBriefDefaultRowHasNoShellColumn(t *testing.T) {
+func TestNewBriefShellColOmitted(t *testing.T) {
 	root := nbTree(t)
 	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
 	code, _, se := nbRun(t, "--root", root, "--stream", "demo", "--title", "Plain",

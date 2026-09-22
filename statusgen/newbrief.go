@@ -255,7 +255,8 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// portable across Git-for-Windows bash and the `--in-container` harness and needs
 	// no Shell column. An unknown value is refused at authoring time rather than
 	// silently defaulted — a marker the runner cannot resolve routes nowhere.
-	rowShell := strings.ToLower(strings.TrimSpace(*shell))
+	rowShell := strings.TrimSpace(*shell)
+	rowShell = strings.ToLower(rowShell)
 	if rowShell == "" {
 		rowShell = legacyRowShell
 	}
@@ -768,7 +769,8 @@ func looksWindowsNative(cell string) bool {
 		if t.op {
 			continue
 		}
-		return strings.EqualFold(strings.TrimSpace(t.text), "findstr")
+		word := strings.TrimSpace(t.text)
+		return strings.EqualFold(word, "findstr")
 	}
 	return false
 }
