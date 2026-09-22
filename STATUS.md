@@ -60,18 +60,19 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 70 total — 70 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (52 desk-actionable of 71 total — 71 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (51)
+### Desk-actionable (52)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
+| forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
@@ -317,7 +318,7 @@ _None._
 - 17 deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch — todo (wave 2)
 - 18 statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk — in-progress (wave 5)
 - 19 Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs — implemented (wave 1)
-- 20 Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs — todo (wave 1)
+- 20 Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs — implemented (wave 1)
 - 21 Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back — todo (wave 2)
 - 22 Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store — todo (wave 3)
 - 23 File claim store — claims in a directory on the cell's host, with the single-host declaration and the container, filesystem and mixed-store guards — todo (wave 3)

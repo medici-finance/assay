@@ -9,13 +9,17 @@ package main
 // for the row — so the answer this prints and the answer --lint validates can
 // never disagree (desk-tools/12).
 //
+// With --check-verified, every resolved key must additionally have a verified/done
+// board row, a dated verifier stamp, and passing execution witnesses for every
+// Verify row. Failure emits no JSON. This scoped check does not replace --lint.
+//
 // It is READ-ONLY: it never writes STATUS.md or any generated file, touches no
 // network, and shells out to nothing. The whole verb is "print what statusgen
 // already parsed for one key".
 //
-// Exit contract (two-state; there is no could-not-check leg — a key either
-// resolves to exactly one file or it does not):
-//   - 0  every key resolved to exactly one brief file.
+// Exit contract:
+//   - 0  every key resolved and any requested closure checks passed.
+//   - 1  --check-verified found an invalid closure.
 //   - 2  at least one key was unresolvable (bad grammar, zero matching files, or
 //        more than one — the numeric-prefix collision a hand-rolled glob could not
 //        detect), OR a usage error. On any failure NO JSON body is printed, so a
@@ -38,9 +42,10 @@ import (
 	"strings"
 )
 
-// briefInfoExit* — the two-state contract described above.
+// briefInfoExit* — the exit contract described above.
 const (
 	briefInfoExitOK      = 0
+	briefInfoExitInvalid = 1 // known invalid closure
 	briefInfoExitResolve = 2 // unresolvable key or usage error
 )
 
@@ -85,6 +90,7 @@ type briefInfo struct {
 func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 	root := "."
 	asText := false
+	checkVerified := false
 	var keys []string
 
 	for i := 0; i < len(args); i++ {
@@ -101,12 +107,14 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 			root = a[len("--root="):]
 		case strings.HasPrefix(a, "-root="):
 			root = a[len("-root="):]
+		case a == "--check-verified":
+			checkVerified = true
 		case a == "--json" || a == "-json":
 			asText = false
 		case a == "--text" || a == "-text":
 			asText = true
 		case a == "-h" || a == "--help":
-			fmt.Fprintln(stderr, "usage: statusgen brief [--root DIR] [--json|--text] <stream>/<NN> [<stream>/<NN> ...]")
+			fmt.Fprintln(stderr, "usage: statusgen brief [--root DIR] [--json|--text] [--check-verified] <stream>/<NN> [<stream>/<NN> ...]")
 			return briefInfoExitResolve
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(stderr, "brief: unknown flag %q\n", a)
@@ -124,21 +132,30 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 	// Resolve every key first, collecting successes and failures, so that a single
 	// unresolvable key reports EVERY key's outcome (never a silent partial array).
 	infos := make([]*briefInfo, len(keys))
-	failed := false
+	failureCode := briefInfoExitOK
 	for i, key := range keys {
 		info, err := resolveBriefKey(root, key)
 		if err != nil {
-			failed = true
+			failureCode = briefInfoExitResolve
 			fmt.Fprintf(stderr, "brief: %s\n", err)
 			continue
+		}
+		if checkVerified {
+			if err := checkBriefInfoVerified(root, info); err != nil {
+				if failureCode == briefInfoExitOK {
+					failureCode = briefInfoExitInvalid
+				}
+				fmt.Fprintf(stderr, "brief: %s: %v\n", key, err)
+				continue
+			}
 		}
 		infos[i] = info
 		fmt.Fprintf(stderr, "brief: resolved %s -> %s\n", key, info.File)
 	}
-	if failed {
+	if failureCode != briefInfoExitOK {
 		// No JSON body on failure: a consumer must never read a partial result as
-		// a complete array.
-		return briefInfoExitResolve
+		// a complete array. Resolution failures dominate known-invalid closures.
+		return failureCode
 	}
 
 	if asText {
@@ -345,4 +362,38 @@ func renderBriefInfoText(w io.Writer, info *briefInfo) {
 		fmt.Fprintf(w, "row.wave: %d\n", info.Row.Wave)
 		fmt.Fprintf(w, "row.effort: %s\n", info.Row.Effort)
 	}
+}
+
+// checkBriefInfoVerified checks only the closure facts used to authorize a new
+// verified outcome. It shares the stamp grammar and witness evaluator with lint
+// and verifyrun, without grandfathering inherited closures. It does not run the
+// whole-tree lint: callers must retain their separate landing lint guard.
+func checkBriefInfoVerified(root string, info *briefInfo) error {
+	if info.Row == nil {
+		return fmt.Errorf("verified outcome requires a board row")
+	}
+	if info.Row.Status != "verified" && info.Row.Status != "done" {
+		return fmt.Errorf("verified outcome requires status verified or done, got %q", info.Row.Status)
+	}
+	if !verifiedCellRe.MatchString(info.Row.Verified) {
+		return fmt.Errorf("verified outcome requires a dated runner in the Verified cell (YYYY-MM-DD <runner>)")
+	}
+	verify, evidence, err := briefSections(filepath.Join(root, filepath.FromSlash(info.File)))
+	if err != nil {
+		return fmt.Errorf("cannot read execution witnesses: %w", err)
+	}
+	findings := checkWitnesses(verify, evidence)
+	if len(findings) == 0 {
+		return fmt.Errorf("verified outcome requires Verify rows with passing execution witnesses")
+	}
+	var failures []string
+	for _, finding := range findings {
+		if finding.State != statePass {
+			failures = append(failures, fmt.Sprintf("row %s: %s — %s", finding.ID, finding.State, finding.Detail))
+		}
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("verified outcome requires passing execution witnesses: %s", strings.Join(failures, "; "))
+	}
+	return nil
 }
