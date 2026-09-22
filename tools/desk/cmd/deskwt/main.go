@@ -30,7 +30,7 @@ import (
 const usage = `deskwt — add, remove, or prune git worktrees, only under sanctioned prefixes.
 
 USAGE:
-  deskwt add <name> [--branch B | --detach] [--base origin/main]
+  deskwt add <name> [--branch B | --detach] [--base origin/main] [--role R]
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
@@ -60,6 +60,18 @@ the working directory). The shared checkout's index and user.* config are never 
 the identity lands in the NEW worktree's own config, and the one shared-config write is
 enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
 --no-fetch cuts from the local origin/main as-is.
+
+add STAMPS or CLEARS the new worktree's commit identity so it never INHERITS the shared
+checkout's. With --role R (a token role or a loop name, folded the same way role-init folds
+it) the role's App commit identity — the bot USER id noreply address (#638), resolved through
+the SAME shared resolver role-init uses — is written to the new worktree's own config
+(extensions.worktreeConfig), and an unbound role is REFUSED (exit 5) before the worktree is
+created. WITHOUT --role the new worktree's user.name/user.email are CLEARED (set empty at
+worktree scope, which shadows the shared value — an --unset would fall through to it), so a
+commit there fails closed ("Author identity unknown") until an identity is set, rather than
+committing under an unrelated inherited identity. The shared checkout's config is never
+touched either way. The identity (or the cleared state) is echoed to stderr; stdout stays the
+bare worktree path.
 
 add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this checkout's
 remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut from it —

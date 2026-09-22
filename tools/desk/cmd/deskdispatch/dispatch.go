@@ -346,20 +346,54 @@ func dispatch(o dispatchOpts) error {
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
 				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil)
 	}
-	if plan.detached {
-		o.say("%s OK: %s detached off origin/main (verifier: no branch)", stepWorktreeCreate, home)
+	// IDENTITY, worktree-scoped (#1490). The dispatched agent's worktree must commit under its
+	// OWN role's App identity, not the identity the shared checkout carries — otherwise a
+	// verifier dispatched from a desk checkout reports the desk App as its runner and statusgen
+	// stamps that wrong identity into every Evidence witness Runner cell. `deskwt add` has
+	// already CLEARED the inherited identity worktree-scoped (its no-role floor is FATAL there),
+	// so the worktree is FAIL-CLOSED — a commit refuses "Author identity unknown" — until this
+	// stamps the right one. That floor is why this stamp is best-effort, the SAME class as the
+	// run-key layer below: if the stamp cannot run, the worst outcome is a fail-closed worktree
+	// whose first commit refuses loudly, NEVER one that silently inherits and misattributes. A
+	// failure is REPORTED, never silent, and the identity is printed on the OK line only when it
+	// was actually stamped, so the transcript never claims an identity the worktree lacks.
+	idStamped := false
+	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+		nm := runCmd(home, "git", "config", "--worktree", "user.name", plan.identityName)
+		em := runCmd(home, "git", "config", "--worktree", "user.email", plan.identityEmail)
+		idStamped = nm.err == nil && em.err == nil
+		if !idStamped {
+			said := nm.run.Said()
+			if nm.err == nil {
+				said = em.run.Said()
+			}
+			o.say("%s WARNING: could not stamp the agent's %s-role commit identity in %s (%s) — the worktree "+
+				"stays identity-CLEARED by deskwt add (fail-closed); a commit there refuses until an identity is set",
+				stepWorktreeCreate, plan.identityRole, home, said)
+		}
 	} else {
-		o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
+		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s), so the agent's %s-role commit "+
+			"identity was not stamped; the worktree stays identity-CLEARED (fail-closed) until one is set",
+			stepWorktreeCreate, home, ext.run.Said(), plan.identityRole)
+	}
+	idSuffix := ""
+	if idStamped {
+		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
+	}
+	if plan.detached {
+		o.say("%s OK: %s detached off origin/main (verifier: no branch)%s", stepWorktreeCreate, home, idSuffix)
+	} else {
+		o.say("%s OK: %s on %s%s", stepWorktreeCreate, home, branch, idSuffix)
 	}
 
 	// Record the run key worktree-locally (assay.runKey) so the per-run stop layer
 	// (deskkit.Guard's STOP.run.<key> check) resolves it from cwd with
 	// NO agent cooperation: every desk verb the worker runs next reads the key from its own
-	// worktree and refuses if that run has been stopped. `git config --worktree` needs the
-	// worktreeConfig extension on to write into a LINKED worktree's own config, so enable it
-	// first (a benign, idempotent repo setting). This is Layer A of the two-layer stop; a
-	// failure here degrades to Layer B (the desk window's cadence sweep) and is REPORTED,
-	// never silent — but it never fails the dispatch, which is already claimed and homed.
+	// worktree and refuses if that run has been stopped. extensions.worktreeConfig is already
+	// on from the identity stamp above (a benign, idempotent repo setting). This is Layer A of
+	// the two-layer stop; a failure here degrades to Layer B (the desk window's cadence sweep)
+	// and is REPORTED, never silent — but it never fails the dispatch, which is already claimed,
+	// homed and identity-stamped.
 	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
 		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
 			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
@@ -468,6 +502,18 @@ type dispatchPlan struct {
 	// HEAD off origin/main under a `verify-<item>` name (`deskwt add --detach`), branch is empty,
 	// and no feature branch is created, named, or collided with.
 	detached bool
+	// identityRole is the DISPATCHED agent's own desk role — the one whose App commit
+	// identity its worktree must carry (kitRole: worker/worker-objective→worker,
+	// review→reviewer, verifier→verifier). It is distinct from stampRoleForKit, which names
+	// the DISPATCHER's role for the model stamp; this names the AGENT's role for the worktree
+	// commit identity. identityName/identityEmail are that role's resolved committer name and
+	// email, resolved pre-claim through the SAME deskkit resolver role-init and `deskwt add
+	// --role` use, so a role with no roster identity refuses BEFORE any durable state exists
+	// (#1490) rather than a worktree inheriting the dispatching desk's identity and
+	// misattributing every Evidence Runner cell.
+	identityRole  string
+	identityName  string
+	identityEmail string
 	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
 	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
 	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
@@ -539,6 +585,32 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	if _, err := commonKitText(); err != nil {
 		return plan, err
 	}
+
+	// The DISPATCHED agent's worktree commit identity, resolved HERE, pre-claim (#1490). The
+	// worktree-create step stamps this into the new worktree's own config so it never inherits
+	// the shared checkout's identity — the misattribution this closes: a verifier dispatched
+	// from a desk checkout committed, and reported its runner, under the desk App's identity,
+	// and statusgen stamped that wrong identity into every Evidence witness Runner cell. A kit
+	// whose role has NO roster binding is REFUSED here, before any durable state exists, naming
+	// the kit, the role and the roster key — never a worktree left to inherit an unrelated
+	// identity. The resolver is the SAME one role-init and `deskwt add --role` use.
+	idRole, ok := kitRole(o.kit)
+	if !ok {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: --kit %q maps to no dispatched-agent identity role — this is a build defect (the kit "+
+				"vocabulary is closed and was already validated), not a caller error.", stepWorktreeCreate, o.kit))
+	}
+	idName, idEmail, ierr := deskkit.RoleWorktreeCommitIdentity(idRole)
+	if ierr != nil {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: --kit %s dispatches under the %s role, but that role has no commit identity in the roster "+
+				"(%s), so the agent's worktree would INHERIT the dispatching desk's identity and misattribute every "+
+				"Evidence Runner cell — refusing rather than stamping or inheriting a wrong identity. %v",
+			stepWorktreeCreate, o.kit, idRole, deskkit.EnvTrustedBotSlugs, ierr))
+	}
+	plan.identityRole = idRole
+	plan.identityName = idName
+	plan.identityEmail = idEmail
 
 	// The model stamp is validated HERE, not in its own step. The stamp is applied last,
 	// but its INPUT is a caller flag: discovering a malformed slug at step 5 would mean
