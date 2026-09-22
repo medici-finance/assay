@@ -240,6 +240,11 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    form for new briefs.
 3. **Verify rows must be runnable by someone who didn't do the work.** A DoD/Verify item with no
    literal command and no expected exit/output is not a DoD item — it's a hope.
+   Prefer POSIX commands (`grep -F`, forward-slash paths) for portable checks. For a genuinely
+   native Windows command, add a `Shell` column and explicitly mark the row `cmd` or `pwsh`
+   when authoring it. Never emit `findstr /c:"…"` with backslash paths under implicit `sh`:
+   bash reinterprets those arguments. Shell selection belongs in the reviewed Verify table;
+   an Evidence-only edit must not change the command or its shell to make a failing row pass.
 4. **`gate: human` is mandatory when any risk answer is `yes`.** Record all four risk answers
    (regulatory, customer, irreversible, sensitive-data), not just the resulting gate — the answers are
    what a reviewer audits, the gate is just their conclusion. **A risk-gated brief (`gate: human` OR

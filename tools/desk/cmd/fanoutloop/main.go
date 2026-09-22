@@ -50,6 +50,12 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
+	// Wire `plan`'s already-represented PR-list transport LIVE for the shipped binary
+	// (represented_live.go). Assigned here, in main(), not at package init: tests call
+	// cmdPlan/run directly and keep the nil default (plan offers rows as before unless a test
+	// wires its own recorded transport), while the real binary reconciles against the repo's
+	// open+merged changes read through the typed Forge seam.
+	representedPRs = liveRepresentedPRs
 	os.Exit(run(os.Args[1:]))
 }
 

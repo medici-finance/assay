@@ -41,6 +41,12 @@ the flag-day pull request does not hold, so the patch carries its own apply inst
 whoever does. Until it is applied the authoring columns regenerate normally and the
 lifecycle columns are carried through unchanged rather than reconciled.
 
+**Desk-side writer, no workflow change needed:** the `deskreconcile` verb
+(`tools/desk/cmd/deskreconcile`, see [tools/desk/README.md](../../../tools/desk/README.md))
+runs that same `statusgen reconcile --backfill --apply` from a verb the desk/worker App can
+run, and carries the result as one draft PR on `board/reconcile` — so the stale lifecycle
+cells can be reconciled before the staged workflow patch lands.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->

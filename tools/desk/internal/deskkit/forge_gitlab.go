@@ -854,6 +854,82 @@ func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	}, nil
 }
 
+// gitlabChangeState maps a GitLab MR state word to the seam's uppercased lifecycle state,
+// keeping MERGED DISTINCT from CLOSED — the split ListChanges promises and gitlabState (used by
+// the board's OpenChange) deliberately collapses. `locked` is a transient of an open MR, so it
+// maps to OPEN.
+func gitlabChangeState(s string) string {
+	switch s {
+	case "opened", "locked":
+		return "OPEN"
+	case "merged":
+		return "MERGED"
+	case "closed":
+		return "CLOSED"
+	default:
+		return strings.ToUpper(s)
+	}
+}
+
+func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeList, error) {
+	if !states.Any() {
+		return nil, Unverifiable("ListChanges was asked for no states — the state set must be stated "+
+			"(open/merged/closed), never defaulted to a whole-repo scan", nil)
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	listPath := fmt.Sprintf("/projects/%s/merge_requests", g.projectPath(repo))
+	// GitLab's list takes a SINGLE state per query, so the read over-requests `all` (ordered
+	// newest-updated first) and narrows client-side to exactly the states asked for — the same
+	// over-request-and-filter shape SearchIssues uses where a forge query cannot express the
+	// exact predicate. Requesting `all` never widens the RESULT: a state the caller did not ask
+	// for is dropped by states.Want below.
+	stateAll := "all"
+	orderBy, sort := "updated_at", "desc"
+	out := &ChangeList{PageCap: gitlabMaxChangesPage}
+	for page := 1; page <= gitlabMaxChangesPage; page++ {
+		chunk, resp, lerr := cl.MergeRequests.ListProjectMergeRequests(repo.Slug(),
+			&gitlab.ListProjectMergeRequestsOptions{
+				State:       &stateAll,
+				OrderBy:     &orderBy,
+				Sort:        &sort,
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+		}
+		for _, mr := range chunk {
+			if mr == nil {
+				continue
+			}
+			st := gitlabChangeState(mr.State)
+			if !states.Want(st) {
+				continue
+			}
+			title, _ := gitlabStripDraftPrefix(mr.Title)
+			out.Changes = append(out.Changes, ChangeRef{
+				Number:   int(mr.IID),
+				State:    st,
+				HeadSHA:  mr.SHA,
+				HeadRef:  mr.SourceBranch,
+				Title:    title,
+				Body:     mr.Description,
+				MergedAt: gitlabTime(mr.MergedAt),
+			})
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return out, nil
+		}
+		if page == gitlabMaxChangesPage {
+			out.Incomplete = true
+			return out, nil
+		}
+	}
+	return out, nil
+}
+
 // headPipelineAt returns the pipeline GitLab ran for EXACTLY sha, or nil when there is none to
 // read. It is the one extra read the board sweep buys per open change, and it is addressed BY
 // SHA (`GET /projects/:id/pipelines?sha=…`, newest first, one entry) rather than by branch, so
