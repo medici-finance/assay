@@ -56,11 +56,13 @@ Each scene must render independently using a complete snapshot or deterministic 
 
 Provide pause, previous/next, chapter or scene seeking, progress, and readable captions. Add speed control if autoplay benefits the format. Honor reduced motion; avoid trapping keys in editable fields or moving focus unexpectedly. Ensure dense terminal text remains legible at the intended viewport; reveal excerpts rather than shrinking whole logs. Keep evidence labels visible on exported frames as well as the interactive player.
 
+Render every scene inside a stage of constant size: a fixed aspect-ratio box (16:9 unless the target medium dictates otherwise), a fixed-height caption band that clamps its lines and absorbs overflow inside the band, a fixed-height evidence-label strip, and controls anchored at a constant position, so moving between scenes never shifts the controls or reflows the page. Scene content is excerpted or scrolls within the stage; it never resizes the stage. Give the stage a backdrop that contrasts with the host page's background, using the host project's own design tokens, so the player reads as a presentation viewport embedded in the page; leave the surrounding page chrome unchanged and keep captions at accessible contrast on that surface in every theme the host supports.
+
 ## Deliver and check
 
 Deliver the requested format, source scene manifest, evidence ledger or explicit illustration label, and a static transcript. Derive slides/video from the same source when those outputs are requested; do not automatically build every format.
 
-Check direct jumps into late scenes, backwards navigation, pause/resume, keyboard access, reduced motion and target viewport readability. Inspect representative rendered frames when a browser/rendering tool is available; distinguish source inspection from visual verification when unavailable. Verify the final artifact demonstrates the promised outcome. Disclose which runs, capabilities or claims could not be checked.
+Check direct jumps into late scenes, backwards navigation, pause/resume, keyboard access, reduced motion, target viewport readability, that scene navigation does not move the controls, and that the stage surface is distinct from the page. Inspect representative rendered frames when a browser/rendering tool is available; distinguish source inspection from visual verification when unavailable. Verify the final artifact demonstrates the promised outcome. Disclose which runs, capabilities or claims could not be checked.
 
 Do not install a runtime, launch agents, mutate live systems, publish a site or change fleet configuration merely to make a demonstration. Follow the user's requested scope and existing authorization.
 
