@@ -707,16 +707,15 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 	return path, nil
 }
 
-// remoteSlugRe pulls owner/name out of a git remote URL in any of the shapes a
-// desk checkout uses (https, ssh, scp-style, and an ssh HOST ALIAS — the alias
-// form is the one a naive parser drops, and dropping it silently sends the mint
-// at the minter's default owner instead of the one the pass will land on).
-var remoteSlugRe = regexp.MustCompile(`(?:[:/])([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?$`)
-
-// deriveRepoSlug reads the landing remote's URL and extracts owner/name. It
-// returns "" when it cannot — an empty slug lets the minter apply its own
-// default, and the cold-mint check reports whatever that produces rather than
-// this function inventing a repo.
+// deriveRepoSlug reads the landing remote's URL as the RAW configured value (go-git's
+// RemoteURL, matching `git config --get remote.<name>.url` — no `insteadOf` expansion) and
+// extracts owner/name through the single shared parser (ParseRemoteRepo). That parser
+// handles every remote shape a desk checkout uses, including an ssh HOST ALIAS and the
+// rewritten/hybrid forms an `insteadOf` config bakes onto it (issue 1470) — the alias form
+// is the one a naive parser drops, and dropping it silently sends the mint at the minter's
+// default owner instead of the one the pass will land on. It returns "" when it cannot
+// resolve — an empty slug lets the minter apply its own default, and the cold-mint check
+// reports whatever that produces rather than this function inventing a repo.
 func deriveRepoSlug(dir, remote string) string {
 	repo, err := gitcore.Open(orDot(dir))
 	if err != nil {
@@ -726,11 +725,11 @@ func deriveRepoSlug(dir, remote string) string {
 	if err != nil {
 		return ""
 	}
-	m := remoteSlugRe.FindStringSubmatch(strings.TrimSpace(out))
-	if m == nil {
+	slug, err := RemoteRepoSlug(out)
+	if err != nil {
 		return ""
 	}
-	return m[1] + "/" + m[2]
+	return slug
 }
 
 // RepoSlugForDir resolves owner/name from a checkout's `origin` remote, the exported entry to

@@ -181,15 +181,39 @@ func verifierKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(k
 //     all: the target DIRECTORY already exists ("never clobbered"). It shares the substring
 //     "already exists" with the branch messages, so it must be discriminated FIRST or it
 //     renders the DELIVERED hint and sends the operator PR-hunting over a stale local dir.
+//
 //   - The VERIFIER lane touches no feature branch at all (its worktree is cut detached off
 //     origin/main under its own name), so a branch collision cannot be its cause; the
 //     commonest one is its own stale target dir on the same session key.
+//
 //   - The REVIEW lane has no brief and no `feat/<id>` branch, so that hint points a reviewer
 //     at a PR that explains nothing. A review kit checks the PR head out as a DETACHED HEAD,
 //     so the commonest cause here is the EARLIER reviewer worktree for this PR still present
 //     on the lane key; it must be reclaimed (`deskwt remove <path>`, which now allows a
 //     detached HEAD whose commit is proven on the remote — #851) before a re-dispatch can
 //     create its own worktree.
+//
+//   - A FOURTH shape reaches the worker/verifier-less default lane and is not about a branch
+//     OR a directory: `deskwt add` resolves the checkout's own origin repo (currentRepo,
+//     called before any branch logic even runs) and that resolution can fail on its own —
+//     `cannot parse origin repo from <url>` (a scp-style or otherwise unsupported remote
+//     shape) or the inner `cannot parse owner/repo from "<path>"`. Before this fix that
+//     message fell through to the generic "branch already existing" sentence below (it names
+//     no branch and contains no "already exists" substring the earlier cases test for, but
+//     the OLD code applied that sentence unconditionally to everything the earlier cases did
+//     not catch) and sent the operator hunting for a nonexistent PR (issue 1470 lane B) —
+//     while the actual defect was the origin remote itself, which the branch/PR hint does
+//     not even mention. Matched by STRING only: deskwt's `currentRepo`/`parseRepo` failures
+//     are built with `deskkit.Unverifiable`, but so is one of the branch-collision shapes
+//     ("no worktree holds it, but its commits ahead of … could not be counted") a few lines
+//     above, so the exit code alone (both ExitUnverifiable) cannot tell the two apart and the
+//     message text is the only discriminator deskwt exposes for this pair.
+//
+//     Everything else that reaches this lane (an origin outside the allowed repo set, an
+//     ambiguous --base, the push-transport gate, …) names neither a branch nor a remote-parse
+//     failure, and now gets NO guessed cause at all — deskwt's own words, already appended
+//     verbatim by the caller, are the whole answer; inventing a branch story for a cause this
+//     function cannot identify is exactly the failure mode this fix closes.
 func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	switch {
 	case reviewKit(kit):
@@ -223,10 +247,35 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 		strings.Contains(deskwtSaid, "checked out in NO worktree"):
 		return "The brief's branch " + branch + " already exists and no worktree holds it — the brief is DELIVERED " +
 			"(look for a merged or open PR before re-dispatching), not a transient tree fault."
+	// ORIGIN-REMOTE-PARSE class (issue 1470 lane B), tested BEFORE the generic "already
+	// exists" fallback below — checked FIRST because `deskwt add` resolves the checkout's own
+	// origin repo (currentRepo/parseRepo, tools/desk/cmd/deskwt/deskwt.go) before it ever
+	// reaches branch logic, and that failure names no branch at all. Matched by string only
+	// (comment above the func): deskwt's own exit code for this shape (Unverifiable) is not
+	// unique to it, so it cannot discriminate this case from the "commits ahead … could not
+	// be counted" branch-collision shape a few lines above, which shares the same code.
+	case strings.Contains(deskwtSaid, "cannot parse origin repo"),
+		strings.Contains(deskwtSaid, "cannot parse owner/repo"):
+		return "the checkout's origin remote could not be parsed — run `git -C <root> remote get-url origin` " +
+			"and see the deskwt README's supported remote shapes; the branch was NOT the cause."
+	// BRANCH-EXISTS class, kept as the ONLY remaining case that gets a guessed cause: deskwt's
+	// own message still names the branch shape ("already exists") even though it did not match
+	// any of the more specific patterns above. Scoping this to the substring — rather than
+	// applying it unconditionally to everything unmatched, as the prior code did — is what
+	// stops an unrelated failure (the remote-parse class above, or anything in the default
+	// case below) from being mis-told as a branch collision.
+	case strings.Contains(deskwtSaid, "already exists"):
+		return "For a fresh dispatch this is most often the brief's branch " + branch + " already existing " +
+			"— i.e. the brief is already delivered or in progress (look for a merged or open PR before " +
+			"re-dispatching), not a transient tree fault."
 	}
-	return "For a fresh dispatch this is most often the brief's branch " + branch + " already existing " +
-		"— i.e. the brief is already delivered or in progress (look for a merged or open PR before " +
-		"re-dispatching), not a transient tree fault."
+	// UNKNOWN class: matches neither a branch-shaped message nor the origin-remote-parse
+	// pattern above. Guessing a cause here is exactly the defect issue 1470 reported — no
+	// speculation: nothing was created (the worktree-create step is what failed), the claim
+	// state is already stated by the sentence right before this one, and deskwt's own words
+	// follow verbatim right after it.
+	return "no cause is guessed for this failure — it matches neither a known branch-collision nor an " +
+		"origin-remote-parse pattern; nothing was created."
 }
 
 // writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
