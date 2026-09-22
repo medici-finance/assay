@@ -32,6 +32,10 @@ func TestValidateEnvKeyRules(t *testing.T) {
 	validateEnvKey("NOT_A_REAL_KEY", "x", true) // --force widens the KEY allowlist
 	// …but never the VALUE rules: the Opus refusal and the value sets are not bypassable.
 	assertDies(t, "opus pin", func() { validateEnvKey("DESK_MODEL_the_desk", "opus", true) })
+	assertDies(t, "opus-5 pin", func() { validateEnvKey("DESK_MODEL_the_desk", "claude-opus-5", true) })
+	// …but Opus 5.5 is a valid top tier, so pinning the-desk to it is accepted (not an opus pin).
+	validateEnvKey("DESK_MODEL_the_desk", "claude-opus-5-5", true)
+	validateEnvKey("DESK_MODEL_the_desk", "claude-opus-5-5[1m]", true)
 	assertDies(t, "bad harness", func() { validateEnvKey("CELL_HARNESS", "bogus", true) })
 	assertDies(t, "bad kind", func() { validateEnvKey("CELL_KIND", "bogus", true) })
 	assertDies(t, "bad cockpit", func() { validateEnvKey("CELL_COCKPIT", "bogus", true) })

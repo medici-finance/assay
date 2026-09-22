@@ -138,6 +138,44 @@ func TestLoadModelPolicyDenyCannotBeRemoved(t *testing.T) {
 	}
 }
 
+// TestLoadModelPolicyOpusTopTierFloor is the positive twin of DenyCannotBeRemoved: the built-in
+// Opus-5.0 prohibition must NOT over-reach to opus tiers AT OR ABOVE the-desk's 5.5 floor, which
+// are valid top tiers. Pinned as the-desk's top tier, an opus >= 5.5 both loads and resolves
+// WITHOUT the coordinator's non-Opus refusal (5.5 at the floor, 6.0 above it), while an opus BELOW
+// the floor (5.0, 4.8) in the same slot is still refused for the-desk. The gate is a VERSION FLOOR,
+// not a fixed allowlist, so a future opus (6.0) auto-qualifies without a code edit.
+func TestLoadModelPolicyOpusTopTierFloor(t *testing.T) {
+	setTopModel := func(model string) func(map[string]any) {
+		return func(m map[string]any) {
+			m["deny"] = []any{}
+			m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["top"].(map[string]any)["model"] = model
+		}
+	}
+	// At or above the floor: accepted as the-desk's top tier.
+	for _, model := range []string{"claude-opus-5-5", "claude-opus-6-0"} {
+		m, err := loadModelPolicy(writeMutatedPolicy(t, setTopModel(model)))
+		if err != nil {
+			t.Fatalf("%s is a valid tier target and must load even with deny=[]: %v", model, err)
+		}
+		res, err := m.Resolve("the-desk", "", "", "")
+		if err != nil {
+			t.Fatalf("the-desk must accept %s (>= 5.5 floor) as its top tier: %v", model, err)
+		}
+		if res.Model != model {
+			t.Errorf("the-desk top tier = %q, want %q", res.Model, model)
+		}
+	}
+	// Below the floor, but not on the built-in deny list (5.0 spellings are denied at LOAD, tested
+	// separately): Opus 4.8 loads as a tier target yet the-desk's gate still refuses it at resolve.
+	m, err := loadModelPolicy(writeMutatedPolicy(t, setTopModel("claude-opus-4-8[1m]")))
+	if err != nil {
+		t.Fatalf("Opus 4.8 is not denied as a tier target and must load: %v", err)
+	}
+	if _, err := m.Resolve("the-desk", "", "", ""); err == nil {
+		t.Error("the-desk must still refuse a below-floor opus top tier (Opus 4.8)")
+	}
+}
+
 // TestLoadModelPolicyValidatesUnusedProvider ports test_invalid_unused_provider_still_fails: the
 // whole file is validated, including a provider no role currently routes to.
 func TestLoadModelPolicyValidatesUnusedProvider(t *testing.T) {
@@ -193,6 +231,25 @@ func TestResolveDirectAndAliasRequestsDeniesOpus5Variants(t *testing.T) {
 	for _, v := range []string{"claude-opus-5", "Opus5", "claude-opus-5[1m]", "gateway/claude-opus-5", "latest", "opusplan"} {
 		if _, err := m.Resolve("pr-review-desk", "", v, ""); err == nil {
 			t.Errorf("requested=%q must refuse, resolved instead", v)
+		}
+	}
+	// Deny anchoring: Opus 5.0 stays banned (canonical id, its `[1m]` / gateway spellings, the
+	// no-hyphen `Opus5`, and the explicit `-5-0` / `-5.0` spellings of the same tier), while
+	// Opus 5.5 — a valid top tier — is NOT banned, because `opus-5-5` does not end in `opus-5`.
+	for _, v := range []string{
+		"claude-opus-5", "Opus5", "claude-opus-5[1m]", "gateway/claude-opus-5",
+		"claude-opus-5-0", "claude-opus-5.0",
+	} {
+		if !policyDenied(v, m.Banned) {
+			t.Errorf("policyDenied(%q) = false, want true (Opus 5.0 is banned)", v)
+		}
+	}
+	for _, v := range []string{
+		"claude-opus-5-5", "claude-opus-5-5[1m]", "gateway/claude-opus-5-5",
+		"claude-fable-5-1", "claude-sonnet-5", "claude-opus-4-8[1m]",
+	} {
+		if policyDenied(v, m.Banned) {
+			t.Errorf("policyDenied(%q) = true, want false (not the Opus 5.0 tier)", v)
 		}
 	}
 }
