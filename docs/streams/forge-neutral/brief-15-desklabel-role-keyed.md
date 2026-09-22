@@ -378,6 +378,33 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 - Case-insensitive match / canonical-case write: `lookup()` uses `strings.EqualFold` (`:134-142`); `authorize()` returns the table's canonical spelling (`:163-186`), which `verbs.go:142` uses for every subsequent read/write/audit line — confirmed functionally via row 7's `Human-Decided` mixed-case variant refusing identically to lowercase.
 
 **VERIFY: PARTIAL** — 12/13 rows PASS, including all three security-critical rows (6, 7, 13) run with genuine rigor; row 13's mutation is the load-bearing proof and behaved exactly as predicted. Row 11 is EXPLICITLY UNRUN for a structural reason unrelated to the deliverable's correctness (filed #1281), not a defect. Held at `implemented` pending that row's resolution or an explicit waiver — the deliverable itself verifies clean.
+### Verify pass 2026-09-22 (non-implementer, VERIFY: 12/13 PASS — row 11 could-not-check, tracked assay#1281)
+
+Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f2a86c8e0dce59edabdd22a`. Offline (`KUBECONFIG=/dev/null`).
+
+| # | Command | Expect | Observed (exit + key line) | Date | Runner |
+|---|---------|--------|----------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | build 0; test 0 — ~75 pkgs ok incl cmd/desklabel, internal/deskkit, internal/forgeban | 2026-09-22 | opus-4.8-verifier |
+| 2 | `go test ./cmd/desklabel/... -count=1` | exit 0 | 0 — `ok cmd/desklabel 0.389s` | 2026-09-22 | opus-4.8-verifier |
+| 3 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | exit 0 | 0 both — seam stays closed | 2026-09-22 | opus-4.8-verifier |
+| 4 | `TestApplyIssueLabelsBothBackends -v` | exit 0 | 0 — github + gitlab subtests PASS | 2026-09-22 | opus-4.8-verifier |
+| 5 | `TestDesklabelAppliesOwnedLabelGitHub/GitLab -v` | exit 0 | 0 — GitLab issue-only/MR-only/both-refused-without-`--kind` PASS | 2026-09-22 | opus-4.8-verifier |
+| 6 | `TestDesklabelRefusesUnownedLabel -v` | exit 5, 0 forge calls, names both roles | test PASS — refuses incl table-absent + size-family labels | 2026-09-22 | opus-4.8-verifier |
+| 7 | `TestDesklabelRefusesHumanDecidedForEveryRole -v` | exit 5 every role | test PASS — worker/reviewer × add/rm × case variants all refuse | 2026-09-22 | opus-4.8-verifier |
+| 8 | `TestDesklabelSharedVocabularyAnyRole -v` | exit 0 | 0 — shared set 4-wide (needs-decision, needs-human, question, help wanted); worker+reviewer succeed | 2026-09-22 | opus-4.8-verifier |
+| 9 | `grep -rn 'flag.String("as"'/'"--as"' cmd/desklabel --include='*.go' \| grep -v _test \| wc -l` | `0` | `0` | 2026-09-22 | opus-4.8-verifier |
+| 10 | `go test ./internal/forgeban/... -count=1` | exit 0 | 0 — ratchet unaffected | 2026-09-22 | opus-4.8-verifier |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/15` | exit 0, corroborated | **could-not-check (exit 2, explicitly unrun)** — "not in the diff against 6204bb4f"; structural: brief's doc-authoring & impl landed in separate PRs so it is never in the merged-main diff. Reported as itself, not rounded. Same condition as prior 2026-09-17 pass; tracked `medici-finance/assay#1281`. | 2026-09-22 | opus-4.8-verifier |
+| 12 | `grep -c 'desklabel' tools/desk/README.md` | ≥1 | `1` — tool-reference row present | 2026-09-22 | opus-4.8-verifier |
+| 13 | Mutation (repo `muhar` harness on cmd/desklabel/mutations.json): force ownership check caller-owned, re-run, restore | mutant reddens row 6, green after restore | **CAUGHT** — baseline GREEN, positive control CAUGHT; row-13 mutant CAUGHT; 11 caught / 0 not-caught / 0 could-not-mutate; vocabulary.go restored byte-identical (md5 a500b2c1…) | 2026-09-22 | opus-4.8-verifier |
+
+Scope traceability: every Evidence row maps 1:1 to its Verify row; no invented scope.
+
+RISK-VALUE: DERIVED — `human-decided` Owner=`ownerNone` @ `tools/desk/cmd/desklabel/vocabulary.go:128` — the human-only-close pair (deskclose decisionLabels {needs-decision, human-decided}); a role self-applying it forges a recorded human ruling, so NO role owns it (`permits()` ownerNone → false). Proven by row 7 (all roles refuse) + row-13 mutant CAUGHT.
+RISK-VALUE: DERIVED — `superseded?` Owner=`roleWorker` @ `vocabulary.go:112`; `authorization-needed`/`approval-needed` Owner=`roleReviewer` @ `:122,124` — code-truth matching deskclose (worker proposes) and deskflip (reviewer ready-flip pair).
+RISK-VALUE: DERIVED — shared set = {needs-decision, needs-human, question} + `help wanted` @ `vocabulary.go:92-105` — first three derived live from `topology.Compiled().DecisionOwedLabelNames()` (bound to topology.yaml by TestTopologyDriftRegistry); the brief prose naming it 3-wide is stale doc, not a code defect (set self-updates from loader).
+
+**VERIFY: 12/13 PASS** — held pending flip. All three security-critical rows (6 refusal, 7 human-decided-refusal, 13 mutation-caught) PASS. Row 11 could-not-check is the structural `statusgen --consumers` merged-brief limitation tracked `assay#1281` — the identical accepted condition under which sibling briefs 03/05/06/08 landed `done` on this board. gate:model, risk all-no → advances implemented → verified.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
