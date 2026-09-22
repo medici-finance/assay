@@ -50,7 +50,7 @@ func in(xs []string, x string) bool {
 }
 
 // sidecarBase is a small, realistic verify-outcomes.jsonl already on the branch.
-const sidecarBase = `{"ts":"2026-09-07T01:00:00Z","brief":"desk-tools/01","outcome":"verify-fail","rows_passed":4,"rows_total":5,"sha":"0000001"}
+const sidecarBase = `{"ts":"2026-09-07T01:00:00Z","brief":"example-stream/01","outcome":"verify-fail","rows_passed":4,"rows_total":5,"sha":"0000001"}
 `
 
 // TestVerifiedSidecarRefusedWhenClosureNotAccepted is the fail-first regression guard for #1309:
@@ -65,12 +65,12 @@ func TestVerifiedSidecarRefusedWhenClosureNotAccepted(t *testing.T) {
 	var askedFor []string
 	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
 		askedFor = append(askedFor, brief)
-		return closureNotAccepted, "desk-tools/14: NOT accepted — Status is \"implemented\", not verified/done", nil
+		return closureNotAccepted, "example-stream/14: NOT accepted — Status is \"implemented\", not verified/done", nil
 	}
 
 	evidencePath := "docs/streams/verify-outcomes.jsonl"
 	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"desk-tools/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
+		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
 	root := rootWithFile(t, evidencePath, appended)
 	f.setFile(evidencePath, sidecarBase)
 
@@ -84,10 +84,10 @@ func TestVerifiedSidecarRefusedWhenClosureNotAccepted(t *testing.T) {
 	if f.putCalls != 0 {
 		t.Fatalf("refusal still wrote %d time(s)", f.putCalls)
 	}
-	if len(askedFor) != 1 || askedFor[0] != "desk-tools/14" {
-		t.Fatalf("closure check asked for %v, want exactly [desk-tools/14]", askedFor)
+	if len(askedFor) != 1 || askedFor[0] != "example-stream/14" {
+		t.Fatalf("closure check asked for %v, want exactly [example-stream/14]", askedFor)
 	}
-	if s := errBuf.String(); !strings.Contains(s, "desk-tools/14") || !strings.Contains(s, "verified") {
+	if s := errBuf.String(); !strings.Contains(s, "example-stream/14") || !strings.Contains(s, "verified") {
 		t.Fatalf("refusal message = %q, want it to name the brief and the verified outcome", s)
 	}
 }
@@ -103,7 +103,7 @@ func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 
 	evidencePath := "docs/streams/verify-outcomes.jsonl"
 	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"desk-tools/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
+		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
 	root := rootWithFile(t, evidencePath, appended)
 	f.setFile(evidencePath, sidecarBase)
 
@@ -114,7 +114,7 @@ func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 	if f.putCalls != 1 {
 		t.Fatalf("expected exactly 1 write, got %d", f.putCalls)
 	}
-	if !strings.Contains(f.putContent, `"brief":"desk-tools/14","outcome":"verified"`) {
+	if !strings.Contains(f.putContent, `"brief":"example-stream/14","outcome":"verified"`) {
 		t.Fatalf("landed content did not carry the verified row: %q", f.putContent)
 	}
 }
@@ -131,7 +131,7 @@ func TestVerifyFailSidecarRowNeverGated(t *testing.T) {
 
 	evidencePath := "docs/streams/verify-outcomes.jsonl"
 	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"desk-tools/14","outcome":"verify-fail","rows_passed":2,"rows_total":5,"sha":"0000002"}` + "\n"
+		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":2,"rows_total":5,"sha":"0000002"}` + "\n"
 	root := rootWithFile(t, evidencePath, appended)
 	f.setFile(evidencePath, sidecarBase)
 
@@ -156,7 +156,7 @@ func TestVerifiedSidecarCouldNotCheckRefusesUnverifiable(t *testing.T) {
 
 	evidencePath := "docs/streams/verify-outcomes.jsonl"
 	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"desk-tools/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
+		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
 	root := rootWithFile(t, evidencePath, appended)
 	f.setFile(evidencePath, sidecarBase)
 
