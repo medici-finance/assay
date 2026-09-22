@@ -4,9 +4,15 @@
 //
 // Every state change is one console line AND one audit line, both carrying `app=`/`state=`
 // and NEVER key material (secrets_test.go). The state nonce (records.go's newStateNonce) is
-// the ONE control that keeps a callback from being accepted by a listener that did not
-// issue it; the loopback bind and the record-side match here are the two independent layers
-// behind it (callback_test.go: TestCallbackBadState).
+// the control that keeps a callback from being accepted for a row it was not issued for
+// (callback_test.go: TestCallbackBadState). The genuinely independent second layer is the
+// owner check on the conversion result: the App's real owner as GitHub reports it must match
+// the operator's gh login (personal) or --org (org-owned), which trips on a different signal
+// than the nonce and catches a valid state carrying a FOREIGN App's code (pem_test.go:
+// TestPemNeverWrittenOnMismatch / TestPemNeverWrittenOnOrgOwnerMismatch). The loopback bind is
+// a precondition, not an independent layer — GET /run serves each pending row's live nonce to
+// any local process, so "reached the listener" and "knows the nonce" are one capability, not
+// two.
 package main
 
 import (
@@ -227,6 +233,22 @@ func (s *deskappsServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// State-machine guard (S-2): a callback is only meaningful for a row still awaiting its
+	// conversion — pending (armed) or posted (Create clicked, throttle running). A row already
+	// keyed (or paused/further along) must never be re-converted: without this, a replayed
+	// /callback?code=<fresh>&state=<same nonce> would re-run writePEM/writeAppRecords/
+	// writeBindings and overwrite the stored key. handleMarkPosted already guards its own
+	// transition on row.State; this closes that asymmetry. (A keyed row also has its nonce
+	// consumed below, so rowByNonce would not even find it — this catches the paused/other
+	// states whose nonce is still live.)
+	s.mu.Lock()
+	notConvertible := row.State != StatePending && row.State != StatePosted
+	s.mu.Unlock()
+	if notConvertible {
+		http.Error(w, "app already keyed — refusing to re-convert", http.StatusConflict)
+		return
+	}
+
 	cr, err := convertCodeFn(code)
 	if err != nil {
 		if err == errConversionExpired {
@@ -243,17 +265,31 @@ func (s *deskappsServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Identity mismatch (design.md §8): personal-owned, conversion owner.login != gh login.
-	// Nothing is written; the row is re-armed to pending.
-	if s.ownerKind == "me" && s.identity.Login != "" && cr.Owner.Login != "" &&
-		!strings.EqualFold(cr.Owner.Login, s.identity.Login) {
+	// Owner mismatch (design.md §8, S-1): the conversion's owner.login must match the owner the
+	// operator actually named — their gh login on the personal path, the --org value on the org
+	// path. This is a genuinely independent layer from the state nonce: it trips on the App's
+	// real owner as GitHub reports it in the conversion response (a different signal, in a
+	// different component, than the local state record the nonce matches), and it catches
+	// exactly the fault the nonce cannot — a callback carrying a valid state and a FOREIGN App's
+	// code. Without the org branch the default (org-owned) path had no owner check at all, so a
+	// foreign App's PEM/webhook-secret could be written into the operator's credential plane and
+	// the role bindings repointed at an App they do not own. Nothing is written on a mismatch;
+	// the row is re-armed to pending.
+	var wantOwner string
+	switch s.ownerKind {
+	case "me":
+		wantOwner = s.identity.Login
+	case "org":
+		wantOwner = s.org
+	}
+	if wantOwner != "" && cr.Owner.Login != "" && !strings.EqualFold(cr.Owner.Login, wantOwner) {
 		s.mu.Lock()
 		row.State = StatePending
 		row.UpdatedAt = time.Now().UTC()
 		s.mismatch = true
 		_ = saveState(s.state)
 		s.mu.Unlock()
-		s.logState(row.App, StatePending, "identity mismatch — nothing written")
+		s.logState(row.App, StatePending, "owner mismatch — nothing written")
 		http.Redirect(w, r, "/setup", http.StatusFound)
 		return
 	}
@@ -276,6 +312,10 @@ func (s *deskappsServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 	row.State = StateKeyed
 	row.AppID = fmt.Sprintf("%d", cr.ID)
 	row.ClientID = cr.ClientID
+	// Consume the nonce (S-2): once a row is keyed its state nonce is spent, so a replayed
+	// /callback carrying it finds no row (rowByNonce ignores an empty nonce) and cannot
+	// re-run the write path. rowByApp still finds the row for status/resume by name.
+	row.StateNonce = ""
 	row.UpdatedAt = time.Now().UTC()
 	saveErr := saveState(s.state)
 	s.mu.Unlock()

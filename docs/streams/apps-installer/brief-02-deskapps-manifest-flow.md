@@ -49,15 +49,23 @@ files:
 - `tools/desk/README.md` (new § deskapps), `docs/desk-tools/deskapps.md` (planned).
 - `tools/desk/cmd/deskapps/mutations.json` (new).
 
-single-point-of-failure: the `state` nonce is the ONE control that keeps a callback from being
-accepted by a listener that did not issue it. The second, independent layer: the listener binds
-`127.0.0.1` only, so a foreign callback has to originate on the machine; and the conversion is
-performed only for a code whose `state` matches a pending row in `apps.state.json`, a third check in
-a different component (the record, not the HTTP handler). Verify rows 6 and 7 break the upper layer.
+single-point-of-failure: the `state` nonce keeps a callback from being accepted for a row it was
+not issued for. The genuinely INDEPENDENT second layer is the owner check on the conversion
+result: the App's real owner as GitHub reports it must equal the owner the operator named — their
+`gh` login (personal-owned) or `--org` (org-owned) — before any key is written. It trips on a
+different signal (the forge's reported owner, not the local state record) in a different component,
+so it catches exactly the fault the nonce cannot: a callback carrying a valid `state` and a FOREIGN
+App's code. The loopback bind is a PRECONDITION, not a second independent layer — `GET /run` serves
+each pending row's live nonce to any local process, so "reached the listener" and "knows the nonce"
+are one capability, not two. Rows 6 and 7 break the nonce/bind layer; row 17 breaks the owner
+layer (foreign App's code on the org path → nothing written).
 
 facts:
 - Manifest fields used: `name`, `url`, `redirect_url` (`http://127.0.0.1:<port>/callback`),
-  `public: false`, `default_permissions`, `default_events: []`, `hook_attributes: {active: false}`.
+  `public: false`, `default_permissions`, `default_events: []`. No `hook_attributes` key is
+  posted: this flow never sets a webhook URL, and GitHub's manifest schema rejects a
+  `hook_attributes` object with no `url` (even `{active: false}`), so a webhook-less App omits
+  the key entirely (assay#1260).
 - Tier manifests (this brief's data; permissions are the desk preflight's required set plus
   CI-read for the roles that read CI, plus `administration:read` for the roles that read branch
   protection):
@@ -86,8 +94,9 @@ facts:
 - Records: `apps.env` gains `<APP>_APP_ID`, `<APP>_INSTALL_ID` (filled by brief 03),
   `<APP>_CLIENT_ID`, `<APP>_WEBHOOK_SECRET` (0600), plus the bindings. `apps.state.json` schema
   `deskapps-state-v1` per design §4. PEM at `<credential-search-path-head>/<app>.pem`, 0600.
-- Identity: `gh api user` (login, email, avatar_url) and `gh api user/memberships/orgs
-  --jq '.[] | select(.role=="admin") | .organization.login'` at start; never a token of its own.
+- Identity: `gh api user` (login, email, avatar_url) at start; never a token of its own. (The
+  `gh api user/memberships/orgs` owned-orgs lookup was dropped — `identity.go`'s `ghOwnedOrgs`,
+  removed in `fcbe86aa6`: Screen 1 never rendered an owned-orgs list, so the call was dead.)
 - Default port 41873; on bind failure take the next free loopback port and derive `redirect_url`
   from the port actually bound.
 - Timeout for a Create click: 10 minutes without a callback flips the row to `paused` (the
@@ -106,9 +115,10 @@ facts:
 
 ## Task
 1. `deskapps init --tier team|family [--org L] [--owner org|me] [--prefix assay] [--port N]
-   [--no-browser] [--dry-run]`: read identity, list owned orgs, write an initial `apps.state.json` with one
-   `pending` row per App in the design's order, start the loopback server, open the browser (or
-   print the URL). `--dry-run` prints the URL and the planned App rows and exits without serving.
+   [--no-browser] [--dry-run]`: read identity (`gh api user`), write an initial `apps.state.json`
+   with one `pending` row per App in the design's order, start the loopback server, open the
+   browser (or print the URL). `--dry-run` prints the URL and the planned App rows and exits
+   without serving.
 2. Serve Screen 0 (tier, read-only reflection of `--tier`; switching redraws copy — the chooser
    content is the design §2 table verbatim), Screen 1 (identity strip, owner, names, permissions,
    avatar placeholders until brief 06), Screen 2 (run board; Create cell only in this brief — the
@@ -144,17 +154,22 @@ facts:
 | 13 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRunInitManifestAndTierMutuallyExclusive' -count=1 -v` | exit 0 — `--manifest` together with an explicit `--tier` is refused, at the flag layer, before any manifest file is read or port bound; stderr names "mutually exclusive" | check:ci |
 | 14 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesRedirectURL\|TestRunInitManifestBadFileReportsAndExits' -count=1 -v` | exit 0 — a manifest carrying its own top-level `redirect_url` is refused with a clear error naming `redirect_url`, both at the loader (`LoadManifestFile`) and end-to-end through `deskapps init --manifest` (non-zero exit, nothing written) | check:ci |
 | 15 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesHookURL' -count=1 -v` | exit 0 — a manifest carrying `hook_attributes.url` is refused with a clear error naming `hook_attributes.url`, the same way and for the same reason as `redirect_url` | check:ci |
+| 16 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBuildManifestJSONOmitsHookAttributes' -count=1 -v` | exit 0 — neither the `--tier` nor the `--manifest` path emits a `hook_attributes` key in the posted manifest JSON (assay#1260) | check:ci |
+| 17 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPemNeverWrittenOnOrgOwnerMismatch' -count=1 -v` | exit 0 — a `/callback` with a valid `state` and a FOREIGN App's `code` on the org-owned path writes NO PEM and NO `apps.env` record, and re-arms the row (the owner layer catching the fault the nonce cannot) | check:ci |
 
 ## Evidence
 
-Implemented on branch `feat/apps-installer-02`. All fifteen Verify rows run locally (offline —
+Implemented on branch `feat/apps-installer-02`. All seventeen Verify rows run locally (offline —
 every conversion/`gh` call is a test double; `KUBECONFIG=/dev/null`, no live GitHub contact from
 this session). Rows 13-15 were added in a follow-up review round (clause 7): the `--manifest`
 mode's two refusal paths and its mutual exclusivity with `--tier` already had passing tests
 (`manifest_flow_test.go`) but no executable Verify row citing them, so there was no traceable
 proof-of-behaviour for that deliverable — these rows cite the existing tests rather than
 duplicating them, per the fail-first rule (nothing new is being pinned, so no new fail-first
-run applies).
+run applies). Rows 16-17 were added in a later review round: row 16 wires the already-present
+`hook_attributes`-omission tests into the table (assay#1260); row 17 is the new org-owner check
+(the S-1 security finding), which was fail-first-proven — the test writes a foreign App's PEM
+against the pre-fix code and refuses it after (see its Result below).
 
 | # | Result |
 |---|--------|
@@ -173,6 +188,8 @@ run applies).
 | 13 | PASS — `TestRunInitManifestAndTierMutuallyExclusive`: `deskapps init --manifest <file> --tier family --dry-run` exits non-zero and stderr reads `deskapps init: --manifest and --tier are mutually exclusive` (main.go's `runInit`, checked via `fs.Visit` before either path runs) |
 | 14 | PASS — `TestLoadManifestFileRefusesRedirectURL` (loader-level: `LoadManifestFile` returns an error naming `redirect_url` for a manifest carrying its own top-level `redirect_url`) and `TestRunInitManifestBadFileReportsAndExits` (end-to-end: `deskapps init --manifest <that file> --dry-run` exits non-zero, stderr names `redirect_url`, no port bound, nothing written) both pass |
 | 15 | PASS — `TestLoadManifestFileRefusesHookURL`: `LoadManifestFile` returns an error naming `hook_attributes.url` for a manifest whose `hook_attributes` carries its own `url`, presence-checked on the raw JSON before the typed unmarshal (so the field is refused, never silently dropped) |
+| 16 | PASS — `TestBuildManifestJSONOmitsHookAttributesTierPath` and `TestBuildManifestJSONOmitsHookAttributesManifestPath` both assert on the RAW JSON (not just the decoded map) that no `hook_attributes` key is posted on either entry path when no webhook url is set (assay#1260) |
+| 17 | PASS (fail-first proven) — `TestPemNeverWrittenOnOrgOwnerMismatch`: with `--org example` and a conversion result owned by `attacker-org`, the `/callback` writes no PEM and no `apps.env` record and re-arms the row. Reverting only the owner check in `server.go` to the pre-fix `ownerKind=="me"`-gated form makes this test fail (`a PEM was written despite an org-owner mismatch`), confirming the org path had no owner check at all before the fix; restored → green |
 
 **Fail-first (Task 7 / mutations.json).** Hand-applied both required mutants directly against
 the built package (not just corpus presence):

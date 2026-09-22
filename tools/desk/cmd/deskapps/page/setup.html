@@ -16,7 +16,10 @@
 </div>
 
 <div class="identity-strip">
-{{if .Identity.AvatarURL}}<img src="{{.Identity.AvatarURL}}" alt="">{{end}}
+{{/* S-5: no <img src="{{.Identity.AvatarURL}}"> — that is a live third-party fetch to
+     avatars.githubusercontent.com from the loopback page, which the brief's Ground rules
+     ("the page makes no third-party request") forbid. The operator's avatar is cosmetic and
+     App avatars are brief example-stream/06's job; the login/email below identify the account. */}}
 <div>
   <div><strong>{{.Identity.Login}}</strong> &lt;{{.Identity.Email}}&gt;</div>
   <div>Your browser must be signed in to this same GitHub account. We check after Create.</div>

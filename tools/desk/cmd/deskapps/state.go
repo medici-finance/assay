@@ -84,10 +84,11 @@ func saveState(sf *StateFile) error {
 		return err
 	}
 	p := statePath()
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	if err := mkdirSecure(filepath.Dir(p)); err != nil {
 		return err
 	}
-	return os.WriteFile(p, b, 0o600)
+	// writeFileSecure enforces 0600 even on a pre-existing state file (S-4).
+	return writeFileSecure(p, b)
 }
 
 // rowByApp returns the row named app, or nil.

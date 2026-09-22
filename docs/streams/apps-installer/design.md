@@ -55,9 +55,13 @@ screen's job. Solo ends the run here (see §7).
 
 ### Screen 1 — Details (`/setup`)
 
-- **Identity strip** on this and every later screen: avatar, login and email from `gh api user`,
-  the orgs that login owns (from the memberships endpoint, role `admin`), and the sentence *"Your
-  browser must be signed in to this same GitHub account. We check after Create."*
+- **Identity strip** on this and every later screen: login and email from `gh api user`, and the
+  sentence *"Your browser must be signed in to this same GitHub account. We check after Create."*
+  The operator's avatar is not fetched inline — that would be a third-party request from the
+  loopback page (§8 "Shared conventions"); App avatars are §5 / brief 06's step. The owned-orgs
+  list this strip once named was dropped: Screen 1 never rendered it, so the
+  `gh api user/memberships/orgs` lookup (`identity.go`'s `ghOwnedOrgs`) behind it was removed as
+  dead code (`fcbe86aa6`).
 - **Owner**: org-owned (default; requires org owner) or personal-owned, with the custody trade
   stated: *an App created under a personal account leaves with that account*.
 - **App names**: `<prefix>-read`, `<prefix>-act` (or the six role slugs). GitHub App names are
@@ -201,7 +205,7 @@ implementation is authored after the ruling.
 | Creation throttled | no callback within 10 min | amber banner, count done, Resume button; rows paused, nothing retried on its own |
 | Code expired | conversion 404 after > 1 h | row back to posted, "Create again on GitHub"; no key was written |
 | Name taken | GitHub rejects the manifest name | suffix suggestion, accept or edit; never a silent rename |
-| Browser signed in as someone else | personal-owned: conversion owner ≠ `gh` login; org-owned: GitHub refuses the form for a non-owner | red identity strip naming both accounts, a link to switch, Create re-armed; nothing written |
+| Browser signed in as someone else | conversion owner ≠ the named owner — `gh` login (personal-owned) or `--org` (org-owned); GitHub also refuses the org form for a non-owner, but `deskapps` checks the conversion result itself on both paths so a foreign App's `code` is caught even if the form is not | red identity strip, a link to switch, Create re-armed; nothing written |
 | Not an org owner | org-owned manifest URL forbidden | offer personal ownership with the custody trade stated, or hand the URL to an owner |
 | Installed on the wrong account | installation poll sees another login | row shows where it landed with an uninstall link, keeps waiting for the right one |
 | Scopes ≠ duties | proof step | red row naming the exact permission and the GitHub page; reminds that re-consent follows |

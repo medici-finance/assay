@@ -162,3 +162,36 @@ func TestBuildManifestJSONOmitsHookAttributesTierPath(t *testing.T) {
 		t.Fatalf("decoded manifest carries hook_attributes = %v, want the key absent", m["hook_attributes"])
 	}
 }
+
+// TestBuildManifestJSONEmitsHookAttributesWhenURLSet pins the ONE branch of BuildManifestJSON
+// that emits hook_attributes — reached only when a spec's HookExtra names a "url" (N-3). No
+// entry path constructs such a spec today (the --tier path never sets HookExtra, and
+// LoadManifestFile refuses a manifest hook_attributes.url), so this test drives the branch
+// directly with a hand-built AppSpec rather than leaving it unexercised: if the loader's
+// refusal is ever relaxed, this is the guard that proves the emitted object carries the url
+// AND the defaulted active:false, rather than the branch going live having never run.
+func TestBuildManifestJSONEmitsHookAttributesWhenURLSet(t *testing.T) {
+	spec := AppSpec{
+		Name:        "assay-worker-app",
+		Permissions: []string{"contents:write"},
+		HookExtra:   map[string]any{"url": "https://example.invalid/hook"},
+	}
+	raw, err := BuildManifestJSON(spec, "http://127.0.0.1:41873/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	hook, ok := m["hook_attributes"].(map[string]any)
+	if !ok {
+		t.Fatalf("hook_attributes absent or not an object: %v", m["hook_attributes"])
+	}
+	if hook["url"] != "https://example.invalid/hook" {
+		t.Fatalf("hook_attributes.url = %v, want the spec's url", hook["url"])
+	}
+	if active, ok := hook["active"].(bool); !ok || active {
+		t.Fatalf("hook_attributes.active = %v, want the defaulted false", hook["active"])
+	}
+}

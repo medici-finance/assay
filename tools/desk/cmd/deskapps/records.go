@@ -28,16 +28,37 @@ func newStateNonce() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// mkdirSecure creates dir (and parents) and enforces mode 0700 on dir itself (S-4):
+// os.MkdirAll leaves an ALREADY-existing directory's mode untouched, so a credential-plane
+// dir a prior run or a hand edit left wider stays wide without this explicit Chmod.
+func mkdirSecure(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.Chmod(dir, 0o700)
+}
+
+// writeFileSecure writes data to p and enforces mode 0600 on it (S-4): os.WriteFile applies
+// its perm argument only when it CREATES the file, so a pre-existing PEM/apps.env/state file
+// left at a looser mode (a hand edit, a restore, an older writer) would be rewritten in place
+// and keep that looser mode. The explicit Chmod closes that window.
+func writeFileSecure(p string, data []byte) error {
+	if err := os.WriteFile(p, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(p, 0o600)
+}
+
 // writePEM writes the App's private key 0600 at <config-home>/<app>.pem, byte-equal to the
 // conversion's `pem` field. Nothing else in this package holds a PEM past this call — see
 // secrets_test.go for the assertion that it never reaches stdout, the audit log, or a
 // served page.
 func writePEM(app, pem string) error {
 	p := deskkit.ConfigHomeWritePath(app + ".pem")
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	if err := mkdirSecure(filepath.Dir(p)); err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(pem), 0o600)
+	return writeFileSecure(p, []byte(pem))
 }
 
 // appsEnvPath is where apps.env is read from and written to: the head of the
@@ -121,14 +142,14 @@ func mergeAppsEnv(updates map[string]string) error {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	if err := mkdirSecure(filepath.Dir(p)); err != nil {
 		return err
 	}
 	out := strings.Join(lines, "\n")
 	if out != "" {
 		out += "\n"
 	}
-	return os.WriteFile(p, []byte(out), 0o600)
+	return writeFileSecure(p, []byte(out))
 }
 
 // readAppsEnv returns the current apps.env contents, or "" if it does not exist yet —

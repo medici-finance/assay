@@ -52,6 +52,11 @@ App set — for an App that isn't one of the six desk roles (e.g. `assay-leakswe
   machinery `--tier` already uses — a manifest **must not** carry its own `redirect_url`, and
   its `hook_attributes` must not carry a `url`; either is REFUSED with a clear error rather
   than silently stripped.
+- This flow never sets a webhook URL, so a url-less `hook_attributes` (e.g. `{"active": true}`)
+  is **accepted by the loader but then dropped** — it is not posted, because GitHub's manifest
+  schema rejects a `hook_attributes` object with no `url` (assay#1260). If you need a webhook,
+  set it on the App in GitHub's UI after creation; `deskapps` does not carry one through this
+  flow.
 - `--org <login>` selects org-owned (its presence) vs. personal-owned (its absence) — there
   is no separate `--owner` flag for this mode.
 - Runs the SAME callback → conversion → PEM-write path as `--tier`, including the design.md
@@ -75,15 +80,23 @@ App set — for an App that isn't one of the six desk roles (e.g. `assay-leakswe
 - **Loopback only.** The page binds `127.0.0.1`; `bind_test.go`'s `TestBindLoopbackOnly`
   asserts `0.0.0.0`/`::` never appear on the listener, on both the direct-bind and the
   fallback-port paths.
-- **The state nonce is the single control** that keeps a `/callback` request from being
-  accepted for an App it was not issued for: `server.go`'s callback handler looks the
-  incoming `state` up against a pending row and refuses (403) before anything else happens —
-  no conversion attempted, no row touched — on a miss. Two independent layers sit behind it:
-  the loopback bind (a foreign callback has to originate on the machine), and the
-  record-side match itself living in a different component (`apps.state.json`) than the HTTP
-  handler that reads it. `callback_test.go`'s `TestCallbackBadState` is the negative case;
+- **The state nonce** keeps a `/callback` request from being accepted for a row it was not
+  issued for: `server.go`'s callback handler looks the incoming `state` up against a pending
+  row and refuses (403) before anything else happens — no conversion attempted, no row touched
+  — on a miss. `callback_test.go`'s `TestCallbackBadState` is the negative case;
   `TestCallbackGoodStateConverts` is the positive control proving the check isn't refusing
-  everything.
+  everything. The nonce is consumed once a row is keyed, so a replay carrying it changes
+  nothing (`TestCallbackReplayDoesNotOverwriteKey`).
+- **The genuinely independent second layer is the owner check on the conversion result.** The
+  App's real owner as GitHub reports it must equal the owner the operator named — their `gh`
+  login (personal-owned) or `--org` (org-owned) — before any key is written; a mismatch writes
+  nothing and re-arms the row (`pem_test.go`'s `TestPemNeverWrittenOnMismatch` for the personal
+  path, `TestPemNeverWrittenOnOrgOwnerMismatch` for the org path). It trips on a different
+  signal (the forge's reported owner, not the local state record) in a different component, so
+  it catches exactly the fault the nonce cannot: a callback carrying a valid `state` and a
+  foreign App's `code`. The loopback bind is a **precondition, not an independent layer** —
+  `GET /run` serves each pending row's live nonce to any local process, so "reached the
+  listener" and "knows the nonce" are one capability, not two.
 - **The private key is written once, mode 0600, and never printed, logged or rendered.**
   `secrets_test.go`'s `TestNoSecretInPage` drives a real (fake) conversion and checks every
   served route's HTML for the PEM, client secret and webhook secret; `TestNoSecretInLogs`

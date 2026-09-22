@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -49,8 +50,12 @@ var convertCodeFn = convertCode
 
 // convertCode exchanges a one-hour manifest code for the App's credentials.
 func convertCode(code string) (*conversionResult, error) {
-	url := fmt.Sprintf("%s/app-manifests/%s/conversions", githubAPIBase, code)
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	// url.PathEscape the code (S-3): it arrives straight off the /callback query string, so a
+	// code carrying `/`, `..` or `?` would otherwise re-target the request path. The host is
+	// pinned by githubAPIBase and the request carries no Authorization header, so the ceiling
+	// is low, but escaping the one interpolated path segment costs nothing.
+	reqURL := fmt.Sprintf("%s/app-manifests/%s/conversions", githubAPIBase, url.PathEscape(code))
+	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}

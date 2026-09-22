@@ -208,10 +208,12 @@ func TestBuildManifestJSONFromManifest(t *testing.T) {
 	}
 }
 
-// TestBuildManifestJSONFromManifestDefaultsHookActiveFalse — a manifest that does not name
-// hook_attributes at all also gets no hook_attributes key in the posted JSON (assay#1260) —
-// never an absent-url {"active": false} that GitHub's schema rejects.
-func TestBuildManifestJSONFromManifestDefaultsHookActiveFalse(t *testing.T) {
+// TestBuildManifestJSONFromManifestOmitsHookAttributesWhenUnset — a manifest that does not
+// name hook_attributes at all also gets no hook_attributes key in the posted JSON
+// (assay#1260) — never an absent-url {"active": false} that GitHub's schema rejects. (Renamed
+// from ...DefaultsHookActiveFalse: there is no active:false default left to assert — the key
+// is absent, which is what this test now pins.)
+func TestBuildManifestJSONFromManifestOmitsHookAttributesWhenUnset(t *testing.T) {
 	p := writeManifestFile(t, `{"name": "assay-leaksweep-app", "url": "https://github.com/medici-finance/assay"}`)
 	m, err := LoadManifestFile(p)
 	if err != nil {

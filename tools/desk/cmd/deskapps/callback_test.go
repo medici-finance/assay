@@ -91,6 +91,70 @@ func TestCallbackGoodStateConverts(t *testing.T) {
 	}
 }
 
+// TestCallbackReplayDoesNotOverwriteKey — S-2. Once a row is keyed, a replayed
+// /callback?code=<fresh>&state=<same nonce> must NOT re-run the write path and overwrite the
+// stored key. The nonce is consumed on keying (so rowByNonce no longer finds the row) and the
+// state-machine guard refuses any row not pending/posted — together they close the replay
+// window handleMarkPosted already guarded on its own transition.
+func TestCallbackReplayDoesNotOverwriteKey(t *testing.T) {
+	setupTest(t)
+	specs, err := TierManifests("team", "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actSpec := specFor(specs, "example-act")
+	sf, nonce := plantPendingRow(t, actSpec, "team")
+
+	fake := fakeConversionServer(t, conversionResult{ID: 1, ClientID: "c", WebhookSecret: "w", PEM: "ORIGINAL-KEY"})
+	withFakeGitHubAPI(t, fake)
+
+	srv := newServer(41873, "team", "example", "example", "org", specs, sf)
+	srv.out = &bytes.Buffer{}
+	ts := httptest.NewServer(srv.mux())
+	defer ts.Close()
+
+	// First callback keys the row.
+	resp, err := http.Get(ts.URL + "/callback?code=abc&state=" + nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := sf.rowByApp("example-act").State; got != StateKeyed {
+		t.Fatalf("row state = %s, want keyed after the first callback", got)
+	}
+	orig, err := readPEMFor(t, "example-act")
+	if err != nil {
+		t.Fatalf("reading PEM after first callback: %v", err)
+	}
+
+	// A replay with the same nonce carrying a fresh code that WOULD write a different key.
+	called := false
+	prev := convertCodeFn
+	convertCodeFn = func(code string) (*conversionResult, error) {
+		called = true
+		return &conversionResult{ID: 2, PEM: "ATTACKER-KEY"}, nil
+	}
+	t.Cleanup(func() { convertCodeFn = prev })
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp2, err := client.Get(ts.URL + "/callback?code=fresh&state=" + nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+
+	if called {
+		t.Fatal("the replay reached conversion — a keyed row's nonce must be spent and the state guard must refuse it")
+	}
+	after, err := readPEMFor(t, "example-act")
+	if err != nil {
+		t.Fatalf("reading PEM after replay: %v", err)
+	}
+	if string(after) != string(orig) {
+		t.Fatalf("the stored key was overwritten by a replay: %q -> %q", orig, after)
+	}
+}
+
 // TestCallbackExpiredCodeReturnsToPosted — a 404 conversion (code expired) leaves the row
 // at "posted" with no key written, per design.md §4.
 func TestCallbackExpiredCodeReturnsToPosted(t *testing.T) {
