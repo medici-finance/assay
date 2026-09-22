@@ -379,11 +379,6 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 
 **VERIFY: PARTIAL** — 12/13 rows PASS, including all three security-critical rows (6, 7, 13) run with genuine rigor; row 13's mutation is the load-bearing proof and behaved exactly as predicted. Row 11 is EXPLICITLY UNRUN for a structural reason unrelated to the deliverable's correctness (filed #1281), not a defect. Held at `implemented` pending that row's resolution or an explicit waiver — the deliverable itself verifies clean.
 
-## Review
-Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
-`## Context`). Reviewer records verdict + date in the stream README table, and confirms the
-vocabulary table's role assignments against the code cited in Context (not against the series
-comment's paraphrase, which this brief already corrects once).
 
 ### Verify pass 2026-09-22 (non-implementer, VERIFY: 12/13 PASS — row 11 could-not-check, tracked #1281)
 
@@ -412,3 +407,9 @@ RISK-VALUE: DERIVED — `superseded?` Owner=`roleWorker` @ `vocabulary.go:112`; 
 RISK-VALUE: DERIVED — shared set = {needs-decision, needs-human, question} + `help wanted` @ `vocabulary.go:92-105` — first three derived live from `topology.Compiled().DecisionOwedLabelNames()` (bound to topology.yaml by TestTopologyDriftRegistry); the brief prose naming it 3-wide is stale doc, not a code defect (set self-updates from loader).
 
 **VERIFY: 12/13 PASS** — held pending flip. All three security-critical rows (6 refusal, 7 human-decided-refusal, 13 mutation-caught) PASS. Row 11 could-not-check is the structural `statusgen --consumers` merged-brief limitation tracked `#1281` — the identical accepted condition under which sibling briefs 03/05/06/08 landed `done` on this board. gate:model, risk all-no → advances implemented → verified.
+
+## Review
+Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
+`## Context`). Reviewer records verdict + date in the stream README table, and confirms the
+vocabulary table's role assignments against the code cited in Context (not against the series
+comment's paraphrase, which this brief already corrects once).
