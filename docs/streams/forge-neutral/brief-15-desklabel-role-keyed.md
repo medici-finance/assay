@@ -378,7 +378,14 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 - Case-insensitive match / canonical-case write: `lookup()` uses `strings.EqualFold` (`:134-142`); `authorize()` returns the table's canonical spelling (`:163-186`), which `verbs.go:142` uses for every subsequent read/write/audit line — confirmed functionally via row 7's `Human-Decided` mixed-case variant refusing identically to lowercase.
 
 **VERIFY: PARTIAL** — 12/13 rows PASS, including all three security-critical rows (6, 7, 13) run with genuine rigor; row 13's mutation is the load-bearing proof and behaved exactly as predicted. Row 11 is EXPLICITLY UNRUN for a structural reason unrelated to the deliverable's correctness (filed #1281), not a defect. Held at `implemented` pending that row's resolution or an explicit waiver — the deliverable itself verifies clean.
-### Verify pass 2026-09-22 (non-implementer, VERIFY: 12/13 PASS — row 11 could-not-check, tracked assay#1281)
+
+## Review
+Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
+`## Context`). Reviewer records verdict + date in the stream README table, and confirms the
+vocabulary table's role assignments against the code cited in Context (not against the series
+comment's paraphrase, which this brief already corrects once).
+
+### Verify pass 2026-09-22 (non-implementer, VERIFY: 12/13 PASS — row 11 could-not-check, tracked #1281)
 
 Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f2a86c8e0dce59edabdd22a`. Offline (`KUBECONFIG=/dev/null`).
 
@@ -394,7 +401,7 @@ Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f
 | 8 | `TestDesklabelSharedVocabularyAnyRole -v` | exit 0 | 0 — shared set 4-wide (needs-decision, needs-human, question, help wanted); worker+reviewer succeed | 2026-09-22 | opus-4.8-verifier |
 | 9 | `grep -rn 'flag.String("as"'/'"--as"' cmd/desklabel --include='*.go' \| grep -v _test \| wc -l` | `0` | `0` | 2026-09-22 | opus-4.8-verifier |
 | 10 | `go test ./internal/forgeban/... -count=1` | exit 0 | 0 — ratchet unaffected | 2026-09-22 | opus-4.8-verifier |
-| 11 | `statusgen --root . --consumers --brief forge-neutral/15` | exit 0, corroborated | **could-not-check (exit 2, explicitly unrun)** — "not in the diff against 6204bb4f"; structural: brief's doc-authoring & impl landed in separate PRs so it is never in the merged-main diff. Reported as itself, not rounded. Same condition as prior 2026-09-17 pass; tracked `medici-finance/assay#1281`. | 2026-09-22 | opus-4.8-verifier |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/15` | exit 0, corroborated | **could-not-check (exit 2, explicitly unrun)** — "not in the diff against 6204bb4f"; structural: brief's doc-authoring & impl landed in separate PRs so it is never in the merged-main diff. Reported as itself, not rounded. Same condition as prior 2026-09-17 pass; tracked `#1281`. | 2026-09-22 | opus-4.8-verifier |
 | 12 | `grep -c 'desklabel' tools/desk/README.md` | ≥1 | `1` — tool-reference row present | 2026-09-22 | opus-4.8-verifier |
 | 13 | Mutation (repo `muhar` harness on cmd/desklabel/mutations.json): force ownership check caller-owned, re-run, restore | mutant reddens row 6, green after restore | **CAUGHT** — baseline GREEN, positive control CAUGHT; row-13 mutant CAUGHT; 11 caught / 0 not-caught / 0 could-not-mutate; vocabulary.go restored byte-identical (md5 a500b2c1…) | 2026-09-22 | opus-4.8-verifier |
 
@@ -404,10 +411,4 @@ RISK-VALUE: DERIVED — `human-decided` Owner=`ownerNone` @ `tools/desk/cmd/desk
 RISK-VALUE: DERIVED — `superseded?` Owner=`roleWorker` @ `vocabulary.go:112`; `authorization-needed`/`approval-needed` Owner=`roleReviewer` @ `:122,124` — code-truth matching deskclose (worker proposes) and deskflip (reviewer ready-flip pair).
 RISK-VALUE: DERIVED — shared set = {needs-decision, needs-human, question} + `help wanted` @ `vocabulary.go:92-105` — first three derived live from `topology.Compiled().DecisionOwedLabelNames()` (bound to topology.yaml by TestTopologyDriftRegistry); the brief prose naming it 3-wide is stale doc, not a code defect (set self-updates from loader).
 
-**VERIFY: 12/13 PASS** — held pending flip. All three security-critical rows (6 refusal, 7 human-decided-refusal, 13 mutation-caught) PASS. Row 11 could-not-check is the structural `statusgen --consumers` merged-brief limitation tracked `assay#1281` — the identical accepted condition under which sibling briefs 03/05/06/08 landed `done` on this board. gate:model, risk all-no → advances implemented → verified.
-
-## Review
-Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
-`## Context`). Reviewer records verdict + date in the stream README table, and confirms the
-vocabulary table's role assignments against the code cited in Context (not against the series
-comment's paraphrase, which this brief already corrects once).
+**VERIFY: 12/13 PASS** — held pending flip. All three security-critical rows (6 refusal, 7 human-decided-refusal, 13 mutation-caught) PASS. Row 11 could-not-check is the structural `statusgen --consumers` merged-brief limitation tracked `#1281` — the identical accepted condition under which sibling briefs 03/05/06/08 landed `done` on this board. gate:model, risk all-no → advances implemented → verified.
