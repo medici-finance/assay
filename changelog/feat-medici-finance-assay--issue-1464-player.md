@@ -1,0 +1,2 @@
+### Added
+- `system-demo` skill: two player rules from first real use — a fixed stage (constant-size aspect-ratio box, fixed-height caption and evidence-label bands, controls at a constant position, so navigating scenes never moves the controls or reflows the page) and a distinct stage surface (backdrop contrasting with the host page in the host's own design tokens, so the player reads as an embedded presentation viewport). Both added to the "Deliver and check" checks and mirrored in `references/storyboard.md`.

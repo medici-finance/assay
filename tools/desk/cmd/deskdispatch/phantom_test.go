@@ -20,10 +20,10 @@ func withRepresentedPRs(t *testing.T, fn func(repo string) ([]deskkit.PRRef, err
 
 func TestBriefIDFromItem(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"example-a/00", "example-a/00"},                       // slash plan key
-		{"assay--example-a--00", "example-a/00"},               // claim key, <repo>--<stream>--<NN>
-		{"at--example-two-part--08", "example-two-part/08"},    // stream carrying a single dash survives
-		{"medici-finance/assay:example-a/00", "example-a/00"},  // repo-qualified plan key
+		{"example-a/00", "example-a/00"},                      // slash plan key
+		{"assay--example-a--00", "example-a/00"},              // claim key, <repo>--<stream>--<NN>
+		{"at--example-two-part--08", "example-two-part/08"},   // stream carrying a single dash survives
+		{"medici-finance/assay:example-a/00", "example-a/00"}, // repo-qualified plan key
 		{"item-1", ""},      // a bare item names no brief
 		{"", ""},            // empty
 		{"just-a-name", ""}, // no slash, no --

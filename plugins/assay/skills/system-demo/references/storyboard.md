@@ -56,6 +56,12 @@ Jump straight to Verification, then backwards to Acceptance. The displayed state
 must be correct in either order. For a player, pause mid-playback, seek elsewhere,
 and resume: old timers must not advance the newly selected scene. Check keyboard
 navigation and reduced motion, and inspect a narrow viewport for unreadable text.
+The stage stays a constant size across scenes — fixed aspect-ratio box,
+fixed-height caption and evidence-label bands, controls at a constant position —
+so seeking never moves the controls or reflows the page. Its backdrop contrasts
+with the host page's background in the host's own design tokens, so the player
+reads as an embedded presentation viewport while the surrounding page chrome is
+unchanged.
 
 A storyboard-only delivery explains how each scene will be captured. A rendered
 delivery also checks playback and reports any browser or capture limitations.

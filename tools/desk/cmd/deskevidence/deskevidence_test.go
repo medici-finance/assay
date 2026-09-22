@@ -180,6 +180,13 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
 
+	// The verified-sidecar acceptance gate defaults to "accepts" so a verify-outcomes landing
+	// in the general suite never shells a real statusgen. Tests exercising the gate override
+	// this seam themselves (see verifiedgate_test.go).
+	oldClosure := verifiedClosureCheckFn
+	verifiedClosureCheckFn = func(string, string) (closureVerdict, string, error) { return closureAccepted, "", nil }
+	t.Cleanup(func() { verifiedClosureCheckFn = oldClosure })
+
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr
 	stdout = &bytes.Buffer{}
