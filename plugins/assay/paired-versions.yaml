@@ -94,5 +94,5 @@ desk-tools:
 harness:
   release_home: medici-finance/assay
   image: ghcr.io/medici-finance/assay/desk-tools
-  tag: v1.0.6
-  digest: PENDING-HARVEST-registry-digest-see-windows-port-10
+  tag: v1.0.24
+  digest: sha256:600e548c0e2a574009033fc03a3763246e6bf87d5f5f1c0407a1eb2613e5a9b9
