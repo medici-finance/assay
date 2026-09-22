@@ -595,6 +595,11 @@ func TestParseRepo(t *testing.T) {
 		"https://github.com/example-org/tracker.git":              "example-org/tracker",
 		"git@github.com:example-org/agents.git":                   "example-org/agents",
 		"ssh://git@github.com/example-org/example-reconciler.git": "example-org/example-reconciler",
+		// ssh HOST-ALIAS remote (issue 1470) and the hybrid an insteadOf/URL-composition
+		// bakes onto it — go-git's RemoteURL returns the RAW value, so the parser must
+		// read owner/repo off both without a forge base prefix mangling it.
+		"git@github-alias:example-org/example-repo.git":                    "example-org/example-repo",
+		"https://github.com/git@github-alias:example-org/example-repo.git": "example-org/example-repo",
 	}
 	for in, want := range cases {
 		got, err := parseRepo(in)
