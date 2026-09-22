@@ -1137,12 +1137,13 @@ func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayloa
 
 // IssueContentEvents reads an issue's comment content events for the escalation clock (see
 // the interface doc). It reuses listNotes — the SAME already-paginated, system-note-dropping,
-// oldest-first notes reader every other GitLab note consumer uses (bounded by
-// gitlabMaxNotePage = 2500 notes) — and maps each note to a ContentEvent. Complete is reported
-// true: the read walks the standard bounded reader to its end, and where that reader's own cap
-// truncates a pathological thread the omitted notes are the OLDEST, so the last-human-response
-// the clock derives can only move EARLIER (toward escalate), never later — the conservative
-// direction the escalation contract requires, never "no escalation owed".
+// oldest-first (sort=asc) notes reader every other GitLab note consumer uses (bounded by
+// gitlabMaxNotePage = 25 pages of gitlabPerPage = 100 notes = 2500 notes) — and maps each note
+// to a ContentEvent. Complete is reported true: the read walks the standard bounded reader to
+// its end. Where that reader's own cap truncates a pathological thread, the walk is oldest-first
+// so the omitted notes are the NEWEST — the clock therefore MISSES the most recent notes and the
+// last-human-response it derives can only move EARLIER (toward escalate), never later — the
+// conservative direction the escalation contract requires, never "no escalation owed".
 func (g *GitLabForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
 	notes, err := g.listNotes(repo, number, TargetIssue)
 	if err != nil {
