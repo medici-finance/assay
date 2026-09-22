@@ -17,6 +17,7 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 | install | `assay:install` | Turnkey installer — invoke → self-installs the whole project setup (Unix-first) |
 | adopt | `assay:adopt` | Install/adopt runbook — scenario routing + PRIMITIVEs the turnkey installer wraps |
 | author-brief | `assay:author-brief` | Brief authoring methodology (portable core) |
+| system-demo | `assay:system-demo` | Storyboard or build a seekable system demonstration around one user outcome, with explicit evidence provenance |
 | ask-decision | `assay:ask-decision` | Puts the pending human decisions to the driver one at a time — context, options with a recommended default, reply shape, verification — and relays each ruling back onto its issue |
 | human-runsheet | `assay:human-runsheet` | Writes the acts owed to the driver — not decisions, acts only the driver can perform — as exact `! <command>` lines with why, what was done instead, and the resume step |
 
