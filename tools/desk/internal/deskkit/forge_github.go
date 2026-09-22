@@ -587,6 +587,15 @@ const (
 	// twin): a forge still advertising more pages past it is a could-not-check, never a
 	// silently truncated listing.
 	forgeMaxIssuePages = 100
+	// forgeListChangesPerPage / forgeListChangesMaxPages bound the ListChanges read: up to
+	// forgeListChangesMaxPages pages of forgeListChangesPerPage, most-recently-updated first.
+	// Unlike the open-issue walk this does NOT refuse at the ceiling — the represented-PR
+	// reconciliation would rather work off the recent window than hold every dispatch on a repo
+	// whose lifetime merged-PR count exceeds the ceiling — so the ceiling is reported as
+	// ChangeList.Incomplete and the consumer decides. The window (500 recent changes) covers the
+	// currently-active briefs a phantom check reasons about.
+	forgeListChangesPerPage  = 100
+	forgeListChangesMaxPages = 5
 )
 
 // ghOpenChangesQuery is the bulk open-PR read, hand-authored so it requests EXACTLY the
@@ -598,6 +607,15 @@ const (
 // conclusion, StatusContext.state) is covered by `checks:read` alone, so requesting the
 // contexts ourselves without checkSuite/workflowRun drops the scope dependency entirely.
 const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+
+// ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
+// requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
+// title, body (with its link trailers), mergedAt — and no rollup, so it carries none of
+// ghOpenChangesQuery's actions:read/checks:read scope surface. `$states` is a
+// `[PullRequestState!]` variable (OPEN | MERGED | CLOSED) built from the ChangeStates the caller
+// asked for; ordering is UPDATED_AT DESC so the bounded window is the changes most likely to
+// represent a currently-queued brief; pageInfo drives the bounded cursor walk.
+const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName title body mergedAt}}}}`
 
 func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	in := map[string]any{
@@ -709,6 +727,94 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 		Cap:            forgeOpenChangesCap,
 		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
 	}, nil
+}
+
+// ghChangeStates maps a ChangeStates to the GraphQL PullRequestState enum values, in a stable
+// order so the query variable (and the golden corpus) is deterministic.
+func ghChangeStates(states ChangeStates) []string {
+	var out []string
+	if states.Open {
+		out = append(out, "OPEN")
+	}
+	if states.Merged {
+		out = append(out, "MERGED")
+	}
+	if states.Closed {
+		out = append(out, "CLOSED")
+	}
+	return out
+}
+
+func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeList, error) {
+	if !states.Any() {
+		return nil, Unverifiable("ListChanges was asked for no states — the state set must be stated "+
+			"(open/merged/closed), never defaulted to a whole-repo scan", nil)
+	}
+	wantStates := ghChangeStates(states)
+	out := &ChangeList{PageCap: forgeListChangesMaxPages}
+	var after *string
+	for page := 1; page <= forgeListChangesMaxPages; page++ {
+		vars := map[string]any{
+			"owner": repo.Owner, "name": repo.Name,
+			"first": forgeListChangesPerPage, "states": wantStates,
+		}
+		// A nil `after` on page 1 is sent as GraphQL null — the connection's start.
+		vars["after"] = after
+		in := map[string]any{"query": ghListChangesQuery, "variables": vars}
+		var resp struct {
+			Data struct {
+				Repository struct {
+					PullRequests struct {
+						PageInfo struct {
+							HasNextPage bool   `json:"hasNextPage"`
+							EndCursor   string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []struct {
+							Number      int    `json:"number"`
+							State       string `json:"state"`
+							HeadRefOid  string `json:"headRefOid"`
+							HeadRefName string `json:"headRefName"`
+							Title       string `json:"title"`
+							Body        string `json:"body"`
+							MergedAt    string `json:"mergedAt"`
+						} `json:"nodes"`
+					} `json:"pullRequests"`
+				} `json:"repository"`
+			} `json:"data"`
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		}
+		if err := g.doJSON(http.MethodPost, "/graphql", in, &resp); err != nil {
+			return nil, err
+		}
+		if len(resp.Errors) > 0 {
+			msgs := make([]string, 0, len(resp.Errors))
+			for _, e := range resp.Errors {
+				msgs = append(msgs, e.Message)
+			}
+			return nil, Unverifiable("list-changes GraphQL error: "+strings.Join(msgs, "; "), nil)
+		}
+		conn := resp.Data.Repository.PullRequests
+		for _, n := range conn.Nodes {
+			out.Changes = append(out.Changes, ChangeRef{
+				Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
+				HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
+			})
+		}
+		if !conn.PageInfo.HasNextPage {
+			return out, nil
+		}
+		if page == forgeListChangesMaxPages {
+			// The ceiling was reached with the forge still paginating — report the population
+			// as larger than the window rather than hand back a silent partial.
+			out.Incomplete = true
+			return out, nil
+		}
+		cursor := conn.PageInfo.EndCursor
+		after = &cursor
+	}
+	return out, nil
 }
 
 // ListOpenIssues walks a repo's OPEN issues to exhaustion (per_page=100), PRs dropped.
