@@ -95,7 +95,7 @@ type glServer struct {
 	// and the give-up path (set it at/above the cap). It names the request's own
 	// source_branch in the message, so a fixture cannot fake a branch it was not asked for.
 	createMRTransientFails int
-	labelEvents []map[string]any
+	labelEvents            []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
 	issueList  []map[string]any
@@ -1745,6 +1745,31 @@ func glCases() []glCase {
 				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+		},
+		{
+			// #1339 — the states-scoped changes read behind the phantom / already-represented
+			// check. It over-requests `state=all` (ordered updated_at desc) and narrows
+			// client-side to exactly the OPEN+MERGED set: the golden pins that a MERGED MR
+			// survives as MERGED (distinct from CLOSED, which the board's ListOpenChanges
+			// collapses) with its merged_at, that a CLOSED-unmerged MR is dropped (it represents
+			// no brief), and that each ChangeRef carries the source branch, head sha and body —
+			// the body being where BriefRepresentedPR reads the `Brief:` trailer.
+			name: "list_changes", method: "ListChanges",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{
+					glMR(map[string]any{"iid": 7, "state": "opened",
+						"title": "Draft: open work", "description": "Brief: example-a/00",
+						"sha": "aaa111", "source_branch": "feat/a"}),
+					glMR(map[string]any{"iid": 8, "state": "merged",
+						"title": "landed work", "description": "Brief: example-b/01",
+						"sha": "bbb222", "source_branch": "feat/b",
+						"merged_at": "2026-09-10T12:00:00Z"}),
+					glMR(map[string]any{"iid": 9, "state": "closed",
+						"title": "abandoned", "description": "Brief: example-c/02",
+						"sha": "ccc333", "source_branch": "feat/c"}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListChanges(glRepo, OpenAndMerged()) },
 		},
 		{
 			// issue #1033. The issue-lane summary is now a REAL read: the gate it is consumed
