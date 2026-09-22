@@ -73,9 +73,11 @@ desk-tools:
 # The HARNESS CONTAINER IMAGE — the witness-runner container `statusgen verifyrun --in-container`
 # runs a brief's Verify rows inside (windows-port/10). It is the SAME combined desk-tools image the
 # desk containers run (statusgen + the desk binaries ship in one Linux image; see docs/docker.md),
-# published from the SAME release. On Windows a native pipefail `bash` is unreliable (#1418), so the
-# supported execution-witness runner is this LINUX container, not a native shell — the host OS never
-# executes the rows.
+# but published by its OWN `docker-publish` workflow run, on its OWN cadence — NOT necessarily the
+# same cut as the `desk-tools`/`statusgen` release above (a `harness.tag` ahead of those is expected,
+# not drift; see the SINGLE TAG exemption below). On Windows a native pipefail `bash` is unreliable
+# (#1418), so the supported execution-witness runner is this LINUX container, not a native shell —
+# the host OS never executes the rows.
 #
 # PINNED BY TAG **AND DIGEST**, never `latest`. `statusgen verifyrun --in-container` resolves the
 # image by its `digest` (`<image>@sha256:<64hex>`) and REFUSES fail-closed on a `latest` tag, an
@@ -88,9 +90,13 @@ desk-tools:
 # the published image — it is not the release `checksums.txt` sha256, and it must never be invented.
 # Until a maintainer with registry access harvests the real digest and pins it here, the wrapper
 # REFUSES to run (fail-closed) rather than run an un-digest-pinned image. This is the same
-# "apply-gated, proven-on-apply" shape windows-port/04's staged CI rows use. The `tag: v1.0.6`
-# below is kept equal to the statusgen/desk-tools tag on purpose — `check-paired-versions.sh`
-# asserts every `tag:` in this file is the one release tag.
+# "apply-gated, proven-on-apply" shape windows-port/04's staged CI rows use.
+#
+# `tag:` below is EXEMPT from `check-paired-versions.sh`'s single-tag assertion (its `SINGLE TAG`
+# section names the exemption). `statusgen`/`desk-tools` above are cut together and must share
+# one tag; this image is published separately and verified by `digest`, not `tag`, so its tag is
+# free to move independently — a re-pin here never has to wait for, or trigger, a statusgen/
+# desk-tools release.
 harness:
   release_home: medici-finance/assay
   image: ghcr.io/medici-finance/assay/desk-tools

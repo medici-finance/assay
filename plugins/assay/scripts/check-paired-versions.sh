@@ -18,6 +18,12 @@
 #                    `desk-tools.tag`, and the tag field of every per-platform pin line. The
 #                    binaries are cut from one release together; a per-platform line left on an
 #                    older tag is the shape that ships a mismatched pair to one platform only.
+#                    EXEMPT: `harness.tag`. The harness block names a container image on its
+#                    OWN publish cadence (windows-port/10) and is pinned by DIGEST, not tag —
+#                    `statusgen` resolves and refuses on `harness.digest`, never on
+#                    `harness.tag`, so a harness tag that outruns the statusgen/desk-tools
+#                    release train is not the drift this assertion exists to catch. See the
+#                    comment above `harness:` in the manifest.
 #   C  HASH SHAPE    every sha256 is exactly 64 lowercase hex characters. Cannot prove a hash is
 #                    the RIGHT one without the network — that is the release job's and the
 #                    re-pin author's evidence — but it does catch a truncated, upper-cased or
@@ -99,7 +105,19 @@ fi
 # `    <platform>: <artifact> <tag> <sha256>`. Comment lines are excluded.
 uncommented=$(sed 's/[[:space:]]*#.*$//' "$PAIRED")
 
-section_tags=$(printf '%s\n' "$uncommented" | sed -n 's/^[[:space:]]*tag:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p')
+# EXEMPTION: `harness:`'s own `tag:` line is dropped before the single-tag set is built. It
+# names a container image on its own publish cadence, pinned by digest rather than tag (see
+# the header comment above and the manifest's own comment above `harness:`) — everything
+# ELSE in the file (statusgen, desk-tools, and every per-platform pin line, wherever they
+# live) still has to agree on the one release tag. Scoped by top-level (column-0) section
+# boundary, not by line content, so a future section named anything OTHER than `harness:`
+# is never accidentally exempted by a coincidental tag value.
+same_tag_scope=$(printf '%s\n' "$uncommented" | awk '
+  /^[^[:space:]]/ { in_harness = ($0 ~ /^harness:/) }
+  !in_harness { print }
+')
+
+section_tags=$(printf '%s\n' "$same_tag_scope" | sed -n 's/^[[:space:]]*tag:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p')
 pin_lines=$(printf '%s\n' "$uncommented" | grep -E '^[[:space:]]+[a-z0-9-]+:[[:space:]]+[A-Za-z0-9._-]+[[:space:]]+v[0-9]' || true)
 pin_tags=$(printf '%s\n' "$pin_lines" | awk 'NF{print $3}')
 
@@ -116,7 +134,7 @@ if [[ "$fail" -eq 0 ]]; then
   if [[ "$count" -ne 1 ]]; then
     bad "pins span $count tags, must be exactly one: $(printf '%s' "$distinct" | tr '\n' ' ')"
   else
-    ok "single tag: every section and pin line names $distinct ($(printf '%s\n' "$pin_lines" | grep -c .) pin lines)"
+    ok "single tag: every section and pin line names $distinct, excluding the digest-pinned harness image ($(printf '%s\n' "$pin_lines" | grep -c .) pin lines)"
   fi
 fi
 

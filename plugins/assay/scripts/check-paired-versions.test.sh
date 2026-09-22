@@ -88,6 +88,34 @@ sed -i.bak 's/statusgen-linux-amd64  v[0-9][^ ]*/statusgen-linux-amd64  v0.24.0/
   "$r/plugins/assay/paired-versions.yaml"
 expect 1 "B3 a second tag anywhere in the file fails" --root "$r"
 
+# --------------------------------------------------------- B-exempt harness tag
+# `harness.tag` names a container image on its OWN publish cadence, pinned by digest rather
+# than tag (windows-port/10) — it is deliberately EXCLUDED from the single-tag set above.
+# `set_harness_tag` mutates ONLY the tag: line inside the harness: section (by top-level
+# section boundary, the same scoping check-paired-versions.sh itself uses), so these fixtures
+# cannot be confused with B1-B3's statusgen/desk-tools mutations.
+set_harness_tag() {
+  awk -v newtag="$1" '
+    /^[^[:space:]]/ { in_harness = ($0 ~ /^harness:/) }
+    in_harness && /^[[:space:]]*tag:[[:space:]]*/ { print "  tag: " newtag; next }
+    { print }
+  ' "$2"
+}
+
+r=$(fixture bx1)
+set_harness_tag v9.9.9 "$r/plugins/assay/paired-versions.yaml" > "$r/x" && mv "$r/x" "$r/plugins/assay/paired-versions.yaml"
+expect 0 "BX1 harness.tag alone differing from statusgen/desk-tools still passes (exempt)" --root "$r"
+
+r=$(fixture bx2)
+# The exemption must stay NARROW: a genuine statusgen/desk-tools mismatch must still fail even
+# when harness.tag is ALSO off on its own — the harness exclusion never widens to cover them.
+set_harness_tag v9.9.9 "$r/plugins/assay/paired-versions.yaml" > "$r/x" && mv "$r/x" "$r/plugins/assay/paired-versions.yaml"
+awk 'BEGIN{seen=0}
+     /^  tag: / {seen++; if (seen==2) {print "  tag: v0.13.0"; next}}
+     {print}' \
+  "$r/plugins/assay/paired-versions.yaml" > "$r/x" && mv "$r/x" "$r/plugins/assay/paired-versions.yaml"
+expect 1 "BX2 desk-tools/statusgen mismatch still fails alongside an off-cadence harness tag" --root "$r"
+
 # ------------------------------------------------------------------- C hash shape
 r=$(fixture c1)
 sed -i.bak 's/\(statusgen-darwin-arm64 v[^ ]* \)[0-9a-f]\{64\}/\1deadbeef/' \
