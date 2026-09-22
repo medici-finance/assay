@@ -224,9 +224,10 @@ func applyTriage(r triageReq, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, "comment posted, close deferred: "+err.Error())
 		return err
 	}
-	if err := closeItem(r.repo, r.number, deskkit.TargetIssue, reasonNotPlanned); err != nil {
-		a.log(deskkit.ResultUnverifiable, err.Error())
-		return err
+	if err := closeItem(r.repo, r.number, deskkit.TargetIssue, reasonNotPlanned, true); err != nil {
+		a.log(deskkit.ResultUnverifiable, "partial: comment posted, close refused: "+err.Error())
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d — partial: comment posted, close refused", r.repo, r.number), err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed as %s via lane %s (disposition %s, %s)",
 		reasonNotPlanned, modeTriage, r.disposition, deskkit.StripControl(source)))
