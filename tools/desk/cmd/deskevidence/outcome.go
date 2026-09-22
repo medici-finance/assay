@@ -55,10 +55,6 @@ func guardVerifiedOutcomes(root, target string, before, after []byte, fg deskkit
 		// A locally staged closure is insufficient for this single-file write.
 		// Both the board row and its evidence must already be on the target branch.
 		for _, rel := range []string{file, path.Join(path.Dir(file), "README.md")} {
-			// Archived brief files live under done/; their board is one level up.
-			if path.Base(path.Dir(file)) == "done" && strings.HasSuffix(rel, "/README.md") {
-				rel = path.Join(path.Dir(path.Dir(file)), "README.md")
-			}
 			local, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 			if err != nil {
 				return deskkit.Unverifiable("cannot read closure source "+rel, err)
