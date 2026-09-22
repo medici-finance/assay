@@ -45,6 +45,41 @@ Both guidelines are **advisory** unless this page says otherwise: the automation
 labels, and a human maintainer decides. Maintainers, collaborators, and repository bots are
 exempt from both.
 
+## What must not appear in an issue or pull request
+
+The same "filter, not deter" spirit applies to what a submission carries. A few things should
+never end up in an issue, a pull request, a comment, or a commit here — not because we
+distrust you, but because once they are published in a public repository they are hard to take
+back:
+
+- **Secrets and tokens of any kind** — API keys, access tokens, passwords, private keys,
+  session cookies. If it authenticates something, it does not belong in a submission.
+- **Personal data** — a real name beyond the display name on your own account, email
+  addresses, operating-system usernames, home-directory or absolute local paths, hostnames,
+  and machine or session identifiers. None of it helps a reviewer read the change, and all of
+  it is hard to unpublish.
+- **Private references the reader cannot open** — links or names of private trackers, private
+  repositories, or internal project names. If someone reading your pull request cannot follow
+  the reference, leave it out or describe the thing in the open instead.
+- **Unsanitised transcripts, logs, and screenshots.** Paste them only after you have removed
+  the categories above; a raw terminal capture or console log usually carries a path, a
+  hostname, or a token you did not notice.
+- **Anything captured from a system the reader cannot see.** If it came off a machine or a
+  service that is not part of this public project, sanitise it first or leave it out.
+
+This applies equally to a human contributor and to an AI agent acting for one. An agent's
+output is not exempt: check it against this list before you post it — the agent's own
+confidence that it is clean is not a check.
+
+If something on this list does get pushed, a follow-up commit on the same branch does **not**
+fix it: the history still carries it, and so does anything that already cloned or mirrored the
+branch. Close the pull request, open a fresh branch with clean history, and tell a maintainer
+so the exposure can be handled properly — [SECURITY.md](SECURITY.md) says how.
+
+This project's own tooling scans for these classes before it posts, so its automated
+submissions get a machine check. A contributor working with plain `git` and a forge CLI has no
+such scan — the check is yours to do by hand before you open the item.
+
 ## The trust bar
 
 The guidelines above are the half of the bar you see as rules. The other half is what the
