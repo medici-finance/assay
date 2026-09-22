@@ -206,7 +206,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Forge resolution contract — the forge comes from repo config, and refusal is the only fallback](brief-01-forge-resolution-contract.md) | 1 | M | implemented | — | — |
+| 01 | [Forge resolution contract — the forge comes from repo config, and refusal is the only fallback](brief-01-forge-resolution-contract.md) | 1 | M | verified | 2026-09-22 claude-opus-4-8[1m] (assay 6204bb4f; rows 1-10 PASS; custody-mode 0o600 + host exact-match DERIVED; row 11 statusgen could-not-check #1281; gate:human→human done close) | — |
 | 02 | [Forge-qualified identity — roster entries, bot renderings, review corroboration](brief-02-forge-qualified-identity.md) | 2 | M | implemented | — | — |
 | 03 | [Write verbs A — deskpost, deskreply and deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | done | 2026-09-10 opus-4.8[1m]-verifier (assay a91bffd0; rows 1-12 + mutation 14 PASS; forgeban ceiling=9 DERIVED; row 13 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #820 @ 9e2e252827ca8df6736d7eebd6cfb12156366486) |
 | 04 | [Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | implemented | — | — |
