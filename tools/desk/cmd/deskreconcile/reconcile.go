@@ -3,7 +3,7 @@ package main
 // reconcile.go — the core of `deskreconcile`.
 //
 // deskreconcile is the desk-side writer for the board-reconcile gap tracked as the
-// scheduled-reconcile half of derived-board/04 (issue #1175). A merged brief's Status
+// scheduled-reconcile job in issue #1175. A merged brief's Status
 // cell stays `todo` forever unless something flips it, because:
 //
 //   - `statusgen regen --readmes` PRESERVES the lifecycle columns (Status / Verified /

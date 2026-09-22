@@ -3,7 +3,7 @@
 // It runs `statusgen reconcile --backfill --apply` — the ONLY writer of a stream README's
 // Status cell — from a verb the desk/worker App can run, and carries the result as exactly
 // ONE draft PR on the fixed branch board/reconcile. That removes the workflow dependency
-// the scheduled-reconcile half of derived-board/04 (#1175) is blocked on: no App may push
+// the scheduled-reconcile job #1175 is blocked on: no App may push
 // the `.github/workflows/assay-statusgen.yml` change that would schedule the reconcile, so
 // this does the same job outside CI.
 //

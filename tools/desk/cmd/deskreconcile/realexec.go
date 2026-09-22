@@ -4,30 +4,24 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // RealExec runs the reconcile's declared toolset for real. Like scanloop's lane executor
 // it dispatches to a LITERAL-argv exec.Command per binary rather than
 // exec.Command(name, …) with a variable, so the forge-CLI ban resolves every launch site
 // to a compile-time constant and the toolset is closed by construction: an unknown name is
-// refused, never launched. statusgen resolves through the pinned-binary env override the
-// rest of the desk uses (STATUSGEN_BIN, else PATH) — never the frozen in-repo tree.
+// refused, never launched. statusgen is the pinned binary resolved from PATH under its bare
+// name, exactly as scanloop's executor resolves it — the in-repo tools/statusgen copy is
+// frozen and never run. Tests inject a fake statusgen through the Exec seam, not here.
 func RealExec(dir, name string, args ...string) (string, error) {
 	var cmd *exec.Cmd
 	switch name {
 	case "git":
 		cmd = exec.Command("git", args...)
 	case "statusgen":
-		bin := strings.TrimSpace(os.Getenv(deskkit.StatusgenBinEnv))
-		if bin == "" {
-			bin = "statusgen"
-		}
-		cmd = exec.Command(bin, args...)
+		cmd = exec.Command("statusgen", args...)
 	case "deskpr":
 		cmd = exec.Command("deskpr", args...)
 	default:

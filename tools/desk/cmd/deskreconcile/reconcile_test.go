@@ -305,8 +305,10 @@ func gitConfig(t *testing.T, root string) {
 // fakeStatusgen writes a shell shim that flips the Status cell (todo -> implemented) of each
 // stream named in $DR_FLIP (space-separated) whose README still reads todo, and emits the
 // matching `applied` JSON. With $DR_FOREIGN set it also writes a non-README file, to drive
-// the foreign-change refusal end to end. It points STATUSGEN_BIN at itself.
-func fakeStatusgen(t *testing.T) {
+// the foreign-change refusal end to end. It returns the shim's path; the e2e Exec seam runs
+// it in place of the real statusgen (production RealExec resolves the pinned `statusgen`
+// from PATH, so the fake is injected through the seam, never through RealExec).
+func fakeStatusgen(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "statusgen")
@@ -326,31 +328,39 @@ printf '{"applied":[%s]}\n' "$applied"
 	if err := os.WriteFile(bin, []byte(shim), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(deskkit.StatusgenBinEnv, bin)
+	return bin
 }
 
-// e2eExec runs git + statusgen for real (statusgen via STATUSGEN_BIN) and STUBS deskpr,
+// e2eExec runs git for real, injects the fake statusgen through the seam, and STUBS deskpr,
 // recording its subcommands. The real forge write is exercised by deskpr's own tests; here
-// the target is deskreconcile's own orchestration on a real tree.
-func e2eExec(deskpr *[]string) Exec {
+// the target is deskreconcile's own orchestration on a real tree. (This test file is exempt
+// from the forge-CLI exec-surface scan, so the variable-argv fake launch is fine here.)
+func e2eExec(statusgenBin string, deskpr *[]string) Exec {
 	return func(dir, name string, args ...string) (string, error) {
-		if name == "deskpr" {
+		switch name {
+		case "deskpr":
 			if len(args) > 0 {
 				*deskpr = append(*deskpr, args[0])
 			}
 			return "created https://example.invalid/pr/1\n", nil
+		case "statusgen":
+			cmd := exec.Command(statusgenBin, args...)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			return string(out), err
+		default:
+			return RealExec(dir, name, args...)
 		}
-		return RealExec(dir, name, args...)
 	}
 }
 
 func TestE2E_FlipsExactlyTheWitnessedTodoRow(t *testing.T) {
-	fakeStatusgen(t)
+	sg := fakeStatusgen(t)
 	t.Setenv("DR_FLIP", "alpha") // only alpha (todo + witness) flips
 	root := fixtureRepo(t)
 	wt := filepath.Join(t.TempDir(), "recon-wt")
 	var deskpr []string
-	res, err := Run(Options{Root: root, Worktree: wt, Now: runNow, Issue: 1175, exec: e2eExec(&deskpr)})
+	res, err := Run(Options{Root: root, Worktree: wt, Now: runNow, Issue: 1175, exec: e2eExec(sg, &deskpr)})
 	if err != nil {
 		t.Fatalf("run refused: %v", err)
 	}
@@ -384,12 +394,12 @@ func TestE2E_FlipsExactlyTheWitnessedTodoRow(t *testing.T) {
 }
 
 func TestE2E_NoWitnessedTodoIsANoOp(t *testing.T) {
-	fakeStatusgen(t)
+	sg := fakeStatusgen(t)
 	t.Setenv("DR_FLIP", "") // statusgen flips nothing (idempotent re-run shape)
 	root := fixtureRepo(t)
 	wt := filepath.Join(t.TempDir(), "recon-wt")
 	var deskpr []string
-	res, err := Run(Options{Root: root, Worktree: wt, Now: runNow, Issue: 1175, exec: e2eExec(&deskpr)})
+	res, err := Run(Options{Root: root, Worktree: wt, Now: runNow, Issue: 1175, exec: e2eExec(sg, &deskpr)})
 	if err != nil {
 		t.Fatalf("run refused: %v", err)
 	}
@@ -408,13 +418,13 @@ func TestE2E_NoWitnessedTodoIsANoOp(t *testing.T) {
 }
 
 func TestE2E_ForeignChangeRefusedOnARealTree(t *testing.T) {
-	fakeStatusgen(t)
+	sg := fakeStatusgen(t)
 	t.Setenv("DR_FLIP", "alpha")
 	t.Setenv("DR_FOREIGN", "1") // statusgen also dirties STATUS.md
 	root := fixtureRepo(t)
 	wt := filepath.Join(t.TempDir(), "recon-wt")
 	var deskpr []string
-	_, err := Run(Options{Root: root, Worktree: wt, Now: runNow, Issue: 1175, exec: e2eExec(&deskpr)})
+	_, err := Run(Options{Root: root, Worktree: wt, Now: runNow, Issue: 1175, exec: e2eExec(sg, &deskpr)})
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("err = %v (exit %d), want a refusal", err, deskkit.ExitCodeOf(err))
 	}
