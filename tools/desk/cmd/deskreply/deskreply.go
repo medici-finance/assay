@@ -415,39 +415,13 @@ func viewPR(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) (*prView, error) {
 	}, nil
 }
 
-// parseRepo extracts owner/name from an https, ssh, or scp-style git remote URL.
+// parseRepo extracts owner/name from a git remote URL in every shape git accepts, plus the
+// rewritten/hybrid forms an `insteadOf` config or a bad URL-composition bakes onto an ssh
+// host-alias remote (issue 1470). It is a thin wrapper over the single shared parser in
+// deskkit, so the ssh-alias/hybrid handling lives in exactly one place across deskwt,
+// deskpr, deskreply and preflight and the class cannot recur from a drifted copy.
 func parseRepo(raw string) (string, error) {
-	u := strings.TrimSpace(raw)
-	u = strings.TrimSuffix(u, ".git")
-	if i := strings.Index(u, "://"); i >= 0 {
-		rest := u[i+3:]
-		if at := strings.Index(rest, "@"); at >= 0 {
-			rest = rest[at+1:]
-		}
-		if slash := strings.Index(rest, "/"); slash >= 0 {
-			return normRepoPath(rest[slash+1:])
-		}
-		return "", fmt.Errorf("no path in url %q", raw)
-	}
-	if at := strings.Index(u, "@"); at >= 0 && strings.Contains(u, ":") {
-		// scp-like: [user@]host:owner/repo
-		colon := strings.Index(u, ":")
-		return normRepoPath(u[colon+1:])
-	}
-	return normRepoPath(u)
-}
-
-func normRepoPath(p string) (string, error) {
-	p = strings.Trim(p, "/")
-	parts := strings.Split(p, "/")
-	if len(parts) < 2 {
-		return "", fmt.Errorf("cannot parse owner/repo from %q", p)
-	}
-	owner, repo := parts[len(parts)-2], parts[len(parts)-1]
-	if owner == "" || repo == "" {
-		return "", fmt.Errorf("empty owner/repo in %q", p)
-	}
-	return owner + "/" + repo, nil
+	return deskkit.RemoteRepoSlug(raw)
 }
 
 // readBody reads the --body-file, refusing one over the cap. The size is decided from the

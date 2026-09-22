@@ -298,3 +298,76 @@ func hashTree(t *testing.T, root string) map[string]string {
 	sort.Strings(keys)
 	return m
 }
+
+// A success outcome must be backed by the canonical board row and every
+// execution witness, including closures inherited from an earlier branch.
+func TestBriefInfoCheckVerified(t *testing.T) {
+	const goodStamp = "2026-09-22 human:alex"
+	const verify = "## Verify\n\n| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n"
+	goodWitness := witnessHeader + "\n| 1 | `true` | pass exit=0 | sha256:aaaaaaaaaaaa | 2026-09-22 | human:alex @ 000000000000 |\n"
+	cases := []struct{ name, status, stamp, verify, evidence, diagnostic string }{
+		{"verified", "verified", goodStamp, verify, goodWitness, ""},
+		{"done", "done", goodStamp, verify, goodWitness, ""},
+		{"implemented", "implemented", goodStamp, verify, goodWitness, "status"},
+		{"missing-row", "", goodStamp, verify, goodWitness, "board row"},
+		{"missing-stamp", "verified", "—", verify, goodWitness, "Verified"},
+		{"malformed-stamp", "verified", "checked", verify, goodWitness, "Verified"},
+		{"missing-witness", "verified", goodStamp, verify, "", "witness"},
+		{"partial-witness", "verified", goodStamp, verify + "| 2 | `false` | exit 0 |\n", goodWitness, "row 2"},
+		{"latest-failure", "verified", goodStamp, verify, goodWitness + strings.ReplaceAll(goodWitness, "pass exit=0", "fail exit=1"), "witness"},
+		{"stale-witness", "verified", goodStamp, verify, strings.ReplaceAll(goodWitness, "`true`", "`false`"), "witness"},
+		{"failed-witness", "verified", goodStamp, verify, strings.ReplaceAll(goodWitness, "pass exit=0", "fail exit=1"), "witness"},
+		{"could-not-run", "verified", goodStamp, verify, strings.ReplaceAll(goodWitness, "pass exit=0", "could-not-run"), "witness"},
+		{"no-verify-rows", "verified", goodStamp, "## Verify\n", goodWitness, "Verify rows"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "docs", "streams", "sample")
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			readme := "---\nstream: sample\nstatus: active\n---\n\n| # | Brief | Wave | Status | Verified | Reviewed | Effort |\n|---|-------|------|--------|----------|----------|--------|\n"
+			if tc.status != "" {
+				readme += "| 01 | [First](brief-01-first.md) | 1 | " + tc.status + " | " + tc.stamp + " | human:alex | S |\n"
+			}
+			for name, body := range map[string]string{"README.md": readme, "brief-01-first.md": "# First\n\n" + tc.verify + "\n## Evidence\n\n" + tc.evidence} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// An unrelated malformed stream cannot poison a scoped closure check.
+			if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "unrelated"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			code, out, diag := runBriefInfoCapture("--root", root, "--check-verified", "sample/01")
+			if tc.diagnostic != "" {
+				if code != 1 || out != "" || !strings.Contains(diag, tc.diagnostic) {
+					t.Fatalf("exit=%d output=%q diagnostic=%q; want refusal mentioning %q", code, out, diag, tc.diagnostic)
+				}
+			} else {
+				if code != 0 {
+					t.Fatalf("exit=%d diagnostic=%s", code, diag)
+				}
+				var got briefInfo
+				if err := json.Unmarshal([]byte(out), &got); err != nil || got.Row == nil || got.Row.Status != tc.status {
+					t.Fatalf("bad success JSON: %s (%v)", out, err)
+				}
+			}
+			// Without the opt-in check, resolution continues to report facts only.
+			if code, _, diag := runBriefInfoCapture("--root", root, "sample/01"); code != 0 {
+				t.Fatalf("normal resolution changed: %s", diag)
+			}
+		})
+	}
+}
+
+func TestBriefInfoCheckVerifiedUnresolvableDominates(t *testing.T) {
+	for _, keys := range [][]string{{"sample/01", "missing/01"}, {"missing/01", "sample/01"}} {
+		args := append([]string{"--root", briefInfoFixture, "--check-verified"}, keys...)
+		code, out, diag := runBriefInfoCapture(args...)
+		if code != 2 || out != "" || !strings.Contains(diag, "requires status") || !strings.Contains(diag, "no brief file") {
+			t.Fatalf("exit=%d output=%q diagnostics=%q", code, out, diag)
+		}
+	}
+}
