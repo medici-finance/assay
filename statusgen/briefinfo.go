@@ -17,9 +17,9 @@ package main
 // network, and shells out to nothing. The whole verb is "print what statusgen
 // already parsed for one key".
 //
-// Exit contract (two-state; there is no could-not-check leg — a key either
-// resolves to exactly one file or it does not):
-//   - 0  every key resolved to exactly one brief file.
+// Exit contract:
+//   - 0  every key resolved and any requested closure checks passed.
+//   - 1  --check-verified found an invalid closure.
 //   - 2  at least one key was unresolvable (bad grammar, zero matching files, or
 //        more than one — the numeric-prefix collision a hand-rolled glob could not
 //        detect), OR a usage error. On any failure NO JSON body is printed, so a
@@ -42,9 +42,10 @@ import (
 	"strings"
 )
 
-// briefInfoExit* — the two-state contract described above.
+// briefInfoExit* — the exit contract described above.
 const (
 	briefInfoExitOK      = 0
+	briefInfoExitInvalid = 1 // known invalid closure
 	briefInfoExitResolve = 2 // unresolvable key or usage error
 )
 
@@ -131,17 +132,19 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 	// Resolve every key first, collecting successes and failures, so that a single
 	// unresolvable key reports EVERY key's outcome (never a silent partial array).
 	infos := make([]*briefInfo, len(keys))
-	failed := false
+	failureCode := briefInfoExitOK
 	for i, key := range keys {
 		info, err := resolveBriefKey(root, key)
 		if err != nil {
-			failed = true
+			failureCode = briefInfoExitResolve
 			fmt.Fprintf(stderr, "brief: %s\n", err)
 			continue
 		}
 		if checkVerified {
 			if err := checkBriefInfoVerified(root, info); err != nil {
-				failed = true
+				if failureCode == briefInfoExitOK {
+					failureCode = briefInfoExitInvalid
+				}
 				fmt.Fprintf(stderr, "brief: %s: %v\n", key, err)
 				continue
 			}
@@ -149,10 +152,10 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 		infos[i] = info
 		fmt.Fprintf(stderr, "brief: resolved %s -> %s\n", key, info.File)
 	}
-	if failed {
+	if failureCode != briefInfoExitOK {
 		// No JSON body on failure: a consumer must never read a partial result as
-		// a complete array.
-		return briefInfoExitResolve
+		// a complete array. Resolution failures dominate known-invalid closures.
+		return failureCode
 	}
 
 	if asText {

@@ -342,7 +342,7 @@ func TestBriefInfoCheckVerified(t *testing.T) {
 			}
 			code, out, diag := runBriefInfoCapture("--root", root, "--check-verified", "sample/01")
 			if tc.diagnostic != "" {
-				if code == 0 || out != "" || !strings.Contains(diag, tc.diagnostic) {
+				if code != 1 || out != "" || !strings.Contains(diag, tc.diagnostic) {
 					t.Fatalf("exit=%d output=%q diagnostic=%q; want refusal mentioning %q", code, out, diag, tc.diagnostic)
 				}
 			} else {
@@ -359,5 +359,15 @@ func TestBriefInfoCheckVerified(t *testing.T) {
 				t.Fatalf("normal resolution changed: %s", diag)
 			}
 		})
+	}
+}
+
+func TestBriefInfoCheckVerifiedUnresolvableDominates(t *testing.T) {
+	for _, keys := range [][]string{{"sample/01", "missing/01"}, {"missing/01", "sample/01"}} {
+		args := append([]string{"--root", briefInfoFixture, "--check-verified"}, keys...)
+		code, out, diag := runBriefInfoCapture(args...)
+		if code != 2 || out != "" || !strings.Contains(diag, "requires status") || !strings.Contains(diag, "no brief file") {
+			t.Fatalf("exit=%d output=%q diagnostics=%q", code, out, diag)
+		}
 	}
 }
