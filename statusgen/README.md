@@ -194,6 +194,13 @@ frontmatter fields; a brief with no README row resolves with `"row": null` — a
 is reported as itself, never invented as a status. The emitted `file` path is
 RELATIVE to `--root`, so the output carries no machine path.
 
+`statusgen brief --root . --check-verified <stream>/<NN>` additionally requires
+`verified` or `done`, a dated Verified stamp, and a passing execution witness for
+every Verify row. It returns exit 1 with no JSON when that closure check fails;
+resolution/usage failures remain exit 2. This check does not grandfather missing
+witnesses and does not replace `statusgen --lint`. `deskevidence` uses both before
+appending a new verified outcome receipt.
+
 ## Multi-root (a board that spans repos)
 
 `--root` is **repeatable**. Give it more than once and statusgen emits **one
