@@ -1,2 +1,0 @@
-### Changed
-- ci(staged): re-base the Windows CI leg staged copy onto the live file so promotion is a byte-for-byte copy — the staged `ci/staged-workflows/windows-ci-leg.yml` now carries the live file's later changes (the version-tag-only trigger and the lint job's `fetch-depth: 0`) alongside the `--in-container` execution-witness jobs, so a maintainer's verbatim copy over the live file no longer reverts them.
