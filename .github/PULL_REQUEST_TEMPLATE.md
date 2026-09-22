@@ -20,7 +20,8 @@ If the diff makes no claim beyond itself, say so.
 ## Automated assistance
 
 Was this change produced, in whole or in part, with the help of an AI coding
-tool or agent? Yes / no is enough.
+tool or agent? Yes / no is enough. If an agent produced any of this, confirm you
+checked its output against CONTRIBUTING's "What must not appear" list.
 
 ## Linked issue
 
