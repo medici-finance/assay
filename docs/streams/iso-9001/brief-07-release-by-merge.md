@@ -217,7 +217,7 @@ dispatches NO workflow — the merge does that.
 |---|---------|--------|
 | 1 | `actionlint ci/staged-workflows/release-on-merge.yml` | exit 0 — the new workflow is valid GitHub Actions YAML |
 | 2 | `actionlint ci/staged-workflows/release.yml` | exit 0 — the staged twin is valid |
-| 3 | `python3 -c 'import sys,yaml; d=yaml.safe_load(open("ci/staged-workflows/release-on-merge.yml")); assert d["on"]["push"]["branches"]==["main"]; assert d["permissions"]=={"contents":"read","pull-requests":"read"}'` | exit 0 — triggers on push:main and GITHUB_TOKEN is read-only (no actions:write) |
+| 3 | `python3 -c 'import yaml; d=yaml.safe_load(open("ci/staged-workflows/release-on-merge.yml")); on=d.get("on", d.get(True)); assert on["push"]["branches"]==["main"]; assert d["permissions"]=={"contents":"read","pull-requests":"read"}'` | exit 0 — triggers on push:main and GITHUB_TOKEN is read-only (no actions:write). `on` is read via `d.get("on", d.get(True))` because PyYAML (YAML 1.1) parses the bare key `on:` as boolean `True` |
 | 4 | `git grep -nF 'create-github-app-token' -- ci/staged-workflows/release-on-merge.yml` | exit 0 — the tag is created with an App token, not GITHUB_TOKEN |
 | 5 | `git grep -nF 'RELEASE_APP_ID' -- ci/staged-workflows/release-on-merge.yml` | exit 0 — the release-cutter App secret is named for the reviewer/human |
 | 6 | `git grep -nE 'refs/tags/(assay/)?' -- ci/staged-workflows/release-on-merge.yml \| grep -c tags` | exit 0; count ≥ 2 — both the umbrella and plain tags are created |
