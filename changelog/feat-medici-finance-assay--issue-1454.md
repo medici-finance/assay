@@ -1,0 +1,2 @@
+### Changed
+- `windows-port/00` Verify rows 8 and 10 re-baselined onto current main. Row 8's unix-only-syscall-leak grep now excludes comment lines and `_windows.go` files, so it flags only real syscall use rather than reddening on a prose comment. Row 10 now asserts the ACL-based Windows roster-owner enforcement (`evaluateRosterACL` — owner SID + DACL, refuse-on-unreadable, nil-DACL-as-world-writable) that superseded the earlier loud-skip `NOTICE` stub.
