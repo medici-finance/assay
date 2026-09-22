@@ -25,7 +25,12 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	if it.Payload["kind"] == kindOrphan {
 		fmt.Fprintf(&b, "RESUME PR %s#%s (tier=%s) — finish started work; resume takes priority over fresh dispatch.\n\n",
 			it.Payload["repo"], it.Payload["pr"], tier)
-		fmt.Fprintf(&b, "Branch: %s\n", it.Payload["branch"])
+		if br := strings.TrimSpace(it.Payload["branch"]); br != "" {
+			// The orphan-sweep source carries the head branch; a fresh row routed to resume on an OPEN
+			// PR (#1339) carries only the number, so it omits the branch and the worker checks the PR
+			// out by number rather than being handed a blank `Branch:` line.
+			fmt.Fprintf(&b, "Branch: %s\n", br)
+		}
 		if fnd := strings.TrimSpace(it.Payload["findings"]); fnd != "" {
 			fmt.Fprintf(&b, "Open findings to work:\n%s\n", fnd)
 		}
