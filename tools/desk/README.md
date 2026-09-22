@@ -1084,6 +1084,18 @@ there was no way to say which stage that was — nor any value to move once you 
   `resume=2` (protecting orphan-PR resumes, the highest-priority source) and `rework=0`.
   `deskboard throughput` prints the same reservation as an extra column beside the width it
   never subtracts from.
+  - **`fanoutloop plan` reconciles every fresh row against the repo's open+merged PRs** (#1339),
+    ONE list read per run, keyed on each PR's `Brief:` trailer (never a branch name). A board cell
+    is unreliable as an eligibility signal — a merged brief reads `todo` until a separate
+    `statusgen reconcile` flips it (#1175) — so a row whose brief already MERGED is printed under a
+    `LANDED-UNRECONCILED` heading (with its PR number) and NEVER dispatched, a row with an OPEN PR
+    is routed to the resume lane, and only unrepresented rows are dispatched. If the repo can't be
+    resolved (`--repo`, else the configured-roots map, else the checkout's origin) or the PR read
+    fails, the fresh lane is HELD with a `FRESH LANE HELD:` line — could-not-check is not
+    no-PR-exists. The PR-list transport is DEFERRED like the orphan sweep — the closed forge
+    surface ships no forge-CLI call and the typed open+merged-changes op is the cutover work — so
+    until it is wired the shipped `plan` performs no forge read and offers rows as before; the
+    classification, repo resolution and one-read reduction are in place, ready to activate.
   - **The repair (`rework`) floor is ENFORCED at the dispatch boundary** (example-stream/18),
     OPT-IN via `ASSAY_REPAIR_ADMISSION=on` (recorded policy `repair-admission-v1`). With it on,
     `deskdispatch` holds a **fresh** dispatch — exit 5, naming the waiting repair — that would

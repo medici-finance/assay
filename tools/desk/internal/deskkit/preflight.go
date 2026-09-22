@@ -733,6 +733,11 @@ func deriveRepoSlug(dir, remote string) string {
 	return m[1] + "/" + m[2]
 }
 
+// RepoSlugForDir resolves owner/name from a checkout's `origin` remote, the exported entry to
+// deriveRepoSlug's ssh-alias-aware parse. It returns "" when the dir is not a repo, has no origin, or
+// the URL does not parse — a could-not-resolve the caller reports as itself, never a guessed repo.
+func RepoSlugForDir(dir string) string { return deriveRepoSlug(dir, "origin") }
+
 // scrubbedEnv is the ALLOWLIST a cold probe runs under. An allowlist, not a
 // denylist: a new credential env var added elsewhere must not silently start
 // warming this probe.

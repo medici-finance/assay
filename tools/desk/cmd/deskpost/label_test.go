@@ -37,6 +37,10 @@ func TestVerdictLabelsWorkflowPRGetsCoreAndSize(t *testing.T) {
 		{Filename: ".github/workflows/leaksweep-control.yml", Additions: 100, Deletions: 50}, // 150, counts
 		{Filename: "docs/notes.md", Additions: 20, Deletions: 10},                            // 30, counts
 	} // total 180 → size:M
+	// The diff touches .github/workflows/ → risk-classed, so ruling 3's floor refuses an
+	// UNSTAMPED verdict on it. This test exercises the labelling wiring, not the floor, so it
+	// carries a floor-clearing strong dispatcher stamp.
+	f.stamp(strongStampBy(deskDispatcherLogin(t))...)
 	bf := writeBody(t, "rev.md", okReviewBody)
 
 	code := run(reviewArgs("example-org/tracker", "1", "approve", testHead, bf))
@@ -101,6 +105,9 @@ func TestVerdictLabelsAbsentConfigSizeOnly(t *testing.T) {
 	f.fileEntries = []prFile{
 		{Filename: ".github/workflows/ci.yml", Additions: 300, Deletions: 200}, // 500 → size:L
 	}
+	// .github/workflows/ is a risk path → ruling 3's floor refuses an UNSTAMPED verdict. This
+	// test exercises size labelling, not the floor, so carry a floor-clearing strong stamp.
+	f.stamp(strongStampBy(deskDispatcherLogin(t))...)
 	bf := writeBody(t, "rev.md", okReviewBody)
 
 	code := run(reviewArgs("example-org/tracker", "1", "approve", testHead, bf))

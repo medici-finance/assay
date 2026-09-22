@@ -779,6 +779,103 @@ func (g *GitHubForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayloa
 	return g.trustEvents(repo, number, IssueTrustQuery, false)
 }
 
+const (
+	// forgeMaxEventPages bounds the escalation-clock comment walk: 20 pages of first:100 =
+	// 2000 comments. A thread still advertising a next page past it is reported INCOMPLETE
+	// (TrustPayload.Complete=false), which the caller treats as one issue's conservative
+	// could-not-check (escalate) — never as a whole-board failure and never as "no escalation
+	// owed". The bound keeps the read finite regardless of thread length.
+	forgeMaxEventPages = 20
+)
+
+// ghIssueEventsRespWire decodes ONE page of IssueEventsQuery. A null `issue` (wrong number,
+// or no access) is distinguished from an issue with no comments — the pointer is nil in the
+// first case, which the caller maps to could-not-check rather than "no events".
+type ghIssueEventsRespWire struct {
+	Data struct {
+		Repository struct {
+			Issue *struct {
+				Comments struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						CreatedAt string    `json:"createdAt"`
+						Author    *gqlActor `json:"author"`
+					} `json:"nodes"`
+				} `json:"comments"`
+			} `json:"issue"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// IssueContentEvents walks an issue's comment thread to exhaustion under forgeMaxEventPages,
+// mapping each comment to a ContentEvent (author rendered as the trust set expects — a Bot
+// re-suffixed "<slug>[bot]" — plus its creation time) for the escalation clock. It is the
+// paginated counterpart of the single-page trustEvents read: see the interface doc on
+// IssueContentEvents for why the escalation clock must not share the trust gate's fail-closed
+// single-page bound. Complete=false means the hard cap was hit (or the forge advertised a next
+// page with no cursor); the caller then treats that issue conservatively without failing the
+// board.
+func (g *GitHubForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	var events []ContentEvent
+	after := ""
+	for page := 1; page <= forgeMaxEventPages; page++ {
+		vars := map[string]any{"owner": repo.Owner, "name": repo.Name, "number": number}
+		if after != "" {
+			vars["after"] = after
+		}
+		in := map[string]any{"query": IssueEventsQuery, "variables": vars}
+		var out ghIssueEventsRespWire
+		if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+			return nil, err
+		}
+		if len(out.Errors) > 0 {
+			msgs := make([]string, 0, len(out.Errors))
+			for _, e := range out.Errors {
+				msgs = append(msgs, e.Message)
+			}
+			return nil, Unverifiable("issue-events GraphQL error: "+strings.Join(msgs, "; "), nil)
+		}
+		iss := out.Data.Repository.Issue
+		if iss == nil {
+			return nil, Unverifiable(fmt.Sprintf(
+				"could-not-check: %s carries no issue at number %d, so its comment thread could not be read",
+				repo.Slug(), number), nil)
+		}
+		for i := range iss.Comments.Nodes {
+			n := &iss.Comments.Nodes[i]
+			if n.CreatedAt == "" {
+				continue
+			}
+			ct, err := parseTrustTime(n.CreatedAt)
+			if err != nil {
+				return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), err)
+			}
+			var id int64
+			if n.Author != nil {
+				id = n.Author.DatabaseID
+			}
+			events = append(events, ContentEvent{Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct})
+		}
+		if !iss.Comments.PageInfo.HasNextPage {
+			return &TrustPayload{Events: events, Complete: true}, nil
+		}
+		after = iss.Comments.PageInfo.EndCursor
+		if after == "" {
+			// A next page is advertised but no cursor was returned: the walk cannot advance,
+			// so report INCOMPLETE rather than loop the same page. The caller degrades that
+			// one issue conservatively.
+			break
+		}
+	}
+	return &TrustPayload{Events: events, Complete: false}, nil
+}
+
 // trustEvents runs one trust-gate GraphQL query through the backend's own authenticated
 // transport and parses the response through the SAME reader (trustFromEnvelope) the CLI
 // surfaces use, so the seam and the CLI cannot draw different blessings from one payload.
