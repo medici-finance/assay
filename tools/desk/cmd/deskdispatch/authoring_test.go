@@ -43,10 +43,10 @@ func authoringFiles() []deskkit.ChangedFile {
 	}
 }
 
-// TestPhantomCheckAdmitsABriefWhoseOnlyPRAuthoredIt is the fail-first proof of the issue: the only
+// TestPhantomAdmitsAuthoredBrief is the fail-first proof of the issue: the only
 // PR naming the brief is the MERGED docs-only PR that authored it. Before the fix the phantom check
 // refused the dispatch as "already represented" by that PR, so the brief could never be dispatched.
-func TestPhantomCheckAdmitsABriefWhoseOnlyPRAuthoredIt(t *testing.T) {
+func TestPhantomAdmitsAuthoredBrief(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Authors briefs 11-12.\n\nBrief: example-port/11"}}, nil
 	})
@@ -58,7 +58,7 @@ func TestPhantomCheckAdmitsABriefWhoseOnlyPRAuthoredIt(t *testing.T) {
 }
 
 // A PR that touches docs/streams AND code is a delivery, whatever else it touches, so it still refuses.
-func TestPhantomCheckStillRefusesADocsPlusCodeDelivery(t *testing.T) {
+func TestPhantomRefusesDocsPlusCode(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 1600, State: "MERGED", Body: "Delivers it.\n\nBrief: example-port/11"}}, nil
 	})
@@ -76,7 +76,7 @@ func TestPhantomCheckStillRefusesADocsPlusCodeDelivery(t *testing.T) {
 
 // A brief whose deliverable is itself a doc under docs/streams is delivered by a PR that touches only
 // docs/streams. It does not add the brief's own file, so it is still a delivery and still refuses.
-func TestPhantomCheckStillRefusesADocsOnlyDelivery(t *testing.T) {
+func TestPhantomRefusesDocsOnlyDelivery(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 323, State: "MERGED", Body: "The audit.\n\nBrief: example-port/02"}}, nil
 	})
@@ -94,7 +94,7 @@ func TestPhantomCheckStillRefusesADocsOnlyDelivery(t *testing.T) {
 
 // The authoring PR is set aside, but a real delivery PR for the same brief still refuses. The
 // exemption removes one PR from the match; it never clears the brief.
-func TestPhantomCheckAuthoringPRDoesNotMaskADeliveryPR(t *testing.T) {
+func TestPhantomAuthoringKeepsDelivery(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{
 			{Number: 1439, State: "MERGED", Body: "Brief: example-port/11"},
@@ -117,7 +117,7 @@ func TestPhantomCheckAuthoringPRDoesNotMaskADeliveryPR(t *testing.T) {
 }
 
 // A file list that cannot be read is could-not-check (exit 6), never "authoring" and never a guess.
-func TestPhantomCheckUnreadableFileListIsUnverifiable(t *testing.T) {
+func TestPhantomUnreadableFilesHold(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Brief: example-port/11"}}, nil
 	})
@@ -134,7 +134,7 @@ func TestPhantomCheckUnreadableFileListIsUnverifiable(t *testing.T) {
 
 // With no file transport wired (the offline reference build), every representing PR counts as a
 // delivery, exactly as before the exemption existed.
-func TestPhantomCheckNoFileTransportKeepsTheOldRefusal(t *testing.T) {
+func TestPhantomNoFileTransportRefuses(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Brief: example-port/11"}}, nil
 	})
@@ -164,7 +164,7 @@ func (f fileForge) ListChangedFiles(deskkit.ForgeRepo, int) ([]deskkit.ChangedFi
 
 // A file list shorter than the forge's own count is not provably complete. The files it did not list
 // could be the code that makes the PR a delivery, so the answer is could-not-check, not "authoring".
-func TestPhantomCheckTruncatedFileListIsUnverifiable(t *testing.T) {
+func TestPhantomTruncatedFilesHold(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Brief: example-port/11"}}, nil
 	})
