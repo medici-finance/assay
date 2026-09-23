@@ -124,8 +124,9 @@ classify --root <target>` prints `fresh`, or `partial` with what is present, or 
 `adopted` (exit 5 — the first-class "already adopted; nothing to install" outcome above).
 
 **Rehearse first — the dry run.** `bash <bundle>/scripts/assay-install.sh rehearse --target
-<target>` runs the autonomous half of steps 2–6 end to end against a SCRATCH COPY of the target:
-classify → pin → acquire + verify → `statusgen init` → prove. It prints whether a forge CLI is on
+<target>` runs steps 2, 3 and 6 end to end against a SCRATCH COPY of the target (kept under the
+target's own name): classify → pin → acquire + verify → `statusgen init` → prove. It does not
+confirm CI (step 4) or install the plugin and main-guard (step 5). It prints whether a forge CLI is on
 `PATH` (it needs neither), writes nothing to the real target, pushes nothing and opens no PR. A
 rehearsal that does not end `rehearsal PROVEN` is a reason to stop before touching the target.
 
@@ -147,8 +148,11 @@ and fetched over plain HTTPS.
 3. **Write/confirm the pin line** in the target's root `.assay-versions`, in channel-E form
    `statusgen-<platform> <tag> <sha256>`, taking the tag and the per-platform sha256 from the
    pairing manifest: `assay-install.sh pin --manifest <bundle>/paired-versions.yaml --pins
-   <target>/.assay-versions`. An identical line is left alone; a scaffold placeholder is replaced;
-   a DIFFERENT real line is refused — a re-pin is a reviewed change, never a silent in-place edit.
+   <target>/.assay-versions`. An identical line is left alone; EVERY scaffold placeholder line
+   (`statusgen init` writes one per platform plus the bare `statusgen` line) is filled from the
+   manifest, or the step refuses naming the ones it cannot fill; a DIFFERENT real line is refused
+   — a re-pin is a reviewed change, never a silent in-place edit. A refusal leaves the file
+   untouched.
 4. **Fetch and verify**: `assay-install.sh acquire --pins <target>/.assay-versions --dest <bindir>
    --release-home <release_home>` — `<release_home>` is the one named in `paired-versions.yaml`
    (resolve it from there, do not hardcode it in prose). It fetches

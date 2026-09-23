@@ -37,16 +37,20 @@
 #   pin --manifest <paired-versions.yaml> --pins <.assay-versions> [--kind statusgen|desk-tools]
 #       [--platform <os-arch>]
 #       Write the platform's channel-E line from the manifest into the pin file. An identical
-#       line is left untouched; a scaffold placeholder line is replaced; a DIFFERENT real line
-#       refuses (a re-pin is a reviewed change, never an in-place edit).
+#       line is left untouched; EVERY scaffold placeholder line of that kind (`statusgen init`
+#       writes several, plus the bare `statusgen` line) is filled from the manifest, or the
+#       step refuses naming the ones it cannot fill; a DIFFERENT real line refuses (a re-pin is
+#       a reviewed change, never an in-place edit). A refusal leaves the pin file untouched.
 #   acquire --pins <.assay-versions> --dest <bindir> [--kind statusgen|desk-tools]
 #       [--platform <os-arch>] [--release-home <owner/repo>] [--base-url <url>]
 #       Fetch the pinned asset, verify its sha256 against the pin file, install on match.
 #   rehearse --target <repo> [--manifest <paired-versions.yaml>] [--forge github|gitlab]
 #       [--base-url <url>] [--workdir <dir>]
-#       The install flow end to end against a SCRATCH COPY of the target: classify → pin →
-#       acquire + verify → `statusgen init` → prove (`--version` == pinned tag, `--lint` == 0).
-#       Nothing is written to the real target, nothing is pushed, no PR is opened.
+#       The autonomous install steps end to end against a SCRATCH COPY of the target (kept
+#       under the target's own basename, so `init` names things as the real run would):
+#       classify → pin → acquire + verify → `statusgen init` → prove (`--version` == pinned
+#       tag, `--lint` == 0). It does not confirm CI or install the plugin / main-guard. Nothing
+#       is written to the real target, nothing is pushed, no PR is opened.
 #
 # --base-url defaults to https://github.com; the asset URL is
 # <base-url>/<release-home>/releases/download/<tag>/<asset>. Only https:// is accepted — an
@@ -54,7 +58,10 @@
 # server's throwaway certificate through curl's own CURL_CA_BUNDLE, never through a flag here).
 #
 # EXIT CODES (the desk tools' contract): 0 ok · 2 usage · 5 refused · 6 could-not-check.
-# Every non-zero exit leaves --dest untouched.
+# Every refusal, and every could-not-check up to and including verification, leaves --dest
+# untouched. The one exception is a failure of the local `install` copy itself AFTER the
+# digest matched: the desk-tools arm places its binaries one by one, so such a failure can
+# leave a partial set of VERIFIED binaries in --dest; it is reported as could-not-check.
 set -uo pipefail
 
 DEFAULT_BASE_URL="https://github.com"
@@ -227,6 +234,31 @@ manifest_home() {
   ' "$1"
 }
 
+# pin_fill <manifest> <kind> <key> <host-sha> — the filled line for a placeholder keyed <key>,
+# or empty when the manifest cannot fill it. The bare `statusgen` line takes the HOST's digest
+# (the shape `statusgen init` documents for it).
+pin_fill() {
+  local manifest="$1" kind="$2" key="$3" hostsha="$4" p ml
+  if [ "$kind" = statusgen ] && [ "$key" = statusgen ]; then
+    printf 'statusgen %s %s' "$(manifest_tag "$manifest" statusgen)" "$hostsha"
+    return 0
+  fi
+  case "$key" in "$kind"-*) ;; *) return 0 ;; esac
+  p=${key#"$kind"-}; p=${p%.exe}; p=${p%.tar.gz}
+  ml=$(manifest_line "$manifest" "$kind" "$p")
+  [ -n "$ml" ] || return 0
+  [ "$(printf '%s\n' "$ml" | awk '{print $1}')" = "$key" ] || return 0
+  is_sha256 "$(printf '%s\n' "$ml" | awk '{print $3}')" || return 0
+  printf '%s\n' "$ml" | awk '{printf "%s %s %s", $1, $2, $3}'
+}
+
+manifest_tag() {
+  awk -v s="$2" '
+    /^[A-Za-z0-9_-]+:/ { sec = $1; sub(/:$/, "", sec); next }
+    sec == s && $1 == "tag:" { print $2; exit }
+  ' "$1"
+}
+
 cmd_pin() {
   local manifest="" pins="" kind="statusgen" plat=""
   while [ $# -gt 0 ]; do
@@ -252,26 +284,62 @@ cmd_pin() {
   is_sha256 "$msha" || refuse "the manifest's $kind digest for $plat is not a 64-lowercase-hex sha256"
   line="$asset $mtag $msha"
 
+  # A DIFFERENT real host line is a re-pin, never an in-place edit.
   existing=""
   [ -f "$pins" ] && existing=$(awk -v a="$asset" '$0 !~ /^[[:space:]]*#/ && $1 == a' "$pins")
-  if [ -z "$existing" ]; then
-    printf '%s\n' "$line" >> "$pins" || unverifiable "cannot write $pins"
-    say "pinned: $line"
-    return 0
+  if [ -n "$existing" ] && ! is_placeholder "$(printf '%s\n' "$existing" | awk '{print $2}')" \
+     && [ "$(printf '%s\n' "$existing" | awk '{print $1, $2, $3}')" != "$line" ]; then
+    refuse "$pins already pins $asset differently ('$(printf '%s' "$existing" | tr -s ' \t' ' ')'); a re-pin is a reviewed change, never an in-place edit — leaving it untouched"
   fi
-  if [ "$(printf '%s\n' "$existing" | awk '{print $1, $2, $3}')" = "$line" ]; then
+
+  # Build the new file in a temp copy. Every scaffold placeholder line of this kind is filled
+  # from the manifest (`statusgen init` writes several, and a half-filled file fails --lint's
+  # same-tag check); one the manifest cannot fill is a refusal, and the pin file is left
+  # byte-identical. Nothing is written until the whole file is decided.
+  local tmpf l key tag fill unfillable="" hostdone=0 changed=0 notes=""
+  tmpf=$(mktemp "${TMPDIR:-/tmp}/assay-pins.XXXXXX") || unverifiable "cannot create a temp file"
+  if [ -f "$pins" ]; then
+    while IFS= read -r l || [ -n "$l" ]; do
+      key=$(printf '%s\n' "$l" | awk '$0 !~ /^[[:space:]]*#/ {print $1}')
+      if [ -z "$key" ]; then printf '%s\n' "$l" >> "$tmpf"; continue; fi
+      tag=$(printf '%s\n' "$l" | awk '{print $2}')
+      if is_placeholder "$tag"; then
+        fill=$(pin_fill "$manifest" "$kind" "$key" "$msha")
+        if [ -n "$fill" ]; then
+          printf '%s\n' "$fill" >> "$tmpf"
+          notes="${notes}pinned (replaced the scaffold placeholder): $fill
+"
+          changed=1
+          [ "$key" = "$asset" ] && hostdone=1
+          continue
+        fi
+        case "$key" in
+          "$kind"-*) unfillable="${unfillable:+$unfillable, }$key" ;;
+          statusgen) [ "$kind" = statusgen ] && unfillable="${unfillable:+$unfillable, }$key" ;;
+        esac
+      fi
+      [ "$key" = "$asset" ] && hostdone=1
+      printf '%s\n' "$l" >> "$tmpf"
+    done < "$pins"
+  fi
+  if [ -n "$unfillable" ]; then
+    rm -f "$tmpf"
+    refuse "$pins carries scaffold placeholder line(s) the manifest cannot fill: $unfillable — a left-over placeholder fails the install's own --lint proof; pin or remove them as a reviewed change. $pins left untouched"
+  fi
+  if [ "$hostdone" -eq 0 ]; then
+    printf '%s\n' "$line" >> "$tmpf"
+    notes="${notes}pinned: $line
+"
+    changed=1
+  fi
+  if [ "$changed" -eq 0 ]; then
+    rm -f "$tmpf"
     say "already pinned, left untouched: $line"
     return 0
   fi
-  if is_placeholder "$(printf '%s\n' "$existing" | awk '{print $2}')"; then
-    local tmpf
-    tmpf=$(mktemp "${TMPDIR:-/tmp}/assay-pins.XXXXXX") || unverifiable "cannot create a temp file"
-    awk -v a="$asset" -v l="$line" '$0 !~ /^[[:space:]]*#/ && $1 == a { print l; next } { print }' "$pins" > "$tmpf" \
-      && cat "$tmpf" > "$pins" && rm -f "$tmpf" || unverifiable "cannot rewrite $pins"
-    say "pinned (replaced the scaffold placeholder): $line"
-    return 0
-  fi
-  refuse "$pins already pins $asset differently ('$(printf '%s' "$existing" | tr -s ' \t' ' ')'); a re-pin is a reviewed change, never an in-place edit — leaving it untouched"
+  cat "$tmpf" > "$pins" && rm -f "$tmpf" || unverifiable "cannot write $pins"
+  printf '%s' "$notes" | while IFS= read -r l; do [ -n "$l" ] && say "$l"; done
+  return 0
 }
 
 cmd_classify() {
@@ -333,8 +401,9 @@ cmd_rehearse() {
   printf '  command -v glab -> %s\n' "$(command -v glab || printf '(absent)')"
 
   [ -n "$work" ] || work=$(mktemp -d "${TMPDIR:-/tmp}/assay-rehearse.XXXXXX") || unverifiable "cannot create a workdir"
-  mkdir -p "$work/bin" || unverifiable "cannot create $work/bin"
-  local copy="$work/target"
+  mkdir -p "$work/.assay-bin" || unverifiable "cannot create $work/.assay-bin"
+  local copy
+  copy="$work/$(basename "$(cd "$target" && pwd)")"
   [ -e "$copy" ] && refuse "rehearse: $copy already exists — pass a fresh --workdir"
   cp -R "$target" "$copy" || unverifiable "cannot copy the target into $copy"
   say "rehearse: working on a scratch copy ($copy); the real target is never written"
@@ -350,10 +419,10 @@ cmd_rehearse() {
   bash "$0" pin --manifest "$manifest" --pins "$copy/.assay-versions" --kind statusgen --platform "$plat" || exit $?
 
   say "step 3/5 acquire + verify"
-  bash "$0" acquire --pins "$copy/.assay-versions" --dest "$work/bin" --kind statusgen \
+  bash "$0" acquire --pins "$copy/.assay-versions" --dest "$work/.assay-bin" --kind statusgen \
     --platform "$plat" --release-home "$home" --base-url "$base" || exit $?
 
-  local sg="$work/bin/statusgen" initargs
+  local sg="$work/.assay-bin/statusgen" initargs
   say "step 4/5 scaffold — statusgen init (the scaffold is init's, never re-authored here)"
   initargs=(init --root "$copy")
   [ -n "$forge" ] && initargs+=(--forge "$forge")
