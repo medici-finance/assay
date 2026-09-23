@@ -68,6 +68,81 @@ func TestGitHubForgeRefExistsRefusesANonRefPath(t *testing.T) {
 	}
 }
 
+// MatchingRefs lists the refs under a prefix (the review-claim FAMILY read). An empty match is
+// the endpoint's 200 `[]` (nil, nil) — the ANSWER "no such refs", the reducer's release signal —
+// while a 403/500 is could-not-check, never a guessed empty family. It hits the matching-refs
+// endpoint (plural, prefix), returns the fully-qualified `ref` of each match, and, like RefExists,
+// refuses a non-ref path before any request.
+func TestGitHubForgeMatchingRefs(t *testing.T) {
+	t.Run("present family returns the fully-qualified refs", func(t *testing.T) {
+		var gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			_, _ = w.Write([]byte(`[{"ref":"refs/dispatch/tracker--pr-547"},{"ref":"refs/dispatch/tracker--pr-547--rr1-corr"}]`))
+		}))
+		defer srv.Close()
+		f := &GitHubForge{Token: "test-token", BaseURL: srv.URL, Client: srv.Client()}
+
+		refs, err := f.MatchingRefs(forgeTestRepo, "refs/dispatch/tracker--pr-547")
+		if err != nil {
+			t.Fatalf("MatchingRefs err = %v, want nil", err)
+		}
+		want := []string{"refs/dispatch/tracker--pr-547", "refs/dispatch/tracker--pr-547--rr1-corr"}
+		if len(refs) != len(want) || refs[0] != want[0] || refs[1] != want[1] {
+			t.Fatalf("MatchingRefs = %v, want %v", refs, want)
+		}
+		// PLURAL matching-refs — the prefix listing, not the singular git/ref read.
+		if wantPath := "/repos/medici-finance/assay/git/matching-refs/dispatch/tracker--pr-547"; gotPath != wantPath {
+			t.Errorf("read %s, want %s", gotPath, wantPath)
+		}
+	})
+
+	t.Run("empty match is (nil, nil), not an error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`[]`))
+		}))
+		defer srv.Close()
+		f := &GitHubForge{Token: "test-token", BaseURL: srv.URL, Client: srv.Client()}
+
+		refs, err := f.MatchingRefs(forgeTestRepo, "refs/dispatch/tracker--pr-999")
+		if err != nil || len(refs) != 0 {
+			t.Fatalf("MatchingRefs = (%v, %v), want ([], nil) — an empty family is the answer, not a failure", refs, err)
+		}
+	})
+
+	t.Run("error tiers are could-not-check, never an empty family", func(t *testing.T) {
+		for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			f := &GitHubForge{Token: "test-token", BaseURL: srv.URL, Client: srv.Client()}
+			refs, err := f.MatchingRefs(forgeTestRepo, "refs/dispatch/tracker--pr-547")
+			srv.Close()
+			if err == nil {
+				t.Fatalf("status %d: MatchingRefs err = nil, want could-not-check", status)
+			}
+			if len(refs) != 0 {
+				t.Fatalf("status %d: a could-not-check must return no refs, got %v", status, refs)
+			}
+		}
+	})
+
+	t.Run("a non-ref path never reaches a URL", func(t *testing.T) {
+		reached := false
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reached = true
+		}))
+		defer srv.Close()
+		f := &GitHubForge{Token: "test-token", BaseURL: srv.URL, Client: srv.Client()}
+		if _, err := f.MatchingRefs(forgeTestRepo, "heads/../../branches/main/protection"); err == nil {
+			t.Fatal("a traversing ref prefix was accepted")
+		}
+		if reached {
+			t.Fatal("the refused prefix still reached the server — validation must happen before the request")
+		}
+	})
+}
+
 // The GitLab backend answers the ref-existence read only for the heads/ namespace (Branches
 // API); a 403 there is could-not-check, and a ref OUTSIDE heads/ is a REFUSAL with no request —
 // never a guessed "absent" that would report a held claim as released.

@@ -1323,11 +1323,30 @@ type Forge interface {
 	// ref API, so only the `heads/` namespace maps, via the Branches API — the same limit
 	// DeleteRef carries), never a guessed "absent".
 	//
-	// Consumer: cmd/deskpost's claimLiveness — the model-capability-floor stamp age-out reads
-	// whether a PR's dispatch claim ref (`heads/dispatch/<key>`, ClaimRefPath) is still held.
 	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
 	// changes nothing (freeze rule: this read lands with the call site that consumes it).
 	RefExists(repo ForgeRepo, ref string) (bool, error)
+	// MatchingRefs returns the FULLY-QUALIFIED ref paths present in repo whose path STARTS WITH
+	// refPrefix (the git prefix listing — GitHub `git/matching-refs/<ref>`). refPrefix is a ref
+	// path validated by ValidateRefPath before any request is built, so this op cannot address an
+	// arbitrary endpoint — the same bound RefExists carries. An EMPTY match is ([], nil), the
+	// ANSWER "no such refs", never a failure; every other non-2xx is a could-not-check error the
+	// caller must not read as "none".
+	//
+	// It exists because RefExists addresses ONE exact ref, but a caller sometimes needs a claim
+	// FAMILY: a PR's review-dispatch claims are `refs/dispatch/<short>--pr-<N>` plus, for each
+	// re-dispatch, `…--<suffix>` — and the suffix a later reader cannot know, so the family must
+	// be listed by prefix rather than probed by exact key.
+	//
+	// Consumer: cmd/deskpost's claimLiveness — the model-capability-floor stamp age-out for a
+	// review-lane authority write (a verdict or a ready-flip) reads whether ANY claim in the PR's
+	// review-dispatch family is still held, in the `refs/dispatch/*` namespace those claims are
+	// ACTUALLY acquired in today (DispatchClaimActiveRefsPrefix — the reader-side half of the
+	// issue-708 namespace divergence; the writer/acquire path is left untouched). A backend whose
+	// forge cannot prefix-list refs in that shape returns a could-not-check REFUSAL naming the gap
+	// (GitLab CE exposes no general ref listing — only the Branches API — so it cannot serve this),
+	// never a guessed empty result (freeze rule: this read lands with the call site that consumes it).
+	MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, error)
 	// RepoHardeningRead reads ONE closed hardening-read kind's document(s) for repo (see
 	// HardeningReadKind) — the enumerated replacement for repohardenguard's former arbitrary
 	// `gh api <endpoint>` reads. kind is validated by ValidateHardeningReadKind BEFORE any

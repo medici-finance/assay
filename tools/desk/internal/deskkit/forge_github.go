@@ -2073,6 +2073,40 @@ func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 	return true, nil
 }
 
+// MatchingRefs lists the refs whose path starts with refPrefix, via the matching-refs read
+// (`GET /repos/{o}/{r}/git/matching-refs/{ref}` — the endpoint that returns EVERY reference
+// beginning with the given path, distinct from the singular `git/ref/` RefExists targets).
+//
+// refPrefix is validated by ValidateRefPath first, so the one path-shaped argument can only
+// address refs inside the named repo. An empty match is the endpoint's own 200 `[]` (returned
+// as (nil, nil), the ANSWER "no such refs"); a 404 is likewise no-match, not a failure. Every
+// other non-2xx stays an error, so a 403 from a token that cannot see refs is never mistaken
+// for "no refs". The returned slice carries each match's FULLY-QUALIFIED ref (e.g.
+// "refs/dispatch/<key>"), verbatim from the `ref` field.
+func (g *GitHubForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, error) {
+	clean, err := ValidateRefPath(refPrefix)
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/matching-refs/%s", repo.Owner, repo.Name, clean)
+	var refs []struct {
+		Ref string `json:"ref"`
+	}
+	if err := g.doJSON(http.MethodGet, path, nil, &refs); err != nil {
+		if IsForgeNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if r.Ref != "" {
+			out = append(out, r.Ref)
+		}
+	}
+	return out, nil
+}
+
 // --- Repo-hardening reads (op 40) ---
 
 // hardeningGithubPaths maps every kind but `rulesets` (a two-hop, handled separately) to its
