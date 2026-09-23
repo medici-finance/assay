@@ -1149,11 +1149,37 @@ type corroborateResult struct {
 // PR anchors are in play (every existing caller and test), so the two PR anchors
 // decide exactly as before.
 func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gates decisionGateLinks) []corroborateResult {
+	return corroborateStampsRuled(stamps, data, repo, pr, gates, nil)
+}
+
+// corroborateStampsRuled is corroborateStamps plus the design-decision RULING-LINK
+// lane (decisionruling.go, registers-v1 §7.5). rulings carries one resolved
+// outcome per DR record the PR touched, keyed by the record file. For a stamp in
+// such a record the ruling lane decides FIRST, whenever it applies
+// (rulingOutcome.appliesTo):
+//
+//   - the placeholder stamp (decisionPlaceholderName) is decided ONLY here — it
+//     has no name to resolve, so it is never looked up in the human-login map and
+//     never corroborated by a PR anchor; with no resolvable ruling link it is
+//     MISSING-CORROBORATION (the unchecked-placeholder hole, closed);
+//   - a real-name stamp in a record that carries a ruling link is decided by that
+//     link — a present-but-failing link fails closed even if a PR anchor exists;
+//   - a real-name stamp in a record with NO ruling link falls through to the three
+//     anchors below, unchanged.
+//
+// A nil rulings map (every pre-existing caller) leaves the three anchors deciding
+// exactly as before; a placeholder stamp can only originate from the ruling lane's
+// own plumbing, and even without an outcome it is refused, never passed.
+func corroborateStampsRuled(stamps []stamp, data *ghPRData, repo string, pr int, gates decisionGateLinks, rulings rulingOutcomes) []corroborateResult {
 	if len(stamps) == 0 {
 		return []corroborateResult{{Verdict: verdictNoStamp}}
 	}
 	var results []corroborateResult
 	for _, s := range stamps {
+		if o, ok := rulings[s.File]; (ok && o.appliesTo(s.Name)) || s.Name == decisionPlaceholderName {
+			results = append(results, rulingStampResult(s, o))
+			continue
+		}
 		// Pre-existing exemption: a stamp whose cell is byte-identical to the same
 		// brief's row at the merge-base was authored and corroborated on an earlier
 		// PR. This diff only re-renders its row, so it is reported PRE-EXISTING and
@@ -1311,6 +1337,20 @@ func runCorroborate(prsArg string) int {
 
 		// --- human:<name> STAMP corroboration ---
 		stamps := stampsInDiff(".", diff)
+		// --- design-decision RULING-LINK lane (registers-v1 §7.5) ---
+		// Every DR record this PR adds or edits has its decided-by made visible to
+		// the stamp lane (the literal `human:<name>` placeholder included, which
+		// humanStampRe cannot see), and its ruling: link — when present — resolved
+		// through the forge. Records the PR does not touch are not re-gated.
+		var rulings rulingOutcomes
+		if drFiles := decisionRecordsInDiff(".", diff); len(drFiles) > 0 {
+			var recs []decisionRecordStamp
+			for _, f := range drFiles {
+				recs = append(recs, loadDecisionRecordStamp(".", f))
+			}
+			stamps = addDecisionRecordStamps(stamps, recs)
+			rulings = resolveDecisionRulings(rulingForgeClient(), ".", repo, recs, scanEffectiveConfig().HumanLogins)
+		}
 		if len(stamps) == 0 {
 			fmt.Printf("PR #%d: no human:<name> stamps found in diff — clean\n", pr)
 		} else {
@@ -1344,7 +1384,7 @@ func runCorroborate(prsArg string) int {
 				}
 			}
 			markPreExisting(stamps, baseRowsByFile, baseHeadersByFile)
-			for _, r := range corroborateStamps(stamps, data, repo, pr, gates) {
+			for _, r := range corroborateStampsRuled(stamps, data, repo, pr, gates, rulings) {
 				allResults = append(allResults, r)
 				if r.Verdict == verdictMissing {
 					anyMissing = true
@@ -1367,6 +1407,10 @@ func runCorroborate(prsArg string) int {
 	fmt.Println("# or explicit approval comment from their own GitHub account).")
 	fmt.Println("# Cannot verify they actually executed a deferred live check —")
 	fmt.Println("# that remains what the sign-off MEANS.")
+	fmt.Println("# A design-decision record (docs/streams/decisions/DR-*.md) this PR adds or")
+	fmt.Println("# edits is also gated on its decided-by: a ruling: link must resolve to a")
+	fmt.Println("# mapped human's comment on the record's decision issue, and a placeholder")
+	fmt.Println("# decided-by with no such link is MISSING (registers-v1 §7.5).")
 	fmt.Println()
 
 	for _, r := range allResults {
