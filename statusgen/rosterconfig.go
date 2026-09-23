@@ -367,6 +367,19 @@ const (
 	// credential collapses statusgen's whole trust configuration. Recognised, not
 	// applied. KEEP IN SYNC with deskkit/rosterconfig.go's EnvRunCredentials.
 	scanEnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
+	// scanEnvClaimStore (ASSAY_CLAIM_STORE), scanEnvClaimDir (ASSAY_CLAIM_DIR) and
+	// scanEnvClaimSingleHost (ASSAY_CLAIM_SINGLE_HOST) are DESK-only roster values
+	// (the claim-store seam): where a cell keeps its dispatch claims, the file store's
+	// directory, and the single-host declaration. They are consumed by the desk
+	// tools' claim-store resolver (deskkit/claimstore.go) and never by statusgen —
+	// but the two readers share one ~/.config/assay/roster.env, and an unknown ASSAY_
+	// key REFUSES the whole configuration (parseConfig), so all three must be
+	// RECOGNISED here or a roster that configures a claim store collapses statusgen's
+	// whole trust configuration. Recognised, not applied. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvClaimStore / EnvClaimDir / EnvClaimSingleHost.
+	scanEnvClaimStore      = "ASSAY_CLAIM_STORE"
+	scanEnvClaimDir        = "ASSAY_CLAIM_DIR"
+	scanEnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -418,6 +431,9 @@ func scanKnownRosterKeys() []string {
 		// DESK-only, recognised-not-applied (forge-neutral brief 14): cmd/deskrun's
 		// per-repo run-credential binding.
 		scanEnvRunCredentials,
+		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
+		// desk tools' resolver consumes — see their declarations above.
+		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
 	}
 }
 

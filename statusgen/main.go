@@ -225,6 +225,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	lifecycleProblems, lifecycleNotices := lifecycleLintChecks(root, streams)
 	problems = append(problems, lifecycleProblems...)
 	notices = append(notices, lifecycleNotices...)
+	// outcome-absent (spec/brief-v1.md §3.2): a brief authored after the outcome
+	// line's cutover that names neither a requirement id nor `none` is an advisory
+	// NOTICE. Scoped like checkBriefFiles (checkStreams); grandfathered by date.
+	notices = append(notices, outcomeAbsentNotices(checkStreams)...)
 
 	// derived-board/04: a hand edit to a board: generated stream README's
 	// marker-wrapped Briefs table (its authoring columns) is a PROBLEM, the same

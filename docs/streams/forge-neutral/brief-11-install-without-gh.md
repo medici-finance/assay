@@ -15,6 +15,8 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-11
+decision-issue: 1554
 issues: []
 schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
@@ -39,6 +41,9 @@ consumers:
   - "plugins/assay/skills/adopt/SKILL.md: fixed-here (the install-statusgen primitive and the per-forge expression of create-labels, the reviewer grant and the main-guard)"
   - "docs/adopting-assay.md: fixed-here (its GitHub-shaped self-description narrows to what is genuinely GitHub-shaped after this brief)"
   - "docs/adopting-assay-gitlab.md: fixed-here (the GitLab runbook stops being a separate dead-end and becomes the per-forge half of one flow)"
+  - "plugins/assay/scripts/assay-install.sh: fixed-here (the CLI-free acquisition step, pin-file digest comparison and refusals, and the rehearsal the skill's dry run names — task 1, verify rows 5-8 and 10)"
+  - "plugins/assay/scripts/assay-install.test.sh: fixed-here (the hermetic suite that pins every refusal, plus the opt-in real-statusgen rehearsal)"
+  - "plugins/assay/paired-versions.yaml: fixed-here (a header comment only — the resolution it describes is now a plain-HTTPS fetch, not `gh release download`)"
   - "statusgen/init.go: out-of-scope (forge-neutral/08 makes `init` scaffold the matching CI half; this brief invokes it and must not reimplement the scaffold)"
   - "tools/cellctl/cellctl: out-of-scope (a cell is not an install; its per-forge prerequisites are forge-neutral/09's)"
 version: 1
@@ -140,6 +145,7 @@ facts:
 | 10 | `statusgen --version` after the dry run's acquisition step | prints the tag pinned in `.assay-versions` — the independent second layer: a binary that is wrong in a way the digest missed cannot name itself correctly |
 | 11 | `grep -c 'adopting-assay-gitlab' docs/adopting-assay.md` and `grep -c 'adopting-assay.md' docs/adopting-assay-gitlab.md` | ≥ 1 each — the two profiles cross-link in both directions |
 | 12 | `statusgen --root . --consumers --brief forge-neutral/11` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
+| 13 | `bash plugins/assay/scripts/assay-install.test.sh` — cases H1–H4 (added by the #1554 ruling: refuse any non-HTTPS URL or redirect during the download) | **negative path**: against a local HTTPS fixture server whose redirect lands on a plain-`http://` server holding the SAME good asset, the acquisition REFUSES (exit 5) and writes nothing to the destination (H1); a `file://` URL is refused (H2); a cross-host HTTPS redirect is followed and the asset still digest-verified (H3); an HTTPS-served asset whose digest does not match the pin is still refused (H4) — HTTPS never substitutes for the pinned sha256. The row fails if H1's binary lands |
 
 ## Pre-mortem → detection map
 
@@ -154,6 +160,7 @@ facts:
 | `gh` reappears as the "recommended" way to do a primitive | row 9 |
 | The prerequisite is genericised into vagueness — "two identities" with no per-forge mechanism an adopter can act on | row 4 requires a mechanism TABLE; whether it is actionable is **review-only** |
 | The GitHub install regresses while the GitLab path is added | rows 1, 8 and 10 all run on the existing flow too; a GitHub install that stops working fails 10 |
+| A redirect downgrades the download to plain HTTP (or a non-HTTPS URL is accepted), or the HTTPS check is treated as a replacement for the digest (the #1554 ruling's addition) | row 13 — H1/H2 for the downgrade, H4 for "HTTPS is not the integrity check" |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

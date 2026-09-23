@@ -1,0 +1,83 @@
+{
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves'",
+  "control": {
+    "name": "CONTROL \u2014 drop the HARD FAIL on a deliverable repo that is not --root's origin; the worktree would be cut in the wrong repo. TestCrossRepoMismatchHardFailsBeforeAnything must go red",
+    "file": "cmd/deskdispatch/deliverable.go",
+    "old": "\tif !strings.EqualFold(actual, repo) {",
+    "new": "\tif false && !strings.EqualFold(actual, repo) {"
+  },
+  "mutations": [
+    {
+      "name": "an alias the registry does not define is no longer REFUSED by name (falls through to a could-not-check); TestCrossRepoUnregisteredAliasIsRefusedByName must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\trepo, known := reg.repoOf(d.alias)\n\tif !known {",
+      "new": "\trepo, known := reg.repoOf(d.alias)\n\tif false && !known {"
+    },
+    {
+      "name": "the --repo witness is ignored, so a --repo disagreeing with the resolved alias proceeds; TestCrossRepoRepoFlagMismatchHardFails must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\tif r := strings.TrimSpace(o.repo); r != \"\" && !strings.EqualFold(r, repo) {",
+      "new": "\tif r := strings.TrimSpace(o.repo); false && r != \"\" && !strings.EqualFold(r, repo) {"
+    },
+    {
+      "name": "a cross-repo claim key loses its tracking alias (falls back to the deliverable repo's short label); TestCrossRepoDeliverableRepoResolvesWorktreeClaimAndToken must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif dl.active && dl.homeAlias != \"\" && !strings.Contains(o.item, \"--\") {",
+      "new": "\tif false && dl.active && dl.homeAlias != \"\" && !strings.Contains(o.item, \"--\") {"
+    },
+    {
+      "name": "the cross-repo prompt drops the `deskpr create --root <tracking>` hint; TestCrossRepoDeliverableRepoResolvesWorktreeClaimAndToken must go red",
+      "file": "cmd/deskdispatch/prompt.go",
+      "old": "\tif plan.dl.crossRepo(o.root) {\n\t\t// CROSS-REPO: the PR lands HERE",
+      "new": "\tif false && plan.dl.crossRepo(o.root) {\n\t\t// CROSS-REPO: the PR lands HERE"
+    },
+    {
+      "name": "the phantom precondition is skipped, so a phantom reaches admission, the mint and the claim; TestPhantomPreconditionPrecedesAdmissionMintAndClaim must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tfollowUp, err := phantomCheck(o, repo)",
+      "new": "\tfollowUp, err := phantomFollowUp{}, error(nil)"
+    },
+    {
+      "name": "a rework row with a MERGED PR is refused instead of becoming a follow-up; TestReworkAfterMergeIsFollowUp must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t\tif o.rework {\n\t\t\treturn phantomFollowUp{pr: n}, nil",
+      "new": "\t\tif false && o.rework {\n\t\t\treturn phantomFollowUp{pr: n}, nil"
+    },
+    {
+      "name": "the follow-up keeps the MERGED branch's conventional name \u2014 the duplicate-merged-work shape; TestReworkAfterMergeIsFollowUp must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t\tp.branch = fmt.Sprintf(\"%s-followup-%d\", conventional, f.pr)",
+      "new": "\t\tp.branch = conventional"
+    },
+    {
+      "name": "an explicit --branch equal to the merged work's conventional branch is accepted on a follow-up; TestReworkRefusesTheMergedBranchAndBadPairings must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t} else if p.branch == conventional {",
+      "new": "\t} else if false && p.branch == conventional {"
+    },
+    {
+      "name": "SEC-1: the registry's `self` is used unvalidated (neither the alias-grammar nor the registered-key check), so a leading-dash/newline value reaches the claim key and the prompt; TestCrossRepoRegistryValuesAreValidatedBeforeUse must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\tself := strings.TrimSpace(doc.Self)\n\tif self != \"\" {",
+      "new": "\tself := strings.TrimSpace(doc.Self)\n\tif false && self != \"\" {"
+    },
+    {
+      "name": "SEC-1: a registry `repo:` value is used without the owner/name grammar check; TestCrossRepoRegistryValuesAreValidatedBeforeUse must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif e.Repo != nil && !repoSlugRe.MatchString(",
+      "new": "\t\tif false && e.Repo != nil && !repoSlugRe.MatchString("
+    },
+    {
+      "name": "COR-1: --brief is not resolved once up front, so a brief found only under --claim-root is not the file the gate and decision script read; TestCrossRepoGateHumanBriefUnderClaimRootFiresTheDecisionGate must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\to, err := resolveBrief(o)\n",
+      "new": "\t_, err := resolveBrief(o)\n"
+    },
+    {
+      "name": "COR advisory: an unresolvable --brief proceeds instead of being refused; TestBriefThatResolvesNowhereIsRefused must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\tp := resolveBriefPath(o)\n\tif p == \"\" {",
+      "new": "\tp := resolveBriefPath(o)\n\tif p == \"\" && false {"
+    }
+  ]
+}

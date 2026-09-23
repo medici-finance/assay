@@ -27,7 +27,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-23 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-23 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-23 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/15 | 2026-09-23 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/16 | 2026-09-23 |  |
 
 ## Parked
 
@@ -60,19 +60,20 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (53 desk-actionable of 73 total — 73 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (56 desk-actionable of 76 total — 76 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (53)
+### Desk-actionable (56)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
+| forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
@@ -93,11 +94,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 16 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| windows-port | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -132,7 +135,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 01 [exec:strong] | implemented | 8500 | 13 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
-| windows-port | 01 | implemented | 4500 | 7 | — | — | — |
+| windows-port | 01 | implemented | 5000 | 8 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
@@ -141,7 +144,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| windows-port | 00 | implemented | 5500 | 9 | — | — | — |
+| windows-port | 00 | implemented | 6000 | 10 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
@@ -315,7 +318,7 @@ _None._
 - 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
-- 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
+- 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — implemented (wave 5)
 - 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — implemented (wave 3)
 - 14 Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver — todo (wave 2)
 - 15 desklabel — a role-keyed label verb — implemented (wave 2)
@@ -324,7 +327,7 @@ _None._
 - 18 statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk — in-progress (wave 5)
 - 19 Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs — implemented (wave 1)
 - 20 Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs — implemented (wave 1)
-- 21 Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back — todo (wave 2)
+- 21 Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back — implemented (wave 2)
 - 22 Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store — todo (wave 3)
 - 23 File claim store — claims in a directory on the cell's host, with the single-host declaration and the container, filesystem and mixed-store guards — todo (wave 3)
 - 24 Served claim store — the same directory store behind a small HTTP serve mode, member-initiated, holding no forge credential — todo (wave 4)
@@ -410,7 +413,7 @@ _None._
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 
-### windows-port (10 open)
+### windows-port (11 open)
 
 - 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
@@ -420,8 +423,9 @@ _None._
 - 10 Verify in the harness container: the supported execution-witness runner on Windows — implemented (wave 3)
 - 11 Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash — todo (wave 4)
 - 12 De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind — implemented (wave 4)
-- 13 assay-inbox.sh → a Go `deskinbox` verb (the inbox skill's 1,403-line bash + jq + make engine) — todo (wave 4)
-- 14 The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can — todo (wave 5)
+- 13 assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15) — implemented (wave 4)
+- 14 The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can — todo (wave 6)
+- 15 deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13) — todo (wave 5)
 
 ## Done briefs
 
@@ -564,4 +568,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**22** streams (**17** active, **0** paused, **5** parked) · **88/266** briefs done · completed initiatives: see `docs/archive/`
+**22** streams (**17** active, **0** paused, **5** parked) · **88/267** briefs done · completed initiatives: see `docs/archive/`
