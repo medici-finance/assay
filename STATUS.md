@@ -48,7 +48,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| graph-execution | 10 — Typed advice and separate deterministic policy records [exec:strong] | 0 | 4500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -60,14 +59,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (52 desk-actionable of 71 total — 71 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (53 desk-actionable of 72 total — 72 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (52)
+### Desk-actionable (53)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -75,6 +74,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
+| graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
@@ -349,7 +349,7 @@ _None._
 - 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
 - 09 Versioned workflow instances and shared identity — todo (wave 1)
-- 10 Typed advice and separate deterministic policy records — todo (wave 0)
+- 10 Typed advice and separate deterministic policy records — implemented (wave 0)
 - 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
 - 13 Deterministic admission over facts and bounded probabilistic advice — todo (wave 1)
