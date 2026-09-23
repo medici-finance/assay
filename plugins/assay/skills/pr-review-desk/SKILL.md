@@ -284,10 +284,15 @@ failure this section prevents**, and there is no state in this loop called "the 
 
 One cycle = sweep → plan → act.
 
+Write each sweep to a per-invocation scratch file and pass its path — never a fixed name in a
+shared scratch dir (desk-shell.md §Scratch files):
+
 ```bash
-deskboard actions > /tmp/actions.json    # JSON is the default shape
-deskboard prs     > /tmp/prs.json        # supplies the head SHAs `actions` omits
-reviewloop plan --actions /tmp/actions.json --prs /tmp/prs.json
+ACTIONS=<a per-invocation scratch file — desk-shell.md §Scratch files>
+PRS=<a per-invocation scratch file — desk-shell.md §Scratch files>
+deskboard actions --out "$ACTIONS"    # JSON is the default shape
+deskboard prs     --out "$PRS"        # supplies the head SHAs `actions` omits
+reviewloop plan --actions "$ACTIONS" --prs "$PRS"
 ```
 
 `reviewloop plan` classifies every board row against an action table required by test to be

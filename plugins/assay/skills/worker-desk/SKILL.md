@@ -449,7 +449,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   escalate-durably, one-workpad-per-PR — the workpad body file is written fresh with `>`, never
   appended with `>>`, and the old workpad is never re-read into the new body) ahead of
   `references/worker-prompt.md` (security-gate refusal,
-  per-invocation `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage
+  per-invocation scratch-file body files (desk-shell.md §Scratch files), stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
   fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —
   both shipped
@@ -790,9 +790,10 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when
-  `~/.config/assay/HEARTBEAT` has not been touched inside its staleness window, so the standing loop
-  is the thing that keeps it current: touch it on every tick, including a quiet one.
+- **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when the `HEARTBEAT`
+  file in the config home (desk-shell.md §Config home: `~/.config/assay`) has not been touched
+  inside its staleness window, so the standing loop is the thing that keeps it current: touch
+  it on every tick, including a quiet one.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
   per-run stops (`desksupervise status --stops`) and, for each one, `capability:stop-worker` the matching
   dispatched worker — the cooperative `STOP.run.<key>` flag already refuses that run's next desk verb,

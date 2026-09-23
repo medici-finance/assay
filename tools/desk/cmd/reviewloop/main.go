@@ -62,7 +62,7 @@ func run(args []string) int {
 const usage = `reviewloop — pr-review-desk's board-reactor driver (archetype B; NOT a drain).
 
 USAGE:
-  reviewloop plan --actions <actions.json|-> [--prs <prs.json>] [--now <RFC3339>]
+  reviewloop plan --actions <actions.json|-> [--prs <prs.json>] [--now <RFC3339>] [--dry-run]
   reviewloop --version
 
 'plan' classifies every row of a deskboard sweep against the reactor's action table,
@@ -72,6 +72,7 @@ verdict. It spawns nothing, writes nothing outward, and makes no GitHub call.
   --actions   ` + "`deskboard actions`" + ` JSON. REQUIRED: no sweep means BLIND, not idle.
   --prs       ` + "`deskboard prs`" + ` JSON. Supplies the head SHAs the actions verb omits;
               without it every outward verb is SUPPRESSED as could-not-check.
+  --dry-run   accepted, no-op: plan already never acts or writes outward on any run.
 
 Exit: 0 idle-or-busy and positively measured · 3 disabled · 5 refused · 6 unverifiable
 (includes: the board could not be read, an ACTION the table does not know, or an idle

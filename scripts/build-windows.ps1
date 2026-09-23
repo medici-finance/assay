@@ -184,6 +184,22 @@ function Target-DeskManifest {
 }
 
 function Target-DeskHookInstall {
+    # Prefer the just-built deskpushguard's OWN `hook-install` subcommand: it resolves
+    # the guard binary from PATH at hook run time (no baked-in install-location
+    # literal) and writes BOTH pre-push (for Git for Windows' bundled sh.exe) and the
+    # native pre-push.cmd pair -- see windows-port/12, which closed the portability
+    # audit's "Push-guard shim" needs-port row this function used to carry (a verbatim
+    # copy of a POSIX shim that had no Windows-runnable form at all). Falls back to the
+    # old verbatim-copy behaviour only when no built deskpushguard.exe is available.
+    $guard = Join-Path $DistDir 'deskpushguard.exe'
+    if (Test-Path $guard) {
+        $hookArgs = @('hook-install', '--dir', (Join-Path $RepoRoot '.githooks'))
+        if ($Force) { $hookArgs += '--force' }
+        & $guard @hookArgs
+        if ($LASTEXITCODE -ne 0) { throw "desk-hook-install: deskpushguard hook-install failed (exit $LASTEXITCODE)" }
+        return
+    }
+    Write-Host "desk-hook-install: $guard not built yet -- falling back to the static shim copy (run desk-build first for the PATH-resolving shim)"
     if (-not (Test-Path $HookSrc)) {
         Write-Host "desk-hook-install: $HookSrc not found -- nothing to install (ok)"
         return
@@ -203,11 +219,8 @@ function Target-DeskHookInstall {
         }
     }
     New-Item -ItemType Directory -Force -Path (Split-Path $HookDst) | Out-Null
-    # Copy the shim verbatim, exactly as the Makefile does -- the installer does
-    # not rewrite the shim's interpreter/path. The committed shim is a POSIX
-    # `#!/bin/sh` exec of the Unix install path; on Windows it runs under Git for
-    # Windows' bundled sh, and adapting its exec target to the Windows install
-    # dir is a portability concern owned by windows-port/02, not this build file.
+    # Copy the shim verbatim, exactly as the Makefile's own fallback does -- this
+    # fallback path only runs when deskpushguard has not been built yet.
     Copy-Item -Force -Path $HookSrc -Destination $HookDst
     Write-Host "desk-hook-install: installed pre-push hook (deskpushguard)"
 }
