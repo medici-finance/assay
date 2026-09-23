@@ -10,7 +10,8 @@ package main
 // never deskrun's choice.
 //
 // GitHub custody: the installed minter below obtains the release-runner App token through
-// deskkit.RoleTokenForRepo (the `desktoken release-runner --repo <slug>` mint-or-reuse path).
+// deskkit.GitHubRoleToken (the `desktoken release-runner --repo <slug>` mint-or-reuse path, which refuses
+// a repo the roster binds to another forge before any mint).
 // GitLab custody: ForgeFor reads the already-provisioned `gitlab-release-runner.token` file —
 // the pipeline trigger token — and never rotates it. Neither path falls back to an ambient
 // gh/glab credential: an absent or empty token is a refusal at the custody step, and the
@@ -25,7 +26,7 @@ import (
 var (
 	// mintTokenFn is the GitHub mint seam, swapped in tests for a stub. Production binds it to
 	// the shared desktoken mint-or-reuse resolver.
-	mintTokenFn = deskkit.RoleTokenForRepo
+	mintTokenFn = deskkit.GitHubRoleToken
 	// forgeAPIBase is a TEST-ONLY override of the resolved GitHub backend's API base. Empty in
 	// production means the real host.
 	forgeAPIBase string
