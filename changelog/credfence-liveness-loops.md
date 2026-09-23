@@ -1,0 +1,4 @@
+### Added
+- `deskroster preflight` gains a sixth envelope check, `ambient-identity`: the ambient `gh` login a tool fall-through would use must be the blessing human (not a bot/App slug, not a non-blessing login), and the origin credential helper must resolve to the minted App token — closing the probe-green/push-red split. Not-applicable on a GitLab-forge repo.
+- `deskboot` now ALARMS a red operating-envelope preflight: it files one `to:desk` issue quoting the red line, deduped by a marker per role per day, so a red envelope is no longer heard only by the window that printed it. The alarm never changes the boot's verdict.
+- `statusgen --instrument-audit` classifies every declared statusgen flag WIRED / COLD / DARK by grepping its consumer roots; `--lint` NOTICEs each DARK flag (0 consumers and declared >30 days ago) as a retirement candidate. Read-only and advisory — nothing is retired by the tool. `--json` and `--roots` supported.
