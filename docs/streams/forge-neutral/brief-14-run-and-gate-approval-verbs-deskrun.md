@@ -20,6 +20,8 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-14
+decision-issue: 1556
 exec-tier: strong
 exec-tier-why: "this decides which credential is allowed to start a release or unblock a gated deployment, and a subtle error — a resolver that accepts a human-bound roster entry and mints an ambient token anyway, a RunRef correlation that silently picks the wrong run — survives every happy-path test and hands the wrong actor a release trigger (questions a and c)."
 gate-why: >-
