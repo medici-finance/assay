@@ -55,9 +55,13 @@ screen's job. Solo ends the run here (see §7).
 
 ### Screen 1 — Details (`/setup`)
 
-- **Identity strip** on this and every later screen: avatar, login and email from `gh api user`,
-  the orgs that login owns (from the memberships endpoint, role `admin`), and the sentence *"Your
-  browser must be signed in to this same GitHub account. We check after Create."*
+- **Identity strip** on this and every later screen: login and email from `gh api user`, and the
+  sentence *"Your browser must be signed in to this same GitHub account. We check after Create."*
+  The operator's avatar is not fetched inline — that would be a third-party request from the
+  loopback page (§8 "Shared conventions"); App avatars are §5 / brief 06's step. The owned-orgs
+  list this strip once named was dropped: Screen 1 never rendered it, so the
+  `gh api user/memberships/orgs` lookup (`identity.go`'s `ghOwnedOrgs`) behind it was removed as
+  dead code (`fcbe86aa6`).
 - **Owner**: org-owned (default; requires org owner) or personal-owned, with the custody trade
   stated: *an App created under a personal account leaves with that account*.
 - **App names**: `<prefix>-read`, `<prefix>-act` (or the six role slugs). GitHub App names are
@@ -168,11 +172,18 @@ uploader takes raster). Rules:
 
 ```
 deskapps init   --tier team|family [--org <login>] [--owner org|me] [--prefix assay] [--port 41873] [--no-browser]
+deskapps init   --manifest <file> [--org <login>] [--port 41873] [--no-browser]   # a single arbitrary App, keyed by its manifest name
 deskapps resume
 deskapps status
 deskapps avatar --regen
 deskavatar --org <login> --tier team|family --out <dir>     # also callable on its own
 ```
+
+`--manifest` and `--tier` are mutually exclusive. It runs the same loopback bind, state-nonce
+issuance, callback → conversion → PEM-write path and §8 mismatch check as `--tier`, for an
+App outside the six desk roles (e.g. a leak-sweep gate App) — see
+[`docs/desk-tools/deskapps.md`](../../desk-tools/deskapps.md#deskapps-init---manifest) for the
+manifest file's fields and the two it refuses (`redirect_url`, `hook_attributes.url`).
 
 Every verb is safe to run twice. `--no-browser` prints the URL; only `127.0.0.1` is ever bound.
 Files: `~/.config/assay/apps.env` (App and installation IDs per App, plus the role→App bindings of
@@ -194,13 +205,26 @@ implementation is authored after the ruling.
 | Creation throttled | no callback within 10 min | amber banner, count done, Resume button; rows paused, nothing retried on its own |
 | Code expired | conversion 404 after > 1 h | row back to posted, "Create again on GitHub"; no key was written |
 | Name taken | GitHub rejects the manifest name | suffix suggestion, accept or edit; never a silent rename |
-| Browser signed in as someone else | personal-owned: conversion owner ≠ `gh` login; org-owned: GitHub refuses the form for a non-owner | red identity strip naming both accounts, a link to switch, Create re-armed; nothing written |
+| Browser signed in as someone else | conversion owner ≠ the named owner — `gh` login (personal-owned) or `--org` (org-owned); GitHub also refuses the org form for a non-owner, but `deskapps` checks the conversion result itself on both paths so a foreign App's `code` is caught even if the form is not | red identity strip, a link to switch, Create re-armed; nothing written |
 | Not an org owner | org-owned manifest URL forbidden | offer personal ownership with the custody trade stated, or hand the URL to an owner |
 | Installed on the wrong account | installation poll sees another login | row shows where it landed with an uninstall link, keeps waiting for the right one |
 | Scopes ≠ duties | proof step | red row naming the exact permission and the GitHub page; reminds that re-consent follows |
 | Avatar never dropped | tab closed without confirming | install proceeds; warn chip on status and proof until confirmed |
 | Port in use | bind fails | next free loopback port, said so; the manifest redirect follows the port actually bound |
 | Cross-org cell | repo list spans two orgs | says one App still needs one install and one token per org; runs the install step per org |
+
+**No `gh` on the machine.** The identity-mismatch check above (`ghIdentity`, "Browser signed in
+as someone else") currently reads the signed-in login via `gh api user`, an allowlisted
+exception (`tools/desk/internal/forgeban/allowlist.go`, `cmd/deskapps/identity.go::runGH::gh`)
+scoped to that one read, per the driver's ruling on #1260
+(https://github.com/medici-finance/assay/pull/1260#issuecomment-5737886839). Where `gh` itself
+is absent, the documented future direction is an OAuth device-code login: the installer drives
+GitHub's device-authorization flow directly, the person approves it in their browser the same
+way they already approve the App manifest, and the resulting token is held in memory for the
+duration of that one install only — never written to disk, never the App's own credential, and
+discarded once the identity read it services completes. This is a separate follow-on brief in this
+stream, authored by the driver; it is recorded here as the direction, not implemented by this PR
+(ruling addendum: https://github.com/medici-finance/assay/pull/1260#issuecomment-5737892794).
 
 ## 9. Measured before building (brief 02 records the answers)
 
