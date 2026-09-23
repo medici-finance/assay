@@ -42,9 +42,17 @@ the rule that a bare label is unanswerable without a comment saying what is need
 whom — is defined in the `intake-desk` and `the-desk` skills. **Point at it; do not restate
 it here.** This skill assumes the labels already mean what those skills say they mean.
 
-Read the queue with the inbox, which already sorts it. `<bundle>` in the commands below is
-the installed Assay bundle's own directory — each harness locates it its own way, and the
-expansion for yours is in `../../references/<harness>.md`; substitute it before running.
+Read the queue with the inbox, which already sorts it. Prefer the `deskinbox` verb (Go,
+no `bash`/`jq` dependency, works on Windows — windows-port/13):
+
+```
+deskinbox walk --item 1 owner/repo [owner/repo ...]
+```
+
+If `deskinbox` is not on `PATH`, fall back to the bash oracle it was ported from — same
+ordering, same five-part format (`<bundle>` is the installed Assay bundle's own directory;
+each harness locates it its own way, and the expansion for yours is in
+`../../references/<harness>.md`; substitute it before running):
 
 ```
 bash <bundle>/scripts/assay-inbox.sh --walk --item 1 owner/repo [owner/repo ...]
@@ -53,7 +61,8 @@ bash <bundle>/scripts/assay-inbox.sh --walk --item 1 owner/repo [owner/repo ...]
 **Before asking, read where the system is stuck:**
 `bash <bundle>/scripts/assay-inbox.sh --flow` prints the pipeline stage by
 stage with the bottleneck named, so an item's Context can say what it is actually holding up —
-and so a question about a stage three steps downstream of the constraint can wait.
+and so a question about a stage three steps downstream of the constraint can wait. (`--flow`
+is not yet ported to `deskinbox` — windows-port/15.)
 
 **Ordering rule: the item whose ruling unblocks the most in-flight work goes first; ties break
 by age, oldest first.** The script's mechanical order is urgency-then-age, which is the
@@ -183,7 +192,8 @@ Then present `k+1`.
 
 ## Rendering the queue as a page
 
-For decisions the driver wants to read away from a terminal:
+For decisions the driver wants to read away from a terminal (`--html` is not yet ported to
+`deskinbox` — windows-port/15; this still runs the bash oracle):
 
 ```
 bash <bundle>/scripts/assay-inbox.sh --html /path/to/inbox.html owner/repo
