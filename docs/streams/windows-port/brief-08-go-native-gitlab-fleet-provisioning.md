@@ -57,7 +57,7 @@ sources:
   - "docs/streams/windows-port/portability-audit.md:38 — the audit's only mention of create-fleet-gitlab.sh is the `/tmp` row; it was never triaged as an adopter-facing needs-port surface, which is the gap this brief closes"
   - "freshness-checked 2026-09-11 @ 35316469 (origin/main): tools/create-fleet-gitlab.sh is 1167 lines of bash; no Go desk verb provisions a GitLab fleet; `ls tools/desk/cmd/` shows no fleet/labels command"
 consumers:
-  - "tools/desk/cmd/: follow-up windows-port/08 (this brief; the new verb's package flips to fixed-here when the implementation lands it)"
+  - "tools/desk/cmd/deskfleet/: fixed-here (the new verb: `deskfleet provision` and `deskfleet labels`)"
   - "tools/desk/internal/deskkit/custodyacl.go: out-of-scope (this brief CALLS the existing owner-only ACL evaluation; changing the custody decision itself is a different, security-gated change)"
   - "tools/create-fleet-gitlab.sh: out-of-scope (the bash script stays as the reference implementation and the Unix path until the Go verb has run a real provisioning; retiring it is a separate decision, not this brief's)"
   - "docs/adopting-assay-gitlab.md: follow-up windows-port/09 (the doc collapse owns replacing the Git-Bash/WSL prerequisite with the verb)"
@@ -292,9 +292,9 @@ guessed; guessing bakes in exactly the decision this gate exists to make.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go build ./cmd/<verb>/ && go vet ./cmd/<verb>/` (substitute the chosen command name) | exit 0 | `check` |
-| 2 | **It cross-compiles for Windows** (the whole point of the port): `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/<verb>/` | exit 0 | `check` |
-| 3 | **`--dry-run` makes ZERO network calls** — `cd tools/desk && go test ./cmd/<verb>/ -run 'TestFleetDryRunMakesNoNetworkCalls' -count=1 -timeout 120s`; the test injects an HTTP transport that FAILS the test on any request | exit 0 | `check +mutation` |
+| 1 | `cd tools/desk && go build ./cmd/deskfleet/ && go vet ./cmd/deskfleet/` | exit 0 | `check` |
+| 2 | **It cross-compiles for Windows** (the whole point of the port): `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskfleet/` | exit 0 | `check` |
+| 3 | **`--dry-run` makes ZERO network calls** — `cd tools/desk && go test ./cmd/deskfleet/ -run 'TestFleetDryRunMakesNoNetworkCalls' -count=1 -timeout 120s`; the test injects an HTTP transport that FAILS the test on any request | exit 0 | `check +mutation` |
 | 4 | **`--dry-run` enumerates all seven roles with their access levels and scopes** — `-run 'TestFleetDryRunEnumeratesRoleTable'` | exit 0; the enumeration names all seven roles, and each role's access level and scope string matches the ported table exactly | `check` |
 | 5 | **Refuses before any network contact with `GITLAB_API_BASE` unset** — `-run 'TestFleetRefusesWithoutAPIBase'`; the same failing transport is installed | exit 0; a refusal naming the variable, and the transport was never reached | `check +mutation` |
 | 6 | **No credential reaches argv, the environment, a log, or an error** — `-run 'TestFleetTokenNeverEscapes'`: run the full flow against a stub server returning a known sentinel token, capture stdout+stderr and every `exec` argv and env the process constructs, and assert the sentinel appears in NONE of them | exit 0 | `check +mutation` |

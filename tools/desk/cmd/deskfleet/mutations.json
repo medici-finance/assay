@@ -1,0 +1,101 @@
+{
+  "test": "go test ./cmd/deskfleet/... -count=1",
+  "control": {
+    "name": "CONTROL — the role table widens reviewer's scopes (the privilege escalation the table exists to prevent)",
+    "file": "cmd/deskfleet/tables.go",
+    "old": "{\"reviewer\", \"developer\", 30, []string{\"api\"}},",
+    "new": "{\"reviewer\", \"developer\", 30, []string{\"api\", \"write_repository\"}},"
+  },
+  "mutations": [
+    {
+      "name": "row 6 — the minted token is logged (a debug line prints the credential)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tpat.Token = \"\"\n\tif werr != nil {",
+      "new": "\tp.errf(\"debug: minted %s\", pat.Token)\n\tpat.Token = \"\"\n\tif werr != nil {"
+    },
+    {
+      "name": "row 7 — the deskkit custody evaluation is skipped (every written file is assumed verified)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tv := p.e.classifyCustody(written)",
+      "new": "\tv := deskkit.CustodyVerdict{State: deskkit.CustodyVerified}"
+    },
+    {
+      "name": "row 8 — a definite custody failure is treated as nil (a refused file is reported usable)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tcase deskkit.CustodyVerified:\n",
+      "new": "\tcase deskkit.CustodyVerified, deskkit.CustodyRefused:\n"
+    },
+    {
+      "name": "option 2 — an inconclusive read-back refuses instead of warning (the ruling's WARN arm lost)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tcase deskkit.CustodyInconclusive:\n",
+      "new": "\tcase deskkit.CustodyState(-1):\n"
+    },
+    {
+      "name": "row 11 — a partial run prints no report of the tokens it minted",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif len(p.minted) == 0 {\n\t\tp.errf(\"No personal access token",
+      "new": "\tif true {\n\t\tp.errf(\"No personal access token"
+    },
+    {
+      "name": "row 11 — the report omits the most recently minted token",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tfor _, m := range p.minted {\n\t\tfile := m.Path",
+      "new": "\tfor _, m := range p.minted[:len(p.minted)-1] {\n\t\tfile := m.Path"
+    },
+    {
+      "name": "row 11 — a partial run revokes the tokens it minted (the ruling is report, never auto-revoke)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\treport := p.partialReport(s.msg)",
+      "new": "\tfor _, m := range p.minted {\n\t\t_, _ = p.gl.do(\"DELETE\", \"/personal_access_tokens/\"+strconv.FormatInt(m.TokenID, 10), nil)\n\t}\n\treport := p.partialReport(s.msg)"
+    },
+    {
+      "name": "row 6 — redirects are followed (the custom PRIVATE-TOKEN header is forwarded to the redirect target)",
+      "file": "cmd/deskfleet/client.go",
+      "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }\n",
+      "new": ""
+    },
+    {
+      "name": "row 3 — --dry-run falls through to the real run",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\tp.dryRun()\n\t\treturn exitOK\n",
+      "new": "\t\tp.dryRun()\n"
+    },
+    {
+      "name": "row 5 — an unset GITLAB_API_BASE defaults to a guessed host instead of refusing",
+      "file": "cmd/deskfleet/main.go",
+      "old": "\tif base == \"\" {\n\t\treturn \"\", fmt.Errorf(\"GITLAB_API_BASE is not set",
+      "new": "\tif base == \"\" {\n\t\tbase = \"https://gitlab.com/api/v4\"\n\t}\n\tif false {\n\t\treturn \"\", fmt.Errorf(\"GITLAB_API_BASE is not set"
+    },
+    {
+      "name": "row 12 — a refused POST does not re-apply the rule that was read (main left unprotected)",
+      "file": "cmd/deskfleet/project.go",
+      "old": "\t\tresp, err := p.gl.do(\"POST\", pp+\"/protected_branches\", restoreBody(prev))",
+      "new": "\t\tresp, err := apiResponse{Status: 500}, error(nil)"
+    },
+    {
+      "name": "settings steps — a failed approvals write aborts every later settings step",
+      "file": "cmd/deskfleet/project.go",
+      "old": "\tp.configureApprovals(pp)\n\tp.configureProtectedTags(pp)",
+      "new": "\tp.configureApprovals(pp)\n\tif len(p.failures) > 0 {\n\t\treturn\n\t}\n\tp.configureProtectedTags(pp)"
+    },
+    {
+      "name": "row 14 — GitLab's 409 'already exists' is treated as an error",
+      "file": "cmd/deskfleet/labels.go",
+      "old": "\tcase resp.Status == 409:\n\t\treturn true, nil",
+      "new": "\tcase resp.Status == 409:\n\t\treturn false, errors.New(\"conflict\")"
+    },
+    {
+      "name": "row 13 — the GitHub backend drops the approval-needed row (the forges diverge)",
+      "file": "cmd/deskfleet/labels.go",
+      "old": "\towner, name, _ := strings.Cut(g.repo, \"/\")",
+      "new": "\tif l.Name == \"approval-needed\" {\n\t\treturn false, nil\n\t}\n\towner, name, _ := strings.Cut(g.repo, \"/\")"
+    },
+    {
+      "name": "row 10 — the written name drifts from the name desktoken --forge gitlab <role> reads (the old <prefix>-<role>-bot spelling)",
+      "file": "cmd/deskfleet/tables.go",
+      "old": "func tokenFileName(role string) string { return \"gitlab-\" + role + \".token\" }",
+      "new": "func tokenFileName(role string) string { return \"gitlab-\" + role + \"-bot.token\" }"
+    }
+  ]
+}
