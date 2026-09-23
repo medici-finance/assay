@@ -29,6 +29,15 @@ transcribes that ruling into the register; it does not mint a new one — the hu
 driver's comment on #1552 and the driver's merge of the pull request that lands this file,
 not this file itself.
 
+**Amendment (2026-09-23, at implementation — wording only, not a change to the ruling).** The
+third `accepted:` clause above says the `file` / `service` refusal names "the brief that ships
+them". As landed, the refusal names the *release* that ships the store ("it ships in the
+release that ships the file store" / "… the served store") and carries no brief id, because
+the shipped-corpus guard (`TestCorpusHasNoWithheldStreamPaths`) forbids stream brief ids in the
+`tools/desk` files. The ruled behaviour — a valid value set early is refused loudly, never
+resolved to another store — is unchanged; the clause is kept as ruled and this note records the
+wording the merge lands.
+
 **The decision.** `docs/streams/forge-neutral/brief-21-claim-store-seam-and-resolver.md` lifts
 the claim tool's storage interface into `deskkit` as `ClaimStore`, adds the roster keys
 ASSAY_CLAIM_STORE, ASSAY_CLAIM_DIR and ASSAY_CLAIM_SINGLE_HOST with strict parsing, and adds

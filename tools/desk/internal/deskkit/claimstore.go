@@ -120,7 +120,7 @@ const (
 // from it rather than restating it in prose. It holds the placeholder "N+1" until release N —
 // the release that ships the file store and the serve mode — is cut; that cut sets it to the
 // concrete release tag; the cutover records the release it names, and the deletion
-// (the deletion) targets exactly that release.
+// targets exactly that release.
 const ClaimStoreLegacyRemovalRelease = "N+1"
 
 // ClaimStoreLegacyNotice is the removal NOTICE printed on every run of a dispatching role that
