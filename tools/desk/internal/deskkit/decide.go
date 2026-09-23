@@ -50,6 +50,13 @@ import (
 // of the vocabulary; anything the agent returns that is not a vocabulary member is
 // malformed and lands on the default. Because reserved verbs are refused at
 // construction, no branch the injection could steer toward is a human-gate move.
+//
+// decisionassessment.go layers a richer, CALIBRATED envelope (request / prediction /
+// policy-result, graph-execution/10) on top of this same Advisor/Consult/Decide
+// machinery, through an explicit projection (PredictionAdvisor, Prediction.ToAdvice)
+// rather than a change here: every rule on this page — fail-closed default, budget,
+// timeout, journal, reserved verbs — binds a Prediction-based provider identically to a
+// plain one, with zero code change to this file's Decide/Consult/Question types.
 
 // decideDisabledEnv is the valve's own kill switch. It is intentionally SEPARATE from
 // the desk-tools DISABLED switch: the valve is an optimization layered on top of loops

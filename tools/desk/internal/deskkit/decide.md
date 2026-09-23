@@ -138,8 +138,49 @@ injected valve can never *default* into the retry that caused the incident; a hu
   one-hour windows. Share one `Budget` across a loop's items so the per-hour axis is a
   fleet-wide cap, not a per-item one.
 
+## Typed advice and separate policy records (`decisionassessment.go`)
+
+`Decide`/`Advice` above are a bounded enum consult; they carry no calibrated probability,
+provider identity or evidence reference. `decisionassessment.go` adds that richer envelope
+— `spec/decision-assessment-v1.md` / `schemas/decision-assessment-v1.json` — as three
+products that are never merged (GEA-04, GEA-09–11):
+
+| Type | Carries | Never |
+|---|---|---|
+| `AssessmentRequest` | subject, input/schema digests, closed vocabulary, optional required calibrator version | the raw input itself (digest only, same posture as `Consult.Context`) |
+| `Prediction` | a calibrated label distribution OR an explicit `Abstained`, `ShadowLabels` for uncalibrated labels, provider/calibrator identity, requested vs. actual backend, self-reported budget usage, evidence references | a synthesized confidence for a label the calibrator does not cover |
+| `PolicyResult` | a deterministic decision, its policy version and reason | a probability — a policy result is never derived from a `Prediction`'s numbers inside this package |
+
+`ValidatePrediction(req, pred)` rejects (a `Refused`, exit 5) every malformed shape GEA-04/07
+name: an unknown label, a NaN/Inf or out-of-range probability, invalid normalization beyond
+the declared `PredictionNormalizationTolerance`, a mismatched subject, a stale/wrong input
+or schema digest, an uncalibrated label carrying a probability, an abstention that still
+carries probabilities, inapplicable calibration (a declared `RequiredCalibratorVersion`
+mismatch), and a self-reported budget overrun.
+
+Existing `Advice`/`Decide` callers need **zero change** — the envelope is bolted on through
+an explicit projection, not a change to the contract above:
+
+```go
+advisor := deskkit.PredictionAdvisor{
+    Request: req,               // the AssessmentRequest this provider answers against
+    Predict: laya.PredictOnce,  // func(ctx, Consultation) (Prediction, error)
+}
+answer, _ := question.Decide(ctx, deskkit.Consult{Advisor: advisor, ...}) // unchanged call
+```
+
+`PredictionAdvisor.Advise` validates the returned `Prediction` before ever projecting it
+into an `Advice`; a malformed prediction is returned as an error (Decide's existing
+`OutcomeError` path), and an explicit abstention or a calibration-free prediction resolves
+through `Decide`'s own vocabulary check to `OutcomeInvalid` — either way the pre-declared
+default is used, never a guessed label. `ConservativePrediction(req)` is the typed
+envelope's own fail-closed value, for a caller that wants a well-formed abstention to hand
+back directly.
+
 ## Consumers
 
 This package lands the primitive and its contract only. Wiring specific loops
 (verification triage, refusal handling) to consult it are separate follow-ups; each such
-consumer must still run correctly with the valve disabled.
+consumer must still run correctly with the valve disabled. The mixed agentic-admission
+policy over `Prediction`/`PolicyResult` (deterministic facts vs. probabilistic advisory
+dimensions, GEA-09/10) is graph-execution/13's follow-up, not this file's.
