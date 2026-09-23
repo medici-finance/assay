@@ -330,6 +330,21 @@ const (
 	//	               email cannot enter it.
 	EnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 
+	// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is a STATUSGEN-only roster value:
+	// the map from a GitLab account USERNAME to its DISPLAY name, consumed by statusgen's
+	// Evidence-actor gate as the OFFLINE fallback for a GitLab verifier (#1477). A GitLab
+	// commit carries the account's DISPLAY name in author_name while the roster binds the
+	// USERNAME, so statusgen's `--lint` (offline, no forge access) needs a declared display
+	// name to accept the bound verifier's Evidence commit. deskkit does NOT consume it — the
+	// desk side resolves the committing GitLab account to its username ONLINE via the typed
+	// forge (deskevidence's attribution check, GetCommit -> gitlabLoginForEmail), so it never
+	// needs the declared display name. But the two readers share one ~/.config/assay/roster.env
+	// and both REFUSE the whole configuration on an unrecognised ASSAY_ key, so a roster that
+	// arms the statusgen offline fallback would collapse deskkit's whole configuration unless
+	// this key is RECOGNISED here. Recognised, not applied. KEEP IN SYNC with statusgen's
+	// scanEnvGitLabDisplayNames.
+	EnvGitLabDisplayNames = "ASSAY_GITLAB_DISPLAY_NAMES"
+
 	// EnvStreamCap (ASSAY_STREAM_CAP) is the STATUSGEN-only per-root cap on the
 	// number of active streams (attention-budget/04). statusgen consumes it (the
 	// `stream-cap` --lint rule); deskkit does not — but the operator records it in
@@ -338,6 +353,28 @@ const (
 	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Recognised,
 	// not applied. KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvStreamCap.
 	EnvStreamCap = "ASSAY_STREAM_CAP"
+
+	// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) records the model VENDOR the
+	// reviewer role's App runs on (verify-integrity/10). It is the reference the
+	// reviewer-calibration SPOF is measured against: deskcalibrate refuses a
+	// re-review whose vendor equals this value, because a same-vendor re-review of
+	// a bot-approved PR measures agreement between two instances of one model, not
+	// against an independent judge. deskcalibrate (cmd/deskcalibrate) CONSUMES it
+	// directly via os.Getenv; parseConfig here only RECOGNISES it so a roster.env
+	// carrying it does not collapse the whole desk-tools configuration on the
+	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Documented
+	// in roster.env, never written by the brief. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvReviewerVendor and the coupling vector.
+	EnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
+
+	// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) records the model VENDOR the
+	// verifier role runs on (agentic-SDLC plan A9: the verifier role runs on a
+	// different vendor from the worker role, and the roster records it). No desk
+	// tool ENFORCES the policy today — this brief documents the setting only — so
+	// it is RECOGNISED, not applied, on both readers: a roster.env carrying it must
+	// not collapse the configuration. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvVerifierVendor and the coupling vector.
+	EnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 )
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
@@ -380,6 +417,10 @@ func knownRosterKeys() []string {
 		// (#643). It must be recognised or a roster carrying it collapses the whole
 		// configuration on the unknown-ASSAY_-key refusal.
 		EnvGitLabSessionEmails,
+		// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is STATUSGEN-only (its
+		// Evidence-actor offline fallback, #1477), recognised-not-applied here so a roster
+		// arming that fallback does not collapse deskkit's configuration.
+		EnvGitLabDisplayNames,
 		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
 		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
 		// scanConfig — but the de-housing REQUIRES the house to set it in the
@@ -412,6 +453,14 @@ func knownRosterKeys() []string {
 		// collapse the desk tools' configuration. Bound to statusgen's
 		// scanEnvStreamCap by the shared key list.
 		EnvStreamCap,
+		// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) is CONSUMED by cmd/deskcalibrate
+		// (the reviewer-calibration SPOF vendor check) via a direct os.Getenv, and
+		// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) is a documented policy key no tool
+		// enforces yet. Both are RECOGNISED here so a roster.env carrying either does
+		// not collapse the whole desk-tools configuration on the unknown-ASSAY_-key
+		// refusal. KEEP IN SYNC with statusgen's scanKnownRosterKeys() and the
+		// coupling vector (statusgen/testdata/roster_coupling.json).
+		EnvReviewerVendor, EnvVerifierVendor,
 	}
 }
 

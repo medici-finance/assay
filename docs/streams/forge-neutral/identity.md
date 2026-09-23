@@ -91,6 +91,46 @@ still fails). It is **additive and fail-closed** — **unset** means the service
 shape is the only accepted GitLab commit email, byte-for-byte the pre-`#643` behaviour — and it is
 **never consulted on a GitHub identity**, so the `#638` bot-USER-id guarantee is untouched.
 
+### The GitLab display-name gap, and how a verifier's Evidence commit is accepted (#1477)
+
+A GitLab account has a **username** AND a separate **display name**, and every commit GitLab
+writes through the API carries the **display name** in `author_name` — never the username. The
+roster binds the account by **username** (`verifier=gitlab:<username>:<id>`), the field the
+commit does **not** carry. The Evidence-actor lint originally matched the commit's author name
+against the username, so on any deployment whose service account has an ordinary display name
+(e.g. username `assay-verifier-bot`, display name `Assay verifier (fleet bot)`) the match could
+never succeed and `implemented → verified` was **permanently blocked** — the same class of gap
+as the service-account commit address (the commit metadata does not carry the field the roster
+binds). There are **two** accepting paths, and a deployment may use either or both:
+
+- **Online (preferred).** The desk verb that lands Evidence (`deskevidence`) resolves the landed
+  commit's account to its **username** through the **typed forge** — `GetCommit` maps the
+  commit's author *email* to the committing GitLab account via `GET /users?search=` — and
+  compares that resolved username to the roster verifier login. A forge read that cannot resolve
+  the account (no token, transport failure, an address the instance does not map) is
+  **could-not-check**, never a pass and never a rejection. This uses the typed client only (no
+  forge CLI — the closed-surface rule), so it is the same trust anchor every other identity fact
+  is read from.
+- **Offline fallback.** `statusgen --lint` is offline and network-free by design, so it cannot
+  resolve the account. Instead the roster may **declare** the bound account's display name in
+  `ASSAY_GITLAB_DISPLAY_NAMES` (`<username>=<display name>`; entries separated by `;` or newline,
+  because a display name contains spaces), and the offline gate accepts a service-account commit
+  whose author name equals that **declared display name**. This is the same class of trust as the
+  username match — a value the roster owner set, not one inferred from the commit — and it stays
+  **login-only** (the service-account address pins no numeric id). Unset, the fallback is simply
+  unavailable and the online path is the only accepting one. A GitHub verifier never consults
+  this map: a GitHub display name is free text the model above already refuses to trust.
+
+A roster-known **human** verifier on GitLab commits under GitLab's **private commit noreply
+address**, `<user-id>-<username>@users.noreply.<host>` (GitLab's "Custom hostname for private
+commit emails" setting; default host `users.noreply.gitlab.com`, self-managed instances may set
+their own — docs.gitlab.com/administration/settings/email/). The Evidence-actor lint accepts that
+form the way it accepts the GitHub `<id>+<login>@users.noreply.github.com` form, and because the
+numeric **user id** IS carried in this address it **id-pins** the human match where the roster
+entry carries an id — the stronger key, unlike the service-account form. The two GitLab shapes
+are disjoint (the human form has the `users.` host segment and an `<id>-` numeric prefix; the
+service-account form has neither), so neither is ever read as the other.
+
 ## Forge agreement is enforced, not assumed
 
 An entry whose forge does not match the forge that `ForgeFor` resolves for the repo being acted
@@ -129,5 +169,5 @@ two `statusgen` consumers this brief adds:
 
 | Consumer | What it consumes | How it applies the per-forge rule |
 |----------|------------------|-----------------------------------|
-| `statusgen/evidenceactor.go` (Evidence-actor lint) | the accepted verifier's forge, resolved from its roster entry | matches the Evidence committer by that forge's address form — the GitHub noreply regex, id-pinned; the GitLab service-account address **shape** plus the git author username, login-only (the numeric user id is not in a GitLab commit address, so it cannot pin the match — the weaker form recorded above). A verifier bound to a forge the build does not understand is **could-not-check naming the forge**, never backed or unbacked. |
+| `statusgen/evidenceactor.go` (Evidence-actor lint) | the accepted verifier's forge, resolved from its roster entry; on GitLab also `ASSAY_GITLAB_DISPLAY_NAMES` | matches the Evidence committer by that forge's address form — the GitHub noreply regex, id-pinned; the GitLab service-account address **shape** plus the git author username OR the roster's **declared display name** (`ASSAY_GITLAB_DISPLAY_NAMES`, the offline fallback for the display-name gap, #1477), login-only (the numeric user id is not in a GitLab service-account address, so it cannot pin the match — the weaker form recorded above). A roster-known **human** verifier is accepted via GitLab's private commit noreply address `<id>-<username>@users.noreply.<host>` (id-pinned) as well as the GitHub form. A verifier bound to a forge the build does not understand is **could-not-check naming the forge**, never backed or unbacked. The **online** counterpart — resolving the commit's GitLab account to its username via the typed forge — lives in `deskevidence`'s attribution check, not in the offline `--lint` path. |
 | `statusgen/verifyrun.go` (execution witness) | the repo's forge and the acting git identity | resolves the witness `Runner` to the bound role identity for the repo's forge — the GitHub `<slug>[bot]`, the GitLab service-account username — ahead of the CI-env and git-config fallbacks, and records **which source** produced it (forge-identity / ci-env / git-config) so a stamped acting identity is distinguishable from a host-derived one (the D-9 disagreement made visible). The no-identity refusal and the forbidden-runner-flag refusal are unchanged: the runner stays derived, never caller-supplied. |

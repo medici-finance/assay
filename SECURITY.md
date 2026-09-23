@@ -14,6 +14,13 @@ Please include: the affected file and how to reproduce it, the version you are r
 (tag or commit SHA), the impact scenario where it matters, and — if you have one — a
 suggested fix. You will get an acknowledgement as soon as a maintainer reviews it.
 
+The same channel covers content that is **already published and should not have been:** a
+leaked secret or token, personal data, or a private reference committed to history or posted
+in an issue or pull request (see CONTRIBUTING.md's "What must not appear" list). Report that
+as a security matter, not as a normal public issue: a public issue only draws more eyes to the
+exposure. Use the private vulnerability reporting above, and say what was exposed and where, so
+a maintainer can help contain it.
+
 ## Expected response window
 
 There is no formal SLA on this repository. The maintainers review reports as they arrive;

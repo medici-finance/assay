@@ -54,6 +54,7 @@ import (
 // VerdictIssueTool keeps its own bucket), then as a delimited token of a variant spelling.
 var canonicalToolKeys = map[string]struct{}{
 	// tools/desk/cmd/* — one entry per binary.
+	"cellctl":           {},
 	"clusterguard":      {},
 	"deskack":           {},
 	"commsgw":           {},
@@ -63,6 +64,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskavatar":        {},
 	"deskboard":         {},
 	"deskboot":          {},
+	"deskcalibrate":     {},
 	"deskclaim":         {},
 	"deskclaim-ref":     {},
 	"deskclose":         {},
@@ -88,6 +90,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskprovenance":    {},
 	"deskpushguard":     {},
 	"deskread":          {},
+	"deskreconcile":     {},
 	"deskrelease":       {},
 	"deskreply":         {},
 	"deskroster":        {},

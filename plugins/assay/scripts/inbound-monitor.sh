@@ -14,8 +14,19 @@
 #      "Could not resolve to a Repository", which is byte-indistinguishable from
 #      "this repo has no open issues" once stderr is discarded. So this monitor
 #      sets its own identity: it UNSETS GH_TOKEN and GITHUB_TOKEN at the top and
-#      always polls as the keyring account, never as whatever App token the
-#      launching shell happened to carry.
+#      never polls as whatever token the launching shell happened to carry.
+#      The identity it polls as is, in order:
+#        1. an EXPLICIT read identity the caller names per owner with
+#           `--token-file OWNER=PATH` — a 0600 file holding an installation
+#           token already minted for that owner. The file is read, never
+#           copied; the token reaches only the one `gh` read of that owner's
+#           repo. This is what makes the poller work under a replaced HOME (a
+#           desk cell's), where the keyring below resolves to no usable
+#           account and every read 401s.
+#        2. otherwise the keyring account (`gh auth`), exactly as before.
+#      A named file that cannot be used (missing, empty, not 0600) is a
+#      precondition failure: the poller never swaps the identity it was told
+#      to use for the keyring one.
 #
 #   B. PER-SOURCE STATE WITH RETENTION. A single global "too few records" floor
 #      is useless when one source dominates the set: with 324 of 440 issues in
@@ -52,8 +63,8 @@
 # ---------------------------------------------------------------------------
 # A. EXPLICIT IDENTITY — the very first thing, before any `gh` read. Whatever
 # App token the launching shell exported, this monitor is not it. Unsetting
-# these makes `gh` fall back to the keyring account (`gh auth`), which is the
-# human/desk identity that can actually see the private repo set.
+# these makes `gh` fall back to the keyring account (`gh auth`) for every repo
+# whose owner was not given an explicit `--token-file` (parsed below).
 unset GH_TOKEN GITHUB_TOKEN
 
 set -uo pipefail
@@ -83,7 +94,7 @@ PACE="${ASSAY_MONITOR_PACE_SECONDS:-2}"
 
 usage() {
   cat <<'EOF'
-Usage: inbound-monitor.sh [owner/repo ...]
+Usage: inbound-monitor.sh [--token-file OWNER=PATH ...] [owner/repo ...]
 
 Stateful open-issue monitor across the given repos (or ./.assay/repos.txt, or the
 current repo's origin remote). Meant to be re-run on a cadence behind the harness
@@ -92,8 +103,9 @@ every run after that it prints one `INBOUND: <slug>#<num> <updatedAt>` per newly
 seen or updated issue.
 
 It never silently goes blind:
-  · it polls as the keyring account (GH_TOKEN/GITHUB_TOKEN are unset), never as
-    an inherited App token that cannot see the private repo set;
+  · it never polls as an inherited token (GH_TOKEN/GITHUB_TOKEN are unset): a
+    repo whose owner was given --token-file is read as that file's token, every
+    other repo as the keyring account;
   · a repo whose read fails, or which returns zero when it previously had issues,
     RETAINS its previous state and prints `MONITOR-DEGRADED: <slug> ...`;
   · a read that comes back AT the --limit is TRUNCATED (gh gives no truncation
@@ -104,6 +116,14 @@ It never silently goes blind:
   · a burst of more than the cap new items for one repo collapses to a single
     `INBOUND-BURST: N over <cap> — listing suppressed` line.
 
+Options:
+  --token-file OWNER=PATH     read OWNER's repos as the installation token held in
+                              PATH (a 0600 file, read and never copied). Repeatable,
+                              one per owner. Outranks the keyring account, which is
+                              what a replaced HOME (a desk cell) cannot resolve.
+                              An unusable file is a precondition failure (exit 1),
+                              never a silent fallback to the keyring.
+
 Environment:
   INBOUND_MONITOR_STATE_DIR   where per-repo state lives (default $TMPDIR/assay-inbound-monitor).
   INBOUND_MONITOR_LIMIT       per-repo fetch cap passed to `gh issue list` (default 500).
@@ -113,7 +133,8 @@ Environment:
 
 Exit codes:
   0  every repo polled cleanly (armed, quiet, or emitted INBOUND lines)
-  1  precondition failure — gh/jq missing, no repos resolvable, unusable state dir
+  1  precondition failure — gh/jq missing, no repos resolvable, unusable state dir,
+     malformed or unusable --token-file
   2  at least one repo went DEGRADED (read failed, truncated, or collapsed) — state RETAINED
 EOF
 }
@@ -134,6 +155,96 @@ for _kv in "LIMIT=$LIMIT" "BURST_CAP=$BURST_CAP" "RETAIN_FLOOR=$RETAIN_FLOOR" "P
     exit 1
   fi
 done
+
+# lower <s> — ASCII lowercase (bash 3.2 has no ${v,,}). Owners compare
+# case-insensitively, as the forge does.
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# ---- A. explicit read identity: --token-file OWNER=PATH --------------------
+# Parsed out of the argument list (it may appear anywhere); every other argument
+# is a repo. bash 3.2 has no associative arrays, so the owner -> token map is two
+# parallel indexed arrays.
+REPO_ARGS=()
+TF_OWNERS=()
+TF_PATHS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --token-file)
+      if [[ $# -lt 2 || -z "$2" ]]; then
+        echo "inbound-monitor: --token-file needs a value (OWNER=PATH)" >&2
+        exit 1
+      fi
+      _tf="$2"
+      shift 2
+      if [[ ! "$_tf" =~ ^([A-Za-z0-9._-]+)=(.+)$ ]]; then
+        echo "inbound-monitor: --token-file '$_tf' — expected OWNER=PATH (an installation token belongs to one owner's installation)" >&2
+        exit 1
+      fi
+      _owner=$(lower "${BASH_REMATCH[1]}")
+      _path="${BASH_REMATCH[2]}"
+      for _seen in ${TF_OWNERS[@]+"${TF_OWNERS[@]}"}; do
+        if [[ "$_seen" == "$_owner" ]]; then
+          echo "inbound-monitor: --token-file for owner '$_owner' given twice" >&2
+          exit 1
+        fi
+      done
+      TF_OWNERS+=("$_owner")
+      TF_PATHS+=("$_path")
+      ;;
+    *)
+      REPO_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Validate every named token file BEFORE any read, in the order deskclaim-ref
+# checks its own --token-file: exists, regular file, owner-only (0600), readable,
+# non-empty. Group/world bits are tested with POSIX `find -perm -NNN`, which
+# reads the same on BSD and GNU find. The token VALUE is never printed.
+TF_TOKENS=()
+_i=0
+while [[ "$_i" -lt "${#TF_PATHS[@]}" ]]; do
+  _path="${TF_PATHS[$_i]}"
+  if [[ ! -e "$_path" ]]; then
+    echo "inbound-monitor: cannot read --token-file $_path for owner '${TF_OWNERS[$_i]}' (no such file)" >&2
+    exit 1
+  fi
+  if [[ ! -f "$_path" ]]; then
+    echo "inbound-monitor: --token-file $_path is not a regular file" >&2
+    exit 1
+  fi
+  if [[ -n "$(find "$_path" -prune \( -perm -040 -o -perm -020 -o -perm -010 \
+        -o -perm -004 -o -perm -002 -o -perm -001 \) -print 2>/dev/null)" ]]; then
+    echo "inbound-monitor: --token-file $_path is group/world accessible; it must be 0600" >&2
+    exit 1
+  fi
+  if [[ ! -r "$_path" ]] || ! _tok=$(tr -d '[:space:]' < "$_path" 2>/dev/null); then
+    echo "inbound-monitor: cannot read --token-file $_path" >&2
+    exit 1
+  fi
+  if [[ -z "$_tok" ]]; then
+    echo "inbound-monitor: --token-file $_path is empty" >&2
+    exit 1
+  fi
+  TF_TOKENS+=("$_tok")
+  _i=$((_i + 1))
+done
+unset _tok
+
+# token_for <owner/name> -> the explicit token for that repo's owner, or nothing
+# (=> the keyring account).
+token_for() {
+  local owner i=0
+  owner=$(lower "${1%%/*}")
+  while [[ "$i" -lt "${#TF_OWNERS[@]}" ]]; do
+    if [[ "${TF_OWNERS[$i]}" == "$owner" ]]; then
+      printf '%s' "${TF_TOKENS[$i]}"
+      return
+    fi
+    i=$((i + 1))
+  done
+}
 
 resolve_repos() {
   if [[ $# -gt 0 ]]; then
@@ -158,7 +269,7 @@ REPOS=()
 while IFS= read -r _line; do
   [[ -z "${_line//[[:space:]]/}" ]] && continue
   REPOS+=("$_line")
-done < <(resolve_repos "$@")
+done < <(resolve_repos ${REPO_ARGS[@]+"${REPO_ARGS[@]}"})
 
 if [[ -z "${REPOS[*]+x}" || ${#REPOS[@]} -eq 0 ]]; then
   echo "inbound-monitor: no repos to query (no repo args, no ./.assay/repos.txt, and no git origin remote found)" >&2
@@ -228,7 +339,19 @@ for repo in "${REPOS[@]}"; do
   # Poll. `if hits=$(...)` keeps `set -e`-free status inspection; gh's own
   # diagnostics are captured, never discarded — they are the only thing that
   # tells an operator their token expired or their identity is wrong.
-  if hits=$(gh issue list --repo "$repo" --state open \
+  #
+  # Identity (A): the owner's explicit token when one was named — set for this
+  # one command only, so it never reaches another owner's read — else the
+  # keyring account.
+  _rtok=$(token_for "$repo")
+  if [[ -n "$_rtok" ]]; then
+    if hits=$(GH_TOKEN="$_rtok" gh issue list --repo "$repo" --state open \
+        --limit "$LIMIT" --json number,updatedAt 2>"$TMP_ERR"); then
+      read_ok=1
+    else
+      read_ok=0
+    fi
+  elif hits=$(gh issue list --repo "$repo" --state open \
       --limit "$LIMIT" --json number,updatedAt 2>"$TMP_ERR"); then
     read_ok=1
   else

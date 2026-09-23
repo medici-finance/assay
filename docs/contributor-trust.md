@@ -64,6 +64,21 @@ precisely the case where an identity's prior good behaviour predicts nothing.
 The structured act that writes a `blessed-once` or `contributor` row, with a
 scope, a reason and an audit trail, is `contributor-trust/03`.
 
+## What an `unknown` submission is measured on
+
+An item from an `unknown` identity may carry a **provenance card**: a neutral comment on the
+pull request stating a fixed list of mechanical facts about the submission's shape and timing
+— never about the person — each with the ordinary innocent explanation beside it, no score,
+no verdict, and an explicit closing statement that the card is not a judgement of the change.
+What the card measures, what it deliberately never measures, and why, are published in full
+in [docs/contributor-provenance.md](contributor-provenance.md). A signal that could not be
+gathered is shown as could-not-check rather than as silence, and the probe never fetches,
+builds or executes the submission's code.
+
+The card is an input to a human's judgement, never a substitute for one: no signal moves an
+identity between tiers (see above), and the change itself is reviewed on its merits whatever
+the card says.
+
 ## Where the rows live
 
 **The rows are never published.** The ledger — which identity holds which tier,

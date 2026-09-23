@@ -123,11 +123,14 @@ func TestWorktreeCreateKeepsAnUnverifiableFailureUnverifiable(t *testing.T) {
 // lifecycle instead. (The worker-lane wiring — that dispatch actually calls this for a brief
 // dispatch — is covered by TestWorktreeCreateSurfacesDeskwtsOwnMessageVerbatim.)
 func TestWorktreeCreateHintDiffersByKit(t *testing.T) {
-	brief := worktreeCreateHint("worker", "feat/item-1")
+	// A generic branch-shaped ("already exists") deskwt message, not empty: the worker lane's
+	// branch-hint is now selected BY deskwt's message content (issue 1470 lane B), not applied
+	// unconditionally, so this test must feed it a message that class actually matches.
+	brief := worktreeCreateHint("worker", "feat/item-1", "branch feat/item-1 already exists")
 	if !strings.Contains(brief, "feat/item-1") || !strings.Contains(brief, "already delivered or in progress") {
 		t.Errorf("the brief-lane hint lost its feat-branch / already-delivered wording:\n%s", brief)
 	}
-	review := worktreeCreateHint("review", "feat/item-1")
+	review := worktreeCreateHint("review", "feat/item-1", "")
 	if strings.Contains(review, "feat/item-1") || strings.Contains(review, "brief") {
 		t.Errorf("the review-lane hint still carries brief-lane feat/<id>/brief wording — it misleads a reviewer:\n%s", review)
 	}

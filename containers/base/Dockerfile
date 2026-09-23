@@ -188,3 +188,6 @@ WORKDIR /work
 # No ENTRYPOINT: this is a base. Per-desk images set ASSAY_DESK and the desk
 # boot entrypoint on top. A bare `docker run` of the base drops into a shell.
 CMD ["/bin/bash"]
+
+# Disable next-prompt generation for interactive and scheduled Claude processes.
+ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false

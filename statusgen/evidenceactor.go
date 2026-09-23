@@ -236,8 +236,18 @@ type evidenceActorPolicy struct {
 	// classify at all — evidenceActorPolicyFromRoster returns Unavailable for it, so
 	// an unrecognised forge is could-not-check, never a pass.
 	VerifierForge forgeKind
-	Humans        []actorRef
-	Unavailable   string
+	// VerifierDisplayName is the bound GitLab verifier's DISPLAY name, from the roster's
+	// ASSAY_GITLAB_DISPLAY_NAMES map (#1477). It is the OFFLINE fallback: a GitLab commit
+	// carries the account's display name in author_name while the roster binds the account by
+	// USERNAME, so on `--lint` (offline, network-free) the gate compares the commit's author
+	// name against this declared display name when it does not already match the username. It
+	// is set ONLY for a GitLab verifier and ONLY when the roster declares one; empty otherwise,
+	// in which case the display-name path is simply not available (the ONLINE resolution, which
+	// deskevidence performs via the typed forge, is the preferred path). Never consulted for a
+	// GitHub verifier — a GitHub display name is free text the header already refuses to trust.
+	VerifierDisplayName string
+	Humans              []actorRef
+	Unavailable         string
 }
 
 // idPinned reports whether acceptance of the verifier is keyed on the PERMANENT
@@ -325,6 +335,16 @@ func evidenceActorPolicyFromRoster() evidenceActorPolicy {
 		Verifier:      actorRef{Login: slug, ID: verifierID},
 		VerifierForge: verifierForge,
 	}
+	// The OFFLINE display-name fallback (#1477): a GitLab verifier's commit carries the
+	// account's DISPLAY name, not the roster username, so on `--lint` (offline) the gate needs
+	// a declared display name to compare against. Set it only for a GitLab verifier the roster
+	// declares one for; a GitHub verifier's display name stays untrusted free text (file
+	// header), so this is left empty there.
+	if verifierForge == forgeGitLab {
+		if dn := strings.TrimSpace(cfg.GitLabDisplayNames[strings.ToLower(slug)]); dn != "" {
+			p.VerifierDisplayName = dn
+		}
+	}
 	for login, id := range cfg.Humans {
 		p.Humans = append(p.Humans, actorRef{Login: login, ID: id})
 	}
@@ -376,18 +396,62 @@ func (p evidenceActorPolicy) classify(name, email string) (actorVerdict, string)
 func (p evidenceActorPolicy) classifyGitLab(name, email string) (actorVerdict, string) {
 	e := strings.ToLower(strings.TrimSpace(email))
 	if scanGitlabServiceAccountRe.MatchString(e) {
-		if p.Verifier.Login != "" && strings.EqualFold(strings.TrimSpace(name), p.Verifier.Login) {
+		trimmedName := strings.TrimSpace(name)
+		// ACCEPT 1 — the author name is the roster verifier USERNAME. The original exact
+		// match, still honoured: it fires on a deployment whose admin set the service
+		// account's display name equal to its username (the local workaround #1477 notes).
+		if p.Verifier.Login != "" && strings.EqualFold(trimmedName, p.Verifier.Login) {
 			return actorVerifier, fmt.Sprintf(
 				"committed by the bound GitLab verifier service account (author name %q matches the roster "+
 					"verifier username, commit address %q is the GitLab service-account form) — LOGIN-ONLY "+
 					"match: the address carries a per-account suffix, not the roster's numeric user id, so "+
 					"the id cannot pin it", name, email)
 		}
+		// ACCEPT 2 (#1477, offline fallback) — the author name is the bound verifier's declared
+		// DISPLAY name. GitLab writes the account's DISPLAY name into author_name, never the
+		// username the roster binds, so ACCEPT 1 could never fire on an ordinary deployment and
+		// `implemented -> verified` was permanently blocked. The roster's
+		// ASSAY_GITLAB_DISPLAY_NAMES declares the display name so the OFFLINE gate has a value
+		// to compare against instead of one it cannot derive. Still LOGIN-ONLY — the address
+		// pins no numeric id — and this is the same class of trust as ACCEPT 1: a declared
+		// value the roster owner set, not something inferred from the commit.
+		if p.VerifierDisplayName != "" && strings.EqualFold(trimmedName, p.VerifierDisplayName) {
+			return actorVerifier, fmt.Sprintf(
+				"committed by the bound GitLab verifier service account (author name %q matches the roster's "+
+					"declared display name for verifier username %q; commit address %q is the GitLab "+
+					"service-account form) — LOGIN-ONLY match by declared display name: the address carries a "+
+					"per-account suffix, not the roster's numeric user id, so the id cannot pin it",
+				name, p.Verifier.Login, email)
+		}
+		// A service-account address whose author name matches neither. NAME the
+		// display-name-vs-username gap (#1477 suggestion 3): as written this rejection reads
+		// like a wrong-account tamper signal, but the everyday cause is exactly that gap —
+		// GitLab put the account's DISPLAY name in author_name while the roster binds the
+		// USERNAME. State the remedy so a reader is not sent hunting a tamper that is not there.
 		return actorRejected, fmt.Sprintf(
-			"committed by GitLab service account %q, which the roster does not accept as the verifier "+
-				"(the bound verifier is %q)", name, p.Verifier.Login)
+			"committed by GitLab service account with author name %q, which matches neither the roster "+
+				"verifier username %q nor a declared display name for it. If this IS the bound verifier "+
+				"account, GitLab is writing its DISPLAY name into the commit while the roster binds its "+
+				"USERNAME — declare the display name in %s (`%s=<display name>`) so the offline gate accepts "+
+				"it, or let the account be resolved online (deskevidence resolves the commit's GitLab account "+
+				"to its username via the typed forge). If it is a DIFFERENT account, the row is genuinely "+
+				"unbacked.", name, p.Verifier.Login, scanEnvGitLabDisplayNames, p.Verifier.Login)
 	}
-	// Not a GitLab service-account address. A roster-known human still backs a row.
+	// A roster-known GitLab HUMAN backs a row via GitLab's PRIVATE commit noreply address
+	// (`<id>-<username>@users.noreply.<host>`, #1477). A human who verified on a GitLab
+	// deployment commits under that address, not the GitHub noreply form, so without this arm
+	// a GitLab human verifier was rejected exactly as the service account was. The numeric id
+	// IS carried in this address, so the match id-pins wherever the roster human entry pinned
+	// one — the stronger key, unlike the service-account form.
+	if user, id, ok := gitlabHumanIdentityFromEmail(email); ok {
+		for _, h := range p.Humans {
+			if h.matches(user, id) {
+				return actorHuman, fmt.Sprintf("committed by human:%s (GitLab private commit address)", h.Login)
+			}
+		}
+	}
+	// A roster-known human on the GitHub noreply form still backs a row (a human whose commits
+	// carry the GitHub-shaped address even on a GitLab-verifier deployment).
 	if login, id, ok := githubIdentityFromEmail(email); ok {
 		for _, h := range p.Humans {
 			if h.matches(login, id) {
@@ -396,7 +460,9 @@ func (p evidenceActorPolicy) classifyGitLab(name, email string) (actorVerdict, s
 		}
 	}
 	return actorRejected, fmt.Sprintf(
-		"address %q is not the bound verifier's GitLab service-account form and matches no accepted actor", email)
+		"address %q is neither the bound verifier's GitLab service-account form nor a roster-known "+
+			"human's commit address (GitLab private `<id>-<username>@users.noreply.<host>` or GitHub "+
+			"noreply) — it matches no accepted actor", email)
 }
 
 // classifyGitHub judges a commit author against a GitHub verifier binding — the
@@ -703,12 +769,37 @@ func evidenceActorJudge(p evidenceActorPolicy, shallow bool, rows []evidenceActo
 	return out
 }
 
-// evidenceActorNotices is the --lint entry point. It returns NOTICE strings only —
-// see the severity note in the file header for why this is not a PROBLEM.
+// evidenceActorNotices is the --lint entry point used by callers (and tests)
+// that only need the NOTICE half of evidenceActorGate. It is a thin wrapper —
+// see evidenceActorGate's header for why the check now splits into a PROBLEM
+// half (post-base closures) and a NOTICE half (the grandfathered backlog).
 func evidenceActorNotices(root string, streams []*Stream) []string {
+	_, notices := evidenceActorGate(root, streams)
+	return notices
+}
+
+// evidenceActorGate is the --lint entry point (verify-integrity/04, item 2).
+//
+// Promotion from NOTICE-only. The check below this comment used to report
+// every self-attesting row (an implementer's own identity behind its
+// Evidence section) as a NOTICE, unconditionally — see the file header's
+// severity note, written when 92 of 141 rows were measured unbacked at
+// adoption and a hard gate against that backlog would have redded every
+// unrelated PR. That backlog is still real and still gets the NOTICE below,
+// unchanged. But a row this branch is CLOSING NOW (a `verified`/`done`
+// transition that did not exist at merge-base(HEAD, origin/main)) is not
+// backlog — it is a fresh self-attestation the gate can still stop, so it is
+// now a PROBLEM naming the actual (rejected) committer identity, exactly the
+// merge-base-scoped promotion shape unrunGateChecks (unrun.go) and
+// witnessGate (witnessgate.go) already use for the same reason: new closures
+// are gated, the standing backlog is grandfathered to a NOTICE so it stays
+// visible without reddening main. `closedAtBase` is the one shared helper for
+// "did this branch make this closure" — see its own header for why ok=false
+// (the base could not be resolved) must grandfather rather than guess.
+func evidenceActorGate(root string, streams []*Stream) (problems, notices []string) {
 	p := evidenceActorPolicyFromRoster()
 	if p.Unavailable != "" {
-		return []string{fmt.Sprintf(
+		return nil, []string{fmt.Sprintf(
 			"could-not-check: Evidence-actor (desk-apps/07, F-verify-self-attest) did not run — %s. "+
 				"No `verified`/`done` row is reported clean or unbacked by this run.", p.Unavailable)}
 	}
@@ -769,7 +860,7 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 	}
 
 	if len(work) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	rows := make([]evidenceActorRow, len(work))
@@ -781,7 +872,17 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 		return blameEvidenceAuthors(root, work[i].rel, work[i].start, work[i].end)
 	})
 
-	var flagged, impostors, unreadable, graftHidden []string
+	// Merge-base scoping (verify-integrity/04 item 2, same helper unrunGateChecks
+	// and witnessGate use): a rejected row already `verified`/`done` at
+	// merge-base(HEAD, origin/main) is backlog and keeps its NOTICE below; a
+	// rejected row that is a NEW closure on this branch is promoted to a PROBLEM.
+	// !baseOK (the base could not be resolved — e.g. no git, or a checkout with
+	// no origin/main to diff against) cannot tell new from backlog, so it
+	// grandfathers everything to the NOTICE path, same as unrunGateChecks, and
+	// says so once below rather than silently promoting nothing.
+	grandfathered, baseOK := closedAtBase(root, streams)
+
+	var flagged, newClosures, impostors, newImpostors, unreadable, graftHidden []string
 	clean := 0
 	for _, r := range judged {
 		switch {
@@ -792,21 +893,48 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 		case r.Verdict == actorVerifier || r.Verdict == actorHuman:
 			clean++
 		case r.Verdict == actorImpostor:
-			// The per-row line carries the cell it contradicts: this class needs a
-			// human to read one commit, and the Verified cell is what they are
-			// deciding whether to keep believing.
-			impostors = append(impostors, fmt.Sprintf("%s (row is %q, Verified cell %q) — %s",
-				r.ID, r.Status, r.Verified, r.Reason))
+			// The tamper/spoof class is strictly more adversarial than a plain
+			// unbacked row, so it gets the SAME new-vs-backlog scoping and the
+			// stronger disposition: a NEW-closure impostor is a build-blocking
+			// PROBLEM (never let a freshly-dressed verifier identity land as a
+			// mere NOTICE), while a backlog impostor keeps the NOTICE below, same
+			// grandfathering as the default case.
+			if baseOK && !grandfathered[r.ID] {
+				newImpostors = append(newImpostors, fmt.Sprintf(
+					"%s: Evidence commit carries a TAMPER signal — the committer identity is dressed as the "+
+						"verifier but backs no accepted verifier actor (%s). This is a NEW closure (not "+
+						"present as verified/done at merge-base(HEAD, origin/main)), so it is a PROBLEM, not "+
+						"backlog (verify-integrity/04): a human must read the commit (row is %q, Verified cell "+
+						"%q), and the row clears only by re-verification whose Evidence the verifier App commits",
+					r.ID, r.Reason, r.Status, r.Verified))
+			} else {
+				// The per-row line carries the cell it contradicts: this class needs a
+				// human to read one commit, and the Verified cell is what they are
+				// deciding whether to keep believing.
+				impostors = append(impostors, fmt.Sprintf("%s (row is %q, Verified cell %q) — %s",
+					r.ID, r.Status, r.Verified, r.Reason))
+			}
 		default:
-			flagged = append(flagged, r.ID)
+			if baseOK && !grandfathered[r.ID] {
+				newClosures = append(newClosures, fmt.Sprintf(
+					"%s: %s Evidence section is not backed by the roster's verifier role — %s. This is a "+
+						"NEW closure (not present as verified/done at merge-base(HEAD, origin/main)), so "+
+						"it is a PROBLEM, not backlog (verify-integrity/04): re-run the table and land the "+
+						"Evidence commit as the verifier App, or route to a named non-implementer runner",
+					r.ID, r.Status, r.Reason))
+			} else {
+				flagged = append(flagged, r.ID)
+			}
 		}
 	}
 	sort.Strings(flagged)
+	sort.Strings(newClosures)
+	sort.Strings(newImpostors)
 	sort.Strings(impostors)
 	sort.Strings(unreadable)
 	sort.Strings(graftHidden)
-
-	var notices []string
+	problems = append(problems, newImpostors...)
+	problems = append(problems, newClosures...)
 
 	// The tamper signals first — one line each. These are not backlog.
 	for _, im := range impostors {
@@ -829,7 +957,13 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 				"NOTICE this phase, not a PROBLEM: the backlog predates the verifier-App Evidence cutover "+
 				"(desk-apps/04), and arming a hard gate against it would red every unrelated PR. A row "+
 				"clears by re-verification whose Evidence the verifier App commits. Rows: %s",
-			len(flagged), clean+len(flagged)+len(impostors), clean, pin, strings.Join(flagged, ", ")))
+			len(flagged), clean+len(flagged)+len(impostors)+len(newImpostors)+len(newClosures), clean, pin, strings.Join(flagged, ", ")))
+	}
+	if !baseOK && len(flagged) > 0 {
+		notices = append(notices, "Evidence-actor PROBLEM promotion is running degraded: "+
+			"origin/main could not be resolved, so no rejected row can be shown to be a closure THIS "+
+			"branch made, and every rejected row above is grandfathered to a NOTICE. If this is CI, "+
+			"fetch origin/main before the lint step (verify-integrity/04)")
 	}
 
 	if len(graftHidden) > 0 {
@@ -852,5 +986,6 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 			len(skipped), strings.Join(skipped, "; ")))
 	}
 
-	return notices
+	sort.Strings(problems)
+	return problems, notices
 }

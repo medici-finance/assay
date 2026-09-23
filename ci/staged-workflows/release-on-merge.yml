@@ -1,0 +1,199 @@
+name: release-on-merge
+# release-on-merge — "release by merge" (iso-9001/07). Turn the human MERGE of a
+# prepared release PR into the release cut, so a maintainer never types
+# `gh workflow run release.yml -f version=vX.Y.Z` or pushes a bare vX.Y.Z tag by hand.
+#
+# THE SHAPE
+#   1. A release PR is opened (by the desk / `deskrelease propose vX.Y.Z`): it
+#      carries the version bump `stamp-plugin-version.sh stamp vX.Y.Z` writes, the
+#      aggregated changelog, and a machine-readable marker — the PR title
+#      `release: vX.Y.Z` and a `RELEASE: vX.Y.Z` line in the body.
+#   2. The maintainer MERGES it. The merge is the human gate AND the authorizer:
+#      GitHub records who merged (merged_by.login) under branch protection.
+#   3. THIS workflow, on push to main, detects that the pushed commit is the merge
+#      of a release PR and creates the tags AT THAT COMMIT.
+#
+# WHY AN APP TOKEN AND NOT GITHUB_TOKEN (the load-bearing constraint)
+#   A tag created/pushed with the workflow's GITHUB_TOKEN does NOT trigger other
+#   workflows — GitHub's deliberate recursion guard (see release.yml's header). So a
+#   `vX.Y.Z` tag created here with GITHUB_TOKEN would appear and build NOTHING. A
+#   GitHub App installation token is a DISTINCT identity, so a tag it creates DOES
+#   trigger release.yml's `push: tags: ['v*']` path. This job therefore mints an App
+#   token and creates the tag through the git-data API with it — the same mechanism
+#   release.yml's changelog-roll job uses to mint the board-writer App, and the same
+#   git-data-API path `deskrelease cut` uses. This job's own GITHUB_TOKEN stays
+#   READ-ONLY (contents + pull-requests: read); it never needs `actions: write`.
+#
+# WHY NOT re-dispatch release.yml via workflow_dispatch
+#   workflow_dispatch via GITHUB_TOKEN (with actions: write) would run release.yml's
+#   DISPATCH path, which records the DISPATCHING identity as the authorizer — not the
+#   human who merged — and needs the broad actions:write grant (it can cancel runs and
+#   delete logs repo-wide). The tag-push path with an App token keeps this job
+#   read-only and lets release.yml resolve the authorizer from the merged PR's
+#   merged_by.login: the human.
+#
+# WHAT TRIGGERS THE BUILD
+#   Only the plain `vX.Y.Z` tag matches release.yml's `push: tags: ['v*']`. The
+#   umbrella `assay/vX.Y.Z` (the plugin/paired-versions grammar `deskrelease cut`
+#   writes) does not match `v*`, so it is a silent namespace marker. Both are created
+#   here at the same merge commit — umbrella first (silent), plain second (fires the
+#   build) — so one merge is one atomic cut of both tags at the reviewed commit, with
+#   no separate `deskrelease cut` step to type. `deskrelease cut` is retained UNCHANGED
+#   as the manual break-glass path.
+#
+# RUNNER — GitHub-hosted `ubuntu-latest`. This job is API-only (api.github.com is
+#   reachable) and does no build, so it needs neither the self-hosted release pool nor
+#   its network exceptions; an ephemeral hosted runner also isolates the release-cutter
+#   token better than a non-ephemeral self-hosted pool.
+#
+# PREREQUISITE (a repo-admin act tracked in the PR body): a release-cutter GitHub App
+#   whose installation token can CREATE tags on this repo — contents:write, and no
+#   workflows/actions/administration/checks/secrets write — with its key wired as the
+#   Actions secrets RELEASE_APP_ID / RELEASE_APP_PRIVATE_KEY. (A human may instead point
+#   these at the existing assay-board-writer App's BOARD_APP_* secrets; that reuse is a
+#   human decision, recorded, because it widens that identity's role to release-cutting.)
+
+on:
+  push:
+    branches: [main]
+
+# GITHUB_TOKEN stays READ-ONLY. The tag WRITE is the App token minted in the job — a
+# GITHUB_TOKEN tag creation would not trigger release.yml (recursion guard).
+permissions:
+  contents: read
+  pull-requests: read
+
+# One cut at a time; never cancel a cut in flight.
+concurrency:
+  group: release-on-merge
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    steps:
+      # 1) Is the pushed commit the merge of a release PR? Resolve it from the API,
+      #    keeping ONLY a merged PR whose merge_commit_sha is exactly this commit and
+      #    whose title/body carry the anchored release marker. The PR title and body are
+      #    user-controlled, so they ride in via a file the python helper reads — never a
+      #    ${{ }} splice inside run:.
+      - name: Resolve the merged release PR for this commit
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${REPO}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28")
+
+          prs="$RUNNER_TEMP/prs.json"
+          status=$(curl -sS --retry 3 -o "$prs" -w '%{http_code}' "${auth[@]}" \
+            "${api}/commits/${SHA}/pulls")
+          if [ "$status" != "200" ]; then
+            echo "::error::could not list PRs for ${SHA} (HTTP $status) — refusing rather than guessing"
+            cat "$prs"; exit 1
+          fi
+
+          # A single python3 helper does the parse (jq is not guaranteed) and prints
+          # exactly one line: `<yes|no> <number> <tag> <login>`. The marker is anchored
+          # (^release: vX.Y.Z$ / ^RELEASE: vX.Y.Z$) so a PR that merely mentions a
+          # version in prose is not mistaken for a release PR.
+          line="$RUNNER_TEMP/pr.line"
+          SHA="$SHA" python3 - "$prs" > "$line" <<'PY'
+          import json, os, re, sys
+          prs = json.load(open(sys.argv[1], encoding="utf-8"))
+          sha = os.environ["SHA"]
+          title_re = re.compile(r'^release: (v[0-9]+\.[0-9]+\.[0-9]+)$')
+          for pr in prs:
+              if not pr.get("merged_at"):
+                  continue
+              if pr.get("merge_commit_sha") != sha:
+                  continue
+              m = title_re.match((pr.get("title") or "").strip())
+              if not m:
+                  continue
+              tag = m.group(1)
+              body = pr.get("body") or ""
+              if not re.search(r'(?m)^RELEASE: ' + re.escape(tag) + r'[ \t]*$', body):
+                  continue
+              login = (pr.get("merged_by") or {}).get("login") or ""
+              print("yes", pr.get("number"), tag, login)
+              break
+          else:
+              print("no", "", "", "")
+          PY
+          read -r is_release number tag login < "$line"
+
+          if [ "$is_release" != "yes" ]; then
+            echo "push to main at ${SHA} is not the merge of a release PR — nothing to cut."
+            echo "is_release=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A release PR with no recorded merger cannot name an authorizer — refuse
+          # rather than cut a release whose ISO 8.6 authorization is blank.
+          if [ -z "$login" ]; then
+            echo "::error::release PR #${number} records no merged_by login — refusing to cut ${tag} with no recorded authorizer"
+            exit 1
+          fi
+          {
+            echo "is_release=yes"
+            echo "number=${number}"
+            echo "tag=${tag}"
+            echo "authorizer=${login}"
+          } >> "$GITHUB_OUTPUT"
+          echo "release PR #${number} merged by ${login} -> cut ${tag}"
+
+      # 2) Mint the release-cutter App token. An App installation token is a distinct
+      #    identity, so the tag it creates below DOES trigger release.yml (unlike
+      #    GITHUB_TOKEN). Pinned to the same action SHA release.yml already uses.
+      - name: Mint the release-cutter App token
+        if: steps.pr.outputs.is_release == 'yes'
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # 3) Create the umbrella tag (silent) then the plain tag (fires release.yml) at
+      #    the merge commit, via the git-data API with the App token. An already-existing
+      #    tag is a HARD ERROR, never a move — a published tag is never re-pointed
+      #    (protect-release-tags forbids update/deletion; recovery is the next patch).
+      - name: Create the umbrella and plain release tags at the merge commit
+        if: steps.pr.outputs.is_release == 'yes'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG: ${{ steps.pr.outputs.tag }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${REPO}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28")
+
+          create_tag() {
+            local name="$1" out code body
+            out="$RUNNER_TEMP/mkref.json"
+            body=$(REF="refs/tags/${name}" SHA="$SHA" python3 -c \
+              'import json,os; print(json.dumps({"ref":os.environ["REF"],"sha":os.environ["SHA"]}))')
+            code=$(curl -sS --retry 3 -o "$out" -w '%{http_code}' -X POST "${auth[@]}" \
+              -d "$body" "${api}/git/refs")
+            case "$code" in
+              201) echo "created refs/tags/${name} at ${SHA}" ;;
+              422) echo "::error::refs/tags/${name} already exists — refusing (a published tag is never moved; cut the next patch version)"; cat "$out"; return 1 ;;
+              *)   echo "::error::could not create refs/tags/${name} (HTTP ${code})"; cat "$out"; return 1 ;;
+            esac
+          }
+
+          # Umbrella first — assay/vX.Y.Z does NOT match release.yml's `v*` trigger, so
+          # it fires no build; creating it first means the build-triggering plain tag is
+          # the LAST write.
+          create_tag "assay/${TAG}"
+          # Plain vX.Y.Z — this App-token creation triggers release.yml's tag-push path.
+          create_tag "${TAG}"
+          echo "cut ${TAG} (+ umbrella assay/${TAG}) — release.yml's tag-push build will now run."

@@ -628,14 +628,32 @@ func TestVerdictDecodePubkeyVarBase64(t *testing.T) {
 	der, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	b64 := base64.StdEncoding.EncodeToString(pubPEM)
-	got, derr := verdictDecodePubkeyVar(b64)
+	got, derr := verdictDecodePubkeyVar(verdictPubkeyVar, b64)
 	if derr != nil {
 		t.Fatalf("base64-of-PEM must decode: %v", derr)
 	}
 	if !strings.Contains(string(got), "BEGIN PUBLIC KEY") {
 		t.Errorf("decoded value is not a PEM: %s", got)
 	}
-	if _, err := verdictDecodePubkeyVar("   "); err == nil {
+	if _, err := verdictDecodePubkeyVar(verdictPubkeyVar, "   "); err == nil {
 		t.Error("an empty pubkey value must error, never a silent pass")
+	}
+}
+
+// TestVerdictDecodePubkeyVarNamesTheRightVariable pins the generalisation
+// (the house-private brief's Task 3): the error text names WHICHEVER varName the
+// caller passed, never a hard-coded verifier variable — otherwise a
+// could-not-check on the issue-loop role's variable would misleadingly point an
+// operator at ASSAY_VERIFIER_PUBKEY.
+func TestVerdictDecodePubkeyVarNamesTheRightVariable(t *testing.T) {
+	_, err := verdictDecodePubkeyVar(scanDeltaPubkeyVar, "not a pem and not base64 %%%")
+	if err == nil {
+		t.Fatal("garbage input must error")
+	}
+	if !strings.Contains(err.Error(), scanDeltaPubkeyVar) {
+		t.Fatalf("error should name %s, got: %v", scanDeltaPubkeyVar, err)
+	}
+	if strings.Contains(err.Error(), verdictPubkeyVar) {
+		t.Fatalf("error must NOT name %s when resolving the issue-loop role: %v", verdictPubkeyVar, err)
 	}
 }

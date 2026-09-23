@@ -35,19 +35,46 @@ func modeList() string { return strings.Join(modes(), " | ") }
 // manifest row cannot invoke one under a ruling that never named it as a granted lane.
 func rowModes() []string { return []string{modeDuplicate, modeSuperseded, modeReviewRequest} }
 
-// GitHub state_reason values.
+// REST state_reason values. The gh CLI's "not planned" spelling is not an
+// API value: the forge adapter sends these strings directly in the JSON body.
 const (
-	reasonNotPlanned = "not planned"
+	reasonNotPlanned = "not_planned"
 	reasonCompleted  = "completed"
 )
 
-// valueFlags are the flags that consume the following argument. The positional
-// splitter needs them so `-R owner/repo 123` does not read the repo as the item number.
+// valueFlags are the flags that consume the following argument, keyed by their BARE name
+// (no leading dashes). The positional splitter needs them so `-R owner/repo 123` does not
+// read the repo as the item number.
+//
+// Keying on the bare name — and matching a token by stripping its dashes in valueFlagName —
+// is deliberate: Go's flag package treats `-by` and `--by` as the SAME flag, so the splitter
+// has to as well. When it did not, an operator who wrote the single-dash spelling
+// (`superseded <pr> -R … -by …`) tripped `flag needs an argument: -by`: the splitter did not
+// recognise `-by` as value-consuming, failed to pair it with the value that WAS present, and
+// then mis-read that value as a second positional. The failure looked "environmental" — it
+// depended only on which dash spelling the caller happened to type — which is exactly the
+// report on this lane. Recognising both spellings makes the split agree with how flag.Parse
+// will read the same argv, in every argument order.
 var valueFlags = map[string]bool{
-	"-R": true, "--of": true, "--by": true, "--file": true, "--rulings": true,
-	"--resume-from": true, "--max-wait": true, "--mined": true, "--dispute": true,
-	"--kind": true, "--by-kind": true, "--of-kind": true, "--because": true, "--reason": true,
-	"--disposition": true, "--tracker": true,
+	"R": true, "of": true, "by": true, "file": true, "rulings": true,
+	"resume-from": true, "max-wait": true, "mined": true, "dispute": true,
+	"kind": true, "by-kind": true, "of-kind": true, "because": true, "reason": true,
+	"disposition": true, "tracker": true,
+}
+
+// valueFlagName reports the bare name of a value-consuming flag token, matching how flag.Parse
+// reads it: one or two leading dashes are equivalent, and a `--flag=value` token carries its own
+// value so it is NOT one that consumes the FOLLOWING argument. "" means the token is not a
+// value-consuming flag (a bare positional, a boolean flag, or a `=`-joined value).
+func valueFlagName(tok string) string {
+	if !strings.HasPrefix(tok, "-") || strings.Contains(tok, "=") {
+		return ""
+	}
+	name := strings.TrimLeft(tok, "-")
+	if valueFlags[name] {
+		return name
+	}
+	return ""
 }
 
 // numTokenRe recognises the positional item number in its accepted spellings: a bare number,
@@ -67,7 +94,7 @@ var numTokenRe = regexp.MustCompile(`^(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?[#!]?\
 func splitPositionals(args []string) (flags []string, positional []string) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if valueFlags[a] && i+1 < len(args) {
+		if valueFlagName(a) != "" && i+1 < len(args) {
 			flags = append(flags, a, args[i+1])
 			i++
 			continue
@@ -429,9 +456,15 @@ func applyClose(r closeReq, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, "comment posted, close deferred: "+err.Error())
 		return err
 	}
-	if err := closeItem(r.repo, r.number, itemKind, r.stateReason()); err != nil {
-		a.log(deskkit.ResultUnverifiable, err.Error())
-		return err
+	if err := closeItem(r.repo, r.number, itemKind, r.stateReason(), true); err != nil {
+		// The comment (and any cross-reference) already landed; the close did not — either the
+		// close call refused, or the read-back did not show the item closed. This is the
+		// silent-success bug's exact scenario, and it must NEVER report success: a comment-only
+		// outcome is a PARTIAL, exit 6, with the forge's own words carried through the error
+		// chain (Error() appends the cause, so it is stated once).
+		a.log(deskkit.ResultUnverifiable, "partial: comment posted, close refused: "+err.Error())
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d — partial: comment posted, close refused", r.repo, r.number), err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed as %s via lane %s (target %s)", r.stateReason(), r.mode, r.target))
 	fmt.Fprintf(out, "closed\t%s#%d\t%s\ttarget=%s\treason=%s\n", r.repo, r.number, r.mode, r.target, r.stateReason())

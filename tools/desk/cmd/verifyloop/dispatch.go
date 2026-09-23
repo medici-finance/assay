@@ -247,6 +247,12 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "VERIFY %s (tier=%s, local session model — never opus/external)\n\n", it.ID, tier)
 	fmt.Fprintf(&b, "Brief: %s\n", it.BriefPath)
+	if root := payloadValue(it, "root"); root != "" {
+		// Multi-root plan: the brief path above is relative to THIS root, so name it — the
+		// verifier cuts its own worktree FROM this checkout and never writes in it.
+		fmt.Fprintf(&b, "Repo: %s — checkout root (cut your worktree FROM it; never write in it): %s\n",
+			payloadValue(it, "repo"), root)
+	}
 	fmt.Fprintf(&b, "Target SHA (merged main to run against): %s\n\n", it.TargetSHA)
 	b.WriteString("Isolation (MANDATORY):\n")
 	b.WriteString("- Create and work in your OWN temporary worktree under /private/tmp off the target SHA.\n")
@@ -255,10 +261,31 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	b.WriteString("(real output, never a claim; a row that cannot run is recorded as explicitly unrun):\n")
 	b.WriteString(verifyTable)
 	b.WriteString("\n\n")
+	if deferred := payloadValue(it, "deferred_rows"); deferred != "" {
+		// Per-row derivation (briefscan.go): these rows name an online lane or a longitudinal
+		// window in their Command cell. They are recorded as explicitly unrun — the rest run.
+		fmt.Fprintf(&b, "Rows to record as explicitly UNRUN (not runnable offline; run every other row): %s\n\n", deferred)
+	}
+	if held := payloadValue(it, "wake_held_rows"); held != "" {
+		// Wake partial (example-stream/16): a still-unchanged wake receipt holds these rows.
+		// Record them as explicitly unrun and run only the newly-runnable rows — a partial run
+		// must NOT report a whole-brief PASS, so the held rows can never be closed by this run.
+		fmt.Fprintf(&b, "Rows still WAKE-HELD (unchanged blocker; record as explicitly UNRUN — do NOT re-run them, and do NOT report a whole-brief PASS): %s\n\n", held)
+	}
 	b.WriteString("You are NOT this brief's implementer (verifier != author). Fresh agent only.\n")
 	b.WriteString("Report back a STRUCTURED result: one Evidence row per Verify row (command, exit, output),\n")
 	b.WriteString("a clear verdict PASS|FAIL|BLOCKED, and your runner identity. Free-text verdicts are not accepted.\n")
 	return b.String()
+}
+
+// renderEvidenceOnlyPrompt is the DISPATCH-FOR-EVIDENCE prompt: the ordinary verifier prompt at
+// the local session tier, headed by the ONE clause that differs — write Evidence rows and the
+// outcome sidecar row, never a status flip. reason names the human gate / risk answer that
+// withholds the flip, so the agent reads the permission and its limit together.
+func renderEvidenceOnlyPrompt(it loopengine.Item, reason string) string {
+	return "EVIDENCE-ONLY (" + reason + "): gather and record Evidence rows plus the outcome sidecar row " +
+		"for this brief. NEVER flip its status — the human's merge is the flip.\n\n" +
+		renderDispatchPrompt(it, loopengine.TierLocal)
 }
 
 // assertNoSharedCheckout is the in-code backstop: the emitted dispatch instruction must

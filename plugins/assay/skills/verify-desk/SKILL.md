@@ -157,6 +157,30 @@ not own.
    issue Boot step 5 filed. That is the precondition §Liveness contract already states, made
    printable; anything less and the desk is mid-drain, not standing down.
 
+**Wake receipts — a failed/blocked brief is not re-run just to reproduce its failure**
+(`verify-wake-v1`; `docs/streams/desk-supervision/verify-wake-v1.md`). When a verifier run ends
+`verify-fail`/`blocked`, its landed outcome sidecar row carries a WAKE RECEIPT: the inputs it
+observed, the blocker class, and the checkable condition that must change before re-running is
+worth a slot. `verifyloop plan` reads it and buckets the brief accordingly — **consume the
+plan's decision, do not second-guess it**:
+
+- **`wait`** — a complete, still-UNCHANGED receipt. The line names the blocker and the next actor
+  (worker / brief-author / human / operator) and what will wake it. It is VISIBLE but NOT
+  dispatchable: **do not re-dispatch it**, and do not treat it as done — the failure stands, held
+  until its wake condition is met. Route the next action to the named actor if it is not already
+  moving (an `implementation`/`check-definition` blocker is worker work; `human-action` is a
+  human gate; `environment` is an operator/prerequisite condition).
+- **`could-not-check`** on a wake reason — a declared input could not be read. Never rounded up to
+  unchanged, never a pass; hold and surface it exactly as any other could-not-check.
+- A **legacy or incomplete** receipt (pre-v1 rows, or a receipt missing its schema/blocker/wake
+  fields) is NOT held — it stays dispatchable for exactly one classification pass, which produces
+  a complete receipt. This is the migration path: existing rows keep today's behaviour until the
+  first complete receipt lands.
+- **Explicit recheck** is the escape hatch: to force a held brief back into dispatch, land an
+  `explicit-recheck-with-reason` receipt (the reason is recorded). A receipt never grants
+  `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
+  implemented→verified→done path a NON-implementer runs on merged main.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
@@ -184,6 +208,12 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
+- **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
+  verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
+  command, exit code, an output hash, the date and the runner identity; that witness table is what
+  turns an Evidence row from prose into something a reviewer can re-run and compare.
+  A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
+  PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
   copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
@@ -281,13 +311,37 @@ The brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/re
 IS the report. **In addition** append one row to the append-only sidecar
 `docs/streams/verify-outcomes.jsonl` (single-writer = this desk; the `VERIFY FAIL` commit-subject
 convention is grep-fragile, so bounce-back rate is not computable from prose). On PASS append the same
-row with `"outcome":"verified"`, so the denominator is complete.
+row with `"outcome":"verified"` only AFTER the Evidence, execution witnesses, Status
+`verified` (or `done`), and dated Verified stamp have landed on the target branch and
+`statusgen --lint` accepts that same tree. Refresh the local checkout before appending;
+`deskevidence` checks the closure and compares the brief and stream README with the target
+branch. Evidence-only landings that leave Status `implemented` MUST NOT append a verified
+outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
+recording is unchanged.
 
 ```
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
 ```
 
+**A failed/blocked verify also creates a durable REPAIR OBLIGATION** (`repair-obligation-v1`;
+`docs/streams/desk-supervision/repair-obligation-v1.md`) — a versioned marker in the sibling
+`docs/streams/repair-obligations.jsonl` projection, keyed by (repo, brief, source receipt, failing
+rows) so a re-land of the same failure reconciles to the SAME obligation, never a second. It is the
+durable unit that stops a filed failure from sitting unassigned while new briefs consume workers: an
+`implementation`/`check-definition` blocker becomes worker rework (worker-desk row 5b), a
+`human-action`/`environment` blocker stays `waiting-external` with its exact required action, and an
+`unknown` blocker is explicit triage — never an invented implementation bug. **A merge WAKES
+reverification, it does not resolve the obligation:** only a valid INDEPENDENT verification at the
+repaired revision resolves it (a same-actor or wrong-revision pass is refused) — which is this desk's
+own reverification pass, run as a NON-implementer on merged main. In the reference/interim build the
+obligation-creating sink is a SAFE dry-run default; the real filing sink is the human-gated cutover.
+
 ## Landing — `deskevidence` is the SOLE main-push carve-out (narrow, dated)
+
+**The witness lands WITH the Evidence, in the same file, same invocation.** `verifyrun`'s output rows
+(Result/Output/Date/Runner) ARE the Evidence table's rows — there is no separate landing step for the
+witness. Commit it alongside the Evidence row it backs; an Evidence row landed without first running
+`verifyrun` is the self-report this desk exists to replace.
 
 **The whole fleet is branch + draft PR; push-to-main and merge are human-gated. The one exception, and it
 is this desk's alone: `deskevidence` Evidence-row landings and the status flips that accompany them

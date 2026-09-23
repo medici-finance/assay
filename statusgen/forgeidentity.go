@@ -64,6 +64,45 @@ type scanBotIdentity struct {
 // KEEP IN SYNC with deskkit.gitlabServiceAccountRe.
 var scanGitlabServiceAccountRe = regexp.MustCompile(`^service_account_group_[0-9]+_[0-9a-z]+@noreply\.[a-z0-9.-]+$`)
 
+// scanGitlabHumanNoreplyRe matches a GitLab HUMAN's private commit noreply address,
+// `<user-id>-<username>@users.noreply.<host>` — GitLab's per-user privacy address (a real
+// account, unlike the service-account SHAPE above). The user id and the username are BOTH in
+// the address, `<id>-<username>`, so unlike the service-account form this one CAN id-pin: the
+// numeric id is GitLab's permanent handle for the account, matched against the roster the same
+// way the GitHub noreply id is (see githubIdentityFromEmail / evidenceactor.go).
+//
+// The two GitLab shapes are DISJOINT by construction, so neither can be read as the other: the
+// service-account form's host is `noreply.<host>` and its local part is
+// `service_account_group_<n>_<suffix>`; a human's host is `users.noreply.<host>` and its local
+// part is `<id>-<username>`. The `users.` host segment plus the `<id>-` numeric prefix keep
+// them apart.
+//
+// FORMAT SOURCE: GitLab's "Custom hostname (for private commit emails)" admin setting documents
+// the address as `{user_id}-{username}@users.noreply.<host>` (default host
+// `users.noreply.gitlab.com`; self-managed instances may set a custom hostname) —
+// docs.gitlab.com/administration/settings/email/. The host is left general here so a
+// self-hosted instance's own hostname matches as well as gitlab.com's. Statusgen-only (the
+// Evidence-actor gate); it has no deskkit twin because deskkit's commit-identity paths key on
+// the service-account (App) form, not the human privacy address.
+var scanGitlabHumanNoreplyRe = regexp.MustCompile(`^([0-9]+)-([^@]+)@users\.noreply\.[a-z0-9.-]+$`)
+
+// gitlabHumanIdentityFromEmail resolves a GitLab human private-commit noreply address to the
+// (username, user-id) it pins. ok is false for any address that is not that form — a
+// service-account address, a GitHub noreply address, or a plain address carries no GitLab human
+// identity and can never satisfy the check. The username is lowercased so it compares against
+// the roster's lowercased login; the id is GitLab's permanent numeric handle.
+func gitlabHumanIdentityFromEmail(email string) (username string, id int64, ok bool) {
+	m := scanGitlabHumanNoreplyRe.FindStringSubmatch(strings.ToLower(strings.TrimSpace(email)))
+	if m == nil {
+		return "", 0, false
+	}
+	n, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil || n <= 0 {
+		return "", 0, false
+	}
+	return m[2], n, true
+}
+
 // scanLooksLikeExplicitForge reports whether an entry's leading colon-segment is an
 // EXPLICIT (though possibly unrecognised) forge qualifier rather than a legacy slug.
 //

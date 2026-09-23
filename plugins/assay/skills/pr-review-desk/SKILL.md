@@ -264,7 +264,11 @@ failure this section prevents**, and there is no state in this loop called "the 
   into every freed slot — the re-invocation IS the cue.
 - **What stays ORDERED — parallelise the reviews, never these.** A RE-review runs only AFTER the
   push that answers a finding (a same-head APPROVE over a standing CHANGES_REQUESTED is not
-  re-verification); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
+  re-verification — with the two declared exemptions in `references/review-prompt.md` §11:
+  a check-only CR whose required check greened, and an external-prerequisite-only CR whose
+  named upstream prerequisites all landed; the ready gate independently re-verifies the
+  second from fresh evidence and fails closed, so a same-head clear still needs no synthetic
+  push only when the declaration substantiates); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
   green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
   out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
   each other); the human gates (public-repo human +1 before any verdict post, `needs-decision`, the
@@ -326,6 +330,20 @@ as the planner and acts on its rows.
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
   `yes`) gets a strong-tier (opus+) or human reviewer. Read the item's risk frontmatter — do not default all reviews to one tier.
 
+  **Lane depth is tier-keyed for external authors.** The lane SET is not the same for every author:
+  resolve the pull request's author through the contributor-trust tier resolver the project layer
+  configures (`deskkit.ReviewLanesForAuthor` — the tier source is a project-layer value resolved from
+  its own configuration, the ledger behind it operator-side and never a file in this tree) and dispatch
+  the set it names: `unknown` and `blessed-once` authors get the deep set — correctness at strong tier,
+  the security lane, a claims-versus-diff fact check and a mandatory fail-first reproduction;
+  `contributor` and `maintainer` authors keep the standard path. The lane sets, the fact-check output
+  contract and the fail-first reproduction's two required records are stated once in the desk tools'
+  dispatch reference (`tools/desk/cmd/deskdispatch/references/review-lanes.md`), held to the code by
+  test — never restate them here. Only the lane set varies: the verdict shape, the reviewer identity,
+  the ready flip and the merge authority are unchanged at every tier, and no tier merges anything.
+  Until the project layer configures a ledger this is inert: every external identity resolves
+  `unknown` and gets the deep set, roster identities are unaffected.
+
   **Risk-classed PRs get a SECOND, separate `/security-review` agent, dispatched CONCURRENTLY with
   the correctness reviewer** — never folded into it (dispatch-neutral-wording rule), and never queued
   behind its verdict. Classification is the flip gate's `riskClassed`, read at dispatch time: brief
@@ -369,7 +387,7 @@ as the planner and acts on its rows.
   here; there is no override flag, no un-ready verb, no merge verb. Exit 5 = a condition failed
   (fix it, or leave the PR parked); exit 6 = a condition could not be READ (blind, never green).
 - **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is ATTESTED below the strong tier, and admits with a NOTICE any session carrying no strength attestation: an unattested or human-driven one, a `dispatched-tier:any` dispatch (since `any` records that the brief demanded no particular tier rather than that a weak runner ran), and a stamp that has AGED OUT because the dispatch claim behind it was released — a dead cycle's stamp attests nothing about the write in front of you, so the PR reads unstamped rather than being bricked by an attestation nobody can repair. The NOTICE is not a clearance — delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
-- **Your dispatch is what makes a review verdict attestable — stamp it.** The floor accepts a `dispatched-*` stamp only from the App that DISPATCHED the session, and for the review lane that App is the reviewer App, not the desk App: this loop drives its own reviewers, so it is this loop's dispatch that must carry the model attestation. `deskdispatch --kit review` mints the reviewer identity and applies the stamp for you; a reviewer launched by any path that skips it carries no attestation, and its verdict clears the floor only on the unstamped NOTICE branch. Never apply a `dispatched-*` label by hand — a stamp the session could have written for itself is the self-report the whole mechanism exists to defeat.
+- **Your dispatch is what makes a review verdict attestable — stamp it.** The floor accepts a `dispatched-*` stamp only from the App that DISPATCHED the session, and for the review lane that App is the reviewer App, not the desk App: this loop drives its own reviewers, so it is this loop's dispatch that must carry the model attestation. `deskdispatch --kit review` mints the reviewer identity and applies the stamp for you; a reviewer launched by any path that skips it carries no attestation, and its verdict clears the floor only on the unstamped NOTICE branch. **That NOTICE branch is RISK-CONDITIONAL (ruling 3):** on a risk-classed PR — every public-repo PR, and any diff touching a security path — a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES rather than proceeds. Dispatch such reviewers strong-tier through `deskdispatch --kit review`; the NOTICE-proceed is left only for unstamped NON-risk PRs. Never apply a `dispatched-*` label by hand — a stamp the session could have written for itself is the self-report the whole mechanism exists to defeat.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
 
@@ -397,6 +415,35 @@ as the planner and acts on its rows.
 **A merged/closed PR is DONE** — its worker stops; residual work is a NEW PR. A commit
 pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
 
+### First-pass inventory + blocking boundary — bounding a small change's review scope
+
+An incremental search that keeps discovering old instances of the same false claim after
+each fix turns a small change into unbounded cleanup. Two rules bound it; both are in
+`review-prompt` clause 12, and this is the DESK's reading of them.
+
+- **First pass inventories, then declares.** On the FIRST review of a false-claim class, the
+  reviewer inventories the class's related occurrences BEFORE the verdict — the changed
+  surface, the item's required deliverables, and references to the affected entity — and
+  records the search, its scope, its exclusions and the input revision. An incomplete search
+  is reported incomplete, **never certified clean** (the three-state rule applied to
+  discovery). The desk treats a "clean" verdict resting on an unrecorded or incomplete search
+  as could-not-check, not an approval.
+- **A blocker names a concrete failure and its scope basis** — changed behaviour, an explicit
+  acceptance obligation, a material PR-body/Verify claim, or a demonstrated safety consequence
+  of the change. Unrelated pre-existing prose is a **linked follow-up**
+  (`references/out-of-scope-filing.md`), not a hold. Untouched files are not automatically
+  exempt (a required operator-state table is a deliverable even when omitted from the diff);
+  co-location — the same directory or a substring — is not a basis.
+- **Class continuity.** A late or missed sibling occurrence keeps its original claim class and
+  round count; it is review coverage failure, not a fresh class, so it does not reset the
+  counter below or charge the author a new class. A previously non-blocking occurrence cannot
+  become blocking merely because another file was edited — the reviewer records changed impact
+  or new evidence, or it stays a follow-up. This is the line between genuine changed evidence
+  and a bypass of a standing rejection.
+
+This narrows what counts as a NEW blocker. It does **not** touch the round cap below or the
+independent security review — both stand unchanged.
+
 ### Round cap + arbiter packet — bounding the fix-to-re-review cycle
 
 **Default cap N = 3** full verdict→fix→re-review rounds on the SAME finding class on one PR
@@ -422,11 +469,56 @@ plus the PR link, then comment on the PR pointing at the filed issue
 already open). `authorization-needed` stays on the PR — the packet is a human fork, not a flip,
 and does not touch ready-flip ownership, human merge, or the security carve-out.
 
+**Persistence — the cap and the finding identities survive an agent change.** The round
+count and each finding's identity are **derived from a durable, typed record** carried in the
+review/reply bodies (`review-finding/v1`, embedded additively so a legacy reader ignores it;
+tool support in `reviewloop` and `deskkit`), not from any one agent's memory. That is what
+lets a replacement reviewer resume the round rather than reread the whole PR and restart the
+counter: re-deriving the same forge records always yields the same finding IDs, the same
+per-class rounds and — at the cap — the same single arbiter packet, so a duplicate sweep or a
+restart files nothing new and a newly noticed sibling sentence keeps its class rather than
+opening a fresh one. A worker cannot author your resolution of a blocking finding (the
+`deskreply` write gate and the derivation both refuse it), and a record missing its
+authenticated actor or head is could-not-check — it clears nothing. Blocking policy and the
+cap threshold are unchanged; the record only makes them survive replacement.
+
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition of the same finding, not rounds on one PR) is itself worth filing as
 a guardrail-promotion candidate through the existing insight-routing lane — independent of
 whether any one PR ever hit the round cap above (a harness-engineering talk from the same
 event: never give the same review feedback twice; recurrence promotes leftward).
+
+### Finding-class calibration — reversal-rate demotion
+
+A finding class earns its blocking power; it does not hold it by default. The monthly
+reviewer-calibration pass (`deskcalibrate`, verify-integrity/10) mines a per-class **reversal
+rate** — the fraction of that class's findings the worker disputed and the reviewer conceded, or
+the desk overruled — from the same PR-review threads the gate-yield accounting reads. It is a
+fraction (findings-reversed / findings-of-class), never a bare percentage: a 3/5 month and a 30/50
+month are not equally strong evidence.
+
+The table below is the finding-class register. Each class carries a **status**: `blocking` (a
+CHANGES_REQUESTED on it holds the PR) or `advisory` (the reviewer still records it, but it no
+longer blocks the ready-flip — it reads as a note the worker may act on). The default is
+`blocking`.
+
+| finding class | status |
+|---|---|
+| correctness | blocking |
+| security | blocking |
+| test-evidence (fail-first / mutation) | blocking |
+| public-surface / leak | blocking |
+| style / prose | blocking |
+
+**The demotion rule.** A class whose reversal rate is **> 50% for two consecutive months** is
+marked **advisory** in this table (edit its status cell). A later month **under 50%** restores it
+to `blocking`. The two-month window is deliberate: one noisy month is noise about the noise, and a
+class that mostly gets reversed is measuring the reviewer's taste, not a defect the human would
+uphold. The demotion is a table edit landed through the ordinary desk PR flow, cited to that
+month's calibration report — never a silent in-loop decision, and never applied to `security` or
+`public-surface / leak` without a recorded human ruling (those two carry irreversible-harm weight
+that a reversal rate does not capture). Exactly 50%, and a month with no findings of the class,
+neither demote nor restore.
 
 ### PR-state labels — who is the PR waiting on
 

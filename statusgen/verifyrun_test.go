@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -197,6 +198,21 @@ func TestRunVerifyCommandPipefailSurfacesLeftHandFailure(t *testing.T) {
 	// A non-piped passing command is unchanged.
 	if got := runVerifyCommand(root, `true`, 30*time.Second); got.couldNotRun || got.exit != 0 {
 		t.Errorf("`true` = %+v, want pass exit=0", got)
+	}
+}
+
+// TestVerifyrunPipelineExit pins a measured pipe-masked false-clean directly:
+// a piped Verify row shaped `<bad cmd> 2>/dev/null | head -c1` must score
+// `fail`, not `pass exit=0` on the trailing reader's exit — head -c1 reads
+// one byte and exits 0 regardless of whether the left-hand command ever
+// produced anything. TestRunVerifyCommandPipefailSurfacesLeftHandFailure
+// above already pins the general `false | cat` shape; this row adds the
+// exact stderr-redirect-plus-byte-count-reader command as its own fixture.
+func TestVerifyrunPipelineExit(t *testing.T) {
+	root := t.TempDir()
+	got := runVerifyCommand(root, `false 2>/dev/null \| head -c1`, 30*time.Second)
+	if got.couldNotRun || got.exit == 0 {
+		t.Errorf("`false 2>/dev/null | head -c1` = %+v, want a failing (non-zero, not could-not-run) result — pipefail must surface the left-hand failure through head's own exit", got)
 	}
 }
 
@@ -708,4 +724,335 @@ func gitInit(t *testing.T, root, name, email string) {
 	runGit(t, root, "init")
 	runGit(t, root, "config", "user.name", name)
 	runGit(t, root, "config", "user.email", email)
+}
+
+// ---------------------------------------------------------------------------
+// Shell bootstrap failure — issue #1418
+// ---------------------------------------------------------------------------
+//
+// The Windows-specific behaviour (the WSL-launcher stderr signature, the shell
+// probe, the Git-for-Windows / override shell selection) is exercised here
+// ENTIRELY through a fake `bash` on PATH. No live Windows/WSL environment is used
+// or available; the fake reproduces exactly what the WSL launcher does when no
+// distro is installed — exit 1 with `CreateProcessCommon: execvpe(/bin/bash)
+// failed` BEFORE the intended command runs.
+
+// withFakeBashOnPath writes an executable `bash` whose body is `script` into a
+// fresh temp dir, prepends that dir to PATH for the test (restored automatically),
+// and returns the dir. POSIX-only: the interception relies on PATH resolution and
+// a `#!/bin/sh` shebang, so it is skipped on Windows itself — which is fine,
+// because it is the Windows CODE PATH that is under test, reproduced on a POSIX
+// host, not a Windows host.
+func withFakeBashOnPath(t *testing.T, script string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-bash-on-PATH interception is POSIX-only; the Windows code path is exercised through this fake on non-Windows hosts")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "bash"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
+
+// TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun is the core issue-1418
+// regression. A `bash` on PATH that is really the Windows WSL launcher with no
+// distro installed exits 1 with a launcher error BEFORE the row's own command
+// runs. verifyrun must record every such row as could-not-run — never as an
+// ordinary `fail exit=1`, which a human or closure process would then have to
+// manually roll back — and it must NOT write a witness that claims a command ran.
+func TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun(t *testing.T) {
+	withFakeBashOnPath(t, "#!/bin/sh\n"+
+		"echo 'bash: CreateProcessCommon:669: execvpe(/bin/bash) failed: No such file or directory' 1>&2\n"+
+		"exit 1\n")
+
+	rows := []verifyRow{
+		{ID: "1", Command: "go test ./...", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "2", Command: "grep -c foo bar", Expect: "exit 0", Class: classCheck, Classed: false},
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+
+	for _, w := range ws {
+		if w.State != stateCouldNotRun {
+			t.Errorf("row %s: state %q, want %q — a shell that never bootstrapped is could-not-run, not a product-check failure", w.ID, w.State, stateCouldNotRun)
+		}
+		if w.State == stateFail || w.State == statePass {
+			t.Errorf("row %s: recorded %q — the WSL launcher exited before the row ran; nothing may claim it ran", w.ID, w.State)
+		}
+		if !strings.Contains(w.Note, "bootstrap") {
+			t.Errorf("row %s: note %q does not explain the bootstrap failure", w.ID, w.Note)
+		}
+	}
+
+	// The rendered witness table must not claim any command ran: no pass/fail
+	// result cell may appear, only could-not-run.
+	table := witnessTable(ws)
+	if strings.Contains(table, "pass exit=") || strings.Contains(table, "fail exit=") {
+		t.Errorf("witness table claims a command ran (must be could-not-run only):\n%s", table)
+	}
+
+	// The low-level executor classifies it the same way.
+	if got := runVerifyCommand(t.TempDir(), "go test ./...", 30*time.Second); !got.couldNotRun {
+		t.Errorf("runVerifyCommand under a WSL-launcher bash: %+v, want could-not-run (never fail)", got)
+	}
+}
+
+// TestRunWitnesses_ProbesTheShellOncePerRunNotPerRow pins the cost contract: the
+// shell bootstrap probe fires exactly ONCE per run (before any row's own command),
+// not once per row — O(rows) probes would add real subprocess overhead. A counting
+// fake `bash` logs every invocation's LAST argument; the probe's is the fixed
+// `exit 0`, which isolates it from the rows' own commands.
+func TestRunWitnesses_ProbesTheShellOncePerRunNotPerRow(t *testing.T) {
+	dir := withFakeBashOnPath(t, "#!/bin/sh\n"+
+		"last=\n"+
+		"for a in \"$@\"; do last=$a; done\n"+
+		"printf '%s\\n' \"$last\" >> \"$FAKE_BASH_LOG\"\n"+
+		"exit 0\n")
+	log := filepath.Join(dir, "invocations.log")
+	t.Setenv("FAKE_BASH_LOG", log)
+
+	rows := []verifyRow{
+		{ID: "1", Command: "row-one-command", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "2", Command: "row-two-command", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "3", Command: "row-three-command", Expect: "exit 0", Class: classCheck, Classed: false},
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if len(ws) != 3 {
+		t.Fatalf("got %d witnesses, want 3", len(ws))
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("reading the invocation log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	probes := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "exit 0" {
+			probes++
+		}
+	}
+	if probes != 1 {
+		t.Errorf("shell probed %d time(s), want exactly 1 (one probe per run, not one per row); invocation log:\n%s", probes, strings.Join(lines, "\n"))
+	}
+	// And the probe must come FIRST — before any row's own command runs.
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "exit 0" {
+		first := ""
+		if len(lines) > 0 {
+			first = lines[0]
+		}
+		t.Errorf("first shell invocation was %q, want the probe (`exit 0`) ahead of any row", first)
+	}
+}
+
+// TestRunWitnesses_RealBashUnchanged guards the hard constraint that a working
+// bash on PATH runs every row exactly as before — the probe adds one subprocess
+// but changes no verdict. It uses the test-runner's own real bash (no fake): a
+// passing row stays pass, and a genuinely failing row (`false`) stays fail, never
+// could-not-run.
+func TestRunWitnesses_RealBashUnchanged(t *testing.T) {
+	rows := []verifyRow{
+		{ID: "1", Command: "true", Expect: "exit 0", Class: classCheck, Classed: false},
+		{ID: "2", Command: "false", Expect: "exit 0", Class: classCheck, Classed: false},
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if ws[0].State != statePass {
+		t.Errorf("row 1 (`true`): %q, want pass — a working bash must run rows as before", ws[0].State)
+	}
+	if ws[1].State != stateFail {
+		t.Errorf("row 2 (`false`): %q, want fail — a genuine non-zero exit is a failure, never could-not-run", ws[1].State)
+	}
+	if !strings.Contains(witnessTable(ws), "pass exit=0") {
+		t.Error("a passing row was not recorded in the witness table — the witness must still be appended on the happy path")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-row shell dispatch — issue #1424
+// ---------------------------------------------------------------------------
+//
+// A Verify row is executed under the shell it DECLARES (the optional `Shell`
+// column: sh/cmd/pwsh, default sh). Some rows are authored in native-Windows
+// syntax (`findstr /c:"…" docs\streams\…\spec.md`) that only means what the
+// author intended under cmd.exe: under bash the quotes and backslash path are
+// interpreted before the Windows tool sees them, so the row fails with a
+// bash-level error while the identical row passes under `cmd /c`.
+//
+// Windows itself is UNAVAILABLE in this environment. As with the issue-#1418
+// shell tests, the Windows behaviour is exercised ENTIRELY through fake
+// interpreters on PATH plus a simulated OS (verifyOS), never a live Windows run:
+// the DISPATCH (which shell a row is routed to) and the exit-code read are what
+// is proven, not cmd.exe's own findstr implementation.
+
+// fakeExecDir returns a fresh temp dir prepended to PATH for the test (restored
+// automatically). POSIX-only: the interception relies on PATH resolution and a
+// `#!/bin/sh` shebang, so it skips on Windows itself — it is the Windows CODE
+// PATH under test, reproduced on a POSIX host, not a Windows host.
+func fakeExecDir(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-interpreter-on-PATH interception is POSIX-only; the Windows dispatch is exercised through the fake on non-Windows hosts")
+	}
+	dir := t.TempDir()
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
+
+// writeFakeExec writes an executable `name` with body `script` into dir.
+func writeFakeExec(t *testing.T, dir, name, script string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// withVerifyOS overrides the OS the shell-availability policy is evaluated
+// against (verifyOS), restoring it after the test. It lets a POSIX host exercise
+// both the Windows `cmd`/`pwsh` dispatch and the off-Windows could-not-run path.
+func withVerifyOS(t *testing.T, goos string) {
+	t.Helper()
+	saved := verifyOS
+	verifyOS = goos
+	t.Cleanup(func() { verifyOS = saved })
+}
+
+// TestVerifyRow_ShellColumn_ParsesAndDefaults pins the grammar: a `Shell` column
+// resolves each row to sh/cmd/pwsh, an empty cell defaults to sh, and a table
+// with NO `Shell` column resolves every row to sh — byte-for-byte the inherited
+// corpus's behaviour (zero silent change for unmarked rows).
+func TestVerifyRow_ShellColumn_ParsesAndDefaults(t *testing.T) {
+	section := strings.Join([]string{
+		"| # | Shell | Command | Expect |",
+		"|---|-------|---------|--------|",
+		"| 1 |       | `true`  | exit 0 |",
+		`| 2 | cmd   | ` + "`findstr /c:\"x\" a\\b.md`" + ` | exit 0 |`,
+		"| 3 | pwsh  | `Get-Content a` | exit 0 |",
+	}, "\n")
+	rows := briefVerifyRows(section)
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3", len(rows))
+	}
+	want := []string{rowShellSh, rowShellCmd, rowShellPwsh}
+	for i, w := range want {
+		if rows[i].Shell != w {
+			t.Errorf("row %d shell=%q, want %q", i+1, rows[i].Shell, w)
+		}
+	}
+
+	legacy := strings.Join([]string{
+		"| # | Command | Expect |",
+		"|---|---------|--------|",
+		"| 1 | `true`  | exit 0 |",
+	}, "\n")
+	lrows := briefVerifyRows(legacy)
+	if len(lrows) != 1 || lrows[0].Shell != rowShellSh {
+		t.Fatalf("legacy table with no Shell column: row shell=%q, want sh (backward compatible)", lrows[0].Shell)
+	}
+}
+
+// TestRunWitnesses_CmdRow_BashFailsCmdPasses is the core issue-1424 regression
+// AND the fail-first pairing. The SAME native-Windows `findstr` row:
+//   - UNMARKED (defaults to sh) runs under bash and records fail exit=1 — the
+//     defect (a fake `findstr` stands in for the real one choking on args bash
+//     mangled before it ever saw them);
+//   - marked `cmd` is dispatched to cmd (a fake cmd standing in for cmd.exe) and
+//     passes, with the authored command reaching cmd INTACT (a dispatch, never a
+//     rewrite).
+func TestRunWitnesses_CmdRow_BashFailsCmdPasses(t *testing.T) {
+	dir := fakeExecDir(t)
+	// Fake Windows findstr: always exits 1 — the real findstr can never match once
+	// bash has stripped the quotes and collapsed the backslash path.
+	writeFakeExec(t, dir, "findstr", "#!/bin/sh\nexit 1\n")
+	// Fake cmd: logs the command it was handed, exits FAKE_CMD_EXIT (default 0).
+	writeFakeExec(t, dir, "cmd", "#!/bin/sh\n"+
+		"last=\nfor a in \"$@\"; do last=$a; done\n"+
+		"printf '%s\\n' \"$last\" >> \"$FAKE_CMD_LOG\"\n"+
+		"exit \"${FAKE_CMD_EXIT:-0}\"\n")
+	log := filepath.Join(dir, "cmd.log")
+	t.Setenv("FAKE_CMD_LOG", log)
+	withVerifyOS(t, "windows")
+
+	const findstr = `findstr /c:"does not rotate" docs\streams\x\spec.md`
+
+	// Fail-first: the SAME row, UNMARKED (shell defaults to sh → bash), fails.
+	unmarked := []verifyRow{{ID: "1", Command: findstr, Expect: "exit 0", Class: classCheck, Shell: rowShellSh}}
+	uw := runWitnesses(t.TempDir(), unmarked, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if uw[0].State != stateFail {
+		t.Fatalf("unmarked findstr row under bash: state %q, want fail (the defect issue #1424 fixes) — note %q", uw[0].State, uw[0].Note)
+	}
+
+	// Marked cmd: dispatched to cmd, passes.
+	marked := []verifyRow{{ID: "1", Command: findstr, Expect: "exit 0", Class: classCheck, Shell: rowShellCmd}}
+	mw := runWitnesses(t.TempDir(), marked, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if mw[0].State != statePass {
+		t.Fatalf("findstr row marked cmd: state %q, want pass — note %q", mw[0].State, mw[0].Note)
+	}
+	// The witness records WHICH shell actually ran the row.
+	if !strings.Contains(mw[0].Note, "ran under `cmd`") {
+		t.Errorf("witness note %q does not record that the row ran under cmd", mw[0].Note)
+	}
+	// The authored command reached cmd intact — a dispatch, not a rewrite.
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("reading cmd log: %v", err)
+	}
+	if !strings.Contains(string(raw), findstr) {
+		t.Errorf("cmd was not handed the authored command intact; log:\n%s", raw)
+	}
+}
+
+// TestRunWitnesses_CmdRow_NonWindows_CouldNotRun asserts a `cmd`-marked row on a
+// simulated non-Windows run is could-not-run WITH the unavailable-shell reason,
+// never a product `fail` and never a silent rewrite into another shell.
+func TestRunWitnesses_CmdRow_NonWindows_CouldNotRun(t *testing.T) {
+	withVerifyOS(t, "linux")
+	rows := []verifyRow{{ID: "1", Command: `findstr /c:"x" a\b.md`, Expect: "exit 0", Class: classCheck, Shell: rowShellCmd}}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if ws[0].State == stateFail || ws[0].State == statePass {
+		t.Fatalf("cmd row on non-Windows recorded %q — a shell the OS does not provide is could-not-run, never a product verdict", ws[0].State)
+	}
+	if ws[0].State != stateCouldNotRun {
+		t.Fatalf("cmd row on non-Windows: state %q, want could-not-run", ws[0].State)
+	}
+	if !strings.Contains(ws[0].Note, "not available on this OS") {
+		t.Errorf("could-not-run note %q does not name the unavailable-shell reason", ws[0].Note)
+	}
+}
+
+// TestRunWitnesses_CmdRow_ExitCodeReadFaithfully guards that a `cmd` row's exit
+// code is read from the process, not dropped or misread through the POSIX-shell
+// 126/127 heuristics: a cmd that exits 1 makes the row fail, exit=1 recorded.
+func TestRunWitnesses_CmdRow_ExitCodeReadFaithfully(t *testing.T) {
+	dir := fakeExecDir(t)
+	writeFakeExec(t, dir, "cmd", "#!/bin/sh\nexit \"${FAKE_CMD_EXIT:-0}\"\n")
+	t.Setenv("FAKE_CMD_EXIT", "1")
+	withVerifyOS(t, "windows")
+
+	rows := []verifyRow{{ID: "1", Command: `some-windows-check`, Expect: "exit 0", Class: classCheck, Shell: rowShellCmd}}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if ws[0].State != stateFail {
+		t.Fatalf("cmd row whose cmd exits 1: state %q, want fail (exit code read faithfully) — note %q", ws[0].State, ws[0].Note)
+	}
+	if ws[0].Exit != 1 {
+		t.Errorf("recorded exit %d, want 1 — cmd's own exit code must be preserved", ws[0].Exit)
+	}
+}
+
+// TestRunWitnesses_UnmarkedShellUnchanged is the hard backward-compat guard: an
+// unmarked row (Shell empty, the whole inherited corpus) runs under bash exactly
+// as before — a passing row passes, a genuinely failing row fails, none becomes
+// could-not-run because of the new shell plumbing.
+func TestRunWitnesses_UnmarkedShellUnchanged(t *testing.T) {
+	rows := []verifyRow{
+		{ID: "1", Command: "true", Expect: "exit 0", Class: classCheck, Shell: rowShellSh},
+		{ID: "2", Command: "false", Expect: "exit 0", Class: classCheck, Shell: ""}, // empty resolves to sh
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-21", 30*time.Second, false)
+	if ws[0].State != statePass {
+		t.Errorf("row 1 (`true`, unmarked): %q, want pass", ws[0].State)
+	}
+	if ws[1].State != stateFail {
+		t.Errorf("row 2 (`false`, empty shell cell): %q, want fail — an empty cell is sh, unchanged", ws[1].State)
+	}
 }

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // --scan-issues is a self-contained sub-command (like --verify-issues): it reads
@@ -231,24 +233,43 @@ func placeholderFileName(repo string, issue int) string {
 	return placeholderStem(repo, issue) + ".md"
 }
 
-// yamlFlowScalar renders one YAML flow-sequence item, quoting it only when a plain
-// scalar would be ambiguous in flow context (commas/brackets/colons/etc. or
-// surrounding space). Keeps the common case (`bug`) unquoted, matching the
-// hand-written placeholder shape, while staying safe for exotic label names.
-func yamlFlowScalar(s string) string {
-	if s == "" || s != strings.TrimSpace(s) || strings.ContainsAny(s, ",:[]{}#&*!|>'\"%@`\n\t") {
-		return strconv.Quote(s)
-	}
-	return s
-}
-
-// yamlFlowList renders a []string as a YAML flow sequence, e.g. `[bug, security]`.
+// yamlFlowList renders a []string as a YAML flow sequence, e.g. `[bug, security]`,
+// through the yaml.v3 encoder so every element is quoted EXACTLY when — and only
+// when — YAML requires it. The previous hand-rolled predicate enumerated the
+// flow-indicator characters by hand and missed `?` (a mapping-key indicator), so a
+// label ending in `?` was emitted BARE — `labels: [bug, superseded?]` — which
+// breaks the frontmatter with `did not find expected ',' or ']'` on every scan
+// (#1428). Delegating to the encoder makes the whole indicator class safe by
+// construction: a plain, unambiguous label (`bug`) stays unquoted, matching the
+// hand-written placeholder shape, while anything the parser could misread is
+// quoted. The same yaml.v3 that reads these files back (parsePlaceholderFile) is
+// the one that writes them, so writer and reader can never disagree on what needs
+// quoting.
+//
+// Every scalar is tagged `!!str` explicitly (#1431): each label is Go data, not a
+// YAML literal, but the encoder still resolves a bare scalar by CONTENT. A label
+// whose text is a YAML type keyword or number — `null`/`~`, `true`/`false`/
+// `yes`/`no`/`on`/`off`, `123`, `1.5` — carries no flow-indicator character, so
+// #1429's fix left it emitted bare and it round-trips to the wrong type on read:
+// `null` parses to nil and is silently dropped from the list, a bool/number label
+// is retyped. Forcing the string tag makes every entry re-parse as the exact
+// string it was, independent of what its text happens to look like.
 func yamlFlowList(items []string) string {
-	parts := make([]string, len(items))
-	for i, it := range items {
-		parts[i] = yamlFlowScalar(it)
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
+	for _, it := range items {
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: it})
 	}
-	return "[" + strings.Join(parts, ", ") + "]"
+	out, err := yaml.Marshal(seq)
+	if err != nil {
+		// Marshalling a flat scalar sequence does not fail in practice; fall back to
+		// a fully double-quoted list rather than risk emitting an unparseable one.
+		parts := make([]string, len(items))
+		for i, it := range items {
+			parts[i] = strconv.Quote(it)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	}
+	return strings.TrimRight(string(out), "\n")
 }
 
 // renderPlaceholder builds a placeholder-v1 file body for one issue. The gate is
@@ -919,7 +940,9 @@ type issueCommentUser struct {
 // implementation shells out to gh; tests inject a fixture.
 type commentLister func(repo string, issue int) ([]issueComment, error)
 
-// issueCommentLister is the default commentLister: `gh api` for one issue's comments.
+// issueCommentLister is the `gh api` commentLister for one issue's comments. It is no
+// longer on the --scan-issues path (defaultScanCommentLister, below, since #1255);
+// --transcribe-scan still wires it.
 // A gh failure is returned as an error so the caller can degrade it to a NOTICE.
 // --paginate fetches all pages (GitHub defaults to 30/page ascending; the resume
 // signal is always on the last page, so page-1-only silently drops it — Blocker 1).
@@ -951,6 +974,29 @@ func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 	}
 	return comments, nil
 }
+
+// deskreadCommentLister is the --scan-issues commentLister since #1255: the issue's
+// WHOLE comment thread (oldest first) through the desk-tools `deskread comments`
+// verb on the native forge seam (deskkit.Forge.ListCommentsTyped, issue kind),
+// instead of `gh api --paginate`. It keeps issueCommentLister's contract: a read
+// failure is an ERROR, which planUnblock degrades to a per-issue NOTICE and leaves
+// the placeholder blocked — never an empty thread that reads as "nobody answered".
+// The forge walks every page of the thread (a thread longer than its page cap is
+// could-not-check, not truncated), so the newest answer — the one the un-block rule
+// keys on — is never the comment that was dropped.
+func deskreadCommentLister(repo string, issue int) ([]issueComment, error) {
+	return newDeskreadReader().IssueComments(repo, issue)
+}
+
+// defaultScanCommentLister and defaultScanBlessChecker are, with
+// defaultScanIssueLister, the three forge reads the PRODUCTION --scan-issues path
+// makes — the path scanloop's scan lane runs. They are vars with stable names so a
+// test can drive runScanIssues end to end on exactly what main wires, with NO
+// working `gh` on PATH (#1255).
+var (
+	defaultScanCommentLister commentLister     = deskreadCommentLister
+	defaultScanBlessChecker  issueBlessChecker = deskreadIssueBlessChecker
+)
 
 // isBotComment reports whether a comment author is a bot, GitHub App actor, or
 // desk automation. The identity principle: only a human answer un-blocks the

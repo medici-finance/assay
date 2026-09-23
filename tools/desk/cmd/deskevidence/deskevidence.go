@@ -151,6 +151,15 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// forced for any file; --allow-shrink is the intentional-edit override.
 	appendOnlyFlag := fs.Bool("append-only", false, "refuse the commit if it would reduce the target's row count below the current remote (auto-enabled for .jsonl sidecars)")
 	allowShrink := fs.Bool("allow-shrink", false, "override the append-only shrink guard when a row reduction is genuinely intended")
+	// --dry-run (verify-integrity/04 item 1): print the commits-API landing plan and stop
+	// before the write. It still mints the verifier App token, resolves the forge, fetches
+	// the remote content, merges/scans it and runs the statusgen PROBLEM-diff guard — every
+	// gate that can fail BEFORE a write is exercised for real, so a clean dry-run is real
+	// evidence the landing would succeed. It stops short of AllowWrite (never spends the
+	// write-rate-limit budget) and fg.WriteFile (never writes). There is no local-git branch
+	// anywhere in this tool to fall back to: an unmintable token refuses at the mint step
+	// above, dry-run or not.
+	dryRun := fs.Bool("dry-run", false, "print the commits-API landing plan without committing")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
@@ -405,6 +414,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if lintRoot == "" {
 		lintRoot = "."
 	}
+	if err := outcomeGuardFn(lintRoot, targetRepoPath, remoteContent, commitContent, fg, fr, branch); err != nil {
+		return err
+	}
 	introduced, lerr := lintDiffFn(lintRoot, targetRepoPath, commitContent)
 	if lerr != nil {
 		return lerr
@@ -413,6 +425,38 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
+	}
+
+	// verified-sidecar acceptance gate (#1309 stuck-flip). When THIS landing appends one or
+	// more `"outcome":"verified"` rows to the verify-outcomes sidecar, refuse unless the landing
+	// tree presents a lint-valid `verified` closure for each such brief — the Verified stamp AND
+	// an execution witness — which statusgen's own board/witness read decides (verifyclosure).
+	// A sidecar that only advances Evidence while the brief's board stays `implemented` records a
+	// verified outcome the tree does not back; review then refuses that mismatch, so this refuses
+	// it at the source instead. Runs on the SAME lintRoot the PROBLEM-diff guard just used, and
+	// like it before the dry-run stop and the write budget. `verify-fail` rows are never gated.
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, lintRoot, remoteContent, commitContent, remoteExists); verr != nil {
+		return verr
+	}
+
+	// --dry-run stops HERE — after every gate that can refuse a landing has already run
+	// (mint, forge resolution, remote read, merge, secret scan, public-repo gate, noop/shrink
+	// checks, statusgen PROBLEM-diff), before the write-rate-limit spend and the write itself.
+	// The plan below names the commits-API call this run WOULD make; it never mentions a
+	// local `git commit` because there is no such path in this tool to fall back to.
+	if *dryRun {
+		verb := "create"
+		if remoteExists {
+			verb = "update"
+		}
+		added, removed := rowDelta(remoteContent, commitContent)
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = fmt.Sprintf("dry-run: would %s %s on %s via contents API for %s (sha256 %s, +%d/-%d rows)",
+			verb, targetRepoPath, branch, repoSlug, bodyDig, added, removed)
+		fmt.Fprintf(stdout, "dry-run plan: commits-API PUT to %s (contents endpoint) — %s %s on branch %s, "+
+			"authenticated as the verifier App (%s); sha256 %s; no local `git commit` in this plan\n",
+			repoSlug, verb, targetRepoPath, branch, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig)
+		return nil
 	}
 
 	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
@@ -425,7 +469,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// principal it is on behalf of as a git trailer, or refuses (exit 5) rather than land
 	// one without it. Resolved immediately before the write — every gate above it (the
 	// lint-diff check, the rate limit) already ran.
-	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("")
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
 	}
@@ -452,8 +496,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 
 	// Post-condition: the write that landed must carry the verifier App's identity. Checked
-	// against what the forge reported the write recorded, not the token we sent (#228).
-	attr, aerr := checkAttribution(res.Author)
+	// against what the forge reported the write recorded, not the token we sent (#228). On a
+	// forge that reports no author (GitLab), checkAttribution resolves the landed commit's
+	// account online via the typed forge (res.SHA); on GitHub the author is populated and no
+	// online read happens.
+	attr, aerr := checkAttribution(fg, fr, res.SHA, res.Author)
 	// Name the net row delta so a success line can no longer hide a replace or a deletion
 	// behind a "committed … success" (#1709).
 	added, removed := rowDelta(remoteContent, commitContent)
@@ -478,7 +525,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
 	// On-behalf-of trailer (multi-principal/01) — see the direct-write path above.
-	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("")
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
 	}
@@ -515,7 +562,18 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		return perr
 	}
 
-	attr, aerr := checkAttribution(res.Author)
+	// On a forge that reports no author for the side-branch write (GitLab), resolve the landed
+	// commit's account ONLINE (#1477): fetch the side branch's head sha from the draft change
+	// just opened and hand it to checkAttribution, which maps it to the committing account's
+	// username via the typed forge. Only reached when the write carried no author — a populated
+	// author (GitHub) takes the ordinary path and issues no extra read.
+	headSHA := ""
+	if res.Author == "" && pr != nil {
+		if got, gerr := fg.GetPullRequest(fr, pr.Number); gerr == nil && got != nil {
+			headSHA = got.HeadSHA
+		}
+	}
+	attr, aerr := checkAttribution(fg, fr, headSHA, res.Author)
 	added, removed := rowDelta(remoteContent, content)
 	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
 	loc := fmt.Sprintf("change #%d", pr.Number)

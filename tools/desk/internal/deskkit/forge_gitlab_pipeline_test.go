@@ -126,6 +126,71 @@ func TestGitLabGreenMRPipelineReachesBothInstruments(t *testing.T) {
 	}
 }
 
+// TestGitLabPipelineByShaFallbackReachesGate is the #1411 regression, one step past #1125:
+// the SAME green MR pipeline must reach the flip gate even when the commit document carries NO
+// `last_pipeline` at all — the ordinary shape GitLab leaves for a `merge_request_event` head,
+// where the pipeline is reachable ONLY through the by-SHA read (`pipelines?sha=`) ListOpenChanges
+// already uses. #1125 / PR #1134 published the pipeline only from `commit.last_pipeline`; when
+// that field is empty the required context `pipeline` was never appended, so `deskflip` refused
+// checks-green on a real success. missingRequiredChecks must come back EMPTY here.
+func TestGitLabPipelineByShaFallbackReachesGate(t *testing.T) {
+	s := newGLServer(t)
+	glPipelineGated(s)
+	// The commit document has NO last_pipeline — the field GitLab leaves empty for a
+	// merge_request_event head. The pipeline is reachable ONLY via pipelines?sha=.
+	s.commit = map[string]any{"id": "abc123", "status": "success"}
+	s.pipelines = []map[string]any{
+		{"id": 77, "sha": "abc123", "status": "success", "source": "merge_request_event",
+			"created_at": "2026-09-15T10:00:00Z"},
+	}
+	s.jobs = []map[string]any{
+		{"id": 9101, "name": "statusgen-lint", "status": "success",
+			"finished_at": "2026-09-15T10:04:00Z"},
+	}
+	f := s.forge()
+
+	required, err := f.RequiredStatusChecks(glRepo, "main")
+	if err != nil {
+		t.Fatalf("RequiredStatusChecks: %v", err)
+	}
+	if len(required) == 0 {
+		t.Fatalf("a pipeline-gated project reported NO required checks")
+	}
+	checks, err := f.ChecksAtHead(glRepo, "abc123")
+	if err != nil {
+		t.Fatalf("ChecksAtHead: %v", err)
+	}
+	have := rollupLabels(checks)
+	var missing []string
+	for _, r := range required {
+		if !have[strings.ToLower(strings.TrimSpace(r))] {
+			missing = append(missing, r)
+		}
+	}
+	if len(missing) != 0 {
+		t.Errorf("commit.last_pipeline is empty but a GREEN pipeline exists at the head SHA via "+
+			"pipelines?sha=; the flip gate still reports required checks %v as missing (rollup carries "+
+			"%v) — #1411: ChecksAtHead did not fall back to the by-SHA read", missing, labelList(have))
+	}
+	// The pipeline entry is not merely present: it carries the pipeline's real verdict, mapped
+	// from the by-SHA read rather than invented.
+	var pipeState string
+	for _, sc := range checks.Statuses {
+		if strings.EqualFold(sc.Context, GitLabPipelineContext) {
+			pipeState = sc.State
+		}
+	}
+	if pipeState != "success" {
+		t.Errorf("the head pipeline succeeded but its rollup entry reads state %q, want \"success\"", pipeState)
+	}
+	// The short-read reconcile stays exact: the fallback-mapped entry must be counted in the
+	// asserted total, or the caller reads the appended entry as an over-serve.
+	if checks.StatusTotalCount != len(checks.Statuses) {
+		t.Errorf("status total %d vs %d entries served — the fallback pipeline entry must be counted "+
+			"in the asserted total", checks.StatusTotalCount, len(checks.Statuses))
+	}
+}
+
 // TestGitLabAbsentPipelineStaysCouldNotCheck pins the fail-closed direction on BOTH instruments:
 // a head with no pipeline is could-not-check, never a pass. Nothing in the fix may turn the
 // absence of a verdict into one.

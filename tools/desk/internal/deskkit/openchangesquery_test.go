@@ -26,6 +26,24 @@ func TestOpenChangesQueryOmitsActionsReadFields(t *testing.T) {
 	}
 }
 
+// TestListChangesQuery_IsStatesScopedAndRollupFree pins the two properties of the changes read
+// behind the phantom check: it takes the state set as a `$states` VARIABLE (never a hardcoded
+// states literal — the whole point is the caller scopes it to OPEN+MERGED), and it requests NO CI
+// rollup, so it carries none of the board query's actions:read/checks:read scope surface.
+func TestListChangesQuery_IsStatesScopedAndRollupFree(t *testing.T) {
+	if !strings.Contains(ghListChangesQuery, "pullRequests(states:$states") {
+		t.Errorf("ghListChangesQuery must scope on the $states variable, not a literal\nquery: %s", ghListChangesQuery)
+	}
+	if !strings.Contains(ghListChangesQuery, "orderBy:{field:UPDATED_AT,direction:DESC}") {
+		t.Errorf("ghListChangesQuery must order UPDATED_AT DESC so the bounded window is the most recent\nquery: %s", ghListChangesQuery)
+	}
+	for _, bad := range []string{"statusCheckRollup", "workflowRun", "checkSuite"} {
+		if strings.Contains(ghListChangesQuery, bad) {
+			t.Errorf("ghListChangesQuery requests %q — the represented-PR read needs no CI rollup\nquery: %s", bad, ghListChangesQuery)
+		}
+	}
+}
+
 // balancedDelimiters reports the first delimiter-balance fault in s, if any. A GraphQL query
 // held as a never-executed Go string is one brace typo away from a query the server rejects at
 // runtime with nothing catching it in review; this guards the hand-authored read constants
@@ -60,6 +78,7 @@ func balancedDelimiters(s string) (string, bool) {
 func TestForgeGraphQLQueriesBalanced(t *testing.T) {
 	for name, q := range map[string]string{
 		"ghOpenChangesQuery": ghOpenChangesQuery,
+		"ghListChangesQuery": ghListChangesQuery,
 		"PRTrustQuery":       PRTrustQuery,
 		"IssueTrustQuery":    IssueTrustQuery,
 		"ghCommentsQuery":    ghCommentsQuery,

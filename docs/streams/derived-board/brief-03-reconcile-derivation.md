@@ -28,7 +28,7 @@ domain: complicated
 consumers:
   - "statusgen/README.md (verbs): fixed-here"
   - "docs/streams/derived-board/spec.md §8 Q2: fixed-here"
-version: 1
+version: 2
 id: c4f45c56-1898-4dcc-aaaa-d10ecda4df98
 ---
 
@@ -94,8 +94,8 @@ facts:
 | 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) |
 | 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo |
 | 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is an `unknown` with the status, not a clean board |
-| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id']=='derived-board/02'][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Re-anchored from the original `desk-containers/02`/`PR #67`, which the engine correctly returns `todo` for: that brief's deliverable PR lives in another repository and carries no `Brief:` trailer (its board flip went via a separate PR), so this `--repo medici-finance/assay` run has no witness for it. The engine is sound; the old row anchored on a brief whose deliverable it cannot witness from this repo. |
-| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `gates: 1 edge (reserved, not gating)` — fixture dir prepared by the brief |
+| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Re-anchored from the original `desk-containers/02`/`PR #67`, which the engine correctly returns `todo` for: that brief's deliverable PR lives in another repository and carries no `Brief:` trailer (its board flip went via a separate PR), so this `--repo medici-finance/assay` run has no witness for it. The engine is sound; the old row anchored on a brief whose deliverable it cannot witness from this repo. Re-baselined 2026-09-19 (issue #1305): the `id` field is the hierarchical `assay:assay:derived-board:02` since the derived-board/07 flag-day, so the lookup is now id-shape-tolerant (`endswith(':derived-board:02')` pins stream/NN, tolerating a cell/repo prefix change) — a flat-literal match broke on this anchor a second time. |
+| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `[eligibility-could-not-check] demo/01: held by rec:ingest/06` — fixture dir prepared by the brief. Re-baselined 2026-09-19 (issue #1305): `gates:` became an actively gating eligibility evaluator (#1251), so the `reserved, not gating` wording can no longer appear — in this fixture the `rec:` alias is unpublished from the tree and the evaluator's honest three-state answer is the could-not-check NOTICE. |
 | 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 |
 | 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 |
 | 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) |
@@ -226,6 +226,31 @@ RISK-VALUE: DERIVED — `maxPages=20`/`perPage=100` @ statusgen/ghfetch.go:105-1
 RISK-VALUE: NAMED, NOT DERIVED — `version := 1` legacy default @ statusgen/reconcile.go:203/207 — reversible operational default, unrelated to either failing row.
 
 VERIFY: FAIL — rows 1,2,3,6,7,8 checked-clean. Rows 4 and 5 fail as literally written but both are stale Verify-row anchors from later, unrelated, in-scope changes (id-format flag-day; gates: becoming gating), not regressions in this brief's own code — third consecutive verify cycle (2026-09-06, 2026-09-15, 2026-09-18) hitting a different staleness cause on the same table. Filed medici-finance/assay#1305 recommending a re-baseline of rows 4 and 5. Status stays implemented, not advanced.
+
+### Worker re-baseline of Verify rows 4+5 — 2026-09-19 glm-5.3[1m] worker (worker-desk dispatch), main `e41092057`
+
+Verify-table maintenance per the verifier-filed issue #1305 (third staleness cycle on this
+table; no engine change). Rows 4 and 5 re-anchored — row 4's lookup made id-shape-tolerant,
+row 5's expected substring moved to the post-#1251 eligibility wording — and `version:`
+bumped 1→2 (Verify-table edit after first dispatch). Fail-first reds observed on this tree
+before the edit; greens observed with the re-baselined rows after:
+
+| row | red — row as written, pre-edit | green — re-baselined row |
+|-----|--------------------------------|--------------------------|
+| 4 | flat literal `x['id']=='derived-board/02'` matches 0 of the briefs in live `reconcile --json` output (`lookedAt=true`, online read-only worker token; run per the verify lane the verifier passes use) → the row's `[0]` IndexErrors | `x['id'].endswith(':derived-board:02')` → `assay:assay:derived-board:02`, cell `implemented`, witness `PR #80 (merged c93ae91)`; assertion passes, prints `implemented` |
+| 5 | `rc=0` but `gates: 1 edge (reserved, not gating)` absent (0 occurrences); observed `[eligibility-could-not-check] demo/01: held by rec:ingest/06 — could-not-check (alias rec is unpublished…)` | same command, new substring present, `LINT: PASS` |
+
+Full-tree `--lint` before and after the edit: `LINT: PASS` both times, no new PROBLEM; one new
+advisory NOTICE appears with the branch diff and is expected — `[verify-obligation]` derives a
+`+flow` row as owed because the brief's authored `files:` continuation prose names
+`docs/streams/graph-repos.yaml` (top-level `docs`) beside the `statusgen/` paths, so the
+declared-path span is 2. This branch changes no component boundary (Verify-table maintenance
+on this brief plus its changelog fragment), so the flow row genuinely does not apply; the
+disposition is the notice's own review-time branch — said why in review on the PR, no `Class`
+cell added (reshaping this table has already caused three staleness cycles). The generated Briefs table needs no edit:
+the row's Status cell was `implemented` before and after (PR-witnessed; the maintenance PR
+carries the same `Brief:` trailer and does not advance lifecycle), and the table is
+single-writer generated.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

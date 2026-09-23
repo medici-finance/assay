@@ -75,12 +75,14 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		if ferr != nil {
 			return fromReadErr("ready", repo, pr, head, ferr)
 		}
-		// A stamp left behind by a dispatch whose CLAIM has been released attests for a cycle
-		// that is over, so it ages out and the PR reads unstamped (deskkit/stampage.go). The
-		// read is this verb's own; every uncertain path is Unknown, which leaves the stamp
-		// exactly as it stood.
+		// The reviewer stamp this flip validates ages out when the REVIEW-dispatch claim behind
+		// it (the "<short>--pr-<N>" family, not this PR's worker Brief: claim) is no longer held —
+		// the review cycle is over, so the stamp attests nothing about this flip and the PR reads
+		// unstamped (claimLiveness → deskkit review-claim family). This is the SAME shared reader
+		// the verdict path uses (review.go), so a flip and a verdict clear the floor on identical
+		// evidence; every uncertain path is Unknown, which leaves the stamp exactly as it stood.
 		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
-			client.claimLiveness(repo, info.Body))
+			client.claimLiveness(repo, pr))
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)
@@ -128,11 +130,29 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// without a single new line of diff being read. Refuse loudly rather than let this
 		// silently satisfy gate (b) as an ordinary APPROVED.
 		if noOpApproval {
-			return refused("ready", repo, pr, head,
-				"latest App correctness verdict at "+short(vhead)+" is an APPROVED that immediately follows "+
-					"a CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a "+
-					"re-verification (#37); refusing to flip until a new commit lands, or a human clears the "+
-					"standing rejection directly on GitHub")
+			// brief 21: the ONE narrow exemption to the unchanged-head refusal.
+			// A standing CHANGES_REQUESTED whose declared, typed blockers are all external
+			// prerequisites may clear at the unchanged head once EVERY prerequisite is
+			// independently verified as changed AFTER the rejection — re-validated HERE, at
+			// the ready boundary, from fresh evidence, never trusted from the citation.
+			// securityFail is passed in so the exemption and gate (e0) cannot disagree about
+			// the same retraction. A declared-but-unverified claim refuses WITH its reason;
+			// an undeclared CR keeps the ordinary refusal verbatim.
+			out := clearedByExternalPrereq(reviews, head, securityVerdictStanding(reviews, head) == secFail)
+			if out.declared && out.decision.Cleared {
+				fmt.Fprintln(stderr, "deskpost: external-prerequisite exemption cleared the standing "+
+					"CHANGES_REQUESTED at "+short(head)+" — "+out.decision.Reason)
+				state, noOpApproval = "APPROVED", false
+			} else {
+				msg := "latest App correctness verdict at " + short(vhead) + " is an APPROVED that immediately follows " +
+					"a CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a " +
+					"re-verification (#37); refusing to flip until a new commit lands, or a human clears the " +
+					"standing rejection directly on GitHub"
+				if out.declared {
+					msg += ". The CR declared an external-prerequisite exemption but it did not clear: " + out.decision.Reason
+				}
+				return refused("ready", repo, pr, head, msg)
+			}
 		}
 		if state != "APPROVED" {
 			return refused("ready", repo, pr, head, "latest App correctness verdict is "+state+" — blocked (not APPROVED)")

@@ -263,14 +263,16 @@ func TestPreflightRepoSlugFromEveryRemoteForm(t *testing.T) {
 		"git@github.com:example-org/tracker.git",
 		"ssh://git@github.com/example-org/tracker.git",
 		"github-alias:example-org/tracker.git",
+		// the rewritten/hybrid form an insteadOf config bakes onto an alias remote (issue 1470)
+		"https://github.com/git@github-alias:example-org/tracker.git",
 	} {
-		m := remoteSlugRe.FindStringSubmatch(url)
-		if m == nil {
-			t.Errorf("remote %q yielded no owner/name — the probe would mint against the default owner", url)
+		slug, err := RemoteRepoSlug(url)
+		if err != nil {
+			t.Errorf("remote %q yielded no owner/name (%v) — the probe would mint against the default owner", url, err)
 			continue
 		}
-		if got := m[1] + "/" + m[2]; got != "example-org/tracker" {
-			t.Errorf("remote %q resolved to %q", url, got)
+		if slug != "example-org/tracker" {
+			t.Errorf("remote %q resolved to %q", url, slug)
 		}
 	}
 }

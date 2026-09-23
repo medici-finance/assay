@@ -43,6 +43,18 @@ func (s *stub) install(t *testing.T) (home, root string) {
 		s.calls = append(s.calls, append([]string{name}, args...))
 		for _, r := range s.replies {
 			if strings.Contains(joined, r.match) {
+				// The worktree-create step now STAMPS the agent's role commit identity into the
+				// new worktree (#1490), running `git config --worktree` with cwd = the home
+				// `deskwt add` reported. Those git calls flow through this same seam (default
+				// exit 0), but the shared runner sets cmd.Dir to that home, so the child cannot
+				// start unless the directory actually exists. A fake `deskwt add` reply names an
+				// absolute home; materialise it so the stamp's stubbed git config can run, the
+				// same way a real `deskwt add` would have created the worktree.
+				if strings.Contains(joined, "deskwt add") && r.code == 0 && filepath.IsAbs(strings.TrimSpace(r.stdout)) {
+					home := strings.TrimSpace(r.stdout)
+					_ = os.MkdirAll(home, 0o700)
+					t.Cleanup(func() { _ = os.RemoveAll(home) })
+				}
 				if r.code != 0 {
 					// A real desk tool's stderr is its config echo THEN its own message; a
 					// stub that emits one line cannot show a step report losing the second.
@@ -902,13 +914,13 @@ func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
 		t.Fatal("the claim tool was never invoked")
 	}
 
-	// The worktree and branch stay on the ORIGINAL item key (verdict-lane-05), NOT the
-	// translated claim key (assay--verdict-lane--05). The worktree DIR gains a session suffix
-	// so a foreign session's leftover canonical dir cannot dead-end the dispatch; the BRANCH
-	// stays bare — it is the deliverable's cross-session identity. (install sets
+	// The worktree stays on the ORIGINAL item key (verdict-lane-05), NOT the translated claim
+	// key (assay--verdict-lane--05). A verifier's worktree is cut DETACHED off origin/main under
+	// its own `verify-<item>` name with a session suffix (#1309 item 6) — no feature branch is
+	// named, so a delivered brief's `feat/<id>` cannot refuse the verify pass. (install sets
 	// DESK_SESSION=deskdispatch-test.)
-	if !s.ran("deskwt add verdict-lane-05-deskdispatch-test --branch feat/verdict-lane-05") {
-		t.Error("the worktree/branch were not derived from the ORIGINAL item key (session-scoped dir, bare branch)")
+	if !s.ran("deskwt add verify-verdict-lane-05-deskdispatch-test --detach --base refs/remotes/origin/main") {
+		t.Error("the verifier worktree was not derived from the ORIGINAL item key as a detached, verify-named worktree")
 	}
 
 	body, err := os.ReadFile(promptFile)

@@ -1083,6 +1083,40 @@ The install fork — a **Go-native installer with a thin PowerShell bootstrap**,
 PowerShell script — was a maintainer decision: it keeps the security-critical hash-verify in one
 tested Go implementation and confines PowerShell to a trivial, auditable download-and-verify.
 
+### Running a brief's Verify table on Windows — the harness container is the supported runner
+`statusgen verifyrun` executes each Verify row under `bash -o pipefail`. On native Windows a
+pipefail bash is unreliable — `bash.exe` is often the WSL launcher, which with no distro installed
+exits before the row runs — so verifyrun honestly records those rows **could-not-run**, not a false
+pass and not a false fail. The **supported execution-witness runner on Windows is therefore the
+Linux harness container, not a native shell**:
+
+```powershell
+statusgen verifyrun --in-container --brief docs\streams\<stream>\brief-NN.md
+```
+
+This runs `statusgen verifyrun` inside the pinned harness container (the combined
+`ghcr.io/medici-finance/assay/desk-tools` image, resolved by its **sha256 digest** from
+`paired-versions.yaml` — never a floating `latest`), with the checkout bind-mounted at `/work`, and
+writes the witness back into the brief's Evidence **host-owned** (Docker Desktop maps the mount's
+ownership to you). It needs Docker Desktop with the **Linux-container backend**; the harness image is
+Linux whichever host launches it. Credentials, if a row needs them, are supplied only via
+`--env-file <path>` (the role env-file — the path, never its contents; see `containers/secrets.md`).
+
+**Bind-mount caveats, so a could-not-run row's cause is legible:**
+- **NTFS mtime is coarse.** Nothing in this path keys a cache on mtime — the brief parse keys on
+  content hash — so a coarse-mtime bind mount cannot serve a stale parse.
+- **The exec bit may not survive the mount.** A row that runs a repo-local script directly
+  (`./x.sh`) can hit exit 126 (found, not executable) if the mount does not preserve the POSIX
+  executable bit; verifyrun records that as **could-not-run with the reason**, never a silent skip or
+  a forced pass. Invoke the interpreter explicitly (`bash ./x.sh`) for a row that must stay runnable
+  under the mount.
+
+**Native-Windows-shell rows — the `Shell` column is the narrow exception, not the default.** A
+Verify row that genuinely needs to test **Windows-native** shell behaviour (cmd/pwsh quoting, a
+`.ps1` code path) marks itself with the per-row `Shell` column (#1427) so it runs under that shell
+instead of bash. Use it ONLY when the row's subject *is* the native shell; the container above is the
+default runner for everything else, including the ordinary offline Verify rows a brief carries.
+
 ### Pin the Windows assets in `.assay-versions`
 **Channel E:** pin the Windows release exactly as any other platform (CORE `install-statusgen`): one
 line per platform you install on, `<artifact> <tag> <sha256>`, re-pinned — never edited in place —
@@ -1194,6 +1228,79 @@ binary is still what you prove, per the paragraph above.
 > built or pinned at — the board tool and the worktree are then out of step. That is a
 > **could-not-trust** state, not a pass: **rebuild the worktree's tools from the pinned commit,
 > or re-pin in a dedicated PR** — never read a stale-pin `deskboard` as an authoritative board.
+
+### Signing from-source Windows builds — opt-in Authenticode self-sign
+
+From-source Windows builds (`scripts/build-windows.ps1 desk-build` / `desk-install`, and the
+Channel D loop above) emit **unsigned** PE files into `%LOCALAPPDATA%\Assay\bin`. Host antivirus
+sometimes quarantines or blocks a freshly written unsigned Go PE on first run — both the
+inbound-scan tools that embed detector catalogs and, per a field report, ordinary desk-tool PEs
+flagged by an ML heuristic (`Heur.AdvML.D`, "Risk Found / access denied"). That is a
+false-positive class for unsigned binaries, **not** a claim the tools execute what they scan.
+
+`build-windows.ps1` carries an **opt-in** `-Sign` switch that Authenticode-signs the built PEs
+with a **local, self-signed code-signing certificate**. It is **off by default**: without `-Sign`
+the build is byte-for-byte the previous unsigned behaviour and requires no cert, no network, and
+no trust-store change. Signing runs **before** `desk-manifest` hashes the binaries, so
+`MANIFEST.sha256` matches the signed bytes on disk (signing changes the sha256).
+
+**One-time setup — create a code-signing cert and trust it on THIS machine only.** Use a
+**code-signing** (EKU `1.3.6.1.5.5.7.3.3`), *not* a TLS/server-auth, certificate. The example
+subject `CN=Assay local tools` is an example — pick your own; the script's last-resort lookup
+matches that subject, or use `-CertThumbprint` / `$env:ASSAY_CODESIGN_THUMBPRINT` for any subject.
+
+```powershell
+# 1. Create a code-signing self-signed cert in your OWN user store:
+$cert = New-SelfSignedCertificate `
+  -Subject 'CN=Assay local tools' -Type CodeSigningCert `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -KeyUsage DigitalSignature -KeyExportPolicy NonExportable
+
+# 2. Trust it on THIS machine only (per-user CurrentUser stores):
+$cer = Join-Path $env:TEMP 'assay-codesign.cer'
+Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+Import-Certificate -FilePath $cer -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
+Import-Certificate -FilePath $cer -CertStoreLocation Cert:\CurrentUser\Root | Out-Null  # Trusted Root (per-user)
+Remove-Item $cer
+
+# 3. Re-run the build after every rebuild, opting in:
+pwsh -File scripts/build-windows.ps1 desk-install -Sign
+```
+
+The cert is resolved, in order, from `-CertThumbprint`, `$env:ASSAY_CODESIGN_THUMBPRINT`, then the
+subject `CN=Assay local tools` in `Cert:\CurrentUser\My`. **If `-Sign` is set and no code-signing
+cert is found the build fails closed** with this same snippet — it never silently ships unsigned
+files past a `-Sign` request. (`desk-build` also removes-then-writes each `dist\*.exe`, so a
+sign → rebuild → re-sign loop works where `go build -o <existing.exe>` would refuse to overwrite a
+signed PE.)
+
+**Trust implications — read before importing to Trusted Root.**
+
+- Importing to `Cert:\CurrentUser\Root` makes **this user** trust anything the cert signs **as a
+  root CA**. Scope it tightly: **code-signing EKU only**, **CurrentUser** store, **this machine
+  only**. Keep the private key **NonExportable**; never copy it to another machine or the
+  machine-wide `LocalMachine` store.
+- **Removing the trust later:**
+
+  ```powershell
+  Get-ChildItem Cert:\CurrentUser\Root, Cert:\CurrentUser\TrustedPublisher, Cert:\CurrentUser\My `
+    | Where-Object { $_.Subject -eq 'CN=Assay local tools' } | Remove-Item
+  ```
+
+- **Honest limit.** A self-signed publisher **names the publisher**; it does **not** guarantee host
+  AV ignores the files, and it will **not** clear an ML/heuristic verdict such as `Heur.AdvML.D`.
+  The control that actually silences that heuristic is a **per-machine folder exception** on the
+  install dir (`%LOCALAPPDATA%\Assay\bin`, and `tools/desk/dist` if you run from `dist`) in your
+  endpoint product. Signing is still the right default for a local PE — it names the publisher —
+  but the exclusion is the thing that stops the quarantine. Do **not** use `chmod` as a Windows
+  trust fix (see the Windows adopters section).
+
+**Follow-on (not in this change): signing published release assets.** Authenticode-signing the
+published `statusgen-windows-*.exe`, `qualgen-windows-*.exe`, and the PE files inside
+`desk-tools-windows-*.tar.gz` **before** `checksums.txt` is written needs a **real (org or EV)
+code-signing certificate** held as a release secret and a change to `.github/workflows/release.yml`
+— both human acts. Until such a certificate exists the release assets stay **unsigned**; this
+section does not pretend otherwise, and no pin claims a signature that is not there.
 
 ## 3a. What the bundle delivers by itself — and what you still have to write
 

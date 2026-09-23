@@ -23,6 +23,12 @@
 #      retain floor is the middle of the range the zero-check misses. E proves it
 #      is retained + loud, the recovery cycle absorbs it, and the floor is
 #      off-switchable via INBOUND_MONITOR_RETAIN_FLOOR=0.
+#   F  EXPLICIT READ IDENTITY: under a HOME whose `gh` keyring holds no usable
+#      account (a desk cell's), the keyring fallback 401s every repo. F1 proves
+#      `--token-file OWNER=PATH` reads clean there; F2 that without one the
+#      read stays DEGRADED exactly as before; F3 that the file is scoped to its
+#      owner; F4 that an unusable file is a precondition failure, never a
+#      silent fallback to the keyring.
 #   C  BURST CAP: a mass update collapses to one INBOUND-BURST line.
 #   plus: MONITOR-ARMED on first arm, quiet on a no-change poll, real INBOUND on
 #   a genuine new issue, and a repo added after arming seeds SILENTLY.
@@ -73,7 +79,9 @@ run_case() {
   local envs=()
   while [[ "${1:-}" != "--" && $# -gt 0 ]]; do envs+=("$1"); shift; done
   shift  # drop the --
-  OUT=$(env "${envs[@]}" INBOUND_MONITOR_STATE_DIR="$statedir" \
+  # ${a[@]+"${a[@]}"}: an EMPTY array expands to nothing under bash 3.2's set -u
+  # instead of aborting the case with "unbound variable".
+  OUT=$(env ${envs[@]+"${envs[@]}"} INBOUND_MONITOR_STATE_DIR="$statedir" \
         PATH="$ghdir:$PATH" bash "$SCRIPT" "$@" 2>"$ghdir/stderr")
   RC=$?
   ERR=$(cat "$ghdir/stderr")
@@ -237,6 +245,105 @@ run_case "$w" "$st" INBOUND_MONITOR_RETAIN_FLOOR=0 -- o/r
 make_gh "$w" 0 "$(issue_json 3 900)" ""
 run_case "$w" "$st" INBOUND_MONITOR_RETAIN_FLOOR=0 -- o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "RETAIN_FLOOR=0 disables the proportional floor" "got $RC"
+
+# ================================================================ F =========
+echo "F — an explicit read identity (--token-file OWNER=PATH) outranks the keyring"
+# The field defect: under a replaced HOME (a desk cell's), the keyring fallback
+# resolves to no usable account, so every read 401s and every repo goes
+# DEGRADED. The stub below plays exactly that HOME: with GH_TOKEN unset it fails
+# the way `gh` does with no keyring account; with the installation token it
+# reads; with any other token it is refused.
+F_TOKEN=x-example-installation-token      # placeholder: wears no real credential prefix
+make_keyringless_gh() {
+  local dir="$1"
+  mkdir -p "$dir"
+  cat > "$dir/gh" <<STUB
+#!/usr/bin/env bash
+repo=""
+while [ \$# -gt 0 ]; do
+  case "\$1" in --repo) shift; repo="\$1" ;; esac
+  shift
+done
+printf '%s GH_TOKEN=[%s] GITHUB_TOKEN=[%s]\n' "\$repo" "\${GH_TOKEN:-}" "\${GITHUB_TOKEN:-}" >> "$dir/token.log"
+if [ -z "\${GH_TOKEN:-}" ]; then
+  echo "HTTP 401: Requires authentication (https://api.github.com/graphql)" >&2
+  exit 1
+fi
+if [ "\${GH_TOKEN}" != "$F_TOKEN" ]; then
+  echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2
+  exit 1
+fi
+jq -nc '[range(3) | {number: (100 + .), updatedAt: "2026-01-01T00:00:00Z"}]'
+STUB
+  chmod +x "$dir/gh"
+}
+fhome="$TMPROOT/f-home"; mkdir -p "$fhome"      # a HOME with no gh config at all
+ftok="$TMPROOT/f-token"
+( umask 077; printf '%s\n' "$F_TOKEN" > "$ftok" )
+
+# F1 — the acceptance row: keyring-less HOME + an explicit token file reads CLEAN.
+w="$TMPROOT/f1-gh"; st="$TMPROOT/f1-state"
+make_keyringless_gh "$w"
+run_case "$w" "$st" HOME="$fhome" -- --token-file "example-org=$ftok" example-org/tracker
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" \
+  "keyring-less HOME + --token-file reads clean (exit 0)" "got $RC; stdout: ${OUT:-<empty>}; stderr: ${ERR:-<empty>}"
+check "$(contains "$OUT" "MONITOR-ARMED: 3" && echo 0 || echo 1)" \
+  "the explicit identity arms the repo" "stdout: ${OUT:-<empty>}"
+check "$(grep -qxF "example-org/tracker GH_TOKEN=[$F_TOKEN] GITHUB_TOKEN=[]" "$w/token.log" 2>/dev/null && echo 0 || echo 1)" \
+  "gh reads the repo as the token file's identity" "gh saw: $(cat "$w/token.log" 2>/dev/null)"
+check "$(contains "$OUT$ERR" "$F_TOKEN" && echo 1 || echo 0)" \
+  "the token VALUE is never printed" "stdout/stderr carried the token"
+
+# F2 — the same HOME with NO token file stays DEGRADED exactly as today.
+w="$TMPROOT/f2-gh"; st="$TMPROOT/f2-state"
+make_keyringless_gh "$w"
+run_case "$w" "$st" HOME="$fhome" GH_TOKEN=x-bogus-app-token -- example-org/tracker
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" \
+  "without a token file the keyring-less read is DEGRADED (exit 2)" "got $RC"
+check "$(contains "$OUT" "MONITOR-DEGRADED: example-org/tracker seed read FAILED (gh: HTTP 401: Requires authentication" && echo 0 || echo 1)" \
+  "the keyring 401 is named, as before" "stdout: ${OUT:-<empty>}"
+check "$(grep -qxF "example-org/tracker GH_TOKEN=[] GITHUB_TOKEN=[]" "$w/token.log" 2>/dev/null && echo 0 || echo 1)" \
+  "no token file => the inherited GH_TOKEN is still scrubbed (keyring path)" "gh saw: $(cat "$w/token.log" 2>/dev/null)"
+
+# F3 — the token file is scoped to its OWNER. An installation token belongs to
+# one owner's installation, so a repo under another owner keeps the keyring
+# path (and an inherited GH_TOKEN never leaks into it).
+w="$TMPROOT/f3-gh"; st="$TMPROOT/f3-state"
+make_keyringless_gh "$w"
+run_case "$w" "$st" HOME="$fhome" GH_TOKEN=x-bogus-app-token -- \
+  example-org/tracker --token-file "example-org=$ftok" example-other/agents
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "an unmapped owner still degrades (exit 2)" "got $RC"
+check "$(contains "$OUT" "MONITOR-DEGRADED: example-other/agents" && echo 0 || echo 1)" \
+  "the unmapped owner's repo is the one named DEGRADED" "stdout: ${OUT:-<empty>}"
+check "$(contains "$OUT" "MONITOR-DEGRADED: example-org/tracker" && echo 1 || echo 0)" \
+  "the mapped owner's repo reads clean in the same cycle" "stdout: ${OUT:-<empty>}"
+check "$(grep -qxF "example-other/agents GH_TOKEN=[] GITHUB_TOKEN=[]" "$w/token.log" 2>/dev/null && echo 0 || echo 1)" \
+  "the unmapped owner is read on the keyring path, not the other owner's token" \
+  "gh saw: $(cat "$w/token.log" 2>/dev/null)"
+check "$([[ -f "$st/example-org__tracker.state" ]] && echo 0 || echo 1)" \
+  "the mapped repo seeded its baseline" "no state file for example-org/tracker"
+
+# F4 — an explicit identity that cannot be USED is a precondition failure
+# (exit 1) BEFORE any read. It never silently falls back to the keyring: that
+# would swap the identity the operator named for one they did not.
+floose="$TMPROOT/f-token-loose"; printf '%s\n' "$F_TOKEN" > "$floose"; chmod 644 "$floose"
+fempty="$TMPROOT/f-token-empty"; ( umask 077; : > "$fempty" )
+f4_case() {  # f4_case <label> <expect-in-stderr> <args...>
+  local label="$1" want="$2"; shift 2
+  w="$TMPROOT/f4-gh-$label"; st="$TMPROOT/f4-state-$label"
+  make_keyringless_gh "$w"
+  run_case "$w" "$st" HOME="$fhome" -- "$@"
+  check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "$label => exit 1 (precondition)" "got $RC; stdout: ${OUT:-<empty>}"
+  check "$(contains "$ERR" "$want" && echo 0 || echo 1)" "$label is named on stderr" "stderr: ${ERR:-<empty>}"
+  check "$([[ ! -f "$w/token.log" ]] && echo 0 || echo 1)" \
+    "$label => gh is never invoked (no keyring fallback)" "gh saw: $(cat "$w/token.log" 2>/dev/null)"
+}
+f4_case loose-mode "group/world accessible" --token-file "example-org=$floose" example-org/tracker
+f4_case missing "cannot read --token-file" --token-file "example-org=$TMPROOT/nope" example-org/tracker
+f4_case empty-file "is empty" --token-file "example-org=$fempty" example-org/tracker
+f4_case no-owner "expected OWNER=PATH" --token-file "$ftok" example-org/tracker
+f4_case no-value "--token-file needs a value" example-org/tracker --token-file
+f4_case dup-owner "given twice" --token-file "example-org=$ftok" --token-file "example-org=$ftok" example-org/tracker
 
 # ================================================================ C =========
 echo "C — a mass update collapses to one INBOUND-BURST line"

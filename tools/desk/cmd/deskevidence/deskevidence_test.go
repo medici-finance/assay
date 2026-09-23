@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +42,16 @@ type fakeForge struct {
 	emptyAuthor bool
 	// writeErr, when set, is returned by WriteFile.
 	writeErr error
+	// commitAuthorLogin is the AuthorLogin GetCommit resolves for a sha — the ONLINE
+	// attribution resolution (#1477). Empty means the forge could not resolve the account
+	// (could-not-check). commitErr, when set, is GetCommit's error.
+	commitAuthorLogin string
+	commitErr         error
+	getCommitCalls    int
+	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
+	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
+	prHeadSHA string
+	prErr     error
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
@@ -136,6 +147,30 @@ func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChang
 	return &deskkit.PullRef{Number: 4242, URL: "https://forge.example/change/4242"}, nil
 }
 
+// GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
+// draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
+func (f *fakeForge) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.prErr != nil {
+		return nil, f.prErr
+	}
+	return &deskkit.PullRequest{Number: number, HeadSHA: f.prHeadSHA}, nil
+}
+
+// GetCommit resolves a commit's attributed account login — the ONLINE seam checkAttribution
+// uses to map a GitLab commit to the committing account's username (#1477). An empty
+// commitAuthorLogin models a forge that could not resolve the account (could-not-check).
+func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getCommitCalls++
+	if f.commitErr != nil {
+		return nil, f.commitErr
+	}
+	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: f.commitAuthorLogin}, nil
+}
+
 // setupFake wires isolation: a temp HOME with the fixture roster (so trust/write-auth decisions
 // answer the same verdicts they always did), the standard verify-desk environment, a recording
 // fake Forge behind forgeForFn, a token-mint stub, a no-op public-repo gate, and captured
@@ -175,6 +210,16 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldLintDiff := lintDiffFn
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+	oldOutcome := outcomeGuardFn
+	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
+	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
+
+	// The verified-sidecar acceptance gate defaults to "accepts" so a verify-outcomes landing
+	// in the general suite never shells a real statusgen. Tests exercising the gate override
+	// this seam themselves (see verifiedgate_test.go).
+	oldClosure := verifiedClosureCheckFn
+	verifiedClosureCheckFn = func(string, string) (closureVerdict, string, error) { return closureAccepted, "", nil }
+	t.Cleanup(func() { verifiedClosureCheckFn = oldClosure })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr
@@ -1347,5 +1392,68 @@ func TestLintDiffSkippedForNoop(t *testing.T) {
 	}
 	if called {
 		t.Fatal("lintDiffFn was called for a noop landing — nothing is landing, nothing to lint")
+	}
+}
+
+// TestDryRunPrintsPlanNoWrite (verify-integrity/04 item 1, Verify row 4): --dry-run on a
+// fixture brief prints the commits-API landing plan and performs ZERO writes — every gate
+// that can refuse the landing still runs (mint, forge resolution, remote read, secret scan,
+// lint-diff), only the write itself is skipped. There is no local `git commit` anywhere in
+// this tool's write path (mintTokenFn → forgeForFn → fg.WriteFile is the only path this
+// package has ever had), so a plan that never reaches fg.WriteFile is, by construction, a
+// plan with no local git commit in it.
+func TestDryRunPrintsPlanNoWrite(t *testing.T) {
+	f, _ := setupFake(t)
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
+	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root, "--dry-run"})
+	if code != deskkit.ExitOK {
+		t.Fatalf("dry-run exit = %d, want %d", code, deskkit.ExitOK)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("--dry-run must never write: got %d WriteFile call(s)", f.putCalls)
+	}
+	// The read (mint, forge resolve, remote fetch, secret scan, lint-diff) DID run — a
+	// dry-run is a real preview, not a no-op that skips validation too.
+	if len(f.reads) == 0 {
+		t.Fatal("--dry-run should still resolve the forge and read the remote content")
+	}
+	out := stdout.(*bytes.Buffer).String()
+	if !strings.Contains(out, "dry-run") {
+		t.Fatalf("stdout must print the dry-run plan; got:\n%s", out)
+	}
+	if !strings.Contains(out, evidencePath) || !strings.Contains(out, "main") {
+		t.Fatalf("the plan must name the target path and branch; got:\n%s", out)
+	}
+}
+
+// TestDryRunRefusesOnMintFailure (Verify row 4's perturbation): with the App token
+// unmintable, --dry-run refuses exactly like the non-dry-run path (TestMintFailureAbortsBeforeForge)
+// — it never falls back to a local git identity, because dry-run only skips the FINAL write
+// step and the mint happens far earlier, unconditionally.
+func TestDryRunRefusesOnMintFailure(t *testing.T) {
+	f, _ := setupFake(t)
+	mintErr := deskkit.Unverifiable("desktoken verifier --repo example-org/tracker: mint refused",
+		errors.New("mint boom"))
+
+	oldMint := mintTokenFn
+	mintTokenFn = func(string) error { return mintErr }
+	t.Cleanup(func() { mintTokenFn = oldMint })
+
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | row |\n")
+	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root, "--dry-run"})
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("dry-run with mint failure exit = %d, want %d", code, deskkit.ExitUnverifiable)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("mint failed but the forge was reached: %v", f.hits)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("mint failed but %d WriteFile call(s) were made", f.putCalls)
 	}
 }

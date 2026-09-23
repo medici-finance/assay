@@ -1,0 +1,13 @@
+[
+  {
+    "key": "example-stream--vitals-01",
+    "item": "example-stream/vitals-01",
+    "owner": "session-vitals",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--vitals-01",
+    "tier": "cheap",
+    "state": "dispatched",
+    "claimedAt": "2026-09-17T11:53:00Z",
+    "dispatchedAt": "2026-09-17T11:55:00Z"
+  }
+]

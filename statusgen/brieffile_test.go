@@ -861,3 +861,87 @@ func TestSecurityReviewAtDone(t *testing.T) {
 		})
 	}
 }
+
+// TestParseBriefFileMemoSameSizeSameMtimeReparses pins the memo's stated
+// invariant — "a file edited mid-run is re-read, so the memo can never serve
+// content that is no longer on disk" (brieffile.go) — against the exact edit
+// that defeated the old (path, mtime, size) stamp: an in-place rewrite that
+// keeps the byte length while the filesystem reports an identical mtime.
+//
+// medici-finance/assay#1407: TestEligibilityDeclarationChangesDispatch flips a
+// gate with the length-preserving substitution "example-a/01" -> "example-a/03".
+// On a coarse-granularity filesystem the fixture-copy write and the mutation
+// write shared one mtime tick, so the stamp could not tell the two same-size
+// versions apart; the hydration read the STALE gate (still on example-a/01) and
+// the test flaked on the release runner while passing on nanosecond-mtime APFS.
+// Forcing the mtime equal with os.Chtimes reproduces that collision
+// deterministically on every filesystem.
+//
+// FAIL-FIRST: against the (path, mtime, size) stamp the second parse returns the
+// STALE title ("gate-01") and this test fails on the final assertion. Keying the
+// memo on a content hash makes the two versions distinct regardless of mtime.
+func TestParseBriefFileMemoSameSizeSameMtimeReparses(t *testing.T) {
+	resetBriefParseMemo()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "brief-02-example.md")
+
+	brief := func(title string) []byte {
+		return []byte("---\n" +
+			"brief: example-stream/02\n" +
+			"title: " + title + "\n" +
+			"wave: 1\ndepends: []\nunblocks: []\neffort: S\ngate: model\n" +
+			"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
+			"issues: []\nschema: brief-v1\nauthored: 2026-09-16 by test\nsources: []\nversion: 1\n" +
+			"---\n\n# body\n")
+	}
+
+	// v1 and v2 differ only by a single length-preserving substitution in the
+	// title token, so the two files are byte-for-byte the SAME size — the only
+	// condition under which a same-mtime collision can hide a real edit.
+	v1 := brief("gate-01")
+	v2 := brief("gate-02")
+	if len(v1) != len(v2) {
+		t.Fatalf("test bug: v1/v2 must be the same size for this collision (%d vs %d)", len(v1), len(v2))
+	}
+
+	if err := os.WriteFile(path, v1, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, ok, err := parseBriefFile(path)
+	if err != nil || !ok {
+		t.Fatalf("parse v1: ok=%v err=%v", ok, err)
+	}
+	if first.Title != "gate-01" {
+		t.Fatalf("parse v1: title=%q, want gate-01", first.Title)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Rewrite in place with the same-size v2 and FORCE the mtime back to v1's, so
+	// the (path, mtime, size) stamp is byte-identical across the edit — exactly
+	// the state a coarse-granularity filesystem produces for two fast writes.
+	if err := os.WriteFile(path, v2, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, fi.ModTime(), fi.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	fi2, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi2.Size() != fi.Size() || !fi2.ModTime().Equal(fi.ModTime()) {
+		t.Fatalf("precondition not met: size %d->%d mtime %v->%v (the collision this test needs did not materialize)",
+			fi.Size(), fi2.Size(), fi.ModTime(), fi2.ModTime())
+	}
+
+	second, ok, err := parseBriefFile(path)
+	if err != nil || !ok {
+		t.Fatalf("parse v2: ok=%v err=%v", ok, err)
+	}
+	if second.Title != "gate-02" {
+		t.Fatalf("the memo served STALE content after a same-size, same-mtime in-place edit: title=%q, want gate-02 (medici-finance/assay#1407)", second.Title)
+	}
+}

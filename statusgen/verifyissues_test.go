@@ -995,6 +995,103 @@ func TestHasVerifyPass(t *testing.T) {
 	}
 }
 
+// TestVerifyMarkerRegex pins the ratified marker regex
+// (verifyVerdictBoldRe / hasVerifyPass): a bold VERIFY verdict token followed
+// by arbitrary prose up to the closing `**` matches, but the verdict token
+// itself is anchored to PASS|FAIL — BLOCKED (or any other spelling) never
+// does, whatever prose surrounds it. The pre-fix `strings.Contains(evidence,
+// "**VERIFY: PASS**")` failed the first two rows below: a marker with any
+// prose before its closing `**` did not literally contain that fixed
+// substring, so a real verifier line was read as no pass at all.
+func TestVerifyMarkerRegex(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"bare bold pass", "**VERIFY: PASS**", true},
+		{"bold pass with row-count prose", "**VERIFY: PASS (4/4 offline-runnable rows)**", true},
+		{"bold pass with em-dash summary", "**VERIFY: PASS — all 6 rows green.**", true},
+		{"bold BLOCKED never matches", "**VERIFY: BLOCKED (human-gate)**", false},
+		{"bold FAIL is not a pass", "**VERIFY: FAIL (row #3)**", false},
+		{"no marker at all", "no marker here", false},
+		{"non-bold VERIFY: PASS does not satisfy the strict gate", "VERIFY: PASS", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := hasVerifyPass(c.text); got != c.want {
+				t.Errorf("hasVerifyPass(%q) = %v, want %v", c.text, got, c.want)
+			}
+		})
+	}
+}
+
+// TestVerifyPassHeldContradictionSameLineLaundering pins verifyPassHeldContradiction
+// against the SAME proximity-laundering shape PR #1244 found and fixed in the
+// predecessor mechanism (entryIsHeld, statusgen/verifyissues.go), adapted to
+// #1304's structurally different, LINE-scanning mechanism.
+//
+// entryIsHeld segmented an Evidence entry by "row N" mentions and treated
+// everything up to the next "row N" mention as belonging to that row, so a
+// trailing un-numbered HELD/could-not-check mention got swept into a prior
+// numbered row's segment POSITIONALLY. verifyPassHeldContradiction does not
+// segment by row at all — it walks the Evidence body LINE by LINE and, for
+// any line containing HELD/could-not-check, excuses the WHOLE LINE the moment
+// that line ALSO contains a routingKeywordRe match and a routingRefRe match
+// anywhere on it. Neither regex is anchored to which HELD/could-not-check
+// occurrence it corroborates: a routed disposition and a second, wholly
+// unrelated, un-routed disposition sharing one physical line (a very ordinary
+// shape — a verifier's Result cell often reads "deferred to X; separately,
+// the smoke run HELD, no runner online") both launder through, because the
+// exclusion check operates on line PRESENCE, not on binding a specific
+// HELD/could-not-check occurrence to the routing phrase+reference nearest it
+// (or after it) — the same "positional, not semantic" gap #1244 closed in the
+// row-based mechanism, now reproduced at line granularity.
+func TestVerifyPassHeldContradictionSameLineLaundering(t *testing.T) {
+	// Row 2 is genuinely, correctly routed (routing phrase "deferred to" +
+	// reference "verify-integrity/05"): decideModelFlip's own test
+	// (TestAutoflipRefusesHeldPass) already proves that exclusion is correct
+	// on its own. Here the SAME line ALSO carries a second, unrelated
+	// disposition — a separate check ("the nightly smoke run") that went
+	// HELD, trailing the routed clause, with no routing of its own. The
+	// routing tokens on the line corroborate the FIRST disposition, not the
+	// second — verifyPassHeldContradiction must still refuse.
+	laundered := "**VERIFY: PASS (2/2 offline-runnable rows)**\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
+		"| 2 | `go test ./integration/...` | — | could-not-check: deferred to follow-up brief verify-integrity/05, and separately the nightly smoke run went HELD, no runner online | 2026-07-08 | fixture-verifier |\n"
+
+	if held, why := verifyPassHeldContradiction(laundered); !held {
+		t.Fatalf("a routed disposition sharing a line with a second, unrelated, un-routed HELD mention must still refuse the PASS — proximity-laundering shape got through unrefused (why=%q)", why)
+	}
+
+	// Control: the SAME routed row, with no second disposition trailing it,
+	// stays clean — the routing exclusion itself must still work.
+	clean := "**VERIFY: PASS (2/2 offline-runnable rows)**\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
+		"| 2 | `go test ./integration/...` | — | could-not-check: deferred to follow-up brief verify-integrity/05 | 2026-07-08 | fixture-verifier |\n"
+
+	if held, why := verifyPassHeldContradiction(clean); held {
+		t.Errorf("a genuinely routed row with no other disposition on its line must not contradict the PASS, got held=true why=%q", why)
+	}
+
+	// Control: the same unrelated HELD mention with NO routing anywhere on
+	// its line must already be caught (this is the pre-#1304-fix baseline,
+	// not new behavior).
+	unrouted := "**VERIFY: PASS (2/2 offline-runnable rows)**\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
+		"| 2 | `go test ./integration/...` | — | the nightly smoke run went HELD, no runner online | 2026-07-08 | fixture-verifier |\n"
+
+	if held, why := verifyPassHeldContradiction(unrouted); !held {
+		t.Fatalf("an un-routed HELD mention with no routing tokens at all on its line must refuse the PASS, got held=false why=%q", why)
+	}
+}
+
 // TestUnrunRowsText confirms unrunRowsText extracts UNRUN rows.
 func TestUnrunRowsText(t *testing.T) {
 	evidence := `| # | Command | Exit | Result | Date | Runner |

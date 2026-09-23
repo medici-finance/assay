@@ -269,9 +269,10 @@ func applySelfWithdraw(r selfWithdrawReq, out io.Writer) error {
 	}
 	// reasonNotPlanned is the lane's disposition; closeItem drops it for a change (no forge
 	// records a state reason there), and the comment above carries it instead.
-	if err := closeItem(r.repo, r.number, deskkit.TargetChange, reasonNotPlanned); err != nil {
-		a.log(deskkit.ResultUnverifiable, err.Error())
-		return err
+	if err := closeItem(r.repo, r.number, deskkit.TargetChange, reasonNotPlanned, true); err != nil {
+		a.log(deskkit.ResultUnverifiable, "partial: comment posted, close refused: "+err.Error())
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d — partial: comment posted, close refused", r.repo, r.number), err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed via lane %s (because %s, by %s) as %s",
 		modeSelfWithdraw, r.because, r.by, deskkit.StripControl(self.login)))
@@ -449,8 +450,11 @@ func applyVerifyGateRefire(c common, n int, reason string, out io.Writer) error 
 		return err
 	}
 	// No state reason: this cycle states no disposition of its own, only that the marker
-	// needed to re-fire (the same carve-out closeItem applies to a change).
-	if err := closeItem(c.repo, n, deskkit.TargetIssue, ""); err != nil {
+	// needed to re-fire (the same carve-out closeItem applies to a change). verifyClosed is
+	// FALSE here alone: this close is meant to be undone — verify-gate-close.yml reopens any
+	// bot close of a verify-gate card — so requiring the item to READ closed afterwards would
+	// fail the lane on the very behaviour it exists to trigger.
+	if err := closeItem(c.repo, n, deskkit.TargetIssue, "", false); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}

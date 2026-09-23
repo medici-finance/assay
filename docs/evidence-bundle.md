@@ -105,7 +105,7 @@ machine-checked one.
 |---|---|---|---|
 | **Authorization** | Every brief carries a required `gate:` field (`model` or `human`), and a brief with any `risk:` answer `yes` must be `gate: human`. Both are lint-enforced (`brieffile.go` `requiredBriefKeys`; the `anyYes && gate != human` check). A `gate-why:` rationale is required **only** for risk-gated briefs (`gate: human` or any `risk: yes`) -- an unremarkable `gate: model` brief carries none, and that is compliant. | **Enforced** (presence + risk/gate consistency) | Brief frontmatter |
 | **Design & specification** | The brief's `## Task` / `## Context` sections capture what was designed and why, with `sources:` frontmatter linking to the design input. Lint requires the keys to be present; it cannot assess whether the content is adequate. | **Enforced** (presence only) | Brief body |
-| **Testing** | The `## Verify` section is a table of command + expected output. `statusgen verifyrun` runs each row in a fresh subshell at the repo root and writes an **execution witness** back to the brief's Evidence: the command, the exit code, a **sha256** of the combined output, the date, the runner identity, and the tree SHA. Runner identity is **derived** from the executing process (`GITHUB_ACTOR`, else the repo's git identity) and can never be supplied — there is no `--runner` flag and passing one is a usage error. | **Enforced (contradiction) · advisory (absence).** `witnessgate`, a `--lint` check, refuses to let a brief read `verified`/`done` when its own Evidence carries a witness that recorded a *failure* — the cell is derived from the witness, not asserted over it. Witness *absence* is a lower severity: an unwitnessed `verified` still lands (a NOTICE, not a block), because the entire pre-witness corpus lacks witnesses by construction. Two limits stand in the same breath: the witness is evidence for a reviewer reading a diff, **not an unforgeable attestation** — whoever controls the process controls the derived identity; and because `verifyrun` executes author-written markdown as shell, it is a deliberate sub-command and is **never invoked from `--lint`**. | Brief body + stream README row |
+| **Testing** | The `## Verify` section is a table of command + expected output. `statusgen verifyrun` runs each row in a fresh subshell at the repo root and writes an **execution witness** back to the brief's Evidence: the command, the exit code, a **sha256** of the combined output, the date, the runner identity, and the tree SHA. Runner identity is **derived** from the executing process (`GITHUB_ACTOR`, else the repo's git identity) and can never be supplied — there is no `--runner` flag and passing one is a usage error. | **Enforced (contradiction) · advisory (absence).** `witnessgate`, a `--lint` check, refuses to let a brief read `verified`/`done` when its own Evidence carries a witness that recorded a *failure* — the cell is derived from the witness, not asserted over it. Witness *absence* is **merge-base scoped**: a closure already on `main` at the merge-base is grandfathered to a NOTICE (the entire pre-witness corpus lacks witnesses by construction), but a NEW `verified`/`done` closure made after statusgen v1.0.13 with no witness behind a Verify row is a hard PROBLEM, not merely a NOTICE. Two limits stand in the same breath: the witness is evidence for a reviewer reading a diff, **not an unforgeable attestation** — whoever controls the process controls the derived identity; and because `verifyrun` executes author-written markdown as shell, it is a deliberate sub-command and is **never invoked from `--lint`**. | Brief body + stream README row |
 | **Segregation of duties** | `verified` requires an independent (non-implementer) Evidence row and a Verified runner that does not look like self-verification -- both are real lint checks (`attribution.go`). | **Machine-disprovable for a human stamp; self-written for a model.** `--lint` alone compares *authored names* in self-written text. But a `human:<name>` stamp is separately **cross-checkable against the pull request's actual reviews and comments** with `statusgen --corroborate --pr`, which resolves the name to a GitHub login and exits 1 when that human's own account shows no APPROVED review or approval comment (`corroborate.go`) — so a false human stamp is disproved against the forge, not merely string-matched. A **model** runner token has no such anchor: it remains self-written text, and a single participant can still author both cells for a model-gated brief. | Stream README table + brief Evidence section |
 | **Monitoring** | Register entries (findings and intake) are an append-only log of knowledge-invalidations and inbound requests. `statusgen --lint` enforces **duplicate-id detection** and a **tombstone check** -- a register entry that has ever existed on main but is absent from the working tree is a lint failure, so entries cannot be quietly deleted (`registers.go`, `registerIntegrityProblems`). | **Enforced** (duplicate-id + deletion/tombstone) | Register directories in the bundle |
 | **Approval & implementation** | The lifecycle column tracks each brief through `todo` -> `in-progress` -> `implemented` -> `verified` -> `done`; the Evidence section records what shipped. | **Advisory.** The Status cell is hand-maintained prose in a table. Lint constrains its *vocabulary* (a bare lifecycle token), not its *truthfulness* -- nothing ties `verified` to a merged PR or a passing check. | Stream README table |
@@ -123,8 +123,12 @@ happened; it cannot show that merging was impossible without one.
   row carries an execution witness (`statusgen verifyrun`), that witness records a run
   that happened -- command, exit code, output hash, date, runner, tree SHA -- but it is
   evidence for a reviewer, not an unforgeable attestation; and a row may carry no
-  witness at all, in which case its Evidence is a self-reported claim and a `verified`
-  brief can still stand (witness absence is a NOTICE, not a block).
+  witness at all, in which case its Evidence is a self-reported claim. Witness
+  absence is **merge-base scoped**: a closure already on `main` at the merge-base is
+  grandfathered (a NOTICE, not a block, since the inherited corpus lacks witnesses by
+  construction), but a NEW `verified`/`done` closure made after statusgen v1.0.13 with
+  no witness behind one or more Verify rows is a hard `--lint` PROBLEM (see
+  `spec/lifecycle-v1.md` §2.4).
 - It does not itself corroborate the runner identity. A `human:<name>` stamp is
   cross-checkable against the pull request's actual reviews with
   `statusgen --corroborate --pr`, which exits 1 on disproof; a model runner token stays
@@ -169,3 +173,82 @@ tar -xzf /tmp/bundle.tgz -O manifest.json | head -30
 The `--export-evidence` mode is a self-contained subcommand like `--dora` or
 `--trend`: it does not read or write `STATUS.md`, and it accepts exactly one
 `--root`.
+
+## Release-keyed audit pack (sdlc/08)
+
+`--export-evidence` is keyed on a DATE range. A buyer or an auditor does not ask for a date
+range — they ask **"show me everything behind release Y"**, which is a different graph:
+release -> the briefs in it -> the requirements those briefs satisfy -> the Evidence and
+review verdicts behind each one. `statusgen --export-audit-pack --release <tag>` walks that
+graph and reuses the existing bundler rather than forking it.
+
+The same honest framing applies without qualification: this pack, too, is an **input to** a
+compliance review, not a compliance artifact in itself. It is **not an audit opinion** and
+does not attest ground truth — everything [above](#bundle-format) about what the bundle does
+and does not claim holds for the release-keyed pack as well. This section states only what is
+DIFFERENT about it.
+
+**How the release resolves.** A tag is scoped by
+`docs/release-notes/<tag>.md` -- the existing release-notes convention, not a second
+register. That file already carries a release's story; this brief adds one OPTIONAL
+machine-readable frontmatter block naming its scope:
+
+```yaml
+---
+release: v1.2.3
+briefs: ["<stream>/<NN>", ...]
+requirements: ["REQ-<slug>", ...]
+---
+```
+
+Three states:
+
+- **no `docs/release-notes/<tag>.md` at all** -- the release is **not found**. A hard
+  refusal (`exit 1`, the message names the tag), never an empty-but-well-formed pack.
+- **the file exists with no frontmatter** (every release note written before this brief) --
+  a legitimate **release found, empty declared scope** state. The note IS the release; it
+  simply predates machine-readable scoping.
+- **the file exists WITH frontmatter that fails to parse** -- a real error
+  (could-not-check), never silently rounded to an empty scope.
+
+**What the pack carries, per requirement in scope.** One entry per `requirements:` id, each
+with its acceptance criteria, every backing brief's status and Evidence, that brief's PR
+number and review verdict (identity + date) -- read straight off the SAME Reviewed-cell
+convention every stream README already writes (`YYYY-MM-DD <runner> (approved PR #<N> @
+<sha>)`), never re-derived from a second source -- and a three-state verdict: `satisfied`,
+`partial`, or `could-not-check`. A requirement whose chain cannot be resolved is
+`could-not-check` **with the reason**; it is never omitted silently and never counted as
+satisfied. This detail is bundled as `audit-pack-report.json`, one more entry in
+`manifest.json`'s existing `files` array -- **the manifest is not forked.**
+
+**The single point of failure, named, and its second layer.** The `omitted` array is the one
+thing standing between an incomplete pack and an auditor who believes they hold the whole
+chain, and a collector can have a bug that drops something without ever populating it. The
+second, independent layer here is a **completeness comparison**: this pack's own
+requirement-\>brief walk is checked against a **fresh, separate** call into
+`--requirements-rollup` (sdlc/02) -- the SAME requirement register, walked by DIFFERENT code
+that reads the tree a second time. When the two disagree on how many resolved backing links a
+requirement has, **the pack refuses to write, naming both numbers**, rather than ship the
+disagreement quietly. An omission that slips past the collector's own bundling code still
+fails this comparison.
+
+**Reproducibility.** Same discipline as `--export-evidence`: pass `-generated` and two runs
+against the same tree produce a byte-identical tarball.
+
+**Cross-reference: not the [iso-9001](streams/iso-9001/README.md) stream's tool-validation
+pack.** [`docs/streams/iso-9001/`](streams/iso-9001/README.md) brief 01 emits the
+tool-VALIDATION evidence pack as a release asset -- proof that the checking tool itself works.
+This pack emits the compliance CONTENT behind a release -- the requirement/brief/Evidence
+chain. Related, adjacent, and never overlapping.
+
+```bash
+# Export the audit pack for a release named in docs/release-notes/<tag>.md
+cd statusgen && go run . --root .. --export-audit-pack --release v1.2.3 -o /tmp/audit-pack.tgz
+
+# Byte-reproducible
+cd statusgen && go run . --root .. --export-audit-pack --release v1.2.3 \
+  -o /tmp/audit-pack.tgz -generated 2026-08-03T00:00:00Z
+
+# Read the per-requirement chain
+tar -xzf /tmp/audit-pack.tgz -O audit-pack-report.json | jq '.requirements'
+```

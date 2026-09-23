@@ -203,7 +203,7 @@ func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir,
 	target, found := newestWorkpadCandidate(cands)
 
 	if dryRun {
-		obo, oerr := deskkit.OnBehalfOfLine("")
+		obo, oerr := deskkit.OnBehalfOfLine("", repo)
 		if oerr != nil {
 			return oerr
 		}
@@ -222,7 +222,7 @@ func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir,
 	}
 
 	// On-behalf-of trailer (multi-principal/01), appended to the POSTED/EDITED body only.
-	postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 	if oerr != nil {
 		return oerr
 	}

@@ -40,7 +40,10 @@
 // steps minted their own role token and succeeded. Now the claim step mints (or reuses)
 // the dispatching role's token through the same seam the model stamp uses and passes it in
 // the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
-// failure is the refusal, never a fall-back to whatever `gh` is logged in as.
+// failure is the refusal, never a fall-back to whatever `gh` is logged in as. The decision
+// gate's script shells out to the forge CLI too, so it is handed the SAME credential in
+// environment shape from that one resolution (issue 1146) — keyed on what the child does, not
+// on whether its name is literally `gh`.
 //
 // ON CONTENTION, NAME THE HOLDER — NEVER STEAL. A claim held by someone else exits 5 with
 // the existing holder printed. There is no inline steal: breaking a live claim is a
@@ -103,14 +106,21 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
                       refs/remotes/origin/main. Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
-                      one recreates the work where nobody asked for it.
+                      one recreates the work where nobody asked for it. The new worktree is
+                      then STAMPED with the DISPATCHED agent's own role commit identity
+                      (worker/reviewer/verifier, per --kit) worktree-scoped, so it never
+                      inherits the dispatching desk's identity and misattributes Evidence
+                      Runner cells; a --kit whose role has no roster identity is refused
+                      pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
   3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
                       human), runs the repo's tools/decision-issue.sh ensure so the human
                       has something concrete to decide. Idempotent by the script's own
-                      marker dedupe.
+                      marker dedupe. The script runs under the dispatching role's
+                      credential (GH_TOKEN in its environment, from the same resolution
+                      the claim uses), never the ambient login; with none it refuses.
   5 model-stamp       computes and validates the dispatcher's attestation labels
                       (dispatched-model:<slug>, dispatched-tier:<tier>) and applies them
                       when --pr is known. The stamp attests what the DISPATCHER launched;
@@ -168,6 +178,11 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
+	// Wire the phantom check's PR-list transport LIVE for the shipped binary (represented_live.go).
+	// Assigned here, in main(), not at package init: tests call run()/cmdDispatch directly and keep
+	// the nil default (the check stays inert unless a test wires its own recorded transport), while
+	// the real binary reads the repo's open+merged changes through the typed Forge seam.
+	listRepresentedPRs = liveRepresentedPRs
 	os.Exit(run(os.Args[1:]))
 }
 
