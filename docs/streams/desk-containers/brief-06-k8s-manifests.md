@@ -3,7 +3,7 @@ brief: assay:assay:desk-containers:06
 title: Kubernetes manifests for the five desks
 wave: 3
 depends: ["desk-containers/02", "desk-containers/03"]
-unblocks: []
+unblocks: ["desk-containers/12", "desk-containers/13", "desk-containers/14"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
