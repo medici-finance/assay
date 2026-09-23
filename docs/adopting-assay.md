@@ -1229,6 +1229,79 @@ binary is still what you prove, per the paragraph above.
 > **could-not-trust** state, not a pass: **rebuild the worktree's tools from the pinned commit,
 > or re-pin in a dedicated PR** — never read a stale-pin `deskboard` as an authoritative board.
 
+### Signing from-source Windows builds — opt-in Authenticode self-sign
+
+From-source Windows builds (`scripts/build-windows.ps1 desk-build` / `desk-install`, and the
+Channel D loop above) emit **unsigned** PE files into `%LOCALAPPDATA%\Assay\bin`. Host antivirus
+sometimes quarantines or blocks a freshly written unsigned Go PE on first run — both the
+inbound-scan tools that embed detector catalogs and, per a field report, ordinary desk-tool PEs
+flagged by an ML heuristic (`Heur.AdvML.D`, "Risk Found / access denied"). That is a
+false-positive class for unsigned binaries, **not** a claim the tools execute what they scan.
+
+`build-windows.ps1` carries an **opt-in** `-Sign` switch that Authenticode-signs the built PEs
+with a **local, self-signed code-signing certificate**. It is **off by default**: without `-Sign`
+the build is byte-for-byte the previous unsigned behaviour and requires no cert, no network, and
+no trust-store change. Signing runs **before** `desk-manifest` hashes the binaries, so
+`MANIFEST.sha256` matches the signed bytes on disk (signing changes the sha256).
+
+**One-time setup — create a code-signing cert and trust it on THIS machine only.** Use a
+**code-signing** (EKU `1.3.6.1.5.5.7.3.3`), *not* a TLS/server-auth, certificate. The example
+subject `CN=Assay local tools` is an example — pick your own; the script's last-resort lookup
+matches that subject, or use `-CertThumbprint` / `$env:ASSAY_CODESIGN_THUMBPRINT` for any subject.
+
+```powershell
+# 1. Create a code-signing self-signed cert in your OWN user store:
+$cert = New-SelfSignedCertificate `
+  -Subject 'CN=Assay local tools' -Type CodeSigningCert `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -KeyUsage DigitalSignature -KeyExportPolicy NonExportable
+
+# 2. Trust it on THIS machine only (per-user CurrentUser stores):
+$cer = Join-Path $env:TEMP 'assay-codesign.cer'
+Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+Import-Certificate -FilePath $cer -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
+Import-Certificate -FilePath $cer -CertStoreLocation Cert:\CurrentUser\Root | Out-Null  # Trusted Root (per-user)
+Remove-Item $cer
+
+# 3. Re-run the build after every rebuild, opting in:
+pwsh -File scripts/build-windows.ps1 desk-install -Sign
+```
+
+The cert is resolved, in order, from `-CertThumbprint`, `$env:ASSAY_CODESIGN_THUMBPRINT`, then the
+subject `CN=Assay local tools` in `Cert:\CurrentUser\My`. **If `-Sign` is set and no code-signing
+cert is found the build fails closed** with this same snippet — it never silently ships unsigned
+files past a `-Sign` request. (`desk-build` also removes-then-writes each `dist\*.exe`, so a
+sign → rebuild → re-sign loop works where `go build -o <existing.exe>` would refuse to overwrite a
+signed PE.)
+
+**Trust implications — read before importing to Trusted Root.**
+
+- Importing to `Cert:\CurrentUser\Root` makes **this user** trust anything the cert signs **as a
+  root CA**. Scope it tightly: **code-signing EKU only**, **CurrentUser** store, **this machine
+  only**. Keep the private key **NonExportable**; never copy it to another machine or the
+  machine-wide `LocalMachine` store.
+- **Removing the trust later:**
+
+  ```powershell
+  Get-ChildItem Cert:\CurrentUser\Root, Cert:\CurrentUser\TrustedPublisher, Cert:\CurrentUser\My `
+    | Where-Object { $_.Subject -eq 'CN=Assay local tools' } | Remove-Item
+  ```
+
+- **Honest limit.** A self-signed publisher **names the publisher**; it does **not** guarantee host
+  AV ignores the files, and it will **not** clear an ML/heuristic verdict such as `Heur.AdvML.D`.
+  The control that actually silences that heuristic is a **per-machine folder exception** on the
+  install dir (`%LOCALAPPDATA%\Assay\bin`, and `tools/desk/dist` if you run from `dist`) in your
+  endpoint product. Signing is still the right default for a local PE — it names the publisher —
+  but the exclusion is the thing that stops the quarantine. Do **not** use `chmod` as a Windows
+  trust fix (see the Windows adopters section).
+
+**Follow-on (not in this change): signing published release assets.** Authenticode-signing the
+published `statusgen-windows-*.exe`, `qualgen-windows-*.exe`, and the PE files inside
+`desk-tools-windows-*.tar.gz` **before** `checksums.txt` is written needs a **real (org or EV)
+code-signing certificate** held as a release secret and a change to `.github/workflows/release.yml`
+— both human acts. Until such a certificate exists the release assets stay **unsigned**; this
+section does not pretend otherwise, and no pin claims a signature that is not there.
+
 ## 3a. What the bundle delivers by itself — and what you still have to write
 
 The install leaves you with working skills and **two things that behave very differently**. Read

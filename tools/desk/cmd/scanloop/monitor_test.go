@@ -196,7 +196,7 @@ func TestFindMonitorScript_ExplicitMissingIsRefused(t *testing.T) {
 // baseline. Those repos are could-not-check for this pass; the OTHERS still drain, so the run must
 // carry the report rather than throw the whole cycle away.
 func TestRunMonitor_DegradedExitIsNotFatal(t *testing.T) {
-	rep, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), []string{"example-org/tracker"},
+	rep, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), []string{"example-org/tracker"}, nil,
 		func(string, []string, ...string) (string, int, error) { return busyPoll, 2, nil })
 	if err != nil {
 		t.Fatalf("exit 2 was treated as fatal: %v", err)
@@ -209,7 +209,7 @@ func TestRunMonitor_DegradedExitIsNotFatal(t *testing.T) {
 // TestRunMonitor_PreconditionFailureIsUnverifiable — exit 1 is the poller saying it could not run
 // at all.
 func TestRunMonitor_PreconditionFailureIsUnverifiable(t *testing.T) {
-	_, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), []string{"example-org/tracker"},
+	_, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), []string{"example-org/tracker"}, nil,
 		func(string, []string, ...string) (string, int, error) { return "inbound-monitor: jq not found", 1, nil })
 	if got := deskkit.ExitCodeOf(err); got != deskkit.ExitUnverifiable {
 		t.Fatalf("exit code = %d, want %d (unverifiable)", got, deskkit.ExitUnverifiable)
@@ -219,7 +219,7 @@ func TestRunMonitor_PreconditionFailureIsUnverifiable(t *testing.T) {
 // TestRunMonitor_EmptyScopeIsRefusedLoudly — an empty sweep is never reported as a clean, empty
 // board.
 func TestRunMonitor_EmptyScopeIsRefusedLoudly(t *testing.T) {
-	_, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), nil,
+	_, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), nil, nil,
 		func(string, []string, ...string) (string, int, error) { return "", 0, nil })
 	if err == nil {
 		t.Fatal("an empty scan scope produced a clean, empty sweep")
@@ -232,7 +232,7 @@ func TestRunMonitor_PassesTheStateDirThrough(t *testing.T) {
 	dir := t.TempDir()
 	var sawEnv []string
 	var sawArgs []string
-	_, err := RunMonitor("/x/inbound-monitor.sh", dir, []string{"example-org/tracker", "medici-finance/assay"},
+	_, err := RunMonitor("/x/inbound-monitor.sh", dir, []string{"example-org/tracker", "medici-finance/assay"}, nil,
 		func(_ string, env []string, args ...string) (string, int, error) {
 			sawEnv, sawArgs = env, args
 			return seededPoll, 0, nil

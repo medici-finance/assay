@@ -9,9 +9,17 @@
 // the forge dependency leaves.
 //
 // IT ADDS NO OPERATION TO Forge. Every read kind maps onto an operation the interface already
-// enumerates with both backends implemented and golden-pinned. The freeze rule (an added op needs
-// a consuming call site in the same change) is satisfied by CONSUMING the surface, not widening
-// it: `issues` is deskkit.Forge.ListOpenIssues and nothing else.
+// enumerates with both backends implemented. The freeze rule (an added op needs a consuming call
+// site in the same change) is satisfied by CONSUMING the surface, not widening it: `issues` is
+// deskkit.Forge.ListOpenIssues, `trust` is deskkit.Forge.IssueTrustEvents, `comments` is
+// deskkit.Forge.ListCommentsTyped on an ISSUE, and nothing else.
+//
+// TWO ADDRESSING SHAPES. `issues` is a per-REPO read (--repo). `trust` and `comments` are
+// per-ISSUE reads (--issue owner/name#N): they are what statusgen's --scan-issues trust gate and
+// un-block lane consume, one issue at a time, in place of the `gh api graphql` / `gh api
+// --paginate` shell-outs that 401'd under a replaced HOME. Each kind accepts exactly its own
+// address flag and refuses the other, so a caller can never ask a per-issue kind for a whole
+// repo or the other way round.
 //
 // WHY A NEW VERB RATHER THAN A deskboard SUBCOMMAND. deskboard's subcommands all COMPOSE a desk
 // view (prs, queue, health, next-up, throughput, stalled …) under the roster's scope and
@@ -34,7 +42,8 @@
 // could be read is the run unverifiable (exit 6).
 //
 // Exit codes (deskkit contract): 0 ok (including a partial read) · 3 disabled · 5 refused (bad
-// flags or an unknown kind) · 6 unverifiable (no repo could be read).
+// flags or an unknown kind) · 6 unverifiable (no repo — or, for a per-issue kind, no issue —
+// could be read).
 package main
 
 import (
@@ -43,8 +52,10 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -57,21 +68,30 @@ const envelopeSchema = 1
 
 // readKinds is the CLOSED set of reads this verb serves. It is a set of KINDS, never an address:
 // there is no --query, --endpoint or --path flag, and adding one would reopen exactly the
-// passthrough the forge-surface control forbids. Slice 1 lands `issues`; each further kind is
-// added with the call site that consumes it.
+// passthrough the forge-surface control forbids. Slice 1 landed `issues`; each further kind is
+// added with the call site that consumes it (`trust` and `comments`: statusgen --scan-issues'
+// trust gate and un-block lane).
 var readKinds = map[string]string{
-	"issues": "open issues per repo (deskkit.Forge.ListOpenIssues)",
+	"issues":   "open issues per repo (deskkit.Forge.ListOpenIssues)",
+	"trust":    "an issue's trust-gate content events, one bounded page (deskkit.Forge.IssueTrustEvents)",
+	"comments": "an issue's whole comment thread, oldest first (deskkit.Forge.ListCommentsTyped, issue kind)",
 }
+
+// perIssueKinds are the kinds addressed by --issue rather than --repo.
+var perIssueKinds = map[string]bool{"trust": true, "comments": true}
 
 var usage = `deskread — read-only forge reads on the seam, as JSON
 
 usage:
-  deskread issues --repo <owner/repo> [--repo <owner/repo> …]
+  deskread issues   --repo  <owner/repo>   [--repo  <owner/repo> …]
+  deskread trust    --issue <owner/repo#N> [--issue <owner/repo#N> …]
+  deskread comments --issue <owner/repo#N> [--issue <owner/repo#N> …]
   deskread --version
 
 flags:
-  --repo <owner/repo>  repeatable; ONE invocation serves the whole set, read concurrently
-  --max-parallel <N>   bounded concurrency for the set (default 6)
+  --repo <owner/repo>     repeatable (issues only); ONE invocation serves the whole set, read concurrently
+  --issue <owner/repo#N>  repeatable (trust, comments only); same set semantics, one entry per issue
+  --max-parallel <N>      bounded concurrency for the set (default 6)
 
 output: a versioned JSON envelope on stdout
 
@@ -79,9 +99,21 @@ output: a versioned JSON envelope on stdout
    "repos":   [{"repo": "o/n", "issues": [{"number": …, "state": "open", …}]}],
    "partial": [{"repo": "o/n", "reason": "…"}]}
 
-A repo that could not be read lands in "partial" with its reason and is ABSENT from "repos";
-the exit code is still 0. That is deliberate: a caller must be able to tell "no open issues"
-from "could not look". Exit 6 only when NO repo in the set could be read.
+  {"schema": 1, "kind": "trust",
+   "items":   [{"repo": "o/n", "number": 7, "trust": {"bodyEditedAt": "…", "complete": true,
+               "events": [{"authorLogin": …, "authorId": …, "createdAt": …, "editedAt": …}]}}],
+   "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
+
+  {"schema": 1, "kind": "comments",
+   "items":   [{"repo": "o/n", "number": 7, "comments": [{"authorLogin": …, "authorId": …,
+               "createdAt": …, "body": …}]}],
+   "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
+
+A repo (or issue) that could not be read lands in "partial" with its reason and is ABSENT from
+"repos" ("items"); the exit code is still 0. That is deliberate: a caller must be able to tell
+"no open issues" / "no comments" from "could not look". Exit 6 only when NOTHING in the set could
+be read. A trust read's "complete": false means the thread overflowed the single bounded page —
+the caller fails that issue closed; it is an answer, not a partial.
 
 identity: reads authenticate as this session's minted App role via the deskkit resolver. There
 is no ambient-credential fallback — a session with no resolvable role is refused, never silently
@@ -118,9 +150,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return deskkit.ExitRefused
 	}
 
-	repos, maxPar, ferr := parseFlags(args[1:])
+	repos, issues, maxPar, ferr := parseFlags(args[1:])
 	if ferr != nil {
 		fmt.Fprintf(stderr, "deskread: refused: %v\n", ferr)
+		return deskkit.ExitRefused
+	}
+	if perIssueKinds[kind] {
+		return runPerIssue(kind, repos, issues, maxPar, stdout, stderr)
+	}
+	if len(issues) > 0 {
+		fmt.Fprintf(stderr, "deskread: refused: --issue does not address the %q kind — it reads whole repos (--repo)\n", kind)
 		return deskkit.ExitRefused
 	}
 	if len(repos) == 0 {
@@ -155,43 +194,84 @@ func sortedKinds() []string {
 	return out
 }
 
-// parseFlags reads the repeatable --repo set and the concurrency bound. It is hand-rolled rather
-// than flag.FlagSet because --repo repeats, and it REFUSES an unknown flag rather than ignoring
-// it: a typo'd flag that silently does nothing is how a caller ends up reading a narrower set
-// than it asked for and never finds out.
-func parseFlags(args []string) (repos []string, maxParallel int, err error) {
+// issueTarget is one --issue address: a repo coordinate plus an issue number.
+type issueTarget struct {
+	Repo   string
+	Number int
+}
+
+// parseFlags reads the repeatable --repo and --issue sets and the concurrency bound. It is
+// hand-rolled rather than flag.FlagSet because both address flags repeat, and it REFUSES an
+// unknown flag rather than ignoring it: a typo'd flag that silently does nothing is how a caller
+// ends up reading a narrower set than it asked for and never finds out. Which address flag a
+// kind accepts is checked by the caller, against the kind.
+func parseFlags(args []string) (repos []string, issues []issueTarget, maxParallel int, err error) {
 	maxParallel = 6
 	seen := map[string]bool{}
+	seenIssue := map[issueTarget]bool{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--repo":
 			if i+1 >= len(args) {
-				return nil, 0, fmt.Errorf("--repo needs a value")
+				return nil, nil, 0, fmt.Errorf("--repo needs a value")
 			}
 			i++
 			r := strings.TrimSpace(args[i])
-			if _, _, ok := strings.Cut(r, "/"); !ok || strings.Count(r, "/") != 1 {
-				return nil, 0, fmt.Errorf("bad --repo %q — expected owner/name", r)
+			if !validRepoSlug(r) {
+				return nil, nil, 0, fmt.Errorf("bad --repo %q — expected owner/name", r)
 			}
 			if !seen[r] {
 				seen[r] = true
 				repos = append(repos, r)
 			}
+		case "--issue":
+			if i+1 >= len(args) {
+				return nil, nil, 0, fmt.Errorf("--issue needs a value")
+			}
+			i++
+			tgt, terr := parseIssueTarget(args[i])
+			if terr != nil {
+				return nil, nil, 0, terr
+			}
+			if !seenIssue[tgt] {
+				seenIssue[tgt] = true
+				issues = append(issues, tgt)
+			}
 		case "--max-parallel":
 			if i+1 >= len(args) {
-				return nil, 0, fmt.Errorf("--max-parallel needs a value")
+				return nil, nil, 0, fmt.Errorf("--max-parallel needs a value")
 			}
 			i++
 			n := 0
 			if _, serr := fmt.Sscanf(args[i], "%d", &n); serr != nil || n < 1 {
-				return nil, 0, fmt.Errorf("bad --max-parallel %q — expected a positive integer", args[i])
+				return nil, nil, 0, fmt.Errorf("bad --max-parallel %q — expected a positive integer", args[i])
 			}
 			maxParallel = n
 		default:
-			return nil, 0, fmt.Errorf("unknown flag %q", args[i])
+			return nil, nil, 0, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
-	return repos, maxParallel, nil
+	return repos, issues, maxParallel, nil
+}
+
+func validRepoSlug(r string) bool {
+	owner, name, ok := strings.Cut(r, "/")
+	return ok && owner != "" && name != "" && strings.Count(r, "/") == 1
+}
+
+// parseIssueTarget reads `owner/name#N`. N must be a positive decimal integer and the repo a
+// well-formed slug; anything else is refused, never half-parsed into a different address.
+func parseIssueTarget(v string) (issueTarget, error) {
+	v = strings.TrimSpace(v)
+	repo, num, ok := strings.Cut(v, "#")
+	if !ok || !validRepoSlug(repo) {
+		return issueTarget{}, fmt.Errorf("bad --issue %q — expected owner/name#N", v)
+	}
+	n, err := strconv.Atoi(num)
+	if err != nil || n < 1 || strconv.Itoa(n) != num {
+		return issueTarget{}, fmt.Errorf("bad --issue %q — the issue number must be a positive integer", v)
+	}
+	return issueTarget{Repo: repo, Number: n}, nil
 }
 
 // --- the JSON contract -------------------------------------------------------------------
@@ -297,4 +377,173 @@ func readIssues(repo string) ([]IssueJSON, error) {
 		})
 	}
 	return out, nil
+}
+
+// --- the per-issue kinds (trust, comments) --------------------------------------------------
+
+// ItemEnvelope is the per-issue kinds' contract. It is a SEPARATE shape from Envelope so the
+// `issues` kind's pinned output does not move: a per-issue read answers under "items", keyed by
+// repo AND number, and its "partial" entries carry the number too. Items and Partial are
+// disjoint by construction, exactly as Repos and Partial are.
+type ItemEnvelope struct {
+	Schema  int           `json:"schema"`
+	Kind    string        `json:"kind"`
+	Items   []ItemResult  `json:"items"`
+	Partial []PartialItem `json:"partial"`
+}
+
+// ItemResult is one issue that WAS read. Exactly one of Trust / Comments is set, by kind. An
+// empty Comments list is a real answer — "nobody has commented" — which is why it is a pointer:
+// it renders as [] when read, and is absent only on the other kind.
+type ItemResult struct {
+	Repo     string         `json:"repo"`
+	Number   int            `json:"number"`
+	Trust    *TrustJSON     `json:"trust,omitempty"`
+	Comments *[]CommentJSON `json:"comments,omitempty"`
+}
+
+// PartialItem is one issue that was NOT read, and why. It never carries a data field.
+type PartialItem struct {
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Reason string `json:"reason"`
+}
+
+// TrustJSON is deskkit.TrustPayload rendered for the wire. Times are RFC3339 with sub-second
+// precision kept (the blessing rule voids a blessing on a same-instant tie, so rounding here
+// could turn a void into a pass); a zero time renders as "".
+type TrustJSON struct {
+	BodyEditedAt string      `json:"bodyEditedAt,omitempty"`
+	Complete     bool        `json:"complete"`
+	Events       []EventJSON `json:"events"`
+}
+
+// EventJSON is one deskkit.ContentEvent. AuthorLogin is the rendered form the trust set expects
+// (an App re-suffixed "<slug>[bot]"); an empty login is a deleted account and stays empty.
+type EventJSON struct {
+	AuthorLogin string `json:"authorLogin,omitempty"`
+	AuthorID    int64  `json:"authorId,omitempty"`
+	CreatedAt   string `json:"createdAt"`
+	EditedAt    string `json:"editedAt,omitempty"`
+}
+
+// CommentJSON is one deskkit.Comment in the fields an issue-thread consumer reads: who, when,
+// and the body (the un-block lane checks it for the desk-automation marker).
+type CommentJSON struct {
+	AuthorLogin string `json:"authorLogin,omitempty"`
+	AuthorID    int64  `json:"authorId,omitempty"`
+	CreatedAt   string `json:"createdAt"`
+	Body        string `json:"body"`
+}
+
+func runPerIssue(kind string, repos []string, issues []issueTarget, maxPar int, stdout, stderr io.Writer) int {
+	if len(repos) > 0 {
+		fmt.Fprintf(stderr, "deskread: refused: --repo does not address the %q kind — it reads one issue at a time (--issue owner/name#N)\n", kind)
+		return deskkit.ExitRefused
+	}
+	if len(issues) == 0 {
+		fmt.Fprintf(stderr, "deskread: refused: no --issue given — an empty set is never reported as an empty result\n")
+		return deskkit.ExitRefused
+	}
+	env := readItems(kind, issues, maxPar)
+	enc, err := json.MarshalIndent(env, "", "  ")
+	if err != nil {
+		fmt.Fprintf(stderr, "deskread: could-not-check: rendering the envelope failed: %v\n", err)
+		return deskkit.ExitUnverifiable
+	}
+	fmt.Fprintln(stdout, string(enc))
+	if len(env.Items) == 0 {
+		fmt.Fprintf(stderr, "deskread: could-not-check: no issue in the set of %d could be read\n", len(issues))
+		return deskkit.ExitUnverifiable
+	}
+	return deskkit.ExitOK
+}
+
+// readItems performs one per-issue kind across the set concurrently, bounded by maxParallel, and
+// re-sorts into the caller's order — the same determinism readSet keeps.
+func readItems(kind string, issues []issueTarget, maxParallel int) ItemEnvelope {
+	type slot struct {
+		res  *ItemResult
+		part *PartialItem
+	}
+	slots := make([]slot, len(issues))
+	sem := make(chan struct{}, maxParallel)
+	var wg sync.WaitGroup
+	for i, tgt := range issues {
+		wg.Add(1)
+		go func(i int, tgt issueTarget) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			res, err := readItem(kind, tgt)
+			if err != nil {
+				slots[i].part = &PartialItem{Repo: tgt.Repo, Number: tgt.Number, Reason: err.Error()}
+				return
+			}
+			slots[i].res = res
+		}(i, tgt)
+	}
+	wg.Wait()
+
+	env := ItemEnvelope{Schema: envelopeSchema, Kind: kind, Items: []ItemResult{}, Partial: []PartialItem{}}
+	for _, s := range slots {
+		switch {
+		case s.res != nil:
+			env.Items = append(env.Items, *s.res)
+		case s.part != nil:
+			env.Partial = append(env.Partial, *s.part)
+		}
+	}
+	return env
+}
+
+// readItem is ONE enumerated operation per kind. No client-side filtering: a read failure is an
+// error (→ partial), never an empty answer.
+func readItem(kind string, tgt issueTarget) (*ItemResult, error) {
+	f, fr, err := forgeFor(tgt.Repo)
+	if err != nil {
+		return nil, err
+	}
+	res := &ItemResult{Repo: tgt.Repo, Number: tgt.Number}
+	switch kind {
+	case "trust":
+		tp, terr := f.IssueTrustEvents(fr, tgt.Number)
+		if terr != nil {
+			return nil, terr
+		}
+		if tp == nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge returned no trust payload for %s#%d", tgt.Repo, tgt.Number), nil)
+		}
+		tj := &TrustJSON{BodyEditedAt: wireTime(tp.BodyEdited), Complete: tp.Complete, Events: []EventJSON{}}
+		for _, e := range tp.Events {
+			tj.Events = append(tj.Events, EventJSON{
+				AuthorLogin: e.Author, AuthorID: e.AuthorID,
+				CreatedAt: wireTime(e.CreatedAt), EditedAt: wireTime(e.EditedAt),
+			})
+		}
+		res.Trust = tj
+	case "comments":
+		cs, cerr := f.ListCommentsTyped(fr, tgt.Number, deskkit.TargetIssue)
+		if cerr != nil {
+			return nil, cerr
+		}
+		out := make([]CommentJSON, 0, len(cs))
+		for _, c := range cs {
+			out = append(out, CommentJSON{
+				AuthorLogin: c.Author.Login, AuthorID: c.Author.ID,
+				CreatedAt: c.CreatedAt, Body: c.Body,
+			})
+		}
+		res.Comments = &out
+	default:
+		return nil, deskkit.Refused("unknown per-issue kind " + kind)
+	}
+	return res, nil
+}
+
+func wireTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339Nano)
 }
