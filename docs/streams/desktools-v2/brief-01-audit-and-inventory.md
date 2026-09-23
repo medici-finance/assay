@@ -131,16 +131,16 @@ Run against merged origin/main SHA 50989dbc58f2cd95276dc8fe27314d3a2e15e3f8, fro
 worktree cut detached at that head. Confirmed by both a manual run of each row and by
 statusgen verifyrun (v1.0.26; all 8 rows pass).
 
-| # | Command | Expected | Observed (exit + key output) | Date Runner |
-|---|---------|----------|------------------------------|-------------|
-| 1 | test -f docs/streams/desktools-v2/inventory.md; echo rc=$? | rc=0 (deliverable exists) | exit 0; printed rc=0 | 2026-09-23 opus-5.5-verifier |
-| 2 | grep -cE -e 'file:line' -e 'reach-around shape' inventory.md | exit 0; count >= 1 | exit 0; count 11 | 2026-09-23 opus-5.5-verifier |
-| 3 | loop grep -qF each of #1145 #1146 #628 #1019 #1201 #884 #1223 | exit 0; prints all-present | exit 0; printed all-present (no MISSING) | 2026-09-23 opus-5.5-verifier |
-| 4 | grep -c 'Reconciled:' inventory.md | exit 0; count >= 1 | exit 0; count 1 | 2026-09-23 opus-5.5-verifier |
-| 5 | tree-derived: each non-test statusgen gh-shelling file appears in inventory | exit 0; prints all-present | exit 0; printed all-present (15 files, none MISSING) | 2026-09-23 opus-5.5-verifier |
-| 6 | dereference every cited desk/statusgen file:line to a real line | exit 0; prints ok | exit 0; printed ok (no NOFILE/SHORT) | 2026-09-23 opus-5.5-verifier |
-| 7 | grep -c 'forge-neutral/18' inventory.md | exit 0; count >= 1 | exit 0; count 29 | 2026-09-23 opus-5.5-verifier |
-| 8 | grep -c '^## Outward writes' inventory.md | exit 0; count >= 1 | exit 0; count 1 | 2026-09-23 opus-5.5-verifier |
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | test -f docs/streams/desktools-v2/inventory.md; echo rc=$? | rc=0 (deliverable exists) | exit 0; printed rc=0 | 2026-09-23 | opus-5.5-verifier |
+| 2 | grep -cE -e 'file:line' -e 'reach-around shape' inventory.md | exit 0; count >= 1 | exit 0; count 11 | 2026-09-23 | opus-5.5-verifier |
+| 3 | loop grep -qF each of #1145 #1146 #628 #1019 #1201 #884 #1223 | exit 0; prints all-present | exit 0; printed all-present (no MISSING) | 2026-09-23 | opus-5.5-verifier |
+| 4 | grep -c 'Reconciled:' inventory.md | exit 0; count >= 1 | exit 0; count 1 | 2026-09-23 | opus-5.5-verifier |
+| 5 | tree-derived: each non-test statusgen gh-shelling file appears in inventory | exit 0; prints all-present | exit 0; printed all-present (15 files, none MISSING) | 2026-09-23 | opus-5.5-verifier |
+| 6 | dereference every cited desk/statusgen file:line to a real line | exit 0; prints ok | exit 0; printed ok (no NOFILE/SHORT) | 2026-09-23 | opus-5.5-verifier |
+| 7 | grep -c 'forge-neutral/18' inventory.md | exit 0; count >= 1 | exit 0; count 29 | 2026-09-23 | opus-5.5-verifier |
+| 8 | grep -c '^## Outward writes' inventory.md | exit 0; count >= 1 | exit 0; count 1 | 2026-09-23 | opus-5.5-verifier |
 
 RISK-VALUE: N/A — enumeration over the diff scope (the inventory commit c128b3e00: a new
 markdown inventory doc, a one-line stream-README status flip, and a changelog fragment; no code)
