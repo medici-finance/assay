@@ -1103,6 +1103,155 @@ func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
 		kind, strings.Join(HardeningReadKinds(), ", ")), nil)
 }
 
+// --- Run and gate-approval ops (RunWorkflow / ApproveGate / RunStatus) ---------------------
+//
+// These three ops start a CI run and clear a deployment gate on it. They were a human action
+// until forge-neutral/14: GitHub ships ONE permission (`actions: write`) for dispatching a
+// workflow and approving a pending deployment, and the same permission also cancels runs,
+// deletes run logs and disables workflows repo-wide, so no desk App is safely grantable it.
+// The ops therefore run ONLY under the per-repo run credential the roster binds
+// (ResolveRunCredential, runcredential.go) — never a desk role's App. Their one consumer is
+// cmd/deskrun (freeze rule: the ops land with that call site).
+//
+// `repository_dispatch` is deliberately NOT a trigger here: it fires with `contents: write`,
+// a scope most desk Apps already hold, which is a far wider "who can start a release"
+// surface than a roster-bound, single-purpose credential. No op in this seam posts to the
+// repository dispatches endpoint.
+
+// RunWorkflowInput is RunWorkflow's request.
+type RunWorkflowInput struct {
+	// Workflow names the workflow to run. On GitHub it is the workflow FILE name under
+	// .github/workflows (e.g. "release.yml") or its numeric id — a bare name, never a path.
+	// On GitLab a project has exactly one pipeline definition, so it is empty or the literal
+	// ".gitlab-ci.yml"; anything else is refused rather than silently ignored.
+	Workflow string
+	// Ref is the branch or tag the run executes on ("main", "v1.2.0").
+	Ref string
+	// Inputs are the workflow_dispatch inputs (GitHub) / pipeline variables (GitLab).
+	Inputs map[string]string
+	// Actor, when non-empty, is the login the forge records as the run's actor (a GitHub App
+	// renders as "<slug>[bot]"). GitHub's dispatch returns no run id, so the created run is
+	// resolved by a follow-up list read; the actor narrows that read. Empty means the read is
+	// narrowed by workflow, event, ref and the pre-dispatch time floor only — the ambiguity
+	// refusal still stands. GitLab returns the pipeline directly and does not read it.
+	Actor string
+}
+
+// RunRef is an OPAQUE handle on one run (a GitHub Actions workflow run ↔ a GitLab
+// pipeline). ID is the forge's own run/pipeline id, URL its human-facing page. A caller
+// never constructs or parses one; it passes back what RunWorkflow returned (or the id a
+// human read off the forge, which the backend validates as a bare id before any request).
+type RunRef struct {
+	ID  string
+	URL string `json:",omitempty"`
+}
+
+// GateShape names HOW a deployment gate is cleared. GitHub has one shape (a deployment
+// environment with required reviewers); GitLab has two with no unifying endpoint, and which
+// one a project uses is a property of that project's CI configuration — so the shape is
+// STATED by the caller (from the roster's run-credential binding), never inferred.
+type GateShape string
+
+const (
+	// GateShapeEnvironment is a protected/deployment environment approval: GitHub's
+	// pending_deployments, GitLab's protected-environment deployment approval.
+	GateShapeEnvironment GateShape = "environment"
+	// GateShapeManualJob is a GitLab `when: manual` job played on the pipeline. GitHub has
+	// no such shape and refuses it by name.
+	GateShapeManualJob GateShape = "manual-job"
+)
+
+// ParseGateShape validates a stated gate shape. Empty is returned as empty (the caller did
+// not state one); an unknown value is a could-not-check refusal naming the vocabulary.
+func ParseGateShape(s string) (GateShape, error) {
+	switch GateShape(strings.TrimSpace(s)) {
+	case "":
+		return "", nil
+	case GateShapeEnvironment:
+		return GateShapeEnvironment, nil
+	case GateShapeManualJob:
+		return GateShapeManualJob, nil
+	}
+	return "", Unverifiable(fmt.Sprintf("could-not-check: %q is not a gate shape — the shapes are %q and %q",
+		s, GateShapeEnvironment, GateShapeManualJob), nil)
+}
+
+// ApproveGateInput is ApproveGate's request: the gate's NAME (a GitHub environment name, a
+// GitLab environment name or manual job name) and its SHAPE.
+type ApproveGateInput struct {
+	Gate  string
+	Shape GateShape
+}
+
+// Forge-neutral run lifecycle vocabulary (RunState.Status).
+const (
+	RunStatusQueued     = "queued"
+	RunStatusInProgress = "in_progress"
+	RunStatusWaiting    = "waiting"
+	RunStatusCompleted  = "completed"
+)
+
+// RunState is a run's lifecycle in the forge-neutral vocabulary. Status is one of the
+// RunStatus* values; Conclusion is empty until Status is completed, then the forge's
+// outcome (success, failure, cancelled, skipped, and on GitHub its further values such as
+// timed_out or neutral).
+type RunState struct {
+	Status     string
+	Conclusion string `json:",omitempty"`
+	URL        string `json:",omitempty"`
+}
+
+// ValidateRunID checks a RunRef's id is a bare positive integer before it is interpolated
+// into any request path — the ValidateRefPath shape applied to a run id. A caller-supplied id
+// that is anything else is a could-not-check refusal with zero requests.
+func ValidateRunID(run RunRef) (int64, error) {
+	id := strings.TrimSpace(run.ID)
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || n <= 0 || strconv.FormatInt(n, 10) != id {
+		return 0, Unverifiable(fmt.Sprintf("could-not-check: run id %q is not a bare positive integer — "+
+			"a run is addressed by the forge's own id, never a path", StripControl(run.ID)), nil)
+	}
+	return n, nil
+}
+
+// validateRunRef checks a run's branch/tag name. It accepts a short name ("main",
+// "release/1.2") or a fully qualified "refs/heads/…"/"refs/tags/…" and returns the SHORT
+// name. Every component passes the same checks ValidateRefPath applies, so a ref cannot
+// reshape the request it is placed into.
+func validateRunRef(ref string) (string, error) {
+	r := strings.TrimSpace(ref)
+	r = strings.TrimPrefix(r, "refs/heads/")
+	r = strings.TrimPrefix(r, "refs/tags/")
+	if r == "" {
+		return "", Unverifiable("could-not-check: a run needs a branch or tag to run on — the ref is empty", nil)
+	}
+	for _, p := range strings.Split(r, "/") {
+		if err := validateRefComponent(ref, p); err != nil {
+			return "", err
+		}
+	}
+	return r, nil
+}
+
+// validateRunInputs refuses an empty input/variable name. Values are free text.
+func validateRunInputs(in map[string]string) error {
+	for k := range in {
+		if strings.TrimSpace(k) == "" || strings.ContainsAny(k, " =[]\n\r\t") {
+			return Unverifiable(fmt.Sprintf("could-not-check: run input name %q is not a plain name", StripControl(k)), nil)
+		}
+	}
+	return nil
+}
+
+// validateGateName refuses an empty or control-bearing gate name before any request.
+func validateGateName(gate string) (string, error) {
+	g := strings.TrimSpace(gate)
+	if g == "" || StripControl(g) != g {
+		return "", Unverifiable(fmt.Sprintf("could-not-check: gate name %q is empty or not printable", StripControl(gate)), nil)
+	}
+	return g, nil
+}
+
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
 // operations a shipping tool consumes (stream spec §6), reconciled against the stream's
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
@@ -1461,6 +1610,30 @@ type Forge interface {
 	// to address an arbitrary endpoint. Deleting a ref that is already gone is reported as
 	// a not-found error the caller may treat as a no-op — the seam does not decide that.
 	DeleteRef(repo ForgeRepo, ref string) error
+
+	// --- Run and gate-approval (forge-neutral/14; consumer: cmd/deskrun) ---
+
+	// RunWorkflow starts one run of a workflow on a ref and returns the run it created.
+	// GitHub: `POST …/actions/workflows/{workflow}/dispatches` answers 204 with NO run id, so
+	// the backend resolves the created run by a follow-up list read narrowed by workflow,
+	// event, ref, actor and a time floor taken BEFORE the dispatch call. More than one run
+	// matching is a could-not-check REFUSAL naming the ambiguity — never a newest-first
+	// guess, because a caller that resolved the wrong run would then approve or read a run it
+	// did not start. GitLab: `POST /projects/:id/trigger/pipeline` authenticated by the
+	// PIPELINE TRIGGER TOKEN the backend holds (a credential that can start pipelines and
+	// nothing else) — the narrow default; the pipeline comes back in the response.
+	RunWorkflow(repo ForgeRepo, in RunWorkflowInput) (RunRef, error)
+	// ApproveGate clears ONE named deployment gate on a run. The gate is resolved against
+	// what the run is actually waiting on; a name matching none of it is a could-not-check
+	// REFUSAL naming the run and the gate, never an approval of whatever happened to be
+	// pending. GitHub: pending_deployments read, then approve that environment's id. GitLab:
+	// dispatches on the STATED shape — a manual job played, or a blocked protected-environment
+	// deployment approved — and never falls over to the other shape.
+	ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error
+	// RunStatus reads one run's lifecycle in the forge-neutral vocabulary (RunState). GitHub:
+	// `GET …/actions/runs/{id}`; GitLab: `GET /projects/:id/pipelines/:id`. A state the
+	// mapping does not know is could-not-check, never rounded to a known one.
+	RunStatus(repo ForgeRepo, run RunRef) (*RunState, error)
 
 	// --- Identity / transport ---
 

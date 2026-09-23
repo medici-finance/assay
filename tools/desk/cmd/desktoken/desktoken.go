@@ -40,6 +40,11 @@ var validRoles = map[string]bool{
 	"intake-loop": true,
 	"cell-issues": true,
 	"auditor":     true,
+	// release-runner (forge-neutral/14) is the dedicated run credential deskrun starts
+	// workflow runs and clears deployment gates with — its own App on GitHub (it needs
+	// actions: write, which no desk role's App may carry), a pipeline trigger token on
+	// GitLab. Like cell-issues it is selectable only by name, never a loop's default.
+	"release-runner": true,
 }
 
 const (

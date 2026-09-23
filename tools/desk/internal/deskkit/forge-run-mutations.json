@@ -1,0 +1,53 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestForgeGithubGolden|TestForgeGitlabGolden'",
+  "control": {
+    "name": "CONTROL — the GitHub dispatch body loses its ref",
+    "file": "internal/deskkit/forge_github.go",
+    "old": "\tbody := map[string]any{\"ref\": ref}",
+    "new": "\tbody := map[string]any{}"
+  },
+  "mutations": [
+    {
+      "name": "Verify row 5 — an ambiguous run correlation picks the newest run instead of refusing",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif len(hits) > 1 || page.TotalCount > len(page.WorkflowRuns) && len(hits) > 0 {",
+      "new": "\t\tif len(hits) > 1 {\n\t\t\treturn RunRef{ID: strconv.FormatInt(hits[0].ID, 10), URL: hits[0].HTMLURL}, nil\n\t\t}\n\t\tif false {"
+    },
+    {
+      "name": "Verify row 6 — an unmatched gate approves whichever environment is pending",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif len(match) != 1 {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: run %d on %s is not waiting on a gate named %q",
+      "new": "\tif len(match) == 0 && len(pending) > 0 {\n\t\tmatch = pending[:1]\n\t}\n\tif len(match) != 1 {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: run %d on %s is not waiting on a gate named %q"
+    },
+    {
+      "name": "the correlation floor is taken AFTER the dispatch (a slow list read can miss the run it created)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tfloor := g.clock().UTC().Truncate(time.Second)\n\tbody := map[string]any{\"ref\": ref}",
+      "new": "\tfloor := g.clock().UTC().Truncate(time.Second).Add(10 * time.Second)\n\tbody := map[string]any{\"ref\": ref}"
+    },
+    {
+      "name": "the GitLab trigger call presents the trigger token as a PRIVATE-TOKEN access token",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)",
+      "new": "\tcl, err := gitlab.NewClient(g.Token, opts...)"
+    },
+    {
+      "name": "GitLab ApproveGate with no declared shape guesses the manual-job shape",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase \"\":\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: GitLab has two gate shapes",
+      "new": "\tcase \"\":\n\t\tin.Shape = GateShapeManualJob\n\tcase \"__never__\":\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: GitLab has two gate shapes"
+    },
+    {
+      "name": "a human-bound binding resolves as the release-runner role",
+      "file": "internal/deskkit/runcredential.go",
+      "old": "\tif cred.Human != \"\" {",
+      "new": "\tif false && cred.Human != \"\" {"
+    },
+    {
+      "name": "the release-runner App may be a desk role's App (the repurposing refusal is disarmed)",
+      "file": "internal/deskkit/runcredential.go",
+      "old": "\t\t\tif role != ReleaseRunnerRole && strings.EqualFold(other, slug) {",
+      "new": "\t\t\tif false && role != ReleaseRunnerRole && strings.EqualFold(other, slug) {"
+    }
+  ]
+}

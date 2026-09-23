@@ -445,6 +445,11 @@ func TestForgeKindForRepoRemoteUnresolvableIsCouldNotCheck(t *testing.T) {
 func TestRosterKnownKeySet(t *testing.T) {
 	roster := goldenRoster()
 	roster[EnvRepoForges] = "example-org/tracker=github,example-org/gitlab-pilot=gitlab"
+	// forge-neutral/14 (Verify row 10): the run-credential key and the release-runner role
+	// binding must both load CLEAN — an unregistered ASSAY_ key fails the whole roster closed.
+	roster[EnvRunCredentials] = "example-org/tracker=release-runner,example-org/gitlab-pilot=release-runner+manual-job," +
+		"example-org/handheld=human:ada"
+	roster[EnvTrustedBotSlugs] += ",release-runner=example-release-runner-app:300000009"
 	withRoster(t, roster)
 
 	cfg := EffectiveConfig()
@@ -457,6 +462,30 @@ func TestRosterKnownKeySet(t *testing.T) {
 	}
 	if got := cfg.RepoForges["example-org/gitlab-pilot"]; got != "gitlab" {
 		t.Fatalf("RepoForges[%q] = %q, want %q", "example-org/gitlab-pilot", got, "gitlab")
+	}
+	found := false
+	for _, k := range knownRosterKeys() {
+		if k == EnvRunCredentials {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("%s is not in knownRosterKeys() — a roster carrying it refuses the whole configuration", EnvRunCredentials)
+	}
+	if ext := cfg.Ext["run-credentials"]; ext.Status != ExtOK {
+		t.Fatalf("cfg.Ext[run-credentials] = %+v, want %q", ext, ExtOK)
+	}
+	if got := cfg.RunCredentials["example-org/tracker"]; got.Role != ReleaseRunnerRole || got.Human != "" {
+		t.Fatalf("RunCredentials[example-org/tracker] = %+v, want the %s role", got, ReleaseRunnerRole)
+	}
+	if got := cfg.RunCredentials["example-org/gitlab-pilot"]; got.GateShape != GateShapeManualJob {
+		t.Fatalf("RunCredentials[example-org/gitlab-pilot] = %+v, want gate shape %q", got, GateShapeManualJob)
+	}
+	if got := cfg.RunCredentials["example-org/handheld"]; got.Human != "ada" || got.Role != "" {
+		t.Fatalf("RunCredentials[example-org/handheld] = %+v, want human ada", got)
+	}
+	if slug := cfg.RoleBots[ReleaseRunnerRole]; slug != "example-release-runner-app" {
+		t.Fatalf("RoleBots[%s] = %q — the release-runner role binding did not register", ReleaseRunnerRole, slug)
 	}
 }
 

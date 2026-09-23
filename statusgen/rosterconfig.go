@@ -356,6 +356,17 @@ const (
 	// deskkit/rosterconfig.go's EnvReviewerVendor / EnvVerifierVendor.
 	scanEnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
 	scanEnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
+
+	// scanEnvRunCredentials (ASSAY_RUN_CREDENTIALS) is a DESK-only roster value
+	// (forge-neutral/14): the per-repo run-credential binding cmd/deskrun reads to
+	// decide who may start a workflow run or clear a deployment gate — a
+	// `human:<name>` token (a deliberate refusal state) or the `release-runner`
+	// role. statusgen consumes it in no form — but the two readers share one
+	// ~/.config/assay/roster.env, and an unknown ASSAY_ key REFUSES the whole
+	// configuration, so it must be RECOGNISED here or a roster that binds a run
+	// credential collapses statusgen's whole trust configuration. Recognised, not
+	// applied. KEEP IN SYNC with deskkit/rosterconfig.go's EnvRunCredentials.
+	scanEnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -404,6 +415,9 @@ func scanKnownRosterKeys() []string {
 		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
 		// they share this roster.env, so statusgen must not fail closed on either.
 		scanEnvReviewerVendor, scanEnvVerifierVendor,
+		// DESK-only, recognised-not-applied (forge-neutral/14): cmd/deskrun's
+		// per-repo run-credential binding.
+		scanEnvRunCredentials,
 	}
 }
 

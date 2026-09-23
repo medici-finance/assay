@@ -164,6 +164,14 @@ type glServer struct {
 	// answers 403.
 	pushRule       any
 	pushRuleStatus int
+	// forge-neutral/14's run and gate-approval fixtures: triggerPipeline is the trigger
+	// endpoint's pipeline response (RunWorkflow), pipeline the single-pipeline read
+	// (RunStatus), and deployments the project deployments LIST (ApproveGate's environment
+	// shape). The manual-job shape reads the existing `jobs` fixture; the play and approval
+	// POSTs need no fixture.
+	triggerPipeline map[string]any
+	pipeline        map[string]any
+	deployments     []map[string]any
 	// forceStatus maps an escaped-path suffix to the HTTP status to return instead.
 	forceStatus map[string]int
 }
@@ -215,6 +223,12 @@ var (
 	lProtBranches = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_branches$`)
 	lProtTags     = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_tags$`)
 	lPushRule     = regexp.MustCompile(`^/api/v4/projects/[^/]+/push_rule$`)
+	// forge-neutral/14's run and gate-approval routes.
+	lTrigger     = regexp.MustCompile(`^/api/v4/projects/[^/]+/trigger/pipeline$`)
+	lPipeline1   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines/[0-9]+$`)
+	lJobPlay     = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/[0-9]+/play$`)
+	lDeployments = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments$`)
+	lDeployApprv = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments/[0-9]+/approval$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -437,6 +451,18 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.commit)
 	case r.Method == http.MethodGet && lPipelineJobs.MatchString(path):
 		enc(s.jobs)
+	case r.Method == http.MethodPost && lTrigger.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
+		enc(s.triggerPipeline)
+	case r.Method == http.MethodGet && lPipeline1.MatchString(path):
+		enc(s.pipeline)
+	case r.Method == http.MethodPost && lJobPlay.MatchString(path):
+		enc(map[string]any{"id": 71, "name": "deploy-production", "status": "pending"})
+	case r.Method == http.MethodGet && lDeployments.MatchString(path):
+		enc(s.deployments)
+	case r.Method == http.MethodPost && lDeployApprv.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
+		enc(map[string]any{"status": "approved"})
 	case r.Method == http.MethodGet && lPipelines.MatchString(path):
 		// Served BY SHA, as the real endpoint is: only a pipeline stamped with the requested
 		// sha comes back, so a fixture can never answer for a head it does not belong to.
@@ -2390,6 +2416,96 @@ func glCases() []glCase {
 			name: "required_status_checks_refuses_empty_branch", method: "RequiredStatusChecks",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "") },
+		},
+		{
+			// forge-neutral/14 RunWorkflow: ONE trigger POST, the trigger token travelling in the
+			// request's own `token` field and every input as a pipeline variable. The pipeline
+			// comes back in the response, so there is no correlation read.
+			name: "run_workflow", method: "RunWorkflow",
+			setup: func(s *glServer) {
+				s.triggerPipeline = map[string]any{"id": 9001, "status": "created",
+					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.RunWorkflow(glRepo, RunWorkflowInput{Ref: "main",
+					Inputs: map[string]string{"VERSION": "v1.2.3", "DRY_RUN": "true"}})
+			},
+		},
+		{
+			// A GitHub-shaped workflow file name is refused by name with ZERO requests — never a
+			// silent GitHub-shaped default on a GitLab project.
+			name: "run_workflow_refuses_github_workflow", method: "RunWorkflow",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.RunWorkflow(glRepo, RunWorkflowInput{Workflow: "release.yml", Ref: "main"})
+			},
+		},
+		{
+			// Manual-job shape: the pipeline's manual jobs are read and the ONE named job played.
+			name: "approve_gate_manual_job", method: "ApproveGate",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{
+					{"id": 70, "name": "deploy-staging", "status": "manual"},
+					{"id": 71, "name": "deploy-production", "status": "manual"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"},
+					ApproveGateInput{Gate: "deploy-production", Shape: GateShapeManualJob})
+			},
+		},
+		{
+			// Environment shape: the blocked deployments to the named environment are read, the
+			// one on THIS pipeline is approved; a blocked deployment from another pipeline is not.
+			name: "approve_gate_environment", method: "ApproveGate",
+			setup: func(s *glServer) {
+				s.deployments = []map[string]any{
+					{"id": 300, "status": "blocked", "environment": map[string]any{"name": "production"},
+						"deployable": map[string]any{"pipeline": map[string]any{"id": 8000}}},
+					{"id": 301, "status": "blocked", "environment": map[string]any{"name": "production"},
+						"deployable": map[string]any{"pipeline": map[string]any{"id": 9001}}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"},
+					ApproveGateInput{Gate: "production", Shape: GateShapeEnvironment})
+			},
+		},
+		{
+			// No declared shape: refused with ZERO requests rather than guessing one.
+			name: "approve_gate_refuses_undeclared_shape", method: "ApproveGate",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"}, ApproveGateInput{Gate: "production"})
+			},
+		},
+		{
+			// The declared manual-job shape finds no manual job of that name: refused after the
+			// read, and the other shape is NOT tried (no deployments read, no play).
+			name: "approve_gate_manual_job_unmatched", method: "ApproveGate",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{{"id": 70, "name": "deploy-staging", "status": "manual"}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"},
+					ApproveGateInput{Gate: "deploy-production", Shape: GateShapeManualJob})
+			},
+		},
+		{
+			name: "run_status", method: "RunStatus",
+			setup: func(s *glServer) {
+				s.pipeline = map[string]any{"id": 9001, "status": "manual",
+					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RunStatus(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			name: "run_status_failed", method: "RunStatus",
+			setup: func(s *glServer) {
+				s.pipeline = map[string]any{"id": 9001, "status": "failed",
+					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RunStatus(glRepo, RunRef{ID: "9001"}) },
 		},
 	}
 }
