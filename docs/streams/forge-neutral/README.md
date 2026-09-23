@@ -226,7 +226,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
 | 19 | [Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs](brief-19-human-only-surfaces-server-side.md) | 1 | M | implemented | — | — |
 | 20 | [Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs](brief-20-claim-store-measurements.md) | 1 | M | implemented | — | — |
-| 21 | [Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back](brief-21-claim-store-seam-and-resolver.md) | 2 | M | todo | — | — |
+| 21 | [Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back](brief-21-claim-store-seam-and-resolver.md) | 2 | M | implemented | — | — |
 | 22 | [Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store](brief-22-claim-readers-onto-the-seam.md) | 3 | M | todo | — | — |
 | 23 | [File claim store — claims in a directory on the cell's host, with the single-host declaration and the container, filesystem and mixed-store guards](brief-23-file-claim-store-and-guards.md) | 3 | M | todo | — | — |
 | 24 | [Served claim store — the same directory store behind a small HTTP serve mode, member-initiated, holding no forge credential](brief-24-served-claim-store.md) | 4 | L | todo | — | — |
