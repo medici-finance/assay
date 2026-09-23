@@ -2,9 +2,12 @@
 // roster-bound RUN CREDENTIAL (forge-neutral brief 14).
 //
 // WHY THIS EXISTS. Starting a release run or approving a gated deployment used to be done
-// with whoever's ambient forge CLI happened to be logged in, because GitHub grants both
-// through ONE permission (`actions: write`) that also cancels runs, deletes run logs and
-// disables workflows repo-wide — so no desk App can safely hold it, and no desk verb existed.
+// with whoever's ambient forge CLI happened to be logged in. On GitHub, dispatching needs
+// `Actions: write`, which also cancels runs, deletes run logs and disables workflows
+// repo-wide — so no desk App can safely hold it, and no desk verb existed. Approving a pending
+// deployment needs `Deployments: write` AND a required reviewer, which is a user or team, never
+// an App: under the release-runner App, `deskrun approve` on GitHub is therefore a documented
+// could-not-check (the forge reports the App may not approve, and nothing is written).
 // deskrun is that verb, and the credential it acts under is decided by the roster, per repo,
 // never by the session:
 //
@@ -48,7 +51,8 @@ dispatch — starts ONE run of <workflow> (GitHub: the workflow file name, e.g. 
            with each -f key=value as an input/variable, and prints the run it created.
 approve  — approves the ONE deployment gate named --gate that run <run-id> is waiting on.
            The gate shape (GitHub: environment; GitLab: environment or manual-job) comes from
-           the repo's run-credential binding, never a flag.
+           the repo's run-credential binding, never a flag. On GitHub a required-reviewer gate
+           cannot be approved by an App (reviewers are users or teams): could-not-check.
 status   — prints the run's lifecycle: queued | in_progress | waiting | completed (+ conclusion).
 
 WHO ACTS: the credential is chosen by ASSAY_RUN_CREDENTIALS in the roster, per repo:

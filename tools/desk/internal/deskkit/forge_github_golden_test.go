@@ -976,6 +976,20 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 		},
 		{
+			// The arm GitHub actually takes under an App credential: the gate is pending, but the
+			// forge says this credential may not approve it (required reviewers are users or teams).
+			// ONE read, NO approval POST, a could-not-check naming the run and the gate.
+			name: "approve_gate_credential_cannot_approve",
+			setup: func(s *goldenServer) {
+				s.pendingDeployments = []map[string]any{
+					{"environment": map[string]any{"id": 12, "name": "production"}, "current_user_can_approve": false},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return nil, f.ApproveGate(forgeTestRepo, RunRef{ID: "501"}, ApproveGateInput{Gate: "production"})
+			},
+		},
+		{
 			// A GitLab-only gate shape is refused by name on GitHub with ZERO requests.
 			name:  "approve_gate_refuses_manual_job_shape",
 			setup: func(s *goldenServer) {},

@@ -8,7 +8,9 @@
 - Three forge-seam ops on both backends — `RunWorkflow`, `ApproveGate`, `RunStatus` (inventory
   rows 49–51). GitHub resolves the run a dispatch created by a correlation read and refuses an
   ambiguous match rather than guessing; an approval is resolved against the run's pending gates
-  and refuses a name that matches none. GitLab starts pipelines with the pipeline trigger token
-  and approves on the gate shape the roster declares (`manual-job` or `environment`).
+  and refuses a name that matches none. On GitHub an App credential cannot approve a
+  required-reviewer gate (approval needs `Deployments: write`, and required reviewers are users
+  or teams), so `deskrun approve` there reports could-not-check and writes nothing.
+  GitLab starts pipelines with the pipeline trigger token and approves on the gate shape the roster declares (`manual-job` or `environment`).
 - `desktoken` recognises the `release-runner` role (its own App on GitHub; on GitLab a trigger
   token, which `desktoken` never tries to self-rotate).

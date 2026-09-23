@@ -4,7 +4,7 @@
     "name": "CONTROL — the dispatch never reaches the backend (RunWorkflow call dropped)",
     "file": "cmd/deskrun/verbs.go",
     "old": "\trunRef, err := fg.RunWorkflow(fr, in)",
-    "new": "\trunRef, err := deskkit.RunRef{ID: \"4242\"}, error(nil)"
+    "new": "\t_ = fg\n\trunRef, err := deskkit.RunRef{ID: \"4242\"}, error(nil)"
   },
   "mutations": [
     {

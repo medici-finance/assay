@@ -4,10 +4,12 @@ package deskkit
 // (forge-neutral brief 14). The answer is the per-repo run-credential binding in the roster
 // (ASSAY_RUN_CREDENTIALS, rosterconfig.go), read here BEFORE any token is minted.
 //
-// WHY A BINDING OF ITS OWN. GitHub grants dispatching a workflow and approving a pending
-// deployment through ONE permission, `actions: write`, and the same permission also cancels
-// any run, deletes run logs and disables workflows repo-wide. None of the desk's role Apps
-// holds it and none should acquire it by accident, so the credential that starts a release
+// WHY A BINDING OF ITS OWN. GitHub grants dispatching a workflow through `Actions: write`, and
+// the same permission also cancels any run, deletes run logs and disables workflows repo-wide.
+// (Approving a pending deployment is a separate permission, `Deployments: write`, limited to
+// the environment's required reviewers — users or teams, never an App — so on GitHub the
+// approve path is a could-not-check under an App credential.) None of the desk's role Apps
+// holds `Actions: write` and none should acquire it by accident, so the credential that starts a release
 // is a DEDICATED one — the `release-runner` role — which an operator creates and binds on
 // purpose, per repo. A repo nobody automated is bound to a human instead, and that is a
 // state this resolver refuses on, never a gap it routes around.

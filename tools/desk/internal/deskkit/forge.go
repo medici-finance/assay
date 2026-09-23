@@ -1106,9 +1106,12 @@ func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
 // --- Run and gate-approval ops (RunWorkflow / ApproveGate / RunStatus) ---------------------
 //
 // These three ops start a CI run and clear a deployment gate on it. They were a human action
-// until forge-neutral brief 14: GitHub ships ONE permission (`actions: write`) for dispatching a
-// workflow and approving a pending deployment, and the same permission also cancels runs,
-// deletes run logs and disables workflows repo-wide, so no desk App is safely grantable it.
+// until forge-neutral brief 14. On GitHub, dispatching a workflow needs `Actions: write`, and
+// the same permission also cancels runs, deletes run logs and disables workflows repo-wide, so
+// no desk App is safely grantable it. Approving a pending deployment is a DIFFERENT permission
+// (`Deployments: write`) and is further limited to the environment's required reviewers, which
+// are users or teams — so under an App credential GitHub's ApproveGate is a could-not-check
+// (the forge reports the App may not approve; see GitHubForge.ApproveGate).
 // The ops therefore run ONLY under the per-repo run credential the roster binds
 // (ResolveRunCredential, runcredential.go) — never a desk role's App. Their one consumer is
 // cmd/deskrun (freeze rule: the ops land with that call site).

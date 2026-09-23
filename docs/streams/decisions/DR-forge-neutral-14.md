@@ -57,3 +57,25 @@ for verification, and `registers-v1.md` §7.4 for this register. And it does not
 chosen design is correct. That the alternatives were weighed is recorded here; whether the
 narrower credential was actually chosen in the code is the review gate's judgement, then
 the change's own validation after it lands.
+
+**Amended 2026-09-23 (correction of a factual premise; the ruling above is unchanged and
+the choice below is the ratifying human's).** Two statements in this record are corrected
+here rather than rewritten above:
+
+- The constraint paragraph says GitHub ships one scope, `actions: write`, for dispatching a
+  workflow AND approving a deployment gate. That is wrong for the approval. Dispatching
+  needs `Actions: write`; approving a pending deployment
+  (`POST /repos/{o}/{r}/actions/runs/{run_id}/pending_deployments`) needs
+  `Deployments: write`, and GitHub lets only an environment's required reviewers approve —
+  required reviewers are users or teams, never an App. So under the `release-runner` App
+  credential the GitHub approve path cannot succeed: the forge reports the App may not
+  approve, and `deskrun approve` refuses as could-not-check before writing anything. The
+  ruling was given on the brief's premise; the correction is posted on
+  [issue #1556](https://github.com/medici-finance/assay/issues/1556), where the ratifying
+  human chooses whether the GitHub approve path ships as a documented could-not-check or is
+  withdrawn. This record does not make that choice.
+- The third `accepted` entry says a race inside the correlation window refuses. More
+  exactly: it refuses when both runs are visible in the same list read. If another matching
+  run is already listed and this dispatch's run is not yet, the first read can return the
+  other run; the actor filter narrows that window to the `release-runner` identity when its
+  App login is bound.

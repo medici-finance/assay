@@ -128,6 +128,35 @@ func TestApproveGateUnmatchedEnvironmentRefuses(t *testing.T) {
 	})
 }
 
+// TestApproveGateCredentialCannotApproveRefuses — review finding F2. The named gate IS
+// pending, but the forge reports current_user_can_approve=false for this credential. That is
+// what GitHub answers for an App on any environment with required reviewers (required
+// reviewers are users or teams; an App cannot be one), so it is the arm the GitHub approve
+// path actually takes under the release-runner App. The op must refuse as could-not-check
+// after exactly ONE read and send NO approval POST.
+func TestApproveGateCredentialCannotApproveRefuses(t *testing.T) {
+	s := newGoldenServer(t)
+	s.pendingDeployments = []map[string]any{
+		{"environment": map[string]any{"id": 12, "name": "production"}, "current_user_can_approve": false},
+	}
+	err := s.forge().ApproveGate(forgeTestRepo, RunRef{ID: "501"}, ApproveGateInput{Gate: "production"})
+	if err == nil {
+		t.Fatal("ApproveGate posted an approval the forge said this credential may not make")
+	}
+	if ExitCodeOf(err) != ExitUnverifiable {
+		t.Fatalf("exit %d, want %d (could-not-check): %v", ExitCodeOf(err), ExitUnverifiable, err)
+	}
+	for _, want := range []string{"501", `"production"`, "may not approve", "required reviewers"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not name %q: %v", want, err)
+		}
+	}
+	if len(s.requests) != 1 || s.requests[0].Method != http.MethodGet {
+		t.Fatalf("requests = %+v, want exactly the one pending-deployments GET and no POST", s.requests)
+	}
+	t.Logf("refused as could-not-check after one GET: %v", err)
+}
+
 func assertUnmatchedGateRefusal(t *testing.T, err error, run, gate string) {
 	t.Helper()
 	if err == nil {

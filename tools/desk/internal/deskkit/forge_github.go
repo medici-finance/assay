@@ -2590,6 +2590,15 @@ type ghPendingDeploymentWire struct {
 // credential may not approve is refused before the write rather than left to fail at it.
 // Only then is `POST …/pending_deployments` sent, with that one id and state "approved".
 // GitHub has one gate shape; a GitLab-only shape is refused by name with zero requests.
+//
+// WHAT THIS MEANS UNDER AN APP CREDENTIAL. The approval endpoint needs the "Deployments: write"
+// permission (not "Actions: write", which covers the dispatch), and GitHub lets only an
+// environment's REQUIRED REVIEWERS approve — which are users or teams, never an App. So under
+// the release-runner App the forge answers current_user_can_approve=false for a
+// required-reviewer gate, and this op takes the could-not-check arm: `deskrun approve` on
+// GitHub is a documented could-not-check under the App credential (pinned by the
+// approve_gate_credential_cannot_approve golden). Whether that arm ships is the ratifying
+// human's decision on the brief's decision issue, not this code's.
 func (g *GitHubForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error {
 	id, err := ValidateRunID(run)
 	if err != nil {
@@ -2624,7 +2633,8 @@ func (g *GitHubForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInpu
 	if !match[0].CurrentUserCanApprove {
 		return Unverifiable(fmt.Sprintf(
 			"could-not-check: run %d on %s is waiting on %q, but the forge reports this credential may not approve it — "+
-				"nothing was written", id, repo.Slug(), gate), nil)
+				"nothing was written. GitHub lets only an environment's required reviewers approve, and required reviewers "+
+				"are users or teams, so an App credential cannot pass this gate", id, repo.Slug(), gate), nil)
 	}
 	return g.doJSON(http.MethodPost, path, map[string]any{
 		"environment_ids": []int64{match[0].Environment.ID},
