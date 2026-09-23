@@ -163,14 +163,14 @@ func TestBuildManifestJSONOmitsHookAttributesTierPath(t *testing.T) {
 	}
 }
 
-// TestBuildManifestJSONEmitsHookAttributesWhenURLSet pins the ONE branch of BuildManifestJSON
+// TestManifestJSONEmitsHookAttrsWhenURLSet pins the ONE branch of BuildManifestJSON
 // that emits hook_attributes — reached only when a spec's HookExtra names a "url" (N-3). No
 // entry path constructs such a spec today (the --tier path never sets HookExtra, and
 // LoadManifestFile refuses a manifest hook_attributes.url), so this test drives the branch
 // directly with a hand-built AppSpec rather than leaving it unexercised: if the loader's
 // refusal is ever relaxed, this is the guard that proves the emitted object carries the url
 // AND the defaulted active:false, rather than the branch going live having never run.
-func TestBuildManifestJSONEmitsHookAttributesWhenURLSet(t *testing.T) {
+func TestManifestJSONEmitsHookAttrsWhenURLSet(t *testing.T) {
 	spec := AppSpec{
 		Name:        "assay-worker-app",
 		Permissions: []string{"contents:write"},

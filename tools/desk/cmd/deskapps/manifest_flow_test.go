@@ -154,7 +154,7 @@ func TestManifestAppSpecKeyedByName(t *testing.T) {
 // sibling of this test). A manifest that names hook_attributes.active with no url (the only
 // shape LoadManifestFile allows — it refuses hook_attributes.url outright) posts NO
 // hook_attributes key at all (assay#1260): see
-// TestBuildManifestJSONOmitsHookAttributesManifestPath for the dedicated pin.
+// TestManifestJSONOmitsHookAttrsManifestPath for the dedicated pin.
 func TestBuildManifestJSONFromManifest(t *testing.T) {
 	p := writeManifestFile(t, `{
 		"name": "example-app",
@@ -208,12 +208,12 @@ func TestBuildManifestJSONFromManifest(t *testing.T) {
 	}
 }
 
-// TestBuildManifestJSONFromManifestOmitsHookAttributesWhenUnset — a manifest that does not
+// TestManifestJSONOmitsHookAttrsWhenUnset — a manifest that does not
 // name hook_attributes at all also gets no hook_attributes key in the posted JSON
 // (assay#1260) — never an absent-url {"active": false} that GitHub's schema rejects. (Renamed
 // from ...DefaultsHookActiveFalse: there is no active:false default left to assert — the key
 // is absent, which is what this test now pins.)
-func TestBuildManifestJSONFromManifestOmitsHookAttributesWhenUnset(t *testing.T) {
+func TestManifestJSONOmitsHookAttrsWhenUnset(t *testing.T) {
 	p := writeManifestFile(t, `{"name": "example-app", "url": "https://github.com/medici-finance/assay"}`)
 	m, err := LoadManifestFile(p)
 	if err != nil {
@@ -233,13 +233,13 @@ func TestBuildManifestJSONFromManifestOmitsHookAttributesWhenUnset(t *testing.T)
 	}
 }
 
-// TestBuildManifestJSONOmitsHookAttributesManifestPath pins medici-finance/assay#1260 for
+// TestManifestJSONOmitsHookAttrsManifestPath pins medici-finance/assay#1260 for
 // the --manifest path specifically: a manifest file that names hook_attributes.active:false
 // and no url (the exact shape Ian's report reproduced — GitHub's new-App page replied
 // `"url" wasn't supplied`) must post NO "hook_attributes" key at all in the raw JSON, not
 // {"active": false}. Before the fix this test fails: the raw JSON contains
 // `"hook_attributes":{"active":false}`.
-func TestBuildManifestJSONOmitsHookAttributesManifestPath(t *testing.T) {
+func TestManifestJSONOmitsHookAttrsManifestPath(t *testing.T) {
 	p := writeManifestFile(t, `{
 		"name": "assay-worker-app",
 		"url": "https://github.com/medici-finance/assay",
