@@ -438,7 +438,7 @@ var roleTokenPath = func(role, owner string) (string, error) {
 
 // roleInitPreflight runs the role's envelope preflight and returns its one-line refusal, or nil
 // when every check passes. Package var ONLY as a test seam; production is the real deskkit
-// preflight — the same five checks the desk boot runs.
+// preflight — the same six checks the desk boot runs.
 var roleInitPreflight = func(req deskkit.PreflightRequest) error { return req.Run().Err() }
 
 // roleInitPreflightRun is the LAST step of role-init (#1309 item 7): having wired the identity

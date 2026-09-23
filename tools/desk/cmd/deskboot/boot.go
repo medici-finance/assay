@@ -170,13 +170,28 @@ func boot(o bootOpts) error {
 	// 5 — the operating-envelope preflight. A red preflight is could-not-run for the
 	// WHOLE pass: the boot stops and NOTHING is claimed. Deliberately no override flag —
 	// a preflight a caller can wave past is not an envelope check.
+	//
+	// A red envelope is now also ALARMED (the credfence balancing loop): a red preflight otherwise
+	// reaches no one but the window it printed to, so deskboot files ONE `to:desk` issue
+	// naming each failing check and its state (never the checks' local details), deduped by a
+	// marker per role per day. The alarm is a side effect on the way to the SAME refusal — it
+	// never changes the verdict, and a filing failure is a stderr warning, never a reason the
+	// boot reports something other than red. The refusal text reports what the alarm actually
+	// did; it never claims a filing that did not happen.
 	if r := runCmd("", "deskroster", "preflight", "--role", tokenRole, "--root", o.root); r.err != nil {
+		summary := preflightSummary(r.stderr, r.stdout)
+		outcome, aerr := fileRedPreflightAlarm(o, tokenRole, summary)
+		if aerr != nil {
+			fmt.Fprintf(os.Stderr, "deskboot: WARNING: could not file the red-preflight alarm: %v\n", aerr)
+		} else if outcome == alarmFiled {
+			o.say("%s: filed a to:desk alarm for the red envelope (role %s)", stepRosterPreflight, tokenRole)
+		}
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the operating envelope is NOT green for role %s — %s. "+
-				"A red preflight is could-not-run for the whole pass: claim nothing, burn no pass, and do "+
-				"NOT file an issue about the desk's own envelope (each failing check already names its "+
-				"own remediation). A probe REJECTION is a STOP — never retry it under another identity.",
-			stepRosterPreflight, tokenRole, preflightSummary(r.stderr, r.stdout)), r.err)
+				"A red preflight is could-not-run for the whole pass: claim nothing, burn no pass. %s "+
+				"Each failing check still names its own remediation. A probe REJECTION is a STOP — never "+
+				"retry it under another identity.",
+			stepRosterPreflight, tokenRole, summary, alarmSentence(outcome, aerr)), r.err)
 	}
 	o.say("%s OK: envelope green for role %s", stepRosterPreflight, tokenRole)
 

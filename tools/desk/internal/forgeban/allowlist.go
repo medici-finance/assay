@@ -81,7 +81,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 5
+const allowedInvocationCeiling = 6
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -115,6 +115,16 @@ var AllowedInvocations = []Allowance{
 		Reason: "TODO(forge-surface): `pr view <branch> --json state,number` resolves a PR from a BRANCH NAME. " +
 			"No enumerated op does that — every read on the interface is keyed by number. Needs a typed " +
 			"branch→change lookup, with its GitLab source-branch mapping, in its own brief.",
+	},
+	{
+		Key: "internal/deskkit/preflight.go::ambientLoginProbe::gh",
+		Reason: "TODO(forge-surface): identity — this is the AMBIENT-identity preflight check. It reads " +
+			"`gh api user` to learn WHICH login a tool fall-through would silently act as, which is the exact " +
+			"opposite of routing through the interface: both Forge backends refuse to construct a client without " +
+			"an explicitly minted App token, so the enumerated seam can NEVER observe the ambient credential this " +
+			"check exists to catch. There is no Forge method it could move to — the whole point is to read the " +
+			"identity the interface deliberately excludes (inventory delta D2). Retiring it would mean deleting " +
+			"the check, not migrating it.",
 	},
 }
 
@@ -230,6 +240,13 @@ var UnresolvedArgv = []Allowance{
 	{
 		Key:    "internal/deskkit/preflight.go::coldMintProbe::<unresolved>",
 		Reason: "runs the resolved desktoken binary; the identity layer, deliberately outside the interface (D2).",
+	},
+	{
+		Key: "internal/deskkit/preflight.go::ambientLoginProbe::<unresolved>",
+		Reason: "runs the `gh` path resolved one line earlier by exec.LookPath (the AllowedInvocations row for " +
+			"this func covers the forge-CLI permit); argv[0] is the resolved variable, so it lands here as a " +
+			"blind-spot ledger row. It launches `gh api user` to read the ambient identity — the D2 identity " +
+			"layer, deliberately outside the interface — never a write.",
 	},
 	{
 		Key: "cmd/deskrelease/github.go::resolveDeskTokenPath::<unresolved>",
