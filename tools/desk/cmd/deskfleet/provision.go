@@ -27,6 +27,12 @@ type provisionOpts struct {
 	dryRun                 bool
 }
 
+// banner / ruleLine frame the closing summary and the partial-run report.
+var (
+	banner   = strings.Repeat("=", 60)
+	ruleLine = strings.Repeat("-", 60)
+)
+
 var prefixRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
 func parseProvisionFlags(args []string, e *env) (provisionOpts, error) {
@@ -403,9 +409,9 @@ func (p *provisioner) mintAndStore(r fleetRole, user string, userID int64) *stop
 			"own read-time custody check may refuse it later", written, r.Role, v.Err)
 		p.warnings = append(p.warnings, w)
 		p.errf("")
-		p.errf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		p.errf("%s", strings.Repeat("!", 60))
 		p.errf("WARNING: %s", w)
-		p.errf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		p.errf("%s", strings.Repeat("!", 60))
 		p.outf("minted: PAT %s for %s -> %s (WARNING: owner-only NOT verified; expires %s) — path printed, value never echoed",
 			m.TokenName, user, written, m.ExpiresAt)
 		return nil
@@ -443,9 +449,9 @@ func (p *provisioner) stopRun(s *stopError) int {
 
 func (p *provisioner) partialReport(reason string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n============================================================\n")
+	fmt.Fprintf(&b, "\n%s\n", banner)
 	fmt.Fprintf(&b, "PARTIAL RUN — provisioning STOPPED: %s\n", reason)
-	fmt.Fprintf(&b, "============================================================\n")
+	fmt.Fprintf(&b, "%s\n", banner)
 	fmt.Fprintf(&b, "This run minted %d personal access token(s) that EXIST NOW and were NOT revoked.\n", len(p.minted))
 	fmt.Fprintf(&b, "deskfleet never revokes on a partial run (the recorded partial-run ruling: report). Revoke each one\n")
 	fmt.Fprintf(&b, "by hand — by its token id, on the service account named — then delete its file:\n")
@@ -463,38 +469,38 @@ func (p *provisioner) partialReport(reason string) string {
 	}
 	fmt.Fprintf(&b, "Token values are never printed. Re-running after revocation re-uses the existing accounts\n")
 	fmt.Fprintf(&b, "and mints no new token for them; use `desktoken --forge gitlab <role>` to rotate one.\n")
-	fmt.Fprintf(&b, "============================================================\n")
+	fmt.Fprintf(&b, "%s\n", banner)
 	return b.String()
 }
 
 func (p *provisioner) summary() int {
 	p.outf("")
-	p.outf("============================================================")
+	p.outf("%s", banner)
 	p.outf("GITLAB_API_BASE — add to the shell that runs the desk verbs (it is NOT a roster.env key):")
 	p.outf("  export GITLAB_API_BASE='%s'        # POSIX shells", p.base)
 	p.outf("  $env:GITLAB_API_BASE = '%s'        # PowerShell (setx GITLAB_API_BASE to persist)", p.base)
 	if len(p.warnings) > 0 {
-		p.outf("------------------------------------------------------------")
+		p.outf("%s", ruleLine)
 		p.outf("CUSTODY WARNINGS — %d token file(s) whose owner-only access could NOT be verified:", len(p.warnings))
 		for _, w := range p.warnings {
 			p.outf("   - %s", w)
 		}
 	}
-	p.outf("============================================================")
+	p.outf("%s", banner)
 	p.outf("HUMAN-ONLY REMAINDER — this verb does not and cannot do these:")
 	p.outf("1. Ultimate-tier settings (custom reviewer role, external status checks, pipeline execution")
 	p.outf("   policy) — not scripted by this verb.")
 	p.outf("2. Group token-expiry policy: set the group/instance PAT max lifetime to %d days or less.", p.o.patExpiryDays)
 	p.outf("3. Create the locked ci-config project (Maintainer-humans-only, protected main, no bot membership).")
 	if len(p.failures) > 0 {
-		p.outf("------------------------------------------------------------")
+		p.outf("%s", ruleLine)
 		p.outf("FAILED STEPS — this run did NOT complete cleanly:")
 		for _, f := range p.failures {
 			p.outf("   - %s", f)
 		}
-		p.outf("============================================================")
+		p.outf("%s", banner)
 		return exitFailed
 	}
-	p.outf("============================================================")
+	p.outf("%s", banner)
 	return exitOK
 }
