@@ -35,8 +35,10 @@ import (
 //     security review — an unscoped helper hands the token to any host/protocol), so https
 //     fetch/push to the origin authenticate as the role and never fall through to a sibling
 //     role's leftover helper in shared config, while a foreign host or plaintext http gets
-//     nothing — followed by the role's own PREFLIGHT, run against the provisioned worktree, so a
-//     red envelope is found here and not at boot;
+//     nothing — the token FILE chosen by the forge serving the repo (#1573: a GitLab repo reads
+//     the role's provisioned PAT custody file and never the GitHub App minter) — followed by the
+//     role's own PREFLIGHT, run against the provisioned worktree, so a red envelope is found here
+//     and not at boot;
 //   - an ORIGIN identity guard: an existing target whose origin is a different repo is
 //     REFUSED, never re-pointed or reset (fail closed);
 //   - idempotency: a valid existing worktree is reused (noop), not clobbered or errored.
@@ -427,13 +429,49 @@ func cmdRoleInit(args []string) (err error) {
 	return roleInitPreflightRun(p, repo)
 }
 
-// roleTokenPath resolves the PATH of the role's cached App token for an account — minting it
-// when the cache is cold — through deskkit's one token resolver (the same one every desk verb's
-// forge reads use). It returns a path and never the token value. It is a package var ONLY as a
-// test seam: a fixture has no App credential to mint.
+// roleTokenPath resolves the PATH of the role's cached GitHub App token for an account — minting
+// it when the cache is cold — through deskkit's one token resolver (the same one every desk
+// verb's forge reads use). It is the GITHUB branch of roleCredentialPath only; a GitLab-served
+// repo never reaches it (#1573). It returns a path and never the token value. It is a package
+// var ONLY as a test seam: a fixture has no App credential to mint.
 var roleTokenPath = func(role, owner string) (string, error) {
 	_, path, err := deskkit.RoleTokenForOwner(role, owner)
 	return path, err
+}
+
+// roleCredentialPath selects the role's credential FILE by the forge that serves repo (#1573).
+// The forge is resolved BEFORE any token is touched, through deskkit's one forge resolver
+// (ForgeKindForRepoRemote: ASSAY_REPO_FORGES first, then the host of the worktree's own origin
+// remote — the target's origin, not the process's working directory, so a --repo-root
+// provisioning resolves the repo it is actually wiring):
+//
+//   - GitLab: the role's already-provisioned `gitlab-<role>.token` custody file, read through
+//     deskkit.GitLabRoleToken. Never minted, never rotated, no App ID required. A missing, empty,
+//     or loosely-permissioned custody file is REFUSED (exit 5) naming the file — it never falls
+//     through to the GitHub App minter or to any ambient credential.
+//   - GitHub: the GitHub App token path, unchanged (roleTokenPath → deskkit.RoleTokenForOwner).
+//     An unresolved forge takes this path too — the historical default ForgeKindForRepo and
+//     deskboot's mint step share — so a GitHub adopter with no forge config is unaffected.
+//
+// Only the PATH is returned; the token value is discarded here and never logged.
+func roleCredentialPath(role, repo, originURL string) (string, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	kind := deskkit.ForgeKind("")
+	if res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL); err == nil {
+		kind = res.Kind
+	}
+	switch kind {
+	case deskkit.ForgeGitLab:
+		_, path, err := deskkit.GitLabRoleToken(role)
+		if err != nil {
+			return "", err
+		}
+		return path, nil
+	case deskkit.ForgeGitHub, "":
+		return roleTokenPath(role, owner)
+	default:
+		return "", deskkit.Unverifiable(fmt.Sprintf("no role credential path known for forge %q serving %s", kind, repo), nil)
+	}
 }
 
 // roleInitPreflight runs the role's envelope preflight and returns its one-line refusal, or nil
@@ -498,24 +536,25 @@ func roleInitPreflightRun(p roleInitParams, repo string) error {
 // line — only its PATH does. Scoped via extensions.worktreeConfig (already on from
 // setCommitIdentity), so the primary checkout's config is never mutated.
 func wireRoleCredential(target, role, repo, username string) error {
-	owner := deskkit.OwnerOf(repo)
-	path, err := roleTokenPath(role, owner)
+	// The origin URL is read FIRST: it is the fallback input to the forge resolution that picks
+	// which credential file to wire (#1573), and — below — the source of the scoping HOST
+	// (effective URL, so an insteadOf rewrite is honoured, parsed with the scp-aware deskkit
+	// parser rather than a hand-rolled split). A host we cannot resolve is could-not-check
+	// (exit 6): we refuse to install a credential helper we cannot scope, rather than fall back
+	// to the leaky unscoped key.
+	originURL, oerr := runGit(target, "remote", "get-url", "origin")
+	if oerr != nil {
+		return deskkit.Unverifiable("cannot read the origin remote URL at "+target+" to scope the credential helper", oerr)
+	}
+	path, err := roleCredentialPath(role, repo, strings.TrimSpace(originURL))
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(path) == "" {
-		return deskkit.Unverifiable("the token minter returned no path for the "+role+" App token on "+owner, nil)
+		return deskkit.Unverifiable("the credential resolver returned no token path for the "+role+" role on "+repo, nil)
 	}
 	if strings.ContainsAny(path, "'\n") {
 		return deskkit.Refused("refused: token path " + path + " cannot be quoted into a credential helper")
-	}
-	// The scoping HOST is read from the worktree's own origin remote (effective URL, so an
-	// insteadOf rewrite is honoured) and parsed with the scp-aware deskkit parser rather than a
-	// hand-rolled split. A host we cannot resolve is could-not-check (exit 6): we refuse to
-	// install a credential helper we cannot scope, rather than fall back to the leaky unscoped key.
-	originURL, oerr := runGit(target, "remote", "get-url", "origin")
-	if oerr != nil {
-		return deskkit.Unverifiable("cannot read the origin remote URL at "+target+" to scope the credential helper", oerr)
 	}
 	host, herr := deskkit.HostOfRemote(strings.TrimSpace(originURL))
 	if herr != nil || strings.TrimSpace(host) == "" {
