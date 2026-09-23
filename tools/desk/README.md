@@ -4062,6 +4062,19 @@ claimed. A mistyped flag must cost a refusal, not an item nobody can pick up unt
 deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
 table of bad inputs and asserts that *zero* processes ran.
 
+**A PR that only authored a brief is not its delivery.** A fresh worker dispatch is refused
+when an OPEN or MERGED PR already names the brief in its `Brief:` trailer (the phantom check).
+The docs-only PR that WROTE the brief carries that trailer too, so before each match
+`deskdispatch` reads the changed files of every PR naming the brief and sets aside one that
+only authored it: every path is under `docs/streams/` or a changelog fragment
+(`changelog/<name>.md`), a rename is judged on both halves, and the PR ADDS the brief's own
+file `docs/streams/<stream>/brief-<NN>-*.md`. The last rule keeps a real delivery refused
+even when the deliverable is itself a document under `docs/streams/`, because a delivery never
+adds its own brief's file. One path outside that set makes the PR a delivery. A file list that
+cannot be read, or whose length does not match the forge's own changed-file count, holds the
+dispatch as could-not-check (exit 6); it is never read as "authoring". A set-aside PR is named
+in a `NOTICE` line on stderr.
+
 **`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
 predicted.** A dry run normally shows the agent's home worktree as a not-yet-known
 placeholder, on purpose: the worktree verb owns where a worktree lands, and a predicted path

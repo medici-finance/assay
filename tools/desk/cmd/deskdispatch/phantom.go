@@ -92,6 +92,10 @@ func phantomCheck(o dispatchOpts, repo string) error {
 				"worker on a phantom row — nothing was claimed; retry.",
 			stepClaimAcquire, repo, briefID, err), err)
 	}
+	// A PR that only AUTHORED the brief is not its delivery (authoring.go).
+	if prs, err = dropBriefAuthoringPRs(repo, briefID, prs); err != nil {
+		return err
+	}
 	if n, ok := deskkit.BriefRepresentedPR(briefID, prs); ok {
 		return deskkit.Refused(fmt.Sprintf(
 			"step %s: %s is already represented by %s#%d — matched on that PR's `Brief: %s` trailer, not on "+
