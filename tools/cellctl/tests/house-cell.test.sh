@@ -8,7 +8,7 @@
 #          reached by symlink, never copied; a second `new` on the same name REFUSES
 #   check  passes on a well-formed house cell and FAILS (exit 1, a MISS row) when a root lacks docs/streams/
 #   desk   creates the role worktree under <cell>/worktrees/<role>, LOCKS it, starts the (stubbed)
-#          `claude` with cwd = that worktree and DESK_ROOTS / DESK_LOOP / DESK_SESSION exported,
+#          `claude` with cwd = that worktree and DESK_ROOTS / DESK_LOOP / DESK_SESSION / ASSAY_COCKPIT exported,
 #          and leaves the fixture checkout's .git/config byte-identical; a second boot fast-forwards
 #          the same tree; a `deskwt role-init` that supports the role is preferred when present, and
 #          one that refuses the probe is not
@@ -85,6 +85,7 @@ esac
   echo "DESK_ROOTS=${DESK_ROOTS:-}"
   echo "DESK_LOOP=${DESK_LOOP:-}"
   echo "DESK_SESSION=${DESK_SESSION:-}"
+  echo "ASSAY_COCKPIT=${ASSAY_COCKPIT:-}"
   echo "PATH0=${PATH%%:*}"
   echo "ARGS=$*"
 } > "$CELLCTL_TEST_OUT"
@@ -141,7 +142,8 @@ out="$(DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk 2>&1)"
 assert "dry-run prints kind, role and desk_roots, touches nothing" 'grep -q "kind=house role=worker-desk" <<<"$out" && grep -qF "desk_roots=$ROOTS" <<<"$out" && [[ ! -e "$CELL/worktrees/worker-desk" ]]'
 
 export CELLCTL_TEST_OUT="$T/launch-worker.env"
-"$CELLCTL" desk example-cell worker-desk >/dev/null 2>"$T/desk-worker.err"
+# A stale ASSAY_COCKPIT in the launching shell must not outlive the cell's own resolved value.
+ASSAY_COCKPIT=stale-from-shell "$CELLCTL" desk example-cell worker-desk >/dev/null 2>"$T/desk-worker.err"
 WT="$CELL/worktrees/worker-desk"
 assert "worktree exists under <cell>/worktrees/<role>" '[[ -e "$WT/.git" ]]'
 assert "worktree is at origin/main" '[[ "$(git -C "$WT" rev-parse HEAD)" == "$(git -C "$REPO" rev-parse FETCH_HEAD)" ]]'
@@ -150,6 +152,9 @@ assert "claude stub ran (launch recorded)" '[[ -s "$CELLCTL_TEST_OUT" ]]'
 assert "cwd of the session = the worktree" 'grep -qxF "PWD=$(real "$WT")" "$CELLCTL_TEST_OUT"'
 assert "DESK_ROOTS exported = CELL_ROOTS" 'grep -qxF "DESK_ROOTS=$ROOTS" "$CELLCTL_TEST_OUT"'
 assert "DESK_LOOP exported = role" 'grep -qx "DESK_LOOP=worker-desk" "$CELLCTL_TEST_OUT"'
+# The resolved cockpit depends on what this host has on PATH (auto), so the value is checked as a
+# member of the concrete set — never auto, never the shell's stale value.
+assert "ASSAY_COCKPIT exported = the cell's resolved cockpit (tmux|herdr|orca), overriding the shell's" 'grep -qxE "ASSAY_COCKPIT=(tmux|herdr|orca)" "$CELLCTL_TEST_OUT"'
 assert "DESK_SESSION = <cell>-<role>-<UTC stamp>" 'grep -qE "^DESK_SESSION=example-cell-worker-desk-[0-9]{8}T[0-9]{6}Z$" "$CELLCTL_TEST_OUT"'
 assert "shim dir first on PATH" 'grep -qxF "PATH0=$CELL/shim" "$CELLCTL_TEST_OUT"'
 assert "model pinned (sonnet) and the role skill is the first prompt" 'grep -q -- "--model sonnet /assay:worker-desk" "$CELLCTL_TEST_OUT"'

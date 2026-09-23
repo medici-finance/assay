@@ -3909,3 +3909,221 @@ func (g *GitLabForge) PushTransportHint(repo ForgeRepo) PushTransport {
 			"file; never embed it in the remote URL",
 	}
 }
+
+// --- Run and gate-approval (forge-neutral brief 14) ---
+
+// gitlabPipelineDefinition is the one pipeline definition a GitLab project has. RunWorkflow
+// accepts it (or nothing) as the workflow name; a GitHub-shaped workflow file name is refused
+// by name rather than silently ignored — a caller that named "release.yml" believes it chose a
+// workflow, and a GitLab project has no such choice to honour.
+const gitlabPipelineDefinition = ".gitlab-ci.yml"
+
+// triggerClient is the client RunWorkflow's trigger call goes through. It carries NO
+// PRIVATE-TOKEN header: the pipeline trigger token authenticates as a `token` field of the
+// request itself, and presenting it as an access token too would both misuse it and have the
+// instance reject the call as an invalid access token. The same three construction choices
+// client() makes (no retries, no internal limiter, the injected HTTP client) apply, and an
+// empty token is refused here too — the trigger call never goes out anonymous.
+func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
+	if g.Token == "" {
+		return nil, Unverifiable("refusing to reach the GitLab forge without an explicitly minted token — "+
+			"this backend never falls back to an anonymous or ambient identity", nil)
+	}
+	opts := []gitlab.ClientOptionFunc{
+		gitlab.WithBaseURL(g.baseURL()),
+		gitlab.WithoutRetries(),
+		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
+	}
+	if g.Client != nil {
+		opts = append(opts, gitlab.WithHTTPClient(g.Client))
+	}
+	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
+	if err != nil {
+		return nil, Unverifiable("cannot build GitLab trigger client", err)
+	}
+	return cl, nil
+}
+
+// RunWorkflow starts a pipeline through the PIPELINE TRIGGER endpoint
+// (`POST /projects/:id/trigger/pipeline`), authenticated by the trigger token this backend
+// holds — a credential that can start pipelines and nothing else. That is the narrow default
+// the run-credential binding exists for. The broader `POST /projects/:id/pipeline` (a project
+// or user token that can also read and write issues, merge requests and repository content)
+// is the documented alternative for a deployment that needs project-scoped attribution; it is
+// NOT used here. Each input travels as a pipeline variable. The pipeline comes back in the
+// response, so no correlation read is needed.
+func (g *GitLabForge) RunWorkflow(repo ForgeRepo, in RunWorkflowInput) (RunRef, error) {
+	if wf := strings.TrimSpace(in.Workflow); wf != "" && wf != gitlabPipelineDefinition {
+		return RunRef{}, Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab has one pipeline definition per project (%s), so workflow %q cannot be "+
+				"selected — refusing rather than ignoring it; pass %q or nothing", gitlabPipelineDefinition,
+			StripControl(wf), gitlabPipelineDefinition), nil)
+	}
+	ref, err := validateRunRef(in.Ref)
+	if err != nil {
+		return RunRef{}, err
+	}
+	if err := validateRunInputs(in.Inputs); err != nil {
+		return RunRef{}, err
+	}
+	cl, err := g.triggerClient()
+	if err != nil {
+		return RunRef{}, err
+	}
+	opts := &gitlab.RunPipelineTriggerOptions{Ref: gitlab.Ptr(ref), Token: gitlab.Ptr(g.Token)}
+	if len(in.Inputs) > 0 {
+		opts.Variables = in.Inputs
+	}
+	path := fmt.Sprintf("/projects/%s/trigger/pipeline", g.projectPath(repo))
+	p, _, terr := cl.PipelineTriggers.RunPipelineTrigger(repo.Slug(), opts)
+	if terr != nil {
+		return RunRef{}, g.mapErr(http.MethodPost, path, terr)
+	}
+	if p == nil || p.ID <= 0 {
+		return RunRef{}, Unverifiable(fmt.Sprintf(
+			"could-not-check: the trigger on %s answered without a pipeline id — the pipeline it started (if any) "+
+				"cannot be named", repo.Slug()), nil)
+	}
+	return RunRef{ID: strconv.FormatInt(p.ID, 10), URL: p.WebURL}, nil
+}
+
+// ApproveGate clears one gate on a pipeline, dispatching on the STATED shape. GitLab has two
+// gating shapes and no endpoint that unifies them, and which one a project uses is a property
+// of its CI configuration — so an unstated shape is refused, and a stated shape whose read
+// finds nothing is refused too, never retried as the other shape.
+//
+//   - GateShapeManualJob: the pipeline's MANUAL jobs are read
+//     (`GET /projects/:id/pipelines/:id/jobs?scope[]=manual`) and the one named Gate is played
+//     (`POST /projects/:id/jobs/:job_id/play`).
+//   - GateShapeEnvironment: the project's BLOCKED deployments to the named environment are read
+//     (`GET /projects/:id/deployments?environment=…&status=blocked`), narrowed to this pipeline,
+//     and that one deployment is approved
+//     (`POST /projects/:id/deployments/:deployment_id/approval`, status approved). Deployment
+//     approvals are a Premium+ feature; a lower tier answers 403/404, which surfaces as the
+//     usual could-not-check.
+func (g *GitLabForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	gate, err := validateGateName(in.Gate)
+	if err != nil {
+		return err
+	}
+	switch in.Shape {
+	case GateShapeManualJob, GateShapeEnvironment:
+	case "":
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab has two gate shapes (%q, %q) and no endpoint that unifies them, and no shape "+
+				"was stated for %s — declare it in the run-credential binding; refusing to guess", GateShapeManualJob,
+			GateShapeEnvironment, repo.Slug()), nil)
+	default:
+		return Unverifiable(fmt.Sprintf("could-not-check: %q is not a GitLab gate shape", in.Shape), nil)
+	}
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	if in.Shape == GateShapeManualJob {
+		path := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", g.projectPath(repo), pid)
+		jobs, _, lerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pid, &gitlab.ListJobsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: 100},
+			Scope:       &[]gitlab.BuildStateValue{gitlab.Manual},
+		})
+		if lerr != nil {
+			return g.mapErr(http.MethodGet, path, lerr)
+		}
+		var match []*gitlab.Job
+		names := make([]string, 0, len(jobs))
+		for _, j := range jobs {
+			if j == nil || j.Status != string(gitlab.Manual) {
+				continue
+			}
+			names = append(names, j.Name)
+			if j.Name == gate {
+				match = append(match, j)
+			}
+		}
+		if len(match) != 1 {
+			return Unverifiable(fmt.Sprintf(
+				"could-not-check: pipeline %d on %s has %d manual jobs named %q (its manual jobs: %s) — the declared "+
+					"%q shape does not match what the read finds; refusing, and not trying the other shape",
+				pid, repo.Slug(), len(match), gate, quotedList(names), GateShapeManualJob), nil)
+		}
+		playPath := fmt.Sprintf("/projects/%s/jobs/%d/play", g.projectPath(repo), match[0].ID)
+		_, _, perr := cl.Jobs.PlayJob(repo.Slug(), match[0].ID, nil)
+		return g.mapErr(http.MethodPost, playPath, perr)
+	}
+
+	path := fmt.Sprintf("/projects/%s/deployments", g.projectPath(repo))
+	deps, _, lerr := cl.Deployments.ListProjectDeployments(repo.Slug(), &gitlab.ListProjectDeploymentsOptions{
+		ListOptions: gitlab.ListOptions{PerPage: 100},
+		Environment: gitlab.Ptr(gate),
+		Status:      gitlab.Ptr("blocked"),
+	})
+	if lerr != nil {
+		return g.mapErr(http.MethodGet, path, lerr)
+	}
+	var match []*gitlab.Deployment
+	for _, d := range deps {
+		if d == nil || d.Deployable.Pipeline.ID != pid {
+			continue
+		}
+		if d.Environment != nil && d.Environment.Name != gate {
+			continue
+		}
+		match = append(match, d)
+	}
+	if len(match) != 1 {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: pipeline %d on %s has %d blocked deployments to environment %q — the declared %q "+
+				"shape does not match what the read finds; refusing, and not trying the other shape",
+			pid, repo.Slug(), len(match), gate, GateShapeEnvironment), nil)
+	}
+	approvePath := fmt.Sprintf("/projects/%s/deployments/%d/approval", g.projectPath(repo), match[0].ID)
+	_, aerr := cl.Deployments.ApproveOrRejectProjectDeployment(repo.Slug(), match[0].ID,
+		&gitlab.ApproveOrRejectProjectDeploymentOptions{Status: gitlab.Ptr(gitlab.DeploymentApprovalStatusApproved)})
+	return g.mapErr(http.MethodPost, approvePath, aerr)
+}
+
+// RunStatus reads one pipeline (`GET /projects/:id/pipelines/:id`) and maps its status into
+// the forge-neutral vocabulary: the not-yet-started states read as queued, running as
+// in_progress, manual (a pipeline blocked on a manual job or an approval) as waiting, and the
+// terminal states as completed with a conclusion. A status the mapping does not know is
+// could-not-check.
+func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/pipelines/%d", g.projectPath(repo), pid)
+	p, _, gerr := cl.Pipelines.GetPipeline(repo.Slug(), pid)
+	if gerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, gerr)
+	}
+	st := &RunState{URL: p.WebURL}
+	switch p.Status {
+	case "created", "waiting_for_resource", "preparing", "pending", "scheduled":
+		st.Status = RunStatusQueued
+	case "running", "canceling":
+		st.Status = RunStatusInProgress
+	case "manual":
+		st.Status = RunStatusWaiting
+	case "success":
+		st.Status, st.Conclusion = RunStatusCompleted, "success"
+	case "failed":
+		st.Status, st.Conclusion = RunStatusCompleted, "failure"
+	case "canceled":
+		st.Status, st.Conclusion = RunStatusCompleted, "cancelled"
+	case "skipped":
+		st.Status, st.Conclusion = RunStatusCompleted, "skipped"
+	default:
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s reports status %q, which this "+
+			"mapping does not know — not rounded to a known state", pid, repo.Slug(), StripControl(p.Status)), nil)
+	}
+	return st, nil
+}

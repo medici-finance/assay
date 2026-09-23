@@ -483,13 +483,25 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
+- **Budget checkpoint — `budget:` is a filing threshold, never a gate.** A brief may declare
+  `budget:` beside `effort:` — an amount with its unit (`400k tokens`, `25 USD`); absent = no
+  checkpoint. The worker reads it from the brief it was dispatched on. When the worker's own
+  reported spend on the item reaches **80%** of it, the worker files `help wanted` on its PR (or
+  the item's issue, if no PR is open yet) carrying the escalation packet — what is needed, the
+  options with the default first, the evidence (spend so far against the budget, Verify rows
+  passed and still open), reversibility, and a deadline — and then handles it like any other
+  escalation: that line of work waits for the answer. Never silent continuation past the
+  checkpoint. The checkpoint only ADDS a filing: it never skips, shortens or satisfies a review,
+  a Verify row or a human gate, never marks the item done or blocked by itself, and nothing in
+  the tooling stops, closes or reverts work because of it. Spend the worker cannot read is
+  reported on its workpad as could-not-check, never as "under budget".
 - **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE; nor is a stamp whose dispatch claim has since been RELEASED — a dead cycle's stamp ages out and the PR reads unstamped, rather than being refused harder than an unstamped one. **The unstamped/NOTICE path is RISK-CONDITIONAL for a review verdict (ruling 3):** on a risk-classed PR (every public-repo PR, or a diff touching a security path) a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES; the NOTICE-proceed holds only for an unstamped NON-risk PR. The convention to escalate still stands.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
   includes them, so skill and binary now agree.
 
-## Cockpit-aware worktree creation — additive, detected on PATH, never required
+## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
 The per-item worktree the ceremony isolates is a plain
 `git worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`, and that path is the
@@ -501,10 +513,23 @@ badge. This is **sugar on the same primitive, not a new requirement**. The metho
 unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktree per dispatched
 item, and the cockpit is only a nicer way to reach it.
 
-- **Selection is by command presence on PATH, never a config flag someone must remember.** For
-  the worktree-create step of each dispatched item, resolve the FIRST that is present. Every path
-  spells the base in full as `refs/remotes/origin/main` — never the bare `origin/main`, which
-  resolves to a stray local branch of that name where one exists:
+- **`ASSAY_COCKPIT`, when set, names the arm — and a named CLI that is absent is a refusal,
+  never a substitute.** A cell launcher exports it into every role window as the cell's ONE
+  cockpit value (the same cockpit its windows are hosted in), so nobody has to remember it; an
+  operator with no launcher may export it by hand. Its values select the arms below: `supacode`,
+  `herdr`, `orca`, or `plain` — and `tmux`, which a tmux-hosted cell exports, means `plain` (the
+  always-works fallback, which needs no cockpit CLI). A cell launcher never exports `supacode`, so
+  inside a cell that arm is reached only by an operator's own export outside the launcher. When the
+  named CLI is not on PATH, that is a **refusal naming that CLI**: do not cut the worktree, file it
+  per the escalation rules, and stop that dispatch — never a silent switch to another cockpit or
+  to the fallback. A value outside that set is a refusal naming the value. Everything else about
+  the named arm is unchanged: where it says "fall through to the fallback" (an installed build that
+  cannot pin the base or the per-item path), it still falls through to the plain `git worktree add`
+  — the value picks the cockpit, it never makes one required.
+- **Unset, selection is by command presence on PATH, never a config flag someone must
+  remember.** For the worktree-create step of each dispatched item, resolve the FIRST that is
+  present. Either way, every path spells the base in full as `refs/remotes/origin/main` — never
+  the bare `origin/main`, which resolves to a stray local branch of that name where one exists:
   - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --base
     refs/remotes/origin/main --path ../<repo>-<item> --fetch` (it fetches for you and opens a
     titled worktree in one command). Pin the base and the per-item path explicitly rather than
@@ -527,8 +552,8 @@ item, and the cockpit is only a nicer way to reach it.
     base branch, retry or abandon). GitHub stays the only record, so an operator with no run — or
     no Orca — loses only the poll-free notification, never any isolation, correctness, or the
     escalation path.
-  - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
-    <branch> refs/remotes/origin/main`.
+  - else (or `ASSAY_COCKPIT=plain`/`tmux`) the always-works fallback → `git fetch origin && git
+    worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`.
 - **The base is verified after the create, not trusted from any tool's default.** Whichever path
   cut the worktree, before the worker is dispatched confirm the new worktree sits at the
   remote-tracking tip — `git -C ../<repo>-<item> rev-parse HEAD` must equal `git -C <repo>
@@ -539,7 +564,7 @@ item, and the cockpit is only a nicer way to reach it.
 - **Only the worktree-create step changes — nothing else forks.** The branch name, the
   `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
   model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
-  and honours its exits. A cockpit is chosen only where its CLI is actually on PATH, so the same
+  and honours its exits. A cockpit is used only where its CLI is actually on PATH, so the same
   skill drives a fanout whether or not any of these cockpits is installed.
 - **The fallback is not a degraded path.** An operator with no cockpit loses only the titled
   worktree and the presence badge, never any isolation or correctness. Nothing in a brief, a loop
