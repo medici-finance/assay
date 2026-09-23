@@ -63,7 +63,7 @@ sha() {
 
 # farm <dir> [tool...] — a PATH directory holding ONLY symlinks to the named tools. No gh, no
 # glab: `command -v gh` in a shell on this PATH prints nothing.
-BASE_TOOLS="bash sh awk grep sed tr uname mktemp rm mkdir cp cat install tar gzip curl basename dirname chmod env head git ls"
+BASE_TOOLS="bash sh awk grep sed tr uname mktemp rm rmdir mv mkdir cp cat install tar gzip curl basename dirname chmod env head git ls"
 SHA_TOOLS="sha256sum shasum openssl perl"
 farm() {
   local dir="$1" t p; shift
@@ -260,6 +260,24 @@ else
   no "H4 https-served mismatch still refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
 fi
 
+# ------------------------------------------------------------------ T TLS verification
+# T1: without the fixture's CA bundle the server's certificate is untrusted — the fetch must be
+# could-not-check (exit 6) with nothing installed; a `-k` on the curl call would pass it.
+# T2: the same, with a HOME curl config that turns verification off — the script must not read
+# the invoking user's curl config (curl -q), so the result is unchanged.
+tls_case() {
+  local label="$1" curlrc="$2" d
+  d=$(case_dir "$(printf '%s' "$label" | cut -d' ' -f1)"); mkdir -p "$d/home"
+  pins "$SG_ASSET $TAG $GOOD" "$d/pins"
+  [ -n "$curlrc" ] && printf '%s\n' "$curlrc" > "$d/home/.curlrc"
+  env -i HOME="$d/home" TMPDIR="$TMP" PATH="$NOCLI" bash "$SCRIPT" acquire --pins "$d/pins" --dest "$d/bin" \
+    --release-home "$HOME_REPO" --base-url "$BASE" >"$d/r.out" 2>"$d/r.err"; local rc=$?
+  if [ "$rc" -eq 6 ] && [ ! -e "$d/bin/statusgen" ]; then ok "$label"
+  else no "$label" "want rc=6 + no binary; got rc=$rc bin=$(ls "$d/bin" 2>/dev/null) err=$(tr '\n' '|' < "$d/r.err")"; fi
+}
+tls_case "T1 an untrusted server certificate is could-not-check, nothing installed" ""
+tls_case "T2 a user curl config that disables verification is ignored (curl -q)" "insecure"
+
 # ------------------------------------------------------------------ D desk-tools tarball
 d=$(case_dir D1)
 mkdir -p "$d/stage/hooks"
@@ -282,6 +300,22 @@ if [ "$rc" -eq 5 ] && [ -z "$(ls "$d/bin" 2>/dev/null)" ]; then
   ok "D2 a desk-tools digest mismatch installs nothing"
 else
   no "D2 a desk-tools digest mismatch installs nothing" "rc=$rc bin=$(ls "$d/bin" 2>/dev/null)"
+fi
+
+d=$(case_dir D3)
+# D3: a local install-copy failure part-way leaves --dest exactly as it was — the verified set is
+# staged whole before anything moves into place. Simulated by an `install` that fails on deskpr.
+FAILFARM="$TMP/farm-failinstall"; farm "$FAILFARM" $BASE_TOOLS $SHA_TOOLS; rm -f "$FAILFARM/install"
+REALINSTALL=$(command -v install)
+printf '#!/bin/sh\nfor a in "$@"; do case "$a" in */deskpr) exit 1 ;; esac; done\nexec %s "$@"\n' "$REALINSTALL" > "$FAILFARM/install"; chmod +x "$FAILFARM/install"
+pins "$DT_ASSET $TAG $DT_SHA" "$d/pins"
+mkdir -p "$d/bin"; printf 'old\n' > "$d/bin/deskboard"; ( cd "$d/bin" && ls -la ) > "$d/before"
+runp "$FAILFARM" "$d/r" acquire --kind desk-tools --pins "$d/pins" --dest "$d/bin" --release-home "$HOME_REPO" --base-url "$BASE"; rc=$?
+( cd "$d/bin" && ls -la ) > "$d/after"
+if [ "$rc" -eq 6 ] && [ "$(cat "$d/bin/deskboard")" = old ] && [ ! -e "$d/bin/deskpr" ] && [ -z "$(ls -A "$d/bin" | grep -v '^deskboard$')" ]; then
+  ok "D3 a part-way install-copy failure leaves --dest untouched (no mixed set)"
+else
+  no "D3 a part-way install-copy failure leaves --dest untouched" "rc=$rc dest=$(ls -A "$d/bin" | tr '\n' ' ') deskboard=$(head -c 20 "$d/bin/deskboard")"
 fi
 
 # ------------------------------------------------------------------ P pin
