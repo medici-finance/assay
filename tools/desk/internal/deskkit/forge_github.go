@@ -1345,10 +1345,19 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
 // `issue` and `pullRequest` as separate selections on a repository, so one query cannot
 // serve both; the node selection below is byte-identical to the pull-request one, so the
 // two reads produce the same Comment shape and nothing downstream has to know which ran.
-const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
+//
+// Unlike the change half, the issue half is WALKED: it carries a `pageInfo` and an `$after`
+// cursor and listCommentsGQL follows it to the end of the thread under forgeMaxEventPages.
+// An issue thread is read for its NEWEST answer (statusgen's un-block lane keys on the newest
+// blessing-authority comment, and GitLab's listNotes already walks every page), and the
+// newest comments are exactly the ones a first-100 read drops on a long thread — the defect
+// the `gh api --paginate` read this replaces was fixed for. A thread still advertising a next
+// page at the cap is could-not-check, never a silently truncated thread.
+const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!, $after:String) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
-      comments(first: 100) {
+      comments(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           databaseId
@@ -1378,9 +1387,15 @@ type ghCommentNodeWire struct {
 	} `json:"author"`
 }
 
-// ghCommentsConnWire is the `comments` connection hanging off one noteable.
+// ghCommentsConnWire is the `comments` connection hanging off one noteable. PageInfo is
+// selected only by the ISSUE query (the change query does not ask for it, so it decodes to
+// the zero value — no next page — and the change read stays a single request).
 type ghCommentsConnWire struct {
 	Comments struct {
+		PageInfo struct {
+			HasNextPage bool   `json:"hasNextPage"`
+			EndCursor   string `json:"endCursor"`
+		} `json:"pageInfo"`
 		Nodes []ghCommentNodeWire `json:"nodes"`
 	} `json:"comments"`
 }
@@ -1404,16 +1419,69 @@ type ghCommentsRespWire struct {
 // listCommentsGQL runs the comments query for ONE kind and maps its nodes. It is the shared
 // body of ListComments (changes) and ListCommentsTyped (either kind); the request it emits
 // for a change is byte-identical to the one the golden corpus pins.
+//
+// An ISSUE thread is walked page by page (see ghIssueCommentsQuery); a change thread is the
+// single first-100 request the golden corpus pins.
 func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	if kind != TargetIssue {
+		return g.listCommentsPage(repo, number, kind, "", nil)
+	}
+	var res []Comment
+	after := ""
+	for page := 1; page <= forgeMaxEventPages; page++ {
+		var next pageCursor
+		chunk, err := g.listCommentsPage(repo, number, kind, after, &next)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, chunk...)
+		if !next.hasNext {
+			if res == nil {
+				res = []Comment{}
+			}
+			return res, nil
+		}
+		if next.cursor == "" {
+			// A next page is advertised with no cursor to advance on: the walk cannot move,
+			// so the thread's tail is unread. Refuse rather than loop the same page or hand
+			// back the head of the thread as if it were all of it.
+			return nil, Unverifiable(fmt.Sprintf(
+				"could-not-check: %s#%d advertises more comments but no cursor to read them with — "+
+					"refusing to report a partial issue thread as the whole thread", repo.Slug(), number), nil)
+		}
+		after = next.cursor
+	}
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: %s#%d still reports more comments after %d pages of 100 — refusing to report a "+
+			"partial issue thread as the whole thread (its newest comments are the unread ones)",
+		repo.Slug(), number, forgeMaxEventPages), nil)
+}
+
+// pageCursor is one comments page's continuation: whether the forge advertised a further page
+// and the cursor to request it with.
+type pageCursor struct {
+	hasNext bool
+	cursor  string
+}
+
+// listCommentsPage runs ONE request of the comments query for one kind and maps its nodes.
+// after is the page cursor ("" for the first page, which is then sent with no `after`
+// variable at all, so the first request of an issue walk carries only the three coordinates);
+// next, when non-nil, receives the page's continuation.
+func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKind, after string, next *pageCursor) ([]Comment, error) {
 	query := ghCommentsQuery
 	if kind == TargetIssue {
 		query = ghIssueCommentsQuery
 	}
+	vars := map[string]any{
+		"owner": repo.Owner, "name": repo.Name, "number": number,
+	}
+	if after != "" {
+		vars["after"] = after
+	}
 	in := map[string]any{
-		"query": query,
-		"variables": map[string]any{
-			"owner": repo.Owner, "name": repo.Name, "number": number,
-		},
+		"query":     query,
+		"variables": vars,
 	}
 	var out ghCommentsRespWire
 	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
@@ -1440,6 +1508,10 @@ func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKin
 		return nil, Unverifiable(fmt.Sprintf(
 			"could-not-check: %s carries no %s at number %d, so its comment thread could not be read",
 			repo.Slug(), kindNoun(kind), number), nil)
+	}
+	if next != nil {
+		next.hasNext = conn.Comments.PageInfo.HasNextPage
+		next.cursor = conn.Comments.PageInfo.EndCursor
 	}
 	nodes := conn.Comments.Nodes
 	res := make([]Comment, 0, len(nodes))
