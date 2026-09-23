@@ -5,9 +5,15 @@ argument-hint: "[--walk [--item K] | --html OUT.html | --flow [--html OUT.html]]
 
 # assay:inbox
 
-The inbox: a **derived query**, not a stored roll-up or a service. This command
-shells `../scripts/assay-inbox.sh` — a plain `gh` + `jq` helper — across your configured
-repos and prints what's waiting on a human decision, most urgent (then oldest) first.
+The inbox: a **derived query**, not a stored roll-up or a service. It prints what's waiting
+on a human decision across your configured repos, most urgent (then oldest) first.
+
+**Implementation (windows-port/13).** The table (no flags) and `--walk` render through the
+Go `deskinbox` verb (`tools/desk/cmd/deskinbox`) — no `bash`/`jq` dependency, and it works on
+Windows. `--html` and `--flow` still shell `../scripts/assay-inbox.sh` — a plain `gh` + `jq`
+helper — pending their own port (windows-port/15). Both paths compute the SAME ordering and
+item format, so the table/walk/html/flow renderings can never disagree about what is waiting
+or which item is first; only which binary renders it differs.
 
 **Read-only.** It never writes to, comments on, or closes any issue. **Terminal-agnostic.**
 It is plain `git`/`gh` shell — it runs from any terminal.
@@ -30,14 +36,14 @@ carries. Each row prints label, repo, `#number`, title, age, and the issue URL.
 The ordering and the item format are computed ONCE and rendered three ways, so the table, the
 walk and the page can never disagree about what is waiting or which item is first.
 
-| Mode | What it does |
-|---|---|
-| *(none)* | The terminal table — one row per item. Unchanged; still one `gh issue list` per repo per label and nothing else. |
-| `--walk` | Prints **one** item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain), **Verification** (what the desk checks after the act, and what it moves to next). Prints item 1. |
-| `--item K` | With `--walk`, and implying it: print item **K** (1-based) instead of item 1. Out of range is an error — never a silent empty. |
-| `--html OUT.html` | Writes the whole queue to `OUT.html` as cards in that same five-part format, followed by the **Flow** section below. One self-contained file: inline CSS, no scripts, no external assets, light/dark via `prefers-color-scheme`. The only URLs on the page are the issue links. No server. |
-| `--flow` | A different question — *how is the system performing*. Prints the pipeline flow model as a terminal table and exits. See "The Flow page" below. |
-| `--flow --html OUT.html` | The same model as a left-to-right inline-SVG stage diagram, that section alone. |
+| Mode | What it does | Renderer |
+|---|---|---|
+| *(none)* | The terminal table — one row per item. | `deskinbox` |
+| `--walk` | Prints **one** item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain), **Verification** (what the desk checks after the act, and what it moves to next). Prints item 1. | `deskinbox walk` |
+| `--item K` | With `--walk`, and implying it: print item **K** (1-based) instead of item 1. Out of range is an error — never a silent empty. | `deskinbox walk --item K` |
+| `--html OUT.html` | Writes the whole queue to `OUT.html` as cards in that same five-part format, followed by the **Flow** section below. One self-contained file: inline CSS, no scripts, no external assets, light/dark via `prefers-color-scheme`. The only URLs on the page are the issue links. No server. | `assay-inbox.sh --html` (not yet ported — windows-port/15) |
+| `--flow` | A different question — *how is the system performing*. Prints the pipeline flow model as a terminal table and exits. See "The Flow page" below. | `assay-inbox.sh --flow` (not yet ported — windows-port/15) |
+| `--flow --html OUT.html` | The same model as a left-to-right inline-SVG stage diagram, that section alone. | `assay-inbox.sh --flow --html` (not yet ported — windows-port/15) |
 
 `--walk` is **non-interactive by design**: it prints one item and exits, never prompts, never
 blocks on a tty. The turn-taking — ask one, wait, record the ruling, ask the next — belongs to
@@ -152,11 +158,15 @@ The run always ends with a summary line — `assay-inbox: N item(s) across M rep
 query fails (expired token, missing repo, rate limit), the helper prints `gh`'s own
 diagnostic to stderr, marks the summary `THIS INBOX IS INCOMPLETE`, and exits non-zero.
 
-| Exit | Meaning |
-|---|---|
-| `0` | every query succeeded — the output is complete |
-| `1` | precondition failure: `gh`/`jq` missing, no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, `--walk` together with `--html` or with `--flow`, a malformed `--since`) |
-| `2` | one or more queries FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read |
+**`deskinbox` (table, `--walk`) uses the shared desk-tools exit-code taxonomy** — 0 ok,
+5 refused (bad arguments/preconditions), 6 unverifiable (a repo's read failed — output, if
+any, is partial). **`assay-inbox.sh` (`--html`, `--flow`) keeps its own, older taxonomy:**
+
+| Exit | Meaning | `deskinbox` (table/`--walk`) | `assay-inbox.sh` (`--html`/`--flow`) |
+|---|---|---|---|
+| ok | every query succeeded — the output is complete | `0` | `0` |
+| refused / precondition | `gh`/`jq` missing, no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, `--walk` together with `--html` or with `--flow`, a malformed `--since`) | `5` | `1` |
+| partial | one or more queries FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read | `6` | `2` |
 
 A blind Flow section on the `--html` page does **not** redden that run. The exit code of the
 decision modes is a statement about the *decision queue* — a caller checking it is asking
@@ -195,23 +205,35 @@ ordering exists to surface. Hitting the cap is reported, not swallowed.
 2. Before running anything, check that every repo argument matches `owner/repo`
    (`[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`). Refuse to run the command if any token does not
    match, and say why. Then pass each repo as its own separately-quoted argument — never a
-   bare unquoted `$ARGUMENTS` expansion:
+   bare unquoted `$ARGUMENTS` expansion.
+
+   **Table (no flags) and `--walk`/`--item K`** run the `deskinbox` verb directly (it is a
+   compiled binary, not a script — no `bash` wrapper):
    ```
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" "owner/repo1" "owner/repo2"
+   deskinbox "owner/repo1" "owner/repo2"
+   deskinbox walk --item 2 "owner/repo1"
+   ```
+   If `deskinbox` is not on `PATH` (an adopter who has not yet acquired the desk-tools
+   build carrying it), fall back to the bash oracle with the equivalent flags and say you
+   are doing so:
+   ```
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 2 "owner/repo1"
+   ```
+
+   **`--html` and `--flow`** still run the bash oracle (not yet ported — windows-port/15):
+   ```
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --html "$HOME/inbox.html" "owner/repo1"
    ```
    (`CLAUDE_PLUGIN_ROOT` resolves to this plugin's installed root; if unset, resolve the
    script relative to this command file's own `../scripts/assay-inbox.sh`.)
-   Flags go ahead of the repo list and are passed as their own arguments:
-   ```
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 2 "owner/repo1"
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --html "$HOME/inbox.html" "owner/repo1"
-   ```
-3. Print the helper's table output verbatim to the user — do not summarize away rows, do not
-   edit, close, or comment on any issue found. If the helper errors (missing `gh`/`jq` auth,
-   no repos resolvable), surface the error message as-is; do not guess at issue state.
-4. **Check the exit code.** A non-zero exit means the inbox you are looking at is incomplete
-   or absent — say so plainly and relay the stderr diagnostic. Never report "nothing is
-   waiting" on a non-zero exit; that is the failure mode this command exists to avoid.
+3. Print the renderer's table output verbatim to the user — do not summarize away rows, do
+   not edit, close, or comment on any issue found. If it errors (missing auth, no repos
+   resolvable), surface the error message as-is; do not guess at issue state.
+4. **Check the exit code** — the meaning depends on which renderer ran (`deskinbox` vs the
+   bash oracle; see the exit-code table above). A non-zero exit means the inbox you are
+   looking at is incomplete or absent — say so plainly and relay the stderr diagnostic.
+   Never report "nothing is waiting" on a non-zero exit; that is the failure mode this
+   command exists to avoid.
 5. **In `--walk`, print the item and STOP.** Ask that one question and wait for the answer;
    do not run `--item 2` in the same turn, and do not act on the recommended default in place
    of an answer. When the answer comes back, record it on the issue as a **relay** and move
