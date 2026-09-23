@@ -4175,6 +4175,62 @@ private repository name, issue reference, internal document path, item identifie
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
 matcher that stopped matching fails rather than reporting the kits clean forever.
 
+## The dispatch-claim store — `ResolveClaimStore`
+
+WHERE a dispatch claim is kept is decided in ONE place, `deskkit.ResolveClaimStore(repo)`
+(`internal/deskkit/claimstore.go`), from the roster — never by a caller and never by a flag.
+The claim tool (`deskclaim-ref`) and `deskdispatch`'s `claim-acquire` step both ask it; the
+storage surface every backend implements is `deskkit.ClaimStore`, the seven-method seam the
+claim tool always drove, lifted into deskkit unchanged (same holder encoding, same 20 min /
+120 min TTLs, same 0 / 5 / 6 exit codes, byte-identical `show` / `list` output). One
+conformance table (`TestClaimStoreConformance`) runs every backend.
+
+The roster keys (`~/.config/assay/roster.env`; strictly parsed):
+
+| Key | Value |
+|---|---|
+| `ASSAY_CLAIM_STORE` | `file` or `service` — one value for the cell, or `owner/name=<store>` entries for a cell whose repos genuinely differ (a repo the per-repo form does not name is refused, not defaulted) |
+| `ASSAY_CLAIM_DIR` | the `file` store's directory, one absolute path; default `<config home>/dispatch-claims` |
+| `ASSAY_CLAIM_SINGLE_HOST` | `yes` — the declaration that this cell's repos are dispatched from this host only; any other value is refused |
+
+The two valid values of `ASSAY_CLAIM_STORE` are `file` and `service`. **`forge-ref` is not a
+valid value**: set explicitly it is refused like any unknown value, printing the two valid
+ones. Resolution order:
+
+1. A claim-store key that cannot be read (an unusable roster file) or does not parse →
+   refused. An unreadable key is never treated as unset.
+2. `ASSAY_CLAIM_STORE` set → that store, or a refusal when its preconditions do not hold. It
+   never moves on to another store. In this release `file` and `service` parse as valid but
+   are not shipped yet, so setting either is refused naming the release that ships it (the
+   file store, the served store) — a key set early fails loudly.
+3. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
+   written under the dispatching role's credential), exactly as before, for one release
+   window. Every run of `deskclaim-ref` and `deskdispatch` then prints the removal NOTICE:
+
+```
+NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1 — set ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service in the roster.
+```
+
+The release it names is one constant, `deskkit.ClaimStoreLegacyRemovalRelease`; it reads
+`N+1` until release N (the one that ships the `file` store and the serve mode) is cut, which
+sets it to the concrete release. `deskclaim-ref` prints the NOTICE after the verb's own
+output, so the first stderr line a dispatcher quotes is still the verb's.
+
+Every refusal is exit 6 and names the store, what is missing and the remedy. In
+`deskdispatch` it happens in the pre-claim precondition pass: before any child process,
+before any worktree is cut and before any credential is minted. The role credential is
+minted only when the resolved store needs one (the forge-ref store does). The step report
+names the store:
+
+```
+deskdispatch: claim-acquire OK: <item> claimed in <repo> (claim key <key>) via deskclaim-ref, store forge-ref (legacy), authenticated by <source>
+```
+
+**The legacy script's scope.** A consumer repo's `tools/dispatch-claim.sh` speaks the
+forge-ref store only. `deskdispatch` reaches it solely when the Go claim tool is not on
+PATH, and it leaves with that store in release N+1: it is not ported to `file` or
+`service`.
+
 ## `deskroster preflight` — the operating-envelope check
 
 Roughly **one in five** of the verifier desk's open issues is not a finding about the work.

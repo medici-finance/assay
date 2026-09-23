@@ -301,9 +301,18 @@ func dispatch(o dispatchOpts) error {
 	// carries the credential the decision-gate script (step 4) runs under, so it too is taken
 	// HERE, before anything durable, rather than at step 4 with the claim already held — issue
 	// 1146.
-	auth, aerr := resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
-	if aerr != nil {
-		return aerr
+	//
+	// The credential is minted ONLY when the resolved claim store needs one:
+	// the forge-ref store writes refs on the forge; a store that writes none is handed none.
+	// (Every store this build can resolve to is the forge-ref store, so every dispatch still
+	// mints here exactly as before; the decision gate below reads the same resolution.)
+	var auth claimAuth
+	if plan.claimStore.NeedsForgeCredential {
+		var aerr error
+		auth, aerr = resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
+		if aerr != nil {
+			return aerr
+		}
 	}
 
 	// ADMISSION (example-stream/18) — the per-class reservation gate, serialized across
@@ -331,8 +340,8 @@ func dispatch(o dispatchOpts) error {
 	if admitRelease != nil {
 		admitRelease()
 	}
-	o.say("%s OK: %s claimed in %s (claim key %s) via %s, authenticated by %s",
-		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, auth.source)
+	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
+		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -592,6 +601,10 @@ type dispatchPlan struct {
 	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
 	// review dispatch before any durable state exists.
 	forgeKind deskkit.ForgeKind
+	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
+	// from the roster — never a flag. Resolved pre-claim, so a store that
+	// cannot be used refuses before any worktree is cut and before any credential is minted.
+	claimStore deskkit.ClaimStoreResolution
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -741,6 +754,22 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"step %s: the cross-repo claim key %q is outside the item-key grammar, so it is not handed to the "+
 					"claim tool. Nothing was claimed.", stepClaimAcquire, plan.claimKey))
 		}
+	}
+
+	// WHERE the claim is kept is the resolver's answer, read from the roster
+	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
+	// before any child process, any worktree and any credential mint — and is never replaced by
+	// another store. An unset key is the one-window legacy resolution, whose removal NOTICE is
+	// printed on every run.
+	store, serr := deskkit.ResolveClaimStore(repo)
+	if serr != nil {
+		return plan, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: no dispatch claim can be taken for %s — the claim store did not resolve. Nothing was "+
+				"claimed, cut or minted.", stepClaimAcquire, repo), serr)
+	}
+	plan.claimStore = store
+	if store.Notice != "" {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", toolName, store.Notice)
 	}
 
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from

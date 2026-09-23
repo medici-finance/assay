@@ -16,6 +16,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: [1267]
 schema: brief-v2
+design: DR-forge-neutral-21
+decision-issue: 1552
 authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
@@ -36,10 +38,10 @@ gate-why: >-
 decision-trigger: start
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskclaim-ref: follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskdispatch/dispatch.go: follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/rosterconfig.go (the new keys): follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md: follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/cmd/deskclaim-ref: fixed-here (the forge store implements deskkit.ClaimStore; the store comes from the resolver)"
+  - "tools/desk/cmd/deskdispatch/dispatch.go: fixed-here (step 1 resolves the store pre-claim; the credential is minted only when the store needs one)"
+  - "tools/desk/internal/deskkit/rosterconfig.go (the new keys): fixed-here (the three keys, recognised and strictly parsed)"
+  - "tools/desk/README.md: fixed-here (the resolver, the keys, the two valid values, the removal NOTICE, the legacy script's scope)"
   - "claim readers outside the claim tool: follow-up forge-neutral/22"
   - "removal of the forge store and of the unset-key resolution: follow-up forge-neutral/32"
   - "tools/dispatch-claim.sh in consumer repositories: out-of-scope (the legacy script speaks the forge store only, is reached solely when the Go claim tool is absent, and leaves with that store)"
@@ -74,7 +76,9 @@ facts:
   it is refused like any unknown value, printing the two valid ones. The forge store is
   reachable only as the legacy resolution of an **unset** key, for one release window.
 - This brief wires the legacy resolution only. `file` and `service` parse as valid and resolve
-  to a refusal naming the brief that ships them, so a key set early fails loudly.
+  to a refusal naming the release that ships them ("the release that ships the file store" /
+  "… the served store" — not a brief id, which the shipped-corpus guard keeps out of
+  `tools/desk`), so a key set early fails loudly.
 - Unset key → the forge store, plus a NOTICE on every boot of a dispatching role that names
   `ASSAY_CLAIM_STORE`, the two valid values, and the release in which an unset key stops
   resolving. The release name is a constant set when release N is cut, not prose.
@@ -134,7 +138,7 @@ Default if no answer: none — blocks until answered.
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -c -F '**Status:** approved' docs/streams/forge-neutral/reviewer-write-boundary.md` | `1` — the spec this brief implements is approved; `0` means STOP, do not start |
-| 2 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStore' -count=1 -timeout 120s -v` | exit 0; subtests: unset → legacy + NOTICE; `forge-ref` explicit → refused printing `file` and `service`; unknown value → refused; `file`/`service` → refused naming the shipping brief (spec V8, release-N half) |
+| 2 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStore' -count=1 -timeout 120s -v` | exit 0; subtests: unset → legacy + NOTICE; `forge-ref` explicit → refused printing `file` and `service`; unknown value → refused; `file`/`service` → refused naming the release that ships them (spec V8, release-N half) |
 | 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStoreNeverFallsBack' -count=1 -timeout 120s` | exit 0 — an explicit store whose precondition fails is exit 6, and the resolved name is never another store |
 | 4 | check:ci +mutation | the `mutations.json` entry named `claimstore-unmet-precondition-falls-through` | row 3 goes RED |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestClaimStoreConformance' -count=1 -timeout 300s` | exit 0 — the shared table passes for the forge store (spec V1) |
