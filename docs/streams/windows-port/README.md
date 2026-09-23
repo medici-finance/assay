@@ -123,7 +123,7 @@ surfaces between an adopter and those claims.
    Windows CI leg corrected — `docs/adopting-assay.md` still calls it "staged, pending promotion"
    while the workflow is live and brief 04 is `done` on this board.
 
-**Units 11-14 close the desk-role runtime half** (driver's ask, 2026-09-21: "what other things do
+**Units 11-15 close the desk-role runtime half** (driver's ask, 2026-09-21: "what other things do
 we need for the windows port? I hate these 1-by-1's" — a full sweep of the tree at 56491ce found
 the surfaces below, none of which brief 02's audit enumerated; assay#1435 is the filing):
 
@@ -135,10 +135,18 @@ the surfaces below, none of which brief 02's audit enumerated; assay#1435 is the
     mechanisms (a scratch file, the config home) instead of `mktemp` / `/tmp` / `~/.config`;
     the push-guard shim gains a Windows pair via `deskpushguard hook-install`; the release tool
     drops its `/opt` literal.
-13. **`deskinbox` (brief 13).** The 1,403-line bash + jq + make inbox engine behind the
-    `assay:inbox` and `ask-decision` skills becomes a verb with byte-parity tests.
-14. **The Windows leg proves the desk-role paths (brief 14).** A PATH-scrubbed windows-latest
-    job runs each verb against a live public read; each bash oracle it proves is retired.
+13. **`deskinbox` table + walk (brief 13).** The 1,403-line bash + jq inbox engine behind the
+    `assay:inbox` command and the `ask-decision` skill's entry point becomes a verb with
+    byte-parity tests (the shared engine, plus the two most-used renderings — the frontmatter's
+    earlier "make×4" count was a false positive off the bare word in comments; verified zero
+    `make` invocations at pickup). **Split at pickup** (too large for one PR): `--html` and
+    `--flow` move to brief 15, which depends on 13 for the shared engine.
+14. **`deskinbox` html + flow (brief 15).** The self-contained decision-page renderer and the
+    pipeline-flow model (a separate reader over `statusgen`/`deskboard`, plus an inline-SVG
+    stage diagram) — the other half of the original brief 13 scope.
+15. **The Windows leg proves the desk-role paths (brief 14).** A PATH-scrubbed windows-latest
+    job runs each verb — including `deskinbox flow`, which depends on brief 15's deliverable,
+    not brief 13's — against a live public read; each bash oracle it proves is retired.
     **gate: human** (workflow path).
 
 **Unit 10 (brief 10, PR #1432)** is the container-based Verify witness; it is cited by 14 and
@@ -174,8 +182,9 @@ it.
 | 10 | [Verify in the harness container: the supported execution-witness runner on Windows](brief-10-verify-in-container.md) | 3 | M | implemented | — | — |
 | 11 | [Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash](brief-11-portable-desk-pollers.md) | 4 | L | todo | — | — |
 | 12 | [De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind](brief-12-deposix-skill-prose-and-constants.md) | 4 | S | implemented | — | — |
-| 13 | [assay-inbox.sh → a Go `deskinbox` verb (the inbox skill's 1,403-line bash + jq + make engine)](brief-13-inbox-verb-port.md) | 4 | L | todo | — | — |
-| 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 5 | M | todo | — | — |
+| 13 | [assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15)](brief-13-inbox-verb-port.md) | 4 | M | implemented | — | — |
+| 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 6 | M | todo | — | — |
+| 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and
