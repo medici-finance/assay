@@ -601,6 +601,14 @@ human ruling re-derived from scratch each time.
   `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk hand-offs),
   `deskfile new --to <role> …` for the durable tracker state that desk's own sweep leads with —
   never a typed relay through the human, and never a message to its session.
+- **Blocker-evidence gate + correction capture — see `worker-desk` §HARD GATE (one definition, not
+  restated here).** A blocker claim (`BLOCKED-ON-HUMAN`, `needs-decision`, `help wanted`, `question`,
+  a blocking `could-not-check`) needs a `### Evidence` fence exactly as an idle claim needs a sweep,
+  and `deskfile new` REFUSES an evidence-less escalation on those labels (exit 5). And a human
+  CORRECTION right after your receipt is a free `skill-bug` report — obey it, then file ONE via
+  `deskfile new --raised-by <role> --label skill-bug --to desk --correction "<the message>" --section
+  "<skill + section>" --reading "<what it should have said>"` (the tool composes it from your last
+  receipt; NOT for a `no` that answers an options question you just asked).
 - **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering

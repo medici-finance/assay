@@ -100,6 +100,62 @@ export DESK_SESSION='<session-id>' && export <LOOP_ROLE_MARKER>='<role>' && <des
 The concrete marker names and values are the project's config; the invariant is that the export
 and the verb share a shell.
 
+## Scratch files
+
+**Mechanism.** A per-invocation scratch file — a body for `deskpr create`/`deskreply`, a JSON
+snapshot passed between two verbs — is minted fresh on every invocation, never a fixed path in
+a shared scratch directory. A fixed name is a race: two concurrent sessions (or two parallel
+workers sharing one scratch dir) converging on the same path can each overwrite the other's
+file, so the loser posts — or plans against — the OTHER session's content. The mechanism this
+name resolves to is platform-specific but the property (unique, private, collision-proof) is
+not: unix/POSIX shells use `mktemp` (`mktemp "${TMPDIR:-/tmp}/name.XXXXXX"` — the explicit
+template argument is portable across BSD and GNU `mktemp`), PowerShell uses
+`New-TemporaryFile`, and Go code uses `os.CreateTemp("", "name-*")`. All three create the file
+with an exclusive/atomic open and hand back the name that won, so no `$$`/date/session suffix
+can alias it.
+
+**Signal.** Two sessions' writes interleaved in one file; a body or plan carrying content that
+does not match what this session intended to write; a scratch directory that never empties
+because nothing owns cleanup of a fixed name.
+
+**Correct form.** Mint the file where the step runs, immediately before use — never a path
+composed ahead of time and handed across a call boundary:
+
+```
+BODY=$(mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX")     # unix
+$body = New-TemporaryFile                            # PowerShell
+f, _ := os.CreateTemp("", "pr-body-*")                # Go
+```
+
+A skill body names this mechanism as "a per-invocation scratch file (desk-shell.md §Scratch
+files)" rather than spelling `mktemp` as if every adopter's shell has it.
+
+## Config home
+
+**Mechanism.** The desk tools' own config/roster/state directory is the literal path
+`~/.config/assay`, where the leading `~/` is expanded via `os.UserHomeDir()`
+(`tools/desk/internal/deskkit/appconfig.go`'s `expandHome`) — never `os.UserConfigDir()` and
+never `%APPDATA%`. `os.UserHomeDir()` returns `%USERPROFILE%` on Windows, so the SAME literal
+path resolves there too, as `%USERPROFILE%\.config\assay` — this is the brief-02 ruling
+(`docs/streams/windows-port/portability-audit.md` §Config-home recommendation): keep
+`~/.config/assay` unchanged rather than branch on `%APPDATA%`, because it already works on
+Windows through the one home-dir resolver and stays a single documented path across every
+platform. A skill body that spells this as a bare `~/.config/assay/…` literal is stating the
+resolved unix path as if it were POSIX-only, when the mechanism (one `~/`-relative path,
+expanded by `os.UserHomeDir()`) already covers Windows.
+
+**Signal.** A step that reads as if it requires a POSIX home directory (`~/...`) when the
+actual requirement is only "the config home, resolved by the one `~/`-expansion every
+platform shares"; a Windows session unsure whether a `~/.config/assay/HEARTBEAT` instruction
+applies to it.
+
+**Correct form.** Name the mechanism, not just the unix-looking literal: "the config home
+(desk-shell.md §Config home: `~/.config/assay`, expanded via `os.UserHomeDir()` — resolves to
+`%USERPROFILE%\.config\assay` on Windows)" rather than a bare `~/.config/assay` with no
+cross-platform note. The literal path is correct on every platform; what a skill body must
+stop implying is that the `~/` spelling is a unix-only shell expansion rather than a resolved
+Go path.
+
 ## Authenticated transport
 
 <!-- BEGIN authenticated transport

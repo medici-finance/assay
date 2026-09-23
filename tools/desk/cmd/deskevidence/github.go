@@ -78,6 +78,31 @@ func forgeFor(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 // test can inject a token without shelling desktoken; production binds it to mintVerifierToken.
 var mintTokenFn = mintVerifierToken
 
+// publishIdentityGateFn is the seam for deskkit.PublishIdentityMatchesRole. setupFake stubs
+// it no-op (the test roots are not git repositories); the dedicated fail-first tests restore
+// the real gate. Production uses the real gate.
+var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
+
+// productionPublishIdentityGateFn records the production binding before any test replaces it,
+// so a gate quietly stubbed out in the shipped binary fails its seam-reality test loudly.
+var productionPublishIdentityGateFn = publishIdentityGateFn
+
+// publishIdentityGate refuses (exit 5) when a commit the verifier worktree would publish
+// against <base> is not authored AND committed by the verifier App's bound identity (#1490
+// lane B). deskevidence commits Evidence via the Contents API AS the verifier App, so its
+// own landing is correctly attributed; this gate is the defence-in-depth layer over the
+// worktree it reads and derives witness attribution FROM — the verifier worktree #1490
+// flags, whose stale `user.*` is the fault the whole class is about. deskevidence always
+// acts as the verifier, so the role is fixed.
+func publishIdentityGate(dir, base string) error {
+	if strings.TrimSpace(dir) == "" {
+		dir = "."
+	}
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{
+		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), Role: "verifier",
+	})
+}
+
 // execCommand is the single seam through which deskevidence starts a child process — only
 // `desktoken` (the identity layer) reaches it. Tests replace it.
 var execCommand = exec.Command

@@ -683,6 +683,45 @@ The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations
 mutations plus a positive control, run with
 `go run ./cmd/muhar -j 0 -spec internal/deskkit/pushtransport-mutations.json`.
 
+### The publish-identity gate (`deskpr create` / `update`, `deskevidence`)
+
+The push-transport gate above stops the *who pushed* record from disagreeing with the App;
+this gate stops the *who authored* record from disagreeing with the session role. A worktree
+can carry the wrong App identity in its `user.*` — inherited from a shared checkout's stale
+value, set by a manual `git worktree add`, or left by an editor's git — so commits made in it
+read as a **different** role's bot than the session acting (issue #1490: a verifier worktree
+that had picked up the issue-loop bot's identity, whose Evidence then carried the wrong
+Runner). Provisioning (`deskwt role-init`, `deskdispatch`'s worktree-create) stamps the right
+identity on **new** worktrees; this is the layer that catches the case whatever route the
+worktree came by.
+
+`deskpr create`, `deskpr update` and `deskevidence` therefore **refuse, fail-closed** (exit
+5), before any network write, when a commit the push would publish —
+`refs/remotes/origin/<base>..HEAD` — is not authored **and** committed by the session role's
+bound identity: a GitHub bot-USER-id noreply address, a GitLab service-account noreply shape,
+or a trusted GitLab session address (`ASSAY_GITLAB_SESSION_EMAILS`), by the same forge-aware
+rules the preflight `commit-identity` check applies to a worktree's config. The refusal names
+the commit, the identity found, the identity expected, and the remedy (`git commit --amend
+--reset-author` after fixing the worktree config, or `deskwt role-init`). There is **no
+override flag** — the fix is to correct the identity and re-author, not to wave the commit
+through. Implementation: `internal/deskkit/publishidentity.go`
+(`deskkit.PublishIdentityMatchesRole`).
+
+Boundaries mirror the push-transport gate's:
+
+- **Forge-created merges are exempt.** A merge commit (≥2 parents) authored or committed as
+  the forge's own merge identity (GitHub's `noreply@github.com`, from "Merge pull request" /
+  "Update branch") is not the session's commit and never carries the role identity — it is
+  skipped, but *only* when it really is a merge, so an ordinary commit carrying a forge
+  address is still checked.
+- **Three-state.** An unbound role is a refusal (exit 5); a GitHub role whose bot USER id the
+  roster does not pin, or a base ref that will not resolve, is could-not-check (exit 6), never
+  rounded up to a pass; an empty range and every commit matching are clean.
+- **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is
+  correctly attributed — this gate is the defence-in-depth layer over the verifier worktree it
+  derives witness attribution *from*. In the sanctioned post-merge verify flow that worktree
+  sits at the target branch, so the range is empty and the gate is a clean no-op.
+
 ### The logged scan override (`--force-scan-override`)
 
 `deskpr create`, `deskpr update`, `deskpr edit` and `deskreply` accept
@@ -1465,7 +1504,10 @@ later in `--help`.
 - `deskpr create --check` is **offline by construction**, not a rehearsal of the real call:
   it runs every LOCAL gate a real `create` runs — flag validity, branch state, the
   `Brief:`/`Issue:` trailer, the secret scan, the public-repo self-containment scan, the
-  push-transport gate — and stops **before** minting a token or opening any connection.
+  push-transport gate, the **publish-identity gate** (every commit
+  `refs/remotes/origin/<base>..HEAD` would publish is authored **and** committed by the
+  session role's bound identity — issue #1490) — and stops **before** minting a token or
+  opening any connection.
   Exit 0 only when every local gate passed; a failing gate returns its own refusal with its
   own exit code, so `--check` is a gate run early, never a preview that can disagree with
   the real write path. A category it cannot decide offline (chiefly a bare `#N` reference,
