@@ -383,6 +383,55 @@ RISK-VALUE: DERIVED — writer cancel conditioning = event_name == 'pull_request
 
 VERIFY: BLOCKED — 6 rows PASS (3, 3b, 6, 9, 10, 11-as-dereferenced), 5 landing-dependent rows (1, 4, 5, 7, 8) UNRUN as designed, 0 rows FAIL. Advancing requires the human workflows-permission copy of the five staged files to land on main, then rows 1, 4, 5, 7, 8 re-run as after-measurements. Blocker tracked at #1185 (help wanted, OPEN). Item stays implemented; no flip.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2026-09-23 opus-5.5-verifier
+
+Runner != implementer. Fresh classification pass on current merged main
+(7e8e79ed43f30fcf43dc2fdbf735606cce2a8323). Offline envelope (KUBECONFIG=/dev/null); no PR,
+no push, no status flip. gate: model; risk {regulatory:no, customer:no, irreversible:no,
+sensitive-data:no}. Two-phase deliverable: the five workflow files are STAGED under
+tools/ci-load/activation/ and the human workflows-permission copy into .github/workflows/ has
+STILL not landed — so the six landing-dependent rows (1, 2, 4, 5, 7, 8) remain unrunnable as
+after-measurements, unchanged since 2026-09-05. Blocker tracked at #1185 (help wanted, open).
+Execution witness written by statusgen verifyrun into this brief's Evidence section in the
+verifier worktree; note that verifyrun re-runs check:ci rows in a network-off unshare --net
+sandbox that is a Linux facility unavailable on this darwin host, so its witness marks rows
+3/3b/6/9/10/11 could-not-run — those same rows were run manually outside the sandbox this
+pass with the real PASS output recorded below.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | latest verifier-App Evidence PR head, then gh run list --branch B unique-sorted workflowName/event | after-landing: leaksweep-control, leaksweep-pattern, changelog-check, statusgen-board pull_request present; NO ci/push, ci/pull_request, plugin-drift/pull_request | UNRUN as the designed after-measurement — activation not landed, so no post-landing tree or class-A PR exists to measure; live measurement also outside this pass's offline envelope | 2026-09-23 | opus-5.5-verifier |
+| 2 | commit status on the class-A PR head, plus rulesets list (leak-sweep present + requiring ruleset named + no-such-check count 0) | leak-sweep present; ruleset naming it; discriminator count 0 | COULD-NOT-CHECK — requires a live forge-API dereference, outside this pass's offline envelope; the ruleset/leak-sweep sub-claim is activation-independent and was confirmed live on the 2026-09-20 pass (statuses=[leak-sweep], ruleset leak-sweep active, no-such-check 0), not re-asserted here as my own observation | 2026-09-23 | opus-5.5-verifier |
+| 3 | python3 tools/ci-load/pathsemantics.py | exit 0; last line PASS; mixed/go-only/plugin-only skipped=False | exit 0; last line PASS; both staged workflows read paths-ignore [docs/**, changelog/**, CHANGELOG.md, STATUS.md]; mixed=False go-only=False plugin-only=False docs-only=True status-regen=True | 2026-09-23 | opus-5.5-verifier |
+| 3b | edit skipped() outer all( to any( in tools/ci-load/pathsemantics.py, re-run row 3, restore | exit 1 on mutant with FAIL mixed skipped=True; exit 0 after restore | mutant exit 1, FAIL mixed skipped=True (want False) for BOTH ci.yml and plugin-drift.yml; after restore exit 0 PASS; git status --porcelain byte-clean | 2026-09-23 | opus-5.5-verifier |
+| 4 | derive last commit touching .github/workflows/ci.yml, diff --stat that commit^ vs HEAD for the two leak workflows | exit 0, no output, across the ACTIVATION landing commit | UNRUN as designed — no activation landing commit exists; the last commit to touch ci.yml is not the activation copy (activation still unlanded, live ci.yml unfiltered), so the row is vacuous until the human copy lands | 2026-09-23 | opus-5.5-verifier |
+| 5 | grep -n cancel-in-progress .github/workflows/*.yml | exactly two event-conditioned settings (assay-statusgen.yml, assay-qualgen.yml) | UNRUN as after-measurement — BEFORE state: landed tree has ZERO event-conditioned settings; assay-statusgen.yml:52 and assay-qualgen.yml:55 both bare cancel-in-progress: false; no landed workflow whose push leg commits carries a bare true regression | 2026-09-23 | opus-5.5-verifier |
+| 6 | from tools/desk: go test ./cmd/deskboard/ -run TestWouldFire -count=1 -v then go test ./cmd/deskboard/ -run TestZeroCI -count=1 -v | exit 0 twice; named tests actually run | TestWouldFire exit 0 (0.274s), 16 subtests RUN incl paths-ignore_one_file_survives and paths-ignore_all_files_ignored, --- PASS; TestZeroCI exit 0 (2.537s), 16 subtests --- PASS incl NoChecks_PathFiltered; run as two single-pattern invocations per the row's RE2 note | 2026-09-23 | opus-5.5-verifier |
+| 7 | class-A PR statusCheckRollup length | number >= 4 on a POST-landing class-A PR | UNRUN as the designed after-measurement — no post-landing class-A PR exists (activation unlanded); live rollup read also outside this pass's offline envelope | 2026-09-23 | opus-5.5-verifier |
+| 8 | for f in ci plugin-drift assay-statusgen assay-qualgen evidence-automerge, diff -q tools/ci-load/activation/$f.yml .github/workflows/$f.yml or exit 1 | exit 0, no output (staged == landed byte-identical) | exit 1 — first line: ci.yml differs; all five staged files differ from landed. This exit 1 IS the blocker stated mechanically (the human copy has not landed) | 2026-09-23 | opus-5.5-verifier |
+| 9 | for f in tools/ci-load/activation/*.yml, python3 one-liner printing on-key + concurrency and exiting non-zero if no triggers or no jobs | exit 0; five lines; specified shapes | exit 0; five lines. ci.yml: push branches [main] + four-entry paths-ignore, pull_request same paths-ignore, concurrency group ci-<ref> with cancel-in-progress conditioned on event_name == pull_request; plugin-drift.yml: paths-ignore on pull_request only, bare branches [main] on push; assay-statusgen/qualgen: cancel conditioned; evidence-automerge: triggers unchanged | 2026-09-23 | opus-5.5-verifier |
+| 10 | from statusgen: go run . --root (worktree root) --lint | exit 0; no PROBLEM line naming desk-supervision/09 or any file under tools/ci-load/ | exit 0; LINT: PASS; zero lines beginning PROBLEM: in the whole output; none name desk-supervision/09 or tools/ci-load/; the expected risk-files-crossread NOTICE for desk-supervision:09 fires (brief answers four no's but declares .github/workflows/) — a NOTICE, not a PROBLEM, exactly as the brief's Review section anticipates | 2026-09-23 | opus-5.5-verifier |
+| 11 | from statusgen: go run . --root (worktree root) --consumers piped to grep -A6 desk-supervision/09; completed by dereference of the brief's own landing commit | block lists four consumers entries; activation/*.yml CORROBORATED; three out-of-scope UNCHECKED | literal --consumers grep exit 1 (no output): the known scoping artifact — HEAD IS origin/main so there is no diff base to corroborate against (same as all prior passes). Completed by direct dereference: landing commit 162c07b751 introduces all of tools/ci-load/activation/*.yml + README.md + ci-load.diff + pathsemantics.py + the brief + changelog fragment = CORROBORATED holds; it touches NEITHER tools/desk/cmd/deskboard/zeroci.go NOR tools/desk/cmd/deskflip/flip.go NOR any .github/workflows/ file = the three out-of-scope routings and the leak-sweep claim hold at landing | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE enumeration (fail-safe trigger fires: the diff touches a risk-classed path,
+.github/workflows/, and the brief answers all four risk questions no). Every literal the diff
+introduces/changes: (a) paths-ignore = [docs/**, changelog/**, CHANGELOG.md, STATUS.md] @
+tools/ci-load/activation/ci.yml:56-66 and plugin-drift.yml:46; (b) evidence-automerge enable-if
+login = assay-verifier-app[bot] @ tools/ci-load/activation/evidence-automerge.yml:96; (c) writer
+cancel conditioning = github.event_name == pull_request @ tools/ci-load/activation/
+assay-statusgen.yml:61, assay-qualgen.yml:62, ci.yml:75; (d) concurrency group = ci-<github.ref>
+@ ci.yml:72; (e) branches: [main] on the ci.yml push leg @ ci.yml:55. RANK: none is
+irreversible — every one reverts with a single git revert of the eventual landing commit; (d)
+and (e) are pure reversible scoping/grouping knobs and need no derivation. Top three by
+consequence-if-wrong derived below.
+
+RISK-VALUE: DERIVED — evidence-automerge enable-if login = assay-verifier-app[bot] @ tools/ci-load/activation/evidence-automerge.yml:96 — must equal the verify-desk App that authors Evidence PRs; kept in sync with EVIDENCE_AUTHOR @ :153 and sits in FRONT of an unchanged default-deny in-job guard (writes eligible=false first @ :159, re-reads PR author against EVIDENCE_AUTHOR @ :180 plus draft and paginated file-list checks). Drift is fail-safe both directions: narrowed the automerge lane goes silent and Evidence PRs wait for a human merge (the pre-lane state); widened the extra PR is declined by the unchanged in-job check — never widens automerge authority.
+RISK-VALUE: DERIVED — ci/plugin-drift paths-ignore = [docs/**, changelog/**, CHANGELOG.md, STATUS.md] @ tools/ci-load/activation/ci.yml:56-66 (push and pull_request legs) and plugin-drift.yml:46 (pull_request leg only) — exactly the documentary paths no build/test/plugin job reads; GitHub skips a workflow only when EVERY changed file is ignored, so a mixed diff always runs in full. Rows 3 and 3b prove mixed/go-only/plugin-only diffs all still run and the assertion can go red. The two leak/security workflows carry no filter (row 11 dereference: the landing commit touches no .github/workflows/ file), so the required leak-sweep check is unaffected. Reversible.
+RISK-VALUE: DERIVED — writer cancel conditioning = github.event_name == 'pull_request' @ tools/ci-load/activation/assay-statusgen.yml:61 and assay-qualgen.yml:62 (and ci.yml:75) — STATUS.md and QUALITY.md each have exactly one writer, the main regen job; conditioning cancel-in-progress to pull_request means only the write-nothing PR jobs (lint/render) can be superseded, and a main run — the record a merged commit builds — is never cancelled by the next merge. Reversible.
+
+5th unchanged pass: the five staged workflow files still await the human workflows-scope copy into .github/workflows/ (#1185, help wanted).
+
+
 ## Review
 
 Gate: model (from frontmatter; all four risk answers are `no`). Reviewer records verdict +
