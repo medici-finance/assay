@@ -80,6 +80,30 @@ non-zero exit of the program it runs, which erases the 0/2/3 distinction below.)
 | `3` | **published, with a gap** — at least one figure is `withheld` / `could-not-check` / `not-configured`, or the prior day's roll-up failed to parse. The roll-up still lands (the markers are the day's evidence); the CI job then goes red. |
 | `1` | IO/internal failure |
 
+## Cost per passed Verify row (`cost`)
+
+A second, separate reduction: what the work cost, per desk and per model, divided by the
+Verify rows that passed on it. The caller joins the two sources — the cost each desk's
+sessions self-reported (their `tokens` vital) and the passed-row count — into one input
+file; this module only reduces and renders it, with no `gh`/`git` reads.
+
+```json
+{"schema": "cost-per-row-input-v1",
+ "desks": [{"desk": "worker-desk", "model": "example-model",
+            "cost": 120000, "unit": "tokens", "passedRows": 4}]}
+```
+
+```bash
+/tmp/metrics-harvest cost --input cost.json >> report.md
+```
+
+Each line reads ``- cost per passed row — desk `<desk>`, model `<model>`: <figure> <unit>``.
+A desk whose cost is absent, `null` or `"could-not-check"`, reported without a unit, or
+paired with zero or no passed rows renders **`could-not-check`** with the reason — never `0`,
+which would rank the desk that reported nothing as the cheapest. Exit `0` = every line
+measured, `3` = printed with at least one `could-not-check`, `2` = refused input (wrong
+schema, a nameless desk, a duplicate desk/model pair).
+
 ## Config schema
 
 The config file (`domains.yaml` by default; the shipped

@@ -483,6 +483,18 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
+- **Budget checkpoint — `budget:` is a filing threshold, never a gate.** A brief may declare
+  `budget:` beside `effort:` — an amount with its unit (`400k tokens`, `25 USD`); absent = no
+  checkpoint. The worker reads it from the brief it was dispatched on. When the worker's own
+  reported spend on the item reaches **80%** of it, the worker files `help wanted` on its PR (or
+  the item's issue, if no PR is open yet) carrying the escalation packet — what is needed, the
+  options with the default first, the evidence (spend so far against the budget, Verify rows
+  passed and still open), reversibility, and a deadline — and then handles it like any other
+  escalation: that line of work waits for the answer. Never silent continuation past the
+  checkpoint. The checkpoint only ADDS a filing: it never skips, shortens or satisfies a review,
+  a Verify row or a human gate, never marks the item done or blocked by itself, and nothing in
+  the tooling stops, closes or reverts work because of it. Spend the worker cannot read is
+  reported on its workpad as could-not-check, never as "under budget".
 - **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE; nor is a stamp whose dispatch claim has since been RELEASED — a dead cycle's stamp ages out and the PR reads unstamped, rather than being refused harder than an unstamped one. **The unstamped/NOTICE path is RISK-CONDITIONAL for a review verdict (ruling 3):** on a risk-classed PR (every public-repo PR, or a diff touching a security path) a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES; the NOTICE-proceed holds only for an unstamped NON-risk PR. The convention to escalate still stands.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
