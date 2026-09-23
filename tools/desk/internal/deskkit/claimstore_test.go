@@ -1,6 +1,6 @@
 package deskkit
 
-// claimstore_test.go — ResolveClaimStore (forge-neutral/21; spec §5, Verify V8 release-N half).
+// claimstore_test.go — ResolveClaimStore (the claim-store spec §5, Verify V8 release-N half).
 //
 // Every case goes through the REAL roster loader path (a 0600 roster.env under a private
 // config home), so what passes here is the shipped read, not a shortcut around it.
@@ -118,8 +118,8 @@ func TestResolveClaimStore(t *testing.T) {
 		}
 	})
 
-	t.Run("file and service are valid but refused naming the brief that ships them", func(t *testing.T) {
-		for v, brief := range map[string]string{ClaimStoreFile: "forge-neutral/23", ClaimStoreService: "forge-neutral/24"} {
+	t.Run("file and service are valid but refused naming the release that ships them", func(t *testing.T) {
+		for v, brief := range map[string]string{ClaimStoreFile: "ships the file store", ClaimStoreService: "ships the served store"} {
 			withRoster(t, map[string]string{EnvClaimStore: v, EnvClaimSingleHost: "yes"})
 			called, _ := installForgeRefOpener(t)
 			res, err := ResolveClaimStore(repo)
@@ -134,7 +134,7 @@ func TestResolveClaimStore(t *testing.T) {
 		withRoster(t, map[string]string{EnvClaimStore: "example-org/tracker=file,example-org/agents=service"})
 		called, _ := installForgeRefOpener(t)
 		res, err := ResolveClaimStore("Example-Org/Tracker")
-		wantRefusal(t, res, err, "forge-neutral/23")
+		wantRefusal(t, res, err, "ships the file store")
 		res, err = ResolveClaimStore("example-org/console")
 		wantRefusal(t, res, err, "example-org/console", "names no store")
 		if *called != 0 {

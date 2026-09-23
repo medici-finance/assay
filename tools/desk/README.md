@@ -4148,7 +4148,7 @@ private repository name, issue reference, internal document path, item identifie
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
 matcher that stopped matching fails rather than reporting the kits clean forever.
 
-## The dispatch-claim store — `ResolveClaimStore` (forge-neutral/21)
+## The dispatch-claim store — `ResolveClaimStore`
 
 WHERE a dispatch claim is kept is decided in ONE place, `deskkit.ResolveClaimStore(repo)`
 (`internal/deskkit/claimstore.go`), from the roster — never by a caller and never by a flag.
@@ -4174,8 +4174,8 @@ ones. Resolution order:
    refused. An unreadable key is never treated as unset.
 2. `ASSAY_CLAIM_STORE` set → that store, or a refusal when its preconditions do not hold. It
    never moves on to another store. In this release `file` and `service` parse as valid but
-   are not shipped yet, so setting either is refused naming the brief that ships it
-   (forge-neutral/23, forge-neutral/24) — a key set early fails loudly.
+   are not shipped yet, so setting either is refused naming the release that ships it (the
+   file store, the served store) — a key set early fails loudly.
 3. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
    written under the dispatching role's credential), exactly as before, for one release
    window. Every run of `deskclaim-ref` and `deskdispatch` then prints the removal NOTICE:
@@ -4201,7 +4201,7 @@ deskdispatch: claim-acquire OK: <item> claimed in <repo> (claim key <key>) via d
 
 **The legacy script's scope.** A consumer repo's `tools/dispatch-claim.sh` speaks the
 forge-ref store only. `deskdispatch` reaches it solely when the Go claim tool is not on
-PATH, and it leaves with that store (forge-neutral/32): it is not ported to `file` or
+PATH, and it leaves with that store in release N+1: it is not ported to `file` or
 `service`.
 
 ## `deskroster preflight` — the operating-envelope check

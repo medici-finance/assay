@@ -1,8 +1,8 @@
 package deskkit
 
 // claimstore.go — the dispatch-claim store seam, and ResolveClaimStore, the ONE place that
-// decides where a process keeps its dispatch claims (forge-neutral/21; the spec is
-// docs/streams/forge-neutral/reviewer-write-boundary.md §4 and §5).
+// decides where a process keeps its dispatch claims (the reviewer-write-boundary spec, §4
+// and §5).
 //
 // THE SEAM. ClaimStore is the storage surface the claim tool (cmd/deskclaim-ref) always drove,
 // lifted here unchanged from that tool's main package so that more than one backend can sit
@@ -29,7 +29,7 @@ package deskkit
 // SINGLE-POINT-OF-FAILURE. The resolver's order is the one control between a wrong
 // resolution and two holders of one claim. Behind it: each store's own atomic create (a
 // wrong resolution still cannot yield two holders INSIDE one store) and, during the window,
-// the mixed-store refusal (forge-neutral/23), which detects two live stores for one repo from
+// the mixed-store refusal that ships with the file store, which detects two live stores for one repo from
 // the forge side — a different signal in a different component.
 
 import (
@@ -119,7 +119,7 @@ const (
 // resolving to the forge-ref store. It is ONE constant, and the removal NOTICE is rendered
 // from it rather than restating it in prose. It holds the placeholder "N+1" until release N —
 // the release that ships the file store and the serve mode — is cut; that cut sets it to the
-// concrete release tag, forge-neutral/30 records the release it names, and forge-neutral/32
+// concrete release tag; the cutover records the release it names, and the deletion
 // (the deletion) targets exactly that release.
 const ClaimStoreLegacyRemovalRelease = "N+1"
 
@@ -179,7 +179,7 @@ func SetForgeRefClaimStoreOpener(open func(repo string) (ClaimStore, error)) {
 
 // claimStoreBackend is one valid value of ASSAY_CLAIM_STORE as this build knows it. A backend
 // whose open is nil is VALID but not shipped in this build: resolving to it is a refusal that
-// names the brief that ships it, so a key set early fails loudly instead of quietly resolving
+// names the release that ships it, so a key set early fails loudly instead of quietly resolving
 // to something else.
 type claimStoreBackend struct {
 	shippedBy string
@@ -188,8 +188,8 @@ type claimStoreBackend struct {
 
 // claimStoreBackends is keyed by the two valid values and nothing else.
 var claimStoreBackends = map[string]claimStoreBackend{
-	ClaimStoreFile:    {shippedBy: "forge-neutral/23"},
-	ClaimStoreService: {shippedBy: "forge-neutral/24"},
+	ClaimStoreFile:    {shippedBy: "the release that ships the file store"},
+	ClaimStoreService: {shippedBy: "the release that ships the served store"},
 }
 
 // ResolveClaimStore decides where the dispatch claims for repo are kept (spec §5). It reads
@@ -244,7 +244,7 @@ func resolveConfiguredClaimStore(repo, value string, keys claimStoreKeys, prov s
 	}
 	if b.open == nil {
 		return ClaimStoreResolution{}, Unverifiable(fmt.Sprintf(
-			"claim store for %s: %s=%s is a valid store, but this build does not ship it — it ships with "+
+			"claim store for %s: %s=%s is a valid store, but this build does not ship it — it ships in "+
 				"%s. The configured store is never replaced by another one: upgrade to a release that "+
 				"ships it, or remove the key until then (%s)",
 			repo, EnvClaimStore, value, b.shippedBy, prov), nil)

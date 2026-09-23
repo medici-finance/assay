@@ -1,6 +1,6 @@
 package main
 
-// claimstore_test.go — forge-neutral/21: step 1 asks deskkit.ResolveClaimStore where the claim
+// claimstore_test.go — the claim-store seam: step 1 asks deskkit.ResolveClaimStore where the claim
 // is kept. A store that does not resolve refuses BEFORE anything durable happens — no child
 // process, no worktree, no credential minted — and a resolved store is named on the step's
 // report line.
@@ -40,8 +40,8 @@ func countMints(t *testing.T) *int {
 
 func TestDispatchRefusesBeforeWorktreeOnStoreRefusal(t *testing.T) {
 	for _, c := range []struct{ why, line, want string }{
-		{"a valid store this build does not ship", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreFile, "forge-neutral/23"},
-		{"the served store, not shipped either", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreService, "forge-neutral/24"},
+		{"a valid store this build does not ship", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreFile, "ships the file store"},
+		{"the served store, not shipped either", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreService, "ships the served store"},
 		{"forge-ref selected explicitly", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreForgeRef, "cannot be selected"},
 		{"an unknown store", deskkit.EnvClaimStore + "=nfs", "Valid values are file and service"},
 		{"a malformed declaration", deskkit.EnvClaimSingleHost + "=true", "the only value is yes"},

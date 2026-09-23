@@ -112,7 +112,7 @@ flag selects a store. Roster keys:
 An unknown value — ` + deskkit.ClaimStoreForgeRef + ` included — is refused (exit 6) printing the two valid
 values, and a configured store that cannot be used is refused (exit 6), never replaced by
 another. The ` + deskkit.ClaimStoreFile + ` and ` + deskkit.ClaimStoreService + ` stores are not shipped in this build yet: setting either
-is refused naming the brief that ships it. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + `
+is refused naming the release that ships it. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + `
 store, and every run prints:
   ` + deskkit.ClaimStoreLegacyNotice + `
 

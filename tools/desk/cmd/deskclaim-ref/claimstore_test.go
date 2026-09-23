@@ -1,6 +1,6 @@
 package main
 
-// claimstore_test.go — forge-neutral/21: the claim tool obtains its store from
+// claimstore_test.go — the claim-store seam: the claim tool obtains its store from
 // deskkit.ResolveClaimStore. Unset key → the forge-ref store exactly as before, plus the removal
 // NOTICE printed AFTER the verb's own output; a configured store that does not resolve → exit 6
 // with the forge store never built.
@@ -34,8 +34,8 @@ func TestClaimToolUnsetKeyUsesTheForgeStoreAndPrintsTheNoticeLast(t *testing.T) 
 
 func TestClaimToolConfiguredStoreThatDoesNotResolveNeverBuildsTheForgeStore(t *testing.T) {
 	for v, wants := range map[string][]string{
-		deskkit.ClaimStoreFile:     {deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreFile, "forge-neutral/23"},
-		deskkit.ClaimStoreService:  {deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreService, "forge-neutral/24"},
+		deskkit.ClaimStoreFile:     {deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreFile, "ships the file store"},
+		deskkit.ClaimStoreService:  {deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreService, "ships the served store"},
 		deskkit.ClaimStoreForgeRef: {deskkit.EnvClaimStore, deskkit.ClaimStoreFile, deskkit.ClaimStoreService},
 		"nfs":                      {deskkit.EnvClaimStore, deskkit.ClaimStoreFile, deskkit.ClaimStoreService},
 	} {

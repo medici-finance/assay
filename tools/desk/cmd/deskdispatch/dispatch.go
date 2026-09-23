@@ -243,7 +243,7 @@ func dispatch(o dispatchOpts) error {
 	// HERE, before anything durable, rather than at step 4 with the claim already held — issue
 	// 1146.
 	//
-	// The credential is minted ONLY when the resolved claim store needs one (forge-neutral/21):
+	// The credential is minted ONLY when the resolved claim store needs one:
 	// the forge-ref store writes refs on the forge; a store that writes none is handed none.
 	// (Every store this build can resolve to is the forge-ref store, so every dispatch still
 	// mints here exactly as before; the decision gate below reads the same resolution.)
@@ -536,7 +536,7 @@ type dispatchPlan struct {
 	// review dispatch before any durable state exists.
 	forgeKind deskkit.ForgeKind
 	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
-	// from the roster (forge-neutral/21) — never a flag. Resolved pre-claim, so a store that
+	// from the roster — never a flag. Resolved pre-claim, so a store that
 	// cannot be used refuses before any worktree is cut and before any credential is minted.
 	claimStore deskkit.ClaimStoreResolution
 }
@@ -651,7 +651,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	plan.repo = repo
 	plan.claimKey = claimKeyFor(o.item, repo)
 
-	// WHERE the claim is kept is the resolver's answer (forge-neutral/21), read from the roster
+	// WHERE the claim is kept is the resolver's answer, read from the roster
 	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
 	// before any child process, any worktree and any credential mint — and is never replaced by
 	// another store. An unset key is the one-window legacy resolution, whose removal NOTICE is

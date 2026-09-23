@@ -359,7 +359,7 @@ const (
 
 	// scanEnvClaimStore (ASSAY_CLAIM_STORE), scanEnvClaimDir (ASSAY_CLAIM_DIR) and
 	// scanEnvClaimSingleHost (ASSAY_CLAIM_SINGLE_HOST) are DESK-only roster values
-	// (forge-neutral/21): where a cell keeps its dispatch claims, the file store's
+	// (the claim-store seam): where a cell keeps its dispatch claims, the file store's
 	// directory, and the single-host declaration. They are consumed by the desk
 	// tools' claim-store resolver (deskkit/claimstore.go) and never by statusgen —
 	// but the two readers share one ~/.config/assay/roster.env, and an unknown ASSAY_
@@ -418,7 +418,7 @@ func scanKnownRosterKeys() []string {
 		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
 		// they share this roster.env, so statusgen must not fail closed on either.
 		scanEnvReviewerVendor, scanEnvVerifierVendor,
-		// DESK-only, recognised-not-applied (forge-neutral/21): the claim-store keys the
+		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
 		// desk tools' resolver consumes — see their declarations above.
 		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
 	}
