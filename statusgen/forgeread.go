@@ -61,7 +61,10 @@ type forgeUnavailable struct {
 // The method set is derived from the call sites, never invented: a method exists here only once
 // something consumes it, mirroring the freeze rule the desk-tools interface itself follows. This
 // slice lands OpenIssues; the remaining kinds (merged-change lists, a change's head/reviews/check
-// rollup, comment lists for corroboration) are added one per migrated call site.
+// rollup, comment lists for corroboration) are added one per migrated call site. The per-ISSUE
+// reads --scan-issues consumes (IssueTrust, IssueComments, below) are methods on deskreadReader
+// only: --scan-issues is not a --forge-gated check, so there is no offline twin for them to
+// answer through.
 //
 // CONTRACT. err is returned ONLY for a fault in the reader itself — a malformed envelope, an
 // unreadable verb. A repo the forge would not serve is never an err: it is a forgeUnavailable.
@@ -116,9 +119,9 @@ func newDeskreadReader() deskreadReader {
 // declared; an envelope carrying more is not an error, which is what lets the verb add an
 // omitempty field without breaking a pinned consumer.
 type deskreadEnvelope struct {
-	Schema  int    `json:"schema"`
-	Kind    string `json:"kind"`
-	Repos   []struct {
+	Schema int    `json:"schema"`
+	Kind   string `json:"kind"`
+	Repos  []struct {
 		Repo   string `json:"repo"`
 		Issues []struct {
 			Number      int      `json:"number"`
@@ -227,3 +230,150 @@ func (d deskreadReader) OpenIssues(repos []string) (map[string][]forgeIssue, []f
 // --forge was given; nothing else sets it, so there is no path by which a check reaches a forge
 // from a run that did not ask for one.
 var forgeReaderForRun forgeReader = newOfflineReader()
+
+// --- the per-issue kinds (--scan-issues' trust gate and un-block lane) ------------------------
+
+// deskreadItemEnvelope mirrors the verb's per-issue contract (`deskread trust|comments --issue
+// owner/name#N`). Only the consumed fields are declared.
+type deskreadItemEnvelope struct {
+	Schema int    `json:"schema"`
+	Kind   string `json:"kind"`
+	Items  []struct {
+		Repo   string `json:"repo"`
+		Number int    `json:"number"`
+		Trust  *struct {
+			BodyEditedAt string `json:"bodyEditedAt"`
+			Complete     bool   `json:"complete"`
+			Events       []struct {
+				AuthorLogin string `json:"authorLogin"`
+				AuthorID    int64  `json:"authorId"`
+				CreatedAt   string `json:"createdAt"`
+				EditedAt    string `json:"editedAt"`
+			} `json:"events"`
+		} `json:"trust"`
+		Comments *[]struct {
+			AuthorLogin string `json:"authorLogin"`
+			AuthorID    int64  `json:"authorId"`
+			CreatedAt   string `json:"createdAt"`
+			Body        string `json:"body"`
+		} `json:"comments"`
+	} `json:"items"`
+	Partial []struct {
+		Repo   string `json:"repo"`
+		Number int    `json:"number"`
+		Reason string `json:"reason"`
+	} `json:"partial"`
+}
+
+// readItem runs `deskread <kind> --issue <repo>#<n>` and returns the envelope's entry for that
+// ONE issue. Every way the issue went unread — the verb would not run, it answered no envelope,
+// it listed the issue in `partial`, or it mentioned the issue nowhere — is an ERROR, never a
+// zero-value answer: the callers (the trust gate, the un-block lane) already degrade an error to
+// a could-not-check NOTICE, and a zero value would read as "not blessed" / "nobody answered".
+func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEnvelope, int, error) {
+	target := fmt.Sprintf("%s#%d", repo, number)
+	out, err := exec.Command(d.bin, kind, "--issue", target).Output()
+	var env deskreadItemEnvelope
+	jerr := json.Unmarshal(out, &env)
+	if jerr == nil && env.Schema != deskreadSchema {
+		return nil, 0, fmt.Errorf("%s answered envelope schema %d, this build understands %d — "+
+			"upgrade statusgen rather than reading a contract it was not built against",
+			d.bin, env.Schema, deskreadSchema)
+	}
+	if jerr == nil {
+		// A parsed envelope is authoritative even on a non-zero exit (the verb exits 6 when its
+		// one issue was unreadable, with the reason in `partial`).
+		for _, p := range env.Partial {
+			if p.Repo == repo && p.Number == number {
+				return nil, 0, fmt.Errorf("%s %s --issue %s: could-not-check: %s", d.bin, kind, target, p.Reason)
+			}
+		}
+		for i, it := range env.Items {
+			if it.Repo == repo && it.Number == number {
+				return &env, i, nil
+			}
+		}
+	}
+	if err != nil {
+		detail := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			detail = firstLine(string(ee.Stderr))
+		}
+		return nil, 0, fmt.Errorf("%s %s --issue %s: could-not-check: %v %s", d.bin, kind, target, err, strings.TrimSpace(detail))
+	}
+	if jerr != nil {
+		return nil, 0, fmt.Errorf("parsing the %s %s envelope for %s: %w", d.bin, kind, target, jerr)
+	}
+	return nil, 0, fmt.Errorf("%s %s --issue %s: could-not-check: the envelope returned no result and no reason for this issue",
+		d.bin, kind, target)
+}
+
+// issueTrustRead is one issue's trust-gate content, as the native forge served it: the body's
+// content-edit time, every comment's author identity and times, and whether the thread fit in
+// the single bounded page (complete=false fails the blessing closed).
+type issueTrustRead struct {
+	BodyEdited time.Time
+	Events     []blessEvent
+	Complete   bool
+}
+
+// IssueTrust is the `trust` kind: deskkit.Forge.IssueTrustEvents for one issue.
+func (d deskreadReader) IssueTrust(repo string, number int) (issueTrustRead, error) {
+	env, i, err := d.readItem("trust", repo, number)
+	if err != nil {
+		return issueTrustRead{}, err
+	}
+	tr := env.Items[i].Trust
+	if tr == nil {
+		return issueTrustRead{}, fmt.Errorf("%s trust --issue %s#%d: could-not-check: the item carries no trust payload", d.bin, repo, number)
+	}
+	parse := func(what, s string) (time.Time, error) {
+		if s == "" {
+			return time.Time{}, nil
+		}
+		t, perr := time.Parse(time.RFC3339Nano, s)
+		if perr != nil {
+			return time.Time{}, fmt.Errorf("bad %s %q in the %s trust envelope for %s#%d: %w", what, s, d.bin, repo, number, perr)
+		}
+		return t, nil
+	}
+	out := issueTrustRead{Complete: tr.Complete}
+	if out.BodyEdited, err = parse("bodyEditedAt", tr.BodyEditedAt); err != nil {
+		return issueTrustRead{}, err
+	}
+	for _, e := range tr.Events {
+		created, cerr := parse("createdAt", e.CreatedAt)
+		if cerr != nil {
+			return issueTrustRead{}, cerr
+		}
+		edited, eerr := parse("editedAt", e.EditedAt)
+		if eerr != nil {
+			return issueTrustRead{}, eerr
+		}
+		out.Events = append(out.Events, blessEvent{login: e.AuthorLogin, id: e.AuthorID, created: created, edited: edited})
+	}
+	return out, nil
+}
+
+// IssueComments is the `comments` kind: deskkit.Forge.ListCommentsTyped on one issue, the whole
+// thread oldest first. The author TYPE is not on the wire; a GitHub App author arrives already
+// rendered "<slug>[bot]", which isBotComment recognises by that suffix.
+func (d deskreadReader) IssueComments(repo string, number int) ([]issueComment, error) {
+	env, i, err := d.readItem("comments", repo, number)
+	if err != nil {
+		return nil, err
+	}
+	cs := env.Items[i].Comments
+	if cs == nil {
+		return nil, fmt.Errorf("%s comments --issue %s#%d: could-not-check: the item carries no comment list", d.bin, repo, number)
+	}
+	out := make([]issueComment, 0, len(*cs))
+	for _, c := range *cs {
+		out = append(out, issueComment{
+			User:      issueCommentUser{Login: c.AuthorLogin, ID: c.AuthorID},
+			CreatedAt: c.CreatedAt,
+			Body:      c.Body,
+		})
+	}
+	return out, nil
+}
