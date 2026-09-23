@@ -32,6 +32,8 @@ gate-why: >-
   correctness property a model can sign off on its own evidence.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 decision-trigger: creation
+design: DR-windows-port-08
+decision-issue: 892
 issues: []
 schema: brief-v2
 authored: 2026-09-11 by windows-port authoring session (driver ask, 2026-09-11)
