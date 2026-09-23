@@ -16,6 +16,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: [1267]
 schema: brief-v2
+design: DR-forge-neutral-21
+decision-issue: 1552
 authored: 2026-09-17 by forge-neutral authoring session (issue 1267)
 sources:
   - "#1267 — the problem statement, the driver's direction of 2026-09-17, and the required spec contents"
@@ -36,10 +38,10 @@ gate-why: >-
 decision-trigger: start
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskclaim-ref: follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskdispatch/dispatch.go: follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/rosterconfig.go (the new keys): follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md: follow-up forge-neutral/21 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/cmd/deskclaim-ref: fixed-here (the forge store implements deskkit.ClaimStore; the store comes from the resolver)"
+  - "tools/desk/cmd/deskdispatch/dispatch.go: fixed-here (step 1 resolves the store pre-claim; the credential is minted only when the store needs one)"
+  - "tools/desk/internal/deskkit/rosterconfig.go (the new keys): fixed-here (the three keys, recognised and strictly parsed)"
+  - "tools/desk/README.md: fixed-here (the resolver, the keys, the two valid values, the removal NOTICE, the legacy script's scope)"
   - "claim readers outside the claim tool: follow-up forge-neutral/22"
   - "removal of the forge store and of the unset-key resolution: follow-up forge-neutral/32"
   - "tools/dispatch-claim.sh in consumer repositories: out-of-scope (the legacy script speaks the forge store only, is reached solely when the Go claim tool is absent, and leaves with that store)"

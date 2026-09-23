@@ -375,6 +375,28 @@ const (
 	// not collapse the configuration. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvVerifierVendor and the coupling vector.
 	EnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
+
+	// EnvClaimStore (ASSAY_CLAIM_STORE) names where this cell keeps its DISPATCH CLAIMS:
+	// `file` or `service` — one value for the cell, or comma-separated
+	// `owner/name=<store>` entries for a cell whose repos genuinely differ. It is CONSUMED
+	// by the claim-store resolver (claimstore.go's ResolveClaimStore), which reads it
+	// directly rather than through parseConfig, and is strictly parsed by
+	// parseClaimStoreKeys below: an unknown value — `forge-ref` included — is a refusal
+	// that prints the two valid values. UNSET is the one-window legacy resolution to the
+	// forge-ref store, under a NOTICE naming the release in which it stops resolving.
+	// Decides which store holds the fleet's mutual exclusion, so a malformed value is a
+	// refusal of the resolution, never a silent default. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvClaimStore and the coupling vector.
+	EnvClaimStore = "ASSAY_CLAIM_STORE"
+	// EnvClaimDir (ASSAY_CLAIM_DIR) is the `file` claim store's directory: ONE absolute
+	// path. Unset means `<config home>/dispatch-claims`. Consumed by the claim-store
+	// resolver only. KEEP IN SYNC with statusgen's scanEnvClaimDir.
+	EnvClaimDir = "ASSAY_CLAIM_DIR"
+	// EnvClaimSingleHost (ASSAY_CLAIM_SINGLE_HOST) is the operator's declaration that this
+	// cell's repos are dispatched from this host only. The ONLY accepted value is `yes`;
+	// anything else set is a refusal. Declared, not verified. Consumed by the claim-store
+	// resolver only. KEEP IN SYNC with statusgen's scanEnvClaimSingleHost.
+	EnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
 )
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
@@ -461,6 +483,12 @@ func knownRosterKeys() []string {
 		// refusal. KEEP IN SYNC with statusgen's scanKnownRosterKeys() and the
 		// coupling vector (statusgen/testdata/roster_coupling.json).
 		EnvReviewerVendor, EnvVerifierVendor,
+		// EnvClaimStore / EnvClaimDir / EnvClaimSingleHost are CONSUMED by the claim-store
+		// resolver (claimstore.go), which reads them directly and parses them through
+		// parseClaimStoreKeys; parseConfig only RECOGNISES them, so a roster that sets the
+		// claim store does not collapse the whole configuration on the unknown-ASSAY_-key
+		// refusal. statusgen recognises them too (the coupling vector binds the two).
+		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
 	}
 }
 
@@ -889,6 +917,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
 		EnvContributorLedger, EnvRosterSchema,
+		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -1580,6 +1609,113 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		return Config{Class: class, Source: source, Problems: problems}
 	}
 	return cfg
+}
+
+// ---- the claim-store keys (claimstore.go) -------------------------------------
+
+// claimStoreKeys is the strictly parsed ASSAY_CLAIM_STORE / ASSAY_CLAIM_DIR /
+// ASSAY_CLAIM_SINGLE_HOST. At most one of single and perRepo is set.
+type claimStoreKeys struct {
+	single     string            // the cell-wide store, "" when unset or per-repo
+	perRepo    map[string]string // lowercased owner/name → store
+	dir        string            // ASSAY_CLAIM_DIR, "" when unset
+	singleHost bool              // ASSAY_CLAIM_SINGLE_HOST=yes
+}
+
+// validClaimStoreValue reports whether v is one of the two valid store values, and — when it
+// is not — the refusal text, which always prints both valid values.
+func validClaimStoreValue(v string) error {
+	switch v {
+	case ClaimStoreFile, ClaimStoreService:
+		return nil
+	case ClaimStoreForgeRef:
+		return fmt.Errorf("%s=%s is refused: the %s store cannot be selected — it is only what an UNSET %s "+
+			"resolves to until release %s. Valid values are %s and %s",
+			EnvClaimStore, v, ClaimStoreForgeRef, EnvClaimStore, ClaimStoreLegacyRemovalRelease,
+			ClaimStoreFile, ClaimStoreService)
+	default:
+		return fmt.Errorf("%s=%q is not a claim store. Valid values are %s and %s",
+			EnvClaimStore, v, ClaimStoreFile, ClaimStoreService)
+	}
+}
+
+// parseClaimStoreKeys strictly parses the three claim-store keys out of raw roster values.
+// Any malformed key is an error; nothing is defaulted around it.
+func parseClaimStoreKeys(vals map[string]string) (claimStoreKeys, error) {
+	var k claimStoreKeys
+
+	if raw := strings.TrimSpace(vals[EnvClaimStore]); raw != "" {
+		if !strings.Contains(raw, "=") {
+			if strings.ContainsAny(raw, ",; \t\n\r") {
+				return k, fmt.Errorf("%s=%q names more than one store; a cell-wide value is ONE of %s or %s, "+
+					"and a per-repo value is owner/name=<store> entries", EnvClaimStore, raw, ClaimStoreFile, ClaimStoreService)
+			}
+			if err := validClaimStoreValue(raw); err != nil {
+				return k, err
+			}
+			k.single = raw
+		} else {
+			k.perRepo = map[string]string{}
+			for _, entry := range splitList(raw) {
+				repo, v, hasEq := strings.Cut(entry, "=")
+				repo = strings.ToLower(strings.TrimSpace(repo))
+				v = strings.TrimSpace(v)
+				if !hasEq {
+					return claimStoreKeys{}, fmt.Errorf("%s: entry %q mixes a cell-wide value into the per-repo form — "+
+						"use owner/name=<store> for every entry, or one bare value for the cell", EnvClaimStore, entry)
+				}
+				if strings.Count(repo, "/") != 1 || strings.HasPrefix(repo, "/") || strings.HasSuffix(repo, "/") ||
+					strings.Contains(repo, "*") {
+					return claimStoreKeys{}, fmt.Errorf("%s: entry %q's repo %q is not a full owner/name slug",
+						EnvClaimStore, entry, repo)
+				}
+				if err := validClaimStoreValue(v); err != nil {
+					return claimStoreKeys{}, err
+				}
+				if _, dup := k.perRepo[repo]; dup {
+					return claimStoreKeys{}, fmt.Errorf("%s: repo %q is given a store more than once", EnvClaimStore, repo)
+				}
+				k.perRepo[repo] = v
+			}
+		}
+	}
+
+	if raw := strings.TrimSpace(vals[EnvClaimDir]); raw != "" {
+		switch {
+		case strings.ContainsAny(raw, ",;\t\n\r"):
+			return claimStoreKeys{}, fmt.Errorf("%s=%q contains a separator — it names ONE directory", EnvClaimDir, raw)
+		case !filepath.IsAbs(raw):
+			return claimStoreKeys{}, fmt.Errorf("%s=%q is not an absolute path — a relative claims directory would "+
+				"move with whatever directory the tool was started in", EnvClaimDir, raw)
+		}
+		k.dir = filepath.Clean(raw)
+	}
+
+	if raw := strings.TrimSpace(vals[EnvClaimSingleHost]); raw != "" {
+		if raw != "yes" {
+			return claimStoreKeys{}, fmt.Errorf("%s=%q is not accepted — the only value is yes (the declaration that "+
+				"this cell's repos are dispatched from this host only); leave it unset otherwise", EnvClaimSingleHost, raw)
+		}
+		k.singleHost = true
+	}
+	return k, nil
+}
+
+// storeFor returns the store configured for repo: set=false when ASSAY_CLAIM_STORE is unset
+// altogether. A per-repo key that does not name repo is an error, not "unset": the key IS set,
+// so silence about one repo must not mean the legacy store for it.
+func (k claimStoreKeys) storeFor(repo string) (value string, set bool, err error) {
+	if k.single != "" {
+		return k.single, true, nil
+	}
+	if len(k.perRepo) == 0 {
+		return "", false, nil
+	}
+	if v, ok := k.perRepo[strings.ToLower(strings.TrimSpace(repo))]; ok {
+		return v, true, nil
+	}
+	return "", true, fmt.Errorf("%s is set per repo but names no store for %s — add %s=%s or %s=%s",
+		EnvClaimStore, repo, repo, ClaimStoreFile, repo, ClaimStoreService)
 }
 
 // ---- the effective-value echo (P3) -------------------------------------------

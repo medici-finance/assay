@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -282,6 +282,12 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tprobeRef := in.Branch\n\tif in.StartBranch != \"\" {\n\t\tprobeRef = in.StartBranch\n\t}\n\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})",
       "new": "\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})"
+    },
+    {
+      "name": "claimstore-unmet-precondition-falls-through",
+      "file": "internal/deskkit/claimstore.go",
+      "old": "\t\tres, rerr := resolveConfiguredClaimStore(repo, value, keys, prov)\n\t\tif rerr != nil {\n\t\t\treturn ClaimStoreResolution{}, rerr\n\t\t}",
+      "new": "\t\tres, rerr := resolveConfiguredClaimStore(repo, value, keys, prov)\n\t\tif rerr != nil {\n\t\t\treturn resolveLegacyClaimStore(repo, prov)\n\t\t}"
     }
   ],
   "_not_mutated": {
