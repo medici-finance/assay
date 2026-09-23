@@ -4037,6 +4037,33 @@ the tools while `--root` stays the item's own repo — the worktree is always cu
 `--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
 script file sits.
 
+**Cross-repo items resolve through the alias registry, and a mismatch is a hard fail.** An item
+may name the repo its deliverable lands in by ALIAS — the brief's `deliverable_repo: <alias>` or
+`homed-in: <owner>/<name>` frontmatter, an `<alias>:<stream>/<NN>` item-key prefix, or the alias
+segment of the brief's own brief-v2 `brief:` id (the last two name the alias the brief is tracked
+under). `--brief` is resolved once — absolute, else under `--root`, else under `--claim-root` — and
+that one file feeds the deliverable resolution, the human-gate detection, the decision script and
+the prompt; a `--brief` that resolves nowhere is refused. Every registry alias key, `repo:` value
+(strict `owner/name`) and `self:` (an alias that is a registered key) is validated before any of it
+reaches a claim key, a claim or token repo, or a prompt; a bad value refuses the dispatch (exit 5). The alias resolves through `graph-repos.yaml` (schema
+`graph-repos-v1`) in the stream root at `--claim-root`, else `--root` — never by a repo name's
+resemblance to an alias. Before admission, the token mint, the claim or the worktree: no
+registry, or an alias reserved but unpublished there, is could-not-check (exit 6); an alias the
+registry does not define is refused naming it (exit 5); a resolved repo that is not `--repo` or
+not `--root`'s own origin is a HARD FAIL (exit 5) naming both repos, with nothing claimed and no
+worktree cut. The resolved repo is the claim repo and the token's repo, a cross-repo claim key
+carries the tracking alias, and the worker prompt says to run `deskpr create --root <tracking
+checkout>` so the PR's `Brief:` trailer resolves against the tracking board. An item that
+declares no alias keeps the path above unchanged.
+
+**The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
+the deliverable repo's open and merged PRs by `Brief:` trailer before admission, the mint and the
+claim. An OPEN PR refuses (resume it with `--pr`). A MERGED PR refuses as delivered — unless
+`--rework` says the row awaits implementer rework, in which case the dispatch becomes a FOLLOW-UP
+on a new branch (`feat/<item>-followup-<N>`), never a resume or a re-cut of the merged branch.
+The board-side measurement of a merge in a sibling repo is a separate verb this one does not
+re-implement; `siblingPhantomsFn` is the seam it plugs into once it ships.
+
 **Fail closed, with the step or condition NAMED.** Exit 0 means the whole ceremony
 completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`
 names the condition. There is no partial success, no override flag on any of the three, and

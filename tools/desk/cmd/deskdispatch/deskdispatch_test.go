@@ -29,6 +29,12 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	t.Helper()
 	home = t.TempDir()
 	root = t.TempDir()
+	// A real --brief must resolve now (resolveBrief refuses one that names no file), so the item
+	// checkout carries the `spec.md` the human-gate tests pass. It has no frontmatter: it gates on
+	// nothing by itself, so only an explicit --gate-human makes those items human-gated.
+	if err := os.WriteFile(filepath.Join(root, "spec.md"), []byte("# example spec\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
