@@ -3,8 +3,9 @@
 // deskpushguard binary from PATH rather than baking in a hardcoded absolute install
 // path.
 //
-// Before this (windows-port/12, closing the "Push-guard shim" needs-port row from
-// docs/streams/windows-port/portability-audit.md), the ONLY way to populate
+// Before this (example-stream/12, closing the "Push-guard shim" needs-port row from
+// docs/streams/example-stream/portability-audit.md — the real stream slug is withheld
+// from shipping copy-set files per the corpus withheld-path guard), the ONLY way to populate
 // .githooks/pre-push was `make desk-hook-install` / the PowerShell
 // `Target-DeskHookInstall`, and both copied the committed `tools/desk/hooks/pre-push`
 // shim VERBATIM — a `#!/bin/sh` script that `exec`s the fixed unix install path

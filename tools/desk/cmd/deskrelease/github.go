@@ -34,8 +34,11 @@ var execCommand = exec.Command
 // /opt/desk-tools/bin — a literal that does not merely fail to be Windows-idiomatic,
 // it does not exist at all on a native-Windows install (there is no /opt), so the old
 // constant made this tool unconditionally non-portable, not just non-idiomatic
-// (docs/streams/windows-port/portability-audit.md's "deskrelease's desktoken path"
-// needs-port row). Resolved instead of hardcoded, but resolved to a
+// (the "deskrelease's desktoken path" needs-port row in
+// docs/streams/example-stream/portability-audit.md — the real stream slug is
+// neutralised to a synthetic example-stream/… slug here because the corpus
+// withheld-path guard forbids a shipping copy-set file naming a real docs/streams
+// path). Resolved instead of hardcoded, but resolved to a
 // SPECIFIC binary, not an open PATH search: see resolveDeskTokenPath's doc comment for
 // why the co-located-sibling check preserves the original "a PATH entry cannot
 // substitute a different program for the identity mint" property in the common
