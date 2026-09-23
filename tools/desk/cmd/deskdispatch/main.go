@@ -103,7 +103,12 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
                       refs/remotes/origin/main. Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
-                      one recreates the work where nobody asked for it.
+                      one recreates the work where nobody asked for it. The new worktree is
+                      then STAMPED with the DISPATCHED agent's own role commit identity
+                      (worker/reviewer/verifier, per --kit) worktree-scoped, so it never
+                      inherits the dispatching desk's identity and misattributes Evidence
+                      Runner cells; a --kit whose role has no roster identity is refused
+                      pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
   3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
