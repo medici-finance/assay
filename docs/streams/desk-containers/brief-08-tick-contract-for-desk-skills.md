@@ -419,6 +419,50 @@ Pre-mortem → detection map:
 |---|------|---------------------|------|--------|
 | — | — | not yet run — this brief is authored, not implemented | — | — |
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+Ran against merged origin/main 39866201ce48acdce1f9b14d1cae38eb2b7eff38 on darwin, offline
+(KUBECONFIG=/dev/null). Rows 1-8 and 13 run offline in this repo and all pass; row 14 is the
+sanctioned exit-2 could-not-check on a fully merged tree; rows 9-12 are ONLINE-LANE, offline-barred
+in this repo, recorded as could-not-check with the cell hand-off named (never rounded to pass).
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/skillslint && go run . --root ../.. | exit 0 — all five verdict lines clean with the changed bodies and new reference in tree | exit 0 — SKILLSLINT/HIDDEN-CHARS/HOUSE-VALUES/GUARDRAILS/ENFORCEMENT-BLOCK all PASS; HOUSE-VALUES read 38 markdown files under plugins/, no proper name in a driver position | 2026-09-23 | opus-5.5-verifier |
+| 2 | cd tools/skillslint && go run . --root ../.. (reading the GUARDRAILS verdict) | exit 0 — checked-clean with the tick-mode block compared at all FIVE sites, not zero | exit 0 — GUARDRAILS: PASS, 32 guardrail copies byte-match; the tick-mode block declares exactly five site lines (the-desk, worker-desk, pr-review-desk, verify-desk, intake-desk) and each body carries the copy | 2026-09-23 | opus-5.5-verifier |
+| 3 | cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bodies ../../plugins/assay/skills | exit 0 — checked-clean; no banned harness token, no capability outside the closed seven | exit 0 — checked-clean: bodies — no violations | 2026-09-23 | opus-5.5-verifier |
+| 4 | cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bindings ../../plugins/assay/references | tick-contract.md prints skipped (declared non-matrix-reference) and contributes ZERO violations; mode exit stays 1 (a pre-existing unrelated red), assertion is the DELTA | exit 1 — tick-contract.md printed "skipped (declared non-matrix-reference)", zero violations from it; the one remaining violation is claude-code.md missing a system-demo degradation cell, which is pre-existing (absent already at the impl commit's parent) and untouched by this brief; delta attributable to this brief is +1 skip line, +0 violations | 2026-09-23 | opus-5.5-verifier |
+| 5 | citation check over the five bodies: exactly one link to ../../references/tick-contract.md each, the path resolving from each body dir, and the summary-line grammar line absent from every body | five citations, five resolving paths, zero restatements | pass — each of the five bodies has citations=1, the relative path resolves from its own directory, and grammar-restatements=0 (no line matching the tick role= ... outcome= ... swept= ... shape) | 2026-09-23 | opus-5.5-verifier |
+| 6 | bash plugins/assay/scripts/tick-summary.test.sh | exit 0 — every named case passes hermetically (no network, no token) | exit 0 — 71 passed, 0 failed; suite runs offline and includes bash-3.2 portability + no-network/forge-tool cases | 2026-09-23 | opus-5.5-verifier |
+| 7 | bash plugins/assay/scripts/tick-summary.test.sh --case rejects-zero-for-unknown && bash plugins/assay/scripts/tick-summary.test.sh --case rejects-unknown-outcome | exit 0 — a 0 where the count is unknown is REJECTED and an outcome outside the closed four is REJECTED | exit 0 both cases — rejects-zero-for-unknown: 2 passed; rejects-unknown-outcome: 3 passed (outcome set is closed and case-sensitive) | 2026-09-23 | opus-5.5-verifier |
+| 8 | git diff of the impl commit against its parent over plugins/assay/skills/ restricted to the Liveness contract, loop and boot sections of all five bodies | exit 0 / empty — the window path is untouched | empty for the window path — the impl commit is 130 insertions, 0 deletions across the five bodies (26 added lines each = the Tick mode section only); no Liveness/loop/boot line changed. Ran the comparison against the impl commit parent because the verify worktree HEAD equals origin/main, so a diff against origin/main is trivially empty | 2026-09-23 | opus-5.5-verifier |
+| 9 | ONLINE LANE — on a cell: one pr-review-desk tick pass against a forced-actionable queue, under the image timeout | pass completes inside the deadline; last stdout line satisfies the grammar; outcome=ok, acted greater-than-or-equal 1 | could-not-check — offline-barred in this repo (no offline runner for a skill body: skillbench is a reducer over committed artifacts, the fleet harness exercises desk tools not skill prose). Runs on a cell against the loop image. Hand-off named | 2026-09-23 | opus-5.5-verifier |
+| 10 | ONLINE LANE — the transcript of row 9 grepped for the arming of any durable wake, scheduled wake-up, cadence sleep and human prompt | zero hits | could-not-check — offline-barred in this repo; requires the row-9 transcript from a cell run. Hand-off named | 2026-09-23 | opus-5.5-verifier |
+| 11 | ONLINE LANE — row 9 repeated with ASSAY_TICK_DEADLINE=60 | summary line printed strictly before 60 s; no new work dispatched inside reserve+one-unit; every dispatched subagent carried a deadline no later than the pass | could-not-check — offline-barred in this repo; requires a cell run. Hand-off named | 2026-09-23 | opus-5.5-verifier |
+| 12 | ONLINE LANE — row 9 repeated with, in turn: no trigger; --tick only; ASSAY_TICK=1 only; both; and ASSAY_TICK set to each of true, yes, 0, empty | first four tick, last four take the window path | could-not-check — offline-barred in this repo; requires a cell run. The exact-match trigger rule is asserted offline at grammar level and in prose (tick-contract.md line 40), but its RUNTIME behavior needs a cell. Hand-off named | 2026-09-23 | opus-5.5-verifier |
+| 13 | statusgen --root . --lint (with an absolute --root); echo the exit | 0 — LINT: PASS; the brief, board row, wave entry and frontmatter well-formed | exit 0 — LINT: PASS (statusgen v1.0.26). NOTICEs printed are for other streams (statusgen, windows-port witness debt; verified-runner-attribution on unrelated briefs), none names desk-containers/08 | 2026-09-23 | opus-5.5-verifier |
+| 14 | statusgen --root . --consumers --brief assay:assay:desk-containers:08 (absolute --root); echo the exit | 0 — every deliverable routed follow-up desk-containers/08; exit 2 is could-not-check and reported as itself | exit 2 — COULD-NOT-CHECK reported AS ITSELF: "assay:assay:desk-containers:08 is not in the diff against 39866201ce48..., so this run carries no evidence about its claims — no entry was corroborated and none was disproved." Exactly the sanctioned exit-2 on a fully merged tree that the row defines; not a pass, not a fail | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE lines (kit section 4 — enumerate then rank then derive):
+
+Enumeration of every literal this diff introduces or changes:
+- R (exit reserve default) = 60 seconds @ plugins/assay/references/tick-contract.md:99
+- ASSAY_TICK exact-match trigger literal = "1" @ plugins/assay/references/tick-contract.md:40
+- closed outcome set = { ok, noop, refused, could-not-check } @ plugins/assay/references/tick-contract.md:123 (a definitional set, not a scalar)
+- budget breaker inequality D minus E less-than R plus W, and derived subagent deadline D minus E minus R @ plugins/assay/references/tick-contract.md:94-99 (formulae, no scalar of their own)
+- The deadline facts named in the brief (480 s tick / 540 s activeDeadlineSeconds / 1 h token) are explicitly NOT set by this change — the brief sets no number in any manifest — so they are out of scope operator values.
+
+Ranking by irreversibility: every enumerated entry is REVERSIBLE (edit-and-redeploy). The brief is
+irreversible:no, gate:model, all four risk answers no; the diff touches only docs and POSIX shell
+scripts (no risk-classed path) and changes no hard-pinned repo constraint. No irreversible entry
+exists, so nothing routes to the human gate on risk grounds.
+
+RISK-VALUE: DERIVED — R = 60 @ plugins/assay/references/tick-contract.md:99 — the exit reserve. Derived from its stated job: R covers only the exit path (print the one summary line, update the workpad or standing-note, release any claim this pass took). 60 s is a conservative fixed budget for three cheap local operations, sized so the exit completes before the outer OS timeout kills the process yet small enough not to starve the working budget (with D=480, working budget = 420 minus boot). It is a reversible operational default, not a hard-pinned constraint.
+RISK-VALUE: DERIVED — ASSAY_TICK exact-match literal = "1" @ plugins/assay/references/tick-contract.md:40 — the environment trigger value. Derived from the anti-silent-arming requirement: an EXACT string match to "1" (mirroring statusgen/telemetry.go telemetryArmed) so no inherited truthy value (true, yes, non-empty) can silently convert a live operator window into a one-pass run. "1" is the conventional armed value; reversible. Enforced offline at grammar level (row 7) and, at runtime, only by online-lane row 12 (could-not-check here).
+
+Offline lane clean. Rows 9-12 are the online-lane behavioural proofs (per the brief's DoD, run by a cell against the loop image), and are handed off, not passed.
+
+
 ## Review
 
 Gate: model (all four risk answers no). The change is additive prose plus a shell checker and its
