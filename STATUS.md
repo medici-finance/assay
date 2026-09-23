@@ -60,14 +60,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 76 total — 76 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 77 total — 77 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -95,6 +95,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 16 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -320,7 +321,7 @@ _None._
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — implemented (wave 5)
 - 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — implemented (wave 3)
-- 14 Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver — todo (wave 2)
+- 14 Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver — implemented (wave 2)
 - 15 desklabel — a role-keyed label verb — implemented (wave 2)
 - 16 deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane — implemented (wave 4)
 - 17 deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch — todo (wave 2)
