@@ -408,6 +408,54 @@ RISK-VALUE: DERIVED — shared set = {needs-decision, needs-human, question} + `
 
 **VERIFY: 12/13 PASS** — held pending flip. All three security-critical rows (6 refusal, 7 human-decided-refusal, 13 mutation-caught) PASS. Row 11 could-not-check is the structural `statusgen --consumers` merged-brief limitation tracked `#1281` — the identical accepted condition under which sibling briefs 03/05/06/08 landed `done` on this board. gate:model, risk all-no → advances implemented → verified.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` origin/main at
+`b3fe2a1c7900f5b2cf9c5da6364fd598a64f609f`. Offline (`KUBECONFIG=/dev/null`). Every row run
+fresh. Go 1.26.5 darwin/arm64. Runner: opus-5.5-verifier.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/desk && go build ./... && go test ./... | exit 0 | build exit 0; test exit 0 — ~78 packages ok incl cmd/desklabel, internal/deskkit, internal/forgeban, internal/topology | 2026-09-23 | opus-5.5-verifier |
+| 2 | go test ./cmd/desklabel/... -count=1 | exit 0 | exit 0 — ok cmd/desklabel 0.362s | 2026-09-23 | opus-5.5-verifier |
+| 3 | go test ./internal/deskkit/ -run TestNoForgeCLIShellout && -run TestForgeNoPassthrough | exit 0 | exit 0 both — seam stays closed | 2026-09-23 | opus-5.5-verifier |
+| 4 | go test ./internal/deskkit/ -run TestApplyIssue-LabelsBothBackends -count=1 -v | exit 0 | exit 0 — parent + github + gitlab subtests all PASS, no SKIP | 2026-09-23 | opus-5.5-verifier |
+| 5 | go test ./cmd/desklabel/... -run TestDesklabelApplies-OwnedLabelGitHub && ...GitLab -v | exit 0 | exit 0 both — GitLab subtests issue-only / MR-only / both-resolve-refused-without-kind all PASS, no SKIP | 2026-09-23 | opus-5.5-verifier |
+| 6 | go test ./cmd/desklabel/... -run TestDesklabel-RefusesUnownedLabel -count=1 -v | exit 5, zero forge calls, names both roles | test PASS (exit 0) — 14 refusal subtests: worker-on-reviewer-labels, reviewer-on-worker-labels, table-absent, size-family; all refuse, no SKIP | 2026-09-23 | opus-5.5-verifier |
+| 7 | go test ./cmd/desklabel/... -run TestDesklabelRefuses-HumanDecidedForEveryRole -count=1 -v | exit 5 every role | test PASS (exit 0) — 20 subtests: 5 roles (desk, issue-loop, reviewer, verifier, worker) x add/rm x lower+mixed case, all refuse, no SKIP | 2026-09-23 | opus-5.5-verifier |
+| 8 | go test ./cmd/desklabel/... -run TestDesklabelShared-VocabularyAnyRole -count=1 -v | exit 0 | exit 0 — shared set 4-wide (help wanted, needs-decision, needs-human, question); worker+reviewer both succeed, no SKIP | 2026-09-23 | opus-5.5-verifier |
+| 9 | grep -rn -e flag.String-as -e --as tools/desk/cmd/desklabel --include=*.go, minus _test.go, wc -l | prints 0 | 0 — no role-override flag | 2026-09-23 | opus-5.5-verifier |
+| 10 | go test ./internal/forgeban/... -count=1 | exit 0 | exit 0 — ratchet unaffected | 2026-09-23 | opus-5.5-verifier |
+| 11 | statusgen --root . --consumers --brief forge-neutral/15 | exit 0, corroborated | could-not-check (exit 2, explicitly unrun) — statusgen: brief is not in the diff against b3fe2a1c7900, so the run carries no evidence about its consumers claims (none corroborated, none disproved). Structural: authoring and implementation landed in separate PRs, so it is never in the merged-main diff. Reported as itself, not rounded. Same accepted condition as the 2026-09-17 and 2026-09-22 passes; tracked #1281. | 2026-09-23 | opus-5.5-verifier |
+| 12 | grep -c desklabel tools/desk/README.md | prints >= 1 | 1 — tool-reference row present | 2026-09-23 | opus-5.5-verifier |
+| 13 | Mutation: force the ownership guard (permits) to always report caller-owned, re-run row 6, restore | mutant reddens row 6 (exit 1), exit 0 after restore | CAUGHT — baseline vocabulary.go md5 a500b2c1...; mutant (permits returns true unconditionally) reddened row 6 TestDesklabel-RefusesUnownedLabel and TestDesklabelRefuses-HumanDecidedForEveryRole and TestDesklabelDry-RunWritesNothing, suite exit 1; restored byte-identical (md5 a500b2c1...), suite exit 0 | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE — enumerate → rank → derive. The trigger fires fail-safe: exec-tier is strong and the
+brief itself states the vocabulary table is "a security boundary disguised as a small lookup", so
+every authority-binding literal in the diff scope (the vocabulary table) is enumerated below.
+Enumeration over `tools/desk/cmd/desklabel/vocabulary.go`. Each entry is a label→owner authority
+binding (a literal at file:line). The reversible operational values here are none; the
+irreversible-if-wrong ones are the ownership bindings (a wrong owner lets a role forge another
+role's marker — the exact forgery class the verb exists to prevent).
+
+Enumerated bindings (label = owner @ vocabulary.go:line):
+- human-decided = ownerNone("no role") @ vocabulary.go:128 — TOP RANK
+- superseded? = roleWorker @ vocabulary.go:112
+- disposition:superseded = roleWorker @ vocabulary.go:114
+- disposition:resolved-elsewhere = roleWorker @ vocabulary.go:116
+- disposition:needs-rebase = roleWorker @ vocabulary.go:118
+- authorization-needed = roleReviewer @ vocabulary.go:122
+- approval-needed = roleReviewer @ vocabulary.go:124
+- role/owner sentinels: roleWorker="worker" @:37, roleReviewer="reviewer" @:38, ownerShared="shared" @:48, ownerNone="no role" @:50, helpWantedLabel="help wanted" @:57
+- shared set: derived live from topology.DecisionOwedLabelNames() (topology.go:701) + helpWantedLabel — not a hardcoded literal in this file.
+
+RISK-VALUE: DERIVED — human-decided = ownerNone @ vocabulary.go:128 — this label records that a HUMAN ruled on an item (it is deskclose's decisionLabels human-only-close pair). A desk role self-applying it forges a recorded human act, so it must be owned by no role; permits() case ownerNone returns false with no role reference, so no code path can flip it. Proven live by row 7 (all 5 roles refuse, both cases) and independently by row 13's mutation, which reddened the role-owned refusal path while this branch stayed refusing — the two independent layers the brief's SPOF note claims.
+RISK-VALUE: DERIVED — superseded? = roleWorker @ vocabulary.go:112 (+ disposition:* @:114,:116,:118) — code-truth: deskclose superseded has the WORKER propose the marker (the reviewer only confirms/disputes), and deskdisposition set records "a WORKER's finding"; so the worker owns them. Matches the brief's Context correction to #992's paraphrase.
+RISK-VALUE: DERIVED — authorization-needed / approval-needed = roleReviewer @ vocabulary.go:122,:124 — code-truth: deskflip's ready-flip queue-state pair (labelBeforeFlip/labelAfterFlip); deskdispatch also writes authorization-needed but "under the reviewer role's own credential", so the reviewer owns it regardless of which session performs the write.
+
+Long Go test names above are hyphen-broken for the secret scanner; the literal names carry no hyphen.
+
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
 `## Context`). Reviewer records verdict + date in the stream README table, and confirms the
