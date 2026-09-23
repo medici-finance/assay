@@ -79,6 +79,27 @@ The flow row must call production contract code across the seam; isolated serial
 
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2026-09-23 opus-5.5-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestDecisionAssessment" ./... | exit 0; PASS for TestDecisionAssessment, no "[no tests to run]" for the owning package | could-not-check: the sanctioned check:ci hermetic witness could-not-run — network-off sandbox needs Linux unshare --net and this host is darwin (re-executed network-off by design). Informational, non-hermetic manual run on this host: exit 0, "--- PASS: TestDecisionAssessment", owning deskkit package "ok ... 2.9s" with no "[no tests to run]". | 2026-09-23 | opus-5.5-verifier |
+| 2 | cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestDecisionAssessmentMalformedDefaults" ./... | exit 0; PASS for TestDecisionAssessmentMalformedDefaults, no "[no tests to run]" for the owning package | could-not-check: sanctioned check:ci hermetic witness could-not-run (needs Linux unshare --net; host is darwin). Informational, non-hermetic manual run: exit 0, "--- PASS: TestDecisionAssessmentMalformedDefaults" with all 13 negative subtests passing (unknown label, unknown shadow label, NaN, infinite, out-of-range, invalid normalization, mismatched subject, stale input, mismatched schema, uncalibrated-carries-probability, abstained-carries-probabilities, budget overrun, inapplicable calibration). | 2026-09-23 | opus-5.5-verifier |
+| 3 | cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestDecisionAssessmentDecideJournal" ./... | exit 0; PASS for TestDecisionAssessmentDecideJournal, no "[no tests to run]" for the owning package | could-not-check: sanctioned check:ci hermetic witness could-not-run (needs Linux unshare --net; host is darwin). Informational, non-hermetic manual run: exit 0, "--- PASS: TestDecisionAssessmentDecideJournal" with all 4 flow subtests passing; the test calls real Question.Decide through PredictionAdvisor with a recording journal (well-formed advised+journalled; malformed -> default + error outcome; abstention -> default via vocabulary check; unjournallable advice discarded -> default). | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE enumeration (kit §4 — enumerate, rank by irreversibility, derive top-ranked). Literals introduced/changed by the diff, each a literal at file:line:
+
+- PredictionNormalizationTolerance = 1e-6 @ tools/desk/internal/deskkit/decisionassessment.go:68 (the sum-to-1 rounding tolerance)
+- probability domain bounds 0 and 1 @ tools/desk/internal/deskkit/decisionassessment.go:165 (prob < 0 || prob > 1)
+- justification truncation length = 280 @ tools/desk/internal/deskkit/decisionassessment.go:258
+
+Rank: none is irreversible (all reversible by edit + redeploy; item risk metadata is all "no", irreversible: no). Top-ranked by consequence is the normalization tolerance (the one genuinely tuned threshold); the probability bounds are definitional; the truncation length is a reversible display knob (ranks last, no derivation needed).
+
+- RISK-VALUE: DERIVED — PredictionNormalizationTolerance = 1e-6 @ tools/desk/internal/deskkit/decisionassessment.go:68 — this bounds |sum(calibrated probs) - 1|. Accumulated float64 rounding over a handful of O(1) terms is on the order of machine epsilon (~2.2e-16) times the term count, i.e. ~1e-15, so 1e-6 absorbs legitimate rounding by ~9 orders of magnitude while still rejecting a genuinely unnormalized distribution (the negative row uses sum 0.7). Fail-safe either way: too tight rejects valid predictions into the conservative default; too loose admits only negligibly-off distributions; reversible edit + redeploy.
+- RISK-VALUE: DERIVED — probability domain bounds 0 and 1 @ tools/desk/internal/deskkit/decisionassessment.go:165 — a probability is definitionally within [0,1]; the guard rejects any value outside that closed interval. First principles, no tuning.
+- RISK-VALUE: N/A for the truncation length 280 — a reversible display-only justification cap, an operational knob out of scope by design.
+
+
 ## Review
 
 Gate: model. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.
