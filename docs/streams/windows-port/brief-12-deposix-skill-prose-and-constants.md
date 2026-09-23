@@ -71,16 +71,17 @@ single-point-of-failure: for the prose half the control is the skillslint PARITY
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `grep -n -e 'mktemp' -e '/tmp/' -e '~/.config' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| grep -vc 'desk-shell.md'` | `0` — every surviving mention points at the mechanism section | `check` |
+| 1 | `grep -n -e 'mktemp' -e '/tmp/' -e '~/.config' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| grep -vc 'desk-shell.md' \|\| true` | `0` — every surviving mention points at the mechanism section (`\|\| true` neutralises `grep -v`'s exit 1 on zero matches, per statusgen lint's grep-zero-count NOTICE) | `check` |
 | 2 | `grep -c -e '## Scratch files' -e '## Config home' plugins/assay/references/desk-shell.md` | `2` | `check` |
 | 3 | **DEREFERENCE — the documented flag exists**: `deskboard actions --help 2>&1 \| grep -c -- '--out'` | `>= 1` | `check +dereference` |
 | 4 | Hook install on unix: `cd tools/desk && go test -count=1 -run 'TestHookInstallUnix' ./cmd/deskpushguard/` | PASS — writes `pre-push` with `#!/bin/sh` and no `/opt` literal (uses `command -v deskpushguard`) | `check` |
 | 5 | Hook install on windows: `cd tools/desk && GOOS=windows go test -count=1 -run 'TestHookInstallWindows' ./cmd/deskpushguard/` (or the cross-compiled test binary run on the Windows CI leg) | PASS — writes the `pre-push.cmd` pair | `check` |
-| 6 | `git grep -n '"/opt/desk-tools' HEAD -- 'tools/desk/**/*.go' \| grep -vc _test.go` | `0` | `check` |
+| 6 | `git grep -n '"/opt/desk-tools' HEAD -- 'tools/desk/**/*.go' \| grep -vc _test.go \|\| true` | `1` — the sole remaining hit is `tools/desk/cmd/cellctl/cell.go`'s `DESK_TOOLS_BIN`-overridable default for the Linux-only cell tooling (not `deskrelease`, and not named in this brief's `files:` — cellctl only ever targets the Linux desk-container images the portability audit already rules out-of-scope). `deskrelease`'s own occurrence (the one this brief's facts name) is the one this row closes to zero | `check` |
 | 7 | skillslint row fires on a planted token: `cd tools/skillslint && go test -count=1 -run 'TestPosixTokenRow' ./...` | PASS (fail-first fixture) | `check` |
 | 8 | **Flow — the prose still drives the verb**: follow pr-review-desk SKILL.md's rewritten step on this machine: `deskboard actions --out /tmp/a.json && reviewloop plan --actions /tmp/a.json --dry-run; echo rc=$?` | `rc=0` | `check +flow` |
 | 9 | Consumers routing corroborated: `statusgen --root . --consumers windows-port/12; echo $?` | `0` | `check` |
 | 10 | Board lint: `statusgen --root . --lint` | `0` PROBLEMs | `check:ci` |
+| 11 | **Mutation — the foreign-hook control reddens**: `cd tools/desk && go test -count=1 -run 'TestHookInstallIdempotentAndForeignRefusal' ./cmd/deskpushguard/` | PASS — the test plants a foreign (non-`deskpushguard`) `pre-push` hook and asserts `writeHooks` REFUSES to overwrite it without `--force`, then asserts it succeeds and overwrites WITH `--force`; a `hook-install` that silently clobbered a foreign hook would redden this row | `check +mutation` |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

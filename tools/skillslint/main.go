@@ -168,6 +168,24 @@ func main() {
 		fmt.Printf("ENFORCEMENT-BLOCK: PASS — the generated block in %s byte-matches `statusgen enforcement-status`\n", enforcementSitePath)
 	}
 
+	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard
+	// row would need first — windows-port/12) NOTICE for a skill body that spells a
+	// POSIX-only mktemp/tmp/config-home literal instead of naming the mechanism
+	// (desk-shell.md §Scratch files / §Config home). See posixtoken.go.
+	ptChecked, ptNotices, ptErr := PosixTokenIssues(*root)
+	switch {
+	case ptErr != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %v\n", ptErr)
+		fmt.Fprintf(os.Stderr, "POSIX-TOKEN: COULD-NOT-CHECK — the skill tree could not be read; a check that read nothing proved nothing (advisory: does not affect exit)\n")
+	case len(ptNotices) > 0:
+		for _, n := range ptNotices {
+			fmt.Fprintf(os.Stderr, "skillslint: NOTICE: %s:%d: %s\n", n.Path, n.Line, n.Text)
+		}
+		fmt.Fprintf(os.Stderr, "POSIX-TOKEN: NOTICE — %d POSIX-only literal(s) across %d skill file(s) (advisory: does not affect exit)\n", len(ptNotices), ptChecked)
+	default:
+		fmt.Printf("POSIX-TOKEN: PASS — %d skill file(s), no POSIX-only mktemp/tmp/config-home literal outside a fenced unix-example block\n", ptChecked)
+	}
+
 	os.Exit(exit)
 }
 
