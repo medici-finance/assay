@@ -91,6 +91,22 @@ Pre-mortem → detection: Planner is ignored: row 1 invokes dispatch directly. M
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2026-09-23 opus-5.5-verifier
+
+Decisive-instrument note: the four Verify rows are `check:ci`, whose authoritative execution is the network-off hermetic witness (`statusgen verifyrun`). On this darwin host the witness could-not-run for every row (it needs Linux `unshare --net`), so the decisive instrument could-not-check. The rows were also run directly (non-hermetic `go test`) and every one passed with its named PASS line and exit 0; that is recorded below as strong corroboration, not as the required witness. No row was observed failing.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionDirectDispatch$ -v -count=1 | exit 0; named PASS; fresh dispatch held when it would steal a reserved repair slot; repair admitted | Hermetic witness (verifyrun) could-not-check: check:ci needs Linux unshare --net, host is darwin. Direct non-hermetic go test: exit 0, "--- PASS: TestRepairAdmissionDirectDispatch"; log shows "rework admitted: reserved work fills its own reservation" | 2026-09-23 | opus-5.5-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionConcurrentAndCrash$ -v -count=1 | exit 0; named PASS; two dispatchers race last slot -> one admission; crash at each boundary leaks no slot / duplicates no worker | Hermetic witness (verifyrun) could-not-check: check:ci needs Linux unshare --net, host is darwin. Direct non-hermetic go test: exit 0, "--- PASS: TestRepairAdmissionConcurrentAndCrash" | 2026-09-23 | opus-5.5-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionUnknownAndExternalWait$ -v -count=1 | exit 0; named PASS; unreadable state explicit; external-wait repairs do not idle slots; forged repair class refused | Hermetic witness (verifyrun) could-not-check: check:ci needs Linux unshare --net, host is darwin. Direct non-hermetic go test: exit 0, "--- PASS: TestRepairAdmissionUnknownAndExternalWait" | 2026-09-23 | opus-5.5-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionFullCycleRestart$ -v -count=1 | exit 0; named PASS; failed verify -> claimed repair -> review/merge -> one reverify -> independent pass resolves; restart at every transition preserves the obligation | Hermetic witness (verifyrun) could-not-check: check:ci needs Linux unshare --net, host is darwin. Direct non-hermetic go test: exit 0, "--- PASS: TestRepairAdmissionFullCycleRestart" | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE: DERIVED — repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66 — it must mirror the fanoutloop repair-obligation lease horizon (repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46) so both readers judge the same obligation assignable-vs-stale on one clock; the two literals match exactly, and the source comment states the mirror intent. It is a reversible operational knob (a lease/timeout horizon): a wrong value only changes how long a crashed occupancy is honoured before reclaim, undoable by an edit and redeploy, so it ranks last for irreversibility.
+
+Enumeration note: the only numeric literal this diff introduces is the lease TTL above. The other new literals are control/identity tokens, not risk-bearing thresholds: EnvRepairAdmission = "ASSAY_REPAIR_ADMISSION" @ repairadmission.go:39, RepairAdmissionPolicyVersion = "repair-admission-v1" @ repairadmission.go:46, repairAdmissionOn = "on" @ repairadmission.go:51. The reservation floor / width / expiry values are NOT introduced or changed by this diff — they are read from width.go / widthstore.go (desk-supervision/05) and are out of enumeration scope for this item.
+
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.
