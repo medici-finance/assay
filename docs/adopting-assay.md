@@ -451,9 +451,9 @@ tools read everywhere (§3 `configure-roster`, failure mode 1); the environment 
 for a desk binary.
 
 **Verify:** the desk-tools pin line for the **fully detected platform** exists in `.assay-versions`;
-`deskboard --version` prints (the binaries are on `PATH`) and its `assay-config:` echo shows the
-roster present; a deliberately corrupted digest makes the install **fail** (proves the hash check is
-live).
+`deskboard --version` prints `releaseTag=<the pinned tag>` (the binaries on `PATH` are the pinned
+set, not a stale one) and its `assay-config:` echo shows the roster present; a deliberately
+corrupted digest makes the install **fail** (proves the hash check is live).
 
 **The cluster-CLI shim (`clusterguard`) — optional, and only if your sessions run near a cluster.**
 One of the installed binaries is a PATH shim rather than a verb you call. Install it by creating a

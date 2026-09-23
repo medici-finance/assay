@@ -58,10 +58,10 @@
 # server's throwaway certificate through curl's own CURL_CA_BUNDLE, never through a flag here).
 #
 # EXIT CODES (the desk tools' contract): 0 ok · 2 usage · 5 refused · 6 could-not-check.
-# Every refusal, and every could-not-check up to and including verification, leaves --dest
-# untouched. The one exception is a failure of the local `install` copy itself AFTER the
-# digest matched: the desk-tools arm places its binaries one by one, so such a failure can
-# leave a partial set of VERIFIED binaries in --dest; it is reported as could-not-check.
+# Every refusal and every could-not-check leaves --dest untouched: the desk-tools arm stages
+# its whole verified set inside --dest before moving any file into place, so a copy failure
+# part-way changes nothing. (Only a failure of the final same-filesystem renames could leave a
+# partial set, and that is reported as could-not-check.)
 set -uo pipefail
 
 DEFAULT_BASE_URL="https://github.com"
@@ -150,7 +150,9 @@ fetch() {
     *) refuse "refusing to fetch '$url' — only https:// is accepted (initial URL and every redirect); nothing installed" ;;
   esac
   command -v curl >/dev/null 2>&1 || unverifiable "no curl on PATH — the HTTPS-only download cannot run, nothing installed"
-  curl -fsSL --proto '=https' --proto-redir '=https' -o "$out" "$url"
+  # -q FIRST: never read the invoking user's curl config — a personal ~/.curlrc could turn
+  # certificate verification off, add headers, use netrc or a proxy, silently.
+  curl -q -fsSL --proto '=https' --proto-redir '=https' -o "$out" "$url"
   rc=$?
   case "$rc" in
     0) ;;
@@ -206,13 +208,24 @@ cmd_acquire() {
       ;;
     desk-tools)
       mkdir "$tmp/x" && tar -xzf "$tmp/$asset" -C "$tmp/x" || unverifiable "extracting $asset failed — nothing installed"
-      local f count=0
+      # Stage the WHOLE verified set inside --dest (same filesystem) first; only when every
+      # file is staged does anything move into place, each by rename. A copy failure part-way
+      # therefore leaves --dest exactly as it was — never a mix of new and old binaries.
+      local f count=0 stage
+      stage=$(mktemp -d "$dest/.assay-stage.XXXXXX") || unverifiable "cannot create a staging dir in $dest — nothing installed"
       for f in "$tmp/x"/*; do
         [ -f "$f" ] || continue
-        install -m 0755 "$f" "$dest/$(basename "$f")" || unverifiable "install into $dest failed"
+        if ! install -m 0755 "$f" "$stage/$(basename "$f")"; then
+          rm -rf "$stage"
+          unverifiable "staging $(basename "$f") failed — nothing installed, $dest untouched"
+        fi
         count=$((count + 1))
       done
-      [ "$count" -gt 0 ] || unverifiable "$asset held no top-level files to install"
+      if [ "$count" -eq 0 ]; then rm -rf "$stage"; unverifiable "$asset held no top-level files to install"; fi
+      for f in "$stage"/*; do
+        mv -f "$f" "$dest/$(basename "$f")" || { rm -rf "$stage"; unverifiable "moving $(basename "$f") into $dest failed after staging — re-run the install"; }
+      done
+      rmdir "$stage" 2>/dev/null || true
       say "installed: $count desk-tools binaries into $dest"
       ;;
   esac

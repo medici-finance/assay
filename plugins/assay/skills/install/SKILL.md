@@ -190,7 +190,10 @@ digest**, and only then extract and install the binaries to `PATH`. The only sha
 the artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
 (`../../references/desk-shell.md` §Config home) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
 
-**Verify:** `deskboard --version` prints and its `assay-config:` echo shows the roster present.
+**Verify:** `deskboard --version` prints `releaseTag=<the pinned desk-tools tag>` — the tag, not merely
+a line, so a stale binary left on `PATH` cannot pass — and its `assay-config:` echo shows the roster
+present. The acquisition stages the whole verified set before moving any file into place, so a
+failed install leaves the previous binaries untouched rather than a mixed set.
 
 ### 3. Scaffold — use `statusgen init`, never reinvent it
 Run **`statusgen init --root <target>`** (the umbrella `statusgen` subcommand, from the binary
