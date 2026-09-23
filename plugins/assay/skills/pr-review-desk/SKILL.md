@@ -497,6 +497,38 @@ a guardrail-promotion candidate through the existing insight-routing lane — in
 whether any one PR ever hit the round cap above (a harness-engineering talk from the same
 event: never give the same review feedback twice; recurrence promotes leftward).
 
+### Finding-class calibration — reversal-rate demotion
+
+A finding class earns its blocking power; it does not hold it by default. The monthly
+reviewer-calibration pass (`deskcalibrate`, verify-integrity/10) mines a per-class **reversal
+rate** — the fraction of that class's findings the worker disputed and the reviewer conceded, or
+the desk overruled — from the same PR-review threads the gate-yield accounting reads. It is a
+fraction (findings-reversed / findings-of-class), never a bare percentage: a 3/5 month and a 30/50
+month are not equally strong evidence.
+
+The table below is the finding-class register. Each class carries a **status**: `blocking` (a
+CHANGES_REQUESTED on it holds the PR) or `advisory` (the reviewer still records it, but it no
+longer blocks the ready-flip — it reads as a note the worker may act on). The default is
+`blocking`.
+
+| finding class | status |
+|---|---|
+| correctness | blocking |
+| security | blocking |
+| test-evidence (fail-first / mutation) | blocking |
+| public-surface / leak | blocking |
+| style / prose | blocking |
+
+**The demotion rule.** A class whose reversal rate is **> 50% for two consecutive months** is
+marked **advisory** in this table (edit its status cell). A later month **under 50%** restores it
+to `blocking`. The two-month window is deliberate: one noisy month is noise about the noise, and a
+class that mostly gets reversed is measuring the reviewer's taste, not a defect the human would
+uphold. The demotion is a table edit landed through the ordinary desk PR flow, cited to that
+month's calibration report — never a silent in-loop decision, and never applied to `security` or
+`public-surface / leak` without a recorded human ruling (those two carry irreversible-harm weight
+that a reversal rate does not capture). Exactly 50%, and a month with no findings of the class,
+neither demote nor restore.
+
 ### PR-state labels — who is the PR waiting on
 
 Exactly **one** of two sequential, mutually exclusive labels rides on every PR the desk drives, so
