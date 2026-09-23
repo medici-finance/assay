@@ -52,6 +52,11 @@ func okProbes() PreflightProbes {
 		AppIDFor:       func(string) (string, error) { return pfAppID, nil },
 		QueuedSiblings: func(string) ([]SiblingReq, error) { return nil, nil },
 		DirExists:      func(string) (bool, error) { return true, nil },
+		// The fixture roster's blessing login (rosterfixture_test.go) is "ada", so an
+		// all-green probe set presents the ambient identity as the blessing human and a
+		// credential helper that resolves to the minted App token.
+		AmbientLogin:         func() (string, error) { return fixtureBlessLogin, nil },
+		CredHelperMatchesApp: func(Landing, string) (bool, string, error) { return true, "app-token helper", nil },
 	}
 }
 
@@ -120,8 +125,8 @@ func TestPreflightThreeStateVocabulary(t *testing.T) {
 func TestPreflightAllCleanIsGreen(t *testing.T) {
 	withRoster(t, goldenRoster())
 	rep := runPF(t, okProbes())
-	if len(rep.Checks) != 5 {
-		t.Fatalf("ran %d checks, want 5: %v", len(rep.Checks), pfNames(rep))
+	if len(rep.Checks) != 6 {
+		t.Fatalf("ran %d checks, want 6: %v", len(rep.Checks), pfNames(rep))
 	}
 	for _, c := range rep.Checks {
 		if c.State != CheckedClean {
@@ -137,8 +142,8 @@ func TestPreflightAllCleanIsGreen(t *testing.T) {
 	if err := rep.Err(); err != nil {
 		t.Fatalf("all-clean report returned an error: %v", err)
 	}
-	if !strings.Contains(rep.SummaryLine(), "GREEN 5/5") {
-		t.Fatalf("summary %q does not report GREEN 5/5", rep.SummaryLine())
+	if !strings.Contains(rep.SummaryLine(), "GREEN 6/6") {
+		t.Fatalf("summary %q does not report GREEN 6/6", rep.SummaryLine())
 	}
 }
 
@@ -971,7 +976,7 @@ func TestPreflightRunsEveryCheckEvenAfterAFailure(t *testing.T) {
 	p.ColdMint = func(string, string) (string, error) { return "", errors.New("no key") }
 	p.CommitEmail = func(string) (string, error) { return pfAppIDEmail, nil }
 	rep := runPF(t, p)
-	if len(rep.Checks) != 5 {
+	if len(rep.Checks) != 6 {
 		t.Fatalf("stopped after %d checks; the desk must see the whole envelope in one line", len(rep.Checks))
 	}
 	line := rep.SummaryLine()
@@ -1219,12 +1224,15 @@ func TestPreflightGitLabAppScopesIsNotGitHubGrant(t *testing.T) {
 	if !strings.Contains(line, CheckAppScopes+"=not-applicable") {
 		t.Errorf("SummaryLine does not surface the not-applicable check: %q", line)
 	}
-	// Surfaced, but NOT counted toward the checked-clean tally (4 of 5 are verified).
-	if !strings.Contains(line, "GREEN 4/5 checked-clean") {
-		t.Errorf("SummaryLine should report GREEN 4/5 checked-clean (one check not-applicable): %q", line)
+	// Surfaced, but NOT counted toward the checked-clean tally. On GitLab both the
+	// GitHub-installation-grant check AND the ambient-identity check (which reads a
+	// GitHub `gh` login and matches a GitHub App token) are not-applicable, so 4 of
+	// the 6 checks are verified.
+	if !strings.Contains(line, "GREEN 4/6 checked-clean") {
+		t.Errorf("SummaryLine should report GREEN 4/6 checked-clean (two checks not-applicable): %q", line)
 	}
-	if got := rep.NotApplicable(); len(got) != 1 || got[0].Name != CheckAppScopes {
-		t.Errorf("NotApplicable() = %v, want exactly [%s]", pfNamesOf(got), CheckAppScopes)
+	if got := rep.NotApplicable(); !pfContains(got, CheckAppScopes) {
+		t.Errorf("NotApplicable() = %v, want it to include %s", pfNamesOf(got), CheckAppScopes)
 	}
 	for _, banned := range []string{"--fresh", "apps.env", "app.pem"} {
 		if strings.Contains(strings.ToLower(c.Remediation), strings.ToLower(banned)) {
@@ -1282,12 +1290,150 @@ func TestPreflightGitHubAppScopesUnchangedByNotApplicable(t *testing.T) {
 	}
 }
 
+// ---- check 6: ambient identity --------------------------------------------
+
+// TestPreflightAmbientIdentity is Verify row 4, the positive-control suite for
+// the remaining credfence layer. The per-tool refusal is delivered elsewhere;
+// this check is the envelope layer above it, and every one of its red conditions
+// gets a scenario that makes it go red — a check with no proof it can fail is
+// indistinguishable from one that always passes.
+//
+// FAIL-FIRST: on the pre-brief code there is no check 6 at all, so pfCheck for
+// CheckAmbientID t.Fatalf's ("check not in the report") on every sub-case below —
+// the red is the check's absence. The fix is the whole checkAmbientIdentity
+// function; a reviewer re-runs this file against a tree with check 6 removed to
+// observe it.
+func TestPreflightAmbientIdentity(t *testing.T) {
+	withRoster(t, goldenRoster()) // blessing login = ada; worker=assay-worker-app is a bot slug
+
+	// (a) ambient login is a bot/App slug ⇒ RED, and the whole envelope is red.
+	t.Run("bot slug is red", func(t *testing.T) {
+		withRoster(t, goldenRoster())
+		p := okProbes()
+		p.AmbientLogin = func() (string, error) { return "assay-worker-app[bot]", nil }
+		rep := runPF(t, p)
+		c := pfCheck(t, rep, CheckAmbientID)
+		if c.State != CheckedFailed {
+			t.Fatalf("bot ambient login = %s, want checked-failed (%s)", c.State, c.Detail)
+		}
+		if rep.Err() == nil {
+			t.Fatal("a bot ambient login did not redden the whole envelope")
+		}
+		if c.Remediation == "" {
+			t.Fatal("the bot-login failure names no remediation")
+		}
+	})
+
+	// (b) ambient login is a NON-blessing human ⇒ RED. The observed field case: an
+	// unrelated account carried the write.
+	t.Run("non-blessing human is red", func(t *testing.T) {
+		withRoster(t, goldenRoster())
+		p := okProbes()
+		p.AmbientLogin = func() (string, error) { return "mallory", nil }
+		c := pfCheck(t, runPF(t, p), CheckAmbientID)
+		if c.State != CheckedFailed {
+			t.Fatalf("non-blessing ambient login = %s, want checked-failed (%s)", c.State, c.Detail)
+		}
+		if !strings.Contains(strings.ToLower(c.Detail), "non-blessing") {
+			t.Fatalf("the non-blessing failure should say so: %q", c.Detail)
+		}
+	})
+
+	// (c) ambient login is the blessing human AND the helper resolves to the App
+	// token ⇒ GREEN.
+	t.Run("blessing human with matching helper is green", func(t *testing.T) {
+		withRoster(t, goldenRoster())
+		p := okProbes() // AmbientLogin=ada, CredHelperMatchesApp=true
+		c := pfCheck(t, runPF(t, p), CheckAmbientID)
+		if c.State != CheckedClean {
+			t.Fatalf("blessing ambient login + matching helper = %s, want checked-clean (%s)", c.State, c.Detail)
+		}
+	})
+
+	// (d) helper MISMATCH ⇒ RED even when the ambient login is the blessing human —
+	// the transport half is independent of the identity half. This is what makes a
+	// probe-green/push-red split impossible.
+	t.Run("helper mismatch is red", func(t *testing.T) {
+		withRoster(t, goldenRoster())
+		p := okProbes()
+		p.CredHelperMatchesApp = func(Landing, string) (bool, string, error) {
+			return false, "osxkeychain, not the App token", nil
+		}
+		c := pfCheck(t, runPF(t, p), CheckAmbientID)
+		if c.State != CheckedFailed {
+			t.Fatalf("helper mismatch = %s, want checked-failed (%s)", c.State, c.Detail)
+		}
+		if !strings.Contains(strings.ToLower(c.Detail), "credential helper") {
+			t.Fatalf("the helper-mismatch failure should name the credential helper: %q", c.Detail)
+		}
+	})
+
+	// (e) NO ambient identity at all ⇒ not red: there is nothing to fall through to.
+	t.Run("no ambient identity is not red", func(t *testing.T) {
+		withRoster(t, goldenRoster())
+		p := okProbes()
+		p.AmbientLogin = func() (string, error) { return "", nil }
+		c := pfCheck(t, runPF(t, p), CheckAmbientID)
+		if c.State != CheckedClean {
+			t.Fatalf("no ambient identity = %s, want checked-clean — nothing to fall through to (%s)", c.State, c.Detail)
+		}
+	})
+
+	// (f) the ambient probe could-not-look ⇒ could-not-check, never a pass.
+	t.Run("unreadable ambient identity is could-not-check", func(t *testing.T) {
+		withRoster(t, goldenRoster())
+		p := okProbes()
+		p.AmbientLogin = func() (string, error) { return "", errors.New("gh is not on PATH") }
+		c := pfCheck(t, runPF(t, p), CheckAmbientID)
+		if c.State != CouldNotCheck {
+			t.Fatalf("unreadable ambient identity = %s, want could-not-check (%s)", c.State, c.Detail)
+		}
+	})
+}
+
+// TestPreflightAmbientIdentityGitLabIsNotApplicable pins the forge-awareness: the
+// ambient-identity check reads a GitHub `gh` login and matches a GitHub App
+// token, so on a GitLab-forge repo it is not-applicable — it does not redden a
+// correctly provisioned GitLab envelope, and it is surfaced on its own rather
+// than counted as a verified pass.
+func TestPreflightAmbientIdentityGitLabIsNotApplicable(t *testing.T) {
+	withRoster(t, goldenRoster())
+	p := okProbes()
+	p.ResolveForgeKind = func(string) ForgeKind { return ForgeGitLab }
+	p.GitLabColdCustody = func(string) (string, error) { return "/tmp/gitlab-verifier.token", nil }
+	// The GitHub ambient probe must never be consulted on a GitLab repo.
+	p.AmbientLogin = func() (string, error) {
+		t.Fatal("the GitHub ambient-login probe was consulted for a GitLab repo")
+		return "", nil
+	}
+	c := pfCheck(t, runPF(t, p), CheckAmbientID)
+	if c.State != CheckedNotApplicable {
+		t.Fatalf("gitlab ambient-identity = %s, want not-applicable (%s)", c.State, c.Detail)
+	}
+	if c.State.Green() {
+		t.Fatal("gitlab ambient-identity reads Green — not-applicable must never count as a verified pass")
+	}
+	if !c.State.Passing() {
+		t.Fatal("gitlab ambient-identity is not Passing — a not-applicable check must not block the boot")
+	}
+}
+
 func pfNamesOf(cs []Check) []string {
 	var out []string
 	for _, c := range cs {
 		out = append(out, c.Name)
 	}
 	return out
+}
+
+// pfContains reports whether a check with the given name is present in the slice.
+func pfContains(cs []Check, name string) bool {
+	for _, c := range cs {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // TestForgeKindProbeInfersFromRoster pins the default resolver the cold-mint check

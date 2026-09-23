@@ -114,6 +114,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	srcProblems, srcNotices := streamSourceLint(streams, root, changed)
 	problems = append(problems, srcProblems...)
 	notices = append(notices, srcNotices...)
+	// Instrument-liveness (the liveness balancing loop): a DARK statusgen flag — 0 consumers AND
+	// declared >30 days ago — is a retirement candidate. --lint NOTICEs each once; nothing
+	// is retired by the tool. Gated to lint mode so the daily write/regen never pays the
+	// audit's consumer-grep + git-log cost on every board build.
+	if mode == "lint" {
+		notices = append(notices, instrumentAuditDarkNotices(root)...)
+	}
 	// An UNREADABLE docs/archive/ is could-not-check, surfaced as a NOTICE rather
 	// than rounded to "no archived streams": edges into archived streams may then
 	// (correctly) report "unknown stream" until the directory reads cleanly.
@@ -1394,6 +1401,8 @@ func main() {
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
 	forgeMode := flag.Bool("forge", false, "opt in to the forge-backed checks. WITHOUT it statusgen is OFFLINE: it starts no forge process and makes no network call, and every forge-backed check reports could-not-check as itself rather than reading green. WITH it those checks read through the desk-tools `deskread` verb on the forge seam. The default is offline because a check that quietly stopped looking is indistinguishable from one that looked and found nothing")
 	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
+	instrumentAuditMode := flag.Bool("instrument-audit", false, "instrument-liveness audit: for every flag declared in statusgen/main.go, report the consumers found by grepping the roots (default: <root>/{.github/workflows,plugins/assay/skills,plugins/assay/scripts,Makefile,tools/desk/cmd}) — WIRED (>=1), COLD (0), or DARK (0 AND declared >30d ago). Read-only, advisory; --lint NOTICEs each DARK flag, nothing is retired. With --json emits {flags:[...]}. --roots overrides the grep roots")
+	instrumentRootsFlag := flag.String("roots", "", "--instrument-audit: comma-separated directories to grep for flag consumers (default: the day-one consumer surface under --root); a house root adds its own workflows/skills/tools")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
 	var budget budgetFlags
@@ -1705,6 +1714,7 @@ func main() {
 			"--review-rework":         *reviewReworkMode,
 			"--decision-latency":      *decisionLatencyMode,
 			"--net-flow":              *netFlowMode,
+			"--instrument-audit":      *instrumentAuditMode,
 			"--assayscore":            *assayScoreMode,
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
@@ -2151,6 +2161,12 @@ func main() {
 	// rule itself and never gates CI.
 	if *lintAuditMode {
 		os.Exit(runLintAudit(*root))
+	}
+	// Instrument-audit (the liveness balancing loop) — read-only advisory sub-command: classify
+	// every declared statusgen flag WIRED/COLD/DARK by consumer grep, --json optional.
+	// Never retires a flag itself; --lint NOTICEs DARK flags.
+	if *instrumentAuditMode {
+		os.Exit(runInstrumentAudit(*root, splitInstrumentRoots(*instrumentRootsFlag), *doraJSON))
 	}
 
 	// Wire the run's forge reader. The default (set at forgeReaderForRun's
