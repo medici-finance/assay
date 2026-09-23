@@ -1751,7 +1751,7 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--role R]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
@@ -1793,7 +1793,17 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   refused (naming the worktree, or the count). A worktree whose DIRECTORY is gone is listed
   `prunable` (a `rm -rf` without `git worktree remove`) and is **not** an owner for the holder
   question — the reclaim ignores it; the stale entry itself is `deskwt prune`'s to drop, not
-  `add`'s (`add` acquires no second mutation).
+  `add`'s (`add` acquires no second mutation). `add` also settles the new worktree's COMMIT
+  IDENTITY so it never inherits the shared checkout's (#1490): with `--role R` (a token role
+  or a loop name, folded exactly as `role-init` folds it) it stamps that role's App commit
+  identity — the bot-USER-id noreply address, through the same shared resolver `role-init`
+  uses — into the new worktree's own config, refusing (exit 5, before the worktree exists) a
+  role with no roster identity; WITHOUT `--role` it CLEARS `user.name`/`user.email` at
+  worktree scope (an empty value that shadows the shared config, which an `--unset` would
+  fall through to), so a commit there fails closed until an identity is set rather than
+  committing under an unrelated inherited one. The shared checkout's config is never touched
+  either way; the identity (or the cleared state) is echoed to stderr, and stdout stays the
+  bare worktree path.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -4001,7 +4011,13 @@ ordering, the fail-closed contract, and the named-step report. `deskdispatch` de
 worktree to `deskwt add` and invokes the claim tool and the consumer decision script
 `tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
 a claim protocol is two claim protocols, and two claim protocols dispatch the same item
-twice. The claim tool is `deskclaim-ref` whenever it is on PATH (installed with desk-tools),
+twice. On top of the worktree `deskwt add` returns, `deskdispatch` STAMPS the dispatched
+agent's OWN role commit identity (worker/reviewer/verifier, mapped from `--kit`) into it
+worktree-scoped, through the same shared resolver `role-init` uses, so a verifier dispatched
+from a desk checkout commits — and reports its runner — under the verifier App, never the
+desk App the checkout carries (#1490); a `--kit` whose role has no roster identity is refused
+pre-claim (exit 5) naming the kit, role and roster key, and the `worktree-create OK` line
+prints `identity=<slug> <bot-user-id>`. The claim tool is `deskclaim-ref` whenever it is on PATH (installed with desk-tools),
 else the legacy `tools/dispatch-claim.sh` when the resolved root carries it; both speak the
 deskkit exit-code contract and the same `refs/dispatch/<id>` wire protocol, so their verdicts
 pass straight through and the `claim-acquire OK` line names which one ran. The claim child
@@ -4009,7 +4025,12 @@ runs as the DISPATCHING role, never on the ambient `gh` login: `deskdispatch` mi
 reuses) that role's App token through the same seam its model-stamp step uses and hands it
 over in the tool's own shape — `--token-file <0600 path>` for `deskclaim-ref`, `GH_TOKEN` in
 the child's environment for the script — printing neither; an exported `GH_TOKEN` wins and
-nothing is minted; a mint refusal is exit 6 with no claim attempted. The scripts are resolved
+nothing is minted; a mint refusal is exit 6 with no claim attempted. The decision script
+shells out to the forge CLI itself, so a rule keyed on a child literally named `gh` never
+covered it (#1146): it is handed the SAME credential from that one resolution, as `GH_TOKEN`
+(plus `GITLAB_TOKEN` on a GitLab-served repo) in its environment, and the `decision-gate OK`
+line names the source; with no credential handed over and none exported it refuses (exit 6)
+rather than run on the ambient login. The scripts are resolved
 under `--claim-root` when given, else under `--root`: the scripts were centralized out of the
 consumer repos, so on a cross-repo dispatch `--claim-root` names the checkout that carries
 the tools while `--root` stays the item's own repo — the worktree is always cut from

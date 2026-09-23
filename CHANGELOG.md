@@ -23,6 +23,135 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.26 — 2026-09-23
+
+### Added
+- New brief harness-portability/16, Codex long-context cap. It plans `model_auto_compact_token_limit`
+  for every `cellctl` Codex desk launch, the same key in the Codex packaging with a lint that fails
+  without it, a compact-or-reboot point for standing desks, and a `deskdispatch` warning for
+  oversized prompts. The goal is to keep long Codex desk sessions from crossing the 272K-token
+  long-context pricing band without anyone noticing.
+- `deskcalibrate`: a monthly reviewer-calibration verb. `deskcalibrate sample` draws a
+  reproducible, seed-recorded sample of the PRs the reviewer App APPROVED in the prior
+  month and REFUSES a re-review whose model vendor equals the reviewer role's own
+  (`ASSAY_REVIEWER_VENDOR`) — a same-vendor re-review measures two instances of one model,
+  not an independent judge. `deskcalibrate report` renders the agreement metric as an
+  explicit numerator/denominator FRACTION, never a bare percentage (verify-integrity/10).
+- `deskkit`: a typed decision-assessment envelope (`AssessmentRequest`/`Prediction`/
+  `PolicyResult`, `spec/decision-assessment-v1.md`, `schemas/decision-assessment-v1.json`)
+  layered on top of the existing `Decide`/`Advice` consult, keeping calibrated
+  probabilistic advice strictly separate from a deterministic policy record.
+  `ValidatePrediction` rejects unknown labels, NaN/Inf or out-of-range probabilities,
+  invalid normalization, mismatched subject/digests, an uncalibrated label carrying a
+  synthesized probability, and inapplicable calibration. `PredictionAdvisor` projects a
+  validated `Prediction` into the existing `Advice` contract with zero change to
+  `Decide`'s fail-closed default, budget, timeout, journal or reserved-verb rules
+  (graph-execution/10).
+- `deskread` serves two per-issue read kinds, `trust` (`Forge.IssueTrustEvents`) and `comments` (`Forge.ListCommentsTyped` on an issue), addressed as `--issue owner/name#N`. Their envelope is keyed by repo and number and keeps the same partial-is-a-result contract as the `issues` kind. The `issues` kind's output is unchanged.
+- `statusgen`: per-finding-class **reversal-rate** mining joined to the gate-yield
+  accounting, with the two-month demotion rule — a class whose reversal rate exceeds 50%
+  for two consecutive months is marked advisory; a later month under 50% restores it.
+
+### Fixed
+- `deskdispatch`'s decision gate now runs the consumer `tools/decision-issue.sh` under the dispatching role's credential (`GH_TOKEN`, plus `GITLAB_TOKEN` on a GitLab-served repo, in the script's environment) from the same single resolution the claim step uses, instead of whatever forge login was ambient. The credential is resolved before the claim, so a mint failure stops the dispatch with nothing durable taken, and the step refuses (exit 6) rather than start the script with no credential handed over and none exported. The `decision-gate OK` line names the credential source.
+- `docs/streams/desk-containers/brief-01-base-image.md`'s Verify row 1 build command now
+  uses the working root-context form (`docker build -f containers/base/Dockerfile -t
+  assay-desk-base:dev .`, run from the repo root) instead of the broken
+  `containers/base`-context form, which failed because the Dockerfile `COPY`s
+  `plugins/assay/` from the context root. `containers/README.md` also gains a note that a
+  plain (non-buildx) arm64-host build needs `--build-arg TARGETARCH=arm64`.
+- `inbound-monitor.sh` takes an explicit read identity, `--token-file OWNER=PATH` (a 0600 installation-token file, read in place and never copied), which outranks its `gh` keyring fallback. Under a replaced `HOME` such as a desk cell's, that fallback resolves to no usable account and 401s every repo. `scanloop run` now hands the poller the running role's already-minted token file for each owner in scope. Owners without one keep the keyring path exactly as before, and each fallback is printed with its reason. An unusable token file is a precondition failure, never a silent fallback to the keyring.
+- `statusgen --scan-issues` — the scan `scanloop run` shells in its scan lane — no longer shells out to `gh` for any forge read. The trust-gate blessing read (was `gh api graphql`) and the un-block comment read (was `gh api --paginate`) now go through the `deskread` verb on the native `Forge` seam, completing what #1223 started for the open-issue list. Under the replaced `HOME` a scanloop pass runs with, those two reads returned `gh: HTTP 401` on every rostered repo; the native client attaches the per-installation App token explicitly on every request. (#1255)
+
+### Changed
+- Roster schema: `ASSAY_REVIEWER_VENDOR` / `ASSAY_VERIFIER_VENDOR` are recognised keys in
+  both `statusgen` and the desk tools, so a roster carrying them no longer collapses the
+  configuration on the unknown-key refusal.
+- The GitHub backend's issue-thread read (`ListCommentsTyped` on an issue) now follows the comment connection's cursor to the end of the thread, capped at 20 pages. A thread longer than the cap, or a thread that reports another page without giving a cursor for it, is now could-not-check, where before it was cut to its first 100 comments without any warning. Reads of pull-request comment threads are unchanged.
+- `pr-review-desk` skill: a finding-class register with a `blocking`/`advisory` status and
+  the reversal-rate demotion rule wired to the monthly calibration report.
+
+## v1.0.25 — 2026-09-23
+
+### Added
+- Release by merge (design + staged implementation): a prepared release PR (title
+  `release: vX.Y.Z` + a `RELEASE: vX.Y.Z` body marker) becomes the release cut when a
+  maintainer MERGES it — the merge is the human gate and the recorded authorizer. A staged
+  `release-on-merge.yml` detects the merge and creates the plain `vX.Y.Z` and umbrella
+  `assay/vX.Y.Z` tags at the merge commit with a GitHub App token (a GITHUB_TOKEN-created tag
+  would not trigger the build), and a staged twin of `release.yml` resolves the tag-push
+  authorizer from the merged PR's `merged_by.login` and refuses to release any `v*` tag whose
+  commit is not a merged release PR — closing the iso-9001/04 tag-push traceability gap.
+
+### Fixed
+- A dispatched agent's worktree no longer INHERITS the shared checkout's git commit identity.
+  `deskdispatch`'s worktree-create step now stamps the DISPATCHED agent's own role commit
+  identity (worker/reviewer/verifier, mapped from `--kit`) into the new worktree's own
+  worktree-scoped config, so a verifier dispatched from a desk checkout commits — and reports
+  its runner — under the verifier App, not the desk App. Before this, the worktree carried
+  whatever `user.name`/`user.email` the shared `.git/config` held, and `statusgen verifyrun`
+  stamped that wrong identity into every Evidence witness Runner cell (silent misattribution).
+  A `--kit` whose role has no roster commit identity is now REFUSED pre-claim (exit 5) naming
+  the kit, the role and the roster key, and the worktree-create OK line prints
+  `identity=<slug> <bot-user-id>`.
+- `cellctl`'s the-desk model policy now gates Opus by a VERSION FLOOR instead of a fixed
+  allowlist: the coordinator ACCEPTS any Opus tier at or above **5.5** (`claude-opus-5-5`,
+  `claude-opus-5-6`, `claude-opus-6`, and a future `claude-opus-9`, including `[1m]` and
+  `-`/`.` spellings) and REFUSES anything below it (the bare `opus` alias, Opus 5.0 —
+  `claude-opus-5` / `-5-0` / `-5.0` — and older tiers such as Opus 4.8). A future Opus tier
+  therefore auto-qualifies as the-desk's top tier with no code edit — a deliberate, documented
+  trade (a floor adopts a future Opus sight-unseen; the "Opus 5.0 was a bad tier despite its
+  number" lesson makes that a choice, reversible by raising the floor). The built-in deny
+  patterns stay anchored at end-of-token (`*opus-5` / `*opus5` / `*opus-5-0` / `*opus-5.0`), and
+  the "which Opus tiers the-desk refuses" decision lives in one shared helper (`isOpusPin`) that
+  both the legacy resolver and the policy resolver consult, so the carve-out cannot fork between
+  sites.
+- `deskclose superseded` on a PULL REQUEST no longer reports a close it did not perform. The
+  close is now **read back** after the call — the item is re-fetched and its state confirmed
+  `closed` before success is printed — so a state-change request that returns without error but
+  leaves the item open (an issue-shaped `state_reason` PATCH on a pull request's number returns
+  `422`, which was swallowed after the confirmation comment posted) is caught. When the comment
+  posted but the close did not take, the run reports `partial: comment posted, close refused: …`
+  with the forge's own error body and exits `6` (could-not-check), never success. The read-back
+  lives in the shared close path, so every permanent-close lane (`superseded`, `duplicate`,
+  `review-request`, `triage`, `self-withdraw`, manifest rows) gets it; the deliberately transient
+  `verify-gate-refire` close, which the repository's verify-gate-close workflow reopens, opts out.
+- `deskclose` flag parsing now accepts the single-dash spelling of a long value flag (e.g.
+  `-by`, which Go's `flag` package treats identically to `--by`) in every argument order. The
+  positional splitter previously recognised only the double-dash spelling, so `superseded <pr>
+  -R … -by …` tripped `flag needs an argument: -by` — it dropped the value that was present and
+  mis-read it as a second item number — a failure that looked "environmental" because it
+  depended only on the dash spelling typed.
+- `deskpost`'s model-capability-floor stamp age-out no longer refuses (verdict) or misreads (flip)
+  every risk-classed review on a reviewed PR. The age-out now keys on the REVIEWER's
+  review-dispatch claim family (`refs/dispatch/<short>--pr-<N>[--<suffix>]`) in the namespace
+  claims actually live in — not the PR body's worker `Brief:` claim (released the moment the
+  worker finishes) and not the empty `refs/heads/dispatch/*` namespace the old reader probed. A new
+  `Forge.MatchingRefs` op does the prefix listing (GitHub `git/matching-refs`; GitLab CE is a
+  could-not-check the review lane never reaches). Reader-side only — the acquire/writer namespace is
+  untouched, and full reader+writer convergence remains the issue-708 follow-up.
+
+### Changed
+- `check-paired-versions.sh`'s single-tag assertion stays as it is on `main` (no harness
+  exemption) per the maintainer's ruling (option 1): re-pin `statusgen`/`desk-tools` to a real
+  `v1.0.24` release instead of carving the harness image out of the rule.
+- `deskwt add` now takes `--role R` and, given it, stamps that desk role's App commit identity
+  into the new worktree (the same shared resolver `role-init` uses); an unbound role is refused
+  (exit 5) before the worktree is created. WITHOUT `--role`, `deskwt add` now CLEARS the new
+  worktree's `user.name`/`user.email` (an empty worktree-scoped value that shadows the shared
+  config), so a bare `deskwt add` worktree can never silently commit under an inherited identity
+  — a commit there fails closed until an identity is set. The commit-identity resolver
+  (GitHub/GitLab shape choice + fail-closed refusals) is extracted to one shared helper,
+  `deskkit.RoleWorktreeCommitIdentity`, so `role-init`, `deskwt add --role` and `deskdispatch`
+  cannot resolve one role to three identities.
+- `statusgen:`/`desk-tools:` re-pinned to the published `v1.0.24` release — tag and every
+  per-platform sha256 harvested from that release's `checksums.txt` — so all three
+  `paired-versions.yaml` sections share one tag again and `check-paired-versions.sh` passes
+  unchanged.
+- harness: pin the v1.0.24 desk-tools image digest (`plugins/assay/paired-versions.yaml`
+  `harness.tag`/`harness.digest`), replacing the fail-closed `PENDING-HARVEST` placeholder now that
+  the image has been published and its digest harvested from two independent registry reads.
+
 ## v1.0.24 — 2026-09-22
 
 ### Added

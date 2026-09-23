@@ -90,7 +90,13 @@ func cmdRun(args []string, stdout io.Writer) error {
 			// Running the poller IS the arming step: with no baseline it seeds silently, and the
 			// pass that seeds deliberately reports no inbound rather than replaying the whole
 			// backlog as new work.
-			return RunMonitor(script, stateDir, scope, nil)
+			//
+			// The poller is handed this session's App token FILE per owner (issue 1503): its
+			// keyring fallback resolves to no usable account under a replaced HOME and 401s every
+			// repo. Resolved per pass so a long-lived session never hands over an expired file.
+			id := ResolveMonitorIdentity(scope)
+			renderMonitorIdentity(stdout, id)
+			return RunMonitor(script, stateDir, scope, id.TokenFiles, nil)
 		}
 	}
 

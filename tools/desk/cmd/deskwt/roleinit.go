@@ -283,43 +283,23 @@ func cmdRoleInit(args []string) (err error) {
 		return perr
 	}
 
-	// The commit identity is derived from the roster entry's FORGE (the forge-qualified-identity
-	// brief), never a fixed shape, and never the GitHub noreply shape for a GitLab account
-	// (#677 — a GitHub-shaped email on a GitLab commit lands it under no GitLab identity).
-	var botName, botEmail string
+	// The commit identity is the ONE SHARED resolver every worktree-stamping tool uses
+	// (deskkit.RoleWorktreeCommitIdentity): it derives the GitHub-vs-GitLab shape from the
+	// role's forge-qualified roster entry — never a fixed shape, never the GitHub noreply
+	// shape for a GitLab account (#677) — and returns a typed Refused (exit 5) naming the
+	// roster key when the role has no derivable identity (#638). role-init, `deskwt add
+	// --role` and deskdispatch's worktree-create all resolve through it, so one role can
+	// never stamp three different identities.
+	botName, botEmail, ierr := deskkit.RoleWorktreeCommitIdentity(p.role)
+	if ierr != nil {
+		return ierr
+	}
 	// credUser is the username the inline credential helper answers with: GitHub App
-	// installation tokens authenticate as `x-access-token`; a GitLab PAT as `oauth2`.
+	// installation tokens authenticate as `x-access-token`; a GitLab PAT as `oauth2`. It is
+	// read from the SAME roster entry the identity was, so the two cannot disagree.
 	credUser := "x-access-token"
 	if ident, bound := deskkit.EffectiveConfig().RoleBotIdentity(p.role); bound && ident.Forge == deskkit.ForgeGitLab {
 		credUser = "oauth2"
-		// GitLab: the service-account commit email embeds a group id and per-account suffix the
-		// roster does not carry, so it is not CONSTRUCTIBLE. The established mechanism (#643) is
-		// the two-identity model — the worktree commits under the trusted session / implementer
-		// address the deployment lists in ASSAY_GITLAB_SESSION_EMAILS (the same allowlist the
-		// commit-identity preflight accepts; a deployment committing AS the service account lists
-		// that account's noreply address there). Read it from the trusted roster; refuse loudly
-		// rather than fall back to the GitHub shape when none is configured.
-		name, email, ok := deskkit.RoleGitLabCommitIdentity(p.role)
-		if !ok {
-			return deskkit.Refused("refused: role " + p.role + " is a GitLab identity (" + ident.Slug + "); its " +
-				"service-account commit email (service_account_group_<group-id>_<suffix>@noreply.<host>) embeds a " +
-				"group id and per-account suffix the roster does not carry, so it cannot be constructed — and it " +
-				"must NOT fall back to the GitHub noreply shape. Configure the trusted GitLab session / implementer " +
-				"commit address in " + deskkit.EnvGitLabSessionEmails + " (the two-identity mechanism; to commit AS " +
-				"the service account, list its provisioned noreply address there), in " + deskkit.ConfigHomePath())
-		}
-		botName, botEmail = name, email
-	} else {
-		// GitHub: the App commit identity comes from the roster, not a source literal — the bot
-		// USER id is deployment-specific. Refuse loudly rather than stamp an empty/unlinked identity.
-		name, email, ok := deskkit.RoleBotCommitIdentity(p.role)
-		if !ok {
-			return deskkit.Refused("refused: role " + p.role + " has no bot commit identity in the roster — " +
-				"pin it with a " + deskkit.EnvTrustedBotSlugs + " entry " + p.role +
-				"=<app-slug>:<bot-user-id> (the bot USER id, from `gh api /users/<app-slug>[bot]`) in " +
-				deskkit.ConfigHomePath())
-		}
-		botName, botEmail = name, email
 	}
 
 	dir, derr := roleRepoDir(p)
@@ -709,6 +689,31 @@ func setCommitIdentity(target, botName, botEmail string) error {
 	}
 	if _, err := runGit(target, "config", "--worktree", "user.email", botEmail); err != nil {
 		return deskkit.Unverifiable("cannot set worktree user.email at "+target, err)
+	}
+	return nil
+}
+
+// clearCommitIdentity SHADOWS the shared checkout's user.name/user.email with an EMPTY
+// worktree-scoped value (#1490), so a worktree created without a role can never inherit and
+// silently commit under the shared checkout's identity — the misattribution this closes.
+//
+// The value must be SET to empty at worktree scope, not `--unset`: git config precedence
+// resolves user.name from the highest scope that DEFINES it, so `--unset` at worktree scope
+// falls straight through to the shared .git/config value (the very identity we are refusing
+// to inherit). An empty worktree-scoped value is the highest scope AND defines the key, so it
+// wins — and git rejects a commit with an empty author identity ("Author identity unknown"),
+// which is the fail-closed outcome: a caller that meant to commit here must set an identity
+// first (`deskwt add --role`, `role-init`, or a per-commit `git -c user.*`). Scoped via
+// extensions.worktreeConfig so the shared checkout's config is never mutated.
+func clearCommitIdentity(target string) error {
+	if _, err := runGit(target, "config", "extensions.worktreeConfig", "true"); err != nil {
+		return deskkit.Unverifiable("cannot enable worktree-scoped config at "+target, err)
+	}
+	if _, err := runGit(target, "config", "--worktree", "user.name", ""); err != nil {
+		return deskkit.Unverifiable("cannot clear worktree user.name at "+target, err)
+	}
+	if _, err := runGit(target, "config", "--worktree", "user.email", ""); err != nil {
+		return deskkit.Unverifiable("cannot clear worktree user.email at "+target, err)
 	}
 	return nil
 }

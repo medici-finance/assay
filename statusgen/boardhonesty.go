@@ -44,8 +44,10 @@ package main
 //	out-of-repo-deliverable    the brief body says its deliverable lands in
 //	                           another repo — the work is authored here but the
 //	                           artifact belongs elsewhere.
-//	dehoused                   the brief (or its README) marks the work de-housed
-//	                           to another repo by ruling.
+//	dehoused                   the brief body or the ROW's own board cell marks
+//	                           the work de-housed to another repo by ruling —
+//	                           keyed on the row, never the whole stream README
+//	                           (statusgen #1516), the same row scope re-homed uses.
 //	re-homed                   the ROW's own board cell carries a re-home marker
 //	                           ([homed→…] / deliverable-repo: / do-not-re-implement)
 //	                           and the brief file is gone — its record merged
@@ -68,15 +70,15 @@ package main
 // shallow clone, git missing); a failed read makes class 1 could-not-check —
 // reported as itself, never rounded to "no phantom" — while the text detectors
 // (classes 2–6), which need no git, still run. A brief file that cannot be read
-// is could-not-check for that row's body arm; a stream README that cannot be read
-// is could-not-check for that stream's README arm. An instrument that did not
-// look has cleared nothing.
+// is could-not-check for that row's body arm. No detector reads the stream
+// README any more (statusgen #1516): the dehoused class now keys on the row's own
+// cell and body, like re-homed. An instrument that did not look has cleared
+// nothing.
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 )
@@ -105,7 +107,10 @@ const (
 var (
 	// out-of-repo: the brief body names another repo as where the deliverable lands.
 	reOutOfRepo = regexp.MustCompile(`(?i)deliverable lands in`)
-	// dehoused: the work was de-housed to another repo by ruling.
+	// dehoused: the work was de-housed to another repo by ruling. Matched against
+	// the brief body and the ROW's own board cell — never the whole stream README
+	// (statusgen #1516), the same row scope reReHomed uses — so ordinary todo rows
+	// of a stream whose README merely MENTIONS de-housing are not all flagged.
 	reDehoused = regexp.MustCompile(`(?i)\bde-?housed\b`)
 	// re-homed: the ROW's own re-home marker. Keyed on the row's own brief-table
 	// cell (never the whole stream README — statusgen #709), so ordinary todo
@@ -150,21 +155,23 @@ var phantomRemediation = map[string]string{
 }
 
 // classifyPhantom is the pure classifier. Given a todo brief's id, its raw file
-// body, its stream README text, the set of brief ids a local merge already
+// body, the ROW's own brief-table cell, the set of brief ids a local merge already
 // named, and whether the row's own brief file exists on disk, it returns the
 // phantom class that caught the row and a human reason, or ok=false when the row
 // is clean.
 //
-// rowCell is the ROW's own re-home marker: the raw brief-table cell for this
-// row. The re-homed class keys on IT, never on the stream README, because a
-// stream README mentions re-homing for reasons that have nothing to do with any
-// one row — a scope/boundary note, or a stream re-homed INTO this repo (statusgen
-// #581) describing its own arrival. Keying re-homed on the whole README flagged
-// EVERY todo row of such a stream whose brief file happened to be absent
-// (statusgen #709): a false positive that made the signal worthless. A genuine
-// pointer row carries its OWN marker — the rendered `[homed→<owner>/<repo>]`
-// marker, a `deliverable-repo:` note, or explicit retirement wording — in its
-// cell; the stream README is not evidence about the row.
+// rowCell is the raw brief-table cell for this row. The dehoused AND re-homed
+// classes both key on IT (plus, for dehoused, the brief body), never on the
+// stream README, because a stream README mentions de-housing or re-homing for
+// reasons that have nothing to do with any one row — a scope/boundary note, a
+// sibling brief ABOUT de-housing code, or a stream re-homed INTO this repo
+// (statusgen #581) describing its own arrival. Keying such a class on the whole
+// README flagged EVERY todo row of such a stream (re-homed whose brief file was
+// absent: statusgen #709; dehoused, every todo row: statusgen #1516): a false
+// positive that made the signal worthless. A genuine pointer row carries its OWN
+// marker — the rendered `[homed→<owner>/<repo>]` marker, a `deliverable-repo:`
+// note, a de-housed/retirement note — in its cell; the stream README is not
+// evidence about the row.
 //
 // briefFilePresent is the ROW's own record. The re-homed class also keys on it: a
 // present brief file is LIVE work, so re-homed fires only on a POINTER row — one
@@ -175,7 +182,7 @@ var phantomRemediation = map[string]string{
 // row that is both already-merged and carries a banner is reported as merged
 // (the strongest, git-derived fact) rather than by a weaker text match. The
 // ordering is the detector's contract and the tests pin it.
-func classifyPhantom(briefID, body, readme, rowCell string, mergedIDs map[string]bool, briefFilePresent bool) (class, reason string, ok bool) {
+func classifyPhantom(briefID, body, rowCell string, mergedIDs map[string]bool, briefFilePresent bool) (class, reason string, ok bool) {
 	if mergedIDs[briefID] {
 		return phantomMergedUnflipped,
 			"a merged PR/commit already names this brief but the row is still todo — Next-up keeps offering work that has already landed",
@@ -191,7 +198,10 @@ func classifyPhantom(briefID, body, readme, rowCell string, mergedIDs map[string
 			"the brief's deliverable lands in a sibling repo — the artifact is not produced here",
 			true
 	}
-	if reDehoused.MatchString(body) || reDehoused.MatchString(readme) {
+	// dehoused keys on the brief body and the ROW's OWN cell — never the stream
+	// README (statusgen #1516), the same row scope re-homed uses below — so a
+	// stream whose README merely MENTIONS de-housing does not flag its every row.
+	if reDehoused.MatchString(body) || reDehoused.MatchString(rowCell) {
 		return phantomDehoused,
 			"the work was de-housed to another repo by ruling — owned there, not here",
 			true
@@ -214,9 +224,10 @@ func classifyPhantom(briefID, body, readme, rowCell string, mergedIDs map[string
 }
 
 // boardHonestyNotices is the driver: it walks every `todo` row, loads the inputs
-// each detector needs (the brief file body, the stream README, the local merge
-// set), classifies the row, and returns one surfaced NON-DISPATCHABLE NOTICE per
-// phantom — plus could-not-check NOTICEs for any input it could not read.
+// each detector needs (the brief file body, the row's own board cell, the local
+// merge set), classifies the row, and returns one surfaced NON-DISPATCHABLE
+// NOTICE per phantom — plus could-not-check NOTICEs for any input it could not
+// read.
 //
 // merged/mergedErr are the SAME first-parent merge read the #270 reconciliation
 // performs (mergedPRsFromGit), threaded in so the git history is read once per
@@ -266,18 +277,11 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 			continue
 		}
 
-		// The stream README, read once. A read failure is could-not-check for the
-		// README-keyed arm (dehoused) of every todo row in this stream — reported as
-		// itself, and the body/row-keyed arms still run with readme "". (re-homed is
-		// NOT README-keyed: it reads the row's own cell — statusgen #709.)
-		readme := ""
-		readmePath := filepath.Join(s.Dir, "README.md")
-		if raw, err := os.ReadFile(readmePath); err != nil {
-			add("could-not-check: board-honesty could not read %s (%v), so the README-keyed "+
-				"phantom class (dehoused) was not checked for stream %s.", readmePath, err, s.Name)
-		} else {
-			readme = string(raw)
-		}
+		// No stream README is read here: every phantom class now keys on either the
+		// git merge set, the brief body, or the row's own cell (dehoused went
+		// row-scoped in statusgen #1516; re-homed already was, statusgen #709). A
+		// stream-wide README match flagged every todo row of a stream that merely
+		// mentioned de-housing, so the README is no longer evidence about any row.
 
 		// Map todo brief number -> its file path, for the body read.
 		pathByNum := map[string]string{}
@@ -299,8 +303,8 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 			body := ""
 			// briefFilePresent is the ROW's own record: whether a brief file for
 			// this todo row exists on disk. It gates the re-homed class so a live
-			// row of a stream re-homed INTO this repo is not flagged on the
-			// README's arrival narrative alone (statusgen #581).
+			// row of a stream re-homed INTO this repo (its cell may carry a marker)
+			// is still recognised as live work, not a retired pointer (statusgen #581).
 			path, briefFilePresent := pathByNum[num]
 			if briefFilePresent {
 				if raw, err := os.ReadFile(path); err != nil {
@@ -310,7 +314,7 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 					body = string(raw)
 				}
 			}
-			class, reason, ok := classifyPhantom(id, body, readme, cellByNum[num], mergedIDs, briefFilePresent)
+			class, reason, ok := classifyPhantom(id, body, cellByNum[num], mergedIDs, briefFilePresent)
 			if !ok {
 				continue
 			}
