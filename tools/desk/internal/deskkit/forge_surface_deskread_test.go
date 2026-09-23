@@ -41,7 +41,7 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 	sort.Strings(got)
 
 	want := []string{
-		"ApplyLabels", "ChangeDiff", "ChecksAtHead", "CloseIssue", "CloseIssueTyped",
+		"ApplyLabels", "ApproveGate", "ChangeDiff", "ChecksAtHead", "CloseIssue", "CloseIssueTyped",
 		"CompareRefs", "CreateDraftChange", "DeleteRef", "EditChange", "EditComment",
 		"FileIssue", "GetCommit", "GetIssue", "GetIssueTyped", "GetPullRequest",
 		"IssueContentEvents", "IssueReactions", "IssueTrustEvents", "ListChangedFiles",
@@ -52,7 +52,7 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"OpenChangeForBranch", "OpenMergeHold", "PRTrustEvents", "PostComment",
 		"PostCommentTyped", "PostReview", "PushTransportHint", "ReadFile", "ReadMergeHold",
 		"RefExists", "ReopenIssue", "RepoHardeningRead", "RepoVisibility",
-		"RequiredStatusChecks", "ReviewsAtHead", "SearchIssues", "SearchOpenChanges",
+		"RequiredStatusChecks", "ReviewsAtHead", "RunStatus", "RunWorkflow", "SearchIssues", "SearchOpenChanges",
 		"SetMergeHold", "WriteFile",
 	}
 	sort.Strings(want)

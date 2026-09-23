@@ -1,0 +1,8 @@
+{
+  "requests": [],
+  "result": {
+    "ID": ""
+  },
+  "err": "refusing to reach the GitHub forge without an explicitly minted token — the go-gh backend never falls back to an ambient gh-CLI keyring/config identity",
+  "not_found": false
+}

@@ -524,6 +524,16 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 	}
 	ac.role = role
 
+	// A GitLab release-runner credential is a PIPELINE TRIGGER TOKEN, not a PAT: it has no
+	// self-rotate endpoint, and presenting it to the PAT rotation endpoint would only earn a
+	// 401 that reads like a broken custody file. Rotation is an operator act in the project's
+	// CI/CD settings; the read-only lookup (--no-rotate) still verifies and prints custody.
+	if role == "release-runner" && rotate {
+		return deskkit.Refused("the GitLab release-runner credential is a pipeline trigger token, which has no " +
+			"self-rotate endpoint — rotate it in the project's CI/CD settings, re-provision " +
+			gitlabTokenFileName(role) + " (0600), and use --no-rotate to verify custody")
+	}
+
 	name := gitlabTokenFileName(role)
 
 	// Locate the existing custody file across the App-credential search path.

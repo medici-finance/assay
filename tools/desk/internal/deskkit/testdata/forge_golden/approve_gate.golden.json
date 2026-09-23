@@ -1,0 +1,19 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/runs/501/pending_deployments"
+    },
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/actions/runs/501/pending_deployments",
+      "body": {
+        "comment": "Approved by deskrun under the roster-bound run credential.",
+        "environment_ids": [
+          12
+        ],
+        "state": "approved"
+      }
+    }
+  ]
+}

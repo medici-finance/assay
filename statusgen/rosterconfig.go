@@ -357,6 +357,16 @@ const (
 	scanEnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
 	scanEnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 
+	// scanEnvRunCredentials (ASSAY_RUN_CREDENTIALS) is a DESK-only roster value
+	// (forge-neutral brief 14): the per-repo run-credential binding cmd/deskrun reads to
+	// decide who may start a workflow run or clear a deployment gate — a
+	// `human:<name>` token (a deliberate refusal state) or the `release-runner`
+	// role. statusgen consumes it in no form — but the two readers share one
+	// ~/.config/assay/roster.env, and an unknown ASSAY_ key REFUSES the whole
+	// configuration, so it must be RECOGNISED here or a roster that binds a run
+	// credential collapses statusgen's whole trust configuration. Recognised, not
+	// applied. KEEP IN SYNC with deskkit/rosterconfig.go's EnvRunCredentials.
+	scanEnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
 	// scanEnvClaimStore (ASSAY_CLAIM_STORE), scanEnvClaimDir (ASSAY_CLAIM_DIR) and
 	// scanEnvClaimSingleHost (ASSAY_CLAIM_SINGLE_HOST) are DESK-only roster values
 	// (the claim-store seam): where a cell keeps its dispatch claims, the file store's
@@ -418,6 +428,9 @@ func scanKnownRosterKeys() []string {
 		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
 		// they share this roster.env, so statusgen must not fail closed on either.
 		scanEnvReviewerVendor, scanEnvVerifierVendor,
+		// DESK-only, recognised-not-applied (forge-neutral brief 14): cmd/deskrun's
+		// per-repo run-credential binding.
+		scanEnvRunCredentials,
 		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
 		// desk tools' resolver consumes — see their declarations above.
 		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
