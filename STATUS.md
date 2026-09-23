@@ -23,7 +23,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-23 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-23 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-23 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/15 | 2026-09-23 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/16 | 2026-09-23 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-23 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-23 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-23 |  |
@@ -54,6 +54,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
+| harness-portability | 17 — Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI [exec:strong] | 0 | 1000 |
 
 ## Intake queue
 
@@ -362,7 +363,7 @@ _None._
 - 17 Graph-linked release and outcome records without new authority — todo (wave 4)
 - 18 Offline graph, advice and assurance integration proof — todo (wave 5)
 
-### harness-portability (11 open)
+### harness-portability (12 open)
 
 - 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
 - 04 Neutral-core skill bodies + per-harness binding files + neutrality lint — implemented (wave 2)
@@ -375,6 +376,7 @@ _None._
 - 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — implemented (wave 6)
 - 15 Public CI wiring + harnesslint clean-up for the de-housed tools — implemented (wave 7)
 - 16 Codex long-context cap — compaction limit on every Codex desk launch, shipped in packaging, linted — todo (wave 7)
+- 17 Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI — todo (wave 0)
 
 ### iso-9001 (5 open)
 
@@ -561,4 +563,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**22** streams (**17** active, **0** paused, **5** parked) · **88/265** briefs done · completed initiatives: see `docs/archive/`
+**22** streams (**17** active, **0** paused, **5** parked) · **88/266** briefs done · completed initiatives: see `docs/archive/`
