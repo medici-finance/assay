@@ -489,7 +489,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
   includes them, so skill and binary now agree.
 
-## Cockpit-aware worktree creation — additive, detected on PATH, never required
+## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
 The per-item worktree the ceremony isolates is a plain
 `git worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`, and that path is the
@@ -501,10 +501,23 @@ badge. This is **sugar on the same primitive, not a new requirement**. The metho
 unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktree per dispatched
 item, and the cockpit is only a nicer way to reach it.
 
-- **Selection is by command presence on PATH, never a config flag someone must remember.** For
-  the worktree-create step of each dispatched item, resolve the FIRST that is present. Every path
-  spells the base in full as `refs/remotes/origin/main` — never the bare `origin/main`, which
-  resolves to a stray local branch of that name where one exists:
+- **`ASSAY_COCKPIT`, when set, names the arm — and a named CLI that is absent is a refusal,
+  never a substitute.** A cell launcher exports it into every role window as the cell's ONE
+  cockpit value (the same cockpit its windows are hosted in), so nobody has to remember it; an
+  operator with no launcher may export it by hand. Its values select the arms below: `supacode`,
+  `herdr`, `orca`, or `plain` — and `tmux`, which a tmux-hosted cell exports, means `plain` (the
+  always-works fallback, which needs no cockpit CLI). A cell launcher never exports `supacode`, so
+  inside a cell that arm is reached only by an operator's own export outside the launcher. When the
+  named CLI is not on PATH, that is a **refusal naming that CLI**: do not cut the worktree, file it
+  per the escalation rules, and stop that dispatch — never a silent switch to another cockpit or
+  to the fallback. A value outside that set is a refusal naming the value. Everything else about
+  the named arm is unchanged: where it says "fall through to the fallback" (an installed build that
+  cannot pin the base or the per-item path), it still falls through to the plain `git worktree add`
+  — the value picks the cockpit, it never makes one required.
+- **Unset, selection is by command presence on PATH, never a config flag someone must
+  remember.** For the worktree-create step of each dispatched item, resolve the FIRST that is
+  present. Either way, every path spells the base in full as `refs/remotes/origin/main` — never
+  the bare `origin/main`, which resolves to a stray local branch of that name where one exists:
   - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --base
     refs/remotes/origin/main --path ../<repo>-<item> --fetch` (it fetches for you and opens a
     titled worktree in one command). Pin the base and the per-item path explicitly rather than
@@ -527,8 +540,8 @@ item, and the cockpit is only a nicer way to reach it.
     base branch, retry or abandon). GitHub stays the only record, so an operator with no run — or
     no Orca — loses only the poll-free notification, never any isolation, correctness, or the
     escalation path.
-  - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
-    <branch> refs/remotes/origin/main`.
+  - else (or `ASSAY_COCKPIT=plain`/`tmux`) the always-works fallback → `git fetch origin && git
+    worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`.
 - **The base is verified after the create, not trusted from any tool's default.** Whichever path
   cut the worktree, before the worker is dispatched confirm the new worktree sits at the
   remote-tracking tip — `git -C ../<repo>-<item> rev-parse HEAD` must equal `git -C <repo>
@@ -539,7 +552,7 @@ item, and the cockpit is only a nicer way to reach it.
 - **Only the worktree-create step changes — nothing else forks.** The branch name, the
   `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
   model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
-  and honours its exits. A cockpit is chosen only where its CLI is actually on PATH, so the same
+  and honours its exits. A cockpit is used only where its CLI is actually on PATH, so the same
   skill drives a fanout whether or not any of these cockpits is installed.
 - **The fallback is not a degraded path.** An operator with no cockpit loses only the titled
   worktree and the presence badge, never any isolation or correctness. Nothing in a brief, a loop
