@@ -155,6 +155,64 @@ func TestRedPreflightStopsTheBootAndReadsNoBoard(t *testing.T) {
 	}
 }
 
+// countCalls returns how many recorded child processes contain ALL of the given fragments in
+// their joined argv — the alarm assertion needs "a deskfile new addressed to:desk", which is
+// three fragments at once.
+func (s *stub) countCalls(fragments ...string) int {
+	n := 0
+	for _, c := range s.calls {
+		joined := strings.Join(c, " ")
+		all := true
+		for _, f := range fragments {
+			if !strings.Contains(joined, f) {
+				all = false
+				break
+			}
+		}
+		if all {
+			n++
+		}
+	}
+	return n
+}
+
+// TestBootRedFilesOneAlarm is Verify row 5. A red preflight is ALARMED, not only printed:
+// deskboot files ONE `to:desk` issue quoting the red line, and it is deduped by a marker per
+// role per day, so a loop that boots-refuses-reboots on a supervisor interval does not re-file
+// the same envelope issue every tick.
+//
+// FAIL-FIRST: on the pre-brief code deskboot filed NOTHING on a red preflight (its step-5
+// comment said so explicitly), so the first assertion — exactly one `deskfile new --to desk`
+// after a red preflight — is zero on the unfixed tree. The fix is alarm.go plus the step-5
+// wiring; a reviewer removes the fileRedPreflightAlarm call to observe the red.
+func TestBootRedFilesOneAlarm(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t) // one HOME → one state dir → one marker across both boots
+	s.replies = append(happyStub(t, writeToken(t, home)),
+		reply{match: "deskroster preflight", fail: true})
+
+	// Boot 1: a red preflight stops the boot AND files exactly one to:desk alarm.
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("red preflight rc = %d, want %d (unverifiable) — the alarm never changes the verdict", rc, deskkit.ExitUnverifiable)
+	}
+	if got := s.countCalls("deskfile", "new", "--to desk"); got != 1 {
+		t.Fatalf("first red preflight produced %d `deskfile new --to desk` payloads, want exactly 1", got)
+	}
+	// The alarm is raised BY the desk (its provenance), addressed TO the desk (its inbox).
+	if got := s.countCalls("deskfile", "new", "--raised-by desk"); got != 1 {
+		t.Fatalf("the alarm was not raised-by desk (got %d such calls, want 1)", got)
+	}
+
+	// Boot 2: same role, same day — the marker suppresses a second payload.
+	s.calls = nil
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("second red preflight rc = %d, want %d (unverifiable)", rc, deskkit.ExitUnverifiable)
+	}
+	if got := s.countCalls("deskfile", "new"); got != 0 {
+		t.Fatalf("a SECOND red preflight the same day filed %d more alarms, want 0 — the marker must dedupe per role per day", got)
+	}
+}
+
 // A red preflight must log the roster's OWN verdict — the `preflight role=… RED n/5`
 // summary and each `<check>=checked-failed: … → fix: …` remediation — NOT the
 // effective-config banner (`assay-config: … configured=true`) that every desk tool prints
