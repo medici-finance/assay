@@ -389,12 +389,14 @@ type PreflightProbes struct {
 	// ambient identity at all (nothing to fall through to — safe), and an error
 	// when it could not look (gh absent / unreadable — could-not-check).
 	AmbientLogin func() (login string, err error)
-	// CredHelperMatchesApp reports whether the git credential helper git would use
-	// for the landing remote's URL resolves to the SAME minted App token the pass
-	// lands under (appTokenPath). When it does, the write-transport probe (check 3)
-	// and the tools' real pushes authenticate identically, so a probe-green /
-	// push-red split is impossible; when it does not, the two can disagree and the
-	// check is red. detail names what the helper resolved to. An error is
+	// CredHelperMatchesApp reports whether every credential source git consults
+	// for the landing remote's push URL — the ordered helper chain across all
+	// config scopes, plus an embedded URL credential or an Authorization
+	// extraHeader, which git uses ahead of any helper — is the SAME minted App
+	// token the pass lands under (appTokenPath). When it is, the write-transport
+	// probe (check 3) and a real push from this envelope present the same
+	// credential; when any other source could answer first, the two can disagree
+	// and the check is red. detail names what was found. An error is
 	// could-not-check.
 	CredHelperMatchesApp func(l Landing, appTokenPath string) (matches bool, detail string, err error)
 }
@@ -1484,10 +1486,14 @@ func dirExistsProbe(path string) (bool, error) {
 //     human login is red — the observed case, where an unrelated account carried
 //     the write. No ambient identity at all is NOT red: there is nothing to fall
 //     through to.
-//   - TRANSPORT. The git credential helper git resolves for the landing remote's
-//     URL must resolve to the SAME minted App token the pass lands under, so the
-//     write-transport probe (check 3) and the tools' real pushes authenticate
-//     identically — a probe-green/push-red split is then impossible.
+//   - TRANSPORT. Every credential source git consults for the landing remote's
+//     push URL — each helper in the ordered chain git builds across all config
+//     scopes, and any embedded URL credential or Authorization extraHeader it
+//     uses ahead of them — must be the SAME minted App token the pass lands
+//     under, so the write-transport probe (check 3) and a real push from this
+//     envelope present the same credential. A competing source that git would
+//     consult first is what the probe-green/push-red split is made of, and it
+//     reads red here rather than hiding behind the last-configured helper.
 //
 // It is forge-aware. The ambient-login half reads a GitHub `gh` identity, which a
 // GitLab-forge repo does not use, so on GitLab the check is not-applicable (it
@@ -1535,8 +1541,9 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 			"switch the interactive gh identity to "+cfg.Bless.Login+" (`gh auth login`), or clear the ambient credential", refs)
 	}
 
-	// Transport half: the credential helper for the landing remote must resolve to
-	// the minted App token, so the probe and a real push authenticate the same.
+	// Transport half: every credential source git consults for the landing remote's
+	// push URL must be the minted App token, so the probe and a real push present
+	// the same credential.
 	if strings.TrimSpace(tokenPath) == "" {
 		return unchecked(CheckAmbientID,
 			"no App token was minted, so the credential helper cannot be matched against it",
@@ -1545,21 +1552,24 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 	ok, detail, herr := p.CredHelperMatchesApp(l, tokenPath)
 	if herr != nil {
 		return unchecked(CheckAmbientID, "credential-helper resolution: "+oneLine(herr.Error()),
-			"resolve the helper by hand (`git -C "+orDot(l.Dir)+" config --get-urlmatch credential.helper "+
-				"$(git -C "+orDot(l.Dir)+" remote get-url "+l.Remote+")`) and confirm it reads the App token cache", refs)
+			"list the helper chain by hand (`git -C "+orDot(l.Dir)+" config --show-origin --get-regexp "+
+				"'^credential\\.'` against `git -C "+orDot(l.Dir)+" remote get-url --push "+l.Remote+"`) and confirm "+
+				"every applicable helper reads the App token cache", refs)
 	}
 	if !ok {
 		return failed(CheckAmbientID,
-			"the git credential helper for the "+l.Remote+" URL does not resolve to the minted App token ("+oneLine(detail)+
+			"the credential helper chain (and any credential git presents ahead of it) for the "+l.Remote+
+				" push URL is not solely the minted App token ("+oneLine(detail)+
 				") — the write-transport probe and a real push could disagree, the probe-green/push-red split",
-			"point the "+l.Remote+" credential helper at the App token cache (the desk's `-c credential.helper=…` App "+
-				"helper), or clear the stale ambient helper so both the probe and real pushes use the minted token", refs)
+			"reset the helper chain for the "+l.Remote+" URL with an empty credential.helper entry, then add only the "+
+				"desk's App-token helper after it; remove any embedded URL credential or Authorization extraHeader for it", refs)
 	}
 	blessed := "ambient gh login is the blessing human (" + cfg.Bless.Login + ")"
 	if got == "" {
 		blessed = "no ambient gh identity is set (nothing to fall through to)"
 	}
-	return clean(CheckAmbientID, blessed+" and the "+l.Remote+" credential helper resolves to the minted App token", refs)
+	return clean(CheckAmbientID, blessed+" and every credential source git consults for the "+l.Remote+
+		" push URL is the minted App token", refs)
 }
 
 // isAmbientBot reports whether an ambient login renders as a bot/App account or
@@ -1607,13 +1617,13 @@ func ambientLoginProbe() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// credHelperMatchesAppProbe reports whether the credential helper git resolves
-// for the landing remote's URL references the minted App token path. It is a
-// best-effort, READ-ONLY resolution: it reads the origin URL and asks git which
-// credential helper applies to it (`config --get-urlmatch credential.helper`),
-// then checks whether that helper command names the App token cache. It never
-// runs the helper and never contacts the remote — a probe that authenticated
-// would be the mutating side effect this check exists to keep out of a boot.
+// credHelperMatchesAppProbe reports whether EVERY credential source git consults for the
+// landing remote's PUSH URL (the URL `git push` — and the write-transport probe's
+// `push --dry-run` — authenticate against) is the minted App token. The judgement is
+// credTransportMatchesApp (credhelperchain.go): the ordered helper chain across every config
+// scope, not the single last value --get-urlmatch returns. It is READ-ONLY: it never runs a
+// helper and never contacts the remote — a probe that authenticated would be the mutating
+// side effect this check exists to keep out of a boot.
 func credHelperMatchesAppProbe(l Landing, appTokenPath string) (bool, string, error) {
 	dir := orDot(l.Dir)
 	if _, err := exec.LookPath("git"); err != nil {
@@ -1623,21 +1633,11 @@ func credHelperMatchesAppProbe(l Landing, appTokenPath string) (bool, string, er
 	if strings.TrimSpace(remote) == "" {
 		remote = "origin"
 	}
-	url, err := gitOut(dir, "remote", "get-url", remote)
+	pushURL, err := gitOut(dir, "remote", "get-url", "--push", remote)
 	if err != nil {
 		return false, "", fmt.Errorf("no remote named %s in %s", remote, dir)
 	}
-	url = strings.TrimSpace(url)
-	helper, herr := gitOut(dir, "config", "--get-urlmatch", "credential.helper", url)
-	if herr != nil || strings.TrimSpace(helper) == "" {
-		return false, "no credential helper is configured for " + url, nil
-	}
-	h := strings.TrimSpace(helper)
-	base := filepath.Base(strings.TrimSpace(appTokenPath))
-	if strings.Contains(h, strings.TrimSpace(appTokenPath)) || (base != "" && base != "." && strings.Contains(h, base)) {
-		return true, "credential helper reads the App token cache", nil
-	}
-	return false, "credential helper for " + url + " does not name the App token cache (" + oneLine(h) + ")", nil
+	return credTransportMatchesApp(dir, strings.TrimSpace(pushURL), appTokenPath)
 }
 
 // --- small shared helpers ---------------------------------------------------
