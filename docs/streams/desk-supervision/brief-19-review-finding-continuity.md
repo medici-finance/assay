@@ -92,6 +92,19 @@ Pre-mortem → detection: Findings are reset with each agent/head: row 1. Worker
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingContinuityAcrossHeads$ -v -count=1 | exit 0; named PASS; fixed finding retains ID+evidence, follow-up targets changed surface, no stale approval | exit 0; `--- PASS: TestReviewFindingContinuityAcrossHeads (0.00s)`; `ok ...cmd/reviewloop` | 2026-09-23 | opus-5.5-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCannotSelfResolve$ -v -count=1 | exit 0; named PASS; worker self-resolution, wrong-head evidence and malformed legacy prose cannot clear a blocking finding | exit 0; `--- PASS: TestReviewFindingCannotSelfResolve` with sub-PASS worker-self-resolve, wrong-head-evidence, legacy-prose | 2026-09-23 | opus-5.5-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCapSurvivesRestart$ -v -count=1 | exit 0; named PASS; 3 rounds survive restart, next round emits one arbiter packet, dup sweeps do not refile, unrelated class separate, sibling sentences held | exit 0; `--- PASS: TestReviewFindingCapSurvivesRestart (0.00s)`; `ok ...cmd/reviewloop` | 2026-09-23 | opus-5.5-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingSharedCIBlocker$ -v -count=1 | exit 0; named PASS; multiple PRs cite one shared repair without inventing multiple content defects; ready-flip still requires checks | exit 0; `--- PASS: TestReviewFindingSharedCIBlocker (0.00s)`; `ok ...cmd/reviewloop` | 2026-09-23 | opus-5.5-verifier |
+| W | statusgen verifyrun --brief docs/streams/desk-supervision/brief-19-review-finding-continuity.md (hermetic witness) | witness rows for the 4 check:ci rows | could-not-check: all 4 rows could-not-run (exit=-) — hermetic network-off sandbox uses `unshare --net`, a Linux facility, unavailable on this darwin host; not a fail, not a pass. Decisive evidence obtained by direct execution (rows 1-4 above) | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE: DERIVED — RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340 — the brief forbids introducing a second cap or changing the threshold; the value equals the existing documented rule "Default cap N = 3 full verdict->fix->re-review rounds" (plugins/assay/skills/pr-review-desk/SKILL.md:463). The constant makes that same existing threshold derivable so it survives agent replacement; it is not a new or second cap.
+
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.
