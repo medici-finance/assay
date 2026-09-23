@@ -111,13 +111,13 @@ worktree cut off origin/main; no PR, no push. (Go test names below are hyphen-br
 keep each CamelCase run under the secret-scanner floor; the literal command names carry no
 hyphen — see Findings.)
 
-| # | Command | Expected | Observed (exit + key output) | Date Runner |
-|---|---------|----------|------------------------------|-------------|
-| 1 | cd tools/desk && go build ./... && go vet ./cmd/deskclose/ | exit 0 | exit 0; build and vet clean, no output | 2026-09-23 opus-5.5-verifier |
-| 2 | cd tools/desk && go test -timeout 5m ./cmd/deskclose/ | exit 0; whole deskclose suite passes | exit 0; ok ...tools/desk/cmd/deskclose 10.768s | 2026-09-23 opus-5.5-verifier |
-| 3 | cd tools/desk && go test ./cmd/deskclose/ -run TestRulingCommentOn-AnIssueAuthorizes -v | output contains the literal PASS line for that test | exit 0; observed "--- PASS: TestRulingCommentOnAnIssueAuthorizes (0.07s)" then PASS/ok | 2026-09-23 opus-5.5-verifier |
-| 4 | cd tools/desk && go test ./cmd/deskclose/ -run TestCommentIdFromAnother-ItemIsStillRefused -v | output contains the literal PASS line for that test | exit 0; observed "--- PASS: TestCommentIdFromAnotherItemIsStillRefused (0.00s)" then PASS/ok | 2026-09-23 opus-5.5-verifier |
-| 5 | grep -nE 'fg\.ListComments\(' tools/desk/cmd/deskclose/authority.go; test $? -eq 1 | exit 0 and no line printed — the kind-less call is gone | exit 0; grep printed nothing (grep rc=1), combined test rc=0. The read uses ListCommentsTyped at authority.go:186 | 2026-09-23 opus-5.5-verifier |
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && go build ./... && go vet ./cmd/deskclose/ | exit 0 | exit 0; build and vet clean, no output | 2026-09-23 | opus-5.5-verifier |
+| 2 | cd tools/desk && go test -timeout 5m ./cmd/deskclose/ | exit 0; whole deskclose suite passes | exit 0; ok ...tools/desk/cmd/deskclose 10.768s | 2026-09-23 | opus-5.5-verifier |
+| 3 | cd tools/desk && go test ./cmd/deskclose/ -run TestRulingCommentOn-AnIssueAuthorizes -v | output contains the literal PASS line for that test | exit 0; observed "--- PASS: TestRulingCommentOnAnIssueAuthorizes (0.07s)" then PASS/ok | 2026-09-23 | opus-5.5-verifier |
+| 4 | cd tools/desk && go test ./cmd/deskclose/ -run TestCommentIdFromAnother-ItemIsStillRefused -v | output contains the literal PASS line for that test | exit 0; observed "--- PASS: TestCommentIdFromAnotherItemIsStillRefused (0.00s)" then PASS/ok | 2026-09-23 | opus-5.5-verifier |
+| 5 | grep -nE 'fg\.ListComments\(' tools/desk/cmd/deskclose/authority.go; test $? -eq 1 | exit 0 and no line printed — the kind-less call is gone | exit 0; grep printed nothing (grep rc=1), combined test rc=0. The read uses ListCommentsTyped at authority.go:186 | 2026-09-23 | opus-5.5-verifier |
 
 RISK-VALUE: N/A — enumeration over this brief's diff (the fetchComment kind-derivation in
 tools/desk/cmd/deskclose/authority.go:143-153 plus the three new tests in
