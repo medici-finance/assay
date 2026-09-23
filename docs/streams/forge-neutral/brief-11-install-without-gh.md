@@ -39,6 +39,9 @@ consumers:
   - "plugins/assay/skills/adopt/SKILL.md: fixed-here (the install-statusgen primitive and the per-forge expression of create-labels, the reviewer grant and the main-guard)"
   - "docs/adopting-assay.md: fixed-here (its GitHub-shaped self-description narrows to what is genuinely GitHub-shaped after this brief)"
   - "docs/adopting-assay-gitlab.md: fixed-here (the GitLab runbook stops being a separate dead-end and becomes the per-forge half of one flow)"
+  - "plugins/assay/scripts/assay-install.sh: fixed-here (the CLI-free acquisition step, pin-file digest comparison and refusals, and the rehearsal the skill's dry run names — task 1, verify rows 5-8 and 10)"
+  - "plugins/assay/scripts/assay-install.test.sh: fixed-here (the hermetic suite that pins every refusal, plus the opt-in real-statusgen rehearsal)"
+  - "plugins/assay/paired-versions.yaml: fixed-here (a header comment only — the resolution it describes is now a plain-HTTPS fetch, not `gh release download`)"
   - "statusgen/init.go: out-of-scope (forge-neutral/08 makes `init` scaffold the matching CI half; this brief invokes it and must not reimplement the scaffold)"
   - "tools/cellctl/cellctl: out-of-scope (a cell is not an install; its per-forge prerequisites are forge-neutral/09's)"
 version: 1
