@@ -49,7 +49,7 @@ func TestBriefAuthoringOnly(t *testing.T) {
 			cfAdded("docs/streams/example-port/portability-audit.md"),
 		}, false},
 		{"author-and-deliver of a decision record", "example-port/11", append(append([]ChangedFile{}, authoring...),
-			cfAdded("docs/streams/decisions/DR-example.md")), false},
+			cfAdded("docs/streams/example-port/DR-example.md")), false},
 		{"a stream file nested below the stream dir", "example-port/11", append(append([]ChangedFile{}, authoring...),
 			cfAdded("docs/streams/example-port/brief-11-x/notes.md")), false},
 		{"a top-level docs/streams file", "example-port/11", append(append([]ChangedFile{}, authoring...),
