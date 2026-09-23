@@ -324,7 +324,7 @@ func githubCustody(role string, repo ForgeRepo) (string, string, error) {
 		}
 		return tok, base, nil
 	}
-	tok, path, rerr := RoleTokenForRepo(role, repo.Slug())
+	tok, path, rerr := githubAppRoleToken(role, repo.Slug())
 	if rerr != nil {
 		return "", "", Refused(fmt.Sprintf(
 			"cannot obtain the %s GitHub App installation token for %s: %s — provision it "+
@@ -395,6 +395,115 @@ func gitlabRoleTokenFile(role string) (token, path string, err error) {
 // rotates. A missing/loose/empty file is Refused (exit 5) — a precondition an operator fixes.
 func GitLabRoleToken(role string) (token, path string, err error) {
 	return gitlabRoleTokenFile(role)
+}
+
+// --- Role credential by forge: the raw-token / token-PATH read ---------------------------
+//
+// ForgeFor hands a backend it constructs its credential. Some callers need the credential
+// ITSELF instead — a git credential helper that reads a token FILE (deskwt role-init), a
+// child process handed --token-file (deskdispatch's claim child), an askpass (deskgit --as),
+// a poller (scanloop). Before #1573 each of those reached the GitHub App minter
+// (RoleTokenForOwner / RoleTokenForRepo) directly. Those names are forge-neutral but the
+// minter is GitHub-only, so a caller that picked it up on a GitLab-served repo asked for a
+// GitHub App that does not exist — #676 at deskboot, then #1573 at role-init, each fixed at
+// its own call site. The entry points below are the forge-aware answer, and
+// githubAppRoleToken is the ONE function in this package that reaches the GitHub minter.
+// TestGitHubMinterReachedOnlyFromForgeArms (roletokenguard_test.go) walks tools/desk and
+// fails on any other reference outside its reviewed allow-list, so the next caller cannot
+// repeat the mistake quietly.
+
+// unresolvedRoleCredentialSource is the provenance recorded when neither the roster nor the
+// origin host names the forge. Such a repo takes the GitHub App path: that is the historical
+// behaviour of every caller these entry points replace (deskboot's mint step, deskflip's
+// app-token condition, role-init), so a GitHub adopter with no forge configuration is
+// unaffected. It is a DEFAULT only for the credential read — ForgeFor itself still refuses
+// an unresolved forge.
+const unresolvedRoleCredentialSource = "unresolved: no " + EnvRepoForges + " entry or known origin host; the GitHub App path"
+
+// RoleCredential is a role's credential as selected by the forge serving a repo. Token is a
+// secret: a caller hands it to its transport and never logs it. Path is the custody file it
+// was read from — the thing a credential helper or a --token-file hand-off carries instead of
+// the value.
+type RoleCredential struct {
+	Resolution ForgeResolution
+	Token      string
+	Path       string
+}
+
+// roleCredentialForge answers which forge's custody serves repo: ASSAY_REPO_FORGES first, then
+// the host of originURL through the unambiguous well-known table (ForgeKindForRepoRemote). An
+// empty originURL consults the roster only — no git read, no process fork, so a caller on a
+// hot path (a GitHubCustodyMinter hook reached once per repo per read) pays a map lookup.
+func roleCredentialForge(repo ForgeRepo, originURL string) ForgeResolution {
+	res, err := ForgeKindForRepoRemote(repo, originURL)
+	if err != nil {
+		return ForgeResolution{Repo: repo, Kind: ForgeGitHub, Source: unresolvedRoleCredentialSource}
+	}
+	return res
+}
+
+// ResolveRoleCredential selects the role's credential by the forge that serves repo (#1573),
+// resolving the forge BEFORE any token is touched:
+//
+//   - GitLab: the role's already-provisioned `gitlab-<role>.token` custody file, read through
+//     GitLabRoleToken. Never minted, never rotated, no App ID required. A missing, empty or
+//     loosely-permissioned file is Refused (exit 5) naming it — it never falls through to the
+//     GitHub App minter or to any ambient credential.
+//   - GitHub, or a forge neither the roster nor originURL resolves: the GitHub App
+//     installation token, minted or reused (githubAppRoleToken). See
+//     unresolvedRoleCredentialSource for why an unresolved forge lands here.
+//
+// originURL is the TARGET checkout's origin remote when the caller has one (it may be "":
+// the roster alone then answers). The returned Resolution records which forge answered and
+// how, so a caller can say so without resolving twice.
+func ResolveRoleCredential(role string, repo ForgeRepo, originURL string) (RoleCredential, error) {
+	res := roleCredentialForge(repo, originURL)
+	cred := RoleCredential{Resolution: res}
+	var err error
+	switch res.Kind {
+	case ForgeGitLab:
+		cred.Token, cred.Path, err = GitLabRoleToken(role)
+	case ForgeGitHub:
+		cred.Token, cred.Path, err = githubAppRoleToken(role, repo.Slug())
+	default:
+		err = Unverifiable(fmt.Sprintf("no role credential custody known for forge %q serving %s (%s)",
+			res.Kind, repo.Slug(), res.Source), nil)
+	}
+	return cred, err
+}
+
+// GitHubRoleToken is the GitHub App installation token for role on repo (an "owner/name"
+// slug, or a bare owner), with RoleTokenForRepo's shape — for a caller whose TRANSPORT only
+// speaks GitHub: a GitHubCustodyMinter hook, a GitHub-API poller, an `x-access-token`
+// askpass. It resolves the forge from the roster first and REFUSES (exit 5) when repo is
+// configured to another forge, instead of minting a GitHub App token for a repo GitHub does
+// not serve — or handing that forge's credential to a GitHub transport. An unresolved forge
+// takes the GitHub path (unresolvedRoleCredentialSource).
+func GitHubRoleToken(role, repo string) (token, path string, err error) {
+	return GitHubRoleTokenForRemote(role, repo, "")
+}
+
+// GitHubRoleTokenForRemote is GitHubRoleToken for a caller that also holds the target's origin
+// remote URL, so a repo the roster is silent on but whose origin host maps unambiguously to
+// another forge is refused too.
+func GitHubRoleTokenForRemote(role, repo, originURL string) (token, path string, err error) {
+	owner, name, _ := strings.Cut(strings.TrimSpace(repo), "/")
+	res := roleCredentialForge(ForgeRepo{Owner: owner, Name: name}, originURL)
+	if res.Kind != ForgeGitHub {
+		return "", "", Refused(fmt.Sprintf(
+			"refused: %s is served by %s (%s), not GitHub — no GitHub App token is minted for it, and this "+
+				"caller's transport speaks only GitHub. Resolve the credential with the forge-aware resolver "+
+				"(deskkit.ResolveRoleCredential) instead.", repo, res.Kind, res.Source))
+	}
+	return githubAppRoleToken(role, repo)
+}
+
+// githubAppRoleToken is the GitHub arm: the ONE place in this package that reaches the GitHub
+// App minter. Every path to it has already resolved the forge to GitHub (or found it
+// unresolved): ResolveRoleCredential, GitHubRoleTokenForRemote, and ForgeFor's default GitHub
+// custody. The class guard allow-lists this function by name.
+func githubAppRoleToken(role, repo string) (token, path string, err error) {
+	return RoleTokenForRepo(role, repo)
 }
 
 // gitlabAPIBaseOverride reads GITLAB_API_BASE at call time (never cached), the same

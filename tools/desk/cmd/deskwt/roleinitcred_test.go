@@ -247,8 +247,8 @@ func TestRoleInitMintFailureIsUnverifiable(t *testing.T) {
 	withEnv(t, work)
 	pfRan := false
 	roleInitPreflight = func(deskkit.PreflightRequest) error { pfRan = true; return nil }
-	roleTokenPath = func(role, owner string) (string, error) {
-		return "", deskkit.Unverifiable("cannot mint the "+role+" App installation token for "+owner+" (no App ID)", nil)
+	roleCredential = func(role string, repo deskkit.ForgeRepo, _ string) (deskkit.RoleCredential, error) {
+		return deskkit.RoleCredential{}, deskkit.Unverifiable("cannot mint the "+role+" App installation token for "+repo.Owner+" (no App ID)", nil)
 	}
 	rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "mint"})
 	if rc != deskkit.ExitUnverifiable || !strings.Contains(stderr, "cannot mint the verifier App installation token") {

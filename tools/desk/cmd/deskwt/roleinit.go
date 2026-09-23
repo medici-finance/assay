@@ -429,49 +429,27 @@ func cmdRoleInit(args []string) (err error) {
 	return roleInitPreflightRun(p, repo)
 }
 
-// roleTokenPath resolves the PATH of the role's cached GitHub App token for an account — minting
-// it when the cache is cold — through deskkit's one token resolver (the same one every desk
-// verb's forge reads use). It is the GITHUB branch of roleCredentialPath only; a GitLab-served
-// repo never reaches it (#1573). It returns a path and never the token value. It is a package
-// var ONLY as a test seam: a fixture has no App credential to mint.
-var roleTokenPath = func(role, owner string) (string, error) {
-	_, path, err := deskkit.RoleTokenForOwner(role, owner)
-	return path, err
-}
+// roleCredential is deskkit's forge-aware role-credential resolver (#1573): it resolves WHICH
+// forge serves the repo before any token is touched, then reads that forge's custody — GitLab:
+// the provisioned `gitlab-<role>.token` file, never minted or rotated, a missing/loose/empty file
+// REFUSED (exit 5) naming it with no fall-through to the GitHub App minter; GitHub (or an
+// unresolved forge, the historical default): the GitHub App token, minted or reused. role-init
+// carries no forge branch of its own. It is a package var ONLY as a test seam: a fixture has no
+// App credential to mint.
+var roleCredential = deskkit.ResolveRoleCredential
 
-// roleCredentialPath selects the role's credential FILE by the forge that serves repo (#1573).
-// The forge is resolved BEFORE any token is touched, through deskkit's one forge resolver
-// (ForgeKindForRepoRemote: ASSAY_REPO_FORGES first, then the host of the worktree's own origin
-// remote — the target's origin, not the process's working directory, so a --repo-root
-// provisioning resolves the repo it is actually wiring):
-//
-//   - GitLab: the role's already-provisioned `gitlab-<role>.token` custody file, read through
-//     deskkit.GitLabRoleToken. Never minted, never rotated, no App ID required. A missing, empty,
-//     or loosely-permissioned custody file is REFUSED (exit 5) naming the file — it never falls
-//     through to the GitHub App minter or to any ambient credential.
-//   - GitHub: the GitHub App token path, unchanged (roleTokenPath → deskkit.RoleTokenForOwner).
-//     An unresolved forge takes this path too — the historical default ForgeKindForRepo and
-//     deskboot's mint step share — so a GitHub adopter with no forge config is unaffected.
-//
-// Only the PATH is returned; the token value is discarded here and never logged.
+// roleCredentialPath returns the PATH of the role's credential file for repo, as selected by the
+// forge that serves it. originURL is the TARGET worktree's own origin remote — not the process's
+// working directory — so a --repo-root provisioning resolves the repo it is actually wiring
+// (ASSAY_REPO_FORGES first, then that remote's host). Only the PATH is returned; the token value
+// is discarded here and never logged.
 func roleCredentialPath(role, repo, originURL string) (string, error) {
 	owner, name, _ := strings.Cut(repo, "/")
-	kind := deskkit.ForgeKind("")
-	if res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL); err == nil {
-		kind = res.Kind
+	cred, err := roleCredential(role, deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	if err != nil {
+		return "", err
 	}
-	switch kind {
-	case deskkit.ForgeGitLab:
-		_, path, err := deskkit.GitLabRoleToken(role)
-		if err != nil {
-			return "", err
-		}
-		return path, nil
-	case deskkit.ForgeGitHub, "":
-		return roleTokenPath(role, owner)
-	default:
-		return "", deskkit.Unverifiable(fmt.Sprintf("no role credential path known for forge %q serving %s", kind, repo), nil)
-	}
+	return cred.Path, nil
 }
 
 // roleInitPreflight runs the role's envelope preflight and returns its one-line refusal, or nil

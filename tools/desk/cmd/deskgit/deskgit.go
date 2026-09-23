@@ -54,11 +54,14 @@ var getwd = os.Getwd
 
 // roleTokenForRepo is the seam through which the authenticated `--as` forms resolve a
 // role's App installation token for the effective origin slug. Production binds it to
-// deskkit.RoleTokenForRepo (per-OWNER installation tokens, read from the 0600 file the
-// role already owns); a test replaces it so no real App credential is minted. It returns
-// the token VALUE, the PATH it was read from, and an error — and the token value is never
-// placed in that error, exactly as the real resolver guarantees.
-var roleTokenForRepo = deskkit.RoleTokenForRepo
+// deskkit.GitHubRoleTokenForRemote (per-OWNER installation tokens, read from the 0600 file the
+// role already owns): the askpass below answers the GitHub App-token username, so this
+// transport speaks only GitHub, and the resolver REFUSES — before any token is minted or read —
+// a repo whose roster entry or effective origin host names another forge, rather than minting a
+// GitHub App token and offering it to that forge's host (#1573). A test replaces it so no real
+// App credential is minted. It returns the token VALUE, the PATH it was read from, and an error
+// — and the token value is never placed in that error, exactly as the real resolver guarantees.
+var roleTokenForRepo = deskkit.GitHubRoleTokenForRemote
 
 // sessionTokenRole is the seam for the loop-identity → App-role binding. Production binds
 // it to deskkit.SessionTokenRole (reads $DESK_LOOP); tests set $DESK_LOOP directly, so the
@@ -309,7 +312,7 @@ func cmdFetch(args []string) (err error) {
 	var out string
 	var ferr error
 	if *asRole != "" {
-		token, _, terr := roleTokenForRepo(*asRole, repo)
+		token, _, terr := roleTokenForRepo(*asRole, repo, originURL)
 		if terr != nil {
 			return terr // Unverifiable (exit 6), naming the path searched, never the token
 		}
@@ -441,7 +444,7 @@ func cmdPush(args []string) (err error) {
 	}
 
 	// Token for the slug the gate decided on — per OWNER of that slug, never a caller --repo.
-	token, _, terr := roleTokenForRepo(*asRole, repo)
+	token, _, terr := roleTokenForRepo(*asRole, repo, originURL)
 	if terr != nil {
 		return terr // Unverifiable (exit 6), naming the path searched, never the token
 	}

@@ -31,7 +31,7 @@ func asWorker(t *testing.T) *bool {
 	t.Setenv("DESK_LOOP", "worker-desk")
 	called := new(bool)
 	prev := roleTokenForRepo
-	roleTokenForRepo = func(role, repo string) (string, string, error) {
+	roleTokenForRepo = func(role, repo, _ string) (string, string, error) {
 		*called = true
 		return fixtureToken, "/fixture/config/worker.token", nil
 	}
