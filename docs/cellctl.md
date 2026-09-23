@@ -405,7 +405,7 @@ One `ok` / `MISS` line per precondition, exit 1 if any row missed: the checkout 
 `CELL_REPO`, the cells slice, the operator config home, `roster.env`, that every App-key symlink
 under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the configured
 forge endpoint, `bin/deskd` and `bin/deskcli`, the desk-tools bindir, `tmux`, the resolved
-cockpit and its reason (see *Cockpits*), whether this cell's `deskd` answers on its address, and —
+cockpit and its reason plus the `ASSAY_COCKPIT` every role window gets (see *Cockpits*), whether this cell's `deskd` answers on its address, and —
 when `CELL_HARNESS=codex` — the codex harness block (see *Harnesses*): `codex` on `PATH`, a
 working `--version`, authentication, `multi_agent`, the resident-rules fragment, and skills
 discoverability. A claude cell (the default) reports that block `n/a`, never silently skipped.
@@ -641,6 +641,34 @@ Every `up`, `down` and `check` says so, in one line, with the reason:
 `cellctl check <cell>` carries the same resolution as a precondition row, and states orca's
 reachability whenever orca is installed — so "which surface will my windows appear in, and why" is
 answerable before booting rather than after.
+
+### One value per cell: `ASSAY_COCKPIT`
+
+The cockpit is also where the worker-desk role cuts each dispatched item's worktree (its
+*Cockpit-aware worktree creation* step), so the same choice governs both. Every host role window
+`cellctl desk` opens — on its own, or as one of the windows `up` opens — carries the **resolved**
+cockpit in its environment as `ASSAY_COCKPIT`:
+
+| `CELL_COCKPIT` / `--cockpit` | `ASSAY_COCKPIT` in the window | The worker-desk worktree arm |
+|---|---|---|
+| `auto` (default) | what `auto` resolved to — `herdr`, `orca` or `tmux`; never `auto` itself | that cockpit's |
+| `herdr` / `orca` | the same value | `herdr worktree create` / `orca worktree create` |
+| `tmux` | `tmux` | the plain `git worktree add` — no cockpit CLI needed |
+
+- `desk` resolves exactly as `up` does (`--cockpit` beats `cell.env`, which beats `auto`), and an
+  explicit cockpit that is not available is **refused** there too, naming what is missing — it is
+  never exported as some other value. `up` passes each window the cockpit it resolved
+  (`--cockpit <resolved>` on the window's `cellctl desk` command), so a one-run `up --cockpit`
+  override reaches the windows as well.
+- The cell's value always wins over an `ASSAY_COCKPIT` the launching shell happened to carry.
+- `cellctl check <cell>` prints the value and the arm it selects on the line after the cockpit row:
+  `ok    ASSAY_COCKPIT=tmux exported into every role window (worker-desk worktree arm: plain git worktree add, no cockpit CLI needed)`.
+- A scrubbed cell composes its own environment and opens no cockpit, so its windows carry none. Nor
+  does an `--automate` run (below), which the cockpit launches, not `cellctl`.
+
+With no cell at all, nothing exports `ASSAY_COCKPIT`, and the worker-desk step keeps its own
+presence-on-PATH order. That skill also accepts `supacode` and `plain` as values an operator may
+export by hand; `cellctl` has no supacode window shape, so it never exports that one.
 
 ### The three shapes
 

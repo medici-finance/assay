@@ -34,7 +34,7 @@ func (c *Cell) repairAdmissionValue() string {
 //
 // Every process here goes through os/exec — no syscall, no shell — so the Windows consequence
 // this brief names is not made worse.
-func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution) {
+func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution) {
 	if persist {
 		applyEnvKVs(c.Env, filepath.Join(c.Dir, "cell.env"), false, persistKVs)
 	}
@@ -95,6 +95,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if policyRes != nil {
 		effortDisp = policyRes.Effort
 	}
+	if cockpit.Cockpit != "" {
+		fmt.Printf("[cockpit] %s=%s (%s)\n", envAssayCockpit, cockpit.Cockpit, cockpit.Why)
+	}
 	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
@@ -112,6 +115,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	// leaves the key ABSENT, which the consumer reads identically to "off".
 	if rav := c.repairAdmissionValue(); rav != "" {
 		env = envSet(env, deskkit.EnvRepairAdmission, rav)
+	}
+	// The cell's one resolved cockpit (see cmdDesk) — ALWAYS set on a host window, so an
+	// ASSAY_COCKPIT the launching shell happened to carry never outlives the cell's own value.
+	if cockpit.Cockpit != "" {
+		env = envSet(env, envAssayCockpit, cockpit.Cockpit)
 	}
 	var argv []string
 	if harness == "codex" {
