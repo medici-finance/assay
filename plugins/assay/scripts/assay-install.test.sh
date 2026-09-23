@@ -2,6 +2,9 @@
 # assay-install.test.sh — the proof that assay-install.sh acquires a pinned binary with NO forge
 # CLI, verifies it against the pin file, and refuses in every way the digest can fail.
 #
+#   H  HTTPS-ONLY (the #1554 ruling) — a download whose redirect lands on http:// is REFUSED
+#      (exit 5) with nothing written to --dest; a file:// URL is refused; a cross-host HTTPS
+#      redirect (the shape GitHub's release-asset links take) is followed and still verified.
 #   A  ACQUIRE — the happy path installs the verified bytes; it runs under a PATH that has no
 #      `gh` and no `glab` at all, and again under a PATH whose `gh`/`glab` are tripwires that
 #      record any call (none may happen).
@@ -27,7 +30,10 @@
 # (CI's plugin-shell-suites job, which has no Go toolchain) does not select it and SAYS so on
 # its last line; it is never counted as passed there.
 #
-# Hermetic: the "release" is a file:// tree built per case — no network, no token, no forge.
+# Hermetic: the "release" is served by a LOCAL HTTPS fixture server (127.0.0.1, a throwaway
+# self-signed certificate trusted via CURL_CA_BUNDLE for these runs only) — no network, no
+# token, no forge. Needs python3 + openssl to stand the fixture up; if either is missing the
+# suite FAILS naming it (could-not-check is never a pass).
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -42,7 +48,6 @@ ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/assay-install-test.XXXXXX") || exit 1
-trap 'rm -rf "$TMP"' EXIT
 
 HOME_REPO="example-org/example-repo"
 TAG="v0.0.0-fixture"
@@ -89,27 +94,84 @@ EOF
   chmod 0755 "$1"
 }
 
-# release <root> <asset> <src> — lay <src> out as <asset> of $TAG under a file:// release tree.
+# release <root> <src> <asset> — lay <src> out as <asset> of $TAG under a release tree <root>
+# (a directory under the fixture server's document root).
 release() {
   mkdir -p "$1/$HOME_REPO/releases/download/$TAG"
   cp "$2" "$1/$HOME_REPO/releases/download/$TAG/$3"
 }
 
 # runp <path-dir> <out-prefix> args... — run the script under a PATH of exactly <path-dir>.
+# CURL_CA_BUNDLE trusts ONLY the fixture's throwaway certificate, for these runs only.
 runp() {
   local pathdir="$1" pfx="$2"; shift 2
-  env -i HOME="$TMP" TMPDIR="$TMP" PATH="$pathdir" bash "$SCRIPT" "$@" >"$pfx.out" 2>"$pfx.err"
+  env -i HOME="$TMP" TMPDIR="$TMP" PATH="$pathdir" CURL_CA_BUNDLE="$TMP/tls/cert.pem" \
+    bash "$SCRIPT" "$@" >"$pfx.out" 2>"$pfx.err"
 }
+
+# ------------------------------------------------------------------ HTTPS fixture server
+# Serves $TMP/srv over TLS on 127.0.0.1. Two redirect prefixes: /redir-http/<p> answers 302 to
+# http://127.0.0.1:<plain-port>/<p> — a second, plain-HTTP server over the same root, so the
+# downgrade target really serves the asset (a downgrade the script must refuse) and /redir-https/<p> answers
+# 302 to https://localhost:<port>/<p> (a cross-host HTTPS hop the script must follow).
+SRV="$TMP/srv"; mkdir -p "$SRV" "$TMP/tls"
+SERVER_PID=""
+start_server() {
+  command -v python3 >/dev/null 2>&1 || { no "HTTPS fixture" "could-not-check: python3 not on PATH"; return 1; }
+  command -v openssl >/dev/null 2>&1 || { no "HTTPS fixture" "could-not-check: openssl not on PATH"; return 1; }
+  printf '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=localhost\n[ext]\nsubjectAltName=IP:127.0.0.1,DNS:localhost\nbasicConstraints=critical,CA:TRUE\n' > "$TMP/tls/openssl.cnf"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout "$TMP/tls/key.pem" -out "$TMP/tls/cert.pem" \
+    -config "$TMP/tls/openssl.cnf" >/dev/null 2>&1 || { no "HTTPS fixture" "could-not-check: openssl could not mint the fixture certificate"; return 1; }
+  cat > "$TMP/tls/server.py" <<'PY'
+import http.server, ssl, sys, threading
+root, cert, key, portfile = sys.argv[1:5]
+class H(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **k):
+        super().__init__(*a, directory=root, **k)
+    def log_message(self, *a):
+        pass
+    def do_GET(self):
+        for prefix, scheme, host, port in (("/redir-http/", "http", "127.0.0.1", PLAIN), ("/redir-https/", "https", "localhost", PORT)):
+            if self.path.startswith(prefix):
+                self.send_response(302)
+                self.send_header("Location", "%s://%s:%d/%s" % (scheme, host, port, self.path[len(prefix):]))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+        return super().do_GET()
+# A REAL plain-HTTP server over the same document root: the downgrade target serves the good
+# asset, so a script that followed the http:// hop would install it — the refusal is the only
+# thing that keeps --dest empty.
+plain = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+PLAIN = plain.server_address[1]
+threading.Thread(target=plain.serve_forever, daemon=True).start()
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+PORT = srv.server_address[1]
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+ctx.load_cert_chain(cert, key)
+srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+open(portfile, "w").write(str(PORT))
+srv.serve_forever()
+PY
+  python3 "$TMP/tls/server.py" "$SRV" "$TMP/tls/cert.pem" "$TMP/tls/key.pem" "$TMP/tls/port" >/dev/null 2>&1 &
+  SERVER_PID=$!
+  local i
+  for i in $(seq 1 50); do [ -s "$TMP/tls/port" ] && break; sleep 0.1; done
+  [ -s "$TMP/tls/port" ] || { no "HTTPS fixture" "could-not-check: the fixture server did not start"; return 1; }
+  PORT=$(cat "$TMP/tls/port")
+}
+trap '[ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null; rm -rf "$TMP"' EXIT
+start_server || { printf '\n%d passed, %d failed\n' "$pass" "$fail"; exit 1; }
 
 printf 'assay-install.test.sh\n'
 
 # ------------------------------------------------------------------ fixture release
-REL="$TMP/rel"
+REL="$SRV/rel"
 SRC="$TMP/statusgen-src"
 stub_statusgen "$SRC" "$TAG"
 release "$REL" "$SRC" "$SG_ASSET"
 GOOD=$(sha "$SRC")
-BASE="file://$REL"
+BASE="https://127.0.0.1:$PORT/rel"
 
 pins() { printf '# fixture pins\n%s\n' "$1" > "$2"; }
 
@@ -174,6 +236,29 @@ neg "N12 a fetch that fails is could-not-check"                    6 "fetch fail
 neg "N13 a non-https URL refuses"                                  5 "only https"               "$SG_ASSET $TAG $GOOD" --path "$NOCLI" --base-url "http://example.invalid"
 neg "N14 no sha256 tool on PATH is could-not-check"                6 "no sha256 tool"           "$SG_ASSET $TAG $GOOD" --path "$NOSHA"
 neg "N15 a path-traversal tag refuses"                             5 "unusable tag"             "$SG_ASSET ../../x $GOOD"
+
+# ------------------------------------------------------------------ H https-only (#1554 ruling)
+# The redirect fixture serves the SAME good asset, so a pass here can only be the scheme check:
+# the digest would have matched.
+mkdir -p "$SRV/redir-http" "$SRV/redir-https"
+neg "H1 a redirect to http:// is REFUSED, nothing written"         5 "non-HTTPS"                "$SG_ASSET $TAG $GOOD" --base-url "https://127.0.0.1:$PORT/redir-http/rel"
+neg "H2 a file:// URL is REFUSED"                                  5 "only https"               "$SG_ASSET $TAG $GOOD" --base-url "file://$REL"
+d=$(case_dir H3)
+pins "$SG_ASSET $TAG $GOOD" "$d/pins"
+runp "$NOCLI" "$d/r" acquire --pins "$d/pins" --dest "$d/bin" --release-home "$HOME_REPO" --base-url "https://127.0.0.1:$PORT/redir-https/rel"; rc=$?
+if [ "$rc" -eq 0 ] && [ -x "$d/bin/statusgen" ] && grep -q "verified: sha256 $GOOD" "$d/r.out"; then
+  ok "H3 a cross-host HTTPS redirect is followed and the asset still verified"
+else
+  no "H3 a cross-host HTTPS redirect is followed" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
+fi
+d=$(case_dir H4)
+pins "$SG_ASSET $TAG $BAD" "$d/pins"
+runp "$NOCLI" "$d/r" acquire --pins "$d/pins" --dest "$d/bin" --release-home "$HOME_REPO" --base-url "https://127.0.0.1:$PORT/redir-https/rel"; rc=$?
+if [ "$rc" -eq 5 ] && [ ! -e "$d/bin/statusgen" ] && grep -q MISMATCH "$d/r.err"; then
+  ok "H4 HTTPS is not a substitute for the digest: an https-served mismatch still refuses"
+else
+  no "H4 https-served mismatch still refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
+fi
 
 # ------------------------------------------------------------------ D desk-tools tarball
 d=$(case_dir D1)
@@ -275,10 +360,10 @@ fi
 
 d=$(case_dir R3); mkrepo "$d/repo"
 LIAR="$TMP/statusgen-liar"; stub_statusgen "$LIAR" "v6.6.6"
-REL2="$TMP/rel2"; REL_SAVE="$REL"; REL="$REL2"; release "$REL2" "$LIAR" "$SG_ASSET"; REL="$REL_SAVE"
+REL2="$SRV/rel2"; release "$REL2" "$LIAR" "$SG_ASSET"
 LIAR_SHA=$(sha "$LIAR")
 sed "s/$GOOD/$LIAR_SHA/" "$MAN" > "$d/manifest.yaml"
-runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$d/manifest.yaml" --base-url "file://$REL2" --workdir "$d/work"; rc=$?
+runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$d/manifest.yaml" --base-url "https://127.0.0.1:$PORT/rel2" --workdir "$d/work"; rc=$?
 if [ "$rc" -eq 5 ] && grep -q "verified: sha256 $LIAR_SHA" "$d/r.out" && grep -q 'NOT proven' "$d/r.err"; then
   ok "R3 a digest-verified binary that does not name the pinned tag fails the proof (second layer)"
 else
@@ -294,13 +379,13 @@ if [ "$REAL" -eq 1 ]; then
   elif ! (cd "$REPO/statusgen" && go build -ldflags "-X main.statusgenVersion=$REALTAG" -o "$d/statusgen-real" .); then
     no "REAL rehearse with the real statusgen" "could-not-check: go build of statusgen failed"
   else
-    RR="$d/rel"; mkdir -p "$RR/$HOME_REPO/releases/download/$REALTAG"
+    RR="$SRV/real"; mkdir -p "$RR/$HOME_REPO/releases/download/$REALTAG"
     cp "$d/statusgen-real" "$RR/$HOME_REPO/releases/download/$REALTAG/$SG_ASSET"
     RSHA=$(sha "$d/statusgen-real")
     printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n    %s: %s %s %s\n' \
       "$HOME_REPO" "$REALTAG" "$plat" "$SG_ASSET" "$REALTAG" "$RSHA" > "$d/manifest.yaml"
     mkrepo "$d/repo"
-    runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$d/manifest.yaml" --base-url "file://$RR" --workdir "$d/work"; rc=$?
+    runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$d/manifest.yaml" --base-url "https://127.0.0.1:$PORT/real" --workdir "$d/work"; rc=$?
     cat "$d/r.out"
     if [ "$rc" -eq 0 ] && [ -f "$d/work/target/.gitlab-ci.yml" ] && grep -q "statusgen --version -> $REALTAG" "$d/r.out"; then
       ok "REAL rehearse: real statusgen acquired + verified, init scaffolded .gitlab-ci.yml, --version == $REALTAG, --lint == 0"
