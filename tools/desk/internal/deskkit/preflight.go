@@ -1494,9 +1494,7 @@ func dirExistsProbe(path string) (bool, error) {
 // does not redden a correctly provisioned GitLab envelope) — the same shape the
 // app-scopes check takes for the GitHub-only installation grant.
 func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge ForgeKind) Check {
-	// No pre-existing owning issue: this is a new check, so its "home" is the change
-	// that introduces it rather than a prior envelope issue like the other checks cite.
-	const refs = ""
+	const refs = "#1527"
 	if forge == ForgeGitLab {
 		return notApplicable(CheckAmbientID,
 			"gitlab credential: the ambient-identity check reads a GitHub `gh` login and matches the origin "+

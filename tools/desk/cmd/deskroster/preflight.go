@@ -42,7 +42,7 @@ Runs six checks, each answering checked-clean / checked-failed / could-not-check
   ambient-identity       the ambient gh login is the blessing human (not a bot
                          slug, not a non-blessing login) and the origin credential
                          helper resolves to the minted App token; not-applicable
-                         on a GitLab-forge repo
+                         on a GitLab-forge repo                                    (#1527)
 
 Sibling checkouts resolve through the configured roots (DESK_ROOTS / topology),
 not a flat ../<repo>; at boot an absent sibling is a NOTICE, and only a brief
