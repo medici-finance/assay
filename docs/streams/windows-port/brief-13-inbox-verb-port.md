@@ -102,6 +102,33 @@ single-point-of-failure: the jq-program-extraction parity test (format_parity_te
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | exit 0 | exit 0 — `ok github.com/medici-finance/assay/tools/desk/cmd/deskinbox 0.758s` | 2026-09-23 | opus-5.5-verifier |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityWalk' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | >= 1 (needs jq) | exit 0, count = 5 — jq-1.8.2 present; TestParityWalk + 4 subtests all `--- PASS`, 0 SKIP (typical, no-headings fallback, blind detail, recommended-reorder) | 2026-09-23 | opus-5.5-verifier |
+| 3 | `! grep -rl -e 'exec\.Command' -e '"make"' -e '"jq"' tools/desk/cmd/deskinbox/*.go \| grep -qv _test.go` | exit 0 (no shipping-file match) | exit 0 — only match is the test file format parity underscore-test.go (allowed); no shipping file shells out | 2026-09-23 | opus-5.5-verifier |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | exit 0 | exit 0 — Windows amd64 build succeeded | 2026-09-23 | opus-5.5-verifier |
+| 5 | `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` then `cd tools/skillslint && go test -count=1 ./...` | >= 1 each; skillslint exit 0 | inbox.md = 11, ask-decision SKILL.md = 5 (both >= 1); skillslint exit 0 — `ok github.com/medici-finance/assay/tools/skillslint 1.523s` | 2026-09-23 | opus-5.5-verifier |
+| 6 | `deskinbox walk --item 1 medici-finance/assay; echo rc=$?` vs `bash plugins/assay/scripts/assay-inbox.sh --walk --item 1 medici-finance/assay` | rc=0 and five-part block matches the oracle on the same instant; needs a live minted token — could-not-check with reason otherwise | could-not-check — needs a live minted App token and a live GitHub read; offline envelope (KUBECONFIG=/dev/null, no live infra) forbids the probe. verifyrun's exit=0 reflects only the trailing echo, not parity. The five-part format-builder output is proven byte-for-byte offline by row 2 (TestParityWalk against the oracle's own extracted jq program); the un-checked residue is the live gh->builder wiring, covered structurally by rows 1/2/4 plus query/table/main unit tests against a fake Forge | 2026-09-23 | opus-5.5-verifier |
+| 7 | `statusgen --consumers windows-port/13` (with absolute --root) | exit 0 | exit 0 — `consumers: no brief files in the diff against 39866201ce48... — nothing to corroborate` (run at merged HEAD, empty diff; rc=0 = the expectation) | 2026-09-23 | opus-5.5-verifier |
+| 8 | `statusgen --lint` (with absolute --root) | 0 PROBLEMs | exit 0, 0 PROBLEM lines, `LINT: PASS` (NOTICEs only, none naming windows-port/13) via direct non-hermetic run. The class:ci hermetic network-off witness is could-not-check on darwin (verifyrun row 8: needs Linux `unshare --net`); re-executed network-off by CI on a Linux runner | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE (kit §4 — enumerate → rank → derive). This is a byte-for-byte PARITY port: the brief's contract (exec-tier-why) is that the Go builder reproduce the oracle's output exactly, so the authoritative source for every literal is the oracle's own line, and TestParityWalk enforces equality by extracting the oracle's real jq program. Enumeration over the diff scope (tools/desk/cmd/deskinbox shipping files) found only display/ordering literals; none is irreversible or a money/auth/settlement value.
+
+- RISK-VALUE: DERIVED — labels = ["urgent","needs-decision","question","help wanted"] @ tools/desk/cmd/deskinbox/query.go:29 — the escalation-contract rank order (most-urgent-first); mirrors the oracle's `--argjson rankorder '["urgent","needs-decision","question","help wanted"]'` at assay-inbox.sh:380, which sets which decision surfaces first. Reversible ordering knob (re-run shows a different order; nothing irreversible).
+- RISK-VALUE: DERIVED — rank fallback = 99 @ tools/desk/cmd/deskinbox/query.go:45 — the "carries none of the labels" sentinel; mirrors the oracle's `... | min // 99` at assay-inbox.sh:383. Reversible.
+- RISK-VALUE: DERIVED — title truncation = 57 (runes) + "..." @ tools/desk/cmd/deskinbox/table.go:35-36 — mirrors the oracle's `if length > 57 then .[:57] + "..." else . end` at assay-inbox.sh:392. Reversible display knob.
+- RISK-VALUE: DERIVED — context snippet truncation = 180 @ tools/desk/cmd/deskinbox/format.go:255 — mirrors the oracle's `... [0:180]` at assay-inbox.sh:477. Reversible display knob.
+- RISK-VALUE: DERIVED — default walk item = 1 @ tools/desk/cmd/deskinbox/main.go:81 — the oracle prints item 1 by default; option lettering letterFor = ["A","B","C","D"] @ format.go:335 mirrors the oracle's per-option index. Reversible.
+- Exit-code mapping (deskkit.ExitRefused=5, ExitUnverifiable=6 @ main.go via shared deskkit) and the issue cap 10,000 (forgeMaxIssuePages*forgeIssuePerPage, deskkit) are shared-package constants, not literals introduced by this diff, and are documented divergences (testdata/spec.md divergence 2 and 4); reversible.
+
+Summary: RISK-VALUE all DERIVED; every value is a parity mirror of a named oracle source line, enforced by the extracted-jq-program parity test (row 2). No irreversible or hard-pinned-constraint value in scope.
+
+Row 6 needs a live minted token and a live forge read; its parity content is proven offline by row 2. Row 8's hermetic Linux witness is still owed.
+
+
 ## Review
 Gate: **model**. Reviewer's questions: (1) does `tools/desk/cmd/deskinbox/testdata/spec.md`
 account for every flag the script's `--help` prints, and for each of table/walk vs html/flow,
