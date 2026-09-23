@@ -91,7 +91,7 @@ single-point-of-failure: the jq-program-extraction parity test (format_parity_te
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | exit 0 | `check` |
 | 2 | **Parity walk**: `cd tools/desk && go test -count=1 -run 'TestParityWalk' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | `>= 1` (needs `jq` on the runner; could-not-check with reason otherwise) | `check +dereference` |
-| 3 | No shell-outs in the verb: `grep -rn -e 'exec\.Command' -e '"make"' -e '"jq"' tools/desk/cmd/deskinbox/*.go \| grep -vc _test.go` | `0` | `check` |
+| 3 | No shell-outs in the verb: `! grep -rl -e 'exec\.Command' -e '"make"' -e '"jq"' tools/desk/cmd/deskinbox/*.go \| grep -qv _test.go` | exit 0 (no shipping-file match; a shell-out in a non-`_test.go` file exits 1) | `check` |
 | 4 | Windows build: `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | exit 0 | `check` |
 | 5 | Command + skill re-pointed for table/walk: `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` | `>= 1` each; `cd tools/skillslint && go test -count=1 ./...` exit 0 | `check` |
 | 6 | **Flow — the skill's own example runs**: `deskinbox walk --item 1 medici-finance/assay; echo rc=$?` | `rc=0` and the block's Header/Context/Options/Reply/Verification match the script's on the same instant (`bash plugins/assay/scripts/assay-inbox.sh --walk --item 1 medici-finance/assay`), modulo the two tools' different exit-code taxonomies (testdata/spec.md divergence 4); needs a live minted token — could-not-check with reason otherwise | `check +flow` |
