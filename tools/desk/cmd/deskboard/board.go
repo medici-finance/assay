@@ -688,6 +688,15 @@ type reviewState struct {
 	// reduction loop below for the mechanism and deskpost/ready.go's latestAppVerdict for
 	// the KEEP IN SYNC twin that gates the actual mutating flip.
 	suspectNoOp bool
+	// externalPrereqDeclared (brief 21) is true when the standing
+	// CHANGES_REQUESTED that made the row suspectNoOp DECLARES itself external-prereq-only
+	// (deskkit.ExternalPrereqOnlyDeclared). Such a same-head APPROVE is NOT a suspected
+	// forgery — it is a reviewer clearing a rejection whose only blockers were external
+	// prerequisites — so the board must not fold it into SUSPECT-APPROVAL. The board is
+	// ADVISORY and does not itself perform the independent prerequisite verification; it
+	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
+	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
+	externalPrereqDeclared bool
 }
 
 // sameHead reports whether a review's commit sha and the PR's head sha are the SAME
@@ -797,15 +806,18 @@ func reduceReviews(reviews []review, head string) reviewState {
 	var commitBlocked bool
 	var effState, effCommit, effSubmittedAt string
 	var suspect bool
+	var blockingCRBody string // the standing CR's body, for the external-prereq classifier
 	for _, r := range decisive {
 		if r.CommitID != lastCommit {
 			lastCommit = r.CommitID
 			commitBlocked = false
+			blockingCRBody = ""
 		}
 		switch r.State {
 		case "CHANGES_REQUESTED":
 			commitBlocked = true
 			effState, effCommit, effSubmittedAt, suspect = r.State, r.CommitID, r.SubmittedAt, false
+			blockingCRBody = r.Body
 		case "APPROVED":
 			if commitBlocked {
 				// No push since the standing CHANGES_REQUESTED at this exact commit —
@@ -815,6 +827,7 @@ func reduceReviews(reviews []review, head string) reviewState {
 				continue
 			}
 			effState, effCommit, effSubmittedAt, suspect = r.State, r.CommitID, r.SubmittedAt, false
+			blockingCRBody = ""
 		}
 	}
 
@@ -832,6 +845,9 @@ func reduceReviews(reviews []review, head string) reviewState {
 		st.blocking = effState == "CHANGES_REQUESTED"
 		st.approved = effState == "APPROVED"
 		st.suspectNoOp = suspect
+		// A suspected no-op flip whose standing CR declared itself external-prereq-only is a
+		// declared re-review, not a forgery — surface it distinctly (see the field doc).
+		st.externalPrereqDeclared = suspect && deskkit.ExternalPrereqOnlyDeclared(blockingCRBody)
 		if t, err := time.Parse(time.RFC3339, effSubmittedAt); err == nil {
 			st.lastReviewAt = t
 			if st.approved {
@@ -933,8 +949,15 @@ const (
 	// forgery-shaped verdict, not a routine "needs work" row — surface it LOUDLY rather
 	// than fold it into an ordinary BLOCKED read.
 	actSuspectApproval = "SUSPECT-APPROVAL"
-	actBlocked         = "BLOCKED"
-	actSecReview       = "SECURITY-REVIEW-REQUIRED"
+	// actExternalPrereqReview (brief 21) is the SUSPECT-APPROVAL row's benign
+	// twin: an APPROVED over a standing CHANGES_REQUESTED at an unchanged head where the CR
+	// DECLARED itself external-prereq-only. It is not a forgery signal — it is a reviewer
+	// clearing a rejection whose only blockers were external prerequisites — so it is
+	// surfaced for the ready gate to verify, never folded into SUSPECT-APPROVAL and never a
+	// FLIP on the advisory board (the board does not perform the independent verification).
+	actExternalPrereqReview = "EXTERNAL-PREREQ-REVIEW"
+	actBlocked              = "BLOCKED"
+	actSecReview            = "SECURITY-REVIEW-REQUIRED"
 	// actCIUnknown (#268) is the CI three-state's fourth outcome: the rollup carried
 	// entries this board cannot interpret, so the CI verdict is not established. It
 	// blocks the approve+green path rather than defaulting either way.
@@ -1101,6 +1124,11 @@ type classifyInput struct {
 	// an APPROVED posted over a standing CHANGES_REQUESTED at the same head, with no
 	// intervening push. See reduceReviews.
 	suspectNoOp bool
+	// externalPrereqDeclared (brief 21): the suspectNoOp row's standing CR
+	// declared itself external-prereq-only, so it is a declared external-prerequisite
+	// re-review, not a forgery. Consulted ONLY with suspectNoOp, to route the row to
+	// EXTERNAL-PREREQ-REVIEW instead of SUSPECT-APPROVAL.
+	externalPrereqDeclared bool
 	// nonCommitResolution: the PR carries a standing CHANGES_REQUESTED at head,
 	// but a finding-relevant change that leaves the head sha UNCHANGED — a resolution
 	// label (e.g. `*:skip`) added, or the body/title edited — landed AFTER the last
@@ -1151,6 +1179,19 @@ func classify(in classifyInput) (action, note string) {
 	// a human reading the board sees the attempt rather than a routine BLOCKED row. Never
 	// FLIP-eligible either way, but which of the two it is matters for the response (chase
 	// down who minted the App token vs. wait on the worker).
+	// brief 21: the declared external-prerequisite re-review. It has the SAME
+	// shape as a suspected no-op flip — an APPROVED over a standing CHANGES_REQUESTED at an
+	// unchanged head — but the CR declared itself external-prereq-only, so it is a reviewer
+	// clearing a rejection whose only blockers were external prerequisites, not a forgery.
+	// Checked BEFORE the suspectNoOp arm so a declared row never reads as SUSPECT-APPROVAL.
+	// It is SURFACED, never FLIP-eligible: the board does not perform the independent
+	// prerequisite verification — the ready gate does, at the ready boundary — so the board
+	// only says "this is a declared external-prereq re-review; the ready gate will verify".
+	case in.blocking && in.suspectNoOp && in.externalPrereqDeclared:
+		return actExternalPrereqReview, reviewerBotDisplay() + " cleared a standing CHANGES_REQUESTED at the " +
+			"unchanged head that DECLARED itself external-prereq-only — a declared external-prerequisite " +
+			"re-review, not a no-op forgery. The ready gate independently verifies every prerequisite from " +
+			"fresh evidence before any flip; surfaced here, never auto-flipped (brief 21)"
 	case in.blocking && in.suspectNoOp:
 		return actSuspectApproval, reviewerBotDisplay() + " posted APPROVED at head immediately after its " +
 			"own CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a " +
@@ -1400,17 +1441,18 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		ever: rs.ever, atHead: rs.atHead, blocking: rs.blocking,
 		approvedAtHead: rs.approved, draft: p.IsDraft,
 		pass: pass, pending: pending, fail: fail,
-		securityPass:      rs.securityPass,
-		ciGreen:           ciGreen,
-		ciUnknown:         unknownChecks,
-		humanGate:         humanGate,
-		humanGateReason:   hgReason,
-		mergeConflict:     mv == mergeVerdictBlocked,
-		mergeStateUnknown: mv == mergeVerdictUnknown,
-		mergeBehind:       mv == mergeVerdictBehind,
-		mergeStateRaw:     p.MergeStateStatus,
-		zeroCI:            zeroCI,
-		suspectNoOp:       rs.suspectNoOp,
+		securityPass:           rs.securityPass,
+		ciGreen:                ciGreen,
+		ciUnknown:              unknownChecks,
+		humanGate:              humanGate,
+		humanGateReason:        hgReason,
+		mergeConflict:          mv == mergeVerdictBlocked,
+		mergeStateUnknown:      mv == mergeVerdictUnknown,
+		mergeBehind:            mv == mergeVerdictBehind,
+		mergeStateRaw:          p.MergeStateStatus,
+		zeroCI:                 zeroCI,
+		suspectNoOp:            rs.suspectNoOp,
+		externalPrereqDeclared: rs.externalPrereqDeclared,
 		// #177: the author is derived from the PR payload, with no extra network read
 		// — the same roster the trust gate already consulted for this PR.
 		authorTrustedHuman: deskkit.TrustedHumanAuthor(p.Author.Login),

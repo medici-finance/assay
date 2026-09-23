@@ -330,6 +330,21 @@ const (
 	//	               email cannot enter it.
 	EnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 
+	// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is a STATUSGEN-only roster value:
+	// the map from a GitLab account USERNAME to its DISPLAY name, consumed by statusgen's
+	// Evidence-actor gate as the OFFLINE fallback for a GitLab verifier (#1477). A GitLab
+	// commit carries the account's DISPLAY name in author_name while the roster binds the
+	// USERNAME, so statusgen's `--lint` (offline, no forge access) needs a declared display
+	// name to accept the bound verifier's Evidence commit. deskkit does NOT consume it — the
+	// desk side resolves the committing GitLab account to its username ONLINE via the typed
+	// forge (deskevidence's attribution check, GetCommit -> gitlabLoginForEmail), so it never
+	// needs the declared display name. But the two readers share one ~/.config/assay/roster.env
+	// and both REFUSE the whole configuration on an unrecognised ASSAY_ key, so a roster that
+	// arms the statusgen offline fallback would collapse deskkit's whole configuration unless
+	// this key is RECOGNISED here. Recognised, not applied. KEEP IN SYNC with statusgen's
+	// scanEnvGitLabDisplayNames.
+	EnvGitLabDisplayNames = "ASSAY_GITLAB_DISPLAY_NAMES"
+
 	// EnvStreamCap (ASSAY_STREAM_CAP) is the STATUSGEN-only per-root cap on the
 	// number of active streams (attention-budget/04). statusgen consumes it (the
 	// `stream-cap` --lint rule); deskkit does not — but the operator records it in
@@ -380,6 +395,10 @@ func knownRosterKeys() []string {
 		// (#643). It must be recognised or a roster carrying it collapses the whole
 		// configuration on the unknown-ASSAY_-key refusal.
 		EnvGitLabSessionEmails,
+		// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is STATUSGEN-only (its
+		// Evidence-actor offline fallback, #1477), recognised-not-applied here so a roster
+		// arming that fallback does not collapse deskkit's configuration.
+		EnvGitLabDisplayNames,
 		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
 		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
 		// scanConfig — but the de-housing REQUIRES the house to set it in the

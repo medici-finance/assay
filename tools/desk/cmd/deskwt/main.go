@@ -30,9 +30,10 @@ import (
 const usage = `deskwt — add, remove, or prune git worktrees, only under sanctioned prefixes.
 
 USAGE:
-  deskwt add <name> [--branch B] [--base origin/main]
+  deskwt add <name> [--branch B | --detach] [--base origin/main] [--role R]
   deskwt remove <path>
-  deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks [--lock-ttl <dur>]]
+  deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
+               [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
@@ -41,8 +42,12 @@ role-init provisions a DESK ROLE's own worktree in one idempotent call: a sessio
 path under /private/tmp/tracker-*, a uniquely-named branch cut from a FRESHLY FETCHED
 origin/main (so the preflight landing probe is green and the session does not start behind
 main), a worktree lock, and the role's App commit identity set PER-WORKTREE (bot USER id,
-#638) so concurrent sessions cannot race each other's identity via shared config. An
-existing valid worktree is reused; a foreign-repo path is refused, never re-pointed. The
+#638) so concurrent sessions cannot race each other's identity via shared config, plus the
+role's App CREDENTIAL HELPER set per-worktree (chain reset, one inline helper reading the
+role's 0600 token file — never a token in argv or a URL), and finally the role's own
+PREFLIGHT run against the provisioned worktree (red = exit 6, the path is still printed). An
+existing valid worktree is reused (helper re-wired, so a polluted chain is scrubbed); a
+foreign-repo path is refused, never re-pointed. The
 LAST line on stdout is the worktree's absolute path — the launcher contract:
 ` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
 role-clean unlocks and removes it under the same safety guards as remove.
@@ -55,6 +60,18 @@ the working directory). The shared checkout's index and user.* config are never 
 the identity lands in the NEW worktree's own config, and the one shared-config write is
 enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
 --no-fetch cuts from the local origin/main as-is.
+
+add STAMPS or CLEARS the new worktree's commit identity so it never INHERITS the shared
+checkout's. With --role R (a token role or a loop name, folded the same way role-init folds
+it) the role's App commit identity — the bot USER id noreply address (#638), resolved through
+the SAME shared resolver role-init uses — is written to the new worktree's own config
+(extensions.worktreeConfig), and an unbound role is REFUSED (exit 5) before the worktree is
+created. WITHOUT --role the new worktree's user.name/user.email are CLEARED (set empty at
+worktree scope, which shadows the shared value — an --unset would fall through to it), so a
+commit there fails closed ("Author identity unknown") until an identity is set, rather than
+committing under an unrelated inherited identity. The shared checkout's config is never
+touched either way. The identity (or the cleared state) is echoed to stderr; stdout stays the
+bare worktree path.
 
 add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this checkout's
 remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut from it —
@@ -81,8 +98,8 @@ ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/mai
 UNMERGED branch (an open PR in flight) is LEFT untouched — that is the active-worker guard.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
-Every sweep reports four counts: pruned (bookkeeping), removed, held (and locked-held), and
-locks-reclaimed.
+Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
+dead-session-reaped, and branches-deleted.
 
 A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
 session that has since died is permanent and the locked population only grows.
@@ -91,6 +108,19 @@ prove stale — the ` + "`session=<id>`" + ` in the lock reason has no live rost
 --lock-ttl 24h) the lock is older than the TTL — and then the ORDINARY rules decide, unchanged.
 It never removes anything itself: a reclaimed worktree that is dirty, unpushed or unmerged is
 still LEFT. Every unlock prints the worktree, the lock reason, and why it was judged stale.
+
+That leaves the worktrees of sessions that died with work in flight: an unmerged branch is
+"active work" to the ordinary rules, so a dead session's open-PR worktree is held forever and
+every later resume of that branch fails at worktree-create (git allows one worktree per
+branch). --reap-dead-sessions (default OFF) judges those by a different question — does a
+LIVE session still own this tree, and is deleting it provably lossless? A tree is reaped only
+when no live session owns it (its lock names a session the roster shows is gone, or it
+carries no lock at all) AND it is clean with UNTRACKED FILES COUNTED AND HEAD is already
+reachable from its upstream or from refs/remotes/origin/main. Its stale local branch is
+deleted with it (non-force ` + "`git branch -d`" + `) so the next add cuts fresh from origin. A live
+session's lock holds its worktree unconditionally, and anything dirty, unpushed or
+unverifiable is LISTED with the reason and left. Pair it with --dry-run first: that prints
+the full plan — path, session, REAP/KEEP, reason — and changes nothing.
 
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.
 

@@ -294,6 +294,30 @@ const (
 	// EnvGitLabSessionEmails.
 	scanEnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 
+	// scanEnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is the OFFLINE fallback that
+	// lets the Evidence-actor gate accept a GitLab service-account Evidence commit on the
+	// `--lint` (offline, network-free) path (#1477). A GitLab account has a username AND a
+	// separate DISPLAY name, and every commit GitLab writes through the API carries the
+	// DISPLAY name in `author_name` — but the roster binds the account by USERNAME
+	// (`verifier=gitlab:<username>:<id>`), the field the commit does NOT carry, so the gate's
+	// name-vs-username compare could never succeed and `implemented -> verified` was
+	// permanently blocked on GitLab. This map declares the bound account's display name so the
+	// offline gate has a value to compare against instead of a display name it cannot derive.
+	//
+	// It is a MAP `<username>=<display name>`, entries separated by `;` or newline — NOT the
+	// comma/space list splitter every other roster value uses, because a GitLab display name
+	// routinely contains spaces ("Assay verifier (fleet bot)") and the list splitter would
+	// shred it. The value is space-tolerant by design: only the FIRST `=` splits an entry, and
+	// everything after it (spaces included) is the display name, kept verbatim (trimmed). The
+	// username key is lowercased to match the roster slug. It is CONSUMED here (statusgen's
+	// Evidence-actor gate). deskkit RECOGNISES the key — the two readers share one roster.env,
+	// so an unknown ASSAY_ key would collapse deskkit's whole configuration — but does not
+	// consume it (its GitLab commit-identity paths resolve the username ONLINE via the typed
+	// forge, deskevidence's attribution check). KEEP IN SYNC with deskkit's
+	// EnvGitLabDisplayNames. An UNSET value is neither an error nor a refusal (the offline
+	// fallback is simply unavailable, and the ONLINE resolution remains the preferred path).
+	scanEnvGitLabDisplayNames = "ASSAY_GITLAB_DISPLAY_NAMES"
+
 	// scanEnvStreamCap (ASSAY_STREAM_CAP) is the operator-set per-root cap on the
 	// number of `status: active` streams (attention-budget/04). statusgen CONSUMES
 	// it — the `stream-cap` --lint rule (streamcap.go) reads it through this
@@ -359,6 +383,7 @@ func scanKnownRosterKeys() []string {
 		scanEnvRepoForges, scanEnvRiskCallout,
 		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
 		scanEnvGitLabSessionEmails,
+		scanEnvGitLabDisplayNames,
 		scanEnvStreamCap,
 		scanEnvContributorLedger,
 	}
@@ -405,9 +430,9 @@ type scanConfig struct {
 	Class  scanToolClass
 	Source string
 
-	Bless    scanIdentity
-	Humans   map[string]int64
-	Bots     map[string]int64
+	Bless  scanIdentity
+	Humans map[string]int64
+	Bots   map[string]int64
 	// BotIdents maps a lowercased slug-or-login to its full forge-qualified identity
 	// (forge-neutral/07). It is statusgen's mirror of deskkit.Config.BotIdents and is
 	// what carries the FORGE of each bot entry; the flat Bots view above keeps only
@@ -448,6 +473,15 @@ type scanConfig struct {
 	// configuration is refused.
 	StreamCap    int
 	StreamCapSet bool
+
+	// GitLabDisplayNames maps a lowercased GitLab account USERNAME to its DISPLAY name
+	// (ASSAY_GITLAB_DISPLAY_NAMES, #1477). It is the offline fallback the Evidence-actor gate
+	// consults on `--lint`: a GitLab commit carries the account's DISPLAY name in author_name
+	// while the roster binds the account by username, so the gate compares this declared
+	// display name against the commit's author name when the username itself does not match.
+	// deskkit recognises the key but does not consume it. Empty when unset (the fallback is
+	// then unavailable; the online resolution remains the preferred path).
+	GitLabDisplayNames map[string]string
 
 	// Product holds product-namespaced (non-ASSAY_) config values, populated by
 	// the build-tagged scanApplyProductConfig hook. Empty in the default
@@ -565,7 +599,7 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
 		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
-		scanEnvAuthorizedAuthors, scanEnvStreamCap,
+		scanEnvAuthorizedAuthors, scanEnvStreamCap, scanEnvGitLabDisplayNames,
 	}
 	keys = append(keys, scanProductConfigKeys()...)
 	fromEnv := func() map[string]string {
@@ -698,6 +732,24 @@ func scanSplitList(raw string) []string {
 	return out
 }
 
+// scanSplitDisplayNameEntries splits ASSAY_GITLAB_DISPLAY_NAMES into its `<username>=<display
+// name>` entries. It splits ONLY on `;` and newline — deliberately NOT on space or comma the
+// way scanSplitList does — because a GitLab display name routinely contains spaces ("Assay
+// verifier (fleet bot)") and, less often, a comma, and either would shred a display name into
+// nonsense entries. Empty entries (a trailing `;`, a blank line) are dropped.
+func scanSplitDisplayNameEntries(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ';' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func scanSplitIdentity(entry string) (login string, id int64, ok bool) {
 	l, rest, found := strings.Cut(entry, ":")
 	l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "@")))
@@ -727,17 +779,18 @@ func scanLooksLikeBot(login string) bool {
 
 func scanParseConfig(class scanToolClass, source string, vals map[string]string) scanConfig {
 	cfg := scanConfig{
-		Class:             class,
-		Source:            source,
-		Humans:            map[string]int64{},
-		Bots:              map[string]int64{},
-		BotIdents:         map[string]scanBotIdentity{},
-		RoleBots:          map[string]string{},
-		Logins:            map[string]bool{},
-		Repos:             map[string]string{},
-		HumanLogins:       map[string]string{},
-		FormerHumanLogins: map[string]string{},
-		AuthorizedAuthors: map[string]int64{},
+		Class:              class,
+		Source:             source,
+		Humans:             map[string]int64{},
+		Bots:               map[string]int64{},
+		BotIdents:          map[string]scanBotIdentity{},
+		RoleBots:           map[string]string{},
+		Logins:             map[string]bool{},
+		Repos:              map[string]string{},
+		HumanLogins:        map[string]string{},
+		FormerHumanLogins:  map[string]string{},
+		AuthorizedAuthors:  map[string]int64{},
+		GitLabDisplayNames: map[string]string{},
 	}
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -1018,6 +1071,29 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		}
 	}
 
+	// The GitLab display-name map (ASSAY_GITLAB_DISPLAY_NAMES, #1477 — the offline fallback
+	// for the Evidence-actor gate). Entries are `<username>=<display name>`, separated by `;`
+	// or newline (NOT the comma/space list splitter — a GitLab display name contains spaces,
+	// and only the first `=` splits so the display name keeps its spaces verbatim). The
+	// username is lowercased to match the roster slug; the display name is trimmed but
+	// otherwise kept as written. A malformed entry (no `=`, an empty username, or an empty
+	// display name) REFUSES the whole configuration, the same fail-closed direction a
+	// malformed slug takes — a half-parsed display-name map would silently leave the offline
+	// fallback empty while the configuration reported itself correct. An UNSET value is
+	// neither an error nor a refusal.
+	for _, entry := range scanSplitDisplayNameEntries(vals[scanEnvGitLabDisplayNames]) {
+		user, display, found := strings.Cut(entry, "=")
+		user = strings.ToLower(strings.TrimSpace(user))
+		display = strings.TrimSpace(display)
+		if !found || user == "" || display == "" {
+			bad("%s: cannot parse entry %q — expected <username>=<display name> "+
+				"(entries separated by `;` or newline; the display name may contain spaces)",
+				scanEnvGitLabDisplayNames, entry)
+			continue
+		}
+		cfg.GitLabDisplayNames[user] = display
+	}
+
 	// Product-namespaced (non-ASSAY_) config, applied by the build-tagged hook.
 	// Deliberately NOT run through bad(): product config, not trust config, so a
 	// missing or malformed value must not collapse the roster. No-op in the
@@ -1070,6 +1146,11 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		formerHumanMap = append(formerHumanMap, n+"="+l)
 	}
 	sort.Strings(formerHumanMap)
+	gitlabDisplayNames := make([]string, 0, len(c.GitLabDisplayNames))
+	for u, d := range c.GitLabDisplayNames {
+		gitlabDisplayNames = append(gitlabDisplayNames, u+"="+d)
+	}
+	sort.Strings(gitlabDisplayNames)
 
 	// Role bindings get their own line: the bot-slug line renders slug:id and says
 	// nothing about which role each slug is BOUND to, so a dropped `role=` prefix
@@ -1098,6 +1179,7 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", scanEnvScanRepos, strings.Join(c.ScanRepos, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvAuthorizedAuthors, sortedIdents(c.AuthorizedAuthors)),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvStreamCap, streamCapEcho(c.StreamCap, c.StreamCapSet)),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvGitLabDisplayNames, strings.Join(gitlabDisplayNames, ",")),
 	}
 	// Product config (non-ASSAY_) echoes under its own prefix via the build-tagged
 	// hook; empty in the default (open-core) build.

@@ -12,6 +12,24 @@
       "file": "cmd/fanoutloop/board.go",
       "old": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", false\n\t}",
       "new": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", true\n\t}"
+    },
+    {
+      "name": "example-stream/17 repair obligation — DROP the same-actor self-certification guard in RepairObligation.Resolve so the worker that produced a repair could resolve its own obligation at the repaired revision; TestRepairObligationMergeIsNotResolved must go red (a worker cannot independently verify itself)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "\tif o.RepairedBy != \"\" && strings.EqualFold(verifier, o.RepairedBy) {",
+      "new": "\tif false && o.RepairedBy != \"\" && strings.EqualFold(verifier, o.RepairedBy) {"
+    },
+    {
+      "name": "example-stream/17 repair obligation — REGRESS the reconcile state-advance rule (> becomes <) so a duplicate/lost-ack append-only log folds to the LEAST-progressed state instead of the furthest; TestRepairObligationRestartAndDuplicate must go red (a claim then a lost-ack re-post would drop back to needs-assignment)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "\tif repairStateRank[b.State] > repairStateRank[out.State] {",
+      "new": "\tif repairStateRank[b.State] < repairStateRank[out.State] {"
+    },
+    {
+      "name": "#1339 — DISABLE the fresh-lane represented reconciliation so an already-represented row falls through to fresh DISPATCH exactly as before the fix: the landed-unreconciled and open-PR-resume routing never fires. TestPlan_MergedRowIsLandedUnreconciledNotDispatched and TestPlan_OpenPRRowRoutedToResume must both go red (the merged row is offered for dispatch and no LANDED-UNRECONCILED heading appears; the open-PR row is offered as fresh instead of resume).",
+      "file": "cmd/fanoutloop/adapter.go",
+      "old": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok {",
+      "new": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok && false {"
     }
   ]
 }

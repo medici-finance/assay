@@ -183,6 +183,16 @@ func cmdReply(args []string) (err error) {
 		return cerr
 	}
 
+	// A worker reply MAY carry a typed persistent finding block referencing a finding's fix
+	// or counter-evidence (additive — a legacy reply carries none and this is a no-op).
+	// Validate it for the WORKER role before any preflight/mint/network: a worker may move a
+	// finding to fixed-awaiting-review or disputed, but it CANNOT author a reviewer's
+	// resolution of a blocking finding, nor hand-assert the arbitration cap — those refuse
+	// here, with zero side effects, the same as every other cheap body check above.
+	if verr := deskkit.ValidateReviewFindingBlock(body, deskkit.RoleWorker); verr != nil {
+		return verr
+	}
+
 	// --workpad posts/edits ONE marked comment; a body without the marker is a caller
 	// error (the body was meant for `deskreply <owner/repo> <pr> --body-file F`, the plain
 	// reply path) and is refused BEFORE any preflight/mint/gate work runs, exactly like
@@ -293,7 +303,7 @@ func cmdReply(args []string) (err error) {
 	// immediately before the one mutating call, exactly where --workpad's own dry-run
 	// stops before its write.
 	if *dryRun {
-		obo, oerr := deskkit.OnBehalfOfLine("")
+		obo, oerr := deskkit.OnBehalfOfLine("", repo)
 		if oerr != nil {
 			return oerr
 		}
@@ -308,7 +318,7 @@ func cmdReply(args []string) (err error) {
 	// identical retry from a different session still dedupes. Resolved this late
 	// (immediately before the one mutating call) so every check above it — including the
 	// write-budget gate — still runs on a body-shape refusal before this one is reached.
-	postBody, oerr := deskkit.AppendOnBehalfOf(body, "")
+	postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 	if oerr != nil {
 		return oerr
 	}
@@ -405,39 +415,13 @@ func viewPR(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) (*prView, error) {
 	}, nil
 }
 
-// parseRepo extracts owner/name from an https, ssh, or scp-style git remote URL.
+// parseRepo extracts owner/name from a git remote URL in every shape git accepts, plus the
+// rewritten/hybrid forms an `insteadOf` config or a bad URL-composition bakes onto an ssh
+// host-alias remote (issue 1470). It is a thin wrapper over the single shared parser in
+// deskkit, so the ssh-alias/hybrid handling lives in exactly one place across deskwt,
+// deskpr, deskreply and preflight and the class cannot recur from a drifted copy.
 func parseRepo(raw string) (string, error) {
-	u := strings.TrimSpace(raw)
-	u = strings.TrimSuffix(u, ".git")
-	if i := strings.Index(u, "://"); i >= 0 {
-		rest := u[i+3:]
-		if at := strings.Index(rest, "@"); at >= 0 {
-			rest = rest[at+1:]
-		}
-		if slash := strings.Index(rest, "/"); slash >= 0 {
-			return normRepoPath(rest[slash+1:])
-		}
-		return "", fmt.Errorf("no path in url %q", raw)
-	}
-	if at := strings.Index(u, "@"); at >= 0 && strings.Contains(u, ":") {
-		// scp-like: [user@]host:owner/repo
-		colon := strings.Index(u, ":")
-		return normRepoPath(u[colon+1:])
-	}
-	return normRepoPath(u)
-}
-
-func normRepoPath(p string) (string, error) {
-	p = strings.Trim(p, "/")
-	parts := strings.Split(p, "/")
-	if len(parts) < 2 {
-		return "", fmt.Errorf("cannot parse owner/repo from %q", p)
-	}
-	owner, repo := parts[len(parts)-2], parts[len(parts)-1]
-	if owner == "" || repo == "" {
-		return "", fmt.Errorf("empty owner/repo in %q", p)
-	}
-	return owner + "/" + repo, nil
+	return deskkit.RemoteRepoSlug(raw)
 }
 
 // readBody reads the --body-file, refusing one over the cap. The size is decided from the

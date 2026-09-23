@@ -94,8 +94,11 @@ GitHub Actions, otherwise the repo's git identity. There is no flag for it, and
 passing one is refused: a witness you can caption is a witness you can forge. With
 no derivable identity `verifyrun` writes nothing and exits 2.
 
-`--lint` never executes anything; it only NOTICEs a `verified`/`done` brief whose
-Evidence carries no witness, one line per stream.
+`--lint` never executes anything. For a `verified`/`done` brief whose Evidence
+carries no witness it is **merge-base scoped** (see `spec/lifecycle-v1.md` §2.4): a
+closure already on `main` at the merge-base is a NOTICE (the inherited corpus lacks
+witnesses by construction), while a NEW closure made after statusgen v1.0.13 with no
+witness behind one or more Verify rows is a hard PROBLEM, one line per stream.
 
 `--consumers` has three exit codes, and the third is the point of it:
 **0** nothing was disproved · **1** a routing claim is contradicted by the diff ·
@@ -190,6 +193,13 @@ brief (no `schema:` frontmatter) resolves with `"schema": "legacy"` and empty
 frontmatter fields; a brief with no README row resolves with `"row": null` — absence
 is reported as itself, never invented as a status. The emitted `file` path is
 RELATIVE to `--root`, so the output carries no machine path.
+
+`statusgen brief --root . --check-verified <stream>/<NN>` additionally requires
+`verified` or `done`, a dated Verified stamp, and a passing execution witness for
+every Verify row. It returns exit 1 with no JSON when that closure check fails;
+resolution/usage failures remain exit 2. This check does not grandfather missing
+witnesses and does not replace `statusgen --lint`. `deskevidence` uses both before
+appending a new verified outcome receipt.
 
 ## Multi-root (a board that spans repos)
 

@@ -1,0 +1,270 @@
+{
+  "schema": 1,
+  "default_provider": "anthropic",
+  "deny": [
+    "*opus-5"
+  ],
+  "providers": {
+    "anthropic": {
+      "harness": "claude",
+      "tiers": {
+        "top": {
+          "model": "claude-fable-5-1",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "strong": {
+          "model": "claude-opus-4-8[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "mid": {
+          "model": "claude-sonnet-5",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "fast": {
+          "model": "claude-sonnet-5",
+          "effort": "low",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      },
+      "desks": {
+        "the-desk": {
+          "tier": "top",
+          "effort": "high"
+        },
+        "pr-review-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "verify-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "worker-desk": {
+          "tier": "mid",
+          "effort": "high"
+        },
+        "intake-desk": {
+          "tier": "mid",
+          "effort": "high"
+        }
+      }
+    },
+    "glm": {
+      "harness": "claude",
+      "tiers": {
+        "top": {
+          "model": "glm-5.3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "strong": {
+          "model": "glm-5.3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "mid": {
+          "model": "glm-5.3-flash[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "fast": {
+          "model": "glm-5.3-flash[1m]",
+          "effort": "low",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      },
+      "desks": {
+        "the-desk": {
+          "tier": "top",
+          "effort": "high"
+        },
+        "pr-review-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "verify-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "worker-desk": {
+          "tier": "mid",
+          "effort": "high"
+        },
+        "intake-desk": {
+          "tier": "mid",
+          "effort": "high"
+        }
+      }
+    },
+    "kimi": {
+      "harness": "claude",
+      "tiers": {
+        "top": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "strong": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "mid": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "fast": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      },
+      "desks": {
+        "the-desk": {
+          "tier": "top",
+          "effort": "high"
+        },
+        "pr-review-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "verify-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "worker-desk": {
+          "tier": "mid",
+          "effort": "high"
+        },
+        "intake-desk": {
+          "tier": "mid",
+          "effort": "high"
+        }
+      }
+    },
+    "codex": {
+      "harness": "codex",
+      "tiers": {
+        "top": {
+          "model": "gpt-5.6-terra",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "strong": {
+          "model": "gpt-5.6-terra",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "mid": {
+          "model": "gpt-5.6-terra",
+          "effort": "medium",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "fast": {
+          "model": "gpt-5.6-terra",
+          "effort": "low",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      "desks": {
+        "the-desk": {
+          "tier": "top",
+          "effort": "high"
+        },
+        "pr-review-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "verify-desk": {
+          "tier": "strong",
+          "effort": "high"
+        },
+        "worker-desk": {
+          "tier": "mid",
+          "effort": "medium"
+        },
+        "intake-desk": {
+          "tier": "mid",
+          "effort": "medium"
+        }
+      }
+    }
+  },
+  "roles": {}
+}

@@ -95,7 +95,10 @@ func LoadHistory(path string) ([]HistoryEntry, error) {
 	return entries, err
 }
 
-// historyLoadKey stamps a path with its mtime and size, mirroring briefParseKey. A path that
+// historyLoadKey stamps a path with its mtime and size. (The brief-parse memo keys on a content
+// hash instead — see briefParseKey, medici-finance/assay#1407 — because a brief is edited in
+// place with a length-preserving substitution; the append-only history file this stamps is not.)
+// A path that
 // cannot be stat-ed (including the ordinary "no history yet" case, where the file is simply
 // absent) is NOT memoised — it is re-read every time rather than cached under a key that could
 // never detect the file coming into existence between calls.

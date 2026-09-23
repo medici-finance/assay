@@ -149,6 +149,28 @@ Ran the Verify table against public medici-finance/assay merged main `553dc2ae53
 **Why FAIL — split-delivery gap.** The Codex packaging backend all landed and passes (rows 1–6, 8): the generated `.codex-plugin/plugin.json` with version bound equal to the `.claude-plugin` manifest, the coverage rule failing closed at exit 2, the binding-skew check at exit 2, and the resident verb intact. But Verify row 7's deliverable — the Codex install scenario + the AGENTS-assay fragment step in `plugins/assay/skills/adopt/SKILL.md`, which this brief's own `consumers` frontmatter marks `fixed-here` (distinct from `docs/adopting-assay.md`, scoped as `follow-up harness-portability/07`) — did not land in the public tree. `plugins/assay/skills/adopt/SKILL.md`'s git history carries only the open-core drop and a guardrails consolidation; the task-3 amendment is absent. `docs/adopting-assay.md` carries a Codex row but not the AGENTS-assay token, and the adopt SKILL the row targets has neither. Filed as #872 (bug, →worker). Brief stays at `implemented`; re-run row 7 after the adopt-skill amendment lands (or after Verify row 7 + the consumers frontmatter are retargeted, if the pointer-only design is intended — a spec call).
 
 **Risk-bearing value:** `RISK-VALUE: DERIVED — the three-state exit gate exitCouldNotCheck=2 / exitDrift=1 / exitClean=0 (tools/harnessgen/main.go) is the top risk-bearing literal; a wrong value would let an unaccounted or binding-skewed skill ship silently. Observed live at all three: clean=0 (rows 4/8), drift=1 (row 3a), could-not-check=2 (rows 5 & 6, built binary). Manifest version equality (1.0.7==1.0.7) is equality-bound to the single metadata source, not independently set.`
+### Non-implementer verifier re-run — VERIFY: FAIL (row 7 pre-existing content gap, already tracked) — sonnet-5-verifier (verify-desk dispatch), @ merged main `5fbf75834e1d2e5a80b44524649b4030f50e80f1`, 2026-09-18
+
+Runner ≠ implementer. Own detached temp worktree off origin/main. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR opened, no push, no status flip attempted. Second independent verify pass (prior: 2026-09-11).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/harnessgen && go test ./...` | exit 0 | exit 0, ok | 2026-09-18 | sonnet-5-verifier |
+| 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json` | exit 0 | exit 0, true | 2026-09-18 | sonnet-5-verifier |
+| 3 | version compare both manifests | exit 0 | exit 0, both 1.0.14 | 2026-09-18 | sonnet-5-verifier |
+| 3a | mutation: plant version skew, check, revert | exit 1 naming manifest, clean after | checked-failed as expected, then checked-clean after revert | 2026-09-18 | sonnet-5-verifier |
+| 4 | `harnessgen codex --check` | exit 0 | exit 0, clean — matches metadata source | 2026-09-18 | sonnet-5-verifier |
+| 5 | mutation: plant undeclared skill under --bundle | exit 2 naming it | checked-failed (could-not-check per tool's own contract) as expected, skill named | 2026-09-18 | sonnet-5-verifier |
+| 6 | mutation: strip a degradation cell under --bundle | exit 2 naming it | checked-failed as expected, cell named | 2026-09-18 | sonnet-5-verifier |
+| 7 | grep for Codex mentions + AGENTS-assay step in adopt/SKILL.md | exit 0 | **FAIL** — zero hits; file unchanged since 2026-09-11, 58 lines, no Codex install scenario or AGENTS-assay step | 2026-09-18 | sonnet-5-verifier |
+| 7a | control: grep an absent token | exit 1 | exit 1, correctly absent | 2026-09-18 | sonnet-5-verifier |
+| 8 | `harnessgen resident --check` | exit 0 | exit 0, clean — committed artifacts match source | 2026-09-18 | sonnet-5-verifier |
+
+Scope traceability: all rows map 1:1 to Verify rows; no invented scope.
+
+RISK-VALUE: DERIVED — exitClean=0, exitDrift=1, exitCouldNotCheck=2 @ tools/harnessgen/main.go:22-24 — top-ranked (a wrong value silently ships an unaccounted/skew skill); all three states observed live this pass (rows 3a, 4/8, 5/6).
+
+VERIFY: FAIL — held at implemented. Same real, unresolved content gap as the 2026-09-11 pass, confirmed unchanged: rows 1-6,8 all pass (harnessgen codex verb, manifest version binding, coverage + binding-skew checks all sound); row 7 fails because adopt/SKILL.md still lacks a Codex install scenario and the AGENTS-assay step this brief's own consumers frontmatter marks fixed-here. Not a stale-anchor case — a genuine unresolved gap, already tracked at medici-finance/assay#872 (confirmed still OPEN). No new issue filed.
 
 ## Review
 

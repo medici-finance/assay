@@ -97,6 +97,23 @@ func (f *fakeForge) IssueTrustEvents(_ deskkit.ForgeRepo, n int) (*deskkit.Trust
 	return nil, deskkit.Unverifiable(fmt.Sprintf("no trust fixture for %s#%d", f.repo, n), nil)
 }
 
+// IssueContentEvents is the escalation-clock read (the paginated whole-thread twin of
+// IssueTrustEvents). The fake serves it from the SAME `trust` fixture map — a decision-owed /
+// addressed issue's payload lives there — because a trusted-author escalation issue never hits
+// the trust gate and an untrusted-author trust-gate issue is not decision-owed, so the two
+// reads never contend for the same number in a fixture. TrustPayload.Complete=false models a
+// thread the bounded escalation read could not walk to the end (the overflow the board now
+// degrades per-row instead of failing whole).
+func (f *fakeForge) IssueContentEvents(_ deskkit.ForgeRepo, n int) (*deskkit.TrustPayload, error) {
+	*f.calls = append(*f.calls, forgeCall{op: "IssueContentEvents", repo: f.repo, num: n})
+	if f.data != nil {
+		if tp, ok := f.data.trust[n]; ok {
+			return tp, nil
+		}
+	}
+	return nil, deskkit.Unverifiable(fmt.Sprintf("no events fixture for %s#%d", f.repo, n), nil)
+}
+
 // installForge plants the fixture roster + isolates HOME (the roster is still read for the
 // scan scope, the trusted set and the blessing authority) and overrides the forgeFor seam so
 // each scanned repo resolves to a recorded fake carrying that repo's fixture (an unseeded repo
@@ -122,6 +139,18 @@ func trustReadsFor(calls *[]forgeCall, repo string) []int {
 	var out []int
 	for _, c := range *calls {
 		if c.op == "IssueTrustEvents" && c.repo == repo {
+			out = append(out, c.num)
+		}
+	}
+	return out
+}
+
+// eventsReadsFor returns the issue numbers on repo that got an IssueContentEvents read (the
+// escalation clock's whole-thread read), the twin of trustReadsFor for the trust gate.
+func eventsReadsFor(calls *[]forgeCall, repo string) []int {
+	var out []int
+	for _, c := range *calls {
+		if c.op == "IssueContentEvents" && c.repo == repo {
 			out = append(out, c.num)
 		}
 	}
@@ -182,7 +211,7 @@ func TestReadsOnly(t *testing.T) {
 	if len(*calls) == 0 {
 		t.Fatal("no forge ops recorded — the read-only proof enumerates nothing")
 	}
-	readOps := map[string]bool{"ListOpenIssues": true, "GetIssue": true, "IssueTrustEvents": true}
+	readOps := map[string]bool{"ListOpenIssues": true, "GetIssue": true, "IssueTrustEvents": true, "IssueContentEvents": true}
 	sawList, sawGet := false, false
 	for _, c := range *calls {
 		if !readOps[c.op] {
@@ -740,9 +769,9 @@ func TestEscalateEndToEnd_BoardRow(t *testing.T) {
 		t.Errorf("ESCALATE row must sort above CREATE-PLACEHOLDER; got:\n%s", board)
 	}
 
-	// Bounded fetch: exactly one events read, for #20 (the decision-owed issue) —
+	// Bounded fetch: exactly one escalation-clock read, for #20 (the decision-owed issue) —
 	// none for #21, which carries no decision label.
-	reads := trustReadsFor(calls, homeRepo)
+	reads := eventsReadsFor(calls, homeRepo)
 	if len(reads) != 1 || reads[0] != 20 {
 		t.Errorf("expected exactly 1 events read for the decision-owed #20, got %v", reads)
 	}
@@ -777,6 +806,59 @@ func TestEscalateSLADaysFlag(t *testing.T) {
 	}
 	if !strings.Contains(tightOut.String(), "ESCALATE") {
 		t.Errorf("a --sla-days 0 override must classify ESCALATE; got:\n%s", tightOut.String())
+	}
+}
+
+// TestEscalate_LongThread_BoardRenders is the regression guard for the whole-board defect:
+// a decision-owed issue whose comment thread is longer than the bounded escalation read can
+// walk (TrustPayload.Complete=false) must NOT take the whole board down (exit 6). It renders
+// AS ESCALATE (the conservative direction — an overflowed thread is never read as "no
+// escalation owed") with a could-not-check marker instead of an age, and every OTHER row on
+// the board still renders. Before the fix the escalation clock shared the trust gate's
+// single-page read and returned Unverifiable on overflow, so ONE long thread failed the whole
+// scan with exit 6 (the board for every scanned repo was unreadable).
+func TestEscalate_LongThread_BoardRenders(t *testing.T) {
+	calls := installForge(t, map[string]*repoFixture{
+		homeRepo: {
+			issues: []deskkit.IssueSummary{
+				{Number: 20, Title: "decision with a very long thread", Author: deskkit.Account{Login: "shared-agent"}, Labels: []string{"needs-decision"}, CreatedAt: "2026-07-01T00:00:00Z"},
+				{Number: 21, Title: "an ordinary open issue", Author: deskkit.Account{Login: "shared-agent"}},
+			},
+			// #20's escalation read cannot walk the whole thread: Complete=false models the
+			// overflow (a thread exceeding the paginated read's hard page cap).
+			trust: map[int]*deskkit.TrustPayload{
+				20: {Complete: false, Events: []deskkit.ContentEvent{comment("shared-agent", 7, "2026-07-02T00:00:00Z")}},
+			},
+		},
+	})
+
+	root := t.TempDir()
+	var out, errb bytes.Buffer
+	code := run([]string{"--root", root, "issues"}, &out, &errb)
+	// The core of the fix: one over-long thread must NOT fail the whole board.
+	if code != 0 {
+		t.Fatalf("run(issues) with an overflowed decision-owed thread = exit %d, want 0 (one long thread must not take the whole board down); stderr=%s", code, errb.String())
+	}
+	board := out.String()
+
+	// The overflowed decision-owed issue escalates (conservative) and is marked could-not-check.
+	if !strings.Contains(board, "ESCALATE") || !strings.Contains(board, "decision with a very long thread") {
+		t.Errorf("the overflowed decision-owed issue must classify ESCALATE; got:\n%s", board)
+	}
+	if !strings.Contains(board, "could-not-check") {
+		t.Errorf("the overflowed row must carry a could-not-check marker (reported as itself, never an age); got:\n%s", board)
+	}
+	// It must NOT render a real age — the clock could not be computed.
+	if strings.Contains(board, "[age ") {
+		t.Errorf("the overflowed row must not render a fabricated age; got:\n%s", board)
+	}
+	// The rest of the board still renders: the ordinary issue is present.
+	if !strings.Contains(board, "an ordinary open issue") {
+		t.Errorf("the rest of the board must still render (the ordinary issue is missing); got:\n%s", board)
+	}
+	// Exactly one escalation read, for #20.
+	if reads := eventsReadsFor(calls, homeRepo); len(reads) != 1 || reads[0] != 20 {
+		t.Errorf("expected exactly 1 escalation read for #20, got %v", reads)
 	}
 }
 

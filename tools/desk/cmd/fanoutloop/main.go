@@ -8,13 +8,19 @@
 //
 // Subcommands:
 //
-//	fanoutloop plan --root <repo> [--sha <targetSHA>]
+//	fanoutloop plan --root <repo> [--sha <targetSHA>] [--repo <owner/name>]
 //	    Deterministic scheduler OUTPUT: read the Next-up board (orphan resumes first, then rows in
 //	    board order — issue-<NN> placeholders INCLUDED, only a different loop's `review-request`
-//	    dispatch tokens skipped), compute each item's tier, and print the
-//	    EXACT dispatch instruction the operator would execute as an Agent call. No agents are spawned,
-//	    nothing is written, and no network is touched — this is the "the Go engine owns all scheduler
-//	    state and emits exact dispatches" surface (§9.1).
+//	    dispatch tokens skipped), reconcile each fresh row against the repo's open+merged PRs, compute
+//	    each item's tier, and print the EXACT dispatch instruction the operator would execute as an
+//	    Agent call. No agents are spawned and nothing is written. The already-represented reconciliation
+//	    (#1339) routes a fresh row whose brief already has an OPEN PR to RESUME and one already MERGED to
+//	    the landed-unreconciled listing, never fresh dispatch; a could-not-check read HOLDS the fresh
+//	    lane rather than offering rows on an unverified forge. That reconciliation's PR-list transport is
+//	    DEFERRED like the orphan sweep — the closed forge surface ships no forge-CLI call and the typed
+//	    open+merged-changes op is the cutover work — so the shipped offline build performs no forge read
+//	    and offers rows as before until the transport is wired. This is the "the Go engine owns all
+//	    scheduler state and emits exact dispatches" surface (§9.1).
 //
 //	fanoutloop --version
 //
@@ -44,6 +50,12 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
+	// Wire `plan`'s already-represented PR-list transport LIVE for the shipped binary
+	// (represented_live.go). Assigned here, in main(), not at package init: tests call
+	// cmdPlan/run directly and keep the nil default (plan offers rows as before unless a test
+	// wires its own recorded transport), while the real binary reconciles against the repo's
+	// open+merged changes read through the typed Forge seam.
+	representedPRs = liveRepresentedPRs
 	os.Exit(run(os.Args[1:]))
 }
 
@@ -90,14 +102,32 @@ func cmdPlan(args []string) error {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	root := fs.String("root", ".", "repo root to scan for the Next-up queue")
 	sha := fs.String("sha", "", "merged-main target SHA workers branch from")
+	repo := fs.String("repo", "", "owner/name to reconcile fresh rows against open+merged PRs (#1339); "+
+		"defaults to the repo the configured roots map --root to, else the checkout's origin remote")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
 
-	// DryRun is set EXPLICITLY here rather than left to a default: `plan` documents itself as
-	// touching no network and writing nothing, and that promise is now a stated property of the
-	// loop rather than a consequence of the sink having had nothing wired into it.
+	// DryRun is set EXPLICITLY here rather than left to a default: `plan` writes nothing, and every
+	// release the sink would perform is emitted as the line it WOULD run instead.
 	f := &FanoutLoop{Root: *root, TargetSHA: *sha, DryRun: true}
+
+	// Wire the already-represented reconciliation (#1339) when the PR-list transport is live. It reads
+	// the resolved repo's open+merged PRs ONCE per run and reduces them in memory, so `plan` routes a
+	// row whose brief already has an OPEN PR to resume and one already MERGED to landed-unreconciled,
+	// never fresh dispatch. When the repo cannot be resolved, the source is a could-not-check that HOLDS
+	// the fresh lane (renderPlan prints why) rather than offering rows on an unverified forge. When the
+	// transport is NOT wired (representedPRs nil — the shipped offline build; the live typed forge op is
+	// the deferred cutover, see represented.go), Represented is left unset and every row is offered as
+	// before.
+	if representedPRs != nil {
+		if resolved, rerr := resolveRepoForPlan(*root, *repo); rerr == nil {
+			f.Represented = representedSourceFor(resolved)
+		} else {
+			heldErr := rerr
+			f.Represented = func() (map[string]deskkit.RepresentedPR, error) { return nil, heldErr }
+		}
+	}
 	return renderPlan(f, os.Stdout)
 }
 
@@ -112,6 +142,11 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (addressed to:worker items first, then orphan resumes, then Next-up in board order)\n", len(items))
 	fmt.Fprintln(out, classLine(items))
+	// The fresh lane HELD on a could-not-check represented read (#1339): stated up front so a reader
+	// never mistakes an empty fresh lane for "nothing to do" when it is actually "could not verify".
+	if held := f.freshHoldReason(); held != "" {
+		fmt.Fprintf(out, "FRESH LANE HELD: %s\n", held)
+	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
 		if terr != nil {
@@ -123,6 +158,18 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 			return deskkit.Refused(err.Error())
 		}
 		fmt.Fprintf(out, "\n=== DISPATCH %s (tier=%s) ===\n%s\n", it.ID, tier, prompt)
+	}
+
+	// LANDED-UNRECONCILED (#1339): fresh Next-up rows whose brief already has a MERGED PR. Their board
+	// cell simply never reconciled after the merge, so they read `todo` while the work is done — a
+	// worker dispatched to one returns nothing. They are listed here with the merged PR number, under
+	// their own heading, and are DELIBERATELY absent from the DISPATCH list above. The cell is
+	// reconciled by `statusgen reconcile --backfill --apply` (a separate lane), never by this planner.
+	if landed := f.landedUnreconciledRows(); len(landed) > 0 {
+		fmt.Fprintf(out, "\n=== LANDED-UNRECONCILED: %d row(s) — merged, board cell not yet reconciled; NOT dispatched (#1339) ===\n", len(landed))
+		for _, l := range landed {
+			fmt.Fprintf(out, "  %s — merged PR #%d (run `statusgen reconcile --backfill --apply` to flip the board cell)\n", l.briefID, l.pr)
+		}
 	}
 
 	// ADVISORY write-scope overlap warnings, AFTER the queue rows.
@@ -208,14 +255,23 @@ func classLine(items []loopengine.Item) string {
 const usage = `fanoutloop — worker-desk (batch-fanout) reference consumer of the drain engine.
 
 USAGE:
-  fanoutloop plan --root <repo> [--sha <targetSHA>]
+  fanoutloop plan --root <repo> [--sha <targetSHA>] [--repo <owner/name>]
   fanoutloop --version
 
 'plan' prints the deterministic scheduler output: the dispatch queue (a to:worker desk-inbox item —
 a directed message to this desk — leads, then orphan resumes, then Awaiting-implementer-rework rows,
 then the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
-review-request dispatch tokens skipped), each item's tier, and the exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
-drive / live-window cutover is gate:human — BLOCKED-ON-IAN.
+review-request dispatch tokens skipped), each item's tier, and the exact dispatch instruction. It
+spawns nothing and writes nothing. The already-represented reconciliation (#1339) routes a fresh row
+whose brief already has a MERGED PR to the LANDED-UNRECONCILED listing (its board cell just never
+reconciled) and never dispatches it, routes one with an OPEN PR to the resume lane, and dispatches
+only unrepresented rows; a could-not-check read HOLDS the fresh lane (a 'FRESH LANE HELD:' line states
+why) rather than offering rows on an unverified forge. --repo names the repo to reconcile against; it
+defaults to the repo the configured roots map --root to, else the checkout's origin remote. That
+reconciliation's PR-list transport is DEFERRED (the closed forge surface ships no forge-CLI call; the
+typed open+merged-changes op is the cutover work), so the shipped offline build performs no forge read
+and offers rows as before until it is wired. The autonomous drive / live-window cutover is gate:human
+— BLOCKED-ON-IAN.
 
 Right after the item count, 'plan' prints a 'classes: resume=<n> rework=<n> fresh=<n> (...)' line: the
 per-class concurrency RESERVATION (example-stream/05) worker-desk's width carries alongside its pool

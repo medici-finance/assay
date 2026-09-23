@@ -62,6 +62,24 @@ consumers: docs/distribution.md (install story must mention the default-off post
 
 ## Evidence
 <!-- filled at implementation time by a non-implementer -->
+### Verify pass 2026-09-22 (non-implementer, VERIFY: PASS — Evidence-only, gate:human customer+sensitive; held at implemented, routes to human gate #217)
+
+Runner: `assay-verifier-app[bot] / claude-opus-4.8[1m]` (non-implementer). Merged main `f48d4ed17d80223d3f4ec875acd1fd05784f3f2a`. Offline (`KUBECONFIG=/dev/null`; `go test`/`go run` direct, no network). Implementing commit c7e1715ac confirmed ancestor of HEAD.
+
+| # | Command | Expect | Observed (exit → key output) | Date | Runner |
+|---|---------|--------|------------------------------|------|--------|
+| 1 | `cd statusgen && go test ./...` | exit 0 incl payload-leak test | exit 0 — `ok .../statusgen 32.124s`; PASS: TestTelemetryEndpointEmptyByDefault, TestTelemetryDefaultOff (6 subcases), TestClassifyLintProblemNeverEchoes, TestNormalizeStatusFixedVocabulary, TestBuildPayloadNoLeak_InMemory, TestCollectTelemetryPayload_FixtureTreeNoLeak | 2026-09-22 | opus-4.8-verifier |
+| 2 | `cd statusgen && go run . --root .. --lint` | no telemetry output (default off) | exit 0, LINT: PASS; no telemetry feature output (grep `^telemetry:`/banner → RC 1) | 2026-09-22 | opus-4.8-verifier |
+| 3 | `ASSAY_TELEMETRY=1 go run . --root .. --telemetry --telemetry-dry-run` | prints payload; no path/title strings | exit 0 — counts-only JSON (schema telemetry-v1, stream_count 22, brief_count 260, status counts by fixed vocab, empty lint/lifecycle), then `telemetry: dry-run — nothing sent.`; path/title grep over payload → RC 1 (none) | 2026-09-22 | opus-4.8-verifier |
+| 4 | `grep -i "off by default" docs/telemetry.md` | match | exit 0 — 3 matches | 2026-09-22 | opus-4.8-verifier |
+
+Scope traceability: every Evidence row maps 1:1 to its Verify row. Deliverables present: docs/telemetry.md (fields table + mechanics + retention + promise), README index row, docs/distribution.md default-off (:14-16).
+
+RISK-VALUE: DERIVED — `telemetryEndpoint = ""` @ `statusgen/telemetry.go:60` (guard :245) — empty is the ONLY correct value; `sendTelemetry` returns `errTelemetryNoEndpoint` BEFORE constructing any http request, so even an armed run never dials — transmission is STRUCTURALLY impossible, not merely off. A `var` only to permit deliberate `-ldflags -X` stamping later; no runtime flag/env sets it. Proven by TestTelemetryEndpointEmptyByDefault. A committed URL would be an irreversible leak — the top control.
+RISK-VALUE: DERIVED — double opt-in `flagSet && os.Getenv("ASSAY_TELEMETRY") == "1"` @ `statusgen/telemetry.go:65` (both flags default false @ main.go:1633-1634) — boolean AND of two independent switches with EXACT "1" match (rejects "true"/"0"/unset); inaction = off; closes the "CI vendor/inherited-env flips it silently" hole. Proven by TestTelemetryDefaultOff.
+RISK-VALUE: DERIVED — `TelemetryPayload` has NO free-text field; all 7 fields are string(tool constants)/int/map[string]int keyed by fixed-vocabulary @ `statusgen/telemetry.go:159-167` — the type itself is the anonymization guarantee (no []string/free-text; map keys only from classify/normalize which return in-file constants, never input substrings). Proven by TestBuildPayloadNoLeak_InMemory + TestCollectTelemetryPayload_FixtureTreeNoLeak (planted sentinels never survive into JSON; counts still non-vacuous).
+
+**VERIFY: PASS** on all 4 Verify rows against merged main. gate:human + risk {customer:yes, sensitive-data:yes} → a model records Evidence and does NOT sign off. Status LEFT at `implemented`. These three DERIVED risk-values are the independent integrity base for the human signer (this is the Task-1 home of gtm/08's telemetry client). Routes to the human gate — decision issue #217: human:Ian (own login, not a bot relay) records verdict+date with a `human:<name>` token in the statusgen README, closing #217.
 
 ## Review
 Gate: human — a human signs the field list, opt-in wording, retention, endpoint. Verdict + date in

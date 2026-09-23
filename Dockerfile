@@ -32,7 +32,9 @@
 # artifact, NOT built here.
 #
 # This image is for RUNNING the desk loops in-container, so it bakes in git,
-# the gh CLI and ca-certificates alongside the compiled binaries. The Go
+# the gh CLI, ca-certificates and bash alongside the compiled binaries (bash is
+# required so `statusgen verifyrun`'s `bash -o pipefail` Verify rows execute when
+# `--in-container` re-invokes verifyrun inside this image — issue #1466). The Go
 # toolchain and the source tree are intentionally absent from the final image —
 # the compiled, stamped binaries are the product; the go-run fallback is not.
 # =============================================================================
@@ -101,12 +103,22 @@ RUN set -eux; \
 # build stage below references it. Everything this image ships is built above.
 
 # ---- Final ----------------------------------------------------------------
-# Small runtime: Alpine + git + gh CLI + ca-certificates. github-cli lives in
-# the Alpine community repo, so gh installs cleanly with apk — no third-party
-# package repo needed.
+# Small runtime: Alpine + bash + git + gh CLI + ca-certificates. github-cli lives
+# in the Alpine community repo, so gh installs cleanly with apk — no third-party
+# package repo needed. `bash` is required, not a convenience: `statusgen verifyrun`
+# executes every Verify row under `bash -o pipefail`, and `--in-container`
+# re-invokes verifyrun INSIDE this image, so without a pipefail-capable bash on
+# PATH every POSIX row records could-not-run (issue #1466). The per-desk images
+# under containers/* already ship /bin/bash; this combined image now matches.
 FROM alpine:3.21
 
-RUN apk add --no-cache git github-cli ca-certificates \
+# The explicit /work bind mount may be owned by root on a Docker Desktop backend;
+# trust ONLY that checkout (never `safe.directory=*`), keeping USER desk. The
+# launcher (statusgen verifyincontainer.go) ALSO marks safe.directory=/work via
+# per-run env — this system config is the second layer, so a direct
+# `docker run <img> git …` against /work still works without the launcher.
+RUN apk add --no-cache bash git github-cli ca-certificates \
+    && git config --system --add safe.directory /work \
     && addgroup -S desk \
     && adduser -S -G desk -h /home/desk desk
 

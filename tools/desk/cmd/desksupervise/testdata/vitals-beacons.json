@@ -1,0 +1,9 @@
+{
+  "session-vitals": {
+    "tokens": 12345,
+    "context_pct_used": 60,
+    "session_age_seconds": 900,
+    "subagents_spawned": 0,
+    "model": "example-model"
+  }
+}

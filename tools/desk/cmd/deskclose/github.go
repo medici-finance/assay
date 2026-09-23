@@ -217,7 +217,18 @@ func reopenItem(repo string, n int) error {
 // reason is a state reason meaningful only for issues; a change carries none on either forge,
 // so it is dropped here rather than handed to the seam (which refuses it), and the lane is
 // carried by the comment written immediately before this call.
-func closeItem(repo string, n int, kind deskkit.TargetKind, reason string) error {
+//
+// verifyClosed READS THE STATE BACK after the close and requires state==closed before it
+// returns nil. This is the fix for the silent-success bug: a state-change PATCH can return
+// without an error while leaving the item OPEN — the HTTP call "succeeded" without doing what
+// was asked (the field case: `superseded` on a PULL REQUEST posted its confirmation comment,
+// then a close that reported success while the PR stayed open indefinitely). So the close is
+// not trusted on its return value: the item is re-read and its state confirmed. Every
+// permanent-close lane passes true. The one caller that passes FALSE is verify-gate-refire,
+// whose close is DELIBERATELY transient — the repository's verify-gate-close workflow reopens
+// any bot close — so "did it stay closed" is the wrong question there; its success is that the
+// close EVENT fired.
+func closeItem(repo string, n int, kind deskkit.TargetKind, reason string, verifyClosed bool) error {
 	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return ferr
@@ -227,6 +238,23 @@ func closeItem(repo string, n int, kind deskkit.TargetKind, reason string) error
 	}
 	if err := fg.CloseIssueTyped(fr, n, kind, reason); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: closing %s#%d did not confirm", repo, n), err)
+	}
+	if !verifyClosed {
+		return nil
+	}
+	// The close is READ BACK: a non-error return is not proof the state changed. A read that
+	// fails is could-not-check (the close is unconfirmed either way); a read that shows the
+	// item still open is a close that did not take, and either is exit 6 rather than success.
+	after, rerr := fetchItem(repo, n, kind)
+	if rerr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d was asked to close but its state could not be read back — the close is unconfirmed",
+			repo, n), rerr)
+	}
+	if !after.closed() {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"%s#%d still reads state %q after the close call — the state change did not take",
+			repo, n, deskkit.StripControl(after.State)), nil)
 	}
 	return nil
 }

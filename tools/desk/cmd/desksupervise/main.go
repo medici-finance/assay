@@ -46,6 +46,7 @@ USAGE:
                       [--claims-fixture FILE] [--observations-fixture FILE]
   desksupervise status [--json] [--stops] [--root DIR] [--repo OWNER/NAME] [--now RFC3339]
                       [--claims-fixture FILE] [--observations-fixture FILE] [--stops-fixture FILE]
+                      [--beacons-fixture FILE]
   desksupervise run --interval DUR [--root DIR] [--repo OWNER/NAME] [--dry-run]
   desksupervise stop <key> --reason "..."
   desksupervise status --stops

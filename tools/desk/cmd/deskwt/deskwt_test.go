@@ -79,6 +79,10 @@ func originBare(t *testing.T, work string) string {
 // withEnv points deskkit's runtime dir at a fresh HOME, binds getwd to work, overrides
 // the sanctioned tmp prefix at a fresh temp dir (so add/remove is portable & offline),
 // and installs the in-process command recorder. Returns the recorded argv slice.
+// fixtureTokenValue is what the fixture minter writes into the token file. It is a fixture,
+// not a credential; the credential-fill test reads it back through git's own helper chain.
+const fixtureTokenValue = "fixture-token-not-a-secret"
+
 func withEnv(t *testing.T, work string) *[][]string {
 	t.Helper()
 	fixtureHome := t.TempDir()
@@ -97,6 +101,22 @@ func withEnv(t *testing.T, work string) *[][]string {
 		t.Fatalf("mkdir tmpBaseDir: %v", err)
 	}
 	t.Cleanup(func() { tmpBaseDir = oldTmp })
+
+	// role-init's two envelope seams (#1309 item 7): a fixture has no App credential to mint
+	// and no forge to preflight against, so the minter hands back a fixture token FILE (its
+	// path, never a value on stdout) and the preflight is green unless a test says otherwise.
+	oldTok := roleTokenPath
+	roleTokenPath = func(role, owner string) (string, error) {
+		p := filepath.Join(fixtureHome, role+"-token-fixture")
+		if err := os.WriteFile(p, []byte(fixtureTokenValue+"\n"), 0o600); err != nil {
+			return "", err
+		}
+		return p, nil
+	}
+	t.Cleanup(func() { roleTokenPath = oldTok })
+	oldPf := roleInitPreflight
+	roleInitPreflight = func(deskkit.PreflightRequest) error { return nil }
+	t.Cleanup(func() { roleInitPreflight = oldPf })
 
 	calls := &[][]string{}
 	oldExec := execCommand
@@ -414,7 +434,8 @@ func TestRemoveUnpushedCommitsRefuses(t *testing.T) {
 	// A commit ahead of the upstream (origin/main) — unpushed.
 	writeFile(t, filepath.Join(target, "new.txt"), "new\n")
 	mustGit(t, target, "add", "new.txt")
-	mustGit(t, target, "commit", "-m", "unpushed work")
+	// deskwt add (no --role) clears the worktree identity (#1490); supply one to commit.
+	mustGit(t, target, "-c", "user.name=Test", "-c", "user.email=t@e.st", "commit", "-m", "unpushed work")
 
 	resetCalls(calls)
 	if rc := run([]string{"remove", target}); rc != deskkit.ExitRefused {
@@ -492,7 +513,8 @@ func TestRemoveDetachedHeadNotOnRemoteRefuses(t *testing.T) {
 	// HEAD whose commit is reachable from no remote-tracking ref.
 	writeFile(t, filepath.Join(target, "unpushed.txt"), "unpushed\n")
 	mustGit(t, target, "add", "unpushed.txt")
-	mustGit(t, target, "commit", "-m", "unpushed detached work")
+	// deskwt add (no --role) clears the worktree identity (#1490); supply one to commit.
+	mustGit(t, target, "-c", "user.name=Test", "-c", "user.email=t@e.st", "commit", "-m", "unpushed detached work")
 	mustGit(t, target, "checkout", "--detach", "HEAD")
 
 	resetCalls(calls)
@@ -575,6 +597,11 @@ func TestParseRepo(t *testing.T) {
 		"https://github.com/example-org/tracker.git":              "example-org/tracker",
 		"git@github.com:example-org/agents.git":                   "example-org/agents",
 		"ssh://git@github.com/example-org/example-reconciler.git": "example-org/example-reconciler",
+		// ssh HOST-ALIAS remote (issue 1470) and the hybrid an insteadOf/URL-composition
+		// bakes onto it — go-git's RemoteURL returns the RAW value, so the parser must
+		// read owner/repo off both without a forge base prefix mangling it.
+		"git@github-alias:example-org/example-repo.git":                    "example-org/example-repo",
+		"https://github.com/git@github-alias:example-org/example-repo.git": "example-org/example-repo",
 	}
 	for in, want := range cases {
 		got, err := parseRepo(in)

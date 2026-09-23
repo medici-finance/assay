@@ -117,6 +117,19 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+| # | Command | Exit | Output | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | 0 | `2` | 2026-09-18 | worker (implementer) |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | 0 | (no line printed) | 2026-09-18 | worker (implementer) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/... -run '^TestAcquireConcurrentExactlyOneWinner$' -count=1 -v -timeout 60s` | 0 | `--- PASS: TestAcquireConcurrentExactlyOneWinner (0.68s)` — 16 racers, exactly 1 acquired (the test's own `wins != 1` assertion) | 2026-09-18 | worker (implementer) |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | 0 | `tools/desk/cmd/deskdispatch/dispatch.go`, `tools/desk/cmd/deskpost/claimliveness.go`, `tools/desk/cmd/deskpost/comment.go`, `tools/desk/cmd/deskpost/forgeclient.go`, `tools/desk/cmd/deskpost/label.go`, `tools/desk/internal/deskkit/modelstamp.go` — all six appear in §3.1a | 2026-09-18 | worker (implementer) |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | 0 | 14 files (`tools/desk/cmd/deskclaim-ref/claim.go`, `tools/desk/cmd/deskclaim-ref/main.go`, `tools/desk/cmd/deskdispatch/dispatch.go`, `tools/desk/cmd/deskdispatch/main.go`, `tools/desk/cmd/deskpost/claimliveness.go`, `tools/desk/cmd/deskpost/forgeclient.go`, `tools/desk/cmd/desksupervise/actions.go`, `tools/desk/cmd/desksupervise/live.go`, `tools/desk/cmd/fanoutloop/land.go`, `tools/desk/internal/deskkit/claimref.go`, `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/gitcore/claimref.go`, `tools/desk/internal/loopengine/writescope_io.go`) — all accounted for in §3.1b (two are the claim tool itself, two are comment-only mentions, two are library/definition files, the rest are readers) | 2026-09-18 | worker (implementer) |
+
+Supplementary reads behind rows 1–3 (not separate Verify rows, cited in §3.3):
+- S4(a) darwin: `syscall.Statfs_t.Fstypename` on this worktree → `"apfs"`; on the one reachable network mount (a local NFS mount) → `"nfs"` (read-only `statfs(2)`, macOS, arm64).
+- S4(a) linux / S4(b): inside a locally-available Linux container image (no network pull), `uname -a` → `Linux … x86_64`, a Go probe found `statfs("/").Type = 0x794c7630` (overlay, named via Linux's own magic-number table, not a stdlib field), `/.dockerenv` present, `/proc/1/cgroup` = `"0::/\n"` (cgroup v2, no docker/kubepods substring), `/run/.containerenv` absent.
+- S2 network-filesystem attempt: `mkdir`/`touch` against the NFS mount above both → `Permission denied`, despite the mount's ownership matching the measuring account's uid. Recorded as COULD-NOT-CHECK, not as a filesystem defect.
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records
 verdict + date in the stream README table.

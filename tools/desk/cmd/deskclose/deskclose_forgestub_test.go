@@ -157,12 +157,35 @@ func (s *stubRemote) GetIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.Tar
 }
 
 // ListCommentsTyped records the kind and serves the same thread fixture ListComments does.
+//
+// KIND-ACCURATE, matching production (forge_github.go: listCommentsGQL): a number that names
+// the OTHER kind resolves to a null noteable, reported as could-not-check — never as an empty
+// thread. That check applies only when the item at the resolved key IS modelled: a number with
+// no modelled issue/PR object (a bare sign-off / manifest comment host) is not a mismatch, it is
+// simply not modelled either way — the untyped ListComments stub already treats it the same way.
 func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
 	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
 	}
+	key := s.stubKey(fr.Slug(), n, kind)
+	if j, ok := s.items[key]; ok {
+		var w stubIssueWire
+		if err := json.Unmarshal([]byte(j), &w); err == nil {
+			isPR := w.PullRequest != nil
+			switch {
+			case isPR && kind == deskkit.TargetIssue:
+				return nil, deskkit.Unverifiable(fmt.Sprintf(
+					"could-not-check: %s carries no issue at number %d, so its comment thread could not be read",
+					fr.Slug(), n), nil)
+			case !isPR && kind == deskkit.TargetChange:
+				return nil, deskkit.Unverifiable(fmt.Sprintf(
+					"could-not-check: %s carries no pull request at number %d, so its comment thread could not be read",
+					fr.Slug(), n), nil)
+			}
+		}
+	}
 	s.typedThreads = append(s.typedThreads, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
-	return s.listCommentsAt(fr, n, s.stubKey(fr.Slug(), n, kind))
+	return s.listCommentsAt(fr, n, key)
 }
 
 func (s *stubRemote) GetPullRequest(fr deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
@@ -347,6 +370,12 @@ func (s *stubRemote) CloseIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.T
 		return fmt.Errorf("close of the change %s!%d carried state reason %q, which no forge records",
 			fr.Slug(), n, reason)
 	}
+	// A forge that refuses the close (the field 422): the typed close is NOT recorded and the
+	// state is not flipped — nothing about the object changed.
+	if s.failClose[key] {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"HTTP 422: Unprocessable Entity — the close of %s#%d was refused by the forge", fr.Slug(), n), nil)
+	}
 	s.typedCloses = append(s.typedCloses, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
 	return s.closeAt(fr, n, key, reason)
 }
@@ -366,7 +395,13 @@ func (s *stubRemote) closeAt(fr deskkit.ForgeRepo, n int, key, reason string) er
 		}
 	}
 	s.calls = append(s.calls, argv)
-	// Reflect the close so a resumed run sees the item as already closed.
+	// closeNoReflect models the silent-success bug: the close call returned without error, but
+	// the item's state did NOT change (the HTTP layer "succeeded" without doing what was asked).
+	// The state is left open so a read-back after the call sees the item still open.
+	if s.closeNoReflect[key] {
+		return nil
+	}
+	// Reflect the close so a resumed run — and the post-close read-back — sees the item closed.
 	if v, ok := s.items[key]; ok {
 		s.items[key] = strings.Replace(v, `"state":"open"`, `"state":"closed"`, 1)
 	}

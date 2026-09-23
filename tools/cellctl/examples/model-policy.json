@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "deny": [
+    "*opus-5"
+  ],
+  "roles": {
+    "the-desk": {
+      "provider": "anthropic",
+      "tier": "top"
+    },
+    "pr-review-desk": {
+      "provider": "anthropic",
+      "tier": "strong"
+    },
+    "verify-desk": {
+      "provider": "anthropic",
+      "tier": "strong"
+    },
+    "worker-desk": {
+      "provider": "glm",
+      "tier": "mid"
+    },
+    "intake-desk": {
+      "provider": "codex",
+      "tier": "mid"
+    }
+  },
+  "providers": {
+    "anthropic": {
+      "harness": "claude",
+      "tiers": {
+        "top": {
+          "model": "claude-fable-5-1",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "strong": {
+          "model": "claude-opus-4-8[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "mid": {
+          "model": "claude-sonnet-5",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "fast": {
+          "model": "claude-sonnet-5",
+          "effort": "low",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      }
+    },
+    "glm": {
+      "harness": "claude",
+      "tiers": {
+        "top": {
+          "model": "glm-5.3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "strong": {
+          "model": "glm-5.3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "mid": {
+          "model": "glm-5.3-flash[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "fast": {
+          "model": "glm-5.3-flash[1m]",
+          "effort": "low",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      }
+    },
+    "kimi": {
+      "harness": "claude",
+      "tiers": {
+        "top": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "strong": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "mid": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        "fast": {
+          "model": "k3[1m]",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      }
+    },
+    "codex": {
+      "harness": "codex",
+      "tiers": {
+        "top": {
+          "model": "gpt-5.6-terra",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "strong": {
+          "model": "gpt-5.6-terra",
+          "effort": "high",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "mid": {
+          "model": "gpt-5.6-terra",
+          "effort": "medium",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "fast": {
+          "model": "gpt-5.6-terra",
+          "effort": "low",
+          "supported_efforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    }
+  }
+}

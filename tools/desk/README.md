@@ -31,7 +31,7 @@ it on day one.
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
-| `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine` | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
+| `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine`. `--records <thread.json>` additionally derives the PERSISTENT REVIEW-FINDING ledger for one PR (`review-finding/v1`; `deskkit.DeriveLedger`): outstanding findings, per-class rounds against the existing cap, the single arbiter packet, and every could-not-check — so finding IDs and round counts survive a replacement agent | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
@@ -46,6 +46,7 @@ it on day one.
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
+| `deskreconcile` | (no verbs) `--worktree DIR [--issue N] [--dry-run]` — the desk-side board-reconcile writer: fetches origin/main into an isolated worktree, runs `statusgen reconcile --backfill --apply` (the only writer of a stream README Status cell: `todo`/`in-progress` → `implemented`, real merged-PR witness only), and — only when a stream README changed — commits ONLY those README files as ONE commit on the fixed branch `board/reconcile` and opens/UPDATES exactly one draft PR titled `chore(board): reconcile`. Removes the scheduled-CI dependency #1175 is blocked on (no App may push the workflow change). `--dry-run` reports the rows it would flip and writes nothing | outward write (the commit + `deskpr` carry) | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
@@ -1083,6 +1084,35 @@ there was no way to say which stage that was — nor any value to move once you 
   `resume=2` (protecting orphan-PR resumes, the highest-priority source) and `rework=0`.
   `deskboard throughput` prints the same reservation as an extra column beside the width it
   never subtracts from.
+  - **`fanoutloop plan` reconciles every fresh row against the repo's open+merged PRs** (#1339),
+    ONE list read per run, keyed on each PR's `Brief:` trailer (never a branch name). A board cell
+    is unreliable as an eligibility signal — a merged brief reads `todo` until a separate
+    `statusgen reconcile` flips it (#1175) — so a row whose brief already MERGED is printed under a
+    `LANDED-UNRECONCILED` heading (with its PR number) and NEVER dispatched, a row with an OPEN PR
+    is routed to the resume lane, and only unrepresented rows are dispatched. If the repo can't be
+    resolved (`--repo`, else the configured-roots map, else the checkout's origin) or the PR read
+    fails, the fresh lane is HELD with a `FRESH LANE HELD:` line — could-not-check is not
+    no-PR-exists. The PR-list transport is DEFERRED like the orphan sweep — the closed forge
+    surface ships no forge-CLI call and the typed open+merged-changes op is the cutover work — so
+    until it is wired the shipped `plan` performs no forge read and offers rows as before; the
+    classification, repo resolution and one-read reduction are in place, ready to activate.
+  - **The repair (`rework`) floor is ENFORCED at the dispatch boundary** (example-stream/18),
+    OPT-IN via `ASSAY_REPAIR_ADMISSION=on` (recorded policy `repair-admission-v1`). With it on,
+    `deskdispatch` holds a **fresh** dispatch — exit 5, naming the waiting repair — that would
+    drop the free slots to or below the floor while a repair obligation is RUNNABLE (assignable
+    now, from the reconciled `docs/streams/repair-obligations.jsonl`); the repair is admitted. The
+    gate serialises across dispatchers with a compare-and-swap lease in the same claim backend
+    (a process mutex would serialise one host and nothing across two), and its recovery order is
+    reserve → item-claim → release: a crash before the item claim leaks no slot (the item claim is
+    the durable occupancy; the lease is TTL-bounded) and the item-claim CAS makes a resume
+    idempotent, so no worker is duplicated. Unreadable occupancy/demand is a visible
+    could-not-check (exit 6), never a fabricated free slot. **Limits:** it enforces the rework
+    floor only (the resume floor's orphan-PR demand is a forge read outside the gate's offline
+    envelope and stays the planner's advisory line); occupancy is the target repo's claim
+    namespace (a multi-repo pool is counted per namespace, over-counting toward HOLD, the safe
+    direction); and a raw harness launch outside `deskdispatch` is outside this enforcement.
+    **Rollback:** unset `ASSAY_REPAIR_ADMISSION` (or pin the prior binary) — the gate is then
+    inert with no state to unwind, and repair obligations remain readable by the older reader.
 - **The bound.** A width the role's write budget or the shared App token's concurrency ceiling
   cannot carry is **refused (exit 5) naming the maximum it will accept**. Widening buys no
   budget — every meter in the rate limiter applies to the wider pool unchanged — and an **open
@@ -1091,6 +1121,16 @@ there was no way to say which stage that was — nor any value to move once you 
 - **Defaults live in ONE place** (`internal/deskkit/width.go`), with the argument for each number
   beside it and a test pinning the values. The desk skill bodies point at that table instead of
   stating a number that could drift from it.
+- **Self-reported resource vitals — `deskroster set --tokens N --context-pct P --session-age-seconds S
+  --subagents N --model ID`** (example-stream/13), one more field a session can set on its OWN
+  roster beacon alongside `--role`/`--repo …`. Each flag is independent and optional: omit one to
+  leave that field `null` (not collected this tick), pass the literal `unknown` to record
+  `could-not-check` (the source read failed), or pass the real reading — including a measured `0`,
+  which round-trips as a real zero rather than "unset". `desksupervise status --json` joins these
+  onto the holder's claim as the `resource` block, filling what used to be a permanently
+  `could-not-check` `tokens` stub. `--session` (explicit or env-resolved) must resolve to a single
+  path segment — no `/`, no `..` — or `set` refuses (exit 5) rather than silently joining it into
+  the beacon path.
 
 ### Scope: what the board covers
 
@@ -1669,10 +1709,11 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--role R]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
+deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
 deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
@@ -1710,7 +1751,17 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   refused (naming the worktree, or the count). A worktree whose DIRECTORY is gone is listed
   `prunable` (a `rm -rf` without `git worktree remove`) and is **not** an owner for the holder
   question — the reclaim ignores it; the stale entry itself is `deskwt prune`'s to drop, not
-  `add`'s (`add` acquires no second mutation).
+  `add`'s (`add` acquires no second mutation). `add` also settles the new worktree's COMMIT
+  IDENTITY so it never inherits the shared checkout's (#1490): with `--role R` (a token role
+  or a loop name, folded exactly as `role-init` folds it) it stamps that role's App commit
+  identity — the bot-USER-id noreply address, through the same shared resolver `role-init`
+  uses — into the new worktree's own config, refusing (exit 5, before the worktree exists) a
+  role with no roster identity; WITHOUT `--role` it CLEARS `user.name`/`user.email` at
+  worktree scope (an empty value that shadows the shared config, which an `--unset` would
+  fall through to), so a commit there fails closed until an identity is set rather than
+  committing under an unrelated inherited one. The shared checkout's config is never touched
+  either way; the identity (or the cleared state) is echoed to stderr, and stdout stays the
+  bare worktree path.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -1774,6 +1825,45 @@ deliberately weak:
 - Anything else is held: an unreadable roster, an unparseable beacon timestamp, a missing
   admin file. None of them are evidence of death, so none of them reclaim a lock.
 - Every unlock prints the worktree, the lock reason it carried, and why it was judged stale.
+
+### `--reap-dead-sessions` — clearing what a dead session left behind
+
+Retiring the lock is not enough on its own. Once `--reclaim-stale-locks` has unlocked a dead
+session's worktree, Step B's rules decide — and they require HEAD to be an ancestor of the
+remote mainline. A session that died *with work in flight* was sitting on a branch behind an
+open PR, which is by definition **not** an ancestor of the mainline, so Step B reads it as
+active work and holds it. Forever. The same is true of the unlocked half of the population,
+which Step B never distinguished from a live worker's tree in the first place.
+
+That backlog is not merely untidy: git permits exactly **one worktree per branch**, so every
+later resume or dispatch of such a branch fails at worktree-create, and the queue wedges on
+the leftovers it produced.
+
+`--reap-dead-sessions` (default **OFF**) answers a different question from Step B's. Not "has
+this landed?" but "does anything LIVE still own this, and is deleting it lossless?" — two
+independent gates, both of which must hold:
+
+- **Ownership.** A lock naming a session is judged by the *same* `session=<id>` evidence
+  `--reclaim-stale-locks` uses, so one definition of "that session is gone" governs both.
+  A **live** session's lock holds its worktree unconditionally, past any TTL. A worktree with
+  no lock at all is **unowned** — the lock is what a live session takes — and continues to the
+  safety gate, which is then the only thing between it and removal.
+- **Safety.** The tree must be clean with **untracked files counted** — stricter than Step B's
+  tracked-only gate on purpose, because an untracked file is reachable from no commit and this
+  directory is its only copy — *and* HEAD must already be reachable from its own upstream, or
+  (no upstream) from `refs/remotes/origin/main`. Every commit is then on the remote and the
+  directory is the only thing deleted.
+
+On a reap it also deletes the **stale local branch**, when that branch is equal to or behind
+its upstream, with the non-force `git branch -d` — whose own merged-into-upstream refusal is a
+second, independent layer over the ancestry check the sweep already made. Without that, the
+next `deskwt add --branch` collides on the leftover ref instead of on the worktree.
+
+Anything that fails a gate is **listed with the reason that failed it** (dirty / unpushed /
+no-upstream-and-not-on-main / could-not-check) and left alone — never silently skipped. Pair
+it with `--dry-run` first: that prints the whole plan — path, session (or `unowned`),
+`REAP`/`KEEP`, reason — for every registered worktree, including the ones the identity
+refusals put out of reach, and changes nothing at all.
 
 ### The prune loop — one command, two supervisors
 
@@ -3879,7 +3969,13 @@ ordering, the fail-closed contract, and the named-step report. `deskdispatch` de
 worktree to `deskwt add` and invokes the claim tool and the consumer decision script
 `tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
 a claim protocol is two claim protocols, and two claim protocols dispatch the same item
-twice. The claim tool is `deskclaim-ref` whenever it is on PATH (installed with desk-tools),
+twice. On top of the worktree `deskwt add` returns, `deskdispatch` STAMPS the dispatched
+agent's OWN role commit identity (worker/reviewer/verifier, mapped from `--kit`) into it
+worktree-scoped, through the same shared resolver `role-init` uses, so a verifier dispatched
+from a desk checkout commits — and reports its runner — under the verifier App, never the
+desk App the checkout carries (#1490); a `--kit` whose role has no roster identity is refused
+pre-claim (exit 5) naming the kit, role and roster key, and the `worktree-create OK` line
+prints `identity=<slug> <bot-user-id>`. The claim tool is `deskclaim-ref` whenever it is on PATH (installed with desk-tools),
 else the legacy `tools/dispatch-claim.sh` when the resolved root carries it; both speak the
 deskkit exit-code contract and the same `refs/dispatch/<id>` wire protocol, so their verdicts
 pass straight through and the `claim-acquire OK` line names which one ran. The claim child
@@ -4075,6 +4171,36 @@ a fail-open in the tier policy cannot leak a risk-bearing brief into DISPATCH). 
 gather Evidence for such a brief — its member line reads `Evidence-only (never flip-eligible)` —
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
+
+**`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
+`docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
+WAKE RECEIPT on the append-only verify-outcomes sidecar row: the inputs it observed, the blocker
+class, and the checkable condition that must change before re-running is worth a slot. On the next
+`plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at
+scan time in `briefscan.go` against an already-authorized, offline, probe-free reader): a complete
+unchanged receipt is a visible **`wait`** bucket (naming its blocker + next actor), excluded from
+dispatch; a changed relevant input / tool / Verify definition / completed action wakes it; an
+unreadable declared input is **could-not-check**, never rounded up to unchanged; a legacy or
+incomplete receipt stays dispatchable for one classification pass. A partial hold dispatches the
+newly-runnable rows while recording the held rows as explicitly unrun, and no partial result flips
+the brief — a receipt is scheduling evidence only, never a grant of `verified`/`done`.
+
+**A failed verification owes a durable REPAIR OBLIGATION — the OTHER half** (`repair-obligation-v1`;
+`docs/streams/example-stream/repair-obligation-v1.md`). Where a wake receipt records WHY a failed
+verification should not simply re-run, a repair obligation is the durable worker WORK it owes:
+`verifyloop`'s `Land` creates/reconciles a versioned marker in the sibling
+`docs/streams/repair-obligations.jsonl` projection (`cmd/verifyloop/repair.go`; the SAFE dry-run sink
+is the default, the real filing sink is the human-gated cutover), keyed by (repo, brief, source
+receipt, failing rows) so a duplicate delivery or a lost acknowledgement reconciles to the SAME
+obligation via `deskkit.ReconcileObligations`. `fanoutloop` reads the reconciled obligations across
+the configured roots and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or
+dead-lease) in its **rework lane** (`cmd/fanoutloop/repair.go`), the item keyed by the IMMUTABLE
+obligation id so a replacement worker resumes the SAME obligation after a dead lease. The
+load-bearing invariant (`deskkit.RepairObligation.Resolve`): worker completion, issue closure and a
+merge ALONE never resolve an implementation obligation — a merge WAKES independent reverification, and
+only a valid INDEPENDENT pass at the repaired revision (not the worker that produced the repair, not a
+stale revision) resolves it. A merged original deliverable PR is immutable history, so the repair
+opens a fresh follow-up branch (`RequiresFollowUpBranch`/`FollowUpBranch`).
 
 ### Tier→runner config — the `ASSAY_RUNNER_*` table
 

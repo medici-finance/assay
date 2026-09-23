@@ -200,6 +200,53 @@ func TestTraceIsOffByDefaultAndOutputIsUnchanged(t *testing.T) {
 	}
 }
 
+// TestWorktreeCreateFailureScrubsDeskwtsSecretShapedStderr reproduces the exact bypass at
+// dispatch.go's worktree-create failure path: it composed its message with
+// toolMessage(wt.stderr) — preamble stripped, never Scrub'd — and handed it to FailVerbatim,
+// whose message reaches the operator verbatim (DeskError.Error() renders Msg unconditionally,
+// on every DESK_TRACE setting). The existing SPOF test for this contract
+// (TestTraceNeverPrintsACredential, deskkit package) never covers this: it only exercises
+// Fail, whose message is built from Said() (already Scrub'd), never FailVerbatim with a
+// caller-composed message. A live git/deskwt failure CAN print a credential-shaped string on
+// stderr (a rejected push URL, a stale credential helper's own error) and this is the exact
+// path that would carry it to the operator unredacted.
+//
+// deskwt's stderr is stubbed with a SYNTHETIC (never real) secret-shaped GitHub token in an
+// x-access-token push-URL shape — the transport shape Scrub's own test table covers. Must be
+// red before the fix (the secret reaches the message) and green after.
+func TestWorktreeCreateFailureScrubsDeskwtsSecretShapedStderr(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	secret := "ghs_" + strings.Repeat("A", 36)
+	s.replies = []reply{
+		{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"},
+		{match: "deskwt add", code: deskkit.ExitRefused,
+			stderr: realShape("refused: could not push branch wd/example-stream--07: remote: fatal: " +
+				"could not read Username for 'https://x-access-token:" + secret + "@github.com/o/r.git'")},
+	}
+
+	err := cmdDispatch([]string{"example-stream--07", "--root", root, "--kit", "worker",
+		"--tier", "strong", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if err == nil {
+		t.Fatal("a failed worktree create must not dispatch")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("the worktree-create failure message carried the secret verbatim: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "x-access-token") {
+		t.Errorf("scrubbing ate the diagnostic context, not just the secret: %q", err.Error())
+	}
+
+	// DESK_TRACE on must stay just as clean — the trace block also prints the child's stderr.
+	deskkit.SetTrace(true)
+	defer deskkit.ResetTrace()
+	out := captureStderr(t, func() { deskkit.ReportError(os.Stderr, err) })
+	if strings.Contains(out, secret) {
+		t.Fatalf("DESK_TRACE output carried the secret:\n%s", out)
+	}
+}
+
 // asDeskError is errors.As specialised, kept local so the test file's intent reads without
 // an import that exists for one call.
 func asDeskError(err error, target **deskkit.DeskError) bool {

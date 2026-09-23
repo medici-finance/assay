@@ -284,3 +284,89 @@ func lookupPathAuthors(idx map[string]pathAuthors, root, relPath string) (first,
 	}
 	return f, l, true
 }
+
+// evidenceSectionTouchedByOtherIdentity reports whether relPath's "## Evidence" section was ever
+// touched, ANYWHERE in its history, by a commit whose author identity differs from authoringID —
+// as opposed to gitPathLastAuthorIdentity / buildPathAuthorIndex's "most recent commit touching
+// the whole path", a whole-FILE, most-recent-only signal that TWO different shapes of later,
+// same-identity commit can distort:
+//
+//  1. A LATER commit under the SAME identity that never went near the Evidence section at all —
+//     a repo-wide formatting pass, a brief-schema migration, a mechanical rename — resets the
+//     whole-file "last toucher" back to the author and masks a genuinely distinct identity's real
+//     Evidence-adding commit that landed in between.
+//  2. A LATER commit under the SAME identity that DID touch the Evidence section, but only to
+//     append a caveat or addendum after independent verification had already landed (e.g. the
+//     implementer recording a security-review residual next to an already-independently-verified
+//     Evidence row). Restricting the signal to "whoever touched Evidence MOST RECENTLY" answers
+//     this wrong too — a real independent commit still sits in that section's history, it is just
+//     no longer the newest entry.
+//
+// Both shapes are answered by the same question: did an identity OTHER than the author ever show
+// up in this section's history at all — not only in whichever commit happens to be newest. That
+// is the literal reading of security-hardening/27 Task 2 ("same identity + self-labeled
+// independence"): the check exists to catch a brief whose Evidence was NEVER independently
+// touched, not one whose most recent Evidence edit happens to be a same-identity follow-up to a
+// genuine independent verification.
+//
+// Uses `git log -L <start>,<end>:path` to walk every commit touching the line range from the
+// "## Evidence" heading up to (but excluding) the next "^## " heading, or EOF when Evidence is
+// the file's last section. The bounds are resolved OURSELVES, as plain line numbers, against the
+// current (HEAD) content rather than handed to git as a `/regex/,/regex/` pair: git's own
+// regex-pair form hard-fails (exit 128, "regexec() failed to match") when the end regex has no
+// match after the start — exactly the common case of Evidence being a brief's last section, with
+// nothing after it to match `/^## /` against. A plain numeric end has no such failure mode: an
+// end past the file's last line is silently clamped by git to EOF. -L then follows that range
+// through history as content shifts elsewhere in the file, unlike a fixed line range would.
+//
+// ok is false when git is unavailable, the path has no "## Evidence" heading in its current
+// content, or the -L walk fails for any other reason. Callers MUST treat !ok as "could not
+// determine, degrade rather than guess" — NEVER as a pass or as confirmation of either outcome.
+func evidenceSectionTouchedByOtherIdentity(root, relPath, authoringID string) (touched, ok bool) {
+	slashPath := filepath.ToSlash(relPath)
+	content, err := exec.Command("git", "-C", root, "show", "HEAD:"+slashPath).Output()
+	if err != nil {
+		return false, false
+	}
+	lines := strings.Split(string(content), "\n")
+	start := 0 // 1-based line number of the "## Evidence" heading; 0 = not found
+	for i, ln := range lines {
+		if strings.TrimRight(ln, "\r") == "## Evidence" {
+			start = i + 1
+			break
+		}
+	}
+	if start == 0 {
+		return false, false
+	}
+	end := len(lines) // default: through EOF (git clamps an oversized end for us)
+	for i := start; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimRight(lines[i], "\r"), "## ") {
+			end = i // 0-based index i == the 1-based line number just before this heading
+			break
+		}
+	}
+
+	out, err := exec.Command("git", "-C", root,
+		"log", "-L", fmt.Sprintf("%d,%d:%s", start, end, slashPath), "--format=%x01%ae").Output()
+	if err != nil {
+		return false, false
+	}
+	sawAny := false
+	for _, ln := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(ln, "\x01") {
+			id := strings.ToLower(strings.TrimSpace(ln[1:]))
+			if id == "" {
+				continue
+			}
+			sawAny = true
+			if id != authoringID {
+				return true, true
+			}
+		}
+	}
+	if !sawAny {
+		return false, false
+	}
+	return false, true
+}

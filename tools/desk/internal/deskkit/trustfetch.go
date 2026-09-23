@@ -25,6 +25,16 @@ import (
 // IssueTrustQuery fetches an issue's body-edit time and its comment content events.
 const IssueTrustQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){lastEditedAt comments(first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}`
 
+// IssueEventsQuery reads ONE page of an issue's comment content events for the ESCALATION
+// CLOCK — walked to exhaustion under a hard page cap by GitHubForge.IssueContentEvents.
+// Unlike IssueTrustQuery it carries a comment CURSOR (`after:$after`, `endCursor`), because
+// the escalation clock runs only on issues already past the trust gate and must read the
+// WHOLE thread to find the last human response; the trust gate's single-page bound is a
+// deliberate fail-closed and is NOT changed here. It selects only what the clock consumes —
+// a comment's createdAt and its author's rendered identity — and deliberately omits the
+// body's lastEditedAt (the clock does not read it).
+const IssueEventsQuery = `query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){issue(number:$number){comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{createdAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}`
+
 // PRTrustQuery fetches a PR's body-edit time plus all three comment surfaces:
 // conversation comments, reviews, and review comments (via reviewThreads).
 const PRTrustQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){lastEditedAt comments(first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}} reviews(first:100){pageInfo{hasNextPage} nodes{submittedAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{comments(first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}}}`

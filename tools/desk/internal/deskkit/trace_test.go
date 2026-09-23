@@ -239,6 +239,61 @@ func TestTraceNeverPrintsACredential(t *testing.T) {
 	}
 }
 
+// TestFailVerbatimScrubsCallerComposedMessage is the SPOF this file's own header describes:
+// TestTraceNeverPrintsACredential only ever exercises Fail (whose message is built from
+// Said(), already Scrub'd), never FailVerbatim with a message a CALLER composed itself —
+// deskdispatch's worktree-create failure path does exactly that, splicing a tool's raw
+// ToolMessage(stderr) (preamble stripped, NOT scrubbed) straight into the string it hands
+// FailVerbatim. That string becomes DeskError.Msg, and Error() renders Msg unconditionally —
+// ReportError's first line, printed whether DESK_TRACE is on or off. So a credential shape a
+// child happened to print survives to the one line every operator and transcript reads.
+//
+// This test drives that exact shape directly at FailVerbatim, bypassing ToolMessage/Scrub the
+// way the real bug did, with a SYNTHETIC secret standing in for a real one. It must be red
+// before the fix (FailVerbatim stored msg verbatim) and green after (FailVerbatim Scrubs msg).
+func TestFailVerbatimScrubsCallerComposedMessage(t *testing.T) {
+	ResetTrace()
+
+	secret := "ghs_" + strings.Repeat("A", 36)
+	r := Run(helperProcess(t, "ok"))
+	// A caller-composed message that spliced in a child's RAW stderr (ToolMessage, not
+	// SaidAll/Scrub) — the exact bypass shape: unscrubbed tool output, glued into a message
+	// the caller built by hand rather than routed through the scrubbed path.
+	callerComposed := "step worktree-create: `deskwt add thing` failed. deskwt said:\n" +
+		"remote: fatal: could not read Username for 'https://x-access-token:" + secret + "@github.com/o/r.git'"
+
+	err := r.FailVerbatim(ExitUnverifiable, callerComposed)
+
+	// TRACE OFF: ReportError prints exactly err.Error(), unconditionally.
+	SetTrace(false)
+	var offBuf strings.Builder
+	ReportError(&offBuf, err)
+	if strings.Contains(offBuf.String(), secret) {
+		t.Fatalf("FailVerbatim leaked a credential with DESK_TRACE off:\n%s", offBuf.String())
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("DeskError.Error() carried the credential verbatim: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), redactedMarker) {
+		t.Errorf("nothing was marked as redacted, so the secret may simply be gone rather than scrubbed: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "x-access-token") {
+		t.Errorf("redaction ate the diagnostic context as well as the secret: %q", err.Error())
+	}
+
+	// TRACE ON: the plain first line AND the trace block must both stay clean.
+	SetTrace(true)
+	defer ResetTrace()
+	var onBuf strings.Builder
+	ReportError(&onBuf, err)
+	if strings.Contains(onBuf.String(), secret) {
+		t.Fatalf("FailVerbatim leaked a credential with DESK_TRACE on:\n%s", onBuf.String())
+	}
+	if !strings.Contains(onBuf.String(), redactedMarker) {
+		t.Errorf("DESK_TRACE output carries no redaction marker, so the secret may not have reached it at all:\n%s", onBuf.String())
+	}
+}
+
 // awsKeyIDFixture is AWS's own published EXAMPLE key id, assembled from two halves rather than
 // written as one literal. The redactor test needs a value that MATCHES the AKIA pattern, and the
 // outward-write secret scan reads the branch DIFF — so a one-piece literal here would refuse
