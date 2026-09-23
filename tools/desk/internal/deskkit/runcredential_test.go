@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// runcredential_test.go — ResolveRunCredential's three outcomes (forge-neutral/14), which the
+// runcredential_test.go — ResolveRunCredential's three outcomes (forge-neutral brief 14), which the
 // design requires never to be conflated: unbound is a configuration gap (could-not-check),
 // human-bound is a deliberate state (Refused), release-runner proceeds.
 

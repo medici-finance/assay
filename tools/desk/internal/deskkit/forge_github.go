@@ -2418,7 +2418,7 @@ func (g *GitHubForge) PushTransportHint(repo ForgeRepo) PushTransport {
 	}
 }
 
-// --- Run and gate-approval (forge-neutral/14) ---
+// --- Run and gate-approval (forge-neutral brief 14) ---
 
 // ghRunCorrelationAttempts / ghRunCorrelationWait bound RunWorkflow's created-run lookup. The
 // dispatch endpoint answers before the run is listed, so the first list read can legitimately

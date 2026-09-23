@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// forge_run_test.go — the negative paths of forge-neutral/14's run and gate-approval ops,
+// forge_run_test.go — the negative paths of forge-neutral brief 14's run and gate-approval ops,
 // asserted by name (the brief's Verify rows 5 and 6) on top of the golden corpus that pins
 // each op's wire shape. Every case runs against a RECORDED server; nothing here reaches a
 // live forge.

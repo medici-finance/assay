@@ -358,7 +358,7 @@ const (
 	scanEnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 
 	// scanEnvRunCredentials (ASSAY_RUN_CREDENTIALS) is a DESK-only roster value
-	// (forge-neutral/14): the per-repo run-credential binding cmd/deskrun reads to
+	// (forge-neutral brief 14): the per-repo run-credential binding cmd/deskrun reads to
 	// decide who may start a workflow run or clear a deployment gate — a
 	// `human:<name>` token (a deliberate refusal state) or the `release-runner`
 	// role. statusgen consumes it in no form — but the two readers share one
@@ -415,7 +415,7 @@ func scanKnownRosterKeys() []string {
 		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
 		// they share this roster.env, so statusgen must not fail closed on either.
 		scanEnvReviewerVendor, scanEnvVerifierVendor,
-		// DESK-only, recognised-not-applied (forge-neutral/14): cmd/deskrun's
+		// DESK-only, recognised-not-applied (forge-neutral brief 14): cmd/deskrun's
 		// per-repo run-credential binding.
 		scanEnvRunCredentials,
 	}

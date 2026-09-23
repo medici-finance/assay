@@ -3910,7 +3910,7 @@ func (g *GitLabForge) PushTransportHint(repo ForgeRepo) PushTransport {
 	}
 }
 
-// --- Run and gate-approval (forge-neutral/14) ---
+// --- Run and gate-approval (forge-neutral brief 14) ---
 
 // gitlabPipelineDefinition is the one pipeline definition a GitLab project has. RunWorkflow
 // accepts it (or nothing) as the workflow name; a GitHub-shaped workflow file name is refused

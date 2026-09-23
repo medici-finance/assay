@@ -445,7 +445,7 @@ func TestForgeKindForRepoRemoteUnresolvableIsCouldNotCheck(t *testing.T) {
 func TestRosterKnownKeySet(t *testing.T) {
 	roster := goldenRoster()
 	roster[EnvRepoForges] = "example-org/tracker=github,example-org/gitlab-pilot=gitlab"
-	// forge-neutral/14 (Verify row 10): the run-credential key and the release-runner role
+	// forge-neutral brief 14 (Verify row 10): the run-credential key and the release-runner role
 	// binding must both load CLEAN — an unregistered ASSAY_ key fails the whole roster closed.
 	roster[EnvRunCredentials] = "example-org/tracker=release-runner,example-org/gitlab-pilot=release-runner+manual-job," +
 		"example-org/handheld=human:ada"

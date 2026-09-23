@@ -1,7 +1,7 @@
 package deskkit
 
 // runcredential.go — WHO may start a workflow run or clear a deployment gate on a repo
-// (forge-neutral/14). The answer is the per-repo run-credential binding in the roster
+// (forge-neutral brief 14). The answer is the per-repo run-credential binding in the roster
 // (ASSAY_RUN_CREDENTIALS, rosterconfig.go), read here BEFORE any token is minted.
 //
 // WHY A BINDING OF ITS OWN. GitHub grants dispatching a workflow and approving a pending

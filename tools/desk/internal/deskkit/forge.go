@@ -1106,7 +1106,7 @@ func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
 // --- Run and gate-approval ops (RunWorkflow / ApproveGate / RunStatus) ---------------------
 //
 // These three ops start a CI run and clear a deployment gate on it. They were a human action
-// until forge-neutral/14: GitHub ships ONE permission (`actions: write`) for dispatching a
+// until forge-neutral brief 14: GitHub ships ONE permission (`actions: write`) for dispatching a
 // workflow and approving a pending deployment, and the same permission also cancels runs,
 // deletes run logs and disables workflows repo-wide, so no desk App is safely grantable it.
 // The ops therefore run ONLY under the per-repo run credential the roster binds
@@ -1611,7 +1611,7 @@ type Forge interface {
 	// a not-found error the caller may treat as a no-op — the seam does not decide that.
 	DeleteRef(repo ForgeRepo, ref string) error
 
-	// --- Run and gate-approval (forge-neutral/14; consumer: cmd/deskrun) ---
+	// --- Run and gate-approval (forge-neutral brief 14; consumer: cmd/deskrun) ---
 
 	// RunWorkflow starts one run of a workflow on a ref and returns the run it created.
 	// GitHub: `POST …/actions/workflows/{workflow}/dispatches` answers 204 with NO run id, so

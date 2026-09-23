@@ -164,7 +164,7 @@ type glServer struct {
 	// answers 403.
 	pushRule       any
 	pushRuleStatus int
-	// forge-neutral/14's run and gate-approval fixtures: triggerPipeline is the trigger
+	// forge-neutral brief 14's run and gate-approval fixtures: triggerPipeline is the trigger
 	// endpoint's pipeline response (RunWorkflow), pipeline the single-pipeline read
 	// (RunStatus), and deployments the project deployments LIST (ApproveGate's environment
 	// shape). The manual-job shape reads the existing `jobs` fixture; the play and approval
@@ -223,7 +223,7 @@ var (
 	lProtBranches = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_branches$`)
 	lProtTags     = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_tags$`)
 	lPushRule     = regexp.MustCompile(`^/api/v4/projects/[^/]+/push_rule$`)
-	// forge-neutral/14's run and gate-approval routes.
+	// forge-neutral brief 14's run and gate-approval routes.
 	lTrigger     = regexp.MustCompile(`^/api/v4/projects/[^/]+/trigger/pipeline$`)
 	lPipeline1   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines/[0-9]+$`)
 	lJobPlay     = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/[0-9]+/play$`)
@@ -2418,7 +2418,7 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "") },
 		},
 		{
-			// forge-neutral/14 RunWorkflow: ONE trigger POST, the trigger token travelling in the
+			// forge-neutral brief 14 RunWorkflow: ONE trigger POST, the trigger token travelling in the
 			// request's own `token` field and every input as a pipeline variable. The pipeline
 			// comes back in the response, so there is no correlation read.
 			name: "run_workflow", method: "RunWorkflow",

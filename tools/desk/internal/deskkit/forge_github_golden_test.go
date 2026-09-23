@@ -96,7 +96,7 @@ type goldenServer struct {
 	actionsForkPRApproval map[string]any
 	actionsPrivateForkPR  map[string]any
 	vulnReporting         map[string]any
-	// forge-neutral/14's run and gate-approval routes: workflowRuns is the per-workflow runs
+	// forge-neutral brief 14's run and gate-approval routes: workflowRuns is the per-workflow runs
 	// LIST response (RunWorkflow's correlation read), pendingDeployments a run's pending
 	// deployments (ApproveGate's resolve read), and run the single-run read (RunStatus). The
 	// dispatch and approval POSTs answer 204 / 200 with no fixture.
@@ -135,7 +135,7 @@ var (
 	gActionsPrivateForkPR = regexp.MustCompile(`/actions/permissions/fork-pr-workflows-private-repos$`)
 	gVulnReporting        = regexp.MustCompile(`/private-vulnerability-reporting$`)
 
-	// forge-neutral/14's run and gate-approval routes.
+	// forge-neutral brief 14's run and gate-approval routes.
 	gWorkflowDispatch = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/workflows/[^/]+/dispatches$`)
 	gWorkflowRuns     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/workflows/[^/]+/runs$`)
 	gRunPending       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+/pending_deployments$`)
@@ -921,7 +921,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 		},
 		{
-			// forge-neutral/14 RunWorkflow: ONE dispatch POST (ref + inputs), then ONE list read
+			// forge-neutral brief 14 RunWorkflow: ONE dispatch POST (ref + inputs), then ONE list read
 			// narrowed by event, ref, actor and a created-at floor taken BEFORE the dispatch. The
 			// fixture carries one matching run plus a run from BEFORE the floor and a run on
 			// another ref, so the golden pins that the client-side filter drops both.

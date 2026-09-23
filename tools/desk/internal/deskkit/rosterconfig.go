@@ -377,7 +377,7 @@ const (
 	EnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 
 	// EnvRunCredentials (ASSAY_RUN_CREDENTIALS) is the per-repo RUN-CREDENTIAL binding
-	// (forge-neutral/14): who may start a workflow run or clear a deployment gate on a
+	// (forge-neutral brief 14): who may start a workflow run or clear a deployment gate on a
 	// repo, read by cmd/deskrun through ResolveRunCredential (runcredential.go) BEFORE any
 	// token is minted. Comma-separated entries, one per repo, full `owner/name` slug only:
 	//
@@ -483,7 +483,7 @@ func knownRosterKeys() []string {
 		EnvReviewerVendor, EnvVerifierVendor,
 		// EnvRunCredentials (ASSAY_RUN_CREDENTIALS) is CONSUMED here: parseConfig lands it
 		// on cfg.RunCredentials and cmd/deskrun reads it through ResolveRunCredential
-		// (forge-neutral/14). statusgen recognises it only.
+		// (forge-neutral brief 14). statusgen recognises it only.
 		EnvRunCredentials,
 	}
 }
@@ -1499,7 +1499,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	recordExt(&cfg, EnvRepoForges, vals[EnvRepoForges], repoForgesIssue)
 
 	// --- run-credential binding (ASSAY_RUN_CREDENTIALS), an EXTENSION key
-	// (forge-neutral/14) — parsed by parseRunCredentials (runcredential.go). ---
+	// (forge-neutral brief 14) — parsed by parseRunCredentials (runcredential.go). ---
 	var runCredsIssue extAccumulator
 	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], &runCredsIssue)
 	recordExt(&cfg, EnvRunCredentials, vals[EnvRunCredentials], runCredsIssue)

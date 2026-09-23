@@ -1,5 +1,5 @@
 // deskrun — start a workflow run, or clear a deployment gate on one, under the repo's
-// roster-bound RUN CREDENTIAL (forge-neutral/14).
+// roster-bound RUN CREDENTIAL (forge-neutral brief 14).
 //
 // WHY THIS EXISTS. Starting a release run or approving a gated deployment used to be done
 // with whoever's ambient forge CLI happened to be logged in, because GitHub grants both

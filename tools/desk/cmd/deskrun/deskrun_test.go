@@ -1,6 +1,6 @@
 package main
 
-// deskrun_test.go — the verb's suite (forge-neutral/14 Verify rows 7, 8, 9 and the
+// deskrun_test.go — the verb's suite (forge-neutral brief 14 Verify rows 7, 8, 9 and the
 // row-12 mutation target).
 //
 // Two instruments. A RECORDING fake forge drives the positive dispatch/approve cases and every
