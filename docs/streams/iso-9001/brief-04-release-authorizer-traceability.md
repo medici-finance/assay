@@ -142,27 +142,36 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
-### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+### Non-implementer verifier run — VERIFY: BLOCKED — 2026-09-23 opus-5.5-verifier
 
-| # | Command | Expected | Observed (exit + key output) | Date Runner |
-|---|---------|----------|------------------------------|-------------|
-| 1 | git grep -n 'authorized-by' -- .github/workflows/release.yml | exit 0 (dereference, inverts) — authorizer field now present | exit 0 — matches at lines 1335 and 1342 (labelled authorized-by line + body helper) | 2026-09-23 opus-5.5-verifier |
-| 2 | git grep -nF 'dispatched by $ACTOR' -- .github/workflows/release.yml | exit 0 — existing actor interpolation in tag message still stands | exit 0 — line 211 emit message "assay $v (dispatched by $ACTOR)" | 2026-09-23 opus-5.5-verifier |
-| 3 | git grep -nF 'environment: release' -- .github/workflows/release.yml | exit 0 — gated environment carrying the real approval untouched | exit 0 — line 790 environment: release | 2026-09-23 opus-5.5-verifier |
-| 4 | cd tools/desk && go test ./internal/deskkit/ -count=1 -run TestReleaseAuthorizerStampedFromReleaseWorkflow | exit 0 — source-coupling test passes against edited workflow | exit 0 — ok deskkit 0.508s | 2026-09-23 opus-5.5-verifier |
-| 5 | cd tools/desk && go test ./internal/deskkit/ -count=1 -run TestVersionStampedFromReleaseWorkflow | exit 0 — pre-existing stamp test still passes | exit 0 — ok deskkit 0.339s | 2026-09-23 opus-5.5-verifier |
-| 6 | cd tools/desk && go test ./internal/deskkit/ -count=1 -run TestReleaseAuthorizerStampMissingIsCaught | exit 0 — mutation positive control: removal reddens, presence passes | exit 0 — ok deskkit 0.334s | 2026-09-23 opus-5.5-verifier |
-| 7 | git grep -cE -e 'signature' -e 'attestation' -- .github/workflows/release.yml | exit 0, non-zero count — who-authorized vs who-built note in source | exit 0 — count 2 | 2026-09-23 opus-5.5-verifier |
-| 8 | git grep -c 'NOT CAUGHT' -- .github/workflows/release.yml | exit 0, count at least 6 — release-blocking mutation assertions untouched | exit 0 — count 7 | 2026-09-23 opus-5.5-verifier |
-| 9 | cd tools/desk && go test ./internal/deskkit/ -count=1 | exit 0 — full kit suite passes | exit 0 — ok deskkit 88.926s | 2026-09-23 opus-5.5-verifier |
-| 10 | cd statusgen && go run . --root .. --lint | exit 0 — tree lints clean | exit 0 — LINT: PASS (NOTICEs concern other streams, none for iso-9001/04) | 2026-09-23 opus-5.5-verifier |
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | git grep -n 'authorized-by' -- .github/workflows/release.yml | exit 0 — field present (DEREFERENCE inverts the authoring-time absence) | exit=0; 2 matches at release.yml:1335 (comment) and :1342 (the python3 body emitting the labelled authorized-by line). Field present. PASS | 2026-09-23 | opus-5.5-verifier |
+| 2 | git grep -nF 'dispatched by $ACTOR' -- .github/workflows/release.yml | exit 0 — the existing actor interpolation still stands | exit=0; match at release.yml:211 `emit message "assay $v (dispatched by $ACTOR)"`. Single actor source reused. PASS | 2026-09-23 | opus-5.5-verifier |
+| 3 | git grep -nF 'environment: release' -- .github/workflows/release.yml | exit 0 — gated environment untouched | exit=0; match at release.yml:790 `environment: release`. Untouched. PASS | 2026-09-23 | opus-5.5-verifier |
+| 4 | cd tools/desk && go test ./internal/deskkit/ -count=1 -v -run TestReleaseAuthorizer-StampedFromReleaseWorkflow | exit 0 — source-coupling test passes | exit=0; ran with -v: `--- PASS` for the authorizer coupling test (0.00s). Test actually executed. PASS | 2026-09-23 | opus-5.5-verifier |
+| 5 | cd tools/desk && go test ./internal/deskkit/ -count=1 -v -run TestVersionStamped-FromReleaseWorkflow | exit 0 — the pre-existing neighbour stamp test still passes | COULD-NOT-CHECK. exit=0 but `--- SKIP`: the named test SKIPPED — "fixture ../../../../.github/workflows/release-desk.yml not present in this tree". The workflow file in this repo is release.yml; there is no release-desk.yml, so this test does not run. `ok deskkit` exit 0 records a skip, not a run — not a pass (addendum 5b). | 2026-09-23 | opus-5.5-verifier |
+| 6 | cd tools/desk && go test ./internal/deskkit/ -count=1 -v -run TestReleaseAuthorizer-StampMissingIsCaught | exit 0 — mutation positive-control passes | exit=0; ran with -v: `--- PASS` for the missing-authorizer positive-control test (0.00s). Test actually executed. PASS | 2026-09-23 | opus-5.5-verifier |
+| 7 | git grep -cE -e 'signature' -e 'attestation' -- .github/workflows/release.yml | exit 0; non-zero count | exit=0; count=2. The who-authorized-vs-who-built note is in the workflow source. PASS | 2026-09-23 | opus-5.5-verifier |
+| 8 | git grep -c 'NOT CAUGHT' -- .github/workflows/release.yml | exit 0; count at least 6 | exit=0; count=7 (>=6). The release-blocking mutation assertions are untouched. PASS | 2026-09-23 | opus-5.5-verifier |
+| 9 | cd tools/desk && go test ./internal/deskkit/ -count=1 | exit 0 — full kit suite passes | exit=0; `ok` deskkit (52.99s), no failures. NB: the suite includes the version-stamp test that skips (row 5); a skip does not fail the suite, so this row's exit-0 expectation holds, but the suite does NOT execute that neighbour guard. PASS (on its own exit-0 terms) | 2026-09-23 | opus-5.5-verifier |
+| 10 | cd statusgen && go run . --root .. --lint | exit 0 — tree lints clean | exit=0; final line `LINT: PASS`. Two advisory NOTICEs name this brief (recorded verbatim, paths made repo-relative): (a) `NOTICE: [risk-files-crossread] docs/streams/iso-9001/brief-04-release-authorizer-traceability.md: brief assay:assay:iso-9001:04 answers all four risk questions "no" but declares path ".github/workflows/release.yml", which matches the security-path trigger ".github/workflows/" for medici-finance/assay. This flags the INPUTS to the gate derivation — the hand-written risk answers — not the derivation, which correctly computes gate:model from four "no"s. The question is whether those answers are right for a brief that touches .github/workflows/: if the path is genuinely read-only or non-sensitive the answers stand; otherwise correct the risk answer so the human gate fires.` (b) `NOTICE: [verify-obligation] brief assay:assay:iso-9001:04 (docs/streams/iso-9001/brief-04-release-authorizer-traceability.md) owes a +flow Verify-row obligation — the change spans more than one component (declared paths cross top-level directories, or the task names a shared surface), so a row exercising the cross-component path end to end is owed — but no Verify row declares one. Add the obligation token to the relevant row's Class cell (e.g. check +flow), or if the row genuinely does not apply, say why in review.` Lint exit is 0 (NOTICEs are advisory). PASS on exit code. | 2026-09-23 | opus-5.5-verifier |
 
-Execution witness: statusgen verifyrun ran all 10 rows against merged main and reported
-row 1..10 all pass (exit 0); witness rows appended to the brief's ## Evidence in the verifier
-worktree (kept local, not landed here).
+RISK-VALUE (kit §4 — enumerate → rank → derive). The verifier trigger fired: the
+diff touches a risk-classed path (.github/workflows/release.yml, a security-path
+trigger — see row 10 NOTICE (a)). Enumeration over the diff scope (the `resolve`
+job authorizer output + the create-release body helper in
+.github/workflows/release.yml, and the source-coupling test in
+tools/desk/internal/deskkit/) found no numeric constant/threshold/tolerance/
+ratio/timeout/limit introduced or changed; the tag-format gate
+`^v[0-9]+\.[0-9]+\.[0-9]+$` and the "at least 6 NOT CAUGHT" count are pre-existing
+and not touched by this diff. The values this diff introduces are two
+authority-binding string literals:
 
-RISK-VALUE: DERIVED — authorizer = "$ACTOR (dispatch actor)" @ .github/workflows/release.yml:216 and = "not recorded (tag-push path: the tag pre-exists the run, so there is no dispatch actor)" @ .github/workflows/release.yml:239 — the one authority binding the diff introduces. Dispatch-path value reuses the single pre-existing github.actor source (ACTOR resolved once at line 173, same source as the tag message at line 211), so there is no second independently-derived copy; push-path value is an explicit not-recorded string, never blank and never the pushing token identity, matching the brief facts. It rides into the body via env: (RELEASE_AUTHORIZER at line 1295, read by the python3 helper from os.environ at line 1342), not a ${{ }} splice inside run:. Reversible/low-consequence: the release notes body is editable and the gated environment approval — not this body line — is the authority (brief Context), so the body line is a readable copy. Enumeration over the diff scope (the resolve authorizer output, the env passthrough, the body line, and the source-coupling tests) found NO numeric constant, bound, threshold, tolerance, ratio, timeout, or limit introduced or changed by this diff; the pre-existing tag-format regex (line 197) is untouched by this brief and out of scope.
+- RISK-VALUE: DERIVED — authorizer(dispatch-path) = "$ACTOR (dispatch actor)" @ .github/workflows/release.yml:216 — the brief requires reusing the single already-resolved actor source (github.actor, the same one the tag message interpolates) and naming it as the dispatch actor. The literal reuses $ACTOR and labels the path; correct. Reversible (release-body text is editable post-publish; the irreversible act — cutting the release — is out of this diff's scope, brief `irreversible: no`).
+- RISK-VALUE: DERIVED — authorizer(tag-push-path) = "not recorded (tag-push path: the tag pre-exists the run, so there is no dispatch actor)" @ .github/workflows/release.yml:239 — the brief requires an explicit not-recorded value on the tag-push path, never blank (a blank reads as "nobody", a stronger claim than the truth) and never the pushing token's identity. The literal is explicit, non-blank, and names no token identity; correct.
 
+Re-run after review: row 5 test skips (fixture points at a missing workflow file) and row 10 NOTICEs recorded; both filed for the stream owner.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). The `irreversible: no` answer is
