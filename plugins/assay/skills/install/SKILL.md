@@ -4,12 +4,13 @@ description: >-
   Turnkey installer for the Assay methodology — invoke it and it self-installs the whole project
   setup into the target repo. Use right after adding the plugin from the marketplace, when the ask
   is "install Assay here", "set Assay up in this repo", "run the turnkey install", "bootstrap the
-  board/desks", or a cold adopter's first boot. It DETECTS the target repo, runs `statusgen init`
-  for the scaffold, acquires + sha256-verifies a version-PINNED statusgen binary from the umbrella
-  releases (never floating/`latest`), wires CI + the main-guard, and PROVES the install
+  board/desks", or a cold adopter's first boot. It DETECTS the target repo, acquires +
+  sha256-verifies a version-PINNED statusgen binary from the umbrella releases over plain HTTPS
+  (never floating/`latest`, no forge CLI needed — GitHub or GitLab), runs `statusgen init` for the
+  scaffold, wires CI + the main-guard, and PROVES the install
   (`--lint` == 0, `--version` prints the pinned tag). It is idempotent and REFUSES-not-clobbers an
   already-adopted repo, opens DRAFT PRs only, and escalates every never-autonomous step (reviewer
-  App, repo/permission grants, merge/push/tag, private-repo CI auth) to a human. Unix-first
+  identity, repo/permission grants, merge/push/tag, private-repo CI auth) to a human. Unix-first
   (mac/linux), with a native-Windows acquisition arm (PowerShell bootstrap + Go-native
   `deskinstall`, same sha256-verify-or-refuse). For the step-by-step PRIMITIVE detail and the
   scenario routing it delegates to the `adopt` skill + docs/adopting-assay.md.
@@ -22,15 +23,72 @@ scenario and holds the PRIMITIVEs and human-gates so a human or agent can hand-w
 `assay:install` is the *installer*: invoke it and it self-installs the whole project setup, driving
 each step itself and stopping only at the never-autonomous escalation points.
 
-The orchestration logic here is **Claude-Code-driven and OS-agnostic**. The single OS-specific
-piece is the statusgen *binary acquisition* in step 3 — Unix (mac/linux) via `gh release download`,
-and a native-Windows arm via the PowerShell bootstrap + Go-native `deskinstall` (see **Scope**).
-Everything else runs identically on every platform.
+The orchestration logic here is **Claude-Code-driven, OS-agnostic and forge-neutral**. The single
+OS-specific piece is the statusgen *binary acquisition* in step 2 — Unix (mac/linux) via a plain
+HTTPS fetch verified against the pin file (`scripts/assay-install.sh acquire`, shipped in this
+plugin), and a native-Windows arm via the PowerShell bootstrap + Go-native `deskinstall` (see
+**Scope**). Everything else runs identically on every platform, and on GitHub or GitLab — the
+per-forge differences are named in **Per-forge prerequisites** and **CORE primitives per forge**
+below.
 
 This skill does **not** fork the install steps. It DELEGATES the PRIMITIVE detail — exact commands,
 per-step Verify, the failure modes — to **`assay:adopt`** and the full runbook at
 **`docs/adopting-assay.md`** in your `assay` checkout. Read those for the ground truth; this skill
 is the turnkey orchestration over them.
+
+The helper script is `<bundle>/scripts/assay-install.sh`, where `<bundle>` is this plugin's root
+(the directory holding `skills/` and `paired-versions.yaml`). Its subcommands — `classify`, `pin`,
+`acquire`, `rehearse` — are the executable form of the steps below; `--help` prints the contract.
+
+## Per-forge prerequisites — two distinct principals
+
+The invariant is **two distinct principals**: a *human identity* that authorizes (blesses, signs
+off a `gate:human` brief, merges) and an *automation identity* the fleet runs as. They must never
+be the same principal, on any forge — under one shared identity every human gate is
+self-satisfiable. How each principal is provisioned differs per forge; the invariant does not:
+
+| Principal | GitHub mechanism | GitLab mechanism | Roster entry it produces |
+|---|---|---|---|
+| Human identity | a personal account the automation never holds credentials for | a personal user the automation never holds credentials for | its login in `ASSAY_BLESS_LOGIN` / `ASSAY_TRUSTED_LOGINS` |
+| Automation identity (implementer and the other roles) | a GitHub App per role, created and installed by a human | a group service account per role, provisioned by a human running `tools/create-fleet-gitlab.sh` | `<role>=github:<slug>[:<id>]` in `ASSAY_TRUSTED_BOT_SLUGS` |
+| Reviewer identity (a separate automation principal) | a separate reviewer GitHub App | a separate reviewer service account | `reviewer=gitlab:<username>[:<id>]` (GitLab) or `reviewer=github:<slug>[:<id>]` (GitHub) |
+
+The entry grammar, the per-forge renderings and the corroboration rule are defined ONCE in
+`docs/streams/forge-neutral/identity.md` (in your `assay` checkout) — read them there; this table
+does not restate them. The GitHub half is walked in `docs/adopting-assay.md` (*Prerequisite: two
+distinct principals*), the GitLab half in `docs/adopting-assay-gitlab.md` §1–§2.
+
+## Optional forge CLIs — never required
+
+`gh` (GitHub) and `glab` (GitLab) are **optional on their own forge, and only for convenience
+reads a human might do** — listing labels, eyeballing a pipeline, reading a release page. **No
+install step requires either one.** Acquisition is a plain HTTPS fetch; every forge write is made
+by a desk verb or is a human act on the forge's own settings pages. An install that stops
+because a forge CLI is absent is a defect in this skill — report it; never install a CLI to route
+around it.
+
+## CORE primitives per forge
+
+The eight CORE primitives (`adopt` §2) plus `create-labels`, each marked forge-neutral or not. Where
+one is not, the forge-specific act is named per forge together with the desk verb that makes or
+reads it back — never a forge CLI. A cell that says *human* is on the NEVER-autonomous list below.
+Every file the flow writes lands on a branch and reaches `main` by a draft PR/MR opened with
+`deskpr create`, which resolves the forge itself.
+
+| Primitive | Forge-neutral? | GitHub | GitLab | Desk verb / tool |
+|---|---|---|---|---|
+| `install-statusgen` | yes | HTTPS fetch + pin-file sha256 (step 2) | identical — the release assets are public; no GitLab account or CLI is involved | `assay-install.sh acquire` (not a forge operation) |
+| `scaffold-streams` | yes | files written by `statusgen init` | identical | `statusgen init` |
+| `scaffold-registers` | yes | files written by `statusgen init` | identical | `statusgen init` |
+| `add-statusgen-ci` | no — delegated | `init` writes the GitHub workflow | `init` writes `.gitlab-ci.yml`; the runner, `STATUSGEN_PUSH_TOKEN` and `STATUSGEN_ROSTER_ENV` are *human* (`docs/adopting-assay-gitlab.md` §2a, §2c, §2e) | `statusgen init` (forge from `origin`, or `--forge`) — never re-authored here |
+| `install-desk-plugin` | yes (harness-specific, not forge-specific) | Claude Code `/plugin`; Cursor / Codex copy the skills | identical | none |
+| `install-main-guard` | the client hook, yes; its server-side counterpart, no | `.githooks/pre-commit` + `core.hooksPath`; server side: a ruleset / branch protection on `main` — *human* | the same hook; server side: a protected branch with a push-access list — *human*, set by `tools/create-fleet-gitlab.sh` | the hook is plain git; `repohardenguard` reads the server-side setting back on either forge (a per-forge checklist) |
+| `first-board` | yes | `statusgen --root <target> --lint` then `statusgen --root <target>` | identical | `statusgen` |
+| `setup-reviewer-app` (the reviewer grant) | no | a separate reviewer GitHub App with the three write duties, the CI reads and `administration: read` — *human* | a separate reviewer service account at the role in `docs/adopting-assay-gitlab.md` §1 — *human*, via `tools/create-fleet-gitlab.sh` | `deskroster preflight` (run by `deskboot`) reads the grant back — `app-scopes-vs-duties` on GitHub, the token-custody check on GitLab |
+| `create-labels` | no | a one-off at the repo's label settings — *human/admin*; the list is `docs/adopting-assay.md` §3 `create-labels` | created by `tools/create-fleet-gitlab.sh` (same names, colours and descriptions) — *human* | `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` and files unstamped when one is missing. No desk verb provisions the whole set yet (#1559) |
+
+`tools/create-fleet-gitlab.sh` and the two runbooks live in your `assay` checkout. Nothing in the
+table is performed by `gh` or `glab`.
 
 ## Before anything: is this even installable here?
 
@@ -57,25 +115,26 @@ alone — the installer's bias is to refuse and report, never to clobber and hop
 Identify the repo the adopter is standing Assay up in (the current repo root unless the human names
 another). **Confirm with the human before writing anything** — name the absolute target path and the
 detected platform (`os-arch`, e.g. `darwin-arm64`) back to them. Do not scaffold a repo you only
-inferred. Also confirm the adopter has a **separate human GitHub account** distinct from the
-automation account before proceeding — the two-identity floor every human gate rests on (`adopt`'s
-*Prerequisite: two GitHub accounts*); do not proceed under one shared identity.
+inferred. Name the target's **forge** too (from its `origin` remote — a GitHub or GitLab host), and
+confirm the adopter has the **two distinct principals** of **Per-forge prerequisites** above — a
+human identity separate from the automation identity; do not proceed under one shared identity.
 
-### 2. Scaffold — use `statusgen init`, never reinvent it
-Run **`statusgen init --root <target>`** (the umbrella `statusgen` subcommand). It already emits a
-**lint-clean tree** — `docs/streams/` plus the registers — a bootstrap-safe CI workflow, AND the
-day-one agent-instruction files at the target root (`CLAUDE.md` with the ten invariants + the CI
-recipe + an unanswered bindings checklist, and an `AGENTS.md` pointing at it). Every target is
-skipped if it already exists, so an adopter's own `CLAUDE.md` is never clobbered. The
-installer USES this; it does not hand-author a second copy of the scaffold. If `statusgen init` is
-not yet available (an older pinned binary predates the subcommand), fall back to the `adopt`
-runbook's `scaffold-streams` / `scaffold-registers` PRIMITIVEs and say you did so — do not fake the
-scaffold.
+Then run the refuse-not-clobber check mechanically: `bash <bundle>/scripts/assay-install.sh
+classify --root <target>` prints `fresh`, or `partial` with what is present, or REFUSES on
+`adopted` (exit 5 — the first-class "already adopted; nothing to install" outcome above).
 
-### 3. Acquire + pin + verify statusgen (Unix mechanism)
+**Rehearse first — the dry run.** `bash <bundle>/scripts/assay-install.sh rehearse --target
+<target>` runs the autonomous half of steps 2–6 end to end against a SCRATCH COPY of the target:
+classify → pin → acquire + verify → `statusgen init` → prove. It prints whether a forge CLI is on
+`PATH` (it needs neither), writes nothing to the real target, pushes nothing and opens no PR. A
+rehearsal that does not end `rehearsal PROVEN` is a reason to stop before touching the target.
+
+### 2. Acquire + pin + verify statusgen (Unix mechanism)
 Version-PINNED, **sha256-verified**, never floating and never `latest`. This is the channel-E
 `.assay-versions` mechanism the `adopt` runbook's `install-statusgen` PRIMITIVE defines; the
-installer wraps it:
+installer wraps it. It runs BEFORE the scaffold, because the scaffold is `statusgen init` and needs
+the verified binary. **No forge CLI is involved, on either forge**: the release assets are public
+and fetched over plain HTTPS.
 
 1. **Resolve the paired tag.** Read the running plugin's version from
    `plugins/assay/.claude-plugin/plugin.json`, then resolve the statusgen tag it was built and
@@ -87,33 +146,59 @@ installer wraps it:
    not satisfy a `darwin-arm64` host.
 3. **Write/confirm the pin line** in the target's root `.assay-versions`, in channel-E form
    `statusgen-<platform> <tag> <sha256>`, taking the tag and the per-platform sha256 from the
-   pairing manifest. Re-pin (never edit in place silently) so an upgrade shows in a diff. If the
-   line is already present and correct, leave it.
-4. **Download the pinned tag**: `gh release download <tag> --repo <umbrella-releases> --pattern
-   "statusgen-<platform>"`. The `<umbrella-releases>` value is the release home named in
-   `paired-versions.yaml` — resolve it from there, do not hardcode it in prose.
-5. **Verify the hash**: `shasum -a 256 statusgen-<platform>` and compare to the pinned digest.
-   **REFUSE on mismatch** — a hash mismatch is a hard stop, not a warning; do not install a binary
-   whose bytes do not match the pin. A pinned sha256 is the one thing a re-tagged release cannot
-   silently swap out.
-6. **Install**: `install -m 0755 statusgen-<platform> <bindir>/statusgen`.
+   pairing manifest: `assay-install.sh pin --manifest <bundle>/paired-versions.yaml --pins
+   <target>/.assay-versions`. An identical line is left alone; a scaffold placeholder is replaced;
+   a DIFFERENT real line is refused — a re-pin is a reviewed change, never a silent in-place edit.
+4. **Fetch and verify**: `assay-install.sh acquire --pins <target>/.assay-versions --dest <bindir>
+   --release-home <release_home>` — `<release_home>` is the one named in `paired-versions.yaml`
+   (resolve it from there, do not hardcode it in prose). It fetches
+   `https://github.com/<release_home>/releases/download/<tag>/statusgen-<platform>` with `curl`
+   (else `wget`), computes the sha256, and compares it to the digest **in the pin file**. The pin
+   file is the single source of the expected value: nothing fetched from the release home — its
+   `checksums.txt` included — is ever the comparison's source, or a substituted asset could vouch
+   for itself.
+5. **REFUSE on mismatch, and on an unreadable digest.** A hash mismatch is a hard stop, not a
+   warning (exit 5, nothing installed). So is a digest that **cannot be read** — no pin line for
+   the platform, a placeholder, a malformed value, two competing lines (exit 5, nothing
+   installed). A failed fetch, or a host with no sha256 tool, is could-not-check (exit 6, nothing
+   installed). There is no "verification unavailable, continuing" path: a pinned sha256 is the one
+   thing a re-tagged release cannot silently swap out.
+6. **Install** happens only after the digest matched: the verified bytes are placed at
+   `<bindir>/statusgen`, and nowhere before that.
 
 If the pin line for the fully detected platform is **absent**, REFUSE rather than guess a platform.
 
-### 3b. (Optional) Acquire the desk-tools — same mechanism
+### 2b. (Optional) Acquire the desk-tools — same mechanism
 **Only if the adopter runs the automated desk pipeline.** The desk-role binaries (`deskboard`,
 `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) are the desk skills' primary path — they carry
-the guards, write-budgets, and roster + trust gates; without them the desk skills fall back to raw
-`gh`/`git` (works, loses the guards). This is a **skippable** step, not part of the minimal install.
+the guards, write-budgets, and roster + trust gates, and they are how the forge writes in
+**CORE primitives per forge** are made on either forge. This is a **skippable** step, not part of
+the minimal install.
 
-Acquisition is **channel-E, identical to step 3** — resolve the tag + per-platform sha256 from the
+Acquisition is **channel-E, identical to step 2** — resolve the tag + per-platform sha256 from the
 `desk-tools:` section of `paired-versions.yaml` (same tag as statusgen — cut from the same release),
-`gh release download "$tag" --pattern "desk-tools-<platform>.tar.gz"`, `shasum -a 256` → compare →
-**REFUSE on mismatch**, extract, install the binaries to `PATH`. The only shape difference is the
-artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
-(`~/.config/assay/`) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+then `assay-install.sh pin --kind desk-tools …` and `assay-install.sh acquire --kind desk-tools …`:
+the same HTTPS fetch, the same pin-file comparison, **REFUSE on a mismatch or an unreadable
+digest**, and only then extract and install the binaries to `PATH`. The only shape difference is
+the artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
+(`../../references/desk-shell.md` §Config home) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
 
 **Verify:** `deskboard --version` prints and its `assay-config:` echo shows the roster present.
+
+### 3. Scaffold — use `statusgen init`, never reinvent it
+Run **`statusgen init --root <target>`** (the umbrella `statusgen` subcommand, from the binary
+step 2 verified). It already emits a
+**lint-clean tree** — `docs/streams/` plus the registers — a bootstrap-safe CI workflow, AND the
+day-one agent-instruction files at the target root (`CLAUDE.md` with the ten invariants + the CI
+recipe + an unanswered bindings checklist, and an `AGENTS.md` pointing at it). Every target is
+skipped if it already exists, so an adopter's own `CLAUDE.md` is never clobbered. The
+installer USES this; it does not hand-author a second copy of the scaffold. `init` picks the CI
+half from the target's forge — a GitHub workflow for a GitHub `origin`, a `.gitlab-ci.yml` for a
+GitLab one, and neither (with a note saying why) when the host names neither forge; `--forge
+github|gitlab` states it explicitly. It never overwrites a file that exists, so the
+`.assay-versions` step 2 wrote is kept. If `statusgen init` is not yet available (an older pinned
+binary predates the subcommand), fall back to the `adopt` runbook's `scaffold-streams` /
+`scaffold-registers` PRIMITIVEs and say you did so — do not fake the scaffold.
 
 ### 4. Wire CI — confirm, don't re-author
 `statusgen init` already emitted the CI workflow (a `lint`-on-PR half and a regenerate-on-main
@@ -128,7 +213,7 @@ load-bearing properties to confirm:
   report, not to silently patch around.
 - **Acquisition channel matches this install.** The emitted workflow assumes a `statusgen/` *source
   tree* (`cd statusgen && go run .`). An adopter installing the pinned *release binary* (the normal
-  case, step 3) swaps those `go run` steps for `statusgen --root .` against the binary named in
+  case, step 2) swaps those `go run` steps for `statusgen --root .` against the binary named in
   `.assay-versions`, exactly as the workflow's own header comment instructs. Confirm the running
   channel matches; do not leave a `go run` workflow on a repo with no `statusgen/` source.
 
@@ -155,12 +240,17 @@ ruleset does not bypass another. Validate the workflow YAML **and** that the bra
 actually lists the App — a job can pass YAML review yet be rejected at runtime by a ruleset that
 never got the bypass. With protection off, the regen pushes as the automation account and no
 board-writer App is needed. App creation + the ruleset-bypass edit are **human-gated** (see the
-NEVER-autonomous list below).
+NEVER-autonomous list below). **On GitLab** the same role is a board-writer service account on the
+protected branch's push-access list, and the regen job pushes with the `STATUSGEN_PUSH_TOKEN`
+the scaffolded `.gitlab-ci.yml` names — both human-provisioned (`docs/adopting-assay-gitlab.md`
+§2c).
 
 ### 5. Install the desk plugin + main-guard (scenario-appropriate)
 Apply `install-desk-plugin` and `install-main-guard` per the `adopt` runbook, as the scenario calls
 for. The plugin surfaces the skills namespaced (`assay:<name>`); the main-guard is optional-but-
-recommended client-side hardening that refuses un-flagged `main` commits.
+recommended client-side hardening that refuses un-flagged `main` commits — a plain git hook,
+identical on either forge. Its server-side counterpart differs per forge and is a human act; see
+**CORE primitives per forge**.
 
 ### 6. Prove the install
 The install is not done until it is PROVEN:
@@ -197,10 +287,11 @@ tamper-proof, atomic, or a stronger guarantee than the mechanism delivers.
 skill did the autonomous parts; it **stopped at every act that mints an identity, grants a
 permission, or authorizes a merge**, and those are the human's. Do not close the run on "here is what
 I installed" alone — end with **"Install done. Here is what YOU must do now:"** and point at the
-**Human post-install checklist** section of `docs/adopting-assay.md` (provision the two accounts,
-create + install the Apps and store their PEMs at the config-home, choose the roster values, set the
-variables + secrets, branch protection + board-writer bypass, the standing human gates, and
-optionally the desk-tools). Surface that remaining setup explicitly in the final report — a run that
+**Human post-install checklist** section of `docs/adopting-assay.md` (provision the two principals,
+create the automation identities — GitHub Apps, or GitLab service accounts per
+`docs/adopting-assay-gitlab.md` §2 — and store their credentials at the config-home, choose the
+roster values, set the variables + secrets, branch protection + board-writer bypass, the standing
+human gates, and optionally the desk-tools). Surface that remaining setup explicitly in the final report — a run that
 lists only what the skill did, and leaves the human to discover the identity/permission/merge steps
 on their own, has under-reported.
 
@@ -216,7 +307,7 @@ the hash from the plugin's own shipped record. The resolution is:
 > hash-verified download.
 
 Resolve the pairing from the manifest at install time; never assume a tag, never hardcode one in
-prose, and never fall through to `latest`.
+prose, and never fall back to `latest`.
 
 ## NEVER autonomous — STOP and escalate to a human
 
@@ -226,37 +317,42 @@ install/bump and name it — not a `Brief:` line; both forms satisfy `deskpr` an
 (this repo's own front-door re-pin, PR #496, is the precedent). It never performs any of these — it
 hands the human the exact values and waits:
 
-- **Reviewer GitHub App** creation / installation — the identity that posts approvals, which a plain
-  worker session cannot post as. A placeholder or self-minted stand-in defeats the whole mechanism.
+- **Reviewer identity** creation / installation — a GitHub App, or a GitLab service account — the
+  identity that posts approvals, which a plain worker session cannot post as. A placeholder or self-minted stand-in defeats the whole mechanism.
   Claim only attribution-plus-audit-trail, **not** tamper-evidence.
-- **Board-writer GitHub App** creation + the **ruleset-bypass edit** that admits it — needed only
-  when `main` is branch-protected (step 4). A dedicated `contents: write`-only App, added to the
-  branch's ruleset bypass so the push-to-main board regen can commit `STATUS.md` past protection.
-  App creation and editing a ruleset's bypass list are repo-admin acts — hand the human the App name
-  + the single `contents: write` permission + the branch/ruleset to add it to, and wait.
+- **Board-writer identity** creation + the edit that admits it past protection — needed only
+  when `main` is branch-protected (step 4). On GitHub a dedicated `contents: write`-only App, added
+  to the branch's ruleset bypass so the push-to-main board regen can commit `STATUS.md` past
+  protection; on GitLab a board-writer service account on the protected branch's push-access list,
+  plus the `STATUSGEN_PUSH_TOKEN` CI/CD variable. These are repo-admin acts — hand the human the
+  identity name + its single write permission + the branch/ruleset to add it to, and wait.
 - **Repo creation** + admin / permission grants.
 - **Merge to main / pushing to the main branch / release tag / the first ready-flip.**
 - **git history rewrite** (for a carve-out).
 - **Private-repo CI auth** (module-privacy env / cross-repo checkout token).
+- **The GitLab runner** — registering or tagging a runner is instance-admin work (step 6).
 
-Hand the human the exact values (App name + permissions, repo slug + module path, etc.), wait for
+Hand the human the exact values (identity name + permissions, repo slug + module path, etc.), wait for
 confirmation, and never fabricate the outcome.
 
 ## Prove-the-machinery loop (optional, after install)
-To prove not just the tool but the whole pipeline, walk ONE trivial seed brief through the full
+To prove not just the tool but the whole pipeline, walk ONE trivial seed brief across the full
 lifecycle — `todo → in-progress → implemented → verified → done` — so the desks, the board, the
-reviewer App, and the human-merge gate each fire once (the `adopt` runbook's "hello-world loop").
+reviewer identity, and the human-merge gate each fire once (the `adopt` runbook's "hello-world loop").
 
 ## Scope
 
 **Unix-first (mac/linux), with a real native-Windows arm.** The statusgen binary acquisition in
-step 3 is the only OS-specific arm. It is implemented for mac and linux with `gh release download`,
-and there is now a **native-Windows path** that slots in beside the Unix one without reshaping the
-flow.
+step 2 is the only OS-specific arm. It is implemented for mac and linux as a plain HTTPS fetch
+verified against the pin file (`assay-install.sh acquire` — `curl` or `wget`, plus `sha256sum`,
+`shasum` or `openssl`; no forge CLI), and there is now a **native-Windows path** that slots in
+beside the Unix one without reshaping the flow. Forge is not an axis here: the same arm serves a
+GitHub and a GitLab adopter, because the release assets are fetched from their public release home
+whatever forge the target lives on.
 
 **Windows is supported — the acquisition arm is real, not deferred.** On a native Windows host,
-step 3 acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`)
-through a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`) plus the Go-native
+step 2 acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`)
+via a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`) plus the Go-native
 `deskinstall` command, keeping the same **sha256-verify-or-refuse** control the Unix path uses
 (a hash mismatch is a hard refuse — exit 5 — never a warn-and-continue). Two honesty caveats remain
 and are stated in the runbook, not hidden: the harness's session-start resident-rules injection
@@ -264,7 +360,7 @@ channel (harness-portability/05; the mechanism your harness uses is named in
 `../../references/<harness>.md`) needs a documented `bash`+`jq`
 workaround (install Git-Bash, or WSL for local dev only — WSL is a fallback, not the native claim),
 and the **native `windows/arm64` smoke is BLOCKED** pending an arm64 Windows runner (the arm64
-asset still ships cross-compiled + checksummed). The full step-by-step Windows walkthrough — install
+asset still ships cross-compiled + checksummed). The full step-by-step Windows guide — install
 command, `.assay-versions` pins, CI-proven status, and the documented-workaround surfaces — lives in
 `docs/adopting-assay.md` § **Windows adopters**.
 

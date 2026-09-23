@@ -2,19 +2,25 @@
 
 There are two ways to install Assay, easiest first **when the shape matches**:
 
-1. **The turnkey `assay:install` skill (recommended for Claude Code + GitHub).** Add the plugin,
-   invoke one skill, and it self-installs the whole setup, stopping only at the human-gated steps.
+1. **The turnkey `assay:install` skill (recommended for Claude Code, on GitHub or GitLab).** Add
+   the plugin, invoke one skill, and it self-installs the whole setup, stopping only at the
+   human-gated steps.
 2. **The manual runbook (further down).** The full step-by-step PRIMITIVEs and three adoption
    scenarios that same skill wraps. Reach for it directly for a carve-out, a multi-repo suite, or
    any non-standard boot — and it is the ground truth the turnkey path delegates to.
 
-This runbook is GitHub-shaped throughout for the identity and merge machinery (Apps, rulesets,
-`gh`) — though `statusgen init` now scaffolds the CI half matching the target's forge (a GitHub
-workflow or a GitLab pipeline, and neither by default when the forge cannot be resolved), and the
-board's model-path auto-flip reads the reviewer's verdict per forge. Running the fleet on GitLab
-instead — service accounts in place of Apps, protected-branch push-access lists in place of
-ruleset bypass — is a separate profile: see
-[`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md). **Cursor has no `/plugin` path**;
+**One install flow, two forge profiles.** Acquiring the pinned binaries (a plain HTTPS fetch
+verified against `.assay-versions` — no forge CLI on either forge), the `statusgen init` scaffold
+(which writes the CI half matching the target's forge: a GitHub workflow or a GitLab pipeline, and
+neither when the forge cannot be resolved), the registers, the board and the desk verbs are the
+same on GitHub and GitLab. What is still GitHub-shaped in THIS file is the per-forge half of
+identity and protection — GitHub Apps, rulesets and their bypass lists, and the GitHub examples of
+the human's settings-page acts. The GitLab half of exactly those — service accounts in place of
+Apps, protected-branch push-access lists in place of ruleset bypass, the runner, the CI/CD
+variables — is [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md); the two files are
+the per-forge halves of one flow, and a GitLab adopter reads both. `gh` and `glab` are optional
+convenience CLIs on their own forge and no install step requires either (see the `assay:install`
+skill, *Optional forge CLIs*). **Cursor has no `/plugin` path**;
 use [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Codex has
 no Claude `/plugin` path either**, and its resident rules travel in `AGENTS.md` rather than a
 session hook; use [Running Assay on Codex](#running-assay-on-codex). **Native
@@ -27,7 +33,8 @@ a from-source pin).
 |---|---|---|---|
 | GitHub | Claude Code | macOS / Linux | Turnkey `assay:install` below |
 | GitHub | Claude Code | native Windows | Turnkey skill **plus** [Windows adopters](#windows-adopters) (channel E release, or channel D source) |
-| GitLab (any edition you will actually run) | any | any | [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) **first**, then this file for CORE (`statusgen init`, pins, instruction-file bindings). Do not run `/plugin` + `gh` as if the forge were GitHub. |
+| GitLab (any edition you will actually run) | Claude Code | macOS / Linux | Turnkey `assay:install` below for the forge-neutral half (acquisition, `statusgen init` writing `.gitlab-ci.yml`, pins, instruction-file bindings) **plus** [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half (tier, service accounts, protected branch, runner, CI/CD variables) — read its tier ladder before provisioning anything. No `gh` and no `glab` needed. |
+| GitLab | other harnesses | any | [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half, then this file for CORE and the harness row below |
 | GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): copy skills + `references/`, no marketplace install |
 | GitHub or GitLab | Codex (CLI) | any | [Codex section](#running-assay-on-codex): skills into `.agents/skills/`, the `AGENTS.md` fragment, the `multi_agent` flag; not the Claude `/plugin` commands |
 
@@ -42,9 +49,9 @@ true shape on this page and not at step four:
 
 | What you must provide | Minimum | Why |
 |---|---|---|
-| **Accounts** | **2** — one human, one machine | The human merges and rules on gates; the machine account is what the fleet runs *as*. They must be distinct (the two-accounts prerequisite). |
+| **Principals** | **2** — one human, one automation | The human merges and rules on gates; the automation identity is what the fleet runs *as*. They must be distinct (the two-principals prerequisite; GitHub Apps or GitLab service accounts for the automation side). |
 | **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
-| **Supported platform** | **GitHub** (primary runbook); **GitLab** via [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) | This page is GitHub-shaped (`gh`, Apps). GitLab substitutes service accounts for Apps. Self-managed Community Edition is not the same as gitlab.com Free — read the GitLab doc's edition + read-back rules before claiming controls. |
+| **Supported platform** | **GitHub** (this file's identity half); **GitLab** (its identity half is [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)) | The install flow is shared; this page's identity and protection half is GitHub-shaped (Apps, rulesets). GitLab substitutes service accounts for Apps. Self-managed Community Edition is not the same as gitlab.com Free — read the GitLab doc's edition + read-back rules before claiming controls. |
 | **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex CLI** (copy-skills + `AGENTS.md` fragment + the `multi_agent` flag) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only — Cursor has no marketplace install, and Codex's is its own `codex plugin marketplace` surface. Codex CLI's default `workspace-write` sandbox makes the implementer skills **refuse**; see the [Codex section](#running-assay-on-codex). |
 
 **Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
@@ -69,11 +76,13 @@ what would put the segregation-of-duties claim at risk. What the run-time toolin
 on any path — including a collapsed one — is described in
 [`docs/enforcement-model.md`](enforcement-model.md).
 
-## Fastest path — the turnkey `assay:install` skill (Claude Code + GitHub)
+## Fastest path — the turnkey `assay:install` skill (Claude Code, GitHub or GitLab)
 
-For a straight **Claude Code + GitHub** install, the fastest coherent boot is three steps: add the
-plugin from the marketplace, install it, then invoke the installer skill. GitLab, Cursor, and
-from-source Windows pins skip this block and use the chooser above.
+For a **Claude Code** install on GitHub or GitLab, the fastest coherent boot is three steps: add
+the plugin from the marketplace, install it, then invoke the installer skill. A GitLab adopter
+also walks [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half the skill
+hands back (identities, protected branch, runner, CI/CD variables). Cursor, Codex and from-source
+Windows pins skip this block and use the chooser above.
 
 ```text
 /plugin marketplace add medici-finance/assay
@@ -87,10 +96,11 @@ never-autonomous escalation points below.
 **Prerequisites.**
 
 - **Claude Code**, with the plugin installed (the two `/plugin` commands above).
-- An **authenticated `gh`** — the skill downloads the pinned statusgen release with
-  `gh release download`.
-- **macOS, Linux, or native Windows.** The statusgen binary acquisition is Unix-first via
-  `gh release download`; on a **native Windows** host follow the **[Windows adopters](#windows-adopters)**
+- **`curl` (or `wget`) and a sha256 tool** (`sha256sum`, `shasum` or `openssl`) — the skill
+  fetches the pinned statusgen release over plain HTTPS and verifies it against `.assay-versions`.
+  **No forge CLI**: neither `gh` nor `glab` is needed, on either forge.
+- **macOS, Linux, or native Windows.** The statusgen binary acquisition is Unix-first via that
+  HTTPS fetch; on a **native Windows** host follow the **[Windows adopters](#windows-adopters)**
   section — the pinned `statusgen-windows-<arch>.exe` is acquired through the PowerShell
   bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control), with the
   SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
@@ -101,10 +111,15 @@ below; the two are **one story with one mechanism**, not two implementations:
 - **Detects + confirms the target repo** — names the absolute target path and detected `os-arch`
   back to you, and writes nothing until you confirm.
 - **Scaffolds** via `statusgen init` — emits a lint-clean `docs/streams/` tree, the registers, and
-  a bootstrap-safe CI workflow.
+  a bootstrap-safe CI half for the target's forge (a GitHub workflow or `.gitlab-ci.yml`).
 - **Acquires a version-PINNED, sha256-verified statusgen binary** — the tag resolved from the
-  plugin↔statusgen pairing in `plugins/assay/paired-versions.yaml`, **never** `latest`; a hash
-  mismatch is a hard **REFUSE**, not a warning, so no unverified bytes are ever installed.
+  plugin↔statusgen pairing in `plugins/assay/paired-versions.yaml`, **never** `latest`; the
+  expected digest is read from the pin file only; a hash mismatch — or a digest that cannot be
+  read — is a hard **REFUSE**, not a warning, so no unverified bytes are ever installed. It does
+  this BEFORE the scaffold, since the scaffold is `statusgen init`.
+- **Rehearses first** — `assay-install.sh rehearse` runs the autonomous half end to end against a
+  scratch copy of the target (nothing written, pushed or opened) so a broken step shows before
+  anything touches the repo.
 - **Wires CI + the main-guard** — confirms the two-half single-writer workflow and the client-side
   commit guard rather than re-authoring them.
 - **PROVES the install** — `statusgen --root <target> --lint` exits **0** and `statusgen --version`
@@ -117,8 +132,9 @@ never fabricating the outcome:
 
 - **Private-repo CI auth** — the release-download token / module-privacy env a private repo's CI
   needs.
-- **The reviewer GitHub App** — creation + installation of the separate review identity a worker
-  session cannot post as (attribution, not authorization — see **§1a** below).
+- **The reviewer identity** — creation + installation of the separate review identity a worker
+  session cannot post as: a GitHub App, or a GitLab service account (attribution, not
+  authorization — see **§1a** below).
 - **Any write to `main`** — merge, `git push origin main`, the release tag, and the first
   ready-flip are the human's; the skill only opens draft PRs.
 
@@ -158,14 +174,21 @@ Three adoption scenarios, each composing the same install PRIMITIVEs defined in 
    linting and independent re-verification*, not *measured from ground truth*. Claim the weaker
    true thing.
 
-## Prerequisite: two GitHub accounts — the bot's, and yours
+## Prerequisite: two distinct principals — the automation's, and yours
 
-Before any step below, make sure **two distinct GitHub identities** exist and that you can act as the second:
+Before any step below, make sure **two distinct principals** exist on your forge and that you can
+act as the second. The invariant is forge-neutral; the mechanism is not — on GitHub the automation
+side is a machine account and its GitHub Apps, on GitLab it is a set of group service accounts
+(provisioned per [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §1–§2). The per-forge
+table, and the forge-qualified roster entry each principal produces, are in the `assay:install`
+skill (*Per-forge prerequisites*); the entry grammar itself is defined once in
+[`docs/streams/forge-neutral/identity.md`](streams/forge-neutral/identity.md). This section walks
+the GitHub half:
 
 1. **The automation account** — the identity the fleet *runs as*: it authors PRs, pushes branches, runs CI, mints the reviewer-App token, and posts App reviews. In a solo setup this is one machine account plus the reviewer GitHub App it owns; in a larger setup, the set of role Apps. Everything an agent does, it does as this identity.
 2. **Your human account** — a *separate* personal GitHub account that is **you**, and whose credentials the automation never holds. It does the things only a human may: it is the `ASSAY_BLESS_LOGIN` (the authorization half of the trust gate — `configure-roster`), it posts the sign-off on a `gate:human` brief, it adds the 👍 reaction that clears a public-repo write, and it clicks **merge**.
 
-**Why this is not optional.** Assay's gates separate *proposing* work (the agents) from *authorizing* it (a human). That separation is only real if the two are different GitHub principals. If the fleet runs as the same account that blesses, approves, and merges, the automation can bless, approve, and merge its *own* work — every human gate becomes self-satisfiable and the model is theater. Under one shared identity, bot-vs-human is undecidable: a verdict, a 👍, or a merge attributed to that account attributes to *both* (§1a). The human account is precisely what the automation must be unable to act as — that is what makes "a human approved this" a claim the fleet cannot forge.
+**Why this is not optional.** Assay's gates separate *proposing* work (the agents) from *authorizing* it (a human). That separation is only real if the two are different principals on the forge. If the fleet runs as the same account that blesses, approves, and merges, the automation can bless, approve, and merge its *own* work — every human gate becomes self-satisfiable and the model is theater. Under one shared identity, bot-vs-human is undecidable: a verdict, a 👍, or a merge attributed to that account attributes to *both* (§1a). The human account is precisely what the automation must be unable to act as — that is what makes "a human approved this" a claim the fleet cannot forge.
 
 **What it does *not* buy you** (the honest weaker claim, §1a): two accounts give you *attribution*, not enforcement — on a free/private plan the merge gate stays advisory until branch protection is on (public repos unlock it). Two accounts are the necessary floor, not the whole control.
 
@@ -190,10 +213,13 @@ act that mints an identity, grants a permission, or authorizes a merge**. Those 
 skill cannot fake them without defeating the mechanism it installs. Here is the ordered list, so a
 finished `assay:install` run hands you a checklist rather than the impression that nothing is left:
 
-1. **Provision the two GitHub accounts.** The automation account the fleet runs as, and your own
+1. **Provision the two principals.** The automation identity the fleet runs as, and your own
    **separate human account** — the two are the trust boundary the whole model rests on. See the
-   **two-accounts prerequisite** (§2 `automation identity`); this checklist does not re-explain it.
-2. **Create + install the GitHub Apps** (creation, key-gen, and install are repo-admin-only):
+   **two-principals prerequisite** (§2 `automation identity`); this checklist does not re-explain it.
+2. **Create + install the automation identities** — on GitLab, the service accounts, protected
+   branch and labels of [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §2 take the place of
+   everything in this item; on GitHub, the **GitHub Apps** (creation, key-gen, and install are
+   repo-admin-only):
    the **reviewer App** (`pull_requests: write`, `issues: write`, `contents: write` — the three
    write duties the desk tools' boot preflight requires of **every** role, see
    `setup-reviewer-app` in §3 — plus `checks`/`statuses`/`actions: read` so it can read CI to gate
@@ -221,12 +247,15 @@ finished `assay:install` run hands you a checklist rather than the impression th
 4. **Set the repo/org variables + secrets.** Actions **variables** = the roster values for the
    reporting half; Actions **secrets** = the App private key(s) the workflows mint tokens from, plus
    any private-repo CI auth. **Never put a PEM or a token in the repo tree** — a committed key is a
-   published key.
+   published key. (GitLab: the CI/CD variables `STATUSGEN_PUSH_TOKEN` and `STATUSGEN_ROSTER_ENV`,
+   [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §2c and §2e.)
 5. **Branch protection (recommended-but-optional) + board-writer bypass.** If you enable protection
    on `main`, add the board-writer App to the protect-`main` ruleset bypass **and** — separately —
    to any required-check ruleset (e.g. a leak-sweep); bypassing one ruleset does not bypass another.
    Then **confirm the ruleset actually lists the App** — a workflow can pass YAML review yet be
-   rejected at runtime by a ruleset that never got the bypass (§3 `add-statusgen-ci`).
+   rejected at runtime by a ruleset that never got the bypass (§3 `add-statusgen-ci`). (GitLab:
+   the protected branch's push-access list naming the board-writer service account, which
+   `tools/create-fleet-gitlab.sh` sets and reads back.)
 6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
    **push to `main`**, the **release tag**, any **history rewrite**, and the **👍 that clears a
    public write** are yours *every time*, not just at install. The quick-reference table above is
@@ -346,10 +375,17 @@ the one an adopting team should actually run:
 - **(E) Pinned release binary, sha256-verified — DEFAULT for every scenario.** Commit a
   `.assay-versions` file at the target repo root with a line per platform you install on:
   `statusgen-<platform> <tag> <sha256>` (e.g. `statusgen-darwin-arm64 statusgen/v0.6.0 5985…`).
-  Install by: detect platform → `grep "^statusgen-$platform " .assay-versions` → **refuse if
-  absent** → `gh release download "$tag" --repo medici-finance/assay --pattern
-  "statusgen-$platform"` → `shasum -a 256` → compare to the pinned digest → refuse on mismatch
-  → `install -m 0755 … <bindir>/statusgen`. The pin file is one line per platform in the form
+  Install by: detect platform → read the `statusgen-$platform` line of `.assay-versions` →
+  **refuse if absent, or if its digest is not a readable 64-hex sha256** → fetch
+  `https://github.com/medici-finance/assay/releases/download/$tag/statusgen-$platform` over plain
+  HTTPS (`curl` or `wget`) → sha256 it → compare to the digest **in the pin file** → refuse on
+  mismatch → only then `install -m 0755 … <bindir>/statusgen`. The shipped
+  `plugins/assay/scripts/assay-install.sh acquire --pins "$TARGET/.assay-versions" --dest <bindir>`
+  is exactly this, refusing (exit 5) on a mismatch or an unreadable digest and reporting
+  could-not-check (exit 6) on a failed fetch, installing nothing in every case. **No forge CLI is
+  involved, on GitHub or GitLab**: the release assets are public, and the pin file — never
+  anything fetched from the release home, `checksums.txt` included — is the single source of the
+  expected digest. The pin file is one line per platform in the form
   above; the load-bearing rules are: match the **full** platform (os *and* arch, per the Verify
   below), refuse rather than guess when the line is absent, keep each pinned artifact name distinct
   from any CI-job name, and re-pin (never edit in place) on an upgrade so the bump shows in a diff.
@@ -370,7 +406,9 @@ grep -q "^statusgen-$plat " "$TARGET/.assay-versions"   # trailing space: see th
 ```
 
 Then `statusgen --version` prints the pinned tag; and re-running the install with a deliberately
-corrupted digest **fails** (proves the hash check is live, not decorative).
+corrupted digest **fails**, as does re-running it with the platform's pin line removed (proves the
+hash check is live, not decorative, and that an unreadable digest is a refusal rather than a skip).
+`assay-install.sh rehearse --target "$TARGET"` runs all of this end to end against a scratch copy.
 
 #### Channels that are NOT the default (and why)
 
@@ -395,9 +433,12 @@ works but loses the guards. The mechanism is **channel-E, identical to `install-
 - resolve the paired tag + per-platform sha256 from `plugins/assay/paired-versions.yaml`'s
   `desk-tools:` section (the desk-tools and statusgen are cut from the **same release**, so they pin
   the same tag) — **refuse if the pin line for the detected platform is absent**, never guess;
-- `gh release download "$tag" --repo medici-finance/assay --pattern "desk-tools-$platform.tar.gz"`;
-- `shasum -a 256` the tarball → compare to the pinned digest → **refuse on mismatch**;
-- extract and install the binaries to a `bindir` on `PATH`.
+- fetch `desk-tools-$platform.tar.gz` of that tag over plain HTTPS, sha256 it, compare to the
+  digest **in the pin file** → **refuse on a mismatch or an unreadable digest**;
+- only then extract and install the binaries to a `bindir` on `PATH`.
+
+`assay-install.sh pin --kind desk-tools …` then `assay-install.sh acquire --kind desk-tools --pins
+"$TARGET/.assay-versions" --dest <bindir>` does all three, with no forge CLI.
 
 `cellctl` comes with desk-tools (#850) — it is one of the extracted files, so nothing extra is
 needed to obtain it; see `docs/cellctl.md` for what it does and its own `--version` check.
@@ -589,8 +630,9 @@ are called out with each surface as it appears below; this primitive is only wha
 **ESCALATE the values, not the file.** Writing the file is autonomous. *Choosing* the blessing
 authority is not — `ASSAY_BLESS_LOGIN` is the authorisation half of the trust gate and takes a
 single **human** identity with a mandatory numeric id. Hand the operator the list of surfaces and
-ask for the logins and ids (`gh api users/<login> --jq .id`; an App's is its **bot user**,
-`gh api 'users/<slug>%5Bbot%5D' --jq .id`). Never invent one, and never point it at a shared agent
+ask for the logins and ids — on GitHub the REST read `GET /users/<login>` returns the `id` (an
+App's is its **bot user**, `GET /users/<slug>%5Bbot%5D`; `gh api users/<login> --jq .id` is the
+optional-CLI convenience form), on GitLab `GET /api/v4/users?username=<login>`. Never invent one, and never point it at a shared agent
 account: the loader refuses `[bot]`-shaped logins, but a plain shared login is *accepted*, so that
 constraint is yours to hold, not the code's.
 
@@ -764,14 +806,26 @@ is a substitute for reading the `assay-config:` echo.)
 
 ### PRIMITIVE: create-labels
 
-The desk tools and the operating skills apply a small set of GitHub **labels** the repo does not
-have by default. A label that is absent when a tool reaches for it is not an error the tool
-raises — it degrades silently, and the information the label carried is lost (a provenance stamp
-is dropped; a `gh pr edit --add-label` fails). So the labels are a **one-off `gh label create` per
-repo**, run once at adoption (this primitive is the single home for that list; the operating
-skills point here rather than re-listing it). Idempotent: `gh label create` on an existing label
-is a harmless "already exists" error you can ignore, or pass `--force` to reconcile the
-color/description.
+The desk tools and the operating skills apply a small set of **labels** the repo does not have by
+default. A label that is absent when a tool reaches for it is not an error the tool raises — it
+degrades silently, and the information the label carried is lost (a provenance stamp is dropped;
+a label write on a PR fails). So the labels are a **one-off per repo**, created once at adoption
+(this primitive is the single home for that list; the operating skills point here rather than
+re-listing it).
+
+**Who creates them, per forge.** This is a human/admin act on either forge — no desk verb
+provisions the whole set yet (#1559):
+
+- **GitHub** — create each label below at the repo's *Settings → Labels* page (or with the REST
+  call `POST /repos/{owner}/{repo}/labels`, one per label). The `gh label create` lines below are
+  an **optional convenience** for a human who has `gh`; no install step requires it. Creating an
+  existing label is a harmless "already exists".
+- **GitLab** — `tools/create-fleet-gitlab.sh` creates the same set, with the same names, colours
+  and descriptions, under `--project` ([`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §3).
+
+On either forge `deskflip` also creates the PR-state pair on first use (the forge seam's label
+write ensures a missing label exists before applying it); `deskfile` only *probes* for the
+`raised-by:*` labels and never creates them.
 
 **Three label families:**
 
@@ -797,6 +851,7 @@ color/description.
   `gh pr edit --add-label` fails and the queue is readable only by opening every PR.
 
 ```bash
+# OPTIONAL convenience (GitHub, with gh installed) — the same set can be created at Settings → Labels.
 # Review-dispatch token
 gh label create review-request --repo <owner/repo> --color d4c5f9 \
   --description "dispatch token: a review session picks this up, runs the skill, posts the verdict"
@@ -819,9 +874,10 @@ gh label create approval-needed --repo <owner/repo> --color 5319E7 \
 > The `raised-by:*` labels track the roster, not this list: if `configure-roster` binds a role
 > beyond those above, add the matching `raised-by:<role>` label here for that suite.
 
-**Verify:** `gh label list --repo <owner/repo> --json name --jq '.[].name' | sort` includes
-`review-request`, all six `raised-by:*` labels, and the PR-state pair `authorization-needed` +
-`approval-needed`; `deskfile new … --raised-by worker` on a test filing reports
+**Verify:** the repo's label list (its *Labels* page on either forge, or — as an optional
+convenience — `gh label list` / `glab label list`) includes `review-request`, all six
+`raised-by:*` labels, and the PR-state pair `authorization-needed` + `approval-needed`; and the
+desk verb reads it the same way: `deskfile new … --raised-by worker` on a test filing reports
 `raised-by=raised-by:worker` (stamped), **not** `UNSTAMPED:label-missing`.
 
 ### PRIMITIVE: install-main-guard
@@ -829,6 +885,10 @@ gh label create approval-needed --repo <owner/repo> --color 5319E7 \
 config core.hooksPath .githooks`. The hook refuses any `main` commit unless `ASSAY_MAIN_COMMIT_OK=1`
 is exported (sanctioned main-writers set it per shell; workers isolate into a worktree + branch). This
 is optional-but-recommended client-side hardening; a server-side ruleset is the stronger future form.
+The hook is plain git and identical on either forge. Its server-side counterpart is per forge and a
+human act: a ruleset / branch protection on `main` on GitHub, a protected branch with a push-access
+list on GitLab (set by `tools/create-fleet-gitlab.sh`, [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)
+§2); `repohardenguard` reads either back against a per-forge checklist.
 
 **Verify:** on `main`, `git commit --allow-empty -m test` is refused with "refusing commit to 'main'";
 with `ASSAY_MAIN_COMMIT_OK=1` it proceeds.
@@ -841,6 +901,10 @@ roll-up, Next-up, awaiting-verification, unresolved-findings should reflect your
 **Verify:** `test -f "$TARGET/STATUS.md" && grep -q "Next up" "$TARGET/STATUS.md"`; `--lint` exited 0.
 
 ### PRIMITIVE: setup-reviewer-app — HUMAN-GATED
+*This is the GitHub half. On GitLab the reviewer is a separate service account provisioned by the
+human-run `tools/create-fleet-gitlab.sh` at the role in [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)
+§1 — the rest of this section does not apply there; `deskroster preflight` reads either grant back.*
+
 Prepare the exact App name + permission toggles (`pull_requests: write`, `issues: write`,
 `contents: write` — the three duties the desk tools require of every role — plus
 **`checks: read`, `statuses: read`, `actions: read`** so
@@ -1358,8 +1422,10 @@ automation/smoke surface (brief 13) and is **not** a prerequisite for copying sk
 3. Bindings stay in the adopter `AGENTS.md` / `CLAUDE.md` stub from `statusgen init`. Optional:
    `.cursor/rules/*.mdc`. Cursor does **not** run Assay's Claude `SessionStart` hooks; Git-Bash
    is not required for Cursor resident rules.
-4. Put desk binaries on PATH (Windows: `%LOCALAPPDATA%\Assay\bin`). On GitLab, use `glab` and
-   `--forge gitlab`; skill text that says `gh` is GitHub-shaped leftover, not a Cursor requirement.
+4. Put desk binaries on PATH (Windows: `%LOCALAPPDATA%\Assay\bin`). On GitLab, the desk verbs
+   resolve the forge from the repo (`desktoken` takes `--forge gitlab`); neither `gh` nor `glab` is
+   required (both are optional convenience CLIs), and skill text that says `gh` is GitHub-shaped
+   leftover, not a Cursor requirement.
 5. Generated `harnessgen cursor` / `plugins/assay/cursor/` output is **not** required for the copy
    path above. If those artifacts are absent from the tree you cloned, do not block the install
    on them.
@@ -1442,8 +1508,10 @@ for `SKILL.md` skills in `$CWD/.agents/skills`, then parent folders up to the re
    when named, whatever the trigger ergonomics.
 
 Either arm, put the desk binaries on `PATH` the same way every other harness does; nothing in
-`statusgen` / `desk-tools` is harness-specific. On GitLab, use `glab` and `--forge gitlab`; skill
-text that says `gh` is GitHub-shaped leftover, not a Codex requirement.
+`statusgen` / `desk-tools` is harness-specific. On GitLab, the desk verbs resolve the forge
+from the repo (`desktoken` takes `--forge gitlab`); neither `gh` nor `glab` is required (both are
+optional convenience CLIs), and skill text that says `gh` is GitHub-shaped leftover, not a Codex
+requirement.
 
 ##### 2. Resident rules — the `AGENTS.md` fragment
 
