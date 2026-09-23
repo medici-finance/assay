@@ -9,7 +9,7 @@ import (
 )
 
 // blockerevidence_test.go — the blocker-evidence gate and the correction-capture (skill-bug)
-// composition on `deskfile new` (attention-budget/07).
+// composition on `deskfile new` (brief 07 of its tracking stream).
 //
 // The gate is the TOOL half of a two-layer rule (the desk skills carry the other): a `new`
 // filing labelled with an escalation label (needs-decision / help wanted / question) is a
@@ -84,7 +84,7 @@ func TestEscalationWithEvidenceFencePasses(t *testing.T) {
 }
 
 // TestHumanOnlyNotEvidenceGated — Verify row 3 (neighbour). `human-only` is an ACT, not a
-// claim (attention-budget/05), so it is NOT in the escalation set: an evidence-less
+// claim (brief 05 of its tracking stream), so it is NOT in the escalation set: an evidence-less
 // human-only filing files (exit 0).
 func TestHumanOnlyNotEvidenceGated(t *testing.T) {
 	withEnv(t)

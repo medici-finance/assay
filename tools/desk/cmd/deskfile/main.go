@@ -72,7 +72,7 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          CORRECTION CAPTURE: --correction "<the human's message>" switches new into skill-bug
          composition mode. With --label skill-bug --section "<skill+section>" --reading
          "<what the skill should have said>", the tool composes the title and body from this
-         session's last receipt (deskack, attention-budget/02) — receipt line, correction
+         session's last receipt (deskack) — receipt line, correction
          verbatim, $DESK_LOOP, skill+section, reading. --title/--body-file are composed, not
          passed. With no receipt in the last 30m it REFUSES (exit 5): a correction with
          nothing to correct is not a skill-bug.
