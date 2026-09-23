@@ -173,6 +173,17 @@ func briefImplicatedInTrailerError(err error) bool {
 	return false
 }
 
+// RiskFromBriefContent reports whether a brief's OWN content declares it risk-bearing —
+// `gate: human`, or any of the four `risk:` flags answered `yes` — reading only its
+// frontmatter fence. It is the exported, file-content form of the risk half of
+// BriefRiskFromBody, for callers that already hold the brief text and need the brief's own
+// declaration rather than a PR body's `Brief:` trailer resolution. hasFrontmatter is false
+// when the content carries no parseable `---` fence, which a fail-closed caller must treat
+// as unverifiable (a brief whose declaration cannot be read is not provably non-risk).
+func RiskFromBriefContent(content string) (classed bool, reason string, hasFrontmatter bool) {
+	return briefFrontmatterRisk(content)
+}
+
 // briefFrontmatterRisk reads a brief file's frontmatter and reports whether it declares
 // the PR risk-bearing: `gate: human`, OR any of the four `risk:` flags answered `yes`
 // (both the inline flow map and per-line forms). Matching is confined to the frontmatter
