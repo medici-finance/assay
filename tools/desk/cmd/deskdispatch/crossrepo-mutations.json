@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves'",
   "control": {
     "name": "CONTROL \u2014 drop the HARD FAIL on a deliverable repo that is not --root's origin; the worktree would be cut in the wrong repo. TestCrossRepoMismatchHardFailsBeforeAnything must go red",
     "file": "cmd/deskdispatch/deliverable.go",
@@ -54,6 +54,30 @@
       "file": "cmd/deskdispatch/phantom.go",
       "old": "\t} else if p.branch == conventional {",
       "new": "\t} else if false && p.branch == conventional {"
+    },
+    {
+      "name": "SEC-1: the registry's `self` is used unvalidated (neither the alias-grammar nor the registered-key check), so a leading-dash/newline value reaches the claim key and the prompt; TestCrossRepoRegistryValuesAreValidatedBeforeUse must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\tself := strings.TrimSpace(doc.Self)\n\tif self != \"\" {",
+      "new": "\tself := strings.TrimSpace(doc.Self)\n\tif false && self != \"\" {"
+    },
+    {
+      "name": "SEC-1: a registry `repo:` value is used without the owner/name grammar check; TestCrossRepoRegistryValuesAreValidatedBeforeUse must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif e.Repo != nil && !repoSlugRe.MatchString(",
+      "new": "\t\tif false && e.Repo != nil && !repoSlugRe.MatchString("
+    },
+    {
+      "name": "COR-1: --brief is not resolved once up front, so a brief found only under --claim-root is not the file the gate and decision script read; TestCrossRepoGateHumanBriefUnderClaimRootFiresTheDecisionGate must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\to, err := resolveBrief(o)\n",
+      "new": "\t_, err := resolveBrief(o)\n"
+    },
+    {
+      "name": "COR advisory: an unresolvable --brief proceeds instead of being refused; TestBriefThatResolvesNowhereIsRefused must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\tp := resolveBriefPath(o)\n\tif p == \"\" {",
+      "new": "\tp := resolveBriefPath(o)\n\tif p == \"\" && false {"
     }
   ]
 }

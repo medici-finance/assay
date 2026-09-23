@@ -59,6 +59,19 @@ const registrySchema = "graph-repos-v1"
 // no `/`, so the repo-qualified plan-key spelling `<owner>/<name>:…` is never read as an alias.
 var aliasRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
+// repoSlugRe is the strict owner/name grammar a registry `repo:` value must satisfy before it is
+// compared, used as a claim/token repo, or rendered into a prompt. A value outside it (a newline, a
+// space, a URL, a third path segment) is refused, never interpolated.
+var repoSlugRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
+
+// registryContentError is a registry that PARSED but whose content breaks the grammar this verb
+// relies on (an alias key, a `self:` value or a `repo:` value). It is a refusal (exit 5), never a
+// could-not-check: the registry is caller-supplied input, and a value that would reach a claim key or
+// a prompt unvalidated is exactly what must not be acted on.
+type registryContentError struct{ msg string }
+
+func (e registryContentError) Error() string { return e.msg }
+
 // itemAliasRe splits `<alias>:<rest>` off an item key.
 var itemAliasRe = regexp.MustCompile(`^([a-z][a-z0-9_-]{0,31}):(.+)$`)
 
@@ -108,7 +121,31 @@ func loadAliasRegistry(root string) (*aliasRegistry, bool, error) {
 	if doc.Schema != registrySchema {
 		return nil, false, fmt.Errorf("%s: schema must be %s, got %q", path, registrySchema, doc.Schema)
 	}
-	return &aliasRegistry{path: path, self: strings.TrimSpace(doc.Self), repos: doc.Repos}, true, nil
+	// Every value this verb may act on or render is validated HERE, once, before any of it is used:
+	// each alias key, each published `repo:`, and `self:`. A registry carrying one bad value is
+	// refused whole — a partially-trusted registry is not a registry.
+	for k, e := range doc.Repos {
+		if !aliasRe.MatchString(k) {
+			return nil, false, registryContentError{fmt.Sprintf(
+				"%s: alias key %q is outside the alias grammar (lowercase letters, digits, dash, underscore)", path, k)}
+		}
+		if e.Repo != nil && !repoSlugRe.MatchString(strings.TrimSpace(*e.Repo)) {
+			return nil, false, registryContentError{fmt.Sprintf(
+				"%s: alias %q has repo %q, which is not a plain owner/name", path, k, *e.Repo)}
+		}
+	}
+	self := strings.TrimSpace(doc.Self)
+	if self != "" {
+		if !aliasRe.MatchString(self) {
+			return nil, false, registryContentError{fmt.Sprintf(
+				"%s: self %q is outside the alias grammar (lowercase letters, digits, dash, underscore)", path, doc.Self)}
+		}
+		if _, ok := doc.Repos[self]; !ok {
+			return nil, false, registryContentError{fmt.Sprintf(
+				"%s: self %q is not one of the registry's own aliases", path, self)}
+		}
+	}
+	return &aliasRegistry{path: path, self: self, repos: doc.Repos}, true, nil
 }
 
 // repoOf returns the published owner/name for alias. known=false means the alias is not defined;
@@ -174,7 +211,19 @@ func (d deliverable) crossRepo(root string) bool {
 var (
 	briefDeliverableRe = regexp.MustCompile(`(?m)^deliverable_repo:\s*(.*)$`)
 	briefHomedInRe     = regexp.MustCompile(`(?m)^homed-in:\s*(.*)$`)
+	briefIDRe          = regexp.MustCompile(`(?m)^brief:\s*(.*)$`)
 )
+
+// briefV2Alias returns the repo-alias segment of a brief-v2 typed id (`<cell>:<alias>:<stream>:<NN>`),
+// or "" when the value is not of that shape (a v1 brief, or no `brief:` field). The alias names the
+// repo the brief is TRACKED in.
+func briefV2Alias(id string) string {
+	parts := strings.Split(strings.TrimSpace(id), ":")
+	if len(parts) != 4 {
+		return ""
+	}
+	return parts[1]
+}
 
 // briefField returns a trimmed, unquoted frontmatter scalar (an inline `# comment` dropped).
 func briefField(front string, re *regexp.Regexp) string {
@@ -214,6 +263,48 @@ func resolveBriefPath(o dispatchOpts) string {
 	return ""
 }
 
+// resolveBrief resolves --brief ONCE, before anything else reads it, and returns the options with
+// o.brief replaced by the resolved ABSOLUTE path — so every reader (the deliverable resolution, the
+// human-gate detection, the decision script, the write-scope echo) reads the SAME file. briefShown
+// keeps the caller's spelling for the prompt when the file sits under --root (the agent's worktree
+// carries it at that relative path); a brief found only under --claim-root is shown by its absolute
+// path in the tracking checkout. A --brief that resolves nowhere is REFUSED here: a dispatch that
+// cannot read its own specification cannot know whether it is human-gated or which repo it belongs
+// to, and proceeding past that could-not-check is how a gate: human brief was dispatched ungated.
+func resolveBrief(o dispatchOpts) (dispatchOpts, error) {
+	given := strings.TrimSpace(o.brief)
+	if given == "" {
+		return o, nil
+	}
+	p := resolveBriefPath(o)
+	if p == "" {
+		return o, deskkit.Refused(fmt.Sprintf(
+			"step %s: --brief %q does not resolve to a file (absolute, or relative to --root, then to "+
+				"--claim-root). Its human gate and its deliverable repo cannot be read, so nothing is dispatched "+
+				"on it. Nothing was claimed.", stepClaimAcquire, o.brief))
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	o.briefShown = given
+	if rootAbs, err := filepath.Abs(o.root); err == nil {
+		if rel, rerr := filepath.Rel(rootAbs, p); rerr != nil || strings.HasPrefix(rel, "..") {
+			o.briefShown = p
+		}
+	}
+	o.brief = p
+	return o, nil
+}
+
+// briefArg is the brief as handed to a child that runs from --root and as shown in the prompt: the
+// caller's spelling when the file sits under --root, else the resolved absolute path.
+func briefArg(o dispatchOpts) string {
+	if strings.TrimSpace(o.briefShown) != "" {
+		return o.briefShown
+	}
+	return o.brief
+}
+
 // resolveDeliverable resolves the item's deliverable repo through the alias registry and checks it
 // against the checkout the worktree would be cut from. It runs inside validateCallerPreconditions —
 // before admission, the token mint, the claim and the worktree — so every refusal here costs
@@ -221,24 +312,22 @@ func resolveBriefPath(o dispatchOpts) string {
 func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	var d deliverable
 
-	var declDeliverable, declHomedIn string
+	// --brief was resolved to an absolute path by resolveBrief before this runs (an unresolvable one
+	// is already refused), so an unreadable file here is a could-not-check, never "no declaration".
+	var declDeliverable, declHomedIn, declV2Alias string
 	if strings.TrimSpace(o.brief) != "" {
-		if p := resolveBriefPath(o); p != "" {
-			if raw, err := os.ReadFile(p); err == nil {
-				front := briefFrontmatterBlock(string(raw))
-				declDeliverable = briefField(front, briefDeliverableRe)
-				declHomedIn = briefField(front, briefHomedInRe)
-			}
-		} else {
-			// Could-not-check, reported as itself: the brief may declare a deliverable repo this
-			// run cannot see. The dispatch is not refused (a --brief is also a best-effort input to
-			// the decision gate), but the gap is printed rather than read as "same repo".
-			fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — --brief %q did not resolve under --root or "+
-				"--claim-root, so its deliverable_repo/homed-in declaration could not be read (could-not-check)\n",
-				o.brief)
+		raw, err := os.ReadFile(o.brief)
+		if err != nil {
+			return d, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: --brief %s could not be read (%v), so whether it declares a deliverable repo cannot be "+
+					"established. Nothing was claimed.", stepClaimAcquire, o.brief, err), err)
 		}
+		front := briefFrontmatterBlock(string(raw))
+		declDeliverable = briefField(front, briefDeliverableRe)
+		declHomedIn = briefField(front, briefHomedInRe)
+		declV2Alias = briefV2Alias(briefField(front, briefIDRe))
 	}
-	if o.itemAlias == "" && declDeliverable == "" && declHomedIn == "" {
+	if o.itemAlias == "" && declDeliverable == "" && declHomedIn == "" && declV2Alias == "" {
 		return d, nil
 	}
 	d.active = true
@@ -253,6 +342,12 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	d.trackingRoot = regRoot
 
 	reg, ok, err := loadAliasRegistry(regRoot)
+	if ce, isContent := err.(registryContentError); isContent {
+		return d, deskkit.Refused(fmt.Sprintf(
+			"step %s: the alias registry is refused — %s. A registry value reaches the claim key, the claim and "+
+				"token repo, and the worker prompt, so a malformed one is never acted on. Nothing was claimed.",
+			stepClaimAcquire, ce.msg))
+	}
 	if err != nil {
 		return d, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the alias registry could not be read (%v) — the deliverable repo is resolved through it "+
@@ -267,14 +362,29 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	}
 	d.registryPath = reg.path
 
-	// The home (tracking) alias: the item-key prefix, else the registry's own `self`.
-	d.homeAlias = o.itemAlias
-	if d.homeAlias == "" {
-		d.homeAlias = reg.self
+	// The home (tracking) alias: the item-key prefix, else the alias segment of the brief's own
+	// brief-v2 id, else the registry's own `self` (validated at load: alias grammar + a registered key).
+	if o.itemAlias != "" && declV2Alias != "" && o.itemAlias != declV2Alias {
+		return d, deskkit.Refused(fmt.Sprintf(
+			"step %s: the item-key prefix names alias %q but the brief's own brief-v2 id names %q — two "+
+				"different tracking repos. Nothing was claimed.", stepClaimAcquire, o.itemAlias, declV2Alias))
 	}
-	if o.itemAlias != "" {
-		if _, known := reg.repoOf(o.itemAlias); !known {
-			return d, unregisteredAlias(o.itemAlias, "the item-key prefix", reg)
+	d.homeAlias = o.itemAlias
+	homeSource := "the item-key prefix"
+	if d.homeAlias == "" && declV2Alias != "" {
+		d.homeAlias, homeSource = declV2Alias, "the brief's brief-v2 id"
+	}
+	if d.homeAlias == "" {
+		d.homeAlias, homeSource = reg.self, "the registry's self"
+	}
+	if d.homeAlias != "" && d.homeAlias != reg.self {
+		if !aliasRe.MatchString(d.homeAlias) {
+			return d, deskkit.Refused(fmt.Sprintf(
+				"step %s: %s names %q, which is not a registry alias. Nothing was claimed.",
+				stepClaimAcquire, homeSource, d.homeAlias))
+		}
+		if _, known := reg.repoOf(d.homeAlias); !known {
+			return d, unregisteredAlias(d.homeAlias, homeSource, reg)
 		}
 	}
 	if d.homeAlias != "" {
@@ -303,8 +413,10 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 				stepClaimAcquire, declHomedIn, reg.path))
 		}
 		d.alias, d.source = alias, "the brief's homed-in"
-	default:
+	case o.itemAlias != "":
 		d.alias, d.source = o.itemAlias, "the item-key prefix"
+	default:
+		d.alias, d.source = d.homeAlias, homeSource
 	}
 	if !aliasRe.MatchString(d.alias) {
 		return d, deskkit.Refused(fmt.Sprintf(
@@ -344,6 +456,10 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	if !strings.EqualFold(actual, repo) {
 		return d, mismatch(d, "--root "+o.root, actual)
 	}
+	// From here on the repo is the checkout's OWN canonical origin slug, not the registry's spelling:
+	// the two matched case-insensitively, and the claim, the mint and the allowlist should see the
+	// one spelling the forge actually serves.
+	d.repo = actual
 	return d, nil
 }
 

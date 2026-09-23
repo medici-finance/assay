@@ -4039,8 +4039,13 @@ script file sits.
 
 **Cross-repo items resolve through the alias registry, and a mismatch is a hard fail.** An item
 may name the repo its deliverable lands in by ALIAS — the brief's `deliverable_repo: <alias>` or
-`homed-in: <owner>/<name>` frontmatter, or an `<alias>:<stream>/<NN>` item-key prefix (the alias
-the brief is tracked under). The alias resolves through `graph-repos.yaml` (schema
+`homed-in: <owner>/<name>` frontmatter, an `<alias>:<stream>/<NN>` item-key prefix, or the alias
+segment of the brief's own brief-v2 `brief:` id (the last two name the alias the brief is tracked
+under). `--brief` is resolved once — absolute, else under `--root`, else under `--claim-root` — and
+that one file feeds the deliverable resolution, the human-gate detection, the decision script and
+the prompt; a `--brief` that resolves nowhere is refused. Every registry alias key, `repo:` value
+(strict `owner/name`) and `self:` (an alias that is a registered key) is validated before any of it
+reaches a claim key, a claim or token repo, or a prompt; a bad value refuses the dispatch (exit 5). The alias resolves through `graph-repos.yaml` (schema
 `graph-repos-v1`) in the stream root at `--claim-root`, else `--root` — never by a repo name's
 resemblance to an alias. Before admission, the token mint, the claim or the worktree: no
 registry, or an alias reserved but unpublished there, is could-not-check (exit 6); an alias the

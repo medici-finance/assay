@@ -135,6 +135,10 @@ type dispatchOpts struct {
 	// When the brief's PR is already MERGED the dispatch becomes a FOLLOW-UP on a new branch
 	// rather than a phantom refusal or a resume (phantom.go).
 	rework bool
+	// briefShown is how the prompt spells the specification: the caller's own spelling when the file
+	// sits under --root, else its absolute path (resolveBrief). brief itself is the resolved absolute
+	// path every reader uses.
+	briefShown string
 	// worktree is an operator-STATED home for the agent, accepted ONLY with --dry-run.
 	// A real dispatch names the path deskwt printed and nothing else — this flag never
 	// reaches one. See validateOperatorWorktree for the fail-closed checks it must pass.
@@ -190,6 +194,13 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):
+	// a brief found only under --claim-root must gate, file its decision issue and scope its writes
+	// from the SAME file the deliverable resolution read.
+	o, err := resolveBrief(o)
+	if err != nil {
+		return err
+	}
 	// EVERY caller-controlled precondition is checked HERE, before the claim. See
 	// validateCallerPreconditions for why that placement is a correctness property and not
 	// a tidiness preference.
@@ -219,6 +230,13 @@ func dispatch(o dispatchOpts) error {
 		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
 		// operator can see which STOP.run.<key> would stop this run before launching it.
 		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
+		if o.rework {
+			// The phantom check is a forge read and a dry run makes none, so it cannot say whether this
+			// rework row's PR is merged. State that, rather than let the branch above read as final.
+			fmt.Printf("  --rework: the phantom check is NOT run in a dry run; if %s's PR is MERGED the real "+
+				"dispatch moves to a FOLLOW-UP branch %s-followup-<N> instead of the branch shown above\n",
+				briefIDFromItem(o.item), "feat/"+sanitizeSegment(o.item))
+		}
 		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
 			return herr
 		} else {
@@ -716,6 +734,13 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		// repo's short label: two repos can own a stream of the same name, and the tracking alias is
 		// the one that names this brief. The claim still lands in the deliverable repo (--repo).
 		plan.claimKey = dl.homeAlias + "--" + strings.ReplaceAll(strings.Trim(o.item, "/"), "/", "--")
+		// The composed key reaches the claim tool's positional argv, the run-key config and the
+		// prompt's release line, so it passes the SAME grammar a caller-supplied key does.
+		if !itemKeyRe.MatchString(plan.claimKey) {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: the cross-repo claim key %q is outside the item-key grammar, so it is not handed to the "+
+					"claim tool. Nothing was claimed.", stepClaimAcquire, plan.claimKey))
+		}
 	}
 
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
@@ -1308,7 +1333,10 @@ func stepDecision(o dispatchOpts, gateHuman bool, repo, script string, auth clai
 				"script on ambient auth. Export GH_TOKEN to choose the identity deliberately.",
 			stepDecisionGate, script, o.brief), nil)
 	}
-	r := runCmdEnv(o.root, auth.scriptEnv, script, "ensure", o.brief, "--repo", repo, "--at", "start")
+	// The script runs from --root, so a brief under --root keeps the caller's own relative spelling
+	// (briefArg); a brief found only under --claim-root is handed over by its resolved absolute path,
+	// so the gate is filed from the SAME file the gate detection read.
+	r := runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")
 	if r.err != nil {
 		return "", r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: the decision-issue gate for %s could not be ensured (%s) — a possible duplicate is the "+

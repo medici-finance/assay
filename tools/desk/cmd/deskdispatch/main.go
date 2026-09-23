@@ -149,7 +149,11 @@ the echo has no exit code, and overlap never blocks or delays the claim.
 
 CROSS-REPO (alias registry). An item may name the repo its deliverable lands in by ALIAS: the
 brief's ` + "`deliverable_repo: <alias>`" + ` or ` + "`homed-in: <owner>/<name>`" + ` frontmatter, or an
-` + "`<alias>:<stream>/<NN>`" + ` item-key prefix (the alias the brief is TRACKED under). The alias resolves
+` + "`<alias>:<stream>/<NN>`" + ` item-key prefix or the alias segment of the brief's own brief-v2 id (the
+alias the brief is TRACKED under). --brief is resolved ONCE (absolute, else under --root, else
+under --claim-root) and every reader uses that file; a --brief that resolves nowhere is refused.
+Every registry alias key, ` + "`repo:`" + ` value and ` + "`self:`" + ` is grammar-checked before use; a bad one
+is refused (exit 5). The alias resolves
 through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stream root at
 --claim-root (else --root), and nothing else. Before
 anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the

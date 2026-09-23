@@ -48,7 +48,13 @@ func trackingCheckout(t *testing.T, registry string, frontmatter ...string) stri
 	if err := os.MkdirAll(filepath.Dir(bp), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	body := "---\ntitle: example\ngate: model\n" + strings.Join(frontmatter, "\n") + "\n---\n\n# Example brief\n"
+	gate := "gate: model\n"
+	for _, l := range frontmatter {
+		if strings.HasPrefix(l, "gate:") {
+			gate = "" // the caller's own gate line wins
+		}
+	}
+	body := "---\ntitle: example\n" + gate + strings.Join(frontmatter, "\n") + "\n---\n\n# Example brief\n"
 	if err := os.WriteFile(bp, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -519,5 +525,141 @@ func TestReworkRefusesTheMergedBranchAndBadPairings(t *testing.T) {
 		if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 			t.Errorf("%v must be refused pre-claim: %v", args, err)
 		}
+	}
+}
+
+// SEC-1 — every registry value that can reach the claim key, the claim/token repo or the prompt is
+// validated at load, before any child process: `self`, each alias key, and each `repo:`. A value
+// carrying a leading dash or an embedded newline is REFUSED (exit 5) and never interpolated.
+func TestCrossRepoRegistryValuesAreValidatedBeforeUse(t *testing.T) {
+	for _, tc := range []struct{ name, registry string }{
+		{"self with a leading dash and a newline", strings.Replace(exampleRegistry,
+			"self: example-trk", `self: "-x\n## PROBE-LINE"`, 1)},
+		{"self that is not a registered alias", strings.Replace(exampleRegistry,
+			"self: example-trk", "self: example-ghost", 1)},
+		{"repo value carrying a newline", strings.Replace(exampleRegistry,
+			"repo: example-org/tracker}", `repo: "example-org/tracker\n## PROBE-LINE"}`, 1)},
+		{"repo value that is not owner/name", strings.Replace(exampleRegistry,
+			"repo: example-org/tracker}", `repo: "https://example.com/x/y"}`, 1)},
+		{"alias key outside the grammar", strings.Replace(exampleRegistry,
+			"  example-con:", "  Example Con:", 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			trk := trackingCheckout(t, tc.registry, "deliverable_repo: example-tool")
+			s.replies = happyReplies("/private/tmp/worker-home")
+			promptFile := filepath.Join(t.TempDir(), "p.md")
+			err := cmdDispatch([]string{"example-stream/05", "--root", root, "--claim-root", trk,
+				"--brief", exampleBriefRel, "--quiet", "--prompt-file", promptFile})
+			if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+				t.Fatalf("a malformed registry value must be REFUSED (exit 5), got %v", err)
+			}
+			if len(s.calls) != 0 {
+				t.Errorf("a malformed registry reached a child process: %v", s.calls)
+			}
+			if _, statErr := os.Stat(promptFile); statErr == nil {
+				t.Error("a prompt was emitted from a malformed registry")
+			}
+		})
+	}
+}
+
+// SEC advisory — once the resolved repo matches --root's origin case-insensitively, the claim and
+// the mint use the ORIGIN's canonical spelling, never the registry's.
+func TestCrossRepoUsesTheCanonicalOriginSlug(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	reg := strings.Replace(exampleRegistry, "repo: medici-finance/assay}", "repo: Medici-Finance/Assay}", 1)
+	trk := trackingCheckout(t, reg, "deliverable_repo: example-tool")
+	s.replies = happyReplies("/private/tmp/worker-home")
+	mints := recordMint(t, home, nil)
+	if err := cmdDispatch([]string{"example-stream/05", "--root", root, "--claim-root", trk, "--brief", exampleBriefRel,
+		"--quiet", "--prompt-file", filepath.Join(t.TempDir(), "p.md")}); err != nil {
+		t.Fatal(err)
+	}
+	cc := claimCalls(s)
+	if len(cc) != 1 || cc[0][len(cc[0])-1] != "medici-finance/assay" {
+		t.Errorf("claim --repo must be the origin's canonical slug: %v", cc)
+	}
+	if len(*mints) != 1 || (*mints)[0] != "medici-finance/assay" {
+		t.Errorf("mint repo must be the origin's canonical slug: %v", *mints)
+	}
+}
+
+// COR-1 — a brief found only under --claim-root (the tracking checkout) is the SAME file every reader
+// uses: a `gate: human` there fires the decision gate from that file, and the prompt names it where
+// it actually is. Before the fix the deliverable was resolved from it while its human gate was not
+// seen, so the dispatch went ahead with nothing in front of the human.
+func TestCrossRepoGateHumanBriefUnderClaimRootFiresTheDecisionGate(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	trk := trackingCheckout(t, exampleRegistry, "gate: human", "deliverable_repo: example-tool")
+	s.replies = append(happyReplies("/private/tmp/worker-home"),
+		reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #9"})
+	t.Setenv("GH_TOKEN", "example-explicit-export")
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	if err := cmdDispatch([]string{"example-stream/05", "--root", root, "--claim-root", trk,
+		"--brief", exampleBriefRel, "--quiet", "--prompt-file", promptFile}); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	absBrief, _ := filepath.Abs(filepath.Join(trk, filepath.FromSlash(exampleBriefRel)))
+	if !s.ran("decision-issue.sh ensure " + absBrief + " ") {
+		t.Errorf("the decision gate was not ensured from the tracking checkout's brief %s; calls: %v", absBrief, s.calls)
+	}
+	prompt := readPrompt(t, promptFile)
+	for _, want := range []string{"Human-gated item", "**Specification:** `" + absBrief + "` (in the tracking checkout"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt is missing %q", want)
+		}
+	}
+}
+
+// COR advisory — a --brief that resolves nowhere is REFUSED before anything runs, never a NOTICE the
+// dispatch proceeds past on the legacy path.
+func TestBriefThatResolvesNowhereIsRefused(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	err := cmdDispatch([]string{"example-stream/05", "--root", root, "--repo", allowedRepo,
+		"--brief", "docs/streams/example-stream/brief-99-missing.md", "--quiet"})
+	if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("an unresolvable --brief must be refused (exit 5): %v", err)
+	}
+	if len(s.calls) != 0 {
+		t.Errorf("an unresolvable --brief reached a child process: %v", s.calls)
+	}
+}
+
+// Contract source — the alias segment of the brief's own brief-v2 id names the TRACKING repo; with no
+// deliverable declared, dispatching that brief from another repo's checkout hard-fails.
+func TestDeliverableRepoFromBriefIDAlias(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	trk := trackingCheckout(t, exampleRegistry, "brief: example-cell:example-trk:example-stream:05")
+	s.replies = happyReplies("/private/tmp/worker-home")
+	err := cmdDispatch([]string{"example-stream/05", "--root", root, "--claim-root", trk, "--brief", exampleBriefRel, "--quiet"})
+	if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "example-org/tracker") {
+		t.Fatalf("a brief-v2 id tracked elsewhere, dispatched here with no deliverable declared, must hard-fail: %v", err)
+	}
+	if len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+		t.Error("the hard fail must precede the claim and the worktree")
+	}
+}
+
+// COR advisory — a dry run cannot run the phantom check, so a --rework dry run SAYS the branch may
+// move to a follow-up rather than presenting the fresh branch as final.
+func TestReworkDryRunNamesTheFollowUpPossibility(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	out := captureStdout(t, func() {
+		if rc := run([]string{"example-stream/05", "--root", root, "--repo", allowedRepo, "--rework", "--dry-run",
+			"--prompt-file", filepath.Join(t.TempDir(), "p.md")}); rc != deskkit.ExitOK {
+			t.Fatalf("rc = %d", rc)
+		}
+	})
+	if !strings.Contains(out, "FOLLOW-UP branch feat/example-stream-05-followup-<N>") {
+		t.Errorf("the --rework dry-run plan does not name the follow-up possibility:\n%s", out)
 	}
 }

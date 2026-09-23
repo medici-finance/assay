@@ -121,7 +121,14 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	}
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
 	if strings.TrimSpace(o.brief) != "" {
-		fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", o.brief)
+		spec := briefArg(o)
+		if spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root) {
+			// Found only in the tracking checkout — name it there, and say it is a READ source.
+			fmt.Fprintf(&b, "- **Specification:** `%s` (in the tracking checkout — READ-ONLY for you) — implement to "+
+				"its contract; do not expand scope.\n", spec)
+		} else {
+			fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", spec)
+		}
 	}
 	if plan.gateHuman {
 		b.WriteString("- **Human-gated item:** a decision issue is open for it. Do not pre-empt the decision; " +
