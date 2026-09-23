@@ -176,6 +176,16 @@ type fakeGH struct {
 	// → ClaimLivenessUnknown). Only exercised when claimLiveness reads, which needs a body with a
 	// derivable claim key, so the default never fires for the existing fixtures.
 	claimRefStatus int
+
+	// matchingRefs are the fully-qualified refs GET /repos/{o}/{r}/git/matching-refs/{ref}
+	// returns — the review-claim-family listing behind the model floor's stamp age-out. nil
+	// serves an empty array `[]` (family absent → ClaimReleased); a test sets the family refs to
+	// exercise ClaimHeld. matchingRefsStatus overrides with an error status (403/500 →
+	// could-not-look → ClaimLivenessUnknown). Only exercised when claimLiveness reads (a positive
+	// PR number resolves the family), so the default never fires for the existing fixtures.
+	matchingRefs        []string
+	matchingRefsStatus  int
+	reviewClaimReleased bool
 }
 
 var (
@@ -196,6 +206,7 @@ var (
 	reIssueLabelOf = regexp.MustCompile(`/issues/[0-9]+/labels/(.+)$`)
 	reContents     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/(.+)$`)
 	reGitRef1      = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/ref/.+$`)
+	reMatchingRefs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/matching-refs/.+$`)
 )
 
 // ghPaging mimics GitHub's documented paging contract: `per_page` defaults to **30** and
@@ -634,6 +645,37 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write([]byte(`{"ref":"refs/heads/dispatch/x","object":{"sha":"abc123"}}`))
+
+	case r.Method == http.MethodGet && reMatchingRefs.MatchString(path):
+		// The review-claim-family listing (MatchingRefs) behind the model floor's stamp age-out.
+		// Precedence: matchingRefsStatus drives could-not-look (403/500 → ClaimLivenessUnknown);
+		// an EXPLICIT matchingRefs list is served verbatim (a test asserting a specific family, or
+		// a prefix-neighbour the reducer must reject); reviewClaimReleased serves an empty array
+		// (family absent → ClaimReleased → the stamp ages out); and the DEFAULT is the healthy
+		// scenario — the requested review-claim family IS live, so the reviewer's stamp is a live
+		// attestation and the applier/tier logic downstream is what a test exercises. A test that
+		// means to age a stamp out opts in with reviewClaimReleased.
+		if f.matchingRefsStatus != 0 {
+			w.WriteHeader(f.matchingRefsStatus)
+			return
+		}
+		type refObj struct {
+			Ref string `json:"ref"`
+		}
+		refs := f.matchingRefs
+		if refs == nil && !f.reviewClaimReleased {
+			// Echo the requested family prefix as a present ref: "…/git/matching-refs/<refPath>"
+			// → the fully-qualified "refs/<refPath>", an exact family member (RefInReviewClaimFamily
+			// accepts the un-suffixed prefix itself), so the family reads HELD.
+			if parts := strings.SplitN(path, "/git/matching-refs/", 2); len(parts) == 2 && parts[1] != "" {
+				refs = []string{"refs/" + parts[1]}
+			}
+		}
+		out := make([]refObj, 0, len(refs))
+		for _, r := range refs {
+			out = append(out, refObj{Ref: r})
+		}
+		_ = json.NewEncoder(w).Encode(out)
 
 	default:
 		w.WriteHeader(http.StatusNotFound)

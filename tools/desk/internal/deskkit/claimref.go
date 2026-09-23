@@ -59,6 +59,16 @@ const (
 	// ClaimRefsPattern is the glob form of that prefix, for `git ls-remote origin <pattern>`
 	// and for prose that has to name the listing.
 	ClaimRefsPattern = ClaimRefsPrefix + "*"
+
+	// DispatchClaimActiveRefsPrefix is the namespace dispatch claims are ACTUALLY acquired in
+	// today by deskclaim-ref / deskdispatch (`refs/dispatch/`), which DIFFERS from ClaimRefsPrefix
+	// (`refs/heads/dispatch/`) that the fleet's Go claim READERS list against — the divergence
+	// flagged for a house ruling in issue 708 (cmd/deskclaim-ref/main.go SCOPE NOTE). A reader
+	// that must find a live claim WHERE IT ACTUALLY LIVES — rather than where it will live once
+	// 708 consolidates the two — reads against THIS prefix. It is deliberately scoped to that
+	// reader need (cmd/deskpost's review-lane stamp age-out): the writer/acquire path is untouched,
+	// and when 708 lands, both callers of this collapse back onto ClaimRefsPrefix.
+	DispatchClaimActiveRefsPrefix = "refs/dispatch/"
 )
 
 // ClaimBranchPrefix is the BRANCH-name form of the namespace — the shape a forge's branch
@@ -89,6 +99,49 @@ func ClaimRefPath(key string) (string, error) {
 				"as \"--\")", key, ClaimRefsPrefix))
 	}
 	return ValidateRefPath(ClaimRefNamespace + "/" + k)
+}
+
+// ReviewClaimFamilyRefPrefix renders the fully-qualified ref PREFIX that every review-dispatch
+// claim for one PR shares: DispatchClaimActiveRefsPrefix + "<short>--pr-<N>". A review of PR N
+// is dispatched under the item key "<short>--pr-<N>", and a RE-dispatch disambiguates with a
+// "--<suffix>" (e.g. "--rr3-corr", "--security"), so no single exact key identifies "the review
+// claim" — the family is matched by this prefix. ok=false when the repo has no short label or the
+// PR number is not positive (the caller's answer for that is ClaimLivenessUnknown, never a
+// release).
+func ReviewClaimFamilyRefPrefix(repo string, pr int) (string, bool) {
+	short := strings.TrimSpace(RepoShortLabel(repo))
+	if short == "" || pr <= 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%s%s--pr-%d", DispatchClaimActiveRefsPrefix, short, pr), true
+}
+
+// RefInReviewClaimFamily reports whether ref is a member of the review-claim family named by
+// familyPrefix: it EQUALS the prefix (the un-suffixed review claim) or begins with the prefix
+// plus "--" (a disambiguated re-dispatch). The "--" boundary is load-bearing: without it the
+// family for PR 148 ("…--pr-148") would swallow PR 1489's claims ("…--pr-1489…"), since one is a
+// string prefix of the other. A claim key carries no "/", so the whole suffix after the PR number
+// is either empty or "--<segment>", and this test is exact.
+func RefInReviewClaimFamily(familyPrefix, ref string) bool {
+	r := strings.TrimSpace(ref)
+	return r == familyPrefix || strings.HasPrefix(r, familyPrefix+"--")
+}
+
+// ReviewClaimLivenessFromMatchingRefs reduces a MatchingRefs result for a review-claim family to
+// a ClaimLiveness. A read error is Unknown (never a release — a family we could not list is not a
+// family we saw gone). Otherwise any returned ref that is a true family member (RefInReviewClaimFamily,
+// which re-filters the prefix match to the "--" boundary) means the review cycle is still held
+// (ClaimHeld); none means it is over (ClaimReleased), and the reviewer's stamp ages out.
+func ReviewClaimLivenessFromMatchingRefs(refs []string, familyPrefix string, err error) ClaimLiveness {
+	if err != nil {
+		return ClaimLivenessUnknown
+	}
+	for _, r := range refs {
+		if RefInReviewClaimFamily(familyPrefix, r) {
+			return ClaimHeld
+		}
+	}
+	return ClaimReleased
 }
 
 // ClaimKeyFromRef returns the claim key named by ref, and whether ref is a claim ref at all.
