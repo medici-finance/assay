@@ -17,16 +17,17 @@ accepted:
 
 **Ruling recorded (2026-09-11 and 2026-09-23): option 2, and report.** The brief's human
 decision fork asked two questions together; each was ruled on its own decision issue by the
-driver (`human:<name>`), in the driver's own login — never a role App relay:
+driver (`human:<name>`), each ruling posted under the driver's own login — never a role App
+relay:
 
-- **Write-time custody posture — option 2.** Ruled 2026-09-11 on the brief's decision-gate
+- **Write-time custody posture — option 2.** Ruled 2026-09-11T20:18:15Z on the brief's decision-gate
   [issue 892](https://github.com/medici-finance/assay/issues/892) — the
   [ruling comment](https://github.com/medici-finance/assay/issues/892#issuecomment-5640147554)
   reads `2`: create the credential file restricted, read the access list back, and WARN rather
   than refuse when that verification is inconclusive.
 - **Partial-run behaviour — report.** Issue 892 closed with its second question still
   unanswered, so it was re-filed as the follow-up decision
-  [issue 1500](https://github.com/medici-finance/assay/issues/1500) and ruled 2026-09-23 — the
+  [issue 1500](https://github.com/medici-finance/assay/issues/1500) and ruled 2026-09-23T19:12:55Z — the
   [ruling comment](https://github.com/medici-finance/assay/issues/1500#issuecomment-5801240014)
   reads `report`: a run that fails partway through, having already minted some credentials,
   stops and reports exactly which credentials exist so an operator revokes them by hand; the
