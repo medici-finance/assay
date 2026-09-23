@@ -32,7 +32,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$Tag,
   [Parameter()][ValidatePattern('^[0-9a-f]{64}$')][string]$Sha256,
-  [ValidateSet('amd64','arm64')][string]$Arch = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' ? 'arm64' : 'amd64'),
+  # No `? :` ternary here: it is PowerShell 7-only, and this script is run with powershell.exe (5.1).
+  [ValidateSet('amd64','arm64')][string]$Arch = $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }),
   [string]$Dest = (Join-Path $env:LOCALAPPDATA 'Assay\bin'),
   # Override for testing only -- the adopter-facing usage never passes this; the default
   # locates the manifest committed in the same clone this script lives in.

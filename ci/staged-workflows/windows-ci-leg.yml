@@ -77,15 +77,18 @@ jobs:
         # the ANSI code page, where an em dash's 0x94 byte is a string delimiter. Only a real
         # 5.1 parse catches that class (and any other 5.1-only parse error) end to end;
         # the Linux byte guard (tools/desk TestPS1EncodingIs51Safe)
-        # is the PR-time half. `shell: powershell` IS Windows PowerShell 5.1 on
+        # is the PR-time half of the ENCODING class only. It is a byte scan, so any other
+        # 5.1-only parse error (a PowerShell 7 operator such as the `? :` ternary) is caught
+        # here and nowhere else. `shell: powershell` IS Windows PowerShell 5.1 on
         # windows-latest; the edition check keeps this step from going vacuously green.
+        # The pathspec is case-insensitive, matching the byte guard (a `.PS1` is checked too).
         # Offline: parses files on disk, contacts nothing.
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host "PSVersion $($PSVersionTable.PSVersion) edition $($PSVersionTable.PSEdition)"
           if ($PSVersionTable.PSEdition -ne 'Desktop') { throw "not Windows PowerShell 5.1 (Desktop edition); the 5.1 parse check would be vacuous" }
-          $files = @(git ls-files -- '*.ps1')
+          $files = @(git ls-files -- ':(icase)*.ps1')
           if ($files.Count -eq 0) { throw "could-not-check: git ls-files found no tracked .ps1" }
           $bad = 0
           foreach ($f in $files) {
@@ -100,7 +103,7 @@ jobs:
           }
           if ($bad -gt 0) { throw "$bad .ps1 file(s) fail to parse under Windows PowerShell 5.1" }
 
-      - name: Fail-first demonstration (opt-in; the 5.1 parse check MUST reject a BOM-less em dash)
+      - name: Fail-first demonstration (opt-in; the 5.1 parse check MUST reject a BOM-less em dash and a PS7 ternary)
         if: ${{ inputs.failfirst }}
         shell: powershell
         run: |
@@ -112,6 +115,14 @@ jobs:
           [void][System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$tokens, [ref]$errors)
           if ($errors.Count -eq 0) { throw "fail-first BROKEN: 5.1 parsed a BOM-less em dash cleanly; the parse check would be vacuous" }
           Write-Host "fail-first OK: 5.1 rejected the planted em dash ($($errors[0].Message))"
+          # Pure ASCII, a PowerShell 7-only ternary in a param() default: the shape the byte
+          # guard cannot see, so only this parse check catches it.
+          $q = Join-Path $env:RUNNER_TEMP 'ternary-failfirst.ps1'
+          [IO.File]::WriteAllText($q, "param([string]`$A = (`$true ? 'x' : 'y'))`n", (New-Object System.Text.UTF8Encoding($false)))
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($q, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -eq 0) { throw "fail-first BROKEN: 5.1 parsed a PowerShell 7 ternary cleanly; the parse check would be vacuous for that class" }
+          Write-Host "fail-first OK: 5.1 rejected the planted ternary ($($errors[0].Message))"
 
       - name: Install Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
