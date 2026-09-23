@@ -96,8 +96,9 @@ never-autonomous escalation points below.
 **Prerequisites.**
 
 - **Claude Code**, with the plugin installed (the two `/plugin` commands above).
-- **`curl` (or `wget`) and a sha256 tool** (`sha256sum`, `shasum` or `openssl`) — the skill
-  fetches the pinned statusgen release over plain HTTPS and verifies it against `.assay-versions`.
+- **`curl` and a sha256 tool** (`sha256sum`, `shasum` or `openssl`) — the skill fetches the
+  pinned statusgen release over HTTPS only (a non-HTTPS URL or redirect is refused) and verifies
+  it against `.assay-versions`.
   **No forge CLI**: neither `gh` nor `glab` is needed, on either forge.
 - **macOS, Linux, or native Windows.** The statusgen binary acquisition is Unix-first via that
   HTTPS fetch; on a **native Windows** host follow the **[Windows adopters](#windows-adopters)**
@@ -378,10 +379,12 @@ the one an adopting team should actually run:
   Install by: detect platform → read the `statusgen-$platform` line of `.assay-versions` →
   **refuse if absent, or if its digest is not a readable 64-hex sha256** → fetch
   `https://github.com/medici-finance/assay/releases/download/$tag/statusgen-$platform` over plain
-  HTTPS (`curl` or `wget`) → sha256 it → compare to the digest **in the pin file** → refuse on
-  mismatch → only then `install -m 0755 … <bindir>/statusgen`. The shipped
+  HTTPS with `curl` (**HTTPS-only on the initial URL and on every redirect hop** — a non-HTTPS
+  URL or redirect is refused with nothing written) → sha256 it → compare to the digest **in the
+  pin file** → refuse on mismatch → only then `install -m 0755 … <bindir>/statusgen`. The shipped
   `plugins/assay/scripts/assay-install.sh acquire --pins "$TARGET/.assay-versions" --dest <bindir>`
-  is exactly this, refusing (exit 5) on a mismatch or an unreadable digest and reporting
+  is exactly this, refusing (exit 5) on a mismatch, an unreadable digest, or a non-HTTPS URL or
+  redirect, and reporting
   could-not-check (exit 6) on a failed fetch, installing nothing in every case. **No forge CLI is
   involved, on GitHub or GitLab**: the release assets are public, and the pin file — never
   anything fetched from the release home, `checksums.txt` included — is the single source of the

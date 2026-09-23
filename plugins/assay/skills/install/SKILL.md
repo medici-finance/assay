@@ -152,8 +152,11 @@ and fetched over plain HTTPS.
 4. **Fetch and verify**: `assay-install.sh acquire --pins <target>/.assay-versions --dest <bindir>
    --release-home <release_home>` — `<release_home>` is the one named in `paired-versions.yaml`
    (resolve it from there, do not hardcode it in prose). It fetches
-   `https://github.com/<release_home>/releases/download/<tag>/statusgen-<platform>` with `curl`
-   (else `wget`), computes the sha256, and compares it to the digest **in the pin file**. The pin
+   `https://github.com/<release_home>/releases/download/<tag>/statusgen-<platform>` with `curl`,
+   computes the sha256, and compares it to the digest **in the pin file**. The download is
+   **HTTPS-only on the initial URL and on every redirect hop**: a non-HTTPS URL or a redirect to
+   one is REFUSED with nothing written (cross-host HTTPS redirects, which GitHub's asset links
+   use, are followed). That narrows the transport; it never replaces the digest check. The pin
    file is the single source of the expected value: nothing fetched from the release home — its
    `checksums.txt` included — is ever the comparison's source, or a substituted asset could vouch
    for itself.
@@ -344,7 +347,7 @@ reviewer identity, and the human-merge gate each fire once (the `adopt` runbook'
 
 **Unix-first (mac/linux), with a real native-Windows arm.** The statusgen binary acquisition in
 step 2 is the only OS-specific arm. It is implemented for mac and linux as a plain HTTPS fetch
-verified against the pin file (`assay-install.sh acquire` — `curl` or `wget`, plus `sha256sum`,
+verified against the pin file (`assay-install.sh acquire` — `curl`, plus `sha256sum`,
 `shasum` or `openssl`; no forge CLI), and there is now a **native-Windows path** that slots in
 beside the Unix one without reshaping the flow. Forge is not an axis here: the same arm serves a
 GitHub and a GitLab adopter, because the release assets are fetched from their public release home

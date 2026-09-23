@@ -2,7 +2,7 @@
 # assay-install.sh — the CLI-free, forge-neutral half of the `assay:install` flow.
 #
 # Every step here runs identically on a box with NO forge CLI on PATH (no `gh`, no `glab`):
-# the release assets are fetched over plain HTTPS (curl, else wget) and verified against the
+# the release assets are fetched over plain HTTPS (curl) and verified against the
 # sha256 in the target repo's `.assay-versions` pin file. A forge CLI was never load-bearing
 # for acquisition; it was only the tool that happened to be there.
 #
@@ -16,8 +16,13 @@
 #   * a digest that CANNOT BE READ — no pin line for the platform, a placeholder, a malformed
 #     or truncated value, two competing lines — refuses (exit 5) and installs nothing. There is
 #     no "verification unavailable, continuing" path;
-#   * a fetch that fails, or a host with no sha256 tool, is COULD-NOT-CHECK (exit 6) and
-#     installs nothing;
+#   * HTTPS ONLY, on the initial URL AND on every redirect hop: any other scheme — http://,
+#     file://, anything — is REFUSED (exit 5) and nothing is written to --dest. Cross-host
+#     HTTPS redirects are followed (GitHub's release-asset links redirect cross-host). This is
+#     the #1554 ruling's addition; it narrows the TRANSPORT and is never a substitute for the
+#     digest comparison, which still runs on every download;
+#   * a fetch that fails, a host with no sha256 tool, or no curl, is COULD-NOT-CHECK (exit 6)
+#     and installs nothing;
 #   * the bytes are fetched into a private temp dir and reach --dest only AFTER the digest
 #     matched.
 #
@@ -44,8 +49,9 @@
 #       Nothing is written to the real target, nothing is pushed, no PR is opened.
 #
 # --base-url defaults to https://github.com; the asset URL is
-# <base-url>/<release-home>/releases/download/<tag>/<asset>. Only https:// and file:// are
-# accepted (file:// is for offline rehearsal fixtures — the digest check is identical).
+# <base-url>/<release-home>/releases/download/<tag>/<asset>. Only https:// is accepted — an
+# offline rehearsal serves its fixture release over a local HTTPS server (the suite trusts that
+# server's throwaway certificate through curl's own CURL_CA_BUNDLE, never through a flag here).
 #
 # EXIT CODES (the desk tools' contract): 0 ok · 2 usage · 5 refused · 6 could-not-check.
 # Every non-zero exit leaves --dest untouched.
@@ -124,22 +130,26 @@ sha256_of() {
   printf '%s' "$out"
 }
 
-# fetch <url> <out> — plain HTTPS (or file:// for offline fixtures). No forge CLI.
+# fetch <url> <out> — HTTPS only, on the initial URL and on every redirect hop (the #1554
+# ruling). curl enforces the redirect half itself: --proto-redir '=https' makes a hop to any
+# other scheme fail with CURLE_UNSUPPORTED_PROTOCOL (curl exit 1) before a byte is fetched from
+# it, and that is a REFUSAL, not an outage. wget is deliberately not a fallback: its
+# --https-only binds recursive link-following, not redirects, so it cannot make this promise.
+# No forge CLI.
 fetch() {
-  local url="$1" out="$2"
+  local url="$1" out="$2" rc
   case "$url" in
-    https://*|file://*) ;;
-    *) refuse "refusing to fetch '$url' — only https:// (or file:// for an offline rehearsal) is accepted" ;;
+    https://*) ;;
+    *) refuse "refusing to fetch '$url' — only https:// is accepted (initial URL and every redirect); nothing installed" ;;
   esac
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --proto '=https,file' --proto-redir '=https' -o "$out" "$url" \
-      || unverifiable "fetch failed: $url — nothing installed"
-  elif command -v wget >/dev/null 2>&1; then
-    case "$url" in https://*) ;; *) unverifiable "wget cannot fetch '$url' (only https://) — install curl for a file:// rehearsal" ;; esac
-    wget -q --https-only -O "$out" "$url" || unverifiable "fetch failed: $url — nothing installed"
-  else
-    unverifiable "no HTTPS fetcher (curl or wget) on PATH — nothing installed"
-  fi
+  command -v curl >/dev/null 2>&1 || unverifiable "no curl on PATH — the HTTPS-only download cannot run, nothing installed"
+  curl -fsSL --proto '=https' --proto-redir '=https' -o "$out" "$url"
+  rc=$?
+  case "$rc" in
+    0) ;;
+    1) refuse "non-HTTPS URL or redirect refused while fetching $url (curl: unsupported/disabled protocol) — nothing installed" ;;
+    *) unverifiable "fetch failed (curl exit $rc): $url — nothing installed" ;;
+  esac
 }
 
 cmd_acquire() {
