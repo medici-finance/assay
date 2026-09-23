@@ -262,3 +262,66 @@ func TestSkillBugModeRejectsTitleAndBodyFile(t *testing.T) {
 		}
 	})
 }
+
+// redPreflightOutput is the shape of a red `deskroster preflight` run as deskboot captures it
+// (config banner stripped): the summary line carrying each blocking check's detail and
+// remediation verbatim.
+const redPreflightOutput = "preflight role=worker RED 4/6 checked-clean · ambient-identity=checked-failed: " +
+	"the ambient gh login is mallory, a non-blessing login → fix: switch the interactive gh identity [#1527] " +
+	"· write-transport=could-not-check: no remote named origin in /home/someone/checkout → fix: run the landing probe by hand"
+
+// TestPreflightAlarmBodyPassesBlockerEvidenceGate is the cross-tool contract for deskboot's
+// red-preflight alarm: the body deskboot composes (deskkit.PreflightAlarmBody) under the label
+// it files with (deskkit.PreflightAlarmLabel) must be ACCEPTED by this tool's blocker-evidence
+// gate. deskboot's own tests stub deskfile, so they can only check its argv; this is where the
+// gate that actually decides lives.
+//
+// FAIL-FIRST: the alarm body shipped before this contract opened its fence under the prose
+// line "The roster's own verdict, verbatim:" with no `### Evidence` heading, so this filing
+// was refused exit 5 and the alarm never reached anyone.
+func TestPreflightAlarmBodyPassesBlockerEvidenceGate(t *testing.T) {
+	withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("FAKEGH_LABELS", labelsJSON(t, deskkit.PreflightAlarmLabel))
+	body := bodyFileWith(t, deskkit.PreflightAlarmBody("worker", redPreflightOutput))
+
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", deskkit.PreflightAlarmTitle("worker", "2026-01-02"), "--body-file", body,
+		"--label", deskkit.PreflightAlarmLabel})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("the composed alarm body was refused by deskfile (rc %d, want 0) — deskboot's alarm "+
+			"would never file; out=%s", rc, out)
+	}
+	if curForge.filed == nil {
+		t.Fatal("the composed alarm body was not filed")
+	}
+}
+
+// TestDedupeRefusalCarriesTheSharedPrefix pins the other half of the alarm contract: the
+// title-dedupe refusal is the ONE exit 5 deskboot may read as "already filed", and it
+// recognises it by deskkit.DedupeRefusalPrefix. Any other exit-5 refusal must not carry it.
+func TestDedupeRefusalCarriesTheSharedPrefix(t *testing.T) {
+	withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", searchHitsJSON(t, "oracle price feed goes stale"))
+	body := bodyFileWith(t, "the oracle price feed is going stale under load")
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "oracle price feed goes stale", "--body-file", body})
+	if rc != deskkit.ExitRefused || !strings.Contains(out, deskkit.DedupeRefusalPrefix) {
+		t.Fatalf("dedupe refusal rc=%d, want 5 carrying %q; out=%s", rc, deskkit.DedupeRefusalPrefix, out)
+	}
+
+	// The blocker-evidence refusal is ALSO exit 5 — it must be distinguishable.
+	withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "help wanted"))
+	body = bodyFileWith(t, bodyNoEvidence)
+	rc, out = runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "a blocker on the settlement path", "--body-file", body, "--label", "help wanted"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("evidence-less escalation rc=%d, want 5; out=%s", rc, out)
+	}
+	if strings.Contains(out, deskkit.DedupeRefusalPrefix) {
+		t.Fatalf("the evidence-gate refusal carries the dedupe prefix, so deskboot would read it as "+
+			"'already filed'; out=%s", out)
+	}
+}
