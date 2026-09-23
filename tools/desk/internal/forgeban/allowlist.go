@@ -249,6 +249,15 @@ var UnresolvedArgv = []Allowance{
 			"layer, deliberately outside the interface — never a write.",
 	},
 	{
+		Key: "cmd/deskrelease/github.go::resolveDeskTokenPath::<unresolved>",
+		Reason: "exec.LookPath of the desktoken binary name (\"desktoken\"/\"desktoken.exe\") — the identity-mint " +
+			"layer, deliberately outside the interface (D2), the same binary coldMintProbe runs. argv[0] is a " +
+			"variable ONLY because of the .exe OS conditional and because this LookPath is the dev-workflow " +
+			"LAST resort: resolveDeskTokenPath prefers the desktoken co-located with the running deskrelease " +
+			"binary via os.Executable(), and falls back to PATH lookup then the bare name only when no " +
+			"co-located sibling exists (go run/go test). Never a forge CLI. Mirrors migrate.go::resolveStatusgenBinary.",
+	},
+	{
 		Key:    "internal/deskkit/riskcallout.go::runRiskCallout::<unresolved>",
 		Reason: "runs the configured risk-classifier binary by path; not a forge path.",
 	},

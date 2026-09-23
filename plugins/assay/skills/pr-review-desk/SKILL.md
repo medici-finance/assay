@@ -221,6 +221,15 @@ the desk-tools console-noise-floor contract. Two states:
    --to <role> …` for the durable tracker state that desk's own sweep leads with — never a
    typed relay through the human, and never a message to its session.
 
+**Blocker-evidence gate + correction capture — see `worker-desk` §HARD GATE (one definition, not
+restated here).** A blocker claim (`BLOCKED-ON-HUMAN`, `needs-decision`, `help wanted`, `question`, a
+blocking `could-not-check`) needs a `### Evidence` fence exactly as an idle claim needs a sweep, and
+`deskfile new` REFUSES an evidence-less escalation on those labels (exit 5). And a human CORRECTION
+right after your receipt is a free `skill-bug` report — obey it, then file ONE via `deskfile new
+--raised-by <role> --label skill-bug --to desk --correction "<the message>" --section "<skill +
+section>" --reading "<what it should have said>"` (the tool composes it from your last receipt; NOT
+for a `no` that answers an options question you just asked).
+
 **What silence does NOT change — a dead monitor is NEVER hidden.** "Silent" applies to HEALTHY
 routine operation only; the liveness machinery is internal state, not print-gated. **Detected
 blindness is a needs-human condition, not a quiet state** — a board older than the cadence
@@ -284,10 +293,15 @@ failure this section prevents**, and there is no state in this loop called "the 
 
 One cycle = sweep → plan → act.
 
+Write each sweep to a per-invocation scratch file and pass its path — never a fixed name in a
+shared scratch dir (desk-shell.md §Scratch files):
+
 ```bash
-deskboard actions > /tmp/actions.json    # JSON is the default shape
-deskboard prs     > /tmp/prs.json        # supplies the head SHAs `actions` omits
-reviewloop plan --actions /tmp/actions.json --prs /tmp/prs.json
+ACTIONS=<a per-invocation scratch file — desk-shell.md §Scratch files>
+PRS=<a per-invocation scratch file — desk-shell.md §Scratch files>
+deskboard actions --out "$ACTIONS"    # JSON is the default shape
+deskboard prs     --out "$PRS"        # supplies the head SHAs `actions` omits
+reviewloop plan --actions "$ACTIONS" --prs "$PRS"
 ```
 
 `reviewloop plan` classifies every board row against an action table required by test to be

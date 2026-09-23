@@ -254,6 +254,19 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 
+	// PUBLISH-identity gate (#1490 lane B). deskevidence commits AS the verifier App via the
+	// Contents API, so the Evidence commit itself is correctly attributed — but the witness
+	// Runner attribution is derived from the verifier WORKTREE's identity, which is exactly
+	// the value #1490 saw come out wrong when a dispatch provisioned the worktree with a stale
+	// role. This refuses, before any network call, if the worktree the landing is authored
+	// from carries commits ahead of the target branch that are not the verifier's — a signal
+	// the worktree's identity cannot be trusted to derive attribution from. Local (git +
+	// roster); in the sanctioned post-merge verify flow the worktree sits at the target
+	// branch, so the range is empty and this is a clean no-op.
+	if ierr := publishIdentityGate(*root, branch); ierr != nil {
+		return ierr
+	}
+
 	// Mint the verifier App installation token and resolve the forge that serves this repo,
 	// under the verifier App's custody. The JWT→installation-token exchange moved OUT of this
 	// package to the identity layer (mintTokenFn → `desktoken verifier`); ForgeFor hands the

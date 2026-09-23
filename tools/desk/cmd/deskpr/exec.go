@@ -27,6 +27,32 @@ var publicRepoGateFn = deskkit.PublicRepoGate
 // quietly rebound — fails loudly instead of leaving every gate test vacuous.
 var productionGateFn = publicRepoGateFn
 
+// publishIdentityGateFn is the seam for deskkit.PublishIdentityMatchesRole — tests set it
+// to a no-op stub so a fixture whose commits are authored under an arbitrary identity does
+// not trip the gate, and the dedicated fail-first tests exercise the real check. Production
+// uses the real gate.
+var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
+
+// productionPublishIdentityGateFn records what publishIdentityGateFn was bound to at init,
+// before any test could replace it — the same seam-reality guard productionGateFn provides
+// for the public-repo gate, so a gate quietly stubbed out in the shipped binary fails loudly
+// instead of leaving its tests vacuous.
+var productionPublishIdentityGateFn = publishIdentityGateFn
+
+// publishIdentityGate refuses (exit 5) when any commit the push would publish —
+// refs/remotes/origin/<base>..HEAD — is not authored AND committed by this session role's
+// bound identity (#1490 lane B: the push-time layer that stops a mis-attributed commit
+// reaching the forge however the worktree acquired its stale identity). The role is resolved
+// from the session loop identity, the same resolution mintWorkerToken uses for the token the
+// PR is authored under, so the gate and the PR author agree on who this session is.
+func publishIdentityGate(dir, base string) error {
+	role, _, rerr := deskkit.SessionTokenRole("deskpr")
+	if rerr != nil {
+		return rerr
+	}
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, Role: role})
+}
+
 // ghToken holds the App installation token value set by mintWorkerToken. It is handed to the
 // resolved forge backend by the GitHub custody minter (github.go) and to the public-repo gate's
 // HTTPRepoInfoFetcher. An EMPTY value is a HARD REFUSAL at the custody step — deskpr never falls

@@ -188,8 +188,8 @@ monitor picks up the new head and re-dispatches review — you do not request it
 `--body-file` on the `gh pr` verbs). The literal-string form (`-f body=…`) mangles a
 multi-line body, silently re-interprets shell metacharacters inside quoted evidence, and puts
 the text on a command line where it is no longer the artifact you reviewed before posting.
-Mint the file per invocation (`mktemp`) so two concurrent shepherds cannot post each other's
-body.
+Mint a per-invocation scratch file (desk-shell.md §Scratch files) so two concurrent shepherds
+cannot post each other's body.
 
 **Report a review verdict with its id and its verbatim source line — NEVER synthesize one.**
 A shepherd once reported the reviewer App as APPROVED at head, with a plausible timestamp and a
