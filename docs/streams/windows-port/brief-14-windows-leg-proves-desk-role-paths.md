@@ -8,8 +8,8 @@ why: >-
   leg that exercises them on windows-latest the "runs on Windows" claim for the desk roles rests
   on parity fixtures recorded on a Mac. This brief adds that leg, and for each bash oracle whose
   verb the leg proves, retires the script — the only point at which retirement is honest.
-wave: 5
-depends: ["windows-port/04", "windows-port/11", "windows-port/12", "windows-port/13"]
+wave: 6
+depends: ["windows-port/04", "windows-port/11", "windows-port/12", "windows-port/13", "windows-port/15"]
 unblocks: []
 effort: M
 gate: human
@@ -28,7 +28,7 @@ authored: 2026-09-21 by the-desk (Bob) — windows-port authoring session, drive
 sources:
   - ".github/workflows/windows-ci-leg.yml (live; brief 04 done) — jobs windows-smoke, windows-bootstrap-smoke, arm64-native-smoke (held `if: false`): the leg this brief extends"
   - "ci/staged-workflows/ — the staged-copy landing pattern brief 04/06 used and brief 10 (PR #1432, not yet merged) names as a tension; the same landing question applies here"
-  - "windows-port/11 (deskmonitor, desktick), /12 (hook-install, de-POSIX prose), /13 (deskinbox) — the verbs this leg proves; each keeps its .sh oracle until this brief"
+  - "windows-port/11 (deskmonitor, desktick), /12 (hook-install, de-POSIX prose), /13 (deskinbox table+walk), /15 (deskinbox html+flow — SPLIT from the original /13 scope; the `deskinbox flow` step this brief's facts: line names is /15's deliverable, not /13's) — the verbs this leg proves; each keeps its .sh oracle until this brief"
   - "plugins/assay/scripts/{inbound-monitor,pr-monitor,tick-summary,assay-inbox}.sh — the oracles; `pdfingest.sh` (71 lines, curl+python3) is OUT of scope: it needs python3/docling regardless of shell and stays a documented-workaround row"
   - "docs/adopting-assay.md § Windows adopters (brief 05/09) — the doc that states what the leg proves; gains one sentence per proven path"
   - "freshness-checked 2026-09-21 @ 56491ce (origin/main): the live leg has three jobs, none exercising a desk verb beyond --version"
