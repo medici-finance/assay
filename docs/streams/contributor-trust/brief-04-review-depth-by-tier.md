@@ -131,5 +131,43 @@ contract only requires that every claim it does extract carries a state.
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2026-09-23 opus-5.5-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date Runner |
+|---|---------|----------|------------------------------|-------------|
+| 1 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1 | exit 0; output contains ok | exit 0; ok github.com/medici-finance/assay/tools/desk/internal/deskkit | 2026-09-23 opus-5.5-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v | exit 0; output contains fact-check, fail-first, security | exit 0; PASS TestReviewLanesUnknownTierGetsTheDeepSet; log lines show the unknown-tier lanes security, fact-check and fail-first | 2026-09-23 opus-5.5-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v | exit 0; output does NOT contain fail-first (negative control) | exit 0; PASS TestReviewLanesContributorTierKeepsTheStandardPath; no fail-first in output | 2026-09-23 opus-5.5-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v | exit 0; output contains PASS | exit 0; PASS TestClaimStateUnverifiedIsRepresentable | 2026-09-23 opus-5.5-verifier |
+| 5 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v | exit 0; output contains PASS | exit 0; PASS TestClaimEveryClaimCarriesAState | 2026-09-23 opus-5.5-verifier |
+| 6 | grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md | exit 0; at least one match | exit 0; 4 matching lines (63, 70, 82, 101) | 2026-09-23 opus-5.5-verifier |
+| 7 | grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md | exit 0; at least one match (fail-first names both records) | exit 0; 2 matching lines (93 base-failing, 99 cannot-reproduce-at-base) | 2026-09-23 opus-5.5-verifier |
+| 8 | cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/ | exit 0 | could-not-check (verifyrun): check:ci hermetic execution requires a network-off sandbox (unshare --net, a Linux facility); this host is darwin. Non-hermetic manual run: exit 0 (build + vet clean). Needs a Linux runner for the sanctioned witness | 2026-09-23 opus-5.5-verifier |
+| 9 | cd tools/skillslint && go run . --root ../..; echo rc=$? | output contains rc=0 | could-not-check (verifyrun): same darwin/unshare --net limitation as row 8. Non-hermetic manual run: rc=0, SKILLSLINT PASS (parity + house-values + guardrails + enforcement-block all PASS; word-budget/POSIX notices are advisory, exit unaffected). Needs a Linux runner for the sanctioned witness | 2026-09-23 opus-5.5-verifier |
+| 10 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v | exit 0; output contains PASS | exit 0; PASS TestReviewLanesReferenceMatchesTable (reference lane sets parse back to and match LanesFor) | 2026-09-23 opus-5.5-verifier |
+| 11 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v | exit 0; output contains PASS | exit 0; PASS TestReviewLanesDispatchEndToEnd; log shows a broken/unreadable ledger still resolving tier=unknown to the deep set (fail-closed) | 2026-09-23 opus-5.5-verifier |
+| 12 | statusgen --root . --consumers --brief assay:assay:contributor-trust:04 | exit 0; output does not contain DISPROVED or COULD-NOT-CHECK; output contains corroborated | As written (default base = merged main): exit 2, COULD-NOT-CHECK — the merged brief is not in the diff against merged HEAD, so this run carries no evidence (a post-merge instrument property, not a disproof). Re-run against the base that made the claims (the squash parent of the landing commit): exit 0, "3 corroborated, 0 disproved, 1 unchecked" — the three fixed-here consumers CORROBORATED, the out-of-scope trusttier reader correctly UNCHECKED, nothing DISPROVED | 2026-09-23 opus-5.5-verifier |
+
+RISK-VALUE (kit §4 — enumerate → rank → derive):
+
+Enumeration over the brief's diff scope (reviewlanes.go, reviewlanes_test.go,
+review-lanes.md, one SKILL.md paragraph) found NO numeric constant, bound,
+threshold, tolerance, ratio, timeout or limit. The only literals introduced are
+policy/contract strings and one policy table:
+- Lane name strings: correctness @ reviewlanes.go:72, security @ :78, fact-check @ :86, fail-first @ :94.
+- ExecTier string "strong" @ reviewlanes.go:80, :88, :96 and set by strongTier @ :105.
+- ClaimState strings: confirmed @ reviewlanes.go:182, contradicted @ :183, unverified @ :184.
+- The tier-to-lane policy table (the load-bearing binding) @ reviewlanes.go:118-123.
+- The fail-closed default (unrecognized/empty tier resolves to the deep set) @ reviewlanes.go:136-138.
+
+Ranked by irreversibility, every entry is a reversible policy knob (edit +
+redeploy); the item's own risk answers are all no and irreversible: no. The
+top-ranked (most policy-load-bearing) entries are the tier-to-lane table and its
+fail-closed default:
+
+- RISK-VALUE: DERIVED — laneTable[TierContributor] = {correctness, security} @ reviewlanes.go:121 and laneTable[TierMaintainer] = {correctness, security} @ reviewlanes.go:122, versus laneTable[TierUnknown] = laneTable[TierBlessedOnce] = {strong correctness, security, fact-check, fail-first} @ reviewlanes.go:119-120 — the brief facts pin "unknown and blessed-once: ... deep set" and "contributor and maintainer: the standard path, unchanged from today"; the table matches that mapping exactly. Wrong direction is bounded and reversible: giving a low tier the standard path makes review too shallow (caught by the review gate itself), giving a known contributor the deep set only imposes cost — neither widens what anyone may do.
+- RISK-VALUE: DERIVED — fail-closed default: an out-of-range/empty tier resolves to laneTable[TierUnknown] (the deep set) @ reviewlanes.go:136-138 — the brief's stated failure-safe direction is MORE scrutiny by default ("with no ledger every external identity is unknown, so external pull requests get the deep lane"); defaulting to the deep set is the correct, safe direction, confirmed at runtime by row 11's broken-ledger case still selecting the deep set.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
