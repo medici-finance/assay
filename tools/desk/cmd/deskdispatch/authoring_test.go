@@ -92,6 +92,25 @@ func TestPhantomRefusesDocsOnlyDelivery(t *testing.T) {
 	}
 }
 
+// A PR that authored the brief AND delivered its document under docs/streams in one change adds the
+// brief's own file, but the delivered document is neither a board README nor a brief, so it refuses.
+func TestPhantomRefusesAuthorAndDeliver(t *testing.T) {
+	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 1489, State: "MERGED", Body: "Authors and delivers.\n\nBrief: example-port/02"}}, nil
+	})
+	withPRFiles(t, filesByPR(t, map[int][]deskkit.ChangedFile{1489: {
+		{Filename: "changelog/example-port-02.md", Status: "added"},
+		{Filename: "docs/streams/example-port/README.md", Status: "modified"},
+		{Filename: "docs/streams/example-port/brief-02-portability-audit.md", Status: "added"},
+		{Filename: "docs/streams/example-port/portability-audit.md", Status: "added"},
+	}}))
+
+	err := phantomCheck(dispatchOpts{item: "assay--example-port--02", kit: "worker"}, allowedRepo)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("an author-and-deliver PR must still REFUSE (exit 5), got exit %d: %v", deskkit.ExitCodeOf(err), err)
+	}
+}
+
 // The authoring PR is set aside, but a real delivery PR for the same brief still refuses. The
 // exemption removes one PR from the match; it never clears the brief.
 func TestPhantomAuthoringKeepsDelivery(t *testing.T) {

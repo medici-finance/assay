@@ -4066,11 +4066,13 @@ table of bad inputs and asserts that *zero* processes ran.
 when an OPEN or MERGED PR already names the brief in its `Brief:` trailer (the phantom check).
 The docs-only PR that WROTE the brief carries that trailer too, so before each match
 `deskdispatch` reads the changed files of every PR naming the brief and sets aside one that
-only authored it: every path is under `docs/streams/` or a changelog fragment
-(`changelog/<name>.md`), a rename is judged on both halves, and the PR ADDS the brief's own
-file `docs/streams/<stream>/brief-<NN>-*.md`. The last rule keeps a real delivery refused
-even when the deliverable is itself a document under `docs/streams/`, because a delivery never
-adds its own brief's file. One path outside that set makes the PR a delivery. A file list that
+only authored it. Every path must be a stream board README
+(`docs/streams/<stream>/README.md`), a brief file (`docs/streams/<stream>/brief-<NN>-*.md`) or a
+changelog fragment (`changelog/<name>.md`), a rename is judged on both halves, and the PR must
+ADD the brief's own file. Any other path, including any other document under `docs/streams/`,
+makes the PR a delivery. That keeps a PR that authored a brief and delivered a document under
+`docs/streams/` in the same change counted as a delivery, even though it adds the brief's file.
+A PR that only edits an existing brief did not author it, so it stays a delivery too. A file list that
 cannot be read, or whose length does not match the forge's own changed-file count, holds the
 dispatch as could-not-check (exit 6); it is never read as "authoring". A set-aside PR is named
 in a `NOTICE` line on stderr.

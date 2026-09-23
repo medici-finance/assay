@@ -20,7 +20,8 @@ import (
 // Only PRs whose trailer names THIS brief are inspected, so the file reads stay bounded by the number
 // of PRs that name one brief (usually zero or one). The classification can only ever REMOVE a PR from
 // the match. Any doubt keeps the PR in, which leaves the dispatch refused as it was before this file:
-// a file list with a path outside `docs/streams/` and changelog fragments, a list that does not add
+// a file list with any path that is not a stream board README, a brief file or a changelog fragment
+// (so a document delivered under `docs/streams/` keeps the PR a delivery), a list that does not add
 // the brief's own file, or no file transport wired at all.
 
 // listPRFiles reads one PR's COMPLETE changed-file list. Like listRepresentedPRs it is nil by default:
@@ -54,8 +55,8 @@ func dropBriefAuthoringPRs(repo, briefID string, prs []deskkit.PRRef) ([]deskkit
 		}
 		if deskkit.BriefAuthoringOnly(id, files) {
 			fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s#%d names %s in its `Brief:` trailer but only "+
-				"AUTHORED it (it adds the brief's file and touches nothing outside docs/streams/ and changelog "+
-				"fragments), so it is not counted as the brief's delivery\n", repo, rp.Number, briefID)
+				"AUTHORED it (it adds the brief's file and touches only stream board READMEs, brief files and "+
+				"changelog fragments), so it is not counted as the brief's delivery\n", repo, rp.Number, briefID)
 			continue
 		}
 		kept = append(kept, pr)
