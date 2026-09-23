@@ -178,6 +178,34 @@ Ranking note: all four gate a DRY-RUN-ONLY render (dispatch.go:455 refuses --wor
 
 VERIFY: PARTIAL — row 6 exactly as written: gofmt -l over cmd/deskdispatch lists phantom_test.go (test exit 1). Cause confirmed pre-existing and unrelated to this brief's diff (91a7f9208, 2026-09-06, before the 2026-09-08 merge; tracked #1119). Rows 1-5 and 7 checked-clean. Item does NOT advance; stays implemented.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+Runner is not the implementer. Own detached temp worktree cut off refs/remotes/origin/main at merged head b3fe2a1c7900f5b2cf9c5da6364fd598a64f609f. Offline envelope observed (KUBECONFIG=/dev/null). No PR, no push, no status flip. Deliverable commit 622400754 confirmed a merged ancestor. Every row re-run fresh, not trusted from the four prior recorded verdicts. **This pass differs from all four priors: row 6 now PASSES** — the pre-existing gofmt drift on phantom_test.go (tracked #1119) was fixed by merged commit 27965737e (2026-09-22, "fix: gofmt phantom_test.go comment alignment"), so the whole cmd/deskdispatch tree is now gofmt-clean.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/desk && go build ./... && go vet ./... | exit 0 | exit 0 — build and vet silent, no output | 2026-09-23 | opus-5.5-verifier |
+| 2 | go test ./cmd/deskdispatch/ -run TestDryRunWorktree-RendersVerifiedPath -count=1 | exit 0 — path at both sites, no placeholder, banner "operator-supplied, verified" | exit 0 — --- PASS run with -v; test asserts path at both sites, no homeUnknown placeholder, banner substring present | 2026-09-23 | opus-5.5-verifier |
+| 3 | go test ./cmd/deskdispatch/ -run TestDryRunWorktree-RefusesUnverifiablePaths -count=1 | exit 0 — four negative cases each exit 5 with own reason, no prompt printed | exit 0 — all 4 subtests PASS: outside-prefix, not-a-worktree, other-repo, shared-checkout | 2026-09-23 | opus-5.5-verifier |
+| 4 | go test ./cmd/deskdispatch/ -run TestWorktreeFlag-RefusedOnRealDispatch -count=1 | exit 0 — exit 5, zero child processes recorded | exit 0 — --- PASS (asserts rc==5 and no child process ran) | 2026-09-23 | opus-5.5-verifier |
+| 5 | go test ./cmd/deskdispatch/ -count=1 | exit 0 — including the unchanged placeholder test | exit 0 — ok whole package (41.4s); pre-existing placeholder assertions still run and pass | 2026-09-23 | opus-5.5-verifier |
+| 6 | gofmt -l tools/desk/cmd/deskdispatch; test ! -s (listing) | exit 0 | exit 0 — gofmt listing EMPTY; phantom_test.go drift resolved by merged commit 27965737e (2026-09-22, #1119). Whole cmd/deskdispatch tree now gofmt-clean | 2026-09-23 | opus-5.5-verifier |
+| 7 | cd statusgen && go run . --root .. --lint | exit 0 | exit 0 — LINT: PASS (repo-wide NOTICEs only, none fatal, none name this brief fatally) | 2026-09-23 | opus-5.5-verifier |
+
+Execution witness (statusgen verifyrun, hermetic): all 7 check:ci rows returned could-not-run on this darwin host — the network-off sandbox uses Linux `unshare --net`, unavailable on darwin. Recorded verbatim as could-not-check per the addendum; not treated as pass or fail. The witness rows are appended to the brief's ## Evidence in the verifier worktree for the desk to read. The manual (non-hermetic) runs above are the observed verification; a hermetic Linux witness may still be required for the verified flip per house convention.
+
+RISK-VALUE enumeration (kit §4 — enumerate → rank → derive). The diff introduces/duplicates four literals, all governing a DRY-RUN-ONLY preview render (row 4 pins that --worktree never reaches a real dispatch: zero child processes). Ranking: all four rank LOW on irreversibility — wrongness breaks an operator preview only, reversible by edit + rebuild; none touches a settlement/auth/ledger path. Derived anyway because each must duplicate deskwt's isolation-floor allowlist "no looser":
+
+RISK-VALUE: DERIVED — worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdispatch/worktree.go:76 — byte-identical to the pinned isolation-floor constant tmpBaseDir = "/private/tmp" @ tools/desk/cmd/deskwt/deskwt.go:26; the brief required duplicating deskwt's pathGuard rule no looser, and it is, not independently chosen.
+RISK-VALUE: DERIVED — "tracker-" worktree-name prefix @ worktree.go:146 — same literal and strict child-prefix test shape as deskwt.go:166.
+RISK-VALUE: DERIVED — .claude/worktrees sanctioned-suffix join @ worktree.go:149 — same shape as deskwt.go:118 (filepath.Join(root, ".claude", "worktrees")).
+RISK-VALUE: DERIVED — refusal exit code ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:27 — used in all three refusal paths, matching the brief's stated "exit 5" requirement and the verb-family convention.
+
+VERIFY: PASS — all 7 Verify rows checked-clean on merged main. Row 6, the sole blocker across the four prior passes (2026-09-15/17/18/20, all PARTIAL/HELD on the phantom_test.go gofmt drift #1119), is now clean after merged commit 27965737e. Item is gate:model, all four risk answers no; a model verdict is permissible for this gate. The verifier does not itself flip status — the desk lands Evidence and advances.
+
+Row 6 drift resolved by #1268 (#1119 closed). Three Go test names above are hyphen-broken for the secret scanner.
+
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer confirms row 4 is present and that the
