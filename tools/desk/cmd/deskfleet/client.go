@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -61,20 +62,41 @@ type apiResponse struct {
 // do sends one request. A transport failure is returned as an error naming method and path
 // only; any HTTP status (including non-2xx) is returned as a response for the caller to judge.
 func (c *apiClient) do(method, path string, body any) (apiResponse, error) {
-	var rdr io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return apiResponse{}, fmt.Errorf("%s %s: encode request: %v", method, path, err)
-		}
-		rdr = bytes.NewReader(b)
+	if body == nil {
+		return c.send(method, path, "", nil)
 	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return apiResponse{}, fmt.Errorf("%s %s: encode request: %v", method, path, err)
+	}
+	return c.send(method, path, "application/json", bytes.NewReader(b))
+}
+
+// doFile sends one multipart/form-data request carrying a single file field — the shape of
+// GitLab's PUT /user/avatar. Error and response handling are exactly do's.
+func (c *apiClient) doFile(method, path, field, filename string, data []byte) (apiResponse, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile(field, filename)
+	if err == nil {
+		_, err = fw.Write(data)
+	}
+	if err == nil {
+		err = mw.Close()
+	}
+	if err != nil {
+		return apiResponse{}, fmt.Errorf("%s %s: encode request: %v", method, path, err)
+	}
+	return c.send(method, path, mw.FormDataContentType(), &buf)
+}
+
+func (c *apiClient) send(method, path, contentType string, rdr io.Reader) (apiResponse, error) {
 	req, err := http.NewRequest(method, c.base+path, rdr)
 	if err != nil {
 		return apiResponse{}, fmt.Errorf("%s %s: build request: %v", method, path, redactURLError(err))
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if c.accept != "" {
 		req.Header.Set("Accept", c.accept)

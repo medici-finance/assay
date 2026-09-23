@@ -146,9 +146,11 @@ func cmdLabels(args []string, e *env) int {
 	}
 
 	var b labelBackend
+	var base string
 	switch *forge {
 	case "github":
-		if err := validateAPIBase("GitHub API base", e.githubAPIBase); err != nil {
+		base = strings.TrimRight(e.githubAPIBase, "/")
+		if err := validateAPIBase("GitHub API base", base); err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
@@ -157,9 +159,10 @@ func cmdLabels(args []string, e *env) int {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		b = &githubLabels{c: newGitHubClient(e.githubAPIBase, e.http, tok), repo: target}
+		b = &githubLabels{c: newGitHubClient(base, e.http, tok), repo: target}
 	case "gitlab":
-		base, err := gitlabAPIBase(e)
+		var err error
+		base, err = gitlabAPIBase(e)
 		if err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
@@ -171,6 +174,9 @@ func cmdLabels(args []string, e *env) int {
 		}
 		b = &gitlabLabels{c: newGitLabClient(base, e.http, tok), projectPath: "/projects/" + url.PathEscape(target)}
 	}
+	// Name the target BEFORE the first request, as provision does: a network-reaching mode
+	// says where it is about to write before it writes there.
+	fmt.Fprintf(e.stdout, "target: %s %s %s\n", base, *forge, target)
 
 	failed := 0
 	ensureLabels(b, e.stdout, func(format string, a ...any) {

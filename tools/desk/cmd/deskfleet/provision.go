@@ -25,6 +25,11 @@ type provisionOpts struct {
 	outDir                 string
 	patExpiryDays          int
 	dryRun                 bool
+	// avatarsDir: where <role>.png lives. Unset = the avatar step is SKIPPED, with a NOTICE
+	// and a summary line. There is deliberately no default remote fetch (the script's
+	// default downloads public role icons): the port adds no network default.
+	avatarsDir  string
+	avatarsOnly bool
 }
 
 // banner / ruleLine frame the closing summary and the partial-run report.
@@ -46,13 +51,28 @@ func parseProvisionFlags(args []string, e *env) (provisionOpts, error) {
 	fs.StringVar(&o.outDir, "out-dir", "", "where gitlab-<role>.token files are written (default: the config home)")
 	fs.IntVar(&o.patExpiryDays, "pat-expiry-days", 7, "PAT lifetime in days (1-365)")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "enumerate every action; make zero network calls")
+	fs.StringVar(&o.avatarsDir, "avatars-dir", "", "upload <dir>/<role>.png as each account's own avatar "+
+		"(PUT /user/avatar, as that role's own PAT); omitted = the avatar step is skipped")
+	fs.BoolVar(&o.avatarsOnly, "avatars-only", false, "set the avatars of accounts that already exist, as each "+
+		"role, from the gitlab-<role>.token files under --out-dir; creates, mints and configures nothing")
 	if err := fs.Parse(args); err != nil {
 		return o, err
 	}
 	if fs.NArg() > 0 {
 		return o, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
-	if o.group == "" || o.prefix == "" {
+	if o.avatarsOnly {
+		if o.avatarsDir == "" {
+			return o, errors.New("--avatars-only requires --avatars-dir <dir holding <role>.png>")
+		}
+		if o.prefix == "" {
+			return o, errors.New("--avatars-only requires --prefix (it names the accounts)")
+		}
+		if o.project != "" || o.ownerTokenFile != "" {
+			return o, errors.New("--avatars-only authenticates as each role from its own token file and touches " +
+				"no project setting — it takes no --project and no --owner-token-file")
+		}
+	} else if o.group == "" || o.prefix == "" {
 		return o, errors.New("--group and --prefix are required")
 	}
 	if !prefixRE.MatchString(o.prefix) {
@@ -79,6 +99,14 @@ type mintedToken struct {
 	Custody        string // verified | WARNING-inconclusive | REFUSED | NOT WRITTEN
 }
 
+// accountNote is a service account the partial-run report must name although no minted
+// token row covers it. Like mintedToken it has no field for a credential.
+type accountNote struct {
+	Role, Username string
+	UserID         int64 // 0 when the forge never told us
+	Detail         string
+}
+
 // patResponse is the mint endpoint's reply. Token is the credential: it is copied to the
 // custody file and cleared, and never stored anywhere else.
 type patResponse struct {
@@ -98,9 +126,14 @@ type provisioner struct {
 	minted   []mintedToken
 	warnings []string
 	failures []string
-	// tokenless: service accounts this run CREATED but minted no token for (the stop hit
-	// between account creation and the mint).
-	tokenless []string
+	// tokenless: service accounts this run CREATED that DEFINITELY hold no token from it (the
+	// stop hit between account creation and the mint, or the forge refused the mint). A
+	// re-run will not mint for them, so the report names each.
+	tokenless []accountNote
+	// unknown: requests whose OUTCOME this run could not check — a mint or an account create
+	// that was sent but whose reply was lost, unreadable, or a server error. The forge may
+	// have acted, so the report names each as could-not-check, never as "nothing to revoke".
+	unknown []accountNote
 	// boardWriterID is the board-writer service account's user id, for the Premium
 	// protected-branch push allowlist; 0 when unknown.
 	boardWriterID int64
@@ -136,8 +169,11 @@ func cmdProvision(args []string, e *env) int {
 		return exitUsage
 	}
 	p := &provisioner{o: o, e: e}
-	p.outf("Assay fleet provisioning — group=%s prefix=%s project=%s dry-run=%t", o.group, o.prefix,
-		orNone(o.project), o.dryRun)
+	p.outf("Assay fleet provisioning — group=%s prefix=%s project=%s dry-run=%t avatars-only=%t", orNone(o.group),
+		o.prefix, orNone(o.project), o.dryRun, o.avatarsOnly)
+	if o.avatarsOnly {
+		return p.runAvatarsOnly()
+	}
 	if o.dryRun {
 		p.dryRun()
 		return exitOK
@@ -161,6 +197,9 @@ func cmdProvision(args []string, e *env) int {
 	p.base = base
 	p.gl = newGitLabClient(base, e.http, owner)
 	p.outf("target: %s (GITLAB_API_BASE) — token files go to %s", base, o.outDir)
+	if o.avatarsDir == "" {
+		p.outf("NOTICE: %s", avatarsSkippedNotice(o))
+	}
 
 	if serr := p.resolveGroup(); serr != nil {
 		return p.stopRun(serr)
@@ -200,6 +239,13 @@ func (p *provisioner) dryRun() {
 		p.outf("[dry-run]   would mint a PAT %s (scopes=%s, expires in %dd) if the account is new, "+
 			"written owner-only to %s and verified before its path is reported",
 			patName(r.Role), scopes, p.o.patExpiryDays, filepath.Join(p.o.outDir, tokenFileName(r.Role)))
+		if p.o.avatarsDir != "" {
+			p.outf("[dry-run]   would upload avatar for %s <- %s (PUT /user/avatar, as that account's own PAT)",
+				user, filepath.Join(p.o.avatarsDir, r.Role+".png"))
+		}
+	}
+	if p.o.avatarsDir == "" {
+		p.outf("[dry-run] NOTICE: %s", avatarsSkippedNotice(p.o))
 	}
 	if p.o.project == "" {
 		p.outf("[dry-run] NOTICE: --project not given — project settings and labels would be skipped")
@@ -287,8 +333,11 @@ func (p *provisioner) provisionRole(r fleetRole) *stopError {
 	} else {
 		body := map[string]any{"name": "Assay " + r.Role + " (fleet bot)", "username": user}
 		resp, err := p.gl.do("POST", gpath+"/service_accounts", body)
-		if err != nil {
-			return stop("creating service account %s: %v", user, err)
+		if outcomeUnknown(resp, err, 201) {
+			p.unknown = append(p.unknown, accountNote{Role: r.Role, Username: user,
+				Detail: "the service-account create was sent but its outcome is unknown (" + respOrErr(resp, err) +
+					") — the account may EXIST with no token; check the group's service accounts"})
+			return stop("creating service account %s: %s", user, respOrErr(resp, err))
 		}
 		if resp.Status != 201 {
 			return stop("creating service account %s: %s", user, statusText(resp))
@@ -297,6 +346,8 @@ func (p *provisioner) provisionRole(r fleetRole) *stopError {
 			ID int64 `json:"id"`
 		}
 		if json.Unmarshal(resp.Body, &a) != nil || a.ID == 0 {
+			p.tokenless = append(p.tokenless, accountNote{Role: r.Role, Username: user,
+				Detail: "the forge answered 201 to its create but its reply carried no id"})
 			return stop("creating service account %s: response carries no id", user)
 		}
 		userID, createdNow = a.ID, true
@@ -305,12 +356,21 @@ func (p *provisioner) provisionRole(r fleetRole) *stopError {
 	if r.Role == "board-writer" {
 		p.boardWriterID = userID
 	}
+	// stopCreated ends the loop for an account this run created: it is recorded as holding
+	// no token, because a re-run will find it existing and mint nothing for it.
+	stopCreated := func(s *stopError) *stopError {
+		if createdNow {
+			p.tokenless = append(p.tokenless, accountNote{Role: r.Role, Username: user, UserID: userID,
+				Detail: "the run stopped at its group-membership step, before its token was minted"})
+		}
+		return s
+	}
 
 	// Group membership: idempotent existence check.
 	mpath := gpath + "/members/" + strconv.FormatInt(userID, 10)
 	resp, err = p.gl.do("GET", mpath, nil)
 	if err != nil {
-		return stop("reading group membership of %s: %v", user, err)
+		return stopCreated(stop("reading group membership of %s: %v", user, err))
 	}
 	if resp.Status == 200 {
 		var m struct {
@@ -327,10 +387,10 @@ func (p *provisioner) provisionRole(r fleetRole) *stopError {
 		body := map[string]any{"user_id": userID, "access_level": r.AccessLevel}
 		resp, err := p.gl.do("POST", gpath+"/members", body)
 		if err != nil {
-			return stop("adding %s to the group: %v", user, err)
+			return stopCreated(stop("adding %s to the group: %v", user, err))
 		}
 		if resp.Status != 201 {
-			return stop("adding %s to the group: %s", user, statusText(resp))
+			return stopCreated(stop("adding %s to the group: %s", user, statusText(resp)))
 		}
 		p.outf("added: %s to group at access_level=%d", user, r.AccessLevel)
 	}
@@ -340,15 +400,51 @@ func (p *provisioner) provisionRole(r fleetRole) *stopError {
 	if !createdNow {
 		p.outf("NOTICE: PAT minting skipped for %s (account pre-existing) — rotate via "+
 			"`desktoken --forge gitlab %s` for a fresh credential", user, r.Role)
+		if p.o.avatarsDir != "" {
+			p.uploadAvatar(r.Role, user)
+		}
 		return nil
 	}
 	serr := p.mintAndStore(r, user, userID)
-	if serr != nil && (len(p.minted) == 0 || p.minted[len(p.minted)-1].Username != user) {
-		// Created by this run, but no token was minted for it: a re-run will NOT mint one
-		// (it only mints for accounts it creates), so the report names it.
-		p.tokenless = append(p.tokenless, user)
+	if serr != nil && !p.accountedFor(user) {
+		// Created by this run, and the forge DEFINITELY minted no token for it: a re-run will
+		// NOT mint one (it only mints for accounts it creates), so the report names it.
+		p.tokenless = append(p.tokenless, accountNote{Role: r.Role, Username: user, UserID: userID,
+			Detail: "the forge refused its token mint"})
+	}
+	if serr == nil && p.o.avatarsDir != "" {
+		// The avatar goes on now, as the account itself (only it can set its own avatar).
+		p.uploadAvatar(r.Role, user)
 	}
 	return serr
+}
+
+// accountedFor reports whether the partial-run report already names user — as a minted
+// token (of any custody state) or as a could-not-check outcome.
+func (p *provisioner) accountedFor(user string) bool {
+	for _, m := range p.minted {
+		if m.Username == user {
+			return true
+		}
+	}
+	for _, u := range p.unknown {
+		if u.Username == user {
+			return true
+		}
+	}
+	return false
+}
+
+// outcomeUnknown reports whether a WRITE's result cannot be known from its reply: a transport
+// error (the request may have been sent), a reply that could not be read, or any status that
+// is neither the expected success nor a 4xx — a server error, an unexpected 2xx, or a
+// redirect this client never follows. The forge may have acted on such a request. Only the
+// expected status is a success, and only a 4xx is a definite refusal.
+func outcomeUnknown(r apiResponse, err error, want int) bool {
+	if err != nil {
+		return true
+	}
+	return r.Status != want && (r.Status < 400 || r.Status >= 500)
 }
 
 func (p *provisioner) mintAndStore(r fleetRole, user string, userID int64) *stopError {
@@ -357,8 +453,19 @@ func (p *provisioner) mintAndStore(r fleetRole, user string, userID int64) *stop
 	path := "/groups/" + strconv.FormatInt(p.groupID, 10) + "/service_accounts/" +
 		strconv.FormatInt(userID, 10) + "/personal_access_tokens"
 	resp, err := p.gl.do("POST", path, body)
-	if err != nil {
-		return stop("minting a PAT for %s: %v", user, err)
+	if outcomeUnknown(resp, err, 201) {
+		// The mint may have happened: the token could EXIST on the forge although this run
+		// never saw it. That is could-not-check, never "nothing to revoke". Only the status
+		// or the transport cause is named — never this endpoint's body.
+		cause := fmt.Sprintf("HTTP %d", resp.Status)
+		if err != nil {
+			cause = err.Error()
+		}
+		p.unknown = append(p.unknown, accountNote{Role: r.Role, Username: user, UserID: userID,
+			Detail: "its token mint (token name " + patName(r.Role) + ") was sent but its outcome is unknown (" + cause +
+				") — a token may EXIST; list this account's personal access tokens and revoke " + patName(r.Role) +
+				" if it is there"})
+		return stop("minting a PAT for %s: outcome unknown (%s)", user, cause)
 	}
 	if resp.Status != 201 {
 		// The forge's message is deliberately NOT echoed for this endpoint.
@@ -428,23 +535,42 @@ func (p *provisioner) mintAndStore(r fleetRole, user string, userID int64) *stop
 }
 
 // stopRun ends a run whose account/token loop failed. Per the partial-run ruling it REPORTS
-// every token this run minted and revokes nothing.
+// every token this run minted — and every account it created, and every write whose outcome
+// it could not check — and revokes nothing.
 func (p *provisioner) stopRun(s *stopError) int {
 	p.errf("error: provisioning stopped: %s", s.msg)
-	if len(p.minted) == 0 {
-		p.errf("No personal access token was minted by this run, so there is nothing to revoke.")
+	if len(p.minted) == 0 && len(p.tokenless) == 0 && len(p.unknown) == 0 {
+		// Only true when this run created no account and SENT no mint: every mint attempt
+		// lands in exactly one of minted / tokenless / unknown.
+		p.errf("This run created no service account and sent no token mint, so there is nothing to revoke.")
 		return s.code
 	}
 	report := p.partialReport(s.msg)
 	fmt.Fprint(p.e.stdout, report)
 	name := "deskfleet-partial-run-" + p.e.now().UTC().Format("20060102T150405Z") + ".txt"
 	rpath := filepath.Join(p.o.outDir, name)
-	if err := os.WriteFile(rpath, []byte(report), 0o600); err != nil {
+	if err := p.writeReport(rpath, report); err != nil {
 		p.errf("NOTICE: could not write the partial-run report to %s (%v) — the report above is the only copy", rpath, err)
 	} else {
 		p.outf("partial-run report written to %s", rpath)
 	}
 	return s.code
+}
+
+// writeReport writes the partial-run report through the same restricted create as the token
+// files: a NEW file (never through an existing file or link at that name), owner-only from
+// the moment it exists. The report carries no credential; this only keeps it from being
+// written through something planted at its path.
+func (p *provisioner) writeReport(path, report string) error {
+	f, err := p.e.createRestricted(path)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write([]byte(report)); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func (p *provisioner) partialReport(reason string) string {
@@ -463,9 +589,17 @@ func (p *provisioner) partialReport(reason string) string {
 		fmt.Fprintf(&b, "  - role=%s account=%s (user id %d) token=%s (token id %d) expires=%s file=%s [%s]\n",
 			m.Role, m.Username, m.UserID, m.TokenName, m.TokenID, m.ExpiresAt, file, m.Custody)
 	}
+	if len(p.unknown) > 0 {
+		fmt.Fprintf(&b, "COULD-NOT-CHECK — %d request(s) were sent whose outcome this run could not read. The forge may\n", len(p.unknown))
+		fmt.Fprintf(&b, "have acted on each; this is NOT a clean state. Check each by hand:\n")
+		for _, u := range p.unknown {
+			fmt.Fprintf(&b, "  ? role=%s account=%s (user id %s): %s\n", u.Role, u.Username, idOrUnknown(u.UserID), u.Detail)
+		}
+	}
 	for _, u := range p.tokenless {
-		fmt.Fprintf(&b, "Account %s was CREATED by this run but holds NO token; a re-run will not mint one for an\n", u)
-		fmt.Fprintf(&b, "existing account — mint its token by hand, or remove the account and re-run.\n")
+		fmt.Fprintf(&b, "Account %s was CREATED by this run but holds NO token (role %s, user id %s: %s); a re-run\n",
+			u.Username, u.Role, idOrUnknown(u.UserID), u.Detail)
+		fmt.Fprintf(&b, "will not mint one for an existing account — mint its token by hand, or remove the account and re-run.\n")
 	}
 	fmt.Fprintf(&b, "Token values are never printed. Re-running after revocation re-uses the existing accounts\n")
 	fmt.Fprintf(&b, "and mints no new token for them; use `desktoken --forge gitlab <role>` to rotate one.\n")
@@ -485,6 +619,10 @@ func (p *provisioner) summary() int {
 		for _, w := range p.warnings {
 			p.outf("   - %s", w)
 		}
+	}
+	if p.o.avatarsDir == "" {
+		p.outf("%s", ruleLine)
+		p.outf("SKIPPED STEP — avatars: %s", avatarsSkippedNotice(p.o))
 	}
 	p.outf("%s", banner)
 	p.outf("HUMAN-ONLY REMAINDER — this verb does not and cannot do these:")

@@ -34,8 +34,8 @@
     {
       "name": "row 11 — a partial run prints no report of the tokens it minted",
       "file": "cmd/deskfleet/provision.go",
-      "old": "\tif len(p.minted) == 0 {\n\t\tp.errf(\"No personal access token",
-      "new": "\tif true {\n\t\tp.errf(\"No personal access token"
+      "old": "\tif len(p.minted) == 0 && len(p.tokenless) == 0 && len(p.unknown) == 0 {\n\t\t// Only true",
+      "new": "\tif true {\n\t\t// Only true"
     },
     {
       "name": "row 11 — the report omits the most recently minted token",
@@ -96,6 +96,60 @@
       "file": "cmd/deskfleet/tables.go",
       "old": "func tokenFileName(role string) string { return \"gitlab-\" + role + \".token\" }",
       "new": "func tokenFileName(role string) string { return \"gitlab-\" + role + \"-bot.token\" }"
+    },
+    {
+      "name": "S1/F1 — a stop before any token was minted prints no report (the pre-fix early return: N = 0 drops the created account)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif len(p.minted) == 0 && len(p.tokenless) == 0 && len(p.unknown) == 0 {",
+      "new": "\tif len(p.minted) == 0 {"
+    },
+    {
+      "name": "S1 — a mint whose outcome is unknown (5xx / dropped connection) is treated as a definite refusal",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif outcomeUnknown(resp, err, 201) {\n\t\t// The mint may have happened",
+      "new": "\tif false {\n\t\t// The mint may have happened"
+    },
+    {
+      "name": "F1 — an account created before a failed membership step is not recorded",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\tif createdNow {\n\t\t\tp.tokenless = append(",
+      "new": "\t\tif false {\n\t\t\tp.tokenless = append("
+    },
+    {
+      "name": "F2 — the read-back parses an absent merge level as the intended 40",
+      "file": "cmd/deskfleet/project.go",
+      "old": "\t\tpush, merge, forceDefault = levelNone, levelNone, \"unknown\"",
+      "new": "\t\tpush, merge, forceDefault = levelNone, mergeAccessLevel, \"unknown\""
+    },
+    {
+      "name": "F3 — a new account's avatar is never uploaded although --avatars-dir was given",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\t// The avatar goes on now, as the account itself (only it can set its own avatar).\n\t\tp.uploadAvatar(r.Role, user)",
+      "new": "\t\t// The avatar goes on now, as the account itself (only it can set its own avatar)."
+    },
+    {
+      "name": "F3 — the avatar is set with the OWNER credential instead of the role's own token",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "\tc := newGitLabClient(p.base, p.e.http, tok)",
+      "new": "\tc := newGitLabClient(p.base, p.e.http, tok)\n\tif p.gl != nil {\n\t\tc = p.gl\n\t}"
+    },
+    {
+      "name": "F3 — the closing summary is silent about a skipped avatar step",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\tp.outf(\"SKIPPED STEP — avatars: %s\", avatarsSkippedNotice(p.o))",
+      "new": ""
+    },
+    {
+      "name": "F4/S2 — deskfleet labels contacts the forge without printing its target first",
+      "file": "cmd/deskfleet/labels.go",
+      "old": "\tfmt.Fprintf(e.stdout, \"target: %s %s %s\\n\", base, *forge, target)",
+      "new": ""
+    },
+    {
+      "name": "A6 — the HTTPS-only guard accepts plain http to a non-loopback host",
+      "file": "cmd/deskfleet/client.go",
+      "old": "\t\tif h == \"127.0.0.1\" || h == \"::1\" || h == \"localhost\" {",
+      "new": "\t\tif h != \"\" {"
     }
   ]
 }

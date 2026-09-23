@@ -51,12 +51,24 @@ type fakeForge struct {
 	mu  sync.Mutex
 	srv *httptest.Server
 
-	plan         string
-	accounts     map[string]int64 // username -> id
-	nextUserID   int64
-	members      map[int64]int
-	mints        int
-	failMintAt   int // 1-based mint number that returns 500; 0 = never
+	plan       string
+	accounts   map[string]int64 // username -> id
+	nextUserID int64
+	members    map[int64]int
+	mints      int
+	failMintAt int // 1-based mint number that fails; 0 = never
+	// failMintStatus is the status the failing mint answers (0 = 500). failMintHangup instead
+	// drops the connection without any reply — a transport error with the outcome unknown.
+	failMintStatus int
+	failMintHangup bool
+	// failMemberPost refuses every group-membership POST (403), after the account exists.
+	failMemberPost bool
+	// omitMergeLevels answers protected_branches/main with an EMPTY merge_access_levels.
+	omitMergeLevels bool
+	// avatars: auth header -> "<filename>:<content>" of each PUT /user/avatar; avatarStatus is
+	// its reply (0 = 200).
+	avatars      map[string]string
+	avatarStatus int
 	rule         *fakeRule
 	refuseIntent bool // refuse a protected-branch POST that carries the INTENDED rule
 	deleteStatus int  // 0 = 204
@@ -74,7 +86,7 @@ type fakeForge struct {
 
 func newFakeForge(t *testing.T) *fakeForge {
 	f := &fakeForge{t: t, plan: "premium", accounts: map[string]int64{}, nextUserID: 1000,
-		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}}
+		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, avatars: map[string]string{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -92,8 +104,9 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var body map[string]any
-	if b, _ := io.ReadAll(r.Body); len(b) > 0 {
-		_ = json.Unmarshal(b, &body)
+	raw, _ := io.ReadAll(r.Body)
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &body)
 	}
 	auth := r.Header.Get("PRIVATE-TOKEN")
 	if auth == "" {
@@ -101,6 +114,25 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	p := r.URL.EscapedPath()
 	f.reqs = append(f.reqs, fakeReq{Method: r.Method, Path: p, Body: body, Auth: auth})
+
+	// The avatar endpoint: multipart, authenticated as the ROLE's own token.
+	if r.Method == "PUT" && p == "/api/v4/user/avatar" {
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		file, hdr, err := r.FormFile("avatar")
+		if err != nil {
+			f.t.Errorf("fake forge: avatar upload is not a multipart 'avatar' file: %v", err)
+			writeJSON(w, 400, map[string]any{"message": "bad avatar"})
+			return
+		}
+		content, _ := io.ReadAll(file)
+		f.avatars[auth] = hdr.Filename + ":" + string(content)
+		st := f.avatarStatus
+		if st == 0 {
+			st = 200
+		}
+		writeJSON(w, st, map[string]any{"avatar_url": "https://gitlab.example.com/avatar.png"})
+		return
+	}
 
 	// GitHub labels endpoint.
 	if strings.HasPrefix(p, "/repos/") && strings.HasSuffix(p, "/labels") && r.Method == "POST" {
@@ -140,6 +172,10 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 404, map[string]any{"message": "404 Not found"})
 		}
 	case r.Method == "POST" && api == gid+"/members":
+		if f.failMemberPost {
+			writeJSON(w, 403, map[string]any{"message": "403 Forbidden"})
+			return
+		}
 		id := int64(body["user_id"].(float64))
 		f.members[id] = int(body["access_level"].(float64))
 		writeJSON(w, 201, map[string]any{"id": id})
@@ -147,7 +183,18 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		strings.HasSuffix(api, "/personal_access_tokens"):
 		f.mints++
 		if f.failMintAt != 0 && f.mints == f.failMintAt {
-			writeJSON(w, 500, map[string]any{"message": "500 Internal Server Error"})
+			if f.failMintHangup {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					_ = conn.Close()
+				}
+				return
+			}
+			st := f.failMintStatus
+			if st == 0 {
+				st = 500
+			}
+			writeJSON(w, st, map[string]any{"message": http.StatusText(st)})
 			return
 		}
 		writeJSON(w, 201, map[string]any{"id": 5000 + f.mints, "name": body["name"],
@@ -164,9 +211,12 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		if f.rule.pushUser != 0 {
 			push["user_id"] = f.rule.pushUser
 		}
+		merge := []any{map[string]any{"access_level": f.rule.merge}}
+		if f.omitMergeLevels {
+			merge = []any{}
+		}
 		writeJSON(w, 200, map[string]any{"name": "main", "push_access_levels": []any{push},
-			"merge_access_levels": []any{map[string]any{"access_level": f.rule.merge}},
-			"allow_force_push":    f.rule.force})
+			"merge_access_levels": merge, "allow_force_push": f.rule.force})
 	case r.Method == "PATCH" && api == pid+"/protected_branches/main":
 		if f.rule == nil {
 			writeJSON(w, 404, nil)
@@ -287,6 +337,26 @@ func (ft *failingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	ft.mu.Unlock()
 	ft.t.Errorf("network call attempted: %s %s", r.Method, r.URL.Redacted())
 	return nil, fmt.Errorf("network disabled in this test")
+}
+
+// firstContactTransport records what the run had printed to stdout at the moment of its FIRST
+// request, then forwards every request to the real transport (the loopback fake).
+type firstContactTransport struct {
+	out      *bytes.Buffer
+	mu       sync.Mutex
+	seen     bool
+	atFirst  string
+	requests int
+}
+
+func (ft *firstContactTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	ft.mu.Lock()
+	if !ft.seen {
+		ft.seen, ft.atFirst = true, ft.out.String()
+	}
+	ft.requests++
+	ft.mu.Unlock()
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 // harness is one test's env: captured output, fake clock, a temp config home, and the

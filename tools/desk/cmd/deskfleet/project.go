@@ -54,13 +54,39 @@ func (p *provisioner) configureProject() {
 // protectedRule is the part of a protected-branch rule this step decides.
 type protectedRule struct {
 	exists   bool
-	push     int
-	merge    int
+	push     int    // levelNone when the read-back carried no push level
+	merge    int    // levelNone when the read-back carried no merge level
 	force    string // "true" | "false" | "unknown" — `false` is a value, never "absent"
 	pushUser int64  // 0 = no user-scoped push entry
 }
 
-func parseProtectedRule(body []byte, forceDefault string) protectedRule {
+// levelNone is an access level the forge's reply did not carry. It is a sentinel, never an
+// access level GitLab uses, so the read-back reports it as "none" and never mistakes an
+// ABSENT merge level for the intended one (the script's `// "none"`).
+const levelNone = -1
+
+func levelString(n int) string {
+	if n == levelNone {
+		return "none"
+	}
+	return strconv.Itoa(n)
+}
+
+// parseProtectedRule reads a protected-branch rule. It has two modes, as the script does:
+//
+//   - DECIDING (readback=false) — the rule read before a change. An absent push level reads
+//     as 0, an absent merge level as 40, an absent force-push as false (the script's
+//     read_protected_main: `// 0`, `// 40`), so the no-op/PATCH/re-create choice and the
+//     restore body stay the script's.
+//   - READ-BACK (readback=true) — the rule read after a change, to CHECK it. Every absent
+//     field reads as unknown (levelNone / "unknown"), never as the intended value, so an
+//     absent merge level is a recorded failure (the script's readback_protected_main:
+//     `// "none"`).
+func parseProtectedRule(body []byte, readback bool) protectedRule {
+	push, merge, forceDefault := 0, mergeAccessLevel, "false"
+	if readback {
+		push, merge, forceDefault = levelNone, levelNone, "unknown"
+	}
 	var raw struct {
 		Push []struct {
 			AccessLevel *int   `json:"access_level"`
@@ -71,7 +97,7 @@ func parseProtectedRule(body []byte, forceDefault string) protectedRule {
 		} `json:"merge_access_levels"`
 		Force *bool `json:"allow_force_push"`
 	}
-	r := protectedRule{exists: true, merge: mergeAccessLevel, force: forceDefault}
+	r := protectedRule{exists: true, push: push, merge: merge, force: forceDefault}
 	if json.Unmarshal(body, &raw) != nil {
 		return r
 	}
@@ -97,7 +123,7 @@ func (p *provisioner) readProtectedMain(pp string) protectedRule {
 	if err != nil || resp.Status != 200 {
 		return protectedRule{merge: mergeAccessLevel, force: "false"}
 	}
-	return parseProtectedRule(resp.Body, "false")
+	return parseProtectedRule(resp.Body, false)
 }
 
 func (p *provisioner) protectBody(form string) map[string]any {
@@ -224,12 +250,13 @@ func (p *provisioner) readbackProtectedMain(pp string) {
 			respOrErr(resp, err))
 		return
 	}
-	r := parseProtectedRule(resp.Body, "unknown")
-	p.outf("read-back: main push_access_level=%d push_user_id=%d merge_access_level=%d allow_force_push=%s",
-		r.push, r.pushUser, r.merge, r.force)
+	r := parseProtectedRule(resp.Body, true)
+	p.outf("read-back: main push_access_level=%s push_user_id=%d merge_access_level=%s allow_force_push=%s",
+		levelString(r.push), r.pushUser, levelString(r.merge), r.force)
 	if r.merge != mergeAccessLevel {
-		p.fail("protected 'main' merge_access_level is %d, intended %d (Maintainers) — at 30 every Developer "+
-			"service account can merge its own MR", r.merge, mergeAccessLevel)
+		p.fail("protected 'main' merge_access_level is %s, intended %d (Maintainers) — at 30 every Developer "+
+			"service account can merge its own MR; 'none' means the forge's reply carried no merge level "+
+			"(could-not-check, not a pass)", levelString(r.merge), mergeAccessLevel)
 	}
 	if r.force != "false" {
 		p.fail("protected 'main' allow_force_push is %s, intended false", r.force)

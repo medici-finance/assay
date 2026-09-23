@@ -28,6 +28,8 @@ func TestFleetDryRunMakesNoNetworkCalls(t *testing.T) {
 
 	for _, args := range [][]string{
 		h.provisionArgs("--project", fakeProject, "--dry-run"),
+		h.provisionArgs("--project", fakeProject, "--avatars-dir", h.dir, "--dry-run"),
+		{"provision", "--avatars-only", "--avatars-dir", h.dir, "--prefix", fakePrefix, "--out-dir", h.dir, "--dry-run"},
 		{"labels", "--forge", "gitlab", "--project", fakeProject, "--token-file", h.ownerFile, "--dry-run"},
 		{"labels", "--forge", "github", "--repo", "example-org/example-repo", "--token-file", h.ownerFile, "--dry-run"},
 	} {
@@ -245,12 +247,14 @@ func TestFleetWarnsOnInconclusiveCustody(t *testing.T) {
 
 // Brief row 11 + the dispatch's required row: a run forced to fail after N of 7 mints STOPS,
 // reports EXACTLY those N tokens (by role, account, token name and id — never a value), exits
-// non-zero, and performs NO revocation.
+// non-zero, and performs NO revocation. N = 0 included: the account created with no token is
+// still reported, and "nothing to revoke" is never claimed for a run that created an account.
 func TestFleetPartialRun(t *testing.T) {
-	for _, n := range []int{1, 3, 6} {
+	for _, n := range []int{0, 1, 3, 6} {
 		t.Run(fmt.Sprintf("fails after %d of 7", n), func(t *testing.T) {
 			f := newFakeForge(t)
 			f.failMintAt = n + 1
+			f.failMintStatus = 403 // a DEFINITE refusal: no token exists for the failing account
 			h := newHarness(t, f)
 			code := run(h.provisionArgs("--project", fakeProject), h.e)
 			if code == exitOK {
@@ -289,6 +293,9 @@ func TestFleetPartialRun(t *testing.T) {
 			if !strings.Contains(report, "Account "+orphan+" was CREATED by this run but holds NO token") {
 				t.Errorf("report does not name %s, created by the run with no token\n%s", orphan, report)
 			}
+			if strings.Contains(h.allText(t), "nothing to revoke") {
+				t.Errorf("a run that created an account claims there is nothing to revoke")
+			}
 			for i := 1; i <= 7; i++ {
 				if strings.Contains(h.allText(t), fakeToken(i)) {
 					t.Errorf("token value %d appears in the output or report", i)
@@ -307,6 +314,89 @@ func TestFleetPartialRun(t *testing.T) {
 			}
 		})
 	}
+	// A mint whose OUTCOME is unknown — a server error, or a connection dropped with no reply —
+	// may have created a token. It is reported as could-not-check, naming the account and the
+	// token to look for; never as "nothing to revoke", never as definitely tokenless.
+	for _, tc := range []struct {
+		name   string
+		n      int
+		status int
+		hangup bool
+	}{
+		{"server error on the first mint", 0, 500, false},
+		{"server error after 2 of 7", 2, 502, false},
+		{"connection dropped on the first mint", 0, 0, true},
+	} {
+		t.Run("outcome unknown: "+tc.name, func(t *testing.T) {
+			f := newFakeForge(t)
+			f.failMintAt, f.failMintStatus, f.failMintHangup = tc.n+1, tc.status, tc.hangup
+			h := newHarness(t, f)
+			if code := run(h.provisionArgs(), h.e); code == exitOK {
+				t.Fatal("a partial run exited 0")
+			}
+			if f.mints != tc.n+1 {
+				t.Fatalf("mint attempts = %d, want %d (never retried, never continued)", f.mints, tc.n+1)
+			}
+			reports, _ := filepath.Glob(filepath.Join(h.dir, "deskfleet-partial-run-*.txt"))
+			if len(reports) != 1 {
+				t.Fatalf("want exactly one partial-run report file, got %v\nstderr:\n%s", reports, h.err.String())
+			}
+			rb, _ := os.ReadFile(reports[0])
+			report := string(rb)
+			role := fleetRoles[tc.n].Role
+			acct := serviceAccountUsername(fakePrefix, role)
+			if !strings.Contains(report, "COULD-NOT-CHECK") ||
+				!strings.Contains(report, "? role="+role+" account="+acct) || !strings.Contains(report, patName(role)) {
+				t.Errorf("report does not name the unknown-outcome mint for %s as could-not-check\n%s", acct, report)
+			}
+			if strings.Contains(report, "Account "+acct+" was CREATED by this run but holds NO token") {
+				t.Errorf("an unknown-outcome mint is reported as DEFINITELY tokenless\n%s", report)
+			}
+			if strings.Contains(h.allText(t), "nothing to revoke") {
+				t.Errorf("an unknown-outcome mint is reported as nothing to revoke")
+			}
+			if got := strings.Count(report, "\n  - role="); got != tc.n {
+				t.Errorf("report lists %d minted token(s), want %d\n%s", got, tc.n, report)
+			}
+		})
+	}
+	t.Run("membership refused after the account was created", func(t *testing.T) {
+		f := newFakeForge(t)
+		f.failMemberPost = true
+		h := newHarness(t, f)
+		if code := run(h.provisionArgs(), h.e); code == exitOK {
+			t.Fatal("a partial run exited 0")
+		}
+		if f.mints != 0 {
+			t.Fatalf("minted %d token(s) past a failed membership step", f.mints)
+		}
+		reports, _ := filepath.Glob(filepath.Join(h.dir, "deskfleet-partial-run-*.txt"))
+		if len(reports) != 1 {
+			t.Fatalf("want exactly one partial-run report file, got %v\nstderr:\n%s", reports, h.err.String())
+		}
+		rb, _ := os.ReadFile(reports[0])
+		acct := serviceAccountUsername(fakePrefix, fleetRoles[0].Role)
+		if !strings.Contains(string(rb), "Account "+acct+" was CREATED by this run but holds NO token") {
+			t.Errorf("report does not name %s, created by the run before its membership failed\n%s", acct, rb)
+		}
+	})
+	t.Run("nothing created and nothing minted is the only nothing-to-revoke", func(t *testing.T) {
+		f := newFakeForge(t)
+		f.failMemberPost = true
+		for i, r := range fleetRoles { // every account pre-exists; none is a member yet
+			f.accounts[serviceAccountUsername(fakePrefix, r.Role)] = int64(2000 + i)
+		}
+		h := newHarness(t, f)
+		if code := run(h.provisionArgs(), h.e); code == exitOK {
+			t.Fatal("a stopped run exited 0")
+		}
+		if !strings.Contains(h.err.String(), "nothing to revoke") {
+			t.Errorf("a run that created nothing and minted nothing does not say so:\n%s", h.err.String())
+		}
+		if reports, _ := filepath.Glob(filepath.Join(h.dir, "deskfleet-partial-run-*.txt")); len(reports) != 0 {
+			t.Errorf("a report was written for a run that created and minted nothing: %v", reports)
+		}
+	})
 	t.Run("settings steps collect rather than abort", func(t *testing.T) {
 		f := newFakeForge(t)
 		f.approvalsErr = true
@@ -511,4 +601,196 @@ func TestFleetNeverFollowsRedirect(t *testing.T) {
 	if len(leaked) != 0 {
 		t.Fatalf("the redirect target received %d request(s) carrying the credential header", len(leaked))
 	}
+}
+
+// F2: the protected-main READ-BACK treats an absent level as unknown — never as the intended
+// value — and records a failure for it, as the script's `// "none"` does. The deciding read
+// keeps the script's defaults.
+func TestFleetReadbackAbsentMergeLevel(t *testing.T) {
+	body := []byte(`{"merge_access_levels":[],"allow_force_push":false}`)
+	if r := parseProtectedRule(body, true); r.merge != levelNone || r.push != levelNone {
+		t.Fatalf("read-back parsed an absent level as merge=%d push=%d, want none (%d)", r.merge, r.push, levelNone)
+	}
+	if r := parseProtectedRule(body, false); r.merge != mergeAccessLevel || r.push != 0 {
+		t.Fatalf("deciding read parsed merge=%d push=%d, want the script's defaults 40 / 0", r.merge, r.push)
+	}
+	f := newFakeForge(t)
+	f.plan = "free"
+	f.rule = &fakeRule{push: 0, merge: mergeAccessLevel, force: false}
+	f.omitMergeLevels = true
+	h := newHarness(t, f)
+	if code := run(h.provisionArgs("--project", fakeProject), h.e); code != exitFailed {
+		t.Fatalf("exit %d, want %d — an absent merge level must be a recorded failure\n%s", code, exitFailed, h.out.String())
+	}
+	if !strings.Contains(h.out.String(), "merge_access_level=none") ||
+		!strings.Contains(h.out.String(), "merge_access_level is none, intended 40") {
+		t.Fatalf("the read-back does not print and fail on the absent merge level:\n%s", h.out.String())
+	}
+}
+
+// F4 / S2: every network-reaching mode prints its target BEFORE its first request. The
+// transport snapshots stdout at the first request.
+func TestFleetPrintsTargetBeforeFirstContact(t *testing.T) {
+	avatarsDir := t.TempDir()
+	for _, r := range fleetRoles {
+		if err := os.WriteFile(filepath.Join(avatarsDir, r.Role+".png"), []byte("png-"+r.Role), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		args func(h *harness) []string
+		want func(f *fakeForge) string
+	}{
+		{"labels gitlab",
+			func(h *harness) []string {
+				return []string{"labels", "--forge", "gitlab", "--project", fakeProject, "--token-file", h.ownerFile}
+			},
+			func(f *fakeForge) string { return "target: " + f.base() + " gitlab " + fakeProject }},
+		{"labels github",
+			func(h *harness) []string {
+				return []string{"labels", "--forge", "github", "--repo", "example-org/example-repo", "--token-file", h.ownerFile}
+			},
+			func(f *fakeForge) string { return "target: " + f.srv.URL + " github example-org/example-repo" }},
+		{"provision",
+			func(h *harness) []string { return h.provisionArgs() },
+			func(f *fakeForge) string { return "target: " + f.base() + " (GITLAB_API_BASE)" }},
+		{"provision --avatars-only",
+			func(h *harness) []string {
+				if err := os.WriteFile(filepath.Join(h.dir, tokenFileName("reviewer")), []byte(fakeToken(1)), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return []string{"provision", "--avatars-only", "--avatars-dir", avatarsDir, "--prefix", fakePrefix, "--out-dir", h.dir}
+			},
+			func(f *fakeForge) string { return "target: " + f.base() + " (GITLAB_API_BASE)" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeForge(t)
+			h := newHarness(t, f)
+			ft := &firstContactTransport{out: h.out}
+			h.e.http = &http.Client{Transport: ft}
+			if code := run(tc.args(h), h.e); code != exitOK {
+				t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, h.out.String(), h.err.String())
+			}
+			if ft.requests == 0 {
+				t.Fatal("the run made no request — the instrument did not look")
+			}
+			if want := tc.want(f); !strings.Contains(ft.atFirst, want) {
+				t.Fatalf("the first request went out before %q was printed; stdout at first contact:\n%s", want, ft.atFirst)
+			}
+		})
+	}
+}
+
+// F3: the avatar step (PUT /user/avatar, as the ROLE's own PAT) is ported behind an explicit
+// --avatars-dir; without it the step is skipped, named, and makes no request.
+func TestFleetAvatars(t *testing.T) {
+	avatarsDir := t.TempDir()
+	for _, r := range fleetRoles {
+		if r.Role == "desk" {
+			continue // a missing icon is a NOTICE, never a failure
+		}
+		if err := os.WriteFile(filepath.Join(avatarsDir, r.Role+".png"), []byte("png-"+r.Role), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	avatarRequests := func(f *fakeForge) int {
+		n := 0
+		for _, r := range f.requests() {
+			if r.Path == "/api/v4/user/avatar" {
+				n++
+			}
+		}
+		return n
+	}
+	t.Run("each new account sets its own avatar", func(t *testing.T) {
+		f := newFakeForge(t)
+		h := newHarness(t, f)
+		if code := run(h.provisionArgs("--avatars-dir", avatarsDir), h.e); code != exitOK {
+			t.Fatalf("exit %d\n%s", code, h.err.String())
+		}
+		for i, r := range fleetRoles {
+			got := f.avatars[fakeToken(i+1)]
+			want := r.Role + ".png:png-" + r.Role
+			if r.Role == "desk" {
+				want = ""
+			}
+			if got != want {
+				t.Errorf("role %s: avatar signed in as its own token = %q, want %q", r.Role, got, want)
+			}
+		}
+		if _, ok := f.avatars[fakeOwnerToken]; ok {
+			t.Error("an avatar was set with the OWNER credential — each account must set its own")
+		}
+		if !strings.Contains(h.out.String(), "NOTICE: no avatar for desk") {
+			t.Errorf("the missing desk icon is not named:\n%s", h.out.String())
+		}
+		if strings.Contains(h.out.String(), "SKIPPED STEP — avatars") {
+			t.Error("the summary says avatars were skipped on a run that set them")
+		}
+	})
+	t.Run("without --avatars-dir the step is skipped and named", func(t *testing.T) {
+		f := newFakeForge(t)
+		h := newHarness(t, f)
+		if code := run(h.provisionArgs(), h.e); code != exitOK {
+			t.Fatalf("exit %d\n%s", code, h.err.String())
+		}
+		if n := avatarRequests(f); n != 0 {
+			t.Fatalf("%d avatar request(s) without --avatars-dir", n)
+		}
+		if !strings.Contains(h.out.String(), "SKIPPED STEP — avatars") || !strings.Contains(h.out.String(), "--avatars-only") {
+			t.Fatalf("the summary does not name the skipped avatar step and how to run it:\n%s", h.out.String())
+		}
+	})
+	t.Run("a refused upload is a recorded failure and the loop continues", func(t *testing.T) {
+		f := newFakeForge(t)
+		f.avatarStatus = 403
+		h := newHarness(t, f)
+		if code := run(h.provisionArgs("--avatars-dir", avatarsDir), h.e); code != exitFailed {
+			t.Fatalf("exit %d, want %d", code, exitFailed)
+		}
+		if f.mints != len(fleetRoles) {
+			t.Fatalf("the run stopped after %d mints on an avatar failure", f.mints)
+		}
+		if !strings.Contains(h.out.String(), "avatar upload for "+serviceAccountUsername(fakePrefix, "reviewer")+" failed") {
+			t.Fatalf("the summary does not name the failed avatar upload:\n%s", h.out.String())
+		}
+	})
+	t.Run("avatars-only signs in as each role from its token file and touches nothing else", func(t *testing.T) {
+		f := newFakeForge(t)
+		h := newHarness(t, f)
+		for i, r := range fleetRoles {
+			if r.Role == "verifier" {
+				continue // no token file: a NOTICE, never a failure
+			}
+			if err := os.WriteFile(filepath.Join(h.dir, tokenFileName(r.Role)), []byte(fakeToken(i+1)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		args := []string{"provision", "--avatars-only", "--avatars-dir", avatarsDir, "--prefix", fakePrefix, "--out-dir", h.dir}
+		if code := run(args, h.e); code != exitOK {
+			t.Fatalf("exit %d\n%s", code, h.err.String())
+		}
+		for _, r := range f.requests() {
+			if r.Path != "/api/v4/user/avatar" {
+				t.Errorf("avatars-only made %s %s", r.Method, r.Path)
+			}
+		}
+		if len(f.avatars) != len(fleetRoles)-2 { // no verifier token, no desk icon
+			t.Fatalf("%d avatars set, want %d: %v", len(f.avatars), len(fleetRoles)-2, f.avatars)
+		}
+		if !strings.Contains(h.out.String(), "avatar for "+serviceAccountUsername(fakePrefix, "verifier")+" skipped — no token file") {
+			t.Errorf("the missing verifier token file is not named:\n%s", h.out.String())
+		}
+	})
+	t.Run("avatars-only takes no owner credential and no project", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.e.http = &http.Client{Transport: &failingTransport{t: t}}
+		for _, extra := range [][]string{{"--owner-token-file", h.ownerFile}, {"--project", fakeProject}} {
+			args := append([]string{"provision", "--avatars-only", "--avatars-dir", avatarsDir, "--prefix", fakePrefix}, extra...)
+			if code := run(args, h.e); code != exitUsage {
+				t.Errorf("%v: exit %d, want %d", extra, code, exitUsage)
+			}
+		}
+	})
 }
