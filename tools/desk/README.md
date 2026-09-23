@@ -3983,7 +3983,12 @@ runs as the DISPATCHING role, never on the ambient `gh` login: `deskdispatch` mi
 reuses) that role's App token through the same seam its model-stamp step uses and hands it
 over in the tool's own shape — `--token-file <0600 path>` for `deskclaim-ref`, `GH_TOKEN` in
 the child's environment for the script — printing neither; an exported `GH_TOKEN` wins and
-nothing is minted; a mint refusal is exit 6 with no claim attempted. The scripts are resolved
+nothing is minted; a mint refusal is exit 6 with no claim attempted. The decision script
+shells out to the forge CLI itself, so a rule keyed on a child literally named `gh` never
+covered it (#1146): it is handed the SAME credential from that one resolution, as `GH_TOKEN`
+(plus `GITLAB_TOKEN` on a GitLab-served repo) in its environment, and the `decision-gate OK`
+line names the source; with no credential handed over and none exported it refuses (exit 6)
+rather than run on the ambient login. The scripts are resolved
 under `--claim-root` when given, else under `--root`: the scripts were centralized out of the
 consumer repos, so on a cross-repo dispatch `--claim-root` names the checkout that carries
 the tools while `--root` stays the item's own repo — the worktree is always cut from

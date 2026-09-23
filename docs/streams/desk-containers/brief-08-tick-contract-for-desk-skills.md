@@ -21,7 +21,7 @@ why: >-
   The standing-window behaviour is untouched.
 wave: 3
 depends: []
-unblocks: []
+unblocks: ["desk-containers/12"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

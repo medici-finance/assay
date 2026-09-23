@@ -40,7 +40,10 @@
 // steps minted their own role token and succeeded. Now the claim step mints (or reuses)
 // the dispatching role's token through the same seam the model stamp uses and passes it in
 // the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
-// failure is the refusal, never a fall-back to whatever `gh` is logged in as.
+// failure is the refusal, never a fall-back to whatever `gh` is logged in as. The decision
+// gate's script shells out to the forge CLI too, so it is handed the SAME credential in
+// environment shape from that one resolution (issue 1146) — keyed on what the child does, not
+// on whether its name is literally `gh`.
 //
 // ON CONTENTION, NAME THE HOLDER — NEVER STEAL. A claim held by someone else exits 5 with
 // the existing holder printed. There is no inline steal: breaking a live claim is a
@@ -115,7 +118,9 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
                       human), runs the repo's tools/decision-issue.sh ensure so the human
                       has something concrete to decide. Idempotent by the script's own
-                      marker dedupe.
+                      marker dedupe. The script runs under the dispatching role's
+                      credential (GH_TOKEN in its environment, from the same resolution
+                      the claim uses), never the ambient login; with none it refuses.
   5 model-stamp       computes and validates the dispatcher's attestation labels
                       (dispatched-model:<slug>, dispatched-tier:<tier>) and applies them
                       when --pr is known. The stamp attests what the DISPATCHER launched;
