@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -276,15 +277,128 @@ func parseInboundLine(s string) (Inbound, bool) {
 	return in, true
 }
 
+// monitorTokenFileFlag is the poller's explicit-read-identity flag: `--token-file OWNER=PATH`,
+// one per owner. It names a FILE, never a token value — the same hand-off shape deskdispatch
+// uses for deskclaim-ref's --token-file.
+const monitorTokenFileFlag = "--token-file"
+
+// MonitorIdentity is the read identity the poller is handed, per owner in the scan scope.
+type MonitorIdentity struct {
+	// Role is the App role the token files belong to; empty when it could not be resolved.
+	Role string
+	// TokenFiles maps an owner to the path of the role's already-minted installation token file
+	// for that owner. Only the PATH travels; the token value never leaves the minter's file.
+	TokenFiles map[string]string
+	// Fallbacks names, per owner, why no token file is handed over. Those owners' repos are read
+	// on the poller's keyring path exactly as before this hand-off existed — which under a
+	// replaced HOME 401s and goes MONITOR-DEGRADED loudly, never silently empty.
+	Fallbacks map[string]string
+}
+
+// ResolveMonitorIdentity looks up the running role's installation token file for every owner in
+// the scan scope. It introduces no credential of its own: the role is the one this session already
+// acts as (the same one the trust gate reads under), and the file is the minter's own cache, read
+// in place — never copied anywhere new.
+//
+// It fails OPEN to the keyring path, not closed. The poller's keyring read is today's behaviour
+// and still works under an operator's real HOME; refusing the whole drain because a mint failed
+// would turn a recoverable, loudly-DEGRADED read into no read at all. Every fallback is named so
+// the operator can see which identity each owner was read under.
+func ResolveMonitorIdentity(scope []string) MonitorIdentity {
+	id := MonitorIdentity{TokenFiles: map[string]string{}, Fallbacks: map[string]string{}}
+	// One representative repo per owner, in scope order: an installation token is per owner.
+	var owners []string
+	repoOf := map[string]string{}
+	for _, r := range scope {
+		o := deskkit.OwnerOf(r)
+		if o == "" || o == r {
+			continue
+		}
+		if _, seen := repoOf[o]; !seen {
+			repoOf[o] = r
+			owners = append(owners, o)
+		}
+	}
+	role, _, rerr := sessionRoleFn("scanloop")
+	if rerr != nil {
+		for _, o := range owners {
+			id.Fallbacks[o] = "no App role resolvable for this session: " + rerr.Error()
+		}
+		return id
+	}
+	id.Role = role
+	for _, o := range owners {
+		_, path, err := mintTokenFn(role, repoOf[o])
+		switch {
+		case err != nil:
+			id.Fallbacks[o] = err.Error()
+		case strings.TrimSpace(path) == "":
+			id.Fallbacks[o] = "the " + role + " App token minter named no token file"
+		default:
+			id.TokenFiles[o] = path
+		}
+	}
+	return id
+}
+
+// renderMonitorIdentity prints, per owner, which identity the poller reads that owner's repos as.
+// It names the token FILE, never the token. A keyring fallback is printed with its reason, because
+// under a replaced HOME it is exactly the line that explains a wall of MONITOR-DEGRADED 401s.
+func renderMonitorIdentity(w io.Writer, id MonitorIdentity) {
+	owners := make([]string, 0, len(id.TokenFiles)+len(id.Fallbacks))
+	for o := range id.TokenFiles {
+		owners = append(owners, o)
+	}
+	for o := range id.Fallbacks {
+		if _, dup := id.TokenFiles[o]; !dup {
+			owners = append(owners, o)
+		}
+	}
+	sort.Strings(owners)
+	for _, o := range owners {
+		if p, ok := id.TokenFiles[o]; ok {
+			fmt.Fprintf(w, "poller identity: %s — the %s App token (%s token file %s)\n", o, id.Role, monitorTokenFileFlag, p)
+			continue
+		}
+		fmt.Fprintf(w, "poller identity: %s — gh keyring fallback (%s)\n", o, id.Fallbacks[o])
+	}
+}
+
+// monitorArgs builds the poller's argv: one `--token-file OWNER=PATH` per owner that has a token
+// file AND at least one repo in scope (sorted, so the argv is stable), then the whole scope.
+func monitorArgs(scope []string, tokenFiles map[string]string) []string {
+	inScope := map[string]bool{}
+	for _, r := range scope {
+		inScope[deskkit.OwnerOf(r)] = true
+	}
+	owners := make([]string, 0, len(tokenFiles))
+	for o, p := range tokenFiles {
+		if inScope[o] && strings.TrimSpace(p) != "" {
+			owners = append(owners, o)
+		}
+	}
+	sort.Strings(owners)
+	args := make([]string, 0, 2*len(owners)+len(scope))
+	for _, o := range owners {
+		args = append(args, monitorTokenFileFlag, o+"="+tokenFiles[o])
+	}
+	return append(args, scope...)
+}
+
 // RunMonitor executes the poller over the rostered scan scope and parses its output. It is the ONLY
 // place this binary runs it, and it runs it only from `run` — arming and draining are the same act
 // (the first cycle seeds silently, every later one reports the delta), which is why `plan` reads
 // the state dir instead.
 //
+// tokenFiles is the explicit read identity (owner -> token file PATH, see ResolveMonitorIdentity).
+// The poller reads an owner's repos as that file's token, which outranks its keyring fallback — the
+// fallback that resolves to no usable account under a replaced HOME and 401s every repo. An owner
+// with no entry keeps the keyring path. A nil map is today's behaviour for every owner.
+//
 // The poller's exit 2 means at least one repo went degraded and RETAINED its baseline. That is
 // could-not-check for those repos, not a failed run: the report carries the degraded lines and the
 // caller decides. Only a precondition failure (exit 1) is fatal.
-func RunMonitor(script, stateDir string, scope []string, runner func(script string, env []string, args ...string) (string, int, error)) (*MonitorReport, error) {
+func RunMonitor(script, stateDir string, scope []string, tokenFiles map[string]string, runner func(script string, env []string, args ...string) (string, int, error)) (*MonitorReport, error) {
 	if len(scope) == 0 {
 		return nil, deskkit.Unverifiable("scanloop: the intake SCAN scope is empty — "+
 			"an empty sweep is never a clean, empty board", nil)
@@ -293,7 +407,7 @@ func RunMonitor(script, stateDir string, scope []string, runner func(script stri
 		runner = execMonitor
 	}
 	env := append(os.Environ(), EnvMonitorStateDir+"="+stateDir)
-	out, code, err := runner(script, env, scope...)
+	out, code, err := runner(script, env, monitorArgs(scope, tokenFiles)...)
 	report := ParseMonitorOutput(out)
 	switch {
 	case code == 2:
