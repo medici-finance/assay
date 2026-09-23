@@ -232,6 +232,41 @@ RISK-VALUE: DERIVED — 7-entry closed capability vocabulary @ docs/streams/harn
 
 VERIFY: FAIL — held at implemented. Row 7 fails, root-caused to the still-unlanded harness-portability/15 (CI wiring, App-token scope constraint) — not a regression in this brief's own diff, already tracked. Every row exercising this brief's own deliverable directly (1,2,2a,3,3a,4,4a,5,6) passes clean, including row 3 which newly confirms a prior regression (#1182) is fixed on merged main. Housekeeping: closed #1182 (fix landed via #1293, never auto-closed since the PR used "Issue:" not "Closes:").
 
+### Non-implementer verifier run — VERIFY: FAIL — 2026-09-23 opus-5.5-verifier
+
+Runner ≠ implementer (implementer was the worker App, 2026-08-16). Own detached temp worktree off origin/main at merged head b3fe2a1c7900. Offline envelope observed (KUBECONFIG=/dev/null). No PR, no push, no status flip. Fourth independent verify pass (prior: 2026-08-22, 2026-09-16, 2026-09-18). Every row re-executed fresh; prior Evidence not trusted. verifyrun execution witness also run against this tree (rows echoing `$?` show verifyrun wrapper exit 0 with the real result in the output hash: "1" for rows 3 and 7).
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | harnesslint go test in the module (go test -v ./...) | exit 0, red-fixture tests present | exit 0 — 48 PASS / 0 SKIP / 0 FAIL incl. each-banned-token-red subtests, unknown-capability, missing-capability, missing-skill-cell, and all three exit-code states | 2026-09-23 | opus-5.5-verifier |
+| 2 | harnesslint bodies over the shipped skills | exit 0 | exit 0 — checked-clean: bodies — no violations | 2026-09-23 | opus-5.5-verifier |
+| 2a | mutation — append backticked-Agent + SendMessage to a copy of the adopt body, run bodies lint | non-zero, names adopt file + both tokens | exit 1 — two lines at the adopt copy line 98 naming banned token SendMessage and banned backticked-Agent; checked-failed: bodies — 2 violation(s) | 2026-09-23 | opus-5.5-verifier |
+| 3 | harnesslint bindings over the shipped references | exit 0 — closure holds, every skill has a cell | **exit 1 — FAIL. checked-failed: bindings — 1 violation(s): claude-code.md has no degradation cell for skill system-demo.** The three non-matrix files (desk-shell, standing-note, tick-contract) are correctly skipped. codex.md and cursor.md both carry a system-demo cell; claude-code.md does not | 2026-09-23 | opus-5.5-verifier |
+| 3a | mutation — strip dispatch-worker from a copy of codex.md, run bindings lint | non-zero, names dispatch-worker | exit 1 — codex copy: capability dispatch-worker does not resolve — no capability:dispatch-worker binding present; checked-failed: bindings — 1 violation(s) | 2026-09-23 | opus-5.5-verifier |
+| 4 | git grep SendMessage in the skills tree, assert empty | exit 0, empty | exit 0 — empty result, no SendMessage in any shipped body | 2026-09-23 | opus-5.5-verifier |
+| 4a | git grep -c SendMessage in the Claude binding (positive control) | count ≥ 1 | count 2 — the token lives where it legally maps message-agent, so row 4's empty is clean not blind | 2026-09-23 | opus-5.5-verifier |
+| 5 | 5-capability loop grep across both matrix binding files, with control | exit 0, empty; control fires | exit 0 — empty (all five resolve in both); control appending no-such-cap prints MISSING no-such-cap | 2026-09-23 | opus-5.5-verifier |
+| 6 | plugindrift neighbour (go run . --root .) | exit 0 | exit 0 — PLUGINDRIFT: CLEAN; coverage 14 bundled skills, 0 unaccounted; the skills-only coverage glob stays closed with references/ alongside it | 2026-09-23 | opus-5.5-verifier |
+| 7 | grep -rl harnesslint in the workflows dir, assert non-empty | exit 0 (present) | **exit 1 — FAIL, no match.** harnesslint is not wired into any workflow file; CI wiring exists only as an unapplied tools/harnesslint/ci.yml.patch — same gap tracked by follow-up harness-portability/15 (App tokens lack the workflows scope), itself still implemented | 2026-09-23 | opus-5.5-verifier |
+| 8 | one full loop cycle (fanout→review→verify) from the rewritten skills in a live session | behaviour matches pre-rewrite | UNRUN — blocked-live-session: not runnable by a dispatched non-interactive verifier; same as all three prior passes; routed to a named live-session follow-up | — | routed → follow-up |
+
+**RISK-VALUE: ENUMERATE → RANK → DERIVE.** Literals this brief's own diff introduces (re-derived from the shipped tool + the stream README, not carried over):
+
+| Rank | identifier = literal | @ file:line | Irreversibility |
+|---|---|---|---|
+| 1 | exitClean = 0, exitFailed = 1, exitCannot = 2, exitUsage = 2 | tools/harnesslint/lint.go:36-39 | Highest — the three-state instrument contract every CI caller gates `$?` on. exitUsage deliberately shares exitCannot's value (2) to keep the reported states three, matching the house C4 three-state doctrine; a silent 0 on parse-error/empty-vocab is the failure this collapsing prevents. Reversible by edit+redeploy, but a breaking change to every caller's exit check. |
+| 2 | closed capability vocabulary — 8 entries {dispatch-worker, message-agent, isolate-workspace, invoke-skill, session-notifications, durable-monitor, stop-worker, cadence-tick} | docs/streams/harness-portability/README.md:399-407 (assay:capability-vocabulary block) | Lower — the brief's own facts design this as an in-PR-amendable set; it has grown from the 5 brief-04 introduced to 8 (durable-monitor, stop-worker, cadence-tick added by later briefs), the intended mechanism working, not drift. Rows 3/3a/5 confirm the lint reads and enforces this live set, not a hardcoded copy. |
+
+Both literals are reversible CI/prose knobs; frontmatter risk all `no` — confirmed accurate, nothing binds money, auth, or an external contract.
+
+**RISK-VALUE: DERIVED — exitClean=0, exitFailed=1, exitCannot=2, exitUsage=2 @ tools/harnesslint/lint.go:36-39** — matches the three-state instrument invariant exactly; all three states exercised live this pass (rows 1, 2a, 3, 3a).
+**RISK-VALUE: DERIVED — 8-entry closed capability vocabulary @ docs/streams/harness-portability/README.md:399-407** — matches the README's machine-readable block verbatim; the lint reads it from this single place (rows 3/3a/5 prove enforcement against the live set, not a stale copy).
+
+**VERIFY: FAIL** — rows 3 and 7 fail the literal command as written against merged main b3fe2a1c7900. Both root-cause OUTSIDE this brief's own diff. Every row exercising brief-04's own deliverable directly (1, 2, 2a, 3a, 4, 4a, 5, 6) passes clean. Status stays implemented — no README flip.
+
+Row 3 fails on new bindings drift (system-demo degradation cell missing from the Claude Code reference); row 7 pre-existing (harness-portability/15).
+
+
 ## Review
 
 Gate: **model** (from frontmatter). Review priority: the diff of the seven bodies,
