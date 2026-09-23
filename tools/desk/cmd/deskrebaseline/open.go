@@ -170,9 +170,102 @@ func evidenceDate(content string) string {
 	return "unknown"
 }
 
+// baseRef is the fetched default branch the re-baseline PR targets (`deskpr create --base
+// main`). It is spelled in full so a stray local branch literally named `origin/main` cannot
+// shadow it.
+const baseRef = "refs/remotes/origin/main"
+
+// deskprCreate opens the draft PR through the sanctioned write verb. It is a package var so a
+// test can drive the whole --open path without ever running the real deskpr.
+var deskprCreate = func(root, title, bodyFile string) int {
+	dp := exec.Command("deskpr", "create", "--title", title, "--body-file", bodyFile, "--base", "main")
+	dp.Dir = root
+	dp.Stdout = stdout
+	dp.Stderr = stderr
+	if err := dp.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode()
+		}
+		fmt.Fprintf(stderr, "deskrebaseline: deskpr create could not run: %v (is it on PATH?)\n", err)
+		return deskkit.ExitUnverifiable
+	}
+	return deskkit.ExitOK
+}
+
+// canonicalPath returns p made absolute with every symlink resolved, so a containment check
+// compares the paths the filesystem will actually write to.
+func canonicalPath(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
+// openPreflight is the write-confinement gate of --open. It runs BEFORE any mutation (no
+// branch created, no file written), so a refusal leaves every tree exactly as it found it.
+// It returns the brief's root-relative path to stage, or a non-zero exit code.
+//
+//  1. The brief must resolve INSIDE --root, with symlinks resolved. The verb writes only the
+//     checkout the operator named. A brief found through the configured root map, or passed
+//     as a path into another checkout, is refused, never written (F-sec-open-write-outside-root,
+//     PR #1511).
+//  2. HEAD must equal the fetched base (refs/remotes/origin/main). The re-baseline branch is
+//     cut from HEAD, so an ambient feature branch would carry its own unreviewed commits into
+//     the one-row PR. The verb stays offline and never fetches: the operator fetches, and the
+//     verb refuses when the checkout is not at that fetched base.
+//  3. The index and working tree must be clean, untracked files included. A pre-staged or
+//     modified file must never ride along in the "one-row" commit that deskpr then pushes
+//     (F-sec-open-commits-staged-index, PR #1511). The commit also names its one path
+//     explicitly (see openRebaselinePR), so this gate and the pathspec each hold on their own.
+func openPreflight(root, briefPath string) (rel string, code int) {
+	absRoot, err := canonicalPath(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "deskrebaseline: cannot resolve --root %s: %v — refusing to write\n", root, err)
+		return "", deskkit.ExitUnverifiable
+	}
+	absBrief, err := canonicalPath(briefPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "deskrebaseline: cannot resolve brief path %s: %v — refusing to write\n", briefPath, err)
+		return "", deskkit.ExitUnverifiable
+	}
+	rel, err = filepath.Rel(absRoot, absBrief)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		fmt.Fprintf(stderr, "deskrebaseline: brief %s resolves outside --root %s — --open writes only inside the checkout it was pointed at; refusing (re-run with --root set to the brief's own checkout)\n", absBrief, absRoot)
+		return "", deskkit.ExitRefused
+	}
+
+	head, okHead := gitOutput(root, "-C", root, "rev-parse", "--verify", "HEAD")
+	base, okBase := gitOutput(root, "-C", root, "rev-parse", "--verify", baseRef)
+	if !okHead || !okBase || head == "" || base == "" {
+		fmt.Fprintf(stderr, "deskrebaseline: cannot resolve HEAD and %s in %s — the re-baseline base is unverifiable; refusing\n", baseRef, absRoot)
+		return "", deskkit.ExitUnverifiable
+	}
+	if head != base {
+		fmt.Fprintf(stderr, "deskrebaseline: HEAD %s is not the fetched base %s (%s) — the one-row branch would carry other commits; refusing (fetch, then check out %s detached, and re-run)\n", head, baseRef, base, baseRef)
+		return "", deskkit.ExitRefused
+	}
+
+	status, okStatus := gitOutput(root, "-C", root, "status", "--porcelain", "--untracked-files=normal")
+	if !okStatus {
+		fmt.Fprintf(stderr, "deskrebaseline: cannot read git status in %s — refusing\n", absRoot)
+		return "", deskkit.ExitUnverifiable
+	}
+	if status != "" {
+		fmt.Fprintf(stderr, "deskrebaseline: %s has staged, modified or untracked files — they would ride along in the one-row commit; refusing (clean the checkout and re-run)\n", absRoot)
+		return "", deskkit.ExitRefused
+	}
+	return rel, deskkit.ExitOK
+}
+
 // openRebaselinePR performs the safe re-baseline: rewrite the row, commit it on the one-row
-// branch, and open the draft PR via deskpr create. It makes NO raw git push.
+// branch, and open the draft PR via deskpr create. It makes NO raw git push. Every
+// precondition is checked by openPreflight before the first mutation.
 func openRebaselinePR(root, repo string, lb loadedBrief, row verifyRow, f RowFacts, cls Classification) int {
+	rel, code := openPreflight(root, lb.Path)
+	if code != deskkit.ExitOK {
+		return code
+	}
 	newCommand, newExpect, changed := computeNewRow(root, row, f, cls)
 	if !changed {
 		fmt.Fprintf(stderr, "deskrebaseline: %s classified safe but no concrete row edit could be computed — refusing rather than committing a no-op\n", cls.Verdict)
@@ -193,17 +286,15 @@ func openRebaselinePR(root, repo string, lb loadedBrief, row verifyRow, f RowFac
 		fmt.Fprintf(stderr, "deskrebaseline: could not write re-baselined brief: %v\n", err)
 		return deskkit.ExitUnverifiable
 	}
-	rel, _ := filepath.Rel(root, lb.Path)
-	if rel == "" {
-		rel = lb.Path
-	}
-	if _, ok := gitOutput(root, "-C", root, "add", rel); !ok {
+	if _, ok := gitOutput(root, "-C", root, "add", "--", rel); !ok {
 		fmt.Fprintf(stderr, "deskrebaseline: could not stage %s\n", rel)
 		return deskkit.ExitUnverifiable
 	}
 	stream, nn := streamNNFromPath(lb.Path)
 	commitMsg := fmt.Sprintf("chore(verify): re-baseline %s/%s row %d (%s)", stream, nn, row.Num, cls.Verdict)
-	if _, ok := gitOutput(root, "-C", root, "commit", "-m", commitMsg); !ok {
+	// Explicit pathspec: commit ONLY the brief, never the whole index, even if something got
+	// staged after the preflight's clean check (F-sec-open-commits-staged-index).
+	if _, ok := gitOutput(root, "-C", root, "commit", "-m", commitMsg, "--", rel); !ok {
 		fmt.Fprintf(stderr, "deskrebaseline: commit failed\n")
 		return deskkit.ExitUnverifiable
 	}
@@ -216,18 +307,7 @@ func openRebaselinePR(root, repo string, lb loadedBrief, row verifyRow, f RowFac
 	defer os.Remove(body)
 
 	title := fmt.Sprintf("re-baseline %s/%s Verify row %d (%s)", stream, nn, row.Num, cls.Verdict)
-	dp := exec.Command("deskpr", "create", "--title", title, "--body-file", body, "--base", "main")
-	dp.Dir = root
-	dp.Stdout = stdout
-	dp.Stderr = stderr
-	if err := dp.Run(); err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return ee.ExitCode()
-		}
-		fmt.Fprintf(stderr, "deskrebaseline: deskpr create could not run: %v (is it on PATH?)\n", err)
-		return deskkit.ExitUnverifiable
-	}
-	return deskkit.ExitOK
+	return deskprCreate(root, title, body)
 }
 
 // writePRBody mints a per-invocation temp file (worker kit §3) with the re-baseline PR body:

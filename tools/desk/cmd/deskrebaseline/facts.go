@@ -133,9 +133,13 @@ func resolvePinnedPath(repoRoot, command string) (pathRef string, exists bool, r
 // caller can tell "gone with a chain / no existing endpoint" — refused:gone — from "never a
 // tracked file" — not a deliverable). A rename CHAIN (old→mid→new) is deliberately not a
 // single hop: it is reported had=true, hop="" so it fails closed to refused:gone.
+//
+// The proof reads HEAD's history only, never `--all`: a rename recorded only on an unmerged
+// or unrelated ref is not evidence about the tree being verified. Under --open, HEAD is the
+// fetched base (openPreflight), so the proof is the base branch's own history.
 func singleRenameHop(repoRoot, missing string) (hop string, had bool) {
 	// -M enables rename detection; --diff-filter=R lists rename pairs as `Rnnn\told\tnew`.
-	out, ok := gitOutput(repoRoot, "-C", repoRoot, "log", "--all", "-M", "--diff-filter=R",
+	out, ok := gitOutput(repoRoot, "-C", repoRoot, "log", "HEAD", "-M", "--diff-filter=R",
 		"--name-status", "--format=")
 	if !ok || out == "" {
 		return "", false
@@ -166,8 +170,9 @@ func singleRenameHop(repoRoot, missing string) (hop string, had bool) {
 // pathHadHistory reports whether git has any commit history touching rel — i.e. rel was
 // once a tracked file. It is how a now-missing pinned deliverable (refused:gone / safe:rename)
 // is told apart from a path-like token that was never tracked (a glob, an option value).
+// Like singleRenameHop it reads HEAD's history only, never `--all`.
 func pathHadHistory(repoRoot, rel string) bool {
-	out, ok := gitOutput(repoRoot, "-C", repoRoot, "log", "--all", "--oneline", "-1", "--", rel)
+	out, ok := gitOutput(repoRoot, "-C", repoRoot, "log", "HEAD", "--oneline", "-1", "--", rel)
 	return ok && strings.TrimSpace(out) != ""
 }
 

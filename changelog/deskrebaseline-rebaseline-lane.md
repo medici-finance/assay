@@ -12,4 +12,8 @@
   (prints the classification and git evidence, creates no branch — note dry-run executes the
   row's command as the classification probe, under a forced `KUBECONFIG=/dev/null`); `--open`
   pushes the `rebaseline/<stream>-<NN>-row-<K>` branch and opens the draft PR via `deskpr create`.
+  Before any write, `--open` refuses unless three things hold: the brief resolves inside
+  `--root` (ids resolve under `--root` first), `HEAD` is the fetched `refs/remotes/origin/main`,
+  and the checkout is clean. The commit names only the brief's path, so the verb never writes
+  another checkout and never sweeps unrelated staged work into the one-row PR.
   The verify-desk skill now runs it on a stale-class FAIL before filing. See `docs/rebaseline.md`.

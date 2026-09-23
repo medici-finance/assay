@@ -24,17 +24,20 @@
 //	deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
 //	deskrebaseline --version
 //
-// <brief>   a brief file path, or a `<stream>/<NN>` id resolved under the configured
-//           stream root for --repo.
+// <brief>   a brief file path, or a `<stream>/<NN>` id resolved under --root first, then
+//           under the configured stream root for --repo.
 // --row K   the 1-based row number in the brief's `## Verify` table to classify.
 // --root    the checkout root the row's paths and commands resolve against
 //           (default: `git rev-parse --show-toplevel` from the working directory).
-// --repo    owner/name, used only to resolve a `<stream>/<NN>` brief id under its
+// --repo    owner/name, used only as the fallback to resolve a `<stream>/<NN>` brief id under its
 //           configured stream root (default: derived from --root's origin remote).
 // --open    push the one-row `rebaseline/<stream>-<NN>-row-<K>` branch and open a DRAFT PR
 //           via `deskpr create` (as the loop identity — the verifier App under
 //           DESK_LOOP=verify-desk). WITHOUT --open the verb is DRY-RUN: it prints the
 //           classification, the git evidence and the plan, creates no branch, and exits 0.
+//           Before any mutation --open refuses unless the brief resolves inside --root,
+//           HEAD is the fetched refs/remotes/origin/main, and the checkout is clean
+//           (open.go openPreflight). The commit names only the brief's path.
 //
 // EXIT CODES (deskkit contract):
 //
@@ -66,13 +69,15 @@ USAGE:
   deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
   deskrebaseline --version
 
-<brief>   brief file path, or a <stream>/<NN> id resolved under --repo's stream root.
+<brief>   brief file path, or a <stream>/<NN> id (resolved under --root, then --repo's root).
 --row K   1-based row number in the brief's ## Verify table.
 --root    checkout root the row resolves against (default: git toplevel of the cwd).
 --repo    owner/name for <stream>/<NN> resolution (default: derived from origin).
 --open    push rebaseline/<stream>-<NN>-row-K and open a DRAFT PR via deskpr create
           (verifier App under DESK_LOOP=verify-desk). Without --open: DRY-RUN — print the
-          classification and git evidence, create no branch, exit 0.
+          classification and git evidence, create no branch, exit 0. --open refuses
+          before any write unless the brief is inside --root, HEAD is the fetched
+          refs/remotes/origin/main, and the checkout is clean.
 
 The verb never merges and never lands on main; the re-baseline PR is reviewed and merged
 by a human. It fails CLOSED: a row is re-baselined only when git PROVES the work intact.`

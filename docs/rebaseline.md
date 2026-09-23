@@ -57,7 +57,7 @@ from the rest of the fleet's.
 deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
 ```
 
-- `<brief>` — a brief file path, or a `<stream>/<NN>` id resolved under `--repo`'s stream root.
+- `<brief>` — a brief file path, or a `<stream>/<NN>` id resolved under `--root` first, then under `--repo`'s configured stream root.
 - `--row K` — the 1-based row of the brief's `## Verify` table to classify.
 - **Without `--open` (dry-run)** — prints the classification, the git intactness evidence, and
   the plan. It creates **no branch** and always exits `0`: a classification report is not a
@@ -73,11 +73,27 @@ deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
   `rebaseline/<stream>-<NN>-row-<K>` branch, and opens a **draft** PR via `deskpr create` (as the
   loop identity — the verifier App under `DESK_LOOP=verify-desk`). On a `refused:*` verdict it
   opens nothing and exits `5`: file the issue as today, with the verb's reason.
+  - **`--open` writes only the checkout it was pointed at, and only from a clean base.** Before
+    it creates a branch or writes a file, it refuses unless all three of these hold:
+    1. the brief resolves **inside `--root`**, with symlinks resolved. A `<stream>/<NN>` id
+       resolves under `--root` first and falls back to the configured stream root only when
+       `--root` has no such brief. A brief that lands outside `--root` either way is refused,
+       never written.
+    2. `HEAD` **is the fetched base** `refs/remotes/origin/main`. The one-row branch is cut from
+       `HEAD`, so any other commit would ride along. The verb never fetches: fetch first, then
+       check out `refs/remotes/origin/main` detached.
+    3. the checkout is **clean**, with nothing staged, modified or untracked.
+
+    The commit also names its one path explicitly, so it can never sweep in the rest of the
+    index. A refusal leaves every tree exactly as it was.
+  - The rename-hop proof reads `HEAD`'s history only (never `--all`), so a rename recorded only
+    on an unmerged or unrelated ref is not taken as evidence.
 
 ## The PR shape
 
-One row per commit. The PR body names the original Evidence date, the old and the new row, and
-the git evidence for intactness. The branch is `rebaseline/<stream>-<NN>-row-<K>`. Because it
+One row per commit: the commit touches only the brief, and its parent is the fetched base.
+The PR body names the original Evidence date, the old and the new row, and the git evidence
+for intactness. The branch is `rebaseline/<stream>-<NN>-row-<K>`. Because it
 edits a Verify table, the reviewer App reviews it under `wrote-to-the-test`; the verifier
 identity authored it, so that rule's own-author exemption applies.
 

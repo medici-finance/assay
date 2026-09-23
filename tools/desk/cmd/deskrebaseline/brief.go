@@ -76,7 +76,15 @@ func loadBrief(repo, repoRoot, brief string) (loadedBrief, error) {
 }
 
 // resolveBriefPath treats brief as a file path when one exists, else as a `<stream>/<NN>` id
-// resolved under repo's configured stream root — the same glob deskkit.BriefRiskFromBody uses.
+// resolved by the same glob deskkit.BriefRiskFromBody uses.
+//
+// A `<stream>/<NN>` id resolves under repoRoot (--root) FIRST, and only falls back to repo's
+// configured stream root when --root holds no such brief. --root is the tree the row's facts
+// are gathered against and the checkout --open writes to, so the brief must come from that
+// same tree. Preferring the configured root map sent a --root A run to a brief in checkout B,
+// and --open then rewrote B's brief (F-sec-open-write-outside-root, PR #1511). Resolution
+// order alone is not the write guard. openRebaselinePR still refuses any brief that resolves
+// outside --root (a fallback hit or an explicit file path), before it mutates anything.
 func resolveBriefPath(repo, repoRoot, brief string) (string, error) {
 	if fi, err := os.Stat(brief); err == nil && !fi.IsDir() {
 		return brief, nil
@@ -85,14 +93,13 @@ func resolveBriefPath(repo, repoRoot, brief string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("brief %q is neither an existing file nor a resolvable <stream>/<NN> id", brief)
 	}
-	// Prefer the configured stream root for repo; fall back to repoRoot when this process has
-	// no roots configured (the common single-checkout case).
+	// --root first (see above); the configured stream root for repo is the fallback.
 	roots := []string{}
-	if r := deskkit.RootForRepo(repo); r != "" {
-		roots = append(roots, r)
-	}
 	if repoRoot != "" {
 		roots = append(roots, repoRoot)
+	}
+	if r := deskkit.RootForRepo(repo); r != "" {
+		roots = append(roots, r)
 	}
 	for _, root := range roots {
 		matches, _ := filepath.Glob(filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md"))

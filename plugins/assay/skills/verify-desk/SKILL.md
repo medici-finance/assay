@@ -310,8 +310,9 @@ status flip**:
 shape — a row pins a path, a count, or a tool idiom the tree moved out from under it, so the table
 fails AS WRITTEN while the work it checks is intact. On a FAIL whose row matches that stale shape,
 run `deskrebaseline <brief> --row K` **before filing**. It classifies the row against a narrow safe
-set and fails CLOSED: a `safe:*` verdict (add `--open`) opens a one-row re-baseline draft PR — as the
-verifier App, reviewed and human-merged like any PR, never landed on main by the verb — and a
+set and fails CLOSED: a `safe:*` verdict (add `--open`, run from a clean checkout at the fetched
+`refs/remotes/origin/main` with `--root` set to the brief's own checkout — it refuses otherwise)
+opens a one-row re-baseline draft PR — as the verifier App, reviewed and human-merged like any PR, never landed on main by the verb — and a
 `refused:*` verdict means this is NOT a stale oracle. On any `refused:*` (or a non-stale FAIL), file
 the issue exactly as below, carrying the verb's reason. See `docs/rebaseline.md` for the safe/refusal
 sets and the PR shape.
