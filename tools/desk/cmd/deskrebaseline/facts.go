@@ -29,9 +29,17 @@ var gitOutput = func(dir string, args ...string) (string, bool) {
 // all (ran) plus its exit code. ran is false for the shell's could-not-execute codes (127
 // command-not-found, 126 not-executable): those are stale-path signals, not behaviour
 // changes. It is a package var so tests can probe behaviour without executing anything.
+//
+// The row command runs even in dry-run (the default) — the behaviour probe IS the
+// classification signal, so classification has a side effect: it executes trusted-authored
+// Verify-row shell. That is documented in docs/rebaseline.md ("dry-run executes the row
+// command"). As defence in depth for the offline envelope (common clause C3) the probe
+// forces KUBECONFIG=/dev/null in the child's environment, so a row command that would reach a
+// cluster cannot, whatever the ambient KUBECONFIG (F-dryrun-executes-command, PR #1511).
 var runCommand = func(dir, command string) (ran bool, rc int) {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null")
 	err := cmd.Run()
 	if err == nil {
 		return true, 0
@@ -67,6 +75,12 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 	}
 
 	f.PathRef, f.PathExists, f.RenameHop = resolvePinnedPath(repoRoot, row.Command)
+
+	// NOTE: this gatherer populates the rename + behaviour-probe facts only. It does NOT set
+	// CountShaped/OnlyAdditions (safe:count) or RetiredIdiom (safe:idiom): those classes are
+	// classifier-ready scaffolding not yet wired to a real fact source, so the shipped verb
+	// produces only safe:rename among the safe verdicts. Wiring them is a tracked follow-up;
+	// docs/rebaseline.md marks safe:count/safe:idiom not-yet-implemented for that reason.
 
 	// Behaviour probe only when there is no stale-path question to answer first.
 	if f.PathRef == "" || f.PathExists {

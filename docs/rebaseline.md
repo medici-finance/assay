@@ -22,11 +22,21 @@ the review and the human merge are the independent layers behind it.
 
 ## The safe set — the verb MAY propose a re-baseline
 
-| Class | Proof required |
-|-------|----------------|
-| `safe:rename` | The row pins a path that no longer exists, and git records a **single** rename/move hop from it to a path that exists now (`git log --follow`). The work is intact; only the pinned path moved. |
-| `safe:count` | The row's Expect is a count whose current value differs, and the target files changed **only by additions** since the Evidence date — the higher count is growth, not a regression. |
-| `safe:idiom` | The row pins a tool idiom **retired by a recorded ruling** (e.g. a renamed flag). The command idiom moved; the checked behaviour did not. |
+| Class | Proof required | Status |
+|-------|----------------|--------|
+| `safe:rename` | The row pins a path that no longer exists, and git records a **single** rename/move hop from it to a path that exists now (`git log --follow`). The work is intact; only the pinned path moved. | **live** |
+| `safe:count` | The row's Expect is a count whose current value differs, and the target files changed **only by additions** since the Evidence date — the higher count is growth, not a regression. | *not yet implemented* |
+| `safe:idiom` | The row pins a tool idiom **retired by a recorded ruling** (e.g. a renamed flag). The command idiom moved; the checked behaviour did not. | *not yet implemented* |
+
+> **Only `safe:rename` fires in the shipped verb today.** The classifier and the row-rewrite
+> code carry the `safe:count` and `safe:idiom` arms, but the fact-gatherer
+> (`tools/desk/cmd/deskrebaseline/facts.go`) does not yet populate the count/idiom facts, so
+> those two verdicts are never produced in production — a count-drift or retired-idiom row
+> falls through to `refused:unclassified` and is filed exactly as today. Wiring the count/idiom
+> facts (and reconciling the behaviour probe, which currently pre-empts a count drift written
+> as `test $(...) -eq N` before `safe:count` could fire) is a tracked follow-up. The two rows
+> above are marked *not yet implemented* so no reader expects re-baselines the verb cannot
+> produce. This fails **closed** — the not-yet-wired classes refuse, never launder.
 
 ## The refusal set — the verb MUST file, not re-baseline
 
@@ -52,6 +62,13 @@ deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
 - **Without `--open` (dry-run)** — prints the classification, the git intactness evidence, and
   the plan. It creates **no branch** and always exits `0`: a classification report is not a
   refusal. Read the printed `verdict:` line.
+  - **Dry-run executes the row's command.** The behaviour probe (does the command still run,
+    and does it return a different result?) *is* one of the classification signals, so
+    classifying a row runs that row's shell command — even in dry-run, and even though the plan
+    is printed only afterwards. Verify-row commands are trusted-authored and are exactly what
+    the verifier runs anyway, inside the verifier's offline envelope; as defence in depth the
+    probe additionally forces `KUBECONFIG=/dev/null` in the command's environment, so a row
+    command cannot reach a cluster whatever the ambient `KUBECONFIG`.
 - **With `--open`** — on a `safe:*` verdict it rewrites that one row, commits it on a
   `rebaseline/<stream>-<NN>-row-<K>` branch, and opens a **draft** PR via `deskpr create` (as the
   loop identity — the verifier App under `DESK_LOOP=verify-desk`). On a `refused:*` verdict it

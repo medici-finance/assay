@@ -29,9 +29,20 @@ const (
 	// SafeCount — the row's Expect is a count whose current value differs, and the target
 	// files changed ONLY by additions since the Evidence date, so the higher count is
 	// growth, not a regression.
+	//
+	// SCAFFOLDING — NOT YET REACHABLE IN THE SHIPPED VERB. The classifier CAN return this
+	// verdict, but gatherRowFacts (facts.go) does not yet populate CountShaped/OnlyAdditions,
+	// so the shipped fact-gatherer never produces safe:count. Wiring the count facts (and
+	// reconciling the step-3 behaviour probe, which pre-empts a count drift written as
+	// `test $(...) -eq N`) is a tracked follow-up; until then only safe:rename fires in
+	// production, and the user-facing docs (docs/rebaseline.md) say so. Kept, not deleted, so
+	// the follow-up inherits the decision boundary and its tests already in place.
 	SafeCount Verdict = "safe:count"
 	// SafeIdiom — the row pins a tool idiom retired by a recorded ruling (e.g. a renamed
 	// flag). The command idiom moved; the checked behaviour did not.
+	//
+	// SCAFFOLDING — NOT YET REACHABLE IN THE SHIPPED VERB, for the same reason as SafeCount:
+	// gatherRowFacts never sets RetiredIdiom. Wired end-to-end by the same tracked follow-up.
 	SafeIdiom Verdict = "safe:idiom"
 
 	// RefusedRiskBearing — the row's OWNING BRIEF is risk-bearing (gate: human, or any
@@ -97,11 +108,18 @@ type RowFacts struct {
 	// Count-drift facts (SafeCount). CountShaped is true when the Expect asserts a count
 	// whose current value differs; OnlyAdditions is true when the command's target files
 	// changed only by additions since the Evidence date.
+	//
+	// SCAFFOLDING: gatherRowFacts (facts.go) does not yet SET either field, so in the shipped
+	// verb both are always false and safe:count never fires — only the fixture-fed unit tests
+	// exercise this path. Wiring them is the tracked follow-up (see the SafeCount const).
 	CountShaped   bool
 	OnlyAdditions bool
 
 	// RetiredIdiom names a tool idiom the row pins that a recorded ruling retired (e.g. the
-	// `--consumers` form, #905), or "" when the row pins no such idiom.
+	// `--consumers` form), or "" when the row pins no such idiom.
+	//
+	// SCAFFOLDING: gatherRowFacts does not yet set it either, so safe:idiom is likewise
+	// unreachable in the shipped verb pending the same follow-up.
 	RetiredIdiom string
 }
 

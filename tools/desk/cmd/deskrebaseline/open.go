@@ -20,7 +20,11 @@ import (
 
 // idiomReplacement maps a retired tool idiom to its recorded replacement (facts.go decides
 // WHEN a row is safe:idiom; this supplies the new form for the re-baseline edit). The one
-// recorded ruling the brief names is the `--consumers` form (#905).
+// recorded ruling the brief names is the `--consumers` form.
+//
+// SCAFFOLDING: reachable only once gatherRowFacts sets RetiredIdiom, which it does not yet —
+// safe:idiom is not produced by the shipped verb (see the SafeIdiom const). Kept for the
+// tracked follow-up that wires the idiom facts.
 var idiomReplacement = map[string]string{
 	"--consumers": "--consumer",
 }
@@ -54,6 +58,11 @@ func streamNNFromPath(briefPath string) (stream, nn string) {
 // form; for a count it re-measures the command's trailing integer. It returns changed=false
 // when it cannot compute a concrete edit, so the caller refuses rather than committing a
 // no-op re-baseline.
+//
+// Only the SafeRename arm is reachable in the shipped verb today: gatherRowFacts produces no
+// safe:count or safe:idiom verdict (see classify.go's SafeCount/SafeIdiom consts), so the
+// SafeCount and SafeIdiom arms below are scaffolding for the tracked follow-up that wires
+// those facts. They are kept and correct so that follow-up need only supply the facts.
 func computeNewRow(root string, row verifyRow, f RowFacts, cls Classification) (newCommand, newExpect string, changed bool) {
 	newCommand, newExpect = row.Command, row.Expect
 	switch cls.Verdict {
@@ -93,6 +102,7 @@ func computeNewRow(root string, row verifyRow, f RowFacts, cls Classification) (
 func measureTrailingInt(root, command string) (string, bool) {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null") // offline envelope (C3); see runCommand
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false
@@ -107,9 +117,21 @@ func measureTrailingInt(root, command string) (string, bool) {
 // applyRebaseline rewrites row K's line in content's `## Verify` table, substituting the new
 // Command (and Expect) cells. It returns the new content and the old/new row lines for the PR
 // body, or ok=false when the row line cannot be located or nothing changed.
+//
+// The scan is SCOPED to the `## Verify` section (verifySectionBounds), exactly as
+// parseVerifyRows extracts that section before parsing. Scanning the whole brief would let an
+// EARLIER pipe table with a numeric first column (a facts table, an example) whose first cell
+// equals the row number capture the rewrite — a wrong-line edit (F-applyrebaseline-unscoped,
+// PR #1511). Confining the match to the Verify section closes that: only the table the
+// classifier decided on can be rewritten.
 func applyRebaseline(content string, row verifyRow, newCommand, newExpect string) (newContent, oldLine, newLine string, ok bool) {
 	lines := strings.Split(content, "\n")
-	for i, line := range lines {
+	lo, hi := verifySectionBounds(lines)
+	if lo < 0 {
+		return "", "", "", false // no ## Verify section — nothing safely rewritable
+	}
+	for i := lo; i < hi; i++ {
+		line := lines[i]
 		if !strings.HasPrefix(strings.TrimSpace(line), "|") {
 			continue
 		}
