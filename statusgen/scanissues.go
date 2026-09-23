@@ -940,7 +940,9 @@ type issueCommentUser struct {
 // implementation shells out to gh; tests inject a fixture.
 type commentLister func(repo string, issue int) ([]issueComment, error)
 
-// issueCommentLister is the default commentLister: `gh api` for one issue's comments.
+// issueCommentLister is the `gh api` commentLister for one issue's comments. It is no
+// longer on the --scan-issues path (defaultScanCommentLister, below, since #1255);
+// --transcribe-scan still wires it.
 // A gh failure is returned as an error so the caller can degrade it to a NOTICE.
 // --paginate fetches all pages (GitHub defaults to 30/page ascending; the resume
 // signal is always on the last page, so page-1-only silently drops it — Blocker 1).
@@ -972,6 +974,29 @@ func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 	}
 	return comments, nil
 }
+
+// deskreadCommentLister is the --scan-issues commentLister since #1255: the issue's
+// WHOLE comment thread (oldest first) through the desk-tools `deskread comments`
+// verb on the native forge seam (deskkit.Forge.ListCommentsTyped, issue kind),
+// instead of `gh api --paginate`. It keeps issueCommentLister's contract: a read
+// failure is an ERROR, which planUnblock degrades to a per-issue NOTICE and leaves
+// the placeholder blocked — never an empty thread that reads as "nobody answered".
+// The forge walks every page of the thread (a thread longer than its page cap is
+// could-not-check, not truncated), so the newest answer — the one the un-block rule
+// keys on — is never the comment that was dropped.
+func deskreadCommentLister(repo string, issue int) ([]issueComment, error) {
+	return newDeskreadReader().IssueComments(repo, issue)
+}
+
+// defaultScanCommentLister and defaultScanBlessChecker are, with
+// defaultScanIssueLister, the three forge reads the PRODUCTION --scan-issues path
+// makes — the path scanloop's scan lane runs. They are vars with stable names so a
+// test can drive runScanIssues end to end on exactly what main wires, with NO
+// working `gh` on PATH (#1255).
+var (
+	defaultScanCommentLister commentLister     = deskreadCommentLister
+	defaultScanBlessChecker  issueBlessChecker = deskreadIssueBlessChecker
+)
 
 // isBotComment reports whether a comment author is a bot, GitHub App actor, or
 // desk automation. The identity principle: only a human answer un-blocks the

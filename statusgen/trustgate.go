@@ -184,7 +184,9 @@ func isBlessAuthorityID(login string, id int64) bool {
 }
 
 // issueBlessChecker evaluates the blessing for one untrusted-author issue.
-// The production implementation is ghIssueBlessChecker; tests inject a fixture.
+// The --scan-issues implementation is deskreadIssueBlessChecker (the native forge,
+// #1255); ghIssueBlessChecker remains for the modes not yet migrated. Tests inject
+// a fixture.
 type issueBlessChecker func(repo string, issue int) (blessed bool, err error)
 
 // scanIssueTrustQuery — duplicate of deskkit.IssueTrustQuery (keep in sync). It
@@ -195,7 +197,9 @@ type issueBlessChecker func(repo string, issue int) (blessed bool, err error)
 const scanIssueTrustQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){lastEditedAt comments(first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}`
 
 // ghIssueBlessChecker runs the trust query via `gh api graphql` (a READ — the
-// query carries no mutation) and applies the bless-then-edit rule.
+// query carries no mutation) and applies the bless-then-edit rule. It is no longer
+// on the --scan-issues path (see deskreadIssueBlessChecker); --transcribe-scan still
+// wires it.
 func ghIssueBlessChecker(repo string, issue int) (bool, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
@@ -278,13 +282,7 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 		return false, fmt.Errorf("bad lastEditedAt: %w", err)
 	}
 
-	type ev struct {
-		login   string
-		id      int64
-		created time.Time
-		edited  time.Time
-	}
-	var events []ev
+	var events []blessEvent
 	for _, n := range iss.Comments.Nodes {
 		created, cerr := parse(n.CreatedAt)
 		if cerr != nil {
@@ -294,7 +292,7 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 		if eerr != nil {
 			return false, fmt.Errorf("bad comment lastEditedAt: %w", eerr)
 		}
-		e := ev{created: created, edited: edited}
+		e := blessEvent{created: created, edited: edited}
 		if n.Author != nil {
 			e.login = n.Author.Login
 			e.id = n.Author.DatabaseID
@@ -306,7 +304,55 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 		}
 		events = append(events, e)
 	}
+	return evalBlessingEvents(bodyEdited, events, true)
+}
 
+// blessEvent is one comment's trust-relevant content: its author identity (a Bot
+// already re-suffixed to the "<slug>[bot]" REST rendering) and its creation and
+// content-edit times (zero when never edited).
+type blessEvent struct {
+	login   string
+	id      int64
+	created time.Time
+	edited  time.Time
+}
+
+// deskreadIssueBlessChecker is the --scan-issues issueBlessChecker since #1255: the
+// SAME bounded trust read ghIssueBlessChecker shells `gh api graphql` for, reached
+// through the desk-tools `deskread trust` verb on the native forge seam
+// (deskkit.Forge.IssueTrustEvents runs deskkit.IssueTrustQuery, the query
+// scanIssueTrustQuery duplicates). The native client attaches the per-installation
+// App token explicitly, so this read survives the replaced HOME that 401'd the `gh`
+// shell-out on every rostered repo under scanloop — the read #1223/#1235 left behind.
+//
+// The contract is ghIssueBlessChecker's: an unread thread is an ERROR (planScan
+// turns it into a "trust gate unverifiable" NOTICE and creates nothing), and an
+// overflowed thread (complete=false) is a quiet not-blessed — quarantine, never a
+// guess off a partial thread. The rule applied is the same evalBlessingEvents.
+func deskreadIssueBlessChecker(repo string, issue int) (bool, error) {
+	if err := scanRosterUnconfiguredError(); err != nil {
+		return false, err
+	}
+	tr, err := newDeskreadReader().IssueTrust(repo, issue)
+	if err != nil {
+		return false, err
+	}
+	return evalBlessingEvents(tr.BodyEdited, tr.Events, tr.Complete)
+}
+
+// evalBlessingEvents is the bless-then-edit rule over one issue's already-read
+// content (duplicate of deskkit.Blessed — keep in sync). Both readers — the raw
+// GraphQL payload (evalIssueBlessing) and the deskread envelope
+// (deskreadIssueBlessChecker) — decide through it, so the two cannot draw different
+// blessings from one thread. complete=false (the thread overflowed its single
+// bounded page) and an UNCONFIGURED roster both fail closed.
+func evalBlessingEvents(bodyEdited time.Time, events []blessEvent, complete bool) (bool, error) {
+	if err := scanRosterUnconfiguredError(); err != nil {
+		return false, err
+	}
+	if !complete {
+		return false, nil // overflowed thread — fail closed to quarantine
+	}
 	var bless time.Time
 	for _, e := range events {
 		// T10: the selection is STRICT (login + numeric id) — trustedAuthorID (used

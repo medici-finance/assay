@@ -353,6 +353,28 @@ const (
 	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Recognised,
 	// not applied. KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvStreamCap.
 	EnvStreamCap = "ASSAY_STREAM_CAP"
+
+	// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) records the model VENDOR the
+	// reviewer role's App runs on (verify-integrity/10). It is the reference the
+	// reviewer-calibration SPOF is measured against: deskcalibrate refuses a
+	// re-review whose vendor equals this value, because a same-vendor re-review of
+	// a bot-approved PR measures agreement between two instances of one model, not
+	// against an independent judge. deskcalibrate (cmd/deskcalibrate) CONSUMES it
+	// directly via os.Getenv; parseConfig here only RECOGNISES it so a roster.env
+	// carrying it does not collapse the whole desk-tools configuration on the
+	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Documented
+	// in roster.env, never written by the brief. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvReviewerVendor and the coupling vector.
+	EnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
+
+	// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) records the model VENDOR the
+	// verifier role runs on (agentic-SDLC plan A9: the verifier role runs on a
+	// different vendor from the worker role, and the roster records it). No desk
+	// tool ENFORCES the policy today — this brief documents the setting only — so
+	// it is RECOGNISED, not applied, on both readers: a roster.env carrying it must
+	// not collapse the configuration. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvVerifierVendor and the coupling vector.
+	EnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 )
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
@@ -431,6 +453,14 @@ func knownRosterKeys() []string {
 		// collapse the desk tools' configuration. Bound to statusgen's
 		// scanEnvStreamCap by the shared key list.
 		EnvStreamCap,
+		// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) is CONSUMED by cmd/deskcalibrate
+		// (the reviewer-calibration SPOF vendor check) via a direct os.Getenv, and
+		// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) is a documented policy key no tool
+		// enforces yet. Both are RECOGNISED here so a roster.env carrying either does
+		// not collapse the whole desk-tools configuration on the unknown-ASSAY_-key
+		// refusal. KEEP IN SYNC with statusgen's scanKnownRosterKeys() and the
+		// coupling vector (statusgen/testdata/roster_coupling.json).
+		EnvReviewerVendor, EnvVerifierVendor,
 	}
 }
 

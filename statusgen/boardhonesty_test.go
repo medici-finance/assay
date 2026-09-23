@@ -18,8 +18,7 @@ func TestClassifyPhantom(t *testing.T) {
 	cases := []struct {
 		name        string
 		body        string
-		readme      string
-		rowCell     string // the row's OWN brief-table cell — the re-homed class keys on THIS (#709)
+		rowCell     string // the row's OWN brief-table cell — dehoused (#1516) and re-homed (#709) key on THIS
 		merged      map[string]bool
 		filePresent bool   // the row's own brief file exists — gates ONLY the re-homed class (#581)
 		wantClass   string // "" => must be clean
@@ -53,9 +52,21 @@ func TestClassifyPhantom(t *testing.T) {
 			wantClass: phantomDehoused,
 		},
 		{
-			name:      "dehoused POSITIVE (readme): spelled 'dehoused'",
-			readme:    "Status note: these rows were dehoused; owned elsewhere now.\n",
+			// #1516: the ROW's own cell carries the de-house marker (spelled
+			// 'dehoused'), even with no brief body — the row-scoped arm must fire.
+			name:      "dehoused POSITIVE (row cell): spelled 'dehoused' in the row's own cell",
+			rowCell:   "Old thing — dehoused; owned elsewhere now",
 			wantClass: phantomDehoused,
+		},
+		{
+			// #1516: a stream README mention is NOT evidence about a row. The row
+			// under test carries no de-house marker of its OWN — it stays clean even
+			// though (in the driver) the README says de-housed. Here that isolation is
+			// exact: dehoused no longer reads any stream-level text.
+			name:      "dehoused NEGATIVE (#1516): an ordinary body + cell (README mentions are not read)",
+			body:      "This is an ordinary in-repo brief.\n",
+			rowCell:   "Add the vault balance check",
+			wantClass: "",
 		},
 		{
 			name:      "dehoused NEGATIVE: 'house' alone must not trip it",
@@ -83,11 +94,11 @@ func TestClassifyPhantom(t *testing.T) {
 			wantClass: phantomReHomed,
 		},
 		{
-			// statusgen #709: a stream README mentioning re-homing (a scope note, or
-			// a stream re-homed INTO this repo) must NOT flag a plain row whose OWN
-			// cell carries no marker — that was the false-positive class.
-			name:      "re-homed NEGATIVE (#709): README says re-homed but the ROW cell is ordinary",
-			readme:    "This stream was re-homed here from the platform repo; do not re-implement the OLD rows.\n",
+			// statusgen #709: re-homing mentioned at stream level (a scope note, or a
+			// stream re-homed INTO this repo) must NOT flag a plain row whose OWN cell
+			// carries no marker — that was the false-positive class. Since #1516 the
+			// classifier reads no stream-level text at all; a plain cell stays clean.
+			name:      "re-homed NEGATIVE (#709): an ordinary ROW cell is clean (no stream-level text is read)",
 			rowCell:   "Add the vault balance check",
 			wantClass: "",
 		},
@@ -103,7 +114,6 @@ func TestClassifyPhantom(t *testing.T) {
 		{
 			name:      "re-homed NEGATIVE: an ordinary row cell",
 			rowCell:   "Wave 1 brief, ready to dispatch",
-			readme:    "Active stream. Wave 1 briefs are ready.\n",
 			wantClass: "",
 		},
 		// 5. statusgen-source-elsewhere ----------------------------------------
@@ -142,14 +152,13 @@ func TestClassifyPhantom(t *testing.T) {
 		{
 			name:      "clean: nothing matches any detector",
 			body:      "## Context\nA perfectly ordinary, dispatchable brief.\n",
-			readme:    "Active stream.\n",
 			wantClass: "",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			class, reason, ok := classifyPhantom(id, tc.body, tc.readme, tc.rowCell, tc.merged, tc.filePresent)
+			class, reason, ok := classifyPhantom(id, tc.body, tc.rowCell, tc.merged, tc.filePresent)
 			if tc.wantClass == "" {
 				if ok {
 					t.Fatalf("want CLEAN, got class %q (reason %q)", class, reason)
@@ -176,20 +185,19 @@ func TestClassifyPhantom(t *testing.T) {
 func TestClassifyPhantomPrecedence(t *testing.T) {
 	const id = "s/01"
 	body := "Any statusgen SOURCE change must be made in medici-finance/assay. STATUS: DEFERRED.\n"
-	readme := "This stream was re-homed.\n"
-	// The re-home marker now lives in the ROW's own cell (#709); filePresent=false
-	// plus this marker keeps the re-homed arm a live competing match (pointer row).
+	// The re-home marker lives in the ROW's own cell (#709); filePresent=false plus
+	// this marker keeps the re-homed arm a live competing match (pointer row).
 	rowCell := "Retired thing [homed→acme/widgets]"
 
 	// filePresent=false keeps the re-homed arm a live competing match (pointer
 	// row), so this proves precedence ORDER, not the #581 file-presence gate.
 	// Merged wins over every text detector.
-	if class, _, ok := classifyPhantom(id, body, readme, rowCell, map[string]bool{id: true}, false); !ok || class != phantomMergedUnflipped {
+	if class, _, ok := classifyPhantom(id, body, rowCell, map[string]bool{id: true}, false); !ok || class != phantomMergedUnflipped {
 		t.Fatalf("merged must win: got ok=%v class=%q", ok, class)
 	}
 	// Without the merge, the source-moved banner (more specific) wins over the
 	// deferred/re-homed matches also present.
-	if class, _, ok := classifyPhantom(id, body, readme, rowCell, nil, false); !ok || class != phantomStatusgenSource {
+	if class, _, ok := classifyPhantom(id, body, rowCell, nil, false); !ok || class != phantomStatusgenSource {
 		t.Fatalf("statusgen-source must win over deferred/re-homed: got ok=%v class=%q", ok, class)
 	}
 }
@@ -356,23 +364,24 @@ func TestBoardHonestyNotices(t *testing.T) {
 		}
 	})
 
-	t.Run("could-not-check on an unreadable README names the stream", func(t *testing.T) {
+	t.Run("#1516: a missing README is NOT a could-not-check — no detector reads it", func(t *testing.T) {
 		root := t.TempDir()
-		// A stream dir with NO README.md — the read fails.
+		// A stream dir with NO README.md. Since #1516 no phantom class reads the
+		// stream README, so its absence draws no could-not-check, and a plain todo
+		// row with an ordinary cell stays dispatchable (silent).
 		dir := filepath.Join(root, "gtm")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		s := &Stream{Name: "gtm", Dir: dir, Briefs: []Brief{{Num: "08", Status: "todo"}}}
+		s := &Stream{Name: "gtm", Dir: dir, Briefs: []Brief{{Num: "08", Status: "todo", RawCell: "Ordinary row"}}}
 		got := boardHonestyNotices([]*Stream{s}, nil, nil)
-		var sawCNC bool
 		for _, n := range got {
-			if strings.Contains(n, "could-not-check") && strings.Contains(n, "gtm") {
-				sawCNC = true
+			if strings.Contains(n, "could-not-check") && strings.Contains(n, "README") {
+				t.Fatalf("a missing README must NOT be a could-not-check any more (#1516); got %v", got)
 			}
 		}
-		if !sawCNC {
-			t.Fatalf("an unreadable README must be reported as could-not-check naming the stream; got %v", got)
+		if len(got) != 0 {
+			t.Fatalf("a plain todo row with no README must stay silent; got %v", got)
 		}
 	})
 
@@ -382,6 +391,56 @@ func TestBoardHonestyNotices(t *testing.T) {
 		s.Briefs = []Brief{{Num: "08", Status: "done"}}
 		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a stream with no todo rows must produce nothing (not even a README read); got %v", got)
+		}
+	})
+}
+
+// TestBoardHonestyDehousedRowScoped is the statusgen #1516 regression: the
+// dehoused class must key on the ROW's own board cell and the brief body, never
+// the whole stream README — the same row scope the re-homed class already uses
+// (#709). A README that merely MENTIONS de-housing (a sibling brief ABOUT
+// de-housing code, a scope/boundary note) must leave an unrelated plain todo row
+// DISPATCHABLE, while a genuinely de-housed row — marker in its own cell or its
+// brief body — still surfaces.
+//
+// Fail-first (before the fix, when dehoused matched the whole README): the
+// #1516-plain sub-test went red (the README's "de-housed" flagged the unrelated
+// row NON-DISPATCHABLE), and the row-cell sub-test went red (the dehoused arm did
+// not read the row cell at all). The body control passed under both.
+func TestBoardHonestyDehousedRowScoped(t *testing.T) {
+	t.Run("#1516: a plain todo row is silent even when the stream README says de-housed", func(t *testing.T) {
+		root := t.TempDir()
+		// The README mentions "de-housed" because a SIBLING brief in this stream is
+		// about de-housing code. The row under test is an ordinary, in-repo todo
+		// brief carrying no de-housing marker of its own — it must stay dispatchable.
+		s := writeStream(t, root, "harness-portability",
+			"Brief 15 here is de-housed-code tooling; the other rows are ordinary work.\n",
+			"16", "## Context\nAn ordinary dispatchable brief in this repo.\n")
+		s.Briefs = []Brief{{Num: "16", Status: "todo", Title: "Add the cap", RawCell: "Add the cap"}}
+		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+			t.Fatalf("a plain todo row must not be flagged dehoused on stream-level README text; got %v", got)
+		}
+	})
+
+	t.Run("#1516: a genuinely de-housed row (brief body) still surfaces", func(t *testing.T) {
+		root := t.TempDir()
+		s := writeStream(t, root, "gtm", "Active stream.\n",
+			"08", "## Context\nThis brief was de-housed to the public repo by ruling.\n")
+		s.Briefs = []Brief{{Num: "08", Status: "todo", RawCell: "Old thing"}}
+		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		if len(got) != 1 || !strings.Contains(got[0], phantomDehoused) {
+			t.Fatalf("a body-de-housed row must still surface dehoused; got %v", got)
+		}
+	})
+
+	t.Run("#1516: a de-housed marker in the ROW's own cell still surfaces", func(t *testing.T) {
+		root := t.TempDir()
+		// README ordinary; the de-house marker lives in the row's OWN cell.
+		s := writeStream(t, root, "distribution", "Active stream.\n", "", "")
+		s.Briefs = []Brief{{Num: "07", Status: "todo", Title: "Old thing", RawCell: "Old thing — de-housed to acme/widgets by ruling"}}
+		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		if len(got) != 1 || !strings.Contains(got[0], phantomDehoused) {
+			t.Fatalf("a row-cell-de-housed row must surface dehoused; got %v", got)
 		}
 	})
 }

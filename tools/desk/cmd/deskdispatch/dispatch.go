@@ -238,7 +238,10 @@ func dispatch(o dispatchOpts) error {
 	// must not also be doing. The claim child is handed the DISPATCHING role's credential
 	// before it runs (resolveClaimAuth): the claim is a forge write, and the stamp step's mint
 	// comes four steps too late to serve it — so the claim step mints on demand, from the
-	// same seam, and fails closed on the same refusal. Issue 1151.
+	// same seam, and fails closed on the same refusal. Issue 1151. The same resolution also
+	// carries the credential the decision-gate script (step 4) runs under, so it too is taken
+	// HERE, before anything durable, rather than at step 4 with the claim already held — issue
+	// 1146.
 	auth, aerr := resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
 	if aerr != nil {
 		return aerr
@@ -433,7 +436,9 @@ func dispatch(o dispatchOpts) error {
 
 	// 4 — the human-decision gate. The effective gate (flag OR brief metadata) was decided
 	// pre-claim and is carried on the plan.
-	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionScript)
+	// The script child runs under the credential the claim step resolved (auth.scriptEnv), never
+	// the ambient login — issue 1146.
+	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionScript, auth)
 	if gerr != nil {
 		return gerr
 	}
@@ -970,18 +975,32 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 }
 
 // claimAuth is the credential hand-off for every claim-tool child this verb starts (acquire,
-// show, release). Exactly one of the two carriers is populated per tool, matching how each
-// tool reads its credential: the Go binary takes `--token-file <0600 path>` (args), the legacy
-// script reads GH_TOKEN from its environment (env). A zero claimAuth means the child inherits
+// show, release) and, via scriptEnv, for the decision-gate script (issue 1146). Exactly one of
+// the two claim carriers is populated per tool, matching how each tool reads its credential:
+// the Go binary takes `--token-file <0600 path>` (args), the legacy script reads GH_TOKEN from
+// its environment (env). A zero claimAuth means the claim child inherits
 // the calling environment unchanged — the explicit-GH_TOKEN case, where the operator's export
 // already IS the credential and both tools read it as-is.
 //
 // The token VALUE never appears in a message: source names the explicit export or the role and
 // token-file PATH, which is what an operator needs and is safe to print.
+//
+// SCRIPT CHILDREN (issue 1146). The claim tool is not the only child that writes to the forge:
+// the decision gate runs the consumer's tools/decision-issue.sh, a script that shells out to
+// the forge CLI itself. A child named anything but the CLI never matched a "hand the token to
+// `gh`" rule, so it ran on whatever login was ambient. scriptEnv is the ENVIRONMENT-shaped
+// hand-over of the SAME credential — populated whatever shape the claim tool takes it in — so
+// every script child this verb starts runs as the dispatching role, from ONE resolution (one
+// mint, one identity for the claim and the decision issue alike). nil means the explicit
+// GH_TOKEN export (inherited as-is) — or, on a zero claimAuth, that nothing was resolved,
+// which stepDecision refuses rather than running the script on ambient auth.
 type claimAuth struct {
 	env    []string // non-nil REPLACES the child's environment (os/exec contract); nil inherits
 	args   []string // appended after the verb's own positionals and flags
 	source string   // for the claim-acquire report line
+
+	scriptEnv    []string // env for a forge-CLI-shelling SCRIPT child (the decision gate); nil inherits
+	scriptSource string   // for that child's report line
 }
 
 // resolveClaimAuth obtains the credential the claim child runs under. Issue 1151: the claim
@@ -1016,7 +1035,8 @@ type claimAuth struct {
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
 	if strings.TrimSpace(os.Getenv("GH_TOKEN")) != "" {
-		return claimAuth{source: "the GH_TOKEN already exported in this environment"}, nil
+		const explicit = "the GH_TOKEN already exported in this environment"
+		return claimAuth{source: explicit, scriptSource: explicit}, nil
 	}
 	role := stampRoleForKit(o.kit)
 	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
@@ -1044,11 +1064,10 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 				"it minted its own token). Export GH_TOKEN to override the mint deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), err), err)
 	}
+	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok)
+	scriptSource := fmt.Sprintf("the %s App token (GH_TOKEN in the child environment, %s)", role, tokenPathForMessage(tokPath))
 	if isScript {
-		return claimAuth{
-			env:    append(os.Environ(), "GH_TOKEN="+tok),
-			source: fmt.Sprintf("the %s App token (GH_TOKEN in the child environment, %s)", role, tokenPathForMessage(tokPath)),
-		}, nil
+		return claimAuth{env: scriptEnv, source: scriptSource, scriptEnv: scriptEnv, scriptSource: scriptSource}, nil
 	}
 	if strings.TrimSpace(tokPath) == "" {
 		return claimAuth{}, deskkit.Unverifiable(fmt.Sprintf(
@@ -1057,8 +1076,10 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), goClaimBinary), nil)
 	}
 	return claimAuth{
-		args:   []string{"--token-file", tokPath},
-		source: fmt.Sprintf("the %s App token (--token-file, %s)", role, tokenPathForMessage(tokPath)),
+		args:         []string{"--token-file", tokPath},
+		source:       fmt.Sprintf("the %s App token (--token-file, %s)", role, tokenPathForMessage(tokPath)),
+		scriptEnv:    scriptEnv,
+		scriptSource: scriptSource,
 	}, nil
 }
 
@@ -1081,11 +1102,10 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 				"GH_TOKEN to override deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), err), err)
 	}
+	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok)
+	scriptSource := fmt.Sprintf("the %s GitLab role PAT (GH_TOKEN/GITLAB_TOKEN in the child environment, %s)", role, tokenPathForMessage(tokPath))
 	if isScript {
-		return claimAuth{
-			env:    append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok),
-			source: fmt.Sprintf("the %s GitLab role PAT (GH_TOKEN/GITLAB_TOKEN in the child environment, %s)", role, tokenPathForMessage(tokPath)),
-		}, nil
+		return claimAuth{env: scriptEnv, source: scriptSource, scriptEnv: scriptEnv, scriptSource: scriptSource}, nil
 	}
 	if strings.TrimSpace(tokPath) == "" {
 		return claimAuth{}, deskkit.Unverifiable(fmt.Sprintf(
@@ -1094,8 +1114,10 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), goClaimBinary), nil)
 	}
 	return claimAuth{
-		args:   []string{"--token-file", tokPath},
-		source: fmt.Sprintf("the %s GitLab role PAT (--token-file, %s)", role, tokenPathForMessage(tokPath)),
+		args:         []string{"--token-file", tokPath},
+		source:       fmt.Sprintf("the %s GitLab role PAT (--token-file, %s)", role, tokenPathForMessage(tokPath)),
+		scriptEnv:    scriptEnv,
+		scriptSource: scriptSource,
 	}, nil
 }
 
@@ -1186,18 +1208,34 @@ func stepRoster(o dispatchOpts, repo string) string {
 // Its caller-controlled preconditions — the --gate-human/--brief pairing and the script's
 // presence — are validated in validateCallerPreconditions, before the claim exists. What
 // remains here is only what running the script can tell us.
-func stepDecision(o dispatchOpts, gateHuman bool, repo, script string) (string, error) {
+//
+// THE SCRIPT RUNS AS THE DISPATCHING ROLE, NEVER ON AMBIENT AUTH (issue 1146). The decision
+// script files a forge issue by shelling out to the forge CLI itself, so it authenticates from
+// its environment. It is handed auth.scriptEnv — the environment-shaped form of the credential
+// the claim step resolved (resolveClaimAuth, before the claim: a mint failure has already
+// stopped the dispatch with nothing durable taken). With no handed-over environment AND no
+// explicit GH_TOKEN export, this REFUSES rather than start the script: an unresolved credential
+// reaching here is a wiring defect, and running the script anyway would file the decision issue
+// under whatever login the calling shell holds — the gap this step exists not to have.
+func stepDecision(o dispatchOpts, gateHuman bool, repo, script string, auth claimAuth) (string, error) {
 	if !gateHuman {
 		return "SKIPPED: item is not human-gated", nil
 	}
-	r := runCmd(o.root, script, "ensure", o.brief, "--repo", repo, "--at", "start")
+	if auth.scriptEnv == nil && strings.TrimSpace(os.Getenv("GH_TOKEN")) == "" {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: no credential was handed to %s and no GH_TOKEN is exported, so the decision issue for %s "+
+				"would be filed under the AMBIENT forge login. NOT run: this verb never starts a forge-writing "+
+				"script on ambient auth. Export GH_TOKEN to choose the identity deliberately.",
+			stepDecisionGate, script, o.brief), nil)
+	}
+	r := runCmdEnv(o.root, auth.scriptEnv, script, "ensure", o.brief, "--repo", repo, "--at", "start")
 	if r.err != nil {
 		return "", r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: the decision-issue gate for %s could not be ensured (%s) — a possible duplicate is the "+
 				"cheap direction and a missing gate is the expensive one, so this fails closed.",
 			stepDecisionGate, o.brief, r.run.Said()))
 	}
-	return "OK: " + firstLine(r.stdout), nil
+	return "OK: " + firstLine(r.stdout) + ", authenticated by " + auth.scriptSource, nil
 }
 
 // stepStamp computes the dispatcher's model attestation and applies it when a PR is known.
