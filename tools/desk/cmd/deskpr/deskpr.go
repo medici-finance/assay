@@ -138,7 +138,7 @@ func cmdCreate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
-	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -205,6 +205,17 @@ func cmdCreate(args []string) (err error) {
 		return terr
 	}
 
+	// PUBLISH-identity gate (#1490 lane B). Refuse before the push if any commit the push
+	// would publish (refs/remotes/origin/<base>..HEAD) is authored or committed by an
+	// identity other than this session role's bound bot. A worktree that acquired a stale
+	// `user.*` — from a shared checkout, a manual `git worktree add`, an editor's git —
+	// would otherwise publish commits attributed to the wrong actor; the provisioning fixes
+	// stop new such worktrees, this stops the publish from any route. Local (git + roster),
+	// so it runs before the token mint and is part of --check.
+	if ierr := publishIdentityGate(facts.dir, *base); ierr != nil {
+		return ierr
+	}
+
 	// seatbelt: scan title, branch, and the diff-vs-default before any push.
 	if scanErr := scanWrite(facts, *title, "create", *scanOverride); scanErr != nil {
 		return scanErr
@@ -246,6 +257,7 @@ func cmdCreate(args []string) (err error) {
 	// It mints no token, opens no connection, and pushes nothing: a real `create` run
 	// past this point can still fail on remote state (an existing open PR, a red rate
 	// limit, a non-authorized public repo), which --check never claims to have checked.
+	// The publish-identity gate (#1490) ran above with the rest of the local gates.
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
@@ -447,7 +459,7 @@ func cmdUpdate(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
-	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate) and stop BEFORE minting a token or opening any connection; the Brief:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection; the Brief:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -482,6 +494,13 @@ func cmdUpdate(args []string) (err error) {
 	// PUSH-transport custody gate (#861) — same reason as create: this verb pushes.
 	if terr := pushTransportGate(facts.dir, "update"); terr != nil {
 		return terr
+	}
+
+	// PUBLISH-identity gate (#1490 lane B) — same reason as create. update has no --base, so
+	// the published range is measured against the repo default (origin/HEAD), exactly the
+	// base preflight resolved for the ahead-count.
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch); ierr != nil {
+		return ierr
 	}
 
 	if scanErr := scanWrite(facts, "", "update", *scanOverride); scanErr != nil {

@@ -203,6 +203,14 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
+	// The publish-identity gate (#1490) is stubbed no-op here because the test roots
+	// (rootWithFile) are plain directories, not git checkouts — the real gate would report
+	// could-not-check on them. The dedicated fail-first tests in publishidentity_test.go
+	// build a real git root and restore the real gate.
+	oldPubIdent := publishIdentityGateFn
+	publishIdentityGateFn = func(deskkit.PublishIdentityInput) error { return nil }
+	t.Cleanup(func() { publishIdentityGateFn = oldPubIdent })
+
 	// The statusgen PROBLEM-diff check defaults to "introduces nothing" so the whole
 	// behavioural suite never shells a real statusgen or touches a real tree merely by
 	// calling cmdEvidence. Tests specifically exercising the check override this seam
