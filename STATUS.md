@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-23 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-23 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-23 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/11 | 2026-09-23 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-23 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-23 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-23 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-23 |  |
@@ -23,7 +23,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-23 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-23 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-23 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/14 | 2026-09-23 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/16 | 2026-09-23 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-23 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-23 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-23 |  |
@@ -48,19 +48,19 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| graph-execution | 10 — Typed advice and separate deterministic policy records [exec:strong] | 0 | 4500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
+| harness-portability | 17 — Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI [exec:strong] | 0 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (52 desk-actionable of 71 total — 71 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (52 desk-actionable of 72 total — 72 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -75,14 +75,16 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
+| desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
+| graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
-| desk-containers | 02 | implemented | 3000 | 4 | — | — | — |
 | desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| desk-containers | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -94,13 +96,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desk-containers | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 20 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -121,30 +122,30 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (6)
+### Awaiting human gate (7)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 8500 | 13 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
+| harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | windows-port | 01 | implemented | 4500 | 7 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting implementer rework (13)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | windows-port | 00 | implemented | 5500 | 9 | — | — | — |
-| harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -226,7 +227,7 @@ _None._
 - 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — implemented (wave 3)
 - 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — in-progress (wave 4)
 
-### desk-containers (9 open)
+### desk-containers (12 open)
 
 - 02 runtime credential contract (PEM + model env) + image layer-secret scan — implemented (wave 1)
 - 04 interactive desktop launch script (desk-run.sh) — todo (wave 3)
@@ -237,6 +238,9 @@ _None._
 - 09 cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check` — implemented (wave 0)
 - 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — todo (wave 1)
 - 11 retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH — todo (wave 2)
+- 12 Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob — todo (wave 4)
+- 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)
+- 14 Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay — todo (wave 6)
 
 ### desk-supervision (16 open)
 
@@ -349,7 +353,7 @@ _None._
 - 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
 - 09 Versioned workflow instances and shared identity — todo (wave 1)
-- 10 Typed advice and separate deterministic policy records — todo (wave 0)
+- 10 Typed advice and separate deterministic policy records — implemented (wave 0)
 - 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
 - 13 Deterministic admission over facts and bounded probabilistic advice — todo (wave 1)
@@ -359,7 +363,7 @@ _None._
 - 17 Graph-linked release and outcome records without new authority — todo (wave 4)
 - 18 Offline graph, advice and assurance integration proof — todo (wave 5)
 
-### harness-portability (10 open)
+### harness-portability (12 open)
 
 - 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
 - 04 Neutral-core skill bodies + per-harness binding files + neutrality lint — implemented (wave 2)
@@ -371,6 +375,8 @@ _None._
 - 13 Cursor live-desk-smoke protocol + first run — implemented (wave 6)
 - 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — implemented (wave 6)
 - 15 Public CI wiring + harnesslint clean-up for the de-housed tools — implemented (wave 7)
+- 16 Codex long-context cap — compaction limit on every Codex desk launch, shipped in packaging, linted — todo (wave 7)
+- 17 Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI — todo (wave 0)
 
 ### iso-9001 (5 open)
 
@@ -557,4 +563,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**22** streams (**17** active, **0** paused, **5** parked) · **88/261** briefs done · completed initiatives: see `docs/archive/`
+**22** streams (**17** active, **0** paused, **5** parked) · **88/266** briefs done · completed initiatives: see `docs/archive/`

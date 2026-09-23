@@ -23,6 +23,54 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.26 — 2026-09-23
+
+### Added
+- New brief harness-portability/16, Codex long-context cap. It plans `model_auto_compact_token_limit`
+  for every `cellctl` Codex desk launch, the same key in the Codex packaging with a lint that fails
+  without it, a compact-or-reboot point for standing desks, and a `deskdispatch` warning for
+  oversized prompts. The goal is to keep long Codex desk sessions from crossing the 272K-token
+  long-context pricing band without anyone noticing.
+- `deskcalibrate`: a monthly reviewer-calibration verb. `deskcalibrate sample` draws a
+  reproducible, seed-recorded sample of the PRs the reviewer App APPROVED in the prior
+  month and REFUSES a re-review whose model vendor equals the reviewer role's own
+  (`ASSAY_REVIEWER_VENDOR`) — a same-vendor re-review measures two instances of one model,
+  not an independent judge. `deskcalibrate report` renders the agreement metric as an
+  explicit numerator/denominator FRACTION, never a bare percentage (verify-integrity/10).
+- `deskkit`: a typed decision-assessment envelope (`AssessmentRequest`/`Prediction`/
+  `PolicyResult`, `spec/decision-assessment-v1.md`, `schemas/decision-assessment-v1.json`)
+  layered on top of the existing `Decide`/`Advice` consult, keeping calibrated
+  probabilistic advice strictly separate from a deterministic policy record.
+  `ValidatePrediction` rejects unknown labels, NaN/Inf or out-of-range probabilities,
+  invalid normalization, mismatched subject/digests, an uncalibrated label carrying a
+  synthesized probability, and inapplicable calibration. `PredictionAdvisor` projects a
+  validated `Prediction` into the existing `Advice` contract with zero change to
+  `Decide`'s fail-closed default, budget, timeout, journal or reserved-verb rules
+  (graph-execution/10).
+- `deskread` serves two per-issue read kinds, `trust` (`Forge.IssueTrustEvents`) and `comments` (`Forge.ListCommentsTyped` on an issue), addressed as `--issue owner/name#N`. Their envelope is keyed by repo and number and keeps the same partial-is-a-result contract as the `issues` kind. The `issues` kind's output is unchanged.
+- `statusgen`: per-finding-class **reversal-rate** mining joined to the gate-yield
+  accounting, with the two-month demotion rule — a class whose reversal rate exceeds 50%
+  for two consecutive months is marked advisory; a later month under 50% restores it.
+
+### Fixed
+- `deskdispatch`'s decision gate now runs the consumer `tools/decision-issue.sh` under the dispatching role's credential (`GH_TOKEN`, plus `GITLAB_TOKEN` on a GitLab-served repo, in the script's environment) from the same single resolution the claim step uses, instead of whatever forge login was ambient. The credential is resolved before the claim, so a mint failure stops the dispatch with nothing durable taken, and the step refuses (exit 6) rather than start the script with no credential handed over and none exported. The `decision-gate OK` line names the credential source.
+- `docs/streams/desk-containers/brief-01-base-image.md`'s Verify row 1 build command now
+  uses the working root-context form (`docker build -f containers/base/Dockerfile -t
+  assay-desk-base:dev .`, run from the repo root) instead of the broken
+  `containers/base`-context form, which failed because the Dockerfile `COPY`s
+  `plugins/assay/` from the context root. `containers/README.md` also gains a note that a
+  plain (non-buildx) arm64-host build needs `--build-arg TARGETARCH=arm64`.
+- `inbound-monitor.sh` takes an explicit read identity, `--token-file OWNER=PATH` (a 0600 installation-token file, read in place and never copied), which outranks its `gh` keyring fallback. Under a replaced `HOME` such as a desk cell's, that fallback resolves to no usable account and 401s every repo. `scanloop run` now hands the poller the running role's already-minted token file for each owner in scope. Owners without one keep the keyring path exactly as before, and each fallback is printed with its reason. An unusable token file is a precondition failure, never a silent fallback to the keyring.
+- `statusgen --scan-issues` — the scan `scanloop run` shells in its scan lane — no longer shells out to `gh` for any forge read. The trust-gate blessing read (was `gh api graphql`) and the un-block comment read (was `gh api --paginate`) now go through the `deskread` verb on the native `Forge` seam, completing what #1223 started for the open-issue list. Under the replaced `HOME` a scanloop pass runs with, those two reads returned `gh: HTTP 401` on every rostered repo; the native client attaches the per-installation App token explicitly on every request. (#1255)
+
+### Changed
+- Roster schema: `ASSAY_REVIEWER_VENDOR` / `ASSAY_VERIFIER_VENDOR` are recognised keys in
+  both `statusgen` and the desk tools, so a roster carrying them no longer collapses the
+  configuration on the unknown-key refusal.
+- The GitHub backend's issue-thread read (`ListCommentsTyped` on an issue) now follows the comment connection's cursor to the end of the thread, capped at 20 pages. A thread longer than the cap, or a thread that reports another page without giving a cursor for it, is now could-not-check, where before it was cut to its first 100 comments without any warning. Reads of pull-request comment threads are unchanged.
+- `pr-review-desk` skill: a finding-class register with a `blocking`/`advisory` status and
+  the reversal-rate demotion rule wired to the monthly calibration report.
+
 ## v1.0.25 — 2026-09-23
 
 ### Added
