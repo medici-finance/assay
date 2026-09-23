@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -16,7 +19,8 @@ import (
 // window it printed to: a red envelope on a headless loop, a pod, or a session no human is
 // watching went by unheard, tick after tick. This is the shape of a whole failure class — a
 // sensor with no actuator — so a red preflight is now ALARMED as well as printed: deskboot
-// files ONE `to:desk` issue quoting the red line.
+// files ONE `to:desk` issue naming each failing check and its state. The check DETAILS stay
+// local (deskkit.PreflightAlarmBody): the issue may land in a public repository.
 //
 // Two properties are load-bearing:
 //
@@ -30,77 +34,145 @@ import (
 //
 // The filing goes through the same execCommand seam every other child process does, so a test
 // asserts the `deskfile new --to desk` argv without a real forge, and the marker is a real
-// filesystem write so "exactly one payload per role per day" is a checked property.
+// filesystem write so "exactly one payload per role per day" is a checked property. The
+// body's acceptance by deskfile's blocker-evidence gate is checked on deskfile's side, where
+// the gate lives (deskfile's TestPreflightAlarmBodyPassesBlockerEvidenceGate).
 
-// fileRedPreflightAlarm is the seam production binds to doFileRedPreflightAlarm. It files (or,
-// on a repeat within the day, no-ops against its own marker) the to:desk alarm for a red
-// envelope and reports whether a payload was produced this call. It is a package var ONLY so a
-// future test can inject a recording fake; the shipped path is exercised through execCommand.
+// alarmOutcome is what one alarm attempt did. It is reported, never inferred: the boot's
+// refusal text says which of these happened, so "deskboot filed an alarm" is printed only when
+// a filing was actually accepted.
+type alarmOutcome int
+
+const (
+	// alarmNotFiled — no filing was accepted (the error says why). Never writes the marker.
+	alarmNotFiled alarmOutcome = iota
+	// alarmFiled — deskfile accepted a new filing this call.
+	alarmFiled
+	// alarmDuplicate — deskfile's title dedupe found an equivalent filing already open.
+	alarmDuplicate
+	// alarmAlreadyToday — this role's marker shows it was alarmed today; nothing was sent.
+	alarmAlreadyToday
+)
+
+// fileRedPreflightAlarm is the seam production binds to doFileRedPreflightAlarm. It is a
+// package var ONLY so a future test can inject a recording fake; the shipped path is
+// exercised through execCommand.
 var fileRedPreflightAlarm = doFileRedPreflightAlarm
 
-// doFileRedPreflightAlarm is the production alarm filer. It returns (true, nil) when it
-// produced a filing this call, (false, nil) when the marker shows this role was already
-// alarmed today, and (false, err) when it could not file at all.
-func doFileRedPreflightAlarm(o bootOpts, tokenRole, summary string) (bool, error) {
+// doFileRedPreflightAlarm is the production alarm filer. rosterOutput is the red roster
+// run's output; ONLY its closed-vocabulary check names and states reach the issue
+// (deskkit.PreflightAlarmBody) — never a check's detail or remediation, which name local
+// specifics and may be filed into a public repository.
+//
+// The marker is written ONLY when an equivalent issue is known to exist afterwards: a filing
+// deskfile accepted, or deskfile's title-dedupe refusal (deskkit.DedupeRefusalPrefix). Any
+// other refusal — the blocker-evidence gate, the filing budget, an unbound role, a scan — is
+// an error and leaves no marker, so the next red boot tries again instead of a day-long
+// silence that reads as "alarmed".
+func doFileRedPreflightAlarm(o bootOpts, tokenRole, rosterOutput string) (alarmOutcome, error) {
 	marker, err := alarmMarkerPath(tokenRole)
 	if err != nil {
-		return false, err
+		return alarmNotFiled, err
 	}
 	// Deduped per role per day: a marker present means this role's envelope was already
 	// alarmed today, so a re-booting loop does not re-file the same issue every tick.
 	if _, statErr := os.Stat(marker); statErr == nil {
-		return false, nil
+		return alarmAlreadyToday, nil
 	}
 
 	repo, err := o.resolveRepo()
 	if err != nil {
-		return false, fmt.Errorf("cannot resolve a repo to file the alarm in: %w", err)
+		return alarmNotFiled, fmt.Errorf("cannot resolve a repo to file the alarm in: %w", err)
 	}
 
-	day := time.Now().Format("2006-01-02")
-	title := fmt.Sprintf("deskboot: red operating-envelope preflight (role %s, %s)", tokenRole, day)
-	body := fmt.Sprintf(
-		"deskboot's operating-envelope preflight came back RED for role `%s` and the boot stopped "+
-			"(could-not-run for the whole pass — nothing was claimed). A red envelope otherwise "+
-			"reaches no one but the window it printed to, so deskboot files this one alarm, addressed "+
-			"to the desk, deduped by a marker per role per day.\n\n"+
-			"The roster's own verdict, verbatim:\n\n```\n%s\n```\n\n"+
-			"Each failing check names its own remediation in the line above. Fix the envelope, then "+
-			"re-run deskboot for role `%s`.\n",
-		tokenRole, summary, tokenRole)
+	title := deskkit.PreflightAlarmTitle(tokenRole, time.Now().Format("2006-01-02"))
+	body := deskkit.PreflightAlarmBody(tokenRole, rosterOutput)
 
 	bodyFile, err := os.CreateTemp("", "deskboot-preflight-alarm-*.md")
 	if err != nil {
-		return false, fmt.Errorf("cannot create the alarm body file: %w", err)
+		return alarmNotFiled, fmt.Errorf("cannot create the alarm body file: %w", err)
 	}
 	defer os.Remove(bodyFile.Name())
 	if _, err := bodyFile.WriteString(body); err != nil {
 		bodyFile.Close()
-		return false, fmt.Errorf("cannot write the alarm body file: %w", err)
+		return alarmNotFiled, fmt.Errorf("cannot write the alarm body file: %w", err)
 	}
 	if err := bodyFile.Close(); err != nil {
-		return false, fmt.Errorf("cannot close the alarm body file: %w", err)
+		return alarmNotFiled, fmt.Errorf("cannot close the alarm body file: %w", err)
 	}
 
+	// Raised BY the booting role (its provenance), addressed TO the desk (its inbox). The
+	// write itself runs under the session's own minted identity; --raised-by is attribution,
+	// so it names the role that actually hit the red envelope.
 	r := runCmd("", "deskfile", "new", "-R", repo, "--title", title, "--body-file", bodyFile.Name(),
-		"--to", "desk", "--raised-by", "desk", "--label", "help wanted")
+		"--to", "desk", "--raised-by", tokenRole, "--label", deskkit.PreflightAlarmLabel)
+	outcome := alarmFiled
 	if r.err != nil {
-		// deskfile's OWN title-keyed dedupe found an existing filing for this title and came
-		// back exit 5 ("already filed") — that IS the idempotent no-op this alarm wants, so
-		// treat it as filed and drop the marker so this session stops re-trying too.
-		if deskkit.ExitCodeOf(r.err) != deskkit.ExitRefused {
-			return false, fmt.Errorf("deskfile new failed: %s", firstLine(nonEmpty(r.stderr, r.stdout)))
+		// The CHILD's exit status, read off the process error. deskkit.ExitCodeOf reads a
+		// DeskError and maps every other error — an *exec.ExitError included — to 6, so it
+		// can never see deskfile's exit 5.
+		code := childExitCode(r.err)
+		out := r.stderr + "\n" + r.stdout
+		if code != deskkit.ExitRefused || !strings.Contains(out, deskkit.DedupeRefusalPrefix) {
+			return alarmNotFiled, fmt.Errorf("deskfile new did not file the alarm (exit %d): %s",
+				code, firstLine(refusalLine(r.stderr, r.stdout)))
 		}
+		// deskfile's OWN title-keyed dedupe found an existing filing for this title — that
+		// IS the idempotent no-op this alarm wants.
+		outcome = alarmDuplicate
 	}
 
-	// Filing succeeded (or deduped at deskfile): drop the marker so a second red today files
-	// no second payload. A marker-write failure does not undo the filing — the payload is out,
-	// so report success and let the next tick's deskfile dedupe catch a re-file.
+	// An equivalent issue now exists: drop the marker so a second red today files no second
+	// payload. A marker-write failure does not undo the filing — the payload is out, so
+	// report it and let the next tick's deskfile dedupe catch a re-file.
 	if werr := writeAlarmMarker(marker, title); werr != nil {
 		fmt.Fprintf(os.Stderr, "deskboot: WARNING: alarm filed but its dedupe marker could not be written (%v) — "+
 			"a re-boot today may re-file; deskfile's own title dedupe still applies\n", werr)
 	}
-	return true, nil
+	return outcome, nil
+}
+
+// alarmSentence is the one sentence the red-preflight refusal carries about the alarm. It
+// states what happened on THIS boot, so an operator never reads "filed" when nothing was.
+func alarmSentence(outcome alarmOutcome, err error) string {
+	switch {
+	case err != nil:
+		return "deskboot could NOT file the to:desk alarm (see the WARNING above), so this red envelope " +
+			"is heard only by this window — raise it with the desk by hand."
+	case outcome == alarmFiled:
+		return "deskboot filed ONE to:desk alarm naming each failing check (deduped per role per day) so a " +
+			"red envelope is not heard only by this window."
+	case outcome == alarmDuplicate:
+		return "An equivalent to:desk alarm is already open (deskfile's title dedupe), so none was filed again."
+	case outcome == alarmAlreadyToday:
+		return "This role's to:desk alarm was already filed today (deduped per role per day), so none was filed again."
+	default:
+		return "No to:desk alarm was filed."
+	}
+}
+
+// childExitCode is a finished child process's exit status, or -1 when the error is not an
+// exit status at all (the binary could not be started).
+func childExitCode(err error) int {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	return -1
+}
+
+// refusalLine picks the line of a child's output that carries its verdict: the first line
+// holding "refused" (deskfile prints its config banner first), else the first non-empty
+// stream.
+func refusalLine(stderr, stdout string) string {
+	for _, s := range []string{stderr, stdout} {
+		for _, ln := range strings.Split(s, "\n") {
+			if strings.Contains(ln, "refused") {
+				return strings.TrimSpace(ln)
+			}
+		}
+	}
+	return nonEmpty(stderr, stdout)
 }
 
 // alarmMarkerPath is the per-role, per-day dedupe marker: <StateDir>/deskboot-alarm.<role>.<YYYYMMDD>.
