@@ -23,6 +23,87 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.25 — 2026-09-23
+
+### Added
+- Release by merge (design + staged implementation): a prepared release PR (title
+  `release: vX.Y.Z` + a `RELEASE: vX.Y.Z` body marker) becomes the release cut when a
+  maintainer MERGES it — the merge is the human gate and the recorded authorizer. A staged
+  `release-on-merge.yml` detects the merge and creates the plain `vX.Y.Z` and umbrella
+  `assay/vX.Y.Z` tags at the merge commit with a GitHub App token (a GITHUB_TOKEN-created tag
+  would not trigger the build), and a staged twin of `release.yml` resolves the tag-push
+  authorizer from the merged PR's `merged_by.login` and refuses to release any `v*` tag whose
+  commit is not a merged release PR — closing the iso-9001/04 tag-push traceability gap.
+
+### Fixed
+- A dispatched agent's worktree no longer INHERITS the shared checkout's git commit identity.
+  `deskdispatch`'s worktree-create step now stamps the DISPATCHED agent's own role commit
+  identity (worker/reviewer/verifier, mapped from `--kit`) into the new worktree's own
+  worktree-scoped config, so a verifier dispatched from a desk checkout commits — and reports
+  its runner — under the verifier App, not the desk App. Before this, the worktree carried
+  whatever `user.name`/`user.email` the shared `.git/config` held, and `statusgen verifyrun`
+  stamped that wrong identity into every Evidence witness Runner cell (silent misattribution).
+  A `--kit` whose role has no roster commit identity is now REFUSED pre-claim (exit 5) naming
+  the kit, the role and the roster key, and the worktree-create OK line prints
+  `identity=<slug> <bot-user-id>`.
+- `cellctl`'s the-desk model policy now gates Opus by a VERSION FLOOR instead of a fixed
+  allowlist: the coordinator ACCEPTS any Opus tier at or above **5.5** (`claude-opus-5-5`,
+  `claude-opus-5-6`, `claude-opus-6`, and a future `claude-opus-9`, including `[1m]` and
+  `-`/`.` spellings) and REFUSES anything below it (the bare `opus` alias, Opus 5.0 —
+  `claude-opus-5` / `-5-0` / `-5.0` — and older tiers such as Opus 4.8). A future Opus tier
+  therefore auto-qualifies as the-desk's top tier with no code edit — a deliberate, documented
+  trade (a floor adopts a future Opus sight-unseen; the "Opus 5.0 was a bad tier despite its
+  number" lesson makes that a choice, reversible by raising the floor). The built-in deny
+  patterns stay anchored at end-of-token (`*opus-5` / `*opus5` / `*opus-5-0` / `*opus-5.0`), and
+  the "which Opus tiers the-desk refuses" decision lives in one shared helper (`isOpusPin`) that
+  both the legacy resolver and the policy resolver consult, so the carve-out cannot fork between
+  sites.
+- `deskclose superseded` on a PULL REQUEST no longer reports a close it did not perform. The
+  close is now **read back** after the call — the item is re-fetched and its state confirmed
+  `closed` before success is printed — so a state-change request that returns without error but
+  leaves the item open (an issue-shaped `state_reason` PATCH on a pull request's number returns
+  `422`, which was swallowed after the confirmation comment posted) is caught. When the comment
+  posted but the close did not take, the run reports `partial: comment posted, close refused: …`
+  with the forge's own error body and exits `6` (could-not-check), never success. The read-back
+  lives in the shared close path, so every permanent-close lane (`superseded`, `duplicate`,
+  `review-request`, `triage`, `self-withdraw`, manifest rows) gets it; the deliberately transient
+  `verify-gate-refire` close, which the repository's verify-gate-close workflow reopens, opts out.
+- `deskclose` flag parsing now accepts the single-dash spelling of a long value flag (e.g.
+  `-by`, which Go's `flag` package treats identically to `--by`) in every argument order. The
+  positional splitter previously recognised only the double-dash spelling, so `superseded <pr>
+  -R … -by …` tripped `flag needs an argument: -by` — it dropped the value that was present and
+  mis-read it as a second item number — a failure that looked "environmental" because it
+  depended only on the dash spelling typed.
+- `deskpost`'s model-capability-floor stamp age-out no longer refuses (verdict) or misreads (flip)
+  every risk-classed review on a reviewed PR. The age-out now keys on the REVIEWER's
+  review-dispatch claim family (`refs/dispatch/<short>--pr-<N>[--<suffix>]`) in the namespace
+  claims actually live in — not the PR body's worker `Brief:` claim (released the moment the
+  worker finishes) and not the empty `refs/heads/dispatch/*` namespace the old reader probed. A new
+  `Forge.MatchingRefs` op does the prefix listing (GitHub `git/matching-refs`; GitLab CE is a
+  could-not-check the review lane never reaches). Reader-side only — the acquire/writer namespace is
+  untouched, and full reader+writer convergence remains the issue-708 follow-up.
+
+### Changed
+- `check-paired-versions.sh`'s single-tag assertion stays as it is on `main` (no harness
+  exemption) per the maintainer's ruling (option 1): re-pin `statusgen`/`desk-tools` to a real
+  `v1.0.24` release instead of carving the harness image out of the rule.
+- `deskwt add` now takes `--role R` and, given it, stamps that desk role's App commit identity
+  into the new worktree (the same shared resolver `role-init` uses); an unbound role is refused
+  (exit 5) before the worktree is created. WITHOUT `--role`, `deskwt add` now CLEARS the new
+  worktree's `user.name`/`user.email` (an empty worktree-scoped value that shadows the shared
+  config), so a bare `deskwt add` worktree can never silently commit under an inherited identity
+  — a commit there fails closed until an identity is set. The commit-identity resolver
+  (GitHub/GitLab shape choice + fail-closed refusals) is extracted to one shared helper,
+  `deskkit.RoleWorktreeCommitIdentity`, so `role-init`, `deskwt add --role` and `deskdispatch`
+  cannot resolve one role to three identities.
+- `statusgen:`/`desk-tools:` re-pinned to the published `v1.0.24` release — tag and every
+  per-platform sha256 harvested from that release's `checksums.txt` — so all three
+  `paired-versions.yaml` sections share one tag again and `check-paired-versions.sh` passes
+  unchanged.
+- harness: pin the v1.0.24 desk-tools image digest (`plugins/assay/paired-versions.yaml`
+  `harness.tag`/`harness.digest`), replacing the fail-closed `PENDING-HARVEST` placeholder now that
+  the image has been published and its digest harvested from two independent registry reads.
+
 ## v1.0.24 — 2026-09-22
 
 ### Added
