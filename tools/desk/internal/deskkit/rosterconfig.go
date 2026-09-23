@@ -376,6 +376,25 @@ const (
 	// statusgen/rosterconfig.go's scanEnvVerifierVendor and the coupling vector.
 	EnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 
+	// EnvRunCredentials (ASSAY_RUN_CREDENTIALS) is the per-repo RUN-CREDENTIAL binding
+	// (forge-neutral brief 14): who may start a workflow run or clear a deployment gate on a
+	// repo, read by cmd/deskrun through ResolveRunCredential (runcredential.go) BEFORE any
+	// token is minted. Comma-separated entries, one per repo, full `owner/name` slug only:
+	//
+	//	owner/name=human:<name>              a DELIBERATE refusal state — dispatching or
+	//	                                     approving this repo is a human action today;
+	//	                                     deskrun refuses (exit 5) naming the human
+	//	owner/name=release-runner[+<shape>]  the dedicated release-runner role's credential
+	//	                                     (its own App on GitHub, a pipeline trigger
+	//	                                     token on GitLab); <shape> is the gate shape
+	//	                                     (environment | manual-job) GitLab needs
+	//
+	// This key chooses WHICH credential starts a release, so it takes ASSAY_REPO_FORGES'
+	// strict grammar: a bare basename, an unknown value, or a repo bound twice is
+	// ExtInvalid and the whole binding set resets to empty — every repo then reads as
+	// UNBOUND, which deskrun refuses as a configuration gap. Never a partial binding.
+	// Unset is complete: no repo is bound and deskrun dispatches nothing.
+	EnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
 	// EnvClaimStore (ASSAY_CLAIM_STORE) names where this cell keeps its DISPATCH CLAIMS:
 	// `file` or `service` — one value for the cell, or comma-separated
 	// `owner/name=<store>` entries for a cell whose repos genuinely differ. It is CONSUMED
@@ -483,6 +502,10 @@ func knownRosterKeys() []string {
 		// refusal. KEEP IN SYNC with statusgen's scanKnownRosterKeys() and the
 		// coupling vector (statusgen/testdata/roster_coupling.json).
 		EnvReviewerVendor, EnvVerifierVendor,
+		// EnvRunCredentials (ASSAY_RUN_CREDENTIALS) is CONSUMED here: parseConfig lands it
+		// on cfg.RunCredentials and cmd/deskrun reads it through ResolveRunCredential
+		// (forge-neutral brief 14). statusgen recognises it only.
+		EnvRunCredentials,
 		// EnvClaimStore / EnvClaimDir / EnvClaimSingleHost are CONSUMED by the claim-store
 		// resolver (claimstore.go), which reads them directly and parses them through
 		// parseClaimStoreKeys; parseConfig only RECOGNISES them, so a roster that sets the
@@ -601,6 +624,12 @@ type Config struct {
 	// (forgeresolve.go) consults this FIRST, before its remote-host fallback. Empty when
 	// unset — that is a complete configuration, not a degraded one.
 	RepoForges map[string]string
+
+	// RunCredentials is the per-repo run-credential binding parsed from
+	// ASSAY_RUN_CREDENTIALS, keyed by the LOWERCASED full `owner/name` slug. Empty when
+	// unset or invalid — every repo then reads as unbound. Read through
+	// ResolveRunCredential (runcredential.go), never directly.
+	RunCredentials map[string]RunCredential
 
 	// ReleaseRepo is the configured release home (EnvReleaseRepo), empty when
 	// unset — the consumer applies its own shipped default, so "unset" and
@@ -737,6 +766,7 @@ var extKeyNames = map[string]string{
 	EnvReleaseRepo:        "release-repo",
 	EnvScanRepos:          "scan-repos",
 	EnvRepoForges:         "repo-forges",
+	EnvRunCredentials:     "run-credentials",
 	EnvChannelDriftTarget: "channel-drift-target",
 	EnvHomeRepo:           "home-repo",
 }
@@ -1495,6 +1525,12 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		cfg.RepoForges = map[string]string{}
 	}
 	recordExt(&cfg, EnvRepoForges, vals[EnvRepoForges], repoForgesIssue)
+
+	// --- run-credential binding (ASSAY_RUN_CREDENTIALS), an EXTENSION key
+	// (forge-neutral brief 14) — parsed by parseRunCredentials (runcredential.go). ---
+	var runCredsIssue extAccumulator
+	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], &runCredsIssue)
+	recordExt(&cfg, EnvRunCredentials, vals[EnvRunCredentials], runCredsIssue)
 
 	// --- release home (ASSAY_RELEASE_REPO), an EXTENSION key (this brief) ---
 	// A SINGLE slug, never a list: a release tool that took the first entry of a
