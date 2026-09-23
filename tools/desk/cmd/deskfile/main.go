@@ -63,6 +63,20 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          ROLE; on the attach subcommand (below), --to takes an issue NUMBER — same token,
          two meanings by subcommand.
 
+         BLOCKER-EVIDENCE GATE: a new filing labelled needs-decision, help wanted or
+         question is a blocker claim and is REFUSED (exit 5) unless its body carries an
+         "### Evidence" heading followed by a fenced block (the verbatim output of a command
+         run this tick). human-only is NOT in the set (an act, not a claim) and attach is
+         unaffected. The refusal takes the audited --force-new --reason bypass.
+
+         CORRECTION CAPTURE: --correction "<the human's message>" switches new into skill-bug
+         composition mode. With --label skill-bug --section "<skill+section>" --reading
+         "<what the skill should have said>", the tool composes the title and body from this
+         session's last receipt (deskack, attention-budget/02) — receipt line, correction
+         verbatim, $DESK_LOOP, skill+section, reading. --title/--body-file are composed, not
+         passed. With no receipt in the last 30m it REFUSES (exit 5): a correction with
+         nothing to correct is not a skill-bug.
+
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
          Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
          --kind states WHICH object N names: issue (the default — attach is an observation

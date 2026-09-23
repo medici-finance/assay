@@ -27,6 +27,126 @@ import (
 
 const maxBodyBytes = 16 * 1024 // body cap (16 KiB)
 
+// --- the blocker-evidence gate + correction capture (attention-budget/07) -----------
+//
+// Two behaviours land here, both the TOOL layer of a rule whose SKILL layer lives in the
+// desk skills:
+//
+//   - Blocker-evidence gate: a `new` filing labelled with an escalation label (below) is a
+//     blocker CLAIM. A blocker claim with nothing to quote is not a blocker claim, exactly
+//     as an idle claim with no sweep is not an idle claim — so the filing REFUSES (exit 5)
+//     unless its body carries an `### Evidence` heading followed by a fenced block. The two
+//     layers fail on different signals in different components: a desk that skips the skill
+//     clause still cannot file an evidence-less escalation here.
+//   - Correction capture: `deskfile new --label skill-bug --correction "<msg>"` composes the
+//     skill-bug body from this session's last receipt (attention-budget/02). The desk detects
+//     the correction (a model reads the message); the record's SHAPE and its
+//     recent-receipt precondition are the tool's, so every capture reads the same.
+const (
+	// skillBugLabel is the label a correction-capture filing carries. --correction composes
+	// the body for a filing so labelled; it is an ordinary user --label (deskfile never mints
+	// it — the NOTICE prints the one-off create), so the repo must define it.
+	skillBugLabel = "skill-bug"
+
+	// skillBugReceiptWindow bounds how recently a receipt must have been recorded for
+	// --correction to compose a skill-bug from it. A correction that follows no recent
+	// receipt has nothing to correct, so the composition REFUSES (exit 5).
+	skillBugReceiptWindow = 30 * time.Minute
+)
+
+// escalationLabels are the labels whose `new` filings MUST carry evidence: such a filing is
+// a blocker claim, and a blocker claim with nothing to quote is not a blocker claim. The gate
+// is the tool half of the two-layer blocker-evidence rule. `human-only` is deliberately NOT
+// here — it marks an ACT, not a claim (attention-budget/05) — and the gate binds `new` only,
+// so `attach` observations (not fresh claims) are unaffected.
+var escalationLabels = map[string]bool{
+	"needs-decision": true,
+	"help wanted":    true,
+	"question":       true,
+}
+
+// escalationLabelIn returns the first label in labels that is an escalation label (matched
+// case-insensitively, trimmed) and whether one was found.
+func escalationLabelIn(labels []string) (string, bool) {
+	for _, l := range labels {
+		if escalationLabels[strings.ToLower(strings.TrimSpace(l))] {
+			return strings.TrimSpace(l), true
+		}
+	}
+	return "", false
+}
+
+// hasLabel reports whether want is among labels (case-insensitive, trimmed).
+func hasLabel(labels []string, want string) bool {
+	for _, l := range labels {
+		if strings.EqualFold(strings.TrimSpace(l), want) {
+			return true
+		}
+	}
+	return false
+}
+
+// bodyHasEvidenceBlock reports whether body carries an `### Evidence` heading followed,
+// anywhere after it, by a fenced code block (a line opening with ```). The fence is what
+// makes a blocker claim re-runnable — the verbatim output of a command run this tick. A
+// heading with no fence under it, or a fence with no heading before it, does not satisfy the
+// gate.
+func bodyHasEvidenceBlock(body string) bool {
+	seenHeading := false
+	for _, ln := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(ln)
+		if isEvidenceHeading(t) {
+			seenHeading = true
+			continue
+		}
+		if seenHeading && strings.HasPrefix(t, "```") {
+			return true
+		}
+	}
+	return false
+}
+
+// isEvidenceHeading reports whether a trimmed line is a Markdown heading whose text begins
+// with "Evidence" (any heading level, case-insensitive) — `### Evidence`, `## Evidence
+// (this tick)`. The gate names `### Evidence`; accepting other levels avoids refusing a
+// well-intentioned filing over a `#` count while still requiring the labelled section.
+func isEvidenceHeading(line string) bool {
+	if !strings.HasPrefix(line, "#") {
+		return false
+	}
+	rest := strings.TrimSpace(strings.TrimLeft(line, "#"))
+	return strings.HasPrefix(strings.ToLower(rest), "evidence")
+}
+
+// composeSkillBugTitle renders the deterministic skill-bug title from the section the desk
+// was following. A title is required for the dedupe gate; keying it on the section groups
+// repeat corrections about the same skill section toward the same issue.
+func composeSkillBugTitle(section string) string {
+	return "skill-bug: " + section
+}
+
+// composeSkillBugBody renders the skill-bug issue body from the last receipt and the desk's
+// --correction / --section / --reading inputs. The body is composed by the TOOL, never by the
+// desk (attention-budget/07): the desk detects the correction, but the record's SHAPE — the
+// five fields, in this order — is fixed here so every capture reads the same. The
+// caller-controlled strings (the human's message and the desk's own text) are covered by the
+// surface scan the caller runs on the composed body before filing.
+func composeSkillBugBody(rec deskkit.AckRecord, loop, correction, section, reading string) string {
+	var b strings.Builder
+	b.WriteString("## Correction captured\n\n")
+	b.WriteString("A human correction followed a desk receipt. The desk obeyed the correction; this " +
+		"issue captures it as a skill-bug so the fix outlives the session.\n\n")
+	b.WriteString("**Receipt (attention-budget/02):** " + rec.Line() + "\n\n")
+	b.WriteString("**Correction (verbatim):**\n\n")
+	for _, ln := range strings.Split(correction, "\n") {
+		b.WriteString("> " + ln + "\n")
+	}
+	b.WriteString("\n**Desk loop:** " + loop + "\n\n")
+	b.WriteString("**Skill / section followed:** " + section + "\n\n")
+	b.WriteString("**What the skill should have said (desk's reading):** " + reading + "\n")
+	return b.String()
+}
+
 // --- the raised-by provenance stamp -------------------------------------------------
 //
 // deskfile is the ONE choke point every gated filing passes through, so it is where the
@@ -464,7 +584,13 @@ func cmdNew(args []string) (err error) {
 	toRole := fs.String(toFlag, "", "desk role this issue is ADDRESSED TO — stamps `to:<role>` so that desk's "+
 		"sweep leads with it (same role vocabulary as --"+raisedByFlag+"; omitting it is normal and silent). "+
 		"NOTE: on `new` --to takes a ROLE; on `attach` --to takes an issue NUMBER")
-	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search (escape hatch; requires --reason)")
+	correction := fs.String("correction", "", "the human's correction message, VERBATIM — switches `new` into "+
+		"skill-bug composition mode: the tool composes the title and body from this session's last receipt "+
+		"(requires --label "+skillBugLabel+", --section and --reading; --title/--body-file are composed, not "+
+		"passed; refuses if no receipt was recorded in the last "+skillBugReceiptWindow.String()+")")
+	section := fs.String("section", "", "the skill + section the desk was following (composed into the skill-bug body; requires --correction)")
+	reading := fs.String("reading", "", "the desk's one-line reading of what the skill should have said (composed into the skill-bug body; requires --correction)")
+	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search AND the blocker-evidence gate (escape hatch; requires --reason)")
 	forceFile := fs.Bool("force-file", false, "raise the new-issue RATE for this ONE filing so it files even when the "+
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
@@ -484,11 +610,37 @@ func cmdNew(args []string) (err error) {
 	if strings.TrimSpace(*repo) == "" {
 		return deskkit.Refused("refused: -R <repo> is required")
 	}
-	if strings.TrimSpace(*title) == "" {
-		return deskkit.Refused("refused: --title is required")
-	}
-	if strings.TrimSpace(*bodyFile) == "" {
-		return deskkit.Refused("refused: --body-file is required (no stdin/inline body)")
+	// Correction-capture (skill-bug) mode: the tool composes the title and body from this
+	// session's last receipt, so --title/--body-file are refused here and --label skill-bug,
+	// --section and --reading are required. Ordinary mode requires --title/--body-file and
+	// forbids the correction-only flags.
+	composeMode := strings.TrimSpace(*correction) != ""
+	if composeMode {
+		if strings.TrimSpace(*title) != "" {
+			return deskkit.Refused("refused: --title is composed by --correction (skill-bug mode) — drop --title")
+		}
+		if strings.TrimSpace(*bodyFile) != "" {
+			return deskkit.Refused("refused: --body-file is composed by --correction (skill-bug mode) — drop --body-file")
+		}
+		if !hasLabel(labels, skillBugLabel) {
+			return deskkit.Refused("refused: --correction (skill-bug mode) requires --label " + skillBugLabel)
+		}
+		if strings.TrimSpace(*section) == "" {
+			return deskkit.Refused("refused: --correction requires --section (the skill + section the desk was following)")
+		}
+		if strings.TrimSpace(*reading) == "" {
+			return deskkit.Refused("refused: --correction requires --reading (the desk's one-line reading of what the skill should have said)")
+		}
+	} else {
+		if strings.TrimSpace(*section) != "" || strings.TrimSpace(*reading) != "" {
+			return deskkit.Refused("refused: --section/--reading are only valid with --correction (skill-bug composition mode)")
+		}
+		if strings.TrimSpace(*title) == "" {
+			return deskkit.Refused("refused: --title is required")
+		}
+		if strings.TrimSpace(*bodyFile) == "" {
+			return deskkit.Refused("refused: --body-file is required (no stdin/inline body)")
+		}
 	}
 	if (*forceNew || *forceFile) && strings.TrimSpace(*reason) == "" {
 		return deskkit.Refused("refused: --force-new/--force-file require a non-empty --reason (the escape hatch is audit-logged)")
@@ -537,10 +689,37 @@ func cmdNew(args []string) (err error) {
 		toLabel = l
 	}
 
-	// Body: file only, 16 KiB cap, secret scan. No override flag exists.
-	body, berr := readBody(*bodyFile)
-	if berr != nil {
-		return berr
+	// Body: composed by the tool in skill-bug mode, else read from --body-file (file only,
+	// 16 KiB cap). Either way the composed/read body and the title are surface-scanned before
+	// anything is written.
+	var body []byte
+	if composeMode {
+		// The record's precondition is the tool's (attention-budget/07): read this session's
+		// last receipt within the window. A corrupt/unreadable beacon is could-not-check
+		// (exit 6, propagated); a beacon with no recent receipt is a refusal (exit 5) — a
+		// correction with nothing to correct is not a skill-bug.
+		sess := deskkit.SessionTag()
+		rec, aerr := deskkit.LastAckWithin(sess, skillBugReceiptWindow, time.Now())
+		if aerr != nil {
+			return aerr
+		}
+		if rec == nil {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: no receipt recorded in the last %s for session %q — a correction with nothing to "+
+					"correct is not a skill-bug. Print a receipt with `deskack \"<your one-line reading>\"` on "+
+					"the human message BEFORE composing the skill-bug (attention-budget/02).",
+				skillBugReceiptWindow, sess))
+		}
+		loop := strings.TrimSpace(os.Getenv("DESK_LOOP"))
+		*title = composeSkillBugTitle(*section)
+		ac.title = *title
+		body = []byte(composeSkillBugBody(*rec, loop, *correction, *section, *reading))
+	} else {
+		b, berr := readBody(*bodyFile)
+		if berr != nil {
+			return berr
+		}
+		body = b
 	}
 	if serr := deskkit.ScanSurface("issue body", body); serr != nil {
 		return serr
@@ -549,6 +728,24 @@ func cmdNew(args []string) (err error) {
 		return serr
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)
+
+	// Blocker-evidence gate (attention-budget/07): a `new` filing labelled with an escalation
+	// label is a blocker CLAIM, and a blocker claim with nothing to quote is not a blocker
+	// claim. Refuse (exit 5) unless the body carries an `### Evidence` heading followed by a
+	// fenced block. --force-new --reason bypasses it as it bypasses dedupe — audited — for the
+	// case where the evidence genuinely cannot be produced. human-only is not in the set (an
+	// act, not a claim); attach is a separate verb and unaffected.
+	if !*forceNew {
+		if lbl, ok := escalationLabelIn(labels); ok && !bodyHasEvidenceBlock(string(body)) {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: a filing labelled %q is a blocker claim and must carry a `### Evidence` section with "+
+					"at least one fenced block that is the verbatim output of a command run this tick (its "+
+					"command line as the first line of the fence). None was found. A blocker claim with nothing "+
+					"to quote is not a blocker claim: re-check first — if the re-check produces a fence, file "+
+					"with it; if it produces a success, proceed. Override with --force-new --reason only if the "+
+					"evidence genuinely cannot be produced (audited).", lbl))
+		}
+	}
 
 	// Dedupe gate. --force-new bypasses the search entirely (the operator vouches the
 	// title is unique; the reason is audit-logged). Otherwise a search API failure fails
