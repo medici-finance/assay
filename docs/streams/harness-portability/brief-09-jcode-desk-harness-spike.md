@@ -104,5 +104,24 @@ RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo 
 
 VERIFY: FAIL — held at implemented (matches what the README already shows, and what #393 already asks: hp/09 must not advance until the deliverable is actually ported/landed in this repo). Not a stale-anchor / renamed-test situation and not fabricated evidence — a real, reproducible gap from an incomplete re-home, already tracked.
 
+### Non-implementer verifier run — VERIFY: FAIL — 2026-09-23 opus-5.5-verifier
+
+Runner is not the implementer. Own detached temp worktree cut from origin/main; offline envelope observed (KUBECONFIG=/dev/null). No PR opened, no push, no status flip, no issue filed by this run. Deliverable doc docs/research/jcode-desk-harness-capabilities.md is absent on merged main (confirmed absent at both the checkout base and current origin/main, and never present in this repo's history for that path). Rows below map 1:1 to the Verify table; no invented scope.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | test -f docs/research/jcode-desk-harness-capabilities.md | exit 0 — file exists | FAIL — exit 1; file absent on merged main (no git history for the path in this repo) | 2026-09-23 | opus-5.5-verifier |
+| 2 | grep -qiE -e absent -e workaround docs/research/jcode-desk-harness-capabilities.md | exit 0 — a per-primitive verdict recorded | FAIL — exit 2; grep cannot open a file that does not exist | 2026-09-23 | opus-5.5-verifier |
+| 3 | dereference: measured RAM/boot figures each backed by a named re-runnable command + quoted output | verdicts present in the doc | could-not-check — no doc on merged main to dereference | 2026-09-23 | opus-5.5-verifier |
+| 4 | dereference: exec-tier probe and prose-vs-discrete split recorded as explicit verdicts, not TODOs | verdicts present in the doc | could-not-check — no doc on merged main to dereference | 2026-09-23 | opus-5.5-verifier |
+| 5 | grep -q jcode-desk-harness-capabilities freshness.yaml | exit 0 — file registered | FAIL — exit 1; no jcode entry in freshness.yaml on merged main | 2026-09-23 | opus-5.5-verifier |
+
+Execution witness: statusgen v1.0.26 verifyrun over all 5 rows returned fail for every row (rows 1/5 exit 1, rows 2/3/4 exit 2 — the empty-tree sha256:e3b0c442 on rows 1/5 is the hash of empty output from the failed command). Witness rows were appended to the brief's `## Evidence` section in the worktree and left uncommitted for the desk.
+
+RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo found no literal; nothing was introduced here to enumerate a constant from (the deliverable file and its freshness registration were never ported into this public repo). The freshness config literals cited in the 2026-08-24 Evidence row (`max-age-days = 45`, `last-reviewed`, `path`) do not exist on merged main, so there is no literal to derive.
+
+Deliverable absent from this repository; tracked at #393.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.
