@@ -16,6 +16,11 @@ package main
 // pure-additions count drift, a tool idiom retired by a recorded ruling. Anything the facts
 // cannot positively place is refused:unclassified, because a loose "safe" answer here
 // launders a real regression into a green (brief 05 §Context, single-point-of-failure).
+//
+// This predicate handles all three safe classes given the facts, but the shipped verb only
+// reaches safe:rename: gatherRowFacts does not yet populate the count/idiom facts, so
+// safe:count and safe:idiom are not-yet-implemented scaffolding (see the SafeCount and
+// SafeIdiom consts, and docs/rebaseline.md).
 
 // Verdict is the classification of a failing Verify row. The safe:* verdicts authorise a
 // one-row re-baseline PR; the refused:* verdicts require the row be filed as an issue.

@@ -12,8 +12,12 @@
 //
 // The safe/refusal boundary is the single point of failure: a loose "safe" launders a real
 // regression into a green. It therefore fails CLOSED (classify.go) — a row reaches the safe
-// set only by a positive proof (a single rename hop to an existing file, a pure-additions
-// count drift, a tool idiom retired by a recorded ruling), and everything else is filed.
+// set only by a positive proof, and everything else is filed. In this first cut the ONE safe
+// class the shipped verb produces is safe:rename (a single rename hop to an existing file).
+// safe:count (a pure-additions count drift) and safe:idiom (a tool idiom retired by a
+// recorded ruling) are NOT YET IMPLEMENTED: the classifier carries their arms, but
+// gatherRowFacts (facts.go) does not populate their facts, so such a row falls through to
+// refused:unclassified and is filed as today (see docs/rebaseline.md).
 //
 // USAGE:
 //
