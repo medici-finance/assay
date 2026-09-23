@@ -210,6 +210,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 13 | [Cursor live-desk-smoke protocol + first run](brief-13-cursor-live-desk-smoke.md) | 6 | M | implemented | — | — |
 | 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
 | 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
+| 16 | [Codex long-context cap — compaction limit on every Codex desk launch, shipped in packaging, linted](brief-16-codex-long-context-cap.md) | 7 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
@@ -262,6 +263,15 @@ still at `0.5.1`, so `harnessgen`'s `TestCodexCommittedManifestMatchesSource` an
 three suites pass at branch head" was true when measured on 2026-09-08 and is no longer true, which
 is itself the evidence for wiring the leg.
 
+**Note on 16 — the Codex long-context cap.** OpenAI prices a prompt above 272K input tokens at
+2x input and 1.5x output for the whole request (GPT-5.5 / 5.6 / 6-Astra). `cellctl`'s Codex launch
+arms set no compaction limit, so a long-running standing desk window can cross that line without any
+signal. 16 passes `model_auto_compact_token_limit` on every Codex desk launch (default 240000,
+overridable per role), ships the same key in a generated Codex config fragment with a
+`harnesslint` mode that fails without it, adds a compact-or-reboot point to the standing-note
+reference, and adds a warning when a dispatch prompt exceeds a token budget. It is `gate: model`
+(config, lint and prose) and does not extend any critical path.
+
 ## Critical path
 
 ```
@@ -313,7 +323,7 @@ Wave 3: [06]←{03,04,05}, [11]←04
 Wave 4: [07]←{05,06}
 Wave 5: [12]←{03,04,05,06}
 Wave 6: [13]←12, [14]←{06,12}
-Wave 7: [15]←14
+Wave 7: [15]←14, [16]←14
 ```
 
 Critical path: `ext(Codex env) → 01 → 03 → 04 → 06 → 07`. 02 runs parallel in wave 0 and
