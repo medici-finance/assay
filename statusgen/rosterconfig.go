@@ -342,6 +342,20 @@ const (
 	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
 	// EnvContributorLedger.
 	scanEnvContributorLedger = "ASSAY_CONTRIBUTOR_LEDGER"
+
+	// scanEnvReviewerVendor (ASSAY_REVIEWER_VENDOR) and scanEnvVerifierVendor
+	// (ASSAY_VERIFIER_VENDOR) are DESK-only roster values (verify-integrity/10):
+	// the model vendors the reviewer role's App and the verifier role run on.
+	// cmd/deskcalibrate consumes ASSAY_REVIEWER_VENDOR for its calibration-SPOF
+	// vendor check; ASSAY_VERIFIER_VENDOR is a documented policy key no tool
+	// enforces yet. statusgen consumes NEITHER — but the two readers share one
+	// ~/.config/assay/roster.env, and an unknown ASSAY_ key REFUSES the whole
+	// configuration (parseConfig), so both must be RECOGNISED here or a roster
+	// carrying them collapses statusgen's whole trust configuration on the
+	// unknown-ASSAY_-key refusal. Recognised, not applied. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvReviewerVendor / EnvVerifierVendor.
+	scanEnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
+	scanEnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -386,6 +400,10 @@ func scanKnownRosterKeys() []string {
 		scanEnvGitLabDisplayNames,
 		scanEnvStreamCap,
 		scanEnvContributorLedger,
+		// DESK-only, recognised-not-applied (verify-integrity/10): consumed by
+		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
+		// they share this roster.env, so statusgen must not fail closed on either.
+		scanEnvReviewerVendor, scanEnvVerifierVendor,
 	}
 }
 
