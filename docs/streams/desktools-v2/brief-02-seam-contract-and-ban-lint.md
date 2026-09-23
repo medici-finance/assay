@@ -129,16 +129,16 @@ facts:
 
 ### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
 
-| # | Command | Expected | Observed (exit + key output) | Date Runner |
-|---|---------|----------|------------------------------|-------------|
-| 1 | test -x tools/desk/scripts/forge-ban.sh; echo rc=$? | rc=0 (counter present and executable) | exit 0; rc=0 | 2026-09-23 opus-5.5-verifier |
-| 2 | sh tools/desk/scripts/forge-ban.sh; echo rc=$? | prints "forge reach-around sites: N"; rc=0 (advisory) | exit 0; "forge reach-around sites: 55 (desk: 26, statusgen: 29)"; rc=0 | 2026-09-23 opus-5.5-verifier |
-| 3 | sh -c 'for p in forge_github.go forge_gitlab.go; do grep -qF -- "$p" tools/desk/scripts/forge-ban.sh; ...; done; echo both-exempt' | exit 0; prints both-exempt (each backend checked separately) | exit 0; both-exempt | 2026-09-23 opus-5.5-verifier |
-| 4 | grep -c 'forge-ban' .github/workflows/forge-surface-control.yml | exit 0; count >= 1 (counter wired into forge-surface job) | exit 0; 2 | 2026-09-23 opus-5.5-verifier |
-| 5 | sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb.txt | exit 0; "reach-around sites: N" with N a real integer | exit 0; "reach-around sites: 55" | 2026-09-23 opus-5.5-verifier |
-| 6 | test -f docs/streams/desktools-v2/seam-contract.md && grep -cE -e 'origin' -e 'pullRequest' -e 'api.github.com' docs/streams/desktools-v2/seam-contract.md | exit 0; count >= 1 (contract names the banned classes) | exit 0; 10 | 2026-09-23 opus-5.5-verifier |
-| 7 | sh tools/desk/scripts/forge-ban.sh --baseline && grep -cE '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt | exit 0; count = 1 (baseline is a machine-readable line) | exit 0; 1 (line written: desktools-v2/02 55) | 2026-09-23 opus-5.5-verifier |
-| 8 | sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb2s.txt 2>&1; grep -oE 'statusgen sites: [0-9]+' /tmp/dv2-fb2s.txt | exit 0; "statusgen sites: N" with N a real integer | exit 0; "statusgen sites: 29" | 2026-09-23 opus-5.5-verifier |
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | test -x tools/desk/scripts/forge-ban.sh; echo rc=$? | rc=0 (counter present and executable) | exit 0; rc=0 | 2026-09-23 | opus-5.5-verifier |
+| 2 | sh tools/desk/scripts/forge-ban.sh; echo rc=$? | prints "forge reach-around sites: N"; rc=0 (advisory) | exit 0; "forge reach-around sites: 55 (desk: 26, statusgen: 29)"; rc=0 | 2026-09-23 | opus-5.5-verifier |
+| 3 | sh -c 'for p in forge_github.go forge_gitlab.go; do grep -qF -- "$p" tools/desk/scripts/forge-ban.sh; ...; done; echo both-exempt' | exit 0; prints both-exempt (each backend checked separately) | exit 0; both-exempt | 2026-09-23 | opus-5.5-verifier |
+| 4 | grep -c 'forge-ban' .github/workflows/forge-surface-control.yml | exit 0; count >= 1 (counter wired into forge-surface job) | exit 0; 2 | 2026-09-23 | opus-5.5-verifier |
+| 5 | sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb.txt | exit 0; "reach-around sites: N" with N a real integer | exit 0; "reach-around sites: 55" | 2026-09-23 | opus-5.5-verifier |
+| 6 | test -f docs/streams/desktools-v2/seam-contract.md && grep -cE -e 'origin' -e 'pullRequest' -e 'api.github.com' docs/streams/desktools-v2/seam-contract.md | exit 0; count >= 1 (contract names the banned classes) | exit 0; 10 | 2026-09-23 | opus-5.5-verifier |
+| 7 | sh tools/desk/scripts/forge-ban.sh --baseline && grep -cE '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt | exit 0; count = 1 (baseline is a machine-readable line) | exit 0; 1 (line written: desktools-v2/02 55) | 2026-09-23 | opus-5.5-verifier |
+| 8 | sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb2s.txt 2>&1; grep -oE 'statusgen sites: [0-9]+' /tmp/dv2-fb2s.txt | exit 0; "statusgen sites: N" with N a real integer | exit 0; "statusgen sites: 29" | 2026-09-23 | opus-5.5-verifier |
 
 All 8 Verify rows pass. Independently corroborated by statusgen verifyrun (v1.0.26): rows 1-8 all pass (exit=0), witness rows appended to the brief's Evidence section in the verifier worktree.
 
