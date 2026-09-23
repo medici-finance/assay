@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -45,6 +46,70 @@ func AckBeaconPath(session string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(base, "roster", session+".json"), nil
+}
+
+// Line renders the fixed receipt line for a record — `ack <role>@<repo>: <restatement>`,
+// or `ack <role>: <restatement>` when the record names no repo. It is the same shape
+// deskack prints and records, so a correction composed from a beacon record reproduces the
+// receipt the operator saw verbatim.
+func (r AckRecord) Line() string {
+	if r.Repo == "" {
+		return "ack " + r.Role + ": " + r.Restatement
+	}
+	return "ack " + r.Role + "@" + r.Repo + ": " + r.Restatement
+}
+
+// LastAckWithin returns the most recent receipt on session's beacon whose timestamp is
+// within window of now, or (nil, nil) when the beacon carries no such receipt — no beacon
+// file, no acks array, or a newest receipt older than the window. A beacon that cannot be
+// read or parsed, or whose newest receipt has an unparseable timestamp, is the
+// could-not-check THIRD state and returns an error (fail closed): a correction must never be
+// composed against a receipt the tool could not actually confirm, and a corrupt beacon must
+// not read as "no receipt" (which would round a could-not-check down to a clean refusal).
+//
+// The last element of the acks array is the newest by construction — AppendAck only ever
+// appends — so this reads it directly rather than re-sorting.
+func LastAckWithin(session string, window time.Duration, now time.Time) (*AckRecord, error) {
+	path, err := AckBeaconPath(session)
+	if err != nil {
+		return nil, err
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil {
+		if os.IsNotExist(rerr) {
+			return nil, nil // no beacon yet is a definite "no receipt", not a read failure
+		}
+		return nil, Unverifiable("cannot read the roster beacon at "+path, rerr)
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	obj := map[string]json.RawMessage{}
+	if uerr := json.Unmarshal(data, &obj); uerr != nil {
+		return nil, Unverifiable("cannot parse the roster beacon at "+path+
+			" — refusing to treat a corrupt beacon as an absence of receipts", uerr)
+	}
+	raw, ok := obj["acks"]
+	if !ok || len(raw) == 0 {
+		return nil, nil
+	}
+	var acks []AckRecord
+	if uerr := json.Unmarshal(raw, &acks); uerr != nil {
+		return nil, Unverifiable("cannot parse the acks array in the roster beacon at "+path, uerr)
+	}
+	if len(acks) == 0 {
+		return nil, nil
+	}
+	last := acks[len(acks)-1]
+	ts, terr := time.Parse(time.RFC3339, last.TS)
+	if terr != nil {
+		return nil, Unverifiable("the newest receipt on the beacon at "+path+
+			" has an unparseable ts "+strconv.Quote(last.TS), terr)
+	}
+	if now.Sub(ts) > window {
+		return nil, nil // stale — a receipt exists but not within the window
+	}
+	return &last, nil
 }
 
 // AppendAck appends rec to session's roster beacon, creating the file (and the roster

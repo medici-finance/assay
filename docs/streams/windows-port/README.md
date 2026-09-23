@@ -181,7 +181,7 @@ it.
 | 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | todo | — | — |
 | 10 | [Verify in the harness container: the supported execution-witness runner on Windows](brief-10-verify-in-container.md) | 3 | M | implemented | — | — |
 | 11 | [Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash](brief-11-portable-desk-pollers.md) | 4 | L | todo | — | — |
-| 12 | [De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind](brief-12-deposix-skill-prose-and-constants.md) | 4 | S | todo | — | — |
+| 12 | [De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind](brief-12-deposix-skill-prose-and-constants.md) | 4 | S | implemented | — | — |
 | 13 | [assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15)](brief-13-inbox-verb-port.md) | 4 | M | implemented | — | — |
 | 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 6 | M | todo | — | — |
 | 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | todo | — | — |
