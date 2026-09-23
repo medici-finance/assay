@@ -263,6 +263,40 @@ RISK-VALUE: N/A — enumeration over the rest of the diff found no other literal
 
 VERIFY: FAIL — held at implemented. 13/15 rows checked-clean. Rows 8 and 10 are both stale Verify-row anchors from later, unrelated commits (763d46ca8; a0152b54b/c30ea03e7) that superseded implementation details the rows literally check for — the underlying security intent is met or exceeded on current main (no real syscall leak; the windows owner-check is now full ACL enforcement, stronger than the original design). Not a regression in this brief's own diff, which passes cleanly against its own tree. Recommend re-baselining row 8's grep (exclude comment lines / already-excluded files) and either re-baselining row 10 to assert the ACL enforcement or retiring it as permanently superseded — a driver/coordinator call, not this verifier's. Not filed as a new issue this pass: this session's deskfile budget on medici-finance/assay is fully exhausted for the next ~21h (3 regular + 1 audited override already used today); recording here so it's visible for the next verify pass or another session to file.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+Runner not the implementer. Own detached temp worktree cut off origin/main at the merged head
+(HEAD == origin/main == 438dd26a3e95). Offline envelope observed (KUBECONFIG=/dev/null). No PR
+opened, no push, no status flip. gate: model; all four risk answers `no`. Rows 8 and 10 run in
+their 2026-09-22 re-baselined form (issue #1454). Fresh classification pass; rows re-run from
+scratch, not carried forward.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | pair-existence loop (4 pairs) | OK | exit 0 — OK (all 4 pairs present) | 2026-09-23 | opus-5.5-verifier |
+| 2 | every _unix.go has explicit build constraint | OK | exit 0 — OK | 2026-09-23 | opus-5.5-verifier |
+| 3 | statusgen cross-compile amd64+arm64, file check | PE32/MS Windows both | exit 0 — amd64 PE32+ x86-64 MS Windows; arm64 PE32+ Aarch64 MS Windows | 2026-09-23 | opus-5.5-verifier |
+| 4 | deskpost cross-compile amd64+arm64, file check | PE32/MS Windows both | exit 0 — both PE32+ MS Windows (x86-64, Aarch64) | 2026-09-23 | opus-5.5-verifier |
+| 5 | GOOS=windows go build ./... (desk) | 0 | build=0 | 2026-09-23 | opus-5.5-verifier |
+| 6 | GOOS=windows go vet both modules | sg=0 dt=0 | sg=0, dt=0 | 2026-09-23 | opus-5.5-verifier |
+| 7 | host go test — statusgen ./... and the 5 split-affected desk packages, with the #555 -skip | sg=0 dt=0 | sg=0; dt=0 (all 5 desk pkgs ok, statusgen ok). Note: the #555 -skip is now stale — the two named tests' fixes are ancestors of HEAD and the packages pass either way; documentation-debt, not a Verify failure | 2026-09-23 | opus-5.5-verifier |
+| 8 | grep for real syscall use outside _unix.go (re-baselined, comment- and suffix-filtered) | rc=1 (no output) | rc=1 — no lines printed; the re-baselined grep no longer catches the unrelated prose comment | 2026-09-23 | opus-5.5-verifier |
+| 9 | positive control: same grep counting _unix.go matches | >= 4 | 9 | 2026-09-23 | opus-5.5-verifier |
+| 10 | windows rosterowner ACL enforcement wired (both files) + TestEvaluateRosterACL in both modules | wired=OK, sg-test=OK, dt-test=OK | wired=OK (both files carry GetNamedSecurityInfo + evaluateRosterACL + S-1-1-0); both TestEvaluate-RosterACL ran and PASS with all 10 refusal/accept subtests | 2026-09-23 | opus-5.5-verifier |
+| 11 | windows procgroup caveat written | 0 | exit 0 | 2026-09-23 | opus-5.5-verifier |
+| 12 | windows lock references ErrLockBusy | 0 | exit 0 | 2026-09-23 | opus-5.5-verifier |
+| 13 | prune.go untouched (pinned base) | 0 | 0 — vacuous on post-merge (base == HEAD, empty diff); corroborated by rows 1/9 | 2026-09-23 | opus-5.5-verifier |
+| 14 | no go.sum / statusgen-module diff (pinned base) | 0 | 0 — vacuous, same post-merge shape | 2026-09-23 | opus-5.5-verifier |
+| 14a | x/sys still v0.46.0 in desk go.mod | 1 | 1 | 2026-09-23 | opus-5.5-verifier |
+| 15 | statusgen --consumers windows-port/00 | 0 | exit 0 — "no brief files in the diff … nothing to corroborate" (vacuous on merged main); corroborated manually via rows 1/13/14 — fixed-here files present, prune.go and statusgen module untouched | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE: DERIVED — windows advisory-lock byte range (reserved=0, nBytesLow=1, nBytesHigh=0, Overlapped offset=0) @ tools/desk/internal/deskkit/filelock_windows.go:29 (LockFileEx) and :43 (UnlockFileEx) — lock and unlock cover the IDENTICAL 1-byte range at offset 0 (the standard whole-file advisory lock). Equal lock/unlock ranges are the sole correctness requirement this brief's own ground rules name (a mismatch is a lock leak → double-dispatch); they match. The fail-closed selector LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ :28 mirrors syscall.LOCK_EX|syscall.LOCK_NB @ filelock_unix.go:26, and ERROR_LOCK_VIOLATION → ErrLockBusy @ :34-35 mirrors EWOULDBLOCK → ErrLockBusy @ filelock_unix.go:30-31, so contention refuses rather than silently granting — proven live by row 12.
+
+RISK-VALUE: N/A — enumeration over the rest of this brief's own diff found no further introduced literal: the unix flock/kill/owner constants (LOCK_EX, LOCK_NB, LOCK_UN, SIGKILL, the 0o022 group/world-writable mode mask) moved verbatim from the pre-split sites and predate this diff, the 50ms retry sleep and 60s lock deadlines are preserved byte-identical (reversible operational knobs, rank last), and x/sys stays at v0.46.0 (row 14a). The World SID literal S-1-1-0 that row 10 now checks is not introduced by this brief's diff — it entered on later unrelated commits (#640/#641, #667) that superseded the original loud-skip stub with ACL enforcement; it is exercised and correct per row 10, but outside this brief's enumeration scope.
+
+Rows 8 and 10 (re-baselined 2026-09-22) now pass; row 7's skip of #555 looks stale (packages green either way).
+
+
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
 split of existing logic in git-revertible source; it publishes nothing, touches no workflow, and
