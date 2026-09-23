@@ -221,6 +221,15 @@ the desk-tools console-noise-floor contract. Two states:
    --to <role> …` for the durable tracker state that desk's own sweep leads with — never a
    typed relay through the human, and never a message to its session.
 
+**Blocker-evidence gate + correction capture — see `worker-desk` §HARD GATE (one definition, not
+restated here).** A blocker claim (`BLOCKED-ON-HUMAN`, `needs-decision`, `help wanted`, `question`, a
+blocking `could-not-check`) needs a `### Evidence` fence exactly as an idle claim needs a sweep, and
+`deskfile new` REFUSES an evidence-less escalation on those labels (exit 5). And a human CORRECTION
+right after your receipt is a free `skill-bug` report — obey it, then file ONE via `deskfile new
+--raised-by <role> --label skill-bug --to desk --correction "<the message>" --section "<skill +
+section>" --reading "<what it should have said>"` (the tool composes it from your last receipt; NOT
+for a `no` that answers an options question you just asked).
+
 **What silence does NOT change — a dead monitor is NEVER hidden.** "Silent" applies to HEALTHY
 routine operation only; the liveness machinery is internal state, not print-gated. **Detected
 blindness is a needs-human condition, not a quiet state** — a board older than the cadence

@@ -192,6 +192,25 @@ so is a single-root sweep. The board also **holds rows back at the per-stream ca
 on its face: "no rows past the ones shown" is not "nothing eligible" (row 2 is the reading that
 settles it).
 
+## HARD GATE — a blocker claim needs a fence, exactly as an idle claim needs a sweep
+
+**A blocker claim is a claim about the world, and the only evidence is a command run THIS tick.** A
+filing or report that claims a blocker — `BLOCKED-ON-HUMAN`, `needs-decision`, `help wanted`,
+`question`, or a `could-not-check` reported as blocking — MUST carry a **`### Evidence`** section
+holding at least one fenced block that is the verbatim output of a command run this tick, its command
+line as the first line of the fence. "I believe X is not possible", with nothing fenced, is **not** a
+blocker claim: re-check it first — if the re-check produces a fence, file with it; if it produces a
+success, proceed. The parallel to the idle gate above is exact — **a blocker claim with nothing to
+quote is not a blocker claim.**
+
+This is enforced in two INDEPENDENT layers that fail on different signals in different components, so
+neither is the single point of failure: the skill clause here, AND — should a desk skip the clause —
+`deskfile new`, which **REFUSES (exit 5)** any filing labelled `needs-decision`, `help wanted` or
+`question` whose body has no `### Evidence` heading followed by a fenced block, naming the missing
+section. `human-only` is not in that set (it is an ACT, not a claim); `attach` observations are not
+claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
+refusal does, for a blocker whose evidence genuinely cannot be produced.
+
 ## THE REPO SET — derived once, consumed by every sweep
 
 **Two sets, one definition point.** This is the ONLY place this skill RESOLVES a repo set; the board
@@ -588,6 +607,20 @@ issue list. Two states:
    LANE — `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk
    hand-offs), `deskfile new --to <role> …` for the durable tracker state that desk's own sweep
    leads with — never a typed relay through the human, and never a message to its session.
+
+   **A correction is a free skill-bug report — capture it.** After you have printed a receipt (above),
+   if the human's NEXT message is a CORRECTION — it opens with `no`, `wrong`, `stop`, "that isn't/is
+   not what", "not what I", "why are/did you", "you're inventing/fighting", "don't make me ask" — then
+   (a) OBEY the correction first, and (b) file exactly ONE `skill-bug` issue, composed by the tool,
+   before continuing: `deskfile new --raised-by <role> --label skill-bug --to desk --correction "<the
+   human's message>" --section "<the skill + section you were following>" --reading "<your one-line
+   reading of what the skill should have said>"`. The tool reads your last receipt from this session's
+   beacon and composes the body (receipt line, correction verbatim, `$DESK_LOOP`, skill+section, your
+   reading); with no receipt in the last 30 minutes it REFUSES (exit 5) — a correction with nothing to
+   correct is not a skill-bug. **Do NOT file for a `no` that answers an OPTIONS QUESTION you just
+   asked** — if your previous turn ended in a question mark or an options list, the `no` is an answer,
+   not a correction. `skill-bug` filings count against the ordinary per-repo filing budget by design:
+   a desk that earns several corrections a day is itself the finding.
 
 **A question never stops the window.** `question`, `help wanted` and `needs-decision` are filings, not
 console stops: label + comment the item saying what is needed and from whom, then **carry on with the
