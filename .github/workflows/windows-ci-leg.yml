@@ -205,16 +205,41 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          # The committed harness pin (plugins/assay/paired-versions.yaml `harness:`)
-          # carries a PLACEHOLDER digest until a maintainer harvests the real registry
-          # digest. The wrapper MUST refuse it — an un-digest-pinned image is never run.
-          # Invert the assertion: the job FAILS unless the wrapper refuses. This step is
-          # green the moment the leg is promoted; it does not wait on the digest harvest.
-          if "${RUNNER_TEMP}/statusgen" verifyrun --in-container --root . \
-               --brief docs/streams/windows-port/brief-10-verify-in-container.md; then
-            echo "::error::the wrapper accepted an un-digest-pinned image — the fail-closed pin control is broken"
+          # The committed harness pin (plugins/assay/paired-versions.yaml `harness:`) now
+          # carries a REAL digest, so pointing the wrapper at the checkout can no longer
+          # exercise the refusal. Run the control against a THROWAWAY root under
+          # $RUNNER_TEMP instead: a copy of the committed paired-versions.yaml with every
+          # `digest:` replaced by the placeholder `PENDING-HARVEST`. The wrapper MUST refuse
+          # it — an un-digest-pinned image is never run — and the refusal happens before
+          # docker is looked up, so this tests the pin control whatever main pins.
+          # Assert the refusal itself (exit 2 AND the "refusing to run" message naming the
+          # placeholder), never just a non-zero exit: a docker, pull or row failure is not
+          # a refusal and must not green this step.
+          ctl="${RUNNER_TEMP}/failclosed-root"
+          rm -rf "${ctl}"
+          mkdir -p "${ctl}/plugins/assay"
+          sed -E 's/^([[:space:]]*digest:[[:space:]]*).*$/\1PENDING-HARVEST/' \
+            plugins/assay/paired-versions.yaml > "${ctl}/plugins/assay/paired-versions.yaml"
+          grep -qE '^[[:space:]]*digest:[[:space:]]*PENDING-HARVEST$' "${ctl}/plugins/assay/paired-versions.yaml" \
+            || { echo "::error::could-not-check: the placeholder digest was not planted in the throwaway root"; exit 1; }
+          if grep -qE '^[[:space:]]*digest:[[:space:]]*sha256:' "${ctl}/plugins/assay/paired-versions.yaml"; then
+            echo "::error::could-not-check: a sha256 digest survived in the throwaway root"; exit 1
+          fi
+          cp docs/streams/windows-port/brief-10-verify-in-container.md "${ctl}/brief.md"
+          out=$("${RUNNER_TEMP}/statusgen" verifyrun --in-container --root "${ctl}" --brief "${ctl}/brief.md" 2>&1)
+          rc=$?
+          printf '%s\n' "${out}"
+          if [ "${rc}" -ne 2 ]; then
+            echo "::error::the wrapper did not refuse the placeholder digest (exit ${rc}, want 2) — the fail-closed pin control is broken"
             exit 1
           fi
+          case "${out}" in
+            *"refusing to run"*"PENDING-HARVEST"*) ;;
+            *)
+              echo "::error::exit 2 but not the pin refusal (no 'refusing to run' naming PENDING-HARVEST) — the fail-closed pin control is unproven"
+              exit 1
+              ;;
+          esac
           echo "fail-closed OK — the wrapper refused the placeholder digest (an un-digest-pinned image is never run)"
 
       - name: Witness lands through the pinned container (live; runs once the real digest is pinned)
