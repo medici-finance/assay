@@ -1317,6 +1317,15 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "tags/v1.2.3") },
 		},
 		{
+			// MatchingRefs is the review-claim-FAMILY read twin, and GitLab CE cannot serve it at
+			// all: there is no endpoint that prefix-lists arbitrary custom refs (only branches and
+			// tags list), so it is a could-not-check REFUSAL with zero requests emitted — never a
+			// guessed empty family that would tell the floor a held review cycle was released.
+			name: "matching_refs_non_listable_refused", method: "MatchingRefs",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.MatchingRefs(glRepo, "refs/dispatch/tracker--pr-547") },
+		},
+		{
 			// The resource-label-events endpoint is GitLab's exact analog of the GitHub
 			// timeline read: add/remove per label WITH the acting user. `remove` events are
 			// dropped (a removal is not an attestation), and an event whose label GitLab has

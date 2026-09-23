@@ -266,10 +266,12 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if ferr != nil {
 			return withDigest(fromReadErr(verb, repo, pr, curHead, ferr), dig)
 		}
-		// A stamp whose dispatch CLAIM has been released ages out — the dispatching cycle is
-		// over, so its stamp attests nothing about this verdict and the PR reads unstamped
-		// (deskkit/stampage.go). Every uncertain path is Unknown and changes nothing.
-		claim := client.claimLiveness(repo, info.Body)
+		// The reviewer stamp this verdict validates ages out when the REVIEW-dispatch claim
+		// behind it (the "<short>--pr-<N>" family, not this PR's worker Brief: claim) is no longer
+		// held — the review cycle is over, so the stamp attests nothing about this verdict and the
+		// PR reads unstamped (claimLiveness → deskkit review-claim family). Every uncertain path is
+		// Unknown and changes nothing.
+		claim := client.claimLiveness(repo, pr)
 		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(), claim)
 		// Ruling 3: the floor is RISK-CONDITIONAL on an UNSTAMPED PR. A review verdict is a
 		// security-review-bearing write, so on a risk-classed PR it must carry a trustable

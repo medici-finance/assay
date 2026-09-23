@@ -3354,6 +3354,21 @@ func (g *GitLabForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 	return true, nil
 }
 
+// MatchingRefs is a could-not-check on GitLab: CE exposes no general ref-LISTING endpoint that
+// enumerates arbitrary refs by prefix (the Branches and Tags APIs list only branches and tags,
+// not the `refs/dispatch/*` custom namespace a dispatch claim family occupies), so it cannot be
+// answered here and is NEVER a guessed empty list — an empty result would age a HELD review-claim
+// family out on no evidence. Its one consumer (cmd/deskpost's review-lane claimLiveness) resolves
+// this to ClaimLivenessUnknown, which leaves the stamp standing; and deskpost refuses a
+// GitLab-resolved repo before that path in any case, so this branch is the fail-safe backstop, not
+// a live path. The symmetric twin of RefExists's GitLab limit above.
+func (g *GitLabForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: GitLab exposes no general ref-listing endpoint, so MatchingRefs cannot enumerate refs "+
+			"under %q — only branches and tags list (the Branches/Tags APIs), not the %s* claim namespace; a "+
+			"prefix listing there has no CE equivalent and is NOT reported empty", refPrefix, DispatchClaimActiveRefsPrefix), nil)
+}
+
 // The single-forge public-repo-gate adapter that used to live here (adapting *GitLabForge
 // alone to the public-repo gate's RepoInfoFetcher signature) is retired (assay#1066): it is
 // superseded by the generic ForgeRepoInfoFetcher (repovis.go), which wraps WHICHEVER backend
