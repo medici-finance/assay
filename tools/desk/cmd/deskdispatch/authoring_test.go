@@ -52,7 +52,7 @@ func TestPhantomAdmitsAuthoredBrief(t *testing.T) {
 	})
 	withPRFiles(t, filesByPR(t, map[int][]deskkit.ChangedFile{1439: authoringFiles()}))
 
-	if err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo); err != nil {
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo); err != nil {
 		t.Fatalf("a brief whose only PR AUTHORED it must be dispatchable, got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
 }
@@ -65,7 +65,7 @@ func TestPhantomRefusesDocsPlusCode(t *testing.T) {
 	files := append(authoringFiles(), deskkit.ChangedFile{Filename: "tools/desk/cmd/example/main.go", Status: "added"})
 	withPRFiles(t, filesByPR(t, map[int][]deskkit.ChangedFile{1600: files}))
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("a docs+code PR is a delivery and must REFUSE (exit 5), got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
@@ -86,7 +86,7 @@ func TestPhantomRefusesDocsOnlyDelivery(t *testing.T) {
 		{Filename: "docs/streams/example-port/portability-audit.md", Status: "added"},
 	}}))
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--02", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--02", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("a docs-only DELIVERY must still REFUSE (exit 5), got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
@@ -105,7 +105,7 @@ func TestPhantomRefusesAuthorAndDeliver(t *testing.T) {
 		{Filename: "docs/streams/example-port/portability-audit.md", Status: "added"},
 	}}))
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--02", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--02", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("an author-and-deliver PR must still REFUSE (exit 5), got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
@@ -126,7 +126,7 @@ func TestPhantomAuthoringKeepsDelivery(t *testing.T) {
 		1650: {{Filename: "tools/desk/cmd/example/main.go", Status: "added"}},
 	}))
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("the OPEN delivery PR must still refuse the dispatch, got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
@@ -142,7 +142,7 @@ func TestPhantomUnreadableFilesHold(t *testing.T) {
 	})
 	withPRFiles(t, func(string, int) ([]deskkit.ChangedFile, error) { return nil, os.ErrDeadlineExceeded })
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
 		t.Fatalf("an unreadable file list is UNVERIFIABLE (exit 6), got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
@@ -159,7 +159,7 @@ func TestPhantomNoFileTransportRefuses(t *testing.T) {
 	})
 	withPRFiles(t, nil)
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("with no file transport the representing PR must still refuse, got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}
@@ -196,7 +196,7 @@ func TestPhantomTruncatedFilesHold(t *testing.T) {
 		return completePRFiles(truncated, fr, n)
 	})
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo)
 	if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
 		t.Fatalf("a truncated file list must be UNVERIFIABLE (exit 6), got exit %d: %v", deskkit.ExitCodeOf(err), err)
 	}

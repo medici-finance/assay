@@ -79,8 +79,8 @@
 #                                                --kind / --cockpit / --provider override cell.env's CELL_KIND /
 #                                                CELL_COCKPIT / CELL_PROVIDER for this run (#1303 scope 2; a
 #                                                --kind the cell is not provisioned for is refused naming the
-#                                                missing key; --cockpit on a single desk window only matters
-#                                                when persisted). --set persists EVERY override given —
+#                                                missing key; --cockpit on a single desk window decides the
+#                                                ASSAY_COCKPIT it exports — see CELL_COCKPIT below). --set persists EVERY override given —
 #                                                the model pin, CELL_HARNESS, CELL_PROVIDER, CELL_KIND,
 #                                                CELL_COCKPIT — through the same one-backup path `cellctl set`
 #                                                uses; an override not given is never re-written.
@@ -218,7 +218,10 @@
 #   CELL_COCKPIT=auto|tmux|herdr|orca   the surface `up` opens the role windows in (default auto: herdr if on
 #                         PATH, else orca if on PATH AND its desktop app answers, else tmux). Only the surface
 #                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
-#                         PATH are identical in every cockpit.
+#                         PATH are identical in every cockpit. `desk` (and so every window `up` opens)
+#                         exports the RESOLVED value — never `auto` — as ASSAY_COCKPIT, the one value the
+#                         worker-desk skill's worktree-create step reads (tmux = plain `git worktree add`);
+#                         an explicit cockpit that is not available is refused there as `up` refuses it.
 #
 # Model policy: CELL_MODEL_POLICY=<JSON path relative to cell dir, or absolute> enables
 # per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
@@ -507,12 +510,15 @@ cockpit_want(){
 # three more positionals through all of them for values that are the SAME for every role in one
 # `up` run would be pure plumbing. All three are unset outside a `cmd_up` run, so a call to
 # `role_cmd` from elsewhere sees them unset too. Order is fixed (--model, then --harness, then
-# --provider) so a printed command is stable to grep against.
+# --provider, then --cockpit) so a printed command is stable to grep against. $up_cockpit is the
+# cockpit `up` RESOLVED (never `auto`), threaded so every window exports the same ASSAY_COCKPIT
+# as the surface it was opened in, even when `up --cockpit` overrode cell.env for this run only.
 role_cmd(){
   local out; out="$(printf "'%s' desk '%s' '%s'" "$SELF" "$CELL" "$1")"
   [[ -n "${MODEL_OVERRIDE:-}" ]] && out="$out --model '$MODEL_OVERRIDE'"
   [[ -n "${HARNESS_OVERRIDE:-}" ]] && out="$out --harness '$HARNESS_OVERRIDE'"
   [[ -n "${up_provider:-}" ]] && out="$out --provider '$up_provider'"
+  [[ -n "${up_cockpit:-}" ]] && out="$out --cockpit '$up_cockpit'"
   out="$out '$2'"
   printf '%s' "$out"
 }
@@ -1495,6 +1501,12 @@ cmd_check(){
   cockpit_want ""
   if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
     echo "  ok    cockpit: $COCKPIT ($COCKPIT_WHY)"
+    # The same resolved value is what every role window exports as ASSAY_COCKPIT — the worker-desk
+    # worktree-create arm — so the row says which arm that is, not only which surface.
+    if [[ "$CELL_KIND" != "scrubbed" ]]; then
+      local ck_arm="$COCKPIT worktree create"; [[ "$COCKPIT" == "tmux" ]] && ck_arm="plain git worktree add, no cockpit CLI needed"
+      echo "  ok    ASSAY_COCKPIT=$COCKPIT exported into every role window (worker-desk worktree arm: $ck_arm)"
+    fi
   else
     echo "  MISS  cockpit: $COCKPIT_ERR"; ok=0
   fi
@@ -2110,7 +2122,8 @@ cmd_desk(){
   # issue's ask is the flag plus the cell.env pin.
   # #1303 scope 2 widens this to EVERY per-run choice: --kind (applied above), --cockpit (accepted
   # and validated here so `--set` can persist it — a single `desk` window opens in the calling
-  # terminal and uses no cockpit itself; `up` is where the value drives anything), --harness and
+  # terminal and hosts no cockpit itself, but the RESOLVED value is exported to it as ASSAY_COCKPIT
+  # below, and `up` passes each window the cockpit it resolved), --harness and
   # --provider join --model as things `--set` persists, each into its own cell.env key, through
   # the same one-backup apply_env_kvs path `cellctl set` uses. A flag persists only when GIVEN:
   # the cell's own values are never re-written by a `--set` that did not name them.
@@ -2299,10 +2312,28 @@ cmd_desk(){
   # default does not abort the boot under `set -e`.
   local repair_admission=""
   if [[ "${ASSAY_REPAIR_ADMISSION:-}" == "on" ]]; then repair_admission="on"; fi
+  # The cell's ONE cockpit value, exported as ASSAY_COCKPIT into the window so the worker-desk
+  # skill's worktree-create step cuts dispatched worktrees with the same cockpit the windows are
+  # hosted in (tmux = the plain `git worktree add` arm). Resolved exactly as `up` resolves it —
+  # --cockpit beats cell.env CELL_COCKPIT beats the `auto` default — and always to a CONCRETE value:
+  # `auto` never reaches the window, so the skill's PATH-order autodetect runs only where no cell
+  # launcher exported anything. An explicit cockpit that is not available is refused here, as `up`
+  # refuses it, never exported as some other value. A scrubbed cell composes its own environment
+  # and opens no cockpit, so it carries none.
+  local assay_cockpit="" assay_cockpit_why=""
+  if [[ "$CELL_KIND" != "scrubbed" ]]; then
+    cockpit_want "$cockpit_flag"
+    resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" \
+      || die "desk: $COCKPIT_ERR — it is exported to the window as ASSAY_COCKPIT, so an unavailable explicit choice is refused rather than replaced; install it, or pass --cockpit tmux (or set CELL_COCKPIT)"
+    assay_cockpit="$COCKPIT"; assay_cockpit_why="$COCKPIT_WHY"
+  fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} role=$role model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
     if [[ -n "$repair_admission" ]]; then
       echo "[dry-run] env ASSAY_REPAIR_ADMISSION=$repair_admission (repair-admission dispatch gate opt-in)"
+    fi
+    if [[ -n "$assay_cockpit" ]]; then
+      echo "[dry-run] env ASSAY_COCKPIT=$assay_cockpit ($assay_cockpit_why)"
     fi
     if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
       echo "[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false"
@@ -2400,6 +2431,7 @@ cmd_desk(){
   fi
   policy_claude_preflight "$cfg" "$wt" || die "model policy settings preflight failed"
   cd "$wt"
+  [[ -z "$assay_cockpit" ]] || echo "[cockpit] ASSAY_COCKPIT=$assay_cockpit ($assay_cockpit_why)"
   echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
   if [[ "$harness" == "codex" ]]; then
     # The same exported env the claude arm gets (DESK_LOOP, DESK_SESSION, DESK_ROOTS, shim PATH);
@@ -2410,6 +2442,7 @@ cmd_desk(){
     exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
+      ${assay_cockpit:+ASSAY_COCKPIT="$assay_cockpit"} \
       codex "${MODEL_POLICY_ARGS[@]}" --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
   else
     # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
@@ -2439,6 +2472,7 @@ cmd_desk(){
     exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
+      ${assay_cockpit:+ASSAY_COCKPIT="$assay_cockpit"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       ${provider:+ANTHROPIC_MODEL="$model"} \
       ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel_opus"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel_sonnet"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel_haiku"} \
@@ -2628,6 +2662,8 @@ cmd_up(){
   cockpit_want "$cockpit_flag"
   resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
   echo "[cockpit] $COCKPIT ($COCKPIT_WHY)"
+  # GLOBAL, like up_provider: role_cmd threads it onto every window as `--cockpit <resolved>`.
+  up_cockpit="$COCKPIT"
   [[ -z "$automate" || "$COCKPIT" == "orca" ]] \
     || die "up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is $COCKPIT"
   local roles; roles="$(up_roles "$no_the_desk")"

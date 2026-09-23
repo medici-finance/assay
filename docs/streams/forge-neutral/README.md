@@ -216,7 +216,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 08 | [statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | done | 2026-09-18 sonnet-5-verifier (forge-neutral/08 dispatched verifier; 12/13 rows checked-clean direct, row 13 could-not-check — pre-existing tool limitation tracked #1281; risk-value N/A) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1331 @ fcd22ac3e204c6e953923b5dcd8b1821b76413d8) |
 | 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | implemented | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
-| 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
+| 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | implemented | — | — |
 | 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | done | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #831 @ ab2b73a6065dd206ec7d65c78346a45880c64a29) |
 | 13 | [Write verbs C — deskpr, deskfile and deskclose onto the resolver](brief-13-write-verbs-c-deskpr-deskfile-deskclose.md) | 3 | M | implemented | — | — |
 | 14 | [Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver](brief-14-run-and-gate-approval-verbs-deskrun.md) | 2 | M | todo | — | — |
@@ -226,7 +226,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
 | 19 | [Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs](brief-19-human-only-surfaces-server-side.md) | 1 | M | implemented | — | — |
 | 20 | [Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs](brief-20-claim-store-measurements.md) | 1 | M | implemented | — | — |
-| 21 | [Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back](brief-21-claim-store-seam-and-resolver.md) | 2 | M | todo | — | — |
+| 21 | [Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back](brief-21-claim-store-seam-and-resolver.md) | 2 | M | implemented | — | — |
 | 22 | [Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store](brief-22-claim-readers-onto-the-seam.md) | 3 | M | todo | — | — |
 | 23 | [File claim store — claims in a directory on the cell's host, with the single-host declaration and the container, filesystem and mixed-store guards](brief-23-file-claim-store-and-guards.md) | 3 | M | todo | — | — |
 | 24 | [Served claim store — the same directory store behind a small HTTP serve mode, member-initiated, holding no forge credential](brief-24-served-claim-store.md) | 4 | L | todo | — | — |

@@ -55,8 +55,11 @@ type domainsConfig struct {
 func main() {
 	args := os.Args[1:]
 	// The workflow invokes `go run . aggregate …`; the subcommand word is
-	// accepted (and is the documented form) but optional, since aggregation
-	// is now the only thing this module does.
+	// accepted (and is the documented form) but optional, so a bare invocation
+	// still aggregates. `cost` reduces a cost-per-row input (cost.go).
+	if len(args) > 0 && args[0] == "cost" {
+		os.Exit(runCost(args[1:], os.Stdout, os.Stderr))
+	}
 	if len(args) > 0 && args[0] == "aggregate" {
 		args = args[1:]
 	}

@@ -768,8 +768,10 @@ func cmdNew(args []string) (err error) {
 		}
 		if m := matchesAbove(cands); len(m) > 0 {
 			top := m[0]
+			// deskkit.DedupeRefusalPrefix is the ONE exit-5 text a caller (deskboot's alarm) may
+			// read as "already filed"; formatting from it keeps that match honest.
 			return deskkit.Refused(fmt.Sprintf(
-				"refused: likely duplicate of #%d %q (score %.2f%s). Attach your observation there instead:\n"+
+				deskkit.DedupeRefusalPrefix+"%d %q (score %.2f%s). Attach your observation there instead:\n"+
 					"  deskfile attach -R %s --to %d --body-file <f>\n"+
 					"Candidates at/above threshold %.2f:\n%s"+
 					"Override with --force-new --reason only if you can justify why this is not a duplicate.",
