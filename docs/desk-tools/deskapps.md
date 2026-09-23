@@ -43,7 +43,7 @@ deskapps init --manifest <file> [--org <login>] [--port 41873] [--no-browser] [-
 ```
 
 Registers a single arbitrary GitHub App from a manifest JSON file, instead of a tier's fixed
-App set — for an App that isn't one of the six desk roles (e.g. `assay-leaksweep-app`).
+App set — for an App that isn't one of the six desk roles (e.g. `example-app`).
 `--manifest` and `--tier` are mutually exclusive.
 
 - The manifest file's fields: `name`, `url`, `description`, `public`,

@@ -33,7 +33,7 @@ func writeManifestFile(t *testing.T, body string) string {
 // read back byte-for-byte, none of it silently dropped.
 func TestLoadManifestFileFields(t *testing.T) {
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"description": "Runs the public leak-sweep gate.",
 		"public": true,
@@ -46,7 +46,7 @@ func TestLoadManifestFileFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadManifestFile: %v", err)
 	}
-	if m.Name != "assay-leaksweep-app" {
+	if m.Name != "example-app" {
 		t.Fatalf("Name = %q", m.Name)
 	}
 	if m.URL != "https://github.com/medici-finance/assay" {
@@ -78,7 +78,7 @@ func TestLoadManifestFileRequiresNameAndURL(t *testing.T) {
 		}
 	})
 	t.Run("missing url", func(t *testing.T) {
-		p := writeManifestFile(t, `{"name": "assay-leaksweep-app"}`)
+		p := writeManifestFile(t, `{"name": "example-app"}`)
 		if _, err := LoadManifestFile(p); err == nil {
 			t.Fatal("expected an error for a manifest with no url")
 		}
@@ -89,7 +89,7 @@ func TestLoadManifestFileRequiresNameAndURL(t *testing.T) {
 // top-level redirect_url is REFUSED with a clear error, never silently stripped.
 func TestLoadManifestFileRefusesRedirectURL(t *testing.T) {
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"redirect_url": "https://attacker.invalid/callback"
 	}`)
@@ -106,7 +106,7 @@ func TestLoadManifestFileRefusesRedirectURL(t *testing.T) {
 // hook_attributes.url is REFUSED, the same way and for the same reason as redirect_url.
 func TestLoadManifestFileRefusesHookURL(t *testing.T) {
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"hook_attributes": {"url": "https://attacker.invalid/hook", "active": true}
 	}`)
@@ -124,7 +124,7 @@ func TestLoadManifestFileRefusesHookURL(t *testing.T) {
 // row (and any apps.env bindings) end up keyed by the App's manifest NAME alone.
 func TestManifestAppSpecKeyedByName(t *testing.T) {
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"default_permissions": {"contents": "write", "metadata": "read"}
 	}`)
@@ -133,7 +133,7 @@ func TestManifestAppSpecKeyedByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec := ManifestAppSpec(m)
-	if spec.Name != "assay-leaksweep-app" {
+	if spec.Name != "example-app" {
 		t.Fatalf("spec.Name = %q", spec.Name)
 	}
 	if len(spec.Roles) != 0 {
@@ -157,7 +157,7 @@ func TestManifestAppSpecKeyedByName(t *testing.T) {
 // TestBuildManifestJSONOmitsHookAttributesManifestPath for the dedicated pin.
 func TestBuildManifestJSONFromManifest(t *testing.T) {
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"description": "Runs the public leak-sweep gate.",
 		"public": true,
@@ -179,7 +179,7 @@ func TestBuildManifestJSONFromManifest(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["name"] != "assay-leaksweep-app" {
+	if got["name"] != "example-app" {
 		t.Fatalf("name = %v", got["name"])
 	}
 	if got["url"] != "https://github.com/medici-finance/assay" {
@@ -214,7 +214,7 @@ func TestBuildManifestJSONFromManifest(t *testing.T) {
 // from ...DefaultsHookActiveFalse: there is no active:false default left to assert — the key
 // is absent, which is what this test now pins.)
 func TestBuildManifestJSONFromManifestOmitsHookAttributesWhenUnset(t *testing.T) {
-	p := writeManifestFile(t, `{"name": "assay-leaksweep-app", "url": "https://github.com/medici-finance/assay"}`)
+	p := writeManifestFile(t, `{"name": "example-app", "url": "https://github.com/medici-finance/assay"}`)
 	m, err := LoadManifestFile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -293,7 +293,7 @@ func plantManifestPendingRow(t *testing.T, spec AppSpec) (*StateFile, string) {
 func TestManifestCallbackKeysStateByAppNameNotRole(t *testing.T) {
 	setupTest(t)
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"default_permissions": {"contents": "read"}
 	}`)
@@ -321,7 +321,7 @@ func TestManifestCallbackKeysStateByAppNameNotRole(t *testing.T) {
 		t.Fatalf("status = %d, want 200 (after following redirect to /run)", resp.StatusCode)
 	}
 
-	row := sf.rowByApp("assay-leaksweep-app")
+	row := sf.rowByApp("example-app")
 	if row == nil {
 		t.Fatal("no row keyed by the manifest App's name")
 	}
@@ -329,7 +329,7 @@ func TestManifestCallbackKeysStateByAppNameNotRole(t *testing.T) {
 		t.Fatalf("row state = %s, want keyed", row.State)
 	}
 
-	got, err := readPEMFor(t, "assay-leaksweep-app")
+	got, err := readPEMFor(t, "example-app")
 	if err != nil {
 		t.Fatalf("reading PEM: %v", err)
 	}
@@ -338,10 +338,10 @@ func TestManifestCallbackKeysStateByAppNameNotRole(t *testing.T) {
 	}
 
 	content := readAppsEnv()
-	if !strings.Contains(content, "ASSAY_LEAKSWEEP_APP_ID=42") {
+	if !strings.Contains(content, "EXAMPLE_APP_ID=42") {
 		t.Fatalf("apps.env missing the App-ID record:\n%s", content)
 	}
-	for _, unwanted := range []string{"_APP=assay-leaksweep-app", "READ_APP="} {
+	for _, unwanted := range []string{"_APP=example-app", "READ_APP="} {
 		if strings.Contains(content, unwanted) {
 			t.Fatalf("apps.env carries a role binding for a manifest App (none expected): %q in:\n%s", unwanted, content)
 		}
@@ -353,7 +353,7 @@ func TestManifestCallbackKeysStateByAppNameNotRole(t *testing.T) {
 // code, so it applies identically to a manifest-driven row.
 func TestManifestCallbackMismatchNoWrite(t *testing.T) {
 	setupTest(t)
-	p := writeManifestFile(t, `{"name": "assay-leaksweep-app", "url": "https://github.com/medici-finance/assay"}`)
+	p := writeManifestFile(t, `{"name": "example-app", "url": "https://github.com/medici-finance/assay"}`)
 	m, err := LoadManifestFile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -378,10 +378,10 @@ func TestManifestCallbackMismatchNoWrite(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	if _, err := readPEMFor(t, "assay-leaksweep-app"); err == nil {
+	if _, err := readPEMFor(t, "example-app"); err == nil {
 		t.Fatal("a PEM was written despite an identity mismatch")
 	}
-	if got := sf.rowByApp("assay-leaksweep-app").State; got != StatePending {
+	if got := sf.rowByApp("example-app").State; got != StatePending {
 		t.Fatalf("row state = %s, want pending (re-armed) after a mismatch", got)
 	}
 }
@@ -389,7 +389,7 @@ func TestManifestCallbackMismatchNoWrite(t *testing.T) {
 // TestRunInitManifestAndTierMutuallyExclusive — Verify: --manifest and --tier refuse
 // together, at the flag layer, before any file is read or port bound.
 func TestRunInitManifestAndTierMutuallyExclusive(t *testing.T) {
-	p := writeManifestFile(t, `{"name": "assay-leaksweep-app", "url": "https://github.com/medici-finance/assay"}`)
+	p := writeManifestFile(t, `{"name": "example-app", "url": "https://github.com/medici-finance/assay"}`)
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"init", "--manifest", p, "--tier", "family", "--dry-run"}, &stdout, &stderr)
 	if code == 0 {
@@ -404,14 +404,14 @@ func TestRunInitManifestAndTierMutuallyExclusive(t *testing.T) {
 // touching the network (no gh identity call, no listener left bound) — the manifest
 // path's sibling of the --tier suite's dry-run behaviour (main.go's runInit).
 func TestRunInitManifestDryRun(t *testing.T) {
-	p := writeManifestFile(t, `{"name": "assay-leaksweep-app", "url": "https://github.com/medici-finance/assay"}`)
+	p := writeManifestFile(t, `{"name": "example-app", "url": "https://github.com/medici-finance/assay"}`)
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"init", "--manifest", p, "--dry-run", "--no-browser"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "assay-leaksweep-app") {
+	if !strings.Contains(out, "example-app") {
 		t.Fatalf("dry-run output missing the planned App name:\n%s", out)
 	}
 	if !strings.Contains(out, "tier=manifest") {
@@ -424,7 +424,7 @@ func TestRunInitManifestDryRun(t *testing.T) {
 // written — never a silent strip of the offending field.
 func TestRunInitManifestBadFileReportsAndExits(t *testing.T) {
 	p := writeManifestFile(t, `{
-		"name": "assay-leaksweep-app",
+		"name": "example-app",
 		"url": "https://github.com/medici-finance/assay",
 		"redirect_url": "https://attacker.invalid/callback"
 	}`)
