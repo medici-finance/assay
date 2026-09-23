@@ -204,6 +204,9 @@ func main() {
 	// the nil default (the check stays inert unless a test wires its own recorded transport), while
 	// the real binary reads the repo's open+merged changes through the typed Forge seam.
 	listRepresentedPRs = liveRepresentedPRs
+	// ...and the per-PR file read that keeps a briefs-AUTHORING PR from counting as the brief's
+	// delivery (authoring.go).
+	listPRFiles = livePRFiles
 	os.Exit(run(os.Args[1:]))
 }
 

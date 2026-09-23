@@ -132,6 +132,11 @@ func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
 				"worker on a phantom row — nothing was claimed; retry.",
 			stepClaimAcquire, repo, briefID, err), err)
 	}
+	// A PR that only AUTHORED the brief is not its delivery (authoring.go). The drop runs BEFORE
+	// representingPRs so a --rework dispatch can never follow up an authoring PR.
+	if prs, err = dropBriefAuthoringPRs(repo, briefID, prs); err != nil {
+		return none, err
+	}
 	open, merged := representingPRs(briefID, prs)
 	if len(open) > 0 {
 		n := open[0]

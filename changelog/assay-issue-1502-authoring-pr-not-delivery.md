@@ -1,0 +1,2 @@
+### Fixed
+- `deskdispatch` no longer refuses a fresh dispatch of a brief because the docs-only PR that authored it carries its `Brief:` trailer. A PR is set aside as authoring, not delivery, only when it adds the brief's own file and touches nothing but stream board READMEs, brief files and changelog fragments. A PR that touches any other path, including a document delivered under `docs/streams/`, still refuses, and so does one that does not add the brief's file. A file list that cannot be read or proven complete holds the dispatch as could-not-check.

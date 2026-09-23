@@ -46,6 +46,7 @@ it on day one.
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
+| `deskrun` | `<owner/repo> <workflow> --ref <r> [-f k=v …]` (dispatch one run, print the run it created), `approve <owner/repo> <run-id> --gate <name>` (clear ONE named deployment gate), `status <owner/repo> <run-id>` — under the repo's roster-bound run credential (`ASSAY_RUN_CREDENTIALS`): the dedicated `release-runner` credential proceeds, a `human:<name>` binding is REFUSED (exit 5) before anything is minted, an unbound repo is could-not-check (exit 6). On GitHub, `approve` is could-not-check under an App credential (required reviewers are users or teams). Never `repository_dispatch`; GitLab starts pipelines with the trigger token | outward write (`status`: read) | yes |
 | `deskreconcile` | (no verbs) `--worktree DIR [--issue N] [--dry-run]` — the desk-side board-reconcile writer: fetches origin/main into an isolated worktree, runs `statusgen reconcile --backfill --apply` (the only writer of a stream README Status cell: `todo`/`in-progress` → `implemented`, real merged-PR witness only), and — only when a stream README changed — commits ONLY those README files as ONE commit on the fixed branch `board/reconcile` and opens/UPDATES exactly one draft PR titled `chore(board): reconcile`. Removes the scheduled-CI dependency #1175 is blocked on (no App may push the workflow change). `--dry-run` reports the rows it would flip and writes nothing | outward write (the commit + `deskpr` carry) | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
@@ -4088,6 +4089,21 @@ by a dispatcher that never dispatched and every later attempt is told the item i
 claimed. A mistyped flag must cost a refusal, not an item nobody can pick up until a human
 deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
 table of bad inputs and asserts that *zero* processes ran.
+
+**A PR that only authored a brief is not its delivery.** A fresh worker dispatch is refused
+when an OPEN or MERGED PR already names the brief in its `Brief:` trailer (the phantom check).
+The docs-only PR that WROTE the brief carries that trailer too, so before each match
+`deskdispatch` reads the changed files of every PR naming the brief and sets aside one that
+only authored it. Every path must be a stream board README
+(`docs/streams/<stream>/README.md`), a brief file (`docs/streams/<stream>/brief-<NN>-*.md`) or a
+changelog fragment (`changelog/<name>.md`), a rename is judged on both halves, and the PR must
+ADD the brief's own file. Any other path, including any other document under `docs/streams/`,
+makes the PR a delivery. That keeps a PR that authored a brief and delivered a document under
+`docs/streams/` in the same change counted as a delivery, even though it adds the brief's file.
+A PR that only edits an existing brief did not author it, so it stays a delivery too. A file list that
+cannot be read, or whose length does not match the forge's own changed-file count, holds the
+dispatch as could-not-check (exit 6); it is never read as "authoring". A set-aside PR is named
+in a `NOTICE` line on stderr.
 
 **`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
 predicted.** A dry run normally shows the agent's home worktree as a not-yet-known

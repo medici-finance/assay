@@ -20,6 +20,8 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-14
+decision-issue: 1556
 exec-tier: strong
 exec-tier-why: "this decides which credential is allowed to start a release or unblock a gated deployment, and a subtle error — a resolver that accepts a human-bound roster entry and mints an ambient token anyway, a RunRef correlation that silently picks the wrong run — survives every happy-path test and hands the wrong actor a release trigger (questions a and c)."
 gate-why: >-
@@ -93,6 +95,14 @@ facts:
   permission separates "start/approve" from "cancel/delete/disable" — GitHub ships one
   scope for all of it. This is why no desk App holds it today and why the operation has
   fallen to a human's own `gh` session by default rather than by policy choice.
+- **Amended 2026-09-23 (correction found at review; the bullet above and the `why:` are left
+  as ratified).** `actions: write` grants `workflow_dispatch` but NOT `pending_deployments`
+  approval. Approving a pending deployment needs `Deployments: write`, and GitHub lets only
+  the environment's required reviewers approve — required reviewers are users or teams, never
+  an App. Under the `release-runner` App credential the GitHub approve path therefore cannot
+  succeed: the forge reports `current_user_can_approve: false` and `ApproveGate` refuses as
+  could-not-check before any write. Whether that path ships as a documented could-not-check or
+  is withdrawn is for the human who ratified this brief to decide on its decision issue.
 - `docs/streams/apps-installer/brief-03-deskapps-install-prove.md:78` independently states
   *"Never widen a grant, never edit an installation's permissions, never call `gh workflow
   run`"* for the desk-apps install-prove identity — the same conclusion this brief reaches
