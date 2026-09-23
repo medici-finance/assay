@@ -60,13 +60,17 @@ accepted:
 ([`registers-v1.md`](../../../spec/registers-v1.md) §7.5):
 
 - **With a `ruling:` link**, it reads the comment through the forge API. It passes only when
-  the comment exists and sits on the linked issue in this repository, its author is not a
-  bot, the author's login maps (through the human-login map) to a human — the one
-  `decided-by` names, if it names one — and the issue is this record's decision issue: its
-  body carries `<!-- decision-gate: DR-<slug> -->` for this record, or the decision-gate
-  marker of a brief whose `design:` cites it. Anything else fails with a named reason:
-  `malformed-link`, `unresolvable-link`, `deleted-comment`, `bot-author`, `wrong-author`,
-  `unrelated-issue`, `record-unreadable`.
+  the comment exists, sits on the linked issue in this repository and was never edited, its
+  author is not a bot, the author's login maps (through the human-login map) to a human —
+  the one `decided-by` names, if it names one — the comment's own text names the record's
+  `DR-<slug>` id, and the issue is this record's decision issue: its body carries
+  `<!-- decision-gate: DR-<slug> -->` for this record, or the decision-gate marker of a
+  brief whose `design:` cites it. Anything else fails with a named reason:
+  `malformed-link`, `unresolvable-link`, `deleted-comment`, `edited-comment`, `bot-author`,
+  `wrong-author`, `record-not-named`, `unrelated-issue`, `record-unreadable`. A ruling
+  corroborates only the human who wrote it: any other real name in the same `decided-by`
+  fails (`wrong-author`), so a record approved by several humans carries no `ruling:`
+  link. To correct a ruling, the human posts a new comment and the record links that one.
 - **Without one**, a real `decided-by` name is corroborated as any other `human:<name>`
   stamp (that human's approval on the pull request, or the closed decision issue), and the
   placeholder is a problem: `placeholder-unratified`.

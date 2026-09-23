@@ -83,13 +83,13 @@
       "name": "brief marker accepted without the brief citing the record",
       "file": "decisionruling.go",
       "old": "if bok && bs == stream && normBriefNum(bn) == normBriefNum(num) {",
-      "new": "if bok && bs == stream {"
+      "new": "if bok && bs == stream && (true || normBriefNum(bn) == normBriefNum(num)) {"
     },
     {
       "name": "colon-form brief marker from another repository accepted",
       "file": "decisionruling.go",
       "old": "!strings.EqualFold(parts[len(parts)-3], repoName)",
-      "new": "false"
+      "new": "false && !strings.EqualFold(parts[len(parts)-3], repoName)"
     },
     {
       "name": "record-unreadable check disabled",
@@ -108,6 +108,42 @@
       "file": "designgate.go",
       "old": "if _, ok := parseRulingURL(r); !ok {",
       "new": "if _, ok := parseRulingURL(r); false && !ok {"
+    },
+    {
+      "name": "a ruling corroborates every decided-by name, not only its author's (co-signer passed on another human's comment)",
+      "file": "decisionruling.go",
+      "old": "if o.rulesFor(s.Name) {",
+      "new": "if true {"
+    },
+    {
+      "name": "edited-comment check disabled (a comment changed after posting still corroborates)",
+      "file": "decisionruling.go",
+      "old": "if !updated.Equal(created) {",
+      "new": "if false && !updated.Equal(created) {"
+    },
+    {
+      "name": "unreadable comment timestamps no longer a could-not-check",
+      "file": "decisionruling.go",
+      "old": "if cerr != nil || uerr != nil {",
+      "new": "if false && (cerr != nil || uerr != nil) {"
+    },
+    {
+      "name": "record-not-named check disabled (the comment need not name the record it rules on)",
+      "file": "decisionruling.go",
+      "old": "if !commentNamesRecord(cm.Body, rec.ID) {",
+      "new": "if false {"
+    },
+    {
+      "name": "record id matched without its trailing boundary (a longer id that starts with it counts)",
+      "file": "decisionruling.go",
+      "old": "(end == len(text) || !idChar(text[end]))",
+      "new": "(end >= 0)"
+    },
+    {
+      "name": "record id matched without its leading boundary (an id embedded after other id characters counts)",
+      "file": "decisionruling.go",
+      "old": "(start == 0 || !idChar(text[start-1]))",
+      "new": "(start >= 0)"
     }
   ]
 }

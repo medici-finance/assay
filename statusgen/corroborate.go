@@ -1163,7 +1163,9 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gate
 //     never corroborated by a PR anchor; with no resolvable ruling link it is
 //     MISSING-CORROBORATION (the unchecked-placeholder hole, closed);
 //   - a real-name stamp in a record that carries a ruling link is decided by that
-//     link — a present-but-failing link fails closed even if a PR anchor exists;
+//     link — a present-but-failing link fails closed even if a PR anchor exists,
+//     and a passing link corroborates ONLY the name its author resolved to (every
+//     other decided-by name is MISSING, wrong-author);
 //   - a real-name stamp in a record with NO ruling link falls through to the three
 //     anchors below, unchanged.
 //

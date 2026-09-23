@@ -22,12 +22,16 @@ package main
 //
 //   - `ruling:` present → resolve the comment through the forge REST API and PASS
 //     only when ALL hold: the link parses; it points into the PR's own repository;
-//     the comment exists; the comment really sits on the issue the link names; its
-//     author is not a bot; its author's login maps through the human-login map
+//     the comment exists; the comment really sits on the issue the link names; it
+//     was not edited after it was posted (updated_at == created_at); its author is
+//     not a bot; its author's login maps through the human-login map
 //     (ASSAY_HUMAN_LOGIN_MAP) to a human — and, when decided-by names a real human,
-//     to THAT human; and the issue is a decision issue for the SAME record, i.e. it
-//     carries the decision-gate marker naming this DR or a brief whose `design:`
-//     cites it. Every failure is a NAMED reason (rulingReason) and fails closed.
+//     to THAT human; the comment's own text names the record id (DR-<slug>); and
+//     the issue is a decision issue for the SAME record, i.e. it carries the
+//     decision-gate marker naming this DR or a brief whose `design:` cites it.
+//     Every failure is a NAMED reason (rulingReason) and fails closed. A passing
+//     ruling corroborates exactly ONE name — the human who wrote it; any other
+//     real name the same decided-by carries is MISSING (wrong-author).
 //   - `ruling:` absent and decided-by names no real human (the placeholder) → a
 //     PROBLEM (MISSING-CORROBORATION, reason placeholder-unratified). This is the
 //     hole the lane exists to close.
@@ -41,8 +45,9 @@ package main
 // What it does NOT establish. It proves WHO ruled and WHERE (a mapped human, on
 // this record's decision issue). It does not read WHAT the comment says — an
 // approval and a rejection are both rulings; whether the record reflects the
-// ruling is the review gate's judgement. It does not check the comment was not
-// edited after the fact. Those limits are stated in registers-v1 §7.4.
+// ruling is the review gate's judgement; the refusal of an edited comment is what
+// keeps the text that judgement reads the text the human wrote. Those limits are
+// stated in registers-v1 §7.4.
 //
 // Split, as in decisiongateanchor.go: resolveRuling is the testable core — it takes
 // an injected *ghClient (the httpDoer seam, faked in tests by an httptest server),
@@ -60,6 +65,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -121,6 +127,8 @@ const (
 	rulingBotAuthor             rulingReason = "bot-author"
 	rulingWrongAuthor           rulingReason = "wrong-author"
 	rulingUnrelatedIssue        rulingReason = "unrelated-issue"
+	rulingEditedComment         rulingReason = "edited-comment"
+	rulingRecordNotNamed        rulingReason = "record-not-named"
 )
 
 // decisionRecordStamp is one DR record the PR touched, as read from the checkout.
@@ -165,15 +173,38 @@ func (o rulingOutcome) appliesTo(name string) bool {
 	return false
 }
 
+// rulesFor reports whether a PASSING outcome corroborates the stamp named name. A
+// ruling corroborates exactly ONE name — the human the comment's author resolved
+// to (o.Name) — or, for a placeholder record (no real names), the placeholder
+// stamp. It never extends to another name the same decided-by carries: that human
+// did not write this comment.
+func (o rulingOutcome) rulesFor(name string) bool {
+	if name == decisionPlaceholderName {
+		return len(o.Names) == 0
+	}
+	return o.Name != "" && name == o.Name
+}
+
 // rulingStampResult renders the outcome as a corroborateResult for stamp s.
 func rulingStampResult(s stamp, o rulingOutcome) corroborateResult {
 	if o.Present && o.Reason == rulingOK {
+		if o.rulesFor(s.Name) {
+			return corroborateResult{
+				Stamp:   s,
+				Verdict: verdictCorroborated,
+				Login:   o.Author,
+				Evidence: fmt.Sprintf("ruling comment by %s (mapped human %q) on this record's decision issue: %s",
+					o.Author, o.Name, o.Detail),
+			}
+		}
+		// A co-signer: the record's ruling link is present and resolves, but to a
+		// DIFFERENT human. One human's ruling never corroborates another's name.
 		return corroborateResult{
 			Stamp:   s,
-			Verdict: verdictCorroborated,
+			Verdict: verdictMissing,
 			Login:   o.Author,
-			Evidence: fmt.Sprintf("ruling comment by %s (mapped human %q) on this record's decision issue: %s",
-				o.Author, o.Name, o.Detail),
+			Evidence: fmt.Sprintf("ruling %s: the ruling comment %s is by %s (mapped human %q), but decided-by also names human:%s — a ruling link corroborates only the human who wrote it (registers-v1 §7.5)",
+				rulingWrongAuthor, o.Detail, o.Author, o.Name, s.Name),
 		}
 	}
 	reason, detail := o.Reason, o.Detail
@@ -234,8 +265,11 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 			Login string `json:"login"`
 			Type  string `json:"type"`
 		} `json:"user"`
-		IssueURL string `json:"issue_url"`
-		HTMLURL  string `json:"html_url"`
+		IssueURL  string `json:"issue_url"`
+		HTMLURL   string `json:"html_url"`
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
 	}
 	if jerr := json.Unmarshal(body, &cm); jerr != nil || cm.User.Login == "" {
 		return refuse(rulingUnresolvable, "comment %d on %s: HTTP 200 but the payload did not parse as an issue comment with an author", link.CommentID, link.Repo)
@@ -251,6 +285,18 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 	onRepo, onNum := im[1]+"/"+im[2], im[3]
 	if !strings.EqualFold(onRepo, link.Repo) || onNum != strconv.Itoa(link.Issue) {
 		return refuse(rulingUnrelatedIssue, "comment %d sits on %s#%s, not on %s#%d as the ruling link claims", link.CommentID, onRepo, onNum, link.Repo, link.Issue)
+	}
+
+	// 2b. The comment is unedited: the text a reviewer reads must be the text the
+	// human wrote. Timestamps that cannot be read cannot show that — a
+	// could-not-check (unresolvable-link), never a pass.
+	created, cerr := time.Parse(time.RFC3339, cm.CreatedAt)
+	updated, uerr := time.Parse(time.RFC3339, cm.UpdatedAt)
+	if cerr != nil || uerr != nil {
+		return refuse(rulingUnresolvable, "comment %d on %s: created_at %q / updated_at %q did not parse — whether the comment was edited after it was posted could not be checked", link.CommentID, link.Repo, cm.CreatedAt, cm.UpdatedAt)
+	}
+	if !updated.Equal(created) {
+		return refuse(rulingEditedComment, "comment %d on %s was edited after it was posted (created_at %s, updated_at %s) — link an unedited ruling comment; to correct a ruling, the human posts a new comment", link.CommentID, link.Repo, cm.CreatedAt, cm.UpdatedAt)
 	}
 
 	// 3. A bot never rules. Checked before the map so a mis-mapped bot login is
@@ -288,7 +334,15 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 		out.Name = name
 	}
 
-	// 5. The issue is a decision issue for THIS record.
+	// 5. The comment names THIS record, in text the human wrote (and, by 2b, did
+	// not edit afterwards). The issue-body marker checked in 6 is editable after
+	// the ruling by anyone with write access, so it cannot alone bind the comment
+	// to the record.
+	if !commentNamesRecord(cm.Body, rec.ID) {
+		return refuse(rulingRecordNotNamed, "comment %d on %s does not name the record %s — the ruling comment must name the record it rules on", link.CommentID, link.Repo, rec.ID)
+	}
+
+	// 6. The issue is a decision issue for THIS record.
 	ibody, istatus, ierr := c.GetIssue(link.Repo, link.Issue)
 	switch {
 	case ierr != nil:
@@ -334,6 +388,30 @@ func humanNameForLogin(humanLogins map[string]string, login string) string {
 	}
 	sort.Strings(names)
 	return names[0]
+}
+
+// commentNamesRecord reports whether text names the record id as a whole token:
+// the id is not preceded or followed by a character that could continue an id
+// ([A-Za-z0-9_-]), so a longer id that merely starts with this one does not count.
+// Case-sensitive, as record ids are (decisionIDRe).
+func commentNamesRecord(text, recordID string) bool {
+	if recordID == "" {
+		return false
+	}
+	idChar := func(b byte) bool {
+		return b == '-' || b == '_' || (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
+	}
+	for from := 0; ; {
+		i := strings.Index(text[from:], recordID)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(recordID)
+		if (start == 0 || !idChar(text[start-1])) && (end == len(text) || !idChar(text[end])) {
+			return true
+		}
+		from = start + 1
+	}
 }
 
 // issueRulesOnRecord reports whether an issue body carries a decision-gate marker
@@ -523,6 +601,11 @@ func decisionCitingBriefs(root, id string) []string {
 func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecordStamp, humanLogins map[string]string) rulingOutcomes {
 	out := rulingOutcomes{}
 	for _, r := range recs {
+		// Name the forge target BEFORE first contact, so an operator sees what is
+		// about to be read, not only the verdict afterwards.
+		if r.LoadErr == "" && strings.TrimSpace(r.Ruling) != "" {
+			fmt.Fprintf(os.Stderr, "statusgen --corroborate: resolving ruling link %s for %s\n", strings.TrimSpace(r.Ruling), r.File)
+		}
 		out[r.File] = resolveRuling(c, repo, r, humanLogins, decisionCitingBriefs(root, r.ID))
 	}
 	return out

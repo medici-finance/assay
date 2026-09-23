@@ -506,9 +506,13 @@ itself:
   whether the choice was right is the review gate's judgement, then the change's own
   validation (`docs/validation.md`) after it lands.
 - Prove what a ruling SAID. The section 7.5 corroboration proves who ruled and where — a
-  mapped human, on this record's decision issue — not whether the comment approved or
-  rejected, and not that it was left unedited afterwards. Whether the record faithfully
-  transcribes the ruling is the review gate's judgement.
+  mapped human, in an unedited comment that names this record, on this record's decision
+  issue — not whether the comment approved or rejected. Whether the record faithfully
+  transcribes the ruling is the review gate's judgement; refusing an edited comment is
+  what keeps the text that judgement reads the text the human wrote. The decision-gate
+  marker in the issue body is read as it stands when the check runs, and the issue body
+  stays editable after the ruling — which is why the comment's own text must also name
+  the record (section 7.5, condition 5).
 
 ### 7.5 The ruling link and its corroboration
 
@@ -530,21 +534,36 @@ edits a record (any added line in the record file), MUST resolve the `ruling` co
 through the forge and treat the stamp as corroborated ONLY when all of these hold:
 
 1. the link parses to the grammar above and names the record's own repository;
-2. the comment exists, and sits on the issue the link names;
+2. the comment exists, sits on the issue the link names, and was not edited after it was
+   posted (its last-updated time equals its creation time);
 3. its author is not a bot account;
 4. its author's login maps, through the human-login map, to a human — and, when
    `decided-by` names a real human, to that human;
-5. the issue is a decision issue for the same record: it carries the decision-gate marker
+5. the comment's own text names the record by its `DR-<slug>` id, as a whole token (a
+   longer id that merely begins with it does not count);
+6. the issue is a decision issue for the same record: it carries the decision-gate marker
    `<!-- decision-gate: <id> -->` naming the record's own `DR-<slug>`, or naming a brief
    whose `design:` cites the record (as `<stream>/<NN>`, or a colon work-item id ending
    `<repo>:<stream>:<NN>` that names the record's own repository).
 
+Conditions 2 and 5 together make the tie between the ruling and the record something the
+human wrote and nobody changed afterwards: the issue-body marker of condition 6 is still
+required, but it is editable after the ruling and so cannot bind the two alone. To correct
+a ruling, the human posts a new comment and the record links that one.
+
+A ruling corroborates exactly ONE name: the human who wrote the comment. When `decided-by`
+names several real humans and the record carries a `ruling` link, every name other than
+the comment author's MUST be reported as a problem (`wrong-author`) — one human's ruling
+never corroborates another's name. A record approved by several humans carries no `ruling`
+link, and each name is then corroborated by its own anchor.
+
 It MUST fail closed, with a named reason, on each way that can go wrong: `malformed-link`,
-`unresolvable-link` (the forge could not be read — never rounded up to a pass),
-`deleted-comment`, `bot-author`, `wrong-author`, `unrelated-issue`, and
-`record-unreadable`. A `ruling` link that is present but fails MUST fail the stamp even
-when another anchor (an approval on the pull request) would have corroborated the name:
-the record would otherwise assert a provenance that is false.
+`unresolvable-link` (the forge could not be read, or the comment's timestamps could not
+be — never rounded up to a pass), `deleted-comment`, `edited-comment`, `bot-author`,
+`wrong-author`, `record-not-named`, `unrelated-issue`, and `record-unreadable`. A `ruling`
+link that is present but fails MUST fail the stamp even when another anchor (an approval
+on the pull request) would have corroborated the name: the record would otherwise assert a
+provenance that is false.
 
 **The placeholder rule.** A stamp with neither a real name corroborated on the pull
 request nor a resolvable `ruling` link MUST be reported as a problem

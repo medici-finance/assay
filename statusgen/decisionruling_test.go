@@ -49,9 +49,30 @@ type rlForge struct {
 	issueBody     string
 }
 
+// rlPosted is the default comment timestamp: created_at == updated_at, i.e. a
+// comment never edited after it was posted.
+const rlPosted = "2026-09-01T10:00:00Z"
+
+// rlRulingText is the default ruling comment text: it names the record by its id,
+// which is what ties the comment to THIS record in text the human wrote.
+const rlRulingText = "Approved: " + rlRecordID + " as briefed."
+
 func rlCommentJSON(login, typ, repo string, issue int) string {
-	return fmt.Sprintf(`{"id":%d,"user":{"login":%q,"type":%q},"issue_url":"https://api.github.com/repos/%s/issues/%d","html_url":%q,"body":"approve as briefed"}`,
-		rlComment, login, typ, repo, issue, rlURL(repo, issue, rlComment))
+	return rlCommentJSONWith(login, typ, repo, issue, rlRulingText, rlPosted, rlPosted)
+}
+
+// rlCommentJSONWith is rlCommentJSON with the comment text and both timestamps
+// chosen by the test. An empty created/updated value omits that field.
+func rlCommentJSONWith(login, typ, repo string, issue int, body, created, updated string) string {
+	ts := ""
+	if created != "" {
+		ts += fmt.Sprintf(`,"created_at":%q`, created)
+	}
+	if updated != "" {
+		ts += fmt.Sprintf(`,"updated_at":%q`, updated)
+	}
+	return fmt.Sprintf(`{"id":%d,"user":{"login":%q,"type":%q},"issue_url":"https://api.github.com/repos/%s/issues/%d","html_url":%q,"body":%q%s}`,
+		rlComment, login, typ, repo, issue, rlURL(repo, issue, rlComment), body, ts)
 }
 
 func rlIssueJSON(body string) string {
@@ -213,7 +234,14 @@ func TestRuling_WrongAuthorUnmapped(t *testing.T) {
 func TestRuling_WrongAuthorOtherHuman(t *testing.T) {
 	f := defaultRLForge()
 	f.commentBody = rlCommentJSON(rlOther, "User", rlRepo, rlIssue)
-	rlWantMissing(t, rlRun(t, f.client(t), rlNamed("example_human", rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingWrongAuthor)
+	rec := rlNamed("example_human", rlURL(rlRepo, rlIssue, rlComment))
+	rlWantMissing(t, rlRun(t, f.client(t), rec, &ghPRData{}, nil), rulingWrongAuthor)
+	// Pin the resolver's own refusal too: the stamp verdict alone is backed by a
+	// second layer (rulingOutcome.rulesFor), so it would stay MISSING even if the
+	// resolver passed a comment by the wrong human.
+	if o := resolveRuling(f.client(t), rlRepo, rec, rlLogins, nil); o.Reason != rulingWrongAuthor {
+		t.Fatalf("resolveRuling reason = %q, want %q — detail: %s", o.Reason, rulingWrongAuthor, o.Detail)
+	}
 }
 
 // The link pairs issue #41 with a comment id that actually sits on issue #99.
@@ -249,6 +277,100 @@ func TestRuling_PullRequestNotIssue(t *testing.T) {
 	f := defaultRLForge()
 	f.issueBody = fmt.Sprintf(`{"number":%d,"body":%q,"pull_request":{"url":"x"}}`, rlIssue, rlMarker)
 	rlWantMissing(t, rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingUnrelatedIssue)
+}
+
+// A ruling corroborates ONLY the human who wrote it. A record whose decided-by
+// names two humans, with a ruling by one of them, must not corroborate the other —
+// mapped or not. Each other name is MISSING (wrong-author), never passed on
+// someone else's comment and never handed to the PR anchors (the link is present).
+func TestRuling_CosignerNotCorroboratedByAnothersRuling(t *testing.T) {
+	for _, second := range []string{"example_other", "example_ghost"} { // mapped, unmapped
+		t.Run(second, func(t *testing.T) {
+			rec := decisionRecordStamp{File: rlFile, ID: rlRecordID,
+				DecidedBy: "human:example_human, human:" + second,
+				Names:     []string{"example_human", second},
+				Ruling:    rlURL(rlRepo, rlIssue, rlComment)}
+			stamps := addDecisionRecordStamps(nil, []decisionRecordStamp{rec})
+			if len(stamps) != 2 {
+				t.Fatalf("addDecisionRecordStamps produced %d stamps, want 2", len(stamps))
+			}
+			// The second name even approved the PR: a present link still decides it.
+			data := &ghPRData{Reviews: []ghReview{{Author: ghAuthor{Login: rlOther}, State: "APPROVED"}}}
+			out := rulingOutcomes{rec.File: resolveRuling(defaultRLForge().client(t), rlRepo, rec, rlLogins, nil)}
+			got := map[string]corroborateResult{}
+			for _, r := range corroborateStampsRuled(stamps, data, rlRepo, 7, nil, out) {
+				got[r.Stamp.Name] = r
+			}
+			if r := got["example_human"]; r.Verdict != verdictCorroborated {
+				t.Fatalf("the ruling author's own name: verdict = %v, want CORROBORATED — evidence: %s", r.Verdict, r.Evidence)
+			}
+			r := got[second]
+			rlWantMissing(t, r, rulingWrongAuthor)
+			if !strings.Contains(r.Evidence, rlHuman) || !strings.Contains(r.Evidence, second) {
+				t.Fatalf("evidence should name the ruling author and the uncorroborated name: %s", r.Evidence)
+			}
+		})
+	}
+}
+
+// A comment edited after it was posted does not corroborate: the text the reviewer
+// reads must be the text the human wrote.
+func TestRuling_EditedComment(t *testing.T) {
+	f := defaultRLForge()
+	f.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, rlRulingText, rlPosted, "2026-12-01T10:00:00Z")
+	rlWantMissing(t, rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingEditedComment)
+}
+
+// A comment whose timestamps cannot be read cannot be shown unedited: that is a
+// could-not-check (unresolvable-link), never a pass.
+func TestRuling_CommentTimestampsUnreadable(t *testing.T) {
+	for name, ts := range map[string][2]string{
+		"no-created": {"", rlPosted},
+		"no-updated": {rlPosted, ""},
+		"garbled":    {"yesterday", "yesterday"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := defaultRLForge()
+			f.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, rlRulingText, ts[0], ts[1])
+			rlWantMissing(t, rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingUnresolvable)
+		})
+	}
+}
+
+// The tie between the comment and THIS record must be text the human wrote: the
+// comment itself names the record id. The issue body's marker alone is editable
+// after the ruling, so a comment that never names the record does not corroborate,
+// even on an issue that (now) carries the record's marker. A longer id that merely
+// starts with the record's id does not count.
+func TestRuling_CommentDoesNotNameRecord(t *testing.T) {
+	for name, text := range map[string]string{
+		"no-id":     "Approved as briefed.",
+		"other-id":  "Approved: DR-example-other-rec as briefed.",
+		"prefix-id": "Approved: " + rlRecordID + "-v2 as briefed.",
+		"infix-id":  "Approved: x" + rlRecordID + " as briefed.",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := defaultRLForge()
+			f.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, text, rlPosted, rlPosted)
+			rlWantMissing(t, rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingRecordNotNamed)
+		})
+	}
+}
+
+// The record id may sit anywhere in the comment, next to punctuation or markup.
+func TestRuling_CommentNamesRecordInContext(t *testing.T) {
+	for _, text := range []string{
+		rlRecordID,
+		"`" + rlRecordID + "`: approved.",
+		"Approve (" + rlRecordID + ").\n\nThanks.",
+	} {
+		f := defaultRLForge()
+		f.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, text, rlPosted, rlPosted)
+		r := rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil)
+		if r.Verdict != verdictCorroborated {
+			t.Fatalf("comment %q: verdict = %v, want CORROBORATED — evidence: %s", text, r.Verdict, r.Evidence)
+		}
+	}
 }
 
 func TestRuling_RecordUnreadable(t *testing.T) {
