@@ -131,6 +131,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
+| 23 | [Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App](brief-23-evidence-lander-gatekeeper.md) | 2 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -180,18 +181,29 @@ only by `07` landing (done). `14` and `15` are human-gated (a new autonomous sto
 work; a persistent local host under operator credentials), so each also waits on its decision
 issue, not just its `depends:`.
 
+**Brief 23 extends the workflow-landing chain: Evidence lands on main without a PR.** On a
+PR-required main, every Evidence landing pays a full PR's fixed cost (#1588; batching, #1568, cuts
+the count but not the cost). `23` adds a validator that admits only Evidence-only changes, and a
+dedicated lander App that is the only identity allowed to skip the PR rule. The verifier App keeps
+no write to main, and a rejected landing falls back to the batch Evidence PR. It depends on `11`,
+and that dependency is the real head: its deliverable includes two workflow files, which no
+implementer App can push, so they land only through `11`'s workflow-only PR path. It is
+`gate: human` and core-system (a new App, a bypass, a ruleset split). Its `## Context` carries the
+single-point-of-failure line, and the brief pairs each layer with the Verify row that proves it
+holds with the layer above it bypassed.
+
 ## Dependency waves
 
 ```
 Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]
 Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10
-Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11    [13 vitals resource block] ← 07
+Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11    [13 vitals resource block] ← 07    [23 Evidence lander] ← 11
 Wave 3: [14 budget-driven recycle] ← 04, 13
 Wave 4: [15 local host + fleet aggregate] ← 13, 14
 ```
 
-Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` (workflow landing), and
-`01 → 07 → 13 → 14 → 15` (vitals delta) — three independent chains.
+Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` / `10 → 11 → 23` (workflow landing),
+and `01 → 07 → 13 → 14 → 15` (vitals delta). The three chains are independent of each other.
 
 ## Shared conventions
 
