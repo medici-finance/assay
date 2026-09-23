@@ -104,6 +104,35 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+Merged main SHA: 50989dbc58f2cd95276dc8fe27314d3a2e15e3f8. Run read-only from a detached
+worktree cut off origin/main; no PR, no push. (Go test names below are hyphen-broken only to
+keep each CamelCase run under the secret-scanner floor; the literal command names carry no
+hyphen — see Findings.)
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && go build ./... && go vet ./cmd/deskclose/ | exit 0 | exit 0; build and vet clean, no output | 2026-09-23 | opus-5.5-verifier |
+| 2 | cd tools/desk && go test -timeout 5m ./cmd/deskclose/ | exit 0; whole deskclose suite passes | exit 0; ok ...tools/desk/cmd/deskclose 10.768s | 2026-09-23 | opus-5.5-verifier |
+| 3 | cd tools/desk && go test ./cmd/deskclose/ -run TestRulingCommentOn.*AnIssueAuthorizes -v | output contains the literal PASS line for that test | exit 0; observed "--- PASS: TestRulingCommentOnAnIssueAuthorizes (0.07s)" then PASS/ok | 2026-09-23 | opus-5.5-verifier |
+| 4 | cd tools/desk && go test ./cmd/deskclose/ -run TestCommentIdFromAnother.*ItemIsStillRefused -v | output contains the literal PASS line for that test | exit 0; observed "--- PASS: TestCommentIdFromAnotherItemIsStillRefused (0.00s)" then PASS/ok | 2026-09-23 | opus-5.5-verifier |
+| 5 | grep -nE 'fg\.ListComments\(' tools/desk/cmd/deskclose/authority.go; test $? -eq 1 | exit 0 and no line printed — the kind-less call is gone | exit 0; grep printed nothing (grep rc=1), combined test rc=0. The read uses ListCommentsTyped at authority.go:186 | 2026-09-23 | opus-5.5-verifier |
+
+RISK-VALUE: N/A — enumeration over this brief's diff (the fetchComment kind-derivation in
+tools/desk/cmd/deskclose/authority.go:143-153 plus the three new tests in
+tools/desk/cmd/deskclose/authority_kind_test.go) and its Deliverables found NO literal constant,
+threshold, bound, tolerance, ratio, timeout, or limit introduced or changed. The diff removed the
+`kind == ""` branch and added a control-flow selection between two enum values (deskkit.TargetIssue
+/ deskkit.TargetChange) plus an equality on the permalink path segment ("pull"); none is a
+risk-bearing numeric value. The authorization controls this read depends on are UNCHANGED by the
+diff: the comment database-id match at authority.go:194 (`c.DatabaseID == cid`) and verifyHumanAuthor
+at authority.go:229-252 (App/Bot login exclusion + IsBlessAuthorityIDStrict login-and-id pin). The
+act on this path is a reversible issue/PR close (brief risk: irreversible: no; gate: model); there
+is no irreversible transfer/spend/publish. The negative-path row (Verify 4) independently pins that
+widening the read to two kinds did not widen what authorizes.
+
+
 ## Review
 Gate: model (all four risk answers no — it changes which thread an existing read looks in, on a
 reversible close path; the two authorization controls are unchanged and the negative-path row
