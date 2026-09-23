@@ -23,6 +23,339 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.26 — 2026-09-23
+
+### Added
+- New brief harness-portability/16, Codex long-context cap. It plans `model_auto_compact_token_limit`
+  for every `cellctl` Codex desk launch, the same key in the Codex packaging with a lint that fails
+  without it, a compact-or-reboot point for standing desks, and a `deskdispatch` warning for
+  oversized prompts. The goal is to keep long Codex desk sessions from crossing the 272K-token
+  long-context pricing band without anyone noticing.
+- `deskcalibrate`: a monthly reviewer-calibration verb. `deskcalibrate sample` draws a
+  reproducible, seed-recorded sample of the PRs the reviewer App APPROVED in the prior
+  month and REFUSES a re-review whose model vendor equals the reviewer role's own
+  (`ASSAY_REVIEWER_VENDOR`) — a same-vendor re-review measures two instances of one model,
+  not an independent judge. `deskcalibrate report` renders the agreement metric as an
+  explicit numerator/denominator FRACTION, never a bare percentage (verify-integrity/10).
+- `deskkit`: a typed decision-assessment envelope (`AssessmentRequest`/`Prediction`/
+  `PolicyResult`, `spec/decision-assessment-v1.md`, `schemas/decision-assessment-v1.json`)
+  layered on top of the existing `Decide`/`Advice` consult, keeping calibrated
+  probabilistic advice strictly separate from a deterministic policy record.
+  `ValidatePrediction` rejects unknown labels, NaN/Inf or out-of-range probabilities,
+  invalid normalization, mismatched subject/digests, an uncalibrated label carrying a
+  synthesized probability, and inapplicable calibration. `PredictionAdvisor` projects a
+  validated `Prediction` into the existing `Advice` contract with zero change to
+  `Decide`'s fail-closed default, budget, timeout, journal or reserved-verb rules
+  (graph-execution/10).
+- `deskread` serves two per-issue read kinds, `trust` (`Forge.IssueTrustEvents`) and `comments` (`Forge.ListCommentsTyped` on an issue), addressed as `--issue owner/name#N`. Their envelope is keyed by repo and number and keeps the same partial-is-a-result contract as the `issues` kind. The `issues` kind's output is unchanged.
+- `statusgen`: per-finding-class **reversal-rate** mining joined to the gate-yield
+  accounting, with the two-month demotion rule — a class whose reversal rate exceeds 50%
+  for two consecutive months is marked advisory; a later month under 50% restores it.
+
+### Fixed
+- `deskdispatch`'s decision gate now runs the consumer `tools/decision-issue.sh` under the dispatching role's credential (`GH_TOKEN`, plus `GITLAB_TOKEN` on a GitLab-served repo, in the script's environment) from the same single resolution the claim step uses, instead of whatever forge login was ambient. The credential is resolved before the claim, so a mint failure stops the dispatch with nothing durable taken, and the step refuses (exit 6) rather than start the script with no credential handed over and none exported. The `decision-gate OK` line names the credential source.
+- `docs/streams/desk-containers/brief-01-base-image.md`'s Verify row 1 build command now
+  uses the working root-context form (`docker build -f containers/base/Dockerfile -t
+  assay-desk-base:dev .`, run from the repo root) instead of the broken
+  `containers/base`-context form, which failed because the Dockerfile `COPY`s
+  `plugins/assay/` from the context root. `containers/README.md` also gains a note that a
+  plain (non-buildx) arm64-host build needs `--build-arg TARGETARCH=arm64`.
+- `inbound-monitor.sh` takes an explicit read identity, `--token-file OWNER=PATH` (a 0600 installation-token file, read in place and never copied), which outranks its `gh` keyring fallback. Under a replaced `HOME` such as a desk cell's, that fallback resolves to no usable account and 401s every repo. `scanloop run` now hands the poller the running role's already-minted token file for each owner in scope. Owners without one keep the keyring path exactly as before, and each fallback is printed with its reason. An unusable token file is a precondition failure, never a silent fallback to the keyring.
+- `statusgen --scan-issues` — the scan `scanloop run` shells in its scan lane — no longer shells out to `gh` for any forge read. The trust-gate blessing read (was `gh api graphql`) and the un-block comment read (was `gh api --paginate`) now go through the `deskread` verb on the native `Forge` seam, completing what #1223 started for the open-issue list. Under the replaced `HOME` a scanloop pass runs with, those two reads returned `gh: HTTP 401` on every rostered repo; the native client attaches the per-installation App token explicitly on every request. (#1255)
+
+### Changed
+- Roster schema: `ASSAY_REVIEWER_VENDOR` / `ASSAY_VERIFIER_VENDOR` are recognised keys in
+  both `statusgen` and the desk tools, so a roster carrying them no longer collapses the
+  configuration on the unknown-key refusal.
+- The GitHub backend's issue-thread read (`ListCommentsTyped` on an issue) now follows the comment connection's cursor to the end of the thread, capped at 20 pages. A thread longer than the cap, or a thread that reports another page without giving a cursor for it, is now could-not-check, where before it was cut to its first 100 comments without any warning. Reads of pull-request comment threads are unchanged.
+- `pr-review-desk` skill: a finding-class register with a `blocking`/`advisory` status and
+  the reversal-rate demotion rule wired to the monthly calibration report.
+
+## v1.0.25 — 2026-09-23
+
+### Added
+- Release by merge (design + staged implementation): a prepared release PR (title
+  `release: vX.Y.Z` + a `RELEASE: vX.Y.Z` body marker) becomes the release cut when a
+  maintainer MERGES it — the merge is the human gate and the recorded authorizer. A staged
+  `release-on-merge.yml` detects the merge and creates the plain `vX.Y.Z` and umbrella
+  `assay/vX.Y.Z` tags at the merge commit with a GitHub App token (a GITHUB_TOKEN-created tag
+  would not trigger the build), and a staged twin of `release.yml` resolves the tag-push
+  authorizer from the merged PR's `merged_by.login` and refuses to release any `v*` tag whose
+  commit is not a merged release PR — closing the iso-9001/04 tag-push traceability gap.
+
+### Fixed
+- A dispatched agent's worktree no longer INHERITS the shared checkout's git commit identity.
+  `deskdispatch`'s worktree-create step now stamps the DISPATCHED agent's own role commit
+  identity (worker/reviewer/verifier, mapped from `--kit`) into the new worktree's own
+  worktree-scoped config, so a verifier dispatched from a desk checkout commits — and reports
+  its runner — under the verifier App, not the desk App. Before this, the worktree carried
+  whatever `user.name`/`user.email` the shared `.git/config` held, and `statusgen verifyrun`
+  stamped that wrong identity into every Evidence witness Runner cell (silent misattribution).
+  A `--kit` whose role has no roster commit identity is now REFUSED pre-claim (exit 5) naming
+  the kit, the role and the roster key, and the worktree-create OK line prints
+  `identity=<slug> <bot-user-id>`.
+- `cellctl`'s the-desk model policy now gates Opus by a VERSION FLOOR instead of a fixed
+  allowlist: the coordinator ACCEPTS any Opus tier at or above **5.5** (`claude-opus-5-5`,
+  `claude-opus-5-6`, `claude-opus-6`, and a future `claude-opus-9`, including `[1m]` and
+  `-`/`.` spellings) and REFUSES anything below it (the bare `opus` alias, Opus 5.0 —
+  `claude-opus-5` / `-5-0` / `-5.0` — and older tiers such as Opus 4.8). A future Opus tier
+  therefore auto-qualifies as the-desk's top tier with no code edit — a deliberate, documented
+  trade (a floor adopts a future Opus sight-unseen; the "Opus 5.0 was a bad tier despite its
+  number" lesson makes that a choice, reversible by raising the floor). The built-in deny
+  patterns stay anchored at end-of-token (`*opus-5` / `*opus5` / `*opus-5-0` / `*opus-5.0`), and
+  the "which Opus tiers the-desk refuses" decision lives in one shared helper (`isOpusPin`) that
+  both the legacy resolver and the policy resolver consult, so the carve-out cannot fork between
+  sites.
+- `deskclose superseded` on a PULL REQUEST no longer reports a close it did not perform. The
+  close is now **read back** after the call — the item is re-fetched and its state confirmed
+  `closed` before success is printed — so a state-change request that returns without error but
+  leaves the item open (an issue-shaped `state_reason` PATCH on a pull request's number returns
+  `422`, which was swallowed after the confirmation comment posted) is caught. When the comment
+  posted but the close did not take, the run reports `partial: comment posted, close refused: …`
+  with the forge's own error body and exits `6` (could-not-check), never success. The read-back
+  lives in the shared close path, so every permanent-close lane (`superseded`, `duplicate`,
+  `review-request`, `triage`, `self-withdraw`, manifest rows) gets it; the deliberately transient
+  `verify-gate-refire` close, which the repository's verify-gate-close workflow reopens, opts out.
+- `deskclose` flag parsing now accepts the single-dash spelling of a long value flag (e.g.
+  `-by`, which Go's `flag` package treats identically to `--by`) in every argument order. The
+  positional splitter previously recognised only the double-dash spelling, so `superseded <pr>
+  -R … -by …` tripped `flag needs an argument: -by` — it dropped the value that was present and
+  mis-read it as a second item number — a failure that looked "environmental" because it
+  depended only on the dash spelling typed.
+- `deskpost`'s model-capability-floor stamp age-out no longer refuses (verdict) or misreads (flip)
+  every risk-classed review on a reviewed PR. The age-out now keys on the REVIEWER's
+  review-dispatch claim family (`refs/dispatch/<short>--pr-<N>[--<suffix>]`) in the namespace
+  claims actually live in — not the PR body's worker `Brief:` claim (released the moment the
+  worker finishes) and not the empty `refs/heads/dispatch/*` namespace the old reader probed. A new
+  `Forge.MatchingRefs` op does the prefix listing (GitHub `git/matching-refs`; GitLab CE is a
+  could-not-check the review lane never reaches). Reader-side only — the acquire/writer namespace is
+  untouched, and full reader+writer convergence remains the issue-708 follow-up.
+
+### Changed
+- `check-paired-versions.sh`'s single-tag assertion stays as it is on `main` (no harness
+  exemption) per the maintainer's ruling (option 1): re-pin `statusgen`/`desk-tools` to a real
+  `v1.0.24` release instead of carving the harness image out of the rule.
+- `deskwt add` now takes `--role R` and, given it, stamps that desk role's App commit identity
+  into the new worktree (the same shared resolver `role-init` uses); an unbound role is refused
+  (exit 5) before the worktree is created. WITHOUT `--role`, `deskwt add` now CLEARS the new
+  worktree's `user.name`/`user.email` (an empty worktree-scoped value that shadows the shared
+  config), so a bare `deskwt add` worktree can never silently commit under an inherited identity
+  — a commit there fails closed until an identity is set. The commit-identity resolver
+  (GitHub/GitLab shape choice + fail-closed refusals) is extracted to one shared helper,
+  `deskkit.RoleWorktreeCommitIdentity`, so `role-init`, `deskwt add --role` and `deskdispatch`
+  cannot resolve one role to three identities.
+- `statusgen:`/`desk-tools:` re-pinned to the published `v1.0.24` release — tag and every
+  per-platform sha256 harvested from that release's `checksums.txt` — so all three
+  `paired-versions.yaml` sections share one tag again and `check-paired-versions.sh` passes
+  unchanged.
+- harness: pin the v1.0.24 desk-tools image digest (`plugins/assay/paired-versions.yaml`
+  `harness.tag`/`harness.digest`), replacing the fail-closed `PENDING-HARVEST` placeholder now that
+  the image has been published and its digest harvested from two independent registry reads.
+
+## v1.0.24 — 2026-09-22
+
+### Added
+- A `verify-in-container` Windows CI leg (staged, pending maintainer promotion) proves the execution
+  witness actually lands through the container; a held `windows-verify-in-container` job records the
+  native-Windows-host proof as BLOCKED pending a Windows runner with a Linux-container Docker backend.
+- Add the portable `assay:system-demo` skill for outcome-led storyboards and seekable system demonstrations, with explicit evidence labels and an illustrative authoring example.
+- Typed forge seam op `ListChanges(repo, states)` — reads a repo's changes (PRs ↔ MRs) in the requested lifecycle states, keeping `MERGED` distinct from `CLOSED`, with bounded most-recently-updated pagination that reports `Incomplete` rather than hand back a silent partial. GitHub (GraphQL, states variable) and GitLab (`state=all` narrowed client-side) backends, both under the closed forge surface (no forge CLI).
+- `ASSAY_GITLAB_DISPLAY_NAMES` roster key (`<username>=<display name>`; entries separated by `;` or newline) — the offline fallback that lets statusgen's Evidence-actor gate accept a GitLab verifier's Evidence commit. statusgen consumes it; the desk tools recognise it and resolve the username online instead.
+- `CONTRIBUTING.md` gains a "What must not appear in an issue or pull request" section
+  covering secrets and tokens, personal data, private references, unsanitised
+  transcripts/logs/screenshots, and anything captured from a system the reader cannot see. It
+  binds a human contributor and an AI agent acting for one alike, and states the
+  close-the-PR-and-recut fix path for a leak already pushed.
+- `deskreconcile` — a desk-side board-reconcile writer. It fetches `origin/main`
+  into an isolated worktree, runs `statusgen reconcile --backfill --apply` (the
+  only writer of a stream README Status cell: `todo`/`in-progress` →
+  `implemented`, real merged-PR witness only), and — only when a stream README
+  changed — commits ONLY those README files as ONE commit on the fixed branch
+  `board/reconcile` and opens or UPDATES exactly one draft PR titled
+  `chore(board): reconcile`. `--dry-run` reports the rows it would flip and writes
+  nothing. This runs the scheduled-reconcile job from a verb the desk/worker App
+  can run, removing the CI-workflow dependency that #1175 is blocked on (no App
+  may push the workflow change). (#1339)
+- `statusgen newbrief` gains a `--shell` flag (`sh` default / `cmd` / `pwsh`) so a
+  native-Windows Verify row can carry its shell marker at authoring time. It
+  **refuses** a native-Windows `--verify-command` (e.g. `findstr …`) under the
+  default `sh` shell — pointing the author at POSIX-izing it (`grep -F`,
+  forward-slash paths) or declaring the shell — and, when `--shell cmd`/`pwsh` is
+  given, emits the row with its `| # | Shell | Command | Expect |` marker attached
+  in the same pass. This enforces at the brief-authoring front door the rule the
+  author-brief guidance already states: a Windows-shaped row must never land as the
+  default `bash -o pipefail` row with no marker, since an Evidence-only PR cannot
+  rewrite the Verify table to fix it. The default POSIX row keeps its
+  Shell-column-less shape byte-for-byte. (#1466, #1424)
+- `statusgen verifyrun --in-container` runs a brief's Verify rows inside the pinned harness
+  container instead of on the host — the supported execution-witness runner on Windows, where a
+  native `pipefail` bash is unreliable (the WSL-launcher case that made verifyrun record
+  could-not-run for a whole table). It reads the harness image from the new `harness:` block of
+  `plugins/assay/paired-versions.yaml`, resolves it by its sha256 **digest** (never a floating
+  `latest`), bind-mounts the checkout at `/work`, maps `--user` to the host uid:gid on POSIX so the
+  Evidence the container writes lands host-owned, and forwards credentials only as an `--env-file`
+  path (never baked or logged). It **refuses fail-closed** on a `latest` tag or an absent/placeholder
+  digest — an un-digest-pinned image is never run.
+- `system-demo` skill: two player rules from first real use — a fixed stage (constant-size aspect-ratio box, fixed-height caption and evidence-label bands, controls at a constant position, so navigating scenes never moves the controls or reflows the page) and a distinct stage surface (backdrop contrasting with the host page in the host's own design tokens, so the player reads as an embedded presentation viewport). Both added to the "Deliver and check" checks and mirrored in `references/storyboard.md`.
+- windows-port briefs 11–14: the desk-role runtime paths a native-Windows adopter still cannot run (the inbound and PR pollers, the tick emitter, the inbox engine, the push-guard hook and the POSIX wording in the desk skills) are now scoped as Go verbs with parity oracles and a PATH-scrubbed Windows CI job that proves them.
+
+### Fixed
+- Added the `system-demo` skill to the Codex and Cursor packaging coverage rosters
+  (`plugins/assay/codex/packaging.md`, `plugins/assay/cursor/packaging.md`) as
+  `packaged`, plus its degradation cell in both harness binding files
+  (`plugins/assay/references/codex.md`, `plugins/assay/references/cursor.md`) —
+  `harnessgen codex --check` / `harnessgen cursor --check` were failing with an
+  unaccounted-for-skill coverage error.
+- Evidence-actor now accepts a roster-known GitLab HUMAN verifier via GitLab's private commit noreply address (`<user-id>-<username>@users.noreply.<host>`, id-pinned) the way it already accepted the GitHub noreply form.
+- Evidence-actor on GitLab: a verifier service account whose commit carries the account's DISPLAY name (not its username) can now back a `verified`/`done` row, unblocking `implemented → verified` on GitLab (#1477). Two accepting paths: `deskevidence` resolves the landed commit's account to its username ONLINE via the typed forge (`GET /users?search=`, never a forge CLI); `statusgen --lint` accepts the commit OFFLINE when the roster declares the account's display name in the new `ASSAY_GITLAB_DISPLAY_NAMES` map. A forge read that cannot resolve the account is could-not-check, never a pass and never a rejection.
+- Include Bash in the combined desk-tools image and trust its explicit `/work`
+  checkout mount for Git attribution while retaining the nonroot runtime user.
+- Origin-remote parsing is now one shared parser (`deskkit.ParseRemoteRepo` / `OriginRepoSlug`) instead of three copy-pasted `parseRepo` functions plus a fourth regex in preflight. The parser accepts every remote shape git accepts — `git@host:owner/repo`, `ssh://git@host[:port]/owner/repo`, `https://host/owner/repo`, and the ssh HOST-ALIAS form `host:owner/repo` — and reads the RAW configured value (no `insteadOf` expansion), so a checkout using an ssh alias can be worktree-created and have PRs opened against it. It also parses the rewritten/hybrid form `https://host/git@alias:owner/repo` leniently to `owner/repo` (the shape a prepended base URL bakes onto an scp string), rather than failing with the misleading "cannot parse owner/repo" that upstream reported as "branch already exists". A hybrid whose trailing pair is genuinely ambiguous is refused with a message naming the remote string and the expected shape.
+- Reformatted `tools/desk/cmd/deskdispatch/phantom_test.go` with `gofmt` (comment-alignment whitespace only) so package-wide `gofmt -l` checks used as Verify rows elsewhere stop failing on this pre-existing, unrelated drift.
+- Refuse new verified outcome receipts until the target branch contains the
+  verified/done row, dated verifier stamp, and passing execution witnesses, and
+  the same checkout passes lint. Evidence-only landings retain implemented status
+  without recording a completed verification; failure receipts remain available.
+- Require explicit shell selection when authoring native Windows Verify commands;
+  prefer POSIX commands and forward-slash paths for portable checks.
+- The combined `desk-tools` CI-runner image now installs `bash`, so `statusgen verifyrun`'s `bash -o pipefail` Verify rows actually execute when `--in-container` re-invokes verifyrun inside the image. Previously the Alpine final stage shipped only git/gh/ca-certificates and every POSIX row recorded could-not-run for lack of a pipefail-capable shell.
+- `deskdispatch`'s pre-claim phantom check now goes live: its represented-PR transport reads the repo's open+merged changes through the new typed seam op and refuses a fresh worker dispatch whose brief already has an open or merged PR (matched on the PR body's `Brief:` trailer, not a branch name) (#1339).
+- `deskdispatch`'s worktree-create failure hint no longer tells the operator to hunt for a
+  merged/open PR when `deskwt add` actually failed on its own origin-remote resolution
+  (`cannot parse origin repo …` / `cannot parse owner/repo …`) — that class now gets its own
+  hint pointing at the checkout's origin remote, and a message matching neither the
+  branch-exists nor the origin-parse pattern now gets no guessed cause at all instead of the
+  old unconditional "branch already existing" fallback.
+- `deskdispatch`'s worktree-create failure message now routes through the same
+  scrub pass as every other diagnostic, and `ToolRun.FailVerbatim` scrubs the
+  message it is given before it becomes part of the error. A caller that
+  composes its own `FailVerbatim` message from a child process's raw stderr can
+  no longer let a credential-shaped string on that stderr reach the operator
+  unredacted, on any `DESK_TRACE` setting. (#1440)
+- `deskevidence` refuses to land an `"outcome":"verified"` row on
+  `docs/streams/verify-outcomes.jsonl` unless the landing tree presents a
+  lint-valid `verified` closure for that brief — the Verified stamp AND a passing
+  execution witness for every Verify row. Previously the sidecar recorded
+  `verified` on a PASS run unconditionally, so a brief whose Evidence was filled
+  while its board stayed `implemented` (no flip, or no witness) still got a
+  `verified` row; `verifyloop` then bucketed the mismatch as a stuck-flip (#1309)
+  and review refused to merge it. The acceptance decision lives in a new
+  read-only `statusgen verifyclosure --brief <stream>/<NN> [--root <dir>]`
+  sub-command that reuses the board's own Status/Verified read and the existing
+  witness audit (`checkWitnesses`), so the criteria are defined in one place. The
+  gate is scoped to `verified`: a `verify-fail` row (and every other outcome) is
+  never gated, and a brief the check could not evaluate refuses the landing as
+  could-not-check rather than passing silently.
+- `fanoutloop plan` now reconciles every fresh Next-up row against the repo's open+merged PRs and
+  routes by state instead of blindly offering the row (#1339): a row whose brief already MERGED is
+  listed under a new `LANDED-UNRECONCILED` heading (with its PR number) and never dispatched — its
+  board cell just never reconciled after the merge — a row with an OPEN PR is routed to the resume
+  lane, and only unrepresented rows are dispatched. The match is keyed on each PR's `Brief:`
+  trailer, never a branch name. A could-not-check read (or an unresolvable repo) HOLDS the fresh
+  lane with a `FRESH LANE HELD:` line rather than offering rows on an unverified forge. `plan` takes
+  an optional `--repo <owner/name>` (defaults to the configured-roots map for `--root`, else the
+  checkout's origin remote). The PR-list transport is a typed forge op deferred to the cutover — the
+  closed forge surface ships no forge-CLI call — so until it is wired the shipped `plan` performs no
+  forge read; the classification, repo resolution and one-read reduction are in place.
+- `fanoutloop plan`'s already-represented reconciliation now goes live too: its `representedPRs` transport is wired to the same typed seam read, so `plan` routes a fresh row whose brief already has an open PR to resume and a merged one to landed-unreconciled instead of offering it for fresh dispatch (#1339).
+- `issueboard`'s escalation clock no longer fails the WHOLE board when one
+  decision-owed issue's comment thread exceeds a single page. The clock now reads
+  the whole thread through a new bounded, paginated forge read
+  (`Forge.IssueContentEvents`) instead of sharing the trust gate's deliberately
+  single-page read, which had returned could-not-check (exit 6) — and took down
+  the board for every scanned repo — the moment one thread overflowed 100
+  comments. A thread that even bounded pagination cannot walk to the end degrades
+  that ONE row conservatively (rendered ESCALATE with a could-not-check marker)
+  while the rest of the board renders; an overflowed thread is never read as "no
+  escalation owed". (#2844)
+- `statusgen verifyrun --in-container` now marks exactly the bind-mounted `/work` tree safe for the inner git (`safe.directory=/work` via ephemeral `GIT_CONFIG_*` env), so attribution no longer fails on a Windows Docker backend where the mount is root-owned under the unprivileged container user. The trust is scoped to `/work` only — never a global `safe.directory=*`.
+- `statusgen verifyrun` now runs a `cmd`-shell Verify row under a raw Windows
+  command line built as `cmd /d /s /c "<row>"`, instead of letting `os/exec`
+  escape each argument. The default escaping wrapped the row in an extra quote
+  pair and backslash-escaped the row's own inner quotes; `cmd /s /c` strips only
+  the outer pair, so a native-Windows row such as
+  `findstr /c:"…" docs\…` reached `findstr` with broken quoting and exited 1
+  under verifyrun even though the identical line passes when typed at a prompt.
+  `sh` and `pwsh` rows are unchanged. (#1424)
+- `statusgen`'s issue scanner no longer silently drops or retypes a GitHub
+  label whose text is a YAML type keyword or number (`null`, `~`, `true`,
+  `false`, `yes`, `no`, `on`, `off`, `123`, `1.5`) when it writes the
+  `labels: [...]` flow list into a generated placeholder's frontmatter. Each
+  label is now explicitly string-tagged on write, so it always re-parses back
+  as the original string instead of being resolved to `null` (dropped), a
+  boolean, or a number. (#1431)
+- `verifyPassHeldContradiction` (the `**VERIFY: PASS**`/`HELD` contradiction check
+  introduced in PR #1304) no longer launders a same-line, un-routed
+  `HELD`/`could-not-check` mention that trails a genuinely routed one. Routing is now
+  bound to each `HELD`/`could-not-check` occurrence individually — a routing keyword
+  and reference must occur at or after that occurrence's own position — instead of to
+  the line as a whole, closing the same proximity-laundering class PR #1244 closed in
+  the predecessor `entryIsHeld` mechanism. (Issue: #1444)
+- harness-portability brief 12 (Cursor third column): retargeted the stale Verify
+  probe (row 8 + its positive control) at the file where the de-house actually
+  landed the adopter-facing Cursor install scenario — `docs/adopting-assay.md`
+  ("Running Assay on Cursor") — after `adopt/SKILL.md` became a thin router, so the
+  brief's Verify table again runs clean end-to-end against the public tree.
+
+### Changed
+- Claude cell launches and container images disable next-prompt suggestions by default, including scrubbed cells and provider-backed sessions.
+- The Evidence-actor rejection for a GitLab service-account commit whose name matches neither the username nor a declared display name now names the display-name-vs-username gap and its remedy, instead of reading as a wrong-account tamper signal.
+- The model-capability floor is now **RISK-CONDITIONAL on an unstamped PR** for a review
+  verdict. An unstamped PR (no dispatch stamp, a `dispatched-tier:any` stamp, or a stamp
+  that has aged out) still proceeds with a NOTICE on a NON-risk PR, exactly as before — a
+  human-driven or unattested lane is not bricked. But a review verdict is a
+  security-review-bearing write, so on a **risk-classed** PR (every public-repo PR, or a diff
+  touching a security path) an unstamped verdict now **REFUSES**: a security-review-bearing
+  verdict must carry a trustable attestation of the tier that produced it, and a stamp anyone
+  could self-apply — or the absence of one — is not attestation. This closes the hole where the
+  floor was strict against an honest below-tier stamp yet permissive against no stamp at all.
+  The review lane's own trustable-stamp path (`deskdispatch --kit review`) is what lets a
+  correctly-run risk-classed review clear the floor; the risk determination reuses the same
+  signal the ready-flip's security-review gate reads, not a second scheme. The strong, `any`,
+  aged-out and override cases are otherwise untouched, and the loud incident-recovery override
+  still bypasses the floor for an unstamped risk-classed verdict.
+- `SECURITY.md` and the pull-request template point to the new list: already-published
+  sensitive content is reported through the private vulnerability channel, and the PR
+  template asks an agent-assisted author to confirm the check.
+- `docs/streams/forge-neutral/reviewer-write-boundary.md` §3.1 gains a reviewer-role forge-write
+  inventory (repository write is the dispatch claim only — every other reviewer site is read,
+  PR write or issue write) and a claim-reader inventory covering every site that reads, lists
+  or releases a dispatch claim outside the claim tool. §3.3's S2 and S4 rows move from
+  could-not-check to measured results: the local-disk race probe is established (exactly one
+  of 16 winners), a network filesystem could not be reached under this agent's isolation floor
+  and stays could-not-check, and filesystem-type / container detection are measured on darwin
+  and (via a local container) on linux.
+- `statusgen`'s committer-identity cross-check now uses a precise Evidence-section
+  signal for its escalation candidates, replacing the whole-file "most recent commit
+  touching the path" proxy the desk's PR-review round-1 decision (assay#1277) asked
+  to be narrowed. `evidenceSectionTouchedByOtherIdentity` (`gitinfo.go`) asks whether
+  an identity OTHER than the brief's author ever touched the `## Evidence` section
+  specifically, anywhere in its history — not just whichever commit happens to be
+  newest against the whole file. This closes two false-escalation shapes found live
+  against this repo's own tree during review: (1) a later, unrelated, repo-wide
+  mechanical commit (e.g. a brief-schema migration) that never touched Evidence at
+  all resetting the whole-file signal past a genuine independent verification commit;
+  (2) a later same-identity commit that appends a caveat/addendum *inside* the
+  Evidence section after independent verification already landed (e.g. the
+  implementer recording a security-review residual), which a narrower
+  "most-recently-touched-Evidence" signal still misread as self-verification.
+  `statusgen --lint` against this repo's own tree went from 37 false hard `PROBLEM`s
+  to 0 after this refinement.
+- `statusgen`'s git-committer-identity cross-check (`attribution.go`) now escalates a
+  same-identity author/verifier pair to a hard `PROBLEM` — not just a `NOTICE` — when
+  (a) the repo's brief history carries more than one git identity (so identity is
+  genuinely discriminating) and (b) the brief's Verified/Evidence tokens self-label as
+  independent (the token layer alone would have passed it). This closes the
+  security-hardening/27 Task 2/4(b) gap tracked as #1116: a same-identity pair that
+  avoids the free-text "implementer" token previously only ever produced a `NOTICE`.
+  A repo whose entire checked brief history shares one git identity (a solo-maintainer
+  or single-App-identity workflow) is unaffected — that case stays a `NOTICE`, by
+  design, since identity cannot discriminate there.
+- `system-demo` skill: added portable authoring rules from a field test outside Assay — distinguish demo beats from a host system's own phase/step numbering, an optional `00` cover beat before the promise, scene-level evidence-mode honesty (the label follows the pixels, not the bibliography), visible legends for meaning-bearing marks, a fixed-height top-aligned heading/caption row and the "no `overflow: hidden` on an annotated panel" layout rule, comparative one-request/many-paths stories, capture and rehearsal traps (true-width iframe overflow measurement, an in-page self-test over `--dump-dom`, absolute capture paths, exported-frame badges), and the finish-artifact set (scene manifest, transcript, evidence ledger, raster provenance, layout-invariant design record).
+- `windows-port/00` Verify rows 8 and 10 re-baselined onto current main. Row 8's unix-only-syscall-leak grep now excludes comment lines and `_windows.go` files, so it flags only real syscall use rather than reddening on a prose comment. Row 10 now asserts the ACL-based Windows roster-owner enforcement (`evaluateRosterACL` — owner SID + DACL, refuse-on-unreadable, nil-DACL-as-world-writable) that superseded the earlier loud-skip `NOTICE` stub.
+- ci(staged): re-base the Windows CI leg staged copy onto the live file so promotion is a byte-for-byte copy — the staged `ci/staged-workflows/windows-ci-leg.yml` now carries the live file's later changes (the version-tag-only trigger and the lint job's `fetch-depth: 0`) alongside the `--in-container` execution-witness jobs, so a maintainer's verbatim copy over the live file no longer reverts them.
+- test fixture: neutralize an example product-config key
+
 ## v1.0.23 — 2026-09-21
 
 ### Added

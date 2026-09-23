@@ -43,6 +43,7 @@ intake-desk
 pdfingest
 pr-review-desk
 pr-shepherd
+system-demo
 the-desk
 upgrade-assay
 verify-desk

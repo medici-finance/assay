@@ -1159,6 +1159,21 @@ func main() {
 		os.Exit(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree
+	// present a lint-valid `verified` closure for one brief?" (verifyclosure.go).
+	// Unlike `verifyrun` it runs nothing and writes nothing; it reads the brief's
+	// board row (the Verified stamp) and its Evidence witnesses and answers with an
+	// exit code. It owns its own --brief/--root namespace, so — like the
+	// subcommands around it — it is intercepted before the parent flag parser.
+	//
+	// It is never part of `--lint`: the witness-absence half is already a `--lint`
+	// NOTICE (witnessNotices/witnessgate.go), and this command exists for the ONE
+	// caller that must decide BEFORE a write whether recording `outcome:verified`
+	// in the verify-outcomes sidecar is warranted (deskevidence's sidecar gate).
+	if len(os.Args) > 1 && os.Args[1] == "verifyclosure" {
+		os.Exit(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen mergecheck` — the MERGE-TIME RE-CHECK (desk-hardening/05, #54).
 	// Re-asks "is this branch still correct?" against the TRIAL-MERGED tree rather
 	// than the branch's own, which is the only tree that can show a semantic merge
@@ -1362,7 +1377,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1816,11 +1831,12 @@ func main() {
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and
 	// writes local placeholder files; it never creates or mutates an issue.
 	if *scanIssuesMode {
-		// #1223: the OPEN-issue read routes through the native forge (via the `deskread` verb),
-		// not a `gh issue list` shell-out — see defaultScanIssueLister. This is the read that
-		// 401'd on every rostered repo and the #628 multi-installation case. The bless and
-		// comment reads below still shell `gh` (see the audit note on #1223).
-		os.Exit(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, issueCommentLister, ghIssueBlessChecker))
+		// #1223/#1255: ALL THREE forge reads route through the native forge (via the `deskread`
+		// verb), never a `gh` shell-out — the OPEN-issue list (defaultScanIssueLister, #1223),
+		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
+		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
+		// repo under scanloop's replaced HOME.
+		os.Exit(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off

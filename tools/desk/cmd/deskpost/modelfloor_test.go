@@ -244,6 +244,67 @@ func TestModelFloorReadyStrongStampFlips(t *testing.T) {
 	}
 }
 
+// assay#2875 REGRESSION. The verdict + flip stamp age-out must key on the REVIEWER's
+// review-dispatch claim family (refs/dispatch/<short>--pr-<N>[--<suffix>]), NOT the PR body's
+// worker Brief: claim, and NOT the empty refs/heads/dispatch/* namespace the old reader probed.
+// Pre-fix, a strong reviewer stamp was ALWAYS aged out (the reader looked where no claim lives),
+// so every risk-classed VERDICT refused and the public flip queue stalled. This pins the fix on
+// the risk-overlayed verdict path: a LIVE review-claim family keeps the strong stamp (the verdict
+// clears), and a RELEASED family ages it out (a risk verdict refuses — the age-out still works, on
+// the RIGHT claim).
+func TestModelFloorReviewAgeOutKeysOnReviewClaimFamily(t *testing.T) {
+	t.Run("live review claim → strong stamp clears a risk-classed verdict", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		f.files = riskyFiles()                            // risk-classed diff
+		f.stamp(strongStampBy(deskDispatcherLogin(t))...) // reviewer strong stamp
+		// default: the review-claim family is LIVE (reviewClaimReleased unset)
+		bf := writeBody(t, "rev.md", okReviewBody)
+		if code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf)); code != 0 {
+			t.Fatalf("risk verdict with a live review claim + strong stamp exit = %d, want 0 (stamp stands):\n%s", code, errBuf.String())
+		}
+		if f.postedReview != 1 {
+			t.Fatalf("postedReview = %d, want 1", f.postedReview)
+		}
+	})
+	t.Run("released review claim → strong stamp ages out → risk verdict refuses", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		f.files = riskyFiles()
+		f.stamp(strongStampBy(deskDispatcherLogin(t))...)
+		f.reviewClaimReleased = true // the review cycle is over → the stamp ages out
+		bf := writeBody(t, "rev.md", okReviewBody)
+		if code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf)); code != deskkit.ExitRefused {
+			t.Fatalf("risk verdict with a released review claim exit = %d, want 5 (aged out):\n%s", code, errBuf.String())
+		}
+		if f.postedReview != 0 {
+			t.Fatalf("postedReview = %d, want 0", f.postedReview)
+		}
+	})
+}
+
+// The ready-FLIP reads the SAME claimLiveness(repo, pr) review-family reader as the verdict, so a
+// strong stamp with a LIVE review claim clears the flip's model floor as an ATTESTED strong
+// dispatch (FloorAllow, silent) — not as an aged-out unstamped PR (the NOTICE path). This is the
+// flip half of the shared-reader fix the-desk required proving. NOTE: the flip's model floor
+// carries NO risk overlay (its risk gate is the separate Security-Review gate), so an aged-out
+// stamp there proceeds-with-NOTICE rather than refusing — the fix ALIGNS the reader with where the
+// claim actually lives, it does not add a refusal the flip never had.
+func TestModelFloorReadyFlipReadsLiveReviewClaimAttested(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.stamp(strongStampBy(deskDispatcherLogin(t))...)
+	// default: the review-claim family is LIVE
+	if code := run(readyArgs(exampleRepo)); code != 0 {
+		t.Fatalf("ready flip with a live review claim + strong stamp exit = %d, want 0:\n%s", code, errBuf.String())
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1", f.flips)
+	}
+	if strings.Contains(errBuf.String(), "AGES OUT") || strings.Contains(errBuf.String(), "reads as UNSTAMPED") {
+		t.Fatalf("a live-claim strong stamp must clear as ATTESTED (FloorAllow, silent), not age out:\n%s", errBuf.String())
+	}
+}
+
 // CASE `any`: the App-identity flip verb reaches the same NOTICE outcome as the verdict verb
 // — the floor decision has ONE home, and this row is what proves the two verbs did not drift
 // apart on it.

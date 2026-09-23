@@ -167,6 +167,25 @@ func reviewKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit
 // wholesale.
 func verifierKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "verifier") }
 
+// kitRole maps a --kit value to the DESK ROLE whose App commit identity a worktree
+// dispatched on that kit must carry: worker and worker-objective → worker, review →
+// reviewer, verifier → verifier. It is the identity twin of stampRoleForKit (which names the
+// DISPATCHER's role for the model stamp); this names the DISPATCHED agent's role for the
+// worktree commit identity. ok=false only for a kit with no dispatched-agent role — the
+// vocabulary is closed and kitText has already refused an unknown kit upstream, so a false
+// here is a build defect, never a caller error.
+func kitRole(kit string) (role string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(kit)) {
+	case "worker", "worker-objective":
+		return "worker", true
+	case "review":
+		return "reviewer", true
+	case "verifier":
+		return "verifier", true
+	}
+	return "", false
+}
+
 // worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create
 // step, SELECTED BY KIT (#851) and, on the brief lane, BY WHAT DESKWT SAID (#1309 item 6).
 // The lanes fail for different reasons and the wrong hint misleads:

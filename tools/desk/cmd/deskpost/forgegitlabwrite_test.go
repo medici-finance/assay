@@ -66,6 +66,12 @@ func (g *glReviewFake) ReviewsAtHead(deskkit.ForgeRepo, int) ([]deskkit.Review, 
 func (g *glReviewFake) ListLabelEvents(deskkit.ForgeRepo, int) ([]deskkit.LabelEvent, error) {
 	return nil, nil // unstamped → the model floor proceeds with a NOTICE
 }
+func (g *glReviewFake) MatchingRefs(deskkit.ForgeRepo, string) ([]string, error) {
+	// Mirrors the real GitLab backend: CE cannot prefix-list custom refs, so the review-claim
+	// family read is could-not-check → ClaimLivenessUnknown. The PR here is unstamped, so the
+	// floor is already at its NOTICE outcome and the age-out changes nothing either way.
+	return nil, deskkit.Unverifiable("gitlab: no ref-listing endpoint (fake mirrors the CE limit)", nil)
+}
 func (g *glReviewFake) ListChangedFiles(deskkit.ForgeRepo, int) ([]deskkit.ChangedFile, error) {
 	// One non-risk path, matching GetPullRequest's ChangedFiles:1 (no short read). The
 	// unstamped floor's ruling-3 risk overlay reads this on a NOTICE outcome: a private repo

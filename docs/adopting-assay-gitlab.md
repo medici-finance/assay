@@ -626,6 +626,41 @@ variable:
   `key=STATUSGEN_ROSTER_ENV`, `masked=false`, `protected=false`, and `variable_type=env_var`
   (or `file`).
 
+**The verifier's display-name gap — `ASSAY_GITLAB_DISPLAY_NAMES` (#1477).** A GitLab account
+has a username AND a separate **display name**, and every commit GitLab writes carries the
+**display name** in `author_name`, never the username the roster binds. The offline Evidence-actor
+check (`statusgen --lint` runs offline on the runner and cannot resolve the account) therefore
+could never match the bound verifier's Evidence commit on a deployment whose service account has
+an ordinary display name — and, since a new `verified` closure with no accepted actor is a hard
+`PROBLEM`, `implemented → verified` was permanently blocked. Declare the bound account's display
+name so the offline check has a value to compare against:
+
+```
+ASSAY_GITLAB_DISPLAY_NAMES=example-verifier-bot=Assay verifier (fleet bot)
+```
+
+- It is a map `<username>=<display name>`, entries separated by `;` or a newline — **not** the
+  comma/space list separator every other roster value uses, because a display name contains
+  spaces (and only the first `=` splits an entry, so the display name keeps its spaces). The
+  username must match the `verifier=gitlab:<username>` slug.
+- It is **non-secret** (a public display name) and belongs in `STATUSGEN_ROSTER_ENV` beside the
+  other roster lines. It is a statusgen-only key; the desk verbs recognise it and ignore it (they
+  resolve the account **online** via the typed forge instead — see below), so a roster carrying it
+  does not disturb the desk side.
+- Renaming the service account's display name to equal its username is a valid deployment
+  workaround, but it silently re-breaks whenever an admin edits the display name; declaring it
+  here is the durable fix.
+- **Online alternative.** The desk verb that lands Evidence (`deskevidence`) resolves the landed
+  commit's GitLab account to its username through the typed forge (`GET /users?search=`) and
+  compares that to the verifier binding — so a deployment whose runners can reach the API gets the
+  check for free without declaring display names. The offline map is the fallback for the
+  network-free `--lint` path; unset, that path is simply could-not-check for the display-name case
+  (never a false pass).
+
+A roster-known **human** verifier on GitLab is accepted by the Evidence-actor check via GitLab's
+private commit noreply address `<user-id>-<username>@users.noreply.<host>` the way a GitHub human
+is via the GitHub form — no extra configuration beyond the human's `ASSAY_TRUSTED_LOGINS` entry.
+
 **Loud when absent.** With the variable unset the step prints, verbatim from the generated
 file's own source (`statusgen/init.go`, `initGitlabCI`):
 

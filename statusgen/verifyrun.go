@@ -763,6 +763,15 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
+	// On Windows a `cmd` row's command line must be built RAW, not from
+	// os/exec's default per-argument escaping (issue #1424). See winCmdLine and
+	// applyRowCmdLine: os/exec would wrap the row (`syscall.EscapeArg`) in an
+	// extra quote pair AND backslash-escape the row's own inner quotes, which
+	// `cmd /d /s /c` then does not strip — so a `findstr /c:"…"` row that runs
+	// fine interactively fails under verifyrun. applyRowCmdLine is a no-op for
+	// every non-`cmd` shell and on every non-Windows build, so `sh` and `pwsh`
+	// rows are byte-for-byte unchanged.
+	applyRowCmdLine(cmd, shell, argv)
 	// A row must never be able to consume the parent's stdin: a command that
 	// blocks on input would hang to the timeout and report could-not-run for a
 	// reason that has nothing to do with the check.
@@ -813,6 +822,37 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 // a literal backslash.
 func unescapePipes(command string) string {
 	return strings.ReplaceAll(command, `\|`, `|`)
+}
+
+// winCmdLine builds the RAW Windows command line for a `cmd.exe` Verify row
+// (issue #1424). argv is the full interpreter argv the dispatcher assembled —
+// the interpreter/prefix tokens followed by the row's own command string as its
+// LAST element. It returns the prefix tokens verbatim, then the row wrapped in
+// exactly ONE outer pair of double quotes: `cmd /d /s /c "<row>"`.
+//
+// WHY RAW, AND WHY ONE OUTER PAIR. os/exec on Windows constructs the process
+// command line by running each argv element through syscall.EscapeArg, which —
+// for the row string, because it contains spaces and quotes — wraps it in a
+// quote pair AND rewrites every inner `"` as `\"`. The launched command line
+// then reads `cmd /d /s /c "findstr /c:\"a b\" x"`. `cmd /s /c` strips only the
+// FIRST and LAST quote after `/c` and preserves everything between verbatim, so
+// the backslash-escaped inner quotes survive into findstr's argument and findstr
+// rejects them. That is precisely the residual defect: the row passes when typed
+// interactively (`cmd /d /s /c <line>` with no extra wrapping) yet fails under
+// verifyrun. Building the line ourselves — the row wrapped in one bare outer
+// pair, nothing else re-quoted — makes `/s`'s outer-quote strip hand `cmd` the
+// row exactly as authored.
+//
+// It is deliberately shell-agnostic on its inputs (a pure string function) so it
+// can be asserted from a portable test; applyRowCmdLine is what decides it should
+// be used, and only for a `cmd` row on Windows.
+func winCmdLine(argv []string) string {
+	if len(argv) == 0 {
+		return ""
+	}
+	prefix := argv[:len(argv)-1]
+	command := argv[len(argv)-1]
+	return strings.Join(prefix, " ") + ` "` + command + `"`
 }
 
 // networkOffWrapper returns the argv prefix that runs a command with the network

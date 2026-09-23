@@ -42,6 +42,16 @@ type fakeForge struct {
 	emptyAuthor bool
 	// writeErr, when set, is returned by WriteFile.
 	writeErr error
+	// commitAuthorLogin is the AuthorLogin GetCommit resolves for a sha — the ONLINE
+	// attribution resolution (#1477). Empty means the forge could not resolve the account
+	// (could-not-check). commitErr, when set, is GetCommit's error.
+	commitAuthorLogin string
+	commitErr         error
+	getCommitCalls    int
+	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
+	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
+	prHeadSHA string
+	prErr     error
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
@@ -137,6 +147,30 @@ func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChang
 	return &deskkit.PullRef{Number: 4242, URL: "https://forge.example/change/4242"}, nil
 }
 
+// GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
+// draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
+func (f *fakeForge) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.prErr != nil {
+		return nil, f.prErr
+	}
+	return &deskkit.PullRequest{Number: number, HeadSHA: f.prHeadSHA}, nil
+}
+
+// GetCommit resolves a commit's attributed account login — the ONLINE seam checkAttribution
+// uses to map a GitLab commit to the committing account's username (#1477). An empty
+// commitAuthorLogin models a forge that could not resolve the account (could-not-check).
+func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getCommitCalls++
+	if f.commitErr != nil {
+		return nil, f.commitErr
+	}
+	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: f.commitAuthorLogin}, nil
+}
+
 // setupFake wires isolation: a temp HOME with the fixture roster (so trust/write-auth decisions
 // answer the same verdicts they always did), the standard verify-desk environment, a recording
 // fake Forge behind forgeForFn, a token-mint stub, a no-op public-repo gate, and captured
@@ -179,6 +213,13 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldOutcome := outcomeGuardFn
 	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
+
+	// The verified-sidecar acceptance gate defaults to "accepts" so a verify-outcomes landing
+	// in the general suite never shells a real statusgen. Tests exercising the gate override
+	// this seam themselves (see verifiedgate_test.go).
+	oldClosure := verifiedClosureCheckFn
+	verifiedClosureCheckFn = func(string, string) (closureVerdict, string, error) { return closureAccepted, "", nil }
+	t.Cleanup(func() { verifiedClosureCheckFn = oldClosure })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr

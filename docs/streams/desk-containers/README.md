@@ -41,6 +41,9 @@ component list, build/run topology, and open questions.
 | 09 | [cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check`](brief-09-scrubbed-host-cell.md) | 0 | M | implemented | — | — |
 | 10 | [cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity](brief-10-cellctl-go-port.md) | 1 | L | todo | — | — |
 | 11 | [retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH](brief-11-retire-bridge.md) | 2 | S | todo | — | — |
+| 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
+| 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
+| 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -78,6 +81,13 @@ other brief in this stream (its deliverables are plugin content every image alre
 and the dependency runs the other way: the image cannot usefully pass a flag to a mode that
 does not exist.
 
+**GitOps install path (added 2026-09-23): `desk-containers/06` → `desk-containers/12` → `desk-containers/13` → `desk-containers/14`.**
+06's Kustomize base is the one package; both Argo CD and Flux consume Kustomize natively, so there is no second packaging format.
+12 adds the opt-in unattended component, CronJobs running brief 08's tick mode, which is what a GitOps install actually runs.
+13 is the Argo CD example and ships `examples/gitops/check.sh` (planned). 14 is the Flux example and reuses that script and the same overlay shape, so it follows 13 to keep the two from drifting.
+The real head is 06 (todo; its dependencies 02 and 03 are implemented and done). Nothing in this chain can be validated before 06's base exists.
+Rows that dereference a pinned release tag stay could-not-check until a release ships `containers/k8s/`.
+
 ## Dependency waves
 
 - **Wave 1** — `desk-containers/01`, `desk-containers/02` (independent;
@@ -90,6 +100,9 @@ does not exist.
   surfaces make it operationally load-bearing, not because anything blocks it).
 - **Wave 4** — `desk-containers/07` (depends on 04; the tmux/equivalent fleet-control
   layer over the launch script).
+- **Wave 4** — `desk-containers/12` (depends on 06 + 08; the unattended CronJob component).
+- **Wave 5** — `desk-containers/13` (depends on 06 + 12; the Argo CD install example).
+- **Wave 6** — `desk-containers/14` (depends on 06 + 12 + 13; the Flux install example).
 
 Path: `02 → 03 → 04 → 07`, with `01 → 03` joining at wave 2 and `05`/`06` fanning out
 beside `04`. `08` hangs off no edge at all.

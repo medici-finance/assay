@@ -434,7 +434,8 @@ func TestRemoveUnpushedCommitsRefuses(t *testing.T) {
 	// A commit ahead of the upstream (origin/main) — unpushed.
 	writeFile(t, filepath.Join(target, "new.txt"), "new\n")
 	mustGit(t, target, "add", "new.txt")
-	mustGit(t, target, "commit", "-m", "unpushed work")
+	// deskwt add (no --role) clears the worktree identity (#1490); supply one to commit.
+	mustGit(t, target, "-c", "user.name=Test", "-c", "user.email=t@e.st", "commit", "-m", "unpushed work")
 
 	resetCalls(calls)
 	if rc := run([]string{"remove", target}); rc != deskkit.ExitRefused {
@@ -512,7 +513,8 @@ func TestRemoveDetachedHeadNotOnRemoteRefuses(t *testing.T) {
 	// HEAD whose commit is reachable from no remote-tracking ref.
 	writeFile(t, filepath.Join(target, "unpushed.txt"), "unpushed\n")
 	mustGit(t, target, "add", "unpushed.txt")
-	mustGit(t, target, "commit", "-m", "unpushed detached work")
+	// deskwt add (no --role) clears the worktree identity (#1490); supply one to commit.
+	mustGit(t, target, "-c", "user.name=Test", "-c", "user.email=t@e.st", "commit", "-m", "unpushed detached work")
 	mustGit(t, target, "checkout", "--detach", "HEAD")
 
 	resetCalls(calls)

@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: GitLab exposes no general ref-listing endpoint, so MatchingRefs cannot enumerate refs under \"refs/dispatch/tracker--pr-547\" — only branches and tags list (the Branches/Tags APIs), not the refs/dispatch/* claim namespace; a prefix listing there has no CE equivalent and is NOT reported empty",
+  "not_found": false
+}

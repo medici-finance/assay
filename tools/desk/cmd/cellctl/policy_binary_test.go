@@ -281,6 +281,26 @@ func TestBinaryOpusFiveDeniedEvenWithEmptyDenyList(t *testing.T) {
 	}
 }
 
+// TestBinaryOpusFiveFiveAcceptedForTheDesk is the twin of the Opus-5.0 refusals: Opus 5.5 is a
+// valid top tier, so the BUILT binary must ACCEPT `claude-opus-5-5` as the-desk's top model — the
+// deny anchoring lets it past the built-in prohibition and the coordinator's non-Opus check does
+// not fire on it — whereas Opus 5.0 in the same slot is refused (TestBinaryOpusFiveDenied* above).
+func TestBinaryOpusFiveFiveAcceptedForTheDesk(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	f.rewritePolicy(t, func(m map[string]any) {
+		m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["top"].(map[string]any)["model"] = "claude-opus-5-5"
+	})
+	r := f.dryRunDesk(t, "the-desk")
+	if r.code != 0 {
+		t.Fatalf("Opus 5.5 must be accepted for the-desk, got exit %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+	for _, want := range []string{"role=the-desk", "model=claude-opus-5-5", "provider=anthropic", "harness=claude"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("dry-run output missing %q\n%s", want, r.stdout)
+		}
+	}
+}
+
 func TestBinaryNegativeMissingPolicyFile(t *testing.T) {
 	f := newPolicyFixture(t, "2.1.278")
 	if err := os.Remove(f.policy); err != nil {

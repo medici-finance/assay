@@ -43,7 +43,7 @@ type postBackend interface {
 	listReviews(pr int) ([]reviewInfo, error)
 	listFiles(pr int) ([]prFile, error)
 	stampTimeline(pr int) (deskkit.StampTimeline, error)
-	claimLiveness(repo, body string) deskkit.ClaimLiveness
+	claimLiveness(repo string, pr int) deskkit.ClaimLiveness
 	headCommitAuthor(sha string) (string, error)
 	prTrustPayload(n int) (*deskkit.TrustPayload, error)
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
@@ -226,20 +226,16 @@ func (b *forgeBackend) stampTimeline(pr int) (deskkit.StampTimeline, error) {
 	return deskkit.StampTimeline{Present: p.Labels, Events: events}, nil
 }
 
-func (b *forgeBackend) claimLiveness(repo, body string) deskkit.ClaimLiveness {
-	// Mirrors ghClient.claimLiveness exactly, reading the claim ref through this backend's OWN
-	// resolved Forge rather than a second ForgeFor construction. Every uncertain path is
-	// Unknown, which changes nothing; only a positive ABSENT ages a stamp out.
-	key, ok := deskkit.ClaimKeyForPR(repo, body)
+func (b *forgeBackend) claimLiveness(repo string, pr int) deskkit.ClaimLiveness {
+	// Mirrors ghClient.claimLiveness exactly, reading the review-claim family through this
+	// backend's OWN resolved Forge rather than a second ForgeFor construction. Every uncertain
+	// path is Unknown, which changes nothing; only a POSITIVELY empty family ages a stamp out.
+	prefix, ok := deskkit.ReviewClaimFamilyRefPrefix(repo, pr)
 	if !ok {
 		return deskkit.ClaimLivenessUnknown
 	}
-	refPath, err := deskkit.ClaimRefPath(key)
-	if err != nil {
-		return deskkit.ClaimLivenessUnknown
-	}
-	present, rerr := b.fg.RefExists(b.repo, refPath)
-	return deskkit.ClaimLivenessFromRefPresence(present, rerr)
+	refs, rerr := b.fg.MatchingRefs(b.repo, prefix)
+	return deskkit.ReviewClaimLivenessFromMatchingRefs(refs, prefix, rerr)
 }
 
 func (b *forgeBackend) headCommitAuthor(sha string) (string, error) {

@@ -65,6 +65,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskavatar":        {},
 	"deskboard":         {},
 	"deskboot":          {},
+	"deskcalibrate":     {},
 	"deskclaim":         {},
 	"deskclaim-ref":     {},
 	"deskclose":         {},

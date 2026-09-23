@@ -55,7 +55,7 @@ func TestUnboundVerifierRoleRefuses(t *testing.T) {
 	}
 
 	// The empty author is the response shape the third state exists for.
-	detail, err := checkAttribution("")
+	detail, err := checkAttribution(nil, deskkit.ForgeRepo{}, "", "")
 	if err == nil {
 		t.Errorf("checkAttribution(\"\") returned err=nil under an unbound verifier role — "+
 			"an Evidence commit with NO author was accepted (detail=%q)", detail)
@@ -66,7 +66,7 @@ func TestUnboundVerifierRoleRefuses(t *testing.T) {
 	}
 	// A correctly-attributed author is refused too: with no binding there is nothing to
 	// check it against, and guessing in either direction is the failure mode.
-	if _, err := checkAttribution("assay-verifier-app[bot]"); err == nil {
+	if _, err := checkAttribution(nil, deskkit.ForgeRepo{}, "", "assay-verifier-app[bot]"); err == nil {
 		t.Error("an unbound verifier role must refuse even a correct-looking author — " +
 			"the tool cannot know it is correct")
 	}
@@ -82,10 +82,10 @@ func TestBoundVerifierRoleKeepsThreeStates(t *testing.T) {
 		t.Fatalf("RoleAppLogin(\"verifier\") = %q, want the slug the fixture roster binds", want)
 	}
 
-	if detail, err := checkAttribution(want); err != nil || !strings.Contains(detail, want) {
+	if detail, err := checkAttribution(nil, deskkit.ForgeRepo{}, "", want); err != nil || !strings.Contains(detail, want) {
 		t.Errorf("proven state: checkAttribution(%q) = (%q, %v), want the author recorded and no error", want, detail, err)
 	}
-	detail, err := checkAttribution("")
+	detail, err := checkAttribution(nil, deskkit.ForgeRepo{}, "", "")
 	if err != nil {
 		t.Errorf("could-not-check state: an empty author must NOT be an error, got %v", err)
 	}
@@ -94,7 +94,7 @@ func TestBoundVerifierRoleKeepsThreeStates(t *testing.T) {
 			"unbound-role fix, because the empty author matched the proven arm first",
 			detail, "attribution=could-not-check")
 	}
-	if _, err := checkAttribution("someone-else"); err == nil {
+	if _, err := checkAttribution(nil, deskkit.ForgeRepo{}, "", "someone-else"); err == nil {
 		t.Error("proven-wrong state: a different author must be Unverifiable")
 	}
 }
