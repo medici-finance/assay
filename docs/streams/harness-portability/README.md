@@ -211,6 +211,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
 | 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
 | 16 | [Codex long-context cap — compaction limit on every Codex desk launch, shipped in packaging, linted](brief-16-codex-long-context-cap.md) | 7 | M | todo | — | — |
+| 17 | [Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI](brief-17-skill-frontmatter-conformance-lint.md) | 0 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
@@ -271,6 +272,13 @@ overridable per role), ships the same key in a generated Codex config fragment w
 `harnesslint` mode that fails without it, adds a compact-or-reboot point to the standing-note
 reference, and adds a warning when a dispatch prompt exceeds a token budget. It is `gate: model`
 (config, lint and prose) and does not extend any critical path.
+**Note on 17 — a Codex limit nothing enforced.** The Codex capability matrix records the
+agentskills `name` (<= 64) and `description` (<= 1024) limits, but `tools/skillslint` checks
+neither, and two shipped descriptions (`install`, `pr-review-desk`) are over 1024 characters
+with CI green — Codex cuts them to 1021 characters plus "...". 17 makes the per-skill limits an
+exit-1 skillslint rule, reports body size and the bundle-wide description budget as NOTICEs, adds
+`--skills-dir` so the same rule runs over an adopter's own skills directory, and shortens the two
+descriptions. It is `gate: model`, wave 0, and extends no critical path.
 
 ## Critical path
 
@@ -317,6 +325,7 @@ stream.
 
 ```
 Wave 0: [01, 02, 09, 10]   (09 jcode + 10 SpecMem: independent evaluation spikes Ian asked for, 2026-08-16; each INFORMS — does not gate — the harness-target ruling (03), so neither carries an `unblocks: 03`; not on the Codex critical path)
+        [17]               (skill-frontmatter conformance lint; no in-stream dependency, extends no critical path)
 Wave 1: [03]←01
 Wave 2: [04]←{02,03}, [05]←{01,03}
 Wave 3: [06]←{03,04,05}, [11]←04
