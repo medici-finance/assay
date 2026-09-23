@@ -36,11 +36,12 @@ import (
 // post-cutover absence NOTICE (lifecyclelint.go) is silenced by `none` too.
 const outcomeNone = "none"
 
-// budgetRe is the budget grammar: a positive amount, an optional k/M multiplier,
+// budgetRe is the budget grammar: a positive amount, an optional multiplier — k
+// (thousand) or M (million), case-sensitive so a lower-case m is never read as milli —
 // whitespace, and a unit — the word `tokens`, or an ISO-4217-shaped currency code
 // (three upper-case letters). The code is shape-checked, not looked up: a linter
 // that shipped a currency table would be wrong the first time one changed.
-var budgetRe = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)([kKmM]?)\s+(tokens|[A-Z]{3})$`)
+var budgetRe = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)([kM]?)\s+(tokens|[A-Z]{3})$`)
 
 // budgetProblem returns "" when raw is a well-formed budget, else the reason it
 // is not, echoing the value so the author can see what the linter read.
@@ -51,7 +52,7 @@ func budgetProblem(raw string) string {
 	}
 	m := budgetRe.FindStringSubmatch(v)
 	if m == nil {
-		if _, err := strconv.ParseFloat(strings.TrimRight(v, "kKmM"), 64); err == nil {
+		if _, err := strconv.ParseFloat(strings.TrimRight(v, "kM"), 64); err == nil {
 			return fmt.Sprintf("%q has no unit — a budget states what it is counted in, e.g. \"%s tokens\" or \"%s USD\"", raw, v, v)
 		}
 		return fmt.Sprintf("%q is not a budget — want <amount>[k|M] <unit>, the unit being `tokens` or a three-letter currency code (e.g. \"400k tokens\", \"25 USD\")", raw)

@@ -98,11 +98,15 @@ file; this module only reduces and renders it, with no `gh`/`git` reads.
 ```
 
 Each line reads ``- cost per passed row — desk `<desk>`, model `<model>`: <figure> <unit>``.
-A desk whose cost is absent, `null` or `"could-not-check"`, reported without a unit, or
-paired with zero or no passed rows renders **`could-not-check`** with the reason — never `0`,
-which would rank the desk that reported nothing as the cheapest. Exit `0` = every line
-measured, `3` = printed with at least one `could-not-check`, `2` = refused input (wrong
-schema, a nameless desk, a duplicate desk/model pair).
+A desk whose cost is absent, `null`, `"could-not-check"` or negative, reported without a
+unit, or paired with zero or no passed rows renders **`could-not-check`** with the reason —
+never `0`, which would rank the desk that reported nothing as the cheapest. Exit `0` = every
+line measured, `3` = printed with at least one `could-not-check`, or with no desk supplied
+at all (`not-configured`), `2` = refused input, with nothing printed: wrong schema, a
+nameless desk, a desk or model label outside `[A-Za-z0-9._:/-]` (a line break, control
+character or backtick could forge a report line), a unit other than `tokens` or a
+three-letter currency code, or a duplicate desk/model pair — compared after trimming and
+after an empty model is labelled `model-unreported`, i.e. exactly as rendered.
 
 ## Config schema
 

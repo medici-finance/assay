@@ -118,6 +118,7 @@ func TestBudgetUnitRequired(t *testing.T) {
 		{"budget: 400k\n", true},
 		{"budget: \"400 dollars\"\n", true},
 		{"budget: 0 tokens\n", true},
+		{"budget: 1.5m tokens\n", true}, // lower-case m could read as milli; only k and M are multipliers
 		{"budget: 400k tokens\n", false},
 		{"budget: 1.5M tokens\n", false},
 		{"budget: 25 USD\n", false},

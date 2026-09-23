@@ -13,10 +13,18 @@
 //
 //   - cost absent, JSON null, or the string "could-not-check" → could-not-check
 //   - cost present but no unit                                → could-not-check
+//   - cost negative                                           → could-not-check
 //   - passed-row count absent or null                         → could-not-check
 //   - passed-row count zero                                   → could-not-check
 //     (a per-row figure with no rows has no denominator; the total spend is
 //     still shown, but never divided into a made-up per-row number)
+//
+// An input that supplies no desk at all prints `not-configured` and exits 3 —
+// an empty join is a gap, never a fully measured run. The desk, model and unit
+// labels are rendered into the report, so the `cost` subcommand refuses the whole
+// input (exit 2, nothing printed) when a label leaves its charset or a unit is
+// outside the `budget:` grammar, and it keys the duplicate refusal on the label
+// pair exactly as it will be rendered.
 //
 // The reducer never imputes, averages across desks, or back-fills from a prior
 // day. Joining telemetry and Verify results into this input is the caller's job
@@ -30,7 +38,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,16 +101,61 @@ func rawNumber(raw json.RawMessage) (float64, bool) {
 	return f, true
 }
 
+// modelUnreported is the label an entry with no model renders under.
+const modelUnreported = "model-unreported"
+
+var (
+	// costLabelRe is the charset a desk or model label may use. The labels are
+	// interpolated into the report line a reader (or a grep) takes as the figure,
+	// so anything that could start a new line, emit a terminal control sequence
+	// or close the line's code span is refused rather than escaped.
+	costLabelRe = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
+	// costUnitRe is the unit grammar `budget:` uses: `tokens` or a three-letter
+	// currency code.
+	costUnitRe = regexp.MustCompile(`^(tokens|[A-Z]{3})$`)
+)
+
+// trimCostLabels trims surrounding spaces from the labels and gives an empty
+// model its rendered default, so every comparison sees what the report prints.
+func trimCostLabels(d deskCostInput) deskCostInput {
+	d.Desk = strings.Trim(d.Desk, " ")
+	d.Model = strings.Trim(d.Model, " ")
+	d.Unit = strings.Trim(d.Unit, " ")
+	if d.Model == "" {
+		d.Model = modelUnreported
+	}
+	return d
+}
+
+// costLabelProblem returns "" when an entry's desk, model and unit are safe to
+// render, else why not. An empty model is allowed (it renders as
+// model-unreported); an empty unit is allowed (the line is could-not-check); an
+// empty desk is not.
+func costLabelProblem(d deskCostInput) string {
+	t := trimCostLabels(d)
+	if t.Desk == "" {
+		return "no desk name"
+	}
+	if !costLabelRe.MatchString(t.Desk) {
+		return fmt.Sprintf("desk %q is outside the label charset [A-Za-z0-9._:/-]", d.Desk)
+	}
+	if !costLabelRe.MatchString(t.Model) {
+		return fmt.Sprintf("model %q is outside the label charset [A-Za-z0-9._:/-]", d.Model)
+	}
+	if t.Unit != "" && !costUnitRe.MatchString(t.Unit) {
+		return fmt.Sprintf("unit %q is not `tokens` or a three-letter currency code", d.Unit)
+	}
+	return ""
+}
+
 // costPerPassedRow reduces the inputs into one line per (desk, model), sorted by
 // desk then model. It never returns a measured line whose inputs were not both
 // measured.
 func costPerPassedRow(in []deskCostInput) []costLine {
 	out := make([]costLine, 0, len(in))
 	for _, d := range in {
-		line := costLine{Desk: d.Desk, Model: d.Model, State: stateCouldNotCheck, Unit: strings.TrimSpace(d.Unit)}
-		if line.Model == "" {
-			line.Model = "model-unreported"
-		}
+		d = trimCostLabels(d)
+		line := costLine{Desk: d.Desk, Model: d.Model, State: stateCouldNotCheck, Unit: d.Unit}
 		cost, costOK := rawNumber(d.Cost)
 		rowsF, rowsOK := rawNumber(d.PassedRows)
 		if rowsOK && (rowsF < 0 || rowsF != float64(int(rowsF))) {
@@ -113,6 +168,8 @@ func costPerPassedRow(in []deskCostInput) []costLine {
 		switch {
 		case !costOK:
 			line.Note = "no cost telemetry reported"
+		case cost < 0:
+			line.Note = "negative cost reported — not a measurement"
 		case line.Unit == "":
 			line.Note = "cost reported without a unit"
 		default:
@@ -145,9 +202,14 @@ func fmtAmount(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
-// fmtPerRow renders a derived per-row figure at two decimals.
+// fmtPerRow renders a derived per-row figure: two decimals from one unit up,
+// and three significant digits below it, so a small measured figure (0.0025 USD)
+// never prints as a zero that reads like the unmeasured case.
 func fmtPerRow(f float64) string {
-	return strconv.FormatFloat(f, 'f', 2, 64)
+	if math.Abs(f) >= 1 || f == 0 {
+		return strconv.FormatFloat(f, 'f', 2, 64)
+	}
+	return strconv.FormatFloat(f, 'g', 3, 64)
 }
 
 // renderCostSection renders the lines as a markdown section. Every line starts
@@ -207,21 +269,31 @@ func runCost(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "error: %s: schema %q, want %q — refusing to reduce an unrecognized input\n", *inPath, in.Schema, costInputSchema)
 		return exitRefused
 	}
+	// Validate EVERY entry before printing anything: a refused input prints no
+	// report at all, so no part of it can be mistaken for a figure.
 	seen := map[string]bool{}
-	for _, d := range in.Desks {
-		if strings.TrimSpace(d.Desk) == "" {
-			fmt.Fprintf(stderr, "error: %s: an entry has no desk name\n", *inPath)
+	norm := make([]deskCostInput, 0, len(in.Desks))
+	for i, d := range in.Desks {
+		if reason := costLabelProblem(d); reason != "" {
+			fmt.Fprintf(stderr, "error: %s: entry %d: %s — refusing the whole input\n", *inPath, i, reason)
 			return exitRefused
 		}
+		d = trimCostLabels(d)
+		// The duplicate key is the NORMALISED pair — the one the report renders —
+		// so two entries that would print as the same desk/model cannot both pass.
 		k := d.Desk + "\x00" + d.Model
 		if seen[k] {
 			fmt.Fprintf(stderr, "error: %s: desk %q model %q appears twice — ambiguous input\n", *inPath, d.Desk, d.Model)
 			return exitRefused
 		}
 		seen[k] = true
+		norm = append(norm, d)
 	}
-	lines := costPerPassedRow(in.Desks)
+	lines := costPerPassedRow(norm)
 	fmt.Fprint(stdout, renderCostSection(lines))
+	if len(lines) == 0 {
+		return exitPublished // no desk supplied: not-configured is a gap, never "all measured"
+	}
 	for _, l := range lines {
 		if l.State != stateMeasured {
 			return exitPublished
