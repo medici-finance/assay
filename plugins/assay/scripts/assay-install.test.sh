@@ -319,6 +319,46 @@ runp "$NOCLI" "$d/r" pin --manifest "$MAN" --pins "$d/pins"; rc=$?
 if [ "$rc" -eq 5 ] && cmp -s "$d/pins" "$d/pins.before"; then ok "P4 a differing real pin line is refused, file untouched"
 else no "P4 a differing real pin line is refused, file untouched" "rc=$rc"; fi
 
+# init_placeholder <file> — the .assay-versions `statusgen init` writes, taken from init's own
+# source (statusgen/init.go, const initAssayVersions) so the fixture cannot drift from it and
+# needs no Go toolchain to produce.
+init_placeholder() {
+  awk '/^const initAssayVersions = `/{on=1; sub(/^const initAssayVersions = `/, ""); print; next}
+       on && /^`$/ {exit} on {print}' "$REPO/statusgen/init.go" > "$1"
+}
+# A manifest carrying every platform init's placeholder names, plus this host's.
+MAN3="$TMP/manifest3.yaml"
+{
+  printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n' "$HOME_REPO" "$TAG"
+  for p3 in darwin-arm64 darwin-amd64 linux-amd64; do
+    [ "$p3" = "$plat" ] && continue
+    printf '    %s: statusgen-%s %s %064d\n' "$p3" "$p3" "$TAG" 3
+  done
+  printf '    %s: %s %s %s\n' "$plat" "$SG_ASSET" "$TAG" "$GOOD"
+} > "$MAN3"
+d=$(case_dir P5)
+init_placeholder "$d/pins"
+if ! grep -q '^statusgen  *REPLACE_WITH_TAG' "$d/pins"; then
+  no "P5 fixture is init's real placeholder" "could not extract initAssayVersions from statusgen/init.go"
+else
+  runp "$NOCLI" "$d/r" pin --manifest "$MAN3" --pins "$d/pins"; rc=$?
+  ntags=$(awk '$0 !~ /^[[:space:]]*#/ && NF {print $2}' "$d/pins" | sort -u | wc -l | tr -d ' ')
+  if [ "$rc" -eq 0 ] && ! grep -v '^[[:space:]]*#' "$d/pins" | grep -q REPLACE_WITH \
+     && grep -qx "statusgen $TAG $GOOD" "$d/pins" && grep -qx "$SG_ASSET $TAG $GOOD" "$d/pins" && [ "$ntags" = 1 ]; then
+    ok "P5 init's four-line placeholder is filled whole (every platform line + the bare line, one tag)"
+  else
+    no "P5 init's four-line placeholder is filled whole" "rc=$rc tags=$ntags pins=$(grep -v '^#' "$d/pins" | tr '\n' '|') err=$(tr '\n' '|' < "$d/r.err")"
+  fi
+fi
+d=$(case_dir P6)
+printf '%s REPLACE_WITH_TAG REPLACE_WITH_SHA256\nstatusgen-plan9-mips REPLACE_WITH_TAG REPLACE_WITH_SHA256\n' "$SG_ASSET" > "$d/pins"; cp "$d/pins" "$d/pins.before"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN3" --pins "$d/pins"; rc=$?
+if [ "$rc" -eq 5 ] && cmp -s "$d/pins" "$d/pins.before" && grep -q 'statusgen-plan9-mips' "$d/r.err"; then
+  ok "P6 a placeholder the manifest cannot fill refuses, naming it, file untouched"
+else
+  no "P6 an unfillable placeholder refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
+fi
+
 # ------------------------------------------------------------------ C classify
 mkrepo() { mkdir -p "$1"; git -C "$1" init -q; git -C "$1" remote add origin "https://gitlab.example.com/example-org/example-repo.git"; }
 d=$(case_dir C1); mkrepo "$d/repo"
@@ -342,7 +382,7 @@ runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$MAN" --base-url "$
 if [ "$rc" -eq 0 ] \
    && grep -q 'command -v gh   -> (absent)' "$d/r.out" && grep -q 'command -v glab -> (absent)' "$d/r.out" \
    && grep -q "verified: sha256 $GOOD" "$d/r.out" && grep -q 'scaffolded: .gitlab-ci.yml' "$d/r.out" \
-   && grep -q 'rehearsal PROVEN' "$d/r.out" && cmp -s "$d/before" "$d/after"; then
+   && grep -q 'rehearsal PROVEN' "$d/r.out" && cmp -s "$d/before" "$d/after" && [ -d "$d/work/repo" ]; then
   ok "R1 rehearse: GitLab-remote target, no forge CLI, acquired + verified + scaffolded + proven; real target untouched"
 else
   no "R1 rehearse end to end" "rc=$rc out=$(tr '\n' '|' < "$d/r.out") err=$(tr '\n' '|' < "$d/r.err")"
@@ -352,7 +392,7 @@ d=$(case_dir R2); mkrepo "$d/repo"
 mkdir -p "$d/repo/docs/streams/svc"; echo x > "$d/repo/docs/streams/svc/README.md"
 printf '%s %s %s\n' "$SG_ASSET" "$TAG" "$GOOD" > "$d/repo/.assay-versions"
 runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$MAN" --base-url "$BASE" --workdir "$d/work"; rc=$?
-if [ "$rc" -eq 5 ] && grep -q 'already adopted' "$d/r.err" && [ ! -e "$d/work/bin/statusgen" ]; then
+if [ "$rc" -eq 5 ] && grep -q 'already adopted' "$d/r.err" && [ ! -e "$d/work/.assay-bin/statusgen" ]; then
   ok "R2 rehearse on an already-adopted repo REFUSES before acquiring anything"
 else
   no "R2 rehearse on an already-adopted repo REFUSES" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
@@ -387,10 +427,29 @@ if [ "$REAL" -eq 1 ]; then
     mkrepo "$d/repo"
     runp "$NOCLI" "$d/r" rehearse --target "$d/repo" --manifest "$d/manifest.yaml" --base-url "https://127.0.0.1:$PORT/real" --workdir "$d/work"; rc=$?
     cat "$d/r.out"
-    if [ "$rc" -eq 0 ] && [ -f "$d/work/target/.gitlab-ci.yml" ] && grep -q "statusgen --version -> $REALTAG" "$d/r.out"; then
+    if [ "$rc" -eq 0 ] && [ -f "$d/work/repo/.gitlab-ci.yml" ] && [ -d "$d/work/repo/docs/streams/repo" ] && grep -q "statusgen --version -> $REALTAG" "$d/r.out"; then
       ok "REAL rehearse: real statusgen acquired + verified, init scaffolded .gitlab-ci.yml, --version == $REALTAG, --lint == 0"
     else
       no "REAL rehearse with the real statusgen" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
+    fi
+    # REAL2 — the PARTIAL path: a target `statusgen init` already scaffolded (its four-line
+    # placeholder .assay-versions included). The rehearsal must fill the placeholder whole and
+    # PROVE — a half-filled pin file trips --lint's same-tag check.
+    d2=$(case_dir REAL2); mkrepo "$d2/repo"
+    "$d/statusgen-real" init --root "$d2/repo" >/dev/null 2>&1
+    {
+      printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n' "$HOME_REPO" "$REALTAG"
+      for p3 in darwin-arm64 darwin-amd64 linux-amd64; do
+        [ "$p3" = "$plat" ] && continue
+        printf '    %s: statusgen-%s %s %064d\n' "$p3" "$p3" "$REALTAG" 3
+      done
+      printf '    %s: %s %s %s\n' "$plat" "$SG_ASSET" "$REALTAG" "$RSHA"
+    } > "$d2/manifest.yaml"
+    runp "$NOCLI" "$d2/r" rehearse --target "$d2/repo" --manifest "$d2/manifest.yaml" --base-url "https://127.0.0.1:$PORT/real" --workdir "$d2/work"; rc=$?
+    if [ "$rc" -eq 0 ] && grep -q '^assay-install: partial' "$d2/r.out" && grep -q 'rehearsal PROVEN' "$d2/r.out"; then
+      ok "REAL2 rehearse on an init-scaffolded (partial) target fills the placeholder whole and is PROVEN"
+    else
+      no "REAL2 partial-path rehearse" "rc=$rc err=$(tr '\n' '|' < "$d2/r.err" | cut -c1-600)"
     fi
   fi
 fi
