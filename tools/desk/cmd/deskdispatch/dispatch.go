@@ -127,6 +127,14 @@ type dispatchOpts struct {
 	promptFile string
 	quiet      bool
 	dryRun     bool
+	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
+	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
+	// key, branch, worktree name) sees the ordinary grammar.
+	itemAlias string
+	// rework marks a dispatch of a row awaiting implementer REWORK (implemented, last verdict FAIL).
+	// When the brief's PR is already MERGED the dispatch becomes a FOLLOW-UP on a new branch
+	// rather than a phantom refusal or a resume (phantom.go).
+	rework bool
 	// worktree is an operator-STATED home for the agent, accepted ONLY with --dry-run.
 	// A real dispatch names the path deskwt printed and nothing else — this flag never
 	// reaches one. See validateOperatorWorktree for the fail-closed checks it must pass.
@@ -153,6 +161,8 @@ func cmdDispatch(args []string) error {
 	dryRun := fs.Bool("dry-run", false, "print the plan and the prompt; touch nothing")
 	worktree := fs.String("worktree", "", "with --dry-run ONLY: render the prompt against this operator-stated, "+
 		"already-existing home worktree instead of the not-yet-known placeholder. Refused on a real dispatch")
+	rework := fs.Bool("rework", false, "the row awaits implementer REWORK (implemented, last verdict FAIL): a MERGED PR "+
+		"for the brief makes this a FOLLOW-UP on a new branch, never a resume (worker kit, no --pr)")
 
 	if len(args) == 0 {
 		return deskkit.Refused("deskdispatch requires an <item-key>")
@@ -168,8 +178,9 @@ func cmdDispatch(args []string) error {
 		return deskkit.Refused("deskdispatch: unexpected extra arguments after <item-key>: " + strings.Join(fs.Args(), " "))
 	}
 
+	itemAlias, item := splitItemAlias(item)
 	o := dispatchOpts{
-		item: item, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
+		item: item, itemAlias: itemAlias, rework: *rework, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
 		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
 		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun, worktree: *worktree,
 	}
@@ -224,8 +235,38 @@ func dispatch(o dispatchOpts) error {
 	// has an OPEN or MERGED PR is refused here, keyed on that PR's `Brief:` trailer rather than a
 	// derived branch name, so the branch-naming mismatch that let phantom rows through is closed. It
 	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
-	if err := phantomCheck(o, repo); err != nil {
+	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
+	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
+	// and the prompt all see the follow-up branch.
+	followUp, err := phantomCheck(o, repo)
+	if err != nil {
 		return err
+	}
+	// The sibling-merge seam (phantom.go, siblingPhantomsFn): nil until the stream's `phantoms` verb
+	// ships. When wired, a CROSS-REPO fresh dispatch also asks whether the TRACKING repo's home row
+	// already has a merged sibling change, and a hit is refused like any other phantom — pre-claim.
+	if siblingPhantomsFn != nil && o.kit == "worker" && o.pr == 0 && plan.dl.crossRepo(o.root) {
+		if id := briefIDFromItem(o.item); id != "" {
+			hit, serr := siblingPhantomsFn(plan.dl.trackingRoot, id)
+			if serr != nil {
+				return deskkit.Unverifiable(fmt.Sprintf(
+					"step %s: the sibling-merge check for %s could not run (%v) — could-not-check is not clear; "+
+						"nothing was claimed.", stepClaimAcquire, id, serr), serr)
+			}
+			if hit != "" {
+				return deskkit.Refused(fmt.Sprintf(
+					"step %s: %s's home row already has a merged sibling change (%s) — reconcile the tracking row; "+
+						"do not fresh-dispatch over it.", stepClaimAcquire, id, hit))
+			}
+		}
+	}
+	if followUp.pr > 0 {
+		if err := plan.applyFollowUp(o, followUp); err != nil {
+			return err
+		}
+		branch = plan.branch
+		o.say("%s FOLLOW-UP: %s was delivered by merged %s#%d; this rework dispatches on a NEW branch %s",
+			stepClaimAcquire, briefIDFromItem(o.item), repo, followUp.pr, branch)
 	}
 
 	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
@@ -519,6 +560,13 @@ type dispatchPlan struct {
 	identityRole  string
 	identityName  string
 	identityEmail string
+	// dl is the cross-repo resolution (deliverable.go): which repo the deliverable lands in, resolved
+	// through the alias registry, and the tracking checkout the PR's `Brief:` trailer resolves
+	// against. Inactive when the item declared no alias — the legacy path, unchanged.
+	dl deliverable
+	// followUpOf is the MERGED PR a --rework dispatch follows up (0 = not a follow-up). Set by
+	// applyFollowUp, pre-claim, so the worktree branch and the prompt agree.
+	followUpOf int
 	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
 	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
 	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
@@ -626,8 +674,34 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 	}
 
-	repo, err := o.resolveRepo()
+	// --rework is a FRESH worker dispatch of a rework row: it is meaningless for a review/verifier
+	// dispatch, and contradicts --pr (a resume of an OPEN PR). Both refused here, pre-claim.
+	if o.rework {
+		if o.kit != "worker" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --rework is a fresh implementer dispatch of a rework row and needs --kit worker, not %q.",
+				stepClaimAcquire, o.kit))
+		}
+		if o.pr != 0 {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --rework and --pr contradict each other — --pr resumes an OPEN PR, --rework follows up a "+
+					"MERGED one on a new branch. Pass one.", stepClaimAcquire))
+		}
+	}
+
+	// CROSS-REPO (deliverable.go). An item that names a repo alias — the brief's deliverable_repo or
+	// homed-in, or an `<alias>:` item-key prefix — resolves its deliverable repo through the alias
+	// registry and HARD-FAILS here, before anything durable, when that repo is not --root's own.
+	// Otherwise the legacy resolution (--repo, else --root's origin) applies unchanged.
+	dl, err := resolveDeliverable(o)
 	if err != nil {
+		return plan, err
+	}
+	plan.dl = dl
+	var repo string
+	if dl.active {
+		repo = dl.repo
+	} else if repo, err = o.resolveRepo(); err != nil {
 		return plan, err
 	}
 	if !deskkit.IsAllowedRepo(repo) {
@@ -637,6 +711,12 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 	plan.repo = repo
 	plan.claimKey = claimKeyFor(o.item, repo)
+	if dl.active && dl.homeAlias != "" && !strings.Contains(o.item, "--") {
+		// A cross-repo item's claim key is prefixed with its TRACKING alias, not the deliverable
+		// repo's short label: two repos can own a stream of the same name, and the tracking alias is
+		// the one that names this brief. The claim still lands in the deliverable repo (--repo).
+		plan.claimKey = dl.homeAlias + "--" + strings.ReplaceAll(strings.Trim(o.item, "/"), "/", "--")
+	}
 
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
 	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
