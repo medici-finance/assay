@@ -220,7 +220,13 @@ func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 		}
 	}
 	m.Deny = deny
-	m.Banned = append(append([]string{}, deny...), "*opus-5*", "*opus5*")
+	// The built-in Opus-5.0 prohibition, applied even when `deny` is empty or omitted — a policy
+	// file cannot lift it. The patterns are ANCHORED at end-of-token (no TRAILING `*`) so they ban
+	// Opus 5.0 exactly — `claude-opus-5`, `claude-opus-5[1m]` (policyBase strips the tag),
+	// `gateway/claude-opus-5`, `Opus5` — while letting the valid Opus 5.5 top tier
+	// (`claude-opus-5-5`) through: that id ends in `opus-5-5`, not `opus-5`, so no pattern matches.
+	// `*opus-5-0` / `*opus-5.0` catch the explicit 5.0 spellings of the same tier.
+	m.Banned = append(append([]string{}, deny...), "*opus-5", "*opus5", "*opus-5-0", "*opus-5.0")
 
 	providersRaw, ok := top["providers"]
 	if !ok {
@@ -440,7 +446,11 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 	if hasDesk && requested == "" && desk.Effort != "" {
 		effort = desk.Effort
 	}
-	if role == "the-desk" && harness == "claude" && strings.Contains(strings.ToLower(model), "opus") {
+	// the-desk must run a valid TOP tier. isOpusPin is the single source of the "which opus tiers
+	// are refused for the-desk" decision (model.go): the bare `opus` alias, `claude-opus-5` (5.0)
+	// and older opus tiers are refused, while Opus 5.5 (`claude-opus-5-5`) — a valid top tier — is
+	// not. Sharing it with the legacy-path sites keeps the carve-out from forking between them.
+	if role == "the-desk" && harness == "claude" && isOpusPin(model) {
 		return nil, policyFail("the-desk requires a non-Opus top-tier model")
 	}
 

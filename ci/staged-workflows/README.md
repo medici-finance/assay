@@ -69,6 +69,39 @@ reviewable artifact, not a run.
   git push
   ```
 
+- `release-on-merge.yml` — the "release by merge" merge-detector (iso-9001/07). **New,
+  pending promotion.** On `push: branches: [main]` it detects that the pushed commit is the
+  merge of a release PR (title `release: vX.Y.Z` + a `RELEASE: vX.Y.Z` body line, merged with
+  `merge_commit_sha` == the pushed commit), mints a release-cutter App token, and creates
+  `refs/tags/assay/vX.Y.Z` then `refs/tags/vX.Y.Z` at the merge commit via the git-data API. The
+  plain `vX.Y.Z` tag — created by an App installation token, a distinct identity — triggers
+  `release.yml`'s `push: tags: ['v*']` build; a GITHUB_TOKEN-created tag would NOT (GitHub's
+  recursion guard). This job's own GITHUB_TOKEN stays read-only. **Prerequisite (repo-admin
+  act):** a release-cutter GitHub App (contents:write; no workflows/actions/administration
+  write) with its key wired as the Actions secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`
+  (a human may instead point these at the existing board-writer App's `BOARD_APP_*`). Promote it:
+  ```
+  git mv ci/staged-workflows/release-on-merge.yml .github/workflows/release-on-merge.yml
+  git commit -m "ci: activate release-on-merge.yml"
+  git push
+  ```
+- `release.yml` — a STAGED TWIN of the live `.github/workflows/release.yml`, carrying ONLY the
+  release-by-merge addition to the `resolve` job's tag-push path (iso-9001/07): it resolves the
+  authorizer from the merged release PR's `merged_by.login` and REFUSES to build a release for
+  any `v*` tag whose commit is not a merged release PR (title `release: vX.Y.Z` + `RELEASE:
+  vX.Y.Z`). Additive; no step reordered. Like `evidence-automerge.yml` above, no App may push a
+  `.github/workflows/*` change, so this is the reviewable edit surface; a maintainer re-promotes
+  by copying it over the live file in a maintainer-credentialled commit:
+  ```
+  cp ci/staged-workflows/release.yml .github/workflows/release.yml
+  git commit -m "ci: promote release.yml (release-by-merge tag-push authorizer)"
+  git push
+  ```
+  **Landing-mechanism caveat** applies exactly as for `windows-ci-leg.yml` below (see
+  `docs/streams/decisions/DR-workflow-app-landing.md` and desk-supervision/11-12): if the
+  workflow-App PR path has landed, prefer it over a verbatim hand-copy. Re-base this twin on the
+  live file at promotion time (three-way) so promoting only ADDS.
+
 ### `windows-ci-leg.yml` status
 
 Already activated (`windows-port/04`) — see "Already live" above for how a later change to

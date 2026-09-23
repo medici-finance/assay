@@ -380,3 +380,54 @@ func TestClaimNamespaceIsServedByBothBackends(t *testing.T) {
 		t.Fatalf("the refused delete disturbed the store: %s", got)
 	}
 }
+
+// The review-claim family helpers are the reader-side half of the assay#2875 fix: a review
+// verdict / ready-flip stamp ages out against the REVIEWER's dispatch family
+// (refs/dispatch/<short>--pr-<N>[--<suffix>]), matched by prefix because a re-dispatch's suffix
+// is unknown to a later reader.
+func TestReviewClaimFamilyHelpers(t *testing.T) {
+	// The family prefix is DispatchClaimActiveRefsPrefix + "<short>--pr-<N>" — the namespace claims
+	// actually live in (refs/dispatch/*), not refs/heads/dispatch/*.
+	prefix, ok := ReviewClaimFamilyRefPrefix("example-org/tracker", 547)
+	if !ok || prefix != "refs/dispatch/tracker--pr-547" {
+		t.Fatalf("ReviewClaimFamilyRefPrefix = (%q, %v), want (refs/dispatch/tracker--pr-547, true)", prefix, ok)
+	}
+	if _, ok := ReviewClaimFamilyRefPrefix("example-org/tracker", 0); ok {
+		t.Fatal("a non-positive PR number names no family")
+	}
+
+	// Membership: the un-suffixed prefix itself, and any "--<suffix>" re-dispatch, are members;
+	// a prefix-NEIGHBOUR PR (…--pr-5479 vs the family …--pr-547) is NOT — the "--" boundary.
+	for _, in := range []struct {
+		ref  string
+		want bool
+	}{
+		{"refs/dispatch/tracker--pr-547", true},
+		{"refs/dispatch/tracker--pr-547--rr3-corr", true},
+		{"refs/dispatch/tracker--pr-547--security", true},
+		{"refs/dispatch/tracker--pr-5479", false},      // neighbour PR, string-prefix only
+		{"refs/dispatch/tracker--pr-5479--rr1", false}, // neighbour PR's re-dispatch
+		{"refs/dispatch/tracker--pr-54", false},        // shorter neighbour
+		{"refs/dispatch/other--pr-547", false},         // different repo short label
+	} {
+		if got := RefInReviewClaimFamily(prefix, in.ref); got != in.want {
+			t.Errorf("RefInReviewClaimFamily(%q, %q) = %v, want %v", prefix, in.ref, got, in.want)
+		}
+	}
+
+	// Reduction: any true family member present → ClaimHeld; a listing with only a neighbour →
+	// ClaimReleased (the reducer re-filters the prefix match); a read error → Unknown (never a
+	// release — a family we could not list is not a family we saw gone).
+	if got := ReviewClaimLivenessFromMatchingRefs([]string{"refs/dispatch/tracker--pr-547--rr1"}, prefix, nil); got != ClaimHeld {
+		t.Errorf("a present family member = %v, want ClaimHeld", got)
+	}
+	if got := ReviewClaimLivenessFromMatchingRefs([]string{"refs/dispatch/tracker--pr-5479--rr1"}, prefix, nil); got != ClaimReleased {
+		t.Errorf("only a neighbour PR = %v, want ClaimReleased", got)
+	}
+	if got := ReviewClaimLivenessFromMatchingRefs(nil, prefix, nil); got != ClaimReleased {
+		t.Errorf("an empty family = %v, want ClaimReleased", got)
+	}
+	if got := ReviewClaimLivenessFromMatchingRefs(nil, prefix, fmt.Errorf("boom")); got != ClaimLivenessUnknown {
+		t.Errorf("a read error = %v, want ClaimLivenessUnknown", got)
+	}
+}

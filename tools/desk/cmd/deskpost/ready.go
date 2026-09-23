@@ -75,12 +75,14 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		if ferr != nil {
 			return fromReadErr("ready", repo, pr, head, ferr)
 		}
-		// A stamp left behind by a dispatch whose CLAIM has been released attests for a cycle
-		// that is over, so it ages out and the PR reads unstamped (deskkit/stampage.go). The
-		// read is this verb's own; every uncertain path is Unknown, which leaves the stamp
-		// exactly as it stood.
+		// The reviewer stamp this flip validates ages out when the REVIEW-dispatch claim behind
+		// it (the "<short>--pr-<N>" family, not this PR's worker Brief: claim) is no longer held —
+		// the review cycle is over, so the stamp attests nothing about this flip and the PR reads
+		// unstamped (claimLiveness → deskkit review-claim family). This is the SAME shared reader
+		// the verdict path uses (review.go), so a flip and a verdict clear the floor on identical
+		// evidence; every uncertain path is Unknown, which leaves the stamp exactly as it stood.
 		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
-			client.claimLiveness(repo, info.Body))
+			client.claimLiveness(repo, pr))
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)

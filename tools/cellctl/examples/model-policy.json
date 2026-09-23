@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "deny": [
-    "*opus-5*"
+    "*opus-5"
   ],
   "roles": {
     "the-desk": {

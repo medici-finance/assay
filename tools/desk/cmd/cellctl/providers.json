@@ -2,7 +2,7 @@
   "schema": 1,
   "default_provider": "anthropic",
   "deny": [
-    "*opus-5*"
+    "*opus-5"
   ],
   "providers": {
     "anthropic": {
