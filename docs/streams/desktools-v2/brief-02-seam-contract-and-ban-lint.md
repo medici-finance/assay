@@ -127,6 +127,30 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date Runner |
+|---|---------|----------|------------------------------|-------------|
+| 1 | test -x tools/desk/scripts/forge-ban.sh; echo rc=$? | rc=0 (counter present and executable) | exit 0; rc=0 | 2026-09-23 opus-5.5-verifier |
+| 2 | sh tools/desk/scripts/forge-ban.sh; echo rc=$? | prints "forge reach-around sites: N"; rc=0 (advisory) | exit 0; "forge reach-around sites: 55 (desk: 26, statusgen: 29)"; rc=0 | 2026-09-23 opus-5.5-verifier |
+| 3 | sh -c 'for p in forge_github.go forge_gitlab.go; do grep -qF -- "$p" tools/desk/scripts/forge-ban.sh; ...; done; echo both-exempt' | exit 0; prints both-exempt (each backend checked separately) | exit 0; both-exempt | 2026-09-23 opus-5.5-verifier |
+| 4 | grep -c 'forge-ban' .github/workflows/forge-surface-control.yml | exit 0; count >= 1 (counter wired into forge-surface job) | exit 0; 2 | 2026-09-23 opus-5.5-verifier |
+| 5 | sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb.txt | exit 0; "reach-around sites: N" with N a real integer | exit 0; "reach-around sites: 55" | 2026-09-23 opus-5.5-verifier |
+| 6 | test -f docs/streams/desktools-v2/seam-contract.md && grep -cE -e 'origin' -e 'pullRequest' -e 'api.github.com' docs/streams/desktools-v2/seam-contract.md | exit 0; count >= 1 (contract names the banned classes) | exit 0; 10 | 2026-09-23 opus-5.5-verifier |
+| 7 | sh tools/desk/scripts/forge-ban.sh --baseline && grep -cE '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt | exit 0; count = 1 (baseline is a machine-readable line) | exit 0; 1 (line written: desktools-v2/02 55) | 2026-09-23 opus-5.5-verifier |
+| 8 | sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb2s.txt 2>&1; grep -oE 'statusgen sites: [0-9]+' /tmp/dv2-fb2s.txt | exit 0; "statusgen sites: N" with N a real integer | exit 0; "statusgen sites: 29" | 2026-09-23 opus-5.5-verifier |
+
+All 8 Verify rows pass. Independently corroborated by statusgen verifyrun (v1.0.26): rows 1-8 all pass (exit=0), witness rows appended to the brief's Evidence section in the verifier worktree.
+
+RISK-VALUE lines (kit §4 — enumerate → rank → derive):
+
+- Enumeration over the diff scope (tools/desk/scripts/forge-ban.sh, docs/streams/desktools-v2/seam-contract.md, the forge-surface workflow advisory step, docs/streams/desktools-v2/forge-ban-baseline.txt) yields exactly one data literal that this brief introduces and that a later brief consumes: the recorded baseline count, baseline = 53 @ docs/streams/desktools-v2/forge-ban-baseline.txt:1. Every other literal in the script is control-flow/pattern text: exit codes (2, 0) and the class regex/exclude patterns (BACKEND_EXCLUDE, GH_SUBCMDS, FORGE_GO_EXCLUDE) — patterns and exit statuses, not risk-bearing thresholds. The forgeban ceiling (allowedInvocationCeiling = 5) is referenced by the script but is NOT set or changed by this diff (out of scope, per the brief).
+- RISK-VALUE: NAMED, NOT DERIVED — baseline = 53 @ docs/streams/desktools-v2/forge-ban-baseline.txt:1 — this is a reversible advisory metric (the counter always exits 0; no gate rides on it), so it ranks LAST by irreversibility and owes no first-principles derivation. It is a MEASURED value (whatever the counter emits on the frozen SHA), not a designed constant. It cannot be derived, only reproduced — and on this merged SHA the counter reproduces 55, not the recorded 53 (see Findings). A wrong/stale baseline is correctable by an edit + re-run, not an irreversible act.
+- RISK-VALUE: N/A for irreversible values — enumeration found no irreversible or hard-pinned constraint value (no settlement/auth/token/money literal); the item introduces an advisory counter with no failing gate. The one enumerated literal is the reversible baseline metric above.
+
+RISK-VALUE question filed: #1529 (baseline 53 no longer reproduces on merged main; the counter reads 55).
+
+
 ## Review
 Gate: model (all four risk answers no — a CI counter shipped ADVISORY, a portable grep, and a
 one-page contract doc; adds a lint per the stream's gate rule, binds no identity/token, edits
