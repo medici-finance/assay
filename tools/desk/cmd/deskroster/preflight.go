@@ -26,7 +26,7 @@ USAGE:
   deskroster preflight --role <role> [--root <dir>] [--repo <owner/name>]
                        [--remote <name>] [--branch <name>] [--claimed-brief <id>] [--verbose]
 
-Runs five checks, each answering checked-clean / checked-failed / could-not-check
+Runs six checks, each answering checked-clean / checked-failed / could-not-check
 / not-applicable with a NAMED remediation:
 
   token-mint-cold        a credential is obtainable from a FRESH scrubbed process:
@@ -39,6 +39,10 @@ Runs five checks, each answering checked-clean / checked-failed / could-not-chec
   write-transport        a READ-ONLY probe of the role's landing path             (#823)
   commit-identity        the commit email carries the BOT USER id, not the App id (#638)
   sibling-checkouts      the checkouts the QUEUED briefs declare are present      (#679 #661)
+  ambient-identity       the ambient gh login is the blessing human (not a bot
+                         slug, not a non-blessing login) and the origin credential
+                         helper resolves to the minted App token; not-applicable
+                         on a GitLab-forge repo                                    (#1527)
 
 Sibling checkouts resolve through the configured roots (DESK_ROOTS / topology),
 not a flat ../<repo>; at boot an absent sibling is a NOTICE, and only a brief
