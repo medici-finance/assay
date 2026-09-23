@@ -408,6 +408,16 @@ var handTableOptOut = map[string]string{
 		"neither declared set and cannot drift from topology.yaml (a change to either label category " +
 		"leaves this set untouched). It restates `needs-decision`/`question` only because the " +
 		"escalation vocabulary happens to overlap decision_owed, not because it copies it.",
+	"escalationLabels": "NOT a derivation — a distinct POLICY SET, the sibling of " +
+		"blockingIssueLabels. It is deskfile's blocker-evidence gate: the escalation vocabulary " +
+		"(needs-decision, help wanted, question) whose `new` filing is a blocker CLAIM and so must " +
+		"carry an `### Evidence` block. It is neither labels.system_state nor labels.decision_owed — " +
+		"it carries `help wanted`, which is not a topology label at all, and omits `needs-human`, " +
+		"which decision_owed carries but which marks an ACT (a human-decision-queue entry), not a " +
+		"blocker claim, so the gate excludes it exactly as it excludes `human-only`. It mirrors " +
+		"neither declared set and cannot drift from topology.yaml (a change to either label category " +
+		"leaves this set untouched); it restates `needs-decision`/`question` only because the " +
+		"escalation vocabulary happens to overlap decision_owed, not because it copies it.",
 }
 
 // scanForHandTables finds composite literals that restate two or more distinct
