@@ -501,18 +501,19 @@ badge. This is **sugar on the same primitive, not a new requirement**. The metho
 unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktree per dispatched
 item, and the cockpit is only a nicer way to reach it.
 
-- **`ASSAY_COCKPIT`, when set, names the arm — and an unavailable choice is a refusal, never a
-  fallback.** A cell launcher exports it into every role window as the cell's ONE cockpit value
-  (the same cockpit its windows are hosted in), so nobody has to remember it; an operator with no
-  launcher may export it by hand. Its values select the arms below: `supacode`, `herdr`, `orca`, or
-  `plain` — and `tmux`, which a tmux-hosted cell exports, means `plain` (the always-works
-  fallback, which needs no cockpit CLI). An explicit choice whose CLI is not on PATH is a
-  **refusal naming that CLI**: do not cut the worktree, file it per the escalation rules, and stop
-  that dispatch — never a silent fall-through to another cockpit or to the fallback. The same holds
-  wherever an arm below says "fall through to the fallback" (an installed build that cannot pin
-  the base or the per-item path): under an explicit `ASSAY_COCKPIT` that is a refusal naming the
-  cockpit and what it could not pin, and the operator re-points `ASSAY_COCKPIT` (to `plain`, say)
-  to proceed. A value outside that set is a refusal naming the value.
+- **`ASSAY_COCKPIT`, when set, names the arm — and a named CLI that is absent is a refusal,
+  never a substitute.** A cell launcher exports it into every role window as the cell's ONE
+  cockpit value (the same cockpit its windows are hosted in), so nobody has to remember it; an
+  operator with no launcher may export it by hand. Its values select the arms below: `supacode`,
+  `herdr`, `orca`, or `plain` — and `tmux`, which a tmux-hosted cell exports, means `plain` (the
+  always-works fallback, which needs no cockpit CLI). A cell launcher never exports `supacode`, so
+  inside a cell that arm is reached only by an operator's own export outside the launcher. When the
+  named CLI is not on PATH, that is a **refusal naming that CLI**: do not cut the worktree, file it
+  per the escalation rules, and stop that dispatch — never a silent switch to another cockpit or
+  to the fallback. A value outside that set is a refusal naming the value. Everything else about
+  the named arm is unchanged: where it says "fall through to the fallback" (an installed build that
+  cannot pin the base or the per-item path), it still falls through to the plain `git worktree add`
+  — the value picks the cockpit, it never makes one required.
 - **Unset, selection is by command presence on PATH, never a config flag someone must
   remember.** For the worktree-create step of each dispatched item, resolve the FIRST that is
   present. Either way, every path spells the base in full as `refs/remotes/origin/main` — never
@@ -546,9 +547,8 @@ item, and the cockpit is only a nicer way to reach it.
   remote-tracking tip — `git -C ../<repo>-<item> rev-parse HEAD` must equal `git -C <repo>
   rev-parse refs/remotes/origin/main` — and that it is the per-item `../<repo>-<item>` path (one
   worktree per dispatched item, collision-free by construction). A cockpit whose base or path
-  cannot be pinned to that invariant is not used for the create step; the fallback is (or, under
-  an explicit `ASSAY_COCKPIT`, the dispatch is refused as above). This is the isolation clause
-  enforced, not merely asserted.
+  cannot be pinned to that invariant is not used for the create step; the fallback is. This is the
+  isolation clause enforced, not merely asserted.
 - **Only the worktree-create step changes — nothing else forks.** The branch name, the
   `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
   model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb

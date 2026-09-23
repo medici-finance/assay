@@ -668,7 +668,17 @@ cockpit in its environment as `ASSAY_COCKPIT`:
 
 With no cell at all, nothing exports `ASSAY_COCKPIT`, and the worker-desk step keeps its own
 presence-on-PATH order. That skill also accepts `supacode` and `plain` as values an operator may
-export by hand; `cellctl` has no supacode window shape, so it never exports that one.
+export by hand; `cellctl` has no supacode window shape, so it never exports that one — a cell's
+windows never select supacode, whatever is on `PATH`, until such a shape exists.
+
+The worker-desk step refuses a named cockpit only when its CLI is not on `PATH`. A named cockpit
+whose installed build cannot pin the base or the per-item path still falls through to the plain
+`git worktree add` there, exactly as it does with nothing set — the value chooses a cockpit, it
+never makes one required.
+
+Resolving the cockpit at every `desk` boot means a host with `orca` installed runs the same
+bounded reachability probe `up` and `check` already run (`orca repo list`, `CELLCTL_ORCA_TIMEOUT`
+seconds, 5 by default) once per window, dry runs included.
 
 ### The three shapes
 
