@@ -1,10 +1,10 @@
-// deskinbox — the Go port of assay-inbox.sh (windows-port/13), the `assay:inbox` skill's
+// deskinbox — the Go port of assay-inbox.sh, the `assay:inbox` skill's
 // engine: open issues across the configured repos carrying an escalation-contract label
 // (urgent / needs-decision / question / help wanted), sorted urgency-then-age.
 //
-// THIS PORT'S SCOPE (split from the brief — see testdata/spec.md for the full contract and
-// the reason for the split). Two of the oracle's five renderings are implemented here,
-// byte-parity tested against the oracle's own jq program:
+// THIS PORT'S SCOPE (split from the authoring brief — see testdata/spec.md for the full
+// contract and the reason for the split). Two of the oracle's five renderings are
+// implemented here, byte-parity tested against the oracle's own jq program:
 //
 //	(none)   the terminal table — one row per item.
 //	walk     ONE item in the five-part decision format (Header/Context/Options/Reply
@@ -44,7 +44,7 @@ usage:
 Repo resolution order (no repo args): ./.assay/repos.txt, else the current repo's
 origin remote.
 
-NOT YET PORTED in this Go verb (windows-port/13's follow-up): --html and --flow.
+NOT YET PORTED in this Go verb (a follow-up brief covers it): --html and --flow.
 Use the bash oracle for those: bash plugins/assay/scripts/assay-inbox.sh --html OUT.html
 / --flow.
 
@@ -109,7 +109,7 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 			mode = "walk"
 		case a == "--html" || a == "--flow" || a == "--root" || a == "--since":
 			fmt.Fprintf(stderr,
-				"deskinbox: %s is not yet ported (windows-port/13's follow-up) — use "+
+				"deskinbox: %s is not yet ported (a follow-up brief covers it) — use "+
 					"`bash plugins/assay/scripts/assay-inbox.sh %s ...` instead\n", a, a)
 			return deskkit.ExitRefused
 		case len(a) > 0 && a[0] == '-':

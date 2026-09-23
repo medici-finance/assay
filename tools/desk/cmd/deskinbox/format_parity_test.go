@@ -232,7 +232,7 @@ func TestParityWalk(t *testing.T) {
 			},
 			d: jqDetail{
 				Body: "Some preamble.\n\n## Context\n\nThe queue is stuck on X.\nY needs a ruling.\n\n" +
-					"unblocks: windows-port/14\n\n## Options\n\n" +
+					"unblocks: example-stream/14\n\n## Options\n\n" +
 					"A. Do the safe thing\nB. Do the risky thing — (Recommended)\nC. Do nothing\n",
 				Comments: []jqComment{
 					{Author: jqCommentAuthor{Login: "someone"}, Body: "not the desk"},

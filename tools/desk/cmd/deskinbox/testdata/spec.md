@@ -1,4 +1,4 @@
-# deskinbox — port contract (windows-port/13)
+# deskinbox — port contract
 
 Read against the oracle end to end (`plugins/assay/scripts/assay-inbox.sh`, 1,403 lines) at
 pickup. This file is the implementer's contract the brief's Task 1 calls for, and the
@@ -30,9 +30,9 @@ calls), but the `make×4` claim specifically does not survive a direct check.
 |---|---|---|---|
 | table (default) | `deskinbox [owner/repo ...]` | one row per queue item, oldest-urgent-first | **ported** |
 | walk | `deskinbox walk [--item K] [owner/repo ...]` | ONE item in the five-part decision format (Header/Context/Options/Reply shape/Verification); prints item 1 by default | **ported** |
-| html | `assay-inbox.sh --html OUT.html [owner/repo ...]` | the whole queue as self-contained HTML cards in the same five-part format, PLUS the flow section | follow-up (windows-port/15) |
-| flow | `assay-inbox.sh --flow [--root PATH ...] [--since YYYY-MM-DD]` | the pipeline flow model as a terminal table | follow-up (windows-port/15) |
-| flow --html | `assay-inbox.sh --flow --html OUT.html` | the flow model as an inline-SVG stage diagram | follow-up (windows-port/15) |
+| html | `assay-inbox.sh --html OUT.html [owner/repo ...]` | the whole queue as self-contained HTML cards in the same five-part format, PLUS the flow section | follow-up brief |
+| flow | `assay-inbox.sh --flow [--root PATH ...] [--since YYYY-MM-DD]` | the pipeline flow model as a terminal table | follow-up brief |
+| flow --html | `assay-inbox.sh --flow --html OUT.html` | the flow model as an inline-SVG stage diagram | follow-up brief |
 
 **Why the split.** The dispatch brief pre-authorizes splitting an oversized port and
 keeping only the piece mid-implementation. table+walk share ONE engine (repo resolution,
