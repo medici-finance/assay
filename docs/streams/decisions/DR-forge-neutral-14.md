@@ -22,8 +22,8 @@ gate-approval verbs (`RunWorkflow`, `ApproveGate`, `RunStatus` on the forge seam
 decision gate.
 
 The ruling is recorded on the brief's decision-gate issue,
-[issue #1556](https://github.com/medici-finance/assay/issues/1556). The driver answered it in
-their own identity on 2026-09-23 with "approve as briefed" in
+[issue #1556](https://github.com/medici-finance/assay/issues/1556). The answer, "approve as
+briefed", was posted under the driver's own login at 2026-09-23T18:47:26Z in
 [this comment](https://github.com/medici-finance/assay/issues/1556#issuecomment-5800844370).
 The decision-gate template offered three options: approve as briefed, approve with
 changes, or hold/reject. The recorded answer is option 1, approve as briefed, which
