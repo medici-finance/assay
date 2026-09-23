@@ -52,7 +52,7 @@ import (
 // construction, no branch the injection could steer toward is a human-gate move.
 //
 // decisionassessment.go layers a richer, CALIBRATED envelope (request / prediction /
-// policy-result, graph-execution/10) on top of this same Advisor/Consult/Decide
+// policy-result, example-stream/10) on top of this same Advisor/Consult/Decide
 // machinery, through an explicit projection (PredictionAdvisor, Prediction.ToAdvice)
 // rather than a change here: every rule on this page — fail-closed default, budget,
 // timeout, journal, reserved verbs — binds a Prediction-based provider identically to a

@@ -143,7 +143,7 @@ injected valve can never *default* into the retry that caused the incident; a hu
 `Decide`/`Advice` above are a bounded enum consult; they carry no calibrated probability,
 provider identity or evidence reference. `decisionassessment.go` adds that richer envelope
 — `spec/decision-assessment-v1.md` / `schemas/decision-assessment-v1.json` — as three
-products that are never merged (GEA-04, GEA-09–11):
+products that are never merged (EX-04, EX-09–11):
 
 | Type | Carries | Never |
 |---|---|---|
@@ -151,7 +151,7 @@ products that are never merged (GEA-04, GEA-09–11):
 | `Prediction` | a calibrated label distribution OR an explicit `Abstained`, `ShadowLabels` for uncalibrated labels, provider/calibrator identity, requested vs. actual backend, self-reported budget usage, evidence references | a synthesized confidence for a label the calibrator does not cover |
 | `PolicyResult` | a deterministic decision, its policy version and reason | a probability — a policy result is never derived from a `Prediction`'s numbers inside this package |
 
-`ValidatePrediction(req, pred)` rejects (a `Refused`, exit 5) every malformed shape GEA-04/07
+`ValidatePrediction(req, pred)` rejects (a `Refused`, exit 5) every malformed shape EX-04/07
 name: an unknown label, a NaN/Inf or out-of-range probability, invalid normalization beyond
 the declared `PredictionNormalizationTolerance`, a mismatched subject, a stale/wrong input
 or schema digest, an uncalibrated label carrying a probability, an abstention that still
@@ -183,4 +183,4 @@ This package lands the primitive and its contract only. Wiring specific loops
 (verification triage, refusal handling) to consult it are separate follow-ups; each such
 consumer must still run correctly with the valve disabled. The mixed agentic-admission
 policy over `Prediction`/`PolicyResult` (deterministic facts vs. probabilistic advisory
-dimensions, GEA-09/10) is graph-execution/13's follow-up, not this file's.
+dimensions, EX-09/10) is example-stream/13's follow-up, not this file's.

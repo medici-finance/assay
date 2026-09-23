@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// decisionassessment.go — the typed advice / policy-result envelope (graph-execution/10,
-// GEA-04/07/09-11). `Decide` (decide.go) already carries a bounded, fail-closed
+// decisionassessment.go — the typed advice / policy-result envelope (example-stream/10,
+// EX-04/07/09-11). `Decide` (decide.go) already carries a bounded, fail-closed
 // vocabulary-consult primitive; this file adds the richer, CALIBRATED envelope a
 // probabilistic provider (Laya or any other) fills in, and keeps it strictly separate
 // from the DETERMINISTIC policy record that acts on it.
@@ -22,11 +22,11 @@ import (
 //   - Prediction — the probabilistic ADVICE: a label distribution (or an explicit
 //     abstention), which labels the calibrator actually covers, provider/calibrator
 //     identity, the actual backend used, budget usage and evidence references. It is
-//     never itself an authorization — GEA-07: "confidence and action fields are
+//     never itself an authorization — EX-07: "confidence and action fields are
 //     annotations, never a calibrated probability of safe execution".
 //   - PolicyResult — a SEPARATE deterministic record. A policy result is never derived by
 //     averaging or thresholding a Prediction inside this package; it is a distinct typed
-//     value a caller's own policy code produces (GEA-11: preserve AssayScore,
+//     value a caller's own policy code produces (EX-11: preserve AssayScore,
 //     AgenticAssessment and ControlAssurance as separate products, never one score).
 //
 // Existing `Advice`/`Decide` callers are preserved through an EXPLICIT projection
@@ -43,7 +43,7 @@ import (
 //
 // RequiredCalibratorVersion is optional (empty = no calibration-version check declared):
 // when set, a Prediction whose CalibratorVersion differs is inapplicable calibration
-// (GEA-08: "a model/precision/schema/domain change invalidates calibration unless
+// (EX-08: "a model/precision/schema/domain change invalidates calibration unless
 // equivalence is proved") and is refused rather than silently accepted.
 type AssessmentRequest struct {
 	Subject                   string
@@ -69,7 +69,7 @@ const PredictionNormalizationTolerance = 1e-6
 
 // Prediction is the probabilistic advice envelope. LabelProbabilities holds ONLY the
 // labels the provider's calibrator actually covers; ShadowLabels names labels the
-// provider produced without calibration support — GEA-07/08: "uncalibrated labels may be
+// provider produced without calibration support — EX-07/08: "uncalibrated labels may be
 // shadow-only; do not synthesize confidence". A label MUST NOT appear in both.
 //
 // Abstained is an EXPLICIT "no usable prediction" — distinct from a low-confidence guess.
@@ -95,7 +95,7 @@ type Prediction struct {
 
 // PolicyResult is the SEPARATE deterministic record: a policy's own disposition over a
 // subject, never a probability and never derived inside this package from a Prediction's
-// numbers. GEA-11 keeps this a distinct product from the probabilistic assessment above.
+// numbers. EX-11 keeps this a distinct product from the probabilistic assessment above.
 type PolicyResult struct {
 	Subject       string
 	InputDigest   string
@@ -108,7 +108,7 @@ type PolicyResult struct {
 // ValidatePrediction checks p against the envelope req declares. It returns the FIRST
 // violation found (a *DeskError from Refused, exit 5 — malformed data, the same
 // construction-time-refusal shape NewQuestion already uses), covering every rejection
-// GEA-04/07 names:
+// EX-04/07 names:
 //
 //   - mismatched subject
 //   - stale or wrong-subject input (the prediction's input/schema digest does not match
@@ -124,7 +124,7 @@ type PolicyResult struct {
 //   - a self-reported budget overrun
 //
 // A nil error means p is well-formed against req — never a claim that its NUMBERS are
-// accurate; calibration quality is graph-execution/12's concern, not this function's.
+// accurate; calibration quality is example-stream/12's concern, not this function's.
 func ValidatePrediction(req AssessmentRequest, p Prediction) error {
 	if p.Subject == "" || p.Subject != req.Subject {
 		return Refused(fmt.Sprintf(
@@ -260,7 +260,7 @@ func (p Prediction) ToAdvice() (Advice, bool) {
 
 // PredictionAdvisor adapts a richer probabilistic Predict func to the existing bounded
 // Advisor contract Decide already enforces (vocabulary membership, timeout, budget, kill
-// switch, journal). It is the "explicit projection" GEA-04 requires: a provider upgrades
+// switch, journal). It is the "explicit projection" EX-04 requires: a provider upgrades
 // to the typed assessment envelope with ZERO change to Decide, Consult or any existing
 // Advisor caller.
 //
