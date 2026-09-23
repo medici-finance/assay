@@ -306,7 +306,18 @@ status flip**:
 
 ## On VERIFY: FAIL — a Change Failure, filed not buried
 
-The brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
+**First, is it a STALE row rather than a Change Failure?** A large share of FAILs are the same
+shape — a row pins a path, a count, or a tool idiom the tree moved out from under it, so the table
+fails AS WRITTEN while the work it checks is intact. On a FAIL whose row matches that stale shape,
+run `deskrebaseline <brief> --row K` **before filing**. It classifies the row against a narrow safe
+set and fails CLOSED: a `safe:*` verdict (add `--open`, run from a clean checkout at the fetched
+`refs/remotes/origin/main` with `--root` set to the brief's own checkout — it refuses otherwise)
+opens a one-row re-baseline draft PR — as the verifier App, reviewed and human-merged like any PR, never landed on main by the verb — and a
+`refused:*` verdict means this is NOT a stale oracle. On any `refused:*` (or a non-stale FAIL), file
+the issue exactly as below, carrying the verb's reason. See `docs/rebaseline.md` for the safe/refusal
+sets and the PR shape.
+
+Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
 IS the report. **In addition** append one row to the append-only sidecar
 `docs/streams/verify-outcomes.jsonl` (single-writer = this desk; the `VERIFY FAIL` commit-subject
