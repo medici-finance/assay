@@ -13,7 +13,7 @@ why: >-
   the rule lands green.
 wave: 0
 depends: []
-unblocks: []
+unblocks: ["harness-portability/18"]
 effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

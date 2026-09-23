@@ -212,6 +212,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
 | 16 | [Codex long-context cap — compaction limit on every Codex desk launch, shipped in packaging, linted](brief-16-codex-long-context-cap.md) | 7 | M | todo | — | — |
 | 17 | [Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI](brief-17-skill-frontmatter-conformance-lint.md) | 0 | S | todo | — | — |
+| 18 | [Skill description routing check — TF-IDF collision NOTICE plus a rank-1 routing fixture with a ratchet](brief-18-skill-description-routing-check.md) | 1 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
@@ -280,6 +281,15 @@ exit-1 skillslint rule, reports body size and the bundle-wide description budget
 `--skills-dir` so the same rule runs over an adopter's own skills directory, and shortens the two
 descriptions. It is `gate: model`, wave 0, and extends no critical path.
 
+**Note on 18 — routing between skills, the failure 17's limits do not touch.** A description can be
+inside every length limit and still compete with a sibling's for the same prompts, so a harness
+loads the wrong skill. `the-desk`'s description already carries negative routing text ("Do NOT
+load this for a WORKER…") to fight exactly that. 18 adds a deterministic skillslint check: pairwise
+TF-IDF cosine over every skill description (NOTICE above a threshold), plus a checked-in routing
+fixture of positive and negative prompts per skill, scored for rank-1 accuracy against a recorded
+baseline that turns into an exit-1 ratchet one release after it lands. It reuses 17's
+`--skills-dir`, so it is wave 1 after 17; `gate: model`, no critical path.
+
 ## Critical path
 
 ```
@@ -327,6 +337,7 @@ stream.
 Wave 0: [01, 02, 09, 10]   (09 jcode + 10 SpecMem: independent evaluation spikes Ian asked for, 2026-08-16; each INFORMS — does not gate — the harness-target ruling (03), so neither carries an `unblocks: 03`; not on the Codex critical path)
         [17]               (skill-frontmatter conformance lint; no in-stream dependency, extends no critical path)
 Wave 1: [03]←01
+        [18]←17            (skill-description routing check; reuses 17's --skills-dir, extends no critical path)
 Wave 2: [04]←{02,03}, [05]←{01,03}
 Wave 3: [06]←{03,04,05}, [11]←04
 Wave 4: [07]←{05,06}
