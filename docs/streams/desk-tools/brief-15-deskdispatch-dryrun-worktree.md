@@ -157,7 +157,7 @@ RISK-VALUE: DERIVED — `.claude/worktrees` sanctioned-suffix path @ worktree.go
 RISK-VALUE: DERIVED — exit code `deskkit.ExitRefused = 5` @ exitcodes.go:27, used throughout the three refusal paths, matching the brief's stated requirement.
 
 VERIFY: PARTIAL — held at implemented. Rows 1-5,7 checked-clean; row 6 fails exactly as written, but the cause (phantom_test.go, drifted by a separate commit two days before this brief's merge) is confirmed pre-existing and unrelated, tracked at assay#1119. Matches both prior recorded verdicts (2026-09-15 implementer, 2026-09-17 non-implementer) — this third pass reaches the same result independently. No new issue filed.
-### Non-implementer verifier run — VERIFY: FAIL (row 6 only: pre-existing, unrelated gofmt finding, tracked #1119; rows 1-5, 7 checked-clean; 3rd independent pass, same result) — verify-desk-dispatch-20260920T0246Z (verify-desk dispatch), @ merged main `e4109205`, 2026-09-20
+### Non-implementer verifier run — VERIFY: PARTIAL (row 6 only: pre-existing, unrelated gofmt finding, tracked #1119; rows 1-5, 7 checked-clean; 3rd independent pass, same result) — verify-desk-dispatch-20260920T0246Z (verify-desk dispatch), @ merged main `e4109205`, 2026-09-20
 
 Own detached worktree off origin/main; deliverable commit 622400754 (PR-landed 2026-09-08) confirmed ancestor. Offline envelope, non-implementer, read-only.
 
@@ -176,7 +176,7 @@ RISK-VALUE: DERIVED — "tracker-" worktree-name prefix @ worktree.go:100 and th
 RISK-VALUE: DERIVED — refusal exit code ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:27 (ExitUnverifiable = 6 @ :31) — matches the brief's requirement and the verb family convention.
 Ranking note: all four gate a DRY-RUN-ONLY render (dispatch.go:455 refuses --worktree on any real dispatch; row 4 pins zero child processes) — wrongness breaks an operator preview, reversible by edit + rebuild.
 
-VERIFY: FAIL — row 6 exactly as written: gofmt -l over cmd/deskdispatch lists phantom_test.go (test exit 1). Cause confirmed pre-existing and unrelated to this brief's diff (91a7f9208, 2026-09-06, before the 2026-09-08 merge; tracked #1119). Rows 1-5 and 7 checked-clean. Item does NOT advance; stays implemented.
+VERIFY: PARTIAL — row 6 exactly as written: gofmt -l over cmd/deskdispatch lists phantom_test.go (test exit 1). Cause confirmed pre-existing and unrelated to this brief's diff (91a7f9208, 2026-09-06, before the 2026-09-08 merge; tracked #1119). Rows 1-5 and 7 checked-clean. Item does NOT advance; stays implemented.
 
 ## Review
 
