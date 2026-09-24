@@ -28,18 +28,33 @@ package deskkit
 //	  Body-Reread-Digest: <body-digest-re-read>    (i)  the live body, as re-read
 //	  CI-Green-At: <full head sha>                 (iii) CI green at THAT head
 //
-// and the decision verifies what it can INDEPENDENTLY rather than trusting the citation:
+// and the decision checks each clause against the strongest source it has. Two kinds of
+// source are involved, and they are NOT equally strong.
 //
-//   - the CR's declaration is the whole of its blocking findings (a typed finding block that
-//     carries any OTHER blocking finding makes the CR mixed, and mixed never qualifies — a
-//     code finding needs a code change);
+// FORGE FACTS, read by the caller at the gate — no review body can assert these:
+//
 //   - the re-read digest EQUALS the digest of the live body the caller read at the gate, so
 //     the documented re-read is of the body that is actually there now;
-//   - the re-read digest DIFFERS from the digest the CR recorded, so the body really was
-//     edited after the block (an APPROVE over an unedited body is exactly the no-op
-//     re-approval the unchanged-head rule refuses);
-//   - the APPROVE was submitted AFTER the CR, and cites the finding id the CR declared and
-//     the head both reviews are pinned to.
+//   - the forge's own record of the last PR-body edit (GitHub's `lastEditedAt`) is LATER
+//     than the CR's submission time, so the body really was edited after the block. This is
+//     the clause that establishes "edited": an APPROVE over an unedited body is exactly the
+//     no-op re-approval the unchanged-head rule refuses. A missing or unreadable edit time
+//     refuses (GitLab's change read reports none, so the class stays fail-closed there);
+//   - the APPROVE was submitted AFTER the CR, and both are pinned to the current head.
+//
+// REVIEWER-RECORDED values, which bind the reviewer's own claims to each other but are never
+// the sole proof of a fact:
+//
+//   - the re-read digest DIFFERS from the digest the CR recorded. This is a SECOND, narrowing
+//     condition beside the forge's edit time, never a substitute for it: the CR's digest is
+//     whatever the reviewer wrote on the CR and nothing verifies it against the body as it
+//     stood then, so on its own a slipped or mistyped CR digest would satisfy the inequality
+//     over an unedited body;
+//   - the APPROVE cites the finding id the CR declared, and the head;
+//   - the CR's declaration is the whole of its blocking findings (a typed finding block that
+//     carries any OTHER blocking finding makes the CR mixed, and mixed never qualifies — a
+//     code finding needs a code change). With no typed block, "the body is the sole blocker"
+//     rests on the reviewer's own declaration — the same trust model as `Blocked-On-Check:`.
 //
 // (iii)'s citation is checked for SHAPE and HEAD here; whether CI actually IS green stays the
 // caller's own mechanical condition (deskflip `checks-green`, the board's CI verdict), which
@@ -174,6 +189,11 @@ type BodyEditInput struct {
 	// LiveBody is the PR body as the caller read it AT THE GATE — fresh, never cached from
 	// the reviewer's citation.
 	LiveBody string
+	// BodyEditedAt is the FORGE's own record of when the PR body was last edited (RFC3339;
+	// GitHub's `lastEditedAt`), read by the caller at the gate. "" means the forge reports no
+	// edit (or reports none at all) — which refuses: "edited after the block" is then not
+	// established, whatever the reviewer's recorded digests say.
+	BodyEditedAt string
 }
 
 // BodyEditDecision is the result. Declared says the class was claimed; Cleared says the
@@ -208,6 +228,23 @@ func EvaluateBodyEditReverification(in BodyEditInput) BodyEditDecision {
 			"APPROVE came after it cannot be established"
 		return dec
 	}
+	editedRaw := strings.TrimSpace(in.BodyEditedAt)
+	if editedRaw == "" {
+		dec.Reason = "the forge reports no edit of the PR body (no last-edited time) — that the body was edited " +
+			"after the CR cannot be established, and a recorded digest alone never establishes it"
+		return dec
+	}
+	editedAt, err := time.Parse(time.RFC3339, editedRaw)
+	if err != nil {
+		dec.Reason = "the forge's PR-body last-edited time " + editedRaw + " is not readable as RFC3339 — that the " +
+			"body was edited after the CR cannot be established"
+		return dec
+	}
+	if !editedAt.After(crAt) {
+		dec.Reason = "the forge records the PR body's last edit at " + editedRaw + ", not after the CR (" +
+			strings.TrimSpace(in.CRSubmittedAt) + ") — the body was not edited after the block, so there is nothing new to verify"
+		return dec
+	}
 	live := PRBodyDigest(in.LiveBody)
 
 	considered := 0
@@ -221,7 +258,8 @@ func EvaluateBodyEditReverification(in BodyEditInput) BodyEditDecision {
 		if why == "" {
 			dec.Cleared = true
 			dec.Reason = "documented body-edit re-verification: finding " + d.FindingID + " resolved, live body " +
-				"re-read (digest " + live[:12] + ", edited since the CR), CI-green cited at " + short12(head)
+				"re-read (digest " + live[:12] + "; the forge records a body edit at " + editedRaw +
+				", after the CR), CI-green cited at " + short12(head)
 			return dec
 		}
 		dec.Reason = why // the latest after-CR approve's failure is the one reported
@@ -254,8 +292,8 @@ func bodyEditApproveProblem(body string, d BodyEditDeclaration, head, liveDigest
 			liveDigest[:12] + ") — the body it re-read is not the body that is there now"
 	}
 	if dg == d.CRDigest {
-		return "the APPROVE's re-read digest equals the digest the CR recorded — the body was not edited after the " +
-			"block, so there is nothing new to verify"
+		return "the APPROVE's re-read digest equals the digest the CR recorded — the body the reviewer blocked on " +
+			"is the body there now, so there is nothing new to verify"
 	}
 	ci := SoleVerdictMarkerValue(body, ciGreenAt, SkipFenced)
 	if ci == "" {

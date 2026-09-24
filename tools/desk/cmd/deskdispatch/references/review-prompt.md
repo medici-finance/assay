@@ -195,8 +195,8 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
   post one; the flip gate refuses it.
 - THREE EXEMPTIONS, and only these three. All share one premise: the rule above assumes
   nothing changed, and in each of these something DID — just not something a head sha can
-  carry. Both are established by an EXPLICIT declaration in the body, never by prose, and
-  both leave every code finding standing until the code changes.
+  carry. Each is established by an EXPLICIT declaration in the body, never by prose, and
+  each leaves every code finding standing until the code changes.
 
   1. **Check-only.** When the only thing that changed since the CHANGES_REQUESTED is a
      LABEL that turned a REQUIRED CHECK green, a same-head re-approve IS a re-verification
@@ -233,7 +233,10 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
      removed and trailing newlines trimmed:
      `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
      `deskflip` recomputes the live body's digest at flip time and refuses unless it equals
-     your re-read digest AND differs from the CR's; it still judges CI itself.
+     your re-read digest AND differs from the CR's. That the body was edited after your CR
+     is established from the forge's own record of the body's last edit (it must be later
+     than the CR; absent or unreadable refuses) — your recorded digests alone never establish
+     it. It still judges CI itself.
 
   Know what these do and do not unblock: the flip gate still compares head shas and reads
   the re-approve as same-head. The re-approve records the correct verdict on the PR; each

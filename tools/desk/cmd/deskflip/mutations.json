@@ -130,8 +130,26 @@
     {
       "name": "body-edit class: re-check against the FIRST body read (a body edited before the mutation clears — reddens TestBodyEdit_BodyEditedAgainBeforeMutation)",
       "file": "cmd/deskflip/flip.go",
-      "old": "checkReviewerApproved(reviewerLogin, reviews2, head, body2,",
-      "new": "checkReviewerApproved(reviewerLogin, reviews2, head, body2[:0]+pr.Body,"
+      "old": "liveBodyRead{Body: body2, EditedAt: bodyEditedAt}",
+      "new": "liveBodyRead{Body: body2[:0] + pr.Body, EditedAt: bodyEditedAt}"
+    },
+    {
+      "name": "body-edit class: let a security-marked APPROVE clear the body CR (with a plain correctness APPROVE beside it the PR flips — reddens TestBodyEdit_SecurityMarkedDocumentedApproveBesidePlainApprove)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif r.State != \"APPROVED\" || hasSecurityMarker(r.Body) {\n\t\t\tcontinue\n\t\t}\n\t\tapproves = append(approves, deskkit.BodyEditApprove{",
+      "new": "\t\tif r.State != \"APPROVED\" {\n\t\t\tcontinue\n\t\t}\n\t\tapproves = append(approves, deskkit.BodyEditApprove{"
+    },
+    {
+      "name": "body-edit class: never read the forge's body edit time, assume an edit (an unedited body with a slipped CR digest flips — reddens TestBodyEdit_UneditedBodyWithMismatchedCRDigest, TestBodyEdit_EditTimeUnreadableRefuses)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\teditedAt := \"\"\n\tif live.EditedAt != nil {",
+      "new": "\teditedAt := \"9999-01-01T00:00:00Z\"\n\tif false && live.EditedAt != nil {"
+    },
+    {
+      "name": "body-edit class: read an unreadable body edit time as 'never edited' instead of could-not-check (reddens TestBodyEdit_EditTimeUnreadableRefuses)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "if editedAt, err = live.EditedAt(); err != nil {",
+      "new": "if editedAt, err = live.EditedAt(); err != nil && false {"
     }
   ]
 }

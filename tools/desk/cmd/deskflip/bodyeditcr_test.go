@@ -6,8 +6,9 @@ package main
 // The accepting case flips. Every near-miss starts from the accepting fixture and changes one
 // thing, and must refuse with NO mutation: a different exemption class, an undocumented
 // re-approve, a code finding still standing at head, a body that moved after the re-read, a
-// security-lane approve, and CI red at head (the flip gate's own mechanical check, which the
-// class never replaces).
+// body the forge records as not edited after the CR, an edit time that cannot be read, a
+// security-lane approve (alone, and beside a plain correctness approve), and CI red at head
+// (the flip gate's own mechanical check, which the class never replaces).
 
 import (
 	"strings"
@@ -21,6 +22,7 @@ const (
 	bodyAfterEdit  = "Summary: the example check passes on the corrected fixture.\n\nNo trailer in this fixture."
 	bodyFindingID  = "f-body-1"
 	bodyCRAt       = "2026-01-01T00:00:00Z"
+	bodyEditedAt   = "2026-01-01T00:10:00Z" // the forge's own record of the body edit: after the CR
 	bodyApproveAt  = "2026-01-01T00:20:00Z"
 )
 
@@ -42,6 +44,7 @@ func bodyEditStub(t *testing.T) *stub {
 	t.Helper()
 	s := newStub()
 	s.pr.Body = bodyAfterEdit
+	s.bodyEditedAt = bodyEditedAt
 	s.reviews = []reviewInfo{
 		checkOnlyCR(t, bodyEditCRBody(), bodyCRAt),
 		citingApprove(t, bodyEditApproveBody(), bodyApproveAt),
@@ -138,8 +141,67 @@ func TestBodyEdit_CIRedStillRefuses(t *testing.T) {
 func TestBodyEditRefusalNamesTheClause(t *testing.T) {
 	err := bodyEditCRCleared("reviewer[bot]",
 		reviewInfo{State: "CHANGES_REQUESTED", CommitID: headSHA, Body: bodyEditCRBody(), SubmittedAt: bodyCRAt},
-		nil, headSHA, bodyAfterEdit)
+		nil, headSHA, liveBodyRead{Body: bodyAfterEdit})
 	if err == nil || !strings.Contains(err.Error(), "body-edit re-verification class") {
 		t.Fatalf("err = %v, want a refusal naming the body-edit class", err)
 	}
+}
+
+// NOT EDITED, BY THE FORGE'S RECORD — the body is exactly what the CR blocked on, but the CR
+// recorded a digest from a slipped recipe (here over the body plus one stray byte, as hashing
+// jq's trailing newline produces). The approve's re-read digest honestly matches the live
+// body and so DIFFERS from the slipped CR digest; the digest inequality alone would read that
+// as "edited". The forge's own edit record is what refuses it: never edited, or last edited
+// before the CR.
+func TestBodyEdit_UneditedBodyWithMismatchedCRDigest(t *testing.T) {
+	unedited := func(t *testing.T, editedAt string) *stub {
+		s := bodyEditStub(t)
+		s.pr.Body = bodyBeforeEdit
+		s.bodyEditedAt = editedAt
+		s.reviews = []reviewInfo{
+			checkOnlyCR(t, "The PR body still asserts the retracted claim.\n\nBlocked-On-Body: "+bodyFindingID+" "+
+				deskkit.PRBodyDigest(bodyBeforeEdit+"x"), bodyCRAt),
+			citingApprove(t, strings.Replace(bodyEditApproveBody(), deskkit.PRBodyDigest(bodyAfterEdit),
+				deskkit.PRBodyDigest(bodyBeforeEdit), 1), bodyApproveAt),
+		}
+		return s
+	}
+	t.Run("forge reports no edit", func(t *testing.T) {
+		wantBodyEditRefused(t, unedited(t, ""), "unedited body, never edited per the forge")
+	})
+	t.Run("forge's last edit is before the CR", func(t *testing.T) {
+		wantBodyEditRefused(t, unedited(t, "2025-12-31T23:00:00Z"), "unedited body, last edited before the CR")
+	})
+}
+
+// COULD-NOT-CHECK — the forge's edit record cannot be read. That is never a clearance.
+func TestBodyEdit_EditTimeUnreadableRefuses(t *testing.T) {
+	s := bodyEditStub(t)
+	s.trustErr = true
+	s.install(t)
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unreadable body edit time: rc = %d, want %d (could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("unreadable body edit time: produced mutations %v", m)
+	}
+	if s.trustReads == 0 {
+		t.Fatal("the edit-time read never happened — the refusal came from somewhere else")
+	}
+}
+
+// SECURITY LANE, WITH A PLAIN CORRECTNESS APPROVE BESIDE IT — the shape where the body-edit
+// gate's own security-marker filter is the ONLY control. A body-edit CR, then a plain,
+// undocumented correctness APPROVE, then a documented APPROVE that also carries a
+// security-lane line. Rule 1's lane reduction still holds the plain APPROVE as the governing
+// correctness verdict, so if the body-edit gate let the security-marked APPROVE clear the CR,
+// the PR would flip. It must refuse: a security-marked body never acts in the correctness lane.
+func TestBodyEdit_SecurityMarkedDocumentedApproveBesidePlainApprove(t *testing.T) {
+	s := bodyEditStub(t)
+	s.reviews = []reviewInfo{
+		checkOnlyCR(t, bodyEditCRBody(), bodyCRAt),
+		citingApprove(t, "looks fine now", "2026-01-01T00:15:00Z"),
+		citingApprove(t, bodyEditApproveBody()+"\nSecurity-Review: pass", bodyApproveAt),
+	}
+	wantBodyEditRefused(t, s, "security-marked documented approve beside a plain approve")
 }

@@ -19,6 +19,7 @@ const (
 	beBodyBefore = "Summary: the example check FALSE-PASSES.\r\n\r\nIssue: #1\r\n"
 	beBodyAfter  = "Summary: the example check passes on the corrected fixture.\n\nIssue: #1\n"
 	beCRAt       = "2026-01-01T00:00:00Z"
+	beEditedAt   = "2026-01-01T00:10:00Z" // the forge's record of the body edit: after the CR
 	beApproveAt  = "2026-01-01T00:20:00Z"
 )
 
@@ -41,6 +42,7 @@ func beInput() BodyEditInput {
 		Head:          beHead,
 		Approves:      []BodyEditApprove{{Body: beApproveBody(), SubmittedAt: beApproveAt}},
 		LiveBody:      beBodyAfter,
+		BodyEditedAt:  beEditedAt,
 	}
 }
 
@@ -155,7 +157,7 @@ func TestBodyEdit_NearMiss_BodyNeverEdited(t *testing.T) {
 	in := beInput()
 	in.LiveBody = beBodyBefore
 	in.Approves[0].Body = strings.Replace(beApproveBody(), PRBodyDigest(beBodyAfter), PRBodyDigest(beBodyBefore), 1)
-	refused(t, in, "the body was not edited after the block")
+	refused(t, in, "the body the reviewer blocked on is the body there now")
 }
 
 // STALE RE-READ — the body changed again after the approve re-read it.
@@ -206,4 +208,56 @@ func TestBodyEdit_NearMiss_UnknownHead(t *testing.T) {
 	in := beInput()
 	in.Head = ""
 	refused(t, in, "the head is unknown")
+}
+
+// NO EDIT, BY THE FORGE'S RECORD — the body is exactly what the CR blocked on, but the CR's
+// recorded digest was computed by a slipped recipe (here: over the body plus one stray byte,
+// the shape `--jq .body | shasum` produces by hashing jq's trailing newline). The approve's
+// re-read digest honestly matches the live body, so it DIFFERS from the slipped CR digest and
+// the digest-inequality clause alone would read "edited". Only the forge's own edit record
+// can say otherwise, and it must: never edited, or last edited before the CR, refuses.
+func TestBodyEdit_NearMiss_BodyUnchangedCRDigestMismatched(t *testing.T) {
+	unedited := func() BodyEditInput {
+		in := beInput()
+		in.CRBody = "The PR body still asserts the retracted claim.\n\nBlocked-On-Body: " + beFinding + " " +
+			PRBodyDigest(beBodyBefore+"x")
+		in.LiveBody = beBodyBefore
+		in.Approves[0].Body = strings.Replace(beApproveBody(), PRBodyDigest(beBodyAfter), PRBodyDigest(beBodyBefore), 1)
+		return in
+	}
+	t.Run("forge reports no edit", func(t *testing.T) {
+		in := unedited()
+		in.BodyEditedAt = ""
+		refused(t, in, "the forge reports no edit of the PR body")
+	})
+	t.Run("forge's last edit is before the CR", func(t *testing.T) {
+		in := unedited()
+		in.BodyEditedAt = "2025-12-31T23:00:00Z"
+		refused(t, in, "not after the CR")
+	})
+	t.Run("forge's last edit is at the CR's own instant", func(t *testing.T) {
+		in := unedited()
+		in.BodyEditedAt = beCRAt
+		refused(t, in, "not after the CR")
+	})
+	t.Run("forge's edit time is unreadable", func(t *testing.T) {
+		in := unedited()
+		in.BodyEditedAt = "yesterday"
+		refused(t, in, "is not readable as RFC3339")
+	})
+	// Control: the same inputs with a forge-recorded edit after the CR clear — so each
+	// refusal above is attributable to the edit-time clause alone, not to the slipped digest.
+	t.Run("control: forge-recorded edit after the CR", func(t *testing.T) {
+		if dec := EvaluateBodyEditReverification(unedited()); !dec.Cleared {
+			t.Fatalf("control did not clear: %s", dec.Reason)
+		}
+	})
+}
+
+// UNREADABLE TYPED BLOCK — a declared CR whose review-finding block cannot be parsed. Whether
+// the CR is mixed cannot be established, so it refuses rather than read "no other finding".
+func TestBodyEdit_NearMiss_UnreadableFindingBlock(t *testing.T) {
+	in := beInput()
+	in.CRBody = beCR() + "\n\n<!-- assay:review-finding:v1\n{not json\n-->"
+	refused(t, in, "typed finding block is unreadable")
 }

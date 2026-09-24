@@ -330,6 +330,30 @@
       "file": "internal/deskkit/bodyeditcr.go",
       "old": "\t\tif perr != nil || !at.After(crAt) {",
       "new": "\t\tif perr != nil || at.Before(crAt) {"
+    },
+    {
+      "name": "body-edit class: treat an absent forge edit time as an edit after the CR (an unedited body with a slipped CR digest clears — reddens TestBodyEdit_NearMiss_BodyUnchangedCRDigestMismatched/forge_reports_no_edit)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\teditedRaw := strings.TrimSpace(in.BodyEditedAt)\n",
+      "new": "\teditedRaw := strings.TrimSpace(in.BodyEditedAt)\n\tif editedRaw == \"\" {\n\t\teditedRaw = \"9999-01-01T00:00:00Z\"\n\t}\n"
+    },
+    {
+      "name": "body-edit class: drop the forge edit-time-after-the-CR comparison (a body last edited before the CR clears on a slipped CR digest — reddens TestBodyEdit_NearMiss_BodyUnchangedCRDigestMismatched/forge's_last_edit_is_before_the_CR)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif !editedAt.After(crAt) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "body-edit class: accept a forge edit at the CR's own instant (reddens TestBodyEdit_NearMiss_BodyUnchangedCRDigestMismatched/forge's_last_edit_is_at_the_CR's_own_instant)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif !editedAt.After(crAt) {",
+      "new": "\tif editedAt.Before(crAt) {"
+    },
+    {
+      "name": "body-edit class: admit a declared CR whose typed finding block is unreadable (reddens TestBodyEdit_NearMiss_UnreadableFindingBlock)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\t\td.Problem = \"the CR's typed finding block is unreadable (\" + err.Error() +\n\t\t\t\") — an unreadable declaration is could-not-check, never a clearance\"\n\t\treturn d",
+      "new": "\t\treturn d"
     }
   ],
   "_not_mutated": {

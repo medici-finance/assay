@@ -114,8 +114,10 @@ admits a same-head APPROVE over such a CR only in this documented, machine-check
 The digest is SHA-256 of the body with carriage returns removed and trailing newlines trimmed:
 `printf '%s' "$(gh api repos/<slug>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
 `deskflip` recomputes the live body's digest at flip time (and again just before the mutation)
-and refuses unless it equals your re-read digest **and** differs from the CR's — so a re-approve
-over an unedited body, or over a body edited again after you read it, clears nothing. It still
+and refuses unless it equals your re-read digest **and** differs from the CR's. It also reads the
+forge's own record of the body's last edit and refuses unless that edit is later than your CR —
+your recorded digests alone never establish that the body was edited. So a re-approve over an
+unedited body, or over a body edited again after you read it, clears nothing. It still
 judges CI green itself; your `CI-Green-At:` line is the documentation, not the check. The same
 fence and ambiguity rules as the check-only lines apply.
 

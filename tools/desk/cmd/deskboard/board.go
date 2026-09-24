@@ -713,10 +713,12 @@ type reviewState struct {
 // It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
 // must be cleared by the shared decision (one undeclared or failing CR keeps the row
 // suppressed), the candidate APPROVEs are the reviewer's, at head, correctness lane only,
-// and the digest is checked against the body THIS sweep read. When it lifts, the effective
+// the digest is checked against the body THIS sweep read, and "edited after the CR" is
+// established from the forge's own lastEditedAt THIS sweep read (empty — GitLab, or never
+// edited — keeps the row suppressed). When it lifts, the effective
 // verdict becomes the governing same-head APPROVE — the ruling's "the same-head APPROVE
 // stands" — and CI green stays the board's own CI verdict, never the citation's.
-func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody string) reviewState {
+func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
 	if !st.atHead || !st.blocking || !st.suspectNoOp || st.externalPrereqDeclared {
 		return st
 	}
@@ -744,6 +746,7 @@ func applyBodyEditReverification(st reviewState, reviews []review, head, liveBod
 	for _, cr := range crs {
 		dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
 			CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
+			BodyEditedAt: bodyEditedAt,
 		})
 		if !dec.Cleared {
 			return st
@@ -2114,7 +2117,7 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 			"established rather than failing the sweep", err))
 	} else {
 		rs = reduceReviews(reviews, p.HeadRefOid)
-		rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body)
+		rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly

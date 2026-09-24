@@ -102,8 +102,11 @@ nothing is mutated:
                     it clears only when a later same-head correctness APPROVE carries all of
                     "Resolved-Body-Finding: <finding-id>" (the id the CR declared),
                     "Body-Reread-Digest: <digest>" (EQUAL to the live body's digest read by
-                    this gate, and DIFFERENT from the CR's — the body really was edited),
-                    and "CI-Green-At: <full head sha>". A typed finding block on the CR
+                    this gate, and DIFFERENT from the CR's), and "CI-Green-At: <full head
+                    sha>"; AND the forge's own record of the body's last edit (lastEditedAt,
+                    read by this gate) is LATER than the CR — that, not the digests, is what
+                    establishes the edit; absent refuses, unreadable is could-not-check.
+                    A typed finding block on the CR
                     naming any other blocking finding, a CR also declaring another class,
                     or any clause short refuses. CI is still judged by checks-green. The
                     digest is SHA-256 of the body with carriage returns removed and
