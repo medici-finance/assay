@@ -180,7 +180,7 @@ func TestPreflightMultiValuedOriginURLRefuses(t *testing.T) {
 // The positive controls: the gate is not a blanket refusal. A single LOCAL destination (every
 // offline fixture) creates, and a single https destination naming the origin repo passes the
 // gate itself (driven directly — pushing it would need the network).
-func TestPushDestLocalAndHTTPSAdmitted(t *testing.T) {
+func TestPushDestLocalAndHttpsAdmitted(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	if err := createErr(t); err != nil {
@@ -199,7 +199,7 @@ func TestPushDestLocalAndHTTPSAdmitted(t *testing.T) {
 }
 
 // An https destination that names a different repo than the fetch origin is refused.
-func TestPushDestHTTPSOtherRepoRefuses(t *testing.T) {
+func TestPushDestOtherRepoRefuses(t *testing.T) {
 	hermeticGitConfig(t)
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://github.com/someone-else/tracker.git")
