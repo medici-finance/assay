@@ -741,6 +741,64 @@ func TestFleetAvatars(t *testing.T) {
 		if !strings.Contains(h.out.String(), "SKIPPED STEP — avatars") || !strings.Contains(h.out.String(), "--avatars-only") {
 			t.Fatalf("the summary does not name the skipped avatar step and how to run it:\n%s", h.out.String())
 		}
+		if !strings.Contains(h.out.String(), `--out-dir "`+h.dir+`"`) {
+			t.Fatalf("the suggested command does not quote the out-dir path (it must paste as printed when the path has a space):\n%s", h.out.String())
+		}
+	})
+	// An icon that is a symbolic link could point at any local file; one over the forge's size
+	// limit is never a real avatar. Either is refused before any request and recorded as a
+	// failure, and the other roles' avatars still go up.
+	refusedIcon := func(t *testing.T, plant func(dir string) bool) {
+		t.Helper()
+		dir := t.TempDir()
+		for _, r := range fleetRoles {
+			if r.Role == "reviewer" {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(dir, r.Role+".png"), []byte("png-"+r.Role), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !plant(filepath.Join(dir, "reviewer.png")) {
+			return
+		}
+		f := newFakeForge(t)
+		h := newHarness(t, f)
+		if code := run(h.provisionArgs("--avatars-dir", dir), h.e); code != exitFailed {
+			t.Fatalf("exit %d, want %d\n%s", code, exitFailed, h.out.String())
+		}
+		if got, ok := f.avatars[fakeToken(1)]; ok {
+			t.Fatalf("the refused reviewer icon was uploaded: %q", got)
+		}
+		if got := f.avatars[fakeToken(2)]; got != "worker.png:png-worker" {
+			t.Errorf("a refused icon stopped the other roles' avatars: worker = %q", got)
+		}
+		if !strings.Contains(h.out.String(), "avatar for "+serviceAccountUsername(fakePrefix, "reviewer")+" not uploaded") {
+			t.Fatalf("the summary does not name the refused reviewer icon:\n%s", h.out.String())
+		}
+	}
+	t.Run("a symlinked icon is refused and never uploaded", func(t *testing.T) {
+		refusedIcon(t, func(p string) bool {
+			secret := filepath.Join(t.TempDir(), "local-secret")
+			if err := os.WriteFile(secret, []byte("not-an-avatar"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(secret, p); err != nil {
+				t.Skipf("cannot create a symbolic link here: %v", err)
+				return false
+			}
+			return true
+		})
+	})
+	t.Run("an icon over the size limit is refused and never uploaded", func(t *testing.T) {
+		refusedIcon(t, func(p string) bool {
+			// A literal, not maxAvatarBytes: the forge's documented limit is 200 KiB, and a
+			// test that followed the constant could never see the cap raised past it.
+			if err := os.WriteFile(p, make([]byte, 200<<10+1), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return true
+		})
 	})
 	t.Run("a refused upload is a recorded failure and the loop continues", func(t *testing.T) {
 		f := newFakeForge(t)

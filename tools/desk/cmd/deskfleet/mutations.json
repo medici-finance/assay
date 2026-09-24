@@ -150,6 +150,30 @@
       "file": "cmd/deskfleet/client.go",
       "old": "\t\tif h == \"127.0.0.1\" || h == \"::1\" || h == \"localhost\" {",
       "new": "\t\tif h != \"\" {"
+    },
+    {
+      "name": "A7 — the avatar icon is read with os.ReadFile again (follows a symbolic link, no size cap)",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "\tdata, err := readAvatarFile(img)",
+      "new": "\tdata, err := os.ReadFile(img)"
+    },
+    {
+      "name": "A7 — the icon's type is read through the link (os.Stat), so a symbolic link to a local file is uploaded",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "\tfi, err := os.Lstat(path)",
+      "new": "\tfi, err := os.Stat(path)"
+    },
+    {
+      "name": "A7 — the avatar size cap is raised past the forge's 200 KiB limit",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "const maxAvatarBytes = 200 << 10",
+      "new": "const maxAvatarBytes = 200 << 20"
+    },
+    {
+      "name": "advisory — the suggested --avatars-only command prints the out-dir path unquoted (breaks on a path with a space)",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "--out-dir \\\"%s\\\" (it signs in",
+      "new": "--out-dir %s (it signs in"
     }
   ]
 }

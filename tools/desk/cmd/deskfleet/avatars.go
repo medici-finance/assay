@@ -13,18 +13,68 @@ package main
 // closing summary, never silently.
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 )
 
+// maxAvatarBytes is the forge's own avatar size limit (GitLab: 200 KiB). A larger file is
+// refused before any request, so a mistaken --avatars-dir can never send a large local file
+// off the machine.
+const maxAvatarBytes = 200 << 10
+
+// errAvatarRefused marks an icon that exists but is refused: not a regular file (a symbolic
+// link, a directory, a device) or larger than maxAvatarBytes. Unlike a missing icon, which is
+// a NOTICE as in the script, a refusal is a recorded failure.
+var errAvatarRefused = errors.New("avatar file refused")
+
+// readAvatarFile reads an icon only when it is a regular file — never a symbolic link, which
+// could point anywhere on the machine — of at most maxAvatarBytes. The file is opened after
+// the Lstat and re-checked through the open handle, so a swap between the two checks is
+// refused rather than read.
+func readAvatarFile(path string) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: not a regular file (mode %s) — a symbolic link or special file is never followed", errAvatarRefused, fi.Mode().Type())
+	}
+	if fi.Size() > maxAvatarBytes {
+		return nil, fmt.Errorf("%w: %d bytes, over the %d-byte avatar limit", errAvatarRefused, fi.Size(), maxAvatarBytes)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(fi, st) || !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: the file changed between the check and the open", errAvatarRefused)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxAvatarBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxAvatarBytes {
+		return nil, fmt.Errorf("%w: over the %d-byte avatar limit", errAvatarRefused, maxAvatarBytes)
+	}
+	return data, nil
+}
+
 // avatarsSkippedNotice tells the operator the avatar step did not run and exactly how to run
-// it later.
+// it later. The out-dir path is quoted: a default config home can contain a space (a Windows
+// user profile path), and the command must paste as printed.
 func avatarsSkippedNotice(o provisionOpts) string {
 	return fmt.Sprintf("--avatars-dir was not given, so the avatar step (PUT /user/avatar) is SKIPPED and the "+
 		"service accounts keep the forge's default avatar. To set them later, run: deskfleet provision "+
-		"--avatars-only --avatars-dir <dir holding <role>.png> --prefix %s --out-dir %s (it signs in as each "+
+		"--avatars-only --avatars-dir <dir holding <role>.png> --prefix %s --out-dir \"%s\" (it signs in as each "+
 		"role from its gitlab-<role>.token there)", o.prefix, o.outDir)
 }
 
@@ -38,7 +88,11 @@ func (p *provisioner) uploadAvatar(role, user string) {
 		return
 	}
 	img := filepath.Join(p.o.avatarsDir, role+".png")
-	data, err := os.ReadFile(img)
+	data, err := readAvatarFile(img)
+	if errors.Is(err, errAvatarRefused) {
+		p.fail("avatar for %s not uploaded — %s: %v", user, img, err)
+		return
+	}
 	if err != nil {
 		p.outf("NOTICE: no avatar for %s — %s could not be read (%v) (skipped, not a failure)", role, img, err)
 		return
