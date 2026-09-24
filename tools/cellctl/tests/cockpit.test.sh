@@ -21,6 +21,10 @@
 #
 #   #1303   `up --cockpit <c> --set` would persist CELL_COCKPIT (dry-run), `set --cockpit` sugar
 #           drives the next up, `show` names the cockpit's source, `desk --cockpit --set` accepted
+#   ASSAY_COCKPIT  `desk` exports the RESOLVED cockpit (never auto) as ASSAY_COCKPIT; an explicit
+#           cockpit not on PATH is refused and nothing is exported instead; --cockpit beats
+#           cell.env; `up` threads the cockpit it resolved onto every window; `check` prints the
+#           value and the worker-desk worktree arm it selects (tmux = plain, no cockpit CLI)
 #
 # No network, no tmux server, no real cockpit and no real desk-tools: every binary the script
 # probes is a stub on a private PATH, and `DRY_RUN=1` means nothing is ever launched.
@@ -249,6 +253,47 @@ assert "cellctl set --cockpit tmux sugar drives the next up (explicit: cell.env 
 out="$(DRY_RUN=1 "$CELLCTL" desk example-cell the-desk --cockpit herdr --set 2>&1)" && rc=0 || rc=$?
 assert "desk --cockpit <c> --set is accepted and would persist CELL_COCKPIT (a single window uses no cockpit itself)" '[[ $rc -eq 0 ]] && grep -q "would persist CELL_COCKPIT=herdr" <<<"$out"'
 "$CELLCTL" set example-cell --cockpit auto >/dev/null
+herdr_off
+
+# ---------------------------------------------------------------- ASSAY_COCKPIT (one value per cell)
+# `desk` exports the RESOLVED cockpit — never `auto` — as ASSAY_COCKPIT, the value the worker-desk
+# skill's worktree-create step reads; `up` threads the cockpit it resolved onto every window; an
+# explicit cockpit that is not available is refused, never exported as something else.
+echo "[ASSAY_COCKPIT]"
+desk_plan(){ DRY_RUN=1 "$CELLCTL" desk example-cell worker-desk "$@" 2>&1; }
+herdr_off; orca_off
+out="$(desk_plan)" && rc=0 || rc=$?
+assert "desk, auto, no herdr/orca → exports ASSAY_COCKPIT=tmux (the resolved value, not auto)" '[[ $rc -eq 0 ]] && grep -qxF "[dry-run] env ASSAY_COCKPIT=tmux (fallback: no herdr/orca on PATH)" <<<"$out"'
+assert "... and never exports the literal auto" '! grep -q "ASSAY_COCKPIT=auto" <<<"$out"'
+herdr_on
+out="$(desk_plan)"
+assert "desk, auto, herdr on PATH → ASSAY_COCKPIT=herdr" 'grep -qxF "[dry-run] env ASSAY_COCKPIT=herdr (auto: on PATH)" <<<"$out"'
+herdr_off; orca_on; export ORCA_UP=0
+"$CELLCTL" set example-cell --cockpit orca >/dev/null
+out="$(desk_plan)"
+assert "desk, cell.env CELL_COCKPIT=orca (app reachable) → ASSAY_COCKPIT=orca, explicit" 'grep -qxF "[dry-run] env ASSAY_COCKPIT=orca (explicit: cell.env CELL_COCKPIT)" <<<"$out"'
+orca_off
+out="$(desk_plan)" && rc=0 || rc=$?
+assert "desk, explicit orca NOT on PATH → refused (non-zero), naming orca and PATH" '[[ $rc -ne 0 ]] && grep -q "cockpit orca" <<<"$out" && grep -q "not on PATH" <<<"$out"'
+assert "... and nothing is exported as a substitute" '! grep -q "env ASSAY_COCKPIT=" <<<"$out"'
+herdr_on
+out="$(desk_plan --cockpit herdr)"
+assert "desk --cockpit herdr overrides cell.env orca for the run" 'grep -qxF "[dry-run] env ASSAY_COCKPIT=herdr (explicit: --cockpit)" <<<"$out"'
+herdr_off
+out="$(desk_plan --cockpit herdr)" && rc=0 || rc=$?
+assert "desk --cockpit herdr with no herdr → refused naming herdr" '[[ $rc -ne 0 ]] && grep -q "cockpit herdr" <<<"$out" && ! grep -q "env ASSAY_COCKPIT=" <<<"$out"'
+"$CELLCTL" set example-cell --cockpit auto >/dev/null
+out="$(plan)"
+assert "up threads the RESOLVED cockpit onto every role window (--cockpit tmux under auto, never auto)" '[[ "$(grep -c "^\[dry-run\] .*-desk: .* --cockpit .tmux." <<<"$out")" -eq 5 ]] && ! grep -q -- "--cockpit .auto." <<<"$out"'
+herdr_on
+out="$(plan)"
+assert "up with herdr resolved → every window carries --cockpit herdr" '[[ "$(grep -c "^\[dry-run\] .*-desk: .* --cockpit .herdr." <<<"$out")" -eq 5 ]]'
+herdr_off
+out="$("$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
+assert "check prints the ASSAY_COCKPIT every window gets, and that tmux needs no cockpit CLI" 'grep -qF "ok    ASSAY_COCKPIT=tmux exported into every role window (worker-desk worktree arm: plain git worktree add, no cockpit CLI needed)" <<<"$out"'
+herdr_on
+out="$("$CELLCTL" check example-cell 2>&1)" && rc=0 || rc=$?
+assert "check with herdr resolved names the herdr arm" 'grep -qF "ok    ASSAY_COCKPIT=herdr exported into every role window (worker-desk worktree arm: herdr worktree create)" <<<"$out"'
 herdr_off
 
 echo

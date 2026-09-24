@@ -33,7 +33,40 @@ const (
 	tagLifecycleUnclassified = "lifecycle-unclassified"
 	tagLifecycleOwed         = "lifecycle-owed"
 	tagLifecycleUnreadable   = "lifecycle-unreadable"
+	tagOutcomeAbsent         = "outcome-absent"
 )
+
+// outcomeLineCutover is the grandfather boundary for the outcome-absent NOTICE:
+// a brief authored strictly AFTER this date that carries neither `outcome:
+// <requirement id>` nor `outcome: none` is flagged. Briefs authored on or before
+// it predate the key and are never swept — a corpus-wide sweep over legacy briefs
+// is noise, the same reasoning the design-approval gate's cutover uses.
+const outcomeLineCutover = "2026-09-23"
+
+// outcomeAbsentNotices returns one advisory NOTICE per post-cutover brief-v1 file
+// that names no `outcome:` at all. It never changes the exit code: absence is
+// something the author should decide about (`outcome: none` IS a decision), not a
+// defect. A brief whose authored: line has no parseable leading date cannot be
+// placed against the cutover and is left alone — this is an advisory about new
+// briefs, and the design-approval gate already reports unparseable authored lines
+// where one matters. Legacy and non-brief-v1 files are exempt, as everywhere.
+func outcomeAbsentNotices(streams []*Stream) []string {
+	var notices []string
+	for _, s := range streams {
+		for _, path := range briefFilePaths(s) {
+			bf, ok, err := parseBriefFile(path)
+			if err != nil || !ok || bf.Outcome != nil {
+				continue // parse errors are checkBriefFiles' PROBLEM; a present outcome is checked there
+			}
+			m := leadingDateRe.FindStringSubmatch(bf.Authored)
+			if m == nil || m[1] <= outcomeLineCutover {
+				continue
+			}
+			notices = append(notices, fmt.Sprintf("%s: brief %s names no outcome: — add `outcome: REQ-<slug>` (the requirement this brief should move) or `outcome: none` (spec/brief-v1.md §3.2) [%s]", path, bf.Brief, tagOutcomeAbsent))
+		}
+	}
+	return notices
+}
 
 // lifecycleCandidateDocs enumerates the markdown files that MAY carry a §8
 // header: everything docFiles already collects (docs/** plus CLAUDE.md, minus

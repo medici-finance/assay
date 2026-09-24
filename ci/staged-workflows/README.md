@@ -51,7 +51,17 @@ reviewable artifact, not a run.
   POSIX shell-out). It runs NO mutating/forge verb. The native windows/arm64 smoke is held
   BLOCKED (`arm64-native-smoke`, `if: false`) pending a `windows-11-arm` runner and is never
   inferred from the amd64 result. A `workflow_dispatch` input `failfirst=true` runs the
-  fail-first demonstration (the leg must redden on a bogus verb).
+  fail-first demonstration (the leg must redden on a bogus verb). The staged copy also adds a
+  **Windows PowerShell 5.1 parse check** to `windows-smoke` (#1569, pending promotion): under
+  `shell: powershell` it runs `[System.Management.Automation.Language.Parser]::ParseFile` over
+  every tracked `*.ps1` (case-insensitive pathspec) and fails on any parse error, with a
+  `failfirst` twin that plants a BOM-less em dash and a PowerShell 7 `? :` ternary and
+  requires 5.1 to reject each. The PR-time half of the ENCODING class needs
+  no promotion: `TestPS1EncodingIs51Safe` in `tools/desk/internal/deskkit`
+  (run by `ci.yml`'s build-test job) fails any `*.ps1` carrying a byte above 0x7F without a
+  UTF-8 BOM. It is a byte scan, not a parser: any other 5.1-only parse error (a PowerShell 7
+  operator such as the `? :` ternary, for example) is caught only by this staged step, so
+  until it is promoted nothing gates that class.
 
   **Already live, like `evidence-automerge.yml` above** — this copy is kept as the reviewable
   edit surface for `.github/workflows/windows-ci-leg.yml`, no App may push a workflow-file

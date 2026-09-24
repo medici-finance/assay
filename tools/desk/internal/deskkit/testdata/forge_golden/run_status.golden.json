@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/runs/501"
+    }
+  ],
+  "result": {
+    "Status": "completed",
+    "Conclusion": "success",
+    "URL": "https://example/actions/runs/501"
+  }
+}

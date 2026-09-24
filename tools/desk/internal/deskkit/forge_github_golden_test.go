@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // forge_github_golden_test.go — TestForgeGithubGolden pins the GitHub Forge implementation's
@@ -94,6 +96,13 @@ type goldenServer struct {
 	actionsForkPRApproval map[string]any
 	actionsPrivateForkPR  map[string]any
 	vulnReporting         map[string]any
+	// forge-neutral brief 14's run and gate-approval routes: workflowRuns is the per-workflow runs
+	// LIST response (RunWorkflow's correlation read), pendingDeployments a run's pending
+	// deployments (ApproveGate's resolve read), and run the single-run read (RunStatus). The
+	// dispatch and approval POSTs answer 204 / 200 with no fixture.
+	workflowRuns       map[string]any
+	pendingDeployments []map[string]any
+	run                map[string]any
 }
 
 var (
@@ -125,6 +134,12 @@ var (
 	gActionsForkPRApprove = regexp.MustCompile(`/actions/permissions/fork-pr-contributor-approval$`)
 	gActionsPrivateForkPR = regexp.MustCompile(`/actions/permissions/fork-pr-workflows-private-repos$`)
 	gVulnReporting        = regexp.MustCompile(`/private-vulnerability-reporting$`)
+
+	// forge-neutral brief 14's run and gate-approval routes.
+	gWorkflowDispatch = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/workflows/[^/]+/dispatches$`)
+	gWorkflowRuns     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/workflows/[^/]+/runs$`)
+	gRunPending       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+/pending_deployments$`)
+	gRun1             = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+$`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +295,18 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.actionsPrivateForkPR)
 	case r.Method == http.MethodGet && gVulnReporting.MatchString(path):
 		enc(s.vulnReporting)
+	case r.Method == http.MethodPost && gWorkflowDispatch.MatchString(path):
+		// The workflow-dispatch endpoint answers 204 with NO body — it does not hand back the
+		// run it created, which is why RunWorkflow must correlate.
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && gWorkflowRuns.MatchString(path):
+		enc(s.workflowRuns)
+	case r.Method == http.MethodGet && gRunPending.MatchString(path):
+		enc(s.pendingDeployments)
+	case r.Method == http.MethodPost && gRunPending.MatchString(path):
+		enc([]map[string]any{{"id": 1}})
+	case r.Method == http.MethodGet && gRun1.MatchString(path):
+		enc(s.run)
 	case r.Method == http.MethodGet && gRepo.MatchString(path):
 		enc(s.repo)
 	default:
@@ -894,6 +921,101 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 		},
 		{
+			// forge-neutral brief 14 RunWorkflow: ONE dispatch POST (ref + inputs), then ONE list read
+			// narrowed by event, ref, actor and a created-at floor taken BEFORE the dispatch. The
+			// fixture carries one matching run plus a run from BEFORE the floor and a run on
+			// another ref, so the golden pins that the client-side filter drops both.
+			name: "run_workflow",
+			setup: func(s *goldenServer) {
+				s.workflowRuns = map[string]any{"total_count": 3, "workflow_runs": []map[string]any{
+					ghRunFixture(501, "2026-09-23T12:00:05Z", "main", "release-runner-app[bot]"),
+					ghRunFixture(499, "2026-09-23T11:59:00Z", "main", "release-runner-app[bot]"),
+					ghRunFixture(502, "2026-09-23T12:00:07Z", "other", "release-runner-app[bot]"),
+				}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				f.now = fixedRunClock
+				return f.RunWorkflow(forgeTestRepo, RunWorkflowInput{
+					Workflow: "release.yml", Ref: "main",
+					Inputs: map[string]string{"version": "v1.2.3", "dry_run": "true"},
+					Actor:  "release-runner-app[bot]",
+				})
+			},
+		},
+		{
+			// A path-shaped workflow is refused BEFORE any request: the golden's value is the empty
+			// request list.
+			name:  "run_workflow_refuses_path_workflow",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RunWorkflow(forgeTestRepo, RunWorkflowInput{Workflow: "../dispatches", Ref: "main"})
+			},
+		},
+		{
+			// The backend layer's own refusal: a forge holding NO minted token emits zero requests
+			// for RunWorkflow — the second, independent layer behind deskrun's binding check.
+			name:  "run_workflow_refuses_unminted_token",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				f.Token = ""
+				return f.RunWorkflow(forgeTestRepo, RunWorkflowInput{Workflow: "release.yml", Ref: "main"})
+			},
+		},
+		{
+			// ApproveGate: the pending-deployments READ, the name resolved to an environment ID, then
+			// ONE approval POST carrying only that id — never the other pending environment.
+			name: "approve_gate",
+			setup: func(s *goldenServer) {
+				s.pendingDeployments = []map[string]any{
+					{"environment": map[string]any{"id": 11, "name": "staging"}, "current_user_can_approve": true},
+					{"environment": map[string]any{"id": 12, "name": "production"}, "current_user_can_approve": true},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return nil, f.ApproveGate(forgeTestRepo, RunRef{ID: "501"}, ApproveGateInput{Gate: "production"})
+			},
+		},
+		{
+			// The arm GitHub actually takes under an App credential: the gate is pending, but the
+			// forge says this credential may not approve it (required reviewers are users or teams).
+			// ONE read, NO approval POST, a could-not-check naming the run and the gate.
+			name: "approve_gate_credential_cannot_approve",
+			setup: func(s *goldenServer) {
+				s.pendingDeployments = []map[string]any{
+					{"environment": map[string]any{"id": 12, "name": "production"}, "current_user_can_approve": false},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return nil, f.ApproveGate(forgeTestRepo, RunRef{ID: "501"}, ApproveGateInput{Gate: "production"})
+			},
+		},
+		{
+			// A GitLab-only gate shape is refused by name on GitHub with ZERO requests.
+			name:  "approve_gate_refuses_manual_job_shape",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return nil, f.ApproveGate(forgeTestRepo, RunRef{ID: "501"},
+					ApproveGateInput{Gate: "deploy", Shape: GateShapeManualJob})
+			},
+		},
+		{
+			// RunStatus: one run read, mapped into the forge-neutral vocabulary.
+			name: "run_status",
+			setup: func(s *goldenServer) {
+				s.run = map[string]any{"id": 501, "status": "completed", "conclusion": "success",
+					"html_url": "https://example/actions/runs/501"}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RunStatus(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			name: "run_status_waiting",
+			setup: func(s *goldenServer) {
+				s.run = map[string]any{"id": 501, "status": "waiting", "conclusion": nil,
+					"html_url": "https://example/actions/runs/501"}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RunStatus(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
 			name:  "error_not_found",
 			setup: func(s *goldenServer) { s.forceStatus["/issues/404"] = http.StatusNotFound },
 			run:   func(f *GitHubForge) (any, error) { return f.GetIssue(forgeTestRepo, 404) },
@@ -987,4 +1109,17 @@ func TestForgeGithubGoldenCount(t *testing.T) {
 		t.Fatalf("golden corpus pins %d operations, below the floor of 10: %v", len(ops), ops)
 	}
 	t.Logf("golden corpus pins %d operations: %s", len(ops), strings.Join(ops, ", "))
+}
+
+// fixedRunClock is RunWorkflow's pinned "now" in the golden corpus: the correlation floor is
+// taken from it BEFORE the dispatch, so the list read's created>= filter is byte-stable.
+func fixedRunClock() time.Time { return time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) }
+
+// ghRunFixture is one workflow_dispatch run as the runs LIST returns it.
+func ghRunFixture(id int, created, branch, actor string) map[string]any {
+	return map[string]any{
+		"id": id, "event": "workflow_dispatch", "head_branch": branch, "status": "queued",
+		"created_at": created, "html_url": fmt.Sprintf("https://example/actions/runs/%d", id),
+		"actor": map[string]any{"login": actor},
+	}
 }

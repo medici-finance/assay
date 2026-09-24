@@ -66,11 +66,16 @@ const designGateCutover = "2026-09-05"
 // was ruled out — is the record's reason for existing; folding them into one
 // paragraph is what makes a "decision record" a rationalisation after the fact.
 type decisionEntry struct {
-	ID           string   `yaml:"id"`
-	Date         string   `yaml:"date"`
-	Title        string   `yaml:"title"`
-	Consequence  string   `yaml:"consequence"`
-	DecidedBy    string   `yaml:"decided-by"`
+	ID          string `yaml:"id"`
+	Date        string `yaml:"date"`
+	Title       string `yaml:"title"`
+	Consequence string `yaml:"consequence"`
+	DecidedBy   string `yaml:"decided-by"`
+	// Ruling is the OPTIONAL ruling link (registers-v1 §7.5): the issue-comment URL
+	// of the human's ruling on the record's decision issue. Its grammar is checked
+	// offline here (decisionRulingURLRe); `statusgen --corroborate` resolves it
+	// through the forge and verifies its author (decisionruling.go).
+	Ruling       string   `yaml:"ruling"`
 	Alternatives []string `yaml:"alternatives"`
 	Accepted     []string `yaml:"accepted"`
 	Body         string   `yaml:"-"`
@@ -195,6 +200,16 @@ func decisionRegisterProblems(root string) []string {
 		// stand in for it.
 		if !hasHumanReviewer(e.DecidedBy) {
 			add(`%s: decided-by %q must name a human ("human:<name>") — a design decision on a risk-gated brief is a recorded human act, not a model self-sign-off`, p, e.DecidedBy)
+		}
+		// ruling: is optional, but when present it must be the ONE documented
+		// grammar (registers-v1 §7.5) — a link --corroborate can resolve. Checking
+		// the shape here, offline, means a malformed link reds on the lint rather
+		// than surfacing only on the network-capable verb. No record carried this
+		// field before it was introduced, so this reds nothing already merged.
+		if r := strings.TrimSpace(e.Ruling); r != "" {
+			if _, ok := parseRulingURL(r); !ok {
+				add("%s: ruling %q is not an issue-comment URL of the form %s (registers-v1 §7.5)", p, e.Ruling, rulingURLGrammar)
+			}
 		}
 		if len(nonEmptyStrings(e.Alternatives)) == 0 {
 			add("%s: alternatives must enumerate at least one path not taken — a decision record with no alternatives records an outcome, not a decision", p)

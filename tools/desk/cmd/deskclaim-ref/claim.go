@@ -57,79 +57,29 @@ func envMin(name string, def int) int {
 
 // --- the claim-store seam ---------------------------------------------------
 //
-// Every forge access goes through the claimStore, an in-process git-smart-HTTP transport
-// (gogit.go, over go-git) — NOT a `gh` (or any) CLI. It is a package var, mirroring the old
-// `ghRun` seam this port replaced, so a test drives an in-memory forge with no live remote and
-// no external process. Removing the CLI closes the forge-surface violation the ban
-// (internal/forgeban) exists to catch: this binary now reaches the forge only through the
-// enumerated git transport, never a shell-out.
-
-// claimStatus is the three-state result of a claim read (bash read_claim's rc).
-type claimStatus int
-
-const (
-	claimHeld         claimStatus = iota // a holder exists
-	claimFree                            // no such ref
-	claimUnverifiable                    // the read itself failed (fail-closed)
-)
-
-// writeOutcome is the three-state result of a claim WRITE. A rejection is the SERVER's
-// compare-and-swap losing (the ref already exists on a create, or its value moved under an
-// update/steal) — an expected race the caller acts on, never a could-not-check.
-type writeOutcome int
-
-const (
-	writeApplied      writeOutcome = iota // the server applied the update
-	writeRejected                         // the server refused: the CAS old no longer matches
-	writeUnverifiable                     // transport/auth/net failure — fail closed
-)
-
-// claimRef is a held claim as read off the forge: the tag object's sha (used as the CAS `old`
-// on the next write), its message body and its tagger date (RFC3339).
-type claimRef struct {
-	sha  string
-	msg  string
-	date string
-}
-
-// claimStore is the git-data surface deskclaim-ref drives. All mint/CAS/transport mechanics
-// live behind it; the verbs below are pure decision logic over its results.
-type claimStore interface {
-	// read returns refs/dispatch/<id>'s payload and status.
-	read(id string) (claimRef, claimStatus)
-	// createIfAbsent mints a claim tag carrying msg (stamped now) and CAS-creates the ref from
-	// ZERO. writeRejected == a holder already exists.
-	createIfAbsent(id, msg string) writeOutcome
-	// updateFrom mints a claim tag carrying msg and CAS-updates the ref from oldSHA.
-	// writeRejected == the ref no longer holds oldSHA (advanced or stolen under this caller).
-	updateFrom(id, oldSHA, msg string) writeOutcome
-	// remove deletes refs/dispatch/<id> (reading the current value in the same session).
-	// writeApplied == deleted OR already absent (a release is idempotent); existed reports
-	// which, so release can log the script's exact "no claim — no-op" line.
-	remove(id string) (outcome writeOutcome, existed bool)
-	// list enumerates the present claim ids.
-	list() ([]string, claimStatus)
-	// branchExists reports heads/<branch> presence; verifiable=false is could-not-check.
-	branchExists(branch string) (exists, verifiable bool)
-	// transportCause reports "<host>: <error>" for the store's most recent transport failure,
-	// or "" when the last operation did not fail at the transport layer. The verb layer appends
-	// it to a fail-closed (exit 6) message so the operator sees WHERE the tool dialed and WHY it
-	// failed, rather than a bare "unverifiable" that points at the wrong suspects (#727).
-	transportCause() string
-}
+// The storage surface this tool drives is deskkit.ClaimStore (internal/deskkit/claimstore.go):
+// it was lifted there from this package, unchanged, so more than one backend can sit behind it
+// and deskkit.ResolveClaimStore can decide which one a cell uses. The forge-ref store — an
+// in-process git-smart-HTTP transport (gogit.go, over go-git), NOT a `gh` (or any) CLI — is one
+// implementation of it. The store is a package var, mirroring the old `ghRun` seam this port
+// replaced, so a test drives an in-memory store with no live remote and no external process.
+// Removing the CLI closes the forge-surface violation the ban (internal/forgeban) exists to
+// catch: this binary reaches the forge only through the enumerated git transport, never a
+// shell-out. The verbs below are pure decision logic over the store's three-state results.
 
 // causeSuffix renders the store's last transport cause as a ": <host>: <error>" suffix for a
 // fail-closed message, or "" when there is nothing to attribute. It is the ONE place the
 // attribution is composed so every "unverifiable:" line carries it uniformly.
 func causeSuffix() string {
-	if c := store.transportCause(); c != "" {
+	if c := store.TransportCause(); c != "" {
 		return ": " + c
 	}
 	return ""
 }
 
-// store is the live forge seam. main() installs the go-git store (gogit.go); tests swap it.
-var store claimStore
+// store is the resolved claim store. dispatchVerb installs what deskkit.ResolveClaimStore
+// returns; tests swap it through buildStore.
+var store deskkit.ClaimStore
 
 // --- helpers ----------------------------------------------------------------
 
@@ -232,34 +182,34 @@ func dashOrValue(s string) string {
 // --- verbs ------------------------------------------------------------------
 
 func cmdAcquire(id, owner, branch string) int {
-	switch store.createIfAbsent(id, claimMessage(id, owner, "claimed", branch, "")) {
-	case writeApplied:
+	switch store.CreateIfAbsent(id, claimMessage(id, owner, "claimed", branch, "")) {
+	case deskkit.ClaimWriteApplied:
 		logf("acquired %s (owner=%s state=claimed) — %s/%s", id, owner, refPrefix, id)
 		return exitOK
-	case writeUnverifiable:
+	case deskkit.ClaimWriteUnverifiable:
 		errf("unverifiable: could not create the claim %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
 	// The create was REJECTED: the ref already exists. Exactly one benign cause — someone else
 	// holds it. Read the holder; anything unreadable is unverifiable and fails closed.
-	ref, status := store.read(id)
+	ref, status := store.Read(id)
 	switch status {
-	case claimFree:
+	case deskkit.ClaimReadFree:
 		errf("unverifiable: creating %s/%s was rejected but no claim exists", refPrefix, id)
 		return exitUnverifiable
-	case claimUnverifiable:
+	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: creating %s/%s was rejected and the claim could not be read%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
-	state := fieldOf(ref.msg, "state")
-	hbranch := fieldOf(ref.msg, "branch")
-	hage, aok := ageMinutes(ref.date)
+	state := fieldOf(ref.Msg, "state")
+	hbranch := fieldOf(ref.Msg, "branch")
+	hage, aok := ageMinutes(ref.Date)
 	if !aok {
-		errf("unverifiable: holder of %s has an unreadable claim date (%s)", id, ref.date)
+		errf("unverifiable: holder of %s has an unreadable claim date (%s)", id, ref.Date)
 		return exitUnverifiable
 	}
-	if exists, verifiable := store.branchExists(hbranch); verifiable && exists {
-		reportHolder(id, ref.msg, ref.date)
+	if exists, verifiable := store.BranchExists(hbranch); verifiable && exists {
+		reportHolder(id, ref.Msg, ref.Date)
 		logf("  branch-as-claim: %s exists on the remote — the work is in flight, not stalled", hbranch)
 		return exitRefused
 	}
@@ -271,30 +221,30 @@ func cmdAcquire(id, owner, branch string) int {
 		logf("stale claim on %s: state=%s age=%dm >= %dm TTL — reclaiming", id, dashOrValue(state), hage, ttl)
 		return cmdSteal(id, owner, fmt.Sprintf("TTL: state=%s age=%dm >= %dm", dashOrValue(state), hage, ttl))
 	}
-	reportHolder(id, ref.msg, ref.date)
+	reportHolder(id, ref.Msg, ref.Date)
 	logf("  live (age %dm < %dm TTL for state=%s)", hage, ttl, dashOrValue(state))
 	return exitRefused
 }
 
 func cmdProgress(id, owner, branch string) int {
-	ref, status := store.read(id)
+	ref, status := store.Read(id)
 	switch status {
-	case claimFree:
+	case deskkit.ClaimReadFree:
 		errf("refused: %s has no claim to advance (acquire first)", id)
 		return exitRefused
-	case claimUnverifiable:
+	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
 		return exitUnverifiable
 	}
-	if holder := fieldOf(ref.msg, "owner"); holder != "" && holder != owner {
+	if holder := fieldOf(ref.Msg, "owner"); holder != "" && holder != owner {
 		errf("refused: %s is held by %s, not %s — only the holder advances its own claim", id, holder, owner)
 		return exitRefused
 	}
-	switch store.updateFrom(id, ref.sha, claimMessage(id, owner, "dispatched", branch, "")) {
-	case writeApplied:
+	switch store.UpdateFrom(id, ref.Version, claimMessage(id, owner, "dispatched", branch, "")) {
+	case deskkit.ClaimWriteApplied:
 		logf("progressed %s (state=dispatched branch=%s owner=%s) — TTL now %dm", id, dashIfEmpty(branch), owner, dispatchedTTL())
 		return exitOK
-	case writeRejected:
+	case deskkit.ClaimWriteRejected:
 		// BEHAVIOUR CHANGE (documented): the old port advanced with `PATCH force=true`, which
 		// resurrected a claim that had been stolen out from under this session between the read
 		// and the write. The compare-and-swap from the exact value read closes that race — a
@@ -308,9 +258,9 @@ func cmdProgress(id, owner, branch string) int {
 }
 
 func cmdRelease(id string) int {
-	outcome, existed := store.remove(id)
+	outcome, existed := store.Remove(id)
 	switch outcome {
-	case writeApplied:
+	case deskkit.ClaimWriteApplied:
 		if existed {
 			logf("released %s", id)
 		} else {
@@ -329,19 +279,19 @@ func cmdSteal(id, owner, reason string) int {
 		return exitRefused
 	}
 	msg := claimMessage(id, owner, "claimed", "", reason)
-	ref, status := store.read(id)
+	ref, status := store.Read(id)
 	switch status {
-	case claimUnverifiable:
+	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not read %s before stealing it%s", id, causeSuffix())
 		return exitUnverifiable
-	case claimFree:
+	case deskkit.ClaimReadFree:
 		// Nothing holds it — a steal collapses to a create. A racing create in the gap is the
 		// CAS losing, reported as "re-claimed during the steal".
-		switch store.createIfAbsent(id, msg) {
-		case writeApplied:
+		switch store.CreateIfAbsent(id, msg) {
+		case deskkit.ClaimWriteApplied:
 			logf("stole %s (owner=%s reason=%s)", id, owner, reason)
 			return exitOK
-		case writeRejected:
+		case deskkit.ClaimWriteRejected:
 			errf("refused: %s was re-claimed by another desk during the steal", id)
 			return exitRefused
 		default:
@@ -352,11 +302,11 @@ func cmdSteal(id, owner, reason string) int {
 	// Held: replace the current tag with an explicit-old CAS update. A stale old means another
 	// desk moved it first — the steal loses cleanly rather than clobbering (closing the
 	// old DELETE-then-POST race window).
-	switch store.updateFrom(id, ref.sha, msg) {
-	case writeApplied:
+	switch store.UpdateFrom(id, ref.Version, msg) {
+	case deskkit.ClaimWriteApplied:
 		logf("stole %s (owner=%s reason=%s)", id, owner, reason)
 		return exitOK
-	case writeRejected:
+	case deskkit.ClaimWriteRejected:
 		errf("refused: %s was re-claimed by another desk during the steal", id)
 		return exitRefused
 	default:
@@ -366,27 +316,27 @@ func cmdSteal(id, owner, reason string) int {
 }
 
 func cmdShow(id string) int {
-	ref, status := store.read(id)
+	ref, status := store.Read(id)
 	switch status {
-	case claimFree:
+	case deskkit.ClaimReadFree:
 		logf("FREE %s (no %s/%s in the repo)", id, refPrefix, id)
 		return exitOK
-	case claimUnverifiable:
+	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
 		return exitUnverifiable
 	}
 	ageStr := "?"
-	if age, ok := ageMinutes(ref.date); ok {
+	if age, ok := ageMinutes(ref.Date); ok {
 		ageStr = strconv.Itoa(age)
 	}
-	logf("HELD %s — %s at=%s age=%sm", id, ref.msg, ref.date, ageStr)
+	logf("HELD %s — %s at=%s age=%sm", id, ref.Msg, ref.Date, ageStr)
 	return exitOK
 }
 
 func cmdList() int {
-	ids, status := store.list()
+	ids, status := store.List()
 	switch status {
-	case claimUnverifiable:
+	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not list dispatch claims%s", causeSuffix())
 		return exitUnverifiable
 	}

@@ -1,0 +1,24 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/actions/workflows/release.yml/dispatches",
+      "body": {
+        "inputs": {
+          "dry_run": "true",
+          "version": "v1.2.3"
+        },
+        "ref": "main"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/workflows/release.yml/runs",
+      "query": "actor=release-runner-app%5Bbot%5D\u0026branch=main\u0026created=%3E%3D2026-09-23T12%3A00%3A00Z\u0026event=workflow_dispatch\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "ID": "501",
+    "URL": "https://example/actions/runs/501"
+  }
+}

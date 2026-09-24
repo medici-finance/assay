@@ -1,10 +1,29 @@
 # Adopting Assay on GitLab — the GitLab-profile install runbook
 
-This is the GitLab-side companion to [`docs/adopting-assay.md`](adopting-assay.md) (the
-GitHub runbook). It does not repeat CORE Assay concepts (briefs, registers, lifecycle,
-board, statusgen) — those are forge-agnostic and unchanged. It covers only what is
-GitLab-shaped: the identity model, the provisioning script, the ci-config-project
-runbook, and token custody. The accepted design this doc implements is
+This is the **GitLab half of one install flow**; [`docs/adopting-assay.md`](adopting-assay.md)
+holds the shared half and the GitHub half. It does not repeat CORE Assay concepts (briefs,
+registers, lifecycle, board, statusgen) — those are forge-agnostic and unchanged. It covers only
+what is GitLab-shaped: the identity model, the provisioning script, the runner and CI/CD
+variables, the ci-config-project runbook, and token custody.
+
+**The one flow, in order, for a GitLab adopter:**
+
+1. **§0 tier ladder** — decide what the edition you run can claim, before provisioning.
+2. **§2 provisioning** — a human runs `tools/create-fleet-gitlab.sh`: the service accounts (the
+   automation principals of the two-principals prerequisite), the protected `main`, and the desk
+   labels (the GitLab form of the `create-labels` primitive).
+3. **The shared half, from [`docs/adopting-assay.md`](adopting-assay.md)** — the turnkey
+   `assay:install` skill on Claude Code, or its CORE primitives by hand. It needs **no `gh` and no
+   `glab`**: the pinned binaries are fetched over plain HTTPS and sha256-verified against
+   `.assay-versions`, and `statusgen init` writes `.gitlab-ci.yml` for a GitLab `origin`. The
+   skill's *CORE primitives per forge* table names which primitives are forge-neutral and how the
+   rest are expressed here.
+4. **§2a runner, §2c `STATUSGEN_PUSH_TOKEN`, §2e `STATUSGEN_ROSTER_ENV`** — the human acts the
+   scaffolded `.gitlab-ci.yml` needs before its first pipeline can prove anything.
+
+`glab` is an optional convenience CLI for a human's own reads; no step in either file requires it.
+
+The accepted design this doc implements is
 [`docs/streams/forge-gitlab/spec.md`](streams/forge-gitlab/spec.md) — read it first if
 anything here seems to assert a control without justifying it; the spec carries the
 per-control parity table this doc only points at.
@@ -120,6 +139,7 @@ token (PAT):
 | board-writer | service account | Developer (30) + allowed-to-push entry on protected `main` | `api`, `write_repository` | the ruleset-bypass analog |
 | auditor | service account | Reporter (20) for the `project` and `file` reads; **Maintainer (40)** for the protected-branches, protected-tags, approvals and push-rules reads — see §5a | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope (the `read_api` scope is the forge-enforced read-only boundary whatever the role) |
 | cell-issues | not yet mapped on GitLab | — | — | GitHub-only "write-issues" identity today (a narrower, per-purpose issues-filing role, selectable only by name); no GitLab consumer is wired to it yet |
+| release-runner | **pipeline trigger token**, not a service account | — (a trigger token carries no project role) | none — it authenticates the trigger endpoint only | `deskrun` starts pipelines through `POST /projects/:id/trigger/pipeline` with it — the narrowest credential that can start a pipeline and nothing else. Custody is `gitlab-release-runner.token` (0600), read, never self-rotated: a trigger token has no self-rotate endpoint, so it is rotated in the project's CI/CD settings and re-provisioned. A trigger token cannot approve a gate or read a pipeline, so on GitLab `deskrun approve`/`status` report could-not-check under it. Bound per repo in `ASSAY_RUN_CREDENTIALS` with the gate shape the project uses (`release-runner+manual-job` or `release-runner+environment`) |
 | promote | usually **no identity at all** — see §3 | — | — | workflow promotion is a human-merged MR into the ci-config project, not a bot act |
 
 Attribution separation holds exactly as on GitHub: notes/approvals/commits carry the
