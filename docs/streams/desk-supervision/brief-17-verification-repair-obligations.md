@@ -94,24 +94,24 @@ Pre-mortem → detection: Issue filing succeeds but worker sees nothing: row 1. 
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
-### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/4 pass, 4 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
 
-Runs performed from the verifier's own worktree cut off origin/main at the merged SHA above.
-Row commands run exactly as the Verify table specifies (GOWORK=off, -count=1), directly with
-the host Go toolchain (go1.26.5 darwin/arm64).
+Runs performed from the verifier's own worktree cut off origin/main at the merged SHA
+50989dbc58f2cd95276dc8fe27314d3a2e15e3f8. Row commands run exactly as the Verify table
+specifies (GOWORK=off, -count=1), directly with the host Go toolchain (go1.26.5 darwin/arm64).
 
 | # | Command | Expected | Observed (exit + key output) | Date | Runner |
 |---|---------|----------|------------------------------|-------------|---|
-| 1 | GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1 (from tools/desk) | exit 0; named PASS; one failure creates exactly one rework item with its reproduction and target repo | exit 0; "--- PASS: TestRepairObligationFailToWorker"; asserts exactly 1 rework item, immutable obligation id, repo, reproduction and sorted rows carried, repair-framed prompt | 2026-09-23 | opus-5.5-verifier |
-| 2 | GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1 (from tools/desk) | exit 0; named PASS; duplicate + lost-ack reconcile to one obligation; replacement worker resumes after dead claim | exit 0; "--- PASS: TestRepairObligationRestartAndDuplicate"; asserts fold-to-1 at repairing, live-lease not assignable, dead-lease re-queues the SAME id exactly once | 2026-09-23 | opus-5.5-verifier |
-| 3 | GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1 (from tools/desk) | exit 0; named PASS; merge wakes reverification; same-actor/wrong-revision cannot resolve; valid independent pass resolves | exit 0; "--- PASS: TestRepairObligationMergeIsNotResolved"; asserts PR-open/approval/merge all non-resolving, merge lands awaiting-reverification, same-actor + wrong-revision rejected, independent pass at repaired sha resolves and is non-dispatchable | 2026-09-23 | opus-5.5-verifier |
-| 4 | GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1 (from tools/desk) | exit 0; named PASS; sibling delivery with merged original produces correct repo, fresh branch, linked repair; no duplicate original work | exit 0; "--- PASS: TestRepairObligationCrossRepoFollowUp"; asserts cross-root collect folds duplicate to 1, deliverable sibling repo (not tracking repo), fresh follow-up branch, original_merged=true, prompt forbids resuming merged branch | 2026-09-23 | opus-5.5-verifier |
+| 1 | cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run '^TestRepairObligation.*FailToWorker$' -v -count=1 | exit 0; named PASS; one failure creates exactly one rework item with its reproduction and target repo | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named --- PASS line for this row's test; asserts exactly 1 rework item, immutable obligation id, repo, reproduction and sorted rows carried, repair-framed prompt | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run '^TestRepairObligation.*RestartAndDuplicate$' -v -count=1 | exit 0; named PASS; duplicate + lost-ack reconcile to one obligation; replacement worker resumes after dead claim | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named --- PASS line for this row's test; asserts fold-to-1 at repairing, live-lease not assignable, dead-lease re-queues the SAME id exactly once | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run '^TestRepairObligation.*MergeIsNotResolved$' -v -count=1 | exit 0; named PASS; merge wakes reverification; same-actor/wrong-revision cannot resolve; valid independent pass resolves | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named --- PASS line for this row's test; asserts PR-open/approval/merge all non-resolving, merge lands awaiting-reverification, same-actor + wrong-revision rejected, independent pass at repaired sha resolves and is non-dispatchable | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run '^TestRepairObligation.*CrossRepoFollowUp$' -v -count=1 | exit 0; named PASS; sibling delivery with merged original produces correct repo, fresh branch, linked repair; no duplicate original work | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named --- PASS line for this row's test; asserts cross-root collect folds duplicate to 1, deliverable sibling repo (not tracking repo), fresh follow-up branch, original_merged=true, prompt forbids resuming merged branch | 2026-09-23 | claude-opus-4-8-verifier |
 
 Hermetic execution witness (statusgen verifyrun): all four check:ci rows returned could-not-run
 on this host — the network-off sandbox uses Linux `unshare --net` and this host is darwin
 (recorded verbatim as could-not-check; treated as neither pass nor fail per the verify-desk
 addendum). The canonical hermetic witness requires a Linux runner; the direct-execution
-observations above stand as the checked-clean result for each row. The witness rows are left
+observations above are strong corroboration, not the required witness. The witness rows are left
 uncommitted in the verifier worktree's brief file for the desk.
 
 RISK-VALUE: DERIVED — repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 — the only numeric literal the diff introduces; a reversible lease horizon (ranks last per kit §4: a timeout/knob correctable by an edit + redeploy). Right by the brief's own contract: lease expiry must re-queue the SAME obligation without duplicating (Task 2) — long enough that a live worker is never stolen from, short enough that a silently-dead session does not park the obligation forever; it mirrors the dispatch-claim lease horizon. Test row 2 exercises both bounds (a 20-min-old lease is not assignable; a ~2h-old lease re-queues once).
