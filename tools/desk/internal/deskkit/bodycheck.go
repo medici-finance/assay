@@ -210,12 +210,6 @@ const (
 	// lucky caps runs to decompose at all, so the budget is where most of the relaxation's
 	// cost on token material is bought back — see TestShortAcronymCostsAlmostNothing.
 	maxAcronymUnits = 1
-	// maxCapsAssignKey bounds an ALL-CAPS `KEY=` in front of an already-exempt value
-	// (isAssignmentLike, #1642). A Dockerfile `ARG BASE_DIGEST_HEX=<sha256>` reaches the loop
-	// as `HEX=<sha256>` because `_` is outside the run class; the surviving key is one
-	// segment of an environment-variable name. 16 covers any such segment (`DIGEST`,
-	// `FINGERPRINT`) and is half runThreshold, so the key alone can never make a run.
-	maxCapsAssignKey = 16
 )
 
 // numeronyms are the closed list of letter-digit-letter abbreviations an identifier may
@@ -224,6 +218,23 @@ const (
 // twoLetterWords, rather than a shape rule: a general "capital, digits, letter" unit is
 // common in random base62, an exact four-entry list is not.
 var numeronyms = []string{"K8s", "I18n", "L10n", "A11y"}
+
+// digestKeys are the closed list of env-var name TAILS isDigestKeyAssign will strip in
+// front of a git-SHA-shaped value (#1642). A closed list, not an ALL-CAPS shape rule: a
+// shape rule admits `TOKEN=<64 hex>`, and a 64-hex value is exactly what `openssl rand -hex
+// 32` prints, so the key is the only thing telling a digest from a credential (#1643 review).
+// `HEX` is not on the list: it names an encoding, not a digest, so it is admitted only
+// directly behind one of these (`…_DIGEST_HEX`, `…_SHA256_HEX`).
+var digestKeys = []string{"SHA", "SHA1", "SHA256", "DIGEST", "CHECKSUM", "COMMIT"}
+
+// credentialStems refuse the digest-key strip when any of them appears ANYWHERE in the
+// full env-var name, so `SIGNING_SECRET_SHA=` or `ENCRYPTION_KEY_DIGEST_HEX=` never pass on
+// their digest-looking tail. This is a second fence behind digestKeys, not a substitute:
+// a stem nobody listed still has to get past the closed tail list and the SHA-only value.
+var credentialStems = []string{
+	"SECRET", "TOKEN", "PASS", "PWD", "KEY", "AUTH", "CRED", "PRIV", "SESSION",
+	"COOKIE", "SIGN", "HMAC", "SALT", "API", "CERT", "BEARER", "JWT", "SEED",
+}
 
 // twoLetterWords are the two-letter units that count as WORDS in a CamelCase
 // decomposition even though they carry only one lowercase letter after the capital
@@ -536,6 +547,9 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
 			continue
 		}
+		if isDigestKeyAssign(raw, loc[0], run) {
+			continue
+		}
 		// Rule 1 (doc-extension arm) and Rule 2. Both are NARROWER than the
 		// class they clear and each is bounded by a paired positive fixture that stays
 		// refused: isDocPathHexSegment admits a 32-hex doc-path FILENAME stem
@@ -585,8 +599,9 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"word-shaped segments (optionally behind one leading '+' quantifier or "+
 				"diff marker), bare word-shaped CamelCase identifiers (a 2-4 letter "+
 				"acronym, optionally plural like PRs, and the numeronyms K8s/I18n/L10n/A11y "+
-				"count as words), key=<sha|path|identifier> assignments whose key is short, "+
-				"word-shaped or an ALL-CAPS env-var segment, all-'=' banner separators, a PGP key fingerprint (40 "+
+				"count as words), key=<sha|path|identifier> assignments whose key is short "+
+				"or word-shaped, a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
+				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, a PGP key fingerprint (40 "+
 				"uppercase hex after a pgp:/fp: field, or on a line that names it with "+
 				"fingerprint/fpr/pgp/gpg), a slash-list of short ALL-CAPS "+
 				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
@@ -1422,7 +1437,7 @@ func isAssignmentLike(run string) bool {
 		return false // no `=`, nothing before it, or nothing after it
 	}
 	key, val := run[:eq], run[eq+1:]
-	if len(key) > maxBareAssignKey && !looksLikeWords(key) && !isCapsAssignKey(key) {
+	if len(key) > maxBareAssignKey && !looksLikeWords(key) {
 		return false
 	}
 	if strings.ContainsAny(val, "+=") {
@@ -1431,26 +1446,47 @@ func isAssignmentLike(run string) bool {
 	return isGitSHA(val) || isPathLike(val) || isIdentifierLike(val)
 }
 
-// isCapsAssignKey reports whether key is the ALL-CAPS tail of an environment-variable name
-// — letters, then at most a digit group, at most maxCapsAssignKey long (#1642). It widens
-// ONLY which keys isAssignmentLike will strip; the value half still has to clear isGitSHA,
-// isPathLike or isIdentifierLike exactly as it would standing alone, so `HEX=<64 hex>` is
-// admitted because a bare 64-hex SHA is, and `KEY=<aws secret>` still refuses on its value.
-func isCapsAssignKey(key string) bool {
-	if len(key) == 0 || len(key) > maxCapsAssignKey {
+// isDigestKeyAssign reports whether run, starting at offset start in raw, is the tail of
+// an ALL-CAPS digest assignment — `ARG BASE_DIGEST_HEX=<sha256>` reaches the loop as
+// `HEX=<sha256>`, because `_` is outside the run class (#1642). It is narrower than
+// isAssignmentLike on every axis, and each condition is load-bearing (#1643 review):
+//
+//  1. The VALUE must be a git SHA (40/64 lowercase hex) — never a path or an identifier.
+//  2. The key tail is on the closed digestKeys list, or is `HEX` directly behind one.
+//  3. The FULL env-var name, read back from raw across `_`, contains no credentialStems
+//     entry, so a credential-named variable is refused whatever its tail.
+func isDigestKeyAssign(raw string, start int, run string) bool {
+	eq := strings.IndexByte(run, '=')
+	if eq <= 0 || !isGitSHA(run[eq+1:]) {
 		return false
 	}
-	i := 0
-	for i < len(key) && key[i] >= 'A' && key[i] <= 'Z' {
-		i++
+	i := start
+	for i > 0 && isEnvNameByte(raw[i-1]) {
+		i--
 	}
-	if i == 0 {
-		return false
+	name := raw[i:start] + run[:eq]
+	up := strings.ToUpper(name)
+	for _, stem := range credentialStems {
+		if strings.Contains(up, stem) {
+			return false
+		}
 	}
-	for i < len(key) && key[i] >= '0' && key[i] <= '9' {
-		i++
+	segs := strings.Split(name, "_")
+	tail := segs[len(segs)-1]
+	if tail == "HEX" && len(segs) >= 2 {
+		tail = segs[len(segs)-2]
 	}
-	return i == len(key)
+	for _, k := range digestKeys {
+		if tail == k {
+			return true
+		}
+	}
+	return false
+}
+
+// isEnvNameByte reports whether c can appear in an environment-variable name.
+func isEnvNameByte(c byte) bool {
+	return c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 }
 
 // looksLikeWords reports whether seg reads as human-written name material — what real

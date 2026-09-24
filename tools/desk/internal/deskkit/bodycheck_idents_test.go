@@ -31,7 +31,34 @@ var (
 	capsKeyLong  = "ABCDEFGH" + "IJKLMNOPQ" + "=" + "5d529c27e3b1a04f9c2d8e7b" + "6a1f0c3d4e5f6a7b"
 	capsKeyMixed = "HEXa=" + strings.Repeat("e5496277be5d09bc", 4)
 	glToken      = "glpat-" + "xq7Rk2PzLw9vNc4bYf6H"
+
+	// Refused (1643-F1 / SR-1643-1): a credential-naming key in front of a value the scanner
+	// admits standalone. The key is the only context that tells `openssl rand -hex` output
+	// from a digest, so none of these may be admitted. Hex values are repeated fragments.
+	fixHex64 = strings.Repeat("e5496277be5d09bc", 4)
+	fixHex40 = strings.Repeat("5d529c27", 5)
+	pass     = "CorrectHorse" + "BatteryStaple" + "Mount" // CamelCase passphrase, 30
+	// Numeronym anchor (1643-F2): `K8s` then a digit or lowercase is not a word.
+	k8sDigit = "TestEveryImageUnder" + "K8s9IsDigestPinned"
+	k8sLower = "TestEveryImageUnder" + "K8sxyzIsDigestPinned"
 )
+
+// credKeyLines are whole lines: the scan sees the full env-var name, not just its tail.
+var credKeyLines = []string{
+	"TOKEN=" + fixHex64,
+	"SECRET=" + fixHex40,
+	"export API_KEY=" + fixHex64,
+	"export WEBHOOK_SECRET=" + fixHex64,
+	"DB_PASSWORD=" + fixHex64,
+	"GITLAB_TOKEN=" + fixHex40,
+	"SESSION_KEY1=" + fixHex64,
+	"PASSWORD=" + pass,
+	"ENCRYPTION_KEY_HEX=" + fixHex64, // digest-looking tail, credential name
+	"SIGNING_SECRET_SHA=" + fixHex40,
+	"MASTER_HEX=" + fixHex64, // HEX not behind a digest segment
+	"ARG BASE_DIGEST_HEX=" + pass,
+	"ARG BASE_DIGEST_HEX=" + fixHex64[:48],
+}
 
 // TestPluralAndNumeronymIdents pins the #1642 admissions: a short acronym carrying a plural
 // `s` (`PRs`, `IDs`) and a closed list of numeronyms (`K8s`, `I18n`) no longer sink an
@@ -47,25 +74,39 @@ func TestPluralAndNumeronymIdents(t *testing.T) {
 	}
 }
 
-// TestCapsKeyAssignment pins the ALL-CAPS assignment key: a Dockerfile `ARG NAME_HEX=<sha>`
-// line reaches the loop as `HEX=<sha>` (the `_` is outside the run class). The value must
-// still clear the bar it would clear alone, and the key is bounded in length and shape.
+// TestCapsKeyAssignment pins the digest-key strip: a Dockerfile `ARG BASE_DIGEST_HEX=<sha>`
+// line reaches the loop as `HEX=<sha>` (the `_` is outside the run class). It is admitted
+// only through isDigestKeyAssign, which reads the full name; isAssignmentLike, which sees
+// only the run, still refuses the caps key exactly as on main.
 func TestCapsKeyAssignment(t *testing.T) {
-	for _, run := range []string{argDigest, argDigest40} {
-		if !isAssignmentLike(run) {
-			t.Errorf("isAssignmentLike(%q) = false, want true", run)
-		}
-		line := "ARG BASE_DIGEST_" + run + "\n"
-		if err := BodyCheck([]byte(line)); err != nil {
+	for _, line := range []string{
+		"ARG BASE_DIGEST_" + argDigest,
+		"ARG BASE_DIGEST_" + argDigest40,
+		"IMAGE_SHA256=" + fixHex64,
+		"GIT_COMMIT=" + fixHex40,
+	} {
+		if err := BodyCheck([]byte(line + "\n")); err != nil {
 			t.Errorf("BodyCheck rejected %q: %v", line, err)
 		}
 	}
-	for _, run := range []string{capsKeyAWS, capsKeyB62, capsKeyLong, capsKeyMixed} {
+	for _, run := range []string{argDigest, argDigest40, capsKeyAWS, capsKeyB62, capsKeyLong, capsKeyMixed} {
 		if isAssignmentLike(run) {
 			t.Errorf("isAssignmentLike(%q) = true, want false", run)
 		}
+	}
+	for _, run := range []string{capsKeyAWS, capsKeyB62, capsKeyLong, capsKeyMixed} {
 		if err := BodyCheck([]byte(run)); !IsRefused(err) {
 			t.Errorf("BodyCheck(%q) = %v, want Refused", run, err)
+		}
+	}
+}
+
+// TestCredentialKeysRefuse: 1643-F1. A credential-naming key never earns the digest-key
+// strip, whatever the value; nor does a digest key in front of a non-SHA value.
+func TestCredentialKeysRefuse(t *testing.T) {
+	for _, line := range credKeyLines {
+		if err := BodyCheck([]byte(line + "\n")); !IsRefused(err) {
+			t.Errorf("BodyCheck(%q) = %v, want Refused", line, err)
 		}
 	}
 }
@@ -89,7 +130,7 @@ func TestSubstitutionLines(t *testing.T) {
 
 // TestNewShapesStillRefuse: every #1642 shape wearing real-secret material is refused.
 func TestNewShapesStillRefuse(t *testing.T) {
-	for _, run := range []string{k8sDebris, prsDebris, camelPrefix, camelPrefix2, pluralNoWord, twoPlurals} {
+	for _, run := range []string{k8sDebris, prsDebris, camelPrefix, camelPrefix2, pluralNoWord, twoPlurals, k8sDigit, k8sLower} {
 		if isIdentifierLike(run) {
 			t.Errorf("isIdentifierLike(%q) = true, want false", run)
 		}
