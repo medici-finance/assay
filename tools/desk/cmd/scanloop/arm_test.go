@@ -218,7 +218,7 @@ func TestResolvePoller_ModesAndRefusals(t *testing.T) {
 	})
 	t.Run("default without the verb is unverifiable, never the script", func(t *testing.T) {
 		t.Setenv(EnvMonitorScript, "")
-		withLookPath(t, map[string]string{"bash": "/bin/bash"})
+		withLookPath(t, map[string]string{"bash": "/usr/local/bin/bash"})
 		_, err := ResolvePoller(t.TempDir(), "")
 		if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable || !strings.Contains(err.Error(), "deskmonitor") {
 			t.Fatalf("want unverifiable naming deskmonitor, got %v", err)
