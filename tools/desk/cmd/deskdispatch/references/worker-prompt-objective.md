@@ -366,6 +366,51 @@ over it — leave the whole-matrix run to CI and keep the agent's own runs scope
 row in front of you needs to prove. This is the same boundary the fail-first evidence clause
 above already draws: `go test ./<pkg>/... -run '<TestName>'`, never the bare `./...`.
 
+### A bug fix closes the defect CLASS, not the one instance
+
+> When the item fixes a defect, the fix NAMES the defect CLASS and ADDS A CLASS GUARD — a
+> check that fails if ANY other site repeats the defect, not only the site that was
+> reported. A test of the reported instance alone is not the fix: it pins the one site that
+> already failed and says nothing about the next caller that makes the same mistake.
+
+A defect repaired at one call site comes back at another when the fix closed the instance
+and left the class open: a second caller reaches the same hazardous primitive by a
+different path, a test stub hides it, and the regression reads as a new bug. Fixing a
+reviewer's finding by its whole class is the same idea applied to a review; this clause
+applies it to the defect the item itself fixes. Three obligations:
+
+1. **Name the class.** In the PR body, under a `## Defect class` heading, state in one or
+   two lines the shape every instance shares — e.g. "a call to the hazardous primitive
+   `exampleRawToken()` from anywhere but the one wrapper, `exampleSafeToken()`, that checks
+   its input first" — not the one line that failed. When the item re-opens a defect an
+   earlier fix already closed, cite that earlier fix's issue or commit there too, so the
+   reviewer can see which guard failed to hold.
+2. **Add a guard over the class.** A check that enumerates every site the class can occur
+   at and fails on a new one. The model is an ALLOW-LIST structural test: it walks the
+   codebase for every caller of `exampleRawToken()`, compares them against a short committed
+   allow-list (`exampleSafeToken()` and nothing else), and fails naming any caller not on the
+   list — so the next site that repeats the defect is red in CI before it reaches review. A
+   lint rule, a type that makes the hazardous call unrepresentable, or a single choke point
+   the primitive can only be reached through are equally good guards. Keep the
+   reported-instance test beside it: that test pins the behaviour, the class guard pins the
+   absence. A guard whose own matcher could silently stop matching carries a positive
+   control — a committed fixture holding one planted instance the guard must flag — so a
+   broken guard fails instead of reporting clean.
+3. **Show the class guard failing against a PLANTED SECOND instance.** The fail-first rule,
+   applied to the class rather than the instance: add a deliberate repeat of the defect at a
+   site the fix does NOT touch (a new `exampleRawToken()` caller in a scratch file, or a
+   committed mutation entry that adds one), run the guard, quote the red naming that planted
+   site in the PR body under `## Fail-first`, then remove the plant. A guard shown red only
+   against the reported instance proves it sees that instance, which the instance test
+   already did.
+
+A PR that fixes a defect and carries no `## Defect class` section is INCOMPLETE, the same way
+one with no fail-first run is. When the defect has no mechanically checkable shape — a one-off
+logic error nothing else can repeat — say so under that heading, with the reason. That is a claim
+the reviewer weighs, never a silent omission, and it is not available for a defect that
+reached a second site. This clause asks for a guard over ONE class; it does not ask for a
+standing regression suite, and a worker does not build one unasked.
+
 ---
 
 ## Common clauses (embedded verbatim — a diff against `common-clauses.md` must be empty)
