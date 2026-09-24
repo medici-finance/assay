@@ -10,10 +10,13 @@ import (
 	"testing"
 )
 
-// TestIsForgeRateLimited_ClassifiesTheForgeAnswer — a 429, and a 403 carrying the rate-limit
-// signature (Retry-After, an exhausted X-RateLimit-Remaining, or a message naming the limit), are
-// rate limits; a plain 403 (a missing scope) and a 404 are NOT — a poller that stopped its cycle on
-// a permissions fault would stop on something retrying never clears.
+// TestIsForgeRateLimited_ClassifiesTheForgeAnswer — a 429, and a 403 carrying the SECONDARY
+// rate-limit signature (Retry-After, or a message naming a secondary limit / "too many
+// requests"), are rate limits; a plain 403 (a missing scope), a 404, and a 403 that only
+// exhausted the PRIMARY quota (an "API rate limit exceeded …" message, or X-RateLimit-Remaining
+// alone with no Retry-After) are NOT — a poller that stopped its cycle on either would diverge
+// from plugins/assay/scripts/{inbound,pr}-monitor.sh, which stop only on the secondary-limit /
+// 429 signature and otherwise treat the read as an ordinary failure (#1640 review F1).
 func TestIsForgeRateLimited_ClassifiesTheForgeAnswer(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -25,7 +28,7 @@ func TestIsForgeRateLimited_ClassifiesTheForgeAnswer(t *testing.T) {
 		{"429", http.StatusTooManyRequests, nil, "Too Many Requests", true},
 		{"403 secondary limit message", http.StatusForbidden, nil, "You have exceeded a secondary rate limit.", true},
 		{"403 Retry-After", http.StatusForbidden, map[string]string{"Retry-After": "60"}, "Forbidden", true},
-		{"403 primary limit exhausted", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "0"}, "API rate limit exceeded", true},
+		{"403 primary limit exhausted (X-RateLimit-Remaining only, no Retry-After)", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "0"}, "API rate limit exceeded for installation ID 1.", false},
 		{"403 missing scope", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "4999"}, "Resource not accessible by integration", false},
 		{"404", http.StatusNotFound, nil, "Not Found", false},
 	}
