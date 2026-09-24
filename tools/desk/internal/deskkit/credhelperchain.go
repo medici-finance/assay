@@ -85,6 +85,15 @@ func credTransportMatchesApp(dir, rawURL, appTokenPath string) (bool, string, er
 		shown, len(chain)), nil
 }
 
+// AppTokenHelper is the credential helper command the desk installs for a role's minted
+// token: it answers with a fixed username and the CONTENTS of the token file, read at auth
+// time inside git's own shell, so the token never reaches argv, a URL or config. It is the
+// single source of that shape — `deskwt role-init` writes it and the credential-chain check
+// recognises it — so the writer and the checker cannot drift apart.
+func AppTokenHelper(username, tokenPath string) string {
+	return "!f(){ echo username=" + username + "; echo \"password=$(cat '" + tokenPath + "')\"; }; f"
+}
+
 // helperReadsAppToken reports whether a helper command names the minted App token cache, by
 // its full path or its file name.
 func helperReadsAppToken(helper, appTokenPath string) bool {

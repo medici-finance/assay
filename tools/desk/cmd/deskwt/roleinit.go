@@ -571,7 +571,9 @@ func wireRoleCredential(target, role, repo, username string) error {
 		return nil
 	}
 	scopedKey := "credential.https://" + host + ".helper"
-	helper := "!f(){ echo username=" + username + "; echo \"password=$(cat '" + path + "')\"; }; f"
+	// The ONE helper shape the preflight's credential-chain check accepts as the App token
+	// helper (deskkit.AppTokenHelper) — built by the same function, so the two cannot drift.
+	helper := deskkit.AppTokenHelper(username, path)
 	// Reset the whole (unscoped) chain first — this clears any stale sibling helper from shared
 	// config for every host — then add the role helper ONLY under the host-scoped key.
 	if _, err := runGit(target, "config", "--worktree", "--replace-all", "credential.helper", ""); err != nil {

@@ -32,6 +32,7 @@ type chainRepo struct {
 	t      *testing.T
 	dir    string
 	global string
+	home   string
 	token  string
 }
 
@@ -49,11 +50,12 @@ func newChainRepo(t *testing.T) *chainRepo {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, "xdg"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
-	for _, k := range []string{"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_DIR", "GIT_WORK_TREE"} {
+	for _, k := range []string{"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_DIR", "GIT_WORK_TREE",
+		"NETRC", "GIT_ASKPASS", "SSH_ASKPASS"} {
 		unsetForTest(t, k)
 	}
 	dir := filepath.Join(tmp, "repo")
-	r := &chainRepo{t: t, dir: dir, global: global, token: filepath.Join(tmp, "worker-token-123456")}
+	r := &chainRepo{t: t, dir: dir, global: global, home: tmp, token: filepath.Join(tmp, "worker-token-123456")}
 	r.git("init", "-q", dir)
 	r.local("remote.origin.url", chainURL)
 	return r
@@ -82,17 +84,30 @@ func (r *chainRepo) glob(key, val string) {
 	r.git("config", "--file", r.global, "--add", key, val)
 }
 
-func (r *chainRepo) appHelper() string {
-	return "!f() { echo username=x-access-token; echo password=$(cat " + r.token + "); }; f"
-}
+// appHelper is the helper the desk installs (deskwt role-init) for this repo's token file.
+func (r *chainRepo) appHelper() string { return AppTokenHelper("x-access-token", r.token) }
 
 func (r *chainRepo) probe() (bool, string) {
 	r.t.Helper()
-	ok, detail, err := credHelperMatchesAppProbe(Landing{Dir: r.dir, Remote: "origin"}, r.token)
+	ok, detail, err := r.probeFull()
 	if err != nil {
 		r.t.Fatalf("probe error (could-not-check): %v", err)
 	}
 	return ok, detail
+}
+
+func (r *chainRepo) probeFull() (bool, string, error) {
+	r.t.Helper()
+	return credHelperMatchesAppProbe(Landing{Dir: r.dir, Remote: "origin"}, r.token)
+}
+
+func (r *chainRepo) writeHome(name, body string, mode os.FileMode) string {
+	r.t.Helper()
+	p := filepath.Join(r.home, name)
+	if err := os.WriteFile(p, []byte(body), mode); err != nil {
+		r.t.Fatal(err)
+	}
+	return p
 }
 
 func TestCredHelperChainRealGit(t *testing.T) {
@@ -162,6 +177,199 @@ func TestCredHelperChainRealGit(t *testing.T) {
 			}
 			if strings.Contains(detail, embeddedSecret) {
 				t.Errorf("detail echoes an embedded credential: %q", detail)
+			}
+		})
+	}
+}
+
+// foreignHelper is a helper that is NOT the desk's App token helper. Its shape never matters
+// to the probe (no helper is ever run); it only has to be something other than AppTokenHelper.
+const foreignHelper = "store --file /tmp/elsewhere"
+
+// gitAppliesPattern asks the git binary on PATH itself whether a `credential.<pattern>.helper`
+// entry applies to chainURL: it runs `git credential fill` with ONLY a reset plus a marker
+// helper under that pattern (system/global config isolated by newChainRepo, prompts and
+// askpass disabled), so the answer is git's own matcher on this git version. It is the
+// ground truth the parity cases are pinned against; the probe under test never runs a helper.
+func (r *chainRepo) gitAppliesPattern(pattern string) bool {
+	r.t.Helper()
+	const marker = "parity-marker"
+	cmd := exec.Command("git", "-C", r.dir, "credential", "fill")
+	cmd.Stdin = strings.NewReader("url=" + chainURL + "\n\n")
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=",
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+		"GIT_CONFIG_KEY_1=core.askPass", "GIT_CONFIG_VALUE_1=",
+		"GIT_CONFIG_KEY_2=credential."+pattern+".helper",
+		"GIT_CONFIG_VALUE_2=!f(){ echo username="+marker+"; echo password="+marker+"; }; f",
+	)
+	out, _ := cmd.CombinedOutput()
+	return strings.Contains(string(out), "username="+marker)
+}
+
+// TestCredChainGitParity pins the credential-chain check to how git itself resolves the
+// credential for a push, one group per parity item. FAIL-FIRST: every case marked red below
+// read CLEAN against the check before this change (see the PR's fail-first section).
+func TestCredChainGitParity(t *testing.T) {
+	type tc struct {
+		name      string
+		setup     func(r *chainRepo)
+		want      bool
+		wantErr   bool   // could-not-check
+		detailHas string // must appear in the detail (or the error)
+	}
+	cases := []tc{
+		// 1. Host-less / partial-URL credential patterns apply the way git applies them.
+		{"hostless pattern empty subsection is red", func(r *chainRepo) {
+			r.glob("credential..helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "helper 1"},
+		{"hostless pattern slash is red", func(r *chainRepo) {
+			r.glob("credential./.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "helper 1"},
+		{"hostless pattern path-only is red", func(r *chainRepo) {
+			r.glob("credential./example-org/example-repo.git.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "helper 1"},
+		{"hostless pattern scheme-only is red", func(r *chainRepo) {
+			r.glob("credential.https://.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "helper 1"},
+		{"hostless pattern scheme and slash is red", func(r *chainRepo) {
+			r.glob("credential.https:///.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "helper 1"},
+		{"hostless pattern for another scheme does not apply", func(r *chainRepo) {
+			r.glob("credential.http://.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, true, false, ""},
+		{"push URL with an empty host is could-not-check", func(r *chainRepo) {
+			r.local("remote.origin.pushurl", "https:///example-org/example-repo.git")
+			r.local("credential.helper", r.appHelper())
+		}, false, true, "host"},
+
+		// 2. Every push URL git pushes to is judged, not only the first.
+		{"second pushurl with a foreign helper is red", func(r *chainRepo) {
+			r.local("remote.origin.pushurl", chainURL)
+			r.local("remote.origin.pushurl", "https://git.example.invalid/example-org/example-repo.git")
+			r.local("credential.https://github.com:443.helper", r.appHelper())
+			r.local("credential.https://git.example.invalid.helper", foreignHelper)
+		}, false, false, "git.example.invalid"},
+		{"second pushurl over ssh is red", func(r *chainRepo) {
+			r.local("remote.origin.pushurl", chainURL)
+			r.local("remote.origin.pushurl", "git@github.com:example-org/example-repo.git")
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "not an http(s) URL"},
+		{"two pushurls both served by the App helper are green", func(r *chainRepo) {
+			r.local("remote.origin.pushurl", chainURL)
+			r.local("remote.origin.pushurl", "https://github.com:443/example-org/example-mirror.git")
+			r.local("credential.helper", r.appHelper())
+		}, true, false, "2 push URL"},
+
+		// 3. A netrc entry the transport consults before any helper.
+		{"netrc machine entry for the host is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "machine github.com login other\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc default entry is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "machine other.example.invalid login a\ndefault login other\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc named by NETRC is red", func(r *chainRepo) {
+			p := r.writeHome("alt-netrc", "machine GitHub.com login other\n", 0o600)
+			r.t.Setenv("NETRC", p)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc for another host only is green", func(r *chainRepo) {
+			r.writeHome(".netrc", "machine other.example.invalid login a\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, true, false, ""},
+		{"netrc machine inside a macdef body does not count", func(r *chainRepo) {
+			r.writeHome(".netrc", "macdef init\nmachine github.com\n\nmachine other.example.invalid login a\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, true, false, ""},
+		{"unreadable netrc is could-not-check", func(r *chainRepo) {
+			if err := os.Mkdir(filepath.Join(r.home, ".netrc"), 0o700); err != nil {
+				r.t.Fatal(err)
+			}
+			r.local("credential.helper", r.appHelper())
+		}, false, true, "netrc"},
+
+		// 4. Only the App token helper itself passes, and the detail names what git runs.
+		{"same token file name in another directory is red", func(r *chainRepo) {
+			r.local("credential.helper", AppTokenHelper("x-access-token",
+				filepath.Join(r.home, "otherhome", filepath.Base(r.token))))
+		}, false, false, "otherhome"},
+		{"helper that only mentions the token path is red", func(r *chainRepo) {
+			r.local("credential.helper", "!f(){ : '"+r.token+"'; cat /tmp/elsewhere; }; f")
+		}, false, false, "shell"},
+		{"store helper over the token file with askpass fallthrough is red", func(r *chainRepo) {
+			r.local("credential.helper", "store --file "+r.token)
+			r.local("core.askPass", "/tmp/elsewhere-askpass")
+		}, false, false, "git credential-store"},
+		{"App helper then a trailing appended command is red", func(r *chainRepo) {
+			r.local("credential.helper", r.appHelper()+"; cat /tmp/elsewhere")
+		}, false, false, "helper 1"},
+		{"App helper alone is green even with an askpass configured", func(r *chainRepo) {
+			// The App helper always answers with a username and a password (an empty one when
+			// the file is unreadable), so git completes the credential before any askpass.
+			r.local("credential.helper", r.appHelper())
+			r.local("core.askPass", "/tmp/elsewhere-askpass")
+		}, true, false, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newChainRepo(t)
+			c.setup(r)
+			ok, detail, err := r.probeFull()
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("probe = %v (%s), want could-not-check", ok, detail)
+				}
+				if c.detailHas != "" && !strings.Contains(err.Error(), c.detailHas) {
+					t.Errorf("error %q lacks %q", err, c.detailHas)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("probe error (could-not-check): %v", err)
+			}
+			if ok != c.want {
+				t.Fatalf("probe = %v (%s), want %v", ok, detail, c.want)
+			}
+			if c.detailHas != "" && !strings.Contains(detail, c.detailHas) {
+				t.Errorf("detail %q lacks %q", detail, c.detailHas)
+			}
+		})
+	}
+}
+
+// TestCredChainHostlessMatchesGit pins the host-less fixtures above to the git on PATH: each
+// pattern git applies to the push URL, the check must treat as applying (red), and the one
+// git does not apply, the check must not.
+func TestCredChainHostlessMatchesGit(t *testing.T) {
+	for pattern, gitWants := range map[string]bool{
+		"":                              true,
+		"/":                             true,
+		"/example-org/example-repo.git": true,
+		"https://":                      true,
+		"https:///":                     true,
+		"github.com:443":                true,
+		"http://":                       false,
+		"gitlab.example.invalid":        false,
+	} {
+		t.Run("pattern="+pattern, func(t *testing.T) {
+			r := newChainRepo(t)
+			if got := r.gitAppliesPattern(pattern); got != gitWants {
+				t.Fatalf("fixture drift: git applies %q = %v, the fixture expects %v", pattern, got, gitWants)
+			}
+			r.glob("credential."+pattern+".helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+			ok, detail := r.probe()
+			if ok == gitWants {
+				t.Fatalf("git applies %q = %v, but the check reads green=%v (%s)", pattern, gitWants, ok, detail)
 			}
 		})
 	}
