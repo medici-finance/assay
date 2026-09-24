@@ -263,38 +263,40 @@ RISK-VALUE: N/A — enumeration over the rest of the diff found no other literal
 
 VERIFY: FAIL — held at implemented. 13/15 rows checked-clean. Rows 8 and 10 are both stale Verify-row anchors from later, unrelated commits (763d46ca8; a0152b54b/c30ea03e7) that superseded implementation details the rows literally check for — the underlying security intent is met or exceeded on current main (no real syscall leak; the windows owner-check is now full ACL enforcement, stronger than the original design). Not a regression in this brief's own diff, which passes cleanly against its own tree. Recommend re-baselining row 8's grep (exclude comment lines / already-excluded files) and either re-baselining row 10 to assert the ACL enforcement or retiring it as permanently superseded — a driver/coordinator call, not this verifier's. Not filed as a new issue this pass: this session's deskfile budget on medici-finance/assay is fully exhausted for the next ~21h (3 regular + 1 audited override already used today); recording here so it's visible for the next verify pass or another session to file.
 
-### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+### Non-implementer verifier run — VERIFY: BLOCKED — 13/16 pass, 3 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
 
 Runner not the implementer. Own detached temp worktree cut off origin/main at the merged head
 (HEAD == origin/main == 438dd26a3e95). Offline envelope observed (KUBECONFIG=/dev/null). No PR
 opened, no push, no status flip. gate: model; all four risk answers `no`. Rows 8 and 10 run in
-their 2026-09-22 re-baselined form (issue #1454). Fresh classification pass; rows re-run from
+their 2026-09-22 re-baselined form (issue #1454). This brief's Verify table has no `check:ci`-classed
+rows. Rows 13-15 (pinned-base diff + consumers routing) corroborate nothing on the fully merged tree
+(BASE == HEAD, empty diff) and are could-not-check. Fresh classification pass; rows re-run from
 scratch, not carried forward.
 
 | # | Command | Expected | Observed (exit + key output) | Date | Runner |
 |---|---------|----------|------------------------------|------|--------|
-| 1 | pair-existence loop (4 pairs) | OK | exit 0 — OK (all 4 pairs present) | 2026-09-23 | opus-5.5-verifier |
-| 2 | every _unix.go has explicit build constraint | OK | exit 0 — OK | 2026-09-23 | opus-5.5-verifier |
-| 3 | statusgen cross-compile amd64+arm64, file check | PE32/MS Windows both | exit 0 — amd64 PE32+ x86-64 MS Windows; arm64 PE32+ Aarch64 MS Windows | 2026-09-23 | opus-5.5-verifier |
-| 4 | deskpost cross-compile amd64+arm64, file check | PE32/MS Windows both | exit 0 — both PE32+ MS Windows (x86-64, Aarch64) | 2026-09-23 | opus-5.5-verifier |
-| 5 | GOOS=windows go build ./... (desk) | 0 | build=0 | 2026-09-23 | opus-5.5-verifier |
-| 6 | GOOS=windows go vet both modules | sg=0 dt=0 | sg=0, dt=0 | 2026-09-23 | opus-5.5-verifier |
-| 7 | host go test — statusgen ./... and the 5 split-affected desk packages, with the #555 -skip | sg=0 dt=0 | sg=0; dt=0 (all 5 desk pkgs ok, statusgen ok). Note: the #555 -skip is now stale — the two named tests' fixes are ancestors of HEAD and the packages pass either way; documentation-debt, not a Verify failure | 2026-09-23 | opus-5.5-verifier |
-| 8 | grep for real syscall use outside _unix.go (re-baselined, comment- and suffix-filtered) | rc=1 (no output) | rc=1 — no lines printed; the re-baselined grep no longer catches the unrelated prose comment | 2026-09-23 | opus-5.5-verifier |
-| 9 | positive control: same grep counting _unix.go matches | >= 4 | 9 | 2026-09-23 | opus-5.5-verifier |
-| 10 | windows rosterowner ACL enforcement wired (both files) + TestEvaluateRosterACL in both modules | wired=OK, sg-test=OK, dt-test=OK | wired=OK (both files carry GetNamedSecurityInfo + evaluateRosterACL + S-1-1-0); both TestEvaluate-RosterACL ran and PASS with all 10 refusal/accept subtests | 2026-09-23 | opus-5.5-verifier |
-| 11 | windows procgroup caveat written | 0 | exit 0 | 2026-09-23 | opus-5.5-verifier |
-| 12 | windows lock references ErrLockBusy | 0 | exit 0 | 2026-09-23 | opus-5.5-verifier |
-| 13 | prune.go untouched (pinned base) | 0 | 0 — vacuous on post-merge (base == HEAD, empty diff); corroborated by rows 1/9 | 2026-09-23 | opus-5.5-verifier |
-| 14 | no go.sum / statusgen-module diff (pinned base) | 0 | 0 — vacuous, same post-merge shape | 2026-09-23 | opus-5.5-verifier |
-| 14a | x/sys still v0.46.0 in desk go.mod | 1 | 1 | 2026-09-23 | opus-5.5-verifier |
-| 15 | statusgen --consumers windows-port/00 | 0 | exit 0 — "no brief files in the diff … nothing to corroborate" (vacuous on merged main); corroborated manually via rows 1/13/14 — fixed-here files present, prune.go and statusgen module untouched | 2026-09-23 | opus-5.5-verifier |
+| 1 | `for f in statusgen/procgroup statusgen/rosterowner tools/desk/internal/deskkit/filelock tools/desk/internal/deskkit/rosterowner; do test -f "${f}_unix.go" && test -f "${f}_windows.go" \|\| { echo "MISSING pair $f"; exit 1; }; done; echo OK` | OK | PASS — exit 0, OK (all 4 pairs present) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | `for f in $(find statusgen tools/desk -name '*_unix.go'); do head -5 "$f" \| grep -qE -e '^//go:build unix' -e '^//go:build !windows' \|\| { echo "NO CONSTRAINT $f"; exit 1; }; done; echo OK` | OK | PASS — exit 0, OK | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | `cd statusgen && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-sg-amd64.exe . && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-sg-arm64.exe . && file /tmp/wp00-sg-amd64.exe /tmp/wp00-sg-arm64.exe` | exit 0; each file line PE32 and MS Windows | PASS — exit 0; amd64 PE32+ x86-64 MS Windows; arm64 PE32+ Aarch64 MS Windows | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-dt-amd64.exe ./cmd/deskpost && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-dt-arm64.exe ./cmd/deskpost && file /tmp/wp00-dt-amd64.exe /tmp/wp00-dt-arm64.exe` | exit 0; each file line PE32 and MS Windows | PASS — exit 0; both PE32+ MS Windows (x86-64, Aarch64) | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./...; echo $?` | 0 | PASS — build=0 | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | `cd statusgen && GOOS=windows GOARCH=amd64 go vet ./...; echo "sg=$?"; cd ../tools/desk && GOOS=windows GOARCH=amd64 go vet ./...; echo "dt=$?"` | sg=0 and dt=0 | PASS — sg=0, dt=0 | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | `cd statusgen && go test ./...; echo "sg=$?"; cd ../tools/desk && go test ./internal/deskkit/... ./internal/loopengine/... ./cmd/deskpost/... ./cmd/deskevidence/... ./cmd/deskrelease/... -skip '^(TestRegistryCoversCmdBinaries\|TestReStampRecovery)'; echo "dt=$?"` | sg=0 and dt=0 | PASS — sg=0; dt=0 (all 5 desk pkgs ok, statusgen ok). Note: the #555 -skip is now stale — the two named tests' fixes are ancestors of HEAD and the packages pass either way; documentation-debt, not a Verify failure | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -Ev '_(unix\|windows)\.go:' \| grep -Ev ':[0-9]+:[[:space:]]*(//\|\*)' ; echo "rc=$?"` | rc=1 (no output) | PASS — rc=1; no lines printed; the re-baselined grep no longer catches the unrelated prose comment | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -c '_unix\.go:'` | >= 4 | PASS — 9 | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | `for f in statusgen/rosterowner_windows.go tools/desk/internal/deskkit/rosterowner_windows.go; do grep -qF 'GetNamedSecurityInfo' "$f" && grep -qF 'evaluateRosterACL' "$f" && grep -qF 'S-1-1-0' "$f" \|\| { echo "MISSING acl-enforcement in $f"; exit 1; }; done; echo "wired=OK"; (cd statusgen && go test ./... -run '^TestEvaluateRosterACL$' -count=1 >/dev/null && echo "sg-test=OK"); (cd tools/desk && go test ./internal/deskkit/... -run '^TestEvaluateRosterACL$' -count=1 >/dev/null && echo "dt-test=OK")` | wired=OK, sg-test=OK, dt-test=OK | PASS — wired=OK (both files carry GetNamedSecurityInfo + evaluateRosterACL + S-1-1-0); both statusgen and desk TestEvaluateRosterACL ran and `--- PASS` with all 10 refusal/accept subtests | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | `grep -qiE -e 'grandchild' -e 'process group' -e 'orphan' statusgen/procgroup_windows.go; echo $?` | 0 | PASS — exit 0 | 2026-09-23 | claude-opus-4-8-verifier |
+| 12 | `grep -qF 'ErrLockBusy' tools/desk/internal/deskkit/filelock_windows.go; echo $?` | 0 | PASS — exit 0 | 2026-09-23 | claude-opus-4-8-verifier |
+| 13 | `BASE=$(git merge-base origin/main HEAD); git diff --name-only "$BASE" HEAD \| grep -c 'cmd/deskwt/prune.go' \|\| true` | 0 | COULD-NOT-CHECK — merged tree; BASE == HEAD so the pinned-base diff is empty and this branch's touch of prune.go cannot be corroborated. Re-run at 438dd26a3e95: empty diff, count 0; prune.go's untouched state is corroborated instead by rows 1/9 | 2026-09-23 | claude-opus-4-8-verifier |
+| 14 | `BASE=$(git merge-base origin/main HEAD); git diff "$BASE" HEAD -- tools/desk/go.sum statusgen/go.mod statusgen/go.sum \| wc -l` | 0 | COULD-NOT-CHECK — merged tree; same empty-diff shape (BASE == HEAD), wc -l 0 vacuously; no go.sum / statusgen-module change can be corroborated from a fully merged tree | 2026-09-23 | claude-opus-4-8-verifier |
+| 14a | `grep -c 'golang.org/x/sys v0.46.0' tools/desk/go.mod` | 1 | PASS — 1 | 2026-09-23 | claude-opus-4-8-verifier |
+| 15 | `statusgen --root . --consumers windows-port/00; echo $?` | 0 | COULD-NOT-CHECK — merged tree; run at merged HEAD gives an empty diff so nothing is corroborated. Re-run at 438dd26a3e95: exit 0, "consumers: no brief files in the diff against 438dd26a3e959707d2eb4347aa1310d9173777f9 — nothing to corroborate" (nothing corroborated, nothing disproved) | 2026-09-23 | claude-opus-4-8-verifier |
 
 RISK-VALUE: DERIVED — windows advisory-lock byte range (reserved=0, nBytesLow=1, nBytesHigh=0, Overlapped offset=0) @ tools/desk/internal/deskkit/filelock_windows.go:29 (LockFileEx) and :43 (UnlockFileEx) — lock and unlock cover the IDENTICAL 1-byte range at offset 0 (the standard whole-file advisory lock). Equal lock/unlock ranges are the sole correctness requirement this brief's own ground rules name (a mismatch is a lock leak → double-dispatch); they match. The fail-closed selector LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ :28 mirrors syscall.LOCK_EX|syscall.LOCK_NB @ filelock_unix.go:26, and ERROR_LOCK_VIOLATION → ErrLockBusy @ :34-35 mirrors EWOULDBLOCK → ErrLockBusy @ filelock_unix.go:30-31, so contention refuses rather than silently granting — proven live by row 12.
 
 RISK-VALUE: N/A — enumeration over the rest of this brief's own diff found no further introduced literal: the unix flock/kill/owner constants (LOCK_EX, LOCK_NB, LOCK_UN, SIGKILL, the 0o022 group/world-writable mode mask) moved verbatim from the pre-split sites and predate this diff, the 50ms retry sleep and 60s lock deadlines are preserved byte-identical (reversible operational knobs, rank last), and x/sys stays at v0.46.0 (row 14a). The World SID literal S-1-1-0 that row 10 now checks is not introduced by this brief's diff — it entered on later unrelated commits (#640/#641, #667) that superseded the original loud-skip stub with ACL enforcement; it is exercised and correct per row 10, but outside this brief's enumeration scope.
 
-Rows 8 and 10 (re-baselined 2026-09-22) now pass; row 7's skip of #555 looks stale (packages green either way).
+Rows 8 and 10 (re-baselined 2026-09-22) now pass; row 7's skip of #555 looks stale (packages green either way). Rows 13-15 are could-not-check on the merged tree (nothing to corroborate); no defect found in the deliverable.
 
 
 ## Review
