@@ -81,6 +81,9 @@ type stub struct {
 	// head2 is what the SECOND read of the change reports as its head; "" means unchanged.
 	head2   string
 	prReads int
+	// body2 is what the SECOND read of the change reports as its body; "" means unchanged. It
+	// models a PR body edited between the gate's first read and the pre-mutation re-read.
+	body2 string
 
 	failPR bool
 	// failPath makes every request whose method+path+query contains this fragment answer 500
@@ -282,6 +285,10 @@ func (s *stub) servedPR() map[string]any {
 	if s.prReads > 1 && s.head2 != "" {
 		head = s.head2
 	}
+	body := s.pr.Body
+	if s.prReads > 1 && s.body2 != "" {
+		body = s.body2
+	}
 	present := s.presentLabels()
 	labels := make([]map[string]any, 0, len(present))
 	for _, l := range present {
@@ -289,7 +296,7 @@ func (s *stub) servedPR() map[string]any {
 	}
 	out := map[string]any{
 		"number": s.pr.Number, "state": strings.ToLower(s.pr.State), "draft": s.pr.IsDraft,
-		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles, "body": s.pr.Body,
+		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles, "body": body,
 		"user":   map[string]any{"login": "worker[bot]", "id": 99},
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
 		"base":   map[string]any{"ref": "main"},

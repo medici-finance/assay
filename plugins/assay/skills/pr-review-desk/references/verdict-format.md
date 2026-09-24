@@ -91,6 +91,34 @@ Clearing the block is not an approval, either: the gate still needs your APPROVE
 governing verdict at head, so if you post a further CHANGES_REQUESTED afterwards the PR blocks
 again.
 
+## When your ONLY finding is the PR body
+
+A `request-changes` whose sole blocker is the PR **body** (the description asserts something
+false or stale) is answered by a body edit, and a body edit never moves the head. The flip gate
+admits a same-head APPROVE over such a CR only in this documented, machine-checkable form:
+
+1. **On the CHANGES_REQUESTED**, declare the finding and the body you blocked on:
+
+   `Blocked-On-Body: f-body-1 <64-hex digest of the body as you read it>`
+
+   Only when the body is genuinely the whole of your finding. A typed finding block on the same
+   review that names any other blocking finding makes the CR mixed, and a CR also carrying
+   `Blocked-On-Check:` or `External-Prereq-Only:` qualifies for neither class.
+
+2. **On the APPROVE that answers it**, after re-reading the live body via the API:
+
+   `Resolved-Body-Finding: f-body-1`
+   `Body-Reread-Digest: <64-hex digest of the live body you re-read>`
+   `CI-Green-At: <full 40-hex head sha>`
+
+The digest is SHA-256 of the body with carriage returns removed and trailing newlines trimmed:
+`printf '%s' "$(gh api repos/<slug>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
+`deskflip` recomputes the live body's digest at flip time (and again just before the mutation)
+and refuses unless it equals your re-read digest **and** differs from the CR's — so a re-approve
+over an unedited body, or over a body edited again after you read it, clears nothing. It still
+judges CI green itself; your `CI-Green-At:` line is the documentation, not the check. The same
+fence and ambiguity rules as the check-only lines apply.
+
 ## The secret scan
 
 The scan refuses any run of 32+ base64ish characters, plus token prefixes, `AKIA…`, PEM and JWT
