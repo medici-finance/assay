@@ -618,8 +618,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
      authoring PR carry the tool's own unmodified output for newly added rows.
 
-     Carve-out B (the driver's ruling of 2026-09-23) admits a hunk that promotes existing
-     rows to `implemented`, only when ALL of the following hold:
+     Carve-out B ([the driver's ruling of 2026-09-23](https://github.com/medici-finance/assay/issues/1208#issuecomment-5805483045))
+     admits a hunk that promotes existing rows to `implemented`, only when ALL of the following
+     hold:
      - **Status-only, one transition.** The hunk adds and removes no row. On every row it changes,
        the ONLY changed cell is `Status`, and it goes from the bare token `todo` or `in-progress` to
        the bare token `implemented`; the `Verified` and `Reviewed` cells, and every other cell, are
