@@ -1087,6 +1087,101 @@ func gnuOnlyConstructs(cmd string, toks []shellTok, greps []grepCall) []string {
 }
 
 // ---------------------------------------------------------------------------
+// Rule 11 — a `go test -run` selector with no `--- PASS` assertion (statusgen/14)
+// ---------------------------------------------------------------------------
+//
+// Rule 4 catches a `-run` pattern that matches NO test by construction (a `\|`
+// compiled as RE2 alternation). This rule catches the wider case: a `-run`
+// selector that COULD match a test, but the row never checks that it did. `go
+// test -run 'TestNoSuchName'` prints "testing: warning: no tests to run" and
+// exits 0 whether or not a test by that name exists — measured on this repo's
+// `qualgen` module (statusgen/14 facts): a row naming a test that was renamed
+// away kept exiting 0 forever. The row is silently green from the day the
+// deliverable ships to the day the test is renamed out from under it.
+//
+// The shape that closes it: anchor the selector, send the output to a file, and
+// chain a positive assertion on that test's `--- PASS:` line (`-v` is what makes
+// `go test` print one). A missing test prints no such line, so the grep exits 1
+// and the row goes red — the same "make it fail on the unfixed input" device
+// every rule in this file enforces on the CORPUS, applied here to the corpus's
+// own most common Go-test shape.
+//
+// This does NOT reimplement rule 4 (`rE2-literal-pipe`): the two are independent
+// and a `\|` selector with no assertion fires both.
+
+// testNameRe matches a plain Go test name — `Test` followed by letters, digits
+// and underscores. It is what makes a `-run` selector NAMED (one specific test,
+// checkable by name) rather than a GROUP token (`Cadence`, matching every test
+// whose name contains it) — the two need different assertions: a named selector
+// needs a `--- PASS: <name>` line, a group selector needs any `--- PASS` line.
+var testNameRe = regexp.MustCompile(`^Test[A-Za-z0-9_]*$`)
+
+// namedSelector strips one leading `^` and one trailing `$` from a `-run`
+// pattern and reports the bare test name when what remains is a plain Go test
+// name. ok is false for a group token, a partial anchor, an RE2 alternation, or
+// anything else that is not decidably one test's name.
+func namedSelector(pat string) (name string, ok bool) {
+	s := strings.TrimSuffix(strings.TrimPrefix(pat, "^"), "$")
+	if testNameRe.MatchString(s) {
+		return s, true
+	}
+	return "", false
+}
+
+// grepNegations reports, in the SAME order as grepCalls(toks), whether each
+// grep-family invocation is immediately negated with a leading `!` in its own
+// simple command (`! grep -q …`). A negated grep's exit status is inverted, so
+// its pattern matching is not evidence the pattern was found — see Rule 11.
+//
+// This walks the identical simple-command split grepCalls uses (flush on every
+// operator, skip leading `{`/`(`/`!` noise, match the same grep-family name
+// set) so the two slices line up index-for-index; it is command-splitting, not
+// a second tokenizer — every rule above that needs simple commands (grepCalls,
+// goTestRunPatterns, pipelineSwallowsExit, gnuOnlyConstructs) does its own.
+func grepNegations(toks []shellTok) []bool {
+	var out []bool
+	var cmd []shellTok
+	var cmds [][]shellTok
+	flush := func() {
+		if len(cmd) > 0 {
+			cmds = append(cmds, cmd)
+			cmd = nil
+		}
+	}
+	for _, t := range toks {
+		if t.op {
+			flush()
+			continue
+		}
+		cmd = append(cmd, t)
+	}
+	flush()
+
+	for _, c := range cmds {
+		k := 0
+		negated := false
+		for k < len(c) && (c[k].text == "{" || c[k].text == "!" || c[k].text == "(") {
+			if c[k].text == "!" {
+				negated = true
+			}
+			k++
+		}
+		if k >= len(c) {
+			continue
+		}
+		name := c[k].text
+		if name != "grep" && name != "egrep" && name != "fgrep" && name != "ggrep" && name != "rg" {
+			continue
+		}
+		if name == "rg" {
+			continue
+		}
+		out = append(out, negated)
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 // The lint
 // ---------------------------------------------------------------------------
 
@@ -1169,14 +1264,42 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 //
 // Correcting a CLOSED brief's row is not in scope for the backfill: the row is a
 // historical record of what was actually run. Note the defect in Evidence instead.
+//
+// CLOSED-BRIEF SCOPING — `gotest-run-vacuous` only (statusgen/14). Measured
+// 2026-09-23: 233 of the 684 rows this rule's shape can hit already sit in 62
+// `done` briefs. Emitting one NOTICE per such row would swamp every real run
+// with historical rows nobody is about to rewrite (the same falsification the
+// paragraph above already rules out) and would drown the per-row notices on the
+// OPEN briefs this rule exists to catch before they close. So a brief whose
+// README status is `done` or `verified` emits NO per-row `gotest-run-vacuous`
+// notice; instead the whole run emits exactly ONE summary NOTICE counting the
+// rows and briefs it suppressed, so the class stays visible without being
+// unreadable. A brief absent from its stream's README table (no row at all)
+// counts as open — silence about a brief's status is never grounds to suppress
+// its notices. Every OTHER rule is unscoped by brief status; this scoping
+// applies to this one tag only.
 func unfailableRowNotices(streams []*Stream) []string {
 	var notices []string
+	closedRows := 0
+	closedBriefs := map[string]bool{}
 
 	for _, s := range streams {
+		statusByNum := map[string]string{}
+		for _, b := range s.Briefs {
+			statusByNum[b.Num] = b.Status
+		}
 		for _, path := range briefFilePaths(s) {
 			bf, ok, err := parseBriefFile(path)
 			if err != nil || !ok {
 				continue // malformed reported elsewhere; legacy/opted-out exempt
+			}
+			_, num, okName := expectedBriefID(path)
+			closed := false
+			briefID := path
+			if okName {
+				briefID = s.Name + "/" + num
+				status := statusByNum[num] // "" (no README row) reads as open
+				closed = status == "done" || status == "verified"
 			}
 			verifyRowTable(bf.Verify, func(r verifyRowCells) {
 				where := "a Verify row"
@@ -1184,10 +1307,18 @@ func unfailableRowNotices(streams []*Stream) []string {
 					where = "Verify row " + r.Num
 				}
 				for _, f := range rowFindings(r.Command, r.Expect) {
+					if closed && f.rule == ruleGoTestRunVacuous {
+						closedRows++
+						closedBriefs[briefID] = true
+						continue
+					}
 					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
 				}
 			})
 		}
+	}
+	if closedRows > 0 {
+		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
 	}
 	sort.Strings(notices)
 	return notices
@@ -1213,6 +1344,10 @@ const (
 	ruleShreddedCell   = "shredded-cell"         // #374 — raw `|` cut the Command cell
 	ruleMovingRef      = "moving-ref"            // #639 — diff base on a moving ref
 	rulePortability    = "gnu-only"              // #650 — GNU-only construct
+	// ruleGoTestRunVacuous — statusgen/14 — a `go test -run` selector with no
+	// `--- PASS` assertion in the same command: a match-nothing selector and a
+	// mismatched selector both exit 0 the same way rule 4's `\|` does.
+	ruleGoTestRunVacuous = "gotest-run-vacuous"
 )
 
 // rowFindings applies every row rule to one Verify row's Command and Expect
@@ -1295,6 +1430,57 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	// Rule 10: GNU-only constructs — the row answers differently per platform.
 	for _, c := range gnuOnlyConstructs(cmd, toks, greps) {
 		add(rulePortability, "uses %s, which is GNU-only — the row is run by whoever verifies, on macOS desks as well as ubuntu CI, and it does not mean the same thing on both. Write it %s", c, gnuOnlySubstitute[c])
+	}
+
+	// Rule 11: a `go test -run` selector with no `--- PASS` assertion.
+	var runSelectors []goTestPattern
+	for _, p := range goTestRunPatterns(toks) {
+		if p.flag == "-run" { // -bench/-fuzz do not print `--- PASS:` lines — out of scope
+			runSelectors = append(runSelectors, p)
+		}
+	}
+	if len(runSelectors) > 0 {
+		// A row-wide `|| true`/`|| echo`/`|| :` neutralises every assertion in it
+		// (same reading Rule 2 already gives that construct); a negated grep is
+		// excluded per-call below.
+		neutralised := forcesSuccess(toks)
+		negations := grepNegations(toks)
+		var passPatterns []string
+		if !neutralised {
+			for i, g := range greps {
+				if i < len(negations) && negations[i] {
+					continue // `! grep …` — an inverted match is not an assertion
+				}
+				for _, p := range g.patterns {
+					if strings.Contains(p, "--- PASS") {
+						passPatterns = append(passPatterns, p)
+					}
+				}
+			}
+		}
+		for _, rp := range runSelectors {
+			name, named := namedSelector(rp.pat)
+			asserted := false
+			if named {
+				want := "--- PASS: " + name
+				for _, pp := range passPatterns {
+					if strings.Contains(pp, want) {
+						asserted = true
+						break
+					}
+				}
+			} else {
+				asserted = len(passPatterns) > 0
+			}
+			if asserted {
+				continue
+			}
+			if named {
+				add(ruleGoTestRunVacuous, "runs `go test -run %q` with no `--- PASS: %s` assertion in the same command — `go test` exits 0 and prints \"no tests to run\" whether %s exists, is built, or was ever renamed away, so this row cannot tell a real pass from a vacuous one. ANCHOR the selector too (`-run '^%s$'`; an unanchored `-run %s` also matches any test whose name merely starts with %s) — redirect the output to a file and chain a positive assertion on its `--- PASS:` line: `go test -run '^%s$' -v ./pkg/... > \"${TMPDIR:-/tmp}/x.out\" 2>&1 && grep -F -e '--- PASS: %s' \"${TMPDIR:-/tmp}/x.out\"`", rp.pat, name, name, name, name, name, name, name)
+			} else {
+				add(ruleGoTestRunVacuous, "runs `go test -run %q` with no `--- PASS` assertion in the same command — `go test` exits 0 and prints \"no tests to run\" whether anything matching that selector exists, is built, or was ever renamed away, so this row cannot tell a real pass from a vacuous one. Redirect the output to a file and chain a positive assertion on a `--- PASS:` line: `go test -run %q -v ./pkg/... > \"${TMPDIR:-/tmp}/x.out\" 2>&1 && grep -F -e '--- PASS' \"${TMPDIR:-/tmp}/x.out\"`", rp.pat, rp.pat)
+			}
+		}
 	}
 
 	return out
