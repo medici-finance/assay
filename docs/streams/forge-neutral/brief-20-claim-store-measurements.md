@@ -130,6 +130,22 @@ Supplementary reads behind rows 1–3 (not separate Verify rows, cited in §3.3)
 - S4(a) linux / S4(b): inside a locally-available Linux container image (no network pull), `uname -a` → `Linux … x86_64`, a Go probe found `statfs("/").Type = 0x794c7630` (overlay, named via Linux's own magic-number table, not a stdlib field), `/.dockerenv` present, `/proc/1/cgroup` = `"0::/\n"` (cgroup v2, no docker/kubepods substring), `/run/.containerenv` absent.
 - S2 network-filesystem attempt: `mkdir`/`touch` against the NFS mount above both → `Permission denied`, despite the mount's ownership matching the measuring account's uid. Recorded as COULD-NOT-CHECK, not as a filesystem defect.
 
+### Non-implementer verifier run — VERIFY: FAIL — 2026-09-24 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | prints `2` — both work-list rows present | exit 0; printed `2` | 2026-09-24 | claude-opus-4-8-verifier |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0, no line printed — each row carries a count / determination / COULD-NOT-CHECK | exit 0; no line printed | 2026-09-24 | claude-opus-4-8-verifier |
+| 3 | `cd tools/desk && go test ./internal/deskkit/... -run 'TestAcquireConcurrent.*OneWinner' -count=1 -v -timeout 60s` | exactly one of 16 racers acquires (the test's own `wins != 1` assertion) | exit 0; `--- PASS: TestAcquireConcurrent` ExactlyOneWinner (0.51s); 16 racers, one winner. Brief's Verify Command cell is prose, so statusgen verifyrun reported row 3 could-not-run (exit 127); the recorded go-test command was run by hand and passed | 2026-09-24 | claude-opus-4-8-verifier |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the §3.1a reviewer write inventory | exit 0; 6 files — deskdispatch/dispatch.go, deskpost/claimliveness.go, deskpost/comment.go, deskpost/forgeclient.go, deskpost/label.go, deskkit/modelstamp.go — all six present in §3.1a; inventory conclusion "repository write — the dispatch claim only" holds | 2026-09-24 | claude-opus-4-8-verifier |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the §3.1b claim reader inventory or is the claim tool itself | exit 0; 16 files at merged main. THREE are absent from §3.1b: deskdispatch/repairadmission.go, desksupervise/status.go, deskkit/forge_github.go. Expected condition NOT met → row FAILS. (All three match only on a comment/interface-doc line, not a functional read; and forgeclient.go, which §3.1b DOES list, no longer matches the grep — the pinned inventory has diverged from merged main.) | 2026-09-24 | claude-opus-4-8-verifier |
+
+RISK-VALUE: DERIVED — winners = 1 @ tools/desk/internal/deskkit/claim_test.go:53 (`if wins != 1`) — an exclusive create under one directory lock (O_CREAT|O_EXCL semantics of the shipped primitive) admits exactly one creator; all other racers fail EEXIST. So exactly one of N succeeds by construction, independent of N. This is the "exactly one is the only passing count" the brief pins, and it is correct.
+RISK-VALUE: N/A for the remaining enumerated literal — racers = 16 @ tools/desk/internal/deskkit/claim_test.go:22 is a reversible test knob (the racer count N); raising or lowering it changes only the strength of the concurrency exercise, not the guarantee, and needs no derivation. No other literal, threshold, tolerance, timeout, or authority binding is introduced or changed by this documentation-only diff; the quoted Linux magic numbers (overlay 0x794c7630, NFS 0x6969, CIFS/SMB) are cited facts, not controls this brief pins.
+
+Row 5 fails as a check-definition staleness: the pinned §3.1b inventory misses three comment-only mentions. Filed as #1606.
+
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records
 verdict + date in the stream README table.
