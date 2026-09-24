@@ -159,12 +159,17 @@ func unverifiableBrief(owning, why string) BriefRisk {
 }
 
 // briefImplicatedInTrailerError reports whether a ParseTrailers error involves a Brief:
-// trailer (both-kinds present, or a duplicate Brief:). A duplicate Issue: with no Brief:
-// declares no brief and so is NOT implicated.
+// trailer (both-kinds present, a mix that includes Brief:, or a duplicate Brief:). A
+// duplicate Issue: or Authors: with no Brief: declares no delivered brief and so is NOT
+// implicated.
 func briefImplicatedInTrailerError(err error) bool {
 	var both *ErrTrailerBoth
 	if errors.As(err, &both) {
 		return true
+	}
+	var mixed *ErrTrailerMixed
+	if errors.As(err, &mixed) {
+		return mixed.Has(TrailerBrief)
 	}
 	var dup *ErrTrailerDuplicate
 	if errors.As(err, &dup) {

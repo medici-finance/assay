@@ -618,7 +618,8 @@ branch diff: those are surfaces a *push* publishes, and `edit` pushes nothing â€
 a body correction over code the branch already carries would strand the one verb whose
 job is fixing text.
 
-**The link trailer is not editable.** `Brief: <stream>/<NN>` / `Issue: #<N>` is the
+**The link trailer is not editable.** `Brief: <stream>/<NN>` / `Authors: <stream>/<NN>[, â€¦]` /
+`Issue: #<N>` is the
 derived board's edge from the PR to its work item, and a body-rewrite verb that could
 re-point or drop it would make that edge assertable exactly once and silently revocable
 forever after. The replacement body must carry exactly one trailer, and when the PR's

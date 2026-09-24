@@ -252,3 +252,44 @@ func TestAuthoredBriefDispatchesEndToEnd(t *testing.T) {
 		t.Error("no worktree was cut")
 	}
 }
+
+// TestPhantomAdmitsAuthorsTrailerPR (#1339): an authoring PR that carries the `Authors:` trailer
+// names the briefs it wrote without asserting delivery, so it never represents them — even with NO
+// file transport wired, where a `Brief:` authoring PR would still refuse
+// (TestPhantomNoFileTransportRefuses). The file transport is wired to fail the test if read: an
+// `Authors:` PR is not a candidate for the exemption at all.
+func TestPhantomAdmitsAuthorsTrailerPR(t *testing.T) {
+	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Authors briefs 11-12.\n\nAuthors: example-port/11, example-port/12"}}, nil
+	})
+	withPRFiles(t, filesByPR(t, map[int][]deskkit.ChangedFile{}))
+
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo); err != nil {
+		t.Fatalf("a brief named only by an `Authors:` PR must be dispatchable, got exit %d: %v", deskkit.ExitCodeOf(err), err)
+	}
+	withPRFiles(t, nil)
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-port--12", kit: "worker"}, allowedRepo); err != nil {
+		t.Fatalf("with no file transport an `Authors:` PR must still not represent the brief, got exit %d: %v", deskkit.ExitCodeOf(err), err)
+	}
+}
+
+// TestPhantomExactAuthoringShapeAdmitted pins the exact changed-file shape of the field instance
+// (#1339): a merged PR that added one changelog fragment, edited the stream board README and added
+// FOUR brief files (11–14) carried `Brief: <stream>/11`. Every brief it wrote is dispatchable.
+func TestPhantomExactAuthoringShapeAdmitted(t *testing.T) {
+	files := []deskkit.ChangedFile{
+		{Filename: "changelog/example-port-11-14-briefs.md", Status: "added"},
+		{Filename: "docs/streams/example-port/README.md", Status: "modified"},
+		{Filename: "docs/streams/example-port/brief-11-portable-desk-pollers.md", Status: "added"},
+		{Filename: "docs/streams/example-port/brief-12-deposix-skill-prose.md", Status: "added"},
+		{Filename: "docs/streams/example-port/brief-13-inbox-verb-port.md", Status: "added"},
+		{Filename: "docs/streams/example-port/brief-14-windows-leg.md", Status: "added"},
+	}
+	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Four briefs.\n\nBrief: example-port/11"}}, nil
+	})
+	withPRFiles(t, filesByPR(t, map[int][]deskkit.ChangedFile{1439: files}))
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-port--11", kit: "worker"}, allowedRepo); err != nil {
+		t.Fatalf("the field authoring shape must not block example-port/11, got exit %d: %v", deskkit.ExitCodeOf(err), err)
+	}
+}
