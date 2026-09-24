@@ -156,8 +156,12 @@ const (
 // `--corroborate` requires that human to have acted on the PR. A park that clears
 // this vocabulary check but names an unmapped human still fails those hard gates,
 // so a syntactic check here cannot silence an unauthorized park in practice.
+//
+// An on-behalf-of relay (`parked-by: on-behalf-of human:<name>`) is not authority
+// vocabulary. It is removed before the match (withoutOnBehalfOfRelays), so a relay-only
+// park is malformed and never shelves the finding.
 func parkIsAuthorizedVocab(parkedBy string) bool {
-	return humanStampRe.MatchString(parkedBy)
+	return humanStampRe.MatchString(withoutOnBehalfOfRelays(parkedBy))
 }
 
 // classifyPark determines a finding's bounded-shelving state against an injected

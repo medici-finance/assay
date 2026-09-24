@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -172,5 +173,69 @@ func TestStripOnBehalfOfAcceptsNeutralName(t *testing.T) {
 	bare := strings.Replace(diff, "(on-behalf-of human:alex)", "human:alex", 1)
 	if stamps := stampsInDiff("", bare); len(stamps) != 1 || stamps[0].Name != "alex" {
 		t.Fatalf("a bare human:alex stamp must still be gated, got %+v", stamps)
+	}
+}
+
+// TestWitnessRemoteVetoesLoginForm: the brief's stream README is the only source that can
+// select the login form, and the checkout's git remote can veto it. A README that states
+// a `:private` repo, in a checkout whose origin is a repo the roster does not state is
+// private, renders the neutral name. The veto never works the other way. A remote that
+// names a private repo cannot bring the login back onto a target the README leaves
+// public or unstated, and an unreadable remote leaves the README's answer as it is.
+func TestWitnessRemoteVetoesLoginForm(t *testing.T) {
+	scanWithRoster(t, witnessVisibilityRoster()) // example-org/pub public, example-org/one private
+	cases := []struct {
+		declared, origin, want string
+	}{
+		{"example-org/one", "example-org/pub", ""},                // README says private, checkout is public: veto
+		{"example-org/one", "some-org/never-configured", ""},      // checkout is not known-private: veto
+		{"example-org/one", "example-org/one", "example-org/one"}, // both private: login form kept
+		{"example-org/one", "", "example-org/one"},                // remote unreadable: README decides
+		{"example-org/pub", "example-org/one", "example-org/pub"}, // remote never selects the login
+		{"", "example-org/one", ""},                               // unstated stays unstated
+	}
+	for _, c := range cases {
+		got := witnessAnnotationRepo(c.declared, c.origin)
+		if got != c.want {
+			t.Errorf("witnessAnnotationRepo(%q, %q) = %q, want %q", c.declared, c.origin, got, c.want)
+		}
+		row := witnessRowFor(got)
+		privateBoth := c.declared == "example-org/one" && (c.origin == "example-org/one" || c.origin == "")
+		if !privateBoth && strings.Contains(row, witnessFixtureLogin) {
+			t.Errorf("declared %q, origin %q: row %q carries the roster login", c.declared, c.origin, row)
+		}
+	}
+}
+
+// TestWitnessOriginRepoParsesRemoteForms: the veto reads owner/name out of every remote
+// URL form a checkout carries, including `ssh://`, which the shared parser misreads. An
+// unparseable URL returns "", which means no veto, never a guess.
+func TestWitnessOriginRepoParsesRemoteForms(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://github.com/example-org/pub.git":     "example-org/pub",
+		"https://github.com:443/example-org/pub.git": "example-org/pub",
+		"git@github.com:example-org/pub.git":         "example-org/pub",
+		"ssh://git@github.com/example-org/pub.git":   "example-org/pub",
+		"ssh://git@github.com:22/example-org/pub":    "example-org/pub",
+		"ssh://github.com":                           "",
+		"/some/local/path":                           "",
+		"":                                           "",
+	} {
+		if got := originOwnerRepo(in); got != want {
+			t.Errorf("originOwnerRepo(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	root := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "ssh://git@github.com/example-org/pub.git"}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if got := witnessOriginRepo(root); got != "example-org/pub" {
+		t.Fatalf("witnessOriginRepo = %q, want %q", got, "example-org/pub")
+	}
+	if got := witnessOriginRepo(t.TempDir()); got != "" {
+		t.Fatalf("witnessOriginRepo outside a git checkout = %q, want \"\"", got)
 	}
 }

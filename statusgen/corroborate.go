@@ -470,6 +470,30 @@ func stripOnBehalfOf(s string) string {
 	})
 }
 
+// withoutOnBehalfOfRelays removes every on-behalf-of relay from s: the marker AND the
+// principal it names. The offline human-AUTHORITY readers run it before they look for
+// a `human:` token. Those readers are `authorized-by:` (authorizedByVerifiedHuman),
+// `parked-by:` (parkAuthorizedByVerifiedHuman, parkIsAuthorizedVocab) and a deploy
+// record's `authority:` / `rollback-approver:` (hasHumanAuthority).
+//
+// It is stripOnBehalfOf's counterpart. The online lanes strip the marker, so a relay
+// needs no corroboration there. An authority reader that still read the principal as a
+// `human:` token would then let a relay pass BOTH lanes: an App writes
+// `authorized-by: on-behalf-of human:<name>` and the human never acts. Attribution
+// records which human an App acted for. It is never that human's sign-off, so on an
+// authority key it grants nothing.
+//
+// It removes the relay unconditionally. It does not first ask whether the principal is
+// configured, as stripOnBehalfOf does. It uses the same regex, so everything the online
+// strip exempts, this removes. A principal the online strip would leave in place is
+// removed here as well. The online lane then still gates it as a stamp, and this lane
+// no longer counts it as authority. Both effects are fail-closed. A `human:<name>`
+// written OUTSIDE a relay is untouched, and it authorizes (and is gated online) exactly
+// as before.
+func withoutOnBehalfOfRelays(s string) string {
+	return onBehalfOfAnnotationRe.ReplaceAllString(s, " ")
+}
+
 // isConfiguredOnBehalfOfPrincipal reports whether token is a principal an on-behalf-of
 // marker may legitimately name: a configured human LOGIN (isConfiguredHumanLogin — the
 // form written on a repo the roster states is private) or a configured neutral NAME (an

@@ -202,7 +202,7 @@ func deployRegisterProblems(root string) []string {
 			} else if !deployBriefRefRe.MatchString(strings.TrimSpace(e.Brief)) {
 				add("%s: brief %q is not a valid brief reference (want <stream>/<NN>)", p, e.Brief)
 			}
-			if !hasHumanReviewer(e.Authority) {
+			if !hasHumanAuthority(e.Authority) {
 				add(`%s: authority %q must name a human ("human:<name>") — the deploy authority per environment is a recorded human act, not a model self-sign-off (docs/deploy-model.md "The deploy transition")`, p, e.Authority)
 			}
 			rb := strings.TrimSpace(e.Rollback)
@@ -214,7 +214,7 @@ func deployRegisterProblems(root string) []string {
 				// as an ordinary stated reverse path and silently skip the
 				// rollback-approver-must-name-a-human check, defeating the one gate this
 				// record shape exists to enforce.
-				if !hasHumanReviewer(e.RollbackApprover) {
+				if !hasHumanAuthority(e.RollbackApprover) {
 					add(`%s: rollback: %s requires rollback-approver to name a human ("human:<name>") — where the reverse path genuinely does not exist, that is an accepted consequence with a NAMED approver, never an omission`, p, deployRollbackNoneAccepted)
 				}
 			}
@@ -404,4 +404,16 @@ func deployTransitionNotices(root string, streams []*Stream) []string {
 		}
 	}
 	return notices
+}
+
+// hasHumanAuthority reports whether a deploy record's authority value (`authority:` or
+// `rollback-approver:`) names a human, once every on-behalf-of relay has been removed
+// (withoutOnBehalfOfRelays). The online corroboration lane strips the relay marker, so a
+// relay-only value would otherwise pass the lint with nothing on the PR to corroborate.
+// A relay records which human an App acted for. It is not that human's deploy
+// authority. The check stays hasHumanReviewer's syntactic test in every other respect.
+// README Reviewed cells and a decision record's decided-by keep hasHumanReviewer
+// unchanged, because their online lanes read the raw value and gate it.
+func hasHumanAuthority(value string) bool {
+	return hasHumanReviewer(withoutOnBehalfOfRelays(value))
 }

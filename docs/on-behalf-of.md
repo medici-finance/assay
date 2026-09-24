@@ -88,9 +88,13 @@ disclose.
 lands in a brief's `## Evidence` table, a file in the repository, so it names the neutral
 form too on any repo the roster does not state is `:private`. Its target is the `repo:`
 frontmatter of the brief's own stream README; a stream that states no repo takes the
-neutral form (fail-closed, the same direction as above). A git remote is not consulted: a
-worktree's origin can name the checkout it was cut from rather than the repo the brief lands
-in. With no neutral name configured the witness writes no annotation rather than the login
+neutral form (fail-closed, the same direction as above). A git remote never selects the
+form, because a worktree's origin can name the checkout it was cut from rather than the repo
+the brief lands in. It can only veto the login form. Suppose the README states a `:private`
+repo but the checkout's origin resolves to a repo the roster does not state is `:private`,
+such as a stream moved between repos with its frontmatter left behind. The witness then
+takes the neutral form. An unreadable remote leaves the README's answer as it is. With no
+neutral name configured the witness writes no annotation rather than the login
 (statusgen never blocks a witness write; the lint then reports the unannotated row).
 
 ## Resolution
@@ -208,6 +212,23 @@ differently — read both before assuming either governs the other:
 
 A human-run row (`human:<name>`) is never checked by either shape — it already names its
 principal directly.
+
+## A relay is never a human's authority
+
+The corroboration lanes strip the on-behalf-of marker, so a relay needs nothing on the PR
+to corroborate. The offline readers of a human-authority key therefore remove the whole
+relay, marker and principal together, before they look for a `human:` token. Those keys are
+a finding's `authorized-by:`, its `parked-by:` (both the register gate and the alarm
+layer's shelving check), and a deploy record's `authority:` and `rollback-approver:`. A
+value such as `authorized-by: on-behalf-of human:<name>` authorizes nothing, whichever
+form of the human it names. Without this removal, an App could write that line and pass
+both lanes without the human ever acting. A `human:<name>` written outside the relay
+authorizes offline and is gated online, the same as before. Two surfaces keep their
+existing readers: a decision record's `decided-by:` and a README's Verified/Reviewed
+cells. Their online lanes read the raw value, so a relay there still needs the human's own
+act on the PR. The tests are in `statusgen/principal_authority_test.go`.
+`TestOnlineExemptLineNeverAuthorizesOffline` pins the invariant that joins the two
+lanes: an added line the online lane records no stamp for never grants authority offline.
 
 ## What this does *not* prove
 
