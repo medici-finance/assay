@@ -56,6 +56,9 @@ decision, not code in this stream.
 | 14 | [closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #398 @ a4525730c8041b710fdc4fabcfe7dc95cf243428) |
 | 15 | [learned riskscore graduation — JIT defect-prediction model with heuristic fallback](brief-15-learned-riskscore.md) | 3 | M | done | 2026-09-15 claude-sonnet-5-verifier | 2026-09-16 assay-reviewer-app[bot] (approved PR #1141 @ 54e1920fb964e0c25b23d3815a7fc347333bee04) |
 | 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #399 @ 8c45e4c8aed8e603a3b41d13299e17abfda2e369) |
+| 17 | [regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate](brief-17-regression-suite-gate.md) | 0 | M | todo | — | — |
+| 18 | [stub-coverage seam report — report-first list of test seams stubbed everywhere and exercised nowhere in production form](brief-18-stub-coverage-report.md) | 1 | M | todo | — | — |
+| 19 | [qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed](brief-19-refix-metric.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
@@ -119,10 +122,10 @@ work from day one.
 ## Dependency waves
 
 ```
-Wave 0: [01]
-Wave 1: [02, 03, 04, 06, 16]  ← 01
+Wave 0: [01, 17]
+Wave 1: [02, 03, 04, 06, 16, 18]  ← 01; 17 (18)
 Wave 2: [05, 07, 09]          ← 02,03,04 (05, 09); 06 (07)
-Wave 3: [08, 10, 11, 13, 15]  ← 02,03,07 (08); 07 (10, 11, 13, 15)
+Wave 3: [08, 10, 11, 13, 15, 19]  ← 02,03,07 (08); 07 (10, 11, 13, 15, 19)
 Wave 4: [12]                  ← 10 (review-escape overlay) seasoned
 Wave 5: [14]                  ← 12 (gate-yield) + 03,04,07 corpus
 ```
@@ -133,6 +136,17 @@ Waves 0–2 are pure history mining (16 excepted — the sweep lane reads the CU
 tree, not history) — useful standalone even if later waves change shape
 in review. The M4 and learned-model briefs (12 in wave 4, 14 in wave 5, and 13/15 in
 wave 3) are corpus-gated: each consumes an M1–M3 corpus that must season first.
+
+**Regression suite (17 → 18, and 19).** Briefs 17–19 deliver issue #1581, split three
+ways because its first four parts span a CI gate, a coverage report and a qualgen metric (one brief
+would exceed the L ceiling). 17 is the naming convention and the count-can't-drop /
+vacuous-selector gate. 18 is the report-first stub-coverage seam report, built in 17's tool.
+19 is the re-fix metric over the M2 corpus. The work pairs with #1580 (fix the defect class:
+class-guard Verify row + `regression-of:`), which is delivered issue-only, so the pairing is
+recorded in each brief's sources and pickup precondition, not as a `depends:` edge. None of
+the three is on the critical path above. The issue's part 5 (a `statusgen --lint` rule for a
+Verify row whose `go test -run` selector can pass on "no tests to run") is statusgen's own
+code, so it is brief statusgen/14 on the statusgen board, not a brief here.
 
 ## Shared conventions
 

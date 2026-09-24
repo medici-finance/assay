@@ -99,6 +99,11 @@ effort: S | M | L                   # closed scale — L is the CEILING (rule 12
 gate: model | human                # from the four risk questions below
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []                         # GH issue numbers this brief closes
+regression-of: <issue ref or sha>  # OPTIONAL — fix/bug briefs only (rule 14): the PRIOR fix this
+                                    # defect re-opens — its issue reference or its commit sha.
+                                    # Omit when no earlier fix exists (a first occurrence); never
+                                    # invent one to fill the field. No lint reads it yet: the key
+                                    # is tolerated as an unrecognised frontmatter key, not validated.
 schema: brief-v2                    # required in a v2 tree;
                                     # --lint PROBLEMs a tree of v2 briefs missing it. Reserved,
                                     # OPTIONAL keys parsed under brief-v2 (shape-validated only,
@@ -455,6 +460,51 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
     lands advisory (a NOTICE); `+mutation`'s promotion to a hard gate is a follow-up. This status line
     is deliberately minimal — the authoritative per-obligation enforcement state is generated, not
     hand-copied here (a hand-written status becomes the next stale second copy).
+
+14. **A fix/bug brief closes the defect CLASS, not the one instance.** A defect repaired at one
+    site comes back at another when the fix closed the instance and left the class open: a second
+    caller reaches the same hazardous primitive by a different path, a test stub hides it, and the
+    regression reads as a new bug. So a brief whose Task fixes a defect carries two things beyond
+    the ordinary template:
+    - **`regression-of:`** in the frontmatter, when an earlier fix for the same defect exists —
+      that fix's issue reference or commit sha. It records that the class has escaped once
+      already, and it points the reviewer at the guard that failed to hold. Omit it for a first
+      occurrence; never invent a value to fill it. Run the freshness check (rule 8) over the
+      earlier fix's site as well as the new one.
+    - **A MANDATORY class-guard Verify row.** Name the class in `## Context` `facts:` — the shape
+      every instance shares, not the one line that failed — and add a row whose check covers EVERY
+      site the defect can recur at, not only the reported one. The model is an allow-list
+      structural test: enumerate every caller of the hazardous primitive (`exampleRawToken()`) and
+      fail on any caller outside a short committed allow-list (`exampleSafeToken()`). A lint rule, a
+      type that makes the hazardous call unrepresentable, or a single choke point serves equally. A
+      test of the reported instance may sit beside it; it never replaces it.
+    - **The class-guard row is FAIL-FIRST.** Before the fix lands, the implementer plants a
+      deliberate SECOND instance of the defect at a site the fix does not touch and shows the row
+      RED on it; the Evidence records that red run, naming the planted site, beside the green one.
+      A guard shown red only against the reported instance proves it sees that instance, which the
+      instance test already did. Where the guard's matcher could silently stop matching, keep the
+      plant as a committed positive-control fixture the guard must flag, so the red stays
+      re-runnable after merge. Tag the row `+mutation` in its `Class` cell (rule 13) — breaking
+      the guarded property and proving the guard reddens is exactly that obligation.
+
+    Worked example (neutral names) — the frontmatter line and the two class-guard rows:
+
+    ```markdown
+    regression-of: <the earlier fix's issue reference or commit sha>
+
+    | # | Command | Expect | Class |
+    |---|---------|--------|-------|
+    | 2 | `go test ./examplepkg/ -run 'TestExampleRawTokenAllowList$' -count=1` | exit 0 — every caller of `exampleRawToken()` in the tree is on the allow-list | check:ci +mutation |
+    | 3 | `go test ./examplepkg/ -run 'TestExampleRawTokenAllowListFlagsPlant$' -count=1` | exit 0 — the guard, run over `testdata/example-plant/` (one planted caller outside the allow-list), reports that caller | check:ci +mutation |
+    ```
+
+    Row 3 is the positive control that keeps the fail-first re-runnable; the pre-fix red run with a
+    planted second caller in the real tree goes in the Evidence. **Enforcement status:** no lint
+    enforces this rule yet — `regression-of:` is tolerated as an unrecognised frontmatter key rather
+    than validated, and whether a class-guard row is present and truly covers the class is the
+    reviewer's call. A defect with no mechanically checkable shape (a one-off logic error nothing
+    else can repeat) states that in `## Context`, with the reason, in place of the row; the reviewer
+    weighs it, and it is not available for a defect that has already reached a second site.
 
 Keep a brief self-contained: if executing it requires knowledge from another brief, either link it
 under "Read first" / `facts:` or state the dependency in `depends:` — never assume the reader has the

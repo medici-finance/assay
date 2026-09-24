@@ -261,6 +261,10 @@ func flip(o flipOpts) error {
 	// once per flip, and both calls decide on the same set of runs. Built unconditionally: it
 	// costs nothing until a check-runs read actually happens inside it.
 	runsAtHead := checkRunsAtHeadReader(o, rollupAtHead, head)
+	// The body-edit exemption's "edited after the CR" clause is a FORGE fact — the PR body's
+	// own last-edited time — read only when a standing CR has declared that class, and read
+	// fresh on each call so the post-TOCTOU re-check sees an edit made in between.
+	bodyEditedAt := bodyEditedAtReader(fg, fr, o.pr)
 
 	// A forge that implements the merge-hold op set (the forge-gitlab merge-hold brief)
 	// answers this read with the marker thread's own state; one that does not (GitHub, whose
@@ -282,7 +286,7 @@ func flip(o flipOpts) error {
 		if err != nil {
 			return err
 		}
-		if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
+		if err := checkReviewerApproved(reviewerLogin, reviews, head, liveBodyRead{Body: pr.Body, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
 			return err
 		}
 		o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
@@ -405,7 +409,7 @@ func flip(o flipOpts) error {
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
 	// condition above and immediately before the mutation. A head that moved means each
 	// verdict above was read against code that is no longer what would flip.
-	head2, err := readHead(o, fg, fr)
+	head2, body2, err := readHead(o, fg, fr)
 	if err != nil {
 		return err
 	}
@@ -431,7 +435,10 @@ func flip(o flipOpts) error {
 		return err
 	}
 	if hold.State == deskkit.MergeHoldNotApplicable {
-		if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr, runsAtHead); err != nil {
+		// body2 is the body as re-read here, not the first read's: the body-edit exemption
+		// binds the reviewer's documented re-read to the LIVE body, and a body edited between
+		// the two reads is exactly the change that re-read must see.
+		if err := checkReviewerApproved(reviewerLogin, reviews2, head, liveBodyRead{Body: body2, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
 			return err
 		}
 	} else {
@@ -721,13 +728,18 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //     this code" and "nobody has reviewed this" call for different actions, and collapsing
 //     them sends the operator after the wrong one.
 //
-// RULE 2 HAS EXACTLY ONE EXEMPTION, and it lives in this function rather than in a caller
+// RULE 2 HAS EXACTLY TWO EXEMPTIONS, and both live in this function rather than in a caller
 // so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see
-// checkOnlyCRCleared). runsAtHead supplies the check-run rollup at head that the exemption
-// needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that the
-// overwhelmingly common path — no standing CR at all — must not pay for. It is called at
-// most once, only when a standing CR has already DECLARED itself check-only.
-func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, pr int,
+// checkOnlyCRCleared) and the DOCUMENTED BODY-EDIT RE-VERIFICATION (see bodyEditCRCleared).
+// A standing CR is routed by what it DECLARES — a `Blocked-On-Body:` line goes to the
+// body-edit decision, anything else to the check-only one, whose undeclared path is rule 2's
+// refusal verbatim. runsAtHead supplies the check-run rollup at head that the check-only
+// exemption needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that
+// the overwhelmingly common path — no standing CR at all — must not pay for. It is called at
+// most once, only when a standing CR has already DECLARED itself check-only. live is the PR
+// body as read at this gate plus the reader for the forge's record of its last edit; only
+// the body-edit exemption consults it.
+func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, live liveBodyRead, pr int,
 	runsAtHead func() ([]deskkit.CheckRun, error)) error {
 	// Rule 2 first: a standing block at head is decisive whatever else is present.
 	for _, r := range reviews {
@@ -735,6 +747,12 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 			continue
 		}
 		if r.State == "CHANGES_REQUESTED" {
+			if deskkit.BodyEditDeclared(r.Body) {
+				if err := bodyEditCRCleared(reviewerLogin, r, reviews, head, live); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := checkOnlyCRCleared(reviewerLogin, r, reviews, head, runsAtHead); err != nil {
 				return err
 			}
@@ -890,7 +908,7 @@ func standingCRRefusal(reviewerLogin, head, why string) error {
 	return deskkit.Refused(msg)
 }
 
-// checkOnlyCRCleared decides rule 2's ONE exemption for a single standing CHANGES_REQUESTED
+// checkOnlyCRCleared decides rule 2's CHECK-ONLY exemption for a single standing CHANGES_REQUESTED
 // at head: it returns nil when that CR has been legitimately cleared without a code push,
 // and the refusal otherwise.
 //
@@ -1018,6 +1036,91 @@ func checkOnlyCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInf
 		"The CR declares `Blocked-On-Check: %s` and an APPROVED cites a cleared run, but no run with that id "+
 			"is in the check rollup at %s. A run the head does not carry is not evidence about this head.",
 		check, short(head)))
+}
+
+// bodyEditCRCleared decides rule 2's SECOND exemption for a single standing
+// CHANGES_REQUESTED at head that declares `Blocked-On-Body:` — the documented body-edit
+// re-verification class. The decision itself is deskkit.EvaluateBodyEditReverification, shared
+// with deskboard so the advisory board and this gate cannot disagree about what the class is;
+// this function supplies only what the decision cannot get for itself:
+//
+//   - the candidate APPROVEs, filtered to the REVIEWER identity, APPROVED, at THIS head, and
+//     the correctness lane only (a security-marked body never acts in the correctness lane,
+//     and clearing a correctness block is acting in it — rule 1's reason); and
+//   - the LIVE PR body as read at this gate, against which the reviewer's documented re-read
+//     digest is verified rather than trusted; and
+//   - the FORGE's own record of when that body was last edited, which is what establishes
+//     "the body was edited after the CR". The CR's recorded digest is the reviewer's own
+//     value and is never checked against the body as it stood at the CR, so it only narrows;
+//     an edit time that could not be read is could-not-check, and one the forge does not
+//     report (never edited) refuses.
+//
+// CI green at head is NOT decided here: the APPROVE must cite it, but whether it is true is
+// condition checks-green's, which runs on every flip regardless — the ruling's "the flip gate
+// keeps its own mechanical check".
+func bodyEditCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo, head string, live liveBodyRead) error {
+	var approves []deskkit.BodyEditApprove
+	for _, r := range reviews {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+			continue
+		}
+		if r.State != "APPROVED" || hasSecurityMarker(r.Body) {
+			continue
+		}
+		approves = append(approves, deskkit.BodyEditApprove{Body: r.Body, SubmittedAt: r.SubmittedAt})
+	}
+	editedAt := ""
+	if live.EditedAt != nil {
+		var err error
+		if editedAt, err = live.EditedAt(); err != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: a standing CHANGES_REQUESTED at %s declares the body-edit re-verification class, "+
+					"but the PR body's last-edited time could not be read (%s) — whether the body was edited "+
+					"after the CR is then could-not-check, and could-not-check never clears a rejection.",
+				condReviewerApproved, short(head), firstLine(err.Error())), err)
+		}
+	}
+	dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+		CRBody:        cr.Body,
+		CRSubmittedAt: cr.SubmittedAt,
+		Head:          head,
+		Approves:      approves,
+		LiveBody:      live.Body,
+		BodyEditedAt:  editedAt,
+	})
+	if dec.Cleared {
+		return nil
+	}
+	return standingCRRefusal(reviewerLogin, head, "The CR declares the body-edit re-verification class, but "+
+		dec.Reason+".")
+}
+
+// liveBodyRead is the PR body as read at the reviewer-approved gate, plus a reader for the
+// forge's own record of when that body was last edited. The body-edit exemption needs both:
+// the body to verify the reviewer's re-read digest against, and the edit time to establish
+// that the body was edited after the CR at all. A nil EditedAt reads as "no edit reported",
+// which refuses the class.
+type liveBodyRead struct {
+	Body     string
+	EditedAt func() (string, error)
+}
+
+// bodyEditedAtReader returns a reader for the PR body's last-edited time as the FORGE records
+// it (GitHub's lastEditedAt, via the trust-events read), rendered RFC3339, or "" when the
+// forge reports no edit. It is NOT memoized: the pre-mutation re-check must see an edit made
+// after the first read, and the read only happens when a standing CR has declared the
+// body-edit class — the common path never pays for it.
+func bodyEditedAtReader(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) func() (string, error) {
+	return func() (string, error) {
+		tp, err := fg.PRTrustEvents(fr, pr)
+		if err != nil {
+			return "", err
+		}
+		if tp == nil || tp.BodyEdited.IsZero() {
+			return "", nil
+		}
+		return tp.BodyEdited.UTC().Format(time.RFC3339), nil
+	}
 }
 
 // checkSecurityVerdict runs the security lane.
@@ -1732,15 +1835,15 @@ func readChangedFiles(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]fil
 	return out, nil
 }
 
-func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, error) {
+func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, string, error) {
 	ch, err := fg.GetPullRequest(fr, o.pr)
 	if err != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
+		return "", "", deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot re-read PR #%d's head immediately before the flip (%s) — without the "+
 				"re-read there is no way to know the verified state is still current, so the flip does not "+
 				"happen.", condHeadStable, o.pr, firstLine(err.Error())), err)
 	}
-	return strings.TrimSpace(ch.HeadSHA), nil
+	return strings.TrimSpace(ch.HeadSHA), ch.Body, nil
 }
 
 // --- CI reduction ----------------------------------------------------------------

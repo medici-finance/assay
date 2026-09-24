@@ -41,6 +41,8 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
+> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+
 ## Boot
 
 `deskboot worker-desk` — loop identity, `deskwt prune`, worktree lock, roster register, roster
@@ -470,12 +472,24 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   `references/worker-prompt.md` (security-gate refusal,
   per-invocation scratch-file body files (desk-shell.md §Scratch files), stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
-  fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —
+  fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one,
+  the defect-class guard for a bug fix) —
   both shipped
   inside the binary from `tools/desk/cmd/deskdispatch/references/`. `--kits`
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
   failed in the field, and the wording is the fix.
+- **A bug fix closes the defect CLASS, not the one instance** — the worker's fix obligation the kit
+  carries. When the dispatched item fixes a defect, the worker's PR names the class under a
+  `## Defect class` heading (the shape every instance shares, plus the earlier fix's issue or commit
+  when the defect has been fixed before), adds a guard that fails if ANY other site repeats it, and
+  shows that guard red against a deliberately PLANTED second instance at a site the fix does not
+  touch. The model guard is an allow-list structural test: every caller of a hazardous primitive
+  (`exampleRawToken()`) is enumerated and any caller outside the committed allow-list
+  (`exampleSafeToken()`) fails CI. A test of the reported instance alone does not discharge it. A
+  PR that fixes a defect with no `## Defect class` section — neither a class guard nor a stated
+  reason the defect has no checkable shape — is INCOMPLETE, the same as one missing its fail-first
+  run. The kit asks for a guard over ONE class, never a standing regression suite.
 - **Cross-repo is the default case.** The verb cuts the worktree in the item's own repo off
   `refs/remotes/origin/main`; dispatch the agent with `capability:isolate-workspace` too, so its
   payload cwd is never the shared checkout — a /tmp clone does NOT isolate that cwd, and a
@@ -722,9 +736,8 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
-- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
-  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
-  runsheet is the exact command the driver runs.
+- **Driver-act runsheet entry** — an escalation that is an ACT only the driver can perform: see
+  [`../../references/desk-common.md`](../../references/desk-common.md) §Driver-act runsheet entry.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
@@ -808,19 +821,11 @@ recorded. It is never the sanctioned path.
 
 ## Liveness contract (binding)
 
-A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
-the window; every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
-assumed delivered.
-The desk runs **default-forward** — never ask the driver what to work on next:
-a driver scope instruction narrows preference, not a cage — when the scoped
-batch drains, note the transition in the hand-off note and widen back to the
-standing queue. Checkpoints state their default and continue; standing down
-requires an empty standing queue after a fresh sweep PLUS a hand-off artifact
-on the driver surface, and a manual human kick that moves queued work is an
-incident to file on the project's methodology tracker. Hard gates (human-gated
-decisions, budgets, breakers, explicit stop-orders) are unchanged.
+A standing liveness contract binds this window from boot. Its text — the standing loop armed
+before the first sweep, the fresh re-sweep every tick, relay acknowledgement, default-forward, and
+when a window may stand down — is stated once for every desk role in
+[`../../references/desk-common.md`](../../references/desk-common.md) §Liveness contract; read it at
+boot, before the first sweep.
 
 ## Cadence and wake — this desk's numbers
 

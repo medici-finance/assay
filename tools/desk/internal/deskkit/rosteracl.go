@@ -27,13 +27,18 @@ const (
 	rosterACEUnsupported
 )
 
-// rosterACE is one decoded access-control entry. GrantsWrite is computed by the
-// Win32 adapter via aceGrantsWrite, so this model stays free of platform masks.
+// rosterACE is one decoded access-control entry. GrantsWrite and GrantsRead are
+// computed by the Win32 adapter via aceGrantsWrite / aceGrantsRead, so this model
+// stays free of platform masks. GrantsRead and Inherited are consumed only by the
+// custody decision (custodyacl.go); the roster decision reads neither, so the
+// roster rule is unchanged by them.
 type rosterACE struct {
 	SID         string // string form of the trustee SID, for comparison + messages
 	Kind        rosterACEKind
 	InheritOnly bool // applies only to children, not to this object itself
+	Inherited   bool // the entry came from a parent container (INHERITED_ACE)
 	GrantsWrite bool // the ACE's access mask intersects rosterWriteMask
+	GrantsRead  bool // the ACE's access mask intersects custodyReadMask
 }
 
 // rosterACLModel is everything evaluateRosterACL needs, with no Win32 types in it.
@@ -67,6 +72,23 @@ const rosterWriteMask uint32 = 0x00000002 | // FILE_WRITE_DATA
 
 // aceGrantsWrite reports whether an access mask intersects the write-capable set.
 func aceGrantsWrite(mask uint32) bool { return mask&rosterWriteMask != 0 }
+
+// custodyReadMask is the set of Windows access rights that let a principal read a
+// credential file's contents: reading its data or extended attributes, or
+// executing it. It is the Windows counterpart of the group/other read and execute
+// bits the unix 0600 rule excludes. GENERIC_READ, GENERIC_EXECUTE and GENERIC_ALL
+// are included because each maps onto one of these specific rights. Metadata-only
+// rights (FILE_READ_ATTRIBUTES, READ_CONTROL, SYNCHRONIZE) are deliberately NOT in
+// it: they reveal no contents, just as a unix stat of a 0600 file does not.
+const custodyReadMask uint32 = 0x00000001 | // FILE_READ_DATA
+	0x00000008 | // FILE_READ_EA
+	0x00000020 | // FILE_EXECUTE
+	0x10000000 | // GENERIC_ALL
+	0x20000000 | // GENERIC_EXECUTE
+	0x80000000 //   GENERIC_READ
+
+// aceGrantsRead reports whether an access mask intersects the read-capable set.
+func aceGrantsRead(mask uint32) bool { return mask&custodyReadMask != 0 }
 
 // evaluateRosterACL is the sshd rule expressed for Windows ACLs — the Windows
 // counterpart of the uid+mode check in rosterowner_unix.go. It refuses the roster
