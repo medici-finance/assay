@@ -464,7 +464,8 @@ func monitorArgs(scope []string, tokenFiles map[string]string) []string {
 // RunMonitor executes the poller over the rostered scan scope and parses its output. It is the ONLY
 // place this binary runs it, and it runs it only from `run` — arming and draining are the same act
 // (the first cycle seeds silently, every later one reports the delta), which is why `plan` reads
-// the state dir instead.
+// the state dir instead. `run --dry-run` hands it a throwaway copy of the state dir (dryrun.go), so
+// a preview never advances the real baselines.
 //
 // tokenFiles is the explicit read identity (owner -> token file PATH, see ResolveMonitorIdentity).
 // The poller reads an owner's repos as that file's token, which outranks its keyring fallback — the
