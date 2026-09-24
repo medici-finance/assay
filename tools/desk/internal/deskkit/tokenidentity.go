@@ -24,21 +24,23 @@ type TokenIdentity struct {
 	ID int64
 }
 
-// GitHubTokenIdentity asks GitHub which account token acts as, with ONE GraphQL `viewer` read.
-// GraphQL answers for an App installation token too (`<slug>[bot]` plus the bot USER id), where
-// REST GET /user refuses an installation token outright — so this one read tells a role App's
-// token from a human login and from ANOTHER role's App alike, which a probe like
+// The probe's entry point is GitHubTokenIdentityForRepo, in forgeresolve.go: like every
+// GitHubForge in this tree, the backend it reads through is constructed THERE, after the repo's
+// forge is resolved to GitHub and its origin host is bound to github.com
+// (TestForgeSingleConstructionSite). This file holds only the read and the roster comparison.
+
+// viewerIdentity asks GitHub which account the forge's token acts as, with ONE GraphQL `viewer`
+// read. GraphQL answers for an App installation token too (`<slug>[bot]` plus the bot USER id),
+// where REST GET /user refuses an installation token outright — so this one read tells a role
+// App's token from a human login and from ANOTHER role's App alike, which a probe like
 // GET /installation/repositories (true for every App's token) cannot.
 //
 // Any failure — transport, a non-2xx such as 401 Bad credentials, a GraphQL error, an answer with
 // no login — is returned as an error. An identity that could not be read is never an identity.
-func GitHubTokenIdentity(token string) (TokenIdentity, error) {
-	return (&GitHubForge{Token: token}).viewerIdentity()
-}
-
-// viewerIdentity is GitHubTokenIdentity's read, on the forge's own authenticated client (so a
-// test points it at an httptest server through BaseURL, and the token is bound explicitly — an
-// empty one is refused by restClient, never resolved from an ambient gh login).
+//
+// It runs on the forge's own authenticated client (so a test points it at an httptest server
+// through BaseURL, and the token is bound explicitly — an empty one is refused by restClient,
+// never resolved from an ambient gh login).
 func (g *GitHubForge) viewerIdentity() (TokenIdentity, error) {
 	in := map[string]any{"query": `query{viewer{login databaseId}}`}
 	var out struct {

@@ -24,12 +24,20 @@ import (
 var dispatcherAppIdentity = deskkit.TokenIdentity{Login: "assay-desk-app[bot]", ID: 300000001}
 
 // stubTokenIdentity binds the inherited-token probe to answer id (or err) and records every
-// token it was asked about.
+// token it was asked about. It also fails the test unless the probe was scoped to the TARGET
+// repo and the origin read from --root: the resolver binds the token's destination host to
+// those two, so a probe handed anything else could offer the token to the wrong host.
 func stubTokenIdentity(t *testing.T, id deskkit.TokenIdentity, err error) *[]string {
 	t.Helper()
 	var asked []string
 	old := tokenIdentityFn
-	tokenIdentityFn = func(tok string) (deskkit.TokenIdentity, error) {
+	tokenIdentityFn = func(repo deskkit.ForgeRepo, originURL, tok string) (deskkit.TokenIdentity, error) {
+		if repo.Slug() != allowedRepo {
+			t.Errorf("the probe was scoped to repo %q, want the dispatch target %q", repo.Slug(), allowedRepo)
+		}
+		if !strings.Contains(originURL, "github.com") {
+			t.Errorf("the probe was handed origin %q, want the target checkout's origin remote", originURL)
+		}
 		asked = append(asked, tok)
 		return id, err
 	}

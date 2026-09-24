@@ -1221,7 +1221,10 @@ if [[ -z "$gh_token" && -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" ]] &
   gh_token="$(gh auth token 2>/dev/null || true)"
 fi
 if [[ -n "$gh_token" ]]; then
-  exec env HOME="__CELL_HOME__" PATH="__GH_WRAP__:$PATH" CELLCTL_GH_AMBIENT="$gh_token" "__BIN__" "$@"
+  # exported, never an env(1) argument: argv is readable by other local users for as long as
+  # env runs, the environment is not.
+  export CELLCTL_GH_AMBIENT="$gh_token"
+  exec env HOME="__CELL_HOME__" PATH="__GH_WRAP__:$PATH" "__BIN__" "$@"
 else
   exec env HOME="__CELL_HOME__" "__BIN__" "$@"
 fi
@@ -1240,9 +1243,14 @@ p=":$PATH:"
 while [[ "$p" == *":$wrap:"* ]]; do p="${p//":$wrap:"/:}"; done
 p="${p#:}"; p="${p%:}"
 export PATH="$p"
-if [[ -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" && -n "${CELLCTL_GH_AMBIENT:-}" ]]; then
-  exec env GH_TOKEN="$CELLCTL_GH_AMBIENT" gh "$@"
+# gh gets the credential as GH_TOKEN and nothing else: CELLCTL_GH_AMBIENT is dropped from its
+# environment, and the value is exported rather than passed to env(1), so it is never in an argv.
+ambient="${CELLCTL_GH_AMBIENT:-}"
+unset CELLCTL_GH_AMBIENT
+if [[ -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" && -n "$ambient" ]]; then
+  export GH_TOKEN="$ambient"
 fi
+unset ambient
 exec gh "$@"
 GH_WRAP_TEMPLATE
 )"

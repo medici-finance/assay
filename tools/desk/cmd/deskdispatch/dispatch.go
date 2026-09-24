@@ -1200,7 +1200,7 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 	// the claim child nor any later child inherits it — and the role token is minted below as if
 	// nothing had been exported. One whose identity cannot be read refuses (verifyInheritedToken).
 	if inherited := strings.TrimSpace(os.Getenv("GH_TOKEN")); inherited != "" {
-		honoured, source, verr := verifyInheritedToken(role, kind, inherited)
+		honoured, source, verr := o.verifyInheritedToken(role, repo, kind, inherited)
 		if verr != nil {
 			return claimAuth{}, verr
 		}
@@ -1248,6 +1248,9 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 //     account it acts as (one GraphQL viewer read, tokenIdentityFn) is the role's App as the
 //     roster binds it, login and pinned bot USER id alike; on GitLab, it is byte-equal to the
 //     role's PAT custody file. The operator's deliberate override keeps working exactly as before.
+//     The GitHub read is built by the forge resolver for the TARGET repo and the origin read from
+//     --root (deskkit.GitHubTokenIdentityForRepo), so the inherited token is offered only to the
+//     host the role's own GitHub credential would be — a non-github.com origin refuses unsent.
 //   - ignored (false, "", nil): it is readably SOMEONE ELSE — a human login, another role's App, a
 //     different PAT. A NOTICE says so on stderr and the caller mints the role token instead.
 //   - refused (error): whose it is cannot be established — the probe failed (transport, 401), the
@@ -1256,7 +1259,7 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 //     never silently swapped for one either. Unsetting GH_TOKEN is always the way through.
 //
 // The token VALUE never appears in any message; the login it acts as, and paths, do.
-func verifyInheritedToken(role string, kind deskkit.ForgeKind, tok string) (bool, string, error) {
+func (o dispatchOpts) verifyInheritedToken(role, repo string, kind deskkit.ForgeKind, tok string) (bool, string, error) {
 	if kind == deskkit.ForgeGitLab {
 		custody, custodyPath, err := deskkit.GitLabRoleToken(role)
 		if err != nil {
@@ -1274,7 +1277,8 @@ func verifyInheritedToken(role string, kind deskkit.ForgeKind, tok string) (bool
 		return false, "", nil
 	}
 	expected := deskkit.RoleAppLoginOrEmpty(role)
-	id, err := tokenIdentityFn(tok)
+	owner, name, _ := strings.Cut(repo, "/")
+	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL(), tok)
 	if err != nil {
 		return false, "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: a GH_TOKEN is exported in this environment, but the account it acts as could not be read "+
@@ -1325,7 +1329,7 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 			"step %s: the %s GitLab role PAT for %s could not be read (%s) — so the identity the claim "+
 				"would be taken under cannot be established. NO claim was attempted: the claim tool is never "+
 				"run on the ambient credential. Provision the role's GitLab PAT custody file, or export "+
-				"GH_TOKEN to override deliberately.",
+				"the role's own GitLab PAT as GH_TOKEN to override deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok)
@@ -1888,15 +1892,21 @@ func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, er
 			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
 			stepClaimAcquire, repo), nil)
 	}
-	originURL := ""
-	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
-		originURL = r.stdout
-	}
-	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL())
 	if err != nil {
 		return "", err
 	}
 	return res.Kind, nil
+}
+
+// targetOriginURL reads the TARGET checkout's origin remote (o.root) through the runCmd seam, or
+// "" when it cannot be read — deskkit then answers from the roster alone. The raw URL is handed
+// to deskkit and never printed (an https origin can carry userinfo).
+func (o dispatchOpts) targetOriginURL() string {
+	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+		return r.stdout
+	}
+	return ""
 }
 
 func (o dispatchOpts) say(format string, args ...any) {

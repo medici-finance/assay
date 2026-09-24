@@ -454,9 +454,12 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   names which one ran. Both speak the same wire protocol, so which one runs never changes where
   the claim lands or whether two dispatchers collide. Either way the claim child runs as the
   DISPATCHING role: `deskdispatch` mints (or reuses) that role's App token and hands it over
-  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script); an
-  exported `GH_TOKEN` wins; a mint refusal is exit 6 with no claim attempted, never a fall-back to
-  the ambient `gh` login.
+  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script). An
+  exported `GH_TOKEN` wins only when `deskdispatch` verifies it IS the dispatching role's App —
+  the `desk` App for the worker kit, the `reviewer` App for the review kit, never the worker App
+  whose token a worker holds. Any other identity is ignored with a NOTICE and the role token
+  minted; one whose identity cannot be read is exit 6 with no claim attempted. A mint refusal is
+  exit 6 with no claim attempted, never a fall-back to the ambient `gh` login.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no

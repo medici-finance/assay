@@ -111,7 +111,7 @@ func isolateClaimTool(t *testing.T, home string) {
 	t.Cleanup(func() { mintTokenFn = oldMint })
 
 	oldProbe := tokenIdentityFn
-	tokenIdentityFn = func(string) (deskkit.TokenIdentity, error) {
+	tokenIdentityFn = func(deskkit.ForgeRepo, string, string) (deskkit.TokenIdentity, error) {
 		return deskkit.TokenIdentity{}, errors.New("example: no forge in tests — bind stubTokenIdentity")
 	}
 	t.Cleanup(func() { tokenIdentityFn = oldProbe })

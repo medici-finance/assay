@@ -622,6 +622,37 @@ func githubTransportArm(repo, originURL string) error {
 	return nil
 }
 
+// GitHubTokenIdentityForRepo answers WHICH ACCOUNT an inherited token acts as, for a caller that
+// must decide whether that token may stand in for a role mint on repo (issue 1631: deskdispatch
+// and an inherited GH_TOKEN). It is the identity probe's ONLY construction site, and it is here
+// because the backend it reads through is a GitHubForge (TestForgeSingleConstructionSite).
+//
+// The token is offered to NO host the role's own credential would not be offered to. Before
+// anything is sent, the repo must pass githubTransportArm — the same check the GitHub transport
+// entry points apply before they mint:
+//
+//   - the forge resolves to GitHub (roster first, then originURL's host); a repo the roster maps
+//     to GitLab, or whose origin maps to no known forge, is refused with NO request made;
+//   - when originURL is given, its host is exactly github.com (githubAppOriginHost), the one host
+//     a GitHub App installation token authenticates to. originURL "" is a roster-only caller, the
+//     same path the dispatching role's own mint (GitHubRoleToken) takes.
+//
+// The backend then carries the default base — GitHubAPIBase, where the minter mints the role
+// token this probe compares against — and never a caller-supplied one: there is no parameter,
+// flag or environment variable by which a caller points the probe elsewhere. An empty token is
+// refused (restClient), never resolved from an ambient login. Every failure is an error, never
+// an identity (viewerIdentity).
+func GitHubTokenIdentityForRepo(repo ForgeRepo, originURL, token string) (TokenIdentity, error) {
+	if strings.TrimSpace(token) == "" {
+		return TokenIdentity{}, Unverifiable("refusing to probe an empty token's identity — there is no "+
+			"account to read, and the probe never falls back to an ambient gh-CLI login", nil)
+	}
+	if err := githubTransportArm(repo.Slug(), originURL); err != nil {
+		return TokenIdentity{}, err
+	}
+	return (&GitHubForge{Token: token}).viewerIdentity()
+}
+
 // githubAppRoleToken is the GitHub arm: the ONE place in this package that reaches the GitHub
 // App minter. Its callers are CONFINED, not just documented: the class guard
 // (roletokenguard_test.go) treats this name as a minter too and allow-lists exactly four

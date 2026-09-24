@@ -24,6 +24,10 @@
 #   nested      a shimmed verb running another shimmed verb still authenticates that verb's `gh`
 #               child, and the wrapper execs the real gh, never itself (it strips its own dir
 #               from PATH however many times it was prepended)
+#   no argv     the ambient credential is never an env(1) ARGUMENT in the shim or the wrapper
+#               (argv is readable by other local users while env runs; the environment is not),
+#               and the `gh` child's environment carries it only as GH_TOKEN — the wrapper drops
+#               CELLCTL_GH_AMBIENT before exec
 #
 # No network, no tmux, no real desk-tools, no real `gh`: everything on PATH is a fixture. The
 # fixture `gh` mimics real gh's OWN priority order (GH_TOKEN env wins; otherwise its ambient
@@ -131,6 +135,7 @@ if [[ "\${1:-}" == "auth" && "\${2:-}" == "token" ]]; then
     echo "gh: authentication failed: no credential found for HOME=\$HOME" >&2; exit 1
   fi
 fi
+echo "GH_CHILD_AMBIENT=\${CELLCTL_GH_AMBIENT-<unset>}" >> "$T/gh-child.env"
 if [[ -n "\${GH_TOKEN:-}" ]]; then
   echo "GH_API_OK token=\$GH_TOKEN"; exit 0
 else
@@ -179,6 +184,12 @@ assert "a self-minting verb (deskdispatch) sees NO GH_TOKEN, so it mints its rol
 assert "a verb's own token for its gh child WINS over the ambient one (role wins)" 'grep -qxF "ROLE_GH_OUT=GH_API_OK token=ROLE_APP_TOKEN_1631" "$MINT_MARKER"'
 assert "nested: the inner shimmed verb's own env carries no GH_TOKEN either" 'grep -qxF "VERB_GH_TOKEN=<unset>" "$NESTED_MARKER"'
 assert "nested: the inner verb's gh child still authenticates with the ambient token (wrapper did not loop)" 'grep -qxF "GH_CALL_OUT=GH_API_OK token=FIXTURE_TOKEN_9f8e7d" "$NESTED_MARKER"'
+
+# ---------------------------------------------------------------- case: the token is never in an argv
+echo "[assay#1631 A1: the ambient credential is exported, never an env(1) argument]"
+assert "the shim never passes the token as an env(1) argument" '! grep -E "^[[:space:]]*exec env .*(gh_token|CELLCTL_GH_AMBIENT)" "$CELL/shim/deskboard"'
+assert "the gh wrapper never passes the token as an env(1) argument" '! grep -E "^[[:space:]]*exec env .*(GH_TOKEN|CELLCTL_GH_AMBIENT)" "$CELL/shim-gh/gh"'
+assert "every gh child ran with CELLCTL_GH_AMBIENT dropped (it sees the credential only as GH_TOKEN)" '[[ -s "$T/gh-child.env" ]] && ! grep -qv "^GH_CHILD_AMBIENT=<unset>$" "$T/gh-child.env"'
 
 # ---------------------------------------------------------------- case: explicit GH_TOKEN override wins, no re-resolve
 echo "[override: explicit GH_TOKEN in the caller env is never replaced]"
