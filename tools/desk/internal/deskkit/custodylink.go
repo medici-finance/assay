@@ -40,43 +40,57 @@ const (
 type CustodyLinkError struct {
 	Path   string
 	Reason string
+	Policy CustodyLinkPolicy
 }
 
+// Error names the refused link and the remedy for the policy that refused it. The remedy is
+// policy-specific: the no-link cache is desktoken's own file, while the GitLab layout does
+// allow one same-directory link.
 func (e *CustodyLinkError) Error() string {
-	return fmt.Sprintf("custody path %s is a symlink %s; token custody must be a 0600 regular file "+
-		"— re-provision it", e.Path, e.Reason)
+	remedy := "remove the link; desktoken writes this cache itself (`desktoken <role> --fresh` removes a link here)"
+	if e.Policy == CustodySameDirLink {
+		remedy = "point the link at the provisioned token file in the same directory, or replace it with that file"
+	}
+	return fmt.Sprintf("custody path %s is a symlink %s — %s", e.Path, e.Reason, remedy)
 }
 
-// LstatCustody returns the FileInfo a custody check should judge for path WITHOUT blindly
-// following a link there. A regular (non-link) entry returns its own Lstat. A link is refused
-// with a *CustodyLinkError unless policy is CustodySameDirLink and the link resolves to a file
-// in the custody path's own directory, in which case the RESOLVED target's FileInfo is returned
-// so the caller's regular-file and owner-only checks run on the file actually read.
+// LstatCustody returns the path a custody check should judge and read, and its FileInfo, for
+// path WITHOUT blindly following a link there. A regular (non-link) entry returns path itself
+// and its own Lstat. A link is refused with a *CustodyLinkError unless policy is
+// CustodySameDirLink and the link resolves to a file in the custody path's own directory; then
+// the RESOLVED target path and its FileInfo are returned. The caller hands that target to its
+// regular-file check, to VerifyCustodyOwnerOnly, and to the read that follows, so every check
+// judges the file actually read on every platform — on Windows the owner-only check reads the
+// ACL from the path it is given and ignores the FileInfo, so passing the link path there would
+// judge the link rather than its target.
 //
 // Any other error is the raw Lstat error, so os.IsNotExist keeps meaning "nothing is there".
-func LstatCustody(path string, policy CustodyLinkPolicy) (os.FileInfo, error) {
-	fi, err := os.Lstat(path)
+func LstatCustody(path string, policy CustodyLinkPolicy) (target string, fi os.FileInfo, err error) {
+	fi, err = os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
-		return fi, nil
+		return path, fi, nil
 	}
 	if policy != CustodySameDirLink {
-		return nil, &CustodyLinkError{Path: path, Reason: "(this custody file has no link layout; replace the link with the file itself)"}
+		return "", nil, &CustodyLinkError{Path: path, Policy: policy, Reason: "(this custody file has no link layout)"}
 	}
 	resolved, rerr := filepath.EvalSymlinks(path)
 	if rerr != nil {
-		return nil, &CustodyLinkError{Path: path, Reason: fmt.Sprintf("that does not resolve (%v)", rerr)}
+		return "", nil, &CustodyLinkError{Path: path, Policy: policy, Reason: fmt.Sprintf("that does not resolve (%v)", rerr)}
 	}
 	dir, derr := filepath.EvalSymlinks(filepath.Dir(path))
 	if derr != nil {
-		return nil, &CustodyLinkError{Path: path, Reason: fmt.Sprintf("whose directory does not resolve (%v)", derr)}
+		return "", nil, &CustodyLinkError{Path: path, Policy: policy, Reason: fmt.Sprintf("whose directory does not resolve (%v)", derr)}
 	}
 	if filepath.Dir(resolved) != dir {
-		return nil, &CustodyLinkError{Path: path, Reason: fmt.Sprintf(
+		return "", nil, &CustodyLinkError{Path: path, Policy: policy, Reason: fmt.Sprintf(
 			"to %s, outside its own directory %s (only a link to a file in the same directory is accepted)",
 			resolved, dir)}
 	}
-	return os.Lstat(resolved)
+	if fi, err = os.Lstat(resolved); err != nil {
+		return "", nil, err
+	}
+	return resolved, fi, nil
 }

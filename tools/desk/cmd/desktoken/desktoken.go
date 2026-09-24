@@ -891,7 +891,7 @@ func cmdToken(args []string) (err error) {
 	// Reuse cached token if < 50 min old. Lstat, not Stat: the cache is desktoken's own
 	// regular file, so a symlink here is refused — never handed out as the role's token, and
 	// never written through by the mint below.
-	if fi, serr := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks); serr == nil {
+	if _, fi, serr := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks); serr == nil {
 		if fi.Mode().Perm() != 0o600 {
 			return deskkit.Unverifiable(
 				fmt.Sprintf("token cache at %s has permissions %o; must be 0600", tokenPath, fi.Mode().Perm()), nil)

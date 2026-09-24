@@ -373,12 +373,14 @@ func gitlabRoleTokenFile(role string) (token, path string, err error) {
 	}
 	// The documented GitLab layout links gitlab-<role>.token at the provisioned file beside
 	// it, so a same-directory link is accepted here (and only here).
-	if verr := checkCustodyFileMode(p, CustodySameDirLink); verr != nil {
+	// The bytes are read from the target the checks judged, not by re-resolving the link.
+	target, verr := checkCustodyFileMode(p, CustodySameDirLink)
+	if verr != nil {
 		return "", "", verr
 	}
-	b, rerr := os.ReadFile(p)
+	b, rerr := os.ReadFile(target)
 	if rerr != nil {
-		return "", "", Refused(fmt.Sprintf("cannot read gitlab token file at %s: %v", p, rerr))
+		return "", "", Refused(fmt.Sprintf("cannot read gitlab token file at %s: %v", target, rerr))
 	}
 	tok := strings.TrimSpace(string(b))
 	if tok == "" {
@@ -422,28 +424,31 @@ func gitlabAPIBaseOverride() string {
 // The path is Lstat'd, not Stat'd (LstatCustody): a symlink at a GitHub custody path is
 // refused outright rather than followed to whatever it names.
 func verifyCustodyFileMode(path string) error {
-	return checkCustodyFileMode(path, CustodyNoLinks)
+	_, err := checkCustodyFileMode(path, CustodyNoLinks)
+	return err
 }
 
 // checkCustodyFileMode is verifyCustodyFileMode under an explicit link policy; the GitLab
-// read passes CustodySameDirLink for its documented layout.
-func checkCustodyFileMode(path string, links CustodyLinkPolicy) error {
-	fi, err := LstatCustody(path, links)
+// read passes CustodySameDirLink for its documented layout. It returns the path the checks
+// judged — path itself, or a followed link's resolved target — which is the path the caller
+// must read.
+func checkCustodyFileMode(path string, links CustodyLinkPolicy) (string, error) {
+	target, fi, err := LstatCustody(path, links)
 	if err != nil {
 		if _, isLink := err.(*CustodyLinkError); isLink {
-			return Refused(err.Error())
+			return "", Refused(err.Error())
 		}
-		return Refused(fmt.Sprintf("cannot stat custody token file at %s: %v — re-provision it", path, err))
+		return "", Refused(fmt.Sprintf("cannot stat custody token file at %s: %v — re-provision it", path, err))
 	}
 	if !fi.Mode().IsRegular() {
-		return Refused(fmt.Sprintf(
+		return "", Refused(fmt.Sprintf(
 			"custody token at %s is not a regular file (mode %s); token custody requires a 0600 "+
-				"regular file — re-provision it", path, fi.Mode()))
+				"regular file — re-provision it", target, fi.Mode()))
 	}
-	if err := VerifyCustodyOwnerOnly(path, fi); err != nil {
-		return Refused(err.Error())
+	if err := VerifyCustodyOwnerOnly(target, fi); err != nil {
+		return "", Refused(err.Error())
 	}
-	return nil
+	return target, nil
 }
 
 // --- The resolver -------------------------------------------------------------------

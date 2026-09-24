@@ -140,3 +140,58 @@ func TestGitLabColdCustodyProbeRefusesOutOfDirLink(t *testing.T) {
 		t.Fatalf("the documented same-directory custody link must pass the cold probe: %v", err)
 	}
 }
+
+// resolvedPath is path with every symlink resolved, the form the owner-only refusal must name
+// for a followed custody link (t.TempDir sits under a symlinked /var on darwin).
+func resolvedPath(t *testing.T, path string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// TestSameDirLinkOwnerCheckJudgesResolvedTarget — on a followed same-directory custody link,
+// the owner-only check must be handed the RESOLVED target, not the link. On Windows
+// VerifyCustodyOwnerOnly ignores the FileInfo and reads the owner and DACL from the path it is
+// given, so a link path there would judge the link, not the file that is read. The refusal
+// names the path it judged, which pins the argument on every platform. Covers the read path
+// (GitLabRoleToken) and the boot probe (gitlabColdCustodyProbe).
+func TestSameDirLinkOwnerCheckJudgesResolvedTarget(t *testing.T) {
+	t.Run("read path", func(t *testing.T) {
+		credDir := t.TempDir()
+		t.Setenv(EnvConfigHome, credDir)
+		custody := filepath.Join(credDir, gitlabTokenFileName("worker"))
+		target := filepath.Join(credDir, "example-worker-bot.token")
+		writeCustody(t, target, "gitlab-provisioned-stub")
+		plantLink(t, "example-worker-bot.token", custody)
+		if err := os.Chmod(target, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want := resolvedPath(t, target)
+		_, _, err := GitLabRoleToken("worker")
+		if err == nil || !strings.Contains(err.Error(), "at "+want+" ") {
+			t.Fatalf("the owner-only refusal behind a same-directory link must judge and name the "+
+				"resolved target %s, not the link %s; got %v", want, custody, err)
+		}
+	})
+	t.Run("cold probe", func(t *testing.T) {
+		home := withRoster(t, goldenRoster())
+		credDir := filepath.Join(home, ".config", "assay")
+		t.Setenv("GITLAB_API_BASE", "https://gitlab.example.com/api/v4")
+		custody := filepath.Join(credDir, gitlabTokenFileName(pfRole))
+		target := filepath.Join(credDir, "example-"+pfRole+"-bot.token")
+		writeCustody(t, target, "gitlab-provisioned-stub")
+		plantLink(t, "example-"+pfRole+"-bot.token", custody)
+		if err := os.Chmod(target, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want := resolvedPath(t, target)
+		_, err := gitlabColdCustodyProbe(pfRole)
+		if err == nil || !strings.Contains(err.Error(), "at "+want+" ") {
+			t.Fatalf("the cold probe's owner-only refusal behind a same-directory link must judge "+
+				"and name the resolved target %s, not the link %s; got %v", want, custody, err)
+		}
+	})
+}

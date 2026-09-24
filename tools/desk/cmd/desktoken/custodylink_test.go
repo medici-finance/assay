@@ -121,3 +121,29 @@ func TestGitLabNoRotateRefusesOutOfDirCustodyLink(t *testing.T) {
 	}
 	assertNoTokenLeak(t, stdout+stderr)
 }
+
+// TestGitLabNoRotateOwnerCheckJudgesResolvedTarget — on the documented same-directory link,
+// the owner-only check must be handed the RESOLVED target, not the link: on Windows
+// VerifyCustodyOwnerOnly reads the ACL from the path it is given. The refusal names the path it
+// judged, which pins the argument on every platform. The rotation runs the same check first.
+func TestGitLabNoRotateOwnerCheckJudgesResolvedTarget(t *testing.T) {
+	homeDir := setupTest(t)
+	custody, target := linkedCustody(t, homeDir, "worker", glOldWorker)
+	if err := os.Chmod(target, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, stdout, stderr := runCap(t, []string{"--forge", "gitlab", "--no-rotate", "worker"})
+	if rc == deskkit.ExitOK {
+		t.Fatalf("--no-rotate accepted a 0644 target behind the custody link (stdout %q)", stdout)
+	}
+	if !strings.Contains(stderr, "at "+want+" ") {
+		t.Fatalf("the owner-only refusal must judge and name the resolved target %s, not the link %s; got: %s",
+			want, custody, stderr)
+	}
+	assertNoTokenLeak(t, stdout+stderr)
+}
