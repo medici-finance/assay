@@ -114,6 +114,24 @@
       "file": "cmd/deskflip/flip.go",
       "old": "\t\t\t\"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never green.\",\n\t\t\tcondChecksGreen, short(head), firstLine(err.Error())), err)",
       "new": "\t\t\t\"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never green.\",\n\t\t\tcondReviewerApproved, short(head), firstLine(err.Error())), err)"
+    },
+    {
+      "name": "body-edit class: stop gating undeclared CRs once any CR claims the class (an ordinary / check-only / code CR at head clears — reddens TestBodyEdit_OrdinaryCRNotExempt, TestBodyEdit_CodeFindingCRStillStands)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\t\tif err := checkOnlyCRCleared(reviewerLogin, r, reviews, head, runsAtHead); err != nil {\n\t\t\t\treturn err\n\t\t\t}",
+      "new": "\t\t\t_ = checkOnlyCRCleared"
+    },
+    {
+      "name": "body-edit class: clear on a mere declaration (an undocumented re-approve clears — reddens TestBodyEdit_UndocumentedReApprove)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif dec.Cleared {\n\t\treturn nil\n\t}",
+      "new": "\tif dec.Declared {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "body-edit class: re-check against the FIRST body read (a body edited before the mutation clears — reddens TestBodyEdit_BodyEditedAgainBeforeMutation)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "checkReviewerApproved(reviewerLogin, reviews2, head, body2,",
+      "new": "checkReviewerApproved(reviewerLogin, reviews2, head, body2[:0]+pr.Body,"
     }
   ]
 }
