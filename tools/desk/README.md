@@ -3285,9 +3285,12 @@ RCE. deskgit closes the proven vectors:
 - **Scrubbed child env.** `runGit` passes only an allowlist (`PATH`, `HOME`,
   `SSH_AUTH_SOCK`, locale, …) and drops every `GIT_*` var — `GIT_SSH_COMMAND`,
   `GIT_CONFIG_*`, `GIT_ASKPASS` — plus forces `GIT_TERMINAL_PROMPT=0`.
-- **Effective-URL repo gate.** It gates on `git ls-remote --get-url origin`, which expands
-  `url.<base>.insteadOf` (and makes no network call), so an insteadOf rewrite cannot present
-  an allowed identity while fetching elsewhere. It rejects remote-helper (`<helper>::…`)
+- **Effective-URL repo gate.** It gates on `git remote get-url --all origin`, git's own
+  resolution of origin's fetch url list, which applies `url.<base>.insteadOf` from every config
+  scope (and makes no network call), so an insteadOf rewrite cannot present an allowed identity
+  while fetching elsewhere. Exactly one url value is accepted; a multi-valued list is refused
+  (exit 5). This read decides the repo only: where a push goes (`pushurl`, `pushInsteadOf`) is
+  gated separately, under `--as`, by the host binding below. It rejects remote-helper (`<helper>::…`)
   transport forms and requires an exact `owner/repo` path for any **host-bearing** URL, so a
   padded URL can't smuggle an allowed slug in trailing components. The repo must be in the
   fixed C-4 set.
@@ -3332,7 +3335,7 @@ fetch. In the #1555 threat model the caller *is* the adversary, so an attacker-c
 that names a program** is an execution route — the class, not just the examples:
 `core.sshCommand`, `core.gitProxy` (its env twin `GIT_PROXY_COMMAND` *is* scrubbed, which
 makes it easy to misread as closed), `core.fsmonitor`, and `remote.<n>.vcs` (git runs
-`git-remote-<name>` while `ls-remote --get-url` still reports an innocent URL, so the gate is
+`git-remote-<name>` while `git remote get-url` still reports an innocent URL, so the gate is
 structurally blind to it).
 
 deskgit also **trusts `PATH`** (security review S-3): `PATH` is allowlisted and `runGit`
@@ -3367,12 +3370,13 @@ token path behind the same fixed-argv guard the rest of `deskgit` enforces. `des
 
 **What the token never touches.** It is READ from the role's token file and PASSED to the
 one child git process through exactly one environment variable (`DESKGIT_TOKEN`) and an
-ephemeral `GIT_ASKPASS` script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
+ephemeral credential-helper script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
 password), in a private `0700` temp dir removed on **every** return path including error. The
 token is **never** placed in argv, in a URL, in stdout/stderr, or in the audit line. The argv
 carries `-c credential.helper=` **before the verb**, which clears the helper list on the
-command line so **no ambient or configured credential helper is ever consulted** — only this
-askpass answers.
+command line so **no ambient or configured credential helper is ever consulted**, then adds
+the ephemeral helper under the host-scoped key `credential.https://github.com.helper` — see
+the answer-point binding below. No `GIT_ASKPASS` is set.
 
 **Identity binding.** `--as <role>` MUST equal the App role this session's loop identity
 binds (`$DESK_LOOP` → `deskkit.SessionTokenRole`); a mismatch is exit 5 **before any token is
@@ -3380,11 +3384,36 @@ read**, so a session cannot borrow another role's token by naming it. The token 
 **owner** of the effective origin slug (never a caller `--repo`), so it authenticates only the
 repository the effective-URL gate already admitted.
 
+**Host binding — github.com only, in two layers.** The helper answers the GitHub App-token
+username, so this transport speaks only GitHub.
+
+*Layer 1, the origin destinations.* Before any token is minted or read, `--as` asks git
+itself for every origin URL the verb will use (`git remote get-url [--push] --all origin`, a config
+read that contacts nothing): for push, every `remote.origin.pushurl` value, or with none every
+`url` value; for fetch, every `url` value. Git applies `insteadOf` and `pushInsteadOf` rewrites
+from every config scope (global and worktree included) in that answer. Each URL must name the
+origin repo, have a host of exactly `github.com` (no lookalike, subdomain, trailing dot,
+userinfo trick or self-hosted instance), and not be cleartext `http://`. If any URL fails, the
+verb is refused (exit 5) and nothing is minted. A repo the roster maps to another forge
+(`ASSAY_REPO_FORGES`) is refused the same way. A **local-path origin is refused** under `--as`:
+it has no host to bind a GitHub token to. Plain `deskgit fetch` (no `--as`) is unaffected.
+
+*Layer 2, the answer point.* Git can talk to hosts that are on no origin list during the
+verb: a recursed submodule's own remote, an `http.proxy` whose URL names a user and asks the
+credential machinery for its password, or a destination config rewritten after layer 1 read
+it. So the credential is bound where it is answered, not only where destinations are listed.
+Git asks the host-scoped helper only about `https://github.com`, and the helper itself also
+answers only a request for `protocol=https`, `host=github.com` (or `github.com:443`). Any other
+prompt goes unanswered and, with terminal prompts disabled, fails closed. `push` also pins
+`--no-recurse-submodules`, as fetch does, so push recursion configured in any scope never pushes
+a submodule to its own remote.
+
 **`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
 transport, with a FIXED argv and nothing appendable:
 
 ```
-git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/<B>:refs/heads/<B>
+git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral helper>' \
+    push --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/<B>:refs/heads/<B>
 ```
 
 - `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
@@ -3392,11 +3421,14 @@ git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads
   branch to push and is refused (exit 5).
 - `--receive-pack=git-receive-pack` is pinned (the push-side twin of fetch's upload-pack pin),
   overriding any config/env receive-pack.
+- `--no-recurse-submodules` is pinned (the push-side twin of fetch's recursion pin), overriding
+  `push.recurseSubmodules` / `submodule.recurse` from any config scope.
 - `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
   are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
   caller `--receive-pack` is refused by the transport-exec guard. None of them is in the
   constructed argv, so none can be reached by any spelling.
-- push gates on the effective origin URL exactly as fetch does, is charged to the
+- push gates on the origin URL exactly as fetch does, then on every push destination (the host
+  binding above), is charged to the
   **outward-write budget** (`deskkit.AllowWrite`, unlike fetch), and its **pre-push hook**
   (`deskpushguard`, via `core.hooksPath`) still runs — no `--no-verify` is ever passed.
 

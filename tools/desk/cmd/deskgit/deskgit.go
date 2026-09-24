@@ -43,7 +43,10 @@ var errMultiOrigin = errors.New("multi-valued origin url list")
 // destinations: `git push origin` connects to every remote.origin.pushurl value when one is set,
 // and otherwise to the url list as rewritten by url.<base>.pushInsteadOf — neither is in what
 // this function reads. Where git pushes is not gated by this function; that is a separate
-// control (#1587's push-destination gate), and this read never stands in for it.
+// control, the push-destination gate: transportDestinations reads `git remote get-url --push
+// --all origin`, and resolveDestinations gates every value it returns before any credential
+// exists. The `--as` forms also bind the credential to those destinations (resolveDestinations
+// for both fetch and push), never to this read, and this read never stands in for them.
 //
 // Exactly one URL is required. A MULTI-VALUED list is refused (errMultiOrigin, exit 5 at the
 // callers): fetch connects to the first value and, with no pushurl set, push to every value, so
@@ -91,11 +94,97 @@ var getwd = os.Getwd
 
 // roleTokenForRepo is the seam through which the authenticated `--as` forms resolve a
 // role's App installation token for the effective origin slug. Production binds it to
-// deskkit.RoleTokenForRepo (per-OWNER installation tokens, read from the 0600 file the
-// role already owns); a test replaces it so no real App credential is minted. It returns
-// the token VALUE, the PATH it was read from, and an error — and the token value is never
-// placed in that error, exactly as the real resolver guarantees.
-var roleTokenForRepo = deskkit.RoleTokenForRepo
+// deskkit.GitHubRoleTokenForDestinations (per-OWNER installation tokens, read from the 0600 file
+// the role already owns): the credential helper (credentialSupply) answers the GitHub App-token
+// username, so this transport speaks only GitHub, and the resolver REFUSES — before any token is
+// minted or read — a repo whose roster entry names another forge, rather than minting a GitHub App
+// token and offering it to that forge's host (#1573).
+//
+// It is handed every ORIGIN destination git resolves for the verb (transportDestinations), not the
+// URL the repo gate read — every remote.origin.pushurl value for a push, every url value
+// otherwise, rewritten by insteadOf/pushInsteadOf from every config scope. The token comes back
+// only when EVERY one of them is on exactly github.com over an authenticated channel: a
+// lookalike, trailing-dot, userinfo-shaped, self-hosted, cleartext-http or unparseable
+// destination is refused, whatever the roster says (parseRepo gates only the owner/repo path,
+// never the host, so this is the host gate). That gate is the FIRST layer and covers only the
+// origin's destinations. Git can talk to other hosts during the verb — a recursed submodule's
+// remote, an http.proxy that asks for its password, a destination config rewritten after this
+// read — so the SECOND layer binds the credential where it is answered: credentialSupply's helper
+// is host-scoped to https://github.com and answers nothing else (sec-1587-S1, round 3).
+//
+// A test replaces it so no real App credential is minted. It returns the token VALUE, the PATH
+// it was read from, and an error — and the token value is never placed in that error, exactly
+// as the real resolver guarantees.
+var roleTokenForRepo = deskkit.GitHubRoleTokenForDestinations
+
+// transportDestinations returns every URL `git fetch origin` (push=false) or `git push origin`
+// (push=true) uses for origin, AS GIT ITSELF RESOLVES THEM: `git remote get-url [--push] --all
+// origin` applies pushurl, multi-valued url, insteadOf and pushInsteadOf from every config scope
+// (global and worktree included) — exactly the resolution the verb's own transport performs. It
+// is a config read that contacts no remote, run through the scrubbed runGit like every other
+// probe. effectiveOriginURL reads only the FETCH url list and requires it to hold one value (see
+// its doc): it names the repo, but it never reads pushurl or pushInsteadOf, so it can never be
+// what the credential is bound to.
+//
+// fetch connects to the first url value only; this returns them all, and the caller gates them
+// all — stricter than the transport, never looser.
+func transportDestinations(dir string, push bool) ([]string, error) {
+	args := []string{"remote", "get-url", "--all", "origin"}
+	if push {
+		args = []string{"remote", "get-url", "--push", "--all", "origin"}
+	}
+	out, err := runGit(dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if u := strings.TrimSpace(line); u != "" {
+			urls = append(urls, u)
+		}
+	}
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("git resolved no URL for origin")
+	}
+	return urls, nil
+}
+
+// gateDestinations applies the repo gate to every origin URL the transport will use: each must
+// parse (parseRepo, the same exact owner/repo rule the origin gate uses) to the SAME slug the
+// origin gate decided on. A destination that names another repo, or none, is refused (exit 5)
+// before any credential is read. The host of each is bound separately, by roleTokenForRepo.
+func gateDestinations(repo string, dests []string, push bool) error {
+	kind := "fetch"
+	if push {
+		kind = "push"
+	}
+	for i, d := range dests {
+		got, err := parseRepo(d)
+		if err != nil {
+			return deskkit.Refused(fmt.Sprintf("refused: cannot parse %s destination %d of %d (%s): %s",
+				kind, i+1, len(dests), redactURL(d), err.Error()))
+		}
+		if got != repo {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: %s destination %d of %d (%s) is %s, not the origin repo %s — no credential is "+
+					"offered to a destination the origin gate did not decide on",
+				kind, i+1, len(dests), redactURL(d), got, repo))
+		}
+	}
+	return nil
+}
+
+// resolveDestinations reads the verb's transport destinations and gates each one's repo.
+func resolveDestinations(dir, repo string, push bool) ([]string, error) {
+	dests, err := transportDestinations(dir, push)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot resolve the URLs git will connect to for origin", err)
+	}
+	if gerr := gateDestinations(repo, dests, push); gerr != nil {
+		return nil, gerr
+	}
+	return dests, nil
+}
 
 // sessionTokenRole is the seam for the loop-identity → App-role binding. Production binds
 // it to deskkit.SessionTokenRole (reads $DESK_LOOP); tests set $DESK_LOOP directly, so the
@@ -312,9 +401,11 @@ func cmdFetch(args []string) (err error) {
 		}
 	}
 
-	// Gate on the EFFECTIVE origin URL — `git ls-remote --get-url` expands
-	// url.<base>.insteadOf and exits WITHOUT contacting the remote, so an insteadOf
-	// rewrite cannot present an allowed identity while fetching elsewhere.
+	// Gate on the origin URL (effectiveOriginURL: `git remote get-url --all origin`, git's own
+	// resolution of the fetch url list, a config read that contacts no remote). This decides the
+	// REPO. Exactly one url value is accepted, and a plain fetch connects to that value. The
+	// authenticated form below also gates every URL the transport resolves (resolveDestinations)
+	// before any credential exists, and binds the credential to those URLs.
 	originURL, oerr := effectiveOriginURL(dir)
 	if errors.Is(oerr, errMultiOrigin) {
 		return deskkit.Refused("refused: " + oerr.Error())
@@ -326,7 +417,7 @@ func cmdFetch(args []string) (err error) {
 	if rerr != nil {
 		// REFUSED (exit 5), not unverifiable (exit 6): the tool positively determined the
 		// URL is unacceptable — this is the same class of decision as the IsAllowedRepo
-		// miss just below, which already exits 5. Exit 6 is for "could not run ls-remote".
+		// miss just below, which already exits 5. Exit 6 is for "could not run `git remote get-url`".
 		// Filing smuggling attempts (padded paths, path-borne '@', remote-helper forms) in
 		// the same audit bucket as network faults is the very confusion transportexec.go
 		// argues against for the named guard (correctness review).
@@ -342,18 +433,24 @@ func cmdFetch(args []string) (err error) {
 	fetchArgs = append(fetchArgs, tail...)
 
 	// Authenticated form: resolve the role's token for THIS slug (never a caller --repo) and
-	// run through the askpass supply with the ambient helper silenced. The unauthenticated
+	// run through the host-scoped credential helper with the ambient helpers cleared. The unauthenticated
 	// form (no --as) is byte-for-byte the pre-existing path. fetch is not an outward WRITE
 	// (it takes no rate limit), so --as only adds the credential channel — every fetch guard
 	// above (hardening pins, refmap, effective-URL gate, env scrub) is untouched.
 	var out string
 	var ferr error
 	if *asRole != "" {
-		token, _, terr := roleTokenForRepo(*asRole, repo)
+		// The credential is bound to what git will actually fetch from (transportDestinations,
+		// gated by resolveDestinations), not to the repo-gate read above.
+		dests, derr := resolveDestinations(dir, repo, false)
+		if derr != nil {
+			return derr
+		}
+		token, _, terr := roleTokenForRepo(*asRole, repo, dests)
 		if terr != nil {
 			return terr // Unverifiable (exit 6), naming the path searched, never the token
 		}
-		env, argvPrefix, cleanup, aerr := askpassSupply(token)
+		env, argvPrefix, cleanup, aerr := credentialSupply(token)
 		if aerr != nil {
 			return deskkit.Unverifiable("cannot stage credential supply", aerr)
 		}
@@ -383,16 +480,22 @@ func cmdFetch(args []string) (err error) {
 // file of the role named by --as. Its whole safety rests on a FIXED argv — no caller flag
 // reaches git — exactly as cmdFetch's does. The argv is, invariantly:
 //
-//	git -c credential.helper= push --receive-pack=git-receive-pack origin \
+//	git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral helper>' \
+//	    push --receive-pack=git-receive-pack --no-recurse-submodules origin \
 //	    refs/heads/<B>:refs/heads/<B>
 //
 // where <B> is the current branch (`symbolic-ref --short HEAD`), validated by the same rule
 // --branch uses and never main/master in any case. There is no --force, no --delete, no -o,
 // no --tags, no --no-verify: those are refused BY NAME before the FlagSet (checkPushSafety),
 // and none is in the constructed argv, so none can be reached by any spelling. The
-// `-c credential.helper=` prefix (BEFORE the verb) clears the ambient helper list so only
-// the ephemeral askpass answers; `--receive-pack=git-receive-pack` is the push-side twin of
-// fetch's upload-pack pin, overriding any config/env receive-pack.
+// `-c credential.helper=` prefix (BEFORE the verb) clears the ambient helper list, and the
+// host-scoped `-c credential.https://github.com.helper=` adds the ONE ephemeral helper, which
+// answers only https://github.com (credentialSupply); `--receive-pack=git-receive-pack` is the
+// push-side twin of fetch's upload-pack pin, overriding any config/env receive-pack; and
+// `--no-recurse-submodules` is the push-side twin of fetch's recursion pin (fetchHardening):
+// push.recurseSubmodules / submodule.recurse in any config scope would otherwise push each
+// submodule to that submodule's OWN remote — a host no origin destination gate has seen
+// (sec-1587-S1, round 3).
 //
 // Unlike fetch, push is an OUTWARD WRITE: it takes the outward-write budget
 // (deskkit.AllowWrite) and its audit line records role/repo/branch — never the token. The
@@ -457,9 +560,9 @@ func cmdPush(args []string) (err error) {
 		return deskkit.Refused("refused: current branch " + why + ", got " + branch)
 	}
 
-	// Effective-origin gate — identical to fetch: decide on `ls-remote --get-url` (which
-	// expands insteadOf and contacts no remote), refuse an unparseable/foreign/out-of-set
-	// origin BEFORE any credential is offered.
+	// Origin gate — identical to fetch: decide the repo on effectiveOriginURL (a config read that
+	// contacts no remote), refuse an unparseable/foreign/out-of-set origin BEFORE any credential is
+	// offered. What git will actually push to is gated separately, just below.
 	originURL, oerr := effectiveOriginURL(dir)
 	if errors.Is(oerr, errMultiOrigin) {
 		return deskkit.Refused("refused: " + oerr.Error())
@@ -477,6 +580,16 @@ func cmdPush(args []string) (err error) {
 		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
+	// Push-destination gate (sec-1587-S1). `git push origin` does not go to the URL read above:
+	// it goes to every remote.origin.pushurl value, or with none to every url value, rewritten by
+	// pushInsteadOf/insteadOf from every config scope. Read those as git resolves them, require
+	// each to name the gated slug, and hand ALL of them to the token resolver, which binds every
+	// host before it mints anything. Refused here, a push also never charges the write budget.
+	dests, derr := resolveDestinations(dir, repo, true)
+	if derr != nil {
+		return derr
+	}
+
 	// Outward-write budget — charged BEFORE the credential is read, so a rate-limited push
 	// never touches the token file.
 	if aerr := deskkit.AllowWrite("deskgit", repo, 0); aerr != nil {
@@ -484,19 +597,19 @@ func cmdPush(args []string) (err error) {
 	}
 
 	// Token for the slug the gate decided on — per OWNER of that slug, never a caller --repo.
-	token, _, terr := roleTokenForRepo(*asRole, repo)
+	token, _, terr := roleTokenForRepo(*asRole, repo, dests)
 	if terr != nil {
 		return terr // Unverifiable (exit 6), naming the path searched, never the token
 	}
 
-	env, argvPrefix, cleanup, aerr := askpassSupply(token)
+	env, argvPrefix, cleanup, aerr := credentialSupply(token)
 	if aerr != nil {
 		return deskkit.Unverifiable("cannot stage credential supply", aerr)
 	}
 	defer cleanup()
 
 	pushArgs := append(append([]string{}, argvPrefix...),
-		"push", "--receive-pack=git-receive-pack", "origin",
+		"push", "--receive-pack=git-receive-pack", "--no-recurse-submodules", "origin",
 		"refs/heads/"+branch+":refs/heads/"+branch)
 	out, perr := runGitWithEnv(dir, env, pushArgs...)
 	if perr != nil {
@@ -515,8 +628,8 @@ func cmdPush(args []string) (err error) {
 // bestEffortOriginRepo resolves the effective origin slug for AUDIT LABELLING ONLY
 // (#226 item 2). It is never a gate: every caller has already decided its
 // outcome, and an error here yields "" — the same empty `repo` field the line carried
-// before. `ls-remote --get-url` expands url.<base>.insteadOf locally and contacts no
-// remote, so calling it on a refusal path adds no network side effect.
+// before. effectiveOriginURL is a config read that contacts no remote, so calling it on a
+// refusal path adds no network side effect.
 func bestEffortOriginRepo(dir string) string {
 	originURL, err := effectiveOriginURL(dir)
 	if err != nil {
