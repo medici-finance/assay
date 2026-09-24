@@ -3074,6 +3074,72 @@ Every refusal above carries a mutation in `cmd/deskmerge/mutations.json`, run by
 CI: disarm it, and the suite must redden. Eight of them survived as first written and each
 got the test that catches it (docs/desk-tools-gate-bar.md §4).
 
+## deskautolane — the auto-approve lane (ships inert)
+
+`cmd/deskautolane` is the verb of a narrow **auto-approve lane**: a PR is admitted by
+**category** — every changed path inside an area a named human opted in, no tripwire — and it
+stays in the lane only while a **score**, recomputed at every gate, finds no demotion signal.
+The score ejects; it never admits. An ejection is one-way. The decision logic lives in
+`internal/deskkit/autolane.go`; the verb reads the forge and performs the lane's writes.
+
+```bash
+deskautolane check     [<pr>] --repo <owner/repo> [--root <dir>] [--rulings <path>] [--fpy-file <path>]
+deskautolane recompute  <pr>  --repo <owner/repo> [--root <dir>] [--rulings <path>]
+deskautolane merge      <pr>  --repo <owner/repo> --dry-run [--root <dir>] [--rulings <path>] [--fpy-file <path>]
+```
+
+**It ships inert, three ways over.** (1) The lane is CLOSED unless all four roster keys below
+are set; absent is the shipped state and every verb refuses at `config` before its first forge
+request. (2) Every write — the `auto-lane` admission label, and the ejection's label swap,
+single marked comment and `autolane:eject` audit line — requires the rulings register's `R-8`
+Sign-off line to resolve, through the forge, to a comment by the roster-pinned blessing
+authority (login and numeric id); an empty line refuses `ruling-unsigned`. (3) This release
+carries **no merge mutation**: `merge --dry-run` evaluates the whole chain and prints
+`dry-run: would merge <head> into <base> (merge commit)`; `merge` without `--dry-run` refuses
+at `merge-write` after every condition held.
+
+`merge` evaluates, in a pinned order: `caller-role` (the `pr-review-desk` loop, whose App is
+the reviewer role), `config`, `app-token`, `pr-open-ready`, `prior-ejection` (the audit-log
+latch), `area-admit`, `score`, `reviewer-approved` (at the current head), `checks-green`
+(latest run per check name, plus every required context present), `mergeable`, `lane-armed`
+(kill switch, kill signal, daily cap), `ruling-signed`, `head-stable`.
+
+**Category tripwires** (never scored): an author other than the roster's worker App; no single
+`Brief:`/`Issue:` trailer; any changed path outside the repo's opted-in globs; any stream brief
+file (`docs/streams/**/brief-*.md`, compiled — no opt-in can reach one); a risk-classed diff; a
+`surface:core` label or a changed path matching the base branch's `.assay-surfaces`; no
+`.assay-surfaces` on the base branch (no declared surfaces is never read as safe); a
+`Security-Review: fail` anywhere in the reviews array; anything unreadable.
+
+**Score signals, version 1** (each 0/1, the score is their count; a score above the eject line
+ejects): `review-rework` (any CHANGES_REQUESTED in the reviews array, any head, any identity),
+`ci-nonsuccess` (the latest run per check name, judged by `deskkit.ConclusionGreen` — the set
+deskflip's checks-green gate now delegates to), `push-after-request`, `size-large` (`size:L`),
+`model-unstamped`, `unreadable`. An input that could not be read, and nothing else, is
+could-not-check (exit 6) and is not latched as an ejection.
+
+**Kill signal.** `--fpy-file` names the harvested per-class first-pass-yield file; its
+`auto-lane` class carries `n` and `firstPassYield`. Fewer than 10 lane merges reads `early`
+(the lane runs on the ejector and the daily cap alone); at 10 or more, a yield under the floor
+reads `lane: hold (fpy <x> < floor <y>, n=<n>)`. The file absent or unreadable is
+`lane: hold (could-not-check)` — never healthy.
+
+The roster keys (`~/.config/assay/roster.env`; file-only, never the environment):
+
+| Key | Value |
+|---|---|
+| `ASSAY_AUTOAPPROVE_AREAS` | comma-separated `<owner>/<repo>:<glob>:<login>` — one glob per entry (the `.assay-surfaces` subset, a literal first segment), the login the blessing authority or a trusted human who opted the area in. An entry whose glob can reach a declared surface, a risk-classed path or a stream brief file refuses the lane |
+| `ASSAY_AUTOAPPROVE_EJECT_LINE` | integer in `[0, 5]` — a score above it ejects |
+| `ASSAY_AUTOAPPROVE_FPY_FLOOR` | decimal in `(0, 1]` — the kill signal's first-pass-yield floor |
+| `ASSAY_AUTOAPPROVE_DAILY_CAP` | integer in `[1, 100]` — lane merges per repo per UTC day, counted from `autolane:merge result=ok` audit lines |
+
+All four absent is CLOSED; any subset set without the rest refuses. There is no default value
+for any of them that opens the lane. statusgen recognises the four keys and consumes none.
+
+Not in this release: the merge mutation itself (a forge operation), the ready-flip and
+verdict-post recompute hooks in `deskflip` and `deskpost`, the sticky `lane-disarm` issue
+filing and its human re-arm, and the main-red attribution input to the kill signal.
+
 ## deskevidence — Evidence commits as the verifier App
 
 `cmd/deskevidence` commits an Evidence row (or a whole brief file) via the GitHub
