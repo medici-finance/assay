@@ -627,37 +627,59 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        `verified` or `done`, a demotion, `blocked`, a dressed token, or a touched `Verified` /
        `Reviewed` cell — because those stamps are written only by the verify-witness fold, never by a
        PR.
+     - **The delivery repo comes from the brief, never from the PR.** For each changed row, read
+       the delivery repo from the brief file at the target repo's fetched `refs/remotes/origin/main`:
+       its `homed-in:` frontmatter when present, else its stream README's `repo:` frontmatter, else
+       the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
+       It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
+       The verdict records the delivery repo for each row and where it was read from.
      - **Reproduces under reconcile on main.** In a throwaway worktree checked out at the target
        repo's `refs/remotes/origin/main`, fetched this cycle, run
-       `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`,
-       where the delivery repo is the one the brief's work lands in. Admit only when every row the
-       hunk changes is reproduced byte-identically by the rows that run wrote (its `applied` list
-       and the resulting README diff); a hunk row the run did not write, or wrote differently,
-       bounces. Rows the run writes that the PR does not carry do not affect admission. A run that
-       could not look — `lookedAt: false` in its JSON, or a `could-not-check` on stderr (no token,
-       a failed or rate-limited PR fetch) — is not a reproduction: hold the verdict and say so,
-       never admit on it. Use the same `statusgen` binary rule as carve-out A — the
-       pinned/installed build the target repo's CI uses, never one built or resolved from the PR
-       tree — and never run it against a desk's own checkout.
+       `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`
+       with the delivery repo read above. Rows with different delivery repos need one run per
+       delivery repo, each in its OWN fresh throwaway worktree (`--apply` writes into the worktree it
+       runs on), and each row is compared only against the run for its own delivery repo. Admit only
+       when every row the hunk changes is reproduced byte-identically by the rows that run wrote (its
+       `applied` list and the resulting README diff); a hunk row the run did not write, or wrote
+       differently, bounces. A row current main already shows as `implemented` is never written by
+       the run, so it bounces with the one line "already `implemented` on main — merge main and drop
+       the hunk." Rows the run writes that the PR does not carry do not affect admission. A run
+       that could not look — a non-zero exit, missing or unparseable JSON on stdout,
+       `lookedAt: false` in its JSON, or a `could-not-check` on stderr (no token, a failed or
+       rate-limited PR fetch) — is not a reproduction: hold the verdict and say so, never admit on
+       it. The binary is the pinned release binary the target repo's CI uses; where the target
+       repo vendors `statusgen/`, build it from the throwaway `origin/main` worktree's own
+       `statusgen/` — NEVER one built or resolved from the PR head or the PR tree (carve-out A's
+       PR-head build allowance does not carry over) — and never run it against a desk's own
+       checkout.
      - **The witness is a source PR, or the reviewer checks the code exists.** For each admitted
        row, read the same run's `--json` entry for that brief. `source: "pr"` means the witness is
        a merged PR carrying a `Brief: <stream>/<NN>` trailer for that brief (a source PR): confirm
-       on the forge that the PR it names is merged and its body carries that trailer, and the row is
-       admitted. `source: "backfill"` means the witness is backfill-only — a branch-name or body
-       match, no `Brief:` trailer — and the row is admitted only after the reviewer performs a
-       code-existence check in the delivery repo: the files and symbols the brief names as its
-       deliverable exist on the delivery repo's main, read at a ref fetched this cycle (not a
-       sibling checkout). The verdict records that check: the paths and symbols looked for, and the
-       commit read. A deliverable that is missing, or a read that could not be made, bounces the
-       row — could-not-check is never a pass.
+       on the forge that the PR it names is merged and its body carries that trailer. That alone
+       admits the row ONLY when BOTH hold: the delivery repo is the board repo itself, and the PR
+       body was not edited after the merge (its GraphQL `lastEditedAt` is null or not later than
+       its `mergedAt`). Otherwise the row takes the code-existence check below, exactly as a
+       backfill row does. The trailer is joined to the brief on `<stream>/<NN>` alone, with no repo
+       in the key, so in a delivery repo that carries its own same-numbered brief, its trailer can
+       name a DIFFERENT brief; and a PR body stays editable after merge, so a post-merge edit leaves
+       the trailer as a claim with no second layer behind it. `source: "backfill"` means the
+       witness is backfill-only — a branch-name or body match, no `Brief:` trailer — and the row is
+       admitted only after the reviewer performs a code-existence check in the delivery repo: the
+       files and symbols the brief names as its deliverable exist on the delivery repo's main, read
+       at a ref fetched this cycle (not a sibling checkout). The verdict records that check: the
+       paths and symbols looked for, and the commit read. A deliverable that is missing, a
+       `lastEditedAt`/`mergedAt` read that could not be made, or a code read that could not be
+       made, bounces the row — could-not-check is never a pass.
      - **Not a statusgen-source PR.** As in carve-out A.
 
      The PR body must state that the hunk is `reconcile --backfill --apply` output and name the
      witness PR for each row; that statement is a CLAIM, and the run above is the only evidence.
      The carve-out exists because `--apply` only ever writes this one Status-only transition, and
      only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
-     tool would not write itself. The code-existence check is the second layer for the weaker,
-     trailer-less witness: a branch-name or body match can name a brief whose work never landed.
+     tool would not write itself. The code-existence check is the second layer wherever the
+     witness alone cannot tell whether this brief's work landed: a trailer-less branch-name or body
+     match, a cross-repo trailer whose `<stream>/<NN>` may belong to the delivery repo's own brief,
+     and a trailer in a body edited after the merge.
   2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer, EITHER
      `Brief: <stream>/<NN>` (the brief this PR delivers) **OR** `Issue: #<N>` (issue-only work that
      delivers no brief — e.g. a pin bump / re-pin PR, which by construction carries no brief). Both
