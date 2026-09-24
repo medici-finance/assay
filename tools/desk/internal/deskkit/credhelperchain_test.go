@@ -1,12 +1,17 @@
 package deskkit
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // credhelperchain_test.go — the REAL transport probe, against real git, with no stubs.
@@ -478,6 +483,188 @@ func TestCredChainHelperWhitespaceMatchesGit(t *testing.T) {
 			if ok != gitPresentsToken {
 				t.Fatalf("git presents the App token = %v (password %q), but the check reads green=%v (%s)",
 					gitPresentsToken, got, ok, detail)
+			}
+		})
+	}
+}
+
+// netrcLexCase is one netrc body (HOST stands for the push host) and what the check must read
+// for it. The same table drives the unit parity test below, over the full probe, and the
+// ground-truth test after it, over real git and libcurl.
+type netrcLexCase struct {
+	name string
+	body string
+	want string // "red", "green", or "cnc" (could-not-check)
+}
+
+// netrcLexCases pin the netrc lexer to curl's (lib/netrc.c). Each red row is one that curl
+// answers from netrc and that a looser lexer read as no entry (SR-1614-2 round 2, SR-1614-3):
+// a keyword swallowed by stale state fails open. Each green row is one curl answers nothing for
+// (observed against git 2.55.0 with libcurl 8.7.1 on loopback); the check matches it rather than
+// reddening, since the parity target is curl's own reading.
+var netrcLexCases = []netrcLexCase{
+	// '#' at the start of a token ends the line (SR-1614-3 a; SR-1614-2 rows A, B, C).
+	{"comment ending in machine above the entry is red", "# work machine\nmachine HOST login op\n", "red"},
+	{"comment ending in macdef above the entry is red", "# macdef note\nmachine HOST login op\n", "red"},
+	{"comment naming no macdef above the entry is red", "# no macdef here\nmachine HOST login op\n", "red"},
+	{"indented comment ending in machine is red", "   # indented machine\nmachine HOST login op\n", "red"},
+	{"mid-line comment ending in machine is red",
+		"machine other.example.invalid login x password y # machine\nmachine HOST login op\n", "red"},
+	{"comment glued to its first word is red", "#machine\nmachine HOST login op\n", "red"},
+	{"machine then a comment then the host on the next line is red", "machine #c\nHOST login op\n", "red"},
+	// A macdef body ends only on a line whose first byte is a newline or carriage return
+	// (SR-1614-3 b; SR-1614-2 row D), and an empty token on the macdef line itself ends it.
+	{"macdef body with a spaces-only line is skipped whole", "macdef m\nx\n  \nfoo machine\n\nmachine HOST login op\n", "red"},
+	{"macdef line ending in a blank ends the macro at once", "macdef m \nmachine HOST login op\n", "red"},
+	{"macdef line ending in a tab ends the macro at once", "macdef m\t\nmachine HOST login op\n", "red"},
+	{"line starting with a carriage return ends a macdef body", "macdef m\nx\n\rjunk\nmachine HOST login op\n", "red"},
+	{"CRLF empty line ends a macdef body", "macdef m\r\nx\r\n\r\nmachine HOST login op\r\n", "red"},
+	// An unquoted token ends at any whitespace byte, not only space and tab (SR-1614-2 rows E, N).
+	{"vertical tab separates tokens", "machine\vHOST login op\n", "red"},
+	{"form feed separates tokens", "machine\fHOST login op\n", "red"},
+	{"carriage return separates tokens", "machine other.example.invalid login a\n\rmachine HOST login op\n", "red"},
+	// Quoted tokens take the escapes \n \r \t, and the byte after a closing quote is skipped.
+	{"quoted token with an escaped newline is not a keyword", "\"machi\\ne\" machine HOST login op\n", "red"},
+	{"quoted token with an escaped letter is that letter", "\"mach\\ine\" HOST login op\n", "red"},
+	{"byte after a closing quote is skipped", "\"a\"xmachine HOST login op\n", "red"},
+	{"quoted host is red", "machine \"HOST\" login op\n", "red"},
+	{"entry on a last line with no newline is red", "machine HOST login op", "red"},
+
+	// Green: curl answers nothing for these, and neither does the check.
+	{"spaces-only line inside a macdef does not end it", "macdef m\n  \nmachine HOST login op\n", "green"},
+	{"form-feed line inside a macdef does not end it", "macdef m\n\f\nmachine HOST login op\n", "green"},
+	{"comment after a non-matching entry hides its words", "machine other.example.invalid # note machine\nHOST login op\n", "green"},
+	{"blank before the newline after machine is an empty host", "machine \nHOST login op\n", "green"},
+	{"hash inside a token is not a comment", "machine other.example.invalid#x\nHOST login op\n", "green"},
+	{"closing quote eats the next byte of a keyword", "\"a\"machine HOST login op\n", "green"},
+	{"machine default names a host, not a default entry", "machine default login op\n", "green"},
+
+	// curl refuses the whole file; the check does not guess.
+	{"unterminated quote is could-not-check", "\"abc\nmachine HOST login op\n", "cnc"},
+	{"NUL byte is could-not-check", "machine\x00x\nmachine HOST login op\n", "cnc"},
+}
+
+// TestCredChainNetrcLexer runs every netrcLexCases body through the full probe, with the App
+// helper configured, so a netrc entry is the only thing that can redden it.
+func TestCredChainNetrcLexer(t *testing.T) {
+	for _, c := range netrcLexCases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newChainRepo(t)
+			r.writeHome(".netrc", strings.ReplaceAll(c.body, "HOST", "github.com"), 0o600)
+			r.local("credential.helper", r.appHelper())
+			ok, detail, err := r.probeFull()
+			switch c.want {
+			case "cnc":
+				if err == nil {
+					t.Fatalf("probe = %v (%s), want could-not-check", ok, detail)
+				}
+				if !strings.Contains(err.Error(), "netrc") {
+					t.Errorf("error %q lacks %q", err, "netrc")
+				}
+			case "red":
+				if err != nil {
+					t.Fatalf("probe error (could-not-check): %v, want red", err)
+				}
+				if ok || !strings.Contains(detail, "netrc") {
+					t.Fatalf("probe = %v (%s), want red naming netrc", ok, detail)
+				}
+			case "green":
+				if err != nil {
+					t.Fatalf("probe error (could-not-check): %v, want green", err)
+				}
+				if !ok {
+					t.Fatalf("probe = %v (%s), want green", ok, detail)
+				}
+			}
+		})
+	}
+}
+
+// TestCredChainNetrcMatchesCurl pins netrcLexCases to the git and libcurl on PATH. For each
+// body it has git ask a loopback-only server (127.0.0.1, which answers every request 401) for
+// refs, with that body as the only netrc and no helper, and records whether curl presented the
+// netrc credential. Wherever curl presents it, the check must read red or could-not-check;
+// never green. That is the fail-open direction this check exists to refuse, and it is asserted
+// against whatever libcurl the host carries. A check that reads red where curl presents
+// nothing is over-inclusive and only logged here, since libcurl builds may differ on a
+// corner; the table's green rows pin the check's own reading of those.
+func TestCredChainNetrcMatchesCurl(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("curl also reads _netrc and USERPROFILE on Windows; this harness sets HOME only")
+	}
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	var mu sync.Mutex
+	var presented []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if user, _, ok := req.BasicAuth(); ok {
+			mu.Lock()
+			presented = append(presented, user)
+			mu.Unlock()
+		}
+		w.Header().Set("WWW-Authenticate", `Basic realm="parity"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	host := "127.0.0.1"
+	if !strings.Contains(srv.URL, "://"+host+":") {
+		t.Skipf("the loopback server is not on %s: %s", host, srv.URL)
+	}
+	tmp := t.TempDir()
+	askpass := filepath.Join(tmp, "askpass.sh")
+	if err := os.WriteFile(askpass, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	global := filepath.Join(tmp, "global.gitconfig")
+	if err := os.WriteFile(global, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// curlPresents reports whether git, through libcurl, sent the netrc login for body.
+	curlPresents := func(t *testing.T, body string) bool {
+		t.Helper()
+		home := t.TempDir()
+		if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		presented = nil
+		mu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, gitPath, "ls-remote", srv.URL+"/example-org/example-repo.git")
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_CONFIG_GLOBAL=" + global, "XDG_CONFIG_HOME=" + filepath.Join(home, "xdg"),
+			"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=" + askpass, "SSH_ASKPASS=", "NO_PROXY=*"}
+		_, _ = cmd.CombinedOutput() // the server always answers 401; only what curl sent matters
+		mu.Lock()
+		defer mu.Unlock()
+		for _, u := range presented {
+			if u == "op" {
+				return true
+			}
+		}
+		return false
+	}
+	if !curlPresents(t, "machine "+host+" login op password parity\n") {
+		t.Skip("the git on PATH did not present a plain netrc machine entry; it cannot serve as ground truth")
+	}
+	for _, c := range netrcLexCases {
+		t.Run(c.name, func(t *testing.T) {
+			body := strings.ReplaceAll(c.body, "HOST", host)
+			sent := curlPresents(t, body)
+			t.Setenv("HOME", t.TempDir())
+			unsetForTest(t, "NETRC")
+			if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".netrc"), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			entry, err := netrcEntryFor(host)
+			switch {
+			case sent && err == nil && entry == "":
+				t.Fatalf("curl presented the netrc credential, but the check finds no entry (reads green)")
+			case !sent && (err != nil || entry != ""):
+				t.Logf("over-inclusive: curl presented nothing, the check reads entry=%q err=%v", entry, err)
 			}
 		})
 	}
