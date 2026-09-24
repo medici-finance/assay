@@ -30,18 +30,30 @@ import (
 // remoteURLAllowList maps each file (relative to tools/desk) that calls RemoteURL to the number of
 // calls it makes and WHY each is on the list. "OPEN class site" marks a gate that git then
 // contradicts, still to be fixed; remove it here in the change that fixes it.
+//
+// #1623 fixed and removed deskpr (preflight now gates on `git remote get-url --all origin`, and
+// create/update gate the push on `git remote get-url --push --all origin`) and deskmerge
+// (resolveRepoRoot gates the fetch on git's resolution; the merge gates its push destinations in
+// the scratch worktree the push leaves from). It also assessed the sites below and the one site
+// this scan cannot see:
+//
+//   - deskclaim-ref (cmd/deskclaim-ref/gogit.go, originRemoteURL — go-git's Remote().Config(),
+//     not a RemoteURL call, so the scan does not count it): NOT a gate git contradicts. The
+//     origin read supplies only the HOST hint and the default slug; the tool then dials
+//     `https://<host>/<owner>/<name>.git` itself, built from deskkit.ForgeKindFromSlugAndHost,
+//     through go-git's own transport. No git verb resolves origin after the read, so there is no
+//     second resolution to disagree with it.
 var remoteURLAllowList = map[string]struct {
 	calls  int
 	reason string
 }{
-	"cmd/deskpr/deskpr.go": {1, "OPEN class site: preflight gates IsAllowedRepo on this read, then " +
-		"`git push -u origin` pushes to git's own resolution (pushurl / pushInsteadOf)."},
-	"cmd/deskmerge/currency.go": {1, "OPEN class site: resolveRepoRoot checks originNames on this " +
-		"read, then `git fetch origin` resolves origin itself."},
-	"cmd/deskwt/deskwt.go": {1, "currentRepo names the worktree's repo; not yet assessed as a gate " +
-		"that git then contradicts."},
-	"cmd/deskreply/deskreply.go": {1, "preflight gates IsAllowedRepo for a forge-API reply; not yet " +
-		"assessed as a gate that git then contradicts."},
+	"cmd/deskwt/deskwt.go": {1, "OPEN class site (assessed #1623, fix owned by the deskwt-side " +
+		"work, not this change): currentRepo gates IsAllowedRepo, and role-init then runs " +
+		"`git fetch --no-tags origin main`, which resolves origin itself (worktree/global scope, " +
+		"insteadOf)."},
+	"cmd/deskreply/deskreply.go": {1, "assessed #1623 — NOT a gate git contradicts: preflight " +
+		"gates IsAllowedRepo for a forge-API reply, and no git verb that resolves origin runs " +
+		"after it (the reply goes through the forge API, never git transport)."},
 	"cmd/deskpushguard/main.go": {1, "fallback only when the pre-push hook received no URL " +
 		"argument; the normal path takes the URL git itself hands the hook."},
 	"internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the RAW configured value on " +
