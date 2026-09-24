@@ -28,7 +28,7 @@ var (
 	twoPlurals   = "TestListsIDsAndPRs" + "TogetherInOneNameNow"      // budget: two mid acronyms
 	capsKeyAWS   = "KEY=" + awsExampleSecretKey                       // caps key, AWS secret value
 	capsKeyB62   = "TOKEN=" + scanSecret40                            // caps key, 40 base62 value
-	capsKeyLong  = "ABCDEFGHIJKLMNOPQ=" + "5d529c27e3b1a04f9c2d8e7b" + "6a1f0c3d4e5f6a7b"
+	capsKeyLong  = "ABCDEFGH" + "IJKLMNOPQ" + "=" + "5d529c27e3b1a04f9c2d8e7b" + "6a1f0c3d4e5f6a7b"
 	capsKeyMixed = "HEXa=" + strings.Repeat("e5496277be5d09bc", 4)
 	glToken      = "glpat-" + "xq7Rk2PzLw9vNc4bYf6H"
 )
