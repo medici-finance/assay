@@ -164,7 +164,7 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	res, perr := gitcore.PushRefUpdate(ctx, gitcore.RefUpdate{
+	res, reason, perr := gitcore.PushRefUpdateDetail(ctx, gitcore.RefUpdate{
 		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs,
 	})
 	if perr != nil {
@@ -172,6 +172,9 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 		return deskkit.ClaimWriteUnverifiable
 	}
 	if res == gitcore.RefUpdateRejected {
+		// Keep the server's own refusal text for attribution: when the verb then finds no
+		// holder, "rejected but no claim exists" must say WHY the server refused.
+		g.fail(fmt.Errorf("server refused %s: %s", g.refName(id), reason))
 		return deskkit.ClaimWriteRejected
 	}
 	return deskkit.ClaimWriteApplied

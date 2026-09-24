@@ -132,37 +132,52 @@ type RefUpdate struct {
 // a non-nil error is a transport/auth/not-found/protocol failure the caller reads as
 // could-not-check (never as "free" or "applied").
 func PushRefUpdate(ctx context.Context, u RefUpdate) (RefUpdateResult, error) {
+	res, _, err := PushRefUpdateDetail(ctx, u)
+	return res, err
+}
+
+// PushRefUpdateDetail is PushRefUpdate plus the server's own reason for a refusal: on
+// RefUpdateRejected the string is the per-command report-status text the server sent (for
+// example "stale info", "failed to update ref", or a policy refusal), so a caller can tell the
+// compare-and-swap losing from the server refusing the write for another cause. It is "" on
+// RefUpdateApplied and on error.
+func PushRefUpdateDetail(ctx context.Context, u RefUpdate) (RefUpdateResult, string, error) {
+	res, reason, err := pushRefUpdate(ctx, u)
+	return res, reason, err
+}
+
+func pushRefUpdate(ctx context.Context, u RefUpdate) (RefUpdateResult, string, error) {
 	ep, err := transport.NewEndpoint(u.URL)
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: ref-update endpoint: %w", err)
+		return 0, "", fmt.Errorf("gitcore: ref-update endpoint: %w", err)
 	}
 	cli, err := client.NewClient(ep)
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: ref-update client: %w", err)
+		return 0, "", fmt.Errorf("gitcore: ref-update client: %w", err)
 	}
 	sess, err := cli.NewReceivePackSession(ep, u.Auth)
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: receive-pack session: %w", err)
+		return 0, "", fmt.Errorf("gitcore: receive-pack session: %w", err)
 	}
 	defer sess.Close()
 
 	adv, err := sess.AdvertisedReferencesContext(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: receive-pack advertise: %w", err)
+		return 0, "", fmt.Errorf("gitcore: receive-pack advertise: %w", err)
 	}
 
 	req := packp.NewReferenceUpdateRequestFromCapabilities(adv.Capabilities)
 	req.Commands = []*packp.Command{{Name: u.Ref, Old: u.Old, New: u.New}}
 	if u.New != plumbing.ZeroHash {
 		if u.Objects == nil {
-			return 0, fmt.Errorf("gitcore: receive-pack: a non-delete update carries no object source")
+			return 0, "", fmt.Errorf("gitcore: receive-pack: a non-delete update carries no object source")
 		}
 		var buf bytes.Buffer
 		enc := packfile.NewEncoder(&buf, u.Objects, false)
 		// Encode from the new tip AND the empty blob it targets so the pack is self-contained
 		// even against a server that has never seen an empty-blob loose object.
 		if _, eerr := enc.Encode([]plumbing.Hash{u.New, plumbing.NewHash(EmptyBlobHash)}, 10); eerr != nil {
-			return 0, fmt.Errorf("gitcore: receive-pack pack encode: %w", eerr)
+			return 0, "", fmt.Errorf("gitcore: receive-pack pack encode: %w", eerr)
 		}
 		req.Packfile = io.NopCloser(&buf)
 	}
@@ -173,22 +188,22 @@ func PushRefUpdate(ctx context.Context, u RefUpdate) (RefUpdateResult, error) {
 	// losing) is classified as a rejection rather than an opaque error.
 	if rs != nil {
 		if rs.UnpackStatus != "" && rs.UnpackStatus != "ok" {
-			return 0, fmt.Errorf("gitcore: receive-pack unpack error: %s", rs.UnpackStatus)
+			return 0, "", fmt.Errorf("gitcore: receive-pack unpack error: %s", rs.UnpackStatus)
 		}
 		for _, cs := range rs.CommandStatuses {
 			if cs.Status != "ok" {
-				return RefUpdateRejected, nil
+				return RefUpdateRejected, cs.Status, nil
 			}
 		}
-		return RefUpdateApplied, nil
+		return RefUpdateApplied, "", nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: receive-pack: %w", err)
+		return 0, "", fmt.Errorf("gitcore: receive-pack: %w", err)
 	}
 	// No report-status and no error: report-status was not negotiated, but the command was
 	// sent and the session closed cleanly. Treat as applied (the local git transport takes
 	// this path); the http transport always returns a report-status.
-	return RefUpdateApplied, nil
+	return RefUpdateApplied, "", nil
 }
 
 // DeleteResult is the outcome of a ref delete.
