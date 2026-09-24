@@ -59,16 +59,17 @@ import (
 // with no configured humans there are no names to anchor on, so nothing is detected
 // (the mechanism ships public; the names are private adopter config).
 //
-// OUT OF SCOPE — THE ON-BEHALF-OF ATTRIBUTION FORM. `on-behalf-of human:<login>` in
-// a Runner cell or prose, and the `On-behalf-of: human:<login>` trailer, are
+// OUT OF SCOPE — THE ON-BEHALF-OF ATTRIBUTION FORM. `on-behalf-of human:<who>` in
+// a Runner cell or prose, and the `On-behalf-of: human:<who>` trailer, are
 // ATTRIBUTION (which human an App identity acted for), never an acceptance / ruling
 // / sign-off claim, and detectCitations strips them (stripOnBehalfOf, corroborate.go)
 // before it looks for sign-off vocabulary; only the sign-off half of a mixed line is
-// judged. The two forms also spell their principal DIFFERENTLY, on purpose:
-// on-behalf-of is LOGIN-keyed (docs/on-behalf-of.md — the human map's VALUE), while
-// this checker and the stamp gate are NAME-keyed (the human map's KEY, resolved by
+// judged. The on-behalf-of principal is the login (the human map's VALUE) on a repo
+// the roster states is private and the neutral name (the map's KEY) elsewhere
+// (docs/on-behalf-of.md); the strip accepts either, but only after the marker. This
+// checker and the stamp gate stay NAME-keyed (the human map's KEY, resolved by
 // HumanLogin; the login is accepted only as a citation SPELLING, citedHumanLogin).
-// Neither spelling is a bug in the other — do not "fix" one into the other.
+// Neither rule is a bug in the other — do not "fix" one into the other.
 
 // citedHumanLogin resolves a name AS WRITTEN IN A CITATION to the GitHub login whose
 // artifacts corroborate it. A prose citation may name a human either by the

@@ -442,8 +442,11 @@ func TestRuling_NamedWithoutLinkFallsThrough(t *testing.T) {
 	}
 }
 
-// Only DR records in the register directory, with an ADDED line, are gated.
+// Only records in the register directory, with an ADDED line, are gated. The set is
+// the one the register lint reads (parseDecisionsDir): every .md there except the
+// README, whether or not its basename is DR-shaped.
 func TestRuling_RecordsInDiffScope(t *testing.T) {
+	const otherName = "docs/streams/decisions/not-dr-shaped.md"
 	diff := strings.Join([]string{
 		"+++ b/docs/streams/decisions/DR-example-ruling-rec.md",
 		"+decided-by: \"human:<name>\"",
@@ -453,11 +456,15 @@ func TestRuling_RecordsInDiffScope(t *testing.T) {
 		"+decided-by: \"human:<name>\"",
 		"+++ b/docs/streams/decisions/DR-example-untouched.md",
 		"-decided-by: \"human:<name>\"",
+		"+++ b/" + otherName,
+		"+decided-by: \"human:<name>\"",
+		"+++ b/docs/streams/decisions/sub/DR-example-nested.md",
+		"+decided-by: \"human:<name>\"",
 		"",
 	}, "\n")
 	got := decisionRecordsInDiff("", diff)
-	if len(got) != 1 || got[0] != rlFile {
-		t.Fatalf("decisionRecordsInDiff = %v, want exactly [%s]", got, rlFile)
+	if len(got) != 2 || got[0] != rlFile || got[1] != otherName {
+		t.Fatalf("decisionRecordsInDiff = %v, want exactly [%s %s]", got, rlFile, otherName)
 	}
 }
 
@@ -476,6 +483,106 @@ func TestRuling_LoadRecord(t *testing.T) {
 	rec := loadDecisionRecordStamp(root, rlFile)
 	if rec.LoadErr != "" || rec.ID != rlRecordID || rec.Ruling != link || len(rec.Names) != 0 {
 		t.Fatalf("loaded %+v", rec)
+	}
+}
+
+// rlWriteRecord writes one decision record under root at the repo-relative path
+// file, with frontmatter id (omitted when empty), a placeholder decided-by and a
+// ruling link to the faked forge's comment. The record is otherwise lint-clean.
+func rlWriteRecord(t *testing.T, root, file, id string) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(file))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fm := "---\n"
+	if id != "" {
+		fm += "id: " + id + "\n"
+	}
+	fm += "date: \"2026-09-24\"\ntitle: \"t\"\nconsequence: minor\ndecided-by: \"human:<name>\"\n" +
+		"ruling: \"" + rlURL(rlRepo, rlIssue, rlComment) + "\"\n" +
+		"alternatives:\n  - \"a — b\"\naccepted:\n  - \"c\"\n---\nbody\n"
+	if err := os.WriteFile(p, []byte(fm), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The ruling lane binds a record by its frontmatter id — the id the design gate
+// resolves a brief's design: by and the register lint validates — not by its file
+// name. registers-v1 §7.2 sets no file-name rule for a record, so a record whose
+// basename is not DR-shaped, or is a DIFFERENT DR id, is ruled on under its own id.
+// Keying on the basename refused such a record with a false record-not-named reason
+// that named an empty (or the wrong) id, while --lint accepted it.
+func TestRuling_RecordBoundByFrontmatterID(t *testing.T) {
+	for name, file := range map[string]string{
+		"non-dr-basename":       "docs/streams/decisions/example-ruling-rec.md",
+		"other-dr-basename":     "docs/streams/decisions/DR-example-other-rec.md",
+		"canonical-dr-basename": rlFile, // control: basename and id agree
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			rlWriteRecord(t, root, file, rlRecordID)
+			if probs := decisionRegisterProblems(root); len(probs) != 0 {
+				t.Fatalf("fixture must be lint-clean, got %v", probs)
+			}
+			rec := loadDecisionRecordStamp(root, file)
+			if rec.ID != rlRecordID {
+				t.Fatalf("loadDecisionRecordStamp(%s).ID = %q, want the frontmatter id %q", file, rec.ID, rlRecordID)
+			}
+			r := rlRun(t, defaultRLForge().client(t), rec, &ghPRData{}, nil)
+			if r.Verdict != verdictCorroborated {
+				t.Fatalf("verdict = %v, want CORROBORATED — evidence: %s", r.Verdict, r.Evidence)
+			}
+		})
+	}
+}
+
+// A record with no valid DR-<slug> frontmatter id cannot be bound to a ruling: no
+// comment can name it (condition 5). The lane still refuses (fail closed), under
+// condition 5's reason, with a detail that says the id is what is missing rather than
+// blaming the comment; and the offline --lint reports the same record, so it never
+// passes --lint only to dead-end in --corroborate. The DR-shaped basename cases are
+// the ones keying on the file name got wrong the other way: they corroborated a record
+// whose id the design gate rejects.
+func TestRuling_RecordWithoutValidIDRefusedTruthfully(t *testing.T) {
+	for name, tc := range map[string]struct{ file, id string }{
+		"no-id-non-dr-basename":  {"docs/streams/decisions/example-ruling-rec.md", ""},
+		"no-id-dr-basename":      {rlFile, ""},
+		"invalid-id-dr-basename": {rlFile, "DR-short"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			rlWriteRecord(t, root, tc.file, tc.id)
+			lintHit := false
+			for _, p := range decisionRegisterProblems(root) {
+				lintHit = lintHit || strings.Contains(p, " id ")
+			}
+			if !lintHit {
+				t.Fatalf("the register lint must report a record with id %q offline", tc.id)
+			}
+			r := rlRun(t, defaultRLForge().client(t), loadDecisionRecordStamp(root, tc.file), &ghPRData{}, nil)
+			rlWantMissing(t, r, rulingRecordNotNamed)
+			if !strings.Contains(r.Evidence, "carries no valid DR-<slug> frontmatter id") {
+				t.Fatalf("refusal must say the record has no valid id, not blame the comment: %s", r.Evidence)
+			}
+		})
+	}
+}
+
+// An empty record id cites nothing: decisionCitingBriefs must not match every brief
+// whose design: is empty.
+func TestRuling_CitingBriefsEmptyIDMatchesNothing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/designgate")); err != nil {
+		t.Fatal(err)
+	}
+	// Control: the fixture's dg/01 cites DR-fixture-approved, and the other dg
+	// briefs carry no design: at all.
+	if got := decisionCitingBriefs(root, "DR-fixture-approved"); len(got) != 1 || got[0] != "dg/01" {
+		t.Fatalf("control: decisionCitingBriefs(DR-fixture-approved) = %v, want [dg/01]", got)
+	}
+	if got := decisionCitingBriefs(root, ""); len(got) != 0 {
+		t.Fatalf("decisionCitingBriefs(\"\") = %v, want none — an empty id cites nothing", got)
 	}
 }
 

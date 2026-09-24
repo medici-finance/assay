@@ -380,8 +380,8 @@ func hasApprovalPhrase(body string) bool {
 var humanStampRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z_-])human:([0-9A-Za-z_]+)`)
 
 // onBehalfOfAnnotationRe matches the on-behalf-of ATTRIBUTION form — the Runner-cell
-// annotation `on-behalf-of human:<login>` and the commit/body trailer
-// `On-behalf-of: human:<login>` — so both corroboration lanes can strip it BEFORE
+// annotation `on-behalf-of human:<who>` and the commit/body trailer
+// `On-behalf-of: human:<who>` — so both corroboration lanes can strip it BEFORE
 // they look for sign-off vocabulary. It is attribution, never an acceptance / ruling /
 // sign-off claim: it records which human an App identity acted FOR, not that the
 // human approved anything, so there is nothing on the PR to corroborate and matching
@@ -390,16 +390,20 @@ var humanStampRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z_-])human:([0-9A-Za-z_]+)
 //
 // TWO PRINCIPAL SPELLINGS, ON PURPOSE — do not "fix" one into the other:
 //
-//   - on-behalf-of is LOGIN-keyed (docs/on-behalf-of.md; principal.go): the token
-//     after `human:` is the GitHub login, resolved against the roster's human map
-//     VALUES (onBehalfOfPrincipalOf / attribution.go).
+//   - on-behalf-of names the principal in the form its TARGET's visibility calls for
+//     (docs/on-behalf-of.md; principal.go): the GitHub login (a human map VALUE) on a
+//     repo the roster states is private, the neutral name (the human map KEY) on every
+//     other target. Either is accepted here only as the principal of an on-behalf-of
+//     marker, and only when it is a CONFIGURED login or name
+//     (isConfiguredOnBehalfOfPrincipal).
 //   - a human:<name> STAMP and a prose citation are NAME-keyed (this file;
 //     citationcorroborate.go): the token is the configured NAME, the human map KEY,
 //     resolved to a login by HumanLogin.
 //
-// Fed to the stamp regex, a login-keyed annotation therefore fails one of two ways —
-// as an unmapped "name" (the login is a map value, not a key) or, when a login happens
-// to equal a name, as an uncorroborated stamp on a PR nobody has approved. Neither is
+// Fed to the stamp regex, an annotation therefore fails one of two ways — a login as
+// an unmapped "name" (the login is a map value, not a key), or a neutral name (or a
+// login that happens to equal a name) as an uncorroborated stamp on a PR nobody has
+// approved. Neither is
 // a forgery; both are the checker reading an attribution as a sign-off. Stripping the
 // MARKER (never the login — see stripOnBehalfOf) is the ONLY exemption: every
 // human:<name> outside it, and every sign-off the login is then read to have made,
@@ -437,8 +441,9 @@ func isConfiguredHumanLogin(token string) bool {
 }
 
 // stripOnBehalfOf removes the on-behalf-of MARKER (`on-behalf-of[:] human:`) from
-// every annotation / trailer in s whose principal is a configured human login, and
-// keeps the login token that followed it, so the sign-off scans that follow judge
+// every annotation / trailer in s whose principal is a configured human login or
+// neutral name (isConfiguredOnBehalfOfPrincipal), and keeps the principal token that
+// followed it, so the sign-off scans that follow judge
 // only what is left — and still see everything the human WROTE. Stripping the login
 // too would hide a real sign-off that follows the trailer: "On-behalf-of: human:ada
 // approved the prod flip on #12" must still read as "ada approved …" to the citation
@@ -447,8 +452,8 @@ func isConfiguredHumanLogin(token string) bool {
 // prefix) and is a citation only when a sign-off verb follows it.
 //
 // The principal token runs to the same boundary onBehalfOfPrincipalOf stops at — `)`,
-// `|`, whitespace or end of line — and the WHOLE token must pass isConfiguredHumanLogin
-// or the annotation is left untouched: `human:ada-approved` (login-shaped but not a
+// `|`, whitespace or end of line — and the WHOLE token must pass
+// isConfiguredOnBehalfOfPrincipal or the annotation is left untouched: `human:ada-approved` (login-shaped but not a
 // declared login) and `human:ada_approved` (not login-shaped) both stay in the text,
 // so the stamp lane still records their stamp and gates it (second reviewer finding:
 // a wider login class swallowed a hyphen-joined verb and both lanes lost it). RE2 has
@@ -457,12 +462,59 @@ func isConfiguredHumanLogin(token string) bool {
 // cell, so the pre-existing byte-identity comparison still sees the real cell.
 func stripOnBehalfOf(s string) string {
 	return onBehalfOfAnnotationRe.ReplaceAllStringFunc(s, func(m string) string {
-		login := onBehalfOfAnnotationRe.FindStringSubmatch(m)[1]
-		if !isConfiguredHumanLogin(login) {
+		principal := onBehalfOfAnnotationRe.FindStringSubmatch(m)[1]
+		if !isConfiguredOnBehalfOfPrincipal(principal) {
 			return m
 		}
-		return login
+		return principal
 	})
+}
+
+// withoutOnBehalfOfRelays removes every on-behalf-of relay from s: the marker AND the
+// principal it names. The offline human-AUTHORITY readers run it before they look for
+// a `human:` token. Those readers are `authorized-by:` (authorizedByVerifiedHuman),
+// `parked-by:` (parkAuthorizedByVerifiedHuman, parkIsAuthorizedVocab) and a deploy
+// record's `authority:` / `rollback-approver:` (hasHumanAuthority).
+//
+// It is stripOnBehalfOf's counterpart. The online lanes strip the marker, so a relay
+// needs no corroboration there. An authority reader that still read the principal as a
+// `human:` token would then let a relay pass BOTH lanes: an App writes
+// `authorized-by: on-behalf-of human:<name>` and the human never acts. Attribution
+// records which human an App acted for. It is never that human's sign-off, so on an
+// authority key it grants nothing.
+//
+// It removes the relay unconditionally. It does not first ask whether the principal is
+// configured, as stripOnBehalfOf does. It uses the same regex, so everything the online
+// strip exempts, this removes. A principal the online strip would leave in place is
+// removed here as well. The online lane then still gates it as a stamp, and this lane
+// no longer counts it as authority. Both effects are fail-closed. A `human:<name>`
+// written OUTSIDE a relay is untouched, and it authorizes (and is gated online) exactly
+// as before.
+func withoutOnBehalfOfRelays(s string) string {
+	return onBehalfOfAnnotationRe.ReplaceAllString(s, " ")
+}
+
+// isConfiguredOnBehalfOfPrincipal reports whether token is a principal an on-behalf-of
+// marker may legitimately name: a configured human LOGIN (isConfiguredHumanLogin — the
+// form written on a repo the roster states is private) or a configured neutral NAME (an
+// ASSAY_HUMAN_LOGIN_MAP key — the form written on every other target, principal.go's
+// onBehalfOfSubject and deskkit's resolver alike). The name half holds the login half's
+// two anchors: the whole token must be login-shaped, and it must be a key the adopter
+// DECLARED — `ada-approved` and `ada_approved` stay un-stripped whichever map half they
+// resemble. An empty map exempts nothing.
+func isConfiguredOnBehalfOfPrincipal(token string) bool {
+	if isConfiguredHumanLogin(token) {
+		return true
+	}
+	if token == "" || len(token) > 39 || !gitHubLoginShapeRe.MatchString(token) {
+		return false
+	}
+	for name := range scanEffectiveConfig().HumanLogins {
+		if strings.EqualFold(name, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // looseHumanStampRe matches the same boundary-anchored "human:" prefix followed by
