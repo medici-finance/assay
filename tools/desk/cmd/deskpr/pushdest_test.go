@@ -87,7 +87,7 @@ func TestPushDestSentinelIsRefusedByName(t *testing.T) {
 // Unfixed: the push fans out; the worktree's own destination receives the branch while the
 // other half goes out over SSH (rc 6 here only because GIT_SSH_COMMAND=false stops it). Fixed:
 // refused before any push, both values and both scopes named, the local bare untouched.
-func TestPushDestMultiValuedInheritedPlusWorktreeRefuses(t *testing.T) {
+func TestPushDestMultiValuedRefuses(t *testing.T) {
 	shared := newBaseFixture(t)
 	mustGit(t, shared, "remote", "set-url", "--push", "origin", "https://example.com/example-org/tracker.git")
 	mustGit(t, shared, "config", "url.ssh://git@127.0.0.1:1/.insteadOf", "https://example.com/")
@@ -118,7 +118,7 @@ func TestPushDestMultiValuedInheritedPlusWorktreeRefuses(t *testing.T) {
 
 // An https push URL that a url.<base>.insteadOf rule rewrites to SSH. The raw config says https,
 // git pushes over SSH.
-func TestPushDestInsteadOfRewriteToSSHRefuses(t *testing.T) {
+func TestPushDestInsteadOfToSSHRefuses(t *testing.T) {
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://example.com/example-org/tracker.git")
 	mustGit(t, work, "config", "url.ssh://git@127.0.0.1:1/.insteadOf", "https://example.com/")
@@ -131,7 +131,7 @@ func TestPushDestInsteadOfRewriteToSSHRefuses(t *testing.T) {
 }
 
 // update pushes too, so it is gated on the same terms and refuses BEFORE the token mint.
-func TestPushDestUpdateSentinelRefusesBeforeMint(t *testing.T) {
+func TestPushDestUpdateRefusesBeforeMint(t *testing.T) {
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", sentinelPushURL)
 	calls := withEnv(t, work)
@@ -154,7 +154,7 @@ func TestPushDestUpdateSentinelRefusesBeforeMint(t *testing.T) {
 // the repository's own config file (it applies that file's insteadOf rules, not the global
 // ones), so unfixed, the raw read passed the allow-list and the create went through. Fixed: the
 // repo gate decides on git's resolution and refuses.
-func TestPreflightOriginInsteadOfRewriteIsGatedOnGitsURL(t *testing.T) {
+func TestPreflightGatesOnGitsOriginURL(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	global := filepath.Join(t.TempDir(), "gitconfig")
@@ -180,7 +180,7 @@ func TestPreflightMultiValuedOriginURLRefuses(t *testing.T) {
 // The positive controls: the gate is not a blanket refusal. A single LOCAL destination (every
 // offline fixture) creates, and a single https destination naming the origin repo passes the
 // gate itself (driven directly — pushing it would need the network).
-func TestPushDestSingleLocalCreatesAndHTTPSPassesGate(t *testing.T) {
+func TestPushDestLocalAndHTTPSAdmitted(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	if err := createErr(t); err != nil {

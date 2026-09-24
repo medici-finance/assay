@@ -73,7 +73,7 @@ func TestResolveRepoRootGatesOnGitsFetchURL(t *testing.T) {
 
 // FETCH side, multi-valued url list: no single URL names the project. Unfixed: go-git's first
 // value was checked and the run went on. Fixed: refused.
-func TestResolveRepoRootRefusesMultiValuedOrigin(t *testing.T) {
+func TestResolveRepoRootRefusesMultiOrigin(t *testing.T) {
 	withScratchTemp(t)
 	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
 	git(t, w.root, "config", "--add", "remote.origin.url", w.mirrorAsOther(t))
