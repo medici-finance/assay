@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -290,6 +291,40 @@ func TestCredChainGitParity(t *testing.T) {
 			r.writeHome(".netrc", "machine other.example.invalid login a\ndefault login other\n", 0o600)
 			r.local("credential.helper", r.appHelper())
 		}, false, false, "netrc"},
+		// curl compares every netrc keyword case-insensitively (SR-1614-2).
+		{"netrc MACHINE keyword in upper case is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "MACHINE github.com login other\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc Machine keyword in mixed case is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "Machine github.com login other\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc DEFAULT keyword in upper case is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "DEFAULT login other\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc MACHINE with the host on the next line is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "MACHINE\ngithub.com\nlogin other\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc MACDEF body in upper case does not count", func(r *chainRepo) {
+			r.writeHome(".netrc", "MACDEF init\nmachine github.com login other\n\nmachine other.example.invalid login a\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, true, false, ""},
+		// Outside a matched entry curl does not treat login/password/account as keywords, so
+		// the token after one is read as a keyword itself: `default` there opens a default
+		// entry and `machine <host>` a machine entry.
+		{"netrc default after a login keyword of a non-matching entry is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "machine other.example.invalid login default\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		{"netrc machine after an account keyword of a non-matching entry is red", func(r *chainRepo) {
+			r.writeHome(".netrc", "machine other.example.invalid account machine github.com\n", 0o600)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "netrc"},
+		// Over-inclusive, not parity: the git+libcurl pairs checked did not read $NETRC. Reading
+		// it can only redden the check, so this case pins that direction; do not "fix" it away.
 		{"netrc named by NETRC is red", func(r *chainRepo) {
 			p := r.writeHome("alt-netrc", "machine GitHub.com login other\n", 0o600)
 			r.t.Setenv("NETRC", p)
@@ -325,6 +360,16 @@ func TestCredChainGitParity(t *testing.T) {
 		{"App helper then a trailing appended command is red", func(r *chainRepo) {
 			r.local("credential.helper", r.appHelper()+"; cat /tmp/elsewhere")
 		}, false, false, "helper 1"},
+		// git does not trim a helper value: a leading blank makes it `git credential- !f(){…`,
+		// which answers nothing, so git falls through to askpass (SR-1614-1).
+		{"App helper with a leading space is red", func(r *chainRepo) {
+			r.local("credential.helper", " "+r.appHelper())
+			r.local("core.askPass", "/tmp/elsewhere-askpass")
+		}, false, false, "starts with whitespace"},
+		{"App helper with a leading tab is red", func(r *chainRepo) {
+			r.local("credential.helper", "\t"+r.appHelper())
+			r.local("core.askPass", "/tmp/elsewhere-askpass")
+		}, false, false, "starts with whitespace"},
 		{"App helper alone is green even with an askpass configured", func(r *chainRepo) {
 			// The App helper always answers with a username and a password (an empty one when
 			// the file is unreadable), so git completes the credential before any askpass.
@@ -383,6 +428,56 @@ func TestCredChainHostlessMatchesGit(t *testing.T) {
 			ok, detail := r.probe()
 			if ok == gitWants {
 				t.Fatalf("git applies %q = %v, but the check reads green=%v (%s)", pattern, gitWants, ok, detail)
+			}
+		})
+	}
+}
+
+// gitFillPassword runs `git credential fill` for chainURL in r's repository with an askpass
+// program that answers a marker, and returns the password git settled on. It is the ground
+// truth for which credential git presents: the App token's contents, or the askpass marker
+// when the helper chain yielded nothing. Nothing is contacted; fill only runs helpers.
+func (r *chainRepo) gitFillPassword(askpass string) string {
+	r.t.Helper()
+	cmd := exec.Command("git", "-C", r.dir, "credential", "fill")
+	cmd.Stdin = strings.NewReader("url=" + chainURL + "\n\n")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS="+askpass, "SSH_ASKPASS=")
+	out, _ := cmd.CombinedOutput()
+	for _, l := range strings.Split(string(out), "\n") {
+		if v, ok := strings.CutPrefix(l, "password="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// TestCredChainHelperWhitespaceMatchesGit pins SR-1614-1 to the git on PATH: git keeps a
+// helper value's leading blank, so " "+AppTokenHelper(...) runs as `git credential- !f(){…`,
+// answers nothing, and git takes the askpass credential instead. Wherever git does NOT
+// present the App token, the check must read red; the unprefixed helper is the green control.
+func TestCredChainHelperWhitespaceMatchesGit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the askpass fixture is a POSIX shell script")
+	}
+	const tokenMarker, askpassMarker = "parity-app-token", "parity-askpass"
+	for name, prefix := range map[string]string{"none": "", "space": " ", "tab": "\t"} {
+		t.Run("leading="+name, func(t *testing.T) {
+			r := newChainRepo(t)
+			if err := os.WriteFile(r.token, []byte(tokenMarker), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			askpass := r.writeHome("askpass.sh", "#!/bin/sh\necho "+askpassMarker+"\n", 0o700)
+			r.local("credential.helper", "")
+			r.local("credential.helper", prefix+r.appHelper())
+			got := r.gitFillPassword(askpass)
+			if prefix != "" && got != askpassMarker {
+				t.Fatalf("fixture drift: git presented %q for a %s-prefixed App helper, want the askpass marker", got, name)
+			}
+			gitPresentsToken := got == tokenMarker
+			ok, detail := r.probe()
+			if ok != gitPresentsToken {
+				t.Fatalf("git presents the App token = %v (password %q), but the check reads green=%v (%s)",
+					gitPresentsToken, got, ok, detail)
 			}
 		})
 	}
