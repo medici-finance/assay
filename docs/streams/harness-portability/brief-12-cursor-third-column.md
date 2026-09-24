@@ -227,35 +227,35 @@ Verify-row re-home family (#870); not corrected here to avoid frontmatter/lint s
 the probe fix. Implementer evidence — "verified" still requires a non-implementer re-run of the
 retargeted table.
 
-### Non-implementer verifier run — VERIFY: FAIL — 2026-09-23 opus-5.5-verifier
+### Non-implementer verifier run — VERIFY: FAIL — 11/12 pass, 0 could-not-check, 1 fail — 2026-09-23 claude-opus-4-8-verifier
 
 Fresh classification pass against merged main `438dd26a3e959707d2eb4347aa1310d9173777f9`,
 offline (`KUBECONFIG=/dev/null`), in a detached worktree cut from `origin/main`. Non-implementer.
 Each tool under `tools/` is its own Go module (no repo-root go.mod), so rows use the
-module-aware command forms already carried in the table. Row 3's mutate -> regenerate cycle
-restored `assay.mdc` byte-identical (working tree clean for that file afterward). Runner is
-the dispatched verifier, not the implementer.
+module-aware command forms already carried in the table. This brief's Verify table has no
+`check:ci`-classed rows. Row 3's mutate -> regenerate cycle restored `assay.mdc` byte-identical
+(working tree clean for that file afterward). Runner is the dispatched verifier, not the implementer.
 
 | # | Command | Expected | Observed (exit + key output) | Date | Runner |
 |---|---------|----------|------------------------------|------|--------|
-| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test -v ./...` | 0, TestCursor* present | exit 0; all TestCursor* subtests `--- PASS` (drift, coverage, binding-skew, parse-error, frontmatter) | 2026-09-23 | opus-5.5-verifier |
-| 2 | `cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..` | 0 clean | exit 0; `clean — plugins/assay/cursor/assay.mdc matches the resident source` | 2026-09-23 | opus-5.5-verifier |
-| 3 | append a line to assay.mdc; built-binary `cursor --check`; regenerate; re-check | 1 naming assay.mdc, then 0 | check exit 1 `DRIFT — committed rule plugins/assay/cursor/assay.mdc differs from the resident source`; regenerate wrote the file; re-check exit 0 clean; tree clean | 2026-09-23 | opus-5.5-verifier |
-| 4 | built binary `cursor --check --bundle <copy>` with a planted undeclared skill | 2 naming probe-skill | exit 2; `could-not-check: coverage rule failed — skill "probe-skill" is on disk but appears in neither the packaged roster nor the excluded list` | 2026-09-23 | opus-5.5-verifier |
-| 5 | built binary `cursor --check --bundle <copy>` with a stripped degradation cell | 2 naming the-desk | exit 2; `could-not-check: packaging↔binding skew — packaged skill "the-desk" has no degradation cell in references/cursor.md` | 2026-09-23 | opus-5.5-verifier |
-| 6 | `harnesslint bodies plugins/assay/skills && harnesslint bindings plugins/assay/references; echo $?` | 0 | **exit 1** — bodies checked-clean; bindings **checked-failed: 1 violation** — `plugins/assay/references/claude-code.md: no degradation cell for skill "system-demo"`. cursor.md itself is clean (no violation). See Findings. | 2026-09-23 | opus-5.5-verifier |
-| 7 | `cursor` neighbours: `resident --check` then `codex --check` (module-aware) | 0 | exit 0; `resident: clean` + `codex: clean` — both verbs unbroken beside cursor | 2026-09-23 | opus-5.5-verifier |
-| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md` | 0 | exit 0 — install-scenario heading + generated `plugins/assay/cursor/` output both present (retargeted target) | 2026-09-23 | opus-5.5-verifier |
-| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md` | 1 | exit 1 — positive control reports absence for an absent token | 2026-09-23 | opus-5.5-verifier |
-| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc` | 0 | exit 0 — present at assay.mdc line 3 | 2026-09-23 | opus-5.5-verifier |
-| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | >= 5 | count 9 — live-only rows flagged, not asserted | 2026-09-23 | opus-5.5-verifier |
-| 11 | `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both FRESH | `FRESH docs/research/cursor-harness-capabilities.md reviewed 2026-08-26 max-age 45d` + `FRESH plugins/assay/references/cursor.md reviewed 2026-08-26 max-age 45d` (28 days into the 45-day window) | 2026-09-23 | opus-5.5-verifier |
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test -v ./...` | 0, TestCursor* present | PASS — exit 0; all TestCursor* subtests `--- PASS` (drift, coverage, binding-skew, parse-error, frontmatter) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | 0 clean | PASS — exit 0; `clean — plugins/assay/cursor/assay.mdc matches the resident source` | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | 1 naming assay.mdc, then 0 | PASS — mutation applied then reverted: check exit 1 `DRIFT — committed rule plugins/assay/cursor/assay.mdc differs from the resident source`; regenerate wrote the file; re-check exit 0 clean; tree clean | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | exit 2, output names probe-skill | PASS — exit 2; `could-not-check: coverage rule failed — skill "probe-skill" is on disk but appears in neither the packaged roster nor the excluded list` | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/`the-desk`/the-desk/g' plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b | exit 2 naming the-desk | PASS — exit 2; could-not-check: packaging↔binding skew — packaged skill "the-desk" has no degradation cell in references/cursor.md | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | 0 | FAIL — exit 1; bodies checked-clean; bindings checked-failed: 1 violation — `plugins/assay/references/claude-code.md: no degradation cell for skill "system-demo"`. cursor.md itself is clean (no violation). This is real-tree drift from #1488, tracked on #1332; not a defect in this brief's own deliverable | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | 0 | PASS — exit 0; `resident: clean` + `codex: clean` — both verbs unbroken beside cursor | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | 0 | PASS — exit 0 — install-scenario heading + generated `plugins/assay/cursor/` output both present (retargeted target) | 2026-09-23 | claude-opus-4-8-verifier |
+| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | 1 | PASS — exit 1 — positive control reports absence for an absent token | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | 0 | PASS — exit 0 — present at assay.mdc line 3 | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | >= 5 | PASS — count 9 — live-only rows flagged, not asserted | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both FRESH | PASS — `FRESH docs/research/cursor-harness-capabilities.md reviewed 2026-08-26 max-age 45d` + `FRESH plugins/assay/references/cursor.md reviewed 2026-08-26 max-age 45d` (28 days into the 45-day window) | 2026-09-23 | claude-opus-4-8-verifier |
 
 RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — the three-state fail-closed gate the `cursor` verb reuses. Re-derived live this pass: clean=0 (rows 2, 7), drift=1 (row 3), could-not-check=2 (rows 4, 5). The mapping is correct: could-not-check must be a distinct non-zero, non-drift value so a coverage or binding skew hard-errors rather than reading as clean; drift=1 is the recoverable regenerate-and-commit state. Exit 2 is observable only on a built binary (`go run` collapses 2 into 1), which is why rows 4/5 build the binary first.
 RISK-VALUE: DERIVED — alwaysApply = true @ plugins/assay/cursor/assay.mdc:3 — the `.cursor/rules` contract injects the resident rule into every Cursor context only when always-apply is set; `true` is the sole value satisfying the resident-rules always-on posture (the same always-on stance as the Claude payload). Confirmed present (row 9).
 RISK-VALUE: N/A for the remaining enumerated entries — the freshness max-age (45 days, `freshness.yaml`) and the row-10 flag threshold (>= 5) are reversible operational knobs, rank last, no derivation required.
 
-Row 6 fails only because the Claude Code bindings reference lacks a system-demo degradation cell (drift from #1488; noted on #1332); this brief's own deliverable is complete.
+Row 6 fails only because the Claude Code bindings reference lacks a system-demo degradation cell (real-tree drift from #1488; noted on #1332); this brief's own deliverable is complete.
 
 
 ## Review
