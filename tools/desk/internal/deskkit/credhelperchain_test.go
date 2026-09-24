@@ -664,7 +664,7 @@ func TestCredChainNetrcMatchesCurl(t *testing.T) {
 			case sent && err == nil && entry == "":
 				t.Fatalf("curl presented the netrc credential, but the check finds no entry (reads green)")
 			case !sent && (err != nil || entry != ""):
-				t.Logf("over-inclusive: curl presented nothing, the check reads entry=%q err=%v", entry, err)
+				t.Logf("not green where curl presented nothing (allowed): entry=%q err=%v", entry, err)
 			}
 		})
 	}

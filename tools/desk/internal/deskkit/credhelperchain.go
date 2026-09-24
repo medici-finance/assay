@@ -468,7 +468,11 @@ func netrcEntryFor(host string) (string, error) {
 			return "", fmt.Errorf("the netrc file %s exists but cannot be read (%v), so whether it answers for %s "+
 				"cannot be judged", f, oneLine(err.Error()), host)
 		}
-		if entry := netrcMatch(string(body), host); entry != "" {
+		entry, err := netrcMatch(string(body), host)
+		if err != nil {
+			return "", fmt.Errorf("the netrc file %s %v, so whether it answers for %s cannot be judged", f, err, host)
+		}
+		if entry != "" {
 			return entry + " in " + f, nil
 		}
 	}
@@ -476,75 +480,153 @@ func netrcEntryFor(host string) (string, error) {
 }
 
 // netrcMatch scans a netrc body for an entry that applies to host: `machine <host>` or
-// `default`. Keywords and the host are compared case-insensitively, as curl does
-// (lib/netrc.c, strcasecompare). A `macdef` body — up to the next blank line — is skipped.
+// `default`. It follows curl's own netrc reader (lib/netrc.c, libcurl 8.x) on every path that
+// decides whether an entry matches, because a difference that swallows a keyword leaves stale
+// state that hides the real entry, and the check then reads green while curl answers the
+// server from netrc (review findings SR-1614-2 and SR-1614-3). The rules, each pinned against
+// real git and libcurl by TestCredChainNetrcMatchesCurl:
+//
+//   - A line is read up to and including its newline. Blanks (space, tab) before a token are
+//     skipped, and a token that starts with `#` ends the line: the rest is a comment. A `#`
+//     inside a token is part of it.
+//   - An unquoted token runs to the next whitespace byte of any kind (space, tab, newline,
+//     vertical tab, form feed, carriage return). It is EMPTY when it starts on one that is not
+//     a blank: `machine ` then a newline reads an empty host.
+//   - A quoted token takes the escapes \n, \r and \t; any other escaped byte stands for itself.
+//     An unterminated quote makes curl refuse the file.
+//   - After every token, one byte is skipped: the whitespace that ended it, or the byte after a
+//     closing quote.
+//   - Keywords and the host compare ASCII case-insensitively (strcasecompare).
+//   - `macdef` starts a macro. The rest of its line is read in macro state, where an empty token
+//     ends the macro. Each following line is skipped until one whose FIRST byte is a newline or
+//     a carriage return; a line holding only blanks does not end it.
+//   - Outside a matched entry curl treats only macdef, machine and default as keywords. login,
+//     password and account are NOT keywords, so the token after one is itself read as a
+//     keyword (`login default` opens a default entry), and their values are never skipped.
 //
 // Only the states outside a matched entry are modelled, since a matched entry already reads
-// not-clean. There curl treats only macdef/machine/default as keywords: login, password and
-// account are NOT keywords, so the token after one is itself read as a keyword — `login
-// default` opens a default entry. Their values are therefore never skipped here.
-func netrcMatch(body, host string) string {
-	inMacro, wantMachine := false, false
-	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
-		if inMacro {
-			if strings.TrimSpace(line) == "" {
-				inMacro = false
-			}
+// not-clean. A body curl refuses (an unterminated quote), or one holding a NUL byte, whose
+// reading curl's line reader does not make predictable, returns an error: could-not-check,
+// never clean. curl stops reading a file at an over-long line; reading on here can only find
+// more entries, so that difference can only redden the check.
+func netrcMatch(body, host string) (string, error) {
+	if strings.IndexByte(body, 0) >= 0 {
+		return "", errors.New("holds a NUL byte, which curl's netrc reader does not read predictably")
+	}
+	const (
+		stNothing = iota
+		stHostFound
+		stMacDef
+	)
+	state := stNothing
+	for _, line := range strings.SplitAfter(body, "\n") {
+		if line == "" {
 			continue
 		}
-		toks := netrcTokens(line)
-		for i := 0; i < len(toks); i++ {
-			t := toks[i]
-			switch {
-			case wantMachine:
-				wantMachine = false
-				if strings.EqualFold(t, host) {
-					return "a netrc `machine " + host + "` entry"
-				}
-			case strings.EqualFold(t, "machine"):
-				wantMachine = true
-			case strings.EqualFold(t, "default"):
-				return "a netrc `default` entry"
-			case strings.EqualFold(t, "macdef"):
-				inMacro = true
-				i = len(toks)
+		if state == stMacDef {
+			if line[0] != '\n' && line[0] != '\r' {
+				continue
 			}
+			state = stNothing
+		}
+		for i := 0; i < len(line); {
+			for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+				i++
+			}
+			if i >= len(line) || line[i] == '#' {
+				break
+			}
+			tok, end, ok := netrcToken(line, i)
+			if !ok {
+				return "", errors.New("has an unterminated quoted token, which makes curl refuse the file")
+			}
+			switch state {
+			case stNothing:
+				switch {
+				case asciiEqualFold(tok, "macdef"):
+					state = stMacDef
+				case asciiEqualFold(tok, "machine"):
+					state = stHostFound
+				case asciiEqualFold(tok, "default"):
+					return "a netrc `default` entry", nil
+				}
+			case stMacDef:
+				if tok == "" {
+					state = stNothing
+				}
+			case stHostFound:
+				if asciiEqualFold(tok, host) {
+					return "a netrc `machine " + host + "` entry", nil
+				}
+				state = stNothing
+			}
+			i = end + 1 // curl skips one byte after every token
 		}
 	}
-	return ""
+	return "", nil
 }
 
-// netrcTokens splits one netrc line into whitespace-separated tokens, honouring a
-// double-quoted token with backslash escapes.
-func netrcTokens(line string) []string {
-	var toks []string
-	for i := 0; i < len(line); {
-		for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-			i++
+// netrcToken reads the netrc token that starts at line[i] (not a blank), the way curl does. It
+// returns the token, the index just past it (the whitespace that ended an unquoted token, or
+// the byte after a closing quote), and false for an unterminated quoted token.
+func netrcToken(line string, i int) (string, int, bool) {
+	if line[i] != '"' {
+		j := i
+		for j < len(line) && !isNetrcSpace(line[j]) {
+			j++
 		}
-		if i >= len(line) {
-			break
-		}
-		var b strings.Builder
-		if line[i] == '"' {
-			i++
-			for i < len(line) && line[i] != '"' {
-				if line[i] == '\\' && i+1 < len(line) {
-					i++
-				}
-				b.WriteByte(line[i])
-				i++
-			}
-			i++
-		} else {
-			for i < len(line) && line[i] != ' ' && line[i] != '\t' {
-				b.WriteByte(line[i])
-				i++
-			}
-		}
-		toks = append(toks, b.String())
+		return line[i:j], j, true
 	}
-	return toks
+	var b strings.Builder
+	escape := false
+	for j := i + 1; j < len(line); j++ {
+		c := line[j]
+		switch {
+		case escape:
+			escape = false
+			switch c {
+			case 'n':
+				c = '\n'
+			case 'r':
+				c = '\r'
+			case 't':
+				c = '\t'
+			}
+		case c == '\\':
+			escape = true
+			continue
+		case c == '"':
+			return b.String(), j + 1, true
+		}
+		b.WriteByte(c)
+	}
+	return "", len(line), false
+}
+
+// isNetrcSpace is C's isspace in the C locale, which ends an unquoted netrc token in curl.
+func isNetrcSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'
+}
+
+// asciiEqualFold compares two strings ignoring ASCII letter case only, as curl's
+// strcasecompare does; no Unicode folding.
+func asciiEqualFold(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		x, y := a[i], b[i]
+		if 'A' <= x && x <= 'Z' {
+			x += 'a' - 'A'
+		}
+		if 'A' <= y && y <= 'Z' {
+			y += 'a' - 'A'
+		}
+		if x != y {
+			return false
+		}
+	}
+	return true
 }
 
 // redactURLCredential renders a URL with any embedded password removed, for a detail line.
