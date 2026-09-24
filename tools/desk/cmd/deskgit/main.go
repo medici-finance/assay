@@ -20,9 +20,10 @@
 //     malicious remote.origin.fetch cannot redirect writes to local branches;
 //   - it scrubs the child environment to an allowlist (see exec.go), dropping every
 //     GIT_* var (GIT_SSH_COMMAND, GIT_CONFIG_*, GIT_ASKPASS, …);
-//   - it gates on the origin URL (go-git's read of the repository config; the `--as` forms
-//     additionally gate every URL git itself resolves for the verb — pushurl, insteadOf and
-//     pushInsteadOf from every config scope — before any credential is minted), rejects
+//   - it gates on the origin URL (`git remote get-url --all origin`, git's own resolution of
+//     the fetch url list, exactly one value; the `--as` forms additionally gate every URL git
+//     itself resolves for the verb — pushurl, insteadOf and pushInsteadOf from every config
+//     scope — before any credential is minted), rejects
 //     remote-helper (`<helper>::…`) transport forms, and requires an
 //     exact owner/repo path for any HOST-BEARING URL, so a padded URL cannot present an
 //     allowed slug in its trailing components. Two routing bypasses of that rule — a
@@ -41,7 +42,7 @@
 // Under it, ANY config key that names a program is an execution route — the class, not
 // just the examples: `core.sshCommand`, `core.gitProxy` (whose env twin GIT_PROXY_COMMAND
 // *is* scrubbed, making it easy to misread as closed), `core.fsmonitor`,
-// `remote.<n>.vcs` (which makes git run `git-remote-<name>` while `ls-remote --get-url`
+// `remote.<n>.vcs` (which makes git run `git-remote-<name>` while `git remote get-url`
 // still reports an innocent URL, so the gate is structurally blind to it), and others.
 //
 // deskgit also TRUSTS `PATH` (security review): `PATH` is on the env allowlist and

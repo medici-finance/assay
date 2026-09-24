@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -25,18 +26,54 @@ func checkInsideWorkTree(dir string) error {
 	return nil
 }
 
-// effectiveOriginURL returns the first `remote.origin.url` as go-git reads it — a config read
-// only, no network contact. It names the REPO the gates below decide on. It is NOT the URL git
-// connects to in every configuration: go-git reads only the repository's own config file (no
-// global or worktree scope), keeps one insteadOf value per url section, and never applies
-// pushurl — so the credential of the `--as` forms is bound to transportDestinations instead,
-// which asks git itself.
+// errMultiOrigin marks a multi-valued origin url list. The callers map it to a REFUSAL (exit 5),
+// not to unverifiable (exit 6): a second url value is a shape the tool has positively determined
+// and refuses, the same class of decision as parseRepo's refusals, never a could-not-run.
+var errMultiOrigin = errors.New("multi-valued origin url list")
+
+// effectiveOriginURL returns origin's FETCH url AS GIT ITSELF RESOLVES IT: `git remote get-url
+// --all origin`, a config read that contacts no remote. It runs through the same scrubbed runGit
+// as the fetch it gates, so it sees the same config scopes (system, global, repository,
+// worktree), the same empty-value list resets, and the same insteadOf rewrites of the url list —
+// for FETCH the gate decides on the URL git will connect to, not on a parallel read of the
+// repository config file (#1573 follow-up: that read missed worktree and global scope and could
+// pass an allowed slug while git fetched elsewhere).
+//
+// It reads the FETCH url list only, and it decides the REPO. It is NOT a read of push
+// destinations: `git push origin` connects to every remote.origin.pushurl value when one is set,
+// and otherwise to the url list as rewritten by url.<base>.pushInsteadOf — neither is in what
+// this function reads. Where git pushes is not gated by this function; that is a separate
+// control, the push-destination gate: transportDestinations reads `git remote get-url --push
+// --all origin`, and resolveDestinations gates every value it returns before any credential
+// exists. The `--as` forms also bind the credential to those destinations (resolveDestinations
+// for both fetch and push), never to this read, and this read never stands in for them.
+//
+// Exactly one URL is required. A MULTI-VALUED list is refused (errMultiOrigin, exit 5 at the
+// callers): fetch connects to the first value and, with no pushurl set, push to every value, so
+// no single URL can stand for the list. A git error is returned as an error the callers turn into
+// a fail-closed exit 6. (An emptied url list does not come back empty: git then reports the
+// remote NAME, `origin`, as the URL, which parseRepo refuses with exit 5. The empty case below is
+// defensive only.)
 func effectiveOriginURL(dir string) (string, error) {
-	repo, err := gitcore.Open(dir)
+	out, err := runGit(dir, "remote", "get-url", "--all", "origin")
 	if err != nil {
 		return "", err
 	}
-	return repo.RemoteURL("origin")
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if line != "" {
+			urls = append(urls, line)
+		}
+	}
+	switch len(urls) {
+	case 0:
+		return "", fmt.Errorf("git resolved no URL for origin")
+	case 1:
+		return urls[0], nil
+	default:
+		return "", fmt.Errorf("%w: origin resolves to %d URLs (a multi-valued remote.origin.url list); "+
+			"refusing to gate on one of them — set exactly one", errMultiOrigin, len(urls))
+	}
 }
 
 // symbolicRefShortHEAD returns the current branch's short name, matching
@@ -85,8 +122,9 @@ var roleTokenForRepo = deskkit.GitHubRoleTokenForDestinations
 // origin` applies pushurl, multi-valued url, insteadOf and pushInsteadOf from every config scope
 // (global and worktree included) — exactly the resolution the verb's own transport performs. It
 // is a config read that contacts no remote, run through the scrubbed runGit like every other
-// probe. The go-git read behind effectiveOriginURL does not resolve them the way git does (see
-// its doc), so it names the repo, but it can never be what the credential is bound to.
+// probe. effectiveOriginURL reads only the FETCH url list and requires it to hold one value (see
+// its doc): it names the repo, but it never reads pushurl or pushInsteadOf, so it can never be
+// what the credential is bound to.
 //
 // fetch connects to the first url value only; this returns them all, and the caller gates them
 // all — stricter than the transport, never looser.
@@ -363,11 +401,15 @@ func cmdFetch(args []string) (err error) {
 		}
 	}
 
-	// Gate on the origin URL (effectiveOriginURL, a config read that contacts no remote). This
-	// decides the REPO. It is the go-git read, not git's own resolution, so on its own it does not
-	// bind where git fetches from; the authenticated form below therefore also gates every URL git
-	// itself resolves (resolveDestinations) before a credential exists.
+	// Gate on the origin URL (effectiveOriginURL: `git remote get-url --all origin`, git's own
+	// resolution of the fetch url list, a config read that contacts no remote). This decides the
+	// REPO. Exactly one url value is accepted, and a plain fetch connects to that value. The
+	// authenticated form below also gates every URL the transport resolves (resolveDestinations)
+	// before any credential exists, and binds the credential to those URLs.
 	originURL, oerr := effectiveOriginURL(dir)
+	if errors.Is(oerr, errMultiOrigin) {
+		return deskkit.Refused("refused: " + oerr.Error())
+	}
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
 	}
@@ -375,7 +417,7 @@ func cmdFetch(args []string) (err error) {
 	if rerr != nil {
 		// REFUSED (exit 5), not unverifiable (exit 6): the tool positively determined the
 		// URL is unacceptable — this is the same class of decision as the IsAllowedRepo
-		// miss just below, which already exits 5. Exit 6 is for "could not run ls-remote".
+		// miss just below, which already exits 5. Exit 6 is for "could not run `git remote get-url`".
 		// Filing smuggling attempts (padded paths, path-borne '@', remote-helper forms) in
 		// the same audit bucket as network faults is the very confusion transportexec.go
 		// argues against for the named guard (correctness review).
@@ -398,8 +440,8 @@ func cmdFetch(args []string) (err error) {
 	var out string
 	var ferr error
 	if *asRole != "" {
-		// The credential is bound to what git will actually fetch from, not to the go-git read
-		// above (see transportDestinations).
+		// The credential is bound to what git will actually fetch from (transportDestinations,
+		// gated by resolveDestinations), not to the repo-gate read above.
 		dests, derr := resolveDestinations(dir, repo, false)
 		if derr != nil {
 			return derr
@@ -522,6 +564,9 @@ func cmdPush(args []string) (err error) {
 	// contacts no remote), refuse an unparseable/foreign/out-of-set origin BEFORE any credential is
 	// offered. What git will actually push to is gated separately, just below.
 	originURL, oerr := effectiveOriginURL(dir)
+	if errors.Is(oerr, errMultiOrigin) {
+		return deskkit.Refused("refused: " + oerr.Error())
+	}
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
 	}

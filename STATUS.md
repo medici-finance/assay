@@ -72,13 +72,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
-| forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
@@ -145,9 +145,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | windows-port | 00 | implemented | 6000 | 10 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 3000 | 4 | — | — | — |
