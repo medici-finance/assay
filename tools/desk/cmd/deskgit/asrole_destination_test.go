@@ -14,10 +14,11 @@ import (
 //
 // `git push origin` sends to every remote.origin.pushurl value (or, with none, to every
 // remote.origin.url value, pushInsteadOf applied), and both fetch and push apply
-// url.<base>.insteadOf from EVERY config scope — global and worktree included. The askpass
-// answers whichever host git connects to. A binding that checks only the first
-// remote.origin.url as the repo's own config spells it therefore hands the GitHub App token to
-// any other destination. These tests run the PRODUCTION binding with a minter detector in
+// url.<base>.insteadOf from EVERY config scope — global and worktree included. Before round 3
+// the credential channel (an askpass) answered whichever host git connected to, so a binding that
+// checked only the first remote.origin.url as the repo's own config spells it handed the GitHub
+// App token to any other destination. This gate is the first layer; the host-scoped helper
+// (asrole_answerpoint_test.go) is the second. These tests run the PRODUCTION binding with a minter detector in
 // deskkit's own seam, so "refused before any mint" is a counted fact, and every git config
 // shape is set with real git so git itself resolves it.
 

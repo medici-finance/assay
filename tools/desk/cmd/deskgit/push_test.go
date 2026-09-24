@@ -101,12 +101,25 @@ func TestPushAdvancesFixtureRemote(t *testing.T) {
 	if got != wantHEAD {
 		t.Fatalf("remote refs/heads/feature-1 = %s, want worktree HEAD %s", got, wantHEAD)
 	}
-	// The argv is exactly the fixed form: helper cleared before the verb, receive-pack pinned,
-	// origin + the current-branch refspec, and NOTHING else.
-	argv := strings.Join(gitCallWith(*calls, "push"), " ")
-	want := "git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/feature-1:refs/heads/feature-1"
+	// The argv is exactly the fixed form: ambient helpers cleared and the ONE host-scoped
+	// ephemeral helper added before the verb, receive-pack and submodule recursion pinned,
+	// origin + the current-branch refspec, and NOTHING else. The helper's path is ephemeral, so
+	// it is matched by shape and checked to be gone after the call.
+	call := gitCallWith(*calls, "push")
+	if len(call) != 10 {
+		t.Fatalf("push argv = %q, want exactly 10 tokens", call)
+	}
+	helperSpec, ok := strings.CutPrefix(call[4], "credential.https://github.com.helper=!'")
+	if !ok || !strings.HasSuffix(helperSpec, "/credential-helper.sh'") {
+		t.Fatalf("push argv token %q is not the host-scoped ephemeral helper", call[4])
+	}
+	if _, err := os.Stat(strings.TrimSuffix(helperSpec, "'")); !os.IsNotExist(err) {
+		t.Fatalf("ephemeral helper %s still exists after the push (stat err %v)", helperSpec, err)
+	}
+	argv := strings.Join(append(append([]string{}, call[:4]...), call[5:]...), " ")
+	want := "git -c credential.helper= -c push --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/feature-1:refs/heads/feature-1"
 	if argv != want {
-		t.Fatalf("push argv = %q\n want %q", argv, want)
+		t.Fatalf("push argv (helper path elided) = %q\n want %q", argv, want)
 	}
 }
 
@@ -232,15 +245,15 @@ func TestAmbientCredentialHelperNeverConsulted(t *testing.T) {
 }
 
 // Row 6: the token never leaves the child. Its fixture VALUE must be absent from argv,
-// stdout, stderr and the audit line; and the ephemeral askpass dir must be gone after both a
+// stdout, stderr and the audit line; and the ephemeral helper dir must be gone after both a
 // successful push and an injected failure.
 func TestTokenNeverLeavesTheChild(t *testing.T) {
-	// Confine the ephemeral askpass dir to a scratch parent so its removal can be asserted
-	// without racing other /tmp entries.
+	// Confine the ephemeral credential-helper dir to a scratch parent so its removal can be
+	// asserted without racing other /tmp entries.
 	askParent := t.TempDir()
-	prevParent := askpassTempParent
-	askpassTempParent = askParent
-	t.Cleanup(func() { askpassTempParent = prevParent })
+	prevParent := credentialTempParent
+	credentialTempParent = askParent
+	t.Cleanup(func() { credentialTempParent = prevParent })
 
 	noLeak := func(t *testing.T) {
 		t.Helper()
@@ -249,8 +262,8 @@ func TestTokenNeverLeavesTheChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, e := range ents {
-			if strings.HasPrefix(e.Name(), "deskgit-askpass-") {
-				t.Fatalf("askpass temp dir leaked: %s", e.Name())
+			if strings.HasPrefix(e.Name(), "deskgit-cred-") {
+				t.Fatalf("credential helper temp dir leaked: %s", e.Name())
 			}
 		}
 	}
@@ -288,7 +301,7 @@ func TestTokenNeverLeavesTheChild(t *testing.T) {
 		// Inject a failure the credential path cannot recover from: remove the bare remote so
 		// the push itself fails. The effective-URL gate still passes (RepoForLocalPath falls
 		// back to the cleaned absolute path, which is still the configured root), so the flow
-		// reaches askpassSupply + the push, then fails — exercising the cleanup on the error path.
+		// reaches credentialSupply + the push, then fails — exercising the cleanup on the error path.
 		upstream := mustGit(t, work, "remote", "get-url", "origin")
 		if err := os.RemoveAll(upstream); err != nil {
 			t.Fatal(err)

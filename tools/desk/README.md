@@ -3367,12 +3367,13 @@ token path behind the same fixed-argv guard the rest of `deskgit` enforces. `des
 
 **What the token never touches.** It is READ from the role's token file and PASSED to the
 one child git process through exactly one environment variable (`DESKGIT_TOKEN`) and an
-ephemeral `GIT_ASKPASS` script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
+ephemeral credential-helper script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
 password), in a private `0700` temp dir removed on **every** return path including error. The
 token is **never** placed in argv, in a URL, in stdout/stderr, or in the audit line. The argv
 carries `-c credential.helper=` **before the verb**, which clears the helper list on the
-command line so **no ambient or configured credential helper is ever consulted** — only this
-askpass answers.
+command line so **no ambient or configured credential helper is ever consulted**, then adds
+the ephemeral helper under the host-scoped key `credential.https://github.com.helper` — see
+the answer-point binding below. No `GIT_ASKPASS` is set.
 
 **Identity binding.** `--as <role>` MUST equal the App role this session's loop identity
 binds (`$DESK_LOOP` → `deskkit.SessionTokenRole`); a mismatch is exit 5 **before any token is
@@ -3380,10 +3381,11 @@ read**, so a session cannot borrow another role's token by naming it. The token 
 **owner** of the effective origin slug (never a caller `--repo`), so it authenticates only the
 repository the effective-URL gate already admitted.
 
-**Host binding — github.com only, on every URL git will connect to.** The askpass answers the
-GitHub App-token username, so this transport speaks only GitHub, and the askpass answers
-whichever host git actually connects to. Before any token is minted or read, `--as` asks git
-itself for every URL the verb will use (`git remote get-url [--push] --all origin`, a config
+**Host binding — github.com only, in two layers.** The helper answers the GitHub App-token
+username, so this transport speaks only GitHub.
+
+*Layer 1, the origin destinations.* Before any token is minted or read, `--as` asks git
+itself for every origin URL the verb will use (`git remote get-url [--push] --all origin`, a config
 read that contacts nothing): for push, every `remote.origin.pushurl` value, or with none every
 `url` value; for fetch, every `url` value. Git applies `insteadOf` and `pushInsteadOf` rewrites
 from every config scope (global and worktree included) in that answer. Each URL must name the
@@ -3393,11 +3395,22 @@ verb is refused (exit 5) and nothing is minted. A repo the roster maps to anothe
 (`ASSAY_REPO_FORGES`) is refused the same way. A **local-path origin is refused** under `--as`:
 it has no host to bind a GitHub token to. Plain `deskgit fetch` (no `--as`) is unaffected.
 
+*Layer 2, the answer point.* Git can talk to hosts that are on no origin list during the
+verb: a recursed submodule's own remote, an `http.proxy` whose URL names a user and asks the
+credential machinery for its password, or a destination config rewritten after layer 1 read
+it. So the credential is bound where it is answered, not only where destinations are listed.
+Git asks the host-scoped helper only about `https://github.com`, and the helper itself also
+answers only a request for `protocol=https`, `host=github.com` (or `github.com:443`). Any other
+prompt goes unanswered and, with terminal prompts disabled, fails closed. `push` also pins
+`--no-recurse-submodules`, as fetch does, so push recursion configured in any scope never pushes
+a submodule to its own remote.
+
 **`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
 transport, with a FIXED argv and nothing appendable:
 
 ```
-git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/<B>:refs/heads/<B>
+git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral helper>' \
+    push --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/<B>:refs/heads/<B>
 ```
 
 - `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
@@ -3405,6 +3418,8 @@ git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads
   branch to push and is refused (exit 5).
 - `--receive-pack=git-receive-pack` is pinned (the push-side twin of fetch's upload-pack pin),
   overriding any config/env receive-pack.
+- `--no-recurse-submodules` is pinned (the push-side twin of fetch's recursion pin), overriding
+  `push.recurseSubmodules` / `submodule.recurse` from any config scope.
 - `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
   are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
   caller `--receive-pack` is refused by the transport-exec guard. None of them is in the

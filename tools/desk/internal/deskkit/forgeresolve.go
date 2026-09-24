@@ -409,7 +409,7 @@ func GitLabRoleToken(role string) (token, path string, err error) {
 //
 // ForgeFor hands a backend it constructs its credential. Some callers need the credential
 // ITSELF instead — a git credential helper that reads a token FILE (deskwt role-init), a
-// child process handed --token-file (deskdispatch's claim child), an askpass (deskgit --as),
+// child process handed --token-file (deskdispatch's claim child), a credential helper (deskgit --as),
 // a poller (scanloop). Before #1573 each of those reached the GitHub App minter
 // (RoleTokenForOwner / RoleTokenForRepo) directly. Those names are forge-neutral but the
 // minter is GitHub-only, so a caller that picked it up on a GitLab-served repo asked for a
@@ -436,7 +436,7 @@ const githubAppHost = "github.com"
 
 // githubAppOriginHost is the host binding on the GitHub App arm. A caller that holds the
 // target's origin URL is about to hand the token to a transport bound to THAT origin's host —
-// role-init scopes its credential helper to it, `deskgit --as` answers its askpass for it — so
+// role-init scopes its credential helper to it, `deskgit --as` hands it to its helper — so
 // the arm is taken only when the parsed origin host is EXACTLY githubAppHost: lower-cased by
 // the parser, and nothing else forgiven (no suffix or prefix match, no trailing dot, no
 // userinfo trick — url.Hostname already discards the userinfo and the port, and a port does
@@ -548,7 +548,7 @@ func GitHubRoleToken(role, repo string) (token, path string, err error) {
 }
 
 // GitHubRoleTokenForRemote is GitHubRoleToken for a caller that also holds the target's origin
-// remote URL — an `x-access-token` askpass, a host-scoped credential helper — so the token is
+// remote URL — a host-scoped `x-access-token` credential helper — so the token is
 // handed back only when that origin's host is exactly github.com (githubAppOriginHost): a repo
 // the roster is silent on whose origin maps to another forge, or to no known forge, or does not
 // parse, is refused before any mint, and so is a roster "github" entry on another host.
@@ -571,8 +571,9 @@ func GitHubRoleTokenForRemote(role, repo, originURL string) (token, path string,
 //   - an empty list, or an empty entry, is refused: GitHubRoleTokenForRemote reads an empty
 //     origin as a roster-only caller whose transport binds no host, but a transport that is
 //     about to connect somewhere has no such case — an unknown destination is not a pass;
-//   - a cleartext `http://` destination is refused even on github.com: the askpass answers
-//     whoever issues the 401 challenge, and over cleartext that is anyone on the path.
+//   - a cleartext `http://` destination is refused even on github.com: a credential answered to
+//     a 401 challenge over cleartext reaches anyone on the path. (deskgit's helper also declines
+//     every non-https request; this refusal is the layer before it.)
 func GitHubRoleTokenForDestinations(role, repo string, destinations []string) (token, path string, err error) {
 	if len(destinations) == 0 {
 		return "", "", Refused(fmt.Sprintf(

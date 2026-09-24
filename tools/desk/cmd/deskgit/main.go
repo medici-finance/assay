@@ -91,8 +91,9 @@ plus a refspec derived from a validated value — no caller flag, no arbitrary r
 refspec; push pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
 by name. Both scrub the child env to an allowlist and gate on the effective origin URL
 (expands insteadOf). --as reads the role's 0600 token file and supplies it to the child ONLY
-via an ephemeral GIT_ASKPASS script with the ambient credential helper silenced
-(-c credential.helper=); the token never reaches argv, a URL, stdout, or the audit line.
+via an ephemeral credential helper scoped to https://github.com, with every ambient credential
+helper cleared (-c credential.helper=); the helper answers no other host, push also pins
+--no-recurse-submodules, and the token never reaches argv, a URL, stdout, or the audit line.
 It is not a sandbox against a fully attacker-controlled .git/config. On any state it cannot
 positively verify it refuses.
 

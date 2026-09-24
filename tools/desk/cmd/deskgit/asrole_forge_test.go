@@ -50,7 +50,7 @@ func TestAsRole_GitLabServedOrigin_RefusedBeforeAnyMint(t *testing.T) {
 }
 
 // TestAsRole_NonGitHubOriginHost_RefusedBeforeAnyMint is sec-1587-S1/S2 at the deskgit binding:
-// the askpass answers for the ORIGIN, and parseRepo gates only its owner/repo path, never its
+// the token is offered for the ORIGIN, and parseRepo gates only its owner/repo path, never its
 // host — so an origin whose host is not exactly github.com (a lookalike, a userinfo-shaped URL,
 // a self-hosted instance) must be refused before any token is minted or offered to it, with the
 // roster silent AND with the roster naming the forge "github" (software, not instance). The
