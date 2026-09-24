@@ -17,8 +17,9 @@ risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 gate-why: >-
   Adds new App identities (a lander with a branch-protection bypass and, under Option 1, a
   validator that posts a required status), restructures the rulesets on the default branch, adds
-  a ruleset on the staging refs, and adds three workflows, two of which hold a write credential:
-  an identity/auth change on the
+  a ruleset on the staging refs, and adds three workflows, two of which hold an App key with
+  write access (the third's push-to-main audit job holds a `GITHUB_TOKEN` scoped to
+  `issues: write` only): an identity/auth change on the
   supply-chain surface (sensitive-data). A wrong scope lets unreviewed content reach a PUBLIC main,
   where disclosure cannot be recalled and force-push is denied (irreversible). The human confirms
   the lane design (where content scope is enforced, dedicated vs reused App), performs the App,
@@ -49,7 +50,7 @@ sources:
 consumers:
   - "tools/desk/cmd/evidencegate/ (validator scope check + lander decision, with fixtures and mutation script): follow-up desk-supervision/23 (this brief; flips to fixed-here when the implementation adds it)"
   - "statusgen evidence-audit subcommand (post-land audit, statusgen/evidenceaudit.go + test): follow-up desk-supervision/23 (this brief; flips to fixed-here when the implementation adds it)"
-  - ".github/workflows/evidence-scope.yml (new event-facing validator workflow, no credential; also runs the post-land audit): follow-up desk-supervision/23 (this brief; lands through the workflow-only PR path, flips to fixed-here then)"
+  - ".github/workflows/evidence-scope.yml (new event-facing validator workflow; its event-facing jobs hold only a read-only `GITHUB_TOKEN`, and its push-to-main post-land audit job holds a `GITHUB_TOKEN` scoped to `issues: write` only, never an App key): follow-up desk-supervision/23 (this brief; lands through the workflow-only PR path, flips to fixed-here then)"
   - ".github/workflows/evidence-scope-post.yml (new status poster, Option 1 only): follow-up desk-supervision/23 (this brief; lands through the workflow-only PR path, flips to fixed-here then)"
   - ".github/workflows/evidence-lander.yml (new lander workflow): follow-up desk-supervision/23 (this brief; lands through the workflow-only PR path, flips to fixed-here then)"
   - "plugins/assay/skills/verify-desk/SKILL.md (the PR-required-main Evidence section gains the direct lane and its fallback): follow-up desk-supervision/23 (this brief; flips to fixed-here when the implementation edits it)"
@@ -70,8 +71,10 @@ files:
   `tools/desk/cmd/evidencegate/testdata/mutate.sh` (planned).
 - **add** `statusgen/evidenceaudit.go` (planned) + `statusgen/evidenceaudit_test.go` (planned) —
   the `statusgen evidence-audit` subcommand (post-land audit).
-- **add** `.github/workflows/evidence-scope.yml` (planned) (event-facing validator half, holds no
-  credential; also runs the post-land audit), `.github/workflows/evidence-scope-post.yml` (planned)
+- **add** `.github/workflows/evidence-scope.yml` (planned) (event-facing validator half: its
+  event-facing jobs hold only a read-only `GITHUB_TOKEN`; it also runs the post-land audit, whose
+  push-to-main job holds a `GITHUB_TOKEN` scoped to `issues: write` only and never an App key),
+  `.github/workflows/evidence-scope-post.yml` (planned)
   (Option 1: the status poster) and `.github/workflows/evidence-lander.yml` (planned) (lander).
   These are workflow files: no implementer App can push them. They land ONLY through the
   workflow-only PR path of desk-supervision/11, which is why this brief depends on it. Never as a
@@ -83,7 +86,7 @@ files:
   environment secrets, the ruleset restructure, and the change to the withheld-content status
   poster.
 
-single-point-of-failure: the lander App's bypass of the PR-required rule is the ONE grant that lets a commit reach main without review — layers behind it: (1) the required `leak-sweep` and (Option 1) `evidence-scope` statuses sit in a ruleset the lander does NOT bypass, each pinned to its own dedicated App's integration id; `evidence-scope` is posted only by the validator App from a default-branch run, and reads `success` only as a staging-ref `admit` or as the not-a-landing pass on a PR head approved at that exact head, so the server refuses any lander push whose SHA is neither validated Evidence nor an approved PR head; a separate ruleset on `evidence-landing/**` lets only the verifier App and the lander App create, update or delete a staging ref; (2) the lander workflow, from a default-branch definition with a key only a default-branch run can read, acts only on the current head of an `evidence-landing/**` ref, re-runs the `scope` core itself instead of trusting the status (including the writer binding, which admits only commits the forge attributes to the verifier App, or to the lander for a `remerge`, on data a raw push cannot forge), and lands only a fast-forward of that exact SHA on its own `admit` (this layer is independent of a forged or misapplied status, not of a bug in the shared `scope` core; layer 4 is the one independent of that code); (3) the lander App's permission ceiling (contents + metadata on this one repository; no workflows, no administration); every claim this brief makes about the lander key is about main, since a contents permission also reaches tags and releases; (4) the post-land `statusgen evidence-audit` selects by the PUSH, never by commit author (every push to main by the lander, and every push carrying a commit that no merged pull request in that range accounts for), re-derives Evidence-only-ness and the writer per commit with a different algorithm, and halts the lane on a mismatch in a lander push (a mismatch in another identity's push files a non-halting finding for a human: halting the lane cannot contain a write the lane did not make).
+single-point-of-failure: the lander App's bypass of the PR-required rule is the ONE grant that lets a commit reach main without review — layers behind it: (1) the required `leak-sweep` and (Option 1) `evidence-scope` statuses sit in a ruleset the lander does NOT bypass, each pinned to its own dedicated App's integration id; `evidence-scope` is posted only by the validator App from a default-branch run, and reads `success` only as a staging-ref `admit` or as the not-a-landing pass on a PR head approved at that exact head, so the server refuses any lander push whose SHA is neither validated Evidence nor an approved PR head; a separate ruleset on `evidence-landing/**` lets only the verifier App and the lander App create, update or delete a staging ref; (2) the lander workflow, from a default-branch definition with a key only a default-branch run can read, acts only on the current head of an `evidence-landing/**` ref, re-runs the `scope` core itself instead of trusting the status (including the writer binding, on data a raw push cannot forge: a single-parent commit only when the forge attributes it to the verifier App and the verifier App moved the ref onto it; a two-parent `remerge` only when the lander App moved the ref onto it from its staging-side parent AND its tree is byte-identical to the clean three-way merge of its two parents recomputed from forge objects, so a remerge can carry no content of its own), and lands only a fast-forward of that exact SHA on its own `admit` (this layer is independent of a forged or misapplied status, not of a bug in the shared `scope` core; layer 4 is the one independent of that code); (3) the lander App's permission ceiling (contents + metadata on this one repository; no workflows, no administration); every claim this brief makes about the lander key is about main, since a contents permission also reaches tags and releases; (4) the post-land `statusgen evidence-audit` selects by the PUSH, never by commit author (every push to main by the lander, and every push carrying a commit that no merged pull request in that range accounts for), re-derives Evidence-only-ness and the writer per commit with a different algorithm (and re-checks every `remerge` tree against its own recompute of the merge, with git's merge rather than the `scope` core's code), and halts the lane on a mismatch in a lander push (a mismatch in another identity's push files a non-halting finding for a human: halting the lane cannot contain a write the lane did not make).
 
 facts:
 - Live ruleset read (2026-09-23, `gh api repos/medici-finance/assay/rules/branches/main`): two
@@ -146,12 +149,16 @@ facts:
   before pickup.
 
 layering: two decision cores, each a pure function over data (per-commit changed-file lists,
-pre-image and post-image text, each commit's forge signature verdict and committer login, the
+pre-image and post-image text, each commit's forge signature verdict and committer login, for each
+two-parent commit its own tree id and the tree id of the clean three-way merge of its two parents
+that the adapter recomputes from forge objects (or the fact that the recompute conflicted), the
 staging ref's update history with each update's actor, statuses with their creators, the staging
 ref's current head, wait age, halt state) and tested with no forge: `scope` (admit / reject /
 could-not-check) and `lander` (land / remerge / wait / fallback / refuse / skip). The workflows are thin adapters that
-gather the data and act. The event-facing workflow holds no credential; only default-branch runs
-hold a key. The audit is a separate implementation in a separate module (statusgen's brief parser,
+gather the data and act. The event-facing jobs hold only a read-only `GITHUB_TOKEN`. Only
+default-branch runs hold anything that writes: an App key in the poster and the lander, and in the
+push-to-main audit job a `GITHUB_TOKEN` scoped to `issues: write` (a push to main runs main's own
+definition). The audit is a separate implementation in a separate module (statusgen's brief parser,
 comparing section hashes). A bug in the validator's hunk-to-section mapping therefore does not also
 blind the audit. Rows 1-4 test the cores. Rows 9-15 and 17-19 test the live boundary. The
 server layer's identity pin on `evidence-scope` is proven by configuration read (row 9), not by
@@ -168,12 +175,21 @@ proposal: Evidence-only changes land on the default branch directly, with no PR,
 dedicated "lander" identity. The lander is the only identity allowed to skip the PR requirement.
 The lane admits only Evidence the verifier identity wrote: only the verifier (and the lander) may
 write a staging branch, and the lander lands only commits the forge itself attributes to the
-verifier, so no other identity, an implementer's above all, can land verification of its own
-work this way. Before landing, the lander re-checks for itself that the change is Evidence-only
+verifier, plus the lander's own merges of the default branch into a staging branch, each checked
+to be exactly the merge of its two parents so it adds no content of its own. No other identity,
+an implementer's above all, can land verification of its own work this way. Before landing, the lander re-checks for itself that the change is Evidence-only
 and verifier-written, and an audit after every landing re-checks both with a different method
 and stops the lane on a mismatch. Only a human can restart a stopped lane. The verifier identity
 keeps no write to the default branch. A rejected landing files a finding and falls back to
 today's batched PR path.
+
+One trade to rule on explicitly: today a reviewer reads each Evidence PR's text, which is often
+raw command output, before it reaches the public default branch. The direct lane removes that
+reader. What then stands between the Evidence text and public disclosure is the automated
+withheld-content sweep, which matches a list of withheld terms rather than secrets or personal
+data in general, plus the verifier's own client-side checks. Choosing any adopt option below
+accepts that, unless the ruling also requires a further automated check (for example a
+secret-scanning signal on the staging head) as a condition of landing.
 
 This needs a human because it creates new Apps, gives one a branch-protection bypass, restructures
 the branch rulesets and adds workflows that hold a write credential. A wrong scope would let
@@ -241,7 +257,15 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
    only when the staging SHA descends from that tip and EVERY commit in the range is itself in
    scope: a single-parent commit checked against its parent; a two-parent commit only as a lander
    `remerge` whose other parent is on main's first-parent history, checked against that main-side
-   parent. A commit is in scope when every changed path is on the allow-list, each brief-file
+   parent, AND whose tree is byte-identical to the clean three-way merge of its two parents,
+   recomputed from the forge objects (`git merge-tree --write-tree <parent1> <parent2>` over the
+   fetched parents, never the commit's own tree). A recompute that conflicts, or any difference
+   between the recomputed tree and the commit's tree, is `reject`. A true forge merge passes this
+   test; a two-parent commit written some other way (the Git Data API, a local `git commit-tree`)
+   whose tree carries a line neither parent's side of the merge contributes cannot. So a `remerge`
+   carries no content of its own: only what its main-side parent already has on main and what its
+   staging-side parent carries, which is itself a commit in the range and checked on its own.
+   A commit is in scope when every changed path is on the allow-list, each brief-file
    change is pure additions whose every added line falls inside the `## Evidence` section, and each
    `verify-outcomes.jsonl` change is a pure append of lines that parse as JSON objects. Compute the
    section boundaries byte-exactly from each commit's pre-image file, not from hunk context: the
@@ -253,13 +277,21 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
    bound on data a raw `git push` cannot forge. The forge reports the commit signature-verified
    (`verification.verified` true, `reason` `valid`) with the verifier App as committer, and every
    update of the staging ref from its creation to the staging SHA has the verifier App as its
-   activity-API `actor`. For a `remerge` commit the expected update actor is the lander App, and
-   the expected committer is the one the forge records for the lander's forge-side merge. The
-   author or committer NAME alone never counts. The expected identities come from the
+   activity-API `actor`, except the updates that moved the ref onto a `remerge` commit. A `remerge`
+   commit is bound on exactly three fields: the activity-API `actor` of the ref update that moved
+   the ref onto it is the lander App; that update's `before` (the ref's previous head) is its
+   staging-side parent, so a remerge cannot bring along a commit no verifier update ever put on the
+   ref; and its tree equals the recomputed clean merge of its parents (above). Its committer and its signature verdict are NOT bound: with the tree bound to the
+   merge, the commit adds no content, so its committer carries no weight, and the brief makes no
+   claim about how the forge signs a merge-API commit. A two-parent commit moved onto the ref by
+   any other actor is `reject`, however exact its tree. The author or committer NAME alone never
+   counts. The expected identities come from the
    default-branch checkout. Admissible Evidence content written by any other identity is
    `reject`, naming the commit and the identity found. The implementation confirms, and row 19
-   reads back live, that each writer's real mechanism yields the verdict and committer this
-   binding expects; if one does not, it reports NEEDS_CONTEXT and never loosens the binding to
+   reads back live, that each writer's real mechanism yields what this binding expects: the
+   verifier's write yields the verdict and committer (row 19 (b)); the lander's forge-side merge
+   yields a two-parent commit whose tree equals the recomputed merge, moved onto the ref by the
+   lander as actor (row 19 (c)). If one does not, it reports NEEDS_CONTEXT and never loosens the binding to
    fit.
    Anything else is `reject`, naming the offending commit, path and line. An unreadable input is
    `could-not-check`, which is never admit.
@@ -329,7 +361,9 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
    6. `land` — its own `scope` verdict is `admit`, AND `leak-sweep` and (Option 1) `evidence-scope`
       are green, each posted by its expected App: push that exact validated SHA by refspec
       (`<sha>:refs/heads/main`, a fast-forward; never the staging ref's name, so a commit added to
-      the ref after the re-read cannot ride along), then delete the staging ref.
+      the ref after the re-read cannot ride along), then delete the staging ref through the refs
+      API. That SHA refspec is the lander's only `git push`: the remerge goes through the merges
+      API and the deletion through the refs API (row 17).
 5. **Post-land audit** (`statusgen evidence-audit`, run by `evidence-scope.yml` on pushes to
    main; a push to main runs main's own definition). Select by the PUSH, never by a commit's
    author: a fast-forward landing adds no lander-authored commit. The audit inspects every push to
@@ -347,8 +381,21 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
    toward auditing). For each selected push, check every commit in `before..after` with the same
    per-commit unit as step 2: compare the normalized hash of each touched brief's non-Evidence
    content and each prior outcomes line, before and after that commit, flag any path off the
-   allow-list, and, in a lander push, flag any commit the forge does not attribute to the verifier
-   App or the lander (the same signature-verdict-and-committer data as step 2). On a mismatch:
+   allow-list, and, in a lander push, flag any commit whose writer fails step 2's binding, read
+   by the audit's own adapter, never taken from the validator's or the lander's result:
+   - a single-parent commit on the forge's signature verdict and committer (the verifier App)
+     AND on the activity-API `actor` of the `evidence-landing/**` ref update that put it there
+     (the verifier App). The adapter finds the staging ref that an update set to the pushed
+     tip and reads that ref's update history; a history it cannot read (a deleted ref whose updates the API no longer returns)
+     is `could-not-check`, never clean;
+   - a two-parent commit on the same three `remerge` fields as step 2: the lander App as the
+     update's `actor`, that update's `before` as its staging-side parent, and its tree
+     byte-identical to the clean three-way merge of its parents, which the audit job recomputes
+     itself from the forge objects. That recompute is git's own merge, not the `scope` core's
+     code, and it runs in a different job, so a bug in the `scope` core does not blind it; a
+     conflicting recompute or any tree difference is a mismatch.
+
+   On a mismatch:
    - in a push whose `sender` is the lander App, or whose sender is unreadable, file a finding
      carrying the halt label (step 4's `refuse` then holds until a human clears it);
    - in a push by any other identity, file a finding for a human WITHOUT the halt label. That
@@ -367,9 +414,9 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go test ./cmd/evidencegate/ -run 'TestScope' -count=1 -timeout 180s` | exit 0. Planted-mutation fixtures, each `reject`: a Verify-table cell edit, a frontmatter edit, a prose edit outside `## Evidence`, a deleted Evidence row, an off-list path, a rewritten `verify-outcomes.jsonl` line, a non-descendant staging SHA, an empty diff, a two-commit range whose first commit edits a Verify cell and whose second reverts it (net diff clean, per-commit unit rejects), and a rewrite of an outcome line appended by the previous commit. Writer-binding fixtures, each `reject` although the content is admissible Evidence: a commit whose committer is the implementer App; an unsigned commit whose committer name and e-mail claim the verifier App (a raw push); a signed verifier commit reached by a staging-ref update whose actor is another identity. An appended Evidence row and an appended outcome line, each forge-verified as the verifier App's and pushed by it, and a `remerge` commit written by the lander checked against its main-side parent, are `admit`. An unreadable diff, signature verdict or update history is `could-not-check` | check:ci +mutation |
+| 1 | `cd tools/desk && go test ./cmd/evidencegate/ -run 'TestScope' -count=1 -timeout 180s` | exit 0. Planted-mutation fixtures, each `reject`: a Verify-table cell edit, a frontmatter edit, a prose edit outside `## Evidence`, a deleted Evidence row, an off-list path, a rewritten `verify-outcomes.jsonl` line, a non-descendant staging SHA, an empty diff, a two-commit range whose first commit edits a Verify cell and whose second reverts it (net diff clean, per-commit unit rejects), and a rewrite of an outcome line appended by the previous commit. Writer-binding fixtures, each `reject` although the content is admissible Evidence: a commit whose committer is the implementer App; an unsigned commit whose committer name and e-mail claim the verifier App (a raw push); a signed verifier commit reached by a staging-ref update whose actor is another identity. Remerge fixtures, each `reject`: a two-parent commit moved onto the ref by the lander, parents (the previous staging head, the main tip), whose tree adds one Evidence row that neither parent carries (the recomputed merge differs from its tree), and the same with an appended outcome line instead; a two-parent commit whose recomputed merge conflicts; a two-parent commit whose tree equals the recomputed merge but that another actor (the verifier App included) moved onto the ref; a two-parent commit moved on by the lander whose staging-side parent is not the ref's previous head. An appended Evidence row and an appended outcome line, each forge-verified as the verifier App's and pushed by it, and a `remerge` commit moved on by the lander from the previous staging head whose tree equals the recomputed clean merge of its parents, are `admit`. An unreadable diff, signature verdict or update history is `could-not-check` | check:ci +mutation |
 | 2 | `bash tools/desk/cmd/evidencegate/testdata/mutate.sh` | exit 0 and prints `MUTANT KILLED`. The script makes the section check treat every hunk as in-section, re-runs row 1, and requires it to FAIL: the fail-first proof that row 1 bites | check:ci +mutation |
-| 3 | `cd statusgen && go test . -run 'TestEvidenceAudit' -count=1 -timeout 180s` | exit 0. LOWER LAYER WITH THE UPPER BYPASSED, fixture pushes to main carrying NO validator verdict: (i) a fast-forward pushed by the lander App whose commit is authored by the verifier App, NOT the lander, and edits a Verify table: selected, `checked-failed`, halt finding emitted; (ii) a push by another identity whose commit has no associated PR and edits frontmatter: selected, `checked-failed`; (iii) a lander push whose first commit edits prose outside `## Evidence` and whose second is Evidence-only: `checked-failed`; (iv) a lander push of admissible Evidence whose commit the forge attributes to the implementer App: `checked-failed`, halt finding. An Evidence-only, verifier-written lander push is `checked-clean`. Selection: a non-lander push whose every commit is accounted for by a merged PR with its merge commit in the range is not selected; a direct non-lander push of commits that belong only to an OPEN PR IS selected. A board-writer push is not selected when it touches only one surface of its set, one fixture per surface (`STATUS.md`, a stream `README.md`, `docs/quality/QUALITY.md`, `CHANGELOG.md`, a `changelog/` fragment deletion, a version-stamp path); a board-writer push that also adds a `changelog/` fragment, or touches any path outside the set, IS selected. Consequence: a mismatch in a non-lander push (fixture ii) files a finding WITHOUT the halt label; a mismatch in a lander push or a push with an unreadable sender files it WITH the halt label. An unreadable commit, sender, pull association or stamp-path list selects the push and reports `could-not-check`, never clean | check:ci +mutation |
+| 3 | `cd statusgen && go test . -run 'TestEvidenceAudit' -count=1 -timeout 180s` | exit 0. LOWER LAYER WITH THE UPPER BYPASSED, fixture pushes to main carrying NO validator verdict: (i) a fast-forward pushed by the lander App whose commit is authored by the verifier App, NOT the lander, and edits a Verify table: selected, `checked-failed`, halt finding emitted; (ii) a push by another identity whose commit has no associated PR and edits frontmatter: selected, `checked-failed`; (iii) a lander push whose first commit edits prose outside `## Evidence` and whose second is Evidence-only: `checked-failed`; (iv) a lander push of admissible Evidence whose commit the forge attributes to the implementer App: `checked-failed`, halt finding; (v) a lander push carrying a two-parent commit, moved onto its staging ref by the lander, whose tree adds an Evidence row absent from both parents (the audit's own merge recompute differs from its tree): `checked-failed`, halt finding. An Evidence-only, verifier-written lander push is `checked-clean`, and so is one carrying a true `remerge` whose tree equals the audit's recompute. A lander push whose staging ref's update history cannot be read reports `could-not-check`, never clean. Selection: a non-lander push whose every commit is accounted for by a merged PR with its merge commit in the range is not selected; a direct non-lander push of commits that belong only to an OPEN PR IS selected. A board-writer push is not selected when it touches only one surface of its set, one fixture per surface (`STATUS.md`, a stream `README.md`, `docs/quality/QUALITY.md`, `CHANGELOG.md`, a `changelog/` fragment deletion, a version-stamp path); a board-writer push that also adds a `changelog/` fragment, or touches any path outside the set, IS selected. Consequence: a mismatch in a non-lander push (fixture ii) files a finding WITHOUT the halt label; a mismatch in a lander push or a push with an unreadable sender files it WITH the halt label. An unreadable commit, sender, pull association or stamp-path list selects the push and reports `could-not-check`, never clean | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./cmd/evidencegate/ -run 'TestLanderDecision' -count=1 -timeout 180s` | exit 0. `land` only when the lander's own `scope` re-derivation is `admit` and both required statuses are green from their expected creators. No land in each of: a SHA carrying the PR-head not-a-landing pass plus green `leak-sweep` that is no staging ref's current head gives `skip`; a green `evidence-scope` on a staging head whose content the lander's own `scope` rejects gives `fallback`; a green posted by an unexpected creator counts as missing; a missing or pending `leak-sweep` gives `wait`, and past the fixed window, timed from the forge-recorded ref update (a fixture whose commit date is far older than its ref update still gives `wait`), gives `fallback`; admissible Evidence content whose commit the implementer App wrote gives `fallback`, not `land`. `reject` and `could-not-check` both give `fallback` (no push, a finding naming the staging ref, the ref kept). An open halt finding gives `refuse` for every input, and so does a halt finding closed or unlabelled by a bot; one closed by an allowlisted human does not. A ref that already fell back gives `skip`, even when main has moved or its statuses turn green. A moved main tip gives `remerge` up to the cap, then `fallback`; a conflicting remerge gives `fallback`. Precedence: a fixture that is halted AND not a staging head gives `refuse`; one that is not a staging head AND out of scope gives `skip` | check:ci +mutation |
 | 5 | `test -s .github/workflows/evidence-scope.yml && grep -qE '^[[:space:]]+workflow_run:' .github/workflows/evidence-lander.yml && grep -qE '^[[:space:]]+status:' .github/workflows/evidence-lander.yml && grep -qE '^[[:space:]]+schedule:' .github/workflows/evidence-lander.yml && grep -qE '^[[:space:]]+environment:[[:space:]]*evidence-lander' .github/workflows/evidence-lander.yml && grep -qE '^[[:space:]]+workflow_run:' .github/workflows/evidence-scope-post.yml && grep -qE '^[[:space:]]+environment:[[:space:]]*evidence-scope' .github/workflows/evidence-scope-post.yml && grep -qF 'github.event.repository.default_branch' .github/workflows/evidence-scope-post.yml && ! grep -qE 'statuses:[[:space:]]*write' .github/workflows/evidence-scope.yml && ! grep -qF 'pull_request_target' .github/workflows/evidence-scope.yml .github/workflows/evidence-scope-post.yml .github/workflows/evidence-lander.yml` | exit 0 (lander runs from the default-branch definition on all three triggers in its environment; the poster runs from the default-branch definition in its own environment with validator source from the default branch; the event-facing half cannot post a status; no `pull_request_target`). Under Option 2 the poster clauses are dropped and recorded as not-applicable in Evidence | check |
 | 6 | `git diff $(git merge-base refs/remotes/origin/main HEAD)..HEAD -- .github/workflows/evidence-automerge.yml .github/workflows/leaksweep-control.yml .github/workflows/leaksweep-pattern.yml` | empty (the fallback lane and the leak workflows are untouched). The base is spelled `refs/remotes/origin/main` in full so that a stray local `origin/main` branch cannot become the comparison base | check +neighbour |
@@ -383,9 +430,9 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
 | 14 | DONE (d), LOWER LAYER WITH THE UPPER BYPASSED: under the verifier App, with one real outcome line appended locally, `VERIFIER_MAIN_OK=1 deskevidence medici-finance/assay main --evidence-file docs/streams/verify-outcomes.jsonl`. The client-side refusal is deliberately switched off and the content is admissible Evidence, so only the server's identity scope can refuse | exit non-zero, and the forge refuses the write (ruleset violation). The main tip is unchanged. If it lands, the row FAILS: the line is a real outcome row, so the harm is bounded and the failure is itself the finding | gate:human +mutation |
 | 15 | DONE (c) + FLOW: after a real Evidence-only landing through a staging ref, with `LANDED_SHA` exported as the new main tip: `gh api "repos/medici-finance/assay/commits/$LANDED_SHA/pulls" --jq 'length'` and `gh api "repos/medici-finance/assay/activity?ref=refs/heads/main&per_page=20" --jq '.[] \| select(.after == env.LANDED_SHA) \| {actor: .actor.login, activity_type}'` | `0` (no PR), and the ref update that set main to `LANDED_SHA` names the lander App's bot login as `actor` with `activity_type` `push`. The commit author is deliberately NOT asserted: a fast-forward keeps the staging commit's author (the verifier App). The post-land audit run on that push reports `checked-clean`. Fail-first: the same push attempted before Task step 1 was refused `GH013`, recorded in Evidence | gate:human +flow |
 | 16 | `grep -qF 'evidence-landing/' plugins/assay/skills/verify-desk/SKILL.md && grep -qiF 'lander' docs/adopting-assay.md` | exit 0 (the skill and the adopter doc name the lane) | check |
-| 17 | `test -s .github/workflows/evidence-scope-post.yml && test -s .github/workflows/evidence-lander.yml && ! grep -hE '[$][{][{][^}]*github[.]event[.]' .github/workflows/evidence-scope-post.yml .github/workflows/evidence-lander.yml \| grep -qvE '^[[:space:]]+[A-Z][A-Z0-9_]*:[[:space:]]*[$][{][{]' && ! grep -qF 'download-artifact' .github/workflows/evidence-scope-post.yml .github/workflows/evidence-lander.yml && grep -qE '[$][{]?[A-Z_]*SHA[}]?:refs/heads/main' .github/workflows/evidence-lander.yml && ! grep -E ':refs/heads/main' .github/workflows/evidence-lander.yml \| grep -qvE '[$][{]?[A-Z_]*SHA[}]?:refs/heads/main'` | exit 0: in the two credential-holding workflows every `github.event.*` interpolation sits on an upper-case `env:` assignment line, never inside `run:` or `if:`, and neither downloads an artifact from a triggering run; the lander's every push to main is a refspec from a validated-SHA variable, never a ref name. Fail-first: a planted `run: echo ${{ github.event.workflow_run.head_branch }}` line makes the row exit 1, and so does a planted `git push origin "${STAGING_REF}:refs/heads/main"`. Under Option 2 the poster file is dropped from both greps | check +mutation |
+| 17 | `test -s .github/workflows/evidence-scope-post.yml && test -s .github/workflows/evidence-lander.yml && ! grep -hE '[$][{][{][^}]*github[.]event[.]' .github/workflows/evidence-scope-post.yml .github/workflows/evidence-lander.yml \| grep -qvE '^[[:space:]]+[A-Z][A-Z0-9_]*:[[:space:]]*[$][{][{]' && ! grep -qF 'download-artifact' .github/workflows/evidence-scope-post.yml .github/workflows/evidence-lander.yml && grep -qE '[$][{]?[A-Z_]*SHA[}]?:refs/heads/main' .github/workflows/evidence-lander.yml && ! grep -E ':refs/heads/main' .github/workflows/evidence-lander.yml \| grep -qvE '[$][{]?[A-Z_]*SHA[}]?:refs/heads/main' && ! grep -E 'git[[:space:]]+push' .github/workflows/evidence-lander.yml \| grep -qvE '[$][{]?[A-Z_]*SHA[}]?:refs/heads/main'` | exit 0: in the two credential-holding workflows every `github.event.*` interpolation sits on an upper-case `env:` assignment line, never inside `run:` or `if:`, and neither downloads an artifact from a triggering run; the lander's every push to main is a refspec from a validated-SHA variable, never a ref name, and every `git push` line in the lander workflow is that SHA-refspec form, so no shorthand destination (`:main`, `HEAD:main`) escapes the check. Fail-first: a planted `run: echo ${{ github.event.workflow_run.head_branch }}` line makes the row exit 1, and so does each of a planted `git push origin "${STAGING_REF}:refs/heads/main"`, a planted `git push origin "${STAGING_REF}":main` and a planted `git push origin HEAD:main`. Under Option 2 the poster file is dropped from both greps | check +mutation |
 | 18 | LOWER LAYER WITH THE UPPER BYPASSED, live (Option 1): open a draft canary PR from `example-canary-pr`, a fast-forward of main that edits ONE Verify-table cell of this brief; approve it at its head so the poster posts the not-a-landing pass; let `leak-sweep` post. With `CANARY_SHA` exported as that head: `gh api "repos/medici-finance/assay/commits/$CANARY_SHA/status" --jq '[.statuses[] \| select(.context=="evidence-scope" or .context=="leak-sweep") \| .state]'` then `git ls-remote origin refs/heads/main` | both statuses `success` (the server layer alone would accept a push of this SHA), yet main is NOT `CANARY_SHA`, and the lander runs those statuses triggered each logged `skip` for `CANARY_SHA` (not a staging ref's head). The canary PR is then closed unmerged | gate:human +mutation |
-| 19 | Writer binding, live. (a) Under the implementer App credential: `git push origin refs/remotes/origin/main:refs/heads/evidence-landing/example-canary-writer`, then `git ls-remote origin refs/heads/evidence-landing/example-canary-writer`. (b) After row 15's real landing, with `LANDED_SHA` exported: `gh api "repos/medici-finance/assay/commits/$LANDED_SHA" --jq '{verified: .commit.verification.verified, reason: .commit.verification.reason, committer: .committer.login}'` | (a) the push exits non-zero with `GH013` in stderr and the ls-remote prints nothing: no identity but the verifier App and the lander App can create a staging ref. (b) `verified` true, `reason` `valid`, `committer` the verifier App's bot login: the verify desk's real write mechanism yields exactly what Task step 2's binding expects. If (b) reads otherwise the row FAILS and the implementation's binding is re-examined, never loosened to fit | gate:human +mutation |
+| 19 | Writer binding, live. (a) Under the implementer App credential: `git push origin refs/remotes/origin/main:refs/heads/evidence-landing/example-canary-writer`, then `git ls-remote origin refs/heads/evidence-landing/example-canary-writer`. (b) After row 15's real landing, with `LANDED_SHA` exported: `gh api "repos/medici-finance/assay/commits/$LANDED_SHA" --jq '{verified: .commit.verification.verified, reason: .commit.verification.reason, committer: .committer.login}'`. (c) After a real `remerge` (a staging ref left waiting while main moves, so the lander merges main into it), with `REMERGE_SHA` exported as that two-parent commit and `REMERGE_REF` as its full `refs/heads/evidence-landing/...` name: `git fetch origin && test "$(git rev-parse "$REMERGE_SHA^{tree}")" = "$(git merge-tree --write-tree "$REMERGE_SHA^1" "$REMERGE_SHA^2")"`, then `gh api "repos/medici-finance/assay/activity?ref=$REMERGE_REF&per_page=50" --jq '.[] \| select(.after == env.REMERGE_SHA) \| {actor: .actor.login, before}'` | (a) the push exits non-zero with `GH013` in stderr and the ls-remote prints nothing: no identity but the verifier App and the lander App can create a staging ref. (b) `verified` true, `reason` `valid`, `committer` the verifier App's bot login: the verify desk's real write mechanism yields exactly what Task step 2's binding expects. (c) the `test` exits 0 (the forge's own merge commit has exactly the tree the recompute yields), and the activity entry names the lander App's bot login as `actor` with `before` equal to the commit's staging-side parent: the lander's real remerge mechanism yields exactly the three `remerge` fields step 2 binds. If (b) or (c) reads otherwise the row FAILS and the implementation's binding is re-examined, never loosened to fit (a forge merge whose tree differs from the recompute is already `reject` under step 2, so the lane falls back rather than landing) | gate:human +mutation |
 
 Pre-mortem (failure mode → row):
 
@@ -396,7 +443,8 @@ Pre-mortem (failure mode → row):
 | Validator skipped or buggy, and bad content lands anyway | row 3 (audit + halt); row 9 (server-required status, Option 1); row 4 (lander's own re-derivation) |
 | Audit selects by commit author and misses a fast-forward landing | row 3 (i) (verifier-authored commit pushed by the lander is still audited); row 15 (pusher, not author) |
 | An implementer (or any non-verifier identity) writes admissible Evidence on its own work to a staging ref and it lands unreviewed | row 19 (a) (staging-ref ruleset refuses the write); rows 1 and 4 (writer binding rejects it, content notwithstanding); row 3 (iv) (the audit flags it after the fact) |
-| Writer binding trusts a forgeable name, or does not match the real write mechanism | row 1 (unsigned commit claiming the verifier's identity is `reject`); row 19 (b) (live signature verdict and committer) |
+| Writer binding trusts a forgeable name, or does not match the real write mechanism | row 1 (unsigned commit claiming the verifier's identity is `reject`); row 19 (b) (live signature verdict and committer); row 19 (c) (live remerge actor, previous head and tree) |
+| A lander-key holder writes a two-parent commit (not through the merges API) whose tree injects Evidence neither parent carries | row 1 (tree differs from the recomputed merge: `reject`); row 3 (v) (the audit's own recompute: `checked-failed`, halt); row 19 (c) (the real remerge matches the recompute, so the check does not fail the lane's own merges) |
 | A board-writer release or quality regen halts the lane | row 3 (one fixture per board-writer surface not selected; a non-lander mismatch files a finding without the halt label) |
 | A bot clears the halt and resumes the lane | row 4 (a halt finding closed or unlabelled by a bot still gives `refuse`) |
 | The lander remerges into, or lands from, a ref whose batch Evidence PR is open | row 4 (`fallback` is terminal per ref: `skip`) |
@@ -424,8 +472,8 @@ The reviewer answers BOTH, in the verdict:
    (The SPOF line above names the lander's PR-rule bypass. Confirm the layers behind it are
    present at the chosen option.)
 2. Does any Verify row prove a LOWER layer catches the fault with the UPPER layer bypassed? (Rows
-   3, 14 and 18 are designed to; row 3 (iv) covers the writer-identity fault with no validator
-   verdict in the path. Confirm they bypass the upper layer rather than walking the happy path
+   3, 14 and 18 are designed to; rows 3 (iv) and 3 (v) cover the writer-identity fault and the
+   injected-remerge fault with no validator verdict in the path. Confirm they bypass the upper layer rather than walking the happy path
    through every layer at once.)
 
 Reviewer records verdict + date in the stream README table.

@@ -186,7 +186,8 @@ PR-required main, every Evidence landing pays a full PR's fixed cost (#1588; bat
 the count but not the cost). `23` adds a validator that admits only Evidence-only changes, and a
 dedicated lander App that is the only identity allowed to skip the PR rule. Only Evidence the
 verifier App wrote is admitted: a staging-ref ruleset and a forge-verified writer binding keep any
-other identity from landing verification of its own work. The lander re-checks scope and writer
+other identity from landing verification of its own work, and the lander's own merges of main into
+a staging ref are admitted only when their tree is exactly the merge of their two parents. The lander re-checks scope and writer
 itself and lands only a staging ref's current head, and a post-land audit selected by the push
 (not by commit author) halts the lane on a mismatch in a lander push. The verifier App keeps no
 write to main, and a rejected or stranded landing falls back to the batch Evidence PR. It depends on `11`,
