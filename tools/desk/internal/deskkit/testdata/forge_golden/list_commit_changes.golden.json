@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/commits/bbb222/pulls",
+      "query": "per_page=100"
+    }
+  ],
+  "result": [
+    21,
+    34
+  ]
+}

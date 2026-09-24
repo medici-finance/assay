@@ -457,8 +457,16 @@ func cmdAdd(args []string) (err error) {
 	// so an SSH push URL here is an SSH push URL there — and a bot session pushing over SSH
 	// goes out under a human's key while its commits read as the App's. Refuse now, before
 	// the branch and the worktree exist, rather than after an agent has filled them.
-	if terr := pushTransportGate(dir, "add"); terr != nil {
-		return terr
+	//
+	// With --role the worktree does NOT inherit the transport: wireRoleTransport (below,
+	// transport.go) replaces it at worktree scope with the role App's https transport and
+	// REFUSES — rolling the worktree back — unless git then resolves exactly that URL for
+	// fetch and push — a stricter check than this gate's, on the transport the worktree will
+	// actually use rather than the one it would have inherited.
+	if roleKey == "" {
+		if terr := pushTransportGate(dir, "add"); terr != nil {
+			return terr
+		}
 	}
 
 	// --base must resolve to EXACTLY ONE ref. An ambiguous short name is could-not-check,
@@ -551,6 +559,15 @@ func cmdAdd(args []string) (err error) {
 			return serr
 		}
 		identityDetail = "identity " + deskkit.RoleIdentityLabel(roleKey)
+		// TRANSPORT, worktree-scoped (#861): the role App's own https fetch+push URL and its
+		// credential helper, replacing whatever the shared checkout's origin carries. Refused
+		// and rolled back when git does not then resolve exactly that transport.
+		transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)
+		if terr != nil {
+			_ = removeWorktreeDir(guard, dir, resolvePath(target))
+			return terr
+		}
+		identityDetail += "; " + transportDetail
 	} else {
 		if serr := clearCommitIdentity(resolvePath(target)); serr != nil {
 			_ = removeWorktreeDir(guard, dir, resolvePath(target))

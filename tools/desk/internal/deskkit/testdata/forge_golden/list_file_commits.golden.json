@@ -1,0 +1,23 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/commits",
+      "query": "sha=main\u0026path=docs%2Frulings.md\u0026per_page=50"
+    }
+  ],
+  "result": [
+    {
+      "SHA": "ccc333",
+      "CommittedDate": "2026-09-02T10:00:00Z",
+      "AuthorLogin": "",
+      "CommitterLogin": ""
+    },
+    {
+      "SHA": "bbb222",
+      "CommittedDate": "2026-09-01T10:00:00Z",
+      "AuthorLogin": "",
+      "CommitterLogin": ""
+    }
+  ]
+}
