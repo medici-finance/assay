@@ -22,7 +22,10 @@ import "fmt"
 // the group/other read and execute bits 0600 excludes. A grant from a group
 // (Everyone, Authenticated Users, Users, ...) or one inherited from a parent
 // folder is refused like any other non-owner grant; an inherited one names its
-// origin, so the operator knows to protect the file's DACL from inheritance.
+// origin, so the operator knows the fix is the folder's ACL: lock the custody
+// folder with an inheritable owner-only ACL, because the tools re-create credential
+// files (GitLab rotation, first GitHub App mint) and a new file takes its folder's
+// inheritable entries — a lock on the file alone does not survive the next write.
 //
 // A could-not-determine input (empty owner or current-user SID, or a DACL entry
 // this tool cannot interpret) REFUSES rather than passing — establish the
@@ -57,7 +60,7 @@ func evaluateCustodyACL(path string, m rosterACLModel) error {
 			continue // a deny narrows access; it can never widen it
 		case rosterACEUnsupported:
 			return fmt.Errorf("custody file %s has a Windows DACL entry (#%d) this tool cannot "+
-				"interpret — refusing rather than guessing its write scope", path, i)
+				"interpret — refusing rather than guessing its access scope", path, i)
 		}
 		if ace.InheritOnly || trusted[ace.SID] {
 			continue
@@ -77,7 +80,8 @@ func evaluateCustodyACL(path string, m rosterACLModel) error {
 }
 
 // inheritedNote names an entry's origin in a custody refusal when it came from a
-// parent folder, so the fix (protect the file's DACL from inheritance) is evident.
+// parent folder, so the fix (lock the folder with an inheritable owner-only ACL,
+// then the file) is evident.
 func inheritedNote(ace rosterACE) string {
 	if ace.Inherited {
 		return " (inherited from a parent folder)"

@@ -1116,8 +1116,14 @@ specifics.
   `0600` rule: a token file must be readable and writable only by its owner (plus SYSTEM /
   Administrators), so any other principal holding read access — a group such as Everyone,
   Authenticated Users or Users, or a grant inherited from the parent folder — is refused too.
-  Lock the roster and role-token files down with an owner-only ACL that does not inherit from its
-  folder, e.g. `icacls <file> /inheritance:r /grant:r "%USERNAME%:F"`.
+  Lock the **folder** that holds the roster and role tokens (the config home, or your
+  `ASSAY_CONFIG_HOME`) with an owner-only ACL that files created in it inherit, e.g.
+  `icacls <dir> /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F"`, then lock each file already in
+  it the same way, e.g. `icacls <file> /inheritance:r /grant:r "%USERNAME%:F"`. The folder lock
+  is the part that lasts: the desk tools re-create credential files (a GitLab token rotation
+  replaces the file, and a GitHub App token is written fresh on first mint), and a new file takes
+  its folder's inheritable ACL, so a lock placed on the file alone is lost the next time the tool
+  re-creates it.
 
 ### Install path — the pinned, verify-or-refuse flow (channel E)
 The Windows **release** install mirrors the Unix acquire→verify→place flow, with the

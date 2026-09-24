@@ -38,9 +38,9 @@
       "new": "\tif false && ace.Inherited {"
     },
     {
-      "name": "treat an uninterpretable DACL entry as clean instead of refusing (write scope is guessed, not established)",
+      "name": "treat an uninterpretable DACL entry as clean instead of refusing (access scope is guessed, not established)",
       "file": "internal/deskkit/custodyacl.go",
-      "old": "\t\tcase rosterACEUnsupported:\n\t\t\treturn fmt.Errorf(\"custody file %s has a Windows DACL entry (#%d) this tool cannot \"+\n\t\t\t\t\"interpret — refusing rather than guessing its write scope\", path, i)",
+      "old": "\t\tcase rosterACEUnsupported:\n\t\t\treturn fmt.Errorf(\"custody file %s has a Windows DACL entry (#%d) this tool cannot \"+\n\t\t\t\t\"interpret — refusing rather than guessing its access scope\", path, i)",
       "new": "\t\tcase rosterACEUnsupported:\n\t\t\t_ = i\n\t\t\tcontinue"
     },
     {
