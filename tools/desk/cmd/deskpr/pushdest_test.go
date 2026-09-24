@@ -31,6 +31,14 @@ func bareHead(t *testing.T, bare, branch string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// hermeticGitConfig isolates a direct gate call from the machine's global and system git config
+// (a machine-wide insteadOf would otherwise rewrite the fixture URLs these cases classify).
+func hermeticGitConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+}
+
 func createErr(t *testing.T) error {
 	t.Helper()
 	return cmdCreate([]string{"--title", "x", "--body-min", "y\nBrief: fixture/01"})
@@ -182,6 +190,7 @@ func TestPushDestSingleLocalCreatesAndHTTPSPassesGate(t *testing.T) {
 		t.Fatalf("expected the push to proceed; git calls: %v", gitCalls(*calls))
 	}
 
+	hermeticGitConfig(t)
 	gated := newBaseFixture(t)
 	mustGit(t, gated, "remote", "set-url", "--push", "origin", "https://github.com:443/example-org/tracker.git")
 	if err := pushDestinationGate(gated, "create", "example-org/tracker", ghURL); err != nil {
@@ -191,6 +200,7 @@ func TestPushDestSingleLocalCreatesAndHTTPSPassesGate(t *testing.T) {
 
 // An https destination that names a different repo than the fetch origin is refused.
 func TestPushDestHTTPSOtherRepoRefuses(t *testing.T) {
+	hermeticGitConfig(t)
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://github.com/someone-else/tracker.git")
 	err := pushDestinationGate(work, "create", "example-org/tracker", ghURL)
@@ -199,6 +209,7 @@ func TestPushDestHTTPSOtherRepoRefuses(t *testing.T) {
 
 // An https destination carrying userinfo never prints the credential.
 func TestPushDestRefusalRedactsUserinfo(t *testing.T) {
+	hermeticGitConfig(t)
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://x-access-token:s3cr3t@github.com/someone-else/tracker.git")
 	msg := wantRefusal(t, pushDestinationGate(work, "create", "example-org/tracker", ghURL), "<redacted>@github.com")
@@ -210,6 +221,7 @@ func TestPushDestRefusalRedactsUserinfo(t *testing.T) {
 // With extensions.worktreeConfig already on, the remedy does not re-enable it; an insteadOf rule
 // that would rewrite the suggested URL is called out.
 func TestPushDestRemedyShape(t *testing.T) {
+	hermeticGitConfig(t)
 	work := newBaseFixture(t)
 	mustGit(t, work, "config", "extensions.worktreeConfig", "true")
 	mustGit(t, work, "remote", "set-url", "--push", "origin", sentinelPushURL)

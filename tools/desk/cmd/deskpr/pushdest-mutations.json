@@ -1,0 +1,65 @@
+{
+  "test": "go test ./cmd/deskpr/ -count=1 -timeout 300s -run 'PushDest|Preflight|ClassifyPushDest|SSHPushRemote|SshFetch|NoAppHelper|EditIsNot'",
+  "control": {
+    "name": "CONTROL — create no longer runs the push-destination gate (#1623: a sentinel, multi-valued or rewritten-to-SSH push url goes straight to git push)",
+    "file": "cmd/deskpr/deskpr.go",
+    "old": "\tif derr := pushDestinationGate(facts.dir, \"create\", facts.repo, facts.originURL); derr != nil {",
+    "new": "\tif derr := pushDestinationGate(facts.dir, \"create\", facts.repo, facts.originURL); false && derr != nil {"
+  },
+  "mutations": [
+    {
+      "name": "update no longer runs the push-destination gate",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif derr := pushDestinationGate(facts.dir, \"update\", facts.repo, facts.originURL); derr != nil {",
+      "new": "\tif derr := pushDestinationGate(facts.dir, \"update\", facts.repo, facts.originURL); false && derr != nil {"
+    },
+    {
+      "name": "preflight gates the repo on go-git's read of the repository config file again (a global insteadOf passes)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\toriginURL, oerr := effectiveOriginURL(dir)\n",
+      "new": "\toriginURL, oerr := gitRepo.RemoteURL(\"origin\")\n"
+    },
+    {
+      "name": "preflight gates on the first of a multi-valued fetch url list",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\tcase 1:\n\t\treturn urls[0], nil\n",
+      "new": "\tcase 1, 2:\n\t\treturn urls[0], nil\n"
+    },
+    {
+      "name": "admit a multi-valued push url list (git pushes to every value)",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\tcase len(dests) > 1:\n",
+      "new": "\tcase false:\n"
+    },
+    {
+      "name": "admit a non-https push destination (SSH, a sentinel, cleartext)",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\tcase kinds[0] != pushHTTPS:\n",
+      "new": "\tcase false:\n"
+    },
+    {
+      "name": "admit an https push destination naming another repo",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\t\t} else if slug != repo {\n",
+      "new": "\t\t} else if false {\n"
+    },
+    {
+      "name": "leak the push URL's userinfo into the refusal",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\t\tfmt.Fprintf(&b, \"    %d. %s — %s\\n\", i+1, redactURL(d), kinds[i])\n",
+      "new": "\t\tfmt.Fprintf(&b, \"    %d. %s — %s\\n\", i+1, d, kinds[i])\n"
+    },
+    {
+      "name": "remedy writes the SHARED config (drop --worktree)",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "config --worktree --replace-all remote.origin.pushurl '' && ",
+      "new": "config --replace-all remote.origin.pushurl '' && "
+    },
+    {
+      "name": "remedy never enables extensions.worktreeConfig (so --worktree silently writes the shared config)",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\t\tenable = fmt.Sprintf(\"git -C %s config extensions.worktreeConfig true && \", d)\n",
+      "new": "\t\t_ = d\n"
+    }
+  ]
+}
