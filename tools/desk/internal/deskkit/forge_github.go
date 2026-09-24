@@ -125,6 +125,12 @@ type ForgeAPIError struct {
 	Method string
 	Path   string
 	Body   string
+	// RateLimited is true when the forge said this failure is a RATE LIMIT rather than a
+	// refusal: a 429, or a 403 carrying GitHub's rate-limit signature (a `Retry-After` header,
+	// an exhausted `X-RateLimit-Remaining`, or a message naming the limit). It does not change
+	// Error()'s text — it exists for IsForgeRateLimited, so a poller that trips a secondary limit
+	// can stop the cycle instead of compounding it with the remaining reads.
+	RateLimited bool
 }
 
 func (e *ForgeAPIError) Error() string {
@@ -149,6 +155,32 @@ func IsForgeNotFound(err error) bool {
 func IsForgeForbidden(err error) bool {
 	var ae *ForgeAPIError
 	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
+}
+
+// IsForgeRateLimited reports whether err is a forge rate-limit refusal: a 429 from either
+// backend, or a GitHub 403 that carried the rate-limit signature (see ForgeAPIError.RateLimited).
+// It unwraps, so a ForgeAPIError nested in a DeskError is still recognised. A plain 403 (a
+// missing scope) is NOT a rate limit: treating it as one would stop a poll cycle on a
+// permissions fault that retrying never clears.
+func IsForgeRateLimited(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && (ae.Status == http.StatusTooManyRequests || ae.RateLimited)
+}
+
+// ghHTTPErrorRateLimited reads GitHub's rate-limit signature off a non-2xx go-gh HTTPError.
+func ghHTTPErrorRateLimited(he *ghapi.HTTPError) bool {
+	if he.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	if he.StatusCode != http.StatusForbidden {
+		return false
+	}
+	if he.Headers != nil {
+		if he.Headers.Get("Retry-After") != "" || he.Headers.Get("X-RateLimit-Remaining") == "0" {
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(he.Message), "rate limit")
 }
 
 // ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
@@ -211,7 +243,8 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 	if rerr != nil {
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {
-			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path}
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
+				RateLimited: ghHTTPErrorRateLimited(he)}
 		}
 		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
@@ -848,6 +881,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Name string `json:"name"`
 			} `json:"labels"`
 			CreatedAt   string    `json:"created_at"`
+			UpdatedAt   string    `json:"updated_at"`
 			HTMLURL     string    `json:"html_url"`
 			PullRequest *struct{} `json:"pull_request"`
 		}
@@ -872,6 +906,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Author:    Account{Login: is.User.Login, ID: is.User.ID},
 				Labels:    labels,
 				CreatedAt: is.CreatedAt,
+				UpdatedAt: is.UpdatedAt,
 				URL:       is.HTMLURL,
 			})
 		}
