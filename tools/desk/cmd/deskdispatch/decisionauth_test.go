@@ -166,6 +166,7 @@ func TestDecisionChildSeesTheExplicitGHTokenAndNothingIsMinted(t *testing.T) {
 			s.replies = happyReplies("/private/tmp/worker-home")
 			t.Setenv("GH_TOKEN", "example-explicit-export")
 			mints := stubMint(t, stubMintedToken, nil)
+			stubTokenIdentity(t, dispatcherAppIdentity, nil) // issue 1631: the export IS the role's App
 
 			rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--gate-human", "--brief", "spec.md",
 				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})

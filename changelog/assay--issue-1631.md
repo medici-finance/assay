@@ -1,0 +1,3 @@
+### Fixed
+- `cellctl` shims no longer export the operator's ambient `gh` login as `GH_TOKEN` to every desk verb. The token now travels as `CELLCTL_GH_AMBIENT`, and only the cell's `gh` wrapper turns it into `GH_TOKEN`, for a `gh` child that has no token of its own. So a `gh` subprocess still authenticates (#1145), and no desk verb mistakes the human credential for an operator override.
+- `deskdispatch` honours an inherited `GH_TOKEN` only after checking that it is the dispatching role's App (a GitHub `viewer` read compared with the roster binding; on GitLab, a match with the role's PAT custody). Any other identity is ignored with a NOTICE, and the role token is minted instead. A token whose identity cannot be read makes the dispatch refuse before any claim.

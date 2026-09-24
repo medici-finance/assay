@@ -31,6 +31,11 @@ var lookPath = exec.LookPath
 // is read inside deskkit.ResolveForge, under the resolver's own custody hook.
 var mintTokenFn = deskkit.GitHubRoleToken
 
+// tokenIdentityFn is the seam the inherited-GH_TOKEN identity probe runs through (issue 1631,
+// verifyInheritedToken): one GraphQL viewer read naming the account a token acts as. A test
+// binds it to a stub so no dispatch test reaches a forge.
+var tokenIdentityFn = deskkit.GitHubTokenIdentity
+
 // NO FORGE CLI. Every forge read and write this verb makes — the model stamp's label
 // reads and writes, the review-lane queue label — goes through the resolved deskkit.Forge
 // under an explicitly minted role credential (deskkit.ResolveForge), never through `gh` or

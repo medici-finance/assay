@@ -39,7 +39,9 @@
 // desk window (no ambient `gh` login) failed closed on every fresh claim while its other
 // steps minted their own role token and succeeded. Now the claim step mints (or reuses)
 // the dispatching role's token through the same seam the model stamp uses and passes it in
-// the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
+// the tool's own shape; an explicit GH_TOKEN already in the environment wins only once it is
+// verified to BE the dispatching role's App (issue 1631 — otherwise it is ignored with a NOTICE,
+// and one whose identity cannot be read refuses); a mint
 // failure is the refusal, never a fall-back to whatever `gh` is logged in as. The decision
 // gate's script shells out to the forge CLI too, so it is handed the SAME credential in
 // environment shape from that one resolution (issue 1146) — keyed on what the child does, not
@@ -97,7 +99,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       mints (or reuses) that role's App token exactly as the model-stamp step
                       does and hands it over as --token-file <0600 path> (deskclaim-ref) or
                       GH_TOKEN in the child's environment (the script); a GH_TOKEN already
-                      exported wins and nothing is minted; a mint failure is exit 6 with NO
+                      exported wins and nothing is minted ONLY when it is verified to be the
+                      dispatching role's App (a GitHub viewer read vs the roster binding; on
+                      GitLab, equal to the role's PAT custody) — any other identity is ignored
+                      with a NOTICE and the role token minted, and one whose identity cannot
+                      be read is exit 5/6 with NO claim attempted; a mint failure is exit 6 with NO
                       claim attempted — the tool is never run on the ambient gh login. Exit 5
                       there with a READABLE holder = a LIVE holder owns it: this verb prints
                       the holder and exits 5; it never steals. Exit 5 with no readable holder
