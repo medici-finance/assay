@@ -1,0 +1,2 @@
+### Fixed
+- `deskgit fetch` and `deskgit push` now gate on the origin URL as git itself resolves it (`git remote get-url --all origin`), including worktree- and global-scope values, empty-value list resets and insteadOf rewrites. The earlier read of the repository config file alone could pass an allowed repo while git fetched from another one. A multi-valued or unresolvable origin url list is refused fail-closed (exit 6).

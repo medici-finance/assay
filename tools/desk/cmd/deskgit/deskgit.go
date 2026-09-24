@@ -25,15 +25,37 @@ func checkInsideWorkTree(dir string) error {
 	return nil
 }
 
-// effectiveOriginURL returns the URL the local `origin` remote effectively fetches
-// from, matching `git ls-remote --get-url origin` — a config read only, no network
-// contact.
+// effectiveOriginURL returns the URL the local `origin` remote effectively fetches from, AS
+// GIT ITSELF RESOLVES IT: `git remote get-url --all origin`, a config read that contacts no
+// remote. It runs through the same scrubbed runGit as the fetch/push it gates, so it sees the
+// same config scopes (system, global, repository, worktree), the same empty-value list resets,
+// and the same insteadOf rewrites — the gate decides on the URL git will connect to, not on a
+// parallel read of the repository config file (#1573 follow-up: that read missed worktree and
+// global scope and could pass an allowed slug while git fetched elsewhere).
+//
+// Exactly one URL is required. An empty list, or a git error, is returned as an error the
+// callers turn into a fail-closed exit 6; a MULTI-VALUED list is refused the same way, because
+// fetch connects to the first value and push to every value, so no single URL can stand for it.
 func effectiveOriginURL(dir string) (string, error) {
-	repo, err := gitcore.Open(dir)
+	out, err := runGit(dir, "remote", "get-url", "--all", "origin")
 	if err != nil {
 		return "", err
 	}
-	return repo.RemoteURL("origin")
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if line != "" {
+			urls = append(urls, line)
+		}
+	}
+	switch len(urls) {
+	case 0:
+		return "", fmt.Errorf("git resolved no URL for origin")
+	case 1:
+		return urls[0], nil
+	default:
+		return "", fmt.Errorf("origin resolves to %d URLs (a multi-valued remote.origin.url list); "+
+			"refusing to gate on one of them — set exactly one", len(urls))
+	}
 }
 
 // symbolicRefShortHEAD returns the current branch's short name, matching
