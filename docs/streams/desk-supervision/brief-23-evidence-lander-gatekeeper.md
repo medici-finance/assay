@@ -312,10 +312,10 @@ Default if no answer: none. The brief blocks until answered. Batching stays the 
       per ref: once a fallback finding names a ref, the lander never remerges into it or lands from
       it again, so it cannot disturb the batch Evidence PR opened from that ref.
    3. `remerge` — the staging SHA does not descend from the current main tip: merge current main
-      into the staging ref through the forge's merge API (two parents, never rebase, so the forge
-      signs the merge commit and records the lander as the ref update's actor) and let the cycle
-      re-validate, up to a fixed attempt cap. The cap reached, or a conflicting merge, is
-      `fallback`.
+      into the staging ref through the forge's merge API (two parents, never rebase; the forge,
+      not the runner, writes the merge commit and records the lander as the ref update's actor)
+      and let the cycle re-validate, up to a fixed attempt cap. The cap reached, or a conflicting
+      merge, is `fallback`.
    4. `fallback` — its own `scope` verdict is `reject` or `could-not-check`, a required status is
       `failure`, or the wait window has expired: no push; file one finding naming the staging ref
       (deduped per ref); keep the ref for the verify desk's batch Evidence PR, which deletes the
