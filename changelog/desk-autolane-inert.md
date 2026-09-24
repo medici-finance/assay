@@ -20,3 +20,6 @@
 ### Changed
 - deskflip's checks-green conclusion set now delegates to the shared `deskkit.ConclusionGreen`,
   the same set the lane's `ci-nonsuccess` signal reads. Behaviour is unchanged.
+- `deskautolane`'s App-token condition mints through `deskkit.GitHubRoleToken`, the forge-aware
+  GitHub arm, instead of calling the raw App minter. The token, its scope and its custody file
+  are unchanged; a repo the roster binds to another forge is now refused before any mint.

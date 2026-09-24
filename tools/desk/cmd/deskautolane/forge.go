@@ -44,9 +44,11 @@ var _ laneForge = deskkit.Forge(nil)
 
 // mintTokenFn and resolveForgeFn are the seams the App-token condition runs through, so a
 // test can drive the verb without a real App credential. Production binds the shared deskkit
-// resolver — no ambient CLI credential, no host literal of this verb's own.
+// resolver — no ambient CLI credential, no host literal of this verb's own. The mint goes
+// through deskkit.GitHubRoleToken, the forge-aware GitHub arm: it refuses a repo the roster
+// binds to another forge before any mint, so this verb never calls the raw App minter directly.
 var (
-	mintTokenFn    = deskkit.RoleTokenForRepo
+	mintTokenFn    = deskkit.GitHubRoleToken
 	resolveForgeFn = func(fr deskkit.ForgeRepo, role string) (laneForge, error) {
 		fg, _, err := deskkit.ResolveForge(fr, role)
 		if err != nil {
