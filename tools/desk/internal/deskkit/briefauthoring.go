@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
@@ -121,4 +122,26 @@ func isBriefFileFor(p, stream, nn string) bool {
 	}
 	prefix := "brief-" + nn + "-"
 	return strings.HasPrefix(base, prefix) && strings.HasSuffix(base, ".md") && len(base) > len(prefix)+len(".md")
+}
+
+// CompleteChangedFiles reads change number's file list through fg and reconciles its length against
+// the forge's own changed-file count. ListChangedFiles is bounded (GitHub stops listing at 3000
+// files), and a short walk that happened to show only docs could hide the code that makes the PR a
+// delivery, so a list that does not match the count is an error, never a partial answer. It is the
+// one completeness rule every BriefAuthoringOnly caller shares (deskdispatch's phantom check,
+// fanoutloop's plan reconciliation).
+func CompleteChangedFiles(fg Forge, fr ForgeRepo, number int) ([]ChangedFile, error) {
+	pr, err := fg.GetPullRequest(fr, number)
+	if err != nil {
+		return nil, err
+	}
+	files, err := fg.ListChangedFiles(fr, number)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) != pr.ChangedFiles {
+		return nil, fmt.Errorf("%s#%d lists %d changed files but the forge counts %d; the list is not "+
+			"provably complete", fr.Slug(), number, len(files), pr.ChangedFiles)
+	}
+	return files, nil
 }

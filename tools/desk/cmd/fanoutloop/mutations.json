@@ -30,6 +30,12 @@
       "file": "cmd/fanoutloop/adapter.go",
       "old": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok {",
       "new": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok && false {"
+    },
+    {
+      "name": "#1339 authoring exemption — DISABLE it so every PR naming a queued brief represents it first-wins, as before the fix: a MERGED docs-only PR that only AUTHORED the brief makes it read as landed-unreconciled again. TestPlan_AuthoringPRDoesNotLandBrief must go red (the brief is listed under LANDED-UNRECONCILED instead of offered for dispatch).",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif deskkit.BriefAuthoringOnly(briefID, files) {",
+      "new": "\t\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
     }
   ]
 }

@@ -464,7 +464,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no
   link trailer at all — exactly one `Brief: <stream>/<NN>`, or `Issue: #<N>` for issue-only work
-  that delivers no brief — and that refusal at write time is the enforcement, not a follow-up edit
+  that delivers no brief (a briefs-AUTHORING PR carries `Authors: <stream>/<NN>[, …]` instead) — and that refusal at write time is the enforcement, not a follow-up edit
   to the stream README. `implemented` appears the instant that PR merges. `statusgen` derives both
   cells from the trailer plus the PR's own state — this
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
