@@ -1,0 +1,71 @@
+{
+ "description": "A seed read that FAILS establishes no baseline and suppresses the armed line; a 429 on the next cycle is a rate limit too.",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents"
+ ],
+ "cycles": [
+  {
+   "note": "tracker seed fails",
+   "reads": {
+    "example-org/tracker": {
+     "status": 500,
+     "message": "Server Error"
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker 429",
+   "reads": {
+    "example-org/tracker": {
+     "status": 429,
+     "message": "Too Many Requests",
+     "rateLimited": true
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker seeds silently",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
