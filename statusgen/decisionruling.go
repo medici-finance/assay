@@ -494,23 +494,12 @@ func isDecisionRecordPath(path string) bool {
 func decisionRecordsInDiff(root, diff string) []string {
 	var out []string
 	seen := map[string]bool{}
-	cur := ""
-	for _, line := range strings.Split(diff, "\n") {
-		t := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(t, "diff --git ") {
-			if f := strings.Fields(t); len(f) >= 4 {
-				cur = strings.TrimPrefix(f[3], "b/")
-			}
-			continue
-		}
-		if strings.HasPrefix(t, "+++ ") {
-			cur = strings.TrimPrefix(t, "+++ b/")
-			continue
-		}
-		if !strings.HasPrefix(t, "+") || strings.HasPrefix(t, "+++") {
-			continue
-		}
-		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) || isExcludedFixturePath(root, cur) {
+	// The one shared diff walker (addedDiffLines, corroboratescope.go) already skips
+	// a declared fixture corpus; a decision record is never a .patch file, so the
+	// walker's embedded-patch rule never touches this lane.
+	for _, al := range addedDiffLines(root, diff) {
+		cur := al.File
+		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) {
 			continue
 		}
 		seen[cur] = true

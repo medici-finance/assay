@@ -235,32 +235,16 @@ func dedupeCitations(in []citation) []citation {
 }
 
 // citationsInDiff extracts every citation from the ADDED lines of a unified diff,
-// grouped per file so a citation's Source is the file it was added to. Fixture-corpus
-// paths are skipped exactly as the stamp scan skips them (isExcludedFixturePath).
+// grouped per file so a citation's Source is the file it was added to. It reads
+// through the one shared walker (addedDiffLines, corroboratescope.go), so
+// fixture-corpus paths are skipped exactly as the stamp scan skips them
+// (isExcludedFixturePath) and the removed side of an embedded patch is not read as
+// a citation (#1395). Unlike the stamp lane it keeps reading program source and
+// YAML comments: a ruling claim in tracked prose of any kind is in its scope.
 func citationsInDiff(root, diff string) []citation {
-	lines := strings.Split(diff, "\n")
 	added := map[string][]string{}
-	curFile := ""
-	for _, line := range lines {
-		trimmed := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(trimmed, "diff --git ") {
-			fields := strings.Fields(trimmed)
-			if len(fields) >= 4 {
-				curFile = strings.TrimPrefix(fields[3], "b/")
-			}
-			continue
-		}
-		if strings.HasPrefix(trimmed, "+++ ") {
-			curFile = strings.TrimPrefix(trimmed, "+++ b/")
-			continue
-		}
-		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
-			continue
-		}
-		if isExcludedFixturePath(root, curFile) {
-			continue
-		}
-		added[curFile] = append(added[curFile], strings.TrimPrefix(trimmed, "+"))
+	for _, al := range addedDiffLines(root, diff) {
+		added[al.File] = append(added[al.File], al.Content)
 	}
 	// Deterministic file order for a stable report.
 	files := make([]string, 0, len(added))
