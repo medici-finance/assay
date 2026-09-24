@@ -301,10 +301,53 @@ jobs:
                 exit 1
               fi
               # First attempt refusal, not already-done, not the floor: genuine
-              # bad state (never verified / not gate:human). Leave the issue
-              # closed, comment the reason, commit nothing.
-              gh issue comment "$ISSUE" --repo "$REPO" \
-                --body "Could not advance \`$brief\` to done — statusgen refused (it is not currently \`verified\` / \`gate: human\`). Left closed; no change committed."
+              # bad state. Leave the issue closed, relay statusgen's OWN refusal
+              # text onto the card, commit nothing. (A fixed "not currently
+              # verified / gate: human" line here discarded $out, so a
+              # HELD/could-not-check refusal read as a status problem and
+              # misdirected the diagnosis.)
+              #
+              # $out is treated as untrusted text. It is NEVER interpolated into
+              # a command line or a workflow expression: it is written to a file
+              # with printf '%s', sanitized by filters that read that file, and
+              # posted with --body-file. Sanitizing: ANSI escape sequences and C0
+              # control characters (all but tab/newline) stripped; every `@`
+              # followed by a zero-width space so no login is pinged; capped to
+              # the first 20 lines / 4000 bytes; fenced with a backtick run
+              # LONGER than any run in the text, so the text cannot close the
+              # fence and inject markdown. The full output stays in this run's
+              # log (printed above).
+              raw_file="${RUNNER_TEMP}/verify-gate-refusal.raw"
+              clean_file="${RUNNER_TEMP}/verify-gate-refusal.clean"
+              excerpt_file="${RUNNER_TEMP}/verify-gate-refusal.txt"
+              body_file="${RUNNER_TEMP}/verify-gate-refusal.md"
+              printf '%s\n' "$out" > "$raw_file"
+              esc=$(printf '\033')
+              zwsp=$(printf '\342\200\213')
+              sed "s|${esc}\[[0-9;?]*[ -/]*[@-~]||g" "$raw_file" \
+                | LC_ALL=C tr -d '\000-\010\013-\037\177' \
+                | sed "s|@|@${zwsp}|g" > "$clean_file"
+              { head -n 20 "$clean_file" | head -c 4000; } > "$excerpt_file" || true
+              longest=$(awk '{ s = $0; while (match(s, /`+/)) { if (RLENGTH > m) m = RLENGTH; s = substr(s, RSTART + RLENGTH) } } END { print m + 0 }' "$excerpt_file")
+              fence=$(printf "%$(( longest >= 3 ? longest + 1 : 3 ))s" '' | tr ' ' '`')
+              run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              {
+                printf '%s\n\n' "Could not advance \`$brief\` to done — statusgen refused. Left closed; no change committed. statusgen's own output (sanitized; first 20 lines / 4000 bytes):"
+                if grep -q '[^[:space:]]' "$excerpt_file"; then
+                  printf '%s\n' "$fence"
+                  cat "$excerpt_file"
+                  [ -z "$(tail -c 1 "$excerpt_file")" ] || printf '\n'
+                  printf '%s\n' "$fence"
+                else
+                  printf '%s\n' "(statusgen printed no output)"
+                fi
+                if [ "$(wc -c < "$clean_file")" -gt "$(wc -c < "$excerpt_file")" ]; then
+                  printf '\n%s\n' "(truncated — full output in the run log: ${run_url})"
+                else
+                  printf '\n%s\n' "Run log: ${run_url}"
+                fi
+              } > "$body_file"
+              gh issue comment "$ISSUE" --repo "$REPO" --body-file "$body_file"
               echo "::error::close-verify refused for $brief"
               exit 1
             fi
