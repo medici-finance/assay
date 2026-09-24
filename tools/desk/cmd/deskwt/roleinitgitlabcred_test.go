@@ -99,7 +99,11 @@ func plantGitLabCustody(t *testing.T, role, value string) string {
 	return p
 }
 
-func TestRoleInitGitLabReadsCustodyNeverGitHubMinter(t *testing.T) {
+// TestRegression_assay_1573_RoleInitGitLabReadsCustodyNeverGitHubMinter is the regression suite's
+// seed member (docs/test-policy.md § Regression suite): the unstubbed guard #1577 landed for
+// #1573, renamed to the TestRegression_ convention so it is counted by the regression-gate CI
+// job rather than deletable without a trace.
+func TestRegression_assay_1573_RoleInitGitLabReadsCustodyNeverGitHubMinter(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv(deskkit.EnvConfigHome, "")

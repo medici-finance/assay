@@ -1,0 +1,16 @@
+fixture: module for TestGate_PlantedVacuousSelector_Red — used as both head
+and base. Two listed regression tests; the test drives the gate with a
+--selector that matches neither, so the module's listed count is > 0 but
+zero tests execute.
+-- modx/go.mod --
+module fixture.example/modx
+
+go 1.25.0
+-- modx/pkg_test.go --
+package modx
+
+import "testing"
+
+func TestRegression_assay_9101_First(t *testing.T) {}
+
+func TestRegression_assay_9102_Second(t *testing.T) {}

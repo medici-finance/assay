@@ -8,8 +8,9 @@ flaky result means. This policy fills that gap. It is methodology, not a house c
 binds every repo that adopts Assay, and it is deliberately independent of whoever wrote the
 last brief.
 
-It covers five things and no more: the test **tiers**, the **regression floor**, **flake
-classification**, the **standing truth suite**, and **plan-in-PR**. It changes nothing about
+It covers six things and no more: the test **tiers**, the **regression floor**, the
+**regression suite** that makes the floor mechanical, **flake classification**, the **standing
+truth suite**, and **plan-in-PR**. It changes nothing about
 the Verify row `Class` vocabulary itself (`docs/brief-template.md`) — it maps onto that
 vocabulary rather than extending it — and it introduces no new instrument state: every check
 here reports the three states of `docs/three-state-instrument-rule.md`
@@ -51,6 +52,59 @@ without checking their results, and the number climbs while the guarantee does n
 measures which lines ran, never whether a wrong result would have been caught, so it is *not
 the floor* — the floor is the set of asserted behaviours, which shrinks only when someone
 removes an assertion, and that removal is a diff a reviewer can see.
+
+## Regression suite
+
+The regression floor above is a property; this section is the mechanism that keeps it from
+being just a sentence in a doc. Without it, a fixed bug leaves no durable, countable trace: no
+name marks the test that pins it, so that test can be deleted or renamed away in an unrelated
+PR, and a `go test -run` selector that matches nothing exits 0 and reads green — a check that
+looks like it ran and did not.
+
+**Naming convention.** Every closed bug leaves a named regression test —
+preferably the class guard a fix/bug brief's Task adds (`plugins/assay/skills/author-brief/SKILL.md`
+rule 14's class-guard Verify row), at minimum a test of the failing case:
+
+```
+TestRegression_<repo>_<issue>[_Desc]
+```
+
+`<repo>` is the repository's short name, lowercased, with every character outside `[a-z0-9]`
+removed (`example-service` → `exampleservice`) — a Go identifier cannot carry `-`. `<issue>` is
+the issue number, digits only. `[_Desc]` is optional free text. The full shape, as a regex:
+
+```
+^TestRegression_[a-z0-9]+_[0-9]+(_[A-Za-z0-9_]+)?$
+```
+
+A rename that keeps the `TestRegression_` prefix is fine — the gate below compares a **count**,
+never a name set, so renaming a regression test never reads as a deletion.
+
+**Hermetic requirement.** The CI job below runs *only* tests matching `^TestRegression_`, module
+by module, outside of whatever a module's own `go test ./...` ordinarily needs. A regression
+test is therefore always **unit tier** (see `## Tiers` above): no network, no clock, no
+filesystem beyond the checkout. A regression test that needs anything heavier is not
+representable in this job and stays outside it, guarded some other way.
+
+**The `regression-gate` CI job** (`.github/workflows/regression-suite.yml`, built from
+`tools/regsuite`) compares the HEAD tree against the PR's base (or, on a push to `main`, against
+that push's first parent) and fails on exactly three causes, plus a fourth state that is never a
+pass:
+
+| Cause | What it means |
+|---|---|
+| a regression test **fails** | the behaviour it pins broke |
+| the **count drops** | HEAD lists fewer `TestRegression_` tests than the base — a deletion, whatever renamed or not |
+| a module's selector is **vacuous** | a module lists `TestRegression_` tests but the run executed fewer than it listed — including zero, the `go test -run` "matched nothing, exited 0" case this section opened with |
+| **could-not-check** | a module failed to build or list, or a `--base`/`--head` tree was unreadable — this state is reported as itself and is **never exit 0** |
+
+A rename that keeps the prefix passes (the comparison is on count). A deletion that is
+genuinely correct — a behaviour that no longer exists — is stated in the PR body and reviewed as
+an explicit exception, exactly as the regression floor above already requires; it is never
+absorbed by quietly dropping the test.
+
+**Owed, not yet done:** making `regression-gate` a *required* check is a repository-settings act
+outside any one PR's diff — a human's, recorded when it lands.
 
 ## Flake classification
 

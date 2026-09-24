@@ -1,0 +1,29 @@
+fixture: tree for TestGate_TestdataModulesExcluded — used as both head and
+base. modx is a real, valid module. modx/testdata/brokenfixture is a SECOND
+module nested under a "testdata" path segment, and it does not compile. If
+discovery ever stopped skipping "testdata" segments, resolving this second
+module would fail to build and the gate would read could-not-check instead
+of clean — so this fixture proves the skip by using a module that would
+break the run if it were not excluded.
+-- modx/go.mod --
+module fixture.example/modx
+
+go 1.25.0
+-- modx/pkg_test.go --
+package modx
+
+import "testing"
+
+func TestRegression_assay_9501_First(t *testing.T) {}
+-- modx/testdata/brokenfixture/go.mod --
+module fixture.example/modx/testdata/brokenfixture
+
+go 1.25.0
+-- modx/testdata/brokenfixture/pkg_test.go --
+package brokenfixture
+
+import "testing"
+
+func TestRegression_assay_9502_ShouldNeverRun(t *testing.T) {
+	this is not valid go syntax
+}

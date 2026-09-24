@@ -478,6 +478,9 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
       fail on any caller outside a short committed allow-list (`exampleSafeToken()`). A lint rule, a
       type that makes the hazardous call unrepresentable, or a single choke point serves equally. A
       test of the reported instance may sit beside it; it never replaces it.
+    - **Name the instance test `TestRegression_<repo>_<issue>[_Desc]`** so it counts toward the
+      standing regression suite CI enforces — `docs/test-policy.md` § Regression suite states the
+      naming convention, the shape it must match, and what the `regression-gate` job fails on.
     - **The class-guard row is FAIL-FIRST.** Before the fix lands, the implementer plants a
       deliberate SECOND instance of the defect at a site the fix does not touch and shows the row
       RED on it; the Evidence records that red run, naming the planted site, beside the green one.
