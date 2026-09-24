@@ -86,6 +86,28 @@ func cmdRun(args []string, stdout io.Writer) error {
 			return ferr
 		}
 		fmt.Fprintf(stdout, "poller: %s (wrapped, never copied)\n", script)
+
+		// A poll ADVANCES the per-repo baselines, so a --dry-run that polled the real state dir
+		// would consume the inbound delta it previews and the next real run would find nothing.
+		// Under --dry-run the poller runs against a THROWAWAY COPY, made here — before anything is
+		// polled — and removed when the pass ends. A copy that cannot be made refuses the pass; it
+		// never falls back to the real dir.
+		pollDir := stateDir
+		if o.dryRun {
+			copyDir, cleanup, cerr := dryRunStateCopy(stateDir)
+			if cerr != nil {
+				return cerr
+			}
+			defer func() {
+				if rmErr := cleanup(); rmErr != nil {
+					fmt.Fprintf(stdout, "dry-run: WARNING — the throwaway state copy %s could not be removed: %v\n", copyDir, rmErr)
+				}
+			}()
+			pollDir = copyDir
+			fmt.Fprintf(stdout, "dry-run: the poller runs against a THROWAWAY COPY of the state dir (%s), "+
+				"removed after the pass — the real baselines in %s are not advanced\n", copyDir, stateDir)
+		}
+
 		source = func() (*MonitorReport, error) {
 			// Running the poller IS the arming step: with no baseline it seeds silently, and the
 			// pass that seeds deliberately reports no inbound rather than replaying the whole
@@ -96,7 +118,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 			// repo. Resolved per pass so a long-lived session never hands over an expired file.
 			id := ResolveMonitorIdentity(scope)
 			renderMonitorIdentity(stdout, id)
-			return RunMonitor(script, stateDir, scope, id.TokenFiles, nil)
+			return RunMonitor(script, pollDir, scope, id.TokenFiles, nil)
 		}
 	}
 
