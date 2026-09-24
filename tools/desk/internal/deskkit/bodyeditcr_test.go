@@ -216,7 +216,7 @@ func TestBodyEdit_NearMiss_UnknownHead(t *testing.T) {
 // re-read digest honestly matches the live body, so it DIFFERS from the slipped CR digest and
 // the digest-inequality clause alone would read "edited". Only the forge's own edit record
 // can say otherwise, and it must: never edited, or last edited before the CR, refuses.
-func TestBodyEdit_NearMiss_BodyUnchangedCRDigestMismatched(t *testing.T) {
+func TestBodyEdit_NearMiss_UneditedBody_SlippedCRDigest(t *testing.T) {
 	unedited := func() BodyEditInput {
 		in := beInput()
 		in.CRBody = "The PR body still asserts the retracted claim.\n\nBlocked-On-Body: " + beFinding + " " +

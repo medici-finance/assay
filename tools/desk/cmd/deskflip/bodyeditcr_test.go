@@ -153,7 +153,7 @@ func TestBodyEditRefusalNamesTheClause(t *testing.T) {
 // body and so DIFFERS from the slipped CR digest; the digest inequality alone would read that
 // as "edited". The forge's own edit record is what refuses it: never edited, or last edited
 // before the CR.
-func TestBodyEdit_UneditedBodyWithMismatchedCRDigest(t *testing.T) {
+func TestBodyEdit_UneditedBody_SlippedCRDigest(t *testing.T) {
 	unedited := func(t *testing.T, editedAt string) *stub {
 		s := bodyEditStub(t)
 		s.pr.Body = bodyBeforeEdit
@@ -196,7 +196,7 @@ func TestBodyEdit_EditTimeUnreadableRefuses(t *testing.T) {
 // security-lane line. Rule 1's lane reduction still holds the plain APPROVE as the governing
 // correctness verdict, so if the body-edit gate let the security-marked APPROVE clear the CR,
 // the PR would flip. It must refuse: a security-marked body never acts in the correctness lane.
-func TestBodyEdit_SecurityMarkedDocumentedApproveBesidePlainApprove(t *testing.T) {
+func TestBodyEdit_SecMarkedApprove_BesidePlainApprove(t *testing.T) {
 	s := bodyEditStub(t)
 	s.reviews = []reviewInfo{
 		checkOnlyCR(t, bodyEditCRBody(), bodyCRAt),

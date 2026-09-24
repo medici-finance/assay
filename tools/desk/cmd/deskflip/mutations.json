@@ -134,13 +134,13 @@
       "new": "liveBodyRead{Body: body2[:0] + pr.Body, EditedAt: bodyEditedAt}"
     },
     {
-      "name": "body-edit class: let a security-marked APPROVE clear the body CR (with a plain correctness APPROVE beside it the PR flips — reddens TestBodyEdit_SecurityMarkedDocumentedApproveBesidePlainApprove)",
+      "name": "body-edit class: let a security-marked APPROVE clear the body CR (with a plain correctness APPROVE beside it the PR flips — reddens TestBodyEdit_SecMarkedApprove_BesidePlainApprove)",
       "file": "cmd/deskflip/flip.go",
       "old": "\t\tif r.State != \"APPROVED\" || hasSecurityMarker(r.Body) {\n\t\t\tcontinue\n\t\t}\n\t\tapproves = append(approves, deskkit.BodyEditApprove{",
       "new": "\t\tif r.State != \"APPROVED\" {\n\t\t\tcontinue\n\t\t}\n\t\tapproves = append(approves, deskkit.BodyEditApprove{"
     },
     {
-      "name": "body-edit class: never read the forge's body edit time, assume an edit (an unedited body with a slipped CR digest flips — reddens TestBodyEdit_UneditedBodyWithMismatchedCRDigest, TestBodyEdit_EditTimeUnreadableRefuses)",
+      "name": "body-edit class: never read the forge's body edit time, assume an edit (an unedited body with a slipped CR digest flips — reddens TestBodyEdit_UneditedBody_SlippedCRDigest, TestBodyEdit_EditTimeUnreadableRefuses)",
       "file": "cmd/deskflip/flip.go",
       "old": "\teditedAt := \"\"\n\tif live.EditedAt != nil {",
       "new": "\teditedAt := \"9999-01-01T00:00:00Z\"\n\tif false && live.EditedAt != nil {"
