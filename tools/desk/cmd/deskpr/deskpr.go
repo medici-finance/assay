@@ -51,6 +51,7 @@ type gitFacts struct {
 	defaultRef    string // fully-qualified remote-tracking ref, e.g. "refs/remotes/origin/main" (unambiguous by construction, #840)
 	repo          string // owner/name
 	head          string // HEAD sha
+	originURL     string // origin's fetch URL as git resolves it (effectiveOriginURL)
 }
 
 // auditCtx accumulates the fields for the ONE audit line every invocation emits
@@ -196,6 +197,16 @@ func cmdCreate(args []string) (err error) {
 		return perr
 	}
 	ac.repo, ac.head = facts.repo, facts.head
+
+	// PUSH-destination gate (#1623): git's own resolved push URL list must be exactly one https
+	// URL naming facts.repo. It asks git where the push will actually go (pushurl from every
+	// scope, insteadOf / pushInsteadOf, multi-valued lists) and refuses anything else,
+	// fail-closed, naming each value's scope and a worktree-scoped remedy. It runs FIRST, so an
+	// SSH destination is refused here with that remedy; the transport gate below still runs for
+	// its https credential-helper NOTICE.
+	if derr := pushDestinationGate(facts.dir, "create", facts.repo, facts.originURL); derr != nil {
+		return derr
+	}
 
 	// #1339: a `Brief:` trailer on a branch that only AUTHORS the brief is refused before
 	// anything leaves the machine — it would make the brief read as delivered on merge.
@@ -499,6 +510,16 @@ func cmdUpdate(args []string) (err error) {
 	}
 	ac.repo, ac.head = facts.repo, facts.head
 
+	// PUSH-destination gate (#1623): git's own resolved push URL list must be exactly one https
+	// URL naming facts.repo. It asks git where the push will actually go (pushurl from every
+	// scope, insteadOf / pushInsteadOf, multi-valued lists) and refuses anything else,
+	// fail-closed, naming each value's scope and a worktree-scoped remedy. It runs FIRST, so an
+	// SSH destination is refused here with that remedy; the transport gate below still runs for
+	// its https credential-helper NOTICE.
+	if derr := pushDestinationGate(facts.dir, "update", facts.repo, facts.originURL); derr != nil {
+		return derr
+	}
+
 	// PUSH-transport custody gate (#861) — same reason as create: this verb pushes.
 	if terr := pushTransportGate(facts.dir, "update"); terr != nil {
 		return terr
@@ -652,9 +673,12 @@ func preflight(dir, base string) (*gitFacts, error) {
 		return nil, deskkit.Refused("refused: on the default branch (" + branch + ")")
 	}
 
-	originURL, oerr := gitRepo.RemoteURL("origin")
+	// Decide the repo on origin's URL AS GIT RESOLVES IT (#1623), never on go-git's read of the
+	// repository config file alone: the push below resolves origin itself (worktree and global
+	// scope, insteadOf), and a gate that reads something else can pass a repo git never uses.
+	originURL, oerr := effectiveOriginURL(dir)
 	if oerr != nil {
-		return nil, deskkit.Unverifiable("cannot read remote.origin.url", oerr)
+		return nil, oerr
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
@@ -718,7 +742,7 @@ func preflight(dir, base string) (*gitFacts, error) {
 	head := headHash.String()
 	return &gitFacts{
 		dir: dir, branch: branch, defaultBranch: defaultBranch,
-		defaultRef: defaultRef, repo: repo, head: head,
+		defaultRef: defaultRef, repo: repo, head: head, originURL: originURL,
 	}, nil
 }
 
