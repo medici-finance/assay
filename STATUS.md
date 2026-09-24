@@ -63,14 +63,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 77 total — 77 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (58 desk-actionable of 77 total — 77 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (57)
+### Desk-actionable (58)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -82,6 +82,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
@@ -144,14 +145,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (13)
+### Awaiting implementer rework (12)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | windows-port | 00 | implemented | 6000 | 10 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
-| iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
