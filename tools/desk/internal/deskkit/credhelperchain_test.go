@@ -47,6 +47,7 @@ func newChainRepo(t *testing.T) *chainRepo {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // the netrc read also consults it on Windows
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, "xdg"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
@@ -245,6 +246,18 @@ func TestCredChainGitParity(t *testing.T) {
 			r.glob("credential.http://.helper", foreignHelper)
 			r.local("credential.helper", r.appHelper())
 		}, true, false, ""},
+		{"URL pattern scoped to another path does not apply", func(r *chainRepo) {
+			r.glob("credential.https://github.com:443/other-org.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, true, false, ""},
+		{"wildcard URL pattern for another domain does not apply", func(r *chainRepo) {
+			r.glob("credential.https://*.example.invalid.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, true, false, ""},
+		{"wildcard URL pattern for the host applies and is red", func(r *chainRepo) {
+			r.glob("credential.https://*.com.helper", foreignHelper)
+			r.local("credential.helper", r.appHelper())
+		}, false, false, "helper 1"},
 		{"push URL with an empty host is could-not-check", func(r *chainRepo) {
 			r.local("remote.origin.pushurl", "https:///example-org/example-repo.git")
 			r.local("credential.helper", r.appHelper())
