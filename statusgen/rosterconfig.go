@@ -380,6 +380,21 @@ const (
 	scanEnvClaimStore      = "ASSAY_CLAIM_STORE"
 	scanEnvClaimDir        = "ASSAY_CLAIM_DIR"
 	scanEnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
+
+	// scanEnvAutoApproveAreas / scanEnvAutoApproveEjectLine / scanEnvAutoApproveFPYFloor /
+	// scanEnvAutoApproveDailyCap (ASSAY_AUTOAPPROVE_*) are DESK-only roster values: the
+	// auto-approve lane's opt-in areas and its three numbers, consumed by the desk tools'
+	// lane config parser (deskkit/autolane.go) and never by statusgen — but the two readers
+	// share one ~/.config/assay/roster.env, and an unknown ASSAY_ key REFUSES the whole
+	// configuration (parseConfig), so all four must be RECOGNISED here or a roster that
+	// opts an area into the lane collapses statusgen's whole trust configuration.
+	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvAutoApproveAreas / EnvAutoApproveEjectLine / EnvAutoApproveFPYFloor /
+	// EnvAutoApproveDailyCap.
+	scanEnvAutoApproveAreas     = "ASSAY_AUTOAPPROVE_AREAS"
+	scanEnvAutoApproveEjectLine = "ASSAY_AUTOAPPROVE_EJECT_LINE"
+	scanEnvAutoApproveFPYFloor  = "ASSAY_AUTOAPPROVE_FPY_FLOOR"
+	scanEnvAutoApproveDailyCap  = "ASSAY_AUTOAPPROVE_DAILY_CAP"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -434,6 +449,10 @@ func scanKnownRosterKeys() []string {
 		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
 		// desk tools' resolver consumes — see their declarations above.
 		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
+		// DESK-only, recognised-not-applied (the auto-approve lane): the lane config keys the
+		// desk tools' lane parser consumes — see their declarations above.
+		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,
+		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap,
 	}
 }
 

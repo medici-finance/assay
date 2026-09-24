@@ -1,0 +1,119 @@
+{
+  "test": "go test ./cmd/deskautolane/ ./internal/deskkit/ -run 'AutoLane|ConclusionGreen|GlobSamples' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — an unsigned R-8 enacts the lane (the verb arms itself)",
+    "file": "cmd/deskautolane/forge.go",
+    "old": "\tcase deskkit.SignOffUnsigned:\n\t\treturn false, deskkit.Refused(",
+    "new": "\tcase deskkit.SignOffUnsigned:\n\t\treturn true, nil\n\t\treturn false, deskkit.Refused("
+  },
+  "mutations": [
+    {
+      "name": "unarmed: an absent lane config loads as an open lane with zero-valued numbers",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif len(cfg.AutoLaneRaw) == 0 {\n\t\treturn AutoLaneLoad{State: AutoLaneUnconfigured}\n\t}",
+      "new": "\tif len(cfg.AutoLaneRaw) == 0 {\n\t\treturn AutoLaneLoad{State: AutoLaneConfigLoaded, Config: AutoLaneConfig{DailyCap: 1, FPYFloor: 1}}\n\t}"
+    },
+    {
+      "name": "unarmed: the enactment gate skips the author check on the sign-off artifact",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif !deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {",
+      "new": "\t\tif false && !deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {"
+    },
+    {
+      "name": "unarmed: an ejection writes without the enactment gate",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif ok, gerr := enactment(o, fg); !ok {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"eject: %s (NOT written",
+      "new": "\tif ok, gerr := enactment(o, fg); false && !ok {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"eject: %s (NOT written"
+    },
+    {
+      "name": "brief file: the compiled stream-brief tripwire stops matching",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif IsStreamBriefPath(f) {\n\t\t\ttrip(TripStreamBrief, f)",
+      "new": "\t\tif false && IsStreamBriefPath(f) {\n\t\t\ttrip(TripStreamBrief, f)"
+    },
+    {
+      "name": "brief file: an area that can reach a brief loads",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif w, ok := globsOverlap(a.Glob, bg); ok {",
+      "new": "\t\t\tif w, ok := globsOverlap(a.Glob, bg); false && ok {"
+    },
+    {
+      "name": "path outside area no longer trips the category",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif !inArea {\n\t\t\ttrip(TripPathOutsideArea, f)",
+      "new": "\t\tif false && !inArea {\n\t\t\ttrip(TripPathOutsideArea, f)"
+    },
+    {
+      "name": "score over the eject line: the line is read as 'at or above' one more than it is",
+      "file": "internal/deskkit/autolane.go",
+      "old": "func (s AutoLaneScore) Ejects(line int) bool { return s.Score > line }",
+      "new": "func (s AutoLaneScore) Ejects(line int) bool { return s.Score > line+1 }"
+    },
+    {
+      "name": "score: a superseded CHANGES_REQUESTED stops counting (the laundered latest view)",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tfired[SignalReviewRework] = true",
+      "new": "\t\t\tfired[SignalReviewRework] = strings.TrimSpace(r.CommitID) == in.Head"
+    },
+    {
+      "name": "score: an unreadable read is read as no signal",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif len(unreadable) > 0 {\n\t\tfired[SignalUnreadable] = true\n\t}",
+      "new": "\tif false && len(unreadable) > 0 {\n\t\tfired[SignalUnreadable] = true\n\t}"
+    },
+    {
+      "name": "cap: the daily cap lets one more merge through",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif n >= cfg.DailyCap {",
+      "new": "\tif n > cfg.DailyCap {"
+    },
+    {
+      "name": "FPY: below the floor with enough merges reads healthy",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif fpy < floor {",
+      "new": "\tif fpy < floor-0.5 {"
+    },
+    {
+      "name": "FPY: an absent kill-signal file reads healthy",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn killHold(\"could-not-check\")\n\t}",
+      "new": "\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn AutoLaneKillSignal{State: KillSignalHealthy, Line: \"lane: healthy\"}\n\t}"
+    },
+    {
+      "name": "latch: a prior ejection no longer refuses the merge",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn deskkit.Refused(",
+      "new": "\tif false && deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn deskkit.Refused("
+    },
+    {
+      "name": "re-read: a stale approval passes reviewer-approved",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tcase strings.TrimSpace(last.CommitID) != f.head:",
+      "new": "\tcase false && strings.TrimSpace(last.CommitID) != f.head:"
+    },
+    {
+      "name": "admit: the surface-overlap refusal at config load is disarmed",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif w, ok := globsOverlap(a.Glob, sg); ok {",
+      "new": "\t\t\tif w, ok := globsOverlap(a.Glob, sg); false && ok {"
+    },
+    {
+      "name": "admit: an untrusted opt-in login loads",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif v.LoginMayOptIn == nil || !v.LoginMayOptIn(a.Login) {",
+      "new": "\t\tif false && (v.LoginMayOptIn == nil || !v.LoginMayOptIn(a.Login)) {"
+    },
+    {
+      "name": "admit (within scope): area membership is tested with pattern and path swapped",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif MatchSurfaceGlob(a.Glob, f) {\n\t\t\t\tinArea = true",
+      "new": "\t\t\tif MatchSurfaceGlob(f, a.Glob) {\n\t\t\t\tinArea = true"
+    },
+    {
+      "name": "no merge mutation: merge without --dry-run returns success",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\treturn deskkit.Refused(fmt.Sprintf(\"refused: merge-write",
+      "new": "\treturn nil\n\treturn deskkit.Refused(fmt.Sprintf(\"refused: merge-write"
+    }
+  ]
+}
