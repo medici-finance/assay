@@ -53,7 +53,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
-| quality | 17 — regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate [exec:strong] | 0 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 | harness-portability | 17 — Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI [exec:strong] | 0 | 1000 |
 | quality | 19 — qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed [exec:strong] | 3 | 1000 |
