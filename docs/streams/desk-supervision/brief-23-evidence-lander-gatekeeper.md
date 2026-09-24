@@ -25,6 +25,7 @@ gate-why: >-
   the lane design (where content scope is enforced, dedicated vs reused App), performs the App,
   environment and ruleset changes, and reads them back.
 decision-trigger: creation
+decision-issue: 1620
 issues: [1588]
 schema: brief-v2
 version: 1
