@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -16,6 +18,24 @@ import (
 // test_competing_allowlist_refuses_before_launch, test_up_preflights_all_roles_before_windows and
 // test_real_exec_argv_and_env. Every binary test runs the BUILT cellctl against a filesystem-only
 // fixture: stub harnesses, a local git origin, no model endpoint and no credential.
+
+// wantBlock is Claude Code's BLOCKING hook exit status, pinned here as a literal on purpose. It
+// must NOT be the production constant (hookBlockExit): a refusal assertion that compares the
+// hook's exit status with the constant that status came from stays green when that constant
+// drifts to a non-blocking value (1, say), which would let every refused switch and child
+// model through.
+const wantBlock = 2
+
+// policySHA is the SHA-256 of a policy file's raw bytes, the value a launch pins in the hook argv.
+func policySHA(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
 
 // recordingClaude replaces the fixture's claude stub with one that prints each argv element on its
 // own ARG= line (the --settings JSON is compact, so it stays one line).
@@ -78,6 +98,13 @@ func launchPolicyDesk(t *testing.T, f *policyFixture, role string, extra ...stri
 // stdin) with a MINIMAL environment — no CELLS_ROOT — proving the command is self-addressing.
 func runHook(t *testing.T, f *policyFixture, command string, event any) (int, string) {
 	t.Helper()
+	return runHookEnv(t, f, command, event)
+}
+
+// runHookEnv is runHook with extra environment entries appended — the variables a settings
+// file's `env` block (or anything else upstream of Claude Code) could add to the hook process.
+func runHookEnv(t *testing.T, f *policyFixture, command string, event any, extraEnv ...string) (int, string) {
+	t.Helper()
 	raw, ok := event.(string)
 	if !ok {
 		b, err := json.Marshal(event)
@@ -87,7 +114,7 @@ func runHook(t *testing.T, f *policyFixture, command string, event any) (int, st
 		raw = string(b)
 	}
 	cmd := exec.Command("sh", "-c", command)
-	cmd.Env = []string{"PATH=" + f.binDir + ":/usr/bin:/bin", "HOME=" + f.cellDir, "KUBECONFIG=/dev/null"}
+	cmd.Env = append([]string{"PATH=" + f.binDir + ":/usr/bin:/bin", "HOME=" + f.cellDir, "KUBECONFIG=/dev/null"}, extraEnv...)
 	cmd.Stdin = strings.NewReader(raw)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
@@ -164,18 +191,24 @@ func TestBinaryHooksRefuseDeniedAndUnpinnedModels(t *testing.T) {
 		{"child exact pinned id", agentEvent("claude-fable-5-1"), 0},
 		// claude-sonnet-5 pins BOTH mid (high) and fast (low): an exact-ID request cannot say
 		// which effort it means, so it is refused rather than guessed (request a tier instead).
-		{"child ambiguous exact id", agentEvent("claude-sonnet-5"), hookBlockExit},
-		{"child denied opus-5", agentEvent("claude-opus-5"), hookBlockExit},
-		{"child denied Opus5 spelling", agentEvent("Opus5"), hookBlockExit},
-		{"child unmapped", agentEvent("unknown-model"), hookBlockExit},
-		{"child non-string model", agentEvent(5), hookBlockExit},
+		{"child ambiguous exact id", agentEvent("claude-sonnet-5"), wantBlock},
+		{"child denied opus-5", agentEvent("claude-opus-5"), wantBlock},
+		{"child denied Opus5 spelling", agentEvent("Opus5"), wantBlock},
+		{"child unmapped", agentEvent("unknown-model"), wantBlock},
+		{"child non-string model", agentEvent(5), wantBlock},
+		// Stricter than the oracle (which reads a missing tool_input as {} and allows): an
+		// Agent/Task event with no tool_input object is malformed, so it is refused.
+		{"child missing tool_input", map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Agent"}, wantBlock},
 		{"switch to pinned id", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-opus-4-8[1m]"}, 0},
-		{"switch to denied", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-opus-5", "requested_model": "opus"}, hookBlockExit},
-		{"switch to floating alias", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "opus"}, hookBlockExit},
-		{"switch to unpinned id", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-haiku-4"}, hookBlockExit},
-		{"unexpected event", map[string]any{"hook_event_name": "PostToolUse"}, hookBlockExit},
-		{"unexpected tool", map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{}}, hookBlockExit},
-		{"garbage stdin", "not json", hookBlockExit},
+		// claude-sonnet-5 IS in availableModels (it pins mid and fast), but as an exact switch
+		// target it cannot say which tier it means, so the re-resolve refuses it — oracle parity.
+		{"switch to ambiguous pinned id", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-sonnet-5"}, wantBlock},
+		{"switch to denied", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-opus-5", "requested_model": "opus"}, wantBlock},
+		{"switch to floating alias", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "opus"}, wantBlock},
+		{"switch to unpinned id", map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-haiku-4"}, wantBlock},
+		{"unexpected event", map[string]any{"hook_event_name": "PostToolUse"}, wantBlock},
+		{"unexpected tool", map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{}}, wantBlock},
+		{"garbage stdin", "not json", wantBlock},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -191,11 +224,13 @@ func TestBinaryHooksRefuseDeniedAndUnpinnedModels(t *testing.T) {
 }
 
 // TestBinaryHookFailsClosed: every failure path — the cell gone, the policy removed, a bad
-// argument count — exits with the BLOCKING status 2, never cellctl's usual 3 (a non-blocking hook
-// error Claude Code would let through).
+// argument count, a policy that no longer matches the one the window launched on — exits with
+// the BLOCKING status 2, never cellctl's usual 3 (a non-blocking hook error Claude Code would
+// let through).
 func TestBinaryHookFailsClosed(t *testing.T) {
 	f := newPolicyFixture(t, "2.1.278")
 	bin := cellctlBinary(t)
+	sha := policySHA(t, f.policy)
 	hook := func(args ...string) string {
 		quoted := []string{bashQuote(bin), "model-policy"}
 		for _, a := range args {
@@ -204,26 +239,29 @@ func TestBinaryHookFailsClosed(t *testing.T) {
 		return strings.Join(quoted, " ")
 	}
 	ev := agentEvent("opus")
-	if code, stderr := runHook(t, f, hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude"), ev); code != 0 {
+	if code, stderr := runHook(t, f, hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude", sha), ev); code != 0 {
 		t.Fatalf("baseline hook should allow: exit %d %s", code, stderr)
 	}
 	for name, cmd := range map[string]string{
-		"wrong arity":  hook("hook", f.cellDir, "pr-review-desk"),
-		"not hook":     hook("resolve", f.cellDir, "pr-review-desk", "anthropic", "", "claude"),
-		"relative dir": hook("hook", "example", "pr-review-desk", "anthropic", "", "claude"),
-		"missing cell": hook("hook", filepath.Join(f.cellsRoot, "no-such-cell"), "pr-review-desk", "anthropic", "", "claude"),
-		"unknown role": hook("hook", f.cellDir, "typo-desk", "anthropic", "", "claude"),
+		"wrong arity":   hook("hook", f.cellDir, "pr-review-desk"),
+		"no pinned sha": hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude"),
+		"empty sha":     hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude", ""),
+		"other sha":     hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude", strings.Repeat("0", 64)),
+		"not hook":      hook("resolve", f.cellDir, "pr-review-desk", "anthropic", "", "claude", sha),
+		"relative dir":  hook("hook", "example", "pr-review-desk", "anthropic", "", "claude", sha),
+		"missing cell":  hook("hook", filepath.Join(f.cellsRoot, "no-such-cell"), "pr-review-desk", "anthropic", "", "claude", sha),
+		"unknown role":  hook("hook", f.cellDir, "typo-desk", "anthropic", "", "claude", sha),
 	} {
-		if code, stderr := runHook(t, f, cmd, ev); code != hookBlockExit {
-			t.Errorf("%s: exit %d, want %d (blocking); stderr: %s", name, code, hookBlockExit, stderr)
+		if code, stderr := runHook(t, f, cmd, ev); code != wantBlock {
+			t.Errorf("%s: exit %d, want %d (blocking); stderr: %s", name, code, wantBlock, stderr)
 		}
 	}
 	// The policy file removed mid-session: the hook refuses rather than allowing unchecked.
 	if err := os.Remove(f.policy); err != nil {
 		t.Fatal(err)
 	}
-	if code, stderr := runHook(t, f, hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude"), ev); code != hookBlockExit {
-		t.Errorf("missing policy: exit %d, want %d; stderr: %s", code, hookBlockExit, stderr)
+	if code, stderr := runHook(t, f, hook("hook", f.cellDir, "pr-review-desk", "anthropic", "", "claude", sha), ev); code != wantBlock {
+		t.Errorf("missing policy: exit %d, want %d; stderr: %s", code, wantBlock, stderr)
 	}
 }
 
@@ -236,10 +274,134 @@ func TestBinaryHookRefusesChildWithoutInheritedEffort(t *testing.T) {
 		fast["effort"] = "low"
 		fast["supported_efforts"] = []any{"low"}
 	})
-	cmd := strings.Join([]string{bashQuote(cellctlBinary(t)), "model-policy", "hook", bashQuote(f.cellDir), "pr-review-desk", "anthropic", "''", "claude"}, " ")
+	cmd := strings.Join([]string{bashQuote(cellctlBinary(t)), "model-policy", "hook", bashQuote(f.cellDir), "pr-review-desk", "anthropic", "''", "claude", bashQuote(policySHA(t, f.policy))}, " ")
 	code, stderr := runHook(t, f, cmd, agentEvent("haiku"))
-	if code != hookBlockExit || !strings.Contains(stderr, "inherited effort high") {
+	if code != wantBlock || !strings.Contains(stderr, "inherited effort high") {
 		t.Fatalf("child without the parent's effort: exit %d, stderr %s", code, stderr)
+	}
+}
+
+// TestBinaryHookUsesLaunchRequestedModel: the hook checks a child against the effort of the model
+// the window was ACTUALLY launched with (`desk … --model haiku` → the fast tier at low), not the
+// role's default tier (strong, at high). The mid tier here supports only high, so a `sonnet`
+// child is refused under the low-effort parent — a hook that dropped the launch's --model
+// request would re-resolve the role's high-effort default and let it through.
+func TestBinaryHookUsesLaunchRequestedModel(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	f.rewritePolicy(t, func(m map[string]any) {
+		mid := m["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["mid"].(map[string]any)
+		mid["supported_efforts"] = []any{"high"}
+	})
+	f.prepareLocalLaunch(t)
+	recordingClaude(t, f)
+	s, _ := launchPolicyDesk(t, f, "pr-review-desk", "--model", "haiku")
+	if s.Env["CLAUDE_CODE_EFFORT_LEVEL"] != "low" {
+		t.Fatalf("fixture: --model haiku should launch at the fast tier's low effort: %v", s.Env)
+	}
+	command := s.Hooks["PreToolUse"][0].Hooks[0].Command
+	if code, stderr := runHook(t, f, command, agentEvent("sonnet")); code != wantBlock || !strings.Contains(stderr, "inherited effort low") {
+		t.Errorf("child refused under the launched low effort: exit %d, want %d; stderr %s", code, wantBlock, stderr)
+	}
+	if code, stderr := runHook(t, f, command, agentEvent("opus")); code != 0 {
+		t.Errorf("a child tier that supports low must pass: exit %d; stderr %s", code, stderr)
+	}
+}
+
+// TestBinaryHookPinnedToLaunchPolicy: the hook is bound to the policy the window LAUNCHED with.
+// The hook process inherits Claude Code's environment, which a settings file's `env` block can
+// extend — so a CELL_PROVIDER_DEFAULTS / CELL_PROVIDER_OVERRIDES / CELL_MODEL_POLICY injected
+// there must not point the runtime check at a different, wider policy. Any policy whose bytes
+// differ from the launch's pinned SHA-256 (injected, or the catalog edited on disk after launch)
+// is refused; a policy change needs a deliberate restart.
+func TestBinaryHookPinnedToLaunchPolicy(t *testing.T) {
+	f := catalogFixture(t)
+	f.prepareLocalLaunch(t)
+	recordingClaude(t, f)
+	s, _ := launchPolicyDesk(t, f, "worker-desk", "--provider", "glm")
+	command := s.Hooks["PreModelSwitch"][0].Hooks[0].Command
+	outside := map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-fable-5-1"}
+	if code, stderr := runHook(t, f, command, outside); code != wantBlock {
+		t.Fatalf("baseline: a switch outside glm's pinned IDs must block: exit %d %s", code, stderr)
+	}
+
+	// A catalog that pins the outside ID as glm's top tier — the widening an attacker would want.
+	catalogPath := filepath.Join(f.cellsRoot, "providers.json")
+	raw, err := os.ReadFile(catalogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog map[string]any
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	catalog["providers"].(map[string]any)["glm"].(map[string]any)["tiers"].(map[string]any)["top"].(map[string]any)["model"] = "claude-fable-5-1"
+	wide := filepath.Join(t.TempDir(), "wide-providers.json")
+	writeCatalogJSON(t, wide, catalog)
+	legacyRaw, err := os.ReadFile(examplePolicyPath)
+	if err != nil {
+		t.Skipf("example policy not readable from this checkout (%v)", err)
+	}
+	var legacy map[string]any
+	if err := json.Unmarshal(legacyRaw, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	legacy["providers"].(map[string]any)["glm"].(map[string]any)["tiers"].(map[string]any)["top"].(map[string]any)["model"] = "claude-fable-5-1"
+	widePolicy := filepath.Join(t.TempDir(), "wide-policy.json")
+	writeCatalogJSON(t, widePolicy, legacy)
+	overlay := filepath.Join(t.TempDir(), "overrides.json")
+	writeCatalogJSON(t, overlay, map[string]any{"providers": map[string]any{"glm": map[string]any{"tiers": map[string]any{"top": map[string]any{"model": "claude-fable-5-1"}}}}})
+
+	for name, env := range map[string]string{
+		"injected CELL_PROVIDER_DEFAULTS":  "CELL_PROVIDER_DEFAULTS=" + wide,
+		"injected CELL_PROVIDER_OVERRIDES": "CELL_PROVIDER_OVERRIDES=" + overlay,
+		"injected CELL_MODEL_POLICY":       "CELL_MODEL_POLICY=" + widePolicy,
+	} {
+		if code, stderr := runHookEnv(t, f, command, outside, env); code != wantBlock {
+			t.Errorf("%s: a switch outside the launch policy was allowed: exit %d, want %d; stderr %s", name, code, wantBlock, stderr)
+		}
+		// Even an in-policy switch blocks: the hook cannot tell which policy is the right one.
+		if code, _ := runHookEnv(t, f, command, map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "glm-5.3[1m]"}, env); code != wantBlock {
+			t.Errorf("%s: the hook ran against a policy other than the launch's: exit %d", name, code)
+		}
+	}
+
+	// The shared catalog edited on disk after launch: refused until the window is restarted.
+	writeCatalogJSON(t, catalogPath, catalog)
+	if code, stderr := runHook(t, f, command, outside); code != wantBlock || !strings.Contains(stderr, "restart") {
+		t.Errorf("catalog changed after launch: exit %d, want %d naming a restart; stderr %s", code, wantBlock, stderr)
+	}
+}
+
+// TestBinaryHookFailsClosedWhenBinaryUnrunnable: the hook is a SHELL command line, so a hook
+// binary that is gone (an uninstall, a versioned reinstall under a long-lived window) or no
+// longer executable fails in the shell (127 / 126) before any in-binary fail-closed path runs.
+// Both are non-blocking statuses to Claude Code; the generated command must still exit 2.
+func TestBinaryHookFailsClosedWhenBinaryUnrunnable(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	f.prepareLocalLaunch(t)
+	recordingClaude(t, f)
+	s, _ := launchPolicyDesk(t, f, "pr-review-desk")
+	command := s.Hooks["PreToolUse"][0].Hooks[0].Command
+	prefix := bashQuote(cellctlBinary(t)) + " "
+	if !strings.HasPrefix(command, prefix) {
+		t.Fatalf("hook command does not start with the launching binary %s: %s", prefix, command)
+	}
+	if code, stderr := runHook(t, f, command, agentEvent("opus")); code != 0 {
+		t.Fatalf("baseline: exit %d %s", code, stderr)
+	}
+	dir := t.TempDir()
+	notExec := filepath.Join(dir, "cellctl-not-executable")
+	if err := os.WriteFile(notExec, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, bin := range map[string]string{
+		"binary missing":        filepath.Join(dir, "cellctl-removed"),
+		"binary not executable": notExec,
+	} {
+		moved := bashQuote(bin) + " " + strings.TrimPrefix(command, prefix)
+		if code, stderr := runHook(t, f, moved, agentEvent("opus")); code != wantBlock {
+			t.Errorf("%s: exit %d, want %d (blocking); stderr %s", name, code, wantBlock, stderr)
+		}
 	}
 }
 
@@ -260,7 +422,7 @@ func TestBinaryHookFollowsSharedProviderCatalog(t *testing.T) {
 	if code, stderr := runHook(t, f, command, map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "glm-5.3[1m]"}); code != 0 {
 		t.Errorf("switch to a pinned glm ID refused: %d %s", code, stderr)
 	}
-	if code, _ := runHook(t, f, command, map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-opus-4-8[1m]"}); code != hookBlockExit {
+	if code, _ := runHook(t, f, command, map[string]any{"hook_event_name": "PreModelSwitch", "to_model": "claude-opus-4-8[1m]"}); code != wantBlock {
 		t.Errorf("switch to another provider's ID allowed on the glm window: exit %d", code)
 	}
 }
@@ -477,5 +639,78 @@ func TestManagedSettingsScanned(t *testing.T) {
 	p = write("managed-settings.json", `{"modelOverrides":{"claude-sonnet-5":"x"}}`)
 	if err := scanClaudeSettingsConflicts(allowed, cfg, project); err == nil || !strings.Contains(err.Error(), p) {
 		t.Fatalf("managed modelOverrides not refused: %v", err)
+	}
+}
+
+// TestSettingsScanRefusesUnreadableFile: a settings file that EXISTS but cannot be read is a
+// could-not-check, and the scan refuses on it rather than treating the file as clean — both the
+// stat-succeeds/read-fails shape (a directory where the file should be) and a mode-000 file.
+func TestSettingsScanRefusesUnreadableFile(t *testing.T) {
+	saved := managedSettingsRoots
+	t.Cleanup(func() { managedSettingsRoots = saved })
+	root := t.TempDir()
+	managedSettingsRoots = []string{filepath.Join(root, "managed")}
+	allowed := []string{"claude-opus-4-8[1m]", "claude-sonnet-5"}
+	cfg := filepath.Join(root, "cfg")
+
+	project := filepath.Join(root, "dir-project")
+	asDir := filepath.Join(project, ".claude", "settings.json")
+	if err := os.MkdirAll(asDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := scanClaudeSettingsConflicts(allowed, cfg, project); err == nil || !strings.Contains(err.Error(), asDir) {
+		t.Errorf("a directory in place of settings.json must refuse naming it: %v", err)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("mode 000 is readable by root; the directory case above still ran")
+	}
+	project = filepath.Join(root, "mode-project")
+	locked := filepath.Join(project, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(locked), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(locked, []byte(`{}`), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if err := scanClaudeSettingsConflicts(allowed, cfg, project); err == nil || !strings.Contains(err.Error(), locked) {
+		t.Errorf("an unreadable settings file must refuse naming it: %v", err)
+	}
+}
+
+// TestBinaryCheckRechecksRoleWorktree: once a role's worktree exists, `check` (and `up`) scan it
+// too — a widening file in a parent of the WORKTREE but not of the cell's checkout turns that
+// role's preflight row to MISS, while a role with no worktree yet stays ok.
+func TestBinaryCheckRechecksRoleWorktree(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	for _, n := range []string{"tmux", "codex"} {
+		if err := os.WriteFile(filepath.Join(f.binDir, n), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bad := filepath.Join(f.cellDir, "worktrees", ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(bad), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bad, []byte(`{"availableModels":["claude-opus-5"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.run(t, nil, "check", "example"); !strings.Contains(r.stdout, "  ok    model policy: pr-review-desk\n") {
+		t.Fatalf("no worktree yet: the checkout scan alone should pass:\n%s", r.stdout)
+	}
+	if err := os.MkdirAll(filepath.Join(f.cellDir, "worktrees", "pr-review-desk", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The scan walks the worktree's REAL parents (symlinks resolved, e.g. /var → /private/var).
+	realDir, err := filepath.EvalSymlinks(filepath.Dir(bad))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := f.run(t, nil, "check", "example")
+	if r.code == 0 || !strings.Contains(r.stdout, "  MISS  model policy: pr-review-desk — model-policy: "+filepath.Join(realDir, "settings.json")+": availableModels conflicts") {
+		t.Errorf("check did not rescan the role worktree (exit %d):\n%s", r.code, r.stdout)
+	}
+	if !strings.Contains(r.stdout, "  ok    model policy: the-desk\n") {
+		t.Errorf("a role without a worktree must stay ok:\n%s", r.stdout)
 	}
 }

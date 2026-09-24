@@ -23,7 +23,8 @@ import (
 //     env block, an `availableModels` allowlist of exactly the provider's pinned tier IDs, and a
 //     PreModelSwitch hook plus a PreToolUse(Agent|Task) hook that call back into this binary.
 //  2. cmdModelPolicy — `cellctl model-policy hook …`, the callback. It re-resolves the cell's
-//     policy for the launched role and refuses (exit 2, Claude Code's blocking hook status) a
+//     policy for the launched role, refuses a policy whose SHA-256 is not the one the launch
+//     pinned, and refuses (exit 2, Claude Code's blocking hook status) a
 //     switch to an unpinned or denied ID, or a child model that is unmapped, denied, or does not
 //     support the parent's effort.
 //  3. scanClaudeSettingsConflicts — refuses a user/project/managed settings file whose
@@ -63,13 +64,20 @@ func (res *PolicyResolution) allowedModels() []string {
 // policyHookCommand is the shell command line Claude Code runs for both hooks. It names the cell
 // by its ABSOLUTE directory (so the hook needs no CELLS_ROOT from the window's environment) and
 // carries the launch's own resolved provider/harness and explicit request, so the hook resolves
-// exactly the route this window was launched on.
+// exactly the route this window was launched on. It also pins the launch policy's SHA-256: the
+// hook process inherits Claude Code's environment — which a settings file's `env` block can
+// extend — and the policy-locating CELL_* variables are read from it, so the hook refuses any
+// policy whose bytes differ from the one this window launched with.
+//
+// The trailing `|| exit 2` is the SHELL-level fail-closed half. The binary's own failures are
+// rewritten to the blocking status in cmdModelPolicy, but a binary that is gone or no longer
+// executable fails in the shell first (127 / 126), and Claude Code treats those as NON-blocking.
 func policyHookCommand(self, cellDir string, res *PolicyResolution) string {
-	parts := []string{self, "model-policy", "hook", cellDir, res.Role, res.Provider, res.Requested, res.Harness}
+	parts := []string{self, "model-policy", "hook", cellDir, res.Role, res.Provider, res.Requested, res.Harness, res.PolicySHA256}
 	for i, p := range parts {
 		parts[i] = bashQuote(p)
 	}
-	return strings.Join(parts, " ")
+	return fmt.Sprintf("%s || exit %d", strings.Join(parts, " "), hookBlockExit)
 }
 
 // policyClaudeSettings is the port of the oracle's `settings` object: the compact JSON passed to
@@ -101,10 +109,11 @@ func hookFail(format string, args ...any) {
 	panic(exitCode{hookBlockExit})
 }
 
-const modelPolicyUsage = "cellctl model-policy hook <cell-dir> <role> <provider> <requested> <harness>  (stdin: a Claude Code hook event)"
+const modelPolicyUsage = "cellctl model-policy hook <cell-dir> <role> <provider> <requested> <harness> <policy-sha256>  (stdin: a Claude Code hook event)"
 
 // cmdModelPolicy is `cellctl model-policy hook <cell-dir> <role> <provider> <requested>
-// <harness>`, the callback policyClaudeSettings installs. It is not an operator verb.
+// <harness> <policy-sha256>`, the callback policyClaudeSettings installs. It is not an operator
+// verb.
 func cmdModelPolicy(args []string) {
 	// Fail closed: a die() anywhere below (the cell failing to load, say) exits 3, which Claude
 	// Code treats as a NON-blocking hook error and lets the action through. Every non-zero exit,
@@ -122,10 +131,13 @@ func cmdModelPolicy(args []string) {
 		panic(exitCode{hookBlockExit})
 	}()
 
-	if len(args) != 6 || args[0] != "hook" {
+	if len(args) != 7 || args[0] != "hook" {
 		hookFail("usage: %s", modelPolicyUsage)
 	}
-	cellDir, role, provider, requested, harness := args[1], args[2], args[3], args[4], args[5]
+	cellDir, role, provider, requested, harness, pinned := args[1], args[2], args[3], args[4], args[5], args[6]
+	if pinned == "" {
+		hookFail("no launch policy sha256 pinned; restart the window")
+	}
 	if !filepath.IsAbs(cellDir) {
 		hookFail("cell directory must be absolute: %s", cellDir)
 	}
@@ -141,6 +153,13 @@ func cmdModelPolicy(args []string) {
 	}
 	if policy == nil {
 		hookFail("no model policy is active for cell %s; restart the window to launch without one", c.Name)
+	}
+	// Bind the check to the policy this window LAUNCHED with. The policy-locating variables
+	// (CELL_MODEL_POLICY / CELL_PROVIDER_DEFAULTS / CELL_PROVIDER_OVERRIDES) can reach this
+	// process through the inherited environment, and the catalog can be edited after launch;
+	// either way a policy whose bytes differ is not the one the window's allowlist was built from.
+	if policy.SHA256 != pinned {
+		hookFail("cell policy changed since this window launched (launched sha256 %s, now %s); restart the window to adopt it", pinned, policy.SHA256)
 	}
 	res, err := policy.Resolve(role, provider, requested, harness)
 	if err != nil {

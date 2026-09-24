@@ -68,10 +68,21 @@ the actual target ID. Claude Code >=2.1.251 is required. Before launch, cellctl 
 user/project/managed-file allowlists that widen the policy, and any local `modelOverrides`.
 The worktree is rechecked after creation/merge. These checks preserve other settings and
 hooks rather than replacing the operator's full configuration. Both hooks call back into the
-launcher itself (`cellctl model-policy hook <cell-dir> <role> <provider> <requested> <harness>`,
-the event on stdin), which re-resolves the cell's current policy for the launched route. Every
-refusal exits 2, Claude Code's blocking status. That includes a cell or policy that can no longer
-be loaded, so a hook failure never lets the action through.
+launcher itself (`cellctl model-policy hook <cell-dir> <role> <provider> <requested> <harness>
+<policy-sha256>`, the event on stdin), which re-resolves the cell's policy for the launched
+route. The hook refuses a policy whose SHA-256 differs from the one the window launched with,
+whether the file was edited after launch or the hook's inherited environment points
+`CELL_MODEL_POLICY`, `CELL_PROVIDER_DEFAULTS` or `CELL_PROVIDER_OVERRIDES` somewhere else. Until
+the window is restarted, every model switch and child dispatch is blocked. Every refusal exits
+2, Claude Code's blocking status. That includes a cell or policy that can no longer be loaded.
+The hook command line ends in `|| exit 2`, so a hook binary that has been removed or is no
+longer executable also blocks; on its own the shell would exit 127 or 126, which Claude Code
+does not treat as blocking.
+
+The hook is stricter than the shell launcher in one place: it refuses an Agent/Task event with
+no `tool_input` object instead of reading it as empty. A model ID pinned at two tiers, such as
+the example policy's `claude-sonnet-5` at mid and fast, appears in `availableModels`. A switch
+to that exact ID is still refused, because it does not name a single tier and effort.
 
 Codex receives `model_provider="openai"`, the exact model, `model_reasoning_effort`,
 `agents.default_subagent_model` and `agents.default_subagent_reasoning_effort` as CLI
