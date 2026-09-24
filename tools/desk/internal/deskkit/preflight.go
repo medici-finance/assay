@@ -709,8 +709,11 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 		return "", fmt.Errorf("gitlab token file not found: no %s on the App-credential search path (searched: %s)",
 			name, strings.Join(searched, ", "))
 	}
-	fi, serr := os.Stat(path)
+	fi, serr := LstatCustody(path, CustodySameDirLink)
 	if serr != nil {
+		if _, isLink := serr.(*CustodyLinkError); isLink {
+			return "", serr
+		}
 		return "", fmt.Errorf("could not stat gitlab token file at %s: %v", path, serr)
 	}
 	if !fi.Mode().IsRegular() {

@@ -546,8 +546,13 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 			name, strings.Join(searched, ", "), provisioningDoc, deskkit.EnvConfigHome), nil)
 	}
 
-	fi, serr := os.Stat(path)
+	// Lstat, not Stat: the documented same-directory link (CUSTODY LAYOUT above) is followed;
+	// any other link at the custody path is refused rather than checked and read through.
+	fi, serr := deskkit.LstatCustody(path, deskkit.CustodySameDirLink)
 	if serr != nil {
+		if _, isLink := serr.(*deskkit.CustodyLinkError); isLink {
+			return deskkit.Unverifiable(serr.Error(), nil)
+		}
 		return deskkit.Unverifiable("cannot stat gitlab token file at "+path, serr)
 	}
 	// Non-file custody (a directory, a symlink target that is not a regular file, a socket)

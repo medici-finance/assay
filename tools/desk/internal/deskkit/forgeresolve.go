@@ -371,7 +371,9 @@ func gitlabRoleTokenFile(role string) (token, path string, err error) {
 				"only reads an already-provisioned custody file.",
 			name, strings.Join(searched, ", "), EnvConfigHome))
 	}
-	if verr := verifyCustodyFileMode(p); verr != nil {
+	// The documented GitLab layout links gitlab-<role>.token at the provisioned file beside
+	// it, so a same-directory link is accepted here (and only here).
+	if verr := checkCustodyFileMode(p, CustodySameDirLink); verr != nil {
 		return "", "", verr
 	}
 	b, rerr := os.ReadFile(p)
@@ -416,9 +418,21 @@ func gitlabAPIBaseOverride() string {
 // permission bits are synthetic (#667). A missing, non-regular, or loosely-permissioned
 // file is Refused (exit 5): the deployment has not provisioned this correctly, which is a
 // precondition an operator fixes, not a could-not-check.
+//
+// The path is Lstat'd, not Stat'd (LstatCustody): a symlink at a GitHub custody path is
+// refused outright rather than followed to whatever it names.
 func verifyCustodyFileMode(path string) error {
-	fi, err := os.Stat(path)
+	return checkCustodyFileMode(path, CustodyNoLinks)
+}
+
+// checkCustodyFileMode is verifyCustodyFileMode under an explicit link policy; the GitLab
+// read passes CustodySameDirLink for its documented layout.
+func checkCustodyFileMode(path string, links CustodyLinkPolicy) error {
+	fi, err := LstatCustody(path, links)
 	if err != nil {
+		if _, isLink := err.(*CustodyLinkError); isLink {
+			return Refused(err.Error())
+		}
 		return Refused(fmt.Sprintf("cannot stat custody token file at %s: %v — re-provision it", path, err))
 	}
 	if !fi.Mode().IsRegular() {

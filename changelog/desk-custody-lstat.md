@@ -1,0 +1,2 @@
+### Fixed
+- Token-custody checks no longer follow a symlink at the custody path. The GitHub App token cache refuses any link there: `desktoken` will not hand one out as a cached token or write a minted token through it. GitLab custody (`ForgeFor`, the boot preflight probe and `desktoken --forge gitlab`) still accepts the documented same-directory `gitlab-<role>.token` link and refuses a link that resolves outside the custody directory. The owner-only (0600) check is unchanged.
