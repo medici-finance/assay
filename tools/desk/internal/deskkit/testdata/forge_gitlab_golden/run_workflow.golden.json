@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/trigger/pipeline",
+      "body": {
+        "ref": "main",
+        "token": "test-injected-token-0000",
+        "variables": {
+          "DRY_RUN": "true",
+          "VERSION": "v1.2.3"
+        }
+      }
+    }
+  ],
+  "result": {
+    "ID": "9001",
+    "URL": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"
+  }
+}

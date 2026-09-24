@@ -45,7 +45,7 @@ func TestPhantomCheckRefusesItemWhosePRExistsUnderANonMatchingBranch(t *testing.
 			{Number: 373, State: "OPEN", Body: "does the work\n\nBrief: example-a/00"},
 		}, nil
 	})
-	err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker", pr: 0}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker", pr: 0}, allowedRepo)
 	if err == nil {
 		t.Fatal("phantomCheck accepted an item whose PR exists under a non-matching branch name")
 	}
@@ -62,7 +62,7 @@ func TestPhantomCheckExcludesOnAMergedPR(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 372, State: "MERGED", Body: "Brief: example-b/08"}}, nil
 	})
-	if err := phantomCheck(dispatchOpts{item: "assay--example-b--08", kit: "worker"}, allowedRepo); err == nil {
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-b--08", kit: "worker"}, allowedRepo); err == nil {
 		t.Fatal("a MERGED PR must exclude its brief — the row is done, not dispatchable")
 	}
 }
@@ -73,7 +73,7 @@ func TestPhantomCheckIgnoresAClosedUnmergedPR(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 401, State: "CLOSED", Body: "Brief: example-a/00"}}, nil
 	})
-	if err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
 		t.Fatalf("a CLOSED-unmerged PR must NOT block a fresh dispatch (the work was abandoned): %v", err)
 	}
 }
@@ -83,7 +83,7 @@ func TestPhantomCheckUnreadablePRListIsUnverifiable(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return nil, os.ErrDeadlineExceeded
 	})
-	err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo)
 	if err == nil {
 		t.Fatal("an unreadable PR list must not pass as clear")
 	}
@@ -104,7 +104,7 @@ func TestPhantomCheckSkipsNonFreshDispatch(t *testing.T) {
 		{item: "assay--example-a--00", kit: "verifier", pr: 0},
 		{item: "assay--example-a--00", kit: "worker", pr: 373}, // a --pr resume
 	} {
-		if err := phantomCheck(o, allowedRepo); err != nil {
+		if _, err := phantomCheck(o, allowedRepo); err != nil {
 			t.Errorf("phantomCheck must be a no-op for %+v: %v", o, err)
 		}
 	}
@@ -116,7 +116,7 @@ func TestPhantomCheckNoTransportIsInert(t *testing.T) {
 	old := listRepresentedPRs
 	listRepresentedPRs = nil
 	t.Cleanup(func() { listRepresentedPRs = old })
-	if err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
 		t.Fatalf("an unwired phantom check must be a no-op: %v", err)
 	}
 }
@@ -126,7 +126,7 @@ func TestPhantomCheckAllowsAnUnrepresentedBrief(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 500, State: "OPEN", Body: "Brief: example-other/03"}}, nil
 	})
-	if err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
 		t.Fatalf("a brief with no open/merged PR must dispatch: %v", err)
 	}
 }

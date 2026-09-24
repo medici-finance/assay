@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001/jobs",
+      "query": "per_page=100\u0026scope%5B%5D=manual"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/jobs/71/play",
+      "body": null
+    }
+  ]
+}

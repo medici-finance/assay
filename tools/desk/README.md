@@ -46,6 +46,7 @@ it on day one.
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
+| `deskrun` | `<owner/repo> <workflow> --ref <r> [-f k=v …]` (dispatch one run, print the run it created), `approve <owner/repo> <run-id> --gate <name>` (clear ONE named deployment gate), `status <owner/repo> <run-id>` — under the repo's roster-bound run credential (`ASSAY_RUN_CREDENTIALS`): the dedicated `release-runner` credential proceeds, a `human:<name>` binding is REFUSED (exit 5) before anything is minted, an unbound repo is could-not-check (exit 6). On GitHub, `approve` is could-not-check under an App credential (required reviewers are users or teams). Never `repository_dispatch`; GitLab starts pipelines with the trigger token | outward write (`status`: read) | yes |
 | `deskreconcile` | (no verbs) `--worktree DIR [--issue N] [--dry-run]` — the desk-side board-reconcile writer: fetches origin/main into an isolated worktree, runs `statusgen reconcile --backfill --apply` (the only writer of a stream README Status cell: `todo`/`in-progress` → `implemented`, real merged-PR witness only), and — only when a stream README changed — commits ONLY those README files as ONE commit on the fixed branch `board/reconcile` and opens/UPDATES exactly one draft PR titled `chore(board): reconcile`. Removes the scheduled-CI dependency #1175 is blocked on (no App may push the workflow change). `--dry-run` reports the rows it would flip and writes nothing | outward write (the commit + `deskpr` carry) | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
@@ -4038,6 +4039,33 @@ the tools while `--root` stays the item's own repo — the worktree is always cu
 `--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
 script file sits.
 
+**Cross-repo items resolve through the alias registry, and a mismatch is a hard fail.** An item
+may name the repo its deliverable lands in by ALIAS — the brief's `deliverable_repo: <alias>` or
+`homed-in: <owner>/<name>` frontmatter, an `<alias>:<stream>/<NN>` item-key prefix, or the alias
+segment of the brief's own brief-v2 `brief:` id (the last two name the alias the brief is tracked
+under). `--brief` is resolved once — absolute, else under `--root`, else under `--claim-root` — and
+that one file feeds the deliverable resolution, the human-gate detection, the decision script and
+the prompt; a `--brief` that resolves nowhere is refused. Every registry alias key, `repo:` value
+(strict `owner/name`) and `self:` (an alias that is a registered key) is validated before any of it
+reaches a claim key, a claim or token repo, or a prompt; a bad value refuses the dispatch (exit 5). The alias resolves through `graph-repos.yaml` (schema
+`graph-repos-v1`) in the stream root at `--claim-root`, else `--root` — never by a repo name's
+resemblance to an alias. Before admission, the token mint, the claim or the worktree: no
+registry, or an alias reserved but unpublished there, is could-not-check (exit 6); an alias the
+registry does not define is refused naming it (exit 5); a resolved repo that is not `--repo` or
+not `--root`'s own origin is a HARD FAIL (exit 5) naming both repos, with nothing claimed and no
+worktree cut. The resolved repo is the claim repo and the token's repo, a cross-repo claim key
+carries the tracking alias, and the worker prompt says to run `deskpr create --root <tracking
+checkout>` so the PR's `Brief:` trailer resolves against the tracking board. An item that
+declares no alias keeps the path above unchanged.
+
+**The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
+the deliverable repo's open and merged PRs by `Brief:` trailer before admission, the mint and the
+claim. An OPEN PR refuses (resume it with `--pr`). A MERGED PR refuses as delivered — unless
+`--rework` says the row awaits implementer rework, in which case the dispatch becomes a FOLLOW-UP
+on a new branch (`feat/<item>-followup-<N>`), never a resume or a re-cut of the merged branch.
+The board-side measurement of a merge in a sibling repo is a separate verb this one does not
+re-implement; `siblingPhantomsFn` is the seam it plugs into once it ships.
+
 **Fail closed, with the step or condition NAMED.** Exit 0 means the whole ceremony
 completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`
 names the condition. There is no partial success, no override flag on any of the three, and
@@ -4062,6 +4090,21 @@ by a dispatcher that never dispatched and every later attempt is told the item i
 claimed. A mistyped flag must cost a refusal, not an item nobody can pick up until a human
 deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
 table of bad inputs and asserts that *zero* processes ran.
+
+**A PR that only authored a brief is not its delivery.** A fresh worker dispatch is refused
+when an OPEN or MERGED PR already names the brief in its `Brief:` trailer (the phantom check).
+The docs-only PR that WROTE the brief carries that trailer too, so before each match
+`deskdispatch` reads the changed files of every PR naming the brief and sets aside one that
+only authored it. Every path must be a stream board README
+(`docs/streams/<stream>/README.md`), a brief file (`docs/streams/<stream>/brief-<NN>-*.md`) or a
+changelog fragment (`changelog/<name>.md`), a rename is judged on both halves, and the PR must
+ADD the brief's own file. Any other path, including any other document under `docs/streams/`,
+makes the PR a delivery. That keeps a PR that authored a brief and delivered a document under
+`docs/streams/` in the same change counted as a delivery, even though it adds the brief's file.
+A PR that only edits an existing brief did not author it, so it stays a delivery too. A file list that
+cannot be read, or whose length does not match the forge's own changed-file count, holds the
+dispatch as could-not-check (exit 6); it is never read as "authoring". A set-aside PR is named
+in a `NOTICE` line on stderr.
 
 **`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
 predicted.** A dry run normally shows the agent's home worktree as a not-yet-known
@@ -4148,6 +4191,62 @@ one pinned release is a fleet on one set of clauses. Every clause is written GEN
 private repository name, issue reference, internal document path, item identifier, or named
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
 matcher that stopped matching fails rather than reporting the kits clean forever.
+
+## The dispatch-claim store — `ResolveClaimStore`
+
+WHERE a dispatch claim is kept is decided in ONE place, `deskkit.ResolveClaimStore(repo)`
+(`internal/deskkit/claimstore.go`), from the roster — never by a caller and never by a flag.
+The claim tool (`deskclaim-ref`) and `deskdispatch`'s `claim-acquire` step both ask it; the
+storage surface every backend implements is `deskkit.ClaimStore`, the seven-method seam the
+claim tool always drove, lifted into deskkit unchanged (same holder encoding, same 20 min /
+120 min TTLs, same 0 / 5 / 6 exit codes, byte-identical `show` / `list` output). One
+conformance table (`TestClaimStoreConformance`) runs every backend.
+
+The roster keys (`~/.config/assay/roster.env`; strictly parsed):
+
+| Key | Value |
+|---|---|
+| `ASSAY_CLAIM_STORE` | `file` or `service` — one value for the cell, or `owner/name=<store>` entries for a cell whose repos genuinely differ (a repo the per-repo form does not name is refused, not defaulted) |
+| `ASSAY_CLAIM_DIR` | the `file` store's directory, one absolute path; default `<config home>/dispatch-claims` |
+| `ASSAY_CLAIM_SINGLE_HOST` | `yes` — the declaration that this cell's repos are dispatched from this host only; any other value is refused |
+
+The two valid values of `ASSAY_CLAIM_STORE` are `file` and `service`. **`forge-ref` is not a
+valid value**: set explicitly it is refused like any unknown value, printing the two valid
+ones. Resolution order:
+
+1. A claim-store key that cannot be read (an unusable roster file) or does not parse →
+   refused. An unreadable key is never treated as unset.
+2. `ASSAY_CLAIM_STORE` set → that store, or a refusal when its preconditions do not hold. It
+   never moves on to another store. In this release `file` and `service` parse as valid but
+   are not shipped yet, so setting either is refused naming the release that ships it (the
+   file store, the served store) — a key set early fails loudly.
+3. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
+   written under the dispatching role's credential), exactly as before, for one release
+   window. Every run of `deskclaim-ref` and `deskdispatch` then prints the removal NOTICE:
+
+```
+NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1 — set ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service in the roster.
+```
+
+The release it names is one constant, `deskkit.ClaimStoreLegacyRemovalRelease`; it reads
+`N+1` until release N (the one that ships the `file` store and the serve mode) is cut, which
+sets it to the concrete release. `deskclaim-ref` prints the NOTICE after the verb's own
+output, so the first stderr line a dispatcher quotes is still the verb's.
+
+Every refusal is exit 6 and names the store, what is missing and the remedy. In
+`deskdispatch` it happens in the pre-claim precondition pass: before any child process,
+before any worktree is cut and before any credential is minted. The role credential is
+minted only when the resolved store needs one (the forge-ref store does). The step report
+names the store:
+
+```
+deskdispatch: claim-acquire OK: <item> claimed in <repo> (claim key <key>) via deskclaim-ref, store forge-ref (legacy), authenticated by <source>
+```
+
+**The legacy script's scope.** A consumer repo's `tools/dispatch-claim.sh` speaks the
+forge-ref store only. `deskdispatch` reaches it solely when the Go claim tool is not on
+PATH, and it leaves with that store in release N+1: it is not ported to `file` or
+`service`.
 
 ## `deskroster preflight` — the operating-envelope check
 

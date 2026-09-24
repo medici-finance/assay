@@ -11,23 +11,23 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-23 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-23 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-23 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-23 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-23 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-23 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-23 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-23 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-23 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-23 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-23 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-23 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/16 | 2026-09-23 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-23 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-23 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-23 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/16 | 2026-09-23 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-24 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-24 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-24 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-24 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-24 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-24 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-24 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-24 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-24 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-24 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-24 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-24 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/16 | 2026-09-24 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-24 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-24 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-24 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/16 | 2026-09-24 |  |
 
 ## Parked
 
@@ -35,21 +35,20 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-23 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-23 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-23 |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-23 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-23 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-24 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-24 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-24 |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-24 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-24 |
 
 ## Next up
 
 > **COULD-NOT-CHECK — dead-claim decay did not run.** PR state through `gh pr list` could not be read: gh pr list: exec: "gh": executable file not found in $PATH
 > Open branches whose PR/merge request has already **merged or closed** are still counted as claims, so they keep consuming their stream's dispatch cap. The rows below are a **subset**: briefs held behind those dead claims are missing from this board, not absent from the backlog.
 
-_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: forge-neutral. By stream: forge-neutral (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
-
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
@@ -61,19 +60,20 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: forge-neutral. 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (54 desk-actionable of 74 total — 74 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 77 total — 77 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (54)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
+| forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
@@ -94,6 +94,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 16 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -317,16 +319,16 @@ _None._
 - 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
-- 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
+- 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — implemented (wave 5)
 - 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — implemented (wave 3)
-- 14 Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver — todo (wave 2)
+- 14 Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver — implemented (wave 2)
 - 15 desklabel — a role-keyed label verb — implemented (wave 2)
 - 16 deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane — implemented (wave 4)
 - 17 deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch — todo (wave 2)
 - 18 statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk — in-progress (wave 5)
 - 19 Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs — implemented (wave 1)
 - 20 Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs — implemented (wave 1)
-- 21 Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back — todo (wave 2)
+- 21 Claim store seam — one interface in deskkit, resolved from cell configuration, refusing rather than falling back — implemented (wave 2)
 - 22 Claim readers onto the seam — the supervisor, the verdict stamp, the fan-out release and the roster read the resolved store — todo (wave 3)
 - 23 File claim store — claims in a directory on the cell's host, with the single-host declaration and the container, filesystem and mixed-store guards — todo (wave 3)
 - 24 Served claim store — the same directory store behind a small HTTP serve mode, member-initiated, holding no forge credential — todo (wave 4)

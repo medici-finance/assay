@@ -976,6 +976,12 @@ func TestGateReadsTheBucketItsWritesLandIn(t *testing.T) {
 			gate:  func() error { return AllowWrite("deskrelease", testRepo, 0) },
 		},
 		{
+			// deskrun dispatch/approve: a run has no PR number — gate and audit agree on nil.
+			name:  "deskrun/unnumbered",
+			shape: none,
+			gate:  func() error { return AllowWrite("deskrun", testRepo, 0) },
+		},
+		{
 			// deskpr create: records the number of the PR it just made — unknowable to the
 			// gate, so the gate must be repo-wide. THIS is the row that was red.
 			name:  "deskpr/create-fresh-number",

@@ -216,6 +216,16 @@ func cmdCheck(cell, cfgArg string) {
 	want, src := c.cockpitWant("")
 	if res := c.resolveCockpit(want, src); res.Err == "" {
 		fmt.Printf("  ok    cockpit: %s (%s)\n", res.Cockpit, res.Why)
+		// The same resolved value is what every role window exports as ASSAY_COCKPIT — the
+		// worker-desk worktree-create arm — so the row says which arm that is, not only which
+		// surface.
+		if c.Kind != "scrubbed" {
+			arm := res.Cockpit + " worktree create"
+			if res.Cockpit == "tmux" {
+				arm = "plain git worktree add, no cockpit CLI needed"
+			}
+			fmt.Printf("  ok    %s=%s exported into every role window (worker-desk worktree arm: %s)\n", envAssayCockpit, res.Cockpit, arm)
+		}
 	} else {
 		fmt.Printf("  MISS  cockpit: %s\n", res.Err)
 		k.ok = false

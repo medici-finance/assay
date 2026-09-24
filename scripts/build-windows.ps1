@@ -32,16 +32,16 @@
   or the well-known subject `CN=Assay local tools` in `Cert:\CurrentUser\My`; the
   cert MUST carry the Code Signing EKU (a TLS/server-auth cert is refused). When
   `-Sign` is set and no code-signing cert is found the build FAILS CLOSED with a
-  setup snippet — it never silently ships unsigned files past a `-Sign` request.
+  setup snippet -- it never silently ships unsigned files past a `-Sign` request.
   `-Sign` adds NO requirement for CI or Unix: it is Windows-only and off by default.
 
   TRUST IMPLICATIONS. The setup snippet imports the self-signed cert into the
   per-user Trusted Publishers AND Trusted Root stores (`Cert:\CurrentUser\*`). That
-  makes THIS user trust anything the cert signs as a root CA — so keep the key
+  makes THIS user trust anything the cert signs as a root CA -- so keep the key
   NonExportable, CurrentUser-only, and this-machine-only, and know how to remove it
   (the snippet shows the removal). A self-signed publisher only NAMES the publisher;
   it does NOT clear ML/heuristic AV verdicts (e.g. `Heur.AdvML.D` on a freshly built
-  unsigned Go PE) — a per-machine folder exception on the install dir is the control
+  unsigned Go PE) -- a per-machine folder exception on the install dir is the control
   that silences that heuristic. Full write-up: docs/adopting-assay.md, "Signing
   from-source Windows builds". Signing PUBLISHED release assets (a real org/EV cert
   in CI) is a documented FOLLOW-ON, NOT implemented here.
@@ -181,7 +181,7 @@ function Get-CodeSigningSetupHelp {
     return @"
 -Sign was requested but no usable code-signing certificate was found.
 Create a self-signed CODE-SIGNING cert in your own user store, trust it on THIS
-machine only, then re-run with -Sign. Example (subject is an example — pick your own):
+machine only, then re-run with -Sign. Example (subject is an example -- pick your own):
 
   # 1. Create a code-signing (NOT TLS) self-signed cert in CurrentUser\My:
   `$cert = New-SelfSignedCertificate ``
@@ -199,7 +199,7 @@ machine only, then re-run with -Sign. Example (subject is an example — pick yo
   # 3. Re-run the build, opting in:
   pwsh -File scripts/build-windows.ps1 desk-install -Sign
 
-TRUST IMPLICATIONS — read before importing to Trusted Root:
+TRUST IMPLICATIONS -- read before importing to Trusted Root:
   * Cert:\CurrentUser\Root makes THIS user trust anything the cert signs as a root
     CA. Keep the key NonExportable, CurrentUser-only, this-machine-only; never move
     it to another machine or the LocalMachine store.
@@ -245,7 +245,7 @@ function Resolve-CodeSigningCert {
     }
 
     if (-not (Test-CodeSigningCert $cert)) {
-        throw "sign: certificate $($cert.Thumbprint) ($($cert.Subject)) is not a code-signing certificate (missing EKU $CodeSigningEku) — refusing to sign with a non-code-signing cert.`n$(Get-CodeSigningSetupHelp)"
+        throw "sign: certificate $($cert.Thumbprint) ($($cert.Subject)) is not a code-signing certificate (missing EKU $CodeSigningEku) -- refusing to sign with a non-code-signing cert.`n$(Get-CodeSigningSetupHelp)"
     }
     return $cert
 }
@@ -308,7 +308,7 @@ function Target-DeskBuild {
         # Replace, don't overwrite: recent Go's `go build -o <existing.exe>` refuses
         # to clobber a non-object PE, and a signed PE from a prior -Sign run is
         # exactly that. Remove-then-write keeps a sign -> rebuild -> re-sign loop
-        # working. (Unsigned rebuilds are unaffected — removing then writing is
+        # working. (Unsigned rebuilds are unaffected -- removing then writing is
         # equivalent to overwriting when nothing blocks the overwrite.)
         if (Test-Path $out) { Remove-Item -Force $out }
         Invoke-Go -WorkDir $DeskDir -GoArgs @('build', '-ldflags', $ldflags, '-o', $out, "./cmd/$name")
