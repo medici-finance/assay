@@ -1,0 +1,147 @@
+{
+ "description": "Arm, then every PR-EVENT kind: opened, pushed, draft-flip, merge-state, several changes on one PR as separate lines, and closed.",
+ "kind": "pr",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 2,
+       "headRefOid": "b1",
+       "isDraft": true,
+       "mergeStateStatus": "BLOCKED"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "quiet",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 2,
+       "headRefOid": "b1",
+       "isDraft": true,
+       "mergeStateStatus": "BLOCKED"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "push + draft-flip + merge-state on #2; #3 opened; #7 closed",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 2,
+       "headRefOid": "b2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 3,
+       "headRefOid": "d1",
+       "isDraft": true,
+       "mergeStateStatus": "UNKNOWN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 8,
+       "headRefOid": "e1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "#1 pushed, merge-state goes DIRTY",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a2",
+       "isDraft": false,
+       "mergeStateStatus": "DIRTY"
+      },
+      {
+       "number": 2,
+       "headRefOid": "b2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 3,
+       "headRefOid": "d1",
+       "isDraft": true,
+       "mergeStateStatus": "UNKNOWN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 8,
+       "headRefOid": "e1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -46,7 +46,7 @@ type planOptions struct {
 func (o *planOptions) bind(fs *flag.FlagSet, withRun bool) {
 	fs.StringVar(&o.root, "root", ".", "repo root the scan is rooted at and placeholder state is read from")
 	fs.StringVar(&o.stateDir, "state-dir", "", "the inbound monitor's per-repo state dir (default: $"+EnvMonitorStateDir+")")
-	fs.StringVar(&o.monitor, "monitor", "", "explicit path to the inbound monitor script (default: search the plugin trees)")
+	fs.StringVar(&o.monitor, "monitor", "", "PARITY MODE: arm the bash oracle inbound-monitor.sh at this path instead of the deskmonitor verb (default: the deskmonitor verb from PATH)")
 	fs.StringVar(&o.inbound, "inbound", "", "file of captured monitor output (or - for stdin) supplying this pass's events")
 	fs.StringVar(&o.nowStr, "now", "", "RFC3339 instant to age the queue against (default: wall clock)")
 	fs.StringVar(&o.scanTarget, "scan-target", "", "repo the placeholder delta is committed to and the scan PR opened against (default: the --root checkout's origin)")
@@ -80,11 +80,9 @@ func (o *planOptions) resolvedStateDir() string {
 	if v := strings.TrimSpace(os.Getenv(EnvMonitorStateDir)); v != "" {
 		return v
 	}
-	tmp := os.Getenv("TMPDIR")
-	if tmp == "" {
-		tmp = "/tmp"
-	}
-	return filepath.Join(tmp, "assay-inbound-monitor")
+	// os.TempDir() is `${TMPDIR:-/tmp}` on unix — the poller's own default, so an unset state dir
+	// resolves to the same place for both — and %TMP%/%TEMP% on Windows, where there is no /tmp.
+	return filepath.Join(os.TempDir(), "assay-inbound-monitor")
 }
 
 // repoSlugRe is GitHub's own owner/name alphabet, anchored. Anything else is not a repo slug and is
@@ -223,8 +221,8 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	if len(state.Foreign) > 0 {
 		fmt.Fprintf(stdout, "  baselines outside the current scan scope: %s\n", strings.Join(state.Foreign, ", "))
 	}
-	if scriptPath, ferr := FindMonitorScript(o.root, o.monitor); ferr == nil {
-		fmt.Fprintf(stdout, "  poller: %s (wrapped, never copied)\n", scriptPath)
+	if poller, ferr := ResolvePoller(o.root, o.monitor); ferr == nil {
+		fmt.Fprintf(stdout, "  poller: %s (wrapped, never copied)\n", poller)
 	} else {
 		fmt.Fprintf(stdout, "  poller: NOT FOUND — %s\n", ferr.Error())
 	}
