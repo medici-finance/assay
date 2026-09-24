@@ -1818,6 +1818,51 @@ func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	return &rc, nil
 }
 
+// ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
+// first (`GET /repos/{o}/{r}/commits?sha=<ref>&path=<file>&per_page=<limit>`).
+func (g *GitHubForge) ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error) {
+	if limit <= 0 || limit > forgeFileCommitsMax {
+		return nil, Unverifiable(fmt.Sprintf("ListFileCommits needs a limit in [1, %d]", forgeFileCommitsMax), nil)
+	}
+	if strings.TrimSpace(ref) == "" || strings.TrimSpace(file) == "" {
+		return nil, Unverifiable("ListFileCommits needs a ref and a file for "+repo.Slug(), nil)
+	}
+	var chunk []ghCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/commits?sha=%s&path=%s&per_page=%d", repo.Owner, repo.Name,
+		url.QueryEscape(ref), url.QueryEscape(file), limit)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]RepoCommit, 0, len(chunk))
+	for _, c := range chunk {
+		out = append(out, c.toRepoCommit())
+	}
+	return out, nil
+}
+
+// ListCommitChanges reads the PRs GitHub associates with one commit
+// (`GET /repos/{o}/{r}/commits/{sha}/pulls?per_page=100`), in any state, as their numbers.
+func (g *GitHubForge) ListCommitChanges(repo ForgeRepo, sha string) ([]int, error) {
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("ListCommitChanges needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	var chunk []struct {
+		Number int `json:"number"`
+	}
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s/pulls?per_page=%d", repo.Owner, repo.Name,
+		url.PathEscape(sha), forgeFileCommitsMax)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]int, 0, len(chunk))
+	for _, c := range chunk {
+		if c.Number > 0 {
+			out = append(out, c.Number)
+		}
+	}
+	return out, nil
+}
+
 // ghCompareWire is the compare-API read shape (only the fields consumed).
 type ghCompareWire struct {
 	Status   string       `json:"status"` // identical | ahead | behind | diverged

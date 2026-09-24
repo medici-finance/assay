@@ -64,8 +64,10 @@ type glServer struct {
 	diffs      []map[string]any
 	commit     map[string]any
 	commits    []map[string]any
-	statuses   []map[string]any
-	jobs       []map[string]any
+	// commitMRs is the merge requests a commit is associated with (ListCommitChanges).
+	commitMRs []map[string]any
+	statuses  []map[string]any
+	jobs      []map[string]any
 	// pipelines is the project-pipelines LIST payload, served by SHA: an entry is returned only
 	// when its "sha" equals the request's ?sha=, so a fixture cannot answer for a head it does
 	// not belong to. Empty/absent → the instance ran no pipeline at that head.
@@ -201,6 +203,7 @@ var (
 	lCommit       = regexp.MustCompile(`/repository/commits/[^/]+$`)
 	lCommitList   = regexp.MustCompile(`/repository/commits$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
+	lCommitMRs    = regexp.MustCompile(`/repository/commits/[^/]+/merge_requests$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
 	// lPipelines is the project PIPELINES collection (ListOpenChanges' per-change head-pipeline
 	// read, addressed by ?sha=). It is anchored so it cannot also match lPipelineJobs' path.
@@ -445,6 +448,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createIssue)
 	case r.Method == http.MethodGet && lCommitStatus.MatchString(path):
 		enc(s.statuses)
+	case r.Method == http.MethodGet && lCommitMRs.MatchString(path):
+		enc(s.commitMRs)
 	case r.Method == http.MethodGet && lCommitList.MatchString(path):
 		enc(s.commits)
 	case r.Method == http.MethodGet && lCommit.MatchString(path):
@@ -1946,6 +1951,28 @@ func glCases() []glCase {
 				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListRecentCommits(glRepo, 5) },
+		},
+		{
+			// The auto-approve lane's register history: ONE page, filtered by ref_name and path.
+			name: "list_file_commits", method: "ListFileCommits",
+			setup: func(s *glServer) {
+				s.commits = []map[string]any{
+					{"id": "ccc333", "committed_date": "2026-09-02T10:00:00Z"},
+					{"id": "bbb222", "committed_date": "2026-09-01T10:00:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListFileCommits(glRepo, "main", "docs/rulings.md", 50) },
+		},
+		{
+			// The merge requests behind one commit, as IIDs (never the instance-wide id).
+			name: "list_commit_changes", method: "ListCommitChanges",
+			setup: func(s *glServer) {
+				s.commitMRs = []map[string]any{
+					{"id": 9021, "iid": 21, "state": "merged", "merged_at": "2026-09-01T11:00:00Z"},
+					{"id": 9034, "iid": 34, "state": "opened"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommitChanges(glRepo, "bbb222") },
 		},
 		{
 			// GitLab trust-events brief. GetCommit resolves the author/committer login from the commit's

@@ -3103,11 +3103,22 @@ could-not-check: (a) the rulings register (`--rulings`, default
 **through the forge**, from `--rulings-repo` (default `--repo`, same owner, in the desk repo set)
 at that repo's **default branch** — never from the caller's worktree, which may be a checkout of
 a PR head; (b) its `R-8` Sign-off line names one comment permalink on a thread **in that same
-repo**; (c) the fetched comment's author is a forge `User` (never an App or Bot) and the
-roster-pinned blessing authority, login and numeric id; (d) its body carries a line reading
-exactly `Enact: R-8`, and no rejection or negation anywhere (`rejected`, `not accepted`,
-`do not`, `revoked`, `withdrawn`, ...) — a rejection recorded on the Sign-off line, or an
-unrelated comment by the same human, enacts nothing.
+repo**, and on the **one configured sign-off thread** (`ASSAY_AUTOAPPROVE_SIGNOFF_THREAD`) — a
+comment on any other thread is refused, and an unset thread is could-not-check; (c) the fetched
+comment's author is a forge `User` (never an App or Bot) and the roster-pinned blessing
+authority, login and numeric id; (d) its body's **first non-empty line** is `Enact: R-8` typed
+bare — exactly those bytes from the first column, not quoted, indented, fenced or backticked —
+and no word from the rejection/negation lexicon appears in it (`rejected`, `not accepted`,
+`do not`, `revoked`, `withdrawn`, `declined`, `vetoed`, `rescinded`, ...; a word lexicon, not a
+reading of intent) — a rejection recorded on the Sign-off line, or an unrelated comment by the
+same human, enacts nothing; (e) the comment was **created after the latest merged change to
+R-8's text** above its Sign-off line. The gate walks the register's history at the default
+branch (one page of 50 commits), passes over commits that changed only the Sign-off line or
+another ruling, and takes the `merged_at` of the change that merged the last text change into
+the default branch (the latest, if several did) — never a commit date. A text change with no
+merged change behind it is refused; a history page that ends before the change, or any read
+that fails, is could-not-check. The signing order this admits: the ruling's text merges, then
+the acceptance comment is posted on the sign-off thread, then a PR fills the Sign-off line.
 
 **`--dry-run` writes nothing.** When the category or the score fails, `merge --dry-run` prints
 `dry-run: would eject: <reasons>` and exits 5 with no label swap, no comment and no latch;
@@ -3155,9 +3166,12 @@ The roster keys (`~/.config/assay/roster.env`; file-only, never the environment)
 | `ASSAY_AUTOAPPROVE_EJECT_LINE` | integer in `[0, 5]` — a score above it ejects |
 | `ASSAY_AUTOAPPROVE_FPY_FLOOR` | decimal in `(0, 1]` — the kill signal's first-pass-yield floor |
 | `ASSAY_AUTOAPPROVE_DAILY_CAP` | integer in `[1, 100]` — lane merges per repo per UTC day, counted from `autolane:merge result=ok` audit lines |
+| `ASSAY_AUTOAPPROVE_SIGNOFF_THREAD` | positive integer — the issue or PR number, in the rulings register's repo, of the ONE thread the acceptance comment must sit on. Optional to load; unset, the enactment gate is could-not-check, so nothing is enacted |
 
 All four absent is CLOSED; any subset set without the rest refuses. There is no default value
-for any of them that opens the lane. statusgen recognises the four keys and consumes none.
+for any of them that opens the lane. The sign-off thread is not one of the four: set alone it
+opens nothing, and set to anything but a positive integer it refuses the lane. statusgen
+recognises all five keys and consumes none.
 
 Not in this release: the merge mutation itself (a forge operation), the ready-flip and
 verdict-post recompute hooks in `deskflip` and `deskpost`, the sticky `lane-disarm` issue

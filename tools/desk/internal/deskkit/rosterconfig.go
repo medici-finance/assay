@@ -444,12 +444,28 @@ const (
 	EnvAutoApproveEjectLine = "ASSAY_AUTOAPPROVE_EJECT_LINE"
 	EnvAutoApproveFPYFloor  = "ASSAY_AUTOAPPROVE_FPY_FLOOR"
 	EnvAutoApproveDailyCap  = "ASSAY_AUTOAPPROVE_DAILY_CAP"
+
+	// EnvAutoApproveSignOffThread names the ONE thread (an issue or PR number in the rulings
+	// register's repo) the lane's acceptance comment must sit on. It is OPTIONAL in the loader's
+	// sense only: it is not one of the four keys whose partial presence refuses the lane, and
+	// absent it leaves the lane loaded — but the enactment gate then reads could-not-check, so
+	// an unset thread can never enact anything. A value that is set but is not a positive
+	// integer refuses the lane. Same FILE-ONLY reading as the four. statusgen recognises it and
+	// consumes nothing. KEEP IN SYNC with statusgen's scanEnvAutoApproveSignOffThread and the
+	// coupling vector.
+	EnvAutoApproveSignOffThread = "ASSAY_AUTOAPPROVE_SIGNOFF_THREAD"
 )
 
 // autoLaneKeys is the four auto-approve lane keys, in one place, so parseConfig's
 // pass-through and the lane's own parser cannot disagree about which keys are the lane's.
 func autoLaneKeys() []string {
 	return []string{EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap}
+}
+
+// autoLaneRawKeys is every key parseConfig passes through to the lane parser raw: the four
+// required keys plus the sign-off thread.
+func autoLaneRawKeys() []string {
+	return append(autoLaneKeys(), EnvAutoApproveSignOffThread)
 }
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
@@ -549,6 +565,7 @@ func knownRosterKeys() []string {
 		// The auto-approve lane keys are CONSUMED here (autolane.go, through cfg.AutoLaneRaw).
 		// statusgen recognises them only.
 		EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap,
+		EnvAutoApproveSignOffThread,
 	}
 }
 
@@ -725,8 +742,8 @@ type Config struct {
 	// (ownedrepos_coupling_test.go) — one roster value, not two hand-synced lists.
 	ScanRepos []string
 
-	// AutoLaneRaw carries the RAW values of the four auto-approve lane keys that were set
-	// (EnvAutoApprove*), exactly as the source gave them. parseConfig does not validate
+	// AutoLaneRaw carries the RAW values of the auto-approve lane keys that were set
+	// (EnvAutoApprove*: the four required keys and the sign-off thread), exactly as the source gave them. parseConfig does not validate
 	// them — a malformed lane key must close the LANE, not the whole trust roster — and
 	// ParseAutoLaneConfig (autolane.go) is the one place they are read and judged. Nil or
 	// empty means every lane key is absent: the lane is CLOSED.
@@ -1581,7 +1598,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// else, so it is ParseAutoLaneConfig (autolane.go) that judges these values, and every
 	// judgement it can reach fails closed. Copying only the keys that were SET keeps "absent"
 	// distinguishable from "set to an empty string" for that parser.
-	for _, k := range autoLaneKeys() {
+	for _, k := range autoLaneRawKeys() {
 		if v, ok := vals[k]; ok {
 			if cfg.AutoLaneRaw == nil {
 				cfg.AutoLaneRaw = map[string]string{}

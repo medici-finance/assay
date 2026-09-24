@@ -492,10 +492,12 @@ func TestAutoLane_PendingChecks_NotDemotion(t *testing.T) {
 	}
 }
 
-// TestAutoLaneAcceptance — the enactment gate's body test: exactly the enactment line, and
-// no rejection or negation anywhere.
+// TestAutoLaneAcceptance — the enactment gate's body test: the FIRST non-empty line is the
+// enactment line typed bare, and no word from the negation lexicon appears anywhere.
 func TestAutoLaneAcceptance(t *testing.T) {
-	for _, ok := range []string{"Enact: R-8", "  enact:R-8  ", "Reviewed the lane.\n\nEnact: R-8\n", "Enact: R-8\r\n"} {
+	for _, ok := range []string{
+		"Enact: R-8", "Enact: R-8\r\n", "\n\nEnact: R-8\n", "Enact: R-8  \n\nReviewed the narrowed text.",
+	} {
 		if got, why := AutoLaneAcceptance(ok); !got {
 			t.Errorf("%q: not accepted (%s)", ok, why)
 		}
@@ -508,6 +510,87 @@ func TestAutoLaneAcceptance(t *testing.T) {
 		if got, _ := AutoLaneAcceptance(bad); got {
 			t.Errorf("%q: accepted", bad)
 		}
+	}
+}
+
+// TestAutoLane_EnactLineMust_BeFirstAndBare — the Enact line must OPEN the body, typed bare.
+// Fail-first: at 7cbc29f the matcher took the line anywhere in the body, case-folded, with
+// leading whitespace, so every body below was accepted.
+func TestAutoLane_EnactLineMust_BeFirstAndBare(t *testing.T) {
+	for _, bad := range []string{
+		"Reviewed the lane.\n\nEnact: R-8\n", // not the first non-empty line
+		"To arm the lane a human would reply:\n\n```\nEnact: R-8\n```\n",
+		"```\nEnact: R-8\n```",     // fenced
+		"`Enact: R-8`",             // backticked
+		">Enact: R-8",              // quoted
+		"  Enact: R-8",             // indented
+		"    Enact: R-8",           // an indented code block
+		"enact: R-8", "ENACT: R-8", // not the exact spelling
+		"Enact:R-8", "Enact:  R-8",
+		"**Enact: R-8**",
+	} {
+		if got, _ := AutoLaneAcceptance(bad); got {
+			t.Errorf("%q: accepted", bad)
+		}
+	}
+}
+
+// TestAutoLaneRulingText — the text a time check compares: R-8's heading and body above its
+// Sign-off line. Filling or re-pointing the Sign-off line, or editing another ruling, leaves
+// it unchanged; an edit above the line changes it.
+func TestAutoLaneRulingText(t *testing.T) {
+	const unsigned = "# Rulings\n\n## R-7 — other\n\nSeven.\n\n**Sign-off:**\n\n## R-8 — the lane\n\nNarrowed text.\n\n**Sign-off:**\n"
+	base, ok := AutoLaneRulingText(unsigned, "R-8")
+	if !ok || !strings.Contains(base, "Narrowed text.") || strings.Contains(base, "Sign-off") || strings.Contains(base, "Seven") {
+		t.Fatalf("R-8 text = %q (found %t)", base, ok)
+	}
+	same := []string{
+		strings.Replace(unsigned, "**Sign-off:**\n", "**Sign-off:** https://example.test/x\n", 2),
+		strings.Replace(unsigned, "## R-8 — the lane\n\nNarrowed text.\n\n**Sign-off:**\n",
+			"## R-8 — the lane\n\nNarrowed text.\n\n**Sign-off:**\nhttps://example.test/y\n", 1),
+		strings.Replace(unsigned, "Seven.", "Seven, amended.", 1),
+		unsigned + "\nA note below the sign-off.\n",
+	}
+	for _, v := range same {
+		if got, _ := AutoLaneRulingText(v, "R-8"); got != base {
+			t.Errorf("a change outside R-8's text above the Sign-off line moved it:\n%q\nvs\n%q", got, base)
+		}
+	}
+	for _, v := range []string{
+		strings.Replace(unsigned, "Narrowed text.", "Narrowed text, again.", 1),
+		strings.Replace(unsigned, "## R-8 — the lane", "## R-8 — the auto lane", 1),
+		strings.Replace(unsigned, "Narrowed text.\n", "Narrowed text. \n", 1),
+	} {
+		if got, _ := AutoLaneRulingText(v, "R-8"); got == base {
+			t.Errorf("an edit to R-8's text above the Sign-off line did not change it: %q", v)
+		}
+	}
+	if _, ok := AutoLaneRulingText("# Rulings\n\n## R-80 — not it\n\n**Sign-off:**\n", "R-8"); ok {
+		t.Error("R-80's section read as R-8's")
+	}
+}
+
+// TestAutoLane_SignOffThread_Config — the optional sign-off thread: absent loads with the thread
+// UNSET (0); a positive integer loads; anything else refuses the lane.
+func TestAutoLane_SignOffThread_Config(t *testing.T) {
+	raw := alRaw(alRepo + ":docs/notes/**:ada")
+	if ld := ParseAutoLaneConfig(raw, alValidator()); ld.State != AutoLaneConfigLoaded || ld.Config.SignOffThread != 0 {
+		t.Fatalf("absent thread: %s thread %d — %s", ld.State, ld.Config.SignOffThread, ld.Problem)
+	}
+	raw[EnvAutoApproveSignOffThread] = "42"
+	if ld := ParseAutoLaneConfig(raw, alValidator()); ld.State != AutoLaneConfigLoaded || ld.Config.SignOffThread != 42 {
+		t.Fatalf("thread 42: %s thread %d — %s", ld.State, ld.Config.SignOffThread, ld.Problem)
+	}
+	for _, bad := range []string{"", "0", "-3", "#42", "42x", "example-org/tracker#42", "+42"} {
+		raw[EnvAutoApproveSignOffThread] = bad
+		if ld := ParseAutoLaneConfig(raw, alValidator()); ld.State != AutoLaneConfigRefused ||
+			!strings.Contains(ld.Problem, EnvAutoApproveSignOffThread) {
+			t.Errorf("thread %q: %s — want refused naming the key", bad, ld.State)
+		}
+	}
+	only := map[string]string{EnvAutoApproveSignOffThread: "42"}
+	if ld := ParseAutoLaneConfig(only, alValidator()); ld.State != AutoLaneUnconfigured {
+		t.Fatalf("the thread alone opened the lane: %s", ld.State)
 	}
 }
 

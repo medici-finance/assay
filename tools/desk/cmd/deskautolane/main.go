@@ -15,10 +15,12 @@
 //     CLOSED: every verb refuses at condition `config` before its first forge request.
 //  2. ENACTMENT. Every WRITE this verb can make (the admission label, the ejection label
 //     swap and its one comment) is gated on the rulings register's R-8 Sign-off line — read
-//     through the forge at the register repo's default branch — naming a comment, on a
-//     thread in that repo, whose author is a User and the roster-pinned blessing authority
-//     and whose body carries the line `Enact: R-8` and no rejection. The line ships EMPTY,
-//     so every write refuses `ruling-unsigned`.
+//     through the forge at the register repo's default branch — naming a comment on the
+//     ONE configured sign-off thread in that repo, whose author is a User and the
+//     roster-pinned blessing authority, whose body opens with the bare line `Enact: R-8` and
+//     carries no word from the rejection lexicon, and which was created after the latest
+//     merged change to R-8's text. The line ships EMPTY, so every write refuses
+//     `ruling-unsigned`.
 //  3. NO MERGE WRITE. This release carries no merge mutation at all. `merge` evaluates the
 //     whole condition chain and, with --dry-run, reports what it would do; without
 //     --dry-run it refuses at `merge-write` after every condition held. The forge operation
@@ -65,14 +67,17 @@ merge      Evaluates, in a pinned order, every condition a lane merge must pass.
            does), and a PR that passes every condition is refused at merge-write: this
            release carries no merge mutation.
 
-The lane is CLOSED unless all four ASSAY_AUTOAPPROVE_* roster keys are set, and every write
+The lane is CLOSED unless the four required ASSAY_AUTOAPPROVE_* roster keys are set, and every write
 is refused until the enactment gate holds: R-8's Sign-off line in the rulings register
 (--rulings, default docs/streams/issue-flow/rulings.md), read through the forge from
---rulings-repo (default --repo) at its DEFAULT branch, names a comment on a thread in that repo
-whose author is a User and the blessing authority, and whose body carries the line
-"Enact: R-8" and no rejection or negation. --root names only the local tree whose
-.assay-surfaces the only-narrowing config check reads. --fpy-file names the harvested per-class
-first-pass-yield file; absent or unreadable, the lane HOLDS.
+--rulings-repo (default --repo) at its DEFAULT branch, names a comment on the one configured
+sign-off thread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD; unset is could-not-check) in that repo,
+whose author is a User and the blessing authority, whose FIRST non-empty line is the bare
+line "Enact: R-8" with no word from the rejection/negation lexicon in the body, and which
+was created after the latest merged change to R-8's text above its Sign-off line (the
+merging PR's merged_at; a Sign-off-only change does not count). --root names only the local
+tree whose .assay-surfaces the only-narrowing config check reads. --fpy-file names the
+harvested per-class first-pass-yield file; absent or unreadable, the lane HOLDS.
 
 Exit: 0 ok · 3 disabled · 4 rate-limited · 5 refused/ejected · 6 could-not-check.`
 

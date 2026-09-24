@@ -216,6 +216,102 @@
       "file": "internal/deskkit/autolane.go",
       "old": "\t\t\tif HasSecurityReviewFail(r.Body) {\n\t\t\t\ttrip(TripSecurityFail",
       "new": "\t\t\tif false && HasSecurityReviewFail(r.Body) {\n\t\t\t\ttrip(TripSecurityFail"
+    },
+    {
+      "name": "sign-off thread: a comment on another thread of the register repo is followed",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tcase item != o.signOffThread:",
+      "new": "\tcase false && item != o.signOffThread:"
+    },
+    {
+      "name": "sign-off thread: an unset thread reads as any thread, not could-not-check",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tcase o.signOffThread <= 0:",
+      "new": "\tcase false && o.signOffThread <= 0:"
+    },
+    {
+      "name": "sign-off thread: the configured thread is never handed to the gate",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\to.signOffThread = cfg.SignOffThread\n",
+      "new": "\to.signOffThread = cfg.SignOffThread + 1\n"
+    },
+    {
+      "name": "sign-off thread: a thread of 0 loads as a configured thread",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif t == \"\" || terr != nil || n <= 0 || strings.TrimLeft(t, \"0123456789\") != \"\" {",
+      "new": "\t\tif t == \"\" || terr != nil || strings.TrimLeft(t, \"0123456789\") != \"\" {"
+    },
+    {
+      "name": "time check: the acceptance's creation time is never compared",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif err := acceptanceAfterText(o, fg, rr, db, string(fc.Content), c.CreatedAt); err != nil {",
+      "new": "\t\tif err := acceptanceAfterText(o, fg, rr, db, string(fc.Content), c.CreatedAt); false && err != nil {"
+    },
+    {
+      "name": "time check: an acceptance at the merge instant counts as after it",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif !accepted.After(anchor) {",
+      "new": "\tif accepted.Before(anchor) {"
+    },
+    {
+      "name": "time check: an unreadable creation time reads as the zero time, not could-not-check",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\taccepted, perr := time.Parse(time.RFC3339, strings.TrimSpace(createdAt))\n\tif perr != nil {",
+      "new": "\taccepted, perr := time.Parse(time.RFC3339, strings.TrimSpace(createdAt))\n\tif false && perr != nil {"
+    },
+    {
+      "name": "time check: the Sign-off line counts as a change to the ruling's text",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif signOffKeyRe.MatchString(ln) {\n\t\t\tsigned = true\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif signOffKeyRe.MatchString(ln) {\n\t\t\tout = append(out, ln)\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "time check: a text change with no merged PR behind it anchors at the zero time",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused(",
+      "new": "\tif false && latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused("
+    },
+    {
+      "name": "time check: an open PR or one merged into another branch counts as the merge",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif !(pr.Merged || strings.TrimSpace(pr.MergedAt) != \"\") || strings.TrimSpace(pr.BaseRef) != db {",
+      "new": "\t\tif !(pr.Merged || strings.TrimSpace(pr.MergedAt) != \"\" || pr.State != \"\") {"
+    },
+    {
+      "name": "time check: the EARLIEST of several merged PRs anchors, not the latest",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif latestPR == 0 || at.After(latest) {",
+      "new": "\t\tif latestPR == 0 || at.Before(latest) {"
+    },
+    {
+      "name": "time check: a history page that ends before the change reads as the text's origin",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\t\tif len(hist) >= rulingHistoryLimit {",
+      "new": "\t\t\tif false && len(hist) >= rulingHistoryLimit {"
+    },
+    {
+      "name": "time check: a history whose newest version is not the default branch's is walked anyway",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif !nfound || newest != want {",
+      "new": "\tif false && (!nfound || newest != want) {"
+    },
+    {
+      "name": "enact line: the line is taken anywhere in the body (the 7cbc29f matcher)",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif strings.TrimRight(first, \" \\t\\r\") != AutoLaneEnactLine {",
+      "new": "\tif !regexp.MustCompile(`(?mi)^[ \\t]*Enact:[ \\t]*R-8[ \\t\\r]*$`).MatchString(body) {"
+    },
+    {
+      "name": "enact line: the LAST non-empty line is read instead of the first",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif strings.TrimSpace(ln) != \"\" {\n\t\t\tfirst = ln\n\t\t\tbreak\n\t\t}",
+      "new": "\t\tif strings.TrimSpace(ln) != \"\" {\n\t\t\tfirst = ln\n\t\t}"
+    },
+    {
+      "name": "enact line: an indented line reads as bare",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif strings.TrimRight(first, \" \\t\\r\") != AutoLaneEnactLine {",
+      "new": "\tif strings.TrimSpace(first) != AutoLaneEnactLine {"
     }
   ]
 }

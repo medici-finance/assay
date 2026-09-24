@@ -2250,6 +2250,63 @@ func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	}, nil
 }
 
+// ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
+// first (`GET /projects/:id/repository/commits?ref_name=<ref>&path=<file>`). SHA and
+// committed_date map 1:1; no account is resolved (the consumer reads only the SHA).
+func (g *GitLabForge) ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > forgeFileCommitsMax {
+		return nil, Unverifiable(fmt.Sprintf("ListFileCommits needs a limit in [1, %d]", forgeFileCommitsMax), nil)
+	}
+	if strings.TrimSpace(ref) == "" || strings.TrimSpace(file) == "" {
+		return nil, Unverifiable("ListFileCommits needs a ref and a file for "+repo.Slug(), nil)
+	}
+	path := fmt.Sprintf("/projects/%s/repository/commits", g.projectPath(repo))
+	commits, _, cerr := cl.Commits.ListCommits(repo.Slug(), &gitlab.ListCommitsOptions{
+		ListOptions: gitlab.ListOptions{PerPage: int64(limit), Page: 1},
+		RefName:     gitlab.Ptr(ref),
+		Path:        gitlab.Ptr(file),
+	})
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, cerr)
+	}
+	out := make([]RepoCommit, 0, len(commits))
+	for _, c := range commits {
+		if c == nil {
+			continue
+		}
+		out = append(out, RepoCommit{SHA: c.ID, CommittedDate: gitlabTime(c.CommittedDate)})
+	}
+	return out, nil
+}
+
+// ListCommitChanges reads the merge requests GitLab associates with one commit
+// (`GET /projects/:id/repository/commits/:sha/merge_requests`), in any state, as their IIDs.
+func (g *GitLabForge) ListCommitChanges(repo ForgeRepo, sha string) ([]int, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("ListCommitChanges needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	path := fmt.Sprintf("/projects/%s/repository/commits/%s/merge_requests", g.projectPath(repo), sha)
+	mrs, _, cerr := cl.Commits.ListMergeRequestsByCommit(repo.Slug(), sha)
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, cerr)
+	}
+	out := make([]int, 0, len(mrs))
+	for _, mr := range mrs {
+		if mr != nil && mr.IID > 0 {
+			out = append(out, int(mr.IID))
+		}
+	}
+	return out, nil
+}
+
 // gitlabEmailCandidates bounds the users search behind gitlabLoginForEmail to one page. The
 // search is the instance's own fuzzy name/username/public-email match; the exact-address
 // check below is what turns a candidate into an attribution, so a page is plenty.
