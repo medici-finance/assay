@@ -134,7 +134,7 @@ Enumeration notes: the decision rule and the byte-identity constraint are proper
 
 VERIFY: FAIL — rows 2, 5, 9 red on merged main; all three are Verify-row/instrument defects rather than property failures (row 2's spelling predates the CLI guard; row 5 expects stdout from a tool that writes only a report file; row 9 is structurally could-not-check for any brief authored on main before its implementation branch, and its only evidencing diff surfaces a real if benign routing DISPROVED on common-clauses.md — the item's commit edits a file its consumers: frontmatter claims out-of-scope, adding only the two extraction markers its own row 3 depends on). Class note: the item's Evidence section was empty at merge — nobody ran these rows as written; a brief whose Verify table is unexecutable at authoring time passes review green. Item does NOT advance. Row defects + the routing ruling are filed by the desk (see the linked issue).
 
-### Non-implementer verifier run — VERIFY: FAIL — 2026-09-23 claude-opus-4-8-verifier
+### Non-implementer verifier run — VERIFY: FAIL — 6/9 pass, 1 could-not-check, 2 fail — 2026-09-23 claude-opus-4-8-verifier
 
 Fresh classification pass on merged main 39866201ce48acdce1f9b14d1cae38eb2b7eff38. Isolated
 worktree cut detached from origin/main, offline envelope (KUBECONFIG=/dev/null),
