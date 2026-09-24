@@ -657,7 +657,7 @@ func AdmitAutoLane(c AutoLaneConfig, in AutoLaneAdmitInput) AutoLaneAdmit {
 	}
 
 	if trs, err := ParseTrailers([]byte(in.Body)); err != nil || len(trs) == 0 {
-		trip(TripNoTrailer, "the PR body carries no single Brief: or Issue: trailer")
+		trip(TripNoTrailer, "the PR body carries no single Brief:, Authors: or Issue: trailer")
 	}
 
 	files := in.ChangedFiles

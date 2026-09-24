@@ -48,3 +48,20 @@ func liveRepresentedPRs(repo string) ([]deskkit.PRRef, error) {
 	}
 	return refs, nil
 }
+
+// liveRepresentedPRFiles is representedPRFiles' shipped transport: one PR's changed-file list, read
+// through the typed Forge seam under the session's own role and reconciled against the forge's own
+// count (deskkit.CompleteChangedFiles) — a list that cannot be proven complete is an error, never a
+// partial answer that could hide the code making the PR a delivery.
+func liveRepresentedPRFiles(repo string, number int) ([]deskkit.ChangedFile, error) {
+	owner, name, ok := strings.Cut(strings.TrimSpace(repo), "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("changed-file read: target repo %q is not owner/name", repo)
+	}
+	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	fg, ferr := productionForgeResolver(fr)
+	if ferr != nil {
+		return nil, ferr
+	}
+	return deskkit.CompleteChangedFiles(fg, fr, number)
+}

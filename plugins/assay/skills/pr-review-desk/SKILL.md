@@ -686,13 +686,25 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      delivered into the same repo, whichever board tracks it; and a trailer in a body edited after
      the merge. Same-repo rows stay outside B because the ruling admits only a cross-repo brief's
      promotion; widening B to them needs a new ruling, never a reviewer's reading.
-  2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer, EITHER
-     `Brief: <stream>/<NN>` (the brief this PR delivers) **OR** `Issue: #<N>` (issue-only work that
-     delivers no brief — e.g. a pin bump / re-pin PR, which by construction carries no brief). Both
-     forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s `requireTrailer` enforce, so an
-     `Issue: #<N>`-only body is fully compliant and must NOT be bounced for lacking a `Brief:` line.
+  2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer:
+     `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
+     briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
+     (issue-only work that delivers no brief — e.g. a pin bump / re-pin PR, which by construction
+     carries no brief). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
+     `requireTrailer` enforce, so an `Issue: #<N>`- or `Authors:`-only body is fully compliant and
+     must NOT be bounced for lacking a `Brief:` line. The reverse IS a finding: a docs-only PR that
+     only adds brief files, board READMEs and changelog fragments but carries `Brief:` makes the
+     brief read as delivered on merge — ask for `Authors:` instead. The reverse of THAT is also a
+     finding: `Authors:` on a diff that is not authoring-only for every listed id — it touches code,
+     or a non-brief document (an audit, a decision record, anything under `docs/streams/` that is
+     not a board README or a brief file itself) — is a delivery wearing the trailer that switches
+     off the security lane's brief-declared risk term (`deskkit.BriefRiskFromBody` reads `Brief:`
+     only); ask for `Brief:` instead, or for the non-authoring change to move to its own PR.
+     `deskpr create`'s writer-side gate and `deskflip`'s `AuthorsRiskFromBody` term both already
+     catch this, so a PR that reached review with this shape
+     is either pre-gate or had its body edited around the writer check — flag it regardless.
      Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
-     link trailer — add exactly one `Brief: <stream>/<NN>` or `Issue: #<N>` line; the board can't
+     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>` or `Issue: #<N>` line; the board can't
      link this PR to its work item without it." (`deskpr create` already refuses to open a PR with
      no trailer, so this bounce is the second layer for the no-trailer class only. A PR that carries
      `Issue: #<N>` satisfied that gate legitimately — it is NOT evidence a refusal was routed

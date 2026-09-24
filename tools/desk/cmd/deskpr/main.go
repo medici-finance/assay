@@ -32,7 +32,7 @@ USAGE:
   deskpr --version
 
 --check runs every LOCAL gate the write path runs — flag validity, branch state, the
-Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
+Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
 push-transport gate — and stops BEFORE minting a token or opening any connection: exit 0
 only when every local gate passed, a failing gate returns its own refusal with its own
 exit code, so --check is a gate run early, never a preview that can disagree with the real
@@ -52,9 +52,28 @@ secret-scan, self-containment, rate-limit and public-repo gates create runs. The
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
 
-deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" / "Issue: #<N>"
-is the derived board's edge from the PR to its work item: the replacement body must carry
-exactly one, and when the PR's current body already has one, the replacement's must match
+LINK TRAILER. Every PR body carries exactly ONE link line, and which one says what the
+PR does to its work item:
+  Brief: <stream>/<NN>             the PR DELIVERS that brief (implements it). Also accepted:
+                                   <stream>:<NN>, <repo>:<stream>:<NN>, <cell>:<repo>:<stream>:<NN>.
+  Authors: <stream>/<NN>[, ...]    the PR only AUTHORS (writes the files of) the listed briefs
+                                   and delivers none of them — a briefs-authoring PR (#1339).
+  Issue: #<N>                      issue-only work with no brief.
+Every brief named by Brief: or Authors: must resolve to docs/streams/<stream>/brief-<NN>-*.md
+under --root. Brief: is read as DELIVERY by the dispatcher's phantom check, the planner and
+the derived board, so an authoring PR must not carry it: create REFUSES a Brief: line when
+the branch only authors that brief (it adds the brief's file and touches nothing but stream
+board READMEs, brief files and changelog fragments) and names the Authors: line to use.
+The mirror refusal: create REFUSES an Authors: line unless the branch diff is authoring-only
+for EVERY listed id, which includes ADDING each listed brief's file. A diff with a rename is
+refused under Authors: (its authoring shape cannot be proven from this local read), while
+Brief: leaves such a diff alone. deskflip re-checks the same claim against the PR's
+forge-served diff at flip time: an Authors: PR whose complete diff is not authoring-only for
+every listed id needs a security review before it can flip.
+
+deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" /
+"Authors: <stream>/<NN>[, ...]" / "Issue: #<N>" is the derived board's edge from the PR
+to its work item: the replacement body must carry exactly one, and when the PR's current body already has one, the replacement's must match
 it. A PR whose current body has NO trailer may gain one — that is the pre-trailer
 migration deskpr update tells you to perform. Because a body edit moves no head SHA,
 edit also posts one short comment naming what changed, so a head-keyed review monitor
