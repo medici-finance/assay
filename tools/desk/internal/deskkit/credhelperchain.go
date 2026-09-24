@@ -46,6 +46,8 @@ import (
 // Each of these reads not-clean. askpass needs no separate read: git falls through to it only
 // when the helper chain yields no username or password, and every entry of a passing chain
 // is the App helper, which always answers both (an empty password when the file is gone).
+// That holds because a helper value is matched raw, exactly as git reads it: a leading blank
+// would make git run it as `git credential-…`, which answers nothing (isAppTokenHelper).
 //
 // Every push URL the remote pushes to is judged (`remote get-url --push --all`), since
 // `git push` pushes to each; one URL failing fails the check.
@@ -145,12 +147,16 @@ func AppTokenHelper(username, tokenPath string) string {
 // same file. A helper that merely names the file (a different command around it, `store
 // --file <path>`, a same-named file in another directory) is not it: what git presents is
 // whatever that command prints, not the token.
+//
+// The value is matched RAW, never trimmed: git does not trim a helper value either, and a
+// leading blank turns the App helper into `git credential- !f(){…`, which answers nothing, so
+// git falls through to askpass. Any surrounding whitespace therefore reads not-clean.
 func isAppTokenHelper(helper, appTokenPath string) bool {
 	want := strings.TrimSpace(appTokenPath)
 	if want == "" {
 		return false
 	}
-	name, path, ok := parseAppTokenHelper(strings.TrimSpace(helper))
+	name, path, ok := parseAppTokenHelper(helper)
 	if !ok || name == "" || !filepath.IsAbs(path) {
 		return false // a relative path is read from wherever git runs the helper
 	}
@@ -193,10 +199,13 @@ func sameFile(a, b string) bool {
 
 // helperInvocation renders a helper value as the command git would actually run for it
 // (credential.c, credential_do): a `!` value is a shell snippet, an absolute path is run as
-// given, and anything else is `git credential-<value>`.
+// given, and anything else is `git credential-<value>`. git reads the value untrimmed, so a
+// value with a leading blank is always the `git credential-` form, whatever follows the blank.
 func helperInvocation(h string) string {
-	h = strings.TrimSpace(h)
 	switch {
+	case strings.TrimLeft(h, " \t\n\r") != h:
+		return "`git credential-" + oneLine(h) + "` (the configured value starts with whitespace, which git " +
+			"keeps, so it runs `git credential-` with that value rather than the command after the blank)"
 	case strings.HasPrefix(h, "!"):
 		return "the shell command `" + oneLine(strings.TrimPrefix(h, "!")) + "`"
 	case filepath.IsAbs(h) || strings.HasPrefix(h, "/"):
@@ -466,11 +475,16 @@ func netrcEntryFor(host string) (string, error) {
 	return "", nil
 }
 
-// netrcMatch scans a netrc body for an entry that applies to host: `machine <host>` (compared
-// case-insensitively, as curl does) or `default`. A `macdef` body — up to the next blank line
-// — is skipped, and the value after login/password/account is never read as a keyword.
+// netrcMatch scans a netrc body for an entry that applies to host: `machine <host>` or
+// `default`. Keywords and the host are compared case-insensitively, as curl does
+// (lib/netrc.c, strcasecompare). A `macdef` body — up to the next blank line — is skipped.
+//
+// Only the states outside a matched entry are modelled, since a matched entry already reads
+// not-clean. There curl treats only macdef/machine/default as keywords: login, password and
+// account are NOT keywords, so the token after one is itself read as a keyword — `login
+// default` opens a default entry. Their values are therefore never skipped here.
 func netrcMatch(body, host string) string {
-	inMacro, skipNext, wantMachine := false, false, false
+	inMacro, wantMachine := false, false
 	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
 		if inMacro {
 			if strings.TrimSpace(line) == "" {
@@ -487,15 +501,11 @@ func netrcMatch(body, host string) string {
 				if strings.EqualFold(t, host) {
 					return "a netrc `machine " + host + "` entry"
 				}
-			case skipNext:
-				skipNext = false
-			case t == "machine":
+			case strings.EqualFold(t, "machine"):
 				wantMachine = true
-			case t == "default":
+			case strings.EqualFold(t, "default"):
 				return "a netrc `default` entry"
-			case t == "login" || t == "password" || t == "account":
-				skipNext = true
-			case t == "macdef":
+			case strings.EqualFold(t, "macdef"):
 				inMacro = true
 				i = len(toks)
 			}
