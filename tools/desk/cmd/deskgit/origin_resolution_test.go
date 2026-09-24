@@ -103,8 +103,10 @@ func TestFetch_WorktreeScopedURL_AllowedByGitsResolution(t *testing.T) {
 	}
 }
 
-// A multi-valued url list is refused fail-closed: fetch uses only the first value, push uses
-// every one, so no single URL can stand for the list and the gate will not pick one.
+// A multi-valued url list is REFUSED: fetch uses only the first value (and, with no pushurl set,
+// push uses every one), so no single URL can stand for the list and the gate will not pick one.
+// A second value is a positive smuggle shape the tool has determined, not a could-not-run, so it
+// exits 5 (refused) — the same class as parseRepo's refusals — never 6 (unverifiable).
 func TestFetch_MultiValuedOriginURL_FailsClosed(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	denied := newDeniedUpstream(t)
@@ -115,8 +117,8 @@ func TestFetch_MultiValuedOriginURL_FailsClosed(t *testing.T) {
 	if code == deskkit.ExitOK {
 		t.Fatal("fetch with a multi-valued origin url list must not succeed")
 	}
-	if code != deskkit.ExitUnverifiable {
-		t.Fatalf("fetch exit = %d, want %d (fail-closed)", code, deskkit.ExitUnverifiable)
+	if code != deskkit.ExitRefused {
+		t.Fatalf("fetch exit = %d, want %d (refused: a multi-valued url list is a smuggle shape)", code, deskkit.ExitRefused)
 	}
 	if fetchArgv(*calls) != nil {
 		t.Fatal("git fetch must NOT run when origin has more than one url")
@@ -129,6 +131,28 @@ func TestFetch_MultiValuedOriginURL_FailsClosed(t *testing.T) {
 	}
 	if !saw {
 		t.Fatalf("audit detail should name the multi-valued list; got %+v", readAudit(t))
+	}
+}
+
+// The push twin of the multi-valued refusal: `push --as` decides its repo on the same read, so a
+// second url value is refused (exit 5) there too — before any token is read and before git push
+// runs.
+func TestPush_MultiValuedOriginURL_Refused(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	onBranch(t, work, "feature-1")
+	denied := newDeniedUpstream(t)
+	mustGit(t, work, "config", "--add", "remote.origin.url", denied)
+
+	calls := withEnv(t, work)
+	tokenRead := asWorker(t)
+	if code := run([]string{"push", "--as", "worker"}); code != deskkit.ExitRefused {
+		t.Fatalf("push --as worker exit = %d, want %d (refused: a multi-valued url list is a smuggle shape)", code, deskkit.ExitRefused)
+	}
+	if gitCallWith(*calls, "push") != nil {
+		t.Fatal("git push must NOT run when origin has more than one url")
+	}
+	if *tokenRead {
+		t.Fatal("no token may be read when origin has more than one url")
 	}
 }
 

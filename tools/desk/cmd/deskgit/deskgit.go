@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -25,17 +26,31 @@ func checkInsideWorkTree(dir string) error {
 	return nil
 }
 
-// effectiveOriginURL returns the URL the local `origin` remote effectively fetches from, AS
-// GIT ITSELF RESOLVES IT: `git remote get-url --all origin`, a config read that contacts no
-// remote. It runs through the same scrubbed runGit as the fetch/push it gates, so it sees the
-// same config scopes (system, global, repository, worktree), the same empty-value list resets,
-// and the same insteadOf rewrites — the gate decides on the URL git will connect to, not on a
-// parallel read of the repository config file (#1573 follow-up: that read missed worktree and
-// global scope and could pass an allowed slug while git fetched elsewhere).
+// errMultiOrigin marks a multi-valued origin url list. The callers map it to a REFUSAL (exit 5),
+// not to unverifiable (exit 6): a second url value is a shape the tool has positively determined
+// and refuses, the same class of decision as parseRepo's refusals, never a could-not-run.
+var errMultiOrigin = errors.New("multi-valued origin url list")
+
+// effectiveOriginURL returns origin's FETCH url AS GIT ITSELF RESOLVES IT: `git remote get-url
+// --all origin`, a config read that contacts no remote. It runs through the same scrubbed runGit
+// as the fetch it gates, so it sees the same config scopes (system, global, repository,
+// worktree), the same empty-value list resets, and the same insteadOf rewrites of the url list —
+// for FETCH the gate decides on the URL git will connect to, not on a parallel read of the
+// repository config file (#1573 follow-up: that read missed worktree and global scope and could
+// pass an allowed slug while git fetched elsewhere).
 //
-// Exactly one URL is required. An empty list, or a git error, is returned as an error the
-// callers turn into a fail-closed exit 6; a MULTI-VALUED list is refused the same way, because
-// fetch connects to the first value and push to every value, so no single URL can stand for it.
+// It reads the FETCH url list only, and it decides the REPO. It is NOT a read of push
+// destinations: `git push origin` connects to every remote.origin.pushurl value when one is set,
+// and otherwise to the url list as rewritten by url.<base>.pushInsteadOf — neither is in what
+// this function reads. Where git pushes is not gated by this function; that is a separate
+// control (#1587's push-destination gate), and this read never stands in for it.
+//
+// Exactly one URL is required. A MULTI-VALUED list is refused (errMultiOrigin, exit 5 at the
+// callers): fetch connects to the first value and, with no pushurl set, push to every value, so
+// no single URL can stand for the list. A git error is returned as an error the callers turn into
+// a fail-closed exit 6. (An emptied url list does not come back empty: git then reports the
+// remote NAME, `origin`, as the URL, which parseRepo refuses with exit 5. The empty case below is
+// defensive only.)
 func effectiveOriginURL(dir string) (string, error) {
 	out, err := runGit(dir, "remote", "get-url", "--all", "origin")
 	if err != nil {
@@ -53,8 +68,8 @@ func effectiveOriginURL(dir string) (string, error) {
 	case 1:
 		return urls[0], nil
 	default:
-		return "", fmt.Errorf("origin resolves to %d URLs (a multi-valued remote.origin.url list); "+
-			"refusing to gate on one of them — set exactly one", len(urls))
+		return "", fmt.Errorf("%w: origin resolves to %d URLs (a multi-valued remote.origin.url list); "+
+			"refusing to gate on one of them — set exactly one", errMultiOrigin, len(urls))
 	}
 }
 
@@ -301,6 +316,9 @@ func cmdFetch(args []string) (err error) {
 	// url.<base>.insteadOf and exits WITHOUT contacting the remote, so an insteadOf
 	// rewrite cannot present an allowed identity while fetching elsewhere.
 	originURL, oerr := effectiveOriginURL(dir)
+	if errors.Is(oerr, errMultiOrigin) {
+		return deskkit.Refused("refused: " + oerr.Error())
+	}
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
 	}
@@ -443,6 +461,9 @@ func cmdPush(args []string) (err error) {
 	// expands insteadOf and contacts no remote), refuse an unparseable/foreign/out-of-set
 	// origin BEFORE any credential is offered.
 	originURL, oerr := effectiveOriginURL(dir)
+	if errors.Is(oerr, errMultiOrigin) {
+		return deskkit.Refused("refused: " + oerr.Error())
+	}
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
 	}
