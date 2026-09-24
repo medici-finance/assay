@@ -46,12 +46,29 @@ ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001,reviewer=example-reviewe
 ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/open:ci:public
 `
 
-// fixtureLaneKeys opts two example areas in. It mirrors testdata/roster.env.
-const fixtureLaneKeys = `ASSAY_AUTOAPPROVE_AREAS=example-org/tracker:docs/notes/**:ada,example-org/tracker:BOARD.md:ada
+// fixtureLaneKeysNoThread opts two example areas in and names NO sign-off thread.
+const fixtureLaneKeysNoThread = `ASSAY_AUTOAPPROVE_AREAS=example-org/tracker:docs/notes/**:ada,example-org/tracker:BOARD.md:ada
 ASSAY_AUTOAPPROVE_EJECT_LINE=0
 ASSAY_AUTOAPPROVE_FPY_FLOOR=0.90
 ASSAY_AUTOAPPROVE_DAILY_CAP=2
 `
+
+// fixtureLaneKeys is the full lane config: the areas plus the one sign-off thread (#3, where
+// fxSignURL's comment sits). It mirrors testdata/roster.env.
+const fixtureLaneKeys = fixtureLaneKeysNoThread + `ASSAY_AUTOAPPROVE_SIGNOFF_THREAD=3
+`
+
+// The time-check fixtures. The register's history (fakeForge.history) is one commit, fxTextSHA,
+// merged by PR #fxTextPR at fxTextMerged; the acceptance comment is created at fxAccepted,
+// after it.
+const (
+	fxTextSHA    = "aaaa0001"
+	fxTextPR     = 21
+	fxTextMerged = "2026-01-01T00:00:00Z"
+	fxAccepted   = "2026-01-02T00:00:00Z"
+	// fxAbsent is a history entry's content meaning "the register did not exist at this commit".
+	fxAbsent = "<absent>"
+)
 
 const rulingsSigned = "# Rulings\n\n## R-8 — the auto-approve lane\n\nText.\n\n**Sign-off:** " + fxSignURL + "\n"
 const rulingsUnsigned = "# Rulings\n\n## R-8 — the auto-approve lane\n\nText.\n\n**Sign-off:**\n"
@@ -86,7 +103,31 @@ type fakeForge struct {
 	rulings       string
 	defaultBranch string
 
+	// history is the register's path history at the default branch, newest first; an entry's
+	// content "" is the current register (rulings), fxAbsent an absent file, and its date the
+	// commit's own committed date (which the gate must never read). commitPRs are the
+	// changes behind each commit, and merged the change reads they resolve to.
+	history   []histEntry
+	commitPRs map[string][]int
+	merged    map[int]deskkit.PullRequest
+
+	// changeListCap, when > 0, models GitHub's change-kind comment read: ONE request for the
+	// first N comments, with no error and no sign of the rest. An issue-kind read is served
+	// whole, as the forge walks it to the end (or refuses at its cap).
+	changeListCap int
+
 	fail map[string]bool // operation name → answer an error
+}
+
+type histEntry struct {
+	sha     string
+	content string
+	date    string // the commit's own committed date, as the forge reports it; "" = none
+}
+
+// mergedPR is a change merged into main at the given time.
+func mergedPR(n int, at string) deskkit.PullRequest {
+	return deskkit.PullRequest{Number: n, State: "closed", Merged: true, MergedAt: at, BaseRef: "main"}
 }
 
 func greenForge() *fakeForge {
@@ -114,10 +155,14 @@ func greenForge() *fakeForge {
 			{Name: fxSizeS, AppliedBy: fxReviewer},
 		},
 		comments: map[int][]deskkit.Comment{
-			3: {{DatabaseID: 555, Author: deskkit.Account{Login: "ada", ID: 2001, Type: "User"}, Body: fxEnactBody}},
+			3: {{DatabaseID: 555, Author: deskkit.Account{Login: "ada", ID: 2001, Type: "User"}, Body: fxEnactBody,
+				CreatedAt: fxAccepted}},
 		},
-		surfaces: "# declared surfaces\n.github/workflows/**\ntools/**\n",
-		fail:     map[string]bool{},
+		surfaces:  "# declared surfaces\n.github/workflows/**\ntools/**\n",
+		history:   []histEntry{{sha: fxTextSHA}},
+		commitPRs: map[string][]int{fxTextSHA: {fxTextPR}},
+		merged:    map[int]deskkit.PullRequest{fxTextPR: mergedPR(fxTextPR, fxTextMerged)},
+		fail:      map[string]bool{},
 	}
 }
 
@@ -142,6 +187,9 @@ func (f *fakeForge) writes() []call {
 func (f *fakeForge) GetPullRequest(r deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
 	if err := f.rec("GetPullRequest", fmt.Sprint(n), ""); err != nil {
 		return nil, err
+	}
+	if mp, ok := f.merged[n]; ok && n != f.pr.Number {
+		return &mp, nil
 	}
 	f.prReads++
 	pr := f.pr
@@ -205,28 +253,70 @@ func (f *fakeForge) ReadFile(r deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 	switch {
 	case in.File == ".assay-surfaces" && !f.noSurfaces:
 		return &deskkit.FileContent{Exists: true, Content: []byte(f.surfaces)}, nil
+	case in.File == deskkit.AutoLaneRulingsPath && in.Ref != f.branch():
+		for _, h := range f.history {
+			if h.sha != in.Ref {
+				continue
+			}
+			c := h.content
+			if c == "" {
+				c = f.rulings
+			}
+			if c == fxAbsent || c == "" {
+				break
+			}
+			return &deskkit.FileContent{Exists: true, Content: []byte(c)}, nil
+		}
 	case in.File == deskkit.AutoLaneRulingsPath && f.rulings != "":
 		return &deskkit.FileContent{Exists: true, Content: []byte(f.rulings)}, nil
 	}
 	return &deskkit.FileContent{Exists: false}, nil
 }
 
+func (f *fakeForge) branch() string {
+	if f.defaultBranch == "" {
+		return "main"
+	}
+	return f.defaultBranch
+}
+
+func (f *fakeForge) ListFileCommits(r deskkit.ForgeRepo, ref, file string, limit int) ([]deskkit.RepoCommit, error) {
+	if err := f.rec("ListFileCommits", r.Slug()+":"+file+"@"+ref, ""); err != nil {
+		return nil, err
+	}
+	var out []deskkit.RepoCommit
+	for _, h := range f.history {
+		if len(out) == limit {
+			break
+		}
+		out = append(out, deskkit.RepoCommit{SHA: h.sha, CommittedDate: h.date})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ListCommitChanges(r deskkit.ForgeRepo, sha string) ([]int, error) {
+	if err := f.rec("ListCommitChanges", r.Slug()+"@"+sha, ""); err != nil {
+		return nil, err
+	}
+	return f.commitPRs[sha], nil
+}
+
 func (f *fakeForge) RepoHardeningRead(r deskkit.ForgeRepo, kind deskkit.HardeningReadKind) (json.RawMessage, error) {
 	if err := f.rec("RepoHardeningRead", r.Slug()+":"+string(kind), ""); err != nil {
 		return nil, err
 	}
-	b := f.defaultBranch
-	if b == "" {
-		b = "main"
-	}
-	return json.RawMessage(`{"default_branch":"` + b + `"}`), nil
+	return json.RawMessage(`{"default_branch":"` + f.branch() + `"}`), nil
 }
 
 func (f *fakeForge) ListCommentsTyped(r deskkit.ForgeRepo, n int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
 	if err := f.rec("ListCommentsTyped", r.Slug()+"#"+fmt.Sprint(n)+":"+string(kind), ""); err != nil {
 		return nil, err
 	}
-	return f.comments[n], nil
+	cs := f.comments[n]
+	if kind == deskkit.TargetChange && f.changeListCap > 0 && len(cs) > f.changeListCap {
+		cs = cs[:f.changeListCap]
+	}
+	return cs, nil
 }
 
 func (f *fakeForge) ApplyLabels(r deskkit.ForgeRepo, n int, ch deskkit.LabelChange) (*deskkit.LabelOutcome, error) {

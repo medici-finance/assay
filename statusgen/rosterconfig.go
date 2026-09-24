@@ -395,6 +395,11 @@ const (
 	scanEnvAutoApproveEjectLine = "ASSAY_AUTOAPPROVE_EJECT_LINE"
 	scanEnvAutoApproveFPYFloor  = "ASSAY_AUTOAPPROVE_FPY_FLOOR"
 	scanEnvAutoApproveDailyCap  = "ASSAY_AUTOAPPROVE_DAILY_CAP"
+	// scanEnvAutoApproveSignOffThread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD) is the lane's fifth,
+	// optional key: the one thread its acceptance comment must sit on. Recognised, not
+	// applied, for the same reason as the four above. KEEP IN SYNC with deskkit's
+	// EnvAutoApproveSignOffThread.
+	scanEnvAutoApproveSignOffThread = "ASSAY_AUTOAPPROVE_SIGNOFF_THREAD"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -452,7 +457,7 @@ func scanKnownRosterKeys() []string {
 		// DESK-only, recognised-not-applied (the auto-approve lane): the lane config keys the
 		// desk tools' lane parser consumes — see their declarations above.
 		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,
-		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap,
+		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap, scanEnvAutoApproveSignOffThread,
 	}
 }
 

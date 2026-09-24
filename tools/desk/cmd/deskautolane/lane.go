@@ -108,6 +108,9 @@ type opts struct {
 	// defaults caches each repo's default branch for the run (lower-cased slug → branch).
 	defaults map[string]string
 
+	// signOffThread is the configured sign-off thread (0 = unset → could-not-check).
+	signOffThread int
+
 	// head is the head the verb decided on, for the audit line; wrote records whether an
 	// outward write was attempted, so an unverifiable outcome is billed correctly.
 	head  string
@@ -222,6 +225,7 @@ func loadConfig(o *opts) (deskkit.AutoLaneConfig, error) {
 		return deskkit.AutoLaneConfig{}, deskkit.Refused(ld.Problem)
 	}
 	cfg := ld.Config
+	o.signOffThread = cfg.SignOffThread
 	if data, err := os.ReadFile(filepath.Join(o.root, ".assay-surfaces")); err == nil {
 		if p := deskkit.AutoLaneSurfaceOverlap(cfg, o.repo, deskkit.ParseSurfaceGlobs(data)); p != "" {
 			auditConfigRefused(o, p)

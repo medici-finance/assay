@@ -203,6 +203,10 @@ type AutoLaneConfig struct {
 	EjectLine int
 	FPYFloor  float64
 	DailyCap  int
+	// SignOffThread is the ONE thread (issue or PR number, in the rulings register's repo) the
+	// acceptance comment must sit on (EnvAutoApproveSignOffThread). 0 means unset, and the
+	// enactment gate reads an unset thread as could-not-check: it never enacts.
+	SignOffThread int
 }
 
 // AreasFor returns the entries for repo (case-insensitive slug compare).
@@ -371,6 +375,17 @@ func ParseAutoLaneConfig(raw map[string]string, v AutoLaneValidator) AutoLaneLoa
 	}
 	if len(c.Areas) == 0 {
 		return refuse("refused: %s names no entries", EnvAutoApproveAreas)
+	}
+	// The sign-off thread: absent is UNSET (the enactment gate is then could-not-check); set, it
+	// must be a positive integer written as plain digits. Anything else refuses the lane.
+	if t, ok := raw[EnvAutoApproveSignOffThread]; ok {
+		t = strings.TrimSpace(t)
+		n, terr := strconv.Atoi(t)
+		if t == "" || terr != nil || n <= 0 || strings.TrimLeft(t, "0123456789") != "" {
+			return refuse("refused: %s=%q must be the positive issue or PR number of the one thread the "+
+				"acceptance comment sits on", EnvAutoApproveSignOffThread, StripControl(t))
+		}
+		c.SignOffThread = n
 	}
 	return AutoLaneLoad{State: AutoLaneConfigLoaded, Config: c}
 }
@@ -1073,30 +1088,80 @@ func AutoLaneEjectedOnForge(comments []Comment, reviewerLogin string) bool {
 	return false
 }
 
-// autoLaneEnactRe is the acceptance the enactment gate requires in the sign-off artifact's
-// body: a line reading exactly `Enact: R-8`, alone on its line. A body that merely NAMES the
-// ruling, thanks someone, or discusses it is no acceptance.
-var autoLaneEnactRe = regexp.MustCompile(`(?mi)^[ \t]*Enact:[ \t]*` + regexp.QuoteMeta(AutoLaneRulingID) + `[ \t\r]*$`)
-
-// autoLaneNegationRe voids an acceptance line: a body that also rejects, negates, revokes or
-// withdraws is ambiguous, and an ambiguous artifact is not an authorization.
+// autoLaneNegationRe voids an acceptance line: a body that also carries a word from this
+// rejection/negation lexicon is ambiguous, and an ambiguous artifact is not an authorization.
+// It is a word lexicon, not a reading of intent.
 var autoLaneNegationRe = regexp.MustCompile(`(?i)\b(reject(s|ed|ing)?|not[ \t]+(accepted|approved|enacted)|do[ \t]+not|don't|revok(e|es|ed|ing)|withdraw(s|n)?|declin(e|es|ed)|veto(es|ed)?|rescind(s|ed)?)\b`)
 
-// AutoLaneEnactLine is the exact line the sign-off artifact must carry.
+// AutoLaneEnactLine is the exact line the sign-off artifact must open with.
 const AutoLaneEnactLine = "Enact: " + AutoLaneRulingID
 
-// AutoLaneAcceptance judges a sign-off artifact's BODY: it enacts only when it carries the
-// AutoLaneEnactLine alone on a line AND no rejection or negation anywhere. why names the
-// failing half; it is "" exactly when ok.
+// AutoLaneAcceptance judges a sign-off artifact's BODY. It enacts only when:
+//
+//   - the body's FIRST non-empty line is AutoLaneEnactLine typed BARE: exactly those bytes,
+//     case included, from the first column, with nothing on the line but trailing
+//     whitespace. A quoted (`> `), indented, fenced or backticked line, or one that comes
+//     after any other text, is not an act of enactment but a mention of one. The
+//     first-column rule is STRICTER than a ruling text that ignores leading whitespace: it
+//     refuses an indented line such a text accepts. It only narrows, and the two must be
+//     aligned before the ruling is signed; and
+//   - no word from the rejection/negation lexicon (autoLaneNegationRe) appears anywhere in it.
+//
+// why names the failing half; it is "" exactly when ok.
 func AutoLaneAcceptance(body string) (ok bool, why string) {
-	if !autoLaneEnactRe.MatchString(body) {
-		return false, "the artifact carries no line reading exactly `" + AutoLaneEnactLine + "`"
+	first := ""
+	for _, ln := range strings.Split(body, "\n") {
+		if strings.TrimSpace(ln) != "" {
+			first = ln
+			break
+		}
+	}
+	if strings.TrimRight(first, " \t\r") != AutoLaneEnactLine {
+		return false, "the artifact's first non-empty line is not `" + AutoLaneEnactLine + "` typed bare (no " +
+			"quote, indent, backticks or other text on it, and nothing before it)"
 	}
 	if m := autoLaneNegationRe.FindString(body); m != "" {
-		return false, fmt.Sprintf("the artifact also carries %q — a rejection or negation voids the acceptance line",
-			StripControl(m))
+		return false, fmt.Sprintf("the artifact also carries %q — a word from the rejection/negation lexicon voids "+
+			"the acceptance line", StripControl(m))
 	}
 	return true, ""
+}
+
+// AutoLaneRulingText returns the TEXT of rulingID in a rulings register that sits ABOVE its
+// Sign-off line: the ruling's heading and every line after it up to (not including) the
+// `**Sign-off:**` key line, or up to the next heading when the section carries none. Every
+// section headed by rulingID contributes, in order. The Sign-off block and anything below it
+// are excluded, so a change that only fills or re-points the Sign-off line leaves this text
+// unchanged. found is false when the register carries no section for rulingID.
+//
+// The comparison a caller makes on it is byte-exact: any edit above the Sign-off line — a
+// word, a space, a heading retitle — is a change to the ruling's text.
+func AutoLaneRulingText(register, rulingID string) (text string, found bool) {
+	id := strings.TrimSpace(rulingID)
+	if id == "" {
+		return "", false
+	}
+	var out []string
+	in, signed := false, false
+	for _, ln := range strings.Split(strings.ReplaceAll(register, "\r\n", "\n"), "\n") {
+		if strings.HasPrefix(ln, "#") {
+			in, signed = isRulingHeading(ln, id), false
+			if in {
+				found = true
+				out = append(out, ln)
+			}
+			continue
+		}
+		if !in || signed {
+			continue
+		}
+		if signOffKeyRe.MatchString(ln) {
+			signed = true
+			continue
+		}
+		out = append(out, ln)
+	}
+	return strings.Join(out, "\n"), found
 }
 
 func firstOr(xs []string, def string) string {
