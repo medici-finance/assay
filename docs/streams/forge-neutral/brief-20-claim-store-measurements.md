@@ -130,6 +130,26 @@ Supplementary reads behind rows 1–3 (not separate Verify rows, cited in §3.3)
 - S4(a) linux / S4(b): inside a locally-available Linux container image (no network pull), `uname -a` → `Linux … x86_64`, a Go probe found `statfs("/").Type = 0x794c7630` (overlay, named via Linux's own magic-number table, not a stdlib field), `/.dockerenv` present, `/proc/1/cgroup` = `"0::/\n"` (cgroup v2, no docker/kubepods substring), `/run/.containerenv` absent.
 - S2 network-filesystem attempt: `mkdir`/`touch` against the NFS mount above both → `Permission denied`, despite the mount's ownership matching the measuring account's uid. Recorded as COULD-NOT-CHECK, not as a filesystem defect.
 
+### Non-implementer verifier run — VERIFY: FAIL — 4/5 pass, 0 could-not-check, 1 fail — 2026-09-24 claude-opus-4-8-verifier
+
+Runner is not the implementer; a documents-only diff run non-hermetically on darwin at merged main
+`2a5c230efe9c29f17b9acf6aa798e3a0a2285fbb`, offline (`KUBECONFIG=/dev/null`). No row is `check:ci`,
+so each is decided on its direct result. Row 5 FAILs as a check-definition staleness, filed at #1606.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | prints `2` — both work-list rows present | PASS — exit 0; printed `2` (both work-list rows present) | 2026-09-24 | claude-opus-4-8-verifier |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0, no line printed — each row carries a count / determination / COULD-NOT-CHECK | PASS — exit 0; no line printed (each row carries a count / determination / COULD-NOT-CHECK) | 2026-09-24 | claude-opus-4-8-verifier |
+| 3 | `cd tools/desk && go test ./internal/deskkit/... -run 'TestAcquireConcurrent.*OneWinner' -count=1 -v -timeout 60s` | exactly one of 16 racers acquires (the test's own `wins != 1` assertion) | PASS — exit 0; the exactly-one-winner concurrency test reports --- PASS (0.51s), 16 racers, one winner, its `wins != 1` assertion held. The brief's row-3 Verify cell is prose, so statusgen verifyrun reported row 3 could-not-run (exit 127); this is the recorded local-disk control of Task 3 run directly, and it passed | 2026-09-24 | claude-opus-4-8-verifier |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the §3.1a reviewer write inventory | PASS — exit 0; 6 files — deskdispatch/dispatch.go, deskpost/claimliveness.go, deskpost/comment.go, deskpost/forgeclient.go, deskpost/label.go, deskkit/modelstamp.go — all six present in §3.1a; inventory conclusion "repository write — the dispatch claim only" holds | 2026-09-24 | claude-opus-4-8-verifier |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the §3.1b claim reader inventory or is the claim tool itself | FAIL — exit 0; 16 files at merged main, but THREE are absent from §3.1b: deskdispatch/repairadmission.go, desksupervise/status.go, deskkit/forge_github.go. Expected condition NOT met → row FAILS. (All three match only on a comment/interface-doc line, not a functional read; and forgeclient.go, which §3.1b DOES list, no longer matches the grep — the pinned inventory has diverged from merged main.) | 2026-09-24 | claude-opus-4-8-verifier |
+
+RISK-VALUE: DERIVED — winners = 1 @ tools/desk/internal/deskkit/claim_test.go:53 (`if wins != 1`) — an exclusive create under one directory lock (O_CREAT|O_EXCL semantics of the shipped primitive) admits exactly one creator; all other racers fail EEXIST. So exactly one of N succeeds by construction, independent of N. This is the "exactly one is the only passing count" the brief pins, and it is correct.
+RISK-VALUE: N/A for the remaining enumerated literal — racers = 16 @ tools/desk/internal/deskkit/claim_test.go:22 is a reversible test knob (the racer count N); raising or lowering it changes only the strength of the concurrency exercise, not the guarantee, and needs no derivation. No other literal, threshold, tolerance, timeout, or authority binding is introduced or changed by this documentation-only diff; the quoted Linux magic numbers (overlay 0x794c7630, NFS 0x6969, CIFS/SMB) are cited facts, not controls this brief pins.
+
+Row 5 fails as a check-definition staleness: the pinned §3.1b inventory misses three comment-only mentions. Filed as #1606.
+
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records
 verdict + date in the stream README table.
