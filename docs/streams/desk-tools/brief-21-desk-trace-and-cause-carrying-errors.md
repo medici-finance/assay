@@ -310,6 +310,8 @@ touches a disclosure surface the brief itself flags):
 
 Supersedes the 2026-09-16 pass on the open draft #1241. RISK-VALUE carries one NAMED, NOT DERIVED entry (the three Scrub transport regexes); that question is filed as #1616 and must be answered before any flip. Row 11's literal test names are stale; corrected forms ran.
 
+**Evidence correction (2026-09-24).** Row 13's Observed says one S2 sweep-exclusions test skips by design, but its recorded command runs without `-v`, so it prints only `ok` — not the skip line. The command that supports the claim is `cd tools/desk && go test -v ./internal/deskkit/ -run 'TestS2' -count=1`; re-run at the verified sha `2a5c230e` it prints `--- SKIP: TestS2SweepExclusionsAreLive (0.00s)` among the TestS2 results, followed by `ok github.com/medici-finance/assay/tools/desk/internal/deskkit`. No state, count or heading changes.
+
 
 ## Review
 
