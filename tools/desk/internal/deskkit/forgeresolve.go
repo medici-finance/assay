@@ -294,6 +294,11 @@ func SetGitHubCustodyMinter(fn GitHubCustodyMinterFunc) {
 // from the existing custody path. It never mints for GitLab (rotation is a deliberate,
 // infrequent operator action — see gitlabCustody) and never falls back to an ambient
 // credential for either forge.
+//
+// custody RESOLVES NOTHING: it trusts the kind it is handed. So it is a confined link of the
+// GitHub App mint chain (roletokenguard_test.go), reachable only from the two functions that
+// resolve the forge and check it against the role's roster entry before calling it —
+// ResolveForge and ForgeGitEndpointFor. A new caller has to argue its way onto that list.
 func custody(kind ForgeKind, role string, repo ForgeRepo) (token, baseURL string, err error) {
 	switch kind {
 	case ForgeGitHub:
@@ -305,6 +310,9 @@ func custody(kind ForgeKind, role string, repo ForgeRepo) (token, baseURL string
 	}
 }
 
+// githubCustody is custody's GitHub branch. It resolves no forge either — it is an unexported
+// pass-through into githubAppRoleToken — so the class guard confines it to its one caller,
+// custody, whose own callers are confined in turn.
 func githubCustody(role string, repo ForgeRepo) (string, string, error) {
 	if strings.TrimSpace(role) == "" {
 		return "", "", Refused("no App role named for the GitHub custody lookup — a token cannot be " +
@@ -545,26 +553,80 @@ func GitHubRoleToken(role, repo string) (token, path string, err error) {
 // the roster is silent on whose origin maps to another forge, or to no known forge, or does not
 // parse, is refused before any mint, and so is a roster "github" entry on another host.
 func GitHubRoleTokenForRemote(role, repo, originURL string) (token, path string, err error) {
-	owner, name, _ := strings.Cut(strings.TrimSpace(repo), "/")
-	res, rerr := roleCredentialForge(ForgeRepo{Owner: owner, Name: name}, originURL)
-	if rerr != nil {
-		return "", "", rerr
-	}
-	if res.Kind != ForgeGitHub {
-		return "", "", Refused(fmt.Sprintf(
-			"refused: %s is served by %s (%s), not GitHub — no GitHub App token is minted for it, and this "+
-				"caller's transport speaks only GitHub. Resolve the credential with the forge-aware resolver "+
-				"(deskkit.ResolveRoleCredential) instead.", repo, res.Kind, res.Source))
+	if err := githubTransportArm(repo, originURL); err != nil {
+		return "", "", err
 	}
 	return githubAppRoleToken(role, repo)
 }
 
+// GitHubRoleTokenForDestinations is GitHubRoleTokenForRemote for a transport that CONNECTS to a
+// list of URLs rather than to one origin: `git push origin` sends to every remote.origin.pushurl
+// value (or every url value, pushInsteadOf applied), and every URL git uses is rewritten by
+// url.<base>.insteadOf from every config scope. The caller hands in exactly the URLs git itself
+// resolved (`git remote get-url [--push] --all origin`), and EVERY one of them must pass the
+// same binding GitHubRoleTokenForRemote applies to its one origin — resolved to GitHub, host
+// exactly github.com — before anything is minted or read. The token is minted once, after the
+// whole list has passed. Two further refusals are specific to a list of connection targets:
+//
+//   - an empty list, or an empty entry, is refused: GitHubRoleTokenForRemote reads an empty
+//     origin as a roster-only caller whose transport binds no host, but a transport that is
+//     about to connect somewhere has no such case — an unknown destination is not a pass;
+//   - a cleartext `http://` destination is refused even on github.com: the askpass answers
+//     whoever issues the 401 challenge, and over cleartext that is anyone on the path.
+func GitHubRoleTokenForDestinations(role, repo string, destinations []string) (token, path string, err error) {
+	if len(destinations) == 0 {
+		return "", "", Refused(fmt.Sprintf(
+			"refused: no transport destination was resolved for %s — no GitHub App token is minted for a "+
+				"connection whose target is unknown", repo))
+	}
+	for i, dest := range destinations {
+		d := strings.TrimSpace(dest)
+		if d == "" {
+			return "", "", Refused(fmt.Sprintf(
+				"refused: transport destination %d of %d for %s is empty — no GitHub App token is minted for a "+
+					"connection whose target is unknown", i+1, len(destinations), repo))
+		}
+		if strings.HasPrefix(strings.ToLower(d), "http://") {
+			return "", "", Refused(fmt.Sprintf(
+				"refused: transport destination %d of %d for %s is cleartext http:// — the GitHub App token is "+
+					"offered only over an authenticated channel to %s (use https://)", i+1, len(destinations), repo,
+				githubAppHost))
+		}
+		if err := githubTransportArm(repo, d); err != nil {
+			return "", "", err
+		}
+	}
+	return githubAppRoleToken(role, repo)
+}
+
+// githubTransportArm answers whether a GitHub-only transport bound to originURL may carry the
+// GitHub App token for repo: the forge resolves to GitHub and roleCredentialForge's host binding
+// holds. It is the one check both GitHub transport entry points apply.
+func githubTransportArm(repo, originURL string) error {
+	owner, name, _ := strings.Cut(strings.TrimSpace(repo), "/")
+	res, rerr := roleCredentialForge(ForgeRepo{Owner: owner, Name: name}, originURL)
+	if rerr != nil {
+		return rerr
+	}
+	if res.Kind != ForgeGitHub {
+		return Refused(fmt.Sprintf(
+			"refused: %s is served by %s (%s), not GitHub — no GitHub App token is minted for it, and this "+
+				"caller's transport speaks only GitHub. Resolve the credential with the forge-aware resolver "+
+				"(deskkit.ResolveRoleCredential) instead.", repo, res.Kind, res.Source))
+	}
+	return nil
+}
+
 // githubAppRoleToken is the GitHub arm: the ONE place in this package that reaches the GitHub
 // App minter. Its callers are CONFINED, not just documented: the class guard
-// (roletokenguard_test.go) treats this name as a minter too and allow-lists exactly the three
-// functions that have already resolved the forge to GitHub before calling it —
-// ResolveRoleCredential, GitHubRoleTokenForRemote, and githubCustody (ForgeFor's default
-// GitHub custody). A fourth caller, in this package or through an alias, fails the guard.
+// (roletokenguard_test.go) treats this name as a minter too and allow-lists exactly four
+// callers. Three have resolved the forge to GitHub and bound the host before calling it —
+// ResolveRoleCredential, GitHubRoleTokenForRemote and GitHubRoleTokenForDestinations. The
+// fourth, githubCustody, resolves nothing itself: it is custody's GitHub branch, and custody is
+// in turn reached only from the two functions that resolve the forge and check it against the
+// roster before calling it (ResolveForge, ForgeGitEndpointFor). The guard confines custody and
+// githubCustody too, so that chain cannot be entered from anywhere else. Any other caller, in
+// this package or through an alias, fails the guard.
 func githubAppRoleToken(role, repo string) (token, path string, err error) {
 	return RoleTokenForRepo(role, repo)
 }

@@ -236,3 +236,81 @@ func errString(err error) string {
 	}
 	return err.Error()
 }
+
+// TestGitHubRoleTokenForDestinations_EveryDestinationBound is sec-1587-S1 round 2 at the resolver:
+// a transport that connects to SEVERAL URLs (every pushurl value, every url value) gets the
+// GitHub App token only when EVERY one passes the host binding — one bad destination anywhere
+// in the list, an empty list or entry, or a cleartext http:// destination is refused before any
+// mint, and nothing is handed back.
+func TestGitHubRoleTokenForDestinations_EveryDestinationBound(t *testing.T) {
+	const good = "https://github.com/example-org/tracker.git"
+	type refusal struct {
+		name  string
+		dests []string
+	}
+	var cases []refusal
+	for _, tc := range nonGitHubOrigins {
+		cases = append(cases,
+			refusal{"bad last/" + tc.name, []string{good, tc.origin}},
+			refusal{"bad first/" + tc.name, []string{tc.origin, good}})
+	}
+	cases = append(cases,
+		refusal{"no destinations", nil},
+		refusal{"empty entry", []string{good, ""}},
+		refusal{"blank entry", []string{" ", good}},
+		refusal{"cleartext http on github.com", []string{good, "http://github.com/example-org/tracker.git"}},
+		refusal{"cleartext HTTP upper-case", []string{"HTTP://github.com/example-org/tracker.git"}},
+	)
+	for _, roster := range []string{"", "github"} {
+		for _, tc := range cases {
+			t.Run("roster="+roster+"/"+tc.name, func(t *testing.T) {
+				slug := ""
+				if roster != "" {
+					slug = "example-org/tracker"
+				}
+				rosterWithForge(t, slug, roster)
+				mints := minterDetector(t, plantAppToken(t, "app-token-stub"))
+
+				tok, path, err := GitHubRoleTokenForDestinations("worker", "example-org/tracker", tc.dests)
+				if ExitCodeOf(err) != ExitRefused || tok != "" || path != "" {
+					t.Fatalf("GitHubRoleTokenForDestinations(%q): token=%q path=%q err=%v (exit %d); want a refusal (exit 5) and nothing handed back",
+						tc.dests, tok, path, err, ExitCodeOf(err))
+				}
+				for _, leak := range []string{"secret-in-origin-url", "app-token-stub"} {
+					if strings.Contains(errString(err), leak) {
+						t.Fatalf("the refusal carries %q: %v", leak, err)
+					}
+				}
+				if *mints != 0 {
+					t.Fatalf("the GitHub App minter forked %d time(s) for destinations %q", *mints, tc.dests)
+				}
+			})
+		}
+	}
+
+	t.Run("roster=gitlab/all destinations on github.com", func(t *testing.T) {
+		rosterWithForge(t, "example-org/tracker", "gitlab")
+		mints := minterDetector(t, plantAppToken(t, "app-token-stub"))
+		tok, _, err := GitHubRoleTokenForDestinations("worker", "example-org/tracker", []string{good})
+		if ExitCodeOf(err) != ExitRefused || tok != "" || *mints != 0 {
+			t.Fatalf("a GitLab-mapped repo: token=%q err=%v mints=%d; want a refusal before any mint", tok, err, *mints)
+		}
+	})
+
+	t.Run("control/every destination on github.com mints once", func(t *testing.T) {
+		rosterWithForge(t, "", "")
+		app := plantAppToken(t, "app-token-stub")
+		mints := minterDetector(t, app)
+		dests := []string{
+			good,
+			"https://GitHub.com:443/example-org/tracker.git",
+			"git@github.com:example-org/tracker.git",
+			"ssh://git@github.com/example-org/tracker.git",
+		}
+		tok, path, err := GitHubRoleTokenForDestinations("worker", "example-org/tracker", dests)
+		if err != nil || tok != "app-token-stub" || path != app || *mints != 1 {
+			t.Fatalf("all-github destinations: token=%q path=%q err=%v mints=%d; want the App token from one mint",
+				tok, path, err, *mints)
+		}
+	})
+}

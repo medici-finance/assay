@@ -3380,6 +3380,19 @@ read**, so a session cannot borrow another role's token by naming it. The token 
 **owner** of the effective origin slug (never a caller `--repo`), so it authenticates only the
 repository the effective-URL gate already admitted.
 
+**Host binding — github.com only, on every URL git will connect to.** The askpass answers the
+GitHub App-token username, so this transport speaks only GitHub, and the askpass answers
+whichever host git actually connects to. Before any token is minted or read, `--as` asks git
+itself for every URL the verb will use (`git remote get-url [--push] --all origin`, a config
+read that contacts nothing): for push, every `remote.origin.pushurl` value, or with none every
+`url` value; for fetch, every `url` value. Git applies `insteadOf` and `pushInsteadOf` rewrites
+from every config scope (global and worktree included) in that answer. Each URL must name the
+origin repo, have a host of exactly `github.com` (no lookalike, subdomain, trailing dot,
+userinfo trick or self-hosted instance), and not be cleartext `http://`. If any URL fails, the
+verb is refused (exit 5) and nothing is minted. A repo the roster maps to another forge
+(`ASSAY_REPO_FORGES`) is refused the same way. A **local-path origin is refused** under `--as`:
+it has no host to bind a GitHub token to. Plain `deskgit fetch` (no `--as`) is unaffected.
+
 **`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
 transport, with a FIXED argv and nothing appendable:
 
@@ -3396,7 +3409,8 @@ git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads
   are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
   caller `--receive-pack` is refused by the transport-exec guard. None of them is in the
   constructed argv, so none can be reached by any spelling.
-- push gates on the effective origin URL exactly as fetch does, is charged to the
+- push gates on the origin URL exactly as fetch does, then on every push destination (the host
+  binding above), is charged to the
   **outward-write budget** (`deskkit.AllowWrite`, unlike fetch), and its **pre-push hook**
   (`deskpushguard`, via `core.hooksPath`) still runs — no `--no-verify` is ever passed.
 

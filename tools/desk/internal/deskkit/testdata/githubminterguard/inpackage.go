@@ -10,6 +10,26 @@ func PlantedForgeBlind(role, repo string) (string, string, error) {
 	return githubAppRoleToken(role, repo)
 }
 
+// Pass-throughs one link up from the arm (#1587 review F1, round 2): custody and its GitHub
+// branch resolve no forge, so calling either is the same forge-blind mint.
+func PlantedViaGitHubCustody(role string, r ForgeRepo) (string, string, error) {
+	return githubCustody(role, r)
+}
+
+func PlantedViaCustody(role string, r ForgeRepo) (string, string, error) {
+	return custody(ForgeGitHub, role, r)
+}
+
+// The per-process memo, read directly: an already-minted token with no fork and no forge check.
+func plantedMemoRead(k roleOwnerKey) string {
+	e, _ := lookupRoleTokenMemo(k)
+	return e.token
+}
+
+func plantedMemoMap(k roleOwnerKey) string {
+	return roleTokenMemo[k].token
+}
+
 // The primitive beneath the exported minters, reached directly.
 func plantedPrimitive(role, owner string) string {
 	path, _, _ := mintRoleToken(role, owner)

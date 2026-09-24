@@ -24,8 +24,12 @@ package deskkit
 // call the GitHub arm (githubAppRoleToken) or the primitive underneath (mintRoleToken, the
 // tokenMinter seam) and reach the same mint with no forge question in front of it, and the
 // guard would stay green. So every link is a guarded name, and each link's callers are
-// allow-listed by (file, function, name) — the arm by the three resolver functions that have
-// resolved the forge before calling it, the exported minter by the arm alone.
+// allow-listed by (file, function, name). A pass-through that resolves nothing (custody,
+// githubCustody) is a link too, not an allowed site: the chain is closed only where a caller
+// has actually resolved the forge — the GitHub transport entry points and ResolveRoleCredential
+// for the arm, ResolveForge and ForgeGitEndpointFor for custody — and the exported minter is
+// reached by the arm alone. The per-process memo is a link as well: it returns a token
+// without a fork.
 //
 // THE PRIMITIVE ITSELF. roletoken.go defines the chain RoleTokenForRepo → RoleTokenForOwner →
 // mintRoleToken → tokenMinter. Those references inside the chain's own definitions are the
@@ -53,12 +57,22 @@ const deskkitImportPath = "github.com/medici-finance/assay/tools/desk/internal/d
 // exported minters, the forge-aware resolver's GitHub arm above them, and the primitive and
 // its seam below them. The unexported names can only be reached from inside package deskkit,
 // which is exactly where an alias of the arm would be planted.
+//
+// Above the arm sit custody and githubCustody, ForgeFor's custody step: neither resolves a
+// forge (custody trusts the kind it is handed, githubCustody is its GitHub branch), so each is
+// a pass-through into the arm and is confined like one. Beside the primitive sits the
+// per-process memo (lookupRoleTokenMemo and the roleTokenMemo map it reads): it hands back an
+// already-minted token without a fork, so it is a route to the same credential.
 var githubMinterNames = map[string]bool{
-	"RoleTokenForOwner":  true,
-	"RoleTokenForRepo":   true,
-	"githubAppRoleToken": true,
-	"mintRoleToken":      true,
-	"tokenMinter":        true,
+	"RoleTokenForOwner":   true,
+	"RoleTokenForRepo":    true,
+	"custody":             true,
+	"githubCustody":       true,
+	"githubAppRoleToken":  true,
+	"mintRoleToken":       true,
+	"tokenMinter":         true,
+	"lookupRoleTokenMemo": true,
+	"roleTokenMemo":       true,
 }
 
 // githubMinterPrimitive is the chain's own definition in roletoken.go (see the file header):
@@ -66,9 +80,11 @@ var githubMinterNames = map[string]bool{
 var githubMinterPrimitive = map[string]bool{"RoleTokenForOwner": true, "RoleTokenForRepo": true, "mintRoleToken": true}
 
 // githubMinterAllow is the allow-list, keyed "<path relative to tools/desk>:<enclosing func>:<name
-// referenced>". Each entry is a site that has ALREADY resolved the forge before it reaches the
-// link it names. Widening it is a reviewed decision, never a way to go green; an entry names
-// ONE link, so allowing a function to call the arm never also allows it the primitive.
+// referenced>". Each entry is either a site that has ALREADY resolved the forge before it reaches
+// the link it names, or a link of the chain reaching the next link down, whose own callers are
+// confined by the entries above it — each entry's text says which. Widening it is a reviewed
+// decision, never a way to go green; an entry names ONE link, so allowing a function to call the
+// arm never also allows it the primitive.
 var githubMinterAllow = map[string]string{
 	"internal/deskkit/forgeresolve.go:ResolveRoleCredential:githubAppRoleToken": "the forge-aware " +
 		"resolver's GitHub arm: reached only after roleCredentialForge resolved GitHub and bound the " +
@@ -76,10 +92,26 @@ var githubMinterAllow = map[string]string{
 	"internal/deskkit/forgeresolve.go:GitHubRoleTokenForRemote:githubAppRoleToken": "the GitHub-only " +
 		"transport entry point: reached only after roleCredentialForge resolved GitHub and bound the " +
 		"origin host to github.com",
-	"internal/deskkit/forgeresolve.go:githubCustody:githubAppRoleToken": "ForgeFor's default GitHub " +
-		"custody: ForgeFor calls it only after resolving the forge to GitHub",
+	"internal/deskkit/forgeresolve.go:GitHubRoleTokenForDestinations:githubAppRoleToken": "the GitHub-only " +
+		"transport entry point for a list of connection targets: reached only after every destination " +
+		"passed githubTransportArm (resolved GitHub, host exactly github.com) and none is empty or http://",
+	"internal/deskkit/forgeresolve.go:githubCustody:githubAppRoleToken": "a link, not a resolving site: " +
+		"custody's GitHub branch, which resolves nothing itself; its one caller (custody) is confined below",
+	"internal/deskkit/forgeresolve.go:custody:githubCustody": "a link, not a resolving site: custody " +
+		"trusts the kind it is handed; its callers are confined by the two entries below",
+	"internal/deskkit/forgeresolve.go:ResolveForge:custody": "resolves the forge (resolveForgeKind) and " +
+		"checks the role's roster entry agrees (assertEntryForgeAgrees) before calling it",
+	"internal/deskkit/forgegit.go:ForgeGitEndpointFor:custody": "resolves the forge from the roster " +
+		"(resolveForgeKindWithHost) and checks the role's roster entry agrees (assertEntryForgeAgrees) " +
+		"before calling it",
 	"internal/deskkit/forgeresolve.go:githubAppRoleToken:RoleTokenForRepo": "the GitHub arm itself, " +
-		"whose own callers are confined by the three entries above",
+		"whose own callers are confined by the entries above",
+	"internal/deskkit/roletoken.go:lookupRoleTokenMemo:roleTokenMemo": "the memo's own reader; it is " +
+		"called only from RoleTokenForOwner, the primitive",
+	"internal/deskkit/roletoken.go:storeRoleTokenMemo:roleTokenMemo": "the memo's writer: it records a " +
+		"token RoleTokenForOwner already minted, and hands nothing back",
+	"internal/deskkit/roletoken.go:resetRoleTokenMemo:roleTokenMemo": "the test reset: it drops every " +
+		"entry and hands nothing back",
 	"internal/deskkit/roletoken.go:SetRoleTokenMinter:tokenMinter": "the test seam: it swaps the " +
 		"minter and restores it, and never calls it",
 	"cmd/cellctl/deskd.go:Cell.deskdMintGitHub:RoleTokenForRepo": "forge-switched: cmdDeskd calls " +
@@ -284,8 +316,8 @@ func TestGitHubMinterReachedOnlyFromForgeArms(t *testing.T) {
 // TestGitHubMinterGuardCatchesPlantedCallers proves the walk is not vacuous: a fixture tree
 // planting the shapes a forge-blind caller takes — a direct call, a function value bound to a
 // package var, an aliased import, a dot-import, an in-package pass-through through the GitHub
-// arm, an in-package call to the primitive or its seam, and same-named methods, fields and
-// declarations that must NOT count — is scanned, and every planted reference must be reported
+// arm or through custody/githubCustody one link above it, an in-package call to the primitive,
+// its seam or its memo, and same-named methods, fields and declarations that must NOT count — is scanned, and every planted reference must be reported
 // at its own line and function.
 func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 	refs, err := scanGitHubMinterRefs(filepath.Join("testdata", "githubminterguard"))
@@ -304,6 +336,10 @@ func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 		"dotimport.go:mintViaDot:RoleTokenForRepo",
 		"inpackage.go::tokenMinter",
 		"inpackage.go:PlantedForgeBlind:githubAppRoleToken",
+		"inpackage.go:PlantedViaCustody:custody",
+		"inpackage.go:PlantedViaGitHubCustody:githubCustody",
+		"inpackage.go:plantedMemoMap:roleTokenMemo",
+		"inpackage.go:plantedMemoRead:lookupRoleTokenMemo",
 		"inpackage.go:plantedPrimitive:mintRoleToken",
 		"inpackage.go:plantedSeamCall:tokenMinter",
 	}

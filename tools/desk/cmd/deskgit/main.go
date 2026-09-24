@@ -20,8 +20,10 @@
 //     malicious remote.origin.fetch cannot redirect writes to local branches;
 //   - it scrubs the child environment to an allowlist (see exec.go), dropping every
 //     GIT_* var (GIT_SSH_COMMAND, GIT_CONFIG_*, GIT_ASKPASS, …);
-//   - it gates on the EFFECTIVE origin URL (`git ls-remote --get-url`, which expands
-//     insteadOf), rejects remote-helper (`<helper>::…`) transport forms, and requires an
+//   - it gates on the origin URL (go-git's read of the repository config; the `--as` forms
+//     additionally gate every URL git itself resolves for the verb — pushurl, insteadOf and
+//     pushInsteadOf from every config scope — before any credential is minted), rejects
+//     remote-helper (`<helper>::…`) transport forms, and requires an
 //     exact owner/repo path for any HOST-BEARING URL, so a padded URL cannot present an
 //     allowed slug in its trailing components. Two routing bypasses of that rule — a
 //     `scheme://` URL whose PATH contains '@', and a scp-like URL with no `user@` — are
