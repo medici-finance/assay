@@ -371,6 +371,22 @@ outward-write rate limit, the post-commit attribution check (author = the App's 
 audit line — so use it *because* it enforces those. A guard- or classifier-BLOCKED `git push` is a
 STOP-and-escalate; never route the same write through another tool to get past a block.
 
+**A PASS is a flip signal only when its own Evidence agrees.** A PASS whose Evidence still carries an
+un-deferred HELD/could-not-check line is not a flip signal. Clear every such line first, in one of two
+ways. **Run it, then strike the old line through:** a later run does not clear an earlier hold by
+itself, because the tooling does not infer that the new row supersedes the old one, so wrap the
+earlier HELD/could-not-check text in `~~…~~` and name the run that settled it (`~~could-not-check — no
+runner online~~ superseded by the 2026-07-10 run below`). **Or formally defer it:** route it to a named
+follow-up with a reference (`deferred to <stream>/<NN>` or `#N`). A bare "deferred", or a row left
+HELD, is neither. The read is lexical: the words HELD and could-not-check anywhere in unstruck,
+unquoted Evidence prose count, so do not use them for status wording such as a run heading. Land
+`implemented → verified` only once every such line is cleared. The tooling refuses the same
+contradiction downstream: the model autoflip, the verify-gate card, and `statusgen --close-verify`
+from `verified` as well as from `implemented`. On the `verified` close the row's own status is the pass
+claim, so a loosely worded PASS or no marker at all does not switch the read off, and a FAIL counts
+until a later strict `**VERIFY: PASS**` marker answers it. A flip over an open hold only parks the
+brief at `verified` with a refused close.
+
 **Land as each verdict arrives.** A PASS in hand and not on main within one landing cycle is a defect:
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this
