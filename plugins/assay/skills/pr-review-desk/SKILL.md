@@ -578,13 +578,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   1. **The diff touches a generated-table region** — the default for any hunk inside a stream
      README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." ONE narrow carve-out admits a hunk, and
-     only when ALL of the following hold — it is mechanical, not a judgment call:
+     row from the PR's own trailer + state; drop the hunk." TWO narrow carve-outs admit a hunk —
+     (A) newly added rows, below, and (B) a witnessed `implemented` promotion of an existing row,
+     after it. Each is mechanical, not a judgment call; a hunk that fits neither bounces. Carve-out
+     A admits a hunk only when ALL of the following hold:
      - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
-       row; ANY change to an existing row — down to a single cell — bounces unconditionally.
+       row; ANY change to an existing row — down to a single cell — bounces unconditionally unless
+       carve-out B admits it.
      - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
        be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
-       ANY row inside the markers carrying a non-`todo` `Status`, or a non-empty `Verified` or
+       ANY row in an added-rows hunk carrying a non-`todo` `Status`, or a non-empty `Verified` or
        `Reviewed` cell, bounces unconditionally — added or not. This bullet is what actually blocks
        the forgery, and it is load-bearing: `statusgen regen --readmes` PRESERVES the `Status`,
        `Verified` and `Reviewed` cells for ANY row already present in the region (it does not
@@ -614,6 +617,47 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      bounce made a compliant, CI-green state unreachable. It never licenses fixing the table in
      review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
      authoring PR carry the tool's own unmodified output for newly added rows.
+
+     Carve-out B (the driver's ruling of 2026-09-23) admits a hunk that promotes existing
+     rows to `implemented`, only when ALL of the following hold:
+     - **Status-only, one transition.** The hunk adds and removes no row. On every row it changes,
+       the ONLY changed cell is `Status`, and it goes from the bare token `todo` or `in-progress` to
+       the bare token `implemented`; the `Verified` and `Reviewed` cells, and every other cell, are
+       byte-identical to the base. ANY other change bounces unconditionally — a promotion to
+       `verified` or `done`, a demotion, `blocked`, a dressed token, or a touched `Verified` /
+       `Reviewed` cell — because those stamps are written only by the verify-witness fold, never by a
+       PR.
+     - **Reproduces under reconcile on main.** In a throwaway worktree checked out at the target
+       repo's `refs/remotes/origin/main`, fetched this cycle, run
+       `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`,
+       where the delivery repo is the one the brief's work lands in. Admit only when every row the
+       hunk changes is reproduced byte-identically by the rows that run wrote (its `applied` list
+       and the resulting README diff); a hunk row the run did not write, or wrote differently,
+       bounces. Rows the run writes that the PR does not carry do not affect admission. A run that
+       could not look — `lookedAt: false` in its JSON, or a `could-not-check` on stderr (no token,
+       a failed or rate-limited PR fetch) — is not a reproduction: hold the verdict and say so,
+       never admit on it. Use the same `statusgen` binary rule as carve-out A — the
+       pinned/installed build the target repo's CI uses, never one built or resolved from the PR
+       tree — and never run it against a desk's own checkout.
+     - **The witness is a source PR, or the reviewer checks the code exists.** For each admitted
+       row, read the same run's `--json` entry for that brief. `source: "pr"` means the witness is
+       a merged PR carrying a `Brief: <stream>/<NN>` trailer for that brief (a source PR): confirm
+       on the forge that the PR it names is merged and its body carries that trailer, and the row is
+       admitted. `source: "backfill"` means the witness is backfill-only — a branch-name or body
+       match, no `Brief:` trailer — and the row is admitted only after the reviewer performs a
+       code-existence check in the delivery repo: the files and symbols the brief names as its
+       deliverable exist on the delivery repo's main, read at a ref fetched this cycle (not a
+       sibling checkout). The verdict records that check: the paths and symbols looked for, and the
+       commit read. A deliverable that is missing, or a read that could not be made, bounces the
+       row — could-not-check is never a pass.
+     - **Not a statusgen-source PR.** As in carve-out A.
+
+     The PR body must state that the hunk is `reconcile --backfill --apply` output and name the
+     witness PR for each row; that statement is a CLAIM, and the run above is the only evidence.
+     The carve-out exists because `--apply` only ever writes this one Status-only transition, and
+     only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
+     tool would not write itself. The code-existence check is the second layer for the weaker,
+     trailer-less witness: a branch-name or body match can name a brief whose work never landed.
   2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer, EITHER
      `Brief: <stream>/<NN>` (the brief this PR delivers) **OR** `Issue: #<N>` (issue-only work that
      delivers no brief — e.g. a pin bump / re-pin PR, which by construction carries no brief). Both
