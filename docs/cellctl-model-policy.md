@@ -77,7 +77,11 @@ the window is restarted, every model switch and child dispatch is blocked. Every
 2, Claude Code's blocking status. That includes a cell or policy that can no longer be loaded.
 The hook command line ends in `|| exit 2`, so a hook binary that has been removed or is no
 longer executable also blocks; on its own the shell would exit 127 or 126, which Claude Code
-does not treat as blocking.
+does not treat as blocking. Claude Code also lets an action through when a hook times out, so
+the hook must not be made to hang. It refuses a policy path that is not a regular file (a
+FIFO, say) instead of opening it, and it exits 2 by itself if it has not finished within
+5 seconds, whatever it is waiting on. Each hook entry sets a 30-second `timeout`, so Claude
+Code does not cancel the hook before that deadline.
 
 The hook is stricter than the shell launcher in one place: it refuses an Agent/Task event with
 no `tool_input` object instead of reading it as empty. A model ID pinned at two tiers, such as

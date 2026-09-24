@@ -65,6 +65,7 @@ type launchSettings struct {
 		Hooks   []struct {
 			Type    string `json:"type"`
 			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
 		} `json:"hooks"`
 	} `json:"hooks"`
 }

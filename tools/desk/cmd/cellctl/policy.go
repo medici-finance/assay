@@ -5,11 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // This file ports the CELL_MODEL_POLICY semantics #1388 added to the shell oracle
@@ -177,11 +179,32 @@ func policyDenied(value string, banned []string) bool {
 // both resolvable). A single sha256 of the raw bytes is computed once and carried on the result
 // (docs/cellctl-model-policy.md "Inspect, launch and verify adoption": `show`/dry-run print it).
 func loadModelPolicy(path string) (*ModelPolicy, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readPolicySource(path)
 	if err != nil {
 		return nil, policyFail("cannot read policy file %s: %v", path, err)
 	}
 	return parseModelPolicy(raw, path)
+}
+
+// readPolicySource reads a file that locates or carries the model policy, refusing anything that
+// is not a regular file. The open is non-blocking, so a FIFO (or a device) at a policy path
+// cannot block the caller; the model-policy hook takes these paths from its inherited
+// environment, and a hook that hangs is a hook Claude Code eventually skips. A missing file
+// still reports os.ErrNotExist, which the catalog lookup relies on.
+func readPolicySource(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: not a regular file (%s)", path, info.Mode().Type())
+	}
+	return io.ReadAll(f)
 }
 
 func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {

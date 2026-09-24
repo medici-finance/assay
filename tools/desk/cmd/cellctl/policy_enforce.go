@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // This file ports the RUNTIME half of the CELL_MODEL_POLICY contract from the shell oracle
@@ -39,6 +40,30 @@ import (
 // is refused and stderr is shown to the model. Any other non-zero status is a NON-blocking error
 // that lets the action proceed — so every refusal path in the hook must use exactly this code.
 const hookBlockExit = 2
+
+// hookDeadline bounds a model-policy hook run from process start. Claude Code treats a command
+// hook that TIMES OUT as cancelled, not blocking, and lets the action proceed, so a hook that
+// can be made to hang (a policy or roster path replaced by a FIFO, a stalled filesystem) would
+// be a fail-open. When the deadline passes the process exits with the blocking status, whatever
+// the main goroutine is blocked in. It is well under hookTimeoutSeconds.
+const hookDeadline = 5 * time.Second
+
+// hookTimeoutSeconds is the explicit timeout policyClaudeSettings sets on each hook entry, so
+// the harness does not cancel the hook before hookDeadline has refused.
+const hookTimeoutSeconds = 30
+
+// armHookDeadline starts hookDeadline when the verb is model-policy. main calls it before
+// anything else runs, because the roster echo that precedes every verb reads a file under the
+// inherited HOME and can block too.
+func armHookDeadline(args []string) {
+	if len(args) == 0 || args[0] != "model-policy" {
+		return
+	}
+	time.AfterFunc(hookDeadline, func() {
+		fmt.Fprintf(os.Stderr, "model-policy: hook did not finish within %s; refusing\n", hookDeadline)
+		os.Exit(hookBlockExit)
+	})
+}
 
 // managedSettingsRoots are the administrator-managed Claude Code settings locations the oracle
 // scans (managed-settings.json plus managed-settings.d/*.json under each). A package variable so
@@ -85,7 +110,7 @@ func policyHookCommand(self, cellDir string, res *PolicyResolution) string {
 // (anthropic only) the public base URL; a provider token never enters argv.
 func policyClaudeSettings(self, cellDir string, res *PolicyResolution) (string, error) {
 	command := policyHookCommand(self, cellDir, res)
-	hook := []map[string]any{{"type": "command", "command": command}}
+	hook := []map[string]any{{"type": "command", "command": command, "timeout": hookTimeoutSeconds}}
 	settings := map[string]any{
 		"env":             res.ClaudeEnv,
 		"availableModels": res.allowedModels(),
