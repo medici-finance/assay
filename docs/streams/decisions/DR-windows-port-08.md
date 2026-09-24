@@ -3,7 +3,8 @@ id: DR-windows-port-08
 date: "2026-09-23"
 title: "Fleet-token custody at write time: create restricted, verify, WARN on an inconclusive read-back; a partial provisioning run stops and reports, never auto-revokes"
 consequence: major
-decided-by: "human:<name>"
+decided-by: "human:ian"
+ruling: "https://github.com/medici-finance/assay/issues/1500#issuecomment-5821024879"
 alternatives:
   - "Option 1 — create restricted, verify, and REFUSE the whole run when the read-back cannot establish owner-only access (the brief's recommendation) — ruled out by the driver's ruling on issue 892 (option 2): an operator on a filesystem that cannot report its access list (a network share, a synchronised folder, some container mounts) would be unable to provision at all, with a refusal rather than a workaround."
   - "Option 3 — do not write credentials to files on Windows at all; hand them to the operating system's credential store and have every reading verb read from there — ruled out: a second, platform-specific storage mechanism beside the file path every other platform uses, a matching change to every reading verb, and a much larger piece of work than this provisioning; recorded as a reasonable future direction, not taken here."
