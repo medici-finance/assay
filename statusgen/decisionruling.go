@@ -134,7 +134,7 @@ const (
 // decisionRecordStamp is one DR record the PR touched, as read from the checkout.
 type decisionRecordStamp struct {
 	File      string   // repo-relative path, as it appears in stamp.File
-	ID        string   // DR-<slug> from the basename; "" when the basename is not DR-shaped, so the ruling lane refuses (fail closed)
+	ID        string   // the record's frontmatter id when it is a valid DR-<slug>; "" otherwise, so the ruling lane refuses (fail closed, record-not-named)
 	DecidedBy string   // raw decided-by value
 	Names     []string // real human names parsed from DecidedBy (lowercase); empty = placeholder
 	Ruling    string   // raw ruling: value ("" = absent)
@@ -238,6 +238,14 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 	if strings.TrimSpace(rec.Ruling) == "" {
 		out.Present = false
 		return out
+	}
+	// The ruling is bound to the record by its DR-<slug> id (condition 5, and the
+	// decision-gate marker of condition 6). A record with no valid frontmatter id
+	// has no id a comment could name, so condition 5 cannot hold: refuse under its
+	// reason before any forge contact, with a detail that says why. The register
+	// lint reports the same record offline.
+	if rec.ID == "" {
+		return refuse(rulingRecordNotNamed, "the record %s carries no valid DR-<slug> frontmatter id, so no ruling comment can name it — fix its id: (statusgen --lint reports it)", rec.File)
 	}
 	link, ok := parseRulingURL(rec.Ruling)
 	if !ok {
@@ -513,9 +521,16 @@ func decisionRecordsInDiff(root, diff string) []string {
 
 // loadDecisionRecordStamp reads one DR record from the checkout. A read or parse
 // failure is carried in LoadErr (fail closed downstream), never dropped.
+//
+// The record's ID is its FRONTMATTER id, not its file name: that is the id the
+// design gate resolves a brief's design: by, the id the register lint validates, and
+// the id registers-v1 §7.5 condition 5 requires the ruling comment to name. The
+// register sets no file-name rule (§7.2), so a record's basename may be any name. An
+// id that is absent or not DR-<slug> leaves ID empty, and the ruling lane refuses it
+// (record-not-named, with a detail naming the missing id); the register lint reports
+// the same record.
 func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
 	rec := decisionRecordStamp{File: file}
-	rec.ID, _ = decisionRecordID(file)
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 	if err != nil {
 		rec.LoadErr = err.Error()
@@ -530,6 +545,9 @@ func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
 	if uerr := yaml.Unmarshal([]byte(fm), &e); uerr != nil {
 		rec.LoadErr = uerr.Error()
 		return rec
+	}
+	if id := strings.TrimSpace(e.ID); decisionIDRe.MatchString(id) {
+		rec.ID = id
 	}
 	rec.DecidedBy = e.DecidedBy
 	rec.Ruling = e.Ruling
@@ -577,8 +595,12 @@ func addDecisionRecordStamps(stamps []stamp, recs []decisionRecordStamp) []stamp
 }
 
 // decisionCitingBriefs returns the "<stream>/<NN>" ids of every brief under
-// root/docs/streams (active or archived under done/) whose `design:` cites id.
+// root/docs/streams (active or archived under done/) whose `design:` cites id. An
+// empty id cites nothing: it would otherwise match every brief with no design:.
 func decisionCitingBriefs(root, id string) []string {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
 	var out []string
 	for _, pat := range []string{
 		filepath.Join(root, "docs", "streams", "*", "brief-*.md"),
