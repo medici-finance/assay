@@ -83,6 +83,9 @@ chmod +x "$BIN/glab"
 #   DUP_ROLE=<role>         that role has TWO active PATs of its name
 #   BAD_SECRET_ROLE=<role>  that role's rotate/create output is malformed
 #   BAD_LIST_ROLE=<role>    that role's PAT listing is malformed
+#   EMPTY_LIST_ROLE=<role>  that role's PAT listing answers 200 with empty stdout
+#   INUSE_ROLE=<role>       that role's matched PAT has a last_used_at "now"
+#   NOT_BOT_ROLE=<role>     (admin mode) that role's resolved user is bot:false
 #   FAIL_ONCE_ROLE=<role>   that role's first rotate exits 1 (partial run)
 RESPONDER="$(mktemp "${TMPDIR:-/tmp}/renew-responder-XXXXXX")"
 cat > "$RESPONDER" <<'RESP'
@@ -92,19 +95,22 @@ uid_of_role() { local n=100 r; for r in $R_LIST; do n=$((n+1)); [ "$r" = "$1" ] 
 role_of_uid() { local n=100 r; for r in $R_LIST; do n=$((n+1)); [ "$n" = "$1" ] && { echo "$r"; return; }; done; }
 role_of_user() { local u="${1#myorg-}"; echo "${u%-bot}"; }
 secret_for() { printf 'glpat-TEST.SECRET-%s-%s-0123456789' "$1" "$2"; }
+now_iso() { date -u +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u '+%Y-%m-%dT%H:%M:%S.000Z'; }
 
 pat_list() {  # pat_list ROLE STRINGY
-  local r="$1" id j
+  local r="$1" id j lu
   id=$(( $(uid_of_role "$r") + 400 ))
-  j="[{\"id\":9${id},\"name\":\"unrelated-${r}\",\"active\":true,\"revoked\":false}"
+  lu="null"; [ "$r" = "${INUSE_ROLE:-}" ] && lu="\"$(now_iso)\""
+  j="[{\"id\":9${id},\"name\":\"unrelated-${r}\",\"active\":true,\"revoked\":false,\"last_used_at\":null}"
   if [ "$r" != "${NONE_ROLE:-}" ]; then
-    j="${j},{\"id\":${id},\"name\":\"assay-${r}-fleet\",\"active\":true,\"revoked\":false}"
+    j="${j},{\"id\":${id},\"name\":\"assay-${r}-fleet\",\"active\":true,\"revoked\":false,\"last_used_at\":${lu}}"
   fi
   if [ "$r" = "${DUP_ROLE:-}" ]; then
-    j="${j},{\"id\":$((id+1000)),\"name\":\"assay-${r}-fleet\",\"active\":true,\"revoked\":false}"
+    j="${j},{\"id\":$((id+1000)),\"name\":\"assay-${r}-fleet\",\"active\":true,\"revoked\":false,\"last_used_at\":null}"
   fi
   j="${j}]"
   if [ "$r" = "${BAD_LIST_ROLE:-}" ]; then j='[{"name":"assay-'"$r"'-fleet","active":true}]'; fi
+  if [ "$r" = "${EMPTY_LIST_ROLE:-}" ]; then return 0; fi  # exit 0, zero stdout bytes — the F-empty-listing repro
   if [ "$2" = "1" ]; then
     printf '%s' "$j" | jq 'map(with_entries(.value |= tostring))'
   else
@@ -134,9 +140,10 @@ respond() {
       for r in $R_LIST; do n=$((n+1)); out="${out}{\"id\":${n},\"username\":\"myorg-${r}-bot\"},"; done
       echo "${out}{\"id\":999,\"username\":\"someone-else-bot\"}]"; return 0 ;;
     "api GET users?username="*)
-      local u="${k#api GET users?username=}"
+      local u="${k#api GET users?username=}" isbot="true"
       r=$(role_of_user "$u")
-      echo "[{\"id\":$(uid_of_role "$r"),\"username\":\"${u}\"}]"; return 0 ;;
+      [ "$r" = "${NOT_BOT_ROLE:-}" ] && isbot="false"
+      echo "[{\"id\":$(uid_of_role "$r"),\"username\":\"${u}\",\"bot\":${isbot}}]"; return 0 ;;
     "api GET groups/1/service_accounts/"*"/personal_access_tokens?state=active")
       uid="${k#api GET groups/1/service_accounts/}"; uid="${uid%%/*}"
       pat_list "$(role_of_uid "$uid")" 0; return 0 ;;
@@ -174,7 +181,8 @@ newcase() {
   export FAKE_GLAB_LOG="$CASEDIR/glab.log"; : > "$FAKE_GLAB_LOG"
   export FAKE_GLAB_RESPONDER="$RESPONDER"
   export STATE
-  unset MEMBER_LEVEL ADMIN_OK AUTH_FAIL NONE_ROLE DUP_ROLE BAD_SECRET_ROLE BAD_LIST_ROLE FAIL_ONCE_ROLE
+  unset MEMBER_LEVEL ADMIN_OK AUTH_FAIL NONE_ROLE DUP_ROLE BAD_SECRET_ROLE BAD_LIST_ROLE FAIL_ONCE_ROLE \
+    EMPTY_LIST_ROLE INUSE_ROLE NOT_BOT_ROLE
   for r in $ROLES; do printf 'old-%s' "$r" > "$OUTDIR/gitlab-$r.token"; chmod 600 "$OUTDIR/gitlab-$r.token"; done
 }
 
@@ -266,9 +274,9 @@ fi
 newcase
 export NONE_ROLE=verifier
 run_impl "${ADMIN_ARGS[@]}" --out-dir "$OUTDIR"
-if [ "$(logn 'argv=token create assay-verifier-fleet --user myorg-verifier-bot --duration 30d --scope api --scope write_repository --output text')" = "1" ] && [ "$RC" = "0" ] \
+if [ "$(logn 'argv=token create assay-verifier-fleet --user myorg-verifier-bot --duration 7d --scope api --scope write_repository --output text')" = "1" ] && [ "$RC" = "0" ] \
    && file_is "$OUTDIR/gitlab-verifier.token" "glpat-TEST.SECRET-created-verifier-0123456789"; then
-  ok "T3 admin mode creates via glab token create <name> --user --scope ... (one --scope per table scope)"
+  ok "T3 admin mode creates via glab token create <name> --user --scope ... (one --scope per table scope, default duration 7d)"
 else
   bad "T3 admin mode create fallback (rc=$RC)"
 fi
@@ -497,11 +505,100 @@ newcase
 export NONE_ROLE=reviewer
 run_impl --hostname "$HOST" --instance-admin --prefix myorg \
   --role "reviewer=myorg-reviewer-bot:custom-review-pat:read_api:review.token" --out-dir "$OUTDIR" --only reviewer
-if [ "$RC" = "0" ] && [ "$(logn 'argv=token create custom-review-pat --user myorg-reviewer-bot --duration 30d --scope read_api --output text')" = "1" ] \
+if [ "$RC" = "0" ] && [ "$(logn 'argv=token create custom-review-pat --user myorg-reviewer-bot --duration 7d --scope read_api --output text')" = "1" ] \
    && file_is "$OUTDIR/review.token" "glpat-TEST.SECRET-created-reviewer-0123456789" && file_is "$OUTDIR/gitlab-reviewer.token" "old-reviewer"; then
   ok "T14 an explicit --role record overrides the table row (name, scopes, file)"
 else
   bad "T14 an explicit --role record overrides the table row (rc=$RC)"
+fi
+
+# =============================================================================
+# T15 — default --duration is 7d (the shared fleet-gitlab-roles.sh
+#       FLEET_PAT_DAYS / spec.md §5 expiry backstop), not a wider value that
+#       would silently relax it.
+# =============================================================================
+newcase
+run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR" --only reviewer
+want=$(date -u -v+7d +%Y-%m-%d 2>/dev/null || date -u -d '+7 days' +%Y-%m-%d)
+if [ "$RC" = "0" ] && grep -q "BODY api POST .*/rotate | {\"expires_at\":\"${want}\"}" "$FAKE_GLAB_LOG"; then
+  ok "T15 the default --duration is 7d with no flag passed"
+else
+  bad "T15 the default --duration is 7d (rc=$RC, wanted expires_at ${want})"
+fi
+
+# =============================================================================
+# T16 — empty PAT listing: glab exiting 0 with zero stdout bytes is a
+#       preflight refusal, never read as "zero active PATs" (F-empty-listing,
+#       reviewer-security round 1-3).
+# =============================================================================
+for mode in group admin; do
+  newcase
+  export EMPTY_LIST_ROLE=desk
+  if [ "$mode" = "group" ]; then run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR"; else run_impl "${ADMIN_ARGS[@]}" --out-dir "$OUTDIR"; fi
+  m=$(mutations)
+  if [ "$RC" = "1" ] && [ "$m" = "0" ] && has "empty PAT listing" && all_old; then
+    ok "T16 ($mode) an empty-stdout PAT listing is refused in preflight, zero mutations (not read as no active PAT)"
+  else
+    bad "T16 ($mode) an empty PAT listing is refused (rc=$RC mutations=$m)"
+  fi
+done
+
+# =============================================================================
+# T17 — instance-admin mode refuses a resolved account that is not a
+#       bot/service account (F-admin-mode, reviewer-security round 1-3).
+# =============================================================================
+newcase
+export NOT_BOT_ROLE=desk
+run_impl "${ADMIN_ARGS[@]}" --out-dir "$OUTDIR"
+m=$(mutations)
+if [ "$RC" = "1" ] && [ "$m" = "0" ] && has "not a bot/service account" && all_old; then
+  ok "T17 admin mode refuses a resolved account that is not a bot/service account, zero mutations"
+else
+  bad "T17 admin mode refuses a non-bot resolved account (rc=$RC mutations=$m)"
+fi
+newcase
+run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR"
+if grep -q 'users?username=' "$FAKE_GLAB_LOG" >/dev/null 2>&1; then bad "T17 group mode must never touch the instance-wide users?username= account resolution"; else ok "T17 group mode never resolves accounts instance-wide (no users?username= call)"; fi
+
+# =============================================================================
+# T18 — in-use protection (#1630 required behavior 5): a role whose active
+#       PAT was used inside the in-use window is SKIPPED by default and
+#       reported, never rotated; --rotate-in-use overrides it.
+# =============================================================================
+for mode in group admin; do
+  newcase
+  export INUSE_ROLE=desk
+  if [ "$mode" = "group" ]; then run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR"; else run_impl "${ADMIN_ARGS[@]}" --out-dir "$OUTDIR"; fi
+  m=$(mutations)
+  if [ "$RC" = "0" ] && [ "$m" = "6" ] && has "role=desk path=${OUTDIR}/gitlab-desk.token outcome=skipped-in-use" \
+     && file_is "$OUTDIR/gitlab-desk.token" "old-desk"; then
+    ok "T18 ($mode) a role used inside the in-use window is skipped by default (the other six still rotate), file untouched"
+  else
+    bad "T18 ($mode) in-use skip by default (rc=$RC mutations=$m)"
+  fi
+done
+newcase
+export INUSE_ROLE=desk
+run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR" --dry-run
+if [ "$RC" = "0" ] && has "outcome=would-skip-in-use" && has "--rotate-in-use"; then
+  ok "T18 dry-run reports would-skip-in-use with the override hint"
+else
+  bad "T18 dry-run would-skip-in-use reporting"
+fi
+newcase
+export INUSE_ROLE=desk
+run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR" --rotate-in-use --only desk
+if [ "$RC" = "0" ] && [ "$(logn 'argv=api .*/rotate')" = "1" ] && has "role=desk path=${OUTDIR}/gitlab-desk.token outcome=rotated"; then
+  ok "T18 --rotate-in-use overrides the skip and rotates the in-use role"
+else
+  bad "T18 --rotate-in-use overrides the skip (rc=$RC)"
+fi
+newcase
+run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR"
+if [ "$RC" = "0" ] && [ "$(logn 'argv=api .*/rotate')" = "7" ] && ! has "skipped-in-use"; then
+  ok "T18 a PAT with no last_used_at (never used) is rotated normally, no false skip"
+else
+  bad "T18 a never-used PAT is rotated normally (rc=$RC)"
 fi
 
 echo

@@ -32,6 +32,14 @@ intake-loop:reporter:20:api
 board-writer:developer:30:api,write_repository
 '
 
+# FLEET_PAT_DAYS — the shared default PAT lifetime (spec.md §5's "7 days
+# RECOMMENDED" expiry backstop). A second literal in either script would let
+# a widened default silently relax that backstop; both
+# tools/create-fleet-gitlab.sh (PAT_EXPIRY_DAYS) and
+# tools/renew-fleet-gitlab-tokens.sh (--duration's default) read it from here.
+# shellcheck disable=SC2034  # consumed by the scripts that source this file
+FLEET_PAT_DAYS=7
+
 # fleet_username PREFIX ROLE — the service-account username the provisioner
 # creates for ROLE under PREFIX.
 fleet_username() { printf '%s-%s-bot' "$1" "$2"; }

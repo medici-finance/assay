@@ -78,17 +78,26 @@ GROUP=""
 INSTANCE_ADMIN=0
 PREFIX=""
 OUT_DIR=""
-DURATION="30d"
+DURATION="${FLEET_PAT_DAYS}d"
 DRY_RUN=0
 ONLY=""
+ROTATE_IN_USE=0
 ROLE_RECORDS=()
+
+# IN_USE_WINDOW_DAYS — a role's active PAT is "in use" (protected from a
+# default rotation, #1630 required behavior 5) when its last_used_at falls
+# within this many days of now. A PAT with no last_used_at has never been
+# used and is never in-use. 1 day catches a PAT a live desk session touched
+# recently; it does not block the fleet-wide renewal cadence.
+IN_USE_WINDOW_DAYS=1
 
 usage() {
   cat <<'USAGE'
 Usage: renew-fleet-gitlab-tokens.sh --hostname <host>
          (--group <top-level-group> | --instance-admin)
          (--prefix <prefix> | --role ROLE=USERNAME:TOKEN_NAME:SCOPES[:FILE] ...)
-         --out-dir <dir> [--duration 30d] [--only ROLE[,ROLE...]] [--dry-run]
+         --out-dir <dir> [--duration 7d] [--only ROLE[,ROLE...]]
+         [--rotate-in-use] [--dry-run]
 
 Renews every configured Assay fleet role PAT in one run: rotates each role's
 active PAT (matched by name), creates one only when none exists, and replaces
@@ -117,12 +126,20 @@ Roles (at least one source):
                            role is added.
 
 Options:
-  --duration <N>d|<N>w    PAT lifetime from today, 1d..365d. Default: 30d.
+  --duration <N>d|<N>w    PAT lifetime from today, 1d..365d. Default: 7d (the
+                           shared fleet-gitlab-roles.sh FLEET_PAT_DAYS backstop,
+                           spec.md §5). A longer value widens that backstop —
+                           state the reason when you pass one.
   --only ROLE[,ROLE...]   Renew only these configured roles (resume a partial
                            run with the list the failed run printed).
+  --rotate-in-use         Rotate a role even when its active PAT's
+                           last_used_at is within the in-use window (default:
+                           such a role is SKIPPED and reported, never rotated,
+                           because rotation invalidates the previous secret
+                           immediately and would 401 a session holding it).
   --dry-run               Run every preflight read and print the plan
-                           (rotate / create per role). No token is rotated or
-                           created and no file is written.
+                           (rotate / create / skip-in-use per role). No token
+                           is rotated or created and no file is written.
   -h, --help              This text.
 
 Auth: whatever identity `glab` is logged in as for --hostname (glab's own
@@ -155,6 +172,7 @@ while [ $# -gt 0 ]; do
     --out-dir) need_val "$1" $#; OUT_DIR="$2"; shift 2 ;;
     --duration) need_val "$1" $#; DURATION="$2"; shift 2 ;;
     --only) need_val "$1" $#; ONLY="$2"; shift 2 ;;
+    --rotate-in-use) ROTATE_IN_USE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die_usage "unknown argument: $1" ;;
@@ -333,6 +351,27 @@ utc_date_plus() {  # utc_date_plus DAYS -> YYYY-MM-DD (BSD and GNU date)
 # json_field FILE FILTER — jq -r FILTER over FILE, "" on any parse failure.
 json_field() { jq -r "$2" "$1" 2>/dev/null || true; }
 
+# in_use_recent LAST_USED_AT -> 0 (true) when LAST_USED_AT falls within
+# IN_USE_WINDOW_DAYS of now (#1630 required behavior 5). An empty or "null"
+# value means the PAT has never been used, so it is never in-use. A value
+# present but unparseable fails CLOSED (treated as in-use) rather than
+# silently allowing a rotation this check exists to prevent.
+in_use_recent() {
+  local lu="$1" lu_trim lu_epoch now_epoch window_secs
+  case "$lu" in "" | null) return 1 ;; esac
+  lu_trim="${lu:0:19}"
+  if lu_epoch=$(date -u -d "$lu_trim" +%s 2>/dev/null); then
+    :
+  elif lu_epoch=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "$lu_trim" +%s 2>/dev/null); then
+    :
+  else
+    return 0  # unparseable last_used_at: fail closed, treat as in-use
+  fi
+  now_epoch=$(date -u +%s)
+  window_secs=$((IN_USE_WINDOW_DAYS * 86400))
+  [ $((now_epoch - lu_epoch)) -lt "$window_secs" ]
+}
+
 PREFLIGHT_ERRORS=""
 preflight_error() { PREFLIGHT_ERRORS="${PREFLIGHT_ERRORS}${1}"$'\n'; }
 
@@ -484,32 +523,48 @@ if [ -n "$GROUP" ]; then
   fi
 fi
 for i in "${!R_ROLE[@]}"; do
-  uid=""
+  uid="" not_bot=0
   if [ -n "$GROUP" ]; then
     uid=$(jq -r --arg u "${R_USER[$i]}" '[.[] | select(type=="object" and .username==$u) | (.id|tostring) | select(test("^[0-9]+$"))] | if length==1 then .[0] else "" end' "$WORK/sas.json" 2>/dev/null || true)
   else
+    # #1630 item 3: instance-admin mode must never act on a human account.
+    # users?username= resolves instance-wide, so the match is refused unless
+    # the resolved record is itself a bot/service account (F-admin-mode).
     if gl "$WORK/users.json" api --hostname "$GL_HOSTNAME" "users?username=$(urlencode "${R_USER[$i]}")"; then
-      uid=$(jq -r --arg u "${R_USER[$i]}" 'if type=="array" then ([.[] | select(type=="object" and .username==$u) | (.id|tostring) | select(test("^[0-9]+$"))] | if length==1 then .[0] else "" end) else "" end' "$WORK/users.json" 2>/dev/null || true)
+      uid=$(jq -r --arg u "${R_USER[$i]}" 'if type=="array" then ([.[] | select(type=="object" and .username==$u and (.bot==true)) | (.id|tostring) | select(test("^[0-9]+$"))] | if length==1 then .[0] else "" end) else "" end' "$WORK/users.json" 2>/dev/null || true)
+      if [ -z "$uid" ]; then
+        hit=$(jq -r --arg u "${R_USER[$i]}" 'if type=="array" then ([.[] | select(type=="object" and .username==$u and ((.bot // false) != true))] | length) else 0 end' "$WORK/users.json" 2>/dev/null || true)
+        [ -n "$hit" ] && [ "$hit" != "0" ] && not_bot=1
+      fi
     fi
   fi
   R_UID+=("$uid")
-  [ -n "$uid" ] || preflight_error "role=${R_ROLE[$i]}: service account '${R_USER[$i]}' not found (exactly one match required)"
+  if [ -z "$uid" ]; then
+    if [ "$not_bot" -eq 1 ]; then
+      preflight_error "role=${R_ROLE[$i]}: resolved account '${R_USER[$i]}' is not a bot/service account — instance-admin mode refuses to rotate or create a PAT for a human account (#1630 item 3)"
+    else
+      preflight_error "role=${R_ROLE[$i]}: service account '${R_USER[$i]}' not found (exactly one match required)"
+    fi
+  fi
 done
 
-# --- each role's active PATs: rotate / create / refuse -------------------------
+# --- each role's active PATs: rotate / create / skip-in-use / refuse -----------
 # Every record must be well-formed (numeric id, string name, an `active`
 # field); anything else fails closed rather than being read as "no match",
-# which would create a second live credential.
+# which would create a second live credential. An EMPTY listing fails closed
+# the same way: glab exiting 0 with no stdout is not "zero active PATs" (jq
+# never runs its filter on empty input and would itself exit 0 with no
+# output), it is an unreadable listing.
 MATCH_FILTER='
   if type != "array" then error("expected a JSON array") else . end
   | map(if type=="object" and has("id") and has("name") and has("active")
           and ((.id|tostring)|test("^[0-9]+$")) and (.name|type)=="string"
         then . else error("malformed token record") end)
   | map(select(.name == $n and ((.active|tostring) == "true") and ((.revoked // false)|tostring) != "true"))
-  | .[] | (.id|tostring)'
-R_ACTION=(); R_TID=()
+  | .[] | [(.id|tostring), ((.last_used_at // "") | tostring)] | @tsv'
+R_ACTION=(); R_TID=(); R_LAST_USED=()
 for i in "${!R_ROLE[@]}"; do
-  R_ACTION+=(""); R_TID+=("")
+  R_ACTION+=(""); R_TID+=(""); R_LAST_USED+=("")
   [ -n "${R_UID[$i]}" ] || continue
   list="$WORK/pats-${i}.json"
   if [ -n "$GROUP" ]; then
@@ -523,14 +578,26 @@ for i in "${!R_ROLE[@]}"; do
     relay_stderr
     continue
   fi
-  if ! ids=$(jq -r --arg n "${R_NAME[$i]}" "$MATCH_FILTER" "$list" 2>/dev/null); then
+  if [ ! -s "$list" ]; then
+    preflight_error "role=${R_ROLE[$i]}: empty PAT listing for '${R_USER[$i]}' — failing closed rather than reading it as no active PAT (which would create a second live credential)"
+    continue
+  fi
+  if ! rows=$(jq -r --arg n "${R_NAME[$i]}" "$MATCH_FILTER" "$list" 2>/dev/null); then
     preflight_error "role=${R_ROLE[$i]}: malformed PAT listing for '${R_USER[$i]}' — failing closed"
     continue
   fi
-  count=$(printf '%s' "$ids" | grep -c . || true)
+  count=$(printf '%s' "$rows" | grep -c . || true)
   case "$count" in
     0) R_ACTION[$i]="create" ;;
-    1) R_ACTION[$i]="rotate"; R_TID[$i]="$ids" ;;
+    1)
+      R_TID[$i]=$(printf '%s' "$rows" | cut -f1)
+      R_LAST_USED[$i]=$(printf '%s' "$rows" | cut -f2)
+      if [ "$ROTATE_IN_USE" -ne 1 ] && in_use_recent "${R_LAST_USED[$i]}"; then
+        R_ACTION[$i]="skip-in-use"
+      else
+        R_ACTION[$i]="rotate"
+      fi
+      ;;
     *) preflight_error "role=${R_ROLE[$i]}: '${R_USER[$i]}' has ${count} active PATs named '${R_NAME[$i]}' — refusing to guess which is live; revoke the extras and re-run" ;;
   esac
 done
@@ -543,7 +610,11 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   for i in "${!R_ROLE[@]}"; do
-    echo "[dry-run] role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=would-${R_ACTION[$i]}"
+    if [ "${R_ACTION[$i]}" = "skip-in-use" ]; then
+      echo "[dry-run] role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=would-skip-in-use (last_used_at=${R_LAST_USED[$i]}; within the ${IN_USE_WINDOW_DAYS}d in-use window — pass --rotate-in-use to override)"
+    else
+      echo "[dry-run] role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=would-${R_ACTION[$i]}"
+    fi
   done
   echo "dry-run: preflight passed for ${#R_ROLE[@]} role(s); no token was rotated or created, no file was written"
   exit 0
@@ -648,6 +719,11 @@ for i in "${!R_ROLE[@]}"; do
   if [ -n "$FAILED_ROLE" ]; then
     echo "role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=not-attempted"
     REMAINING="${REMAINING:+${REMAINING},}${R_ROLE[$i]}"
+    continue
+  fi
+  if [ "${R_ACTION[$i]}" = "skip-in-use" ]; then
+    echo "role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=skipped-in-use (last_used_at=${R_LAST_USED[$i]}; within the ${IN_USE_WINDOW_DAYS}d in-use window — nothing rotated; re-run with --rotate-in-use to override)"
+    DONE=$((DONE + 1))
     continue
   fi
   if renew_one "$i"; then

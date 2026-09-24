@@ -777,16 +777,20 @@ other:**
 group service-account endpoints admit a group Owner, and they are what the provisioner uses. A
 group Owner therefore renews with `--group` and does not need wider authority.
 
-Every deployment-specific value is an argument; nothing is built in:
+Every deployment-specific value is an argument; nothing is built in. `--duration` defaults to
+the shared `FLEET_PAT_DAYS` in `tools/fleet-gitlab-roles.sh` (7 days — spec.md §5's "7 days
+RECOMMENDED" expiry backstop), so leaving it off keeps the backstop; passing a longer value
+widens it, which matters most on Free tier, where there is no group token-expiry policy to cap
+it independently (§Free-tier degradations above):
 
 ```
 tools/renew-fleet-gitlab-tokens.sh --dry-run \
   --hostname gitlab.example.com --group mygroup --prefix myorg \
-  --out-dir "$HOME/.config/assay" --duration 30d
+  --out-dir "$HOME/.config/assay"
 
 tools/renew-fleet-gitlab-tokens.sh \
   --hostname gitlab.example.com --group mygroup --prefix myorg \
-  --out-dir "$HOME/.config/assay" --duration 30d
+  --out-dir "$HOME/.config/assay"
 ```
 
 An installation that does not use the provisioner's naming describes each role explicitly with
@@ -799,15 +803,25 @@ What one run does, in order:
 
 1. **Preflight, before any token changes.** The script checks the arguments, `glab` and `jq`,
    the output directory (it must be writable) and each destination file. It also checks the
-   authority of the active `glab` identity. It resolves each service account and lists each
-   role's active PATs, and each role gets one of three outcomes: **rotate** (exactly one active
-   PAT with that name), **create** (none), or **refuse** (more than one; the script will not
-   guess which one is live, so revoke the extras). The script also refuses a listing it cannot
-   parse instead of treating it as "no match", which would otherwise create a second live
-   credential. Any preflight problem aborts the run before any role is rotated. `--dry-run`
-   runs this whole phase and prints the plan (`would-rotate` / `would-create` for each role),
-   then stops. It makes no mutating call and writes no file.
-2. **Renewal, one role at a time.** `glab` writes the returned secret straight into a new
+   authority of the active `glab` identity — in `--instance-admin` mode this also refuses a
+   resolved account that is not a bot/service account, since `users?username=` resolves
+   instance-wide and could otherwise match a human account sharing the configured username.
+   It resolves each service account and lists each role's active PATs, and each role gets one
+   of four outcomes: **rotate** (exactly one active PAT with that name, and it is not
+   protected — see below), **create** (none), **skip-in-use** (exactly one active PAT, but its
+   `last_used_at` falls inside the in-use window), or **refuse** (more than one active PAT; the
+   script will not guess which one is live, so revoke the extras). The script also refuses an
+   unreadable listing — including one that answers with zero stdout bytes — instead of treating
+   it as "no match", which would otherwise create a second live credential. Any preflight
+   problem aborts the run before any role is rotated. `--dry-run` runs this whole phase and
+   prints the plan (`would-rotate` / `would-create` / `would-skip-in-use` for each role), then
+   stops. It makes no mutating call and writes no file.
+2. **In-use protection.** Rotating a live PAT invalidates it immediately (see below), so a role
+   whose active PAT was used inside the in-use window is **skipped by default** and reported as
+   `skipped-in-use`, not rotated. Pass `--rotate-in-use` to rotate it anyway — do that only after
+   confirming nothing is still relying on that credential (stop the fleet's desk sessions first).
+   A PAT that has never been used (`last_used_at` unset) is never in-use and rotates normally.
+3. **Renewal, one role at a time.** `glab` writes the returned secret straight into a new
    owner-only (`0600`) temp file in the destination's own directory. The secret never goes
    through argv, an environment variable, a log line or the report. The file must hold exactly
    one line that looks like a token. If it does not, the output is malformed: the script
@@ -816,9 +830,9 @@ What one run does, in order:
    symlink (§2's link layout), the rename lands on the link's target, so the link survives,
    the same way `desktoken` handles it (§5). A link that resolves outside `--out-dir` is
    refused during preflight.
-3. **The report** gives only the role, the destination path and the outcome for each role
-   (`rotated`, `created`, `failed (…)`, `not-attempted`). It never includes a secret, a
-   username or a token id.
+4. **The report** gives only the role, the destination path and the outcome for each role
+   (`rotated`, `created`, `skipped-in-use (…)`, `failed (…)`, `not-attempted`). It never
+   includes a secret, a username or a token id.
 
 **A rotation invalidates the old credential immediately.** GitLab revokes a role's previous PAT
 as soon as it accepts the rotation. Any process still holding the old value then gets a `401`.
