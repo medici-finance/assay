@@ -16,7 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-24 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-24 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-24 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/22 | 2026-09-24 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/23 | 2026-09-24 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-24 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-24 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-24 |  |
@@ -25,8 +25,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-24 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/16 | 2026-09-24 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-24 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/16 | 2026-09-24 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/13 | 2026-09-24 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-24 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-24 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/16 | 2026-09-24 |  |
 
 ## Parked
@@ -53,8 +53,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
+| quality | 17 — regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate [exec:strong] | 0 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 | harness-portability | 17 — Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI [exec:strong] | 0 | 1000 |
+| quality | 19 — qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed [exec:strong] | 3 | 1000 |
+| statusgen | 14 — `--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule) [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
@@ -247,7 +250,7 @@ _None._
 - 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)
 - 14 Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay — todo (wave 6)
 
-### desk-supervision (16 open)
+### desk-supervision (17 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — implemented (wave 1)
@@ -265,6 +268,7 @@ _None._
 - 20 Review scope and first-pass completeness — implemented (wave 0)
 - 21 Reverify changed external prerequisites without a synthetic push — implemented (wave 1)
 - 22 Configure provider, model and effort per cell role — implemented (wave 0)
+- 23 Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App — todo (wave 2)
 
 ### desk-tools (14 open)
 
@@ -400,6 +404,12 @@ _None._
 - 05 attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish — todo (wave 1)
 - 06 model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login — todo (wave 1)
 
+### quality (3 open)
+
+- 17 regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate — todo (wave 0)
+- 18 stub-coverage seam report — report-first list of test seams stubbed everywhere and exercised nowhere in production form — todo (wave 1)
+- 19 qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed — todo (wave 3)
+
 ### server-controls (5 open)
 
 - 01 Uniform-ruleset audit — define the target menu, read each repo's current ruleset state against it — todo (wave 0)
@@ -408,11 +418,12 @@ _None._
 - 04 Decision-dependency note — the credential/identity rulings that gate the credential-contract work — todo (wave 0)
 - 05 Reference cross-operator / independent-approver check — the residual after require_last_push_approval, as a required status check — todo (wave 2)
 
-### statusgen (3 open)
+### statusgen (4 open)
 
 - 05 Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable) — implemented (wave 1)
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
+- 14 `--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule) — todo (wave 1)
 
 ### windows-port (11 open)
 
@@ -569,4 +580,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**22** streams (**17** active, **0** paused, **5** parked) · **88/267** briefs done · completed initiatives: see `docs/archive/`
+**22** streams (**17** active, **0** paused, **5** parked) · **88/272** briefs done · completed initiatives: see `docs/archive/`
