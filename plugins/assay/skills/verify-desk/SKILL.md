@@ -371,6 +371,14 @@ outward-write rate limit, the post-commit attribution check (author = the App's 
 audit line — so use it *because* it enforces those. A guard- or classifier-BLOCKED `git push` is a
 STOP-and-escalate; never route the same write through another tool to get past a block.
 
+**A PASS is a flip signal only when its own Evidence agrees.** A PASS whose Evidence still carries an
+un-deferred HELD/could-not-check row is not a flip signal; run or formally defer it first. "Formally
+deferred" means routed to a named follow-up with a reference (`deferred to <stream>/<NN>` or `#N`) —
+a bare "deferred" or a row simply left HELD is not. Land `implemented → verified` only once every row is
+run or so routed: the tooling refuses the same contradiction downstream (the model autoflip, the
+verify-gate card, and `statusgen --close-verify` from `verified` as well as from `implemented`), so a
+flip over an open hold only parks the brief at `verified` with a refused close.
+
 **Land as each verdict arrives.** A PASS in hand and not on main within one landing cycle is a defect:
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this

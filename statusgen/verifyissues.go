@@ -861,7 +861,10 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 // Reviewed cell stamped `human:<closer>` + the close date — the recorded independent
 // run, not the close time, is what the Verified cell attests. It refuses (error, NO
 // write) for any other state, and for an implemented brief lacking either the strict
-// **VERIFY: PASS** marker or a Date/Runner Evidence row (fail-closed). It never
+// **VERIFY: PASS** marker or a Date/Runner Evidence row (fail-closed). On BOTH
+// paths it also refuses a PASS contradicted by an un-routed HELD/could-not-check
+// row (closeVerifyHeldRefusal); on the verified path it further refuses when the
+// most recent recorded verdict is a FAIL (closeVerifyFailRefusal). It never
 // touches STATUS.md (single-writer rule) — status-regen regenerates it on the
 // resulting push.
 func closeVerify(root, briefID string, now time.Time) error {
@@ -921,8 +924,20 @@ func closeVerify(root, briefID string, now time.Time) error {
 
 	switch row.Status {
 	case "verified":
-		// Standard path: verified → done — after the floor read on the cell
-		// the done row will carry (two-stamp model).
+		// Standard path: verified → done. A `verified` row is no licence to
+		// skip the Evidence read the implemented path makes: a brief flipped
+		// to `verified` over an unresolved hold, or whose most recent verdict
+		// is a FAIL, must not be closed to `done` with that record standing.
+		// So the SAME PASS/HELD contradiction check the implemented path runs
+		// runs here, refusing with the same text, plus the FAIL-verdict read —
+		// both BEFORE the floor read on the cell the done row will carry
+		// (two-stamp model).
+		if err := closeVerifyHeldRefusal(briefID, bf.Evidence); err != nil {
+			return err
+		}
+		if err := closeVerifyFailRefusal(briefID, row.Status, bf.Evidence); err != nil {
+			return err
+		}
 		if err := closeVerifyFloorRefusal(briefID, bf, row.Verified); err != nil {
 			return err
 		}
@@ -943,8 +958,8 @@ func closeVerify(root, briefID string, now time.Time) error {
 		if !hasVerifyPass(bf.Evidence) {
 			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
 		}
-		if held, why := verifyPassHeldContradiction(bf.Evidence); held {
-			return fmt.Errorf("refusing: brief %s carries **VERIFY: PASS** but Evidence also reads %q on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check", briefID, why)
+		if err := closeVerifyHeldRefusal(briefID, bf.Evidence); err != nil {
+			return err
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
@@ -965,6 +980,39 @@ func closeVerify(root, briefID string, now time.Time) error {
 	default:
 		return fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
 	}
+}
+
+// closeVerifyHeldRefusal is the PASS/HELD contradiction read a human done
+// close makes BEFORE it writes, on BOTH starting states (verified and
+// implemented): a **VERIFY: PASS** marker is not a flip signal while a row not
+// genuinely routed to a follow-up still reads HELD/could-not-check. One
+// predicate (verifyPassHeldContradiction) and one refusal text for both paths,
+// so the two can never drift into refusing differently.
+func closeVerifyHeldRefusal(briefID, evidence string) error {
+	if held, why := verifyPassHeldContradiction(evidence); held {
+		return fmt.Errorf("refusing: brief %s carries **VERIFY: PASS** but Evidence also reads %q on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check", briefID, why)
+	}
+	return nil
+}
+
+// closeVerifyFailRefusal refuses a human done close whose Evidence's MOST
+// RECENT verdict is a FAIL (lastVerifyVerdict: last writer wins, with fenced,
+// quoted and struck-through markers ignored). A brief that failed, was
+// reworked and then passed closes; one whose latest recorded run failed does
+// not, whatever its README row says.
+//
+// It runs on the verified path. The implemented path needs no separate read
+// for the FAIL-only case — it already refuses any Evidence without a strict
+// **VERIFY: PASS** marker — and is deliberately left unchanged here.
+//
+// lastVerifyVerdict's stated limit (a verdict token inside ordinary prose
+// still reads as a verdict) errs toward refusing here, which is the closed
+// direction for a gate: the remedy is to write the record plainly.
+func closeVerifyFailRefusal(briefID, status, evidence string) error {
+	if lastVerifyVerdict(evidence) == verdictFail {
+		return fmt.Errorf("refusing: brief %s status is %q but the most recent verdict in its Evidence is VERIFY: FAIL — a failed run is not a flip signal; re-run the Verify table to a recorded **VERIFY: PASS** before the human sign-off", briefID, status)
+	}
+	return nil
 }
 
 // closeVerifyFloorRemedy is the two-stamp remedy every floor refusal names, so
