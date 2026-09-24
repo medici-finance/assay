@@ -59,16 +59,17 @@ import (
 // with no configured humans there are no names to anchor on, so nothing is detected
 // (the mechanism ships public; the names are private adopter config).
 //
-// OUT OF SCOPE — THE ON-BEHALF-OF ATTRIBUTION FORM. `on-behalf-of human:<login>` in
-// a Runner cell or prose, and the `On-behalf-of: human:<login>` trailer, are
+// OUT OF SCOPE — THE ON-BEHALF-OF ATTRIBUTION FORM. `on-behalf-of human:<who>` in
+// a Runner cell or prose, and the `On-behalf-of: human:<who>` trailer, are
 // ATTRIBUTION (which human an App identity acted for), never an acceptance / ruling
 // / sign-off claim, and detectCitations strips them (stripOnBehalfOf, corroborate.go)
 // before it looks for sign-off vocabulary; only the sign-off half of a mixed line is
-// judged. The two forms also spell their principal DIFFERENTLY, on purpose:
-// on-behalf-of is LOGIN-keyed (docs/on-behalf-of.md — the human map's VALUE), while
-// this checker and the stamp gate are NAME-keyed (the human map's KEY, resolved by
+// judged. The on-behalf-of principal is the login (the human map's VALUE) on a repo
+// the roster states is private and the neutral name (the map's KEY) elsewhere
+// (docs/on-behalf-of.md); the strip accepts either, but only after the marker. This
+// checker and the stamp gate stay NAME-keyed (the human map's KEY, resolved by
 // HumanLogin; the login is accepted only as a citation SPELLING, citedHumanLogin).
-// Neither spelling is a bug in the other — do not "fix" one into the other.
+// Neither rule is a bug in the other — do not "fix" one into the other.
 
 // citedHumanLogin resolves a name AS WRITTEN IN A CITATION to the GitHub login whose
 // artifacts corroborate it. A prose citation may name a human either by the
@@ -234,32 +235,16 @@ func dedupeCitations(in []citation) []citation {
 }
 
 // citationsInDiff extracts every citation from the ADDED lines of a unified diff,
-// grouped per file so a citation's Source is the file it was added to. Fixture-corpus
-// paths are skipped exactly as the stamp scan skips them (isExcludedFixturePath).
+// grouped per file so a citation's Source is the file it was added to. It reads
+// through the one shared walker (addedDiffLines, corroboratescope.go), so
+// fixture-corpus paths are skipped exactly as the stamp scan skips them
+// (isExcludedFixturePath) and the removed side of an embedded patch is not read as
+// a citation (#1395). Unlike the stamp lane it keeps reading program source and
+// YAML comments: a ruling claim in tracked prose of any kind is in its scope.
 func citationsInDiff(root, diff string) []citation {
-	lines := strings.Split(diff, "\n")
 	added := map[string][]string{}
-	curFile := ""
-	for _, line := range lines {
-		trimmed := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(trimmed, "diff --git ") {
-			fields := strings.Fields(trimmed)
-			if len(fields) >= 4 {
-				curFile = strings.TrimPrefix(fields[3], "b/")
-			}
-			continue
-		}
-		if strings.HasPrefix(trimmed, "+++ ") {
-			curFile = strings.TrimPrefix(trimmed, "+++ b/")
-			continue
-		}
-		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
-			continue
-		}
-		if isExcludedFixturePath(root, curFile) {
-			continue
-		}
-		added[curFile] = append(added[curFile], strings.TrimPrefix(trimmed, "+"))
+	for _, al := range addedDiffLines(root, diff) {
+		added[al.File] = append(added[al.File], al.Content)
 	}
 	// Deterministic file order for a stable report.
 	files := make([]string, 0, len(added))

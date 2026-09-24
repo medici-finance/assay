@@ -26,6 +26,8 @@ link. Bindings for your harness — which mechanism each `capability:*` names �
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+
 **References**, each carrying text the reviewer prompt needs verbatim:
 `references/leak-audience-check.md` (leak/audience axes for an outward-facing artifact),
 `references/merge-time-recheck.md` (merge-time + body/Verify re-check in full),
@@ -185,9 +187,8 @@ stop armed on a claim it is reviewing, not only the global loop flags above.
 
 ### Worktree hygiene
 
-Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval
-supervisor; no loop carries an hourly prune tick and nobody hand-deletes worktrees (the
-ENFILE incident, 2026-07-23: sprawl exhausted the system open-file table).
+Stated once in [`../../references/desk-common.md`](../../references/desk-common.md) §Worktree hygiene —
+who owns worktree sprawl, and why nobody hand-deletes a worktree.
 
 ### Output contract — SILENT unless a human is needed; escalation = a FILED ISSUE
 
@@ -578,13 +579,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   1. **The diff touches a generated-table region** — the default for any hunk inside a stream
      README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." ONE narrow carve-out admits a hunk, and
-     only when ALL of the following hold — it is mechanical, not a judgment call:
+     row from the PR's own trailer + state; drop the hunk." TWO narrow carve-outs admit a hunk —
+     (A) newly added rows, below, and (B) a witnessed `implemented` promotion of an existing
+     cross-repo brief's row, after it. Each is mechanical, not a judgment call; a hunk that fits neither bounces. Carve-out
+     A admits a hunk only when ALL of the following hold:
      - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
-       row; ANY change to an existing row — down to a single cell — bounces unconditionally.
+       row; ANY change to an existing row — down to a single cell — bounces unconditionally unless
+       carve-out B admits it.
      - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
        be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
-       ANY row inside the markers carrying a non-`todo` `Status`, or a non-empty `Verified` or
+       ANY row in an added-rows hunk carrying a non-`todo` `Status`, or a non-empty `Verified` or
        `Reviewed` cell, bounces unconditionally — added or not. This bullet is what actually blocks
        the forgery, and it is load-bearing: `statusgen regen --readmes` PRESERVES the `Status`,
        `Verified` and `Reviewed` cells for ANY row already present in the region (it does not
@@ -614,6 +618,74 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      bounce made a compliant, CI-green state unreachable. It never licenses fixing the table in
      review: correctness there is `statusgen`'s to certify, not the reviewer's, and it only lets an
      authoring PR carry the tool's own unmodified output for newly added rows.
+
+     Carve-out B ([the driver's ruling of 2026-09-23](https://github.com/medici-finance/assay/issues/1208#issuecomment-5805483045))
+     admits a hunk that promotes existing rows of CROSS-REPO briefs to `implemented` — briefs
+     tracked on this board and delivered into a different repo — only when ALL of the following
+     hold:
+     - **Status-only, one transition.** The hunk adds and removes no row. On every row it changes,
+       the ONLY changed cell is `Status`, and it goes from the bare token `todo` or `in-progress` to
+       the bare token `implemented`; the `Verified` and `Reviewed` cells, and every other cell, are
+       byte-identical to the base. ANY other change bounces unconditionally — a promotion to
+       `verified` or `done`, a demotion, `blocked`, a dressed token, or a touched `Verified` /
+       `Reviewed` cell — because those stamps are written only by the verify-witness fold, never by a
+       PR.
+     - **The delivery repo comes from the brief, never from the PR.** For each changed row, read
+       the delivery repo from the brief file at the target repo's fetched `refs/remotes/origin/main`:
+       its `homed-in:` frontmatter when present, else its stream README's `repo:` frontmatter, else
+       the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
+       It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
+       The verdict records the delivery repo for each row and where it was read from.
+     - **Cross-repo rows only.** The delivery repo read above must differ from the board repo. A
+       row whose delivery repo IS the board repo — a same-repo brief, including the fall-through
+       case where the brief names no other repo — is outside the ruling and bounces, one line:
+       "same-repo row — carve-out B admits only a cross-repo brief's promotion; drop the hunk."
+     - **Reproduces under reconcile on main.** In a throwaway worktree checked out at the target
+       repo's `refs/remotes/origin/main`, fetched this cycle, run
+       `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`
+       with the delivery repo read above. Rows with different delivery repos need one run per
+       delivery repo, each in its OWN fresh throwaway worktree (`--apply` writes into the worktree it
+       runs on), and each row is compared only against the run for its own delivery repo. Admit only
+       when every row the hunk changes is reproduced byte-identically by the rows that run wrote (its
+       `applied` list and the resulting README diff); a hunk row the run did not write, or wrote
+       differently, bounces. A row current main already shows as `implemented` is never written by
+       the run, so it bounces with the one line "already `implemented` on main — merge main and drop
+       the hunk." Rows the run writes that the PR does not carry do not affect admission. A run
+       that could not look — a non-zero exit, missing or unparseable JSON on stdout,
+       `lookedAt: false` in its JSON, or a `could-not-check` on stderr (no token, a failed or
+       rate-limited PR fetch) — is not a reproduction: hold the verdict and say so, never admit on
+       it. The binary is the pinned release binary the target repo's CI uses; where the target
+       repo vendors `statusgen/`, build it from the throwaway `origin/main` worktree's own
+       `statusgen/` — NEVER one built or resolved from the PR head or the PR tree (carve-out A's
+       PR-head build allowance does not carry over) — and never run it against a desk's own
+       checkout.
+     - **The reviewer checks the code exists, on every row.** For each admitted row, read the same
+       run's `--json` entry for that brief. `source: "pr"` means the witness is a merged PR in the
+       delivery repo carrying a `Brief: <stream>/<NN>` trailer (a source PR): confirm on the forge
+       that the PR it names is merged and its body carries that trailer. `source: "backfill"` means
+       the witness is backfill-only — a branch-name or body match, no `Brief:` trailer. EITHER way,
+       the row is admitted only after the reviewer performs a code-existence check in the delivery
+       repo: the files and symbols the brief names as its deliverable exist on the delivery repo's
+       main, read at a ref fetched this cycle (not a sibling checkout). A trailer never admits a
+       row on its own: it is joined to the brief on `<stream>/<NN>` alone, with no repo or cell in
+       the key, so a trailer in the delivery repo can name a DIFFERENT brief with the same stream
+       and number — the delivery repo's own, or another board's brief delivered into the same
+       repo — and a PR body stays editable after merge. The verdict records the check: the paths
+       and symbols looked for, and the commit read. A deliverable that is missing, a named PR that
+       is not merged or does not carry the trailer, or a forge or code read that could not be made,
+       bounces the row — could-not-check is never a pass.
+     - **Not a statusgen-source PR.** As in carve-out A.
+
+     The PR body must state that the hunk is `reconcile --backfill --apply` output and name the
+     witness PR for each row; that statement is a CLAIM, and the run above is the only evidence.
+     The carve-out exists because `--apply` only ever writes this one Status-only transition, and
+     only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
+     tool would not write itself. The code-existence check is the second layer on every admitted
+     row, because no witness alone can tell whether this brief's work landed: a trailer-less
+     branch-name or body match; a trailer whose `<stream>/<NN>` may belong to a different brief
+     delivered into the same repo, whichever board tracks it; and a trailer in a body edited after
+     the merge. Same-repo rows stay outside B because the ruling admits only a cross-repo brief's
+     promotion; widening B to them needs a new ruling, never a reviewer's reading.
   2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer, EITHER
      `Brief: <stream>/<NN>` (the brief this PR delivers) **OR** `Issue: #<N>` (issue-only work that
      delivers no brief — e.g. a pin bump / re-pin PR, which by construction carries no brief). Both
@@ -877,18 +949,8 @@ recorded. It is never the sanctioned path.
 
 ## Liveness contract (binding)
 
-A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
-wake signal; the fixed-cadence board sweep is the real liveness backstop and the
-always-on observability service its durable home) BEFORE the first sweep and keep
-it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
-assumed delivered.
-The desk runs **default-forward** — never ask the driver what to work on next:
-a driver scope instruction narrows preference, not a cage — when the scoped
-batch drains, note the transition in the hand-off note and widen back to the
-standing queue. Checkpoints state their default and continue; standing down
-requires an empty standing queue after a fresh sweep PLUS a hand-off artifact
-on the driver surface, and a manual human kick that moves queued work is an
-incident to file on the project's methodology tracker. Hard gates (human-gated
-decisions, budgets, breakers, explicit stop-orders) are unchanged.
+A standing liveness contract binds this window from boot. Its text — the standing loop armed
+before the first sweep, the fresh re-sweep every tick, relay acknowledgement, default-forward, and
+when a window may stand down — is stated once for every desk role in
+[`../../references/desk-common.md`](../../references/desk-common.md) §Liveness contract; read it at
+boot, before the first sweep.
