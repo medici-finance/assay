@@ -9,9 +9,10 @@
 //
 //   - SelectQueue — inbound items across the configured intake SCAN scope (deskkit.ScanRepos, the
 //     same roster key the scanner itself reads, so coverage cannot drift between them). The events
-//     come from the durable inbound monitor script, which is WRAPPED and never re-implemented: its
-//     three anti-blindness properties (explicit identity, per-repo retained state, burst cap) are
-//     not worth losing to a second hand-rolled poller.
+//     come from the durable inbound poller, the `deskmonitor inbound` verb, which is ARMED and never
+//     re-implemented here: its three anti-blindness properties (explicit identity, per-repo
+//     retained state, burst cap) are pinned by its own named tests and by its parity oracle, the
+//     plugin tree's inbound-monitor.sh (which --monitor still arms, in parity mode).
 //
 //   - TierPolicy — the MECHANICAL half only. A worker-legible item (a new issue needing a
 //     placeholder, a retire, a close-on-fix) is TierLocal and the scan-carrier lane executes it
