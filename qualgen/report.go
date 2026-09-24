@@ -140,6 +140,10 @@ func renderReport(store *Store, baselines BaselineSet) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	refixes, err := store.ReadRefix()
+	if err != nil {
+		return "", err
+	}
 
 	// Latest snapshot per (metric,grain,key) for the scalar comparability table.
 	latestMetric := latestOf(metrics,
@@ -196,6 +200,7 @@ func renderReport(store *Store, baselines BaselineSet) (string, error) {
 	// --- Sections populated by later waves — could-not-measure until then. ---
 	b.WriteString("## Defect-inducing rate (M2)\n\n")
 	b.WriteString("not measured — populated by quality/06–07 (defect-fix identification + SZZ trace). Never rendered as 0.\n\n")
+	writeRefixSection(&b, refixes)
 	b.WriteString("## Per-stage ledger (M3)\n\n")
 	b.WriteString("not measured — populated by quality/10 (stage attribution). Never rendered as 0.\n\n")
 	b.WriteString("## Instruction reference-validity trend\n\n")
@@ -291,6 +296,60 @@ func writeDocCodeStalenessAlarms(b *strings.Builder, recs []DocCodeStalenessReco
 		fmt.Fprintf(b, "| %s | %s | %d |\n", mdCell(r.DocPath), mdCell(r.CodePath), r.CodeOnlyChanges)
 	}
 	b.WriteString("\n")
+}
+
+// writeRefixSection renders the re-fix trend (brief quality/19): whether the
+// regression suite is holding — how often a fix repairs something an earlier
+// fix had already repaired. REPORT-ONLY (no threshold/budget/alarm rendered
+// here); one row per measured window, oldest first, and the specific counted
+// re-fixes named beneath so a reader can dereference the rate back to a real
+// record, not only the heading. An empty artifact set renders could-not-measure
+// (this repo's own defects table is not populated: M2 is library-only, not yet
+// wired into `mine` — a correct three-state result, not a failure).
+func writeRefixSection(b *strings.Builder, recs []RefixRecord) {
+	b.WriteString("## Re-fix rate (regression-suite effectiveness)\n\n")
+	b.WriteString("Report-only: no threshold, budget or alarm — thresholds follow after ≥ 2 measured windows (spec §9.6, §13).\n\n")
+	if len(recs) == 0 {
+		b.WriteString("not measured — populated once the defects table is traced (quality/06–07) and a RegressionLinkage adapter is configured. Never rendered as 0.\n\n")
+		return
+	}
+	sort.Slice(recs, func(i, j int) bool {
+		if !recs[i].MinedAt.Equal(recs[j].MinedAt) {
+			return recs[i].MinedAt.Before(recs[j].MinedAt)
+		}
+		return recs[i].Window < recs[j].Window
+	})
+	b.WriteString("| Window | Traced fixes | Re-fix count | Re-fix rate | Linkage coverage | Tier 1 | Tier 2 | Tier 3 |\n")
+	b.WriteString("|--------|---------------|--------------|-------------|-------------------|--------|--------|--------|\n")
+	for _, r := range recs {
+		fmt.Fprintf(b, "| %s | %d | %s | %s | %s | %d | %d | %d |\n",
+			mdCell(r.Window), r.TracedFixCount,
+			renderMeasureFloat(r.RefixCount), renderMeasureFloat(r.RefixRate), renderMeasureFloat(r.LinkageCoverage),
+			r.TierComposition.Tier1Count, r.TierComposition.Tier2Count, r.TierComposition.Tier3Count)
+	}
+	b.WriteString("\n")
+
+	var named []string
+	for _, r := range recs {
+		for _, e := range r.Refixes {
+			id := "commit " + shortSHA(e.FixCommitSHA)
+			if e.FixPRNumber != 0 {
+				id = fmt.Sprintf("PR #%d", e.FixPRNumber)
+			}
+			earlier := "commit " + shortSHA(e.EarlierFixCommitSHA)
+			if e.EarlierFixPRNumber != 0 {
+				earlier = fmt.Sprintf("PR #%d", e.EarlierFixPRNumber)
+			}
+			named = append(named, fmt.Sprintf("%s (window %s) — regression of %s via `%s`", id, r.Window, earlier, e.LinkKind))
+		}
+	}
+	if len(named) > 0 {
+		b.WriteString("Counted re-fixes:\n\n")
+		for _, n := range named {
+			fmt.Fprintf(b, "- %s\n", n)
+		}
+		b.WriteString("\n")
+	}
 }
 
 // writeHotspots renders the top-10 hotspots of the latest snapshot by hotspot
