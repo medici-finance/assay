@@ -20,7 +20,7 @@ authored: 2026-09-23 by assay-worker session (issue #1581, part 4 of 4)
 sources:
   - "issue #1581 part 4 — qualgen reports RE-FIXES: a fix whose SZZ-traced inducing change repeats a pattern an earlier fix addressed, the earlier fix linked via `regression-of:` (#1580) or the same fix-linkage class; the trend tells whether the suite works; measured before it gates anything. Done criterion: renders in the quality report"
   - "issue #1580 — defines `regression-of:` (the prior fix's issue or commit) on fix/bug briefs; pairing recorded here, not as a depends: edge (#1580 is issue-only)"
-  - "docs/streams/quality/spec.md §9.6 and §11 item 4 — budgets/thresholds only after ≥ 2 windows of measurement"
+  - "docs/streams/quality/spec.md §9.6 and §13 item 4 (Thresholds) — budgets/thresholds only after ≥ 2 windows of measurement"
   - "docs/streams/quality/brief-06-m2-fix-identification.md and brief-07-m2-szz-trace-metrics.md — the DefectFix / DefectTrace contracts this brief reads"
   - "freshness-checked 2026-09-23 @ 5ee5ccb39 — no re-fix metric in qualgen; `renderReport` (qualgen/report.go) renders M2 as a `not measured` placeholder; `ClassifyFix` / `TraceDefects` have no non-test caller (M2 is library-only, not yet wired into `mine`)"
 exec-tier: strong
@@ -76,7 +76,7 @@ facts:
   a three-state `Measure`. Beside them: `linkage_coverage` = the share of traced fixes
   whose regression linkage resolved (either path), and the evidence-tier composition of
   the counted fixes (spec §10 honest-claims). It is REPORT-ONLY: no threshold, budget or
-  alarm. Thresholds follow ≥ 2 windows (spec §11 item 4) in a later brief.
+  alarm. Thresholds follow ≥ 2 windows (spec §13 item 4, Thresholds; and §9.6) in a later brief.
 - **What renders on this repo today:** the `defects` table is not populated here (M2 is
   library-only), so the section renders `not measured` with the reason. That is correct
   three-state output, not a failure. Numbers appear on any target whose defects table is
@@ -121,14 +121,18 @@ Verify 2–5 pure, 6–7 render).
    the PR body under `## Fail-first`.
 
 ## Verify (executable — no prose-only DoD items)
+Every row that runs a named test anchors its selector (`^Name$`), writes the output to a file, and
+asserts that test's `--- PASS:` line. A test that is missing or misnamed then fails the row.
+A bare `-run` would print `no tests to run` and exit 0 (the vacuous pass statusgen/14 lints for).
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd qualgen && go build ./... && go vet ./...` | exit 0 | check:ci |
-| 2 | `cd qualgen && go test -count=1 -timeout 300s -run 'TestRefix_RegressionOfLink_Counted' -v ./...` | exit 0; a traced fix whose brief's `regression-of:` names an earlier fix is counted as a re-fix | check:ci |
-| 3 | `cd qualgen && go test -count=1 -timeout 300s -run 'TestRefix_SameDefectClass_Counted' -v ./...` | exit 0; with a class prefix configured, two fixes whose closed issues share a class key yield one re-fix | check:ci |
-| 4 | `cd qualgen && go test -count=1 -timeout 300s -run 'TestRefix_EarlierFixAfterInducer_NotCounted' -v ./...` | exit 0; negative path: a linked fix E whose fix time is AFTER F's earliest inducing commit is NOT a re-fix | check:ci +mutation |
-| 5 | `cd qualgen && go test -count=1 -timeout 300s -run 'TestRefix_NoLinkageConfigured_CouldNotMeasure' -v ./...` | exit 0; with no `regression-of:` anywhere and no class prefix, rate and coverage are could-not-measure, never measured-zero | check:ci |
-| 6 | `cd qualgen && go test -count=1 -timeout 300s -run 'TestReport_RefixSection_Renders' -v ./...` | exit 0; over a fixture store holding one planted re-fix, the rendered report's re-fix section names that fix's PR number and a rate of the expected value. This dereferences the rendered number back to the planted record, not only the heading | check:ci +dereference |
+| 2 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_RegressionOfLink_Counted$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_RegressionOfLink_Counted.out" 2>&1 && grep -F -e '--- PASS: TestRefix_RegressionOfLink_Counted' "${TMPDIR:-/tmp}/q19-TestRefix_RegressionOfLink_Counted.out"` | exit 0; a traced fix whose brief's `regression-of:` names an earlier fix is counted as a re-fix | check:ci |
+| 3 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_SameDefectClass_Counted$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_SameDefectClass_Counted.out" 2>&1 && grep -F -e '--- PASS: TestRefix_SameDefectClass_Counted' "${TMPDIR:-/tmp}/q19-TestRefix_SameDefectClass_Counted.out"` | exit 0; with a class prefix configured, two fixes whose closed issues share a class key yield one re-fix | check:ci |
+| 4 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_EarlierFixAfterInducer_NotCounted$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_EarlierFixAfterInducer_NotCounted.out" 2>&1 && grep -F -e '--- PASS: TestRefix_EarlierFixAfterInducer_NotCounted' "${TMPDIR:-/tmp}/q19-TestRefix_EarlierFixAfterInducer_NotCounted.out"` | exit 0; negative path: a linked fix E whose fix time is AFTER F's earliest inducing commit is NOT a re-fix | check:ci +mutation |
+| 5 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_NoLinkageConfigured_CouldNotMeasure$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_NoLinkageConfigured_CouldNotMeasure.out" 2>&1 && grep -F -e '--- PASS: TestRefix_NoLinkageConfigured_CouldNotMeasure' "${TMPDIR:-/tmp}/q19-TestRefix_NoLinkageConfigured_CouldNotMeasure.out"` | exit 0; with no `regression-of:` anywhere and no class prefix, rate and coverage are could-not-measure, never measured-zero | check:ci |
+| 6 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestReport_RefixSection_Renders$' -v ./... > "${TMPDIR:-/tmp}/q19-TestReport_RefixSection_Renders.out" 2>&1 && grep -F -e '--- PASS: TestReport_RefixSection_Renders' "${TMPDIR:-/tmp}/q19-TestReport_RefixSection_Renders.out"` | exit 0; over a fixture store holding one planted re-fix, the rendered report's re-fix section names that fix's PR number and a rate of the expected value. This dereferences the rendered number back to the planted record, not only the heading | check:ci +dereference |
 | 7 | `cd qualgen && go build -o "${TMPDIR:-/tmp}/qualgen19" . && "${TMPDIR:-/tmp}/qualgen19" report --out .. > "${TMPDIR:-/tmp}/quality19.md" && grep -F 'Re-fix rate' "${TMPDIR:-/tmp}/quality19.md"` | exit 0; over this repo's real tracking root the section renders (as `not measured` with its reason until the defects table is populated) | check +flow |
 
 ## Evidence

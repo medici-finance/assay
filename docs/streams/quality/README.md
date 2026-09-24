@@ -138,13 +138,15 @@ in review. The M4 and learned-model briefs (12 in wave 4, 14 in wave 5, and 13/1
 wave 3) are corpus-gated: each consumes an M1–M3 corpus that must season first.
 
 **Regression suite (17 → 18, and 19).** Briefs 17–19 deliver issue #1581, split three
-ways because its four parts span a CI gate, a coverage report and a qualgen metric (one brief
+ways because its first four parts span a CI gate, a coverage report and a qualgen metric (one brief
 would exceed the L ceiling). 17 is the naming convention and the count-can't-drop /
 vacuous-selector gate. 18 is the report-first stub-coverage seam report, built in 17's tool.
 19 is the re-fix metric over the M2 corpus. The work pairs with #1580 (fix the defect class:
 class-guard Verify row + `regression-of:`), which is delivered issue-only, so the pairing is
 recorded in each brief's sources and pickup precondition, not as a `depends:` edge. None of
-the three is on the critical path above.
+the three is on the critical path above. The issue's part 5 (a `statusgen --lint` rule for a
+Verify row whose `go test -run` selector can pass on "no tests to run") is statusgen's own
+code, so it is brief statusgen/14 on the statusgen board, not a brief here.
 
 ## Shared conventions
 

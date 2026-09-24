@@ -21,7 +21,7 @@ sources:
   - "issue #1581 part 3 — stub-coverage rule: a seam tests replace with a stub (a package-level func var swapped in `_test.go`) must also be exercised through its PRODUCTION implementation by at least one test per forge or variant it branches on; start as a report listing the seams stubbed everywhere and exercised nowhere, gate only after two measurement windows. Done criterion: a planted stub-only seam goes red"
   - "issue #1573 / PR #1577 — the worked example (seam `roleTokenPath`, tools/desk/cmd/deskwt/roleinit.go)"
   - "issue #1580 — paired skills change (class-guard Verify row); pairing recorded here, not as a depends: edge (#1580 is issue-only)"
-  - "docs/streams/quality/spec.md §11 item 4 — measure for ≥ 2 windows before any threshold gates anything (the stream's measure-before-threshold rule)"
+  - "docs/streams/quality/spec.md §13 item 4 (Thresholds) and §9.6 — measure for ≥ 2 windows before any threshold gates anything (the stream's measure-before-threshold rule)"
   - "freshness-checked 2026-09-23 @ 5ee5ccb39 — no stub/seam coverage report exists in the tree; `roleTokenPath` body covered by the `./cmd/deskwt/` test run (coverprofile line `roleinit.go:437.62,440.2 2 1`)"
 exec-tier: strong
 exec-tier-why: >-
@@ -80,7 +80,7 @@ facts:
 - **Report-first, gate later:** the CI job never fails on findings. `--fail-on-findings`
   (exit 1 when any seam is `stub-only`) exists for this brief's fail-first evidence and for a
   later promotion. Promotion to a gate follows ≥ 2 measurement windows
-  (spec §11 item 4) and is a SEPARATE later brief, not this one.
+  (spec §13 item 4, Thresholds; and §9.6) and is a SEPARATE later brief, not this one.
 - **Cost:** a coverage run of every module runs every test, so the report job runs on
   `push` to `main` only (not per PR). A module whose tests cannot pass in the published
   tree (see quality/17's CI fact) shows its seams as `could-not-measure`. They are never
@@ -128,13 +128,17 @@ the only effect (Task 1; Verify 2–5 on fixtures, Verify 6 on the real tree).
    `## Fail-first`.
 
 ## Verify (executable — no prose-only DoD items)
+Every row that runs a named test anchors its selector (`^Name$`), writes the output to a file, and
+asserts that test's `--- PASS:` line. A test that is missing or misnamed then fails the row.
+A bare `-run` would print `no tests to run` and exit 0 (the vacuous pass statusgen/14 lints for).
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/regsuite && go build ./... && go vet ./...` | exit 0 | check:ci |
-| 2 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestStubs_PlantedStubOnlySeam_Flagged' -v ./...` | exit 0; a fixture seam that every test stubs is reported `stub-only`; in report mode the tool exits 0, and with `--fail-on-findings` it exits 1 (the planted stub-only seam goes red) | check:ci +mutation |
-| 3 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestStubs_ProductionExercisedSeam_NotFlagged' -v ./...` | exit 0; negative control: a fixture seam stubbed in one test and run unstubbed in another is `production-covered`, and `--fail-on-findings` exits 0 | check:ci |
-| 4 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestStubs_PartialVariant_ListsUncoveredBlock' -v ./...` | exit 0; a fixture seam whose body branches on two variants with only one tested is `partial`, and the uncovered branch's line range is named | check:ci |
-| 5 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestStubs_FailedPackageRun_CouldNotMeasure' -v ./...` | exit 0; a fixture package whose tests fail yields `could-not-measure` for its seams, never `stub-only` or `production-covered` | check:ci |
+| 2 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestStubs_PlantedStubOnlySeam_Flagged$' -v ./... > "${TMPDIR:-/tmp}/q18-TestStubs_PlantedStubOnlySeam_Flagged.out" 2>&1 && grep -F -e '--- PASS: TestStubs_PlantedStubOnlySeam_Flagged' "${TMPDIR:-/tmp}/q18-TestStubs_PlantedStubOnlySeam_Flagged.out"` | exit 0; a fixture seam that every test stubs is reported `stub-only`; in report mode the tool exits 0, and with `--fail-on-findings` it exits 1 (the planted stub-only seam goes red) | check:ci +mutation |
+| 3 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestStubs_ProductionExercisedSeam_NotFlagged$' -v ./... > "${TMPDIR:-/tmp}/q18-TestStubs_ProductionExercisedSeam_NotFlagged.out" 2>&1 && grep -F -e '--- PASS: TestStubs_ProductionExercisedSeam_NotFlagged' "${TMPDIR:-/tmp}/q18-TestStubs_ProductionExercisedSeam_NotFlagged.out"` | exit 0; negative control: a fixture seam stubbed in one test and run unstubbed in another is `production-covered`, and `--fail-on-findings` exits 0 | check:ci |
+| 4 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestStubs_PartialVariant_ListsUncoveredBlock$' -v ./... > "${TMPDIR:-/tmp}/q18-TestStubs_PartialVariant_ListsUncoveredBlock.out" 2>&1 && grep -F -e '--- PASS: TestStubs_PartialVariant_ListsUncoveredBlock' "${TMPDIR:-/tmp}/q18-TestStubs_PartialVariant_ListsUncoveredBlock.out"` | exit 0; a fixture seam whose body branches on two variants with only one tested is `partial`, and the uncovered branch's line range is named | check:ci |
+| 5 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestStubs_FailedPackageRun_CouldNotMeasure$' -v ./... > "${TMPDIR:-/tmp}/q18-TestStubs_FailedPackageRun_CouldNotMeasure.out" 2>&1 && grep -F -e '--- PASS: TestStubs_FailedPackageRun_CouldNotMeasure' "${TMPDIR:-/tmp}/q18-TestStubs_FailedPackageRun_CouldNotMeasure.out"` | exit 0; a fixture package whose tests fail yields `could-not-measure` for its seams, never `stub-only` or `production-covered` | check:ci |
 | 6 | `cd tools/regsuite && go build -o "${TMPDIR:-/tmp}/regsuite18" . && cd ../.. && "${TMPDIR:-/tmp}/regsuite18" stubs --module tools/desk --pkg ./cmd/deskwt/ > "${TMPDIR:-/tmp}/stubs18.out" && grep -E 'roleTokenPath +production-covered' "${TMPDIR:-/tmp}/stubs18.out"` | exit 0; the real tree's #1573 seam is found and classified `production-covered` (post-#1577 truth, checked by coverprofile at authoring). A detector that misses the seam, or misreads its coverage, fails this row | check +dereference +flow |
 | 7 | `grep -n 'Stub-coverage rule' docs/test-policy.md` | exit 0 | check:ci |
 | 8 | Read `.github/workflows/regression-suite.yml` (planned) | `stub-coverage-report` triggers on push to `main` only, never passes `--fail-on-findings`, and publishes to the step summary + a workflow artifact | gate:model |

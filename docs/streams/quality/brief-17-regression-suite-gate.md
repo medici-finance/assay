@@ -36,7 +36,7 @@ consumers:
   - "tools/desk/cmd/deskwt/roleinitgitlabcred_test.go: follow-up quality/17 (this brief; the seed rename)"
 ---
 
-# Brief 17 — regression suite: `TestRegression_` naming convention + count-can't-drop / vacuous-selector CI gate
+# Brief 17 — regression suite: TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate
 
 ## Context
 
@@ -74,6 +74,10 @@ facts:
   nothing prints `testing: warning: no tests to run` and exits 0 — the vacuous pass.
   `go test -json` emits one event per test action (`run` / `pass` / `fail` / `skip`) with
   a `Test` field; a subtest's name contains `/`.
+- **Sibling layer, not a dependency:** statusgen/14 lints the same class at AUTHORING time,
+  in brief Verify tables: a `go test -run` row that does not assert its `--- PASS:` line.
+  This gate catches it at CI RUN time for the regression job. They are different tools
+  reading different signals, so neither waits on the other and there is no `depends:` edge.
 - **Zero regression tests exist today** (`git grep -n TestRegression -- '*.go'` → no output,
   2026-09-23 @ 5ee5ccb39). Seed member: `TestRoleInitGitLabReadsCustodyNeverGitHubMinter`
   in `tools/desk/cmd/deskwt/roleinitgitlabcred_test.go`, the unstubbed guard #1577 landed
@@ -142,11 +146,16 @@ Verify 2–7), and on the real tree by Verify 8.
    - a name that fails the shape regex prints a NOTICE and does not change the exit code.
 3. Tests + txtar fixtures, one per Verify row 2–7.
 4. `.github/workflows/regression-suite.yml` (planned), job `regression-gate`: on `pull_request` the base
-   is the PR base SHA; on `push` to `main` the base is the first parent. Check out with
+   is the PR base SHA; on `push` to `main` the base is the first parent. The HEAD tree on
+   `pull_request` is the default `actions/checkout` ref — the merge of the PR into its
+   base (`refs/pull/<N>/merge`), NOT the bare branch tip. Do not override `ref:`. A branch
+   that is behind main, measured tip-vs-`base.sha`, would go red with a false count drop on
+   every regression test main added since the branch was cut; the merge checkout already
+   contains them. On `push` the head is the pushed commit. Check out with
    enough depth, `git worktree add "$RUNNER_TEMP/base" <sha>`, build `tools/regsuite`, run
    `regsuite gate --head . --base "$RUNNER_TEMP/base"`. The workflow passes no selector.
 5. Seed: rename `TestRoleInitGitLabReadsCustodyNeverGitHubMinter` →
-   `TestRegression_assay_1573_RoleInitGitLabReadsCustodyNeverGitHubMinter` (planned; body unchanged).
+   `TestRegression_assay_1573_RoleInitGitLabReadsCustodyNeverGitHubMinter` (planned), body unchanged.
 6. Docs: `docs/test-policy.md` `## Regression suite` — the convention and shape regex, the
    hermetic requirement, what the job fails on (the three causes + could-not-check), that a
    rename must keep the prefix, and that a genuinely correct deletion is stated in the PR
@@ -157,17 +166,21 @@ Verify 2–7), and on the real tree by Verify 8.
    check-run results in the PR body under `## Fail-first`.
 
 ## Verify (executable — no prose-only DoD items)
+Every row that runs a named test anchors its selector (`^Name$`), writes the output to a file, and
+asserts that test's `--- PASS:` line. A test that is missing or misnamed then fails the row.
+A bare `-run` would print `no tests to run` and exit 0 (the vacuous pass statusgen/14 lints for).
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/regsuite && go build ./... && go vet ./...` | exit 0 | check:ci |
-| 2 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestGate_PlantedDeletion_Red' -v ./...` | exit 0; the test asserts gate exit 1 on a base with 2 regression tests and a head with 1, and that the output names the missing test | check:ci +mutation |
-| 3 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestGate_PlantedVacuousSelector_Red' -v ./...` | exit 0; the test asserts gate exit 1 with `vacuous` in the output when `--selector` matches nothing in a module whose listed count is > 0 | check:ci +mutation |
-| 4 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestGate_FailingRegressionTest_Red' -v ./...` | exit 0; a fixture regression test that fails makes the gate exit 1 | check:ci +mutation |
-| 5 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestGate_RenameKeepsPrefix_Clean' -v ./...` | exit 0; negative control: base and head differ only by a prefixed rename, and the gate exits 0 (proves the count is compared, not the name set) | check:ci |
-| 6 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestGate_BrokenModule_CouldNotCheck' -v ./...` | exit 0; a head module that does not compile yields gate exit 2 with `could-not-check` in the output, never exit 0 | check:ci |
-| 7 | `cd tools/regsuite && go test -count=1 -timeout 300s -run 'TestGate_TestdataModulesExcluded' -v ./...` | exit 0; a module under a `testdata/` path is not discovered | check:ci |
+| 2 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestGate_PlantedDeletion_Red$' -v ./... > "${TMPDIR:-/tmp}/q17-TestGate_PlantedDeletion_Red.out" 2>&1 && grep -F -e '--- PASS: TestGate_PlantedDeletion_Red' "${TMPDIR:-/tmp}/q17-TestGate_PlantedDeletion_Red.out"` | exit 0; the test asserts gate exit 1 on a base with 2 regression tests and a head with 1, and that the output names the missing test | check:ci +mutation |
+| 3 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestGate_PlantedVacuousSelector_Red$' -v ./... > "${TMPDIR:-/tmp}/q17-TestGate_PlantedVacuousSelector_Red.out" 2>&1 && grep -F -e '--- PASS: TestGate_PlantedVacuousSelector_Red' "${TMPDIR:-/tmp}/q17-TestGate_PlantedVacuousSelector_Red.out"` | exit 0; the test asserts gate exit 1 with `vacuous` in the output when `--selector` matches nothing in a module whose listed count is > 0 | check:ci +mutation |
+| 4 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestGate_FailingRegressionTest_Red$' -v ./... > "${TMPDIR:-/tmp}/q17-TestGate_FailingRegressionTest_Red.out" 2>&1 && grep -F -e '--- PASS: TestGate_FailingRegressionTest_Red' "${TMPDIR:-/tmp}/q17-TestGate_FailingRegressionTest_Red.out"` | exit 0; a fixture regression test that fails makes the gate exit 1 | check:ci +mutation |
+| 5 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestGate_RenameKeepsPrefix_Clean$' -v ./... > "${TMPDIR:-/tmp}/q17-TestGate_RenameKeepsPrefix_Clean.out" 2>&1 && grep -F -e '--- PASS: TestGate_RenameKeepsPrefix_Clean' "${TMPDIR:-/tmp}/q17-TestGate_RenameKeepsPrefix_Clean.out"` | exit 0; negative control: base and head differ only by a prefixed rename, and the gate exits 0 (proves the count is compared, not the name set) | check:ci |
+| 6 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestGate_BrokenModule_CouldNotCheck$' -v ./... > "${TMPDIR:-/tmp}/q17-TestGate_BrokenModule_CouldNotCheck.out" 2>&1 && grep -F -e '--- PASS: TestGate_BrokenModule_CouldNotCheck' "${TMPDIR:-/tmp}/q17-TestGate_BrokenModule_CouldNotCheck.out"` | exit 0; a head module that does not compile yields gate exit 2 with `could-not-check` in the output, never exit 0 | check:ci |
+| 7 | `cd tools/regsuite && go test -count=1 -timeout 300s -run '^TestGate_TestdataModulesExcluded$' -v ./... > "${TMPDIR:-/tmp}/q17-TestGate_TestdataModulesExcluded.out" 2>&1 && grep -F -e '--- PASS: TestGate_TestdataModulesExcluded' "${TMPDIR:-/tmp}/q17-TestGate_TestdataModulesExcluded.out"` | exit 0; a module under a `testdata/` path is not discovered | check:ci |
 | 8 | `cd tools/regsuite && go build -o "${TMPDIR:-/tmp}/regsuite17" . && cd ../.. && "${TMPDIR:-/tmp}/regsuite17" gate --head . --base . --module tools/desk > "${TMPDIR:-/tmp}/regsuite17.out" && grep -F 'TestRegression_assay_1573_RoleInitGitLabReadsCustodyNeverGitHubMinter' "${TMPDIR:-/tmp}/regsuite17.out"` | exit 0; the real gate over this repo's `tools/desk` module exits 0 and names the seeded test among those EXECUTED (it was found and run, not only listed) | check +flow |
-| 9 | `cd tools/regsuite && go test -count=1 -timeout 120s -run 'TestConvention_DocMatchesConstant' -v ./...` | exit 0; the test reads `../../docs/test-policy.md` and asserts it states the tool's prefix constant and shape regex byte-for-byte (drift guard between doc and code) | check:ci +dereference |
+| 9 | `cd tools/regsuite && go test -count=1 -timeout 120s -run '^TestConvention_DocMatchesConstant$' -v ./... > "${TMPDIR:-/tmp}/q17-TestConvention_DocMatchesConstant.out" 2>&1 && grep -F -e '--- PASS: TestConvention_DocMatchesConstant' "${TMPDIR:-/tmp}/q17-TestConvention_DocMatchesConstant.out"` | exit 0; the test reads `../../docs/test-policy.md` and asserts it states the tool's prefix constant and shape regex byte-for-byte (drift guard between doc and code) | check:ci +dereference |
 | 10 | `grep -n 'Regression suite' plugins/assay/skills/author-brief/SKILL.md` | exit 0; the class-guard Verify-row paragraph points at the test-policy section | check:ci |
 | 11 | Read the PR's commit trail and the `regression-gate` check runs on it | the planted-deletion commit's `regression-gate` run is red with the seed test's name in its log, and the revert commit's run is green. This is the in-CI fail-first evidence the issue requires | gate:model |
 
@@ -187,5 +200,7 @@ existing control. The reviewer checks exactly that (item 4 below).
 Reviewer confirms: (1) the prefix is a constant nothing
 downstream can override, and the workflow passes no selector; (2) could-not-check never
 exits 0 (row 6); (3) rows 2–4 are real mutations whose planted fault the test proves red;
-(4) the workflow's trigger, permissions and runner posture match Ground rules. Record
+(4) the workflow's trigger, permissions and runner posture match Ground rules, and on
+`pull_request` the head is the default merge checkout, not an overridden branch-tip `ref:`
+(Task 4). Record
 verdict + date in the stream README table.
