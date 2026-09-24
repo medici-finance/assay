@@ -61,8 +61,8 @@ func TestAutoLaneConfigUnsetIsClosed(t *testing.T) {
 	}
 }
 
-// TestAutoLaneConfigPartialIsRefused — a subset is never a partial lane.
-func TestAutoLaneConfigPartialIsRefused(t *testing.T) {
+// TestAutoLane_ConfigPartialIs_Refused — a subset is never a partial lane.
+func TestAutoLane_ConfigPartialIs_Refused(t *testing.T) {
 	raw := alRaw(alRepo + ":docs/notes/**:ada")
 	delete(raw, EnvAutoApproveDailyCap)
 	ld := ParseAutoLaneConfig(raw, alValidator())
@@ -107,9 +107,9 @@ func TestAutoLaneConfigRefusals(t *testing.T) {
 	}
 }
 
-// TestAutoLaneConfigRefusesSurfaceOverlap — an area that can reach a declared surface is
+// TestAutoLane_ConfigRefuses_SurfaceOverlap — an area that can reach a declared surface is
 // refused at load, in either direction of containment.
-func TestAutoLaneConfigRefusesSurfaceOverlap(t *testing.T) {
+func TestAutoLane_ConfigRefuses_SurfaceOverlap(t *testing.T) {
 	surfaces := []string{".github/workflows/**", "tools/*guard*/**", "docs/leak/**"}
 	for _, glob := range []string{".github/workflows/**", "tools/writeguard/**", "docs/**"} {
 		c := alConfig(t, alRepo+":"+glob+":ada")
@@ -124,14 +124,14 @@ func TestAutoLaneConfigRefusesSurfaceOverlap(t *testing.T) {
 	}
 }
 
-func TestAutoLaneConfigRefusesAbsentSurfaces(t *testing.T) {
+func TestAutoLane_ConfigRefuses_AbsentSurfaces(t *testing.T) {
 	c := alConfig(t, alRepo+":docs/notes/**:ada")
 	if p := ValidateAutoLaneRepo(c, alRepo, false, nil, noRisk); !strings.Contains(p, "declares no surfaces") {
 		t.Fatalf("absent .assay-surfaces: problem %q — want a refusal (no declared surfaces is never safe)", p)
 	}
 }
 
-func TestAutoLaneConfigRefusesRiskClassedArea(t *testing.T) {
+func TestAutoLane_ConfigRefusesRisk_ClassedArea(t *testing.T) {
 	c := alConfig(t, alRepo+":secrets/public/**:ada")
 	if p := ValidateAutoLaneRepo(c, alRepo, true, nil, riskSecrets); !strings.Contains(p, "risk-classed") {
 		t.Fatalf("problem %q — want a risk-classed refusal", p)
@@ -142,8 +142,8 @@ func TestAutoLaneConfigRefusesRiskClassedArea(t *testing.T) {
 	}
 }
 
-// TestAutoLaneConfigRefusesBriefReachingArea — no opt-in may reach a stream brief file.
-func TestAutoLaneConfigRefusesBriefReachingArea(t *testing.T) {
+// TestAutoLane_ConfigRefusesBrief_ReachingArea — no opt-in may reach a stream brief file.
+func TestAutoLane_ConfigRefusesBrief_ReachingArea(t *testing.T) {
 	for _, glob := range []string{"docs/streams/**", "docs/streams/*/brief-*.md", "docs/**"} {
 		c := alConfig(t, alRepo+":"+glob+":ada")
 		if p := AutoLaneAreaTripwires(c, alRepo, noRisk); !strings.Contains(p, "stream brief file") {
@@ -274,9 +274,9 @@ func TestAutoLaneScoreOverLineEjects(t *testing.T) {
 	}
 }
 
-// TestAutoLaneScoreSupersededChangesRequested — the laundered-latest-view defect: an
+// TestAutoLane_ScoreSuperseded_ChangesRequested — the laundered-latest-view defect: an
 // APPROVED after a CHANGES_REQUESTED still fires review-rework and push-after-request.
-func TestAutoLaneScoreSupersededChangesRequested(t *testing.T) {
+func TestAutoLane_ScoreSuperseded_ChangesRequested(t *testing.T) {
 	in := cleanScoreIn()
 	in.Reviews = []Review{{State: "CHANGES_REQUESTED", CommitID: "h1"}, {State: "APPROVED", CommitID: "h2"}}
 	s := ScoreAutoLane(in)
@@ -320,9 +320,9 @@ func TestAutoLaneScoreSignals(t *testing.T) {
 	}
 }
 
-// TestAutoLaneCINonsuccessIgnoresSupersededReruns — five runs of one check name at head, the
+// TestAutoLane_CINonsuccess_IgnoresSuperseded_Reruns — five runs of one check name at head, the
 // earliest four cancelled/failed and the LAST green: the signal judges the latest run only.
-func TestAutoLaneCINonsuccessIgnoresSupersededReruns(t *testing.T) {
+func TestAutoLane_CINonsuccess_IgnoresSuperseded_Reruns(t *testing.T) {
 	in := cleanScoreIn()
 	in.Checks = &ChecksAtHead{CheckRunsTotalCount: 5, CheckRuns: []CheckRun{
 		{Name: "prompt", Status: "completed", Conclusion: "cancelled", CompletedAt: "2026-01-01T00:01:00Z"},
@@ -356,9 +356,9 @@ func TestConclusionGreenSet(t *testing.T) {
 
 // --- kill signal ---
 
-// TestAutoLaneKillSignalBelowFloorDisarms — n >= 10 and fpy under the floor HOLDS. Fail-first:
+// TestAutoLane_KillSignalBelow_FloorDisarms — n >= 10 and fpy under the floor HOLDS. Fail-first:
 // a reader that compared against n alone, or read fpy <= floor as healthy, stays armed.
-func TestAutoLaneKillSignalBelowFloorDisarms(t *testing.T) {
+func TestAutoLane_KillSignalBelow_FloorDisarms(t *testing.T) {
 	k := EvalAutoLaneKillSignal([]byte(`{"auto-lane":{"n":12,"firstPassYield":0.75}}`), 0.90)
 	if k.Armed() || k.Line != "lane: hold (fpy 0.75 < floor 0.90, n=12)" {
 		t.Fatalf("below floor: armed=%t line %q", k.Armed(), k.Line)
@@ -377,7 +377,7 @@ func TestAutoLaneKillSignalBelowFloorDisarms(t *testing.T) {
 	}
 }
 
-func TestAutoLaneKillSignalUnreadableHolds(t *testing.T) {
+func TestAutoLane_KillSignal_UnreadableHolds(t *testing.T) {
 	for _, data := range []string{``, `not json`, `{}`, `{"size:L":{"n":3}}`, `{"auto-lane":{}}`,
 		`{"auto-lane":{"n":20,"firstPassYield":"could-not-check"}}`, `{"auto-lane":{"n":20,"firstPassYield":7}}`} {
 		if k := EvalAutoLaneKillSignal([]byte(data), 0.9); k.Armed() {
@@ -398,7 +398,7 @@ func alEntry(verb, result, repo string, pr int, ts string) Entry {
 	return Entry{Tool: AutoLaneToolName, Verb: verb, Result: result, Repo: repo, PR: &pr, TS: ts}
 }
 
-func TestAutoLaneMergesOnCountsOnlyTodaysOKMerges(t *testing.T) {
+func TestAutoLane_MergesOnCountsOnly_TodaysOKMerges(t *testing.T) {
 	day := time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC)
 	entries := []Entry{
 		alEntry(AutoLaneVerbMerge, ResultOK, alRepo, 1, "2026-03-04T01:00:00Z"),

@@ -35,10 +35,10 @@ func TestAutoLaneShippedStateIsInert(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesUnsignedRuling — every other condition true, R-8's Sign-off line
+// TestAutoLane_MergeRefuses_UnsignedRuling — every other condition true, R-8's Sign-off line
 // EMPTY: `merge` refuses ruling-unsigned with ZERO forge writes. This is the enactment gate
 // holding on its own with the score clean (Verify row 8).
-func TestAutoLaneMergeRefusesUnsignedRuling(t *testing.T) {
+func TestAutoLane_MergeRefuses_UnsignedRuling(t *testing.T) {
 	for _, args := range [][]string{{verbMerge, "7"}, {verbMerge, "7", "--dry-run"}} {
 		e := install(t, fixtureLaneKeys, rulingsUnsigned)
 		code, _, stderr := e.run(append(args, "--fpy-file", e.fpy(healthyFPY))...)
@@ -51,9 +51,9 @@ func TestAutoLaneMergeRefusesUnsignedRuling(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMissingRulingIsCouldNotCheck — a register with no R-8 section at all is
+// TestAutoLane_MissingRulingIs_CouldNotCheck — a register with no R-8 section at all is
 // could-not-check (exit 6), never signed and never unsigned.
-func TestAutoLaneMissingRulingIsCouldNotCheck(t *testing.T) {
+func TestAutoLane_MissingRulingIs_CouldNotCheck(t *testing.T) {
 	e := install(t, fixtureLaneKeys, "# Rulings\n\n## R-1 — other\n\n**Sign-off:**\n")
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
 	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "could-not-check: "+condRulingSigned) {
@@ -61,9 +61,9 @@ func TestAutoLaneMissingRulingIsCouldNotCheck(t *testing.T) {
 	}
 }
 
-// TestAutoLaneRulingSignedByNonAuthorityRefuses — a signed line whose artifact is authored by
+// TestAutoLane_RulingSignedByNon_AuthorityRefuses — a signed line whose artifact is authored by
 // a TRUSTED human who is not the blessing authority does not enact the lane.
-func TestAutoLaneRulingSignedByNonAuthorityRefuses(t *testing.T) {
+func TestAutoLane_RulingSignedByNon_AuthorityRefuses(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.comments[3] = []deskkit.Comment{{DatabaseID: 555, Author: deskkit.Account{Login: "shared-agent", ID: 2002}}}
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
@@ -72,9 +72,9 @@ func TestAutoLaneRulingSignedByNonAuthorityRefuses(t *testing.T) {
 	}
 }
 
-// TestAutoLaneEjectUnenactedWritesNothing — a PR that would be ejected, on an unsigned lane:
+// TestAutoLane_EjectUnenacted_WritesNothing — a PR that would be ejected, on an unsigned lane:
 // the verb reports the ejection and writes NOTHING (no label, no comment, no latch).
-func TestAutoLaneEjectUnenactedWritesNothing(t *testing.T) {
+func TestAutoLane_EjectUnenacted_WritesNothing(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsUnsigned)
 	e.fg.pr.Labels = append(e.fg.pr.Labels, deskkit.SizeLabelPrefix+"L")
 	code, _, stderr := e.run(verbRecompute, "7")
@@ -91,8 +91,8 @@ func TestAutoLaneEjectUnenactedWritesNothing(t *testing.T) {
 
 // --- config refusals ----------------------------------------------------------------------
 
-// TestAutoLaneConfigRefusesSurfaceOverlap — Verify row 3.
-func TestAutoLaneConfigRefusesSurfaceOverlap(t *testing.T) {
+// TestAutoLane_ConfigRefuses_SurfaceOverlap — Verify row 3.
+func TestAutoLane_ConfigRefuses_SurfaceOverlap(t *testing.T) {
 	keys := strings.Replace(fixtureLaneKeys,
 		"example-org/tracker:docs/notes/**:ada,example-org/tracker:BOARD.md:ada",
 		"example-org/tracker:.github/workflows/**:ada", 1)
@@ -113,9 +113,9 @@ func TestAutoLaneConfigRefusesSurfaceOverlap(t *testing.T) {
 	}
 }
 
-// TestAutoLaneConfigRefusesRiskClassedArea — the same glob with no local surfaces file is
+// TestAutoLane_ConfigRefusesRisk_ClassedArea — the same glob with no local surfaces file is
 // still refused, by the compiled risk triggers, before any forge request.
-func TestAutoLaneConfigRefusesRiskClassedArea(t *testing.T) {
+func TestAutoLane_ConfigRefusesRisk_ClassedArea(t *testing.T) {
 	keys := strings.Replace(fixtureLaneKeys,
 		"example-org/tracker:docs/notes/**:ada,example-org/tracker:BOARD.md:ada",
 		"example-org/tracker:.github/workflows/**:ada", 1)
@@ -126,8 +126,8 @@ func TestAutoLaneConfigRefusesRiskClassedArea(t *testing.T) {
 	}
 }
 
-// TestAutoLaneConfigRefusesUntrustedOptIn — Verify row 4.
-func TestAutoLaneConfigRefusesUntrustedOptIn(t *testing.T) {
+// TestAutoLane_ConfigRefuses_UntrustedOptIn — Verify row 4.
+func TestAutoLane_ConfigRefuses_UntrustedOptIn(t *testing.T) {
 	keys := strings.Replace(fixtureLaneKeys, "BOARD.md:ada", "BOARD.md:mallory", 1)
 	e := install(t, keys, rulingsSigned)
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run")
@@ -139,9 +139,9 @@ func TestAutoLaneConfigRefusesUntrustedOptIn(t *testing.T) {
 	}
 }
 
-// TestAutoLaneConfigRefusesPublicRepoArea — a public repo risk-classes every path, so no area
+// TestAutoLane_ConfigRefuses_PublicRepoArea — a public repo risk-classes every path, so no area
 // on one can load.
-func TestAutoLaneConfigRefusesPublicRepoArea(t *testing.T) {
+func TestAutoLane_ConfigRefuses_PublicRepoArea(t *testing.T) {
 	keys := strings.Replace(fixtureLaneKeys, "example-org/tracker:BOARD.md:ada", "example-org/open:BOARD.md:ada", 1)
 	e := install(t, keys, rulingsSigned)
 	code, _, stderr := e.run(verbCheck)
@@ -150,9 +150,9 @@ func TestAutoLaneConfigRefusesPublicRepoArea(t *testing.T) {
 	}
 }
 
-// TestAutoLaneBaseBranchWithoutSurfacesRefuses — the base branch declares no
+// TestAutoLane_BaseBranchWithout_SurfacesRefuses — the base branch declares no
 // `.assay-surfaces`: the surface tier is absent, and the lane admits nothing there.
-func TestAutoLaneBaseBranchWithoutSurfacesRefuses(t *testing.T) {
+func TestAutoLane_BaseBranchWithout_SurfacesRefuses(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.noSurfaces = true
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
@@ -194,11 +194,11 @@ func assertEjected(t *testing.T, e *env, code int, stderr, signal string) {
 	}
 }
 
-// TestAutoLaneMergeEjectsOnSupersededChangesRequested — Verify row 5: category admit
+// TestAutoLane_MergeEjectsOn_SupersededChanges_Requested — Verify row 5: category admit
 // satisfied, APPROVED at head, all green, R-8 resolving — and ONE earlier CHANGES_REQUESTED
 // superseded by the APPROVED. The score ejects; nothing merges. Fail-first: a score that
 // read a latest-per-reviewer view would call this clean.
-func TestAutoLaneMergeEjectsOnSupersededChangesRequested(t *testing.T) {
+func TestAutoLane_MergeEjectsOn_SupersededChanges_Requested(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.reviews = []deskkit.Review{
 		{ID: 1, Author: deskkit.Account{Login: fxReviewer}, State: "CHANGES_REQUESTED", CommitID: fxOldHead},
@@ -208,9 +208,9 @@ func TestAutoLaneMergeEjectsOnSupersededChangesRequested(t *testing.T) {
 	assertEjected(t, e, code, stderr, deskkit.SignalReviewRework)
 }
 
-// TestAutoLaneMergeEjectsOnPathOutsideArea — Verify row 6: reviews clean, ONE changed path
+// TestAutoLane_MergeEjectsOnPath_OutsideArea — Verify row 6: reviews clean, ONE changed path
 // outside the opted-in globs.
-func TestAutoLaneMergeEjectsOnPathOutsideArea(t *testing.T) {
+func TestAutoLane_MergeEjectsOnPath_OutsideArea(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.files = append(e.fg.files, deskkit.ChangedFile{Filename: "README.md", Status: "modified"})
 	e.fg.pr.ChangedFiles = 3
@@ -218,9 +218,9 @@ func TestAutoLaneMergeEjectsOnPathOutsideArea(t *testing.T) {
 	assertEjected(t, e, code, stderr, deskkit.TripPathOutsideArea)
 }
 
-// TestAutoLaneMergeEjectsOnStreamBriefFile — a stream brief file in the diff ejects, even
+// TestAutoLane_MergeEjectsOn_StreamBriefFile — a stream brief file in the diff ejects, even
 // though it is a docs path.
-func TestAutoLaneMergeEjectsOnStreamBriefFile(t *testing.T) {
+func TestAutoLane_MergeEjectsOn_StreamBriefFile(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.files = append(e.fg.files, deskkit.ChangedFile{Filename: "docs/streams/example/brief-04-thing.md", Status: "modified"})
 	e.fg.pr.ChangedFiles = 3
@@ -228,18 +228,18 @@ func TestAutoLaneMergeEjectsOnStreamBriefFile(t *testing.T) {
 	assertEjected(t, e, code, stderr, deskkit.TripStreamBrief)
 }
 
-// TestAutoLaneMergeEjectsOverEjectLine — one fired signal (size:L) is a score of 1 over the
+// TestAutoLane_MergeEjectsOver_EjectLine — one fired signal (size:L) is a score of 1 over the
 // line 0: eject.
-func TestAutoLaneMergeEjectsOverEjectLine(t *testing.T) {
+func TestAutoLane_MergeEjectsOver_EjectLine(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.pr.Labels = append(e.fg.pr.Labels, deskkit.SizeLabelPrefix+"L")
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
 	assertEjected(t, e, code, stderr, deskkit.SignalSizeLarge)
 }
 
-// TestAutoLaneEjectionCommentIsIdempotent — a second ejection run does not post a second
+// TestAutoLane_EjectionCommentIs_Idempotent — a second ejection run does not post a second
 // comment.
-func TestAutoLaneEjectionCommentIsIdempotent(t *testing.T) {
+func TestAutoLane_EjectionCommentIs_Idempotent(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.pr.Labels = append(e.fg.pr.Labels, deskkit.SizeLabelPrefix+"L")
 	e.run(verbRecompute, "7")
@@ -255,10 +255,10 @@ func TestAutoLaneEjectionCommentIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesUnreadableChecks — Verify row 7: the checks read fails. That is
+// TestAutoLane_MergeRefuses_UnreadableChecks — Verify row 7: the checks read fails. That is
 // could-not-check (exit 6), audited `unwritten`, and NOTHING is written — a transient read
 // failure is not latched as a one-way ejection.
-func TestAutoLaneMergeRefusesUnreadableChecks(t *testing.T) {
+func TestAutoLane_MergeRefuses_UnreadableChecks(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.fail["ChecksAtHead"] = true
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
@@ -354,9 +354,9 @@ func TestAutoLaneMergeDryRunHappyPath(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeWithoutDryRunRefusesMergeWrite — this release carries no merge mutation:
+// TestAutoLane_MergeWithoutDryRun_RefusesMergeWrite — this release carries no merge mutation:
 // with every condition true and the lane enacted, `merge` still refuses and writes nothing.
-func TestAutoLaneMergeWithoutDryRunRefusesMergeWrite(t *testing.T) {
+func TestAutoLane_MergeWithoutDryRun_RefusesMergeWrite(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", e.fpy(healthyFPY))
 	if code != deskkit.ExitRefused || !strings.Contains(stderr, "refused: merge-write") {
@@ -370,18 +370,18 @@ func TestAutoLaneMergeWithoutDryRunRefusesMergeWrite(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesPriorEjectionAfterReadmission — Verify row 17: eject on
+// TestAutoLane_MergeRefusesPrior_EjectionAfter_Readmission — Verify row 17: eject on
 // ci-nonsuccess, then clear every head-scoped signal at a NEW head (CI green, approval at the
 // new head, the label back on under the reviewer App). The category re-derives clean and the
 // score reads 0 — and the merge STILL refuses: the latch, not the recomputed score, decides.
-func TestAutoLaneMergeRefusesPriorEjectionAfterReadmission(t *testing.T) {
+func TestAutoLane_MergeRefusesPrior_EjectionAfter_Readmission(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	fpy := e.fpy(healthyFPY)
 	e.fg.checks.CheckRuns[0].Conclusion = "failure"
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", fpy)
 	assertEjected(t, e, code, stderr, deskkit.SignalCINonsuccess)
 
-	const newHead = "2222222222222222222222222222222222222222"
+	const newHead = "22222222222222222222"
 	fresh := greenForge()
 	fresh.pr.HeadSHA = newHead
 	fresh.reviews = []deskkit.Review{{ID: 3, Author: deskkit.Account{Login: fxReviewer}, State: "APPROVED", CommitID: newHead}}
@@ -404,9 +404,9 @@ func TestAutoLaneMergeRefusesPriorEjectionAfterReadmission(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesStaleApproval — Verify row 18: the category admits and the score
+// TestAutoLane_MergeRefusesStale_Approval — Verify row 18: the category admits and the score
 // is 0, but the reviewer App's APPROVED is at an older commit.
-func TestAutoLaneMergeRefusesStaleApproval(t *testing.T) {
+func TestAutoLane_MergeRefusesStale_Approval(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.reviews = []deskkit.Review{{ID: 1, Author: deskkit.Account{Login: fxReviewer}, State: "APPROVED", CommitID: fxOldHead}}
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
@@ -418,9 +418,9 @@ func TestAutoLaneMergeRefusesStaleApproval(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesReadableRedCheck — Verify row 19: the score read CI green, and the
+// TestAutoLane_MergeRefuses_ReadableRedCheck — Verify row 19: the score read CI green, and the
 // merge step's own re-read finds a READABLE failure.
-func TestAutoLaneMergeRefusesReadableRedCheck(t *testing.T) {
+func TestAutoLane_MergeRefuses_ReadableRedCheck(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.checks2 = &deskkit.ChecksAtHead{CheckRunsTotalCount: 1, CheckRuns: []deskkit.CheckRun{
 		{Name: "test", Status: "completed", Conclusion: "failure", CompletedAt: "2026-01-01T00:09:00Z"}}}
@@ -433,9 +433,9 @@ func TestAutoLaneMergeRefusesReadableRedCheck(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesMissingRequiredCheck — a branch-protection-required context that
+// TestAutoLane_MergeRefuses_MissingRequired_Check — a branch-protection-required context that
 // never reported is could-not-check, never a pass.
-func TestAutoLaneMergeRefusesMissingRequiredCheck(t *testing.T) {
+func TestAutoLane_MergeRefuses_MissingRequired_Check(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.required = []string{"leak-sweep"}
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
@@ -444,9 +444,9 @@ func TestAutoLaneMergeRefusesMissingRequiredCheck(t *testing.T) {
 	}
 }
 
-// TestAutoLaneCINonsuccessIgnoresSupersededReruns — Verify row 20: five runs of one check name
+// TestAutoLane_CINonsuccess_IgnoresSuperseded_Reruns — Verify row 20: five runs of one check name
 // at head, the earliest four cancelled/failed and the LAST green — the lane reads CI green.
-func TestAutoLaneCINonsuccessIgnoresSupersededReruns(t *testing.T) {
+func TestAutoLane_CINonsuccess_IgnoresSuperseded_Reruns(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.checks = &deskkit.ChecksAtHead{CheckRunsTotalCount: 5, CheckRuns: []deskkit.CheckRun{
 		{Name: "prompt", Status: "completed", Conclusion: "cancelled", CompletedAt: "2026-01-01T00:01:00Z"},
@@ -461,9 +461,9 @@ func TestAutoLaneCINonsuccessIgnoresSupersededReruns(t *testing.T) {
 	}
 }
 
-// TestAutoLaneForeignLabelIsNotAdmitted — the admission label applied by the worker itself
+// TestAutoLane_ForeignLabelIsNot_Admitted — the admission label applied by the worker itself
 // reads as NOT admitted.
-func TestAutoLaneForeignLabelIsNotAdmitted(t *testing.T) {
+func TestAutoLane_ForeignLabelIsNot_Admitted(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.events[2].AppliedBy = fxWorker
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
@@ -475,18 +475,18 @@ func TestAutoLaneForeignLabelIsNotAdmitted(t *testing.T) {
 	}
 }
 
-// TestAutoLaneMergeRefusesMovedHead — the head moves between the first read and the final
+// TestAutoLane_MergeRefusesMoved_Head — the head moves between the first read and the final
 // re-read.
-func TestAutoLaneMergeRefusesMovedHead(t *testing.T) {
+func TestAutoLane_MergeRefusesMoved_Head(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
-	e.fg.head2 = "3333333333333333333333333333333333333333"
+	e.fg.head2 = "33333333333333333333"
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
 	if code != deskkit.ExitRefused || !strings.Contains(stderr, "refused: "+condHeadStable) {
 		t.Fatalf("exit %d stderr %q", code, stderr)
 	}
 }
 
-func TestAutoLaneWrongCallerRoleRefuses(t *testing.T) {
+func TestAutoLane_WrongCallerRole_Refuses(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	t.Setenv("DESK_LOOP", "worker-desk")
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run")
@@ -502,7 +502,7 @@ func notYetInLane(e *env) {
 	e.fg.events = e.fg.events[:2]
 }
 
-func TestAutoLaneRecomputeAdmitsWhenEnacted(t *testing.T) {
+func TestAutoLane_RecomputeAdmits_WhenEnacted(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	notYetInLane(e)
 	code, stdout, stderr := e.run(verbRecompute, "7")
@@ -515,7 +515,7 @@ func TestAutoLaneRecomputeAdmitsWhenEnacted(t *testing.T) {
 	}
 }
 
-func TestAutoLaneRecomputeDoesNotAdmitUnenacted(t *testing.T) {
+func TestAutoLane_RecomputeDoesNot_AdmitUnenacted(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsUnsigned)
 	notYetInLane(e)
 	code, _, stderr := e.run(verbRecompute, "7")

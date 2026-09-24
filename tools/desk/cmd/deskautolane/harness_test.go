@@ -27,8 +27,8 @@ import (
 const (
 	fxRepo     = "example-org/tracker"
 	fxPR       = 7
-	fxHead     = "1111111111111111111111111111111111111111"
-	fxOldHead  = "0000000000000000000000000000000000000000"
+	fxHead     = "11111111111111111111"
+	fxOldHead  = "00000000000000000000"
 	fxReviewer = "example-reviewer-app[bot]"
 	fxWorker   = "example-worker-app[bot]"
 	fxDesk     = "example-desk-app[bot]"
