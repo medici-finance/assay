@@ -36,6 +36,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -139,11 +140,14 @@ func classifyPushDest(u string) pushDestKind {
 	if filepath.IsAbs(s) || strings.HasPrefix(s, "/") {
 		return pushLocal
 	}
-	// scp-like [user@]host:path — git's rule: a colon before any slash. A single letter before
-	// the colon is a Windows drive path, which git also treats as local.
+	// scp-like [user@]host:path — git's rule: a colon before any slash. Only when THIS PROCESS
+	// runs on Windows does git treat a single letter before the colon as a drive path (`C:\...`,
+	// `C:/...`) instead of an scp-like host; on macOS and Linux `g:owner/repo.git` is a real SSH
+	// destination to host `g`, which a ~/.ssh/config `Host g` alias can point anywhere — so the
+	// exception must be gated on runtime.GOOS, never applied unconditionally (#1638 F-scp-single-letter).
 	if colon := strings.IndexByte(s, ':'); colon > 0 {
 		if slash := strings.IndexByte(s, '/'); slash < 0 || colon < slash {
-			if colon == 1 {
+			if colon == 1 && runtime.GOOS == "windows" {
 				return pushLocal
 			}
 			return pushSSH

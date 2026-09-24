@@ -3,6 +3,7 @@ package main
 import (
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -130,6 +131,28 @@ func TestPushDestInsteadOfToSSHRefuses(t *testing.T) {
 	assertNoPushNoCreate(t, *calls)
 }
 
+// (#1638 F-scp-single-letter) A single-letter scp-like host — `g:example-org/tracker.git`,
+// exactly the shape a `~/.ssh/config` `Host g` alias resolves to a real forge on macOS/Linux.
+// Pre-fix, classifyPushDest's unconditional `colon == 1` exception (a comment claiming it was
+// "a Windows drive path, which git also treats as local" on every OS) classified this as
+// pushLocal, which skips pushDestinationGate's transport check outright — so `deskpr create`
+// reached `git push` over SSH to host "g" with no forge contacted, no credential presented,
+// and no refusal, contradicting the PR's own claim that the only other admitted shape is a
+// LOCAL destination. On a non-Windows runner (this repo's CI), the fix must refuse before any
+// push is attempted.
+func TestPushDestSingleLetterSSHHostRefuses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a single-letter host IS a drive path on Windows — that shape stays admitted there")
+	}
+	work := newBaseFixture(t)
+	mustGit(t, work, "remote", "set-url", "--push", "origin", "g:example-org/tracker.git")
+	calls := withEnv(t, work)
+	t.Setenv("GIT_SSH_COMMAND", "false")
+
+	wantRefusal(t, createErr(t), "g:example-org/tracker.git", "an SSH transport")
+	assertNoPushNoCreate(t, *calls)
+}
+
 // update pushes too, so it is gated on the same terms and refuses BEFORE the token mint.
 func TestPushDestUpdateRefusesBeforeMint(t *testing.T) {
 	work := newBaseFixture(t)
@@ -254,6 +277,25 @@ func TestClassifyPushDest(t *testing.T) {
 	for in, want := range cases {
 		if got := classifyPushDest(in); got != want {
 			t.Errorf("classifyPushDest(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// TestClassifyPushDestSingleLetterHostGOOSGated pins #1638 F-scp-single-letter: a single letter
+// before the colon (`g:owner/repo.git`) is a Windows drive path ONLY when this process actually
+// runs on Windows. On macOS and Linux it is an scp-like SSH destination to host "g" — exactly
+// what a `~/.ssh/config` `Host g` alias resolves — so it must classify as pushSSH there, never
+// unconditionally as pushLocal. The pre-fix code returned pushLocal on every OS, which let
+// deskpr's push-destination gate admit it (pushLocal skips the transport check entirely) and
+// git push it over SSH.
+func TestClassifyPushDestSingleLetterHostGOOSGated(t *testing.T) {
+	want := pushSSH
+	if runtime.GOOS == "windows" {
+		want = pushLocal
+	}
+	for _, in := range []string{"g:example-org/tracker.git", "g:o/r.git", "C:o/r.git"} {
+		if got := classifyPushDest(in); got != want {
+			t.Errorf("classifyPushDest(%q) on GOOS=%s = %v, want %v", in, runtime.GOOS, got, want)
 		}
 	}
 }

@@ -60,6 +60,12 @@
       "file": "cmd/deskpr/pushdest.go",
       "old": "\t\tenable = fmt.Sprintf(\"git -C %s config extensions.worktreeConfig true && \", d)\n",
       "new": "\t\t_ = d\n"
+    },
+    {
+      "name": "restore the unconditional single-letter scp-host admit (#1638 F-scp-single-letter: g:owner/repo.git treated as local on every OS, not just Windows)",
+      "file": "cmd/deskpr/pushdest.go",
+      "old": "\t\t\tif colon == 1 && runtime.GOOS == \"windows\" {\n",
+      "new": "\t\t\tif colon == 1 {\n"
     }
   ]
 }
