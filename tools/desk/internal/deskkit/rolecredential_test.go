@@ -99,8 +99,15 @@ func TestRoleCredential_GitLabMissingCustody_Refused(t *testing.T) {
 func TestRoleCredential_GitHubAndUnresolved_MintAppToken(t *testing.T) {
 	for _, tc := range []struct{ name, slugForge, origin string }{
 		{"roster says github", "github", ""},
+		{"roster says github, origin on github.com", "github", "git@github.com:example-org/tracker.git"},
 		{"origin host says github", "", "https://github.com/example-org/tracker.git"},
-		{"unresolved: historical GitHub default", "", ""},
+		{"origin host says github (scp form)", "", "git@github.com:example-org/tracker.git"},
+		{"origin host says github (ssh scheme)", "", "ssh://git@github.com/example-org/tracker.git"},
+		{"origin host says github (upper-case, explicit port)", "", "https://GitHub.com:443/example-org/tracker.git"},
+		// With NO origin in hand (a roster-only caller), an unresolved forge keeps the historical
+		// GitHub default. With an origin in hand it is refused instead — see
+		// TestRoleCredential_NonGitHubOriginHost_RefusedBeforeMint.
+		{"unresolved, no origin: historical GitHub default", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := ForgeRepo{Owner: "example-org", Name: "tracker"}
@@ -149,6 +156,77 @@ func TestGitHubRoleToken_RefusesOtherForge_NoMint(t *testing.T) {
 	tok, _, err = GitHubRoleToken("worker", "example-org/tracker")
 	if err != nil || tok != "app-token-stub" || *mints != 1 {
 		t.Fatalf("GitHubRoleToken on an unmapped repo: tok=%q err=%v mints=%d; want the App token from one mint", tok, err, *mints)
+	}
+}
+
+// nonGitHubOrigins is the host class sec-1587-S1 names: every origin whose host is not EXACTLY
+// github.com, including the ones that only resemble it. A GitHub App token authenticates only to
+// github.com, so each of these must be refused before the minter runs — whether the roster is
+// silent (the unresolved default) or names the forge "github" (software, not instance: S2).
+var nonGitHubOrigins = []struct{ name, origin string }{
+	{"suffix lookalike", "https://github.com.evil.test/example-org/tracker.git"},
+	{"prefix lookalike", "https://evilgithub.com/example-org/tracker.git"},
+	{"subdomain", "https://git.github.com/example-org/tracker.git"},
+	{"trailing dot", "https://github.com./example-org/tracker.git"},
+	{"internationalized lookalike", "https://g\u0456thub.com/example-org/tracker.git"},
+	{"userinfo-shaped", "https://github.com@evil.test/example-org/tracker.git"},
+	{"userinfo carrying a secret", "https://someone:secret-in-origin-url@evil.test/example-org/tracker.git"},
+	{"scp double-at", "git@github.com@evil.test:example-org/tracker.git"},
+	{"self-hosted GitLab (https)", "https://gitlab.example.com/example-org/tracker.git"},
+	{"self-hosted GitLab (scp)", "git@gitlab.example.com:example-org/tracker.git"},
+	{"self-hosted GitHub", "https://github.example.com/example-org/tracker.git"},
+	{"unparseable: local path", "/srv/git/example-org/tracker.git"},
+	{"unparseable: scp with no user", "github.com:example-org/tracker.git"},
+}
+
+// TestRoleCredential_NonGitHubOriginHost_RefusedBeforeMint is sec-1587-S1 (and S2): with an
+// origin URL in hand, the GitHub App arm of BOTH entry points is taken only for an origin whose
+// parsed host is exactly github.com. Anything else is Refused (exit 5) before any mint, names
+// the roster key that would map it, hands back no token or path, and never echoes the raw URL.
+func TestRoleCredential_NonGitHubOriginHost_RefusedBeforeMint(t *testing.T) {
+	for _, roster := range []string{"", "github"} {
+		for _, tc := range nonGitHubOrigins {
+			t.Run("roster="+roster+"/"+tc.name, func(t *testing.T) {
+				repo := ForgeRepo{Owner: "example-org", Name: "tracker"}
+				slug := ""
+				if roster != "" {
+					slug = repo.Slug()
+				}
+				rosterWithForge(t, slug, roster)
+				mints := minterDetector(t, plantAppToken(t, "app-token-stub"))
+
+				cred, err := ResolveRoleCredential("worker", repo, tc.origin)
+				if ExitCodeOf(err) != ExitRefused || cred.Token != "" || cred.Path != "" {
+					t.Fatalf("ResolveRoleCredential(origin %q): token=%q path=%q err=%v (exit %d); want a refusal (exit 5) and nothing handed back",
+						tc.origin, cred.Token, cred.Path, err, ExitCodeOf(err))
+				}
+				checkHostRefusal(t, err)
+
+				tok, path, err := GitHubRoleTokenForRemote("worker", repo.Slug(), tc.origin)
+				if ExitCodeOf(err) != ExitRefused || tok != "" || path != "" {
+					t.Fatalf("GitHubRoleTokenForRemote(origin %q): token=%q path=%q err=%v (exit %d); want a refusal (exit 5) and nothing handed back",
+						tc.origin, tok, path, err, ExitCodeOf(err))
+				}
+				checkHostRefusal(t, err)
+
+				if *mints != 0 {
+					t.Fatalf("the GitHub App minter forked %d time(s) for origin %q", *mints, tc.origin)
+				}
+			})
+		}
+	}
+}
+
+func checkHostRefusal(t *testing.T, err error) {
+	t.Helper()
+	msg := errString(err)
+	if !strings.Contains(msg, EnvRepoForges) || !strings.Contains(msg, "github.com") {
+		t.Fatalf("the refusal must name %s and the one host the token serves: %v", EnvRepoForges, err)
+	}
+	for _, leak := range []string{"secret-in-origin-url", "app-token-stub"} {
+		if strings.Contains(msg, leak) {
+			t.Fatalf("the refusal carries %q: %v", leak, err)
+		}
 	}
 }
 

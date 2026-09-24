@@ -48,3 +48,56 @@ func TestAsRole_GitLabServedOrigin_RefusedBeforeAnyMint(t *testing.T) {
 		t.Fatalf("the GitHub App minter forked %d time(s) for a GitLab-served origin", mints)
 	}
 }
+
+// TestAsRole_NonGitHubOriginHost_RefusedBeforeAnyMint is sec-1587-S1/S2 at the deskgit binding:
+// the askpass answers for the ORIGIN, and parseRepo gates only its owner/repo path, never its
+// host — so an origin whose host is not exactly github.com (a lookalike, a userinfo-shaped URL,
+// a self-hosted instance) must be refused before any token is minted or offered to it, with the
+// roster silent AND with the roster naming the forge "github" (software, not instance). The
+// PRODUCTION binding runs, with a minter detector in deskkit's own seam.
+func TestAsRole_NonGitHubOriginHost_RefusedBeforeAnyMint(t *testing.T) {
+	origins := []string{
+		"https://github.com.evil.test/" + allowedSlug + ".git",
+		"https://github.com@evil.test/" + allowedSlug + ".git",
+		"https://gitlab.example.com/" + allowedSlug + ".git",
+		"git@github.example.com:" + allowedSlug + ".git",
+	}
+	for _, rosterForge := range []string{"", "github"} {
+		for _, origin := range origins {
+			t.Run("roster="+rosterForge+"/"+origin, func(t *testing.T) {
+				work := newRepo(t, allowedSlug)
+				onBranch(t, work, "feature-host")
+				calls := withEnv(t, work)
+				t.Setenv("DESK_LOOP", "worker-desk")
+				roster := fixtureRoster
+				if rosterForge != "" {
+					roster += "ASSAY_REPO_FORGES=" + allowedSlug + "=" + rosterForge + "\n"
+				}
+				if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env"), []byte(roster), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				deskkit.ReloadConfig()
+				mustGit(t, work, "remote", "set-url", "origin", origin)
+
+				mints := 0
+				t.Cleanup(deskkit.SetRoleTokenMinter(func(role, owner string) (string, string, error) {
+					mints++
+					return "", `no App ID for App "` + role + `-app"`, errors.New("exit status 6")
+				}))
+
+				for _, verb := range []string{"push", "fetch"} {
+					if code := run([]string{verb, "--as", "worker"}); code != deskkit.ExitRefused {
+						t.Fatalf("%s --as worker on origin %s exit = %d, want %d (refused before any token)",
+							verb, origin, code, deskkit.ExitRefused)
+					}
+					if gitCallWith(*calls, verb) != nil {
+						t.Fatalf("git %s ran against %s although a GitHub App token serves only github.com", verb, origin)
+					}
+				}
+				if mints != 0 {
+					t.Fatalf("the GitHub App minter forked %d time(s) for origin %s", mints, origin)
+				}
+			})
+		}
+	}
+}

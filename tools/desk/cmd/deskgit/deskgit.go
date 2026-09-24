@@ -58,7 +58,11 @@ var getwd = os.Getwd
 // role already owns): the askpass below answers the GitHub App-token username, so this
 // transport speaks only GitHub, and the resolver REFUSES — before any token is minted or read —
 // a repo whose roster entry or effective origin host names another forge, rather than minting a
-// GitHub App token and offering it to that forge's host (#1573). A test replaces it so no real
+// GitHub App token and offering it to that forge's host (#1573). It is handed the SAME origin
+// URL the askpass answers for, so the token comes back only when that origin's host is exactly
+// github.com: a lookalike, trailing-dot, userinfo-shaped, self-hosted or unparseable origin is
+// refused too, whatever the roster says (parseRepo gates only the owner/repo path, never the
+// host, so this is the host gate). A test replaces it so no real
 // App credential is minted. It returns the token VALUE, the PATH it was read from, and an error
 // — and the token value is never placed in that error, exactly as the real resolver guarantees.
 var roleTokenForRepo = deskkit.GitHubRoleTokenForRemote

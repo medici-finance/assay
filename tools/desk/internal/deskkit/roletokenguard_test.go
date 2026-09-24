@@ -19,9 +19,19 @@ package deskkit
 //
 // It is structural (go/ast over the real tree), not a mock: it reads the code that ships.
 //
-// THE PRIMITIVE ITSELF. roletoken.go defines both minters and RoleTokenForRepo delegates to
-// RoleTokenForOwner. That self-reference inside the minter's own definition is the primitive,
-// not a caller, and is the one thing the walk skips besides the allow-list.
+// THE WHOLE CHAIN IS CONFINED, NOT JUST ITS EXPORTED TOP. Confining only the two exported
+// names leaves every name above and below them open inside package deskkit: a new helper could
+// call the GitHub arm (githubAppRoleToken) or the primitive underneath (mintRoleToken, the
+// tokenMinter seam) and reach the same mint with no forge question in front of it, and the
+// guard would stay green. So every link is a guarded name, and each link's callers are
+// allow-listed by (file, function, name) — the arm by the three resolver functions that have
+// resolved the forge before calling it, the exported minter by the arm alone.
+//
+// THE PRIMITIVE ITSELF. roletoken.go defines the chain RoleTokenForRepo → RoleTokenForOwner →
+// mintRoleToken → tokenMinter. Those references inside the chain's own definitions are the
+// primitive, not callers, and are the one thing the walk skips besides the allow-list. A
+// declaration is not a reference either: the identifier being DECLARED (`var tokenMinter =`)
+// is never counted, only the names its type and value use.
 
 import (
 	"fmt"
@@ -39,18 +49,41 @@ import (
 // deskkitImportPath is the import path a file outside this package reaches the minter through.
 const deskkitImportPath = "github.com/medici-finance/assay/tools/desk/internal/deskkit"
 
-// githubMinterNames are the GitHub-App-only minters the guard confines.
-var githubMinterNames = map[string]bool{"RoleTokenForOwner": true, "RoleTokenForRepo": true}
+// githubMinterNames are the links of the GitHub-App-only mint chain the guard confines: the
+// exported minters, the forge-aware resolver's GitHub arm above them, and the primitive and
+// its seam below them. The unexported names can only be reached from inside package deskkit,
+// which is exactly where an alias of the arm would be planted.
+var githubMinterNames = map[string]bool{
+	"RoleTokenForOwner":  true,
+	"RoleTokenForRepo":   true,
+	"githubAppRoleToken": true,
+	"mintRoleToken":      true,
+	"tokenMinter":        true,
+}
 
-// githubMinterAllow is the allow-list, keyed "<path relative to tools/desk>:<enclosing func>".
-// Each entry is a site that has ALREADY resolved the forge before it reaches the minter. It is
-// deliberately two entries long; widening it is a reviewed decision, never a way to go green.
+// githubMinterPrimitive is the chain's own definition in roletoken.go (see the file header):
+// the references between these functions ARE the minter, not callers of it.
+var githubMinterPrimitive = map[string]bool{"RoleTokenForOwner": true, "RoleTokenForRepo": true, "mintRoleToken": true}
+
+// githubMinterAllow is the allow-list, keyed "<path relative to tools/desk>:<enclosing func>:<name
+// referenced>". Each entry is a site that has ALREADY resolved the forge before it reaches the
+// link it names. Widening it is a reviewed decision, never a way to go green; an entry names
+// ONE link, so allowing a function to call the arm never also allows it the primitive.
 var githubMinterAllow = map[string]string{
-	"internal/deskkit/forgeresolve.go:githubAppRoleToken": "the GitHub arm of the forge-aware " +
-		"resolver: reached only after the forge resolved to GitHub (ResolveRoleCredential, " +
-		"GitHubRoleTokenForRemote, and ForgeFor's default GitHub custody)",
-	"cmd/cellctl/deskd.go:Cell.deskdMintGitHub": "forge-switched: cmdDeskd calls it only on the " +
-		"cell's GitHub arm; the GitLab arm provisions separately (deskdProvisionGitLab)",
+	"internal/deskkit/forgeresolve.go:ResolveRoleCredential:githubAppRoleToken": "the forge-aware " +
+		"resolver's GitHub arm: reached only after roleCredentialForge resolved GitHub and bound the " +
+		"origin host to github.com",
+	"internal/deskkit/forgeresolve.go:GitHubRoleTokenForRemote:githubAppRoleToken": "the GitHub-only " +
+		"transport entry point: reached only after roleCredentialForge resolved GitHub and bound the " +
+		"origin host to github.com",
+	"internal/deskkit/forgeresolve.go:githubCustody:githubAppRoleToken": "ForgeFor's default GitHub " +
+		"custody: ForgeFor calls it only after resolving the forge to GitHub",
+	"internal/deskkit/forgeresolve.go:githubAppRoleToken:RoleTokenForRepo": "the GitHub arm itself, " +
+		"whose own callers are confined by the three entries above",
+	"internal/deskkit/roletoken.go:SetRoleTokenMinter:tokenMinter": "the test seam: it swaps the " +
+		"minter and restores it, and never calls it",
+	"cmd/cellctl/deskd.go:Cell.deskdMintGitHub:RoleTokenForRepo": "forge-switched: cmdDeskd calls " +
+		"it only on the cell's GitHub arm; the GitLab arm provisions separately (deskdProvisionGitLab)",
 }
 
 // githubMinterRef is one reference to a minter: where it is, and the function it sits in
@@ -60,7 +93,7 @@ type githubMinterRef struct {
 	pos           token.Position
 }
 
-func (r githubMinterRef) key() string { return r.rel + ":" + r.fn }
+func (r githubMinterRef) key() string { return r.rel + ":" + r.fn + ":" + r.name }
 
 func (r githubMinterRef) String() string {
 	fn := r.fn
@@ -70,9 +103,9 @@ func (r githubMinterRef) String() string {
 	return fmt.Sprintf("%s:%d in %s references %s", r.rel, r.pos.Line, fn, r.name)
 }
 
-// scanGitHubMinterRefs walks root and returns every reference to a GitHub App minter in a
-// non-test Go file, testdata/.git/vendor excluded. The minter's own self-reference inside
-// roletoken.go's definitions is skipped (see the file header).
+// scanGitHubMinterRefs walks root and returns every reference to a link of the GitHub App mint
+// chain in a non-test Go file, testdata/.git/vendor excluded. The chain's own references inside
+// roletoken.go's definitions are skipped (see the file header).
 func scanGitHubMinterRefs(root string) ([]githubMinterRef, error) {
 	var refs []githubMinterRef
 	err := filepath.Walk(root, func(path string, info os.FileInfo, werr error) error {
@@ -146,6 +179,11 @@ func githubMinterRefsInFile(fset *token.FileSet, f *ast.File, rel string) []gith
 				// look only at the receiver expression, never at the selected name.
 				ast.Inspect(x.X, func(m ast.Node) bool { return inspectBare(m, bare, rel, fn, fset, &refs) })
 				return false
+			case *ast.Field:
+				// A struct field's or parameter's NAME is a declaration, never a reference to
+				// the package function it happens to share a spelling with; its type still is.
+				ast.Inspect(x.Type, func(m ast.Node) bool { return inspectBare(m, bare, rel, fn, fset, &refs) })
+				return false
 			case *ast.Ident:
 				inspectBare(x, bare, rel, fn, fset, &refs)
 			}
@@ -159,13 +197,25 @@ func githubMinterRefsInFile(fset *token.FileSet, f *ast.File, rel string) []gith
 			if decl.Recv != nil && len(decl.Recv.List) > 0 {
 				fn = recvTypeName(decl.Recv.List[0].Type) + "." + fn
 			}
-			// The primitive's own definition (RoleTokenForRepo delegating to RoleTokenForOwner).
-			if rel == "internal/deskkit/roletoken.go" && githubMinterNames[fn] {
+			// The primitive's own definition (RoleTokenForRepo → RoleTokenForOwner →
+			// mintRoleToken → tokenMinter).
+			if rel == "internal/deskkit/roletoken.go" && githubMinterPrimitive[fn] {
 				continue
 			}
 			visit(fn, decl.Body)
 		case *ast.GenDecl:
-			visit("", decl)
+			for _, spec := range decl.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					visit("", spec)
+					continue
+				}
+				// The names a var/const DECLARES are not references; its type and values are.
+				visit("", vs.Type)
+				for _, v := range vs.Values {
+					visit("", v)
+				}
+			}
 		}
 	}
 	return refs
@@ -211,8 +261,8 @@ func TestGitHubMinterReachedOnlyFromForgeArms(t *testing.T) {
 	}
 	if len(offenders) > 0 {
 		sort.Strings(offenders)
-		t.Errorf("the GitHub App minter (RoleTokenForOwner/RoleTokenForRepo) is reached outside the forge-aware "+
-			"arms — resolve the credential through deskkit.ResolveRoleCredential (or GitHubRoleToken for a "+
+		t.Errorf("the GitHub App mint chain (RoleTokenForOwner/RoleTokenForRepo, the githubAppRoleToken arm, "+
+			"mintRoleToken/tokenMinter) is reached outside the forge-aware arms — resolve the credential through deskkit.ResolveRoleCredential (or GitHubRoleToken for a "+
 			"GitHub-only transport) instead, so a GitLab-served repo never asks for a GitHub App (#1573):\n%s",
 			strings.Join(offenders, "\n"))
 	}
@@ -233,8 +283,10 @@ func TestGitHubMinterReachedOnlyFromForgeArms(t *testing.T) {
 
 // TestGitHubMinterGuardCatchesPlantedCallers proves the walk is not vacuous: a fixture tree
 // planting the shapes a forge-blind caller takes — a direct call, a function value bound to a
-// package var, an aliased import, a dot-import, and a same-named method that must NOT count —
-// is scanned, and every planted reference must be reported at its own line and function.
+// package var, an aliased import, a dot-import, an in-package pass-through through the GitHub
+// arm, an in-package call to the primitive or its seam, and same-named methods, fields and
+// declarations that must NOT count — is scanned, and every planted reference must be reported
+// at its own line and function.
 func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 	refs, err := scanGitHubMinterRefs(filepath.Join("testdata", "githubminterguard"))
 	if err != nil {
@@ -242,7 +294,7 @@ func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 	}
 	var got []string
 	for _, r := range refs {
-		got = append(got, r.key()+":"+r.name)
+		got = append(got, r.key())
 	}
 	sort.Strings(got)
 	want := []string{
@@ -250,6 +302,10 @@ func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 		"direct.go::RoleTokenForRepo",
 		"direct.go:forgeBlindRoleInit:RoleTokenForOwner",
 		"dotimport.go:mintViaDot:RoleTokenForRepo",
+		"inpackage.go::tokenMinter",
+		"inpackage.go:PlantedForgeBlind:githubAppRoleToken",
+		"inpackage.go:plantedPrimitive:mintRoleToken",
+		"inpackage.go:plantedSeamCall:tokenMinter",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("planted forge-blind references not reported exactly:\n got: %q\nwant: %q", got, want)
