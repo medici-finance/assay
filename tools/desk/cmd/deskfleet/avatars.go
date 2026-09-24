@@ -97,7 +97,7 @@ func (p *provisioner) uploadAvatar(role, user string) {
 		p.outf("NOTICE: no avatar for %s — %s could not be read (%v) (skipped, not a failure)", role, img, err)
 		return
 	}
-	tok, err := readCredentialFile("token file", tokPath)
+	tok, err := readCredentialFile("token file", tokPath, custodyTokenFile)
 	if err != nil {
 		p.outf("NOTICE: avatar for %s skipped — its token file did not pass the read-side custody check (%v); "+
 			"fix the file's access, then re-run with --avatars-only", user, err)

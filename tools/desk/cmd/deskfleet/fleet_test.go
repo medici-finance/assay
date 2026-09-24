@@ -841,6 +841,84 @@ func TestFleetAvatars(t *testing.T) {
 			t.Errorf("the missing verifier token file is not named:\n%s", h.out.String())
 		}
 	})
+	// The avatar step reads <out-dir>/gitlab-<role>.token under the custody-link rule every
+	// other reader of that file applies (deskkit.LstatCustody, CustodySameDirLink — the rule
+	// `desktoken --forge gitlab` and the preflight use): the documented same-directory link is
+	// followed, and a link that resolves anywhere else is refused, so its target's bytes never
+	// leave the machine as that role's PRIVATE-TOKEN.
+	avatarsOnlyWithReviewerToken := func(t *testing.T, plant func(dir, tokPath string) bool) (*fakeForge, *harness) {
+		t.Helper()
+		f := newFakeForge(t)
+		h := newHarness(t, f)
+		for i, r := range fleetRoles {
+			if r.Role == "reviewer" {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(h.dir, tokenFileName(r.Role)), []byte(fakeToken(i+1)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !plant(h.dir, filepath.Join(h.dir, tokenFileName("reviewer"))) {
+			return nil, nil
+		}
+		args := []string{"provision", "--avatars-only", "--avatars-dir", avatarsDir, "--prefix", fakePrefix, "--out-dir", h.dir}
+		if code := run(args, h.e); code != exitOK {
+			t.Fatalf("exit %d\n%s\n%s", code, h.out.String(), h.err.String())
+		}
+		return f, h
+	}
+	t.Run("an out-of-directory token link is refused and its target never sent", func(t *testing.T) {
+		const unrelated = "UNRELATED-SECRET-BYTES"
+		f, h := avatarsOnlyWithReviewerToken(t, func(_, tokPath string) bool {
+			other := filepath.Join(t.TempDir(), "unrelated-credential")
+			if err := os.WriteFile(other, []byte(unrelated), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(other, tokPath); err != nil {
+				t.Skipf("cannot create a symbolic link here: %v", err)
+				return false
+			}
+			return true
+		})
+		if f == nil {
+			return
+		}
+		for _, r := range f.requests() {
+			if r.Auth == unrelated {
+				t.Fatalf("the out-of-directory link's target was sent as a credential: %s %s", r.Method, r.Path)
+			}
+		}
+		if _, ok := f.avatars[fakeToken(1)]; ok {
+			t.Fatal("an avatar was set for the reviewer through a refused token link")
+		}
+		out := h.out.String()
+		if !strings.Contains(out, "avatar for "+serviceAccountUsername(fakePrefix, "reviewer")+" skipped") ||
+			!strings.Contains(out, "outside its own directory") {
+			t.Fatalf("the refused reviewer token link is not named with its reason:\n%s", out)
+		}
+		if got := f.avatars[fakeToken(2)]; got != "worker.png:png-worker" {
+			t.Errorf("a refused token link stopped the other roles' avatars: worker = %q", got)
+		}
+	})
+	t.Run("the documented same-directory token link is followed", func(t *testing.T) {
+		f, h := avatarsOnlyWithReviewerToken(t, func(dir, tokPath string) bool {
+			bot := filepath.Join(dir, serviceAccountUsername(fakePrefix, "reviewer")+".token")
+			if err := os.WriteFile(bot, []byte(fakeToken(1)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Base(bot), tokPath); err != nil {
+				t.Skipf("cannot create a symbolic link here: %v", err)
+				return false
+			}
+			return true
+		})
+		if f == nil {
+			return
+		}
+		if got := f.avatars[fakeToken(1)]; got != "reviewer.png:png-reviewer" {
+			t.Fatalf("the same-directory token link was not followed: reviewer avatar = %q\n%s", got, h.out.String())
+		}
+	})
 	t.Run("avatars-only takes no owner credential and no project", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.e.http = &http.Client{Transport: &failingTransport{t: t}}

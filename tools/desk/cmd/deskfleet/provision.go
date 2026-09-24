@@ -185,7 +185,7 @@ func cmdProvision(args []string, e *env) int {
 		p.errf("refused: %v", err)
 		return exitRefused
 	}
-	owner, err := readCredentialFile("--owner-token-file", o.ownerTokenFile)
+	owner, err := readCredentialFile("--owner-token-file", o.ownerTokenFile, operatorNamedFile)
 	if err != nil {
 		p.errf("refused: %v", err)
 		return exitRefused

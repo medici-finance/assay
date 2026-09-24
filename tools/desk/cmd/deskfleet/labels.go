@@ -154,7 +154,7 @@ func cmdLabels(args []string, e *env) int {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		tok, err := readCredentialFile("--token-file", *tokenFile)
+		tok, err := readCredentialFile("--token-file", *tokenFile, operatorNamedFile)
 		if err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
@@ -167,7 +167,7 @@ func cmdLabels(args []string, e *env) int {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		tok, err := readCredentialFile("--token-file", *tokenFile)
+		tok, err := readCredentialFile("--token-file", *tokenFile, operatorNamedFile)
 		if err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused

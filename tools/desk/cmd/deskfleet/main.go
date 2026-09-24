@@ -44,10 +44,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -82,7 +84,9 @@ labels     creates the nine fleet labels (review-request, six raised-by:<role>, 
 
 Credentials are read from FILES only (--owner-token-file / --token-file), which must pass
 the owner-only custody check; they are never accepted as a flag value or env variable, and
-never printed — only paths are.
+never printed — only paths are. A link at one of those two flags' paths is followed, and the
+custody check judges the file it resolves to. A gitlab-<role>.token read back from --out-dir
+may only be a link to a file in its own directory, the rule desktoken applies to that file.
 
 --dry-run  enumerates every action and makes ZERO network calls.
 
@@ -152,27 +156,62 @@ func run(args []string, e *env) int {
 	return exitUsage
 }
 
-// readCredentialFile reads a human-supplied credential file under the READ-side custody
-// standard (deskkit.VerifyCustodyOwnerOnly — any failure refuses). The value is returned for
-// use as a request header only; nothing here formats it.
-func readCredentialFile(flagName, path string) (string, error) {
+// credentialLinks says how readCredentialFile treats a symbolic link at the path it reads.
+// Under either policy every check judges, and the read opens, the file actually read — never
+// the link: on Windows deskkit.VerifyCustodyOwnerOnly reads the ACL from the path it is given,
+// so passing a link path there would judge the link rather than the credential.
+type credentialLinks int
+
+const (
+	// operatorNamedFile: a path the operator named on the command line (--owner-token-file,
+	// labels --token-file). A link there is the operator's own layout, so it is followed, and
+	// the checks run on its fully resolved target.
+	operatorNamedFile credentialLinks = iota
+	// custodyTokenFile: a desk token-custody file (<out-dir>/gitlab-<role>.token). It is read
+	// under the custody-link rule main's other readers of the same file apply
+	// (deskkit.LstatCustody with CustodySameDirLink, as `desktoken --forge gitlab` and the
+	// preflight do): the documented same-directory link is followed, any other link is
+	// refused, so a file planted elsewhere is never presented as the role's credential.
+	custodyTokenFile
+)
+
+// readCredentialFile reads a credential file under the READ-side custody standard
+// (deskkit.VerifyCustodyOwnerOnly — any failure refuses), with links handled per links. The
+// value is returned for use as a request header only; nothing here formats it.
+func readCredentialFile(flagName, path string, links credentialLinks) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("%s is required for a real run (a FILE holding the credential — never "+
 			"a flag value or an environment variable)", flagName)
 	}
-	fi, err := os.Stat(path)
+	var (
+		target string
+		fi     os.FileInfo
+		err    error
+	)
+	switch links {
+	case custodyTokenFile:
+		target, fi, err = deskkit.LstatCustody(path, deskkit.CustodySameDirLink)
+	default:
+		if target, err = filepath.EvalSymlinks(path); err == nil {
+			fi, err = os.Lstat(target)
+		}
+	}
 	if err != nil {
+		var linkErr *deskkit.CustodyLinkError
+		if errors.As(err, &linkErr) {
+			return "", fmt.Errorf("%s: %v", flagName, err)
+		}
 		return "", fmt.Errorf("%s %s: %v", flagName, path, err)
 	}
 	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("%s %s is not a regular file", flagName, path)
+		return "", fmt.Errorf("%s %s is not a regular file", flagName, target)
 	}
-	if err := deskkit.VerifyCustodyOwnerOnly(path, fi); err != nil {
+	if err := deskkit.VerifyCustodyOwnerOnly(target, fi); err != nil {
 		return "", fmt.Errorf("%s: %v", flagName, err)
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(target)
 	if err != nil {
-		return "", fmt.Errorf("%s %s: %v", flagName, path, err)
+		return "", fmt.Errorf("%s %s: %v", flagName, target, err)
 	}
 	tok := strings.TrimSpace(string(b))
 	if tok == "" {

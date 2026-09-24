@@ -6,7 +6,7 @@ import "testing"
 // relies on (the recorded custody ruling, option 2): an inconclusive read-back WARNS, a
 // definite one REFUSES. It drives classifyCustodyModel with injected ACL data, so the Windows sort runs on
 // every CI platform. The load-bearing negatives are the MIXED cases: an uninterpretable entry
-// must never launder a determinable violation (a foreign owner, a foreign writer) into
+// must never launder a determinable violation (a foreign owner, writer or reader) into
 // "inconclusive".
 func TestClassifyCustodyModel(t *testing.T) {
 	for _, tc := range []struct {
@@ -28,6 +28,14 @@ func TestClassifyCustodyModel(t *testing.T) {
 			m.Entries = append(m.Entries,
 				rosterACE{Kind: rosterACEUnsupported},
 				rosterACE{SID: sidWorld, Kind: rosterACEAllow, GrantsWrite: true})
+		}, CustodyRefused},
+		{"a foreign read-capable entry is refused", func(m *rosterACLModel) {
+			m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsRead: true})
+		}, CustodyRefused},
+		{"a foreign reader BEHIND an uninterpretable entry is still refused", func(m *rosterACLModel) {
+			m.Entries = append(m.Entries,
+				rosterACE{Kind: rosterACEUnsupported},
+				rosterACE{SID: sidWorld, Kind: rosterACEAllow, GrantsRead: true})
 		}, CustodyRefused},
 		{"a foreign owner with an uninterpretable entry is still refused", func(m *rosterACLModel) {
 			m.Owner = sidOther

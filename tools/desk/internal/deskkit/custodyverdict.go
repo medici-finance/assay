@@ -29,7 +29,8 @@ const (
 	// CustodyVerified: the file was read back and is owner-only.
 	CustodyVerified CustodyState = iota + 1
 	// CustodyRefused: the file was read back and is DEFINITELY not owner-only (a foreign
-	// owner, a foreign write-capable entry, a POSIX mode other than 0600).
+	// owner, a foreign write-capable or read-capable entry, a POSIX mode other than 0600,
+	// a symbolic link where the regular file was written).
 	CustodyRefused
 	// CustodyInconclusive: the read-back could not establish the answer either way.
 	CustodyInconclusive
@@ -63,8 +64,8 @@ type CustodyVerdict struct {
 //     thing evaluateCustodyACL checks and it cannot be established).
 //   - otherwise, re-run evaluateCustodyACL on the model with the entries it cannot
 //     interpret set aside. If it STILL refuses, the refusal rests on facts it could read
-//     (a foreign owner, a foreign write-capable entry) → Refused. If it now accepts, the
-//     only obstacle was the uninterpretable entries → Inconclusive.
+//     (a foreign owner, a foreign write-capable or read-capable entry) → Refused. If it
+//     now accepts, the only obstacle was the uninterpretable entries → Inconclusive.
 //
 // The second evaluation can only ever turn a refusal into Inconclusive when every
 // determinable fact already passed; it can never turn a determinable violation into

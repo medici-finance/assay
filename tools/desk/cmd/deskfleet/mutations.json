@@ -174,6 +174,24 @@
       "file": "cmd/deskfleet/avatars.go",
       "old": "--out-dir \\\"%s\\\" (it signs in",
       "new": "--out-dir %s (it signs in"
+    },
+    {
+      "name": "custody link rule — the out-dir token file is stat'd through a link again (os.Stat for LstatCustody: an out-of-directory link's target is sent as the role's PRIVATE-TOKEN)",
+      "file": "cmd/deskfleet/main.go",
+      "old": "\t\ttarget, fi, err = deskkit.LstatCustody(path, deskkit.CustodySameDirLink)",
+      "new": "\t\ttarget = path\n\t\tfi, err = os.Stat(path)"
+    },
+    {
+      "name": "custody link rule — the avatar step reads its gitlab-<role>.token as an operator-named file (any link followed)",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "readCredentialFile(\"token file\", tokPath, custodyTokenFile)",
+      "new": "readCredentialFile(\"token file\", tokPath, operatorNamedFile)"
+    },
+    {
+      "name": "custody link rule — over-restricted: the documented same-directory token link is refused (CustodyNoLinks)",
+      "file": "cmd/deskfleet/main.go",
+      "old": "deskkit.LstatCustody(path, deskkit.CustodySameDirLink)",
+      "new": "deskkit.LstatCustody(path, deskkit.CustodyNoLinks)"
     }
   ]
 }
