@@ -3083,39 +3083,62 @@ The score ejects; it never admits. An ejection is one-way. The decision logic li
 `internal/deskkit/autolane.go`; the verb reads the forge and performs the lane's writes.
 
 ```bash
-deskautolane check     [<pr>] --repo <owner/repo> [--root <dir>] [--rulings <path>] [--fpy-file <path>]
-deskautolane recompute  <pr>  --repo <owner/repo> [--root <dir>] [--rulings <path>]
-deskautolane merge      <pr>  --repo <owner/repo> --dry-run [--root <dir>] [--rulings <path>] [--fpy-file <path>]
+deskautolane check     [<pr>] --repo <owner/repo> [--rulings-repo <owner/repo>] [--rulings <path>] [--root <dir>] [--fpy-file <path>]
+deskautolane recompute  <pr>  --repo <owner/repo> [--rulings-repo <owner/repo>] [--rulings <path>] [--root <dir>]
+deskautolane merge      <pr>  --repo <owner/repo> [--dry-run] [--rulings-repo <owner/repo>] [--rulings <path>] [--root <dir>] [--fpy-file <path>]
 ```
 
 **It ships inert, three ways over.** (1) The lane is CLOSED unless all four roster keys below
 are set; absent is the shipped state and every verb refuses at `config` before its first forge
 request. (2) Every write — the `auto-lane` admission label, and the ejection's label swap,
-single marked comment and `autolane:eject` audit line — requires the rulings register's `R-8`
-Sign-off line to resolve, through the forge, to a comment by the roster-pinned blessing
-authority (login and numeric id); an empty line refuses `ruling-unsigned`. (3) This release
-carries **no merge mutation**: `merge --dry-run` evaluates the whole chain and prints
+single marked comment and `autolane:eject` audit line — requires the **enactment gate** to
+hold; an empty `R-8` Sign-off line refuses `ruling-unsigned`. (3) This release carries **no
+merge mutation**: `merge --dry-run` evaluates the whole chain and prints
 `dry-run: would merge <head> into <base> (merge commit)`; `merge` without `--dry-run` refuses
 at `merge-write` after every condition held.
 
+**The enactment gate.** Every step must positively hold, and an unreadable step is
+could-not-check: (a) the rulings register (`--rulings`, default
+`docs/streams/issue-flow/rulings.md`, which must match `docs/streams/**/rulings.md`) is read
+**through the forge**, from `--rulings-repo` (default `--repo`, same owner, in the desk repo set)
+at that repo's **default branch** — never from the caller's worktree, which may be a checkout of
+a PR head; (b) its `R-8` Sign-off line names one comment permalink on a thread **in that same
+repo**; (c) the fetched comment's author is a forge `User` (never an App or Bot) and the
+roster-pinned blessing authority, login and numeric id; (d) its body carries a line reading
+exactly `Enact: R-8`, and no rejection or negation anywhere (`rejected`, `not accepted`,
+`do not`, `revoked`, `withdrawn`, ...) — a rejection recorded on the Sign-off line, or an
+unrelated comment by the same human, enacts nothing.
+
+**`--dry-run` writes nothing.** When the category or the score fails, `merge --dry-run` prints
+`dry-run: would eject: <reasons>` and exits 5 with no label swap, no comment and no latch;
+`merge` without `--dry-run`, like `recompute`, performs the ejection.
+
 `merge` evaluates, in a pinned order: `caller-role` (the `pr-review-desk` loop, whose App is
-the reviewer role), `config`, `app-token`, `pr-open-ready`, `prior-ejection` (the audit-log
-latch), `area-admit`, `score`, `reviewer-approved` (at the current head), `checks-green`
+the reviewer role), `config`, `app-token`, `pr-open-ready`, `prior-ejection` (the latch: the
+local `autolane:eject` audit line OR the reviewer App's marked ejection comment on the PR, so a
+second host or a fresh `HOME` still sees it; with neither set, an unreadable half is
+could-not-check), `area-admit` (including: the PR's base must be the repo's default branch),
+`score`, `reviewer-approved` (at the current head), `checks-green`
 (latest run per check name, plus every required context present), `mergeable`, `lane-armed`
 (kill switch, kill signal, daily cap), `ruling-signed`, `head-stable`.
 
 **Category tripwires** (never scored): an author other than the roster's worker App; no single
 `Brief:`/`Issue:` trailer; any changed path outside the repo's opted-in globs; any stream brief
-file (`docs/streams/**/brief-*.md`, compiled — no opt-in can reach one); a risk-classed diff; a
-`surface:core` label or a changed path matching the base branch's `.assay-surfaces`; no
-`.assay-surfaces` on the base branch (no declared surfaces is never read as safe); a
+file (`docs/streams/**/brief-*.md`, compiled — no opt-in can reach one); any other
+**never-admit** path, also compiled: a rulings register (`docs/streams/**/rulings.md`),
+`.assay-surfaces`, and agent-instruction files (`CLAUDE.md`, `AGENTS.md`, `SKILL.md` at any
+depth, `.claude/**`, `.mcp.json`); a risk-classed diff; a
+`surface:core` label or a changed path matching the default branch's `.assay-surfaces`; no
+`.assay-surfaces` on the default branch (no declared surfaces is never read as safe); a
 `Security-Review: fail` anywhere in the reviews array; anything unreadable.
 
 **Score signals, version 1** (each 0/1, the score is their count; a score above the eject line
 ejects): `review-rework` (any CHANGES_REQUESTED in the reviews array, any head, any identity),
 `ci-nonsuccess` (the latest run per check name, judged by `deskkit.ConclusionGreen` — the set
-deskflip's checks-green gate now delegates to), `push-after-request`, `size-large` (`size:L`),
-`model-unstamped`, `unreadable`. An input that could not be read, and nothing else, is
+deskflip's checks-green gate now delegates to; a pending or empty rollup is could-not-check,
+never this demotion), `push-after-request`, `size-large` (`size:L` fires whoever applied it;
+any other reading needs exactly one `size:` label applied by the reviewer App — absent, several,
+or set by another identity is could-not-check), `model-unstamped`, `unreadable`. An input that could not be read, and nothing else, is
 could-not-check (exit 6) and is not latched as an ejection.
 
 **Kill signal.** `--fpy-file` names the harvested per-class first-pass-yield file; its
@@ -3128,7 +3151,7 @@ The roster keys (`~/.config/assay/roster.env`; file-only, never the environment)
 
 | Key | Value |
 |---|---|
-| `ASSAY_AUTOAPPROVE_AREAS` | comma-separated `<owner>/<repo>:<glob>:<login>` — one glob per entry (the `.assay-surfaces` subset, a literal first segment), the login the blessing authority or a trusted human who opted the area in. An entry whose glob can reach a declared surface, a risk-classed path or a stream brief file refuses the lane |
+| `ASSAY_AUTOAPPROVE_AREAS` | comma-separated `<owner>/<repo>:<glob>:<login>` — one glob per entry (the `.assay-surfaces` subset, a literal first segment), the login the blessing authority or a trusted human who opted the area in. An entry whose glob can reach a declared surface, a risk-classed path or a stream brief file or another never-admit path refuses the lane |
 | `ASSAY_AUTOAPPROVE_EJECT_LINE` | integer in `[0, 5]` — a score above it ejects |
 | `ASSAY_AUTOAPPROVE_FPY_FLOOR` | decimal in `(0, 1]` — the kill signal's first-pass-yield floor |
 | `ASSAY_AUTOAPPROVE_DAILY_CAP` | integer in `[1, 100]` — lane merges per repo per UTC day, counted from `autolane:merge result=ok` audit lines |

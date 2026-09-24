@@ -65,6 +65,12 @@ func (r ForgeRepo) Slug() string { return r.Owner + "/" + r.Name }
 type Account struct {
 	Login string
 	ID    int64
+	// Type is the forge's own actor kind where the read reports one ("User", "Bot",
+	// "Organization", "Mannequin" on GitHub's GraphQL comment read), and EMPTY where it does
+	// not. Empty is could-not-check, never "User". Consumer: cmd/deskautolane's enactment
+	// gate, which refuses a sign-off artifact whose author is not a User (freeze rule: fields,
+	// not methods — this lands with its call site).
+	Type string `json:",omitempty"`
 }
 
 // PullRequest is the subset of a change (GitHub pull request ↔ GitLab merge request) the

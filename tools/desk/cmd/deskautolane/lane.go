@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -62,9 +65,10 @@ const (
 //     not the review desk, or a lane that is closed or misconfigured, costs no read at all;
 //   - app-token — before the first forge call, so nothing is read on an ambient credential;
 //   - pr-open-ready — the one PR read every later condition consumes;
-//   - prior-ejection — the one-way latch, read from the local audit log. It runs BEFORE the
-//     category and the score so an ejected PR is refused as ejected, whatever a later
-//     recompute at a since-cleaned head would read;
+//   - prior-ejection — the one-way latch, read from the local audit log AND the reviewer
+//     App's marked ejection comment on the PR. It runs BEFORE the category and the score so
+//     an ejected PR is refused as ejected, whatever a later recompute at a since-cleaned head
+//     would read;
 //   - area-admit, score — the category and the demotion score; either failing EJECTS;
 //   - reviewer-approved, checks-green, mergeable — the merge step's own re-read at the
 //     current head, catching a state the score alone did not see;
@@ -92,11 +96,17 @@ type opts struct {
 	pr      int
 	repo    string
 	root    string
-	rulings string
-	fpyFile string
-	dryRun  bool
-	quiet   bool
-	out     io.Writer
+	rulings string // repo-relative register path, read through the forge
+	// rulingsRepo is the owner/name the register is read from, at ITS default branch — never
+	// from a caller's worktree, which may be a checkout of a PR head.
+	rulingsRepo string
+	fpyFile     string
+	dryRun      bool
+	quiet       bool
+	out         io.Writer
+
+	// defaults caches each repo's default branch for the run (lower-cased slug → branch).
+	defaults map[string]string
 
 	// head is the head the verb decided on, for the audit line; wrote records whether an
 	// outward write was attempted, so an unverifiable outcome is billed correctly.
@@ -128,8 +138,10 @@ func parseArgs(args []string, out io.Writer) (*opts, error) {
 	fs := flag.NewFlagSet(toolName, flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
 	repo := fs.String("repo", "", "owner/name the PR belongs to")
-	root := fs.String("root", ".", "checkout root the rulings register is read under")
-	rulings := fs.String("rulings", "", "rulings register path (default <root>/docs/streams/issue-flow/rulings.md)")
+	root := fs.String("root", ".", "checkout root whose local .assay-surfaces the only-narrowing config check reads")
+	rulings := fs.String("rulings", deskkit.AutoLaneRulingsPath,
+		"repo-relative path of the rulings register, read through the forge at the register repo's default branch")
+	rulingsRepo := fs.String("rulings-repo", "", "owner/name the rulings register lives in (default: --repo)")
 	fpy := fs.String("fpy-file", "", "harvested per-class first-pass-yield file (absent = the lane holds)")
 	dry := fs.Bool("dry-run", false, "merge: evaluate every condition and stop before the mutation")
 	quiet := fs.Bool("quiet", false, "suppress the per-condition OK lines")
@@ -140,12 +152,27 @@ func parseArgs(args []string, out io.Writer) (*opts, error) {
 		return nil, deskkit.Refused("refused: unexpected arguments: " + strings.Join(fs.Args(), " "))
 	}
 	o.repo, o.root, o.fpyFile, o.dryRun, o.quiet = strings.TrimSpace(*repo), *root, *fpy, *dry, *quiet
-	o.rulings = *rulings
-	if o.rulings == "" {
-		o.rulings = filepath.Join(o.root, "docs", "streams", "issue-flow", "rulings.md")
-	}
+	o.rulings = strings.TrimSpace(*rulings)
+	o.rulingsRepo = strings.TrimSpace(*rulingsRepo)
+	o.defaults = map[string]string{}
 	if o.repo == "" {
 		return nil, deskkit.Refused("refused: --repo <owner/repo> is required")
+	}
+	if o.rulingsRepo == "" {
+		o.rulingsRepo = o.repo
+	}
+	// The register is a path IN a repository, read through the forge — never a local file.
+	// It must sit on the compiled never-admit set, so no lane merge can edit the line that
+	// enacts the lane.
+	if o.rulings == "" || strings.HasPrefix(o.rulings, "/") || path.Clean(o.rulings) != o.rulings ||
+		strings.HasPrefix(o.rulings, "../") || o.rulings == ".." {
+		return nil, deskkit.Refused("refused: --rulings must be a clean repo-relative path, got " +
+			deskkit.StripControl(o.rulings))
+	}
+	if !deskkit.MatchSurfaceGlob(deskkit.AutoLaneRulingsGlob, o.rulings) || !deskkit.IsAutoLaneNeverAdmitPath(o.rulings) {
+		return nil, deskkit.Refused("refused: --rulings " + deskkit.StripControl(o.rulings) + " is not a rulings " +
+			"register on the lane's compiled never-admit set (" + deskkit.AutoLaneRulingsGlob + "), so a lane merge " +
+			"could edit its own enactment line")
 	}
 	if o.verb != verbCheck && o.pr == 0 {
 		return nil, deskkit.Refused("refused: " + deskkit.StripControl(o.verb) + " requires a PR number")
@@ -245,8 +272,40 @@ func preamble(o *opts) (deskkit.AutoLaneConfig, deskkit.ForgeRepo, laneForge, er
 		return cfg, deskkit.ForgeRepo{}, nil, deskkit.Refused("refused: --repo must be owner/name")
 	}
 	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	// The register repo is an operator input like --repo: it must be in the desk repo set and
+	// under --repo's own owner, so the enactment line is always read from a repo the lane's
+	// owner controls.
+	rOwner, rName, rok := strings.Cut(o.rulingsRepo, "/")
+	if !rok || rOwner == "" || rName == "" || !deskkit.IsAllowedRepo(o.rulingsRepo) || !strings.EqualFold(rOwner, owner) {
+		return cfg, deskkit.ForgeRepo{}, nil, deskkit.Refused(fmt.Sprintf(
+			"refused: --rulings-repo %s must be an owner/name in the desk repo set, under %s",
+			deskkit.StripControl(o.rulingsRepo), deskkit.StripControl(owner)))
+	}
 	fg, err := checkAppToken(o, fr)
 	return cfg, fr, fg, err
+}
+
+// defaultBranch resolves fr's default branch through the forge's repo document, once per run.
+// The lane reads its base-branch inputs at the DEFAULT branch — never at a PR's author-chosen
+// base, and never from a caller's worktree.
+func defaultBranch(o *opts, fg laneForge, fr deskkit.ForgeRepo) (string, error) {
+	key := strings.ToLower(fr.Slug())
+	if b, ok := o.defaults[key]; ok {
+		return b, nil
+	}
+	raw, err := fg.RepoHardeningRead(fr, deskkit.HardeningReadRepo)
+	if err != nil {
+		return "", fmt.Errorf("the repo document of %s could not be read: %w", fr.Slug(), err)
+	}
+	var doc struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if jerr := json.Unmarshal(raw, &doc); jerr != nil || strings.TrimSpace(doc.DefaultBranch) == "" {
+		return "", errors.New("the repo document of " + fr.Slug() + " names no default branch")
+	}
+	b := strings.TrimSpace(doc.DefaultBranch)
+	o.defaults[key] = b
+	return b, nil
 }
 
 // --- facts ----------------------------------------------------------------------------------
@@ -268,6 +327,13 @@ type facts struct {
 	surfPresent bool
 	surfGlobs   []string
 	surfErr     error
+
+	// defaultBranch is --repo's default branch (defaultErr when it could not be resolved);
+	// comments is the PR's own thread, which carries the forge half of the ejection latch.
+	defaultBranch string
+	defaultErr    error
+	comments      []deskkit.Comment
+	commentsErr   error
 
 	// inLane is whether the PR carries the admission label as applied by the reviewer App;
 	// laneWhy says why not.
@@ -310,7 +376,16 @@ func gather(o *opts, fg laneForge, fr deskkit.ForgeRepo) (*facts, error) {
 			deskkit.StampTimeline{Present: pr.Labels, Events: f.events}, deskkit.IsDispatcherLogin)
 	}
 
-	fc, serr := fg.ReadFile(fr, deskkit.ReadFileInput{File: ".assay-surfaces", Ref: pr.BaseRef})
+	f.comments, f.commentsErr = fg.ListComments(fr, o.pr)
+	f.defaultBranch, f.defaultErr = defaultBranch(o, fg, fr)
+
+	// The surfaces are read at the DEFAULT branch: a PR's base is the author's choice, and a
+	// base the author controls could carry a permissive .assay-surfaces.
+	var fc *deskkit.FileContent
+	serr := f.defaultErr
+	if serr == nil {
+		fc, serr = fg.ReadFile(fr, deskkit.ReadFileInput{File: ".assay-surfaces", Ref: f.defaultBranch})
+	}
 	switch {
 	case serr != nil && deskkit.IsForgeNotFound(serr):
 		f.surfPresent = false
@@ -360,16 +435,29 @@ func (f *facts) admit(cfg deskkit.AutoLaneConfig, repo string) deskkit.AutoLaneA
 }
 
 func (f *facts) score() deskkit.AutoLaneScore {
+	reviewer, _ := deskkit.RoleAppLogin(reviewerRole)
 	return deskkit.ScoreAutoLane(deskkit.AutoLaneScoreInput{
 		Head: f.head, Reviews: f.reviews, ReviewsErr: f.reviewsErr,
 		Checks: f.checks, ChecksErr: f.checksErr, Labels: f.pr.Labels,
 		Model: f.model, ModelErr: f.eventsErr,
+		Events: f.events, ReviewerLogin: reviewer,
 	})
 }
 
-// validateBase is the authoritative half of the config's surface rule: the base branch's own
-// `.assay-surfaces` (never a caller's worktree), read through the forge.
+// validateBase is the authoritative half of the config's surface rule: the DEFAULT branch's
+// own `.assay-surfaces` (never a caller's worktree), read through the forge. It first confines
+// the lane to PRs whose base IS the default branch: a PR opened against a branch its author
+// controls is never in the lane, whatever that branch declares.
 func validateBase(o *opts, cfg deskkit.AutoLaneConfig, f *facts) error {
+	if f.defaultErr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the default branch of %s could not be "+
+			"resolved, so the PR's base cannot be checked against it", condAreaAdmit, o.repo), f.defaultErr)
+	}
+	if strings.TrimSpace(f.pr.BaseRef) != f.defaultBranch {
+		return deskkit.Refused(fmt.Sprintf("refused: %s — PR #%d targets %q, not the default branch %q; the lane "+
+			"admits and merges only into the default branch", condAreaAdmit, o.pr,
+			deskkit.StripControl(f.pr.BaseRef), f.defaultBranch))
+	}
 	if f.surfErr != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the base branch's .assay-surfaces could "+
 			"not be read", condAreaAdmit), f.surfErr)
@@ -503,7 +591,7 @@ func cmdMerge(o *opts) error {
 	o.say("%s OK: open, ready, at %s", condPROpenReady, short(f.head))
 
 	// --- prior-ejection ---
-	if err := checkPriorEjection(o); err != nil {
+	if err := checkPriorEjection(o, f); err != nil {
 		return err
 	}
 	o.say("%s OK: no ejection recorded for %s#%d", condPriorEjection, o.repo, o.pr)
@@ -521,6 +609,13 @@ func cmdMerge(o *opts) error {
 			"an unread input", unreadableCond(v), strings.Join(v.score.Unreadable, ", ")), nil)
 	}
 	if len(v.reasons) > 0 {
+		if o.dryRun {
+			// A dry run writes NOTHING — no label swap, no comment, no latch. The ejection
+			// is one-way, so previewing it must never perform it.
+			names := strings.Join(v.reasons, ", ")
+			fmt.Fprintf(o.out, "dry-run: would eject: %s\n", names)
+			return deskkit.Refused("dry-run: would eject: " + names + " (NOT written — --dry-run writes nothing)")
+		}
 		return eject(o, fg, fr, f, v.reasons)
 	}
 	o.say("%s OK: every changed path inside an opted-in area, no tripwire", condAreaAdmit)
@@ -592,11 +687,10 @@ func cmdRecompute(o *opts) error {
 	if !strings.EqualFold(f.pr.State, "open") {
 		return deskkit.Refused(fmt.Sprintf("refused: %s — PR #%d is %s", condPROpenReady, o.pr, f.pr.State))
 	}
-	entries, lerr := deskkit.LoadEntries()
-	if lerr != nil {
-		return lerr
+	ejected, perr := priorEjection(o, f)
+	if perr != nil {
+		return perr
 	}
-	ejected := deskkit.AutoLanePriorEjection(entries, o.repo, o.pr)
 	if err := validateBase(o, cfg, f); err != nil {
 		return err
 	}
@@ -666,11 +760,10 @@ func cmdCheck(o *opts) error {
 			return err
 		}
 		o.head = f.head
-		entries, lerr := deskkit.LoadEntries()
-		if lerr != nil {
-			return lerr
+		ejected, perr := priorEjection(o, f)
+		if perr != nil {
+			return perr
 		}
-		ejected := deskkit.AutoLanePriorEjection(entries, o.repo, o.pr)
 		if verr := validateBase(o, cfg, f); verr != nil {
 			return verr
 		}
@@ -707,12 +800,37 @@ func cmdCheck(o *opts) error {
 
 // --- conditions -----------------------------------------------------------------------------
 
-func checkPriorEjection(o *opts) error {
+// priorEjection reads the one-way latch from BOTH of its halves: the local audit log's
+// autolane:eject line, and the reviewer App's marked ejection comment on the PR itself. The
+// comment is the half every host sees — a second host, a fresh HOME or a rotated ledger still
+// finds it. Either half positively set is an ejection; with neither set, an unreadable half is
+// could-not-check, never "not ejected".
+func priorEjection(o *opts, f *facts) (bool, error) {
 	entries, err := deskkit.LoadEntries()
 	if err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the audit log could not be read", condPriorEjection), err)
+		return false, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the audit log could not be read",
+			condPriorEjection), err)
 	}
 	if deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {
+		return true, nil
+	}
+	reviewer, _ := deskkit.RoleAppLogin(reviewerRole)
+	if deskkit.AutoLaneEjectedOnForge(f.comments, reviewer) {
+		return true, nil
+	}
+	if f.commentsErr != nil {
+		return false, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the PR's comments could not be read, "+
+			"so the forge-side ejection marker cannot be checked", condPriorEjection), f.commentsErr)
+	}
+	return false, nil
+}
+
+func checkPriorEjection(o *opts, f *facts) error {
+	ejected, err := priorEjection(o, f)
+	if err != nil {
+		return err
+	}
+	if ejected {
 		return deskkit.Refused(fmt.Sprintf("refused: %s — %s#%d was ejected from the lane earlier. The ejection "+
 			"is one-way: a later clean recompute does not re-admit it.", condPriorEjection, o.repo, o.pr))
 	}
@@ -772,10 +890,10 @@ func checkChecksGreen(fg laneForge, fr deskkit.ForgeRepo, f *facts) error {
 	default:
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — %s", condChecksGreen, detail), nil)
 	}
-	required, rerr := fg.RequiredStatusChecks(fr, f.pr.BaseRef)
+	required, rerr := fg.RequiredStatusChecks(fr, f.defaultBranch)
 	if rerr != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the required-check set on %q could not "+
-			"be read", condChecksGreen, f.pr.BaseRef), rerr)
+			"be read", condChecksGreen, f.defaultBranch), rerr)
 	}
 	have := map[string]bool{}
 	for _, r := range checks.CheckRuns {

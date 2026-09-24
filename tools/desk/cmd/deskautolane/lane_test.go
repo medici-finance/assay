@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -65,7 +66,7 @@ func TestAutoLane_MissingRulingIs_CouldNotCheck(t *testing.T) {
 // a TRUSTED human who is not the blessing authority does not enact the lane.
 func TestAutoLane_RulingSignedByNon_AuthorityRefuses(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
-	e.fg.comments[3] = []deskkit.Comment{{DatabaseID: 555, Author: deskkit.Account{Login: "shared-agent", ID: 2002}}}
+	e.fg.comments[3] = []deskkit.Comment{{DatabaseID: 555, Author: deskkit.Account{Login: "shared-agent", ID: 2002, Type: "User"}, Body: fxEnactBody}}
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
 	if code != deskkit.ExitRefused || !strings.Contains(stderr, "not the configured blessing authority") {
 		t.Fatalf("exit %d stderr %q", code, stderr)
@@ -204,7 +205,7 @@ func TestAutoLane_MergeEjectsOn_SupersededChanges_Requested(t *testing.T) {
 		{ID: 1, Author: deskkit.Account{Login: fxReviewer}, State: "CHANGES_REQUESTED", CommitID: fxOldHead},
 		{ID: 2, Author: deskkit.Account{Login: fxReviewer}, State: "APPROVED", CommitID: fxHead},
 	}
-	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", e.fpy(healthyFPY))
 	assertEjected(t, e, code, stderr, deskkit.SignalReviewRework)
 }
 
@@ -214,7 +215,7 @@ func TestAutoLane_MergeEjectsOnPath_OutsideArea(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.files = append(e.fg.files, deskkit.ChangedFile{Filename: "README.md", Status: "modified"})
 	e.fg.pr.ChangedFiles = 3
-	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", e.fpy(healthyFPY))
 	assertEjected(t, e, code, stderr, deskkit.TripPathOutsideArea)
 }
 
@@ -224,7 +225,7 @@ func TestAutoLane_MergeEjectsOn_StreamBriefFile(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.files = append(e.fg.files, deskkit.ChangedFile{Filename: "docs/streams/example/brief-04-thing.md", Status: "modified"})
 	e.fg.pr.ChangedFiles = 3
-	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", e.fpy(healthyFPY))
 	assertEjected(t, e, code, stderr, deskkit.TripStreamBrief)
 }
 
@@ -233,7 +234,7 @@ func TestAutoLane_MergeEjectsOn_StreamBriefFile(t *testing.T) {
 func TestAutoLane_MergeEjectsOver_EjectLine(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.pr.Labels = append(e.fg.pr.Labels, deskkit.SizeLabelPrefix+"L")
-	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", e.fpy(healthyFPY))
 	assertEjected(t, e, code, stderr, deskkit.SignalSizeLarge)
 }
 
@@ -378,7 +379,7 @@ func TestAutoLane_MergeRefusesPrior_EjectionAfter_Readmission(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	fpy := e.fpy(healthyFPY)
 	e.fg.checks.CheckRuns[0].Conclusion = "failure"
-	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", fpy)
+	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", fpy)
 	assertEjected(t, e, code, stderr, deskkit.SignalCINonsuccess)
 
 	const newHead = "22222222222222222222"
@@ -394,8 +395,7 @@ func TestAutoLane_MergeRefusesPrior_EjectionAfter_Readmission(t *testing.T) {
 		t.Fatalf("writes after the latch: %v", w)
 	}
 	// recompute never re-admits it either.
-	e.fg.pr.Labels = []string{"dispatched-model:example-model", "dispatched-tier:strong"}
-	e.fg.events = e.fg.events[:2]
+	notYetInLane(e)
 	if code, _, stderr := e.run(verbRecompute, "7"); code != deskkit.ExitRefused || !strings.Contains(stderr, condPriorEjection) {
 		t.Fatalf("recompute on an ejected PR: exit %d stderr %q", code, stderr)
 	}
@@ -497,9 +497,22 @@ func TestAutoLane_WrongCallerRole_Refuses(t *testing.T) {
 
 // --- recompute: admission ----------------------------------------------------------------
 
+// notYetInLane removes the admission label and its timeline event, leaving the rest.
 func notYetInLane(e *env) {
-	e.fg.pr.Labels = []string{"dispatched-model:example-model", "dispatched-tier:strong"}
-	e.fg.events = e.fg.events[:2]
+	var labels []string
+	for _, l := range e.fg.pr.Labels {
+		if l != deskkit.AutoLaneLabel {
+			labels = append(labels, l)
+		}
+	}
+	e.fg.pr.Labels = labels
+	var events []deskkit.LabelEvent
+	for _, ev := range e.fg.events {
+		if ev.Name != deskkit.AutoLaneLabel {
+			events = append(events, ev)
+		}
+	}
+	e.fg.events = events
 }
 
 func TestAutoLane_RecomputeAdmits_WhenEnacted(t *testing.T) {
@@ -555,5 +568,268 @@ func TestFixtureRosterFileMatches(t *testing.T) {
 	want := fixtureRosterBase + fixtureLaneKeys
 	if got != want {
 		t.Fatalf("testdata/roster.env drifted from the harness fixture:\n%s", got)
+	}
+}
+
+// --- review round 1: the enactment gate reads an ACCEPTANCE, from the forge ------------------
+
+// assertNotEnacted runs an admission recompute on a PR not yet in the lane and requires the
+// admission to be REFUSED unwritten, naming want.
+func assertNotEnacted(t *testing.T, e *env, want string) {
+	t.Helper()
+	notYetInLane(e)
+	code, _, stderr := e.run(verbRecompute, "7")
+	if code == deskkit.ExitOK || !strings.Contains(stderr, "NOT written") || !strings.Contains(stderr, want) {
+		t.Fatalf("exit %d stderr %q — want an unwritten admission naming %q", code, stderr, want)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("the lane wrote on a non-acceptance: %v", w)
+	}
+}
+
+// TestAutoLane_EnactRefuses_RejectionBody — the blessing authority's comment on the Sign-off
+// line RECORDS A REJECTION: nothing is enacted. Fail-first: the gate at 92d2221 checked the
+// author only, and this admitted (exit 0, add=auto-lane).
+func TestAutoLane_EnactRefuses_RejectionBody(t *testing.T) {
+	for _, body := range []string{
+		"Rejected. R-8 is NOT accepted; do not enact the lane.",
+		"Enact: R-8\n\nOn reflection: rejected.",
+	} {
+		e := install(t, fixtureLaneKeys, rulingsSigned)
+		e.fg.comments[3][0].Body = body
+		assertNotEnacted(t, e, "not an acceptance")
+	}
+}
+
+// TestAutoLane_EnactRefuses_BodyWithoutRuling — "Accepted." does not name R-8, and a line that
+// mentions the ruling in prose is not the enactment line.
+func TestAutoLane_EnactRefuses_BodyWithoutRuling(t *testing.T) {
+	for _, body := range []string{"Accepted.", "thanks, typo fixed", "I think Enact: R-8 is fine"} {
+		e := install(t, fixtureLaneKeys, rulingsSigned)
+		e.fg.comments[3][0].Body = body
+		assertNotEnacted(t, e, "not an acceptance")
+	}
+}
+
+// TestAutoLane_EnactRefuses_NonUserAuthor — an artifact whose author the forge types as a Bot
+// is refused even at the pinned login and id; an untyped author is could-not-check.
+func TestAutoLane_EnactRefuses_NonUserAuthor(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[3][0].Author.Type = "Bot"
+	assertNotEnacted(t, e, "type Bot")
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[3][0].Author.Type = ""
+	assertNotEnacted(t, e, "no author type")
+}
+
+// TestAutoLane_EnactRefuses_ThreadOutside_RegisterRepo — the Sign-off names an authority
+// comment on a thread in ANOTHER repo: refused before the thread is even fetched.
+func TestAutoLane_EnactRefuses_ThreadOutside_RegisterRepo(t *testing.T) {
+	url := "https://github.com/example-org/open/issues/99#issuecomment-777"
+	e := install(t, fixtureLaneKeys, strings.Replace(rulingsSigned, fxSignURL, url, 1))
+	e.fg.comments[99] = []deskkit.Comment{{DatabaseID: 777,
+		Author: deskkit.Account{Login: "ada", ID: 2001, Type: "User"}, Body: fxEnactBody}}
+	assertNotEnacted(t, e, "not in the register's own repo")
+	for _, c := range e.fg.calls {
+		if c.Op == "ListCommentsTyped" {
+			t.Fatalf("the gate fetched a thread outside the register repo: %v", c)
+		}
+	}
+}
+
+// TestAutoLane_EnactIgnores_LocalRegister — the caller's tree (a PR-head checkout) carries a
+// SIGNED register, the default branch's copy is UNSIGNED: the lane is not enacted, and the
+// register is read at the default branch through the forge. Fail-first: the gate at 92d2221
+// read <root>/docs/streams/issue-flow/rulings.md and admitted.
+func TestAutoLane_EnactIgnores_LocalRegister(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsUnsigned)
+	e.localRulings(rulingsSigned)
+	assertNotEnacted(t, e, "ruling-unsigned")
+	read := false
+	for _, c := range e.fg.calls {
+		if c.Op == "ReadFile" && c.Arg == fxRepo+":"+deskkit.AutoLaneRulingsPath+"@main" {
+			read = true
+		}
+	}
+	if !read {
+		t.Fatalf("the register was not read through the forge at the default branch: %v", e.fg.calls)
+	}
+}
+
+// TestAutoLane_RulingsFlagRefuses_OutsideNeverAdmit — a register path a lane area could reach
+// is refused before any read.
+func TestAutoLane_RulingsFlagRefuses_OutsideNeverAdmit(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	code, _, stderr := e.run(verbCheck, "--rulings", "docs/notes/rulings.md")
+	if code != deskkit.ExitRefused || !strings.Contains(stderr, "never-admit") || len(e.fg.calls) != 0 {
+		t.Fatalf("exit %d stderr %q calls %d", code, stderr, len(e.fg.calls))
+	}
+}
+
+// --- review round 1: the ejection latch is on the forge too ----------------------------------
+
+// TestAutoLane_ForgeEjectMarker_Latches — a FRESH HOME (empty audit log) and a PR whose thread
+// carries the reviewer App's ejection comment: recompute does not re-admit it, merge refuses
+// prior-ejection, check reports it. Fail-first: at 92d2221 recompute re-admitted (exit 0).
+func TestAutoLane_ForgeEjectMarker_Latches(t *testing.T) {
+	marker := []deskkit.Comment{{Author: deskkit.Account{Login: fxReviewer},
+		Body: deskkit.AutoLaneEjectComment([]string{deskkit.SignalCINonsuccess}, fxOldHead)}}
+
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	notYetInLane(e)
+	e.fg.comments[fxPR] = marker
+	code, _, stderr := e.run(verbRecompute, "7")
+	if code != deskkit.ExitRefused || !strings.Contains(stderr, condPriorEjection) {
+		t.Fatalf("recompute: exit %d stderr %q — want refused: prior-ejection", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("recompute re-admitted a forge-ejected PR: %v", w)
+	}
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[fxPR] = marker
+	code, _, stderr = e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitRefused || !strings.Contains(stderr, "refused: "+condPriorEjection) {
+		t.Fatalf("merge: exit %d stderr %q — want refused: prior-ejection", code, stderr)
+	}
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[fxPR] = marker
+	if _, stdout, _ := e.run(verbCheck, "7", "--fpy-file", e.fpy(healthyFPY)); !strings.Contains(stdout, "prior-ejection: true") {
+		t.Fatalf("check did not report the forge-side latch:\n%s", stdout)
+	}
+}
+
+// TestAutoLane_UnreadableThreadIs_CouldNotCheck — the PR's comments cannot be read and the
+// audit log records nothing: prior-ejection is could-not-check, never "not ejected".
+func TestAutoLane_UnreadableThreadIs_CouldNotCheck(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.fail["ListComments"] = true
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "could-not-check: "+condPriorEjection) {
+		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+}
+
+// --- review round 1: a dry run writes nothing ------------------------------------------------
+
+// TestAutoLane_MergeDryRun_WouldEject_WritesNothing — an enacted lane, a PR that fails the
+// score: `merge --dry-run` reports the ejection and performs NONE of it — no label, no comment,
+// no latch — so a second dry run is not refused prior-ejection. Fail-first: at 92d2221 the dry
+// run swapped the labels, posted the comment and latched.
+func TestAutoLane_MergeDryRun_WouldEject_WritesNothing(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.pr.Labels = append(e.fg.pr.Labels, deskkit.SizeLabelPrefix+"L")
+	fpy := e.fpy(healthyFPY)
+	for i := 0; i < 2; i++ {
+		code, stdout, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", fpy)
+		if code != deskkit.ExitRefused || !strings.Contains(stdout, "dry-run: would eject: "+deskkit.SignalSizeLarge) {
+			t.Fatalf("run %d: exit %d stdout %q stderr %q — want a would-eject", i, code, stdout, stderr)
+		}
+		if strings.Contains(stderr, condPriorEjection) {
+			t.Fatalf("run %d: a dry run latched the PR: %q", i, stderr)
+		}
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("a dry run wrote: %v", w)
+	}
+	for _, a := range e.audit() {
+		if a.Verb == deskkit.AutoLaneVerbEject {
+			t.Fatalf("a dry run wrote the ejection latch: %+v", a)
+		}
+	}
+}
+
+// --- review round 1: base, never-admit, size, pending ---------------------------------------
+
+// TestAutoLane_NonDefaultBaseRefuses — a PR against a branch other than the default branch is
+// not in the lane, whatever that branch declares; an unresolvable default branch is
+// could-not-check.
+func TestAutoLane_NonDefaultBaseRefuses(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.pr.BaseRef = "author-branch"
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitRefused || !strings.Contains(stderr, "not the default branch") {
+		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+	for _, c := range e.fg.calls {
+		if c.Op == "ReadFile" && strings.Contains(c.Arg, "@author-branch") {
+			t.Fatalf("an input was read at the author-chosen base: %v", c)
+		}
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("writes %v", w)
+	}
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.fail["RepoHardeningRead"] = true
+	code, _, stderr = e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("unresolvable default branch: exit %d stderr %q — want 6", code, stderr)
+	}
+}
+
+// TestAutoLane_ConfigRefuses_RegisterReachingArea — an area over the register's directory is
+// refused at load, before any forge request. Fail-first: at 92d2221 it loaded and a PR
+// editing the register was admitted.
+func TestAutoLane_ConfigRefuses_RegisterReachingArea(t *testing.T) {
+	keys := strings.Replace(fixtureLaneKeys, "example-org/tracker:docs/notes/**:ada",
+		"example-org/tracker:"+path.Dir(deskkit.AutoLaneRulingsPath)+"/**:ada", 1)
+	e := install(t, keys, rulingsSigned)
+	code, _, stderr := e.run(verbCheck, "7")
+	if code != deskkit.ExitRefused || !strings.Contains(stderr, "never-admit") || len(e.fg.calls) != 0 {
+		t.Fatalf("exit %d stderr %q calls %d", code, stderr, len(e.fg.calls))
+	}
+}
+
+// TestAutoLane_InstructionFileEjects — an agent-instruction file inside an opted-in area trips
+// the category at admit.
+func TestAutoLane_InstructionFileEjects(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.files = append(e.fg.files, deskkit.ChangedFile{Filename: "docs/notes/CLAUDE.md", Status: "added"})
+	e.fg.pr.ChangedFiles = 3
+	code, _, stderr := e.run(verbMerge, "7", "--fpy-file", e.fpy(healthyFPY))
+	assertEjected(t, e, code, stderr, deskkit.TripNeverAdmit)
+}
+
+// TestAutoLane_SizeLabelUntrusted_CouldNotCheck — the size label absent (the labeler has not
+// run), or set by the PR's author: could-not-check, never "not large", and never latched.
+func TestAutoLane_SizeLabelUntrusted_CouldNotCheck(t *testing.T) {
+	strip := func(e *env) {
+		var labels []string
+		for _, l := range e.fg.pr.Labels {
+			if l != fxSizeS {
+				labels = append(labels, l)
+			}
+		}
+		e.fg.pr.Labels = labels
+	}
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	strip(e)
+	code, _, stderr := e.run(verbRecompute, "7")
+	if code != deskkit.ExitUnverifiable || len(e.fg.writes()) != 0 {
+		t.Fatalf("absent size label: exit %d stderr %q writes %v — want 6, unwritten", code, stderr, e.fg.writes())
+	}
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.events = append(e.fg.events, deskkit.LabelEvent{Name: fxSizeS, AppliedBy: fxWorker})
+	code, _, stderr = e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || len(e.fg.writes()) != 0 {
+		t.Fatalf("author-applied size label: exit %d stderr %q — want 6", code, stderr)
+	}
+}
+
+// TestAutoLane_PendingChecksAre_CouldNotCheck — CI still running on an in-lane PR is
+// could-not-check at recompute (exit 6, nothing written, no latch), never a one-way ejection.
+func TestAutoLane_PendingChecksAre_CouldNotCheck(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.checks.CheckRuns[0].Status = "in_progress"
+	code, _, stderr := e.run(verbRecompute, "7")
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "could-not-check: checks") {
+		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("pending CI ejected: %v", w)
 	}
 }

@@ -100,8 +100,18 @@ const (
 	TripSurfaceCore     = "surface-core"
 	TripSurfaceAbsent   = "surface-absent"
 	TripSecurityFail    = "security-review-fail"
+	TripNeverAdmit      = "never-admit-path"
 	TripUnreadable      = "unreadable"
 )
+
+// AutoLaneRulingsPath is the default repo-relative path of the rulings register whose R-8
+// Sign-off line is the enactment gate. It sits on a never-admit path (autoLaneNeverAdmitGlobs),
+// so no lane merge can ever edit the line that enacts the lane.
+const AutoLaneRulingsPath = "docs/streams/issue-flow/rulings.md"
+
+// AutoLaneRulingsGlob is where a rulings register may sit: the enactment gate refuses a
+// register path outside it, and it heads the never-admit set.
+const AutoLaneRulingsGlob = "docs/streams/**/rulings.md"
 
 // streamBriefGlobs is the compiled never-admit set: a stream brief file is methodology
 // state a human signs, and no opt-in may reach it. It is compiled, not configured, so no
@@ -111,9 +121,48 @@ var streamBriefGlobs = []string{
 	"docs/streams/**/brief-*.md",
 }
 
+// autoLaneNeverAdmitGlobs is the rest of the compiled never-admit set: files that steer the
+// lane itself or the agents that work under it, so a lane merge that edited one could widen
+// the lane or re-instruct its workers with no human act.
+//
+//   - a rulings register — the lane's own enactment line lives in one;
+//   - `.assay-surfaces` — the surface tier the lane's area rule is checked against;
+//   - agent-instruction files: CLAUDE.md, AGENTS.md and SKILL.md at any depth, anything
+//     under a `.claude/` directory, and `.mcp.json`.
+//
+// Like streamBriefGlobs it is compiled, never configured. The per-path check at admit is the
+// binding one; the load-time overlap test refuses an area only where its sample expansion
+// finds a common path (an area such as `docs/notes/**` is not refused merely because a
+// CLAUDE.md could one day appear under it — a PR adding one trips at admit instead).
+var autoLaneNeverAdmitGlobs = []string{
+	AutoLaneRulingsGlob,
+	".assay-surfaces",
+	"**/.assay-surfaces",
+	"CLAUDE.md",
+	"**/CLAUDE.md",
+	"AGENTS.md",
+	"**/AGENTS.md",
+	"**/SKILL.md",
+	".claude/**",
+	"**/.claude/**",
+	".mcp.json",
+	"**/.mcp.json",
+}
+
 // IsStreamBriefPath reports whether path is a stream brief file.
 func IsStreamBriefPath(path string) bool {
 	for _, g := range streamBriefGlobs {
+		if MatchSurfaceGlob(g, path) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAutoLaneNeverAdmitPath reports whether path is on the compiled never-admit set beyond the
+// stream brief files (autoLaneNeverAdmitGlobs).
+func IsAutoLaneNeverAdmitPath(path string) bool {
+	for _, g := range autoLaneNeverAdmitGlobs {
 		if MatchSurfaceGlob(g, path) {
 			return true
 		}
@@ -513,6 +562,24 @@ func AutoLaneAreaTripwires(c AutoLaneConfig, repo string, riskClassed func(repo 
 			}
 		}
 	}
+	for _, a := range areas {
+		for _, ng := range autoLaneNeverAdmitGlobs {
+			if w, ok := globsOverlap(a.Glob, ng); ok {
+				return fmt.Sprintf("refused: area can admit a never-admit path: entry %q matches %q "+
+					"(a rulings register, .assay-surfaces or an agent-instruction file)", a, w)
+			}
+		}
+		// The rulings register is the one never-admit file whose edit could ENACT the lane, so
+		// its load-time test does not rely on sampling alone: every directory the area's own
+		// samples reach is also probed with a register file in it.
+		for _, s := range append([]string{""}, GlobSamples(a.Glob)...) {
+			w := strings.TrimPrefix(s+"/rulings.md", "/")
+			if MatchSurfaceGlob(a.Glob, w) && MatchSurfaceGlob(AutoLaneRulingsGlob, w) {
+				return fmt.Sprintf("refused: area can admit a never-admit path: entry %q matches %q "+
+					"(a rulings register — a lane merge could edit its own enactment line)", a, w)
+			}
+		}
+	}
 	return ""
 }
 
@@ -594,6 +661,9 @@ func AdmitAutoLane(c AutoLaneConfig, in AutoLaneAdmitInput) AutoLaneAdmit {
 		if IsStreamBriefPath(f) {
 			trip(TripStreamBrief, f)
 		}
+		if IsAutoLaneNeverAdmitPath(f) {
+			trip(TripNeverAdmit, f)
+		}
 		inArea := false
 		for _, a := range areas {
 			if MatchSurfaceGlob(a.Glob, f) {
@@ -662,6 +732,12 @@ type AutoLaneScoreInput struct {
 	// timeline read failing.
 	Model    ModelState
 	ModelErr error
+	// Events is the label timeline (the read ModelErr belongs to) and ReviewerLogin the
+	// roster's reviewer-role App login. The size signal reads its label only when the
+	// reviewer App — the identity that computes and applies it at verdict time — is the one
+	// that applied it: a size label the PR's author set or swapped is no size reading.
+	Events        []LabelEvent
+	ReviewerLogin string
 }
 
 // AutoLaneScore is one recompute's result. Fired lists the fired signals in AutoLaneSignals
@@ -706,7 +782,11 @@ func ScoreAutoLane(in AutoLaneScoreInput) AutoLaneScore {
 		state, detail := EvalChecksAtHead(in.Checks)
 		switch state {
 		case ChecksGreen:
-		case ChecksTruncated:
+		case ChecksTruncated, ChecksPending, ChecksEmpty:
+			// Not yet decided is could-not-check, never a demotion: a PR whose CI is still
+			// running (or has not reported) must not be ejected one-way for it. It does not
+			// merge either — `unreadable` fires, and the merge step's checks-green re-read
+			// refuses the same state could-not-check.
 			unreadable = append(unreadable, "checks")
 			ciDetail = detail
 		default:
@@ -715,9 +795,27 @@ func ScoreAutoLane(in AutoLaneScoreInput) AutoLaneScore {
 		}
 	}
 
+	// size-large. A size:L label FIRES whoever applied it — the only-narrowing direction.
+	// Any other reading must be positively established: exactly one size label, applied by
+	// the reviewer App. An absent label (the labeler has not run), several, or one applied by
+	// any other identity is could-not-check, so removing or downgrading the label can never
+	// read as "not large".
+	var sizes []string
 	for _, l := range in.Labels {
-		if strings.EqualFold(strings.TrimSpace(l), SizeLabelPrefix+"L") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(strings.ToLower(l), SizeLabelPrefix) {
+			sizes = append(sizes, l)
+		}
+		if strings.EqualFold(l, SizeLabelPrefix+"L") {
 			fired[SignalSizeLarge] = true
+		}
+	}
+	if !fired[SignalSizeLarge] {
+		switch applier, ok := LabelApplier(in.Labels, in.Events, firstOr(sizes, "")); {
+		case len(sizes) != 1, in.ModelErr != nil, !ok,
+			strings.TrimSpace(in.ReviewerLogin) == "",
+			!strings.EqualFold(strings.TrimSpace(applier), strings.TrimSpace(in.ReviewerLogin)):
+			unreadable = append(unreadable, "size-label")
 		}
 	}
 
@@ -957,6 +1055,57 @@ func AutoLanePriorEjection(entries []Entry, repo string, pr int) bool {
 	return false
 }
 
+// AutoLaneEjectedOnForge reports whether the PR's own thread carries the ejection comment —
+// the FORGE half of the one-way latch. The audit-log line is local to one host and one HOME;
+// the marked comment is visible to every host, so a second host, a fresh HOME or a rotated
+// ledger still sees the ejection. Only a comment authored by the reviewer App (the identity
+// that performs ejections) counts; reviewerLogin "" matches nothing.
+func AutoLaneEjectedOnForge(comments []Comment, reviewerLogin string) bool {
+	reviewerLogin = strings.TrimSpace(reviewerLogin)
+	if reviewerLogin == "" {
+		return false
+	}
+	for _, c := range comments {
+		if strings.Contains(c.Body, AutoLaneEjectMarker) && strings.EqualFold(strings.TrimSpace(c.Author.Login), reviewerLogin) {
+			return true
+		}
+	}
+	return false
+}
+
+// autoLaneEnactRe is the acceptance the enactment gate requires in the sign-off artifact's
+// body: a line reading exactly `Enact: R-8`, alone on its line. A body that merely NAMES the
+// ruling, thanks someone, or discusses it is no acceptance.
+var autoLaneEnactRe = regexp.MustCompile(`(?mi)^[ \t]*Enact:[ \t]*` + regexp.QuoteMeta(AutoLaneRulingID) + `[ \t\r]*$`)
+
+// autoLaneNegationRe voids an acceptance line: a body that also rejects, negates, revokes or
+// withdraws is ambiguous, and an ambiguous artifact is not an authorization.
+var autoLaneNegationRe = regexp.MustCompile(`(?i)\b(reject(s|ed|ing)?|not[ \t]+(accepted|approved|enacted)|do[ \t]+not|don't|revok(e|es|ed|ing)|withdraw(s|n)?|declin(e|es|ed)|veto(es|ed)?|rescind(s|ed)?)\b`)
+
+// AutoLaneEnactLine is the exact line the sign-off artifact must carry.
+const AutoLaneEnactLine = "Enact: " + AutoLaneRulingID
+
+// AutoLaneAcceptance judges a sign-off artifact's BODY: it enacts only when it carries the
+// AutoLaneEnactLine alone on a line AND no rejection or negation anywhere. why names the
+// failing half; it is "" exactly when ok.
+func AutoLaneAcceptance(body string) (ok bool, why string) {
+	if !autoLaneEnactRe.MatchString(body) {
+		return false, "the artifact carries no line reading exactly `" + AutoLaneEnactLine + "`"
+	}
+	if m := autoLaneNegationRe.FindString(body); m != "" {
+		return false, fmt.Sprintf("the artifact also carries %q — a rejection or negation voids the acceptance line",
+			StripControl(m))
+	}
+	return true, ""
+}
+
+func firstOr(xs []string, def string) string {
+	if len(xs) == 0 {
+		return def
+	}
+	return xs[0]
+}
+
 // AutoLaneEjectComment renders the ONE ejection comment, carrying its idempotency marker.
 func AutoLaneEjectComment(reasons []string, head string) string {
 	rs := append([]string{}, reasons...)
@@ -971,9 +1120,20 @@ func AutoLaneEjectComment(reasons []string, head string) string {
 // actor of the LAST `labeled` event for it not followed by an `unlabeled`. ok is false when
 // the label is on the PR but no event attributes it (could-not-check) or it is not present.
 func AutoLaneLabelApplier(present []string, events []LabelEvent) (applier string, ok bool) {
+	return LabelApplier(present, events, AutoLaneLabel)
+}
+
+// LabelApplier is AutoLaneLabelApplier for any label name: the actor of the LAST `labeled`
+// event for name not followed by an `unlabeled`, when name is on the PR. An empty name, a
+// label not present, or a present label no event attributes is ("", false).
+func LabelApplier(present []string, events []LabelEvent, name string) (applier string, ok bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", false
+	}
 	has := false
 	for _, l := range present {
-		if strings.EqualFold(strings.TrimSpace(l), AutoLaneLabel) {
+		if strings.EqualFold(strings.TrimSpace(l), name) {
 			has = true
 		}
 	}
@@ -981,7 +1141,7 @@ func AutoLaneLabelApplier(present []string, events []LabelEvent) (applier string
 		return "", false
 	}
 	for _, ev := range events {
-		if !strings.EqualFold(strings.TrimSpace(ev.Name), AutoLaneLabel) {
+		if !strings.EqualFold(strings.TrimSpace(ev.Name), name) {
 			continue
 		}
 		if ev.Removed {

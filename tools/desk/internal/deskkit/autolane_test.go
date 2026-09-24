@@ -240,12 +240,17 @@ func greenChecks() *ChecksAtHead {
 		{Name: "test", Status: "completed", Conclusion: "success", CompletedAt: "2026-01-01T00:00:00Z"}}}
 }
 
+const alReviewer = "example-reviewer-app[bot]"
+
 func cleanScoreIn() AutoLaneScoreInput {
 	return AutoLaneScoreInput{
-		Head:    "h2",
-		Reviews: []Review{{State: "APPROVED", CommitID: "h2"}},
-		Checks:  greenChecks(),
-		Model:   ModelStamped,
+		Head:          "h2",
+		Reviews:       []Review{{State: "APPROVED", CommitID: "h2"}},
+		Checks:        greenChecks(),
+		Model:         ModelStamped,
+		Labels:        []string{SizeLabelPrefix + "S"},
+		Events:        []LabelEvent{{Name: SizeLabelPrefix + "S", AppliedBy: alReviewer}},
+		ReviewerLogin: alReviewer,
 	}
 }
 
@@ -262,6 +267,7 @@ func TestAutoLaneScoreCleanIsZero(t *testing.T) {
 func TestAutoLaneScoreOverLineEjects(t *testing.T) {
 	in := cleanScoreIn()
 	in.Labels = []string{SizeLabelPrefix + "L"}
+	in.Events = nil // size:L fires whoever applied it: only-narrowing
 	s := ScoreAutoLane(in)
 	if s.Score != 1 || !alHas(s.Fired, SignalSizeLarge) {
 		t.Fatalf("size:L fixture: score %d fired %v", s.Score, s.Fired)
@@ -299,8 +305,15 @@ func TestAutoLaneScoreSignals(t *testing.T) {
 		{"no head", func(i *AutoLaneScoreInput) { i.Head = "" }, SignalUnreadable},
 		{"red check", func(i *AutoLaneScoreInput) { i.Checks.CheckRuns[0].Conclusion = "failure" }, SignalCINonsuccess},
 		{"cancelled latest", func(i *AutoLaneScoreInput) { i.Checks.CheckRuns[0].Conclusion = "cancelled" }, SignalCINonsuccess},
-		{"pending", func(i *AutoLaneScoreInput) { i.Checks.CheckRuns[0].Status = "in_progress" }, SignalCINonsuccess},
-		{"empty rollup", func(i *AutoLaneScoreInput) { i.Checks = &ChecksAtHead{} }, SignalCINonsuccess},
+		{"pending", func(i *AutoLaneScoreInput) { i.Checks.CheckRuns[0].Status = "in_progress" }, SignalUnreadable},
+		{"empty rollup", func(i *AutoLaneScoreInput) { i.Checks = &ChecksAtHead{} }, SignalUnreadable},
+		{"size label absent", func(i *AutoLaneScoreInput) { i.Labels = nil }, SignalUnreadable},
+		{"size label by another identity", func(i *AutoLaneScoreInput) {
+			i.Events = []LabelEvent{{Name: SizeLabelPrefix + "S", AppliedBy: "example-worker-app[bot]"}}
+		}, SignalUnreadable},
+		{"size label unattributed", func(i *AutoLaneScoreInput) { i.Events = nil }, SignalUnreadable},
+		{"two size labels", func(i *AutoLaneScoreInput) { i.Labels = append(i.Labels, SizeLabelPrefix+"M") }, SignalUnreadable},
+		{"reviewer role unbound", func(i *AutoLaneScoreInput) { i.ReviewerLogin = "" }, SignalUnreadable},
 		{"failed status", func(i *AutoLaneScoreInput) {
 			i.Checks.StatusTotalCount = 1
 			i.Checks.Statuses = []StatusContext{{Context: "leak-sweep", State: "failure"}}
@@ -460,4 +473,83 @@ func alHas(xs []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestAutoLane_PendingChecks_NotDemotion — CI not yet decided is could-not-check, never the
+// ci-nonsuccess demotion: a PR whose CI is still running must not be ejected one-way for it.
+// Fail-first: at 92d2221 both fired ci-nonsuccess.
+func TestAutoLane_PendingChecks_NotDemotion(t *testing.T) {
+	for _, mut := range []func(*AutoLaneScoreInput){
+		func(i *AutoLaneScoreInput) { i.Checks.CheckRuns[0].Status = "in_progress" },
+		func(i *AutoLaneScoreInput) { i.Checks = &ChecksAtHead{} },
+	} {
+		in := cleanScoreIn()
+		mut(&in)
+		s := ScoreAutoLane(in)
+		if alHas(s.Fired, SignalCINonsuccess) || !alHas(s.Unreadable, "checks") {
+			t.Fatalf("fired %v unreadable %v — want checks unreadable, no ci-nonsuccess", s.Fired, s.Unreadable)
+		}
+	}
+}
+
+// TestAutoLaneAcceptance — the enactment gate's body test: exactly the enactment line, and
+// no rejection or negation anywhere.
+func TestAutoLaneAcceptance(t *testing.T) {
+	for _, ok := range []string{"Enact: R-8", "  enact:R-8  ", "Reviewed the lane.\n\nEnact: R-8\n", "Enact: R-8\r\n"} {
+		if got, why := AutoLaneAcceptance(ok); !got {
+			t.Errorf("%q: not accepted (%s)", ok, why)
+		}
+	}
+	for _, bad := range []string{
+		"", "Accepted.", "R-8 accepted", "Enact: R-80", "Enact: R-8 please", "> Enact: R-8",
+		"Rejected. R-8 is NOT accepted; do not enact the lane.",
+		"Enact: R-8\nrejected", "Enact: R-8\nRevoked.", "Enact: R-8\nwithdrawn", "Enact: R-8\nNot accepted.",
+	} {
+		if got, _ := AutoLaneAcceptance(bad); got {
+			t.Errorf("%q: accepted", bad)
+		}
+	}
+}
+
+// TestAutoLaneEjectedOnForge — the forge half of the latch: the marked comment, by the
+// reviewer App only.
+func TestAutoLaneEjectedOnForge(t *testing.T) {
+	marked := Comment{Author: Account{Login: alReviewer}, Body: AutoLaneEjectMarker + "\nejected"}
+	if !AutoLaneEjectedOnForge([]Comment{{Body: "hi"}, marked}, alReviewer) {
+		t.Fatalf("the reviewer App's marked comment did not latch")
+	}
+	if AutoLaneEjectedOnForge([]Comment{marked}, "") {
+		t.Fatalf("an unbound reviewer role matched")
+	}
+	other := marked
+	other.Author.Login = "example-worker-app[bot]"
+	if AutoLaneEjectedOnForge([]Comment{other, {Author: Account{Login: alReviewer}, Body: "no marker"}}, alReviewer) {
+		t.Fatalf("an unmarked or foreign comment latched")
+	}
+}
+
+// TestAutoLane_NeverAdmitPaths — the compiled never-admit set: refused at load where an area
+// reaches it, and tripped per path at admit.
+func TestAutoLane_NeverAdmitPaths(t *testing.T) {
+	for _, glob := range []string{"docs/streams/issue-flow/**", "docs/streams/issue-flow/rulings.md", ".claude/**"} {
+		c := AutoLaneConfig{Areas: []AutoLaneArea{{Repo: alRepo, Glob: glob, Login: "ada"}}}
+		if p := AutoLaneAreaTripwires(c, alRepo, noRisk); !strings.Contains(p, "never-admit") {
+			t.Fatalf("glob %q: problem %q — want a never-admit refusal", glob, p)
+		}
+	}
+	for _, glob := range []string{"docs/notes/**", "docs/research/**/*.md", "BOARD.md"} {
+		c := alConfig(t, alRepo+":"+glob+":ada")
+		if p := AutoLaneAreaTripwires(c, alRepo, noRisk); p != "" {
+			t.Fatalf("glob %q was refused: %q", glob, p)
+		}
+	}
+	c := AutoLaneConfig{Areas: []AutoLaneArea{{Repo: alRepo, Glob: "docs/**", Login: "ada"}}}
+	for _, f := range []string{"docs/CLAUDE.md", "docs/x/AGENTS.md", "docs/p/SKILL.md", "docs/.claude/settings.json",
+		"docs/.mcp.json", "docs/.assay-surfaces", "docs/streams/x/rulings.md"} {
+		in := admitIn()
+		in.ChangedFiles = []string{f}
+		if a := AdmitAutoLane(c, in); a.Admitted || !alHas(a.Tripwires, TripNeverAdmit) {
+			t.Fatalf("%s: tripwires %v — want %s", f, a.Tripwires, TripNeverAdmit)
+		}
+	}
 }

@@ -14,6 +14,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -33,6 +34,9 @@ const (
 	fxWorker   = "example-worker-app[bot]"
 	fxDesk     = "example-desk-app[bot]"
 	fxSignURL  = "https://github.com/example-org/tracker/issues/3#issuecomment-555"
+	fxSizeS    = deskkit.SizeLabelPrefix + "S"
+	// fxEnactBody is the acceptance artifact's body: the exact enactment line.
+	fxEnactBody = "Enact: R-8"
 )
 
 // fixtureRosterBase is the trust roster; the lane keys are appended per test.
@@ -77,6 +81,10 @@ type fakeForge struct {
 	comments   map[int][]deskkit.Comment
 	surfaces   string
 	noSurfaces bool
+	// rulings is the register the forge serves at the default branch ("" = absent), and
+	// defaultBranch the repo document's default branch ("" = "main").
+	rulings       string
+	defaultBranch string
 
 	fail map[string]bool // operation name → answer an error
 }
@@ -88,7 +96,7 @@ func greenForge() *fakeForge {
 			Mergeable: "MERGEABLE", ChangedFiles: 2,
 			Author: deskkit.Account{Login: fxWorker},
 			Body:   "Regenerated notes.\n\nIssue: #12\n",
-			Labels: []string{deskkit.AutoLaneLabel, "dispatched-model:example-model", "dispatched-tier:strong", labelAfterFlip},
+			Labels: []string{deskkit.AutoLaneLabel, "dispatched-model:example-model", "dispatched-tier:strong", labelAfterFlip, fxSizeS},
 		},
 		files: []deskkit.ChangedFile{
 			{Filename: "docs/notes/2026-01-01.md", Status: "added"},
@@ -103,9 +111,10 @@ func greenForge() *fakeForge {
 			{Name: "dispatched-model:example-model", AppliedBy: fxDesk},
 			{Name: "dispatched-tier:strong", AppliedBy: fxDesk},
 			{Name: deskkit.AutoLaneLabel, AppliedBy: fxReviewer},
+			{Name: fxSizeS, AppliedBy: fxReviewer},
 		},
 		comments: map[int][]deskkit.Comment{
-			3: {{DatabaseID: 555, Author: deskkit.Account{Login: "ada", ID: 2001}, Body: "Accepted."}},
+			3: {{DatabaseID: 555, Author: deskkit.Account{Login: "ada", ID: 2001, Type: "User"}, Body: fxEnactBody}},
 		},
 		surfaces: "# declared surfaces\n.github/workflows/**\ntools/**\n",
 		fail:     map[string]bool{},
@@ -190,13 +199,34 @@ func (f *fakeForge) ListComments(r deskkit.ForgeRepo, n int) ([]deskkit.Comment,
 }
 
 func (f *fakeForge) ReadFile(r deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
-	if err := f.rec("ReadFile", in.File+"@"+in.Ref, ""); err != nil {
+	if err := f.rec("ReadFile", r.Slug()+":"+in.File+"@"+in.Ref, ""); err != nil {
 		return nil, err
 	}
-	if f.noSurfaces || in.File != ".assay-surfaces" {
-		return &deskkit.FileContent{Exists: false}, nil
+	switch {
+	case in.File == ".assay-surfaces" && !f.noSurfaces:
+		return &deskkit.FileContent{Exists: true, Content: []byte(f.surfaces)}, nil
+	case in.File == deskkit.AutoLaneRulingsPath && f.rulings != "":
+		return &deskkit.FileContent{Exists: true, Content: []byte(f.rulings)}, nil
 	}
-	return &deskkit.FileContent{Exists: true, Content: []byte(f.surfaces)}, nil
+	return &deskkit.FileContent{Exists: false}, nil
+}
+
+func (f *fakeForge) RepoHardeningRead(r deskkit.ForgeRepo, kind deskkit.HardeningReadKind) (json.RawMessage, error) {
+	if err := f.rec("RepoHardeningRead", r.Slug()+":"+string(kind), ""); err != nil {
+		return nil, err
+	}
+	b := f.defaultBranch
+	if b == "" {
+		b = "main"
+	}
+	return json.RawMessage(`{"default_branch":"` + b + `"}`), nil
+}
+
+func (f *fakeForge) ListCommentsTyped(r deskkit.ForgeRepo, n int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
+	if err := f.rec("ListCommentsTyped", r.Slug()+"#"+fmt.Sprint(n)+":"+string(kind), ""); err != nil {
+		return nil, err
+	}
+	return f.comments[n], nil
 }
 
 func (f *fakeForge) ApplyLabels(r deskkit.ForgeRepo, n int, ch deskkit.LabelChange) (*deskkit.LabelOutcome, error) {
@@ -227,8 +257,10 @@ type env struct {
 	fg   *fakeForge
 }
 
-// install plants the roster (base + laneKeys), a rulings register, the fake forge, and the
-// DESK_LOOP of the lane's owning window. laneKeys "" is the SHIPPED state: no lane key.
+// install plants the roster (base + laneKeys), the fake forge serving the rulings register at
+// the default branch, and the DESK_LOOP of the lane's owning window. laneKeys "" is the
+// SHIPPED state: no lane key. The register is served by the FORGE only — nothing is planted
+// in the local root, which the enactment gate never reads.
 func install(t *testing.T, laneKeys, rulings string) *env {
 	t.Helper()
 	home, root := t.TempDir(), t.TempDir()
@@ -249,17 +281,8 @@ func install(t *testing.T, laneKeys, rulings string) *env {
 	deskkit.ReloadConfig()
 	t.Cleanup(deskkit.ReloadConfig)
 
-	if rulings != "" {
-		p := filepath.Join(root, "docs", "streams", "issue-flow")
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(p, "rulings.md"), []byte(rulings), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	e := &env{t: t, home: home, root: root, fg: greenForge()}
+	e.fg.rulings = rulings
 	oldMint, oldResolve := mintTokenFn, resolveForgeFn
 	mintTokenFn = func(role, repo string) (string, string, error) {
 		return "stub-token", filepath.Join(dir, role+"-token-stub"), nil
@@ -272,6 +295,18 @@ func install(t *testing.T, laneKeys, rulings string) *env {
 	}
 	t.Cleanup(func() { mintTokenFn, resolveForgeFn = oldMint, oldResolve })
 	return e
+}
+
+// localRulings plants a register in the caller's local root — the tree a PR-head checkout
+// would be. The enactment gate must never read it.
+func (e *env) localRulings(content string) {
+	p := filepath.Join(e.root, "docs", "streams", "issue-flow")
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p, "rulings.md"), []byte(content), 0o644); err != nil {
+		e.t.Fatal(err)
+	}
 }
 
 // fpy writes a harvested per-class file under root and returns its path.

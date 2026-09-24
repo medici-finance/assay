@@ -80,10 +80,10 @@
       "new": "\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn AutoLaneKillSignal{State: KillSignalHealthy, Line: \"lane: healthy\"}\n\t}"
     },
     {
-      "name": "latch: a prior ejection no longer refuses the merge",
+      "name": "latch: the audit-log half of the ejection latch is ignored",
       "file": "cmd/deskautolane/lane.go",
-      "old": "\tif deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn deskkit.Refused(",
-      "new": "\tif false && deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn deskkit.Refused("
+      "old": "\tif deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn true, nil",
+      "new": "\tif false && deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn true, nil"
     },
     {
       "name": "re-read: a stale approval passes reviewer-approved",
@@ -114,6 +114,108 @@
       "file": "cmd/deskautolane/lane.go",
       "old": "\treturn deskkit.Refused(fmt.Sprintf(\"refused: merge-write",
       "new": "\treturn nil\n\treturn deskkit.Refused(fmt.Sprintf(\"refused: merge-write"
+    },
+    {
+      "name": "enactment: the sign-off body is not read (a rejection enacts)",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif ok, why := deskkit.AutoLaneAcceptance(c.Body); !ok {",
+      "new": "\t\tif ok, why := deskkit.AutoLaneAcceptance(c.Body); false && !ok {"
+    },
+    {
+      "name": "enactment: a negation no longer voids the acceptance line",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif m := autoLaneNegationRe.FindString(body); m != \"\" {",
+      "new": "\tif m := autoLaneNegationRe.FindString(body); false && m != \"\" {"
+    },
+    {
+      "name": "enactment: a non-User author passes the type check",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tcase !strings.EqualFold(t, \"User\"):",
+      "new": "\t\tcase false && !strings.EqualFold(t, \"User\"):"
+    },
+    {
+      "name": "enactment: an untyped author reads as a User",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tcase t == \"\":\n\t\t\treturn false, deskkit.Unverifiable(",
+      "new": "\t\tcase false && t == \"\":\n\t\t\treturn false, deskkit.Unverifiable("
+    },
+    {
+      "name": "enactment: a sign-off on a thread outside the register repo is followed",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif !strings.EqualFold(m[1], rr.Owner) || !strings.EqualFold(m[2], rr.Name) {",
+      "new": "\tif false && (!strings.EqualFold(m[1], rr.Owner) || !strings.EqualFold(m[2], rr.Name)) {"
+    },
+    {
+      "name": "enactment: the register is read from the caller's worktree, not the forge",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tso := deskkit.ReadSignOffFromText(string(fc.Content), deskkit.AutoLaneRulingID)",
+      "new": "\tso := deskkit.ReadSignOff(o.root+\"/\"+o.rulings, deskkit.AutoLaneRulingID)\n\t_ = fc"
+    },
+    {
+      "name": "latch: the forge-side ejection marker is ignored",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif deskkit.AutoLaneEjectedOnForge(f.comments, reviewer) {",
+      "new": "\tif false && deskkit.AutoLaneEjectedOnForge(f.comments, reviewer) {"
+    },
+    {
+      "name": "latch: an unreadable PR thread reads as not ejected",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif f.commentsErr != nil {\n\t\treturn false, deskkit.Unverifiable(",
+      "new": "\tif false && f.commentsErr != nil {\n\t\treturn false, deskkit.Unverifiable("
+    },
+    {
+      "name": "dry-run: merge --dry-run performs the ejection writes",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\t\tif o.dryRun {\n\t\t\t// A dry run writes NOTHING",
+      "new": "\t\tif false && o.dryRun {\n\t\t\t// A dry run writes NOTHING"
+    },
+    {
+      "name": "base: a PR against a non-default branch is judged as if it targeted the default",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif strings.TrimSpace(f.pr.BaseRef) != f.defaultBranch {",
+      "new": "\tif false && strings.TrimSpace(f.pr.BaseRef) != f.defaultBranch {"
+    },
+    {
+      "name": "never-admit: an instruction file or register in the diff no longer trips",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif IsAutoLaneNeverAdmitPath(f) {\n\t\t\ttrip(TripNeverAdmit, f)",
+      "new": "\t\tif false && IsAutoLaneNeverAdmitPath(f) {\n\t\t\ttrip(TripNeverAdmit, f)"
+    },
+    {
+      "name": "never-admit: an area over the rulings register loads",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif MatchSurfaceGlob(a.Glob, w) && MatchSurfaceGlob(AutoLaneRulingsGlob, w) {",
+      "new": "\t\t\tif false && MatchSurfaceGlob(a.Glob, w) && MatchSurfaceGlob(AutoLaneRulingsGlob, w) {"
+    },
+    {
+      "name": "size: an absent or author-set size label reads as not large",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tunreadable = append(unreadable, \"size-label\")",
+      "new": "\t\t\t_ = 0"
+    },
+    {
+      "name": "checks: pending CI fires the ci-nonsuccess demotion again",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tcase ChecksTruncated, ChecksPending, ChecksEmpty:",
+      "new": "\t\tcase ChecksTruncated:"
+    },
+    {
+      "name": "head-stable: a head that moved during the checks passes",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif h2 := strings.TrimSpace(pr2.HeadSHA); h2 != f.head {",
+      "new": "\tif h2 := strings.TrimSpace(pr2.HeadSHA); false && h2 != f.head {"
+    },
+    {
+      "name": "admission label: a self-applied auto-lane label admits",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tcase !strings.EqualFold(applier, reviewer):\n\t\tf.laneWhy",
+      "new": "\tcase false && !strings.EqualFold(applier, reviewer):\n\t\tf.laneWhy"
+    },
+    {
+      "name": "admit: a Security-Review fail no longer trips the category",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif HasSecurityReviewFail(r.Body) {\n\t\t\t\ttrip(TripSecurityFail",
+      "new": "\t\t\tif false && HasSecurityReviewFail(r.Body) {\n\t\t\t\ttrip(TripSecurityFail"
     }
   ]
 }

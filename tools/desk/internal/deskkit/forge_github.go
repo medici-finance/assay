@@ -1538,7 +1538,7 @@ func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKi
 		res = append(res, Comment{
 			ID:         n.ID,
 			DatabaseID: n.DatabaseID,
-			Author:     Account{Login: login, ID: n.Author.DatabaseID},
+			Author:     Account{Login: login, ID: n.Author.DatabaseID, Type: n.Author.Typename},
 			Body:       n.Body,
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,
