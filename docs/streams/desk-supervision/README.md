@@ -190,7 +190,8 @@ other identity from landing verification of its own work, and the lander's own m
 a staging ref are admitted only when their tree is exactly the merge of their two parents. The lander re-checks scope and writer
 itself and lands only a staging ref's current head, and a post-land audit selected by the push
 (not by commit author) halts the lane on a mismatch, or on an input it cannot read, in a lander push. The verifier App keeps no
-write to main, and a rejected or stranded landing falls back to the batch Evidence PR. It depends on `11`,
+write to main, every job holding a key runs on a fresh GitHub-hosted runner (never the pool that runs
+pull-request CI), and a rejected or stranded landing falls back to the batch Evidence PR. It depends on `11`,
 and that dependency is the real head: its deliverable includes workflow files, which no
 implementer App can push, so they land only through `11`'s workflow-only PR path. It is
 `gate: human` and core-system (a new App, a bypass, a ruleset split). Its `## Context` carries the
