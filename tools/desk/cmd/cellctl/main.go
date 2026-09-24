@@ -91,6 +91,10 @@ func run() (code int) {
 	switch verb {
 	case "providers":
 		cmdProviders(rest)
+	case "model-policy":
+		// The runtime hook a policy launch installs in Claude's --settings (policy_enforce.go);
+		// not an operator verb, so it is not in the usage text.
+		cmdModelPolicy(rest)
 	case "ls":
 		cmdLs()
 	case "check":

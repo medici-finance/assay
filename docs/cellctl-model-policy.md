@@ -67,7 +67,11 @@ Claude also receives an `availableModels` allowlist and a `PreModelSwitch` hook 
 the actual target ID. Claude Code >=2.1.251 is required. Before launch, cellctl refuses local
 user/project/managed-file allowlists that widen the policy, and any local `modelOverrides`.
 The worktree is rechecked after creation/merge. These checks preserve other settings and
-hooks rather than replacing the operator's full configuration.
+hooks rather than replacing the operator's full configuration. Both hooks call back into the
+launcher itself (`cellctl model-policy hook <cell-dir> <role> <provider> <requested> <harness>`,
+the event on stdin), which re-resolves the cell's current policy for the launched route. Every
+refusal exits 2, Claude Code's blocking status. That includes a cell or policy that can no longer
+be loaded, so a hook failure never lets the action through.
 
 Codex receives `model_provider="openai"`, the exact model, `model_reasoning_effort`,
 `agents.default_subagent_model` and `agents.default_subagent_reasoning_effort` as CLI
@@ -84,7 +88,9 @@ operator-observed smoke check before rollout; local tests prove argv/environment
 ## Inspect, launch, and verify adoption
 
 `cellctl show <cell>` reports each role's provider, harness, model, effort and policy SHA-256.
-`cellctl check <cell>` checks policy routes and the required provider credential names.
+`cellctl check <cell>` checks policy routes and the required provider credential names. It
+also reports one `model policy: <role>` row per role for the preflight `up` runs: credential,
+harness on PATH, Claude version floor and the settings conflict scan.
 `cellctl up <cell>` preflights every selected role before opening windows, so a missing
 credential does not start half a cell. `DRY_RUN=1 cellctl desk <cell> <role>` prints the
 resolved launch. A real boot prints the same values. No automatic restart is performed.
@@ -112,7 +118,9 @@ their launch settings and must be restarted deliberately.
 Run `python3 tools/cellctl/tests/model-policy.test.py` plus the existing provider, harness,
 model-namespace, model-override and cell-set shell suites. The model-policy suite uses only
 local Git fixtures and recording harness stubs. No inference call, production endpoint or
-real credential is involved. Python 3.9+ is required for policy preflight.
+real credential is involved. The shell launcher needs Python 3.9+ for policy preflight; the Go
+`cellctl` binary needs no Python. Its policy tests run against the built binary with the same
+kind of fixtures: `go -C tools/desk test ./cmd/cellctl/ -run 'Policy|Hook|Settings|Preflight'`.
 
 Sources checked 2026-09-20:
 
