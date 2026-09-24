@@ -69,7 +69,7 @@ func TestProviderDefaultsInitNeverOverwrites(t *testing.T) {
 func TestProviderDefaultsInheritanceAndCellExceptions(t *testing.T) {
 	f := catalogFixture(t)
 	r := f.dryRunDesk(t, "pr-review-desk")
-	if r.code != 0 || !strings.Contains(r.stdout, "model=claude-opus-4-8[1m]") || !strings.Contains(r.stdout, "effort=high") {
+	if r.code != 0 || !strings.Contains(r.stdout, "model=claude-opus-5-5[1m]") || !strings.Contains(r.stdout, "effort=high") {
 		t.Fatalf("initial default: %+v", r)
 	}
 	// The cell overrides one desk's effort, and selects a different provider for its worker.
@@ -204,7 +204,7 @@ printf 'BASE_URL=%s\n' "${ANTHROPIC_BASE_URL-}"
 
 func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 	for _, tc := range []struct{ provider, role, model, fable, opus, sonnet, haiku, effort, base string }{
-		{"anthropic", "pr-review-desk", "claude-opus-4-8[1m]", "claude-fable-5-1", "claude-opus-4-8[1m]", "claude-sonnet-5", "claude-sonnet-5", "high", "https://api.anthropic.com"},
+		{"anthropic", "pr-review-desk", "claude-opus-5-5[1m]", "claude-fable-5-1", "claude-opus-5-5[1m]", "claude-sonnet-5", "claude-sonnet-5", "high", "https://api.anthropic.com"},
 		{"glm", "worker-desk", "glm-5.3-flash[1m]", "glm-5.3[1m]", "glm-5.3[1m]", "glm-5.3-flash[1m]", "glm-5.3-flash[1m]", "high", "https://api.z.ai/api/anthropic"},
 		{"kimi", "verify-desk", "k3[1m]", "k3[1m]", "k3[1m]", "k3[1m]", "k3[1m]", "high", "https://api.kimi.com/coding"},
 	} {

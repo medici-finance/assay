@@ -672,6 +672,13 @@ Four boundaries are deliberate:
 - **Only the verbs that push.** `deskpr edit` rewrites a PR body and pushes nothing, so it
   is not gated. `deskwt add` is gated because the worktree it cuts inherits the remote, and
   refusing before the branch exists is cheaper than refusing after an agent has filled it.
+  `deskwt add --role <role>` (what `deskdispatch` runs) does not inherit it: it writes the
+  role App's own transport at worktree scope — `remote.origin.pushurl` and `remote.origin.url`
+  each reset with an empty entry (git 2.46+) and set to `https://<host>:443/<owner>/<name>.git`,
+  plus the role's host-scoped credential helper — then refuses and rolls the worktree back
+  unless `git remote get-url [--push] --all origin` resolves to exactly that URL. The shared
+  checkout's config is never touched. Its fail-first evidence is
+  `cmd/deskwt/transport-mutations.json`.
 - **https without an App credential helper is a NOTICE, not a refusal.** An https push
   answered only by a machine keychain is the same ambient-identity shape one layer along,
   but the evidence is weaker — a helper this code does not recognise may well be the App's —

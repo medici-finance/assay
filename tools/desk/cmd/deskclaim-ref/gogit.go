@@ -54,13 +54,14 @@ const storeTimeout = 30 * time.Second
 // collapse to a bare "unverifiable" naming neither the host dialed nor the auth/DNS cause, so an
 // operator on a self-hosted GitLab debugged the claim namespace, token scopes and ref
 // permissions — all of which were fine — while the real fault was the SaaS host the tool silently
-// dialed (#727). Each transport failure records its cause here; the verb layer reads
-// transportCause() to append "<host>: <error>" to the message.
+// dialed (#727). Each transport failure records its cause here, and so does a server's refusal
+// of a claim write (its report-status text, #1631); the verb layer reads TransportCause() to
+// append "<host>: <error>" to the message.
 type gogitStore struct {
 	url     string
 	auth    transport.AuthMethod
 	host    string // the host this store dials, for fail-closed attribution
-	lastErr error  // the most recent transport-layer error, for fail-closed attribution
+	lastErr error  // the most recent transport error or server write refusal, for attribution
 }
 
 // gogitStore is the forge-ref implementation of the deskkit claim-store seam.
@@ -102,15 +103,17 @@ func newForgeStore(repo, tokenFile string) (deskkit.ClaimStore, error) {
 	}, nil
 }
 
-// fail records err as the store's most recent transport-layer cause, so the verb layer can
-// attribute a fail-closed exit to the host dialed and the underlying error rather than emitting
-// a bare "unverifiable" (#727). It returns nothing; callers still return the
-// ClaimWriteUnverifiable/ClaimReadUnverifiable sentinel as before.
+// fail records err as the store's most recent cause, so the verb layer can attribute a
+// fail-closed exit to the host dialed and the underlying error rather than emitting a bare
+// "unverifiable" (#727). err is a transport-layer failure (callers then return the
+// ClaimWriteUnverifiable/ClaimReadUnverifiable sentinel) or the server's refusal of a write
+// (mintAndPush then returns ClaimWriteRejected, #1631). It returns nothing.
 func (g *gogitStore) fail(err error) { g.lastErr = err }
 
-// TransportCause reports "<host>: <error>" for the store's most recent transport failure, or ""
-// when the last operation did not fail at the transport layer. The verb layer appends it to a
-// fail-closed message so the operator sees WHERE the tool dialed and WHY it failed.
+// TransportCause reports "<host>: <error>" for the store's most recently recorded cause — a
+// transport failure or a server refusal of a write — or "" when none has been recorded. The verb
+// layer appends it to a fail-closed message so the operator sees WHERE the tool dialed and WHY it
+// failed or was refused.
 func (g *gogitStore) TransportCause() string {
 	if g.lastErr == nil {
 		return ""
@@ -164,7 +167,7 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	res, perr := gitcore.PushRefUpdate(ctx, gitcore.RefUpdate{
+	res, reason, perr := gitcore.PushRefUpdateDetail(ctx, gitcore.RefUpdate{
 		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs,
 	})
 	if perr != nil {
@@ -172,6 +175,9 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 		return deskkit.ClaimWriteUnverifiable
 	}
 	if res == gitcore.RefUpdateRejected {
+		// Keep the server's own refusal text for attribution: when the verb then finds no
+		// holder, "rejected but no claim exists" must say WHY the server refused.
+		g.fail(fmt.Errorf("server refused %s: %s", g.refName(id), reason))
 		return deskkit.ClaimWriteRejected
 	}
 	return deskkit.ClaimWriteApplied
