@@ -251,6 +251,13 @@ func TestDryRunStateCopy_RefusesACopyInsideTheStateDir(t *testing.T) {
 	if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("a copy inside the state dir was not refused: %v", err)
 	}
+	// Assert the guard's OWN reason, not just that something refused: without this guard, the
+	// walk still refuses (it recurses into the throwaway dir it is filling), for the unrelated
+	// reason "an entry could not be copied" — so a looser assertion here would pass even with the
+	// guard at dryrun.go deleted, and could never catch its removal.
+	if !strings.Contains(err.Error(), "would sit inside the state dir") {
+		t.Fatalf("the refusal is not the inside-the-state-dir guard's own reason: %v", err)
+	}
 	if after := snapshotDir(t, stateDir); !sameSnapshot(before, after) {
 		t.Fatalf("the refused copy left something in the state dir:\nbefore %v\nafter  %v", before, after)
 	}
