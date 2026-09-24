@@ -243,7 +243,7 @@ RISK-VALUE: N/A — enumeration over statusgen/readmetable.go + parse.go found n
 
 VERIFY: HELD — rows 1,2,3,4,7,8 PASS on shipped code (row 4 checked end-to-end this run); rows 5,6 FAIL on the documented BLOCKED-ON-HUMAN workflow-file half (schedule: trigger + read-only reconcile-job permissions in .github/workflows/assay-statusgen.yml — an App cannot push .github/workflows/**; the brief holds at implemented for exactly this). Board row stays implemented, Verified cell stays —; no flip. Activation wait tracked at #1175 (help wanted); not re-filed.
 
-### Non-implementer verifier run — VERIFY: HELD (rows 1-4,7,8 PASS on shipped code; rows 5-6 FAIL on the still-unlanded human-gated workflow-file half; 5th consecutive pass, shape unchanged since 2026-09-06) — 2026-09-23 opus-5.5-verifier (verify-desk dispatch), merged main `39866201`
+### Non-implementer verifier run — VERIFY: HELD (rows 1-4,7,8 PASS on shipped code; rows 5-6 FAIL on the still-unlanded human-gated workflow-file half; 5th consecutive pass, shape unchanged since 2026-09-06) — 2026-09-23 claude-opus-4-8-verifier (verify-desk dispatch), merged main `39866201`
 
 Runner ≠ implementer. Isolated detached worktree off `origin/main` (HEAD == origin/main ==
 `39866201ce48acdce1f9b14d1cae38eb2b7eff38`). Offline envelope (`KUBECONFIG=/dev/null`), read-only,
@@ -253,14 +253,14 @@ sensitive-data: no}` (risk-clear). statusgen built from source for rows 1-8; the
 
 | # | Command | Expected | Observed (exit + key output) | Date | Runner |
 |---|---------|----------|------------------------------|------|--------|
-| 1 | go test . -run ReadmeTable -count=1 -v (in statusgen) | ok, named tests run | exit 0 — ok 0.276s; 6 tests RUN + PASS, 0 SKIP (Render, RewriteAndIdempotent, MarkersMissing, HandEditProblem, DriftNotice, EscapesPipeInTitle) | 2026-09-23 | opus-5.5-verifier |
-| 2 | regen --readmes --offline then non-table diff of derived-board README | non-table changed lines = 0 | exit 0 — non-table diff-line count = 0 (README canonical on main). NB: brief's literal `--root .` from statusgen roots at statusgen/ (no docs there = trivial no-op); re-run with `--root ..` against the real repo confirms the property (see Findings) | 2026-09-23 | opus-5.5-verifier |
-| 3 | two consecutive regen --readmes --offline; porcelain count | 0 | exit 0 — porcelain 0 (idempotent), verified with `--root ..` from repo root against the real docs/streams | 2026-09-23 | opus-5.5-verifier |
-| 4 | MUTATION: hand-edit row 01 authoring cell inside the markers; --lint --root ..; restore | rc=1 naming hand-edit + derived-board | exit 1 — "PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells (title/wave/effort) differ from the brief frontmatter; regenerate with statusgen regen --readmes"; file restored, tree clean. Brief's literal BSD `sed -i ''` fails under this host's GNU sed 4.10 (dialect, not a guard block); identical edit re-run GNU-compatibly exercised the full lint path | 2026-09-23 | opus-5.5-verifier |
-| 5 | workflow has schedule: trigger (parse .github/workflows/assay-statusgen.yml) | schedule present | FAIL — no schedule: trigger anywhere; parsed trigger block has only pull_request + push (bare `on:` parses as YAML True). Unchanged since the 2026-09-06/15/18/20 passes | 2026-09-23 | opus-5.5-verifier |
-| 6 | grep -c -E -e 'pull-requests: read' -e 'issues: read' in the workflow | 2 | FAIL — 0; the three permissions blocks declare only contents: read/write. Same unlanded workflow half as row 5 | 2026-09-23 | opus-5.5-verifier |
-| 7 | grep -c statusgen:briefs:begin in derived-board README | 1 | exit 0 — 1 (board: generated at README line 8; markers at lines 52/62) | 2026-09-23 | opus-5.5-verifier |
-| 8 | init --dry-run adopter, grep -c reconcile | ≥ 1 | exit 0 — 1 (scaffold parity landed in init.go) | 2026-09-23 | opus-5.5-verifier |
+| 1 | go test . -run ReadmeTable -count=1 -v (in statusgen) | ok, named tests run | exit 0 — ok 0.276s; 6 tests RUN + PASS, 0 SKIP (Render, RewriteAndIdempotent, MarkersMissing, HandEditProblem, DriftNotice, EscapesPipeInTitle) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | regen --readmes --offline then non-table diff of derived-board README | non-table changed lines = 0 | exit 0 — non-table diff-line count = 0 (README canonical on main). NB: brief's literal `--root .` from statusgen roots at statusgen/ (no docs there = trivial no-op); re-run with `--root ..` against the real repo confirms the property (see Findings) | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | two consecutive regen --readmes --offline; porcelain count | 0 | exit 0 — porcelain 0 (idempotent), verified with `--root ..` from repo root against the real docs/streams | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | MUTATION: hand-edit row 01 authoring cell inside the markers; --lint --root ..; restore | rc=1 naming hand-edit + derived-board | exit 1 — "PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells (title/wave/effort) differ from the brief frontmatter; regenerate with statusgen regen --readmes"; file restored, tree clean. Brief's literal BSD `sed -i ''` fails under this host's GNU sed 4.10 (dialect, not a guard block); identical edit re-run GNU-compatibly exercised the full lint path | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | workflow has schedule: trigger (parse .github/workflows/assay-statusgen.yml) | schedule present | FAIL — no schedule: trigger anywhere; parsed trigger block has only pull_request + push (bare `on:` parses as YAML True). Unchanged since the 2026-09-06/15/18/20 passes | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | grep -c -E -e 'pull-requests: read' -e 'issues: read' in the workflow | 2 | FAIL — 0; the three permissions blocks declare only contents: read/write. Same unlanded workflow half as row 5 | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | grep -c statusgen:briefs:begin in derived-board README | 1 | exit 0 — 1 (board: generated at README line 8; markers at lines 52/62) | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | init --dry-run adopter, grep -c reconcile | ≥ 1 | exit 0 — 1 (scaffold parity landed in init.go) | 2026-09-23 | claude-opus-4-8-verifier |
 
 **Risk-bearing value — enumerate → rank → derive.** Literal constants this item's diff introduces
 or changes (merged main):
