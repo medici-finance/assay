@@ -72,10 +72,14 @@ func readAvatarFile(path string) ([]byte, error) {
 // it later. The out-dir path is quoted: a default config home can contain a space (a Windows
 // user profile path), and the command must paste as printed.
 func avatarsSkippedNotice(o provisionOpts) string {
-	return fmt.Sprintf("--avatars-dir was not given, so the avatar step (PUT /user/avatar) is SKIPPED and the "+
+	why := "--avatars-dir was not given"
+	if o.noAvatars {
+		why = "--no-avatars was given"
+	}
+	return fmt.Sprintf("%s, so the avatar step (PUT /user/avatar) is SKIPPED and the "+
 		"service accounts keep the forge's default avatar. To set them later, run: deskfleet provision "+
 		"--avatars-only --avatars-dir <dir holding <role>.png> --prefix %s --out-dir \"%s\" (it signs in as each "+
-		"role from its gitlab-<role>.token there)", o.prefix, o.outDir)
+		"role from its gitlab-<role>.token there)", why, o.prefix, o.outDir)
 }
 
 // uploadAvatar sets <avatarsDir>/<role>.png as user's avatar, signed in as that role. A missing

@@ -192,6 +192,12 @@
       "file": "cmd/deskfleet/main.go",
       "old": "deskkit.LstatCustody(path, deskkit.CustodySameDirLink)",
       "new": "deskkit.LstatCustody(path, deskkit.CustodyNoLinks)"
+    },
+    {
+      "name": "--no-avatars — contradicting --avatars-dir / --avatars-only is accepted",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif o.noAvatars && (o.avatarsOnly || o.avatarsDir != \"\") {",
+      "new": "\tif false && o.noAvatars && (o.avatarsOnly || o.avatarsDir != \"\") {"
     }
   ]
 }

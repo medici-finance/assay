@@ -3,7 +3,7 @@
 // it from native PowerShell. It is the Go port of tools/create-fleet-gitlab.sh, which stays
 // as the reference implementation.
 //
-//	deskfleet provision --group <path> --prefix <name> [--project <path>] --owner-token-file <file> [--out-dir <dir>] [--pat-expiry-days N] [--avatars-dir <dir>] [--dry-run]
+//	deskfleet provision --group <path> --prefix <name> [--project <path>] --owner-token-file <file> [--out-dir <dir>] [--pat-expiry-days N] [--avatars-dir <dir> | --no-avatars] [--dry-run]
 //	deskfleet provision --avatars-only --avatars-dir <dir> --prefix <name> [--out-dir <dir>] [--dry-run]
 //	deskfleet labels    --forge gitlab --project <path> --token-file <file> [--dry-run]
 //	deskfleet labels    --forge github --repo <owner/name> --token-file <file> [--dry-run]
@@ -61,7 +61,7 @@ const usage = `deskfleet — Go-native GitLab fleet provisioning and forge-neutr
 USAGE:
   deskfleet provision --group <path-or-id> --prefix <name> --owner-token-file <file>
                       [--project <path-or-id>] [--out-dir <dir>] [--pat-expiry-days N]
-                      [--avatars-dir <dir>] [--dry-run]
+                      [--avatars-dir <dir> | --no-avatars] [--dry-run]
   deskfleet provision --avatars-only --avatars-dir <dir> --prefix <name> [--out-dir <dir>] [--dry-run]
   deskfleet labels --forge gitlab --project <path-or-id> --token-file <file> [--dry-run]
   deskfleet labels --forge github --repo <owner/name>    --token-file <file> [--dry-run]
@@ -73,10 +73,10 @@ provision  creates the seven role service accounts, their group memberships and 
            desktoken --forge gitlab <role> reads it). With --project it also protects main,
            sets MR approvals, protects release tags, sets the pipeline and discussion merge
            checks, and creates the fleet labels. With --avatars-dir, each new account sets
-           <dir>/<role>.png as its own avatar, signed in as itself; without it the avatar
-           step is SKIPPED and named (no icon is fetched from the web). --avatars-only sets
-           the avatars of existing accounts from their gitlab-<role>.token files and touches
-           nothing else. Requires GITLAB_API_BASE (your REST v4 base,
+           <dir>/<role>.png as its own avatar, signed in as itself; without it (or with
+           --no-avatars) the avatar step is SKIPPED and named (no icon is fetched from the
+           web). --avatars-only sets the avatars of existing accounts from their
+           gitlab-<role>.token files and touches nothing else. Requires GITLAB_API_BASE (your REST v4 base,
            e.g. https://gitlab.example.com/api/v4) — there is no default host.
 labels     creates the nine fleet labels (review-request, six raised-by:<role>, and the
            authorization-needed / approval-needed pair) on one GitHub repo or GitLab project.

@@ -30,6 +30,9 @@ type provisionOpts struct {
 	// default downloads public role icons): the port adds no network default.
 	avatarsDir  string
 	avatarsOnly bool
+	// noAvatars: the script's --no-avatars, kept for flag parity. It names the skip
+	// explicitly; with no --avatars-dir the step is skipped either way.
+	noAvatars bool
 }
 
 // banner / ruleLine frame the closing summary and the partial-run report.
@@ -55,11 +58,15 @@ func parseProvisionFlags(args []string, e *env) (provisionOpts, error) {
 		"(PUT /user/avatar, as that role's own PAT); omitted = the avatar step is skipped")
 	fs.BoolVar(&o.avatarsOnly, "avatars-only", false, "set the avatars of accounts that already exist, as each "+
 		"role, from the gitlab-<role>.token files under --out-dir; creates, mints and configures nothing")
+	fs.BoolVar(&o.noAvatars, "no-avatars", false, "skip the avatar step (prints a NOTICE); the script's flag of the same name")
 	if err := fs.Parse(args); err != nil {
 		return o, err
 	}
 	if fs.NArg() > 0 {
 		return o, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	if o.noAvatars && (o.avatarsOnly || o.avatarsDir != "") {
+		return o, errors.New("--no-avatars contradicts --avatars-only and --avatars-dir")
 	}
 	if o.avatarsOnly {
 		if o.avatarsDir == "" {
