@@ -4128,7 +4128,7 @@ review event posted at the *same* head — so a head-only re-read reports "still
 flips over a live withdrawal. Both gates re-run against a freshly read review list
 immediately before the mutation.
 
-**A standing `CHANGES_REQUESTED` at head blocks — with ONE exemption, the check-only CR.**
+**A standing `CHANGES_REQUESTED` at head blocks — with TWO exemptions: the check-only CR, and the documented body-edit re-verification (below).**
 An APPROVE posted at an *unchanged* head cannot be a re-verification: there is nothing new to
 verify, and the forge's self-approval block only keys on the PR *author*, so it has nothing to
 say about a third-party App re-posting at the same head. That default stands. It had no path,
@@ -4158,6 +4158,36 @@ reduction below it still has to find an APPROVED governing at head, so a later o
 refuses. Both marker lines are read by the canonical verdict-marker reduction (whole-line,
 emphasis-tolerant, and skipped inside a fenced code block, since both reads grant); a body
 carrying two lines that disagree has established nothing and reads as no claim.
+
+**The second exemption: documented body-edit re-verification.** A CR whose *only* blocker is the
+PR body (the description asserts something false or stale) is answered by a body edit, which
+never moves the head. The class admits a same-head APPROVE over such a CR only when it is
+documented in a fixed, machine-checkable shape and every fact it rests on is established from
+the forge, not from the reviewer's own lines (`internal/deskkit/bodyeditcr.go`, shared by
+`deskflip` and `deskboard` so they cannot disagree):
+
+- the CR declares `Blocked-On-Body: <finding-id> <body-digest>` — the finding id and the digest
+  of the body it blocked on. A CR also declaring `Blocked-On-Check:` / `External-Prereq-Only:`, or
+  whose typed finding block names any other blocking finding, never qualifies (a code finding
+  needs a code change);
+- a later correctness APPROVE by the same reviewer at the same head carries
+  `Resolved-Body-Finding: <finding-id>` (the id the CR declared), `Body-Reread-Digest: <digest>`
+  and `CI-Green-At: <full head sha>`;
+- the re-read digest **equals** the digest of the live body the gate itself reads (re-read again
+  immediately before the mutation);
+- the forge's own record of the body's last edit (GitHub's `lastEditedAt`, read by the gate) is
+  **later** than the CR — this, not the digests, is what establishes that the body was edited
+  after the block. An absent edit time (never edited; GitLab reports none) refuses, and one that
+  cannot be read is could-not-check;
+- the re-read digest also **differs** from the CR's recorded digest. That is a second, narrowing
+  condition only: the CR's digest is the reviewer's own value and nothing checks it against the
+  body as it stood at the CR.
+
+The digest is lowercase SHA-256 over the body with carriage returns removed and trailing newlines
+trimmed — `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
+Whether CI is green stays `checks-green`'s decision; the citation never substitutes for it. On
+the board, an admitted row reads approved at head (with the class named in its note) instead of
+`SUSPECT-APPROVAL`; every near-miss keeps the `SUSPECT-APPROVAL` suppression.
 
 **An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
 Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that
