@@ -81,6 +81,15 @@ type stub struct {
 	// head2 is what the SECOND read of the change reports as its head; "" means unchanged.
 	head2   string
 	prReads int
+	// body2 is what the SECOND read of the change reports as its body; "" means unchanged. It
+	// models a PR body edited between the gate's first read and the pre-mutation re-read.
+	body2 string
+	// bodyEditedAt is the PR body's last-edited time the fake forge's trust-events GraphQL read
+	// serves (GitHub's lastEditedAt); "" serves null — never edited. trustErr makes that read
+	// answer 500 (could-not-check).
+	bodyEditedAt string
+	trustErr     bool
+	trustReads   int
 
 	failPR bool
 	// failPath makes every request whose method+path+query contains this fragment answer 500
@@ -196,6 +205,20 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 		}
 
 		switch {
+		case r.Method == http.MethodPost && path == "/graphql" && isTrustRead(rec.Body):
+			s.trustReads++
+			if s.trustErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			var edited any // JSON null: the forge reports no edit
+			if s.bodyEditedAt != "" {
+				edited = s.bodyEditedAt
+			}
+			empty := map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}
+			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+				"lastEditedAt": edited, "comments": empty, "reviews": empty, "reviewThreads": empty}}}})
+
 		case r.Method == http.MethodPost && path == "/graphql":
 			enc(map[string]any{"data": map[string]any{
 				"markPullRequestReadyForReview": map[string]any{
@@ -282,6 +305,10 @@ func (s *stub) servedPR() map[string]any {
 	if s.prReads > 1 && s.head2 != "" {
 		head = s.head2
 	}
+	body := s.pr.Body
+	if s.prReads > 1 && s.body2 != "" {
+		body = s.body2
+	}
 	present := s.presentLabels()
 	labels := make([]map[string]any, 0, len(present))
 	for _, l := range present {
@@ -289,7 +316,7 @@ func (s *stub) servedPR() map[string]any {
 	}
 	out := map[string]any{
 		"number": s.pr.Number, "state": strings.ToLower(s.pr.State), "draft": s.pr.IsDraft,
-		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles, "body": s.pr.Body,
+		"node_id": s.pr.NodeID, "changed_files": s.pr.ChangedFiles, "body": body,
 		"user":   map[string]any{"login": "worker[bot]", "id": 99},
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
 		"base":   map[string]any{"ref": "main"},
@@ -562,6 +589,9 @@ func (s *stub) mutated() []string {
 		if r.Method == http.MethodGet {
 			continue
 		}
+		if r.Method == http.MethodPost && r.Path == "/graphql" && isTrustRead(r.Body) {
+			continue // a GraphQL READ (the PR body's edit time), not a mutation
+		}
 		out = append(out, r.String())
 	}
 	return out
@@ -668,3 +698,9 @@ const (
 // It is read through the shared classifier in the tests below rather than asserted as a
 // literal fact about the trigger list.
 const riskyPath = ".github/workflows/ci.yml"
+
+// isTrustRead reports whether a POST /graphql body is the trust-events READ (a query for the
+// PR's lastEditedAt) rather than a mutation. Anything carrying a mutation is never a read.
+func isTrustRead(body string) bool {
+	return strings.Contains(body, "lastEditedAt") && !strings.Contains(body, "mutation")
+}

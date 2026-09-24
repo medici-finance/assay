@@ -195,6 +195,53 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 
 **VERIFY: PARTIAL** — 5/6 rows PASS; row 4 explicitly unrun for a structural, non-guessable reason (the pilot project is deliberately anonymized in this public repo). No defect found anywhere. Held at `implemented`.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2/6 pass, 4 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+Runner is not the implementer. Own detached temp worktree cut off merged origin/main at
+b3fe2a1c7900f5b2cf9c5da6364fd598a64f609f. Offline (KUBECONFIG=/dev/null), no live GitLab or
+GitHub call. Rows 1 and 2 are `check:ci` in this brief's Verify table; on this darwin host the
+hermetic `statusgen verifyrun` witness cannot run (needs Linux `unshare --net`), so each is
+could-not-check with its direct non-hermetic run recorded. Row 4 needs live GitLab state and row
+6's consumers routing corroborates nothing on the fully merged tree.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | COULD-NOT-CHECK — hermetic-witness-owed-darwin; exit 1; github.com/medici-finance/assay/tools/desk/internal/deskkit ⏎ github.com/medici-finance/assay/tools/desk/cmd/repohardenguard ⏎ internal/loopengine ⏎ TestDrain ⏎ model API overloaded: 529 | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v; echo '--- golden ---'; cat internal/deskkit/testdata/forge_gitlab_golden/push_rules_premium_gated.golden.json` | exit 0; PASS; push_rules_premium_gated golden records a 403 classified could-not-check | COULD-NOT-CHECK — hermetic-witness-owed-darwin; exit 0; --- PASS: TestForgeGitlabGolden ⏎ --- PASS: TestForgeGitlabCoverage ⏎ --- PASS: TestForgeNoPassthrough ⏎ "result": null ⏎ "not_found": false ⏎ push rules are a Premium feature | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | exit 0; PASS — a not-available row issues zero reads; a tier-403 row is could-not-check, never a value | PASS — no-request-and-cnc; exit 0; --- PASS: TestGitLabNotAvailableNoRequest ⏎ --- PASS: TestGitLabTierGateCouldNotCheck | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: $(cat "$(desktoken auditor --forge gitlab --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')")")" "$GITLAB_API_BASE/projects/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/([^/]+?)(\.git)?$#\1%2F\2#')/protected_branches"` | 200 — the auditor PAT at its documented minimum project role reads the protected-branches document | COULD-NOT-CHECK — no-live-gitlab; exit 3; curl: (3) URL rejected: No host part in the URL ⏎ 000 | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md; grep -n 'not available — Premium' docs/adopting-assay-gitlab.md` | 1 or more | PASS — two-premium-rows; exit 0; 2 ⏎ reject_unsigned_commits \| not available — Premium ⏎ prevent_secrets \| not available — Premium | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | `statusgen --root . --consumers` | exit 0 | COULD-NOT-CHECK — merged-tree; exit 0; consumers: no brief files in the diff against b3fe2a1c7900f5b2cf9c5da6364fd598a64f609f — nothing to corroborate | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE enumeration (kit §4 — enumerate → rank → derive). The item is read-only and
+risk metadata is all-no, but the deskkit path trips the risk-path classifier, so the
+enumeration is run. Every literal introduced or changed by the diff (merge #1179):
+
+- tier-gate status set {HTTP 403, HTTP 404} → could-not-check (the diff's error
+  classification for push-rules) — the brief's declared single-point-of-failure.
+- access_level = 0 ("No one") — the CE-expressible empty-bypass form the checklist Required
+  cells pin for protected branches.
+- gitlabMaxHardeningPage = 10 — new ceiling on the protected-branches/tags page walk (10
+  pages x gitlabPerPage 100 = 1000 entries).
+- gitlabPerPage = 100 — pre-existing per-page bound reused by the walk.
+- endpoint path string literals (projects/%s, .../protected_branches, .../protected_tags,
+  .../push_rule, .../approvals) — not risk-bearing thresholds.
+
+Ranked by irreversibility: none is irreversible (read-only guard; a wrong value is
+fixed by an edit and redeploy). The two correctness-critical entries (fail-open exposure)
+are the tier-gate mapping and access_level=0; the page ceilings fail CLOSED (a walk still
+paginating past the ceiling REFUSES with could-not-check rather than truncating, so a
+too-low value can never fail open), so they rank last and need no derivation.
+
+RISK-VALUE: DERIVED — tier-gate {HTTP 403, HTTP 404} → could-not-check @ tools/desk/internal/deskkit/testdata/forge_gitlab_golden/push_rules_premium_gated.golden.json (403) and push_rules_ce_not_found.golden.json (404) — GitLab returns 403 where a Premium route is licensed-off and 404 where the route does not exist on CE; both correctly map to a ForgeAPIError could-not-check (result null), never a value. This is the SPOF; both goldens observed green and the guard's tier-gate test confirms a value is never fabricated.
+
+RISK-VALUE: DERIVED — access_level = 0 ("No one") @ tools/desk/internal/deskkit/forge.go:959 (and stated in docs/adopting-assay-gitlab.md lines 529-530, cited to the GitLab Protected Branches API) — GitLab's protected-branches API defines access_level 0 as "No one," 20 Reporter, 30 Developer, 40 Maintainer, 60 Admin; 0 is therefore the correct CE-expressible form of "no bypass to main." Right value, sourced to the forge's own API vocabulary.
+
+RISK-VALUE: N/A for the page-ceiling knobs (gitlabMaxHardeningPage=10 @ tools/desk/internal/deskkit/forge_gitlab.go:2399, gitlabPerPage=100 @ tools/desk/internal/deskkit/forge_gitlab.go:432) — reversible operational bounds that fail closed by design; out of scope for derivation per kit §4 step 3.
+
+Rows 1, 2 are could-not-check (hermetic Linux witness owed); row 4 needs live pilot-project access (human with GitLab access); row 6 corroborates nothing on a merged tree. No defect found in the deliverable.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer answers: with the checklist's `not available` short-circuit removed, does the backend's

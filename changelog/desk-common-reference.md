@@ -1,0 +1,2 @@
+### Changed
+- New `plugins/assay/references/desk-common.md` states, once, the procedure the desk-role skills had each repeated word for word: the liveness contract, worktree hygiene, and the driver-act runsheet entry. `the-desk`, `intake-desk`, `worker-desk`, `pr-review-desk` and `verify-desk` now point to it under the same headings, so in-body `§` references still resolve. A sentence that belongs to only one desk stays in that desk's body. Hard gates stay in each body, and the generated guardrail blocks are unchanged.
