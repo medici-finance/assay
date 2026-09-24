@@ -412,8 +412,11 @@ func deployTransitionNotices(root string, streams []*Stream) []string {
 // relay-only value would otherwise pass the lint with nothing on the PR to corroborate.
 // A relay records which human an App acted for. It is not that human's deploy
 // authority. The check stays hasHumanReviewer's syntactic test in every other respect.
-// README Reviewed cells and a decision record's decided-by keep hasHumanReviewer
-// unchanged, because their online lanes read the raw value and gate it.
+// A decision record's decided-by is read through this function too (designgate.go),
+// so the design-approval gate never counts a relay. README Verified/Reviewed cells
+// keep hasHumanReviewer: the online stamp lane strips a relay there as well, and what
+// rejects it is the branch lint's human-stamp gain guard (humanStampProblems), which
+// reads the raw cell and refuses any human:<x> a branch adds, relay included.
 func hasHumanAuthority(value string) bool {
 	return hasHumanReviewer(withoutOnBehalfOfRelays(value))
 }

@@ -219,16 +219,30 @@ The corroboration lanes strip the on-behalf-of marker, so a relay needs nothing 
 to corroborate. The offline readers of a human-authority key therefore remove the whole
 relay, marker and principal together, before they look for a `human:` token. Those keys are
 a finding's `authorized-by:`, its `parked-by:` (both the register gate and the alarm
-layer's shelving check), and a deploy record's `authority:` and `rollback-approver:`. A
-value such as `authorized-by: on-behalf-of human:<name>` authorizes nothing, whichever
-form of the human it names. Without this removal, an App could write that line and pass
-both lanes without the human ever acting. A `human:<name>` written outside the relay
-authorizes offline and is gated online, the same as before. Two surfaces keep their
-existing readers: a decision record's `decided-by:` and a README's Verified/Reviewed
-cells. Their online lanes read the raw value, so a relay there still needs the human's own
-act on the PR. The tests are in `statusgen/principal_authority_test.go`.
+layer's shelving check), a deploy record's `authority:` and `rollback-approver:`, and a
+decision record's `decided-by:` (the design-approval authority). A value such as
+`authorized-by: on-behalf-of human:<name>` authorizes nothing, whichever form of the human
+it names. Without this removal, an App could write that line and pass both lanes without
+the human ever acting. A `human:<name>` written outside the relay authorizes offline and
+is gated online, the same as before.
+
+A decision record's online lane re-reads `decided-by:` from the record on disk for every
+record a PR adds or edits. That lane covers the same file set the register lint and the
+design gate read: every `.md` under `docs/streams/decisions/` except the README, whatever
+its file name. The design gate resolves a brief's `design:` by the record's frontmatter
+`id:`, so a record whose file name is not `DR-<slug>.md` is still one the gate accepts,
+and the online lane must see it.
+
+A README's Verified/Reviewed cells keep their existing reader. The online stamp lane
+strips a relay there too, so it is not what catches one. The branch lint's human-stamp
+gain guard is: it reads the raw cell and refuses any `human:<x>` a branch adds, relay
+included, so a relay in a cell still needs the human's own act.
+
+The tests are in `statusgen/principal_authority_test.go`.
 `TestOnlineExemptLineNeverAuthorizesOffline` pins the invariant that joins the two
 lanes: an added line the online lane records no stamp for never grants authority offline.
+It covers `decided-by:` in a record named `DR-<slug>.md` and in one that is not.
+`TestReadmeCellRelayCaughtByGainGuard` pins the README-cell dependency on the gain guard.
 
 ## What this does *not* prove
 

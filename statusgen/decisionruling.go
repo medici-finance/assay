@@ -1,8 +1,8 @@
 package main
 
 // decisionruling.go — the RULING-LINK lane of `statusgen --corroborate` for
-// design-decision records (DR-<slug>.md under docs/streams/decisions/, schema
-// decision-v1, registers-v1 §7.5).
+// design-decision records (every record under docs/streams/decisions/, by
+// convention DR-<slug>.md; schema decision-v1, registers-v1 §7.5).
 //
 // The problem it closes. A record's `decided-by: "human:<name>"` stamp used to be
 // corroborated only against an approval by that human ON THE PR THAT ADDS THE
@@ -17,7 +17,7 @@ package main
 //	decided-by: "human:<name>"      # a real mapped name, OR the literal placeholder
 //	ruling: "https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>"
 //
-// What this lane does, for every DR record the PR ADDS OR EDITS (any added line in
+// What this lane does, for every record the PR ADDS OR EDITS (any added line in
 // the record file — the same diff scope the rest of --corroborate keeps):
 //
 //   - `ruling:` present → resolve the comment through the forge REST API and PASS
@@ -134,7 +134,7 @@ const (
 // decisionRecordStamp is one DR record the PR touched, as read from the checkout.
 type decisionRecordStamp struct {
 	File      string   // repo-relative path, as it appears in stamp.File
-	ID        string   // DR-<slug>
+	ID        string   // DR-<slug> from the basename; "" when the basename is not DR-shaped, so the ruling lane refuses (fail closed)
 	DecidedBy string   // raw decided-by value
 	Names     []string // real human names parsed from DecidedBy (lowercase); empty = placeholder
 	Ruling    string   // raw ruling: value ("" = absent)
@@ -457,23 +457,31 @@ func normBriefNum(n string) string {
 
 // ---- disk / diff plumbing ------------------------------------------------------
 
-// isDecisionRecordPath reports whether a repo-relative path is a DR record in the
+// isDecisionRecordPath reports whether a repo-relative path is a record in the
 // DECISIONS register. Scoped to the register directory on purpose: a DR-shaped
 // file anywhere else is not a record this lane gates.
+//
+// The file set is exactly the one parseDecisionsDir reads: every .md directly under
+// the register directory except README.md, whatever its basename. The design gate
+// resolves a brief's design: by the record's frontmatter id, not by its file name, so
+// a record whose basename is not DR-shaped is still an approval the gate accepts. The
+// online lane must therefore re-read its decided-by too. Keying this lane on a
+// DR-shaped basename let such a record's decided-by pass the register lint while the
+// online lane never looked at it.
 func isDecisionRecordPath(path string) bool {
 	p := filepath.ToSlash(path)
 	if !strings.HasPrefix(p, "docs/streams/"+decisionsDirName+"/") {
 		return false
 	}
-	if strings.Contains(strings.TrimPrefix(p, "docs/streams/"+decisionsDirName+"/"), "/") {
+	base := strings.TrimPrefix(p, "docs/streams/"+decisionsDirName+"/")
+	if base == "" || strings.Contains(base, "/") {
 		return false
 	}
-	_, ok := decisionRecordID(p)
-	return ok
+	return strings.HasSuffix(base, ".md") && base != "README.md"
 }
 
-// decisionRecordsInDiff returns every DR record file the diff ADDS OR EDITS (at
-// least one added line), in first-seen order. A declared fixture corpus is skipped
+// decisionRecordsInDiff returns every decision record file (isDecisionRecordPath) the
+// diff ADDS OR EDITS (at least one added line), in first-seen order. A declared fixture corpus is skipped
 // exactly as stampsInDiff skips it.
 func decisionRecordsInDiff(root, diff string) []string {
 	var out []string

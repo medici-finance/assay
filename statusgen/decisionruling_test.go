@@ -442,8 +442,11 @@ func TestRuling_NamedWithoutLinkFallsThrough(t *testing.T) {
 	}
 }
 
-// Only DR records in the register directory, with an ADDED line, are gated.
+// Only records in the register directory, with an ADDED line, are gated. The set is
+// the one the register lint reads (parseDecisionsDir): every .md there except the
+// README, whether or not its basename is DR-shaped.
 func TestRuling_RecordsInDiffScope(t *testing.T) {
+	const otherName = "docs/streams/decisions/not-dr-shaped.md"
 	diff := strings.Join([]string{
 		"+++ b/docs/streams/decisions/DR-example-ruling-rec.md",
 		"+decided-by: \"human:<name>\"",
@@ -453,11 +456,15 @@ func TestRuling_RecordsInDiffScope(t *testing.T) {
 		"+decided-by: \"human:<name>\"",
 		"+++ b/docs/streams/decisions/DR-example-untouched.md",
 		"-decided-by: \"human:<name>\"",
+		"+++ b/" + otherName,
+		"+decided-by: \"human:<name>\"",
+		"+++ b/docs/streams/decisions/sub/DR-example-nested.md",
+		"+decided-by: \"human:<name>\"",
 		"",
 	}, "\n")
 	got := decisionRecordsInDiff("", diff)
-	if len(got) != 1 || got[0] != rlFile {
-		t.Fatalf("decisionRecordsInDiff = %v, want exactly [%s]", got, rlFile)
+	if len(got) != 2 || got[0] != rlFile || got[1] != otherName {
+		t.Fatalf("decisionRecordsInDiff = %v, want exactly [%s %s]", got, rlFile, otherName)
 	}
 }
 

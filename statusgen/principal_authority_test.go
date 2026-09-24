@@ -156,4 +156,112 @@ func TestOnlineExemptLineNeverAuthorizesOffline(t *testing.T) {
 				r.key, n, r.auth("human:alex"))
 		}
 	}
+
+	// decided-by: the design-approval key. Its online lane is stampsInDiff PLUS the
+	// decision-record lane (decisionRecordsInDiff → addDecisionRecordStamps), which
+	// re-reads the record on disk. Its offline reader is the DECISIONS register lint
+	// that the design gate dereferences by the frontmatter id, not by the file name.
+	// So both a DR-named file and a file whose name is not DR-shaped are probed: the
+	// register reads every .md in the directory, and the online lane must see the same
+	// set. Values are written unquoted where YAML allows it, which is the shape that
+	// leaves the relay marker strippable online.
+	decidedByValues := []struct{ why, yamlValue, value string }{
+		{"relay naming the neutral name", "on-behalf-of human:alex", "on-behalf-of human:alex"},
+		{"relay naming the login", "on-behalf-of human:ada", "on-behalf-of human:ada"},
+		{"trailer-shaped relay", "\"On-behalf-of: human:alex\"", "On-behalf-of: human:alex"},
+	}
+	for _, file := range []string{"DR-relay-probe-rec.md", "relay-probe-rec.md"} {
+		for _, v := range decidedByValues {
+			online, offline := decidedByLanes(t, file, v.yamlValue)
+			if online == 0 && offline {
+				t.Errorf("decided-by in docs/streams/decisions/%s: %s (%s) — online lane records 0 stamps and the "+
+					"register lint accepts it as the design-approval authority: a relay passes both lanes with no human act",
+					file, v.value, v.why)
+			}
+			if offline {
+				t.Errorf("decided-by in docs/streams/decisions/%s: %s (%s) — the register lint accepts a relay as the "+
+					"design-approval authority; a relay is attribution, never the human's own act", file, v.value, v.why)
+			}
+		}
+		// Control: a genuine decided-by is gated online AND accepted offline.
+		if online, offline := decidedByLanes(t, file, "\"human:alex\""); online == 0 || !offline {
+			t.Errorf("decided-by in docs/streams/decisions/%s: human:alex control — online stamps = %d (want >0), "+
+				"offline authority = %v (want true)", file, online, offline)
+		}
+		// The literal placeholder is accepted offline because only the ruling lane can
+		// corroborate it, so the online lane must record it whatever the file is named.
+		if online, offline := decidedByLanes(t, file, "\"human:<name>\""); online == 0 && offline {
+			t.Errorf("decided-by in docs/streams/decisions/%s: the human:<name> placeholder — online lane records 0 "+
+				"stamps and the register lint accepts it: nothing gates it", file)
+		}
+	}
+}
+
+// decidedByLanes writes one decision record, named file, whose decided-by is
+// yamlValue, into a fresh root. It returns the stamps the online lane records for a
+// diff that adds the record, and whether the offline register lint accepts the
+// decided-by as a human's design-approval authority.
+func decidedByLanes(t *testing.T, file, yamlValue string) (online int, offline bool) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", decisionsDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	decidedBy := "decided-by: " + yamlValue
+	rec := "---\nid: DR-relay-probe-rec\ndate: \"2026-09-24\"\ntitle: \"Relay probe\"\nconsequence: minor\n" +
+		decidedBy + "\nalternatives:\n  - \"another path\"\naccepted:\n  - \"a cost\"\n---\n\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, file), []byte(rec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rel := "docs/streams/" + decisionsDirName + "/" + file
+	diff := "diff --git a/" + rel + " b/" + rel + "\n+++ b/" + rel + "\n+" + decidedBy + "\n"
+	stamps := stampsInDiff(root, diff)
+	var recs []decisionRecordStamp
+	for _, f := range decisionRecordsInDiff(root, diff) {
+		recs = append(recs, loadDecisionRecordStamp(root, f))
+	}
+	stamps = addDecisionRecordStamps(stamps, recs)
+	offline = true
+	for _, p := range decisionRegisterProblems(root) {
+		if strings.Contains(p, "decided-by") {
+			offline = false
+		}
+	}
+	return len(stamps), offline
+}
+
+// TestReadmeCellRelayCaughtByGainGuard is the invariant for the README Verified and
+// Reviewed cells. The online stamp lane strips the relay there as well, so an added
+// row carrying `on-behalf-of human:<x>` records no stamp, and hasHumanReviewer reads the
+// cell as naming a human. What rejects the relay is the branch lint's human-stamp gain
+// guard (humanStampProblems), which reads the raw cell and refuses any human:<x> a
+// branch adds, relay included. This test names that dependency: if the gain guard ever
+// stopped seeing a relay, a relay would pass both lanes with no human act.
+func TestReadmeCellRelayCaughtByGainGuard(t *testing.T) {
+	const (
+		row01 = "| 01 | [brief-01](brief-01.md) | 1 | S | todo | — | — |"
+		row02 = "| 02 | [brief-02](brief-02.md) | 1 | M | verified | 2026-07-01 opus-verifier | — |"
+	)
+	cells := []struct{ cell, from, to string }{
+		{"Verified", row01, "| 01 | [brief-01](brief-01.md) | 1 | S | todo | 2026-08-01 opus-verifier %s | — |"},
+		{"Reviewed", row02, "| 02 | [brief-02](brief-02.md) | 1 | M | verified | 2026-07-01 opus-verifier | 2026-08-01 opus-reviewer %s |"},
+	}
+	for _, c := range cells {
+		for _, v := range relayAuthorityValues {
+			line := strings.Replace(c.to, "%s", v.value, 1)
+			diff := "diff --git a/docs/streams/test-stream/README.md b/docs/streams/test-stream/README.md\n" +
+				"+++ b/docs/streams/test-stream/README.md\n+" + line + "\n"
+			online := len(stampsInDiff("", diff))
+			root, path := humanStampFixture(t)
+			if err := os.WriteFile(path, []byte(strings.Replace(humanStampSampleReadme, c.from, line, 1)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			problems, _ := humanStampProblems(root, loadStreamsOrSkip(t, root))
+			if online == 0 && len(problems) == 0 {
+				t.Errorf("%s cell %q (%s): online lane records 0 stamps and the gain guard reports nothing — "+
+					"a relay passes both lanes with no human act", c.cell, v.value, v.why)
+			}
+		}
+	}
 }
