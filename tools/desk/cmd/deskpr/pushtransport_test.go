@@ -38,8 +38,11 @@ func TestCreateSSHPushRemoteRefuses(t *testing.T) {
 		t.Fatalf("create over an SSH push remote rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
 	}
 	assertNoPushNoCreate(t, *calls)
-	if !anyCall(gitCalls(*calls), "config", "--list", "-z") {
-		t.Fatalf("the gate's config read never happened, so rc=5 came from some OTHER refusal: %v", gitCalls(*calls))
+	// Since #1623 the push-DESTINATION gate runs ahead of the transport gate and refuses an
+	// SSH destination itself (with a worktree-scoped remedy), so its read of git's resolved
+	// push list is the fingerprint that proves rc=5 came from a push gate.
+	if !anyCall(gitCalls(*calls), "remote", "get-url", "--push", "--all", "origin") {
+		t.Fatalf("the push gate's read never happened, so rc=5 came from some OTHER refusal: %v", gitCalls(*calls))
 	}
 	_ = stderr
 }
@@ -132,5 +135,8 @@ func TestEditIsNotPushTransportGated(t *testing.T) {
 
 	if anyCall(gitCalls(*calls), "config", "--list", "-z") {
 		t.Fatalf("edit ran the push-transport gate, but it pushes nothing: %v", gitCalls(*calls))
+	}
+	if anyCall(gitCalls(*calls), "remote", "get-url", "--push", "--all", "origin") {
+		t.Fatalf("edit ran the push-destination gate (#1623), but it pushes nothing: %v", gitCalls(*calls))
 	}
 }
