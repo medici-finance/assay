@@ -142,11 +142,6 @@ func PushRefUpdate(ctx context.Context, u RefUpdate) (RefUpdateResult, error) {
 // compare-and-swap losing from the server refusing the write for another cause. It is "" on
 // RefUpdateApplied and on error.
 func PushRefUpdateDetail(ctx context.Context, u RefUpdate) (RefUpdateResult, string, error) {
-	res, reason, err := pushRefUpdate(ctx, u)
-	return res, reason, err
-}
-
-func pushRefUpdate(ctx context.Context, u RefUpdate) (RefUpdateResult, string, error) {
 	ep, err := transport.NewEndpoint(u.URL)
 	if err != nil {
 		return 0, "", fmt.Errorf("gitcore: ref-update endpoint: %w", err)
