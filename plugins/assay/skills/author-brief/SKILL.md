@@ -754,5 +754,8 @@ layer; the floor does not wait on one.)
   human-legible highlight bullets, not a restatement of the Task; a genuinely non-notable brief says so
   in its `why:` and leaves the `changelog:skip` waiver to the desk or a human. Do NOT add a Verify row
   for it — the repo's CI changelog check IS that row.
+- **Short identifiers**: keep identifiers a brief asks for (test function names especially) under
+  32 characters, and in a PR body describe a long identifier rather than quote it: the desk secret
+  scan reads any 32+ character alphanumeric run as a possible secret.
 - If executing a brief surfaces a NEW non-obvious gotcha, fold it into the repo's instructions file
   (CLAUDE.md / AGENTS.md / etc.) so the next person doesn't rediscover it.
