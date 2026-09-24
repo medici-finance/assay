@@ -676,6 +676,21 @@ func TestSettingsScanRefusesUnreadableFile(t *testing.T) {
 	if err := scanClaudeSettingsConflicts(allowed, cfg, project); err == nil || !strings.Contains(err.Error(), locked) {
 		t.Errorf("an unreadable settings file must refuse naming it: %v", err)
 	}
+
+	// A .claude directory that cannot be searched: stat itself fails with EACCES, which is not
+	// "no file here" — the scan cannot see whether a settings file exists, so it refuses.
+	project = filepath.Join(root, "search-project")
+	sealed := filepath.Join(project, ".claude")
+	if err := os.MkdirAll(sealed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sealed, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+	if err := scanClaudeSettingsConflicts(allowed, cfg, project); err == nil || !strings.Contains(err.Error(), sealed) {
+		t.Errorf("an unsearchable .claude directory must refuse naming it: %v", err)
+	}
 }
 
 // TestBinaryCheckRechecksRoleWorktree: once a role's worktree exists, `check` (and `up`) scan it
