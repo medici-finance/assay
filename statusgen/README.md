@@ -380,6 +380,35 @@ prefix in `corroborate.go`, which teaches the `human:<name>` notation itself wit
 fictional personas. It is a named constant, reviewed on its own terms, and it
 needs no marker.
 
+### Quoted notation is not a claim (`--corroborate`)
+
+`--corroborate` reads the pull request's added lines as claims that a human
+acted. Some added lines only quote the notation, and it does not read them as
+claims (`corroboratescope.go`):
+
+- **The removed side of an embedded patch.** In a committed `.patch` or `.diff`
+  file, a line the patch deletes arrives as `+-…`. Neither the stamp scan nor
+  the citation scan reads it. The patch's added side and its context lines are
+  still read.
+- **Stamp-shaped text on a surface no stamp reader parses.** This applies to the
+  stamp scan only. It skips program source and scripts, using a closed extension
+  list (`.go .sh .bash .zsh .ps1 .py .js .mjs .cjs .ts .rb .rs`), and YAML lines
+  whose first non-blank character is `#`. statusgen reads stamps only from
+  record files: Markdown boards, briefs, decision records and registers, and
+  JSONL ledgers. So a `human:<name>` in a test fixture or a code comment is never
+  a sign-off. The citation scan still reads these files, because a ruling claim
+  in a code comment is prose that a reader may trust.
+
+Every rule is decided by the file's format, never by a directory name, and each
+one fails closed. Any other extension, every YAML value line, and every
+Markdown line, bullets starting with `-` included, are scanned as before. Each
+skip is **visible**: the run ends with a
+`# quoted notation — NOT read as a claim` section that lists every stamp or
+citation a skipped line would have produced (`human:<name> in <file>
+NOT-A-CLAIM — <reason>`). All three `--corroborate` lanes read the diff through
+one walker (`walkAddedDiffLines`). `TestCorroborateDiffWalkersShareOneWalker`
+fails if another function in the package walks the diff with its own loop.
+
 ## Standalone layout
 
 The module lives **at `statusgen/`**, not at this repo's root. There is

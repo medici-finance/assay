@@ -867,55 +867,42 @@ func markPreExisting(stamps []stamp, baseRowsByFile map[string]map[string]string
 
 // stampsInDiff parses a unified diff and returns every human:<name> stamp found on
 // ADDED lines (lines starting with "+" but not "+++"). Each stamp records the name,
-// the file it was added to, and the line content for context.
+// the file it was added to, and the line content for context. Quoted notation is
+// not a claim (#1395, corroboratescope.go): the removed side of an embedded patch
+// and a line on a surface no stamp reader parses yield no stamp.
 //
 // root is the checkout root against which a declared fixture-corpus marker is
 // resolved (see isExcludedFixturePath / fixturecorpus.go). It is "" when there is
 // no checkout to consult, in which case only the hardcoded education prefix
 // excludes — the marker mechanism fails closed to "fully scanned".
 func stampsInDiff(root, diff string) []stamp {
-	lines := strings.Split(diff, "\n")
 	var out []stamp
-	curFile := ""
 	// curHeader holds the cells of the most recent board status-table HEADER row seen
 	// (as an ADDED line) in the current file — the branch table's own header. A board
 	// migration re-emits whole tables, so the re-shaped header lands on an added line
 	// right before its data rows; recording it lets each stamp carry its column NAME
 	// (stampRow.Header) for base-cell resolution. Reset on every file change.
 	var curHeader []string
-	for _, line := range lines {
-		trimmed := strings.TrimRight(line, "\r")
-		// Track the current file from diff headers.
-		if strings.HasPrefix(trimmed, "diff --git ") {
-			// "diff --git a/path b/path"
-			fields := strings.Fields(trimmed)
-			if len(fields) >= 4 {
-				curFile = strings.TrimPrefix(fields[3], "b/")
-			}
+	curSection := -1
+	// The ONE shared walker (corroboratescope.go) yields the added lines: it tracks
+	// the file, skips a declared fixture corpus — a stamp there is deliberately NOT
+	// corroborated, since the corpus carries human:<name> notation with fictional
+	// personas (or captured content) that can never map to a login; this covers the
+	// education tutorial-skeleton prefix AND any subtree that DECLARES itself a
+	// fixture corpus with the on-disk marker (Ian 2026-09-01 desk walk), a PATH
+	// check, so a forged human:<name> OUTSIDE a declared corpus is unaffected — and
+	// sets aside the removed side of an embedded patch (#1395).
+	for _, al := range addedDiffLines(root, diff) {
+		if al.Section != curSection {
+			curSection = al.Section
 			curHeader = nil
+		}
+		curFile, content := al.File, al.Content
+		// A line on a surface no stamp reader parses (program source, a YAML
+		// comment) quotes the notation; it is not a claim (#1395, stampClaimSurface).
+		if ok, _ := stampClaimSurface(curFile, content); !ok {
 			continue
 		}
-		if strings.HasPrefix(trimmed, "+++ ") {
-			curFile = strings.TrimPrefix(trimmed, "+++ b/")
-			curHeader = nil
-			continue
-		}
-		// Only added lines (not the "+++" header itself).
-		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
-			continue
-		}
-		// A stamp on a file under a fixture corpus is deliberately NOT
-		// corroborated — the corpus carries human:<name> notation with fictional
-		// personas (or captured content) that can never map to a login. This
-		// covers the education tutorial-skeleton prefix AND any subtree that
-		// DECLARES itself a fixture corpus with the on-disk marker (Ian 2026-09-01
-		// desk walk). See isExcludedFixturePath. This is a PATH check, so a forged
-		// human:<name> anywhere OUTSIDE a declared corpus is unaffected.
-		if isExcludedFixturePath(root, curFile) {
-			continue
-		}
-		// Strip the leading "+" for matching.
-		content := strings.TrimPrefix(trimmed, "+")
 		lineCtx := content
 		if len(lineCtx) > 120 {
 			lineCtx = lineCtx[:120] + "..."
@@ -1317,6 +1304,7 @@ func runCorroborate(prsArg string) int {
 	prStrs := strings.Split(prsArg, ",")
 	var allResults []corroborateResult
 	var allCitationResults []citationResult
+	var allQuotedNotices []string
 	anyMissing := false
 
 	for _, prStr := range prStrs {
@@ -1393,6 +1381,9 @@ func runCorroborate(prsArg string) int {
 				}
 			}
 		}
+
+		// --- quoted notation set aside as NOT-A-CLAIM (#1395) — announced, never silent ---
+		allQuotedNotices = append(allQuotedNotices, quotedClaimNotices(".", diff)...)
 
 		// --- human-acceptance / human-ruling CITATION corroboration ---
 		for _, r := range checkCitationCorroboration(".", repo, diff, pr) {
@@ -1475,6 +1466,19 @@ func runCorroborate(prsArg string) int {
 				fmt.Printf("citation of %s in %s COULD-NOT-CHECK — %s\n",
 					r.Citation.Name, r.Citation.Source, r.Evidence)
 			}
+		}
+	}
+
+	// --- quoted-notation section (#1395) ---
+	// Lines --corroborate did not read as claims: the removed side of a diff
+	// embedded in a committed patch, program source, and YAML comment lines. Each
+	// stamp or citation such a line would have produced is listed so the skip is
+	// reviewable; none of them affects the exit code.
+	if len(allQuotedNotices) > 0 {
+		fmt.Println()
+		fmt.Println("# quoted notation — NOT read as a claim (no verdict, listed for review)")
+		for _, n := range allQuotedNotices {
+			fmt.Println(n)
 		}
 	}
 
