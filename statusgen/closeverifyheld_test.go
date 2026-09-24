@@ -45,6 +45,13 @@ func chRow(t *testing.T, root, num string) *Brief {
 // un-routed HELD or could-not-check row, or whose most recent verdict is a
 // FAIL, is REFUSED with no write. Before the fix the verified path ran only the
 // verifier-floor read, and every one of these flipped to done.
+//
+// ch/08-ch/10 pin that the verified path's reads cannot be bypassed by how the
+// Evidence is worded: a loose-form PASS marker or no marker at all does not
+// switch the HELD read off (the row's `verified` status is the pass claim), and
+// a prose mention of a future PASS does not answer a strict FAIL. ch/12 pins
+// that a hold a later run resolved still refuses until it is struck through or
+// routed (supersession is not inferred); ch/11 in the control is its twin.
 func TestCloseVerifyVerifiedRefusesContradiction(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -65,6 +72,26 @@ func TestCloseVerifyVerifiedRefusesContradiction(t *testing.T) {
 			"verified path: PASS contradicted by an un-routed could-not-check row",
 			"ch/07",
 			[]string{"ch/07", "**VERIFY: PASS**", "could-not-check", "not a flip signal"},
+		},
+		{
+			"verified path: loose-form PASS marker does not switch the HELD read off",
+			"ch/08",
+			[]string{"ch/08", "HELD", "no strict **VERIFY: PASS** marker", "not a flip signal"},
+		},
+		{
+			"verified path: no verdict marker at all does not switch the HELD read off",
+			"ch/09",
+			[]string{"ch/09", "HELD", "no strict **VERIFY: PASS** marker", "not a flip signal"},
+		},
+		{
+			"verified path: a prose PASS mention does not answer a strict FAIL",
+			"ch/10",
+			[]string{"ch/10", "VERIFY: FAIL", "not a flip signal", "verified"},
+		},
+		{
+			"verified path: a superseded hold left unstruck refuses by design",
+			"ch/12",
+			[]string{"ch/12", "**VERIFY: PASS**", "could-not-check", "not a flip signal"},
 		},
 	}
 	now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
@@ -116,10 +143,12 @@ func TestCloseVerifyHeldRefusalSameTextBothPaths(t *testing.T) {
 }
 
 // TestCloseVerifyVerifiedCleanStillCloses is the control: a verified brief with
-// a clean record, one whose hold is genuinely routed to a follow-up, and one
-// whose earlier FAIL was superseded by a later PASS all still close to done.
+// a clean record, one whose hold is genuinely routed to a follow-up, one
+// whose earlier FAIL was superseded by a later PASS, and one whose earlier-run
+// hold was struck through after a later run executed the row green (the
+// documented supersession remedy) all still close to done.
 func TestCloseVerifyVerifiedCleanStillCloses(t *testing.T) {
-	for _, brief := range []string{"ch/03", "ch/05", "ch/06"} {
+	for _, brief := range []string{"ch/03", "ch/05", "ch/06", "ch/11"} {
 		t.Run(brief, func(t *testing.T) {
 			root := loadCHRoot(t)
 			now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
@@ -135,6 +164,38 @@ func TestCloseVerifyVerifiedCleanStillCloses(t *testing.T) {
 			}
 			if row.Verified != "2026-07-10 opus-verifier" {
 				t.Errorf("verified cell rewritten to %q", row.Verified)
+			}
+		})
+	}
+}
+
+// TestVerdictFailAfterStrictPass pins the FAIL read the verified close adds on
+// top of lastVerifyVerdict: only a strict bold PASS answers a FAIL; a prose or
+// loose-form PASS never does; a quoted, fenced or struck-through FAIL is not a
+// live one.
+func TestVerdictFailAfterStrictPass(t *testing.T) {
+	tests := []struct {
+		name     string
+		evidence string
+		want     bool
+	}{
+		{"no verdict at all", "row 1 green", false},
+		{"strict PASS only", "**VERIFY: PASS** all green", false},
+		{"strict FAIL then strict PASS", "**VERIFY: FAIL** red\n\n**VERIFY: PASS** green", false},
+		{"strict PASS then strict FAIL", "**VERIFY: PASS** green\n\n**VERIFY: FAIL** red", true},
+		{"strict FAIL then prose PASS", "**VERIFY: FAIL** red\n\nwill record VERIFY: PASS once green", true},
+		{"strict FAIL then loose-form bold PASS", "**VERIFY: FAIL** red\n\n**Verifier run — VERIFY: PASS** green", true},
+		{"FAIL with no strict PASS anywhere", "VERIFY: FAIL row 2", true},
+		{"same line: FAIL after strict PASS", "**VERIFY: PASS** then VERIFY: FAIL", true},
+		{"same line: strict PASS after FAIL", "VERIFY: FAIL then **VERIFY: PASS**", false},
+		{"struck-through FAIL", "~~**VERIFY: FAIL** red~~\n\n**VERIFY: PASS** green\n\n~~VERIFY: FAIL~~", false},
+		{"quoted FAIL", "**VERIFY: PASS** green\n> **VERIFY: FAIL** quoted", false},
+		{"fenced FAIL", "**VERIFY: PASS** green\n```\n**VERIFY: FAIL**\n```", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := verdictFailAfterStrictPass(tc.evidence); got != tc.want {
+				t.Errorf("verdictFailAfterStrictPass = %v, want %v", got, tc.want)
 			}
 		})
 	}

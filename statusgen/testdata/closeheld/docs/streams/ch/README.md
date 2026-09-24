@@ -16,3 +16,8 @@ track: platform
 | 05 | [Human verified, hold routed to a follow-up](./brief-05-verified-held-routed.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
 | 06 | [Human verified, FAIL then reworked to PASS](./brief-06-verified-fail-then-pass.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
 | 07 | [Human verified over a could-not-check row](./brief-07-verified-could-not-check.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
+| 08 | [Human verified, loose-form PASS over an un-routed HELD row](./brief-08-verified-loose-pass-held.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
+| 09 | [Human verified, no verdict marker, un-routed HELD row](./brief-09-verified-no-marker-held.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
+| 10 | [Human verified, FAIL followed by a prose PASS mention](./brief-10-verified-fail-then-prose-pass.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
+| 11 | [Human verified, superseded hold struck through](./brief-11-verified-superseded-hold-struck.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
+| 12 | [Human verified, superseded hold left unstruck](./brief-12-verified-superseded-hold-unstruck.md) | 0 | M | verified | 2026-07-10 opus-verifier | — |
