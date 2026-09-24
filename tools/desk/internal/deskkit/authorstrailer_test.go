@@ -77,10 +77,10 @@ func TestAuthorsPRDoesNotRepresentBrief(t *testing.T) {
 	}
 }
 
-// TestRepresentingPRsByBriefKeepsEveryPR: the multi-valued reduction keeps every representing PR in
+// TestRepresentingPRsKeepsEveryPR: the multi-valued reduction keeps every representing PR in
 // list order (so a caller that sets an authoring PR aside still sees the delivery behind it), and
 // RepresentedBriefPRs is exactly its first-of-each reduction.
-func TestRepresentingPRsByBriefKeepsEveryPR(t *testing.T) {
+func TestRepresentingPRsKeepsEveryPR(t *testing.T) {
 	prs := []PRRef{
 		{Number: 10, State: "MERGED", Body: "Brief: example-port/11"},
 		{Number: 11, State: "CLOSED", Body: "Brief: example-port/11"},

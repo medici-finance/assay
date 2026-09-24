@@ -273,10 +273,10 @@ func TestPhantomAdmitsAuthorsTrailerPR(t *testing.T) {
 	}
 }
 
-// TestPhantomExactAuthoringShapeAdmitted pins the exact changed-file shape of the field instance
+// TestPhantomAuthoringShapeAdmitted pins the exact changed-file shape of the field instance
 // (#1339): a merged PR that added one changelog fragment, edited the stream board README and added
 // FOUR brief files (11–14) carried `Brief: <stream>/11`. Every brief it wrote is dispatchable.
-func TestPhantomExactAuthoringShapeAdmitted(t *testing.T) {
+func TestPhantomAuthoringShapeAdmitted(t *testing.T) {
 	files := []deskkit.ChangedFile{
 		{Filename: "changelog/example-port-11-14-briefs.md", Status: "added"},
 		{Filename: "docs/streams/example-port/README.md", Status: "modified"},
