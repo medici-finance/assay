@@ -172,6 +172,33 @@ RISK-VALUE: DERIVED — exitClean=0, exitDrift=1, exitCouldNotCheck=2 @ tools/ha
 
 VERIFY: FAIL — held at implemented. Same real, unresolved content gap as the 2026-09-11 pass, confirmed unchanged: rows 1-6,8 all pass (harnessgen codex verb, manifest version binding, coverage + binding-skew checks all sound); row 7 fails because adopt/SKILL.md still lacks a Codex install scenario and the AGENTS-assay step this brief's own consumers frontmatter marks fixed-here. Not a stale-anchor case — a genuine unresolved gap, already tracked at medici-finance/assay#872 (confirmed still OPEN). No new issue filed.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-24 claude-opus-4-8-verifier
+
+Runner not the implementer; own detached temp worktree cut off origin/main at merged head;
+offline envelope observed (KUBECONFIG=/dev/null); no PR, push, or status flip. Third
+independent verify pass. Runner cells copy the form statusgen verifyrun printed. This pass
+is the first to observe row 7 PASS: the adopt-skill Codex install scenario + AGENTS-assay
+fragment step landed on main (commit 1ef5edeac, PR-referenced #1357), closing the gap the
+2026-09-11 and 2026-09-18 passes held FAIL on (tracked at #872).
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp06r1.out 2>&1; echo $?` | 0 — includes skew/coverage red tests | exit 0 — ok github.com/medici-finance/assay/tools/harnessgen | 2026-09-24 | claude-opus-4-8-verifier |
+| 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json; echo $?` | 0 — manifest parses, required fields present | exit 0 — jq printed true | 2026-09-24 | claude-opus-4-8-verifier |
+| 3 | `test "$(jq -r .version plugins/assay/.claude-plugin/plugin.json)" = "$(jq -r .version plugins/assay/.codex-plugin/plugin.json)"; echo $?` | 0 — versions equal | exit 0 — both manifests 1.0.27 | 2026-09-24 | claude-opus-4-8-verifier |
+| 3a | `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..) > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | non-zero naming the manifest; clean again after checkout | exit 1 — "DRIFT — committed manifest plugins/assay/.codex-plugin/plugin.json differs from the metadata source"; after checkout row 4 re-runs clean; worktree clean | 2026-09-24 | claude-opus-4-8-verifier |
+| 4 | `(cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | 0 — manifest matches metadata source | exit 0 — "clean — plugins/assay/.codex-plugin/plugin.json matches the metadata source" | 2026-09-24 | claude-opus-4-8-verifier |
+| 5 | `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | exit 2, output names probe-skill | exit 2 — "coverage rule failed … skill \"probe-skill\" is on disk but appears in neither the packaged roster nor the excluded list" | 2026-09-24 | claude-opus-4-8-verifier |
+| 6 | `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | exit 2 naming worker-desk | exit 2 — "packaging↔binding skew … packaged skill \"worker-desk\" has no degradation cell in references/codex.md" (also names pr-shepherd, the-desk — the grep -vF stripped every line containing the substring) | 2026-09-24 | claude-opus-4-8-verifier |
+| 7 | `grep -qiF 'codex' plugins/assay/skills/adopt/SKILL.md && grep -qF 'AGENTS-assay' plugins/assay/skills/adopt/SKILL.md; echo $?` | 0 — install scenario + fragment step both present | exit 0 — both greps hit; 12 codex mentions, AGENTS-assay at line 98 (plugins/assay/codex/AGENTS-assay.md install step); file now 120 lines | 2026-09-24 | claude-opus-4-8-verifier |
+| 7a | `grep -qF 'AGENTS-assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | 1 — probe reports absence of an absent token | exit 1 — absent token correctly reported absent | 2026-09-24 | claude-opus-4-8-verifier |
+| 8 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | 0 — brief 05 verb still passes beside the new one | exit 0 — "clean — committed artifacts match the source" | 2026-09-24 | claude-opus-4-8-verifier |
+
+RISK-VALUE: DERIVED — the three-state exit gate exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 is the top-ranked risk-bearing literal introduced by this item's diff; a wrong could-not-check value would let an unaccounted or binding-skewed skill ship silently. Derivation: it is the canonical three-valued instrument contract (0 = checked-clean, 1 = checked-failed/drift, 2 = could-not-check), each state a distinct process exit so a caller and CI can branch on which of the three occurred; the mutation rows observe all three live this pass — clean = 0 (rows 4, 8), drift = 1 (row 3a), could-not-check = 2 (rows 5, 6, built binary). Secondary: the manifest version = 1.0.27 @ plugins/assay/.codex-plugin/plugin.json:3 is NOT an independently-set constant — it is generation-derived and equality-bound to plugins/assay/.claude-plugin/plugin.json:5 (row 3), so it carries no independent-value risk. The exclusion list is empty (no exclusion to justify). Enumeration found no other introduced literal.
+
+Row 7 now passes: the Codex install scenario landed in #1357, resolving the gap tracked at #872.
+
+
 ## Review
 
 Gate: **model** (from frontmatter). Review focus: the exclusion list — every skill
