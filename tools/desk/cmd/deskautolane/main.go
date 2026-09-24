@@ -16,7 +16,7 @@
 //  2. ENACTMENT. Every WRITE this verb can make (the admission label, the ejection label
 //     swap and its one comment) is gated on the rulings register's R-8 Sign-off line — read
 //     through the forge at the register repo's default branch — naming a comment on the
-//     ONE configured sign-off thread in that repo, whose author is a User and the
+//     ONE configured sign-off thread in that repo, an issue, whose author is a User and the
 //     roster-pinned blessing authority, whose body opens with the bare line `Enact: R-8` and
 //     carries no word from the rejection lexicon, which was created after the latest change
 //     to R-8's text that the register's path history records, and which no later acceptance
@@ -72,7 +72,7 @@ The lane is CLOSED unless the four required ASSAY_AUTOAPPROVE_* roster keys are 
 is refused until the enactment gate holds: R-8's Sign-off line in the rulings register
 (--rulings, default docs/streams/issue-flow/rulings.md), read through the forge from
 --rulings-repo (default --repo) at its DEFAULT branch, names a comment on the one configured
-sign-off thread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD; unset is could-not-check) in that repo,
+sign-off thread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD, an issue; unset is could-not-check) in that repo,
 whose author is a User and the blessing authority, whose FIRST non-empty line is the bare
 line "Enact: R-8" with no word from the rejection/negation lexicon in the body, and which
 was created after the latest change to R-8's text above its Sign-off line that the

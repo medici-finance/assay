@@ -87,7 +87,9 @@ func checkAppToken(o *opts, fr deskkit.ForgeRepo) (laneForge, error) {
 //     may be a checkout of a PR head whose author edited the register;
 //  2. R-8's Sign-off line names ONE comment permalink, on a thread in that same register repo,
 //     and on the ONE configured sign-off thread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD) — a comment
-//     on any other thread is refused, and an unset thread is could-not-check;
+//     on any other thread is refused, and an unset thread is could-not-check. That thread is
+//     an ISSUE: a pull-request permalink is refused, because a pull-request thread's comment
+//     listing can stop before its newest comments, which step 6 must see;
 //  3. that comment, fetched, is authored by a forge User (never an App or Bot) who is the
 //     roster-pinned blessing authority, login AND numeric id;
 //  4. its BODY is an acceptance: its first non-empty line is `Enact: R-8` typed bare, and no
@@ -100,6 +102,8 @@ func checkAppToken(o *opts, fr deskkit.ForgeRepo) (laneForge, error) {
 //     history is the forge's simplified one, so it can omit a change (see rulingTextAnchor);
 //  6. it is the blessing authority's NEWEST acceptance on the sign-off thread
 //     (supersededAcceptance): an acceptance the authority has since replaced enacts nothing.
+//     The thread is read whole: the issue listing is walked to its end, and a listing the
+//     forge cannot complete is could-not-check.
 //
 // It returns (true, nil) only when every step holds. Every other outcome is not enacted, with
 // the reason; an unreadable step is could-not-check (unverifiable), never "signed" and never
@@ -164,11 +168,17 @@ func enactment(o *opts, fg laneForge) (bool, error) {
 				"comment on any other thread is not the acceptance", condRulingSigned, deskkit.AutoLaneRulingID,
 			item, o.signOffThread))
 	}
-	kind := deskkit.TargetIssue
-	if m[3] == "pull" {
-		kind = deskkit.TargetChange
+	// The sign-off thread is an ISSUE. Step 6 needs the NEWEST end of the thread, and only an
+	// issue's comment listing is walked to its end (or refused at its page cap). A pull-request
+	// thread is listed as its first 100 comments, with no error and no sign of the rest, so a
+	// later acceptance past them would go unseen and a superseded acceptance would enact.
+	if m[3] != "issues" {
+		return false, deskkit.Refused(fmt.Sprintf(
+			"refused: %s — %s's Sign-off names a comment on pull request #%d; the sign-off thread must be an "+
+				"issue, because a pull-request thread's comment listing can stop before its newest comments",
+			condRulingSigned, deskkit.AutoLaneRulingID, item))
 	}
-	comments, err := fg.ListCommentsTyped(deskkit.ForgeRepo{Owner: m[1], Name: m[2]}, item, kind)
+	comments, err := fg.ListCommentsTyped(deskkit.ForgeRepo{Owner: m[1], Name: m[2]}, item, deskkit.TargetIssue)
 	if err != nil {
 		return false, deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: %s — the sign-off artifact could not be fetched; an unreadable authorization "+
@@ -217,7 +227,9 @@ func enactment(o *opts, fg laneForge) (bool, error) {
 // walk in step 5 cannot always see such a restore (see rulingTextAnchor), so this step refuses
 // it on the thread's own record. Only a later comment that is itself an acceptance, by a User
 // who is the blessing authority, counts: nobody else can refuse the lane by posting on the
-// thread. A later acceptance with no readable creation time is could-not-check.
+// thread. A later acceptance with no readable creation time is could-not-check. The thread's
+// listing is the whole thread: step 2 pins it to an issue, whose listing the forge walks to
+// its end or refuses.
 func supersededAcceptance(comments []deskkit.Comment, named deskkit.Comment) error {
 	at, err := time.Parse(time.RFC3339, strings.TrimSpace(named.CreatedAt))
 	if err != nil {
@@ -229,7 +241,7 @@ func supersededAcceptance(comments []deskkit.Comment, named deskkit.Comment) err
 			!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {
 			continue
 		}
-		if ok, _ := deskkit.AutoLaneAcceptance(c.Body); !ok {
+		if !readsAsLaterAcceptance(c.Body) {
 			continue
 		}
 		later, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))
@@ -246,6 +258,25 @@ func supersededAcceptance(comments []deskkit.Comment, named deskkit.Comment) err
 		}
 	}
 	return nil
+}
+
+// readsAsLaterAcceptance is step 6's reading of a later comment by the blessing authority. It
+// is WIDER than step 4's: leading whitespace on the first non-empty line is ignored, and the
+// negation lexicon applies unchanged. Counting more later comments as acceptances only refuses
+// more, so the wider reading narrows what enacts.
+func readsAsLaterAcceptance(body string) bool {
+	if ok, _ := deskkit.AutoLaneAcceptance(body); ok {
+		return true
+	}
+	lines := strings.Split(body, "\n")
+	for i, ln := range lines {
+		if strings.TrimSpace(ln) != "" {
+			lines[i] = strings.TrimLeft(ln, " \t")
+			break
+		}
+	}
+	ok, _ := deskkit.AutoLaneAcceptance(strings.Join(lines, "\n"))
+	return ok
 }
 
 // rulingHistoryLimit bounds the register-history walk: one page of the commits that touched
@@ -274,16 +305,16 @@ func acceptanceAfterText(o *opts, fg laneForge, rr deskkit.ForgeRepo, db, curren
 				"merged %s); an acceptance of an earlier text does not accept this one", condRulingSigned,
 			accepted.UTC().Format(time.RFC3339), deskkit.AutoLaneRulingID, pr, anchor.UTC().Format(time.RFC3339)))
 	}
-	o.say("%s OK: the acceptance postdates %s's current text (#%d merged %s)", condRulingSigned,
+	o.say("%s OK: the acceptance postdates %s's current text as the path history records it (#%d merged %s)", condRulingSigned,
 		deskkit.AutoLaneRulingID, pr, anchor.UTC().Format(time.RFC3339))
 	return nil
 }
 
-// rulingTextAnchor finds when R-8's CURRENT text landed: it walks the register's history at the
-// default branch, newest first, to the most recent commit whose version of R-8's text above
-// the Sign-off line differs from the version before it (a commit that only touched the
-// Sign-off line, or another ruling, is passed over), and returns the merged_at of the change
-// that merged that commit into the default branch — the latest, when more than one did. It
+// rulingTextAnchor finds when R-8's current text landed, as the path history records it: it
+// walks the register's history at the default branch, newest first, to the most recent commit
+// whose version of R-8's text above the Sign-off line differs from the version before it (a
+// commit that only touched the Sign-off line, or another ruling, is passed over), and returns
+// the merged_at of the change that merged that commit into the default branch — the latest, when more than one did. It
 // never uses a commit date. No merged change behind that commit is a refusal; every read
 // that fails, or a history page that ends without finding the change, is could-not-check.
 //

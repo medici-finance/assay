@@ -111,6 +111,11 @@ type fakeForge struct {
 	commitPRs map[string][]int
 	merged    map[int]deskkit.PullRequest
 
+	// changeListCap, when > 0, models GitHub's change-kind comment read: ONE request for the
+	// first N comments, with no error and no sign of the rest. An issue-kind read is served
+	// whole, as the forge walks it to the end (or refuses at its cap).
+	changeListCap int
+
 	fail map[string]bool // operation name → answer an error
 }
 
@@ -307,7 +312,11 @@ func (f *fakeForge) ListCommentsTyped(r deskkit.ForgeRepo, n int, kind deskkit.T
 	if err := f.rec("ListCommentsTyped", r.Slug()+"#"+fmt.Sprint(n)+":"+string(kind), ""); err != nil {
 		return nil, err
 	}
-	return f.comments[n], nil
+	cs := f.comments[n]
+	if kind == deskkit.TargetChange && f.changeListCap > 0 && len(cs) > f.changeListCap {
+		cs = cs[:f.changeListCap]
+	}
+	return cs, nil
 }
 
 func (f *fakeForge) ApplyLabels(r deskkit.ForgeRepo, n int, ch deskkit.LabelChange) (*deskkit.LabelOutcome, error) {

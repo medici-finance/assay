@@ -352,7 +352,7 @@
     {
       "name": "supersede: any later comment by the authority supersedes, acceptance or not",
       "file": "cmd/deskautolane/forge.go",
-      "old": "\t\tif ok, _ := deskkit.AutoLaneAcceptance(c.Body); !ok {\n\t\t\tcontinue\n\t\t}\n\t\tlater, perr",
+      "old": "\t\tif !readsAsLaterAcceptance(c.Body) {\n\t\t\tcontinue\n\t\t}\n\t\tlater, perr",
       "new": "\t\tlater, perr"
     },
     {
@@ -360,6 +360,36 @@
       "file": "cmd/deskautolane/forge.go",
       "old": "\t\tlater, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))\n\t\tif perr != nil {",
       "new": "\t\tlater, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))\n\t\tif false && perr != nil {"
+    },
+    {
+      "name": "sign-off thread: a pull-request permalink is read like an issue one",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif m[3] != \"issues\" {",
+      "new": "\tif false && m[3] != \"issues\" {"
+    },
+    {
+      "name": "supersede: an indented later acceptance supersedes nothing (step 4's strict reading)",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\t\tlines[i] = strings.TrimLeft(ln, \" \\t\")",
+      "new": "\t\t\tlines[i] = ln"
+    },
+    {
+      "name": "supersede: the wider reading drops the negation lexicon",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tok, _ := deskkit.AutoLaneAcceptance(strings.Join(lines, \"\\n\"))\n\treturn ok",
+      "new": "\t_ = lines\n\treturn strings.Contains(body, deskkit.AutoLaneEnactLine)"
+    },
+    {
+      "name": "gitlab typed notes: a thread still paging at the cap is returned as the whole thread",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif complete {\n\t\treturn nil, Unverifiable(",
+      "new": "\tif false && complete {\n\t\treturn nil, Unverifiable("
+    },
+    {
+      "name": "gitlab typed notes: the typed read takes the lenient capped walk",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn g.listNotes(repo, number, kind, true)",
+      "new": "\treturn g.listNotes(repo, number, kind, false)"
     }
   ]
 }

@@ -3200,3 +3200,45 @@ func TestForgeGitlabNodeID(t *testing.T) {
 		}
 	}
 }
+
+// TestAutoLaneSignOffThread_GitLabTypedNotesCapIsCouldNotCheck — a typed notes read
+// (ListCommentsTyped, either kind) on a thread that still advertises a next page at
+// gitlabMaxNotePage is could-not-check, never the first 2500 notes handed back as the whole
+// thread: the notes are oldest-first, so the unread ones are the NEWEST, and a consumer that
+// needs the newest end (deskautolane's supersede step) would fail open on a truncated list.
+// A thread that ends within the cap is still read whole. Fail-first: at 2178d6b the capped
+// read returned 25 notes and no error.
+func TestAutoLaneSignOffThread_GitLabTypedNotesCapIsCouldNotCheck(t *testing.T) {
+	serve := func(pages int) (*GitLabForge, *int) {
+		hits := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits++
+			page := 1
+			if p := r.URL.Query().Get("page"); p != "" {
+				_, _ = fmt.Sscanf(p, "%d", &page)
+			}
+			if pages < 0 || page < pages {
+				w.Header().Set("X-Next-Page", fmt.Sprintf("%d", page+1))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(glNotes(page, 1))
+		}))
+		t.Cleanup(srv.Close)
+		return &GitLabForge{Token: glTestToken, BaseURL: srv.URL, Client: srv.Client()}, &hits
+	}
+	for _, kind := range []TargetKind{TargetIssue, TargetChange} {
+		f, hits := serve(-1)
+		cs, err := f.ListCommentsTyped(glRepo, 7, kind)
+		if err == nil || ExitCodeOf(err) != ExitUnverifiable {
+			t.Fatalf("%s: an endless notes chain read %d notes, err %v — want could-not-check at the cap", kind, len(cs), err)
+		}
+		if *hits != gitlabMaxNotePage {
+			t.Fatalf("%s: %d requests, want the cap of %d", kind, *hits, gitlabMaxNotePage)
+		}
+	}
+	f, _ := serve(3)
+	cs, err := f.ListCommentsTyped(glRepo, 7, TargetIssue)
+	if err != nil || len(cs) != 3 {
+		t.Fatalf("a 3-page thread read %d notes, err %v — want all 3", len(cs), err)
+	}
+}

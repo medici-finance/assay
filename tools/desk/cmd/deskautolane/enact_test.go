@@ -314,3 +314,68 @@ func TestAutoLane_SupersedeUnreadable(t *testing.T) {
 		t.Fatalf("writes %v", w)
 	}
 }
+
+// longThread is the sign-off thread with the named acceptance first, 99 comments by another
+// User after it, and then the blessing authority's later acceptance as comment 101: one past
+// the first page of 100.
+func longThread(e *env) {
+	for i := 0; i < 99; i++ {
+		e.fg.comments[3] = append(e.fg.comments[3], deskkit.Comment{DatabaseID: int64(1000 + i),
+			Author: deskkit.Account{Login: "shared-agent", ID: 2002, Type: "User"}, Body: "Noted.",
+			CreatedAt: "2026-01-03T00:00:00Z"})
+	}
+	e.fg.comments[3] = append(e.fg.comments[3], laterComment("ada", 2001, "User", fxEnactBody, "2026-01-05T00:00:00Z"))
+}
+
+// TestAutoLane_EnactRefuses_PullThread — the Sign-off permalink names a comment on a
+// PULL-REQUEST thread. The forge reads a pull-request thread as its first 100 comments, with
+// no error and no sign of the rest, so a later acceptance past them would go unseen and the
+// supersede step would pass a superseded acceptance. The sign-off thread must be an ISSUE,
+// whose listing the forge walks to the end or refuses: a /pull/ permalink is refused before
+// the thread is read. Case "past one page" is the supersede miss; case "short thread" shows
+// the refusal does not depend on the thread's length. Fail-first: at 2178d6b both enacted.
+func TestAutoLane_EnactRefuses_PullThread(t *testing.T) {
+	pull := "https://github.com/example-org/tracker/pull/3#issuecomment-555"
+	for name, long := range map[string]bool{"past one page": true, "short thread": false} {
+		t.Run(name, func(t *testing.T) {
+			e := install(t, fixtureLaneKeys, strings.Replace(rulingsSigned, fxSignURL, pull, 1))
+			e.fg.changeListCap = 100
+			if long {
+				longThread(e)
+			}
+			assertNotEnacted(t, e, "the sign-off thread must be an issue")
+			for _, c := range e.fg.calls {
+				if c.Op == "ListCommentsTyped" {
+					t.Fatalf("the gate read a pull-request thread: %v", c)
+				}
+			}
+		})
+	}
+}
+
+// TestAutoLane_EnactRefuses_SupersededPastOnePage — the same long thread on an ISSUE: the
+// forge serves the whole thread, so the authority's later acceptance past the first 100 is
+// seen and the named one is refused as superseded.
+func TestAutoLane_EnactRefuses_SupersededPastOnePage(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.changeListCap = 100
+	longThread(e)
+	assertNotEnacted(t, e, "the sign-off artifact is superseded")
+}
+
+// TestAutoLane_Supersede_IndentedLaterAcceptance — the authority's later acceptance carries
+// leading whitespace on its Enact line. Step 4 does not read that line as an acceptance, but
+// the supersede step reads it with the wider reading (leading whitespace ignored, negation
+// lexicon unchanged): counting more later comments as acceptances only refuses more. A later
+// indented line carrying a negation word still supersedes nothing. Fail-first: at 2178d6b the
+// indented cases enacted.
+func TestAutoLane_Supersede_IndentedLaterAcceptance(t *testing.T) {
+	for _, body := range []string{" Enact: R-8", "\tEnact: R-8", "\n   Enact: R-8  \n\nThanks."} {
+		e := install(t, fixtureLaneKeys, rulingsSigned)
+		e.fg.comments[3] = append(e.fg.comments[3], laterComment("ada", 2001, "User", body, "2026-01-05T00:00:00Z"))
+		assertNotEnacted(t, e, "the sign-off artifact is superseded")
+	}
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[3] = append(e.fg.comments[3], laterComment("ada", 2001, "User", " Enact: R-8 — rejected.", "2026-01-05T00:00:00Z"))
+	assertEnacted(t, e)
+}

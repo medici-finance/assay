@@ -1221,7 +1221,7 @@ func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayloa
 // last-human-response it derives can only move EARLIER (toward escalate), never later — the
 // conservative direction the escalation contract requires, never "no escalation owed".
 func (g *GitLabForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
-	notes, err := g.listNotes(repo, number, TargetIssue)
+	notes, err := g.listNotes(repo, number, TargetIssue, false)
 	if err != nil {
 		return nil, err
 	}
@@ -3534,7 +3534,7 @@ func parseGitLabNoteID(id string) (ForgeRepo, int, int64, error) {
 // Comment.Minimized is false for every GitLab note, and that is EXACT rather than a default:
 // GitLab has no minimise/hide-comment feature, so on a GitLab instance no comment is hidden.
 func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
-	return g.listNotes(repo, number, TargetChange)
+	return g.listNotes(repo, number, TargetChange, false)
 }
 
 // ListCommentsTyped reads the notes of the object of the STATED kind. GitLab keeps issue
@@ -3542,6 +3542,12 @@ func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 // the kind is what selects the endpoint: without it an issue's thread is read as the notes
 // of whichever merge request happens to share its number. An unknown kind is refused rather
 // than defaulted.
+//
+// The typed read is COMPLETE or could-not-check: a thread still advertising a next page at
+// gitlabMaxNotePage is refused rather than handed back as its oldest 2500 notes, the same
+// rule GitHub's typed issue read applies at its own cap. Its consumers key on the NEWEST
+// comments (deskautolane's supersede step, deskclose's authority reads), which are exactly
+// the ones a capped oldest-first walk drops.
 func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
 	switch kind {
 	case TargetIssue, TargetChange:
@@ -3549,7 +3555,7 @@ func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetK
 		return nil, Refused(fmt.Sprintf("refused: ListCommentsTyped: unknown target kind %q for %s#%d",
 			string(kind), repo.Slug(), number))
 	}
-	return g.listNotes(repo, number, kind)
+	return g.listNotes(repo, number, kind, true)
 }
 
 // listNotes is the shared paginating body. The only thing the kind changes is WHICH notes
@@ -3560,7 +3566,11 @@ func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetK
 // the write side: the opaque id addresses merge-request notes (EditComment parses it back
 // into an MR coordinate), so handing one back for an issue note would route a later edit at
 // the wrong endpoint. The numeric DatabaseID is still reported, so the note is identifiable.
-func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+//
+// complete selects what the page cap means. true (the typed read): a thread still advertising
+// a next page at the cap is could-not-check. false (ListComments, IssueContentEvents): the walk
+// stops at the cap and returns what it read, as those callers document.
+func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind, complete bool) ([]Comment, error) {
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -3615,8 +3625,14 @@ func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind) ([]
 			out = append(out, c)
 		}
 		if resp == nil || resp.NextPage == 0 {
-			break
+			return out, nil
 		}
+	}
+	if complete {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s %s %d still reports more notes after %d pages of %d — refusing to report a "+
+				"partial thread as the whole thread (its newest notes are the unread ones)",
+			repo.Slug(), noteable, number, gitlabMaxNotePage, gitlabPerPage), nil)
 	}
 	return out, nil
 }

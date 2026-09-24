@@ -3103,8 +3103,10 @@ could-not-check: (a) the rulings register (`--rulings`, default
 **through the forge**, from `--rulings-repo` (default `--repo`, same owner, in the desk repo set)
 at that repo's **default branch** — never from the caller's worktree, which may be a checkout of
 a PR head; (b) its `R-8` Sign-off line names one comment permalink on a thread **in that same
-repo**, and on the **one configured sign-off thread** (`ASSAY_AUTOAPPROVE_SIGNOFF_THREAD`) — a
-comment on any other thread is refused, and an unset thread is could-not-check; (c) the fetched
+repo**, and on the **one configured sign-off thread** (`ASSAY_AUTOAPPROVE_SIGNOFF_THREAD`),
+which must be an **issue** — a comment on any other thread is refused, a pull-request permalink
+is refused (a pull-request thread's comment listing can stop before its newest comments, which
+(f) must see), and an unset thread is could-not-check; (c) the fetched
 comment's author is a forge `User` (never an App or Bot) and the roster-pinned blessing
 authority, login and numeric id; (d) its body's **first non-empty line** is `Enact: R-8` typed
 bare — exactly those bytes from the first column, not quoted, indented, fenced or backticked —
@@ -3122,6 +3124,9 @@ never a commit date. A recorded text change with no merged change behind it is r
 history page that ends before the change, or any read that fails, is could-not-check; (f) the
 comment is the blessing authority's **newest acceptance on the sign-off thread** — a later
 acceptance by the same authority supersedes it, and a superseded acceptance enacts nothing. The
+whole thread is read: the issue listing is walked to its end, and a listing the forge cannot
+complete is could-not-check. A later comment by the authority counts as an acceptance here even
+when its `Enact: R-8` line is indented — a wider reading than (d), which only refuses more. The
 signing order this admits: the ruling's text merges, then the acceptance comment is posted on the
 sign-off thread, then a PR fills the Sign-off line.
 
@@ -3179,7 +3184,7 @@ The roster keys (`~/.config/assay/roster.env`; file-only, never the environment)
 | `ASSAY_AUTOAPPROVE_EJECT_LINE` | integer in `[0, 5]` — a score above it ejects |
 | `ASSAY_AUTOAPPROVE_FPY_FLOOR` | decimal in `(0, 1]` — the kill signal's first-pass-yield floor |
 | `ASSAY_AUTOAPPROVE_DAILY_CAP` | integer in `[1, 100]` — lane merges per repo per UTC day, counted from `autolane:merge result=ok` audit lines |
-| `ASSAY_AUTOAPPROVE_SIGNOFF_THREAD` | positive integer — the issue or PR number, in the rulings register's repo, of the ONE thread the acceptance comment must sit on. Optional to load; unset, the enactment gate is could-not-check, so nothing is enacted |
+| `ASSAY_AUTOAPPROVE_SIGNOFF_THREAD` | positive integer — the ISSUE number, in the rulings register's repo, of the ONE thread the acceptance comment must sit on (a pull-request permalink is refused). Optional to load; unset, the enactment gate is could-not-check, so nothing is enacted |
 
 All four absent is CLOSED; any subset set without the rest refuses. There is no default value
 for any of them that opens the lane. The sign-off thread is not one of the four: set alone it
