@@ -241,7 +241,7 @@ Options:
    surface is treated as a board write and stays outside the landing audit.
 4. **Do not adopt.** Keep the batched Evidence PR as the only path.
 
-Default if no answer: none. The brief blocks until answered. Batching stays the path meanwhile.
+Default if no answer: none — blocks until answered. Batching stays the path meanwhile.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. The deliverable is a draft PR
