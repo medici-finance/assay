@@ -1101,7 +1101,10 @@ const AutoLaneEnactLine = "Enact: " + AutoLaneRulingID
 //   - the body's FIRST non-empty line is AutoLaneEnactLine typed BARE: exactly those bytes,
 //     case included, from the first column, with nothing on the line but trailing
 //     whitespace. A quoted (`> `), indented, fenced or backticked line, or one that comes
-//     after any other text, is not an act of enactment but a mention of one; and
+//     after any other text, is not an act of enactment but a mention of one. The
+//     first-column rule is STRICTER than a ruling text that ignores leading whitespace: it
+//     refuses an indented line such a text accepts. It only narrows, and the two must be
+//     aligned before the ruling is signed; and
 //   - no word from the rejection/negation lexicon (autoLaneNegationRe) appears anywhere in it.
 //
 // why names the failing half; it is "" exactly when ok.

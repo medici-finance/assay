@@ -515,7 +515,9 @@ func TestAutoLaneAcceptance(t *testing.T) {
 
 // TestAutoLane_EnactLineMust_BeFirstAndBare — the Enact line must OPEN the body, typed bare.
 // Fail-first: at 7cbc29f the matcher took the line anywhere in the body, case-folded, with
-// leading whitespace, so every body below was accepted.
+// leading whitespace, so every body below was accepted. The indented cases pin the
+// first-column rule, which is stricter than a ruling text that ignores leading whitespace;
+// if that text and the gate are aligned the other way, these two cases move with it.
 func TestAutoLane_EnactLineMust_BeFirstAndBare(t *testing.T) {
 	for _, bad := range []string{
 		"Reviewed the lane.\n\nEnact: R-8\n", // not the first non-empty line

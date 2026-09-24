@@ -312,6 +312,54 @@
       "file": "internal/deskkit/autolane.go",
       "old": "\tif strings.TrimRight(first, \" \\t\\r\") != AutoLaneEnactLine {",
       "new": "\tif strings.TrimSpace(first) != AutoLaneEnactLine {"
+    },
+    {
+      "name": "time check: the commit's own date anchors, not the merging PR's merged_at",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused(",
+      "new": "\tif cd, e := time.Parse(time.RFC3339, hist[anchorAt].CommittedDate); e == nil && latestPR != 0 {\n\t\tlatest = cd\n\t}\n\tif latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused("
+    },
+    {
+      "name": "supersede: the newest-acceptance step never runs",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif err := supersededAcceptance(comments, c); err != nil {",
+      "new": "\t\tif err := supersededAcceptance(comments, c); false && err != nil {"
+    },
+    {
+      "name": "supersede: a later acceptance by the authority is ignored",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif later.After(at) {",
+      "new": "\t\tif false && later.After(at) {"
+    },
+    {
+      "name": "supersede: an EARLIER acceptance by the authority also supersedes",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif later.After(at) {",
+      "new": "\t\tif !later.Equal(at) {"
+    },
+    {
+      "name": "supersede: anyone's later acceptance supersedes, not only the authority's",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), \"User\") ||\n\t\t\t!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {",
+      "new": "\t\tif c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), \"User\") {"
+    },
+    {
+      "name": "supersede: an App carrying the authority's login counts as the authority",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), \"User\") ||\n\t\t\t!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {",
+      "new": "\t\tif c.DatabaseID == named.DatabaseID ||\n\t\t\t!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {"
+    },
+    {
+      "name": "supersede: any later comment by the authority supersedes, acceptance or not",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif ok, _ := deskkit.AutoLaneAcceptance(c.Body); !ok {\n\t\t\tcontinue\n\t\t}\n\t\tlater, perr",
+      "new": "\t\tlater, perr"
+    },
+    {
+      "name": "supersede: a later acceptance with no readable time reads as not later",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tlater, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))\n\t\tif perr != nil {",
+      "new": "\t\tlater, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))\n\t\tif false && perr != nil {"
     }
   ]
 }

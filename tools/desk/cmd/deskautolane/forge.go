@@ -92,11 +92,14 @@ func checkAppToken(o *opts, fr deskkit.ForgeRepo) (laneForge, error) {
 //     roster-pinned blessing authority, login AND numeric id;
 //  4. its BODY is an acceptance: its first non-empty line is `Enact: R-8` typed bare, and no
 //     word from the rejection/negation lexicon appears in it (deskkit.AutoLaneAcceptance);
-//  5. it was CREATED AFTER the latest merged change to R-8's text above its Sign-off line
-//     (rulingTextAnchor). The change's time is its merging PR's merged_at, never a commit
-//     date; a change that touches only the Sign-off line does not move it; a change with no
-//     merged PR behind it is refused. An acceptance of an older text is not an acceptance of
-//     this one.
+//  5. it was CREATED AFTER the latest change to R-8's text above its Sign-off line that the
+//     register's path history at the default branch records (rulingTextAnchor). The change's
+//     time is its merging PR's merged_at, never a commit date; a change that touches only the
+//     Sign-off line does not move it; a recorded change with no merged PR behind it is
+//     refused. An acceptance of an older text is not an acceptance of this one. The path
+//     history is the forge's simplified one, so it can omit a change (see rulingTextAnchor);
+//  6. it is the blessing authority's NEWEST acceptance on the sign-off thread
+//     (supersededAcceptance): an acceptance the authority has since replaced enacts nothing.
 //
 // It returns (true, nil) only when every step holds. Every other outcome is not enacted, with
 // the reason; an unreadable step is could-not-check (unverifiable), never "signed" and never
@@ -198,10 +201,51 @@ func enactment(o *opts, fg laneForge) (bool, error) {
 		if err := acceptanceAfterText(o, fg, rr, db, string(fc.Content), c.CreatedAt); err != nil {
 			return false, err
 		}
+		if err := supersededAcceptance(comments, c); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	return false, deskkit.Unverifiable(fmt.Sprintf(
 		"could-not-check: %s — the sign-off permalink's comment was not found on its thread", condRulingSigned), nil)
+}
+
+// supersededAcceptance is enactment step 6: the named acceptance must be the blessing
+// authority's NEWEST acceptance on the sign-off thread. A later acceptance by the same
+// authority means the Sign-off line names an act the authority has since replaced, typically
+// the acceptance of an earlier text brought back by restoring an old register. The history
+// walk in step 5 cannot always see such a restore (see rulingTextAnchor), so this step refuses
+// it on the thread's own record. Only a later comment that is itself an acceptance, by a User
+// who is the blessing authority, counts: nobody else can refuse the lane by posting on the
+// thread. A later acceptance with no readable creation time is could-not-check.
+func supersededAcceptance(comments []deskkit.Comment, named deskkit.Comment) error {
+	at, err := time.Parse(time.RFC3339, strings.TrimSpace(named.CreatedAt))
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s — the sign-off artifact has no readable creation time", condRulingSigned), nil)
+	}
+	for _, c := range comments {
+		if c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), "User") ||
+			!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {
+			continue
+		}
+		if ok, _ := deskkit.AutoLaneAcceptance(c.Body); !ok {
+			continue
+		}
+		later, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))
+		if perr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"could-not-check: %s — another acceptance by the blessing authority on the sign-off thread "+
+					"has no readable creation time, so the named one cannot be shown to be the newest", condRulingSigned), nil)
+		}
+		if later.After(at) {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: %s — the sign-off artifact is superseded: the blessing authority posted a later "+
+					"acceptance on the sign-off thread (comment %d, created %s); an acceptance the authority has "+
+					"since replaced enacts nothing", condRulingSigned, c.DatabaseID, later.UTC().Format(time.RFC3339)))
+		}
+	}
+	return nil
 }
 
 // rulingHistoryLimit bounds the register-history walk: one page of the commits that touched
@@ -210,7 +254,8 @@ func enactment(o *opts, fg laneForge) (bool, error) {
 const rulingHistoryLimit = 50
 
 // acceptanceAfterText is enactment step 5: the acceptance comment must have been created
-// strictly AFTER the latest merged change to R-8's text above its Sign-off line.
+// strictly AFTER the latest change to R-8's text above its Sign-off line that the register's
+// path history records (rulingTextAnchor names what that history can omit).
 func acceptanceAfterText(o *opts, fg laneForge, rr deskkit.ForgeRepo, db, current, createdAt string) error {
 	accepted, perr := time.Parse(time.RFC3339, strings.TrimSpace(createdAt))
 	if perr != nil {
@@ -241,6 +286,14 @@ func acceptanceAfterText(o *opts, fg laneForge, rr deskkit.ForgeRepo, db, curren
 // that merged that commit into the default branch — the latest, when more than one did. It
 // never uses a commit date. No merged change behind that commit is a refusal; every read
 // that fails, or a history page that ends without finding the change, is could-not-check.
+//
+// The walk is only as complete as the forge's path-filtered history, and that history is
+// SIMPLIFIED: where a merge commit leaves the register byte-identical to one parent, the other
+// parent's line — and any text change on it — is not listed. So a merge that restores an old
+// register can hide the text change it reverts, and the anchor falls back to the older text's
+// merge. supersededAcceptance refuses the case where the authority accepted the newer text on
+// the sign-off thread; an older acceptance revived with NO later acceptance on the thread is a
+// known residual of this walk, and it must close before the lane gains a merge write.
 func rulingTextAnchor(o *opts, fg laneForge, rr deskkit.ForgeRepo, db, current string) (time.Time, int, error) {
 	cnc := func(detail string, err error) (time.Time, int, error) {
 		return time.Time{}, 0, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — %s", condRulingSigned, detail), err)

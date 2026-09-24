@@ -1,8 +1,9 @@
 package main
 
 // enact_test.go — the enactment gate brought up to the ruling's narrowed text: the acceptance
-// sits on the ONE configured sign-off thread, is created after the latest merged change to
-// R-8's text, and opens with a bare `Enact: R-8` line. Every case here only NARROWS what
+// sits on the ONE configured sign-off thread, is created after the latest change to R-8's
+// text that the register's path history records, is the authority's newest acceptance on that
+// thread, and opens with a bare `Enact: R-8` line. Every case here only NARROWS what
 // enacts, or turns an enactment into could-not-check.
 //
 // Every fixture value is an example-org placeholder.
@@ -87,6 +88,24 @@ func TestAutoLane_EnactRefuses_AcceptanceBeforeText(t *testing.T) {
 	}
 }
 
+// TestAutoLane_EnactIgnores_CommitDate — the commit that changed R-8's text carries its own
+// committed date, and the gate must never read it: only the merging PR's merged_at anchors.
+// Backdated: the commit claims a date before the acceptance, but its PR merged AFTER the
+// acceptance was created, so the acceptance is of an earlier text and is refused. Forward-dated:
+// the commit claims a date after the acceptance, but its PR merged before it, so the lane
+// enacts. Fail-first: the mutation "the commit's own date anchors" admits the first and refuses
+// the second.
+func TestAutoLane_EnactIgnores_CommitDate(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.history = []histEntry{{sha: fxTextSHA, date: "2025-06-01T00:00:00Z"}}
+	e.fg.merged[fxTextPR] = mergedPR(fxTextPR, "2026-01-03T00:00:00Z")
+	assertNotEnacted(t, e, "not after R-8's current text merged (#21, merged 2026-01-03T00:00:00Z)")
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.history = []histEntry{{sha: fxTextSHA, date: "2026-02-01T00:00:00Z"}}
+	assertEnacted(t, e)
+}
+
 // TestAutoLane_EnactAnchors_LatestMergedPR — the commit that changed the text is behind two
 // merged PRs; the anchor is the LATER merge, never the earlier one and never a commit date.
 func TestAutoLane_EnactAnchors_LatestMergedPR(t *testing.T) {
@@ -159,7 +178,8 @@ func TestAutoLane_TimeCheckUnreadable_CouldNotCheck(t *testing.T) {
 // TestAutoLane_EnactRefuses_QuotedOrLateLine — the authority's comment carries `Enact: R-8`
 // only quoted, fenced, backticked, indented or after other text: a mention, not an act.
 // Fail-first: at 7cbc29f the matcher took the line anywhere, and the late, fenced and indented
-// bodies admitted.
+// bodies admitted. The indented body pins the first-column rule, which is stricter than a
+// ruling text that ignores leading whitespace (see AutoLaneAcceptance).
 func TestAutoLane_EnactRefuses_QuotedOrLateLine(t *testing.T) {
 	for _, body := range []string{
 		"> Enact: R-8",
@@ -231,4 +251,66 @@ func TestAutoLane_RealSigningOrder_Admits(t *testing.T) {
 	order(e)
 	e.fg.comments[3][0].CreatedAt = "2025-12-15T00:00:00Z"
 	assertNotEnacted(t, e, "not after R-8's current text merged (#21")
+}
+
+// --- (f) the named acceptance is the authority's newest ----------------------------------------
+
+// laterComment is a comment on the sign-off thread, created after fxAccepted.
+func laterComment(login string, id int64, typ, body, at string) deskkit.Comment {
+	return deskkit.Comment{DatabaseID: 557, Author: deskkit.Account{Login: login, ID: id, Type: typ}, Body: body, CreatedAt: at}
+}
+
+// TestAutoLane_EnactRefuses_Superseded — the Sign-off names an acceptance the blessing
+// authority has since replaced with a later acceptance on the sign-off thread: refused. The
+// second case is the restore the simplified path history hides: the text changed after the
+// first acceptance and the authority accepted it again, then a merge restored the old
+// register (old text, old Sign-off). The history the forge lists shows only the old text, so
+// the time check passes; the thread's later acceptance refuses it. Fail-first: before this
+// step both admitted.
+func TestAutoLane_EnactRefuses_Superseded(t *testing.T) {
+	later := laterComment("ada", 2001, "User", fxEnactBody, "2026-01-05T00:00:00Z")
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[3] = append(e.fg.comments[3], later)
+	assertNotEnacted(t, e, "the sign-off artifact is superseded")
+
+	e = install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.history = []histEntry{{sha: "bbbb0002"}, {sha: fxTextSHA, content: rulingsUnsigned}}
+	e.fg.commitPRs["bbbb0002"] = []int{22}
+	e.fg.merged[22] = mergedPR(22, "2026-01-09T00:00:00Z")
+	e.fg.comments[3] = append(e.fg.comments[3], later)
+	assertNotEnacted(t, e, "the sign-off artifact is superseded")
+}
+
+// TestAutoLane_EnactKeeps_NotSuperseded — later comments on the thread that are NOT a later
+// acceptance by the blessing authority supersede nothing: a later non-acceptance by the
+// authority, a later acceptance line from another User, one from an App carrying the
+// authority's login, and an EARLIER acceptance by the authority all leave the lane enacted.
+// Nobody but the authority can refuse the lane by posting on the thread.
+func TestAutoLane_EnactKeeps_NotSuperseded(t *testing.T) {
+	for name, c := range map[string]deskkit.Comment{
+		"authority, not an acceptance": laterComment("ada", 2001, "User", "Noted, thanks.", "2026-01-05T00:00:00Z"),
+		"another user's acceptance":    laterComment("shared-agent", 2002, "User", fxEnactBody, "2026-01-05T00:00:00Z"),
+		"an app with the login":        laterComment("ada", 2001, "Bot", fxEnactBody, "2026-01-05T00:00:00Z"),
+		"an earlier acceptance":        laterComment("ada", 2001, "User", fxEnactBody, "2026-01-01T12:00:00Z"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := install(t, fixtureLaneKeys, rulingsSigned)
+			e.fg.comments[3] = append(e.fg.comments[3], c)
+			assertEnacted(t, e)
+		})
+	}
+}
+
+// TestAutoLane_SupersedeUnreadable — a later acceptance by the authority with no readable
+// creation time: the named one cannot be shown to be the newest, so could-not-check (exit 6).
+func TestAutoLane_SupersedeUnreadable(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.comments[3] = append(e.fg.comments[3], laterComment("ada", 2001, "User", fxEnactBody, ""))
+	code, stderr := dryMerge(e)
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "cannot be shown to be the newest") {
+		t.Fatalf("exit %d stderr %q — want 6 could-not-check", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("writes %v", w)
+	}
 }

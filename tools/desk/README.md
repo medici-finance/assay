@@ -3108,17 +3108,30 @@ comment on any other thread is refused, and an unset thread is could-not-check; 
 comment's author is a forge `User` (never an App or Bot) and the roster-pinned blessing
 authority, login and numeric id; (d) its body's **first non-empty line** is `Enact: R-8` typed
 bare — exactly those bytes from the first column, not quoted, indented, fenced or backticked —
-and no word from the rejection/negation lexicon appears in it (`rejected`, `not accepted`,
+(this first-column rule is stricter than a ruling text that ignores leading whitespace: the gate
+refuses an indented line such a text would accept, and the two must be aligned before the ruling
+is signed) and no word from the rejection/negation lexicon appears in it (`rejected`, `not accepted`,
 `do not`, `revoked`, `withdrawn`, `declined`, `vetoed`, `rescinded`, ...; a word lexicon, not a
 reading of intent) — a rejection recorded on the Sign-off line, or an unrelated comment by the
-same human, enacts nothing; (e) the comment was **created after the latest merged change to
-R-8's text** above its Sign-off line. The gate walks the register's history at the default
-branch (one page of 50 commits), passes over commits that changed only the Sign-off line or
-another ruling, and takes the `merged_at` of the change that merged the last text change into
-the default branch (the latest, if several did) — never a commit date. A text change with no
-merged change behind it is refused; a history page that ends before the change, or any read
-that fails, is could-not-check. The signing order this admits: the ruling's text merges, then
-the acceptance comment is posted on the sign-off thread, then a PR fills the Sign-off line.
+same human, enacts nothing; (e) the comment was **created after the latest change to R-8's
+text** above its Sign-off line **that the register's path history records**. The gate walks the
+register's path history at the default branch (one page of 50 commits), passes over commits that
+changed only the Sign-off line or another ruling, and takes the `merged_at` of the change that
+merged the last recorded text change into the default branch (the latest, if several did) —
+never a commit date. A recorded text change with no merged change behind it is refused; a
+history page that ends before the change, or any read that fails, is could-not-check; (f) the
+comment is the blessing authority's **newest acceptance on the sign-off thread** — a later
+acceptance by the same authority supersedes it, and a superseded acceptance enacts nothing. The
+signing order this admits: the ruling's text merges, then the acceptance comment is posted on the
+sign-off thread, then a PR fills the Sign-off line.
+
+**What the time check cannot see.** The forge's path history is simplified: when a merge commit
+leaves the register byte-identical to one parent, the other parent's line is not listed, text
+changes included. A merge that restores an old register (an old PR head, Sign-off and all) can
+therefore hide the text change it reverts, so the anchor falls back to the older text's merge.
+Step (f) refuses that restore when the authority accepted the newer text on the sign-off thread.
+An older acceptance revived with no later acceptance on the thread is a known residual. It must
+close before the lane gains a merge write.
 
 **`--dry-run` writes nothing.** When the category or the score fails, `merge --dry-run` prints
 `dry-run: would eject: <reasons>` and exits 5 with no label swap, no comment and no latch;

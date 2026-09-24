@@ -18,9 +18,10 @@
 //     through the forge at the register repo's default branch — naming a comment on the
 //     ONE configured sign-off thread in that repo, whose author is a User and the
 //     roster-pinned blessing authority, whose body opens with the bare line `Enact: R-8` and
-//     carries no word from the rejection lexicon, and which was created after the latest
-//     merged change to R-8's text. The line ships EMPTY, so every write refuses
-//     `ruling-unsigned`.
+//     carries no word from the rejection lexicon, which was created after the latest change
+//     to R-8's text that the register's path history records, and which no later acceptance
+//     by the same authority on that thread supersedes. The line ships EMPTY, so every write
+//     refuses `ruling-unsigned`.
 //  3. NO MERGE WRITE. This release carries no merge mutation at all. `merge` evaluates the
 //     whole condition chain and, with --dry-run, reports what it would do; without
 //     --dry-run it refuses at `merge-write` after every condition held. The forge operation
@@ -74,8 +75,10 @@ is refused until the enactment gate holds: R-8's Sign-off line in the rulings re
 sign-off thread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD; unset is could-not-check) in that repo,
 whose author is a User and the blessing authority, whose FIRST non-empty line is the bare
 line "Enact: R-8" with no word from the rejection/negation lexicon in the body, and which
-was created after the latest merged change to R-8's text above its Sign-off line (the
-merging PR's merged_at; a Sign-off-only change does not count). --root names only the local
+was created after the latest change to R-8's text above its Sign-off line that the
+register's path history records (the merging PR's merged_at; a Sign-off-only change does not
+count; the forge's history is simplified and can omit a change a merge reverted), and which no
+later acceptance by the authority on that thread supersedes. --root names only the local
 tree whose .assay-surfaces the only-narrowing config check reads. --fpy-file names the
 harvested per-class first-pass-yield file; absent or unreadable, the lane HOLDS.
 

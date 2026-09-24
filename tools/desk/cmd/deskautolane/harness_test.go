@@ -104,7 +104,8 @@ type fakeForge struct {
 	defaultBranch string
 
 	// history is the register's path history at the default branch, newest first; an entry's
-	// content "" is the current register (rulings), fxAbsent an absent file. commitPRs are the
+	// content "" is the current register (rulings), fxAbsent an absent file, and its date the
+	// commit's own committed date (which the gate must never read). commitPRs are the
 	// changes behind each commit, and merged the change reads they resolve to.
 	history   []histEntry
 	commitPRs map[string][]int
@@ -116,6 +117,7 @@ type fakeForge struct {
 type histEntry struct {
 	sha     string
 	content string
+	date    string // the commit's own committed date, as the forge reports it; "" = none
 }
 
 // mergedPR is a change merged into main at the given time.
@@ -282,7 +284,7 @@ func (f *fakeForge) ListFileCommits(r deskkit.ForgeRepo, ref, file string, limit
 		if len(out) == limit {
 			break
 		}
-		out = append(out, deskkit.RepoCommit{SHA: h.sha})
+		out = append(out, deskkit.RepoCommit{SHA: h.sha, CommittedDate: h.date})
 	}
 	return out, nil
 }
