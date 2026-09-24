@@ -10,8 +10,32 @@
     {
       "name": "accept a foreign write-capable ACE (any principal that can rewrite the token file passes owner-only custody)",
       "file": "internal/deskkit/custodyacl.go",
-      "old": "\t\tif ace.InheritOnly || !ace.GrantsWrite {\n\t\t\tcontinue\n\t\t}",
-      "new": "\t\tif ace.InheritOnly || !ace.GrantsWrite || true {\n\t\t\tcontinue\n\t\t}"
+      "old": "\t\tif ace.GrantsWrite {",
+      "new": "\t\tif false && ace.GrantsWrite {"
+    },
+    {
+      "name": "accept a foreign read-capable ACE (a principal other than the owner can read the credential file, which unix 0600 excludes)",
+      "file": "internal/deskkit/custodyacl.go",
+      "old": "\t\tif ace.GrantsRead {",
+      "new": "\t\tif false && ace.GrantsRead {"
+    },
+    {
+      "name": "drop FILE_READ_DATA from the read-capable mask (a data-read grant decodes as no read)",
+      "file": "internal/deskkit/rosteracl.go",
+      "old": "const custodyReadMask uint32 = 0x00000001 | // FILE_READ_DATA",
+      "new": "const custodyReadMask uint32 = 0x00000000 | // FILE_READ_DATA"
+    },
+    {
+      "name": "drop GENERIC_READ from the read-capable mask (a generic read grant decodes as no read)",
+      "file": "internal/deskkit/rosteracl.go",
+      "old": "\t0x80000000 //   GENERIC_READ",
+      "new": "\t0x00000000 //   GENERIC_READ"
+    },
+    {
+      "name": "stop naming an inherited grant's origin in the refusal (the operator is not told to protect the DACL)",
+      "file": "internal/deskkit/custodyacl.go",
+      "old": "\tif ace.Inherited {",
+      "new": "\tif false && ace.Inherited {"
     },
     {
       "name": "treat an uninterpretable DACL entry as clean instead of refusing (write scope is guessed, not established)",

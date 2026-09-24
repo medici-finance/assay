@@ -14,9 +14,15 @@ import "fmt"
 // owner check uses (rosterowner_{unix,windows}.go). It exists because os.FileMode's
 // permission bits are synthetic on Windows — a normal file reads 0666 — so the unix
 // 0600 test rejects a token file that is correctly locked by an owner-only ACL
-// (#667). The rule this enforces instead: a custody file must be OWNED by the
-// invoking user and writable by no principal but the owner (plus the OS-trusted
-// SYSTEM / Administrators writers the Win32 adapter supplies).
+// (#667). The rule this enforces instead — the same owner-only property as unix
+// 0600: a custody file must be OWNED by the invoking user, and no principal but the
+// owner (plus the OS-trusted SYSTEM / Administrators principals the Win32 adapter
+// supplies, the counterpart of root on unix) may hold write-capable OR
+// read-capable access to it. Read-capable is custodyReadMask: the counterpart of
+// the group/other read and execute bits 0600 excludes. A grant from a group
+// (Everyone, Authenticated Users, Users, ...) or one inherited from a parent
+// folder is refused like any other non-owner grant; an inherited one names its
+// origin, so the operator knows to protect the file's DACL from inheritance.
 //
 // A could-not-determine input (empty owner or current-user SID, or a DACL entry
 // this tool cannot interpret) REFUSES rather than passing — establish the
@@ -53,14 +59,28 @@ func evaluateCustodyACL(path string, m rosterACLModel) error {
 			return fmt.Errorf("custody file %s has a Windows DACL entry (#%d) this tool cannot "+
 				"interpret — refusing rather than guessing its write scope", path, i)
 		}
-		if ace.InheritOnly || !ace.GrantsWrite {
+		if ace.InheritOnly || trusted[ace.SID] {
 			continue
 		}
-		if trusted[ace.SID] {
-			continue
+		if ace.GrantsWrite {
+			return fmt.Errorf("custody file %s grants write-capable Windows access to SID %s%s — "+
+				"anything that can write it can substitute the credential this tool trusts",
+				path, ace.SID, inheritedNote(ace))
 		}
-		return fmt.Errorf("custody file %s grants write-capable Windows access to SID %s — "+
-			"anything that can write it can substitute the credential this tool trusts", path, ace.SID)
+		if ace.GrantsRead {
+			return fmt.Errorf("custody file %s grants read-capable Windows access to SID %s%s — "+
+				"a credential file must be readable only by its owner, matching the unix 0600 rule",
+				path, ace.SID, inheritedNote(ace))
+		}
 	}
 	return nil
+}
+
+// inheritedNote names an entry's origin in a custody refusal when it came from a
+// parent folder, so the fix (protect the file's DACL from inheritance) is evident.
+func inheritedNote(ace rosterACE) string {
+	if ace.Inherited {
+		return " (inherited from a parent folder)"
+	}
+	return ""
 }

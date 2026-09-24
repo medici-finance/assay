@@ -1112,8 +1112,12 @@ specifics.
   On native Windows the roster owner check is now **ACL-aware** (#640/#641) — it accepts a roster
   owned by the invoking user and writable by no principal but the owner (plus SYSTEM /
   Administrators) and refuses any foreign write-capable principal — and GitLab token custody uses
-  the same owner-only ACL evaluation (#667). Lock the roster and role-token files down with an
-  owner-only ACL.
+  the same owner-only ACL evaluation (#667), with read access held to the same bar as the Unix
+  `0600` rule: a token file must be readable and writable only by its owner (plus SYSTEM /
+  Administrators), so any other principal holding read access — a group such as Everyone,
+  Authenticated Users or Users, or a grant inherited from the parent folder — is refused too.
+  Lock the roster and role-token files down with an owner-only ACL that does not inherit from its
+  folder, e.g. `icacls <file> /inheritance:r /grant:r "%USERNAME%:F"`.
 
 ### Install path — the pinned, verify-or-refuse flow (channel E)
 The Windows **release** install mirrors the Unix acquire→verify→place flow, with the
