@@ -21,18 +21,24 @@ import (
 //     line the patch DELETES arrives as "+-...". A deleted line asserts nothing;
 //     the patch applied REMOVES it. This binds BOTH lanes (and every other diff
 //     walker in the package — see addedDiffLines).
-//   - Stamp-shaped DATA in a file no stamp reader parses. statusgen reads
-//     human:<name> stamps only out of RECORD files — the Markdown boards, briefs,
-//     decision records and registers (and their frontmatter), and the JSONL
-//     ledgers — never out of program source, a shell script, or a test fixture
-//     written in one. A `human:<name>` in a test script's fixture data or in a code
-//     comment is documentation of the notation, and no board, brief or gate can
-//     ever read it as a sign-off, so there is no forged done-flip for it to carry.
-//     Likewise a `#` comment line in a YAML file is dropped by every YAML parser
-//     and never becomes a value. These two bind the STAMP lane only
-//     (stampClaimSurface); the citation lane is scoped to all tracked prose by
-//     design (a ruling claim in a code comment is still durable prose a reader
-//     may trust), so it keeps reading them.
+//   - Stamp-shaped DATA in a TEST source file. statusgen reads human:<name>
+//     stamps only out of RECORD files — the Markdown boards, briefs, decision
+//     records and registers (and their frontmatter), and the JSONL ledgers. A
+//     `human:<name>` in a test's fixture data is documentation of the notation:
+//     the test asserts on it, it is never shipped as a record, and no board, brief
+//     or gate reads it as a sign-off. The skip is scoped to TEST source only
+//     (#1395 asks for test-fixture contexts), recognised by the test-file NAME
+//     CONVENTION of a closed program-source extension (isTestSourceFile). A
+//     non-test program or script — one whose job may be to WRITE a stamp into a
+//     record, on a PR or outside one — is scanned exactly as before.
+//   - A `#` line in a YAML file. Outside a block scalar it is a YAML comment,
+//     dropped by every YAML parser and never a value; inside one (a workflow
+//     `run: |` script, say) it is value text, but no statusgen stamp reader parses
+//     a YAML file at all, so in neither case is it a record claim.
+//
+//     These two bind the STAMP lane only (stampClaimSurface); the citation lane is
+//     scoped to all tracked prose by design (a ruling claim in a code comment is
+//     still durable prose a reader may trust), so it keeps reading them.
 //
 // WHY THIS IS A NARROWING AND NOT AN EVASION SURFACE. Every exclusion below is
 // decided by the CONTENT FORMAT, not by a path name: no directory, `testdata`,
@@ -40,32 +46,56 @@ import (
 // fixturecorpus.go stays the only way to exclude a Markdown record subtree). Each
 // one is FAIL-CLOSED in the same direction:
 //
-//   - an extension not in stampInertSourceExt is scanned exactly as before —
-//     Markdown, JSONL, YAML data lines, extensionless files, and any format
-//     added later all stay gated;
+//   - only a TEST source file (isTestSourceFile) is skipped; every non-test
+//     program or script, and every extension not in stampInertSourceExt, is
+//     scanned exactly as before — Markdown, JSONL, YAML data lines, extensionless
+//     files, and any format added later all stay gated;
 //   - in a YAML file only a line whose first non-blank character is `#` is
 //     skipped; every value line still is scanned;
-//   - in a `.patch` / `.diff` only the removed side is skipped; the ADDED side
-//     (what the patch will write when applied) and its context stay gated.
+//   - in a `.patch` / `.diff` only the removed side of a HUNK is skipped; the
+//     ADDED side (what the patch will write when applied), its context, and any
+//     text outside a hunk (a `git format-patch` commit-message preamble) stay
+//     gated.
 //
 // And each one is VISIBLE: runCorroborate prints a NOT-A-CLAIM notice for every
 // stamp or citation a skipped line would have produced (quotedClaimNotices), so a
 // skip is reviewable in the run log instead of silently missing from it.
-//
-// THE RESIDUAL, STATED PLAINLY. A literal stamp inside program source that later
-// WRITES it into a record is no longer flagged in that source file. It was never
-// held there: the same writer spelled `human:${name}` or `"human:"+name` was
-// already invisible to this scan, and the record the writer produces is scanned
-// on the PR that lands it.
 
-// stampInertSourceExt lists the program-source / script extensions whose content
-// no statusgen stamp reader ever parses. It is a CLOSED list on purpose: an
-// extension that is not here is scanned (the fail-closed direction), so growing
-// the list is a reviewed widening, never a side effect.
+// stampInertSourceExt lists the program-source / script extensions whose TEST
+// files (isTestSourceFile) the stamp lane skips. It is a CLOSED list on purpose:
+// an extension that is not here is scanned (the fail-closed direction), so
+// growing the list is a reviewed widening, never a side effect.
 var stampInertSourceExt = map[string]bool{
 	".go": true, ".sh": true, ".bash": true, ".zsh": true, ".ps1": true,
 	".py": true, ".js": true, ".mjs": true, ".cjs": true, ".ts": true,
 	".rb": true, ".rs": true,
+}
+
+// testSourceStemSuffixes are the test-file name conventions isTestSourceFile
+// accepts, matched on the file's stem (its base name without the extension):
+// `x_test.go` (the form the Go toolchain itself compiles only under `go test`),
+// and the `x.test.sh` / `x.test.ts` / `x_test.py` shapes other ecosystems use. A
+// CLOSED list: a stem that matches neither is not a test file here.
+var testSourceStemSuffixes = []string{"_test", ".test"}
+
+// isTestSourceFile reports whether file is a TEST source file: its extension is
+// on the closed stampInertSourceExt list AND its stem ends in a test-file name
+// convention (testSourceStemSuffixes). It reads the file's own NAME only — never
+// a directory, so no `testdata` / `fixtures` / `tests` path segment makes a
+// non-test file one. conv names the matched convention, for the notice.
+func isTestSourceFile(file string) (ok bool, conv string) {
+	base := path.Base(file)
+	ext := strings.ToLower(path.Ext(base))
+	if !stampInertSourceExt[ext] {
+		return false, ""
+	}
+	stem := strings.TrimSuffix(base, path.Ext(base))
+	for _, suf := range testSourceStemSuffixes {
+		if strings.HasSuffix(strings.ToLower(stem), suf) && len(stem) > len(suf) {
+			return true, "*" + suf + ext
+		}
+	}
+	return false, ""
 }
 
 // isEmbeddedPatchFile reports whether a PR file is itself a committed unified
@@ -91,12 +121,11 @@ func isYAMLFile(file string) bool {
 // human:<name> stamp can be a claim on. When it is not, reason names why, for the
 // NOT-A-CLAIM notice. It is the STAMP lane's scope only — see the file header.
 func stampClaimSurface(file, content string) (ok bool, reason string) {
-	ext := strings.ToLower(path.Ext(file))
-	if stampInertSourceExt[ext] {
-		return false, fmt.Sprintf("program source (%s): no stamp reader parses it", ext)
+	if ok, conv := isTestSourceFile(file); ok {
+		return false, fmt.Sprintf("test source (%s): no stamp reader parses it", conv)
 	}
 	if isYAMLFile(file) && strings.HasPrefix(strings.TrimLeft(content, " \t"), "#") {
-		return false, "YAML comment line: never a value"
+		return false, "YAML # line: no stamp reader parses YAML"
 	}
 	return true, ""
 }
@@ -125,7 +154,8 @@ const reasonEmbeddedPatchRemoved = "removed (-) side of a diff embedded in a com
 // through (stamps, citations, decision records). It tracks the current file from
 // the "diff --git" / "+++ " headers, keeps only ADDED lines (a "+" that is not the
 // "+++" header), skips a declared fixture corpus (isExcludedFixturePath) exactly as
-// each lane did, and sets aside the removed side of an embedded patch as quoted.
+// each lane did, and sets aside the removed side of an embedded patch's hunks as
+// quoted.
 //
 // root is the checkout root a declared fixture-corpus marker is resolved against;
 // "" means no checkout, in which case only the hardcoded education prefix
@@ -133,6 +163,12 @@ const reasonEmbeddedPatchRemoved = "removed (-) side of a diff embedded in a com
 func walkAddedDiffLines(root, diff string) (added []diffAddedLine, quoted []quotedDiffLine) {
 	curFile := ""
 	section := 0
+	// inHunk tracks, inside an embedded patch file, whether the walk is in the body
+	// of one of ITS hunks — after an "@@" line, while each line is a hunk line
+	// (" ", "+", "-" or "\"). Only there is a "-" line the removed side; before the
+	// first hunk (a `git format-patch` commit-message preamble) or after a hunk
+	// ends, a "-" line is ordinary added text and stays scanned (fail-closed).
+	inHunk := false
 	for _, line := range strings.Split(diff, "\n") {
 		trimmed := strings.TrimRight(line, "\r")
 		if strings.HasPrefix(trimmed, "diff --git ") {
@@ -141,11 +177,13 @@ func walkAddedDiffLines(root, diff string) (added []diffAddedLine, quoted []quot
 				curFile = strings.TrimPrefix(fields[3], "b/")
 			}
 			section++
+			inHunk = false
 			continue
 		}
 		if strings.HasPrefix(trimmed, "+++ ") {
 			curFile = strings.TrimPrefix(trimmed, "+++ b/")
 			section++
+			inHunk = false
 			continue
 		}
 		// Only added lines (not the "+++" header itself).
@@ -156,9 +194,18 @@ func walkAddedDiffLines(root, diff string) (added []diffAddedLine, quoted []quot
 			continue
 		}
 		content := strings.TrimPrefix(trimmed, "+")
-		if isEmbeddedPatchFile(curFile) && strings.HasPrefix(content, "-") {
-			quoted = append(quoted, quotedDiffLine{File: curFile, Content: content, Reason: reasonEmbeddedPatchRemoved})
-			continue
+		if isEmbeddedPatchFile(curFile) {
+			switch {
+			case strings.HasPrefix(content, "@@"):
+				inHunk = true
+			case inHunk && content != "" && strings.ContainsRune(" +-\\", rune(content[0])):
+				if content[0] == '-' {
+					quoted = append(quoted, quotedDiffLine{File: curFile, Content: content, Reason: reasonEmbeddedPatchRemoved})
+					continue
+				}
+			default:
+				inHunk = false
+			}
 		}
 		added = append(added, diffAddedLine{File: curFile, Section: section, Content: content})
 	}

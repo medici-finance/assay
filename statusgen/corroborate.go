@@ -898,8 +898,8 @@ func stampsInDiff(root, diff string) []stamp {
 			curHeader = nil
 		}
 		curFile, content := al.File, al.Content
-		// A line on a surface no stamp reader parses (program source, a YAML
-		// comment) quotes the notation; it is not a claim (#1395, stampClaimSurface).
+		// A line on a surface no stamp reader parses (a test source file, a YAML
+		// `#` line) quotes the notation; it is not a claim (#1395, stampClaimSurface).
 		if ok, _ := stampClaimSurface(curFile, content); !ok {
 			continue
 		}

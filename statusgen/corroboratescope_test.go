@@ -73,9 +73,29 @@ func TestQuotedNotationTruePositivesStillCount(t *testing.T) {
 +++ b/tools/Makefile
 +	@echo HSTAMPlee
 +++ b/.github/staged/board-change.patch
++@@ -1,2 +1,2 @@
 +-| 02 | Old row | 0 | S | todo | - | - |
 ++| 02 | New row | 0 | S | done | 2026-09-01 opus | 2026-09-01 HSTAMPpat |
 + | 03 | Context row | 0 | S | done | 2026-09-01 opus | 2026-09-01 HSTAMPjo |
++++ b/scripts/flip-row.sh
++printf '| 03 | Row | 0 | S | done | x | 2026-09-01 HSTAMPlin |\n' >> docs/streams/s/README.md
++++ b/tools/writer/main.go
++	fmt.Println("| 04 | Row | 0 | S | done | x | 2026-09-01 HSTAMPmax |")
++++ b/testdata/fixture.sh
++	revd="2026-09-01 HSTAMPned"
++++ b/.github/staged/0001-flip-row.patch
++From 1111111111111111111111111111111111111111 Mon Sep 17 00:00:00 2001
++Subject: [PATCH] flip row 05
++
++- 2026-09-01 HSTAMPrin approved the flip
++---
++ docs/streams/s/README.md | 2 +-
++diff --git a/docs/streams/s/README.md b/docs/streams/s/README.md
++--- a/docs/streams/s/README.md
+++++ b/docs/streams/s/README.md
++@@ -1 +1 @@
++-| 05 | Old row | 0 | S | todo | - | 2026-08-01 HSTAMPquin |
+++| 05 | New row | 0 | S | done | x | - |
 `)
 	want := map[string]string{
 		"alex": "docs/streams/somestream/README.md",     // a board row
@@ -84,6 +104,16 @@ func TestQuotedNotationTruePositivesStillCount(t *testing.T) {
 		"lee":  "tools/Makefile",                        // an extension not on the closed inert list
 		"pat":  ".github/staged/board-change.patch",     // the ADDED side of an embedded patch
 		"jo":   ".github/staged/board-change.patch",     // the context side of an embedded patch
+		// Program source is skipped only when it is a TEST file (pr1593-F1): a
+		// non-test script or program that writes a stamp is still read, and a
+		// directory name never makes a non-test file a test one.
+		"lin": "scripts/flip-row.sh",
+		"max": "tools/writer/main.go",
+		"ned": "testdata/fixture.sh",
+		// A `-` line OUTSIDE a hunk of an embedded patch — a format-patch
+		// commit-message preamble — is not the removed side (pr1593-A1).
+		"rin": ".github/staged/0001-flip-row.patch",
+		// ("quin", on the removed side of that patch's hunk, is quoted: absent.)
 	}
 	got := map[string]string{}
 	for _, s := range stampsInDiff("", d) {
@@ -124,15 +154,27 @@ func TestQuotedNotationTruePositivesStillCount(t *testing.T) {
 ++  # after alex's sign-off closed example-org/tracker#14.
 +++ b/docs/runbook.md
 +- alex approved the rollback on #15
++++ b/.github/staged/0002-rollback.patch
++Subject: [PATCH] rollback
++
++- per alex's sign-off on #16 this rollback is approved
++---
++diff --git a/docs/runbook.md b/docs/runbook.md
++@@ -1 +1 @@
++- after alex's sign-off closed #17.
+++ rolled back
 `
 	gotCit := map[int]string{}
 	for _, c := range citationsInDiff("", cd) {
 		gotCit[c.Number] = c.Source
 	}
-	for n, src := range map[int]string{12: "scripts/gate.sh", 13: ".github/workflows/gate.yml", 14: ".github/staged/gate-change.patch", 15: "docs/runbook.md"} {
+	for n, src := range map[int]string{12: "scripts/gate.sh", 13: ".github/workflows/gate.yml", 14: ".github/staged/gate-change.patch", 15: "docs/runbook.md", 16: ".github/staged/0002-rollback.patch"} {
 		if gotCit[n] != src {
 			t.Errorf("true-positive citation #%d in %s was dropped (got %q)", n, src, gotCit[n])
 		}
+	}
+	if src, ok := gotCit[17]; ok {
+		t.Errorf("citation #17 on the removed side of an embedded patch hunk was read (source %q)", src)
 	}
 	// A linked citation is corroborated by the named human acting on the cited artifact.
 	for _, c := range citationsInDiff("", cd) {
@@ -164,8 +206,8 @@ func TestQuotedNotationNoticesAreVisible(t *testing.T) {
 	d := quotedNotationDiff() + hstamp("+++ b/docs/streams/somestream/README.md\n+| 01 | Row | 0 | S | done | x | 2026-09-01 HSTAMPkim |\n")
 	joined := strings.Join(quotedClaimNotices("", d), "\n")
 	for _, want := range []string{
-		hstamp("HSTAMPalex in .github/scripts/gate-selfproof.test.sh NOT-A-CLAIM — program source (.sh)"),
-		hstamp("HSTAMPreviewer in .github/workflows/gate.yml NOT-A-CLAIM — YAML comment line"),
+		hstamp("HSTAMPalex in .github/scripts/gate-selfproof.test.sh NOT-A-CLAIM — test source (*.test.sh)"),
+		hstamp("HSTAMPreviewer in .github/workflows/gate.yml NOT-A-CLAIM — YAML # line"),
 		hstamp("HSTAMPalexa in .github/workflows/gate.yml NOT-A-CLAIM"),
 		hstamp("HSTAMPalex in .github/staged/gate-change.patch NOT-A-CLAIM — ") + reasonEmbeddedPatchRemoved,
 		"citation of alex in .github/staged/gate-change.patch NOT-A-CLAIM — " + reasonEmbeddedPatchRemoved,
@@ -179,6 +221,33 @@ func TestQuotedNotationNoticesAreVisible(t *testing.T) {
 	}
 }
 
+// TestIsTestSourceFile pins the stamp lane's test-file recognition (pr1593-F1): a
+// closed program-source extension AND a test-file NAME convention on the stem. A
+// directory name never qualifies a file, and a non-test script never does.
+func TestIsTestSourceFile(t *testing.T) {
+	for file, want := range map[string]bool{
+		".github/scripts/gate-selfproof.test.sh": true,
+		"statusgen/corroborate_test.go":          true,
+		"web/src/board.test.ts":                  true,
+		"tools/lint_test.py":                     true,
+		"web/Board.Test.JS":                      true,
+		"scripts/flip-row.sh":                    false, // non-test script
+		"tools/writer/main.go":                   false, // non-test program
+		"testdata/fixture.sh":                    false, // a directory is not a name convention
+		"tests/run.sh":                           false,
+		"fixtures/rows.go":                       false,
+		"scripts/latest.sh":                      false, // "test" is not "_test" / ".test"
+		"docs/notes_test.md":                     false, // extension not on the closed list
+		"ci/gate.test.yaml":                      false,
+		"tools/check_test":                       false, // extensionless
+		"pkg/_test.go":                           false, // an empty stem is not a test file
+	} {
+		if got, _ := isTestSourceFile(file); got != want {
+			t.Errorf("isTestSourceFile(%q) = %v, want %v", file, got, want)
+		}
+	}
+}
+
 // TestCorroborateDiffWalkersShareOneWalker is the CLASS GUARD. The defect lived in
 // a loop copied into each --corroborate lane, so fixing one copy left the others
 // reading quoted notation as claims. This test parses every non-test source file
@@ -186,6 +255,11 @@ func TestQuotedNotationNoticesAreVisible(t *testing.T) {
 // "+++" diff-header literal — appears in any function other than the one shared
 // walker. Planting a second hand-rolled walker (a new lane, or an old lane's loop
 // restored) reddens it; the lane must read through addedDiffLines instead.
+//
+// Its reach is that ONE idiom, the one every copied lane loop used: it guards
+// against the old loop being copied back, and a walker spelled some other way is
+// not detected. It is a correctness guard for the class, not a proof that no
+// second walker exists — review still owns that.
 func TestCorroborateDiffWalkersShareOneWalker(t *testing.T) {
 	const allowed = "walkAddedDiffLines"
 	files, err := filepath.Glob("*.go")
