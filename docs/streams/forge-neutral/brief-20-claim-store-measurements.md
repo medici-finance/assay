@@ -149,6 +149,8 @@ RISK-VALUE: N/A for the remaining enumerated literal — racers = 16 @ tools/des
 
 Row 5 fails as a check-definition staleness: the pinned §3.1b inventory misses three comment-only mentions. Filed as #1606.
 
+**Evidence correction (2026-09-24).** Row 5's Observed says the three files absent from §3.1b match only on a comment line, but its recorded `grep -rln` prints only filenames, not the lines behind them. The command that supports the claim is `grep -n -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' tools/desk/cmd/deskdispatch/repairadmission.go tools/desk/cmd/desksupervise/status.go tools/desk/internal/deskkit/forge_github.go`; re-run at the verified sha `2a5c230e` it prints three matches, each a `//` comment rather than a functional read: repairadmission.go line 219 ("lives in the same refs/dispatch namespace as the item claims, collides"), forge_github.go line 2167 ("refs/dispatch/<key>), verbatim from the ref field"), and status.go line 122 ("refs/dispatch claim, so it is session-influenced input"). No state, count or heading changes.
+
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records
