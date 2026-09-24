@@ -209,9 +209,12 @@ func cmdCreate(args []string) (err error) {
 	}
 
 	// #1339: a `Brief:` trailer on a branch that only AUTHORS the brief is refused before
-	// anything leaves the machine — it would make the brief read as delivered on merge.
-	// Local (git only), so it is part of --check. create only: update/edit act on an
-	// existing PR whose trailer is immutable, and refusing them would strand that PR.
+	// anything leaves the machine — it would make the brief read as delivered on merge. The
+	// mirror case (review F1 on #1641) is also refused here: an `Authors:` trailer on a
+	// branch whose diff is NOT provably authoring-only for every listed id, since `Authors:`
+	// switches off the security lane's brief-declared risk term for a `Brief:` PR. Local (git
+	// only), so it is part of --check. create only: update/edit act on an existing PR whose
+	// trailer is immutable, and refusing them would strand that PR.
 	if aerr := authoringTrailerGate(body, facts.dir, "refs/remotes/origin/"+*base); aerr != nil {
 		return aerr
 	}
@@ -1053,39 +1056,70 @@ func resolveBriefFile(root, keyword, value, stream, nn string) error {
 	return nil
 }
 
-// authoringTrailerGate refuses a `Brief:` trailer on a branch whose diff only AUTHORS that
-// brief (#1339). `Brief:` asserts delivery: the dispatcher's phantom check, the planner's
-// reconciliation and the derived board all read it as "this PR delivers the brief", so a
-// docs-only PR that merely wrote the brief file and carried `Brief:` made the brief read as
-// delivered the moment it merged. The branch's changed files (merge-base with baseRef to
-// HEAD) are judged by deskkit.BriefAuthoringOnly — the SAME classification the dispatcher
-// applies to already-merged PRs, so the writer and the readers cannot disagree on what an
-// authoring PR is. Only a provable authoring shape refuses: a diff that touches any other
-// path, does not ADD the brief's own file, or carries a rename (whose old path this read
-// cannot see) is left alone, and `Authors:` / `Issue:` bodies are never inspected. There is
-// no bypass flag: the remedy is to write the right trailer, which costs nothing.
+// authoringTrailerGate refuses two mirror-image mismatches between a `Brief:`/`Authors:`
+// trailer and what the branch's diff actually is (#1339, hardened for review F1 on
+// medici-finance/assay#1641):
+//
+//   - `Brief:` on a branch whose diff only AUTHORS that brief. `Brief:` asserts delivery: the
+//     dispatcher's phantom check, the planner's reconciliation and the derived board all read
+//     it as "this PR delivers the brief", so a docs-only PR that merely wrote the brief file
+//     and carried `Brief:` made the brief read as delivered the moment it merged.
+//   - `Authors:` on a branch whose diff is NOT provably authoring-only for every listed id.
+//     `Authors:` asserts the opposite — "no delivery" — and nothing that reads `Brief:` as
+//     delivery matches it, INCLUDING the security lane's brief-declared risk term
+//     (deskkit.BriefRiskFromBody keys on Brief: only). A PR that actually delivers code or a
+//     document for a `gate: human` / `risk: yes` brief could therefore carry `Authors:` and
+//     switch that term off. deskflip's checkSecurityVerdict carries the binding half of this
+//     fix (deskkit.AuthorsRiskFromBody, read again at flip time so this client-side gate is
+//     not the only thing standing between the diff and the claim); this is the writer half,
+//     refusing before the mismatch ever leaves the machine.
+//
+// Both directions are judged by the SAME classification, deskkit.BriefAuthoringOnly — the
+// dispatcher applies it to already-merged PRs, so the writer and every reader agree on what
+// an authoring PR is. The branch's changed files come from the merge-base (baseRef to HEAD).
+// A rename's old path is not visible to this local diff read, so BriefAuthoringOnly cannot
+// prove authoring-only across one; the two directions treat that ONLY-WIDENING failure
+// oppositely, on purpose — `Brief:` is left alone (not provably authoring-only leaves the
+// existing "this is a delivery" answer standing), while `Authors:` is refused (not provably
+// authoring-only means the claim is not backed, so it is refused rather than trusted; #1339
+// review F1's "self-verifying" ask). `Issue:` bodies are never inspected by either direction.
+// There is no bypass flag: the remedy is to write the right trailer, which costs nothing.
 func authoringTrailerGate(body []byte, dir, baseRef string) error {
 	trs, err := deskkit.ParseTrailers(body)
-	if err != nil || len(trs) == 0 || trs[0].Kind != deskkit.TrailerBrief {
+	if err != nil || len(trs) == 0 {
 		return nil
 	}
-	id := deskkit.CanonicalBriefID(trs[0].Value)
-	if id == "" {
+	switch trs[0].Kind {
+	case deskkit.TrailerBrief:
+		return authoringTrailerGateBrief(trs[0].Value, dir, baseRef)
+	case deskkit.TrailerAuthors:
+		return authoringTrailerGateAuthors(trs[0].Value, dir, baseRef)
+	default:
 		return nil
 	}
+}
+
+// branchAuthoringFiles reads the branch's changed files (merge-base with baseRef to HEAD) in
+// the deskkit.ChangedFile shape deskkit.BriefAuthoringOnly takes. hadRename reports whether
+// the diff included a rename/copy, whose pre-image path this local git read does not surface
+// (git diff --name-status reports only the destination for an R/C entry without `-M`/`-C`
+// detection turned on here) — neither authoringTrailerGate direction can PROVE the authoring
+// shape across one, so the caller decides what "not provably authoring-only" means for its
+// trailer kind (see authoringTrailerGate's doc).
+func branchAuthoringFiles(dir, baseRef string) (files []deskkit.ChangedFile, hadRename bool, err error) {
 	repo, oerr := gitcore.Open(dir)
 	if oerr != nil {
-		return deskkit.Unverifiable("cannot read the branch diff to check the Brief: trailer against it", oerr)
+		return nil, false, oerr
 	}
 	mb, merr := repo.MergeBase(baseRef, "HEAD")
 	if merr != nil {
-		return deskkit.Unverifiable("cannot find the merge base with "+baseRef+" to check the Brief: trailer against the branch diff", merr)
+		return nil, false, merr
 	}
 	changes, derr := repo.DiffNameStatus(strings.TrimSpace(mb), "HEAD")
 	if derr != nil {
-		return deskkit.Unverifiable("cannot read the branch diff to check the Brief: trailer against it", derr)
+		return nil, false, derr
 	}
-	files := make([]deskkit.ChangedFile, 0, len(changes))
+	files = make([]deskkit.ChangedFile, 0, len(changes))
 	for _, c := range changes {
 		switch c.Status {
 		case "A":
@@ -1095,8 +1129,24 @@ func authoringTrailerGate(body []byte, dir, baseRef string) error {
 		case "D":
 			files = append(files, deskkit.ChangedFile{Filename: c.Path, Status: "removed"})
 		default:
-			return nil // a rename's old path is not visible here: not provably authoring-only
+			hadRename = true
 		}
+	}
+	return files, hadRename, nil
+}
+
+// authoringTrailerGateBrief is the `Brief:` direction of authoringTrailerGate.
+func authoringTrailerGateBrief(value, dir, baseRef string) error {
+	id := deskkit.CanonicalBriefID(value)
+	if id == "" {
+		return nil
+	}
+	files, hadRename, rerr := branchAuthoringFiles(dir, baseRef)
+	if rerr != nil {
+		return deskkit.Unverifiable("cannot read the branch diff to check the Brief: trailer against it", rerr)
+	}
+	if hadRename {
+		return nil // not provably authoring-only: a rename's old path is not visible here
 	}
 	if !deskkit.BriefAuthoringOnly(id, files) {
 		return nil
@@ -1107,7 +1157,46 @@ func authoringTrailerGate(body []byte, dir, baseRef string) error {
 			"means the PR DELIVERS the brief, and every reader (the dispatcher's phantom check, the planner, the "+
 			"derived board) would then treat %s as delivered the moment this merges, so it could never be "+
 			"dispatched. Replace the line with `Authors: %s` (list every brief the PR writes, comma-separated), "+
-			"or `Issue: #<N>` if the authoring answers an issue.", trs[0].Value, id, id))
+			"or `Issue: #<N>` if the authoring answers an issue.", value, id, id))
+}
+
+// authoringTrailerGateAuthors is the `Authors:` direction of authoringTrailerGate (#1339
+// review F1). It refuses unless the branch diff satisfies deskkit.BriefAuthoringOnly for
+// EVERY id the trailer lists — including refusing (not silently leaving alone) when the diff
+// carries a rename this local read cannot classify, since `Authors:` is refused whenever the
+// authoring shape is not PROVEN, not merely when it is disproven. A malformed/empty value is
+// left to the separate resolveBriefFile trailer-shape gate, which already refuses it.
+func authoringTrailerGateAuthors(value, dir, baseRef string) error {
+	ids, aerr := deskkit.SplitAuthorsTrailer(value)
+	if aerr != nil || len(ids) == 0 {
+		return nil
+	}
+	files, hadRename, rerr := branchAuthoringFiles(dir, baseRef)
+	if rerr != nil {
+		return deskkit.Unverifiable("cannot read the branch diff to check the Authors: trailer against it", rerr)
+	}
+	if hadRename {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: the body carries `Authors: %s`, but this branch's diff includes a rename whose old path "+
+				"this local read cannot see, so the authoring shape cannot be proven. `Authors:` asserts the "+
+				"branch ONLY authors the named brief(s) — including the security lane's brief-declared risk term, "+
+				"which does not consult a Brief: this trailer replaces — so an unprovable diff is refused rather "+
+				"than trusted. Split the rename out of this branch, or use `Brief:`/`Issue:` if the branch "+
+				"delivers code or a document.", value))
+	}
+	for _, id := range ids {
+		if deskkit.BriefAuthoringOnly(id, files) {
+			continue
+		}
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: the body carries `Authors: %s`, but this branch's diff is not authoring-only for %s — it "+
+				"touches a path other than a stream board README, a brief file or a changelog fragment, or it "+
+				"does not ADD %s's own brief file. `Authors:` switches off the security lane's brief-declared "+
+				"risk term for %s (deskkit.BriefRiskFromBody reads `Brief:` only), so it is refused unless the "+
+				"diff provably authors only the listed brief(s). Use `Brief:` (singular) if this branch delivers "+
+				"%s's own content, or split the non-authoring change into its own PR.", value, id, id, id, id))
+	}
+	return nil
 }
 
 // splitBriefTrailer reduces the accepted trailer value forms to (stream, NN):

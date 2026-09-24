@@ -694,7 +694,15 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      `requireTrailer` enforce, so an `Issue: #<N>`- or `Authors:`-only body is fully compliant and
      must NOT be bounced for lacking a `Brief:` line. The reverse IS a finding: a docs-only PR that
      only adds brief files, board READMEs and changelog fragments but carries `Brief:` makes the
-     brief read as delivered on merge — ask for `Authors:` instead.
+     brief read as delivered on merge — ask for `Authors:` instead. The reverse of THAT is also a
+     finding: `Authors:` on a diff that is not authoring-only for every listed id — it touches code,
+     or a non-brief document (an audit, a decision record, anything under `docs/streams/` that is
+     not a board README or a brief file itself) — is a delivery wearing the trailer that switches
+     off the security lane's brief-declared risk term (`deskkit.BriefRiskFromBody` reads `Brief:`
+     only); ask for `Brief:` instead, or for the non-authoring change to move to its own PR.
+     `deskpr create`'s writer-side gate and `deskflip`'s `AuthorsRiskFromBody` term both already
+     catch this (medici-finance/assay#1641 review F1), so a PR that reached review with this shape
+     is either pre-gate or had its body edited around the writer check — flag it regardless.
      Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
      link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>` or `Issue: #<N>` line; the board can't
      link this PR to its work item without it." (`deskpr create` already refuses to open a PR with

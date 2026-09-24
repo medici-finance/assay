@@ -108,6 +108,70 @@ func TestCreateBriefGateStaysNarrow(t *testing.T) {
 	}
 }
 
+// TestCreateRefusesAuthorsOnNonAuthoringBranch is the fail-first proof of the deskpr half of
+// #1339 review F1 (medici-finance/assay#1641): before the fix, `deskpr create` accepted
+// `Authors:` on any branch whose entries resolved to real brief files, with no check that the
+// diff actually only authors them — so a PR that delivers code or a document for a `gate:
+// human` / `risk: yes` brief could carry `Authors:` and switch off the security lane's
+// brief-declared risk term (which reads `Brief:` only). Now create refuses (exit 5) before
+// any push, under --check too, whenever the branch touches a path an authoring PR does not.
+func TestCreateRefusesAuthorsOnNonAuthoringBranch(t *testing.T) {
+	for _, check := range []bool{false, true} {
+		work := newAuthoringFixture(t, "tools/x/x.go")
+		calls := withEnv(t, work)
+		args := []string{"--title", "author briefs", "--body-min", "Authors two briefs.\nAuthors: fixture/02, fixture/03"}
+		if check {
+			args = append(args, "--check")
+		}
+		err := cmdCreate(args)
+		if !deskkit.IsRefused(err) {
+			t.Fatalf("check=%v: create with `Authors:` on a branch that also touches code err = %v, want exit-5 refusal", check, err)
+		}
+		if !strings.Contains(err.Error(), "not authoring-only") {
+			t.Fatalf("check=%v: refusal must say the diff is not authoring-only; got: %v", check, err)
+		}
+		if anyCall(gitCalls(*calls), "push") || curForge.createCalls > 0 {
+			t.Fatalf("check=%v: the refusal must precede any push or create; git calls: %v", check, gitCalls(*calls))
+		}
+	}
+}
+
+// TestCreateRefusesAuthorsWhenOneOfSeveralIdsIsNotAdded: `Authors:` names two briefs, but the
+// branch only adds one of their files — refused, naming the id the diff does not back.
+func TestCreateRefusesAuthorsWhenOneOfSeveralIdsIsNotAdded(t *testing.T) {
+	work := newBaseFixture(t)
+	mustGit(t, work, "checkout", "-b", "feature/author-one", "refs/remotes/origin/main")
+	p := filepath.Join(work, "docs", "streams", "fixture", "brief-02-second.md")
+	writeFile(t, p, "---\nschema: brief-v1\nbrief: fixture/02\ntitle: second\n---\n")
+	mustGit(t, work, "add", "-A")
+	mustGit(t, work, "commit", "-m", "author fixture/02 only")
+	withEnv(t, work)
+	err := cmdCreate([]string{"--title", "t", "--body-min", "body\nAuthors: fixture/01, fixture/02"})
+	if !deskkit.IsRefused(err) {
+		t.Fatalf("create with `Authors:` naming a brief the branch never added err = %v, want exit-5 refusal", err)
+	}
+	if !strings.Contains(err.Error(), "fixture/01") {
+		t.Fatalf("refusal must name the id the diff does not back (fixture/01); got: %v", err)
+	}
+}
+
+// TestCreateRefusesAuthorsOnRenameBranch: a rename in the diff is not provably authoring-only
+// — unlike the Brief: direction (which leaves an unprovable diff alone), Authors: refuses,
+// since the whole point of Authors: is to switch off a risk term the diff must then back.
+func TestCreateRefusesAuthorsOnRenameBranch(t *testing.T) {
+	work := newAuthoringFixture(t, "")
+	mustGit(t, work, "mv", "docs/streams/fixture/brief-01-test.md", "docs/streams/fixture/brief-01-renamed.md")
+	mustGit(t, work, "commit", "-m", "rename fixture/01's file")
+	withEnv(t, work)
+	err := cmdCreate([]string{"--title", "t", "--body-min", "body\nAuthors: fixture/02, fixture/03"})
+	if !deskkit.IsRefused(err) {
+		t.Fatalf("create with `Authors:` on a branch whose diff includes a rename err = %v, want exit-5 refusal", err)
+	}
+	if !strings.Contains(err.Error(), "rename") {
+		t.Fatalf("refusal must name the rename as the reason; got: %v", err)
+	}
+}
+
 // TestRequireTrailerAuthorsGrammar pins the `Authors:` grammar at the one parse deskpr owns: every
 // entry must resolve to a brief file under --root, the list may not be empty or repeat a brief, and
 // `Authors:` never shares a body with `Brief:` or `Issue:`.

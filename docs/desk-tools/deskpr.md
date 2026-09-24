@@ -49,6 +49,22 @@ Rules (derived-board/02):
   (its old path is not visible to this local read) and is never refused on this ground.
   `update` and `edit` do not run this check: they act on an existing PR whose trailer is
   immutable.
+- `create` also refuses the MIRROR case (medici-finance/assay#1641 review F1): an
+  `Authors:` line is refused unless the branch's diff is authoring-only, by the same
+  `deskkit.BriefAuthoringOnly` classification, for EVERY listed id. `Authors:` asserts no
+  delivery, so nothing that reads `Brief:` as delivery matches it — including the
+  security lane's brief-declared risk term (`deskkit.BriefRiskFromBody` reads `Brief:`
+  only). A PR that actually delivers code or a `docs/streams/` document for a `gate:
+  human` / `risk: yes` brief could otherwise carry `Authors:` and switch that term off.
+  Unlike the `Brief:` direction, a rename here is NOT left alone: an unprovable diff is
+  refused rather than trusted, because the whole point of `Authors:` is to switch off a
+  risk term the diff must actually back. `deskflip`'s `checkSecurityVerdict` carries the
+  BINDING half of this same check (`deskkit.AuthorsRiskFromBody`, read again from the
+  PR's forge-served diff at flip time): an `Authors:` PR whose complete changed files are
+  not authoring-only for every listed id is risk-classed there too, fail closed, so a PR
+  that reached the flip gate some other way than this `create`-time gate (opened before
+  the gate existed, or a body edited around it) still cannot switch off the security
+  lane by writing `Authors:` instead of `Brief:`.
 - Already-merged authoring PRs that carry `Brief:` do not block their briefs: the
   dispatcher's phantom check and `fanoutloop plan` both read a representing PR's changed
   files and set aside one that only authored the brief (a file list that cannot be read
