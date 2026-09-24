@@ -184,9 +184,11 @@ issue, not just its `depends:`.
 **Brief 23 extends the workflow-landing chain: Evidence lands on main without a PR.** On a
 PR-required main, every Evidence landing pays a full PR's fixed cost (#1588; batching, #1568, cuts
 the count but not the cost). `23` adds a validator that admits only Evidence-only changes, and a
-dedicated lander App that is the only identity allowed to skip the PR rule. The verifier App keeps
-no write to main, and a rejected landing falls back to the batch Evidence PR. It depends on `11`,
-and that dependency is the real head: its deliverable includes two workflow files, which no
+dedicated lander App that is the only identity allowed to skip the PR rule. The lander re-checks
+scope itself and lands only a staging ref's current head, and a post-land audit selected by the
+push (not by commit author) halts the lane on a mismatch. The verifier App keeps no write to main,
+and a rejected or stranded landing falls back to the batch Evidence PR. It depends on `11`,
+and that dependency is the real head: its deliverable includes workflow files, which no
 implementer App can push, so they land only through `11`'s workflow-only PR path. It is
 `gate: human` and core-system (a new App, a bypass, a ruleset split). Its `## Context` carries the
 single-point-of-failure line, and the brief pairs each layer with the Verify row that proves it
