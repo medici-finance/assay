@@ -13,11 +13,9 @@
 # name, custody file) come from tools/fleet-gitlab-roles.sh — the same file
 # the provisioner sources. There is no second copy here.
 #
-# TWO AUTHORITY MODELS, chosen explicitly — never inferred, never a fallback:
-#
-#   --group <top-level-group>   GROUP OWNER. Uses `glab api` against the group
-#                               service-account PAT endpoints, which admit a
-#                               group Owner:
+# ONE AUTHORITY MODEL: GROUP OWNER (#1630 item 3). `--group <top-level-group>`
+# names the group; the script uses `glab api` against the group
+# service-account PAT endpoints, which admit a group Owner:
 #     GET  groups/:id                                                    (resolve, top-level check)
 #     GET  user                                                          (the active identity)
 #     GET  groups/:id/members/all/:user_id                               (Owner = access_level 50)
@@ -25,16 +23,8 @@
 #     GET  groups/:id/service_accounts/:user_id/personal_access_tokens?state=active
 #     POST groups/:id/service_accounts/:user_id/personal_access_tokens/:token_id/rotate
 #     POST groups/:id/service_accounts/:user_id/personal_access_tokens
-#
-#   --instance-admin            INSTANCE ADMINISTRATOR. Uses `glab token
-#                               list|create|rotate --user <service-account>`,
-#                               which glab documents as administrator-only for
-#                               another user's tokens:
-#     GET  application/settings  (glab api; admin-only — the authority probe)
-#     GET  users?username=<u>    (glab api; account resolution)
-#     glab token list   --user <u> --active --output json
-#     glab token rotate <token-id> --user <u> --duration <N>d --output text
-#     glab token create <name> --user <u> --duration <N>d --scope <s>... --output text
+# It never requires, and never probes for, instance administrator: there is no
+# `application/settings` read and no `glab token … --user` path.
 #
 # ORDER OF OPERATIONS. Every check runs before the first token mutation:
 # arguments, tools, the output directory and every destination file, the
@@ -75,7 +65,6 @@ fi
 
 GL_HOSTNAME=""
 GROUP=""
-INSTANCE_ADMIN=0
 PREFIX=""
 OUT_DIR=""
 DURATION="${FLEET_PAT_DAYS}d"
@@ -86,15 +75,16 @@ ROLE_RECORDS=()
 
 # IN_USE_WINDOW_DAYS — a role's active PAT is "in use" (protected from a
 # default rotation, #1630 required behavior 5) when its last_used_at falls
-# within this many days of now. A PAT with no last_used_at has never been
-# used and is never in-use. 1 day catches a PAT a live desk session touched
-# recently; it does not block the fleet-wide renewal cadence.
+# within this many days of now. A PAT whose last_used_at is null has never
+# been used and is never in-use; a record WITHOUT the key is malformed and
+# fails closed (MATCH_FILTER) rather than reading as never-used. A PAT used
+# earlier than the window rotates normally. 1 day catches a PAT a live desk
+# session touched recently; it does not block the fleet-wide renewal cadence.
 IN_USE_WINDOW_DAYS=1
 
 usage() {
   cat <<'USAGE'
-Usage: renew-fleet-gitlab-tokens.sh --hostname <host>
-         (--group <top-level-group> | --instance-admin)
+Usage: renew-fleet-gitlab-tokens.sh --hostname <host> --group <top-level-group>
          (--prefix <prefix> | --role ROLE=USERNAME:TOKEN_NAME:SCOPES[:FILE] ...)
          --out-dir <dir> [--duration 7d] [--only ROLE[,ROLE...]]
          [--rotate-in-use] [--dry-run]
@@ -105,12 +95,11 @@ active PAT (matched by name), creates one only when none exists, and replaces
 
 Required:
   --hostname <host>       GitLab hostname (no scheme), e.g. gitlab.example.com.
-  --group <group>         GROUP-OWNER authority: the top-level group owning the
-                           fleet's service accounts. Uses the group
-                           service-account PAT endpoints via `glab api`.
-  --instance-admin        INSTANCE-ADMIN authority: uses
-                           `glab token list|create|rotate --user`. Exactly one
-                           of --group / --instance-admin.
+  --group <group>         The top-level group owning the fleet's service
+                           accounts. The active glab identity must be its
+                           Owner; the group service-account PAT endpoints are
+                           driven via `glab api`. Instance administrator is
+                           never required and never probed.
   --out-dir <dir>         The role-token store (the config-home the desk verbs
                            read). Created 0700 if absent.
 
@@ -150,9 +139,13 @@ A rotation invalidates the role's previous PAT immediately. Each role's file
 swap is atomic; the fleet-wide operation is NOT — stop the fleet's desk
 sessions first, and resume a partial run with --only.
 
-Exit status: 0 = every selected role renewed (or, with --dry-run, planned);
-1 = a preflight refusal (nothing mutated) or a role failed part-way;
-2 = usage error.
+Exit status:
+  0 = every selected role renewed (with --dry-run: the plan passed preflight);
+  1 = a preflight refusal (nothing mutated) or a role failed part-way;
+  2 = usage error;
+  3 = the run finished but one or more roles were SKIPPED as in-use and not
+      renewed — those PATs keep their previous expiry. The summary names them;
+      re-run with --only <them> --rotate-in-use once nothing holds them.
 USAGE
 }
 
@@ -166,7 +159,6 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --hostname) need_val "$1" $#; GL_HOSTNAME="$2"; shift 2 ;;
     --group) need_val "$1" $#; GROUP="$2"; shift 2 ;;
-    --instance-admin) INSTANCE_ADMIN=1; shift ;;
     --prefix) need_val "$1" $#; PREFIX="$2"; shift 2 ;;
     --role) need_val "$1" $#; ROLE_RECORDS+=("$2"); shift 2 ;;
     --out-dir) need_val "$1" $#; OUT_DIR="$2"; shift 2 ;;
@@ -184,16 +176,9 @@ done
 printf '%s' "$GL_HOSTNAME" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?$' \
   || die_usage "--hostname must be a bare host[:port] (no scheme, no path): '${GL_HOSTNAME}'"
 
-if [ -n "$GROUP" ] && [ "$INSTANCE_ADMIN" -eq 1 ]; then
-  die_usage "--group and --instance-admin are two different authority models — pass exactly one"
-fi
-if [ -z "$GROUP" ] && [ "$INSTANCE_ADMIN" -eq 0 ]; then
-  die_usage "an authority model is required: --group <top-level-group> (group Owner) or --instance-admin"
-fi
-if [ -n "$GROUP" ]; then
-  printf '%s' "$GROUP" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]*$' \
-    || die_usage "--group must be a top-level group path or numeric id (no '/'): '${GROUP}'"
-fi
+[ -n "$GROUP" ] || die_usage "--group <top-level-group> is required (the renewal runs as that group's Owner)"
+printf '%s' "$GROUP" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]*$' \
+  || die_usage "--group must be a top-level group path or numeric id (no '/'): '${GROUP}'"
 
 [ -n "$OUT_DIR" ] || die_usage "--out-dir is required"
 case "$OUT_DIR" in /*) ;; *) OUT_DIR="${PWD}/${OUT_DIR}" ;; esac
@@ -313,10 +298,12 @@ done
 # files, which live beside their destination; both are removed on every exit.
 umask 077
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/renew-fleet-gitlab.XXXXXX")
-SECRET_TMPS=""
+SECRET_TMPS=()
 cleanup() {
   local f
-  for f in $SECRET_TMPS; do rm -f "$f"; done
+  # An array, quoted: an --out-dir holding whitespace must not split a temp
+  # path and leave a secret-bearing file behind.
+  for f in ${SECRET_TMPS[@]+"${SECRET_TMPS[@]}"}; do rm -f "$f"; done
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -351,6 +338,21 @@ utc_date_plus() {  # utc_date_plus DAYS -> YYYY-MM-DD (BSD and GNU date)
 # json_field FILE FILTER — jq -r FILTER over FILE, "" on any parse failure.
 json_field() { jq -r "$2" "$1" 2>/dev/null || true; }
 
+# listing_array IN OUT — decide a listing from its PARSED values, never its
+# byte count (F-empty-listing). IN must hold at least one JSON value and every
+# value must be an array (`glab api --paginate` may emit one array per page);
+# they are merged into one array in OUT. Returns 2 when IN parses to no value
+# at all — zero bytes OR whitespace only, on which a plain `jq FILTER` runs
+# nothing and exits 0 — and 1 when it is not JSON or holds a non-array. Either
+# is fail-closed for the caller: an unreadable listing is never "no rows".
+listing_array() {
+  local n
+  n=$(jq -s 'length' "$1" 2>/dev/null) || return 1
+  [ "$n" != "0" ] || return 2
+  jq -s 'if all(.[]; type == "array") then add else error("expected JSON arrays") end' "$1" \
+    > "$2" 2>/dev/null || return 1
+}
+
 # in_use_recent LAST_USED_AT -> 0 (true) when LAST_USED_AT falls within
 # IN_USE_WINDOW_DAYS of now (#1630 required behavior 5). An empty or "null"
 # value means the PAT has never been used, so it is never in-use. A value
@@ -375,9 +377,7 @@ in_use_recent() {
 PREFLIGHT_ERRORS=""
 preflight_error() { PREFLIGHT_ERRORS="${PREFLIGHT_ERRORS}${1}"$'\n'; }
 
-AUTH_LABEL="instance-admin"
-[ -n "$GROUP" ] && AUTH_LABEL="group-owner (group=${GROUP})"
-echo "Assay fleet PAT renewal — host=${GL_HOSTNAME} authority=${AUTH_LABEL} roles=${#R_ROLE[@]} out-dir=${OUT_DIR} duration=${DAYS}d dry-run=${DRY_RUN}"
+echo "Assay fleet PAT renewal — host=${GL_HOSTNAME} authority=group-owner (group=${GROUP}) roles=${#R_ROLE[@]} out-dir=${OUT_DIR} duration=${DAYS}d dry-run=${DRY_RUN}"
 
 # --- output directory + destinations ------------------------------------------
 if [ -e "$OUT_DIR" ] && [ ! -d "$OUT_DIR" ]; then
@@ -470,94 +470,64 @@ if ! gl "$WORK/auth" auth status --hostname "$GL_HOSTNAME"; then
   exit 1
 fi
 
-GROUP_ID=""
-if [ -n "$GROUP" ]; then
-  if ! gl "$WORK/group.json" api --hostname "$GL_HOSTNAME" "groups/$(urlencode "$GROUP")"; then
-    echo "error: could not resolve group '${GROUP}' on ${GL_HOSTNAME} — nothing was rotated" >&2
-    relay_stderr; exit 1
-  fi
-  GROUP_ID=$(json_field "$WORK/group.json" 'if type=="object" and ((.id|tostring)|test("^[0-9]+$")) then (.id|tostring) else "" end')
-  parent=$(json_field "$WORK/group.json" 'if type=="object" and has("parent_id") then (.parent_id|tostring) else "missing" end')
-  if [ -z "$GROUP_ID" ] || [ "$parent" = "missing" ]; then
-    echo "error: malformed group response for '${GROUP}' (no numeric id / parent_id) — failing closed, nothing was rotated" >&2
-    exit 1
-  fi
-  if [ "$parent" != "null" ]; then
-    echo "error: '${GROUP}' is a subgroup — service accounts belong to a TOP-LEVEL group; pass that group — nothing was rotated" >&2
-    exit 1
-  fi
-  if ! gl "$WORK/user.json" api --hostname "$GL_HOSTNAME" user; then
-    echo "error: could not read the active glab identity (GET user) — nothing was rotated" >&2
-    relay_stderr; exit 1
-  fi
-  me=$(json_field "$WORK/user.json" 'if type=="object" and ((.id|tostring)|test("^[0-9]+$")) then (.id|tostring) else "" end')
-  [ -n "$me" ] || { echo "error: malformed GET user response — failing closed, nothing was rotated" >&2; exit 1; }
-  level=""
-  if gl "$WORK/member.json" api --hostname "$GL_HOSTNAME" "groups/${GROUP_ID}/members/all/${me}"; then
-    level=$(json_field "$WORK/member.json" 'if type=="object" then (.access_level|tostring) else "" end')
-  fi
-  if [ "$level" != "50" ]; then
-    echo "error: authority refused — the active glab identity is not an Owner (access_level 50) of '${GROUP}' (read: ${level:-not a member}). Group-owner mode requires the Owner role; an instance administrator uses --instance-admin instead. Nothing was rotated." >&2
-    exit 1
-  fi
-  echo "authority: group Owner of '${GROUP}' confirmed"
-else
-  if ! gl "$WORK/settings.json" api --hostname "$GL_HOSTNAME" application/settings \
-     || [ "$(json_field "$WORK/settings.json" 'type')" != "object" ]; then
-    echo "error: authority refused — the active glab identity cannot read the admin-only application/settings endpoint on ${GL_HOSTNAME}. Instance-admin mode requires an instance administrator (glab token --user on another account is admin-only); a group Owner uses --group <top-level-group> instead. Nothing was rotated." >&2
-    exit 1
-  fi
-  echo "authority: instance administrator confirmed"
+if ! gl "$WORK/group.json" api --hostname "$GL_HOSTNAME" "groups/$(urlencode "$GROUP")"; then
+  echo "error: could not resolve group '${GROUP}' on ${GL_HOSTNAME} — nothing was rotated" >&2
+  relay_stderr; exit 1
 fi
+GROUP_ID=$(json_field "$WORK/group.json" 'if type=="object" and ((.id|tostring)|test("^[0-9]+$")) then (.id|tostring) else "" end')
+parent=$(json_field "$WORK/group.json" 'if type=="object" and has("parent_id") then (.parent_id|tostring) else "missing" end')
+if [ -z "$GROUP_ID" ] || [ "$parent" = "missing" ]; then
+  echo "error: malformed group response for '${GROUP}' (no numeric id / parent_id) — failing closed, nothing was rotated" >&2
+  exit 1
+fi
+if [ "$parent" != "null" ]; then
+  echo "error: '${GROUP}' is a subgroup — service accounts belong to a TOP-LEVEL group; pass that group — nothing was rotated" >&2
+  exit 1
+fi
+if ! gl "$WORK/user.json" api --hostname "$GL_HOSTNAME" user; then
+  echo "error: could not read the active glab identity (GET user) — nothing was rotated" >&2
+  relay_stderr; exit 1
+fi
+me=$(json_field "$WORK/user.json" 'if type=="object" and ((.id|tostring)|test("^[0-9]+$")) then (.id|tostring) else "" end')
+[ -n "$me" ] || { echo "error: malformed GET user response — failing closed, nothing was rotated" >&2; exit 1; }
+level=""
+if gl "$WORK/member.json" api --hostname "$GL_HOSTNAME" "groups/${GROUP_ID}/members/all/${me}"; then
+  level=$(json_field "$WORK/member.json" 'if type=="object" then (.access_level|tostring) else "" end')
+fi
+if [ "$level" != "50" ]; then
+  echo "error: authority refused — the active glab identity is not an Owner (access_level 50) of '${GROUP}' (read: ${level:-not a member}). The renewal requires the group Owner role on the top-level group that owns the service accounts. Nothing was rotated." >&2
+  exit 1
+fi
+echo "authority: group Owner of '${GROUP}' confirmed"
 
 # --- service accounts ------------------------------------------------------------
-R_UID=()
-if [ -n "$GROUP" ]; then
-  if ! gl "$WORK/sas.json" api --hostname "$GL_HOSTNAME" --paginate "groups/${GROUP_ID}/service_accounts"; then
-    echo "error: could not list the service accounts of '${GROUP}' — nothing was rotated" >&2
-    relay_stderr; exit 1
-  fi
-  if [ "$(json_field "$WORK/sas.json" 'type')" != "array" ]; then
-    echo "error: malformed service-account listing for '${GROUP}' — failing closed, nothing was rotated" >&2
-    exit 1
-  fi
+if ! gl "$WORK/sas.raw" api --hostname "$GL_HOSTNAME" --paginate "groups/${GROUP_ID}/service_accounts"; then
+  echo "error: could not list the service accounts of '${GROUP}' — nothing was rotated" >&2
+  relay_stderr; exit 1
 fi
+if ! listing_array "$WORK/sas.raw" "$WORK/sas.json"; then
+  echo "error: malformed or empty service-account listing for '${GROUP}' — failing closed, nothing was rotated" >&2
+  exit 1
+fi
+R_UID=()
 for i in "${!R_ROLE[@]}"; do
-  uid="" not_bot=0
-  if [ -n "$GROUP" ]; then
-    uid=$(jq -r --arg u "${R_USER[$i]}" '[.[] | select(type=="object" and .username==$u) | (.id|tostring) | select(test("^[0-9]+$"))] | if length==1 then .[0] else "" end' "$WORK/sas.json" 2>/dev/null || true)
-  else
-    # #1630 item 3: instance-admin mode must never act on a human account.
-    # users?username= resolves instance-wide, so the match is refused unless
-    # the resolved record is itself a bot/service account (F-admin-mode).
-    if gl "$WORK/users.json" api --hostname "$GL_HOSTNAME" "users?username=$(urlencode "${R_USER[$i]}")"; then
-      uid=$(jq -r --arg u "${R_USER[$i]}" 'if type=="array" then ([.[] | select(type=="object" and .username==$u and (.bot==true)) | (.id|tostring) | select(test("^[0-9]+$"))] | if length==1 then .[0] else "" end) else "" end' "$WORK/users.json" 2>/dev/null || true)
-      if [ -z "$uid" ]; then
-        hit=$(jq -r --arg u "${R_USER[$i]}" 'if type=="array" then ([.[] | select(type=="object" and .username==$u and ((.bot // false) != true))] | length) else 0 end' "$WORK/users.json" 2>/dev/null || true)
-        [ -n "$hit" ] && [ "$hit" != "0" ] && not_bot=1
-      fi
-    fi
-  fi
+  uid=$(jq -r --arg u "${R_USER[$i]}" '[.[] | select(type=="object" and .username==$u) | (.id|tostring) | select(test("^[0-9]+$"))] | if length==1 then .[0] else "" end' "$WORK/sas.json" 2>/dev/null || true)
   R_UID+=("$uid")
-  if [ -z "$uid" ]; then
-    if [ "$not_bot" -eq 1 ]; then
-      preflight_error "role=${R_ROLE[$i]}: resolved account '${R_USER[$i]}' is not a bot/service account — instance-admin mode refuses to rotate or create a PAT for a human account (#1630 item 3)"
-    else
-      preflight_error "role=${R_ROLE[$i]}: service account '${R_USER[$i]}' not found (exactly one match required)"
-    fi
-  fi
+  [ -n "$uid" ] || preflight_error "role=${R_ROLE[$i]}: service account '${R_USER[$i]}' not found in '${GROUP}' (exactly one match required)"
 done
 
 # --- each role's active PATs: rotate / create / skip-in-use / refuse -----------
-# Every record must be well-formed (numeric id, string name, an `active`
-# field); anything else fails closed rather than being read as "no match",
-# which would create a second live credential. An EMPTY listing fails closed
-# the same way: glab exiting 0 with no stdout is not "zero active PATs" (jq
-# never runs its filter on empty input and would itself exit 0 with no
-# output), it is an unreadable listing.
+# The listing is decided from its parsed values (listing_array): zero bytes,
+# whitespace only, non-JSON or a non-array all fail closed — never read as
+# "zero active PATs", which would create a second live credential while the
+# existing one stays live and drops out of custody (F-empty-listing). Every
+# record must then be well-formed (numeric id, string name, an `active` field,
+# a `last_used_at` key — null when never used); anything else fails closed
+# rather than being read as "no match" or "never used". A matching record
+# must be active and not revoked: `?state=active` filters server-side, and
+# the name match re-checks it here.
 MATCH_FILTER='
-  if type != "array" then error("expected a JSON array") else . end
-  | map(if type=="object" and has("id") and has("name") and has("active")
+  map(if type=="object" and has("id") and has("name") and has("active") and has("last_used_at")
           and ((.id|tostring)|test("^[0-9]+$")) and (.name|type)=="string"
         then . else error("malformed token record") end)
   | map(select(.name == $n and ((.active|tostring) == "true") and ((.revoked // false)|tostring) != "true"))
@@ -566,23 +536,20 @@ R_ACTION=(); R_TID=(); R_LAST_USED=()
 for i in "${!R_ROLE[@]}"; do
   R_ACTION+=(""); R_TID+=(""); R_LAST_USED+=("")
   [ -n "${R_UID[$i]}" ] || continue
+  raw_list="$WORK/pats-${i}.raw"
   list="$WORK/pats-${i}.json"
-  if [ -n "$GROUP" ]; then
-    ok=0; gl "$list" api --hostname "$GL_HOSTNAME" --paginate \
-      "groups/${GROUP_ID}/service_accounts/${R_UID[$i]}/personal_access_tokens?state=active" && ok=1
-  else
-    ok=0; gl "$list" token list --user "${R_USER[$i]}" --active --output json && ok=1
-  fi
-  if [ "$ok" -ne 1 ]; then
+  if ! gl "$raw_list" api --hostname "$GL_HOSTNAME" --paginate \
+      "groups/${GROUP_ID}/service_accounts/${R_UID[$i]}/personal_access_tokens?state=active"; then
     preflight_error "role=${R_ROLE[$i]}: listing the PATs of '${R_USER[$i]}' failed"
     relay_stderr
     continue
   fi
-  if [ ! -s "$list" ]; then
-    preflight_error "role=${R_ROLE[$i]}: empty PAT listing for '${R_USER[$i]}' — failing closed rather than reading it as no active PAT (which would create a second live credential)"
+  lrc=0; listing_array "$raw_list" "$list" || lrc=$?
+  if [ "$lrc" -eq 2 ]; then
+    preflight_error "role=${R_ROLE[$i]}: empty PAT listing for '${R_USER[$i]}' (no JSON value: zero bytes or whitespace only) — failing closed rather than reading it as no active PAT (which would create a second live credential)"
     continue
   fi
-  if ! rows=$(jq -r --arg n "${R_NAME[$i]}" "$MATCH_FILTER" "$list" 2>/dev/null); then
+  if [ "$lrc" -ne 0 ] || ! rows=$(jq -r --arg n "${R_NAME[$i]}" "$MATCH_FILTER" "$list" 2>/dev/null); then
     preflight_error "role=${R_ROLE[$i]}: malformed PAT listing for '${R_USER[$i]}' — failing closed"
     continue
   fi
@@ -637,46 +604,31 @@ FAILED_ROLE=""
 # Prints the role's report line; returns 1 on any failure.
 renew_one() {
   local i="$1" role="${R_ROLE[$1]}" dest="${R_DEST[$1]}" write="${R_WRITE[$1]}"
-  local dir raw cand final body rc=0 s
+  local dir raw cand final body base rc=0
   dir=$(dirname "$write")
   raw=$(mktemp "${dir}/.renew-${role}.out.XXXXXX")
   cand=$(mktemp "${dir}/.renew-${role}.cand.XXXXXX")
   final=$(mktemp "${dir}/.renew-${role}.new.XXXXXX")
-  SECRET_TMPS="$SECRET_TMPS $raw $cand $final"
+  SECRET_TMPS+=("$raw" "$cand" "$final")
   chmod 600 "$raw" "$cand" "$final"
 
-  if [ -n "$GROUP" ]; then
-    body="$WORK/body-${i}.json"
-    local base="groups/${GROUP_ID}/service_accounts/${R_UID[$i]}/personal_access_tokens"
-    if [ "${R_ACTION[$i]}" = "rotate" ]; then
-      jq -n --arg e "$EXPIRES_AT" '{expires_at: $e}' > "$body"
-      gl "$raw" api --hostname "$GL_HOSTNAME" -X POST -H "Content-Type: application/json" \
-        --input "$body" "${base}/${R_TID[$i]}/rotate" || rc=$?
-    else
-      jq -n --arg n "${R_NAME[$i]}" --arg e "$EXPIRES_AT" --arg s "${R_SCOPES[$i]}" \
-        '{name: $n, scopes: ($s | split(",")), expires_at: $e}' > "$body"
-      gl "$raw" api --hostname "$GL_HOSTNAME" -X POST -H "Content-Type: application/json" \
-        --input "$body" "$base" || rc=$?
-    fi
-    if [ "$rc" -eq 0 ]; then
-      # The response is JSON; its .token goes file -> file, never through argv.
-      jq -j --arg n "${R_NAME[$i]}" \
-        'if type=="object" and (.token|type)=="string" and .name==$n then .token else error("malformed") end' \
-        < "$raw" > "$cand" 2>/dev/null || rc=97
-    fi
+  body="$WORK/body-${i}.json"
+  base="groups/${GROUP_ID}/service_accounts/${R_UID[$i]}/personal_access_tokens"
+  if [ "${R_ACTION[$i]}" = "rotate" ]; then
+    jq -n --arg e "$EXPIRES_AT" '{expires_at: $e}' > "$body"
+    gl "$raw" api --hostname "$GL_HOSTNAME" -X POST -H "Content-Type: application/json" \
+      --input "$body" "${base}/${R_TID[$i]}/rotate" || rc=$?
   else
-    if [ "${R_ACTION[$i]}" = "rotate" ]; then
-      gl "$raw" token rotate "${R_TID[$i]}" --user "${R_USER[$i]}" \
-        --duration "${DAYS}d" --output text || rc=$?
-    else
-      local args=(token create "${R_NAME[$i]}" --user "${R_USER[$i]}" --duration "${DAYS}d")
-      local scope_list
-      scope_list=$(printf '%s' "${R_SCOPES[$i]}" | tr ',' ' ')
-      for s in $scope_list; do args+=(--scope "$s"); done
-      args+=(--output text)
-      gl "$raw" "${args[@]}" || rc=$?
-    fi
-    [ "$rc" -ne 0 ] || cp "$raw" "$cand"
+    jq -n --arg n "${R_NAME[$i]}" --arg e "$EXPIRES_AT" --arg s "${R_SCOPES[$i]}" \
+      '{name: $n, scopes: ($s | split(",")), expires_at: $e}' > "$body"
+    gl "$raw" api --hostname "$GL_HOSTNAME" -X POST -H "Content-Type: application/json" \
+      --input "$body" "$base" || rc=$?
+  fi
+  if [ "$rc" -eq 0 ]; then
+    # The response is JSON; its .token goes file -> file, never through argv.
+    jq -j --arg n "${R_NAME[$i]}" \
+      'if type=="object" and (.token|type)=="string" and .name==$n then .token else error("malformed") end' \
+      < "$raw" > "$cand" 2>/dev/null || rc=97
   fi
   rm -f "$raw"
 
@@ -713,7 +665,14 @@ renew_one() {
   fi
 }
 
-DONE=0
+# RENEWED counts only roles whose PAT was actually rotated or created. A role
+# skipped as in-use is counted apart (F4): it was NOT renewed, its PAT keeps
+# its previous expiry, and a run that skipped any role never exits 0 — a
+# fleet where one role is left behind while the rest look current is the
+# failure #1630 was filed from.
+RENEWED=0
+SKIPPED=0
+SKIPPED_LIST=""
 REMAINING=""
 for i in "${!R_ROLE[@]}"; do
   if [ -n "$FAILED_ROLE" ]; then
@@ -722,21 +681,34 @@ for i in "${!R_ROLE[@]}"; do
     continue
   fi
   if [ "${R_ACTION[$i]}" = "skip-in-use" ]; then
-    echo "role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=skipped-in-use (last_used_at=${R_LAST_USED[$i]}; within the ${IN_USE_WINDOW_DAYS}d in-use window — nothing rotated; re-run with --rotate-in-use to override)"
-    DONE=$((DONE + 1))
+    echo "role=${R_ROLE[$i]} path=${R_DEST[$i]} outcome=skipped-in-use (last_used_at=${R_LAST_USED[$i]}; within the ${IN_USE_WINDOW_DAYS}d in-use window — NOT renewed, the PAT keeps its previous expiry; re-run with --rotate-in-use to override)"
+    SKIPPED=$((SKIPPED + 1))
+    SKIPPED_LIST="${SKIPPED_LIST:+${SKIPPED_LIST},}${R_ROLE[$i]}"
     continue
   fi
   if renew_one "$i"; then
-    DONE=$((DONE + 1))
+    RENEWED=$((RENEWED + 1))
   else
     FAILED_ROLE="${R_ROLE[$i]}"
     REMAINING="${FAILED_ROLE}"
   fi
 done
 
+N_ROLES=${#R_ROLE[@]}
+SKIP_NOTE=""
+[ "$SKIPPED" -eq 0 ] || SKIP_NOTE=", ${SKIPPED} skipped-in-use (${SKIPPED_LIST})"
 if [ -n "$FAILED_ROLE" ]; then
-  echo "PARTIAL RUN — ${DONE} of ${#R_ROLE[@]} role(s) renewed; stopped at role=${FAILED_ROLE}." >&2
+  echo "PARTIAL RUN — ${RENEWED} of ${N_ROLES} role(s) renewed${SKIP_NOTE}; stopped at role=${FAILED_ROLE}." >&2
   echo "Resume: fix the cause, then re-run the same command with --only ${REMAINING}" >&2
   exit 1
 fi
-echo "renewed: ${DONE} of ${#R_ROLE[@]} role(s); each PAT expires ${EXPIRES_AT} — file paths printed, values never echoed"
+if [ "$RENEWED" -gt 0 ]; then
+  echo "renewed: ${RENEWED} of ${N_ROLES} role(s); each renewed PAT expires ${EXPIRES_AT} — file paths printed, values never echoed"
+else
+  echo "renewed: 0 of ${N_ROLES} role(s) — no PAT was rotated or created"
+fi
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "skipped-in-use: ${SKIPPED} of ${N_ROLES} role(s) (${SKIPPED_LIST}) — NOT renewed; their PATs keep their previous expiry." >&2
+  echo "Once nothing holds them (stop those desk sessions), re-run with --only ${SKIPPED_LIST} --rotate-in-use" >&2
+  exit 3
+fi

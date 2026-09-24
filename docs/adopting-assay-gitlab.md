@@ -764,18 +764,13 @@ role's live PAT, creates one only where the role has none, and replaces each
 `assay-<role>-fleet` PAT names and the `<prefix>-<role>-bot` usernames cannot drift between
 them.
 
-It drives `glab`, logged in as whichever identity holds the authority you name. **Pick the
-authority model explicitly — the script never infers one, and never falls back from one to the
-other:**
-
-| Mode | Flag | Authority `glab` must hold | Calls |
-|---|---|---|---|
-| Group Owner | `--group <top-level-group>` | Owner (access level 50) of that top-level group | `glab api` on `groups/:id/service_accounts/:user_id/personal_access_tokens` (list, `…/:token_id/rotate`, create) |
-| Instance admin | `--instance-admin` | instance administrator (probed with the admin-only `application/settings` read) | `glab token list` / `rotate` / `create --user <service-account>` |
-
-`glab token … --user <another user>` is administrator-only, and a group Owner cannot use it. The
-group service-account endpoints admit a group Owner, and they are what the provisioner uses. A
-group Owner therefore renews with `--group` and does not need wider authority.
+It drives `glab api`, logged in as an **Owner (access level 50) of the top-level group** named by
+`--group <top-level-group>`. That is the one authority model. The calls are the group
+service-account endpoints the provisioner already uses:
+`groups/:id/service_accounts/:user_id/personal_access_tokens` (list with `?state=active`,
+`…/:token_id/rotate`, create). The script never requires instance administrator and never probes
+for it: it makes no `application/settings` read and does not use `glab token … --user`, which is
+administrator-only and the wrong transport for this.
 
 Every deployment-specific value is an argument; nothing is built in. `--duration` defaults to
 the shared `FLEET_PAT_DAYS` in `tools/fleet-gitlab-roles.sh` (7 days — spec.md §5's "7 days
@@ -802,17 +797,19 @@ example `auditor`) adds it. Run `--help` for the full reference.
 What one run does, in order:
 
 1. **Preflight, before any token changes.** The script checks the arguments, `glab` and `jq`,
-   the output directory (it must be writable) and each destination file. It also checks the
-   authority of the active `glab` identity — in `--instance-admin` mode this also refuses a
-   resolved account that is not a bot/service account, since `users?username=` resolves
-   instance-wide and could otherwise match a human account sharing the configured username.
-   It resolves each service account and lists each role's active PATs, and each role gets one
+   the output directory (it must be writable) and each destination file. It also checks that
+   the active `glab` identity is an Owner of the group. It resolves each service account from
+   the group's own service-account listing and lists each role's active PATs, and each role gets one
    of four outcomes: **rotate** (exactly one active PAT with that name, and it is not
    protected — see below), **create** (none), **skip-in-use** (exactly one active PAT, but its
    `last_used_at` falls inside the in-use window), or **refuse** (more than one active PAT; the
-   script will not guess which one is live, so revoke the extras). The script also refuses an
-   unreadable listing — including one that answers with zero stdout bytes — instead of treating
-   it as "no match", which would otherwise create a second live credential. Any preflight
+   script will not guess which one is live, so revoke the extras). The script decides a listing
+   from its parsed JSON, never its byte count, and refuses an unreadable one instead of
+   treating it as "no match", which would otherwise create a second live credential. That
+   covers a listing with no JSON value at all (zero bytes, a bare newline, whitespace only), a
+   non-array, and a record missing its id, name, `active` flag or `last_used_at` key. A
+   multi-page listing is merged across pages. A literal `[]` is a real "no active PAT" and
+   leads to a create. Any preflight
    problem aborts the run before any role is rotated. `--dry-run` runs this whole phase and
    prints the plan (`would-rotate` / `would-create` / `would-skip-in-use` for each role), then
    stops. It makes no mutating call and writes no file.
@@ -820,7 +817,8 @@ What one run does, in order:
    whose active PAT was used inside the in-use window is **skipped by default** and reported as
    `skipped-in-use`, not rotated. Pass `--rotate-in-use` to rotate it anyway — do that only after
    confirming nothing is still relying on that credential (stop the fleet's desk sessions first).
-   A PAT that has never been used (`last_used_at` unset) is never in-use and rotates normally.
+   A PAT that has never been used (`last_used_at` is null) is never in-use, and a PAT last used
+   before the window (for example three days ago) is not in-use either. Both rotate normally.
 3. **Renewal, one role at a time.** `glab` writes the returned secret straight into a new
    owner-only (`0600`) temp file in the destination's own directory. The secret never goes
    through argv, an environment variable, a log line or the report. The file must hold exactly
@@ -832,7 +830,16 @@ What one run does, in order:
    refused during preflight.
 4. **The report** gives only the role, the destination path and the outcome for each role
    (`rotated`, `created`, `skipped-in-use (…)`, `failed (…)`, `not-attempted`). It never
-   includes a secret, a username or a token id.
+   includes a secret, a username or a token id. The summary counts renewed roles and skipped
+   roles separately, and states the new expiry only for the renewed ones: a skipped role's
+   PAT keeps its previous expiry.
+
+**Exit status.** `0`: every selected role was renewed (with `--dry-run`, the plan passed
+preflight). `1`: a preflight refusal (nothing changed) or a role failed part-way. `2`: a usage
+error. `3`: the run finished, but at least one role was skipped as in-use and **not** renewed.
+The summary names those roles and prints the `--only <roles> --rotate-in-use` re-run for once
+nothing holds them. A run that skipped a role never exits `0`, so a fleet with one role left
+behind cannot look fully renewed.
 
 **A rotation invalidates the old credential immediately.** GitLab revokes a role's previous PAT
 as soon as it accepts the rotation. Any process still holding the old value then gets a `401`.
