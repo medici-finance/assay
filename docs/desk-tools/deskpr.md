@@ -47,9 +47,13 @@ Rules (derived-board/02):
   so a PR that authors a brief AND delivers anything else (code, or a document under
   `docs/streams/`) is a delivery and keeps `Brief:`. A diff with a rename is not judged
   (its old path is not visible to this local read) and is never refused on this ground.
-  `update` and `edit` do not run this check: they act on an existing PR whose trailer is
-  immutable.
-- `create` also refuses the MIRROR case (medici-finance/assay#1641 review F1): an
+  `update` and `edit` do not run this check: they act on an existing PR and have no local
+  branch diff to read. A PR's trailer, once set, is immutable, but a PR whose body carries
+  NO trailer may gain one through `edit` (the pre-trailer migration), and that path runs
+  neither diff check. The security side of that gap is covered at flip time by `deskflip`
+  (below); the board-edge side is not, so a trailer added by `edit` is only as right as
+  the session that wrote it.
+- `create` also refuses the MIRROR case (#1641): an
   `Authors:` line is refused unless the branch's diff is authoring-only, by the same
   `deskkit.BriefAuthoringOnly` classification, for EVERY listed id. `Authors:` asserts no
   delivery, so nothing that reads `Brief:` as delivery matches it — including the

@@ -797,6 +797,29 @@ func TestAuthorsTrailerOnNonAuthoringDiffRiskClasses(t *testing.T) {
 	}
 }
 
+// TestAuthorsTrailerOnAuthoringDiffFlipsWithoutPass is the pass-path control for the
+// Authors: term: a real briefs-authoring PR (it adds the listed brief's file and touches only
+// its stream board README) on a private repo flips on the correctness review alone. It needs
+// the per-file status the forge serves: if readChangedFiles stopped carrying Status, the
+// added brief would read as modified, the diff would not be authoring-only, and this fails.
+func TestAuthorsTrailerOnAuthoringDiffFlipsWithoutPass(t *testing.T) {
+	brief := "docs/streams/example-stream/brief-15-new-thing.md"
+	s := newStub()
+	s.pr.Body = "Authors one brief.\n\nAuthors: example-stream/15\n"
+	s.files = []string{brief, "docs/streams/example-stream/README.md"}
+	s.fileStatus = map[string]string{brief: "added"}
+	s.pr.ChangedFiles = len(s.files)
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("authoring-only Authors: PR without a security pass rc = %d, want 0", rc)
+	}
+	if !s.flipped() {
+		t.Error("an authoring-only Authors: PR with a clean correctness review did not flip")
+	}
+}
+
 // A DECLARED brief (a `Brief:` trailer is present) that cannot be resolved or read is
 // UNVERIFIABLE, not clean — deskflip must REFUSE the flip on every such error path rather
 // than let it flip on the correctness review alone. Against the pre-fix code each of these

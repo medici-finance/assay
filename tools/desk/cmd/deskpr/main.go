@@ -64,6 +64,12 @@ under --root. Brief: is read as DELIVERY by the dispatcher's phantom check, the 
 the derived board, so an authoring PR must not carry it: create REFUSES a Brief: line when
 the branch only authors that brief (it adds the brief's file and touches nothing but stream
 board READMEs, brief files and changelog fragments) and names the Authors: line to use.
+The mirror refusal: create REFUSES an Authors: line unless the branch diff is authoring-only
+for EVERY listed id, which includes ADDING each listed brief's file. A diff with a rename is
+refused under Authors: (its authoring shape cannot be proven from this local read), while
+Brief: leaves such a diff alone. deskflip re-checks the same claim against the PR's
+forge-served diff at flip time: an Authors: PR whose complete diff is not authoring-only for
+every listed id needs a security review before it can flip.
 
 deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" /
 "Authors: <stream>/<NN>[, ...]" / "Issue: #<N>" is the derived board's edge from the PR

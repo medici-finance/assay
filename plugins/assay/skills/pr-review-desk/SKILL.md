@@ -701,7 +701,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      off the security lane's brief-declared risk term (`deskkit.BriefRiskFromBody` reads `Brief:`
      only); ask for `Brief:` instead, or for the non-authoring change to move to its own PR.
      `deskpr create`'s writer-side gate and `deskflip`'s `AuthorsRiskFromBody` term both already
-     catch this (medici-finance/assay#1641 review F1), so a PR that reached review with this shape
+     catch this, so a PR that reached review with this shape
      is either pre-gate or had its body edited around the writer check — flag it regardless.
      Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
      link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>` or `Issue: #<N>` line; the board can't

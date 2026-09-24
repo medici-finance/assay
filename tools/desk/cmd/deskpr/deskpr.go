@@ -1194,7 +1194,8 @@ func authoringTrailerGateAuthors(value, dir, baseRef string) error {
 				"does not ADD %s's own brief file. `Authors:` switches off the security lane's brief-declared "+
 				"risk term for %s (deskkit.BriefRiskFromBody reads `Brief:` only), so it is refused unless the "+
 				"diff provably authors only the listed brief(s). Use `Brief:` (singular) if this branch delivers "+
-				"%s's own content, or split the non-authoring change into its own PR.", value, id, id, id, id))
+				"%s's own content, drop %s from the list if this branch only modifies its brief file, or split the "+
+				"non-authoring change into its own PR.", value, id, id, id, id, id))
 	}
 	return nil
 }

@@ -102,6 +102,10 @@ type stub struct {
 	// pages) is the case the verb has to walk. nil means "the one-file diff greenPR
 	// describes"; an explicitly empty slice serves nothing.
 	files []string
+	// fileStatus overrides the forge-reported status of individual served files, keyed by
+	// path. A file with no entry is served as "modified". An authoring-only diff needs its
+	// brief file served as "added", so without this no deskflip test could show one.
+	fileStatus map[string]string
 	// filesPerPage is the fake forge's page size. Zero means the size the verb asks for, so a
 	// 163-entry list lands as 100 + 63 without any test having to say so.
 	filesPerPage int
@@ -368,7 +372,11 @@ func (s *stub) servedFilePage(pageStr string) []map[string]any {
 	}
 	out := make([]map[string]any, 0, end-start)
 	for _, f := range s.files[start:end] {
-		out = append(out, map[string]any{"filename": f, "status": "modified"})
+		status := "modified"
+		if st, ok := s.fileStatus[f]; ok {
+			status = st
+		}
+		out = append(out, map[string]any{"filename": f, "status": status})
 	}
 	return out
 }

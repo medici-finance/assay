@@ -737,12 +737,14 @@ layer; the floor does not wait on one.)
    part of authoring the brief.
 8. **Link the authoring PR with `Authors:`, never `Brief:`.** The PR that writes brief files
    carries exactly one link line `Authors: <stream>/<NN>[, <stream>/<NN> …]` naming every brief it
-   writes (or `Issue: #<N>` when the authoring answers an issue). `Brief: <stream>/<NN>` means the
+   adds (or `Issue: #<N>` when the authoring answers an issue). `Brief: <stream>/<NN>` means the
    PR DELIVERS that brief: the dispatcher's phantom check, the planner and the derived board all
    read it that way, so an authoring PR carrying it makes the brief it just wrote look delivered
    the moment it merges, and the brief is never dispatched. `deskpr create` refuses a `Brief:`
-   line on a branch that only authors that brief and names the `Authors:` line to use; a PR that
-   authors a brief AND delivers work in the same change keeps `Brief:`.
+   line on a branch that only authors that brief and names the `Authors:` line to use, and refuses
+   an `Authors:` line unless the branch adds every listed brief's file and touches nothing but
+   board READMEs, brief files and changelog fragments. A PR that authors a brief AND delivers
+   work in the same change keeps `Brief:`.
 
 ## Conventions to inherit
 
