@@ -108,9 +108,9 @@ func TestPhantomCheckOpenPRMessageKeepsResumeWording(t *testing.T) {
 // unchanged — only the wording.
 func TestPhantomCheckMergedPRMessageSaysDeliveredWithIssueKey(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
-		return []deskkit.PRRef{{Number: 1334, State: "MERGED", Body: "Brief: windows-port/00"}}, nil
+		return []deskkit.PRRef{{Number: 1334, State: "MERGED", Body: "Brief: example-c/00"}}, nil
 	})
-	_, err := phantomCheck(dispatchOpts{item: "assay--windows-port--00", kit: "worker"}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-c--00", kit: "worker"}, allowedRepo)
 	if err == nil {
 		t.Fatal("a MERGED representing PR must still refuse a fresh dispatch — behaviour is unchanged")
 	}
