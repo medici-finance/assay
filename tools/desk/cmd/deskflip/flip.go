@@ -1871,12 +1871,12 @@ const (
 // insisted on a literal SUCCESS would have refused the exact case it was authorized for,
 // while checks-green called the same run green — two readers disagreeing about the same
 // fact, which is the defect class #408 closed for verdict markers.
+//
+// The set itself now lives in deskkit.ConclusionGreen, so the auto-approve lane's
+// ci-nonsuccess signal judges a run by this same implementation; this wrapper keeps the
+// name every caller and test in this package reads.
 func conclusionGreen(conclusion string) bool {
-	switch strings.ToUpper(strings.TrimSpace(conclusion)) {
-	case "SUCCESS", "NEUTRAL", "SKIPPED":
-		return true
-	}
-	return false
+	return deskkit.ConclusionGreen(conclusion)
 }
 
 // checkRunGreen reports whether one check RUN has finished and finished green. A run that has
