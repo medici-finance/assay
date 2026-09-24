@@ -269,6 +269,45 @@ one — because the mutation spec's `-run` filter did not reach the tests that c
 tests were right; the spec was under-scoped. Widening the filter brought all four to CAUGHT with
 no change to any assertion.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 claude-opus-4-8-verifier
+
+Runner: rows executed non-hermetically on darwin/arm64, go1.26.5, offline (KUBECONFIG=/dev/null),
+from the home worktree cut detached at origin/main. The `statusgen verifyrun` execution witness
+was also run and left uncommitted in the brief's `## Evidence`; it marks the `check:ci` rows
+could-not-run because its hermetic sandbox needs Linux `unshare --net` (this host is darwin) —
+recorded as could-not-check for the hermetic witness, NOT a fail; those same rows were observed
+PASS non-hermetically here. verifyrun ran rows 5 and 16 (the `+mutation` class) and reported pass.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/desk && go build ./... && go vet ./... | exit 0, no churn | exit 0 — both silent across the module | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/desk && go test ./internal/deskkit/ -run '^TestToolRunSaidSkipsPreambleAndCarriesTheToolsOwnMessage$' -count=1 && go test ./internal/deskkit/ -run '^TestToolRunFailShapeAndCarriedDetail$' -count=1 | exit 0 — child's message not the config echo; the tool-said shape; errors.As reaches ExitError | exit 0 — both --- PASS under -v | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/desk && go test ./internal/deskkit/ -run '^TestReportErrorOffIsByteIdentical$' -count=1 && go test ./internal/deskkit/ -run '^TestReportErrorOnPrintsChainCommandsAndTimings$' -count=1 | exit 0 — OFF byte-identical; ON carries chain/commands/codes/timings | exit 0 — both --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && go test ./internal/deskkit/ -run '^TestScrubRedactsEveryTransportShape$' -count=1 | exit 0 — every transport shape redacted, negative control passes through unaltered | exit 0 — --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | cd tools/desk && go test ./internal/deskkit/ -run '^TestTraceNeverPrintsACredential$' -count=1 | exit 0 — SPOF: token in argv+env+stderr absent from trace, redaction marked | exit 0 — --- PASS; verifyrun witness also pass (sha256:d6dea0c13f7d) | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | cd tools/desk && go test ./internal/deskkit/ -run '^TestRefusedWithCauseStaysARefusal$' -count=1 && go test ./internal/deskkit/ -run '^TestTraceEnabledReadsTheEnvSpellings$' -count=1 | exit 0 — a cause does not soften exit 5; empty/0 DESK_TRACE is OFF | exit 0 — both --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestClaimAcquireFailureNamesTheClaimToolsOwnMessage$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestGitOutFailureCarriesGitStderr$' -count=1 | exit 0 — facts 1 and 2 closed | exit 0 — both --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestTraceIsOffByDefaultAndOutputIsUnchanged$' -count=1 | exit 0 — deskwt's refusal (5) passes through, trace names argv+status, default output unmoved | exit 0 — both --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | cd tools/desk && go test ./cmd/deskwt/ -run '^TestRunGitFailureCarriesStderrCommandAndExitStatus$' -count=1 && go test ./cmd/deskwt/ -run '^TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand$' -count=1 | exit 0 — fact 5 closed, both directions of the switch | exit 0 — both --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | cd tools/desk && go test ./cmd/desktoken/ -run '^TestTokenPathNoticeIsPrintedOnStderrNotStdout$' -count=1 | exit 0 — fact 3 closed; stdout EXACTLY the path, token value on neither stream | exit 0 — --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | cd tools/desk && go test ./cmd/deskfile/ -run '^TestDedupeSearchPropagatesTheForgeDiagnosis$' -count=1 && go test ./cmd/deskfile/ -run '^TestDedupeSearchControlBytesStrippedByBackend$' -count=1 | exit 0 — 401/403/429 tell apart, exit 6 unchanged, pre-existing control-strip survived | exit 0 — both --- PASS (incl. 3 subtests forbidden/rate_limited/bad_credentials). Brief's literal test names TestDedupeSearchOutageNamesTheAPIStatus / TestGhStderrStripsControlBytes match NOTHING on merged main (renamed post write-verbs-C migration off gh to the Forge backend); corrected forms run — see Findings | 2026-09-23 | claude-opus-4-8-verifier |
+| 12 | cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1 | exit 0 — every existing test of the five packages unchanged | exit 0 — 6 ok packages (deskkit, untrustcorpus, deskdispatch, deskwt, desktoken, deskfile), 0 FAIL | 2026-09-23 | claude-opus-4-8-verifier |
+| 13 | cd tools/desk && go test ./internal/deskkit/ -run 'TestS2' -count=1 && go test ./internal/deskkit/ -run 'TestCorpus' -count=1 | exit 0 — control leak sweep, both halves | exit 0 — TestS2* all PASS with one --- SKIP TestS2SweepExclusionsAreLive (by design, private-tree fixture absent, matches implementer note); TestCorpus* all PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 14 | cd tools/desk && gofmt -l internal/deskkit/trace.go internal/deskkit/runtool.go internal/deskkit/scrub.go internal/deskkit/exitcodes.go cmd/deskdispatch cmd/deskwt cmd/desktoken cmd/deskfile > /tmp/dt21-fmt.out; test ! -s /tmp/dt21-fmt.out | exit 0 | exit 0 — gofmt list empty, no unformatted brief-owned file (output redirected to a worktree-local file) | 2026-09-23 | claude-opus-4-8-verifier |
+| 15 | cd statusgen && go run . --root .. --lint; echo $? | 0 | exit 0 — LINT: PASS (NOTICEs only, none blocking) | 2026-09-23 | claude-opus-4-8-verifier |
+| 16 | cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/trace-mutations.json | exit 0 — baseline GREEN, positive control CAUGHT, all ten mutations CAUGHT | exit 0 — "Harness healthy: baseline GREEN, positive control CAUGHT." "Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate."; verifyrun witness also pass (sha256:ae9535c6028c) | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE (kit §4 — enumerated over the diff scope: the new deskkit files trace.go / scrub.go /
+runtool.go / exitcodes.go and the four verb retrofits; trigger fired fail-safe because the change
+touches a disclosure surface the brief itself flags):
+
+- RISK-VALUE: DERIVED — RefusedWithCause.Code = ExitRefused (5) @ tools/desk/internal/deskkit/exitcodes.go:158 — this is the top-ranked entry because a wrong value here is the named security hazard: a fail-closed refusal that gains a cause must NOT soften to ExitUnverifiable (6, retryable). Right value derived from definition + the brief's ground rule "a refusal stays a refusal, no exit code changes": RefusedWithCause is "Refused with the underlying cause preserved", and Refused = ExitRefused (5) at exitcodes.go:144, so the two must share the code. Independently pinned by row 6 (TestRefusedWithCauseStaysARefusal) and by row 16's inverse mutation (soften to exit 6 → CAUGHT).
+- RISK-VALUE: NAMED, NOT DERIVED — the three transport-shape redaction regexes reURLUserinfo @ scrub.go:31, reAuthHeader @ scrub.go:36, reSecretEnvAssign @ scrub.go:42 (the SPOF, deskkit.Scrub) — each is a literal pattern at a source line, but regex EXHAUSTIVENESS against every real-world secret shape is not closed-form derivable; the design is deliberately over-redaction-biased and bounded by the row-5 planted-secret table plus row 16's per-shape removal mutations (each CAUGHT). Missing derivation: proof the pattern set is complete rather than merely test-covered — inherent to a heuristic redactor, sanctioned by the brief's "biased to over-redact" posture. Not routed to human because the item is model-gated (all four risk answers no) and the bounding controls (rows 4, 5, 16) are green.
+- Reversible operational knobs ranked LAST, no derivation required (edit + redeploy fixes each): traceStepCap = 200 @ trace.go:54 (ledger cap, over-cap drops reported, not hidden); chain-depth guard = 32 @ trace.go:199 (cyclic-chain truncation); redactedMarker = "<redacted>" @ scrub.go:49 (display string). DESK_TRACE truthy set {1,true,yes,on} @ trace.go:98 is an enum, not a threshold; its negative control (empty/0 → OFF) is pinned by row 6.
+
+Supersedes the 2026-09-16 pass on the open draft #1241. RISK-VALUE carries one NAMED, NOT DERIVED entry (the three Scrub transport regexes); a question issue is owed before any flip. Row 11's literal test names are stale; corrected forms ran.
+
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the two hazards this change
