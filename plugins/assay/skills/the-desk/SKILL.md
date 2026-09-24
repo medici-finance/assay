@@ -177,8 +177,7 @@ not own.
   same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
   or land) stay in its skill, directly below this block.
   - Desk-specific: **this coordinator is PRs-only** (2026-08-15) — it lands nothing on `main`; doc
-    edits and brief rows travel as draft PRs. Its former main-commit board-claim flow is retired; the
-    cross-machine race is arbitrated by `worker-desk`'s durable `refs/heads/dispatch/*` claim, which is
+    edits and brief rows travel as draft PRs. The cross-machine dispatch race is arbitrated by `worker-desk`'s durable `refs/heads/dispatch/*` claim, which is
     atomic create-if-absent, TTL'd, and readable from any machine
     (`docs/streams/findings/2026-08-25-the-desk-rewrite-board-claim-retired.md`).
 - **Reversibility test — default-forward on anything a human-held gate still catches:** before

@@ -129,8 +129,8 @@ not own.
 3. **Land each verdict as it returns** via `deskevidence` (below) — never a wave buffered to the end.
    **How many verifiers may be in flight at once is `deskroster width --role verify-desk`, re-read
    every tick.** This desk's declared default is the MEASURED SAFE WIDTH — the shipped default in
-   the tools' width table is the number (a parallel drain of six was carried for a full window
-   without a rate-limit trip; the sequential width-1 drain it replaced is retired as the default),
+   the tools' width table is the number (measured: a parallel drain of six ran a full window
+   without a rate-limit trip),
    and the width exists so the coordinator can move it when `deskboard throughput` names verify as
    the bottleneck, without this body carrying a number that could drift from the tools. **A width
    this desk sets itself persists for the life of the window:** a set width decays to the default
@@ -217,9 +217,8 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
-  stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
-  copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
-  queue, and the local tier is its only stamp. A **risk-flagged** brief (`gate: human` or any `yes`)
+  stronger external/paid tier** (human:<name>, 2026-07-15). A risk-clear brief (gate `model`, all
+  risk answers `no`) is the normal path and most of the queue, and the local tier is its only stamp. A **risk-flagged** brief (`gate: human` or any `yes`)
   may have its Verify table RUN for the Evidence but **cannot be signed off by a model** — route it to
   the human gate — and a `gate: human` brief carries TWO stamps before the human closes it: the drain's
   local-tier PASS (first stamp), then ONE floor-tier re-verify (second stamp), the single sanctioned
