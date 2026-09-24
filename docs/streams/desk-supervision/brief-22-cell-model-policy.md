@@ -94,22 +94,22 @@ configuration checks; actual provider inference remains a rollout check, never a
 
 Implementation-session local tests recorded in the draft PR. Independent verification pending.
 
-### Non-implementer verifier run — VERIFY: PASS — 2026-09-23 opus-5.5-verifier
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/5 pass, 5 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
 
 | # | Command | Expected | Observed (exit + key output) | Date | Runner |
 |---|---------|----------|------------------------------|------|--------|
-| 1 | python3 tools/cellctl/tests/model-policy.test.py | named tests pass, incl. mixed-provider show/up/desk agreement and recording-harness exec args | exit 0; "Ran 17 tests ... OK"; each test line ends "... ok" incl. test_desk_show_and_up_agree_on_mixed_providers and test_real_exec_argv_and_env (no SKIP) | 2026-09-23 | opus-5.5-verifier |
-| 2 | bash tools/cellctl/tests/provider.test.sh | exit 0; existing provider credential and override behavior preserved without policy | exit 0 in a clean env: "provider.test.sh: OK". Ambient run showed 2 FAILED (the "no provider → BASE_URL/model vars NOT exported" assertions) caused by ANTHROPIC_* vars inherited from the launching cell shell leaking into the test — a verifier-harness artifact, not a merged-main regression (see Findings) | 2026-09-23 | opus-5.5-verifier |
-| 3 | bash tools/cellctl/tests/harness.test.sh | exit 0; existing Claude/Codex launch behavior preserved without policy | exit 0; "harness.test.sh: OK" (up threads --harness codex to every role window; invalid CELL_HARNESS refused) | 2026-09-23 | opus-5.5-verifier |
-| 4 | bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh | all three suites exit 0; no legacy pin/override/persistence regression | exit 0 chained; "model-namespace.test.sh: OK", "model-override.test.sh: OK", "cell-set.test.sh: OK" | 2026-09-23 | opus-5.5-verifier |
-| 5 | bash -n tools/cellctl/cellctl | exit 0 | exit 0; no syntax errors | 2026-09-23 | opus-5.5-verifier |
+| 1 | python3 tools/cellctl/tests/model-policy.test.py | named tests pass, incl. mixed-provider show/up/desk agreement and recording-harness exec args | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; "Ran 17 tests ... OK", including the mixed-provider desk show/up agreement test and the recording-harness exec argv/env test (no SKIP) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | bash tools/cellctl/tests/provider.test.sh | exit 0; existing provider credential and override behavior preserved without policy | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0 in a clean env, "provider.test.sh: OK". (An ambient run showed 2 FAILED on the "no provider → BASE_URL/model vars NOT exported" assertions, caused by ANTHROPIC_* vars inherited from the launching cell shell leaking into the test — a verifier-harness artifact, not a merged-main regression) | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | bash tools/cellctl/tests/harness.test.sh | exit 0; existing Claude/Codex launch behavior preserved without policy | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0, "harness.test.sh: OK" (up threads --harness codex to every role window; invalid CELL_HARNESS refused) | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh | all three suites exit 0; no legacy pin/override/persistence regression | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0 chained; "model-namespace.test.sh: OK", "model-override.test.sh: OK", "cell-set.test.sh: OK" | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | bash -n tools/cellctl/cellctl | exit 0 | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; no syntax errors | 2026-09-23 | claude-opus-4-8-verifier |
 
 Hermetic-witness note (all rows are class check:ci): `statusgen verifyrun` could-not-run every row —
 the network-off sandbox uses `unshare --net`, a Linux facility unavailable on this darwin host. The
 formal network-off re-execution of the check:ci rows is could-not-check here and must be produced on
 a Linux CI runner; the rows above were executed directly (the model-policy suite is offline by design
-— local Git fixtures + recording stubs, per the policy doc). The verifyrun witness rows are left
-uncommitted in the worktree brief file for the desk.
+— local Git fixtures + recording stubs, per the policy doc), which corroborates but is not the
+required witness. The verifyrun witness rows are left uncommitted in the worktree brief file for the desk.
 
 RISK-VALUE (trigger: the diff pins a hard house standing constraint — "Prohibit Opus 5"; gate:model.
 irreversible:no, so every literal below is reversible by editing the JSON/source and re-launching):
@@ -118,8 +118,10 @@ irreversible:no, so every literal below is reversible by editing the JSON/source
   oracle appends these to the policy `deny` list; base() strips a trailing [1m] before the
   case-insensitive glob, so claude-opus-5, its [1m]/gateway suffixes and the concatenated Opus5
   spelling are all denied. This satisfies the brief's contract "prohibit Opus 5, including context
-  suffixes and explicit child requests." (Over-broad vs the CURRENT doc — the trailing `*` also
-  matches opus-5-5, which the later version-floor work says must be allowed. See Findings.)
+  suffixes and explicit child requests." Carried finding (recorded here, no separate Findings
+  section exists): the pattern is over-broad versus the current doc — the trailing `*` also matches
+  opus-5-5, which the later version-floor work says must be allowed; tighten the glob when that work
+  lands.
 - RISK-VALUE: DERIVED — example_opus_alias = claude-opus-4-8[1m] @ tools/cellctl/examples/model-policy.json:44 — the strong tier (the `opus` alias) is pinned to 4.8, exactly the brief's "map the example Opus tier to 4.8", and it is an exact ID, not a floating alias.
 - RISK-VALUE: N/A for the remaining enumerated literals — they are reversible operational config, not
   irreversible acts: example anthropic top = claude-fable-5-1 (roles/the-desk avoids Opus by design),
