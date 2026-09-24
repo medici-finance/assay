@@ -180,9 +180,9 @@ func TestAutoLaneAdmitWithinScope(t *testing.T) {
 	}
 }
 
-// TestAutoLaneAdmitBriefFileEjects — a stream brief file in the diff trips the category
+// TestAutoLane_AdmitBriefFile_Ejects — a stream brief file in the diff trips the category
 // even when an operator's glob would have matched it.
-func TestAutoLaneAdmitBriefFileEjects(t *testing.T) {
+func TestAutoLane_AdmitBriefFile_Ejects(t *testing.T) {
 	c := AutoLaneConfig{Areas: []AutoLaneArea{{Repo: alRepo, Glob: "docs/**", Login: "ada"}}, EjectLine: 0, FPYFloor: 0.9, DailyCap: 2}
 	in := admitIn()
 	in.ChangedFiles = []string{"docs/notes/a.md", "docs/streams/example/brief-03-thing.md"}

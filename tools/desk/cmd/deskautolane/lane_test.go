@@ -325,10 +325,10 @@ func TestAutoLaneRefusesAtDailyCap(t *testing.T) {
 
 // --- the merge step's own re-read --------------------------------------------------------
 
-// TestAutoLaneMergeDryRunHappyPath — Verify row 11, and the admit-within-scope fixture: all
+// TestAutoLane_MergeDryRun_HappyPath — Verify row 11, and the admit-within-scope fixture: all
 // clean, R-8 resolving. Every condition prints OK in the pinned order and the run ends with
 // the would-merge line; ZERO writes.
-func TestAutoLaneMergeDryRunHappyPath(t *testing.T) {
+func TestAutoLane_MergeDryRun_HappyPath(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	code, stdout, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
 	if code != deskkit.ExitOK {
@@ -552,7 +552,8 @@ func TestFixtureRosterFileMatches(t *testing.T) {
 		}
 	}
 	got := strings.Join(kv, "\n") + "\n"
-	if got != fixtureRosterBase+fixtureLaneKeys {
+	want := fixtureRosterBase + fixtureLaneKeys
+	if got != want {
 		t.Fatalf("testdata/roster.env drifted from the harness fixture:\n%s", got)
 	}
 }
