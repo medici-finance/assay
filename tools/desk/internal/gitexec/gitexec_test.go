@@ -27,14 +27,16 @@ func TestAllowlistRefusesUnknownToolVerb(t *testing.T) {
 // and the trial-merge family (plus the still-pending transport verbs briefs 05/06 own)
 // must stay on it.
 func TestDeskmergeAllowlistNarrowedToTrialMergeFamily(t *testing.T) {
-	stayed := []string{"merge", "diff", "add", "worktree", "fetch", "push"}
+	// `remote` stays for the origin-resolution read the fetch/push gates make (#1623): only
+	// git can report what git will resolve, so that read cannot live on gitcore.
+	stayed := []string{"merge", "diff", "add", "worktree", "fetch", "push", "remote"}
 	for _, v := range stayed {
 		if !Allowed("deskmerge", v) {
-			t.Fatalf("deskmerge:%s must stay allowlisted (trial-merge family, or a "+
-				"transport verb not yet migrated)", v)
+			t.Fatalf("deskmerge:%s must stay allowlisted (trial-merge family, a "+
+				"transport verb not yet migrated, or the transport's own URL resolution)", v)
 		}
 	}
-	migrated := []string{"rev-parse", "rev-list", "merge-base", "remote", "commit", "update-ref"}
+	migrated := []string{"rev-parse", "rev-list", "merge-base", "commit", "update-ref"}
 	for _, v := range migrated {
 		if Allowed("deskmerge", v) {
 			t.Fatalf("deskmerge:%s migrated to gitcore in brief 07 — must no "+
