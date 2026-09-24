@@ -22,7 +22,7 @@ import (
 // retains a repo's baseline when its read fails or collapses, and it collapses a mass update to one
 // burst line. This file ARMS and PARSES that poller; it never re-implements it.
 //
-// The poller is the `deskmonitor inbound` desk verb (windows-port/11), resolved from PATH like every
+// The poller is the `deskmonitor inbound` desk verb (example-stream/11), resolved from PATH like every
 // other verb this binary launches — so the drain runs wherever the desk-tools release runs,
 // native Windows included. The verb is the Go port of the plugin tree's inbound-monitor.sh, which
 // is kept as its PARITY ORACLE: `--monitor <path.sh>` or ASSAY_INBOUND_MONITOR arms that script

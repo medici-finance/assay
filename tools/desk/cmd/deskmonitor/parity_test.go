@@ -49,7 +49,7 @@ func requireOracle(t *testing.T, script string) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(p); err != nil {
-		t.Fatalf("the parity oracle is missing at %s: %v — it is kept until windows-port/14 retires it", p, err)
+		t.Fatalf("the parity oracle is missing at %s: %v — it is kept until example-stream/14 retires it", p, err)
 	}
 	return p
 }

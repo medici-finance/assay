@@ -1,6 +1,6 @@
 // Command desktick is the ONE executable form of the tick summary-line grammar, as a Go verb the
 // release ships — the port of plugins/assay/scripts/tick-summary.sh, which stays in the plugin tree
-// as the parity oracle until windows-port/14 retires it.
+// as the parity oracle until example-stream/14 retires it.
 //
 //	desktick regexp                print the published extended regular expression
 //	desktick validate '<line>'     exit 0 iff that one line satisfies the grammar

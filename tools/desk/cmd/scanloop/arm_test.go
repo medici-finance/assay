@@ -1,6 +1,6 @@
 package main
 
-// arm_test.go — scanloop arms the `deskmonitor inbound` VERB (windows-port/11), not a script
+// arm_test.go — scanloop arms the `deskmonitor inbound` VERB (example-stream/11), not a script
 // through a fixed interpreter path, and the state dir it hands the verb is the one its arming read
 // reads back.
 //
