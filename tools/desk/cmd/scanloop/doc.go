@@ -83,6 +83,14 @@
 //	    The drain. Arms the monitor if it is not armed, applies the trust gate BEFORE queueing,
 //	    executes the dispatch lanes and records one tracked exit per item.
 //
+//	scanloop run --dry-run ...
+//	    Prints every lane step without running it, and leaves the monitor's per-repo baselines
+//	    untouched. A live dry-run polls a THROWAWAY COPY of the state dir (removed when the pass
+//	    ends), so the preview reports the real delta without consuming it. A copy that cannot be
+//	    made refuses the pass (exit 5) before anything is polled, and there is no fallback to the
+//	    real dir: a preview that quietly became a real poll would drop the delta the next real run
+//	    needs. With --offline --inbound nothing is polled at all.
+//
 //	scanloop --version
 //
 // Exit codes (deskkit contract): 0 ok · 3 disabled · 5 refused · 6 unverifiable · 7 author==runner.
