@@ -229,21 +229,46 @@ var sleepFn = time.Sleep
 
 func secondsOf(n int) time.Duration { return time.Duration(n) * time.Second }
 
-// rateLimitRe is the scripts' secondary-rate-limit / 429 signature, applied to the error text as a
-// second signal beside the typed one (a GraphQL rate-limit answer arrives as a 200 whose errors[]
-// names the limit, which carries no status code to classify).
-var rateLimitRe = regexp.MustCompile(`(?i)secondary rate limit|(http )?429|too many requests`)
+// graphQLAnswerPrefix is how deskkit's open-changes read reports a GraphQL errors[] envelope (an
+// HTTP 200 whose errors[] names the failure): Unverifiable("open-changes GraphQL error: <m1>; <m2>").
+// What follows it is the forge's own messages — the text gh prints as `GraphQL: <m1>, <m2>`. The
+// parity fixture testdata/parity/pr-graphql-envelope.json goes red if deskkit's wording moves.
+const graphQLAnswerPrefix = "open-changes GraphQL error: "
 
 // isRateLimited is the stop-on-limit test: a tripped limit must end the cycle, never be
-// compounded by the remaining reads.
+// compounded by the remaining reads. It decides every failure the way the oracle scripts do —
+// their is_ratelimit greps gh's stderr, which carries the forge's ANSWER and nothing the verb's own
+// error text adds (the request path and so the repo slug, the fake's or proxy's host:port) — so the
+// scripts' pattern (deskkit.GhRateLimitSignature) is applied to that answer text only:
+//
+//   - a non-2xx: `HTTP <status>: <message + errors[] lines>`, decided in deskkit
+//     (ForgeAPIError.RateLimited; a 429 from any backend also counts);
+//   - a GraphQL errors[] envelope: its messages;
+//   - anything that is no forge answer — a dropped connection, a precondition, an unparseable or
+//     empty body — never stops the cycle, as gh's "error connecting to …" never matches.
+//
+// No header is read: gh never prints one, so a Retry-After alone cannot stop a cycle the scripts
+// would have continued (#1640 review F1).
+//
+// The one stderr text left out is the URL gh appends to an HTTP failure: gh's own endpoint on the
+// configured host (`https://api.github.com/graphql`), never this read's repo or path. It could
+// only matter on a GitHub host whose NAME contains 429 — there the scripts would stop on every
+// failed read. That host-name case is the declared residue; testdata/parity pins every other
+// class (headers, status codes, message and errors[] variants, GraphQL envelopes, the verb's own
+// text, a dropped connection).
 func isRateLimited(err error) bool {
 	if err == nil {
 		return false
 	}
-	if deskkit.IsForgeRateLimited(err) {
-		return true
+	var ae *deskkit.ForgeAPIError
+	if errors.As(err, &ae) {
+		return deskkit.IsForgeRateLimited(err)
 	}
-	return rateLimitRe.MatchString(err.Error())
+	var de *deskkit.DeskError
+	if errors.As(err, &de) && de.Err == nil && strings.HasPrefix(de.Msg, graphQLAnswerPrefix) {
+		return deskkit.GhRateLimitSignature.MatchString(strings.TrimPrefix(de.Msg, graphQLAnswerPrefix))
+	}
+	return false
 }
 
 // diagnostic renders a failed read's error for the one-line MONITOR-DEGRADED report: newlines

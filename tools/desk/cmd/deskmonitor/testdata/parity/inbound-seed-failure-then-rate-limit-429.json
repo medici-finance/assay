@@ -30,7 +30,7 @@
     "example-org/tracker": {
      "status": 429,
      "message": "Too Many Requests",
-     "rateLimited": true
+     "retryAfter": true
     },
     "example-org/agents": {
      "issues": [

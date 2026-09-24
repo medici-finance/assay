@@ -31,6 +31,10 @@ import (
 // failedReadDiag is the one span the comparison masks: the tool's own quote of a failed read.
 var failedReadDiag = regexp.MustCompile(`\((gh|forge): .*?\) — (keeping|no baseline)`)
 
+// verbDiagRe is what a masked verb diagnostic must still name: an HTTP status, a GraphQL error, or
+// the failed request of a connection that never answered.
+var verbDiagRe = regexp.MustCompile(`HTTP [0-9]{3}|GraphQL error: \S|failed: \S`)
+
 func maskDiagnostics(s string) string {
 	return failedReadDiag.ReplaceAllString(s, "(<diagnostic>) — $2")
 }
@@ -178,10 +182,11 @@ func assertParity(t *testing.T, fx fixture, oracle, verb []cycleResult) {
 			t.Errorf("%s: repos read differ\n  oracle %v\n  verb   %v", label, o.reads, v.reads)
 		}
 		// The mask must never hide an empty report: every masked verb diagnostic carries the
-		// forge's own status for the failure the fixture recorded.
+		// forge's own answer for the failure the fixture recorded — its HTTP status, its GraphQL
+		// errors, or the transport failure that left no answer at all.
 		for _, m := range regexp.MustCompile(`\(forge: (.*?)\) — `).FindAllStringSubmatch(v.stdout, -1) {
-			if !regexp.MustCompile(`HTTP [0-9]{3}`).MatchString(m[1]) {
-				t.Errorf("%s: the verb's failed-read diagnostic names no HTTP status: %q", label, m[1])
+			if !verbDiagRe.MatchString(m[1]) {
+				t.Errorf("%s: the verb's failed-read diagnostic names no forge answer: %q", label, m[1])
 			}
 		}
 	}

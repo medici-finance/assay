@@ -3,12 +3,14 @@ package main
 // harness_test.go — the recorded-forge harness the parity and property tests share.
 //
 // A FIXTURE is a sequence of poll cycles; each cycle records, per repo, the forge's answer to that
-// cycle's read: an open set (issues or PRs), or a failure (status + message, optionally a rate-limit
-// signature). One fixture is served two ways:
+// cycle's read: an open set (issues or PRs), or a failure — a non-2xx (status + message, optional
+// errors[] items, optional Retry-After header), a GraphQL errors[] envelope (pr only), or a
+// connection that drops before any answer. One fixture is served two ways:
 //
 //   - to the bash ORACLE as a stub `gh` on PATH that replays what `gh issue list` / `gh pr list`
 //     would print for that answer (JSON on stdout truncated to --limit exactly as gh truncates, or
-//     `HTTP <status>: <message>` on stderr and exit 1);
+//     on stderr with exit 1 the text gh prints for the failure: `HTTP <status>: <message>` plus one
+//     line per errors[] item, `GraphQL: <message>, …`, or gh's "error connecting to" notice);
 //   - to the VERB as an httptest server replaying the forge API JSON the resolved GitHub client
 //     reads (REST /repos/{o}/{n}/issues pages for issues, the /graphql open-changes read for PRs,
 //     or the status + message the forge answers a failure with).
@@ -47,13 +49,29 @@ type fixturePR struct {
 	MergeStateStatus string `json:"mergeStateStatus"`
 }
 
-// fixtureRead is one repo's answer in one cycle. Status 0 = a successful read of Issues/PRs.
+// fixtureRead is one repo's answer in one cycle. With no failure field set it is a successful read
+// of Issues/PRs.
 type fixtureRead struct {
-	Issues      []fixtureIssue `json:"issues,omitempty"`
-	PRs         []fixturePR    `json:"prs,omitempty"`
-	Status      int            `json:"status,omitempty"`
-	Message     string         `json:"message,omitempty"`
-	RateLimited bool           `json:"rateLimited,omitempty"`
+	Issues  []fixtureIssue `json:"issues,omitempty"`
+	PRs     []fixturePR    `json:"prs,omitempty"`
+	Status  int            `json:"status,omitempty"`  // a non-2xx answer
+	Message string         `json:"message,omitempty"` // its JSON `message`
+	// Errors are the non-2xx body's errors[] strings. go-gh — gh's own error decoder — appends
+	// each to the message as its own line, so both tools see them.
+	Errors []string `json:"errors,omitempty"`
+	// RetryAfter sets a Retry-After header on the non-2xx. A header never reaches gh's stderr, so
+	// the oracle cannot see it — a fixture sets it to pin that the verb does not act on it either.
+	RetryAfter bool `json:"retryAfter,omitempty"`
+	// GraphQLErrors answers HTTP 200 with a GraphQL errors[] envelope carrying these messages.
+	// pr only: the verb's inbound read is REST, which never answers in that shape.
+	GraphQLErrors []string `json:"graphqlErrors,omitempty"`
+	// Dropped closes the connection before any answer — no status, no body.
+	Dropped bool `json:"dropped,omitempty"`
+}
+
+// failed reports whether the read is recorded as a failure of any kind.
+func (r fixtureRead) failed() bool {
+	return r.Status != 0 || len(r.GraphQLErrors) > 0 || r.Dropped
 }
 
 type fixtureCycle struct {
@@ -89,6 +107,13 @@ func loadFixtures(t *testing.T, kind string) map[string]fixture {
 		}
 		if f.Kind != kind {
 			t.Fatalf("%s: kind %q, want %q", p, f.Kind, kind)
+		}
+		for _, c := range f.Cycles {
+			for repo, rd := range c.Reads {
+				if len(rd.GraphQLErrors) > 0 && kind != "pr" {
+					t.Fatalf("%s: %s: a GraphQL errors envelope is a pr-read answer only", p, repo)
+				}
+			}
 		}
 		out[strings.TrimSuffix(filepath.Base(p), ".json")] = f
 	}
@@ -166,13 +191,34 @@ func (f *forgeFake) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"message":"the fixture recorded no answer for `+repo+` this cycle"}`)
 		return
 	}
+	if rd.Dropped {
+		if hj, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hj.Hijack(); err == nil {
+				_ = conn.Close()
+				return
+			}
+		}
+		panic("forgeFake: cannot drop the connection")
+	}
 	if rd.Status != 0 {
-		if rd.RateLimited {
+		if rd.RetryAfter {
 			w.Header().Set("Retry-After", "60")
 		}
 		w.WriteHeader(rd.Status)
-		b, _ := json.Marshal(map[string]string{"message": rd.Message})
+		body := map[string]any{"message": rd.Message}
+		if len(rd.Errors) > 0 {
+			body["errors"] = rd.Errors
+		}
+		b, _ := json.Marshal(body)
 		_, _ = w.Write(b)
+		return
+	}
+	if len(rd.GraphQLErrors) > 0 {
+		errs := make([]map[string]any, 0, len(rd.GraphQLErrors))
+		for _, m := range rd.GraphQLErrors {
+			errs = append(errs, map[string]any{"message": m})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "errors": errs})
 		return
 	}
 	if isIssues {
@@ -278,8 +324,8 @@ func (g *ghStub) render(t *testing.T, kind string, c fixtureCycle, limit int) {
 				t.Fatal(err)
 			}
 		}
-		if rd.Status != 0 {
-			write(".err", fmt.Sprintf("HTTP %d: %s\n", rd.Status, rd.Message))
+		if rd.failed() {
+			write(".err", ghFailureText(rd))
 			write(".rc", "1")
 			continue
 		}
@@ -315,6 +361,20 @@ func (g *ghStub) render(t *testing.T, kind string, c fixtureCycle, limit int) {
 		write(".out", string(payload)+"\n")
 		write(".rc", "0")
 	}
+}
+
+// ghFailureText is what gh prints on stderr for a failed read, as its error types render it: a
+// non-2xx is go-gh's HTTPError (`HTTP <status>: <message>`, each errors[] item on its own line —
+// the request URL gh appends is gh's fixed GraphQL endpoint, never the repo, and is left out); a
+// GraphQL errors[] envelope is `GraphQL: <m1>, <m2>`; a dropped connection is gh's connect notice.
+func ghFailureText(rd fixtureRead) string {
+	switch {
+	case rd.Dropped:
+		return "error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n"
+	case len(rd.GraphQLErrors) > 0:
+		return "GraphQL: " + strings.Join(rd.GraphQLErrors, ", ") + "\n"
+	}
+	return fmt.Sprintf("HTTP %d: %s\n", rd.Status, strings.Join(append([]string{rd.Message}, rd.Errors...), "\n"))
 }
 
 func (g *ghStub) takeReads(t *testing.T) []string {

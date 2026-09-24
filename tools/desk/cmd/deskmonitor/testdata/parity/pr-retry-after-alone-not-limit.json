@@ -1,9 +1,7 @@
 {
- "description": "Pacing: ASSAY_MONITOR_MAX_REPOS_PER_CYCLE sweeps a set across cycles with a cursor carried in the state dir, and a rate limit ends the cycle and resumes the next one at the tripped repo.",
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. HEADERS: a 403 carrying Retry-After whose text names no limit (GitHub's older abuse-detection wording) is an ordinary failed read — gh never prints a header, so the oracle keeps reading and the verb must too.",
  "kind": "pr",
- "env": {
-  "ASSAY_MONITOR_MAX_REPOS_PER_CYCLE": "2"
- },
+ "env": {},
  "repos": [
   "example-org/tracker",
   "example-org/agents",
@@ -11,13 +9,13 @@
  ],
  "cycles": [
   {
-   "note": "first slice arms tracker+agents",
+   "note": "arm",
    "reads": {
     "example-org/tracker": {
      "prs": [
       {
        "number": 1,
-       "headRefOid": "a1",
+       "headRefOid": "t1",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
@@ -27,7 +25,7 @@
      "prs": [
       {
        "number": 7,
-       "headRefOid": "c1",
+       "headRefOid": "a1",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
@@ -46,48 +44,13 @@
    }
   },
   {
-   "note": "second slice: site seeds silently, cursor wraps",
+   "note": "agents answers 403 abuse-detection with Retry-After; the cycle goes on",
    "reads": {
     "example-org/tracker": {
      "prs": [
       {
        "number": 1,
-       "headRefOid": "a1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    },
-    "example-org/agents": {
-     "prs": [
-      {
-       "number": 7,
-       "headRefOid": "c1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    },
-    "example-other/site": {
-     "prs": [
-      {
-       "number": 20,
-       "headRefOid": "s1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "note": "tracker pushed; agents trips the limit",
-   "reads": {
-    "example-org/tracker": {
-     "prs": [
-      {
-       "number": 1,
-       "headRefOid": "a2",
+       "headRefOid": "t2",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
@@ -95,14 +58,14 @@
     },
     "example-org/agents": {
      "status": 403,
-     "message": "You have exceeded a secondary rate limit.",
+     "message": "You have triggered an abuse detection mechanism.",
      "retryAfter": true
     },
     "example-other/site": {
      "prs": [
       {
        "number": 20,
-       "headRefOid": "s1",
+       "headRefOid": "s2",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
@@ -111,13 +74,13 @@
    }
   },
   {
-   "note": "resumes at agents",
+   "note": "recovery reports only what moved against retained baselines",
    "reads": {
     "example-org/tracker": {
      "prs": [
       {
        "number": 1,
-       "headRefOid": "a2",
+       "headRefOid": "t3",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
@@ -127,7 +90,7 @@
      "prs": [
       {
        "number": 7,
-       "headRefOid": "c2",
+       "headRefOid": "a2",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
@@ -137,7 +100,7 @@
      "prs": [
       {
        "number": 20,
-       "headRefOid": "s2",
+       "headRefOid": "s3",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }

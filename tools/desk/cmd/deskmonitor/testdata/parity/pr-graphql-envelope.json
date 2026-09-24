@@ -1,9 +1,7 @@
 {
- "description": "Pacing: ASSAY_MONITOR_MAX_REPOS_PER_CYCLE sweeps a set across cycles with a cursor carried in the state dir, and a rate limit ends the cycle and resumes the next one at the tripped repo.",
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. GRAPHQL ENVELOPE: a 200 whose GraphQL errors[] names the limit is gh's `GraphQL: …` line — the secondary wording stops the cycle, GraphQL's primary-quota wording does not.",
  "kind": "pr",
- "env": {
-  "ASSAY_MONITOR_MAX_REPOS_PER_CYCLE": "2"
- },
+ "env": {},
  "repos": [
   "example-org/tracker",
   "example-org/agents",
@@ -11,28 +9,28 @@
  ],
  "cycles": [
   {
-   "note": "first slice arms tracker+agents",
+   "note": "arm",
    "reads": {
     "example-org/tracker": {
      "prs": [
       {
        "number": 1,
+       "headRefOid": "t1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
        "headRefOid": "a1",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
      ]
     },
-    "example-org/agents": {
-     "prs": [
-      {
-       "number": 7,
-       "headRefOid": "c1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    },
     "example-other/site": {
      "prs": [
       {
@@ -46,91 +44,21 @@
    }
   },
   {
-   "note": "second slice: site seeds silently, cursor wraps",
+   "note": "agents answers a GraphQL primary-quota envelope; the cycle goes on",
    "reads": {
     "example-org/tracker": {
      "prs": [
       {
        "number": 1,
-       "headRefOid": "a1",
+       "headRefOid": "t2",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }
      ]
     },
     "example-org/agents": {
-     "prs": [
-      {
-       "number": 7,
-       "headRefOid": "c1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    },
-    "example-other/site": {
-     "prs": [
-      {
-       "number": 20,
-       "headRefOid": "s1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "note": "tracker pushed; agents trips the limit",
-   "reads": {
-    "example-org/tracker": {
-     "prs": [
-      {
-       "number": 1,
-       "headRefOid": "a2",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    },
-    "example-org/agents": {
-     "status": 403,
-     "message": "You have exceeded a secondary rate limit.",
-     "retryAfter": true
-    },
-    "example-other/site": {
-     "prs": [
-      {
-       "number": 20,
-       "headRefOid": "s1",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "note": "resumes at agents",
-   "reads": {
-    "example-org/tracker": {
-     "prs": [
-      {
-       "number": 1,
-       "headRefOid": "a2",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
-     ]
-    },
-    "example-org/agents": {
-     "prs": [
-      {
-       "number": 7,
-       "headRefOid": "c2",
-       "isDraft": false,
-       "mergeStateStatus": "CLEAN"
-      }
+     "graphqlErrors": [
+      "API rate limit exceeded for installation ID 1."
      ]
     },
     "example-other/site": {
@@ -138,6 +66,71 @@
       {
        "number": 20,
        "headRefOid": "s2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers a GraphQL secondary-limit envelope; the cycle stops",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "graphqlErrors": [
+      "You have exceeded a secondary rate limit."
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s4",
        "isDraft": false,
        "mergeStateStatus": "CLEAN"
       }

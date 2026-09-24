@@ -1,5 +1,5 @@
 {
- "description": "Stop-on-limit: a secondary rate limit marks the tripped repo and every repo after it skipped, with no further read; baselines retained.",
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. HEADERS: a 403 carrying Retry-After whose text names no limit (GitHub's older abuse-detection wording) is an ordinary failed read — gh never prints a header, so the oracle keeps reading and the verb must too.",
  "kind": "inbound",
  "env": {},
  "repos": [
@@ -38,7 +38,7 @@
    }
   },
   {
-   "note": "agents trips the secondary limit",
+   "note": "agents answers 403 abuse-detection with Retry-After; the cycle goes on",
    "reads": {
     "example-org/tracker": {
      "issues": [
@@ -54,7 +54,7 @@
     },
     "example-org/agents": {
      "status": 403,
-     "message": "You have exceeded a secondary rate limit.",
+     "message": "You have triggered an abuse detection mechanism.",
      "retryAfter": true
     },
     "example-other/site": {
@@ -72,7 +72,7 @@
    }
   },
   {
-   "note": "recovery reports only what is new against retained baselines",
+   "note": "recovery reports only what moved against retained baselines",
    "reads": {
     "example-org/tracker": {
      "issues": [
@@ -82,6 +82,10 @@
       },
       {
        "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
        "updatedAt": "2026-09-01T00:00:00Z"
       }
      ]
@@ -106,6 +110,10 @@
       },
       {
        "number": 21,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 22,
        "updatedAt": "2026-09-01T00:00:00Z"
       }
      ]

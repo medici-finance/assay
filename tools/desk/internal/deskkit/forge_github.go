@@ -125,17 +125,20 @@ type ForgeAPIError struct {
 	Method string
 	Path   string
 	Body   string
-	// RateLimited is true when the forge said this failure is a SECONDARY rate limit rather
-	// than a refusal: a 429, or a 403 carrying GitHub's secondary-limit signature (a
-	// `Retry-After` header, or a message naming a secondary limit or "too many requests").
-	// A PRIMARY-quota 403 ("API rate limit exceeded for …") does NOT set this — that is an
-	// ordinary failed read, the same signature plugins/assay/scripts/{inbound,pr}-monitor.sh
-	// test for (`secondary rate limit|(http )?429|too many requests`) so a stop-on-limit
-	// poller stays in parity with the oracle scripts (#1640 review F1: a primary-quota
-	// 403 must not mark every remaining repo skipped when the oracle would have kept reading
-	// them). It does not change Error()'s text — it exists for IsForgeRateLimited, so a
-	// poller that trips a secondary limit can stop the cycle instead of compounding it with
-	// the remaining reads.
+	// Message is the forge's own answer text for a GitHub non-2xx, exactly as go-gh decodes it
+	// (the body's `message`, then each errors[] item on its own line; the status line when the
+	// body is not JSON) — the text gh prints after `HTTP <status>: `. It is carried out of band
+	// and NOT rendered by Error(), so every existing diagnostic is byte-identical.
+	Message string
+	// RateLimited is true when GhRateLimitSignature matches `HTTP <status>: <Message>` — the
+	// text gh prints on stderr for this answer, minus gh's request URL. That is the whole of
+	// what plugins/assay/scripts/{inbound,pr}-monitor.sh can see when their is_ratelimit decides
+	// to stop a cycle, so a stop-on-limit poller built on this flag decides every answer the way
+	// the scripts do (#1640 review F1). Nothing else feeds it: not a header (Retry-After and
+	// X-RateLimit-* never reach gh's stderr), not the status class on its own (a 5xx whose
+	// message names the limit matches, a 403 whose message does not, does not), not the request
+	// path. It does not change Error()'s text — it exists for IsForgeRateLimited, so a poller
+	// that trips a limit can stop the cycle instead of compounding it with the remaining reads.
 	RateLimited bool
 }
 
@@ -163,41 +166,33 @@ func IsForgeForbidden(err error) bool {
 	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
 }
 
-// IsForgeRateLimited reports whether err is a forge SECONDARY rate-limit refusal: a 429 from
-// either backend, or a GitHub 403 that carried the secondary-limit signature (see
+// IsForgeRateLimited reports whether err is a forge rate-limit answer: a 429 from either
+// backend, or a GitHub answer whose text carries the scripts' signature (see
 // ForgeAPIError.RateLimited). It unwraps, so a ForgeAPIError nested in a DeskError is still
 // recognised. A plain 403 (a missing scope) is NOT a rate limit: treating it as one would stop
 // a poll cycle on a permissions fault that retrying never clears. Neither is a GitHub PRIMARY
-// quota-exhausted 403 ("API rate limit exceeded for …") — that is an ordinary failed read the
-// oracle scripts retain-and-continue on, never a stop-the-cycle signal (#1640 review F1).
+// quota-exhausted 403 ("API rate limit exceeded for …"), nor a 403 whose only rate-limit sign
+// is a Retry-After header — the oracle scripts cannot see a header and retain-and-continue on
+// both, never stop the cycle (#1640 review F1).
 func IsForgeRateLimited(err error) bool {
 	var ae *ForgeAPIError
 	return errors.As(err, &ae) && (ae.Status == http.StatusTooManyRequests || ae.RateLimited)
 }
 
-// ghHTTPErrorRateLimited reads GitHub's rate-limit signature off a non-2xx go-gh HTTPError,
-// using the SAME signature plugins/assay/scripts/{inbound,pr}-monitor.sh test for on gh's
-// captured stderr (`secondary rate limit|(http )?429|too many requests`, case-insensitive):
-// a 429, a 403 carrying a `Retry-After` header (GitHub sets this on the secondary limit, not
-// the primary one), or a 403 whose message names a secondary limit or "too many requests". A
-// PRIMARY-quota 403 ("API rate limit exceeded for installation ID …") deliberately does NOT
-// match here — the oracle scripts' regexp does not match it either, so it must stay an
-// ordinary failed read (retained baseline, MONITOR-DEGRADED, the cycle goes on to the next
-// repo) rather than a stop-the-cycle signal. Getting this wrong means one owner's exhausted
-// primary quota marks every later owner's repos "rate-limited, skipped" although the oracle
-// would have read them (#1640 review F1).
+// GhRateLimitSignature is plugins/assay/scripts/{inbound,pr}-monitor.sh's is_ratelimit
+// pattern, verbatim: `grep -qiE 'secondary rate limit|(http )?429|too many requests'` over gh's
+// captured stderr. The optional `(http )?` group makes the second branch the bare digits 429
+// anywhere in the text — kept as-is, because matching it is what parity with the scripts means.
+var GhRateLimitSignature = regexp.MustCompile(`(?i)secondary rate limit|(http )?429|too many requests`)
+
+// ghHTTPErrorRateLimited decides a non-2xx go-gh HTTPError the way the oracle scripts decide the
+// same failure: GhRateLimitSignature over `HTTP <status>: <message>`, which is go-gh's own
+// HTTPError rendering — the text gh prints on stderr — minus the request URL gh appends (gh's
+// endpoint, never this request's path; see ForgeAPIError.RateLimited). The message already holds
+// every errors[] item on its own line, as gh prints them. Headers are never read: a Retry-After
+// the scripts cannot see must not stop a cycle they would have continued (#1640 review F1).
 func ghHTTPErrorRateLimited(he *ghapi.HTTPError) bool {
-	if he.StatusCode == http.StatusTooManyRequests {
-		return true
-	}
-	if he.StatusCode != http.StatusForbidden {
-		return false
-	}
-	if he.Headers != nil && he.Headers.Get("Retry-After") != "" {
-		return true
-	}
-	msg := strings.ToLower(he.Message)
-	return strings.Contains(msg, "secondary rate limit") || strings.Contains(msg, "too many requests")
+	return GhRateLimitSignature.MatchString(fmt.Sprintf("HTTP %d: %s", he.StatusCode, he.Message))
 }
 
 // ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
@@ -261,7 +256,7 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {
 			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
-				RateLimited: ghHTTPErrorRateLimited(he)}
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
 		}
 		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}

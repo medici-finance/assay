@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const (
@@ -267,6 +269,37 @@ func TestMonitorTokenFilePreconditions(t *testing.T) {
 			}
 			if len(fake.auths) != 0 {
 				t.Fatalf("a read was made despite an unusable --token-file")
+			}
+		})
+	}
+}
+
+// TestMonitorRateLimitAnswerOnly — isRateLimited decides on the forge's answer text, the
+// only thing the scripts' is_ratelimit can see in gh's stderr. Text that is the verb's OWN — a
+// request path carrying the repo slug, a host:port, a precondition — never stops a cycle, even
+// when it happens to contain the signature (#1640 review F1).
+func TestMonitorRateLimitAnswerOnly(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"429 answer", &deskkit.ForgeAPIError{Status: 429, Method: "GET", Path: "/repos/o/r/issues"}, true},
+		{"flagged answer", &deskkit.ForgeAPIError{Status: 502, Method: "GET", Path: "/repos/o/r/issues", RateLimited: true}, true},
+		{"unflagged answer on a 429-named path", &deskkit.ForgeAPIError{Status: 500, Method: "GET", Path: "/repos/o/app429/issues"}, false},
+		{"answer wrapped in a DeskError", deskkit.Unverifiable("read failed", &deskkit.ForgeAPIError{Status: 429}), true},
+		{"GraphQL envelope, secondary", deskkit.Unverifiable(graphQLAnswerPrefix+"You have exceeded a secondary rate limit.", nil), true},
+		{"GraphQL envelope, primary", deskkit.Unverifiable(graphQLAnswerPrefix+"API rate limit exceeded for installation ID 1.", nil), false},
+		{"transport failure quoting a 429 URL", deskkit.Unverifiable("GET /repos/o/app429/issues failed", errors.New(`Get "http://127.0.0.1:4290/": EOF`)), false},
+		{"empty body on a 429-named path", deskkit.Unverifiable("GET /repos/o/app429/issues returned HTTP 200 with an empty body", nil), false},
+		{"precondition naming too many requests", precondition("too many requests configured for %s", "o/r"), false},
+		{"bare error text", errors.New("HTTP 429: secondary rate limit"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isRateLimited(tc.err); got != tc.want {
+				t.Fatalf("isRateLimited(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})
 	}

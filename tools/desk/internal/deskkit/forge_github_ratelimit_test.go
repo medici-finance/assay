@@ -10,27 +10,39 @@ import (
 	"testing"
 )
 
-// TestIsForgeRateLimited_ClassifiesTheForgeAnswer — a 429, and a 403 carrying the SECONDARY
-// rate-limit signature (Retry-After, or a message naming a secondary limit / "too many
-// requests"), are rate limits; a plain 403 (a missing scope), a 404, and a 403 that only
-// exhausted the PRIMARY quota (an "API rate limit exceeded …" message, or X-RateLimit-Remaining
-// alone with no Retry-After) are NOT — a poller that stopped its cycle on either would diverge
-// from plugins/assay/scripts/{inbound,pr}-monitor.sh, which stop only on the secondary-limit /
-// 429 signature and otherwise treat the read as an ordinary failure (#1640 review F1).
+// TestIsForgeRateLimited_ClassifiesTheForgeAnswer — the classification is the oracle scripts'
+// is_ratelimit (`secondary rate limit|(http )?429|too many requests`, case-insensitive) over the
+// text gh prints for the answer, `HTTP <status>: <message>` with each errors[] item on its own
+// line, and over nothing else: no header, no status class on its own. So a 429, and any status
+// whose text carries the signature, are rate limits; a plain 403 (a missing scope), a 404, a
+// PRIMARY-quota 403, and a 403 whose only rate-limit sign is a Retry-After header are NOT — a
+// poller that stopped its cycle on any of those would diverge from
+// plugins/assay/scripts/{inbound,pr}-monitor.sh, which cannot see a header and treat the read as
+// an ordinary failure (#1640 review F1).
 func TestIsForgeRateLimited_ClassifiesTheForgeAnswer(t *testing.T) {
 	cases := []struct {
 		name    string
 		status  int
 		headers map[string]string
-		message string
+		body    string // a JSON body, or raw text with contentType set
+		ctype   string
 		want    bool
 	}{
-		{"429", http.StatusTooManyRequests, nil, "Too Many Requests", true},
-		{"403 secondary limit message", http.StatusForbidden, nil, "You have exceeded a secondary rate limit.", true},
-		{"403 Retry-After", http.StatusForbidden, map[string]string{"Retry-After": "60"}, "Forbidden", true},
-		{"403 primary limit exhausted (X-RateLimit-Remaining only, no Retry-After)", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "0"}, "API rate limit exceeded for installation ID 1.", false},
-		{"403 missing scope", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "4999"}, "Resource not accessible by integration", false},
-		{"404", http.StatusNotFound, nil, "Not Found", false},
+		{"429", http.StatusTooManyRequests, nil, `{"message":"Too Many Requests"}`, "", true},
+		{"429 with no message", http.StatusTooManyRequests, nil, `{}`, "", true},
+		{"429 non-JSON body (go-gh uses the status line)", http.StatusTooManyRequests, nil, "slow down", "text/plain", true},
+		{"403 secondary limit message", http.StatusForbidden, nil, `{"message":"You have exceeded a secondary rate limit."}`, "", true},
+		{"403 secondary limit, any case", http.StatusForbidden, nil, `{"message":"SECONDARY RATE LIMIT"}`, "", true},
+		{"403 too many requests, no header", http.StatusForbidden, nil, `{"message":"Too many requests"}`, "", true},
+		{"403 signature in an errors[] item", http.StatusForbidden, nil, `{"message":"Forbidden","errors":["You have exceeded a secondary rate limit."]}`, "", true},
+		{"502 naming too many requests", http.StatusBadGateway, nil, `{"message":"too many requests from this client"}`, "", true},
+		{"403 primary quota whose id carries 429 (the scripts' bare 429 branch)", http.StatusForbidden, nil, `{"message":"API rate limit exceeded for installation ID 4290."}`, "", true},
+		{"403 Retry-After alone (a header gh never prints)", http.StatusForbidden, map[string]string{"Retry-After": "60"}, `{"message":"Forbidden"}`, "", false},
+		{"403 abuse-detection wording with Retry-After", http.StatusForbidden, map[string]string{"Retry-After": "60"}, `{"message":"You have triggered an abuse detection mechanism."}`, "", false},
+		{"403 primary limit exhausted (X-RateLimit-Remaining only, no Retry-After)", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "0"}, `{"message":"API rate limit exceeded for installation ID 1."}`, "", false},
+		{"403 missing scope", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "4999"}, `{"message":"Resource not accessible by integration"}`, "", false},
+		{"500 plain", http.StatusInternalServerError, nil, `{"message":"Server Error"}`, "", false},
+		{"404", http.StatusNotFound, nil, `{"message":"Not Found"}`, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -38,13 +50,19 @@ func TestIsForgeRateLimited_ClassifiesTheForgeAnswer(t *testing.T) {
 				for k, v := range tc.headers {
 					w.Header().Set(k, v)
 				}
-				w.Header().Set("Content-Type", "application/json")
+				ct := tc.ctype
+				if ct == "" {
+					ct = "application/json"
+				}
+				w.Header().Set("Content-Type", ct)
 				w.WriteHeader(tc.status)
-				_, _ = w.Write([]byte(`{"message":"` + tc.message + `"}`))
+				_, _ = w.Write([]byte(tc.body))
 			}))
 			defer srv.Close()
 			gh := &GitHubForge{Token: "stub", BaseURL: srv.URL}
-			_, err := gh.ListOpenIssues(ForgeRepo{Owner: "o", Name: "r"})
+			// The repo name carries 429: the request path is the verb's own text, never the
+			// forge's answer, so it must not tip a plain failure into a rate limit.
+			_, err := gh.ListOpenIssues(ForgeRepo{Owner: "o", Name: "app429"})
 			if err == nil {
 				t.Fatal("a non-2xx answer came back with no error")
 			}
