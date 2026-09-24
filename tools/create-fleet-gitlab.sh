@@ -82,6 +82,7 @@ if [ ! -f "$FLEET_ROLES_FILE" ]; then
   exit 2
 fi
 # shellcheck source=fleet-gitlab-roles.sh
+# shellcheck disable=SC1091
 . "$FLEET_ROLES_FILE"
 
 GITLAB_URL="https://gitlab.com"

@@ -70,6 +70,7 @@ if [ ! -f "$FLEET_ROLES_FILE" ]; then
   exit 2
 fi
 # shellcheck source=fleet-gitlab-roles.sh
+# shellcheck disable=SC1091
 . "$FLEET_ROLES_FILE"
 
 GL_HOSTNAME=""
@@ -407,6 +408,22 @@ for i in "${!R_ROLE[@]}"; do
     R_WRITE[$i]="${OUT_PHYS:-$OUT_DIR}/${R_FILE[$i]}"
   fi
 done
+
+# Two roles may also not share a RESOLVED write target: dup_check above only
+# compares configured R_FILE base names, but a symlink can make two different
+# base names land on the same physical file. Renewing both would silently drop
+# the first role's freshly rotated credential when the second role's write
+# overwrites it, while both roles report outcome=rotated/created and rc=0.
+# Skip entries with no resolved target (already preflight_error'd above) so a
+# shared blank never masquerades as a collision.
+WRITE_KEYS=()
+for i in "${!R_ROLE[@]}"; do
+  [ -n "${R_WRITE[$i]}" ] && WRITE_KEYS+=("${R_WRITE[$i]}")
+done
+if [ "${#WRITE_KEYS[@]}" -gt 0 ]; then
+  dup=$(printf '%s\n' "${WRITE_KEYS[@]}" | sort | uniq -d | head -1)
+  [ -z "$dup" ] || preflight_error "two roles resolve to the same write target: '${dup}' (a symlink alias of two different destination files) — a renewal of one would silently overwrite or re-rotate the other"
+fi
 
 # --- glab authority -------------------------------------------------------------
 if ! gl "$WORK/auth" auth status --hostname "$GL_HOSTNAME"; then

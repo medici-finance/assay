@@ -91,7 +91,7 @@ bump() { local f="$STATE/$1"; local n=0; [ -f "$f" ] && n=$(cat "$f"); n=$((n+1)
 uid_of_role() { local n=100 r; for r in $R_LIST; do n=$((n+1)); [ "$r" = "$1" ] && { echo "$n"; return; }; done; echo 0; }
 role_of_uid() { local n=100 r; for r in $R_LIST; do n=$((n+1)); [ "$n" = "$1" ] && { echo "$r"; return; }; done; }
 role_of_user() { local u="${1#myorg-}"; echo "${u%-bot}"; }
-secret_for() { printf 'glpat-TESTSECRET-%s-%s-0123456789' "$1" "$2"; }
+secret_for() { printf 'glpat-TEST.SECRET-%s-%s-0123456789' "$1" "$2"; }
 
 pat_list() {  # pat_list ROLE STRINGY
   local r="$1" id j
@@ -155,7 +155,7 @@ respond() {
     "token rotate "*)
       r=$(role_of_user "${k##*user=}")
       if fail_once "$r"; then echo "ERROR: 500 boom" >&2; return 1; fi
-      if [ "$r" = "${BAD_SECRET_ROLE:-}" ]; then printf 'glpat-first-line-0123456789\nsecond line\n'; return 0; fi
+      if [ "$r" = "${BAD_SECRET_ROLE:-}" ]; then printf 'glpat-fir.st-line-0123456789\nsecond line\n'; return 0; fi
       printf '%s\n' "$(secret_for rotated "$r")"; return 0 ;;
     "token create "*)
       r=$(role_of_user "${k##*user=}")
@@ -194,8 +194,8 @@ mutations() {  # every call that can mint or rotate a credential
 file_is() { [ -f "$1" ] && [ "$(cat "$1")" = "$2" ]; }
 mode600() { [ -n "$(find "$1" -prune -perm 600 2>/dev/null)" ]; }
 no_secret_leak() {  # no secret in stdout/stderr, glab argv, or a leftover temp file
-  ! printf '%s' "$OUT" | grep -q 'TESTSECRET' \
-    && ! grep -q '^argv=.*TESTSECRET' "$FAKE_GLAB_LOG" \
+  ! printf '%s' "$OUT" | grep -q 'TEST.SECRET' \
+    && ! grep -q '^argv=.*TEST.SECRET' "$FAKE_GLAB_LOG" \
     && [ -z "$(find "$OUTDIR" -name '.renew-*' 2>/dev/null)" ]
 }
 all_old() { for r in $ROLES; do file_is "$OUTDIR/gitlab-$r.token" "old-$r" || return 1; done; }
@@ -213,7 +213,7 @@ rot=$(logn 'argv=api .*-X POST .*personal_access_tokens/[0-9]*/rotate')
 if [ "$rot" = "7" ] && [ "$RC" = "0" ]; then ok "T1 group mode rotates all seven role PATs (rc=0)"; else bad "T1 group mode rotates all seven role PATs (rotations=$rot rc=$RC)"; fi
 allok=1
 for r in $ROLES; do
-  file_is "$OUTDIR/gitlab-$r.token" "glpat-TESTSECRET-rotated-$r-0123456789" && mode600 "$OUTDIR/gitlab-$r.token" || allok=0
+  file_is "$OUTDIR/gitlab-$r.token" "glpat-TEST.SECRET-rotated-$r-0123456789" && mode600 "$OUTDIR/gitlab-$r.token" || allok=0
 done
 if [ "$allok" = "1" ]; then ok "T1 each gitlab-<role>.token holds its new secret, no newline, mode 0600"; else bad "T1 each gitlab-<role>.token holds its new secret at 0600"; fi
 if grep -q 'argv=api .*personal_access_tokens/501/rotate' "$FAKE_GLAB_LOG" && ! grep -q '/rotate.*9501\|9501/rotate' "$FAKE_GLAB_LOG"; then
@@ -240,7 +240,7 @@ rot=$(logn 'argv=token rotate [0-9]* --user myorg-.*-bot --duration 14d --output
 if [ "$rot" = "7" ] && [ "$RC" = "0" ]; then ok "T2 admin mode rotates all seven via glab token rotate <id> --user (rc=0, 2w -> 14d)"; else bad "T2 admin mode rotates via glab token rotate <id> --user (rotations=$rot rc=$RC)"; fi
 if logn 'argv=token list --user myorg-worker-bot --active --output json' | grep -q '^1$'; then ok "T2 admin mode lists with glab token list --user --active --output json"; else bad "T2 admin mode lists with glab token list --user --active --output json"; fi
 allok=1
-for r in $ROLES; do file_is "$OUTDIR/gitlab-$r.token" "glpat-TESTSECRET-rotated-$r-0123456789" && mode600 "$OUTDIR/gitlab-$r.token" || allok=0; done
+for r in $ROLES; do file_is "$OUTDIR/gitlab-$r.token" "glpat-TEST.SECRET-rotated-$r-0123456789" && mode600 "$OUTDIR/gitlab-$r.token" || allok=0; done
 if [ "$allok" = "1" ]; then ok "T2 the trailing newline glab prints is stripped; files 0600"; else bad "T2 files hold the exact secret at 0600"; fi
 if grep -q 'service_accounts' "$FAKE_GLAB_LOG"; then bad "T2 admin mode must not use the group service-account endpoints"; else ok "T2 admin mode never touches the group service-account endpoints"; fi
 if no_secret_leak; then ok "T2 no secret in output, glab argv, or a leftover temp file"; else bad "T2 no secret leak"; fi
@@ -258,7 +258,7 @@ if grep -q 'BODY api POST groups/1/service_accounts/102/personal_access_tokens |
 else
   bad "T3 group mode create fallback (rc=$RC)"
 fi
-if file_is "$OUTDIR/gitlab-worker.token" "glpat-TESTSECRET-created-worker-0123456789" && has "role=worker path=${OUTDIR}/gitlab-worker.token outcome=created"; then
+if file_is "$OUTDIR/gitlab-worker.token" "glpat-TEST.SECRET-created-worker-0123456789" && has "role=worker path=${OUTDIR}/gitlab-worker.token outcome=created"; then
   ok "T3 the created secret lands in gitlab-worker.token, reported as created"
 else
   bad "T3 the created secret lands in gitlab-worker.token"
@@ -267,7 +267,7 @@ newcase
 export NONE_ROLE=verifier
 run_impl "${ADMIN_ARGS[@]}" --out-dir "$OUTDIR"
 if [ "$(logn 'argv=token create assay-verifier-fleet --user myorg-verifier-bot --duration 30d --scope api --scope write_repository --output text')" = "1" ] && [ "$RC" = "0" ] \
-   && file_is "$OUTDIR/gitlab-verifier.token" "glpat-TESTSECRET-created-verifier-0123456789"; then
+   && file_is "$OUTDIR/gitlab-verifier.token" "glpat-TEST.SECRET-created-verifier-0123456789"; then
   ok "T3 admin mode creates via glab token create <name> --user --scope ... (one --scope per table scope)"
 else
   bad "T3 admin mode create fallback (rc=$RC)"
@@ -328,7 +328,7 @@ for mode in group admin; do
   if [ "$RC" = "1" ] && has "role=verifier path=${OUTDIR}/gitlab-verifier.token outcome=failed (malformed" \
      && file_is "$OUTDIR/gitlab-verifier.token" "old-verifier" \
      && has "role=desk path=${OUTDIR}/gitlab-desk.token outcome=not-attempted" \
-     && [ -z "$(find "$OUTDIR" -name '.renew-*')" ] && ! printf '%s' "$OUT" | grep -q 'first-line\|TESTSECRET'; then
+     && [ -z "$(find "$OUTDIR" -name '.renew-*')" ] && ! printf '%s' "$OUT" | grep -q 'fir.st-line\|TEST.SECRET'; then
     ok "T6 ($mode) malformed output fails closed: file kept, later roles not attempted, no temp left, nothing echoed"
   else
     bad "T6 ($mode) malformed secret fails closed (rc=$RC)"
@@ -387,8 +387,8 @@ printf 'renewed-marker' > "$OUTDIR/gitlab-reviewer.token"   # prove the resume l
 : > "$FAKE_GLAB_LOG"
 run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR" --only issue-loop,intake-loop,board-writer
 if [ "$RC" = "0" ] && [ "$(logn '^argv=api .*/rotate')" = "3" ] \
-   && file_is "$OUTDIR/gitlab-issue-loop.token" "glpat-TESTSECRET-rotated-issue-loop-0123456789" \
-   && file_is "$OUTDIR/gitlab-board-writer.token" "glpat-TESTSECRET-rotated-board-writer-0123456789" \
+   && file_is "$OUTDIR/gitlab-issue-loop.token" "glpat-TEST.SECRET-rotated-issue-loop-0123456789" \
+   && file_is "$OUTDIR/gitlab-board-writer.token" "glpat-TEST.SECRET-rotated-board-writer-0123456789" \
    && file_is "$OUTDIR/gitlab-reviewer.token" "renewed-marker"; then
   ok "T9 the resume renews exactly the remaining three roles and nothing else"
 else
@@ -426,7 +426,7 @@ printf 'old-linked' > "$OUTDIR/myorg-reviewer-bot.token"; chmod 600 "$OUTDIR/myo
 ln -s myorg-reviewer-bot.token "$OUTDIR/gitlab-reviewer.token"
 run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR"
 if [ "$RC" = "0" ] && [ -L "$OUTDIR/gitlab-reviewer.token" ] \
-   && file_is "$OUTDIR/myorg-reviewer-bot.token" "glpat-TESTSECRET-rotated-reviewer-0123456789" && mode600 "$OUTDIR/myorg-reviewer-bot.token"; then
+   && file_is "$OUTDIR/myorg-reviewer-bot.token" "glpat-TEST.SECRET-rotated-reviewer-0123456789" && mode600 "$OUTDIR/myorg-reviewer-bot.token"; then
   ok "T11 a linked custody file is written THROUGH the link; the link survives"
 else
   bad "T11 a linked custody file is written through the link (rc=$RC)"
@@ -440,6 +440,17 @@ if [ "$RC" = "1" ] && [ "$(mutations)" = "0" ] && has "resolves outside the outp
   ok "T11 a custody link resolving outside --out-dir is refused in preflight"
 else
   bad "T11 a custody link resolving outside --out-dir is refused (rc=$RC)"
+fi
+newcase
+rm -f "$OUTDIR/gitlab-reviewer.token" "$OUTDIR/gitlab-worker.token"
+printf 'shared-old' > "$OUTDIR/shared.token"; chmod 600 "$OUTDIR/shared.token"
+ln -s shared.token "$OUTDIR/gitlab-reviewer.token"
+ln -s shared.token "$OUTDIR/gitlab-worker.token"
+run_impl "${GROUP_ARGS[@]}" --out-dir "$OUTDIR" --only reviewer,worker
+if [ "$RC" = "1" ] && [ "$(mutations)" = "0" ] && has "resolve to the same write target" && file_is "$OUTDIR/shared.token" "shared-old"; then
+  ok "T11 two roles' custody links resolving to one write target are refused in preflight, zero mutations"
+else
+  bad "T11 two roles' custody links resolving to one write target are refused (rc=$RC)"
 fi
 
 # =============================================================================
@@ -487,7 +498,7 @@ export NONE_ROLE=reviewer
 run_impl --hostname "$HOST" --instance-admin --prefix myorg \
   --role "reviewer=myorg-reviewer-bot:custom-review-pat:read_api:review.token" --out-dir "$OUTDIR" --only reviewer
 if [ "$RC" = "0" ] && [ "$(logn 'argv=token create custom-review-pat --user myorg-reviewer-bot --duration 30d --scope read_api --output text')" = "1" ] \
-   && file_is "$OUTDIR/review.token" "glpat-TESTSECRET-created-reviewer-0123456789" && file_is "$OUTDIR/gitlab-reviewer.token" "old-reviewer"; then
+   && file_is "$OUTDIR/review.token" "glpat-TEST.SECRET-created-reviewer-0123456789" && file_is "$OUTDIR/gitlab-reviewer.token" "old-reviewer"; then
   ok "T14 an explicit --role record overrides the table row (name, scopes, file)"
 else
   bad "T14 an explicit --role record overrides the table row (rc=$RC)"
