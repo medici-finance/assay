@@ -42,7 +42,7 @@ func writeCustody(t *testing.T, path, value string) {
 func TestVerifyCustodyFileModeRefusesSymlink(t *testing.T) {
 	dir := t.TempDir()
 	real := filepath.Join(dir, "elsewhere-0600")
-	writeCustody(t, real, "ghs-stub-value")
+	writeCustody(t, real, "github-cache-stub")
 	link := filepath.Join(dir, "worker-token-1")
 	plantLink(t, real, link)
 
@@ -78,7 +78,7 @@ func TestGitLabRoleTokenRefusesOutOfDirLink(t *testing.T) {
 	custody := filepath.Join(credDir, gitlabTokenFileName("worker"))
 
 	outside := filepath.Join(t.TempDir(), "planted-0600")
-	writeCustody(t, outside, "glpat-planted-value")
+	writeCustody(t, outside, "gitlab-planted-stub")
 	plantLink(t, outside, custody)
 
 	if tok, _, err := GitLabRoleToken("worker"); err == nil {
@@ -92,13 +92,13 @@ func TestGitLabRoleTokenRefusesOutOfDirLink(t *testing.T) {
 	if err := os.Remove(custody); err != nil {
 		t.Fatal(err)
 	}
-	writeCustody(t, filepath.Join(credDir, "example-worker-bot.token"), "glpat-provisioned")
+	writeCustody(t, filepath.Join(credDir, "example-worker-bot.token"), "gitlab-provisioned-stub")
 	plantLink(t, "example-worker-bot.token", custody)
 	tok, path, err := GitLabRoleToken("worker")
 	if err != nil {
 		t.Fatalf("the documented same-directory custody link must still read: %v", err)
 	}
-	if tok != "glpat-provisioned" || path != custody {
+	if tok != "gitlab-provisioned-stub" || path != custody {
 		t.Fatalf("documented link read = (len %d, %q), want the provisioned value via %q", len(tok), path, custody)
 	}
 
@@ -120,7 +120,7 @@ func TestGitLabColdCustodyProbeRefusesOutOfDirLink(t *testing.T) {
 	t.Setenv("GITLAB_API_BASE", "https://gitlab.example.com/api/v4")
 
 	outside := filepath.Join(t.TempDir(), "planted-0600")
-	writeCustody(t, outside, "glpat-planted-value")
+	writeCustody(t, outside, "gitlab-planted-stub")
 	if err := os.MkdirAll(credDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestGitLabColdCustodyProbeRefusesOutOfDirLink(t *testing.T) {
 	if err := os.Remove(custody); err != nil {
 		t.Fatal(err)
 	}
-	writeCustody(t, filepath.Join(credDir, "example-"+pfRole+"-bot.token"), "glpat-provisioned")
+	writeCustody(t, filepath.Join(credDir, "example-"+pfRole+"-bot.token"), "gitlab-provisioned-stub")
 	plantLink(t, "example-"+pfRole+"-bot.token", custody)
 	if _, err := gitlabColdCustodyProbe(pfRole); err != nil {
 		t.Fatalf("the documented same-directory custody link must pass the cold probe: %v", err)

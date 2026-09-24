@@ -35,7 +35,7 @@ func seedReviewerMint(t *testing.T, homeDir string) (tokenPath string, posts *[]
 			Login string `json:"login"`
 		}{Login: "example-org"}},
 	}
-	srv, recorded := makeInstallTokenServer(t, installs, "ghs_minted_through_link", "2124-01-01T01:00:00Z")
+	srv, recorded := makeInstallTokenServer(t, installs, "minted-through-link-stub", "2124-01-01T01:00:00Z")
 	t.Cleanup(srv.Close)
 	old := httpClient
 	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
