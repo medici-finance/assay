@@ -345,36 +345,68 @@ func TestParseGuardrailSource_Refusals(t *testing.T) {
 
 // --- the regenerating half -------------------------------------------------
 
-// TestSyncGuardrails_RewritesADriftedCopy proves the copies are DERIVED, not
-// hand-maintained: bend one, run sync, and the check is clean again with the
-// canonical text restored — including the scrub on the bundle side.
-func TestSyncGuardrails_RewritesADriftedCopy(t *testing.T) {
+// TestSyncGuardrails_RewritesAStaleCopy proves the copies are DERIVED, not
+// hand-maintained: change the canonical text in the source, run sync, and the
+// check is clean again with every copy regenerated — including the scrub on
+// the bundle side. The copy's previous text comes from `prior`, which is what
+// proves where the copy ends (medici-finance/assay#1690).
+func TestSyncGuardrails_RewritesAStaleCopy(t *testing.T) {
 	root := writeFixture(t)
-	body := read(t, root, ".claude/skills/one/SKILL.md")
-	write(t, root, ".claude/skills/one/SKILL.md",
-		strings.Replace(body, "-> skip silently.", "-> shrug and carry on.", 1))
+	prior := oldGuardrailSource(t, fixtureSource)
+	write(t, root, guardrailSourcePath,
+		strings.Replace(fixtureSource, "-> skip silently.", "-> shrug and carry on.", 1))
 	if CheckGuardrails(root).Clean() {
-		t.Fatal("precondition: the bent copy should not be clean")
+		t.Fatal("precondition: the stale copies should not be clean")
 	}
 
-	changed, rep, err := SyncGuardrails(root, nil)
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{prior})
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 	if len(rep.Unchecked) != 0 {
 		t.Fatalf("sync reported could-not-check: %+v", rep.Unchecked)
 	}
-	if len(changed) != 1 || changed[0] != ".claude/skills/one/SKILL.md" {
-		t.Fatalf("sync rewrote %v, want exactly the bent file", changed)
+	if len(changed) != 2 {
+		t.Fatalf("sync rewrote %v, want both site files", changed)
 	}
 	if !CheckGuardrails(root).Clean() {
 		t.Fatal("check is still not clean after sync — the generator and the diff disagree")
 	}
-	if !strings.Contains(read(t, root, ".claude/skills/one/SKILL.md"), "-> skip silently.") {
-		t.Error("sync did not restore the canonical text")
+	for _, p := range []string{".claude/skills/one/SKILL.md", "plugins/assay/skills/one/SKILL.md"} {
+		got := read(t, root, p)
+		if !strings.Contains(got, "-> shrug and carry on.") || strings.Contains(got, "skip silently") {
+			t.Errorf("%s was not regenerated from the new source:\n%s", p, got)
+		}
 	}
-	if strings.Contains(read(t, root, ".claude/skills/one/SKILL.md"), "shrug and carry on") {
-		t.Error("sync left the hand-edit in place")
+	if !strings.Contains(read(t, root, "plugins/assay/skills/one/SKILL.md"), "Script missing (#133 not yet merged)") {
+		t.Error("the bundle twin lost its scrub")
+	}
+}
+
+// TestSyncGuardrails_RefusesAHandEditedCopy — a copy that was hand-edited
+// matches no known text of its block, so its extent cannot be proven. Sync
+// must say so and leave the file alone; the check keeps reporting the drift.
+func TestSyncGuardrails_RefusesAHandEditedCopy(t *testing.T) {
+	root := writeFixture(t)
+	body := read(t, root, ".claude/skills/one/SKILL.md")
+	bent := strings.Replace(body, "-> skip silently.", "-> shrug and carry on.", 1)
+	write(t, root, ".claude/skills/one/SKILL.md", bent)
+
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{oldGuardrailSource(t, fixtureSource)})
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(rep.Unchecked) != 1 || !strings.Contains(rep.Unchecked[0].Msg, "cannot be proven") {
+		t.Fatalf("want 1 could-not-check naming the unproven extent, got %+v", rep.Unchecked)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("sync rewrote %v over a copy whose extent it could not prove", changed)
+	}
+	if read(t, root, ".claude/skills/one/SKILL.md") != bent {
+		t.Fatal("the refused file was written")
+	}
+	if CheckGuardrails(root).Clean() {
+		t.Fatal("the hand edit must still be reported as drift")
 	}
 }
 
@@ -428,10 +460,12 @@ func TestSyncGuardrails_LeavesAnUnlocatableCopyAlone(t *testing.T) {
 // the shorter old copy) or left stale old lines behind (shrink: the mirror
 // case). Both tests below fail on the pre-fix code — see the PR body's
 // "Fail-first" section for the before/after run against the unfixed
-// SyncGuardrails(root) single-argument signature.
+// SyncGuardrails(root) single-argument signature. guardrail_extent_test.go
+// covers the orderings (re-run, commit-first, no history) where a length taken
+// from one revision is still wrong.
 //
 // oldGuardrailSource parses a HAND-WRITTEN previous revision of
-// GUARDRAILS.md — standing in for what previousGuardrailSource would fetch
+// GUARDRAILS.md — standing in for what priorGuardrailSources would fetch
 // from git in production — so the fix can be exercised without a real git
 // repo in the fixture.
 func oldGuardrailSource(t *testing.T, body string) *GuardrailSource {
@@ -478,7 +512,7 @@ func TestSyncGuardrails_GrowthKeepsTrailingContent(t *testing.T) {
 	}, "\n")
 	mkdirWrite(t, root, ".claude/skills/two/SKILL.md", site)
 
-	changed, rep, err := SyncGuardrails(root, old)
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{old})
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -529,7 +563,7 @@ func TestSyncGuardrails_ShrinkDropsStaleLines(t *testing.T) {
 	}, "\n")
 	mkdirWrite(t, root, ".claude/skills/three/SKILL.md", site)
 
-	changed, rep, err := SyncGuardrails(root, old)
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{old})
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}

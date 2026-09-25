@@ -223,6 +223,15 @@ Any rule more than one skill must state verbatim has one declared home,
 (`make skillslint`) and regenerates them (`make guardrail-sync`). Edit the
 source, never a copy.
 
+A copy has no end marker, so sync proves where each copy ends by content: the
+lines at the copy's anchor must equal the current canonical text (already
+synced, no write) or the block's text in an earlier committed or staged
+revision of the source. When nothing matches, as with a hand-edited copy or a
+tree with no git history, sync reports could-not-check and leaves the file
+alone. If you will edit the source again before committing, `git add` it after
+each sync so the next sync can match the copies it wrote. Otherwise restore the
+sites with `git checkout` and sync once.
+
 ## Fixtures
 
 `testdata/plugintree/` holds a matched pair of fake roots:
