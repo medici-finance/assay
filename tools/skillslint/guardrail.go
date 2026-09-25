@@ -33,6 +33,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -109,7 +110,16 @@ func ParseGuardrailSource(root string) (*GuardrailSource, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could-not-check: cannot read the declared guardrail source %s: %w", guardrailSourcePath, err)
 	}
+	return parseGuardrailBytes(raw)
+}
 
+// parseGuardrailBytes is the byte-level half of ParseGuardrailSource, split out
+// so a PREVIOUS revision of the source (fetched from git, not the working
+// tree) can be parsed the same way SyncGuardrails parses the current one — see
+// previousGuardrailSource in main.go and the `old` parameter of
+// SyncGuardrails, which need the prior line count of a changed block to
+// compute a correct removal boundary (medici-finance/assay#1690).
+func parseGuardrailBytes(raw []byte) (*GuardrailSource, error) {
 	src := &GuardrailSource{}
 	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 
@@ -425,7 +435,17 @@ func guardrailDiff(want, got string) string {
 // It can only rewrite a block it can locate. A site whose anchor is missing or
 // ambiguous is returned as an unchecked Issue and left untouched — silently
 // guessing where a rule belongs is worse than failing.
-func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err error) {
+//
+// `old` is the guardrail source as it read BEFORE whatever edit `root`'s copy
+// of guardrailSourcePath now carries — typically the last commit, via
+// previousGuardrailSource in main.go. It exists for exactly one reason: to
+// answer "how many lines does the copy about to be overwritten actually
+// occupy?" A nil `old` (no git history available, or none of the callers in
+// tests care) falls back to assuming the copy is the SAME LENGTH as the new
+// text — correct for an ordinary same-length wording fix, wrong whenever the
+// canonical block itself grew or shrank a line count
+// (medici-finance/assay#1690 — see oldSiteLen below).
+func SyncGuardrails(root string, old *GuardrailSource) (changed []string, rep GuardrailReport, err error) {
 	src, perr := ParseGuardrailSource(root)
 	if perr != nil {
 		rep.Unchecked = append(rep.Unchecked, Issue{Path: guardrailSourcePath, Msg: perr.Error()})
@@ -434,8 +454,9 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 
 	// Group by file so a file with two blocks is written once.
 	type edit struct {
-		at    int
-		lines []string
+		at     int
+		oldLen int // how many lines to REMOVE — never len(lines) below
+		lines  []string
 	}
 	perFile := map[string][]edit{}
 
@@ -448,6 +469,7 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 			}
 			fileLines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 			want := src.expected(b, site)
+			wantLines := strings.Split(want, "\n")
 			at, hits := locateBlock(fileLines, want)
 			if hits != 1 {
 				rep.Unchecked = append(rep.Unchecked, Issue{
@@ -456,7 +478,7 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 				})
 				continue
 			}
-			perFile[site.Path] = append(perFile[site.Path], edit{at: at, lines: strings.Split(want, "\n")})
+			perFile[site.Path] = append(perFile[site.Path], edit{at: at, oldLen: oldSiteLen(old, b.ID, site, len(wantLines)), lines: wantLines})
 		}
 	}
 
@@ -476,12 +498,14 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 		before := strings.ReplaceAll(string(raw), "\r\n", "\n")
 		fileLines := strings.Split(before, "\n")
 		edits := perFile[p]
-		// Apply from the bottom up so earlier indices stay valid; every block
-		// here is the same length as what it replaces, but bottom-up costs
-		// nothing and survives a future variable-length block.
+		// Apply from the bottom up so earlier indices stay valid. A block's
+		// removal boundary is measured against oldLen — the length of the
+		// block BEING REPLACED — never len(e.lines), the length of the block
+		// being inserted; the two differ exactly when the canonical text
+		// grew or shrank (medici-finance/assay#1690).
 		sort.Slice(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
 		for _, e := range edits {
-			end := e.at + len(e.lines)
+			end := e.at + e.oldLen
 			if end > len(fileLines) {
 				rep.Unchecked = append(rep.Unchecked, Issue{Path: p, Msg: "could-not-check: block runs past end of file — not rewritten"})
 				continue
@@ -507,4 +531,66 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 		changed = append(changed, p)
 	}
 	return changed, rep, nil
+}
+
+// oldSiteLen answers "how many lines does this copy occupy RIGHT NOW, before
+// this sync rewrites it?" — the one number the growth/shrink defect class
+// (medici-finance/assay#1690) got wrong by substituting len(wantLines) (the
+// NEW block) instead.
+//
+// The copy carries no end marker (locateBlock's doc comment explains why: no
+// injected machine syntax in prose a model reads at boot), so the anchor line
+// alone cannot say where the block stops. The one place that real length is
+// still recoverable is the guardrail source AS IT STOOD before the edit that
+// is being synced — `old`, typically the last commit (previousGuardrailSource
+// in main.go). If that block/site pair is found there, its exact prior line
+// count is exact, whether the canonical text grew, shrank, or just reworded a
+// word in place. If `old` is nil (no history available) or the pair is new
+// there (a block or site that did not exist before), `fallback` — the new
+// block's own length — is the best remaining guess: correct for the common
+// same-length wording fix, and no worse than this function not existing at
+// all for the genuinely-unresolvable cases.
+func oldSiteLen(old *GuardrailSource, blockID string, site GuardrailSite, fallback int) int {
+	if old == nil {
+		return fallback
+	}
+	for _, ob := range old.Blocks {
+		if ob.ID != blockID {
+			continue
+		}
+		for _, osite := range ob.Sites {
+			if osite.Path != site.Path {
+				continue
+			}
+			oldWant := old.expected(ob, osite)
+			return len(strings.Split(oldWant, "\n"))
+		}
+	}
+	return fallback
+}
+
+// previousGuardrailSource is SyncGuardrails' `old` argument in production: the
+// declared guardrail source as HEAD last committed it, i.e. as of the last
+// time the sites were actually regenerated — the real workflow this tool
+// documents is edit-the-source-then-run-sync, so the sites on disk still
+// reflect HEAD's version, not the working tree's just-edited one.
+//
+// Best-effort only: a non-git checkout, a repo with no commits yet, or a git
+// binary that is not on PATH all return nil, and SyncGuardrails falls back to
+// its pre-medici-finance/assay#1690 same-length assumption for every site —
+// exactly today's behavior, never worse. This is the one place this package
+// shells out for derived data outside a test, the same pattern
+// deriveEnforcementBlock already uses in enforcementblock.go.
+func previousGuardrailSource(root string) *GuardrailSource {
+	cmd := exec.Command("git", "show", "HEAD:"+guardrailSourcePath)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	src, err := parseGuardrailBytes(out)
+	if err != nil {
+		return nil
+	}
+	return src
 }

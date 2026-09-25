@@ -233,7 +233,12 @@ func main() {
 }
 
 func runSync(root string) int {
-	changed, rep, err := SyncGuardrails(root)
+	// previousGuardrailSource gives SyncGuardrails the OLD line count of any
+	// block that grew or shrank, so it removes exactly what it should rather
+	// than a length copied from the new text (medici-finance/assay#1690). A
+	// nil result (no git history available) degrades to the pre-#1690
+	// same-length assumption, not a hard failure.
+	changed, rep, err := SyncGuardrails(root, previousGuardrailSource(root))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "skillslint --sync: %v\n", err)
 		return 2

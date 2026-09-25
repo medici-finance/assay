@@ -357,7 +357,7 @@ func TestSyncGuardrails_RewritesADriftedCopy(t *testing.T) {
 		t.Fatal("precondition: the bent copy should not be clean")
 	}
 
-	changed, rep, err := SyncGuardrails(root)
+	changed, rep, err := SyncGuardrails(root, nil)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestSyncGuardrails_RewritesADriftedCopy(t *testing.T) {
 // hides the real change.
 func TestSyncGuardrails_IsIdempotent(t *testing.T) {
 	root := writeFixture(t)
-	changed, rep, err := SyncGuardrails(root)
+	changed, rep, err := SyncGuardrails(root, nil)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestSyncGuardrails_LeavesAnUnlocatableCopyAlone(t *testing.T) {
 	trimmed := strings.Replace(body, "At most once per hour, run the prune.\n", "", 1)
 	write(t, root, ".claude/skills/one/SKILL.md", trimmed)
 
-	changed, rep, err := SyncGuardrails(root)
+	changed, rep, err := SyncGuardrails(root, nil)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -415,5 +415,140 @@ func TestSyncGuardrails_LeavesAnUnlocatableCopyAlone(t *testing.T) {
 		if c == ".claude/skills/one/SKILL.md" && strings.Contains(read(t, root, c), "At most once per hour") {
 			t.Fatal("sync re-inserted a block it could not locate — guessing placement is worse than failing")
 		}
+	}
+}
+
+// --- medici-finance/assay#1690: the growth/shrink removal-boundary defect ---
+//
+// SyncGuardrails used to compute the removal boundary from len(e.lines) — the
+// NEW block's own length — instead of the length of the block actually being
+// replaced. Whenever the canonical text's line count changed, that either
+// swallowed trailing content that was never part of the block (growth: the
+// canonical text got LONGER, so the too-long removal ate whatever followed
+// the shorter old copy) or left stale old lines behind (shrink: the mirror
+// case). Both tests below fail on the pre-fix code — see the PR body's
+// "Fail-first" section for the before/after run against the unfixed
+// SyncGuardrails(root) single-argument signature.
+//
+// oldGuardrailSource parses a HAND-WRITTEN previous revision of
+// GUARDRAILS.md — standing in for what previousGuardrailSource would fetch
+// from git in production — so the fix can be exercised without a real git
+// repo in the fixture.
+func oldGuardrailSource(t *testing.T, body string) *GuardrailSource {
+	t.Helper()
+	src, err := parseGuardrailBytes([]byte(body))
+	if err != nil {
+		t.Fatalf("parsing the fixture's old source: %v", err)
+	}
+	return src
+}
+
+// mkdirWrite is write, but creates the parent directory first — write alone
+// assumes writeFixture already laid out the tree, which these two ad hoc
+// fixtures do not.
+func mkdirWrite(t *testing.T, root, rel, body string) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, root, rel, body)
+}
+
+// TestSyncGuardrails_GrowthKeepsTrailingContent reproduces the
+// medici-finance/assay#1687 incident: the canonical block grows from 3 lines
+// to 5, and the site still carries the old 3-line copy immediately followed
+// by two lines that are NOT part of the block. On the unfixed tool, `end` is
+// computed from the NEW block's length (5), so the rewrite silently consumes
+// both trailing lines.
+func TestSyncGuardrails_GrowthKeepsTrailingContent(t *testing.T) {
+	root := t.TempDir()
+
+	oldSource := "---\nname: guardrails\ndescription: fixture\n---\n\n## guardrail: widen\n\n- site: .claude/skills/two/SKILL.md\n\n```text\n- **Widen test:** anchor line, stable across edits.\n- old middle line, unrelated wording.\n- old tail line, unrelated wording.\n```\n"
+	newSource := "---\nname: guardrails\ndescription: fixture\n---\n\n## guardrail: widen\n\n- site: .claude/skills/two/SKILL.md\n\n```text\n- **Widen test:** anchor line, stable across edits.\n- brand new middle line one.\n- brand new middle line two.\n- brand new middle line three.\n- brand new tail line.\n```\n"
+	mkdirWrite(t, root, guardrailSourcePath, newSource)
+	old := oldGuardrailSource(t, oldSource)
+
+	site := strings.Join([]string{
+		"- **Widen test:** anchor line, stable across edits.",
+		"- old middle line, unrelated wording.",
+		"- old tail line, unrelated wording.",
+		"- something completely unrelated that must survive.",
+		"- trailing padding line so a wrong boundary does not just hit EOF.",
+	}, "\n")
+	mkdirWrite(t, root, ".claude/skills/two/SKILL.md", site)
+
+	changed, rep, err := SyncGuardrails(root, old)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(rep.Unchecked) != 0 {
+		t.Fatalf("sync reported could-not-check: %+v", rep.Unchecked)
+	}
+	if len(changed) != 1 {
+		t.Fatalf("sync rewrote %v, want exactly the one site", changed)
+	}
+
+	got := read(t, root, ".claude/skills/two/SKILL.md")
+	wantBlock := "- **Widen test:** anchor line, stable across edits.\n" +
+		"- brand new middle line one.\n" +
+		"- brand new middle line two.\n" +
+		"- brand new middle line three.\n" +
+		"- brand new tail line."
+	if !strings.HasPrefix(got, wantBlock) {
+		t.Errorf("site does not carry the new (longer) block text:\n%s", got)
+	}
+	if !strings.Contains(got, "something completely unrelated that must survive") {
+		t.Errorf("GROWTH BUG: the unrelated trailing line was swallowed by the rewrite:\n%s", got)
+	}
+	if !strings.Contains(got, "trailing padding line") {
+		t.Errorf("GROWTH BUG: the second trailing line was swallowed by the rewrite:\n%s", got)
+	}
+}
+
+// TestSyncGuardrails_ShrinkDropsStaleLines is the mirror defect: the canonical
+// block shrinks from 5 lines to 2, and the site still carries the old 5-line
+// copy. On the unfixed tool, `end` is computed from the NEW (shorter) length,
+// leaving 3 stale lines from the old, longer block behind instead of removing
+// them.
+func TestSyncGuardrails_ShrinkDropsStaleLines(t *testing.T) {
+	root := t.TempDir()
+
+	oldSource := "---\nname: guardrails\ndescription: fixture\n---\n\n## guardrail: narrow\n\n- site: .claude/skills/three/SKILL.md\n\n```text\n- **Narrow test:** anchor line, stable across edits.\n- old middle line A, being trimmed away.\n- old middle line B, being trimmed away.\n- old middle line C, being trimmed away.\n- old tail line, being trimmed away.\n```\n"
+	newSource := "---\nname: guardrails\ndescription: fixture\n---\n\n## guardrail: narrow\n\n- site: .claude/skills/three/SKILL.md\n\n```text\n- **Narrow test:** anchor line, stable across edits.\n- new tail line after the trim.\n```\n"
+	mkdirWrite(t, root, guardrailSourcePath, newSource)
+	old := oldGuardrailSource(t, oldSource)
+
+	site := strings.Join([]string{
+		"- **Narrow test:** anchor line, stable across edits.",
+		"- old middle line A, being trimmed away.",
+		"- old middle line B, being trimmed away.",
+		"- old middle line C, being trimmed away.",
+		"- old tail line, being trimmed away.",
+		"- something completely unrelated that must survive.",
+	}, "\n")
+	mkdirWrite(t, root, ".claude/skills/three/SKILL.md", site)
+
+	changed, rep, err := SyncGuardrails(root, old)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(rep.Unchecked) != 0 {
+		t.Fatalf("sync reported could-not-check: %+v", rep.Unchecked)
+	}
+	if len(changed) != 1 {
+		t.Fatalf("sync rewrote %v, want exactly the one site", changed)
+	}
+
+	got := read(t, root, ".claude/skills/three/SKILL.md")
+	wantBlock := "- **Narrow test:** anchor line, stable across edits.\n- new tail line after the trim."
+	if !strings.HasPrefix(got, wantBlock) {
+		t.Errorf("site does not carry the new (shorter) block text:\n%s", got)
+	}
+	if strings.Contains(got, "being trimmed away") {
+		t.Errorf("SHRINK BUG: stale lines from the old, longer block were left behind:\n%s", got)
+	}
+	if !strings.Contains(got, "something completely unrelated that must survive") {
+		t.Errorf("the unrelated trailing line should never have been touched either way:\n%s", got)
 	}
 }
