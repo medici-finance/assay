@@ -128,6 +128,7 @@ func (b BriefRegressionLinkage) RegressionOf(f DefectFix) ([]RegressionRef, bool
 	}
 
 	var refs []RegressionRef
+	var unparsed []string
 	for _, p := range briefPaths {
 		content, err := readFileAtCommit(commit, p)
 		if err != nil {
@@ -139,9 +140,18 @@ func (b BriefRegressionLinkage) RegressionOf(f DefectFix) ([]RegressionRef, bool
 		}
 		if ref, ok := parseRegressionRef(v); ok {
 			refs = append(refs, ref)
+		} else {
+			unparsed = append(unparsed, fmt.Sprintf("%s: %q", p, v))
 		}
 	}
 	if len(refs) == 0 {
+		if len(unparsed) > 0 {
+			// A `regression-of:` value was PRESENT but did not parse as either
+			// accepted form (issue ref or commit sha) — that is not the same as
+			// no value being named at all, so it is could-not-measure rather
+			// than a silent "legitimately absent".
+			return nil, false, fmt.Errorf("regressionlink: unparseable regression-of value(s): %s", strings.Join(unparsed, "; "))
+		}
 		return nil, false, nil
 	}
 	return refs, true, nil
@@ -263,6 +273,13 @@ func frontmatterBlock(content string) string {
 	return ""
 }
 
+// trailingYAMLCommentPattern strips a ` # comment` trailing a YAML scalar — a
+// hash preceded by at least one space, per the YAML comment rule. It never
+// matches a bare `#N` or `owner/repo#N` issue reference: both put the `#`
+// immediately after a non-space character (the start of the value, or the
+// repo slug), never after a space.
+var trailingYAMLCommentPattern = regexp.MustCompile(`\s+#.*$`)
+
 // regressionOfValue reads the `regression-of:` scalar out of content's
 // frontmatter.
 func regressionOfValue(content string) (string, bool) {
@@ -275,6 +292,7 @@ func regressionOfValue(content string) (string, bool) {
 		return "", false
 	}
 	v := strings.Trim(strings.TrimSpace(m[1]), `"'`)
+	v = strings.TrimSpace(trailingYAMLCommentPattern.ReplaceAllString(v, ""))
 	if v == "" {
 		return "", false
 	}

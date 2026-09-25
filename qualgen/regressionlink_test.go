@@ -122,6 +122,81 @@ func TestRegressionLink_NoRegressionOf_LegitimatelyAbsent(t *testing.T) {
 	}
 }
 
+const regressionOfBriefContentTrailingComment = `---
+brief: assay:assay:quality:97
+title: example fix brief with a trailing YAML comment on regression-of
+regression-of: abc1234  # prior fix
+---
+
+# Brief 97 — example
+`
+
+const regressionOfBriefContentUnparseable = `---
+brief: assay:assay:quality:96
+title: example fix brief with an unparseable regression-of value
+regression-of: not-a-valid-reference!!
+---
+
+# Brief 96 — example
+`
+
+// TestRegressionLink_RegressionOf_TrailingYAMLComment is q19-F2(e): a
+// `regression-of:` value carrying a trailing YAML comment (`abc1234  # prior
+// fix`) must still resolve to the commit sha `abc1234`. The original
+// regressionOfPattern captured the whole rest of the line, comment included,
+// so parseRegressionRef never recognised it as a sha and the reference was
+// silently dropped as "legitimately absent".
+func TestRegressionLink_RegressionOf_TrailingYAMLComment(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-97-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentTrailingComment)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair the widget\n\nBrief: quality/97\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if !ok || len(refs) != 1 {
+		t.Fatalf("expected exactly one resolved ref, got ok=%v refs=%+v", ok, refs)
+	}
+	if refs[0].CommitSHA != "abc1234" {
+		t.Fatalf("expected the trailing comment stripped and abc1234 resolved as a commit sha, got %+v", refs[0])
+	}
+}
+
+// TestRegressionLink_RegressionOf_UnparseableValueIsError is q19-F2(e)'s other
+// half: a `regression-of:` value that is PRESENT but matches neither accepted
+// form (issue ref or commit sha) must be could-not-measure, not the same
+// "legitimately absent" answer as no value being named at all.
+func TestRegressionLink_RegressionOf_UnparseableValueIsError(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-96-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentUnparseable)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair yet another widget\n\nBrief: quality/96\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	_, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err == nil {
+		t.Fatalf("expected an error for a present-but-unparseable regression-of value, got ok=%v", ok)
+	}
+	if ok {
+		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
 // TestRegressionLink_DefectClass_UnconfiguredIsError proves the adapter-level
 // enforcement of fact 3: an unconfigured class-label prefix is ALWAYS an error
 // (could-not-measure upstream), never a silent "no class".

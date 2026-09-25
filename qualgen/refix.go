@@ -89,6 +89,14 @@ const (
 // names e as the earlier fix — by commit sha (prefix match, since a
 // `regression-of:` value may be an abbreviated sha), by closed issue, or by PR
 // number.
+//
+// Issue.Repo follows IssueRef's own convention (fixlinkage.go: "empty means
+// the mined repo itself"): a bare `#N` regression-of value and a
+// GithubLabelsLinkage-produced ClosedIssue both carry Repo == "" for the
+// mined repo, so an explicit `owner/repo#N` reference naming that SAME repo
+// must still match a "" on the other side — comparing the two literally would
+// make every repo-qualified reference unmatchable even when it names the
+// mined repo itself.
 func refMatches(ref RegressionRef, e DefectFix) bool {
 	if ref.CommitSHA != "" {
 		full := strings.ToLower(e.FixCommitSHA)
@@ -100,9 +108,12 @@ func refMatches(ref RegressionRef, e DefectFix) bool {
 	if ref.PRNumber != 0 && e.FixPRNumber != 0 && ref.PRNumber == e.FixPRNumber {
 		return true
 	}
-	if ref.Issue != nil && e.ClosedIssue != nil &&
-		ref.Issue.Number == e.ClosedIssue.Number && ref.Issue.Repo == e.ClosedIssue.Repo {
-		return true
+	if ref.Issue != nil && e.ClosedIssue != nil && ref.Issue.Number == e.ClosedIssue.Number {
+		sameRepo := ref.Issue.Repo == "" || e.ClosedIssue.Repo == "" ||
+			strings.EqualFold(ref.Issue.Repo, e.ClosedIssue.Repo)
+		if sameRepo {
+			return true
+		}
 	}
 	return false
 }
@@ -114,9 +125,30 @@ type candidateLink struct {
 	kind string
 }
 
+// refLabel renders ref for a could-not-measure reason string.
+func refLabel(ref RegressionRef) string {
+	switch {
+	case ref.Issue != nil && ref.Issue.Repo != "":
+		return fmt.Sprintf("%s#%d", ref.Issue.Repo, ref.Issue.Number)
+	case ref.Issue != nil:
+		return fmt.Sprintf("#%d", ref.Issue.Number)
+	case ref.CommitSHA != "":
+		return ref.CommitSHA
+	case ref.PRNumber != 0:
+		return fmt.Sprintf("PR #%d", ref.PRNumber)
+	default:
+		return "(empty reference)"
+	}
+}
+
 // explicitCandidates resolves F's `regression-of:` path against allFixes.
 // resolved=true means the linkage check itself succeeded (a reference was
-// found), independent of whether that reference matches a fix in allFixes.
+// found) AND it matched at least one fix in allFixes. A reference that names
+// no known fix is NOT "legitimately absent" — F's author said "this is a
+// regression", and we simply cannot tell whether it landed before or after F's
+// inducer (the named fix may sit outside the mined corpus). Reporting that as
+// a resolved, matchless link would score F as a measured non-re-fix; it is
+// could-not-measure instead.
 func explicitCandidates(linkage RegressionLinkage, f DefectFix, allFixes []DefectFix) (cands []candidateLink, resolved, couldNotMeasure bool, reason string) {
 	refs, ok, err := linkage.RegressionOf(f)
 	if err != nil {
@@ -125,23 +157,37 @@ func explicitCandidates(linkage RegressionLinkage, f DefectFix, allFixes []Defec
 	if !ok || len(refs) == 0 {
 		return nil, false, false, "" // legitimately absent: no regression-of: named
 	}
+	var unmatched []string
 	for _, ref := range refs {
+		matched := false
 		for _, e := range allFixes {
 			if e.FixCommitSHA == f.FixCommitSHA {
 				continue
 			}
 			if refMatches(ref, e) {
 				cands = append(cands, candidateLink{e: e, kind: "regression-of"})
+				matched = true
 			}
 		}
+		if !matched {
+			unmatched = append(unmatched, refLabel(ref))
+		}
+	}
+	if len(cands) == 0 {
+		return nil, false, true, fmt.Sprintf("regression-of names %s, which matches no identified fix", strings.Join(unmatched, ", "))
 	}
 	return cands, true, false, ""
 }
 
 // classCandidates resolves F's defect-class path: reads F's own class, then
 // looks for other fixes in allFixes whose closed issue resolves to the SAME
-// class. resolved=true once F's own class was read successfully, independent
-// of whether any other fix shares it.
+// class. resolved=true once F's own class was read successfully AND every
+// other fix's class could be checked without error. An error reading an
+// EARLIER fix's labels (a rate limit, a permission failure) is not a "does
+// not match" — it means the check on that candidate never actually ran, so a
+// candidate lost to one is could-not-measure rather than silently dropped
+// (unless another candidate resolved cleanly and matched, in which case the
+// window still has real information about F).
 func classCandidates(linkage RegressionLinkage, f DefectFix, allFixes []DefectFix) (cands []candidateLink, resolved, couldNotMeasure bool, reason string) {
 	if f.ClosedIssue == nil {
 		return nil, false, false, "" // no issue to classify: legitimately absent
@@ -153,28 +199,39 @@ func classCandidates(linkage RegressionLinkage, f DefectFix, allFixes []DefectFi
 	if !ok || class == "" {
 		return nil, false, false, ""
 	}
+	var errs []string
 	for _, e := range allFixes {
 		if e.FixCommitSHA == f.FixCommitSHA || e.ClosedIssue == nil {
 			continue
 		}
 		eClass, ok2, err2 := linkage.DefectClass(*e.ClosedIssue)
-		if err2 != nil || !ok2 || eClass != class {
+		if err2 != nil {
+			errs = append(errs, fmt.Sprintf("defect-class for issue #%d: %v", e.ClosedIssue.Number, err2))
+			continue
+		}
+		if !ok2 || eClass != class {
 			continue
 		}
 		cands = append(cands, candidateLink{e: e, kind: "defect-class"})
+	}
+	if len(cands) == 0 && len(errs) > 0 {
+		return nil, false, true, strings.Join(errs, "; ")
 	}
 	return cands, true, false, ""
 }
 
 // earliestTime resolves the earliest of shas' commit times. ok is false when
-// none resolve.
+// ANY sha's time cannot be resolved, not just when none resolve: a partial
+// set understates the true earliest inducing time (an unresolvable commit
+// could predate every commit whose time IS known), which can only ever make a
+// re-fix look wrongly ordered or wrongly counted — never a safe approximation.
 func earliestTime(shas []string, commitTime CommitTime) (time.Time, bool) {
 	var earliest time.Time
 	found := false
 	for _, sha := range shas {
 		t, ok := commitTime(sha)
 		if !ok {
-			continue
+			return time.Time{}, false
 		}
 		if !found || t.Before(earliest) {
 			earliest, found = t, true
@@ -215,19 +272,32 @@ func evaluateFix(f DefectFix, tr DefectTrace, allFixes []DefectFix, linkage Regr
 	}
 	earliestInducing, ok := earliestTime(tr.InducingCommits, commitTime)
 	if !ok {
-		return true, false, true, "inducing-commit time unavailable: ordering rule cannot be evaluated", nil, ""
+		// resolved=false here (not true): a partial inducing-commit-time set
+		// means the ordering rule itself could not run, so this fix contributes
+		// no real information — never resolved coverage, never a measured
+		// non-re-fix.
+		return false, false, true, "inducing-commit time unavailable: ordering rule cannot be evaluated", nil, ""
 	}
 
 	candidates := append(append([]candidateLink{}, expCands...), classCands...)
+	var timeUnresolved []string
 	for _, c := range candidates {
 		et, ok := commitTime(c.e.FixCommitSHA)
 		if !ok {
+			timeUnresolved = append(timeUnresolved, shortSHA(c.e.FixCommitSHA))
 			continue
 		}
 		if et.Before(earliestInducing) {
 			e := c.e
 			return true, true, false, "", &e, c.kind
 		}
+	}
+	if len(timeUnresolved) > 0 {
+		// At least one linked candidate's fix time could not be resolved, and
+		// none of the resolvable ones satisfied the ordering rule — we cannot
+		// rule out that the unresolved candidate would have. Could-not-measure,
+		// not a silent "not a re-fix" (F resolved=false rather than true).
+		return false, false, true, fmt.Sprintf("earlier fix commit time unavailable for %s: ordering rule cannot be evaluated", strings.Join(timeUnresolved, ", ")), nil, ""
 	}
 	// Linked but no candidate satisfies the ordering rule — the earlier fix
 	// landed at or after F's inducer: not a re-fix (spec: "A later or
@@ -301,10 +371,16 @@ func ComputeRefix(window string, fixes []DefectFix, traces []DefectTrace, linkag
 	}
 	rec.TierComposition = ComputeTierComposition(tierFixes)
 
-	// Every traced fix's linkage came back could-not-measure and NONE resolved:
-	// the window's rate and coverage are undecidable, never a fabricated 0
-	// (fact 5 / Verify #5 — "no regression-of: anywhere and no class prefix").
-	if resolvedCount == 0 && couldNotMeasureCount == len(tracedFixes) {
+	// No traced fix's linkage ever resolved, AND at least one came back
+	// could-not-measure: the window's rate and coverage are undecidable, never
+	// a fabricated 0 (fact 5 / Verify #5 — "no regression-of: anywhere and no
+	// class prefix"). Requiring EVERY traced fix to be could-not-measure (the
+	// original guard) missed a window where some fixes were legitimately
+	// absent (no closed issue to classify, nothing to be could-not-measure
+	// ABOUT) alongside others that hit a real adapter error — resolvedCount
+	// stayed 0 either way, so the whole window is undecided the moment any
+	// fix in it could not be measured.
+	if resolvedCount == 0 && couldNotMeasureCount > 0 {
 		reason := "regression linkage could not be resolved for any traced fix in this window"
 		if firstCNMReason != "" {
 			reason += ": " + firstCNMReason

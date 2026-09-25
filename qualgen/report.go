@@ -313,15 +313,23 @@ func writeRefixSection(b *strings.Builder, recs []RefixRecord) {
 		b.WriteString("not measured — populated once the defects table is traced (quality/06–07) and a RegressionLinkage adapter is configured. Never rendered as 0.\n\n")
 		return
 	}
-	sort.Slice(recs, func(i, j int) bool {
-		if !recs[i].MinedAt.Equal(recs[j].MinedAt) {
-			return recs[i].MinedAt.Before(recs[j].MinedAt)
-		}
-		return recs[i].Window < recs[j].Window
-	})
+	// A re-mined window appends a fresh RefixRecord rather than overwriting the
+	// prior one (RefixRecord's own doc comment: "append-only, latest-per-window
+	// selected by the report"). Reduce to the newest record per window before
+	// rendering, the same latestOf pattern the hotspot/ownership sections use,
+	// so a re-mined window's re-fixes are never counted or listed twice.
+	latest := latestOf(recs,
+		func(r RefixRecord) string { return r.Window },
+		func(r RefixRecord) time.Time { return r.MinedAt })
+	rows := make([]RefixRecord, 0, len(latest))
+	for _, r := range latest {
+		rows = append(rows, r)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Window < rows[j].Window })
+
 	b.WriteString("| Window | Traced fixes | Re-fix count | Re-fix rate | Linkage coverage | Tier 1 | Tier 2 | Tier 3 |\n")
 	b.WriteString("|--------|---------------|--------------|-------------|-------------------|--------|--------|--------|\n")
-	for _, r := range recs {
+	for _, r := range rows {
 		fmt.Fprintf(b, "| %s | %d | %s | %s | %s | %d | %d | %d |\n",
 			mdCell(r.Window), r.TracedFixCount,
 			renderMeasureFloat(r.RefixCount), renderMeasureFloat(r.RefixRate), renderMeasureFloat(r.LinkageCoverage),
@@ -330,7 +338,7 @@ func writeRefixSection(b *strings.Builder, recs []RefixRecord) {
 	b.WriteString("\n")
 
 	var named []string
-	for _, r := range recs {
+	for _, r := range rows {
 		for _, e := range r.Refixes {
 			id := "commit " + shortSHA(e.FixCommitSHA)
 			if e.FixPRNumber != 0 {
@@ -340,7 +348,7 @@ func writeRefixSection(b *strings.Builder, recs []RefixRecord) {
 			if e.EarlierFixPRNumber != 0 {
 				earlier = fmt.Sprintf("PR #%d", e.EarlierFixPRNumber)
 			}
-			named = append(named, fmt.Sprintf("%s (window %s) — regression of %s via `%s`", id, r.Window, earlier, e.LinkKind))
+			named = append(named, fmt.Sprintf("%s (window %s) — regression of %s via `%s`", id, mdCell(r.Window), earlier, e.LinkKind))
 		}
 	}
 	if len(named) > 0 {
