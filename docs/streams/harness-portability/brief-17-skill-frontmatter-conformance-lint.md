@@ -128,6 +128,31 @@ Pre-mortem → detection map:
      "verified" requires this section filled by someone who did NOT implement.
      Row 9 needs a live Codex install; record BLOCKED with the reason if none exists. -->
 
+### Implementation-time run (implementer, sonnet-5-worker, 2026-09-24, darwin, non-hermetic)
+
+Recorded at `implemented`; per-brief-rule this is NOT the verified run — a non-implementer
+must re-run every row to flip verified.
+
+| # | Command | Exit | Output |
+|---|---------|------|--------|
+| 1 | `.../skillslint-hp17 --skills-dir testdata/conformance/desc-1025` | 1 | `skillslint: skill/SKILL.md: description is 1025 characters, over the 1024-character hard limit (...)` |
+| 2 | `.../skillslint-hp17 --skills-dir testdata/conformance/desc-1024-multibyte` | 0 | `SKILLSLINT: PASS — 1 skill file(s) under --skills-dir, structural + conformance checks clean` |
+| 3 | `.../skillslint-hp17 --skills-dir testdata/conformance/name-mismatch` | 1 | `skillslint: the-desk/SKILL.md: frontmatter name "not-the-desk" != directory "the-desk" — ...` |
+| 4 | `.../skillslint-hp17 --skills-dir testdata/conformance/name-pattern` | 1 | `skillslint: Bad--Name/SKILL.md: name "Bad--Name" does not match the agentskills name pattern ...` |
+| 5 | `.../skillslint-hp17 --skills-dir testdata/conformance/budget-over` | 0 | `SKILLSLINT: PASS — 9 skill file(s) ...`; `skillslint: NOTICE: bundle: 9 skill(s), summed description characters 8100 exceeds the 8000-character budget ...` |
+| 6 | `cd tools/skillslint && go run . --root ../..` (built binary) | 0 | `SKILLSLINT: PASS — 14 skill file(s) under ../.., ...`; no `install`/`pr-review-desk` description Issue in the FAIL lines; bundle NOTICE fires (9914 > 8000, expected/advisory) |
+| 7 | mutation: `git show e284ba9b8:plugins/assay/skills/install/SKILL.md` copied to a scratch `--skills-dir` tree | 1 | `skillslint: install/SKILL.md: description is 1103 characters, over the 1024-character hard limit (...)` — matches the brief's own pre-fix measurement exactly |
+| 8 | `cd tools/skillslint && go test ./... -count=1` | 0 | `ok  	github.com/medici-finance/assay/tools/skillslint	...` |
+| 9 | Live Codex probe | — | **BLOCKED (needs live Codex)** — no Codex CLI / `assay@assay` plugin install available in this environment |
+| 10 | `curl ... render.rs@30fc6864... \| grep -c ...` | 0 | `3` — all three cited Codex constants resolve at the pinned SHA |
+| 11 | `gh api .../check-runs?check_name=skillslint` | — | Not yet applicable: no merge has happened; run post-merge |
+| 12 | `statusgen --consumers --brief harness-portability/17 --root . --base $(git merge-base origin/main HEAD)` (built from this branch's `statusgen/`) | 0 | `summary: 3 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` — the three brief-authored entries CORROBORATED (fixed-here), 0 DISPROVED |
+| 13 | `statusgen --lint --root .` (built from this branch's `statusgen/`) | 0 | `LINT: PASS`; 0 `PROBLEM` lines; none naming `harness-portability/17` |
+
+Pre-mortem/detection-map failure modes (byte-vs-rune, rule-never-fires-on-real-bundle,
+budget-wired-as-failure, empty-skills-dir) are each caught by the rows above (2, 7, 5)
+and by `TestLintSkillsDir_EmptyDirFailsClosed` (unit-level, exit-2 fail-closed path).
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
 answers: are the shortened descriptions' opening sentences still the trigger text a harness
